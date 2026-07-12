@@ -1,0 +1,1 @@
+ALTER TABLE "time_entry" ADD COLUMN "fills_day" boolean DEFAULT false NOT NULL;

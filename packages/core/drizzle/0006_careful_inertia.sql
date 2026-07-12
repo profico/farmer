@@ -1,0 +1,1 @@
+ALTER TABLE "time_entry_type" ADD COLUMN "description" text;

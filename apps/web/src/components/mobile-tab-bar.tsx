@@ -1,0 +1,193 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
+import { LogOut, MoreHorizontal } from "lucide-react";
+import { motion } from "motion/react";
+import { useState } from "react";
+import {
+	ADMIN_ITEMS,
+	isNavItemActive,
+	WORKSPACE_ITEMS,
+} from "#/components/app-sidebar.tsx";
+import {
+	Sheet,
+	SheetContent,
+	SheetDescription,
+	SheetHeader,
+	SheetTitle,
+} from "#/components/ui/sheet.tsx";
+import { useMediaQuery } from "#/hooks/use-media-query.ts";
+import { authClient } from "#/lib/auth-client.ts";
+import { springExpressive } from "#/lib/motion.ts";
+import { cn, getInitials } from "#/lib/utils.ts";
+import { pendingTimeOffCountQuery } from "#/queries/time-off.ts";
+
+export function MobileTabBar({
+	orgSlug,
+	isAdmin,
+	userName,
+	userEmail,
+}: {
+	orgSlug: string;
+	isAdmin: boolean;
+	userName: string;
+	userEmail: string;
+}) {
+	const pathname = useLocation({ select: (location) => location.pathname });
+	const router = useRouter();
+	const [moreOpen, setMoreOpen] = useState(false);
+
+	// Narrow phones (iPhone SE/mini-class) only comfortably fit 3 tabs + More;
+	// give regular-and-up phones a 4th before anything overflows into More.
+	const hasRoomForFourth = useMediaQuery("(min-width: 380px)");
+	const primaryCount = hasRoomForFourth ? 4 : 3;
+	const primaryItems = WORKSPACE_ITEMS.slice(0, primaryCount);
+	const moreWorkspaceItems = WORKSPACE_ITEMS.slice(primaryCount);
+
+	// Same rationale as AppSidebar: not a suspense query, `enabled: isAdmin`
+	// keeps non-admins from ever hitting the admin-only server fn.
+	const { data: pendingTimeOffCount } = useQuery({
+		...pendingTimeOffCountQuery(),
+		enabled: isAdmin,
+		staleTime: 60_000,
+	});
+
+	const moreItems = isAdmin
+		? [...moreWorkspaceItems, ...ADMIN_ITEMS]
+		: moreWorkspaceItems;
+	const isMoreActive = moreItems.some((item) =>
+		isNavItemActive(pathname, item.to, orgSlug),
+	);
+
+	const handleLogout = async () => {
+		setMoreOpen(false);
+		await authClient.signOut();
+		await router.invalidate();
+	};
+
+	return (
+		<>
+			<nav
+				data-slot="mobile-tab-bar"
+				className="fixed inset-x-0 bottom-0 z-40 flex justify-center pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
+			>
+				<div className="flex h-16 items-center gap-1 rounded-full border bg-background p-1.5 shadow-lg">
+					{primaryItems.map((item) => {
+						const active = isNavItemActive(pathname, item.to, orgSlug);
+						return (
+							<Link
+								key={item.to}
+								to={item.to}
+								params={{ orgSlug }}
+								viewTransition={!active}
+								// Re-tapping the tab you're already on is a no-op — skip
+								// the navigation entirely so it doesn't replay the
+								// page-transition animation.
+								onClick={(e) => active && e.preventDefault()}
+								className={cn(
+									"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform active:scale-95",
+									active ? "text-primary" : "text-muted-foreground",
+								)}
+							>
+								{active && (
+									// One shared layoutId across every tab + the More button →
+									// motion springs this pill between tabs on navigation
+									// instead of the old static bg-accent class snapping.
+									<motion.div
+										layoutId="tab-bar-active-pill"
+										transition={springExpressive}
+										className="absolute inset-0 -z-10 rounded-full bg-accent"
+									/>
+								)}
+								<item.icon className="size-[21px]" />
+								<span className="text-[10px] font-medium leading-none">
+									{item.label}
+								</span>
+							</Link>
+						);
+					})}
+					<button
+						type="button"
+						onClick={() => setMoreOpen(true)}
+						className={cn(
+							"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform active:scale-95",
+							isMoreActive ? "text-primary" : "text-muted-foreground",
+						)}
+					>
+						{isMoreActive && (
+							<motion.div
+								layoutId="tab-bar-active-pill"
+								transition={springExpressive}
+								className="absolute inset-0 -z-10 rounded-full bg-accent"
+							/>
+						)}
+						<MoreHorizontal className="size-[21px]" />
+						<span className="text-[10px] font-medium leading-none">More</span>
+					</button>
+				</div>
+			</nav>
+
+			<Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+				<SheetContent
+					side="bottom"
+					className="max-h-[80svh] rounded-t-2xl pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+				>
+					<div className="absolute top-2 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-muted" />
+					<SheetHeader className="shrink-0 pt-2 pb-0 text-center">
+						<SheetTitle className="text-center text-sm">More</SheetTitle>
+						<SheetDescription className="sr-only">
+							Additional navigation and account options.
+						</SheetDescription>
+					</SheetHeader>
+					<div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2">
+						{moreItems.map((item) => {
+							const active = isNavItemActive(pathname, item.to, orgSlug);
+							return (
+								<Link
+									key={item.to}
+									to={item.to}
+									params={{ orgSlug }}
+									onClick={() => setMoreOpen(false)}
+									className={cn(
+										"flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
+										active
+											? "bg-accent text-primary"
+											: "text-foreground hover:bg-muted",
+									)}
+								>
+									<item.icon className="size-4.5" />
+									{item.label}
+									{item.to === "/$orgSlug/settings/time-off" &&
+										!!pendingTimeOffCount &&
+										pendingTimeOffCount > 0 && (
+											<span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-primary-foreground">
+												{pendingTimeOffCount}
+											</span>
+										)}
+								</Link>
+							);
+						})}
+					</div>
+					<div className="mt-1 flex shrink-0 items-center gap-2.5 border-t px-4 pt-3">
+						<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground">
+							{getInitials(userName)}
+						</span>
+						<div className="min-w-0 flex-1">
+							<div className="truncate text-sm font-semibold">{userName}</div>
+							<div className="truncate text-2xs text-muted-foreground">
+								{userEmail}
+							</div>
+						</div>
+						<button
+							type="button"
+							onClick={handleLogout}
+							title="Log out"
+							className="shrink-0 p-1 text-muted-foreground hover:text-foreground"
+						>
+							<LogOut className="size-4" />
+						</button>
+					</div>
+				</SheetContent>
+			</Sheet>
+		</>
+	);
+}

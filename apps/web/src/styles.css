@@ -1,0 +1,390 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap');
+@import 'tailwindcss';
+
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* The app has no dark theme. Without this, browsers that prefer dark
+     (e.g. a dark GTK/OS theme) auto-darken the page's inline colors —
+     including the calendar category tints — which crushes their contrast
+     entirely. */
+  color-scheme: light;
+  --background: oklch(0.973 0.005 90);
+  --foreground: oklch(0.265 0.012 300);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.265 0.012 300);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.265 0.012 300);
+
+  --primary: oklch(0.518 0.168 293);
+  --primary-foreground: oklch(0.99 0.003 90);
+
+  --secondary: oklch(0.955 0.018 300);
+  --secondary-foreground: oklch(0.518 0.168 293);
+  --accent: oklch(0.955 0.018 300);
+  --accent-foreground: oklch(0.518 0.168 293);
+
+  --muted: oklch(0.955 0.006 90);
+  --muted-foreground: oklch(0.56 0.015 300);
+
+  --destructive: oklch(0.62 0.13 12);
+  --destructive-foreground: oklch(0.99 0.003 90);
+
+  --border: oklch(0.91 0.005 320);
+  --input: oklch(0.91 0.005 320);
+  --ring: oklch(0.518 0.168 293 / 0.45);
+
+  --chart-1: oklch(0.56 0.17 295);
+  --chart-2: oklch(0.64 0.09 190);
+  --chart-3: oklch(0.7 0.13 70);
+  --chart-4: oklch(0.64 0.12 12);
+  --chart-5: oklch(0.64 0.1 150);
+
+  --radius: 0.5rem;
+
+  --sidebar: oklch(0.973 0.005 90);
+  --sidebar-foreground: oklch(0.265 0.012 300);
+  --sidebar-primary: oklch(0.518 0.168 293);
+  --sidebar-primary-foreground: oklch(0.99 0.003 90);
+  --sidebar-accent: oklch(1 0 0);
+  --sidebar-accent-foreground: oklch(0.265 0.012 300);
+  --sidebar-border: oklch(0.91 0.005 320);
+  --sidebar-ring: oklch(0.518 0.168 293 / 0.45);
+
+  /* Height of the fixed mobile tab bar (mobile-tab-bar.tsx), including the
+     iOS home-indicator safe area. Zero on desktop, where the tab bar doesn't
+     render — components reference this instead of hard-coding the height so
+     there's one place to keep them in sync. */
+  --mobile-nav-h: 0px;
+
+  /* Shared page-transition scale for the View Transitions API (the
+     data-transition rules below). Kept as tokens so the fade/slide/zoom
+     variants document one duration + easing instead of repeating magic
+     numbers. The cubic-bezier is a snappy decelerating curve (fast out,
+     gentle settle) that echoes the motion springs' character — the JS springs
+     in lib/motion.ts drive the primitives; these drive VT page changes, which
+     motion can't. */
+  --motion-duration-fast: 0.12s;
+  --motion-ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* The user's animation-speed preference (settings → Preferences) scales the
+     page transitions: PreferencesSync sets --motion-scale from lib/animation.ts,
+     and the data-transition rules below animate over --vt-duration. Falls back
+     to 1 during SSR / before the effect runs. A scale of 0 ("Instant") makes
+     every page change immediate. */
+  --motion-scale: 1;
+  --vt-duration: calc(var(--motion-duration-fast) * var(--motion-scale));
+}
+
+@media (max-width: 767px) {
+  :root {
+    --mobile-nav-h: calc(5rem + env(safe-area-inset-bottom));
+  }
+}
+
+@theme inline {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+
+  /* Dense product-UI type scale (deliberately overrides several Tailwind
+     default sizes — this is a systemic density choice for the whole app). */
+  --text-2xs: 0.625rem;
+  --text-xs: 0.6875rem;
+  --text-sm: 0.78125rem;
+  --text-base: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.5rem;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: 0.4375rem;
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: 0.9375rem;
+  --radius-2xl: 1rem;
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Display numerals — hours, durations, big stats. Apply via `font-display`. */
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+/* Tabular figures for any body-font numbers in tables. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shared outer padding for $orgSlug/* page content. Its bottom padding
+   reserves space for the fixed mobile tab bar (mobile-tab-bar.tsx) so a
+   page's last row of content never ends up hidden underneath it. */
+.page-shell {
+  padding: 1rem;
+  padding-bottom: calc(1rem + var(--mobile-nav-h));
+}
+
+@media (min-width: 640px) {
+  .page-shell {
+    padding: 2rem;
+    padding-bottom: calc(2rem + var(--mobile-nav-h));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  button:not(:disabled),
+  [role='button']:not([data-disabled]):not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+}
+
+/*
+ * Page-transition styles, driven by the `data-transition` attribute PreferencesSync
+ * sets on <html> from the user's stored preference (apps/web/src/lib/preferences.ts).
+ * Scoped to the sidebar-inset content pane (not `root`) so the sidebar itself
+ * never re-renders/flashes on navigation — only the main content transitions.
+ */
+[data-slot="sidebar-inset"] {
+  view-transition-name: main-content;
+}
+
+/* The unnamed `root` group would otherwise still crossfade the static chrome
+   around the named group; nothing there changes between navigations. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+/* Without its own name, the fixed mobile tab bar (mobile-tab-bar.tsx) falls
+   into the `root` group, whose flattened snapshot is capped underneath the
+   `main-content` group's own snapshot for the duration of the transition —
+   the tab bar visibly disappears until the transition finishes. Giving it a
+   name pulls it into its own (non-animated) group so it stays put. */
+[data-slot="mobile-tab-bar"] {
+  view-transition-name: mobile-tab-bar;
+}
+
+::view-transition-old(mobile-tab-bar),
+::view-transition-new(mobile-tab-bar) {
+  animation: none;
+}
+
+/* The nav links (app-sidebar.tsx / mobile-tab-bar.tsx) set `viewTransition`
+   per-<Link>, which overrides the router's defaultViewTransition:false — so a
+   view transition still fires under "none" and the browser's default crossfade
+   plays on main-content. Zero it out explicitly so "none" really means none. */
+html[data-transition="none"]::view-transition-old(main-content),
+html[data-transition="none"]::view-transition-new(main-content) {
+  animation: none;
+}
+
+html[data-transition="fade"]::view-transition-old(main-content),
+html[data-transition="fade"]::view-transition-new(main-content) {
+  animation-duration: var(--vt-duration);
+  animation-timing-function: var(--motion-ease-standard);
+}
+
+html[data-transition="slide"]::view-transition-old(main-content) {
+  animation: transition-slide-out var(--vt-duration)
+    var(--motion-ease-standard) both;
+}
+html[data-transition="slide"]::view-transition-new(main-content) {
+  animation: transition-slide-in var(--vt-duration)
+    var(--motion-ease-standard) both;
+}
+
+@keyframes transition-slide-out {
+  to {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+}
+@keyframes transition-slide-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+
+html[data-transition="zoom"]::view-transition-old(main-content) {
+  animation: transition-zoom-out var(--vt-duration)
+    var(--motion-ease-standard) both;
+}
+html[data-transition="zoom"]::view-transition-new(main-content) {
+  animation: transition-zoom-in var(--vt-duration)
+    var(--motion-ease-standard) both;
+}
+
+@keyframes transition-zoom-out {
+  to {
+    transform: scale(1.02);
+    opacity: 0;
+  }
+}
+@keyframes transition-zoom-in {
+  from {
+    transform: scale(0.98);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/*
+ * Hover-preview loop for the transition-style picker cards
+ * (components/transition-picker.tsx) — paused by default, runs on hover via
+ * the `group-hover:` utility applied where these are referenced.
+ *
+ * Each pair pings old->new then pongs back new->old within one iteration, so
+ * the state at 100% exactly matches 0% — `infinite` loops with no jump cut.
+ */
+@keyframes preview-old-fade {
+  0%,
+  20% {
+    opacity: 1;
+  }
+  35%,
+  65% {
+    opacity: 0;
+  }
+  80%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes preview-new-fade {
+  0%,
+  20% {
+    opacity: 0;
+  }
+  35%,
+  65% {
+    opacity: 1;
+  }
+  80%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes preview-old-slide {
+  0%,
+  20% {
+    transform: translateX(0);
+  }
+  35%,
+  65% {
+    transform: translateX(-100%);
+  }
+  80%,
+  100% {
+    transform: translateX(0);
+  }
+}
+@keyframes preview-new-slide {
+  0%,
+  20% {
+    transform: translateX(100%);
+  }
+  35%,
+  65% {
+    transform: translateX(0);
+  }
+  80%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+@keyframes preview-old-zoom {
+  0%,
+  20% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  35%,
+  65% {
+    opacity: 0;
+    transform: scale(1.1);
+  }
+  80%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes preview-new-zoom {
+  0%,
+  20% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  35%,
+  65% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}

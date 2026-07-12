@@ -1,0 +1,2 @@
+ALTER TABLE "time_entry" ADD COLUMN "fill_date" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "te_fill_day_uidx" ON "time_entry" USING btree ("organization_id","user_id","fill_date") WHERE "time_entry"."fills_day" = true;

@@ -1,0 +1,89 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { PencilIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "#/components/ui/button.tsx";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "#/components/ui/dialog.tsx";
+import { Input } from "#/components/ui/input.tsx";
+import { Label } from "#/components/ui/label.tsx";
+import { weeklyTargetQuery } from "#/queries/working-hours.ts";
+import { setWeeklyTarget } from "#/server/working-hours.ts";
+
+export function EditWeeklyTargetDialog({
+	currentHours,
+}: {
+	currentHours: number;
+}) {
+	const [open, setOpen] = useState(false);
+	const [hours, setHours] = useState(String(currentHours));
+	const queryClient = useQueryClient();
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only reset when the dialog opens
+	useEffect(() => {
+		if (open) setHours(String(currentHours));
+	}, [open]);
+
+	const mutation = useMutation({
+		mutationFn: (weeklyTarget: string) =>
+			setWeeklyTarget({ data: { weeklyTarget } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: weeklyTargetQuery().queryKey,
+			});
+			setOpen(false);
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not update weekly target");
+		},
+	});
+
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogTrigger
+				render={
+					<Button variant="ghost" size="icon-xs">
+						<PencilIcon className="size-3" />
+						<span className="sr-only">Edit weekly target</span>
+					</Button>
+				}
+			/>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Weekly target</DialogTitle>
+				</DialogHeader>
+				<form
+					onSubmit={(e) => {
+						e.preventDefault();
+						mutation.mutate(hours);
+					}}
+					className="grid gap-4"
+				>
+					<div className="grid gap-2">
+						<Label htmlFor="weekly-target-hours">Hours per week</Label>
+						<Input
+							id="weekly-target-hours"
+							type="number"
+							min="1"
+							max="168"
+							step="0.5"
+							value={hours}
+							onChange={(e) => setHours(e.target.value)}
+						/>
+					</div>
+					<DialogFooter>
+						<Button type="submit" disabled={mutation.isPending}>
+							Save
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
+	);
+}

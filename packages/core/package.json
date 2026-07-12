@@ -1,0 +1,45 @@
+{
+  "name": "@farmer/core",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./db": "./src/db/index.ts",
+    "./db/seed-entry-types": "./src/db/seed-entry-types.ts",
+    "./schema/*": "./src/db/schema/*.ts",
+    "./auth": "./src/auth/index.ts",
+    "./services": "./src/services/index.ts",
+    "./jobs": "./src/jobs/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./lib/*": "./src/lib/*.ts"
+  },
+  "scripts": {
+    "auth:generate": "better-auth generate --config ./src/auth/index.ts --output ./src/db/schema/auth.ts -y",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:deploy": "bun run src/db/migrate.ts",
+    "db:check": "bun run src/db/check.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "bun run src/db/seed.ts",
+    "db:seed-entry-types": "bun run src/db/seed-entry-types.ts"
+  },
+  "dependencies": {
+    "@date-fns/tz": "1.5.0",
+    "@myriaddreamin/typst-ts-node-compiler": "0.7.0",
+    "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
+    "@myriaddreamin/typst.ts": "0.7.0",
+    "better-auth": "1.6.23",
+    "date-fns": "4.4.0",
+    "date-holidays": "3.32.0",
+    "drizzle-orm": "0.45.2",
+    "nodemailer": "9.0.3",
+    "postgres": "3.4.9",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@better-auth/cli": "1.4.21",
+    "@types/nodemailer": "8.0.1",
+    "bun-types": "1.3.14",
+    "drizzle-kit": "0.31.10"
+  }
+}

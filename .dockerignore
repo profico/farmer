@@ -1,0 +1,32 @@
+# Reinstalled/rebuilt inside the image — never copy the host's copies.
+node_modules
+**/node_modules
+dist
+**/dist
+.output
+**/.output
+.turbo
+**/.turbo
+.vite
+.vinxi
+*.tsbuildinfo
+
+# Secrets & local env — pass real values at runtime via --env-file / -e.
+# Match at every level so the apps/web/.env symlink is excluded too.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# VCS / editor / OS cruft
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Spikes & scratch that don't belong in a build context
+apps/web/farmer
+apps/web/server.compiled.ts
