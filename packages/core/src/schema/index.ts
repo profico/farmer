@@ -5,6 +5,7 @@ export * from "./google-calendar";
 export * from "./holidays";
 export * from "./integration-settings";
 export * from "./members";
+export * from "./notifications";
 export * from "./organization";
 export * from "./projects";
 export * from "./recurring-block-rules";

@@ -530,20 +530,31 @@ async function initializeServer() {
 			// Everything reaching this fallback is dynamic — the SSR HTML document,
 			// server functions, and API routes (static assets are served by the
 			// `routes` map above and never get here). None of it may be cached by a
-			// CDN: the SSR HTML embeds per-build hashed chunk names, so a cached
-			// document from a previous deploy points browsers at chunk URLs that no
-			// longer exist → "Failed to fetch dynamically imported module" and a dead
-			// app until the cache expires. We therefore stamp `no-cache` on any
-			// response that doesn't already set its own Cache-Control (so a handler
-			// that genuinely wants caching can still opt in). This is the origin's
-			// half of the fix; a "Cache Everything" CDN rule can still override it and
-			// must be scoped to exclude HTML separately.
+			// shared cache: the SSR HTML embeds per-build hashed chunk names, so a
+			// cached document from a previous deploy points browsers at chunk URLs
+			// that no longer exist → "Failed to fetch dynamically imported module"
+			// and a dead app until the cache expires. Worse, server-function URLs are
+			// identical for every user/org (auth rides on the cookie, not the URL), so
+			// a shared cache that ignores cookies would serve one org's private data —
+			// or a stale empty response — to another. We therefore stamp
+			// `private, no-store` (plus `Vary: Cookie`) on any response that doesn't
+			// already set its own Cache-Control: `private` forbids shared/CDN caches,
+			// `no-store` forbids the browser from storing it at all, and a handler that
+			// genuinely wants caching can still opt in by setting its own header.
+			//
+			// This is only the origin's half. A Cloudflare "Cache Everything" rule
+			// with an Edge/Browser Cache TTL OVERRIDES these headers and will cache
+			// this dynamic traffic anyway — that rule must be scoped to static assets
+			// (`/assets/*`) only, or set to "respect existing headers", or these
+			// directives are moot. (This was the cause of the time-off list showing
+			// empty until the browser cache was disabled.)
 			"/*": async (req: Request) => {
 				try {
 					const res = await handler.fetch(req);
 					if (res.headers.has("Cache-Control")) return res;
 					const headers = new Headers(res.headers);
-					headers.set("Cache-Control", "no-cache, must-revalidate");
+					headers.set("Cache-Control", "private, no-store, must-revalidate");
+					headers.append("Vary", "Cookie");
 					return new Response(res.body, {
 						status: res.status,
 						statusText: res.statusText,
@@ -567,18 +578,16 @@ async function initializeServer() {
 
 	log.success(`Server listening on http://localhost:${String(server.port)}`);
 
-	// Background Google Calendar → time-block sync. Runs in-process on a timer so
-	// meetings materialize without anyone opening the time page (the on-read sync
-	// only fires when a user is present). Fire-and-forget: a scheduler failure
+	// In-process background schedulers, run on timers so work happens without a
+	// user present: the Google Calendar → time-block meeting sync, and the
+	// end-of-day "forgot to log" reminder. Fire-and-forget: a scheduler failure
 	// must never take the HTTP server down with it.
-	const schedulerHandle = startMeetingSyncScheduler().catch(
-		(error: unknown) => {
-			log.error(`Failed to start meeting sync scheduler: ${String(error)}`);
-			return null;
-		},
-	);
+	const schedulersHandle = startSchedulers().catch((error: unknown) => {
+		log.error(`Failed to start background schedulers: ${String(error)}`);
+		return [] as SchedulerHandle[];
+	});
 
-	setupGracefulShutdown(server, schedulerHandle);
+	setupGracefulShutdown(server, schedulersHandle);
 }
 
 /**
@@ -589,7 +598,7 @@ async function initializeServer() {
  */
 function setupGracefulShutdown(
 	server: ReturnType<typeof Bun.serve>,
-	schedulerHandle: Promise<SchedulerHandle | null>,
+	schedulersHandle: Promise<SchedulerHandle[]>,
 ) {
 	const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS ?? 10_000);
 	let shuttingDown = false;
@@ -599,29 +608,32 @@ function setupGracefulShutdown(
 		shuttingDown = true;
 		log.header(`Received ${signal}, shutting down gracefully...`);
 
-		// Stop the scheduler's timers first so no new tick starts, then wait
-		// (bounded) for any tick already in flight to finish.
+		// Stop every scheduler's timers first so no new tick starts, then wait
+		// (bounded) for any ticks already in flight to finish.
 		try {
-			const handle = await schedulerHandle;
-			if (handle) {
-				handle.stopTimers();
-				log.info("Meeting sync scheduler timers stopped");
+			const handles = await schedulersHandle;
+			if (handles.length > 0) {
+				for (const handle of handles) handle.stopTimers();
+				log.info("Background scheduler timers stopped");
 
 				const graceTimeout = new Promise<void>((resolve) => {
 					setTimeout(resolve, SHUTDOWN_GRACE_MS).unref();
 				});
-				await Promise.race([handle.waitUntilIdle(), graceTimeout]);
-				if (handle.isRunning()) {
+				await Promise.race([
+					Promise.all(handles.map((h) => h.waitUntilIdle())),
+					graceTimeout,
+				]);
+				if (handles.some((h) => h.isRunning())) {
 					log.warning(
-						"Meeting sync tick still in progress after grace period; continuing shutdown anyway",
+						"A scheduler tick is still in progress after grace period; continuing shutdown anyway",
 					);
 				} else {
-					log.info("Meeting sync tick (if any) finished cleanly");
+					log.info("Scheduler ticks (if any) finished cleanly");
 				}
 			}
 		} catch (error) {
 			log.error(
-				`Error while stopping meeting sync scheduler: ${String(error)}`,
+				`Error while stopping background schedulers: ${String(error)}`,
 			);
 		}
 
@@ -644,68 +656,113 @@ function setupGracefulShutdown(
 	});
 }
 
-/**
- * Start the in-process meeting-sync scheduler.
- *
- * Self-hosted here as a single long-lived Bun process, so an interval loop is
- * the whole mechanism — no external cron needed. Idempotent by construction
- * (the core sync engine uses onConflictDoNothing + tombstones), so a missed or
- * overlapping tick is harmless.
- *
- * Environment Variables:
- *   MEETING_SYNC_ENABLED           - "false" to disable entirely (default: on)
- *   MEETING_SYNC_INTERVAL_MINUTES  - minutes between runs (default: 20)
- *
- * NOTE: assumes a single instance. If ever scaled to multiple replicas, each
- * runs its own loop — harmless (idempotent) but redundant; move to a single
- * external cron or a leader lock at that point.
- */
 interface SchedulerHandle {
 	/** Clear the startup timeout and the recurring interval; no new ticks fire after this. */
 	stopTimers: () => void;
-	/** True while a sync tick is actively running. */
+	/** True while a tick is actively running. */
 	isRunning: () => boolean;
 	/** Resolves once the in-flight tick (if any) completes; resolves immediately otherwise. */
 	waitUntilIdle: () => Promise<void>;
 }
 
-async function startMeetingSyncScheduler(): Promise<SchedulerHandle | null> {
-	if ((process.env.MEETING_SYNC_ENABLED ?? "true") !== "true") {
-		log.info("Meeting sync scheduler disabled (MEETING_SYNC_ENABLED)");
+interface SchedulerConfig {
+	/** Human name used in log lines, e.g. "Meeting sync". */
+	name: string;
+	/** Env var set to "false" to disable this scheduler (default: enabled). */
+	enabledEnv: string;
+	/** Env var holding the interval in minutes. */
+	intervalEnv: string;
+	/** Interval used when intervalEnv is unset. */
+	defaultIntervalMinutes: number;
+	/** One tick of work; the returned string is logged as the run summary. */
+	run: () => Promise<string>;
+}
+
+/**
+ * Start the in-process background schedulers.
+ *
+ * Self-hosted here as a single long-lived Bun process, so an interval loop is
+ * the whole mechanism — no external cron needed. Both jobs are idempotent by
+ * construction (the meeting sync uses onConflictDoNothing + tombstones; the log
+ * reminder guards on notificationSettings.lastLogReminderDay), so a missed or
+ * overlapping tick is harmless.
+ *
+ * Environment Variables:
+ *   MEETING_SYNC_ENABLED             - "false" to disable meeting sync (default: on)
+ *   MEETING_SYNC_INTERVAL_MINUTES    - minutes between meeting syncs (default: 20)
+ *   LOG_REMINDERS_ENABLED            - "false" to disable log reminders (default: on)
+ *   LOG_REMINDERS_INTERVAL_MINUTES   - minutes between reminder sweeps (default: 30)
+ *
+ * NOTE: assumes a single instance. If ever scaled to multiple replicas, each
+ * runs its own loop — harmless (idempotent) but redundant; move to a single
+ * external cron or a leader lock at that point.
+ */
+async function startSchedulers(): Promise<SchedulerHandle[]> {
+	// Deferred import: pulling in @farmer/core loads the postgres client, so keep
+	// it out of module scope and only touch the DB layer once the server is up.
+	const { runMeetingSyncOnce, runLogRemindersOnce } = await import(
+		"@farmer/core/jobs"
+	);
+
+	const handles = await Promise.all([
+		startIntervalScheduler({
+			name: "Meeting sync",
+			enabledEnv: "MEETING_SYNC_ENABLED",
+			intervalEnv: "MEETING_SYNC_INTERVAL_MINUTES",
+			defaultIntervalMinutes: 20,
+			run: async () => {
+				const s = await runMeetingSyncOnce();
+				return `${String(s.synced)}/${String(s.eligible)} users synced, ${String(s.failed)} failed`;
+			},
+		}),
+		startIntervalScheduler({
+			name: "Log reminders",
+			enabledEnv: "LOG_REMINDERS_ENABLED",
+			intervalEnv: "LOG_REMINDERS_INTERVAL_MINUTES",
+			defaultIntervalMinutes: 30,
+			run: async () => {
+				const s = await runLogRemindersOnce();
+				return `${String(s.sent)} sent, ${String(s.skipped)} skipped, ${String(s.failed)} failed (${String(s.eligible)} members)`;
+			},
+		}),
+	]);
+
+	return handles.filter((h): h is SchedulerHandle => h !== null);
+}
+
+function startIntervalScheduler(
+	config: SchedulerConfig,
+): SchedulerHandle | null {
+	if ((process.env[config.enabledEnv] ?? "true") !== "true") {
+		log.info(`${config.name} scheduler disabled (${config.enabledEnv})`);
 		return null;
 	}
 
 	const intervalMinutes = Number(
-		process.env.MEETING_SYNC_INTERVAL_MINUTES ?? 20,
+		process.env[config.intervalEnv] ?? config.defaultIntervalMinutes,
 	);
 	if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
 		log.warning(
-			`Invalid MEETING_SYNC_INTERVAL_MINUTES (${String(process.env.MEETING_SYNC_INTERVAL_MINUTES)}); scheduler not started`,
+			`Invalid ${config.intervalEnv} (${String(process.env[config.intervalEnv])}); ${config.name} scheduler not started`,
 		);
 		return null;
 	}
-
-	// Deferred import: pulling in @farmer/core loads the postgres client, so keep
-	// it out of module scope and only touch the DB layer once the server is up.
-	const { runMeetingSyncOnce } = await import("@farmer/core/jobs");
 
 	let running = false;
 	let idleWaiters: Array<() => void> = [];
 	const tick = async () => {
 		if (running) {
 			log.warning(
-				"Meeting sync: previous run still in progress, skipping tick",
+				`${config.name}: previous run still in progress, skipping tick`,
 			);
 			return;
 		}
 		running = true;
 		try {
-			const summary = await runMeetingSyncOnce();
-			log.info(
-				`Meeting sync: ${String(summary.synced)}/${String(summary.eligible)} users synced, ${String(summary.failed)} failed`,
-			);
+			const summary = await config.run();
+			log.info(`${config.name}: ${summary}`);
 		} catch (error) {
-			log.error(`Meeting sync run failed: ${String(error)}`);
+			log.error(`${config.name} run failed: ${String(error)}`);
 		} finally {
 			running = false;
 			const waiters = idleWaiters;
@@ -719,7 +776,7 @@ async function startMeetingSyncScheduler(): Promise<SchedulerHandle | null> {
 	const startupTimer = setTimeout(tick, 15_000).unref();
 	const intervalTimer = setInterval(tick, intervalMinutes * 60_000).unref();
 	log.success(
-		`Meeting sync scheduler started (every ${String(intervalMinutes)} min)`,
+		`${config.name} scheduler started (every ${String(intervalMinutes)} min)`,
 	);
 
 	return {

@@ -7,6 +7,7 @@ export * from "./google-calendar.service";
 export * from "./holidays.service";
 export * from "./integration-settings.service";
 export * from "./members.service";
+export * from "./notifications.service";
 export * from "./organization.service";
 export * from "./projects.service";
 export * from "./recurring-block-rules.service";

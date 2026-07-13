@@ -45,5 +45,5 @@ export const deleteTimeEntry = createServerFn({ method: "POST" })
 	.validator(deleteTimeEntryInput)
 	.handler(async ({ data: timeEntryId, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
-		await timeEntriesService.remove(context.ctx, timeEntryId);
+		return timeEntriesService.remove(context.ctx, timeEntryId);
 	});

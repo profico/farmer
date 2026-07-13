@@ -188,8 +188,11 @@ export function AppSidebar({
 	};
 
 	return (
-		<Sidebar collapsible="none" className="hidden border-r md:flex">
-			<SidebarHeader className="p-3">
+		<Sidebar
+			collapsible="none"
+			className="sticky top-0 hidden h-svh border-r md:flex"
+		>
+			<SidebarHeader className="shrink-0 p-3">
 				<OrgSwitcher
 					orgSlug={orgSlug}
 					organizationName={organizationName}
@@ -271,7 +274,7 @@ export function AppSidebar({
 					</SidebarGroup>
 				)}
 			</SidebarContent>
-			<SidebarFooter className="gap-0 p-0">
+			<SidebarFooter className="shrink-0 gap-0 p-0">
 				<div className="flex items-center gap-2.5 border-t p-3">
 					<span className="flex size-6.5 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-foreground">
 						{getInitials(userName)}

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { AnimationSpeedSlider } from "#/components/animation-speed-slider.tsx";
 import { GoogleIcon } from "#/components/google-sign-in-button.tsx";
+import { NotificationSettings } from "#/components/notification-settings.tsx";
 import { TransitionPicker } from "#/components/transition-picker.tsx";
 import {
 	AlertDialog,
@@ -23,11 +24,15 @@ import { usePreferences } from "#/hooks/use-preferences.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { savePreferences } from "#/lib/preferences.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
+import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 	loader: async ({ context }) => {
-		await context.queryClient.ensureQueryData(signInMethodsQuery());
+		await Promise.all([
+			context.queryClient.ensureQueryData(signInMethodsQuery()),
+			context.queryClient.ensureQueryData(notificationSettingsQuery()),
+		]);
 	},
 	component: PreferencesSettingsPage,
 });
@@ -187,6 +192,8 @@ function PreferencesSettingsPage() {
 					<GoogleSignInMethod />
 				</div>
 			</div>
+
+			<NotificationSettings />
 
 			<div className="-mx-4 mt-6 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
 				<span className="text-sm font-semibold">Animation responsiveness</span>

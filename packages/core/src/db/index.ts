@@ -3,6 +3,7 @@ import postgres from "postgres";
 import * as authSchema from "./schema/auth";
 import * as domainSchema from "./schema/domain";
 import * as githubSchema from "./schema/github";
+import * as notificationsSchema from "./schema/notifications";
 import * as scheduleSchema from "./schema/schedule";
 import * as settingsSchema from "./schema/settings";
 
@@ -12,6 +13,7 @@ const schema = {
 	...scheduleSchema,
 	...githubSchema,
 	...settingsSchema,
+	...notificationsSchema,
 };
 
 const client = postgres(process.env.DATABASE_URL!);

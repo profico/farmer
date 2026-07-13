@@ -14,6 +14,7 @@ import {
 	Plus,
 	Sparkles,
 } from "lucide-react";
+import { useState } from "react";
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { EmptyState } from "#/components/states/empty-state.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
@@ -23,6 +24,7 @@ import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { availableEntryTypesQuery } from "#/queries/entry-types.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
+import { myUtilizationQuery } from "#/queries/reports.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
 
 export const Route = createFileRoute("/$orgSlug/")({
@@ -36,6 +38,9 @@ export const Route = createFileRoute("/$orgSlug/")({
 			),
 			context.queryClient.ensureQueryData(myProjectsQuery()),
 			context.queryClient.ensureQueryData(availableEntryTypesQuery()),
+			context.queryClient.ensureQueryData(
+				myUtilizationQuery({ from: weekStart, to: weekEnd }),
+			),
 		]);
 	},
 	component: OrgHome,
@@ -58,6 +63,13 @@ function OrgHome() {
 	const { data: weekEntries } = useSuspenseQuery(
 		timeEntriesRangeQuery(weekStart, weekEnd),
 	);
+	const { data: myWeek } = useSuspenseQuery(
+		myUtilizationQuery({ from: weekStart, to: weekEnd }),
+	);
+
+	// The "by day" bars are clickable; the day the user picks drives the entry
+	// list at the bottom. Defaults to today.
+	const [selectedDay, setSelectedDay] = useState(today);
 
 	const todayEntries = weekEntries.filter(
 		(entry) =>
@@ -66,6 +78,12 @@ function OrgHome() {
 	const todayTotal = todayEntries.reduce(
 		(sum, e) => sum + e.durationSeconds,
 		0,
+	);
+
+	const selectedEntries = weekEntries.filter(
+		(entry) =>
+			dayKeyInTz(new Date(entry.startedAt), organization.timezone) ===
+			selectedDay,
 	);
 	const weekTotal = weekEntries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
@@ -148,6 +166,43 @@ function OrgHome() {
 					</div>
 				</div>
 
+				{myWeek && myWeek.expectedSeconds > 0 && (
+					<div className="border-b px-4 py-4 sm:px-8">
+						<div className="flex items-baseline justify-between gap-3">
+							<div className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+								This week vs. expected
+							</div>
+							<div className="text-2xs font-semibold text-muted-foreground tabular-nums">
+								{formatHoursShort(myWeek.loggedSeconds)} /{" "}
+								{formatHoursShort(myWeek.expectedSeconds)}
+								{myWeek.utilizationPct != null && (
+									<span className="ml-1.5 text-foreground">
+										{myWeek.utilizationPct}%
+									</span>
+								)}
+							</div>
+						</div>
+						<div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+							<div
+								className={cn(
+									"h-full rounded-full",
+									myWeek.loggedSeconds >= myWeek.expectedSeconds
+										? "bg-primary"
+										: "bg-secondary",
+								)}
+								style={{
+									width: `${Math.min(
+										Math.round(
+											(myWeek.loggedSeconds / myWeek.expectedSeconds) * 100,
+										),
+										100,
+									)}%`,
+								}}
+							/>
+						</div>
+					</div>
+				)}
+
 				<div className="border-b px-4 py-4 sm:px-8">
 					<div className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
 						This week by day
@@ -158,33 +213,41 @@ function OrgHome() {
 								d.seconds > 0
 									? Math.max(Math.round((d.seconds / maxDaySeconds) * 48), 4)
 									: 2;
+							const isSelected = d.key === selectedDay;
 							return (
-								<div
+								<button
+									type="button"
 									key={d.key}
-									className="flex flex-1 flex-col items-center gap-1.5"
+									onClick={() => setSelectedDay(d.key)}
+									aria-pressed={isSelected}
+									className={cn(
+										"flex flex-1 flex-col items-center gap-1.5 rounded-md py-1 transition-colors hover:bg-muted",
+										isSelected && "bg-muted",
+									)}
 								>
 									<div
 										className={cn(
-											"w-full rounded-sm",
+											"w-full rounded-sm ring-offset-2 ring-offset-background",
 											d.isToday
 												? "bg-primary"
 												: d.seconds > 0
-													? "bg-secondary"
-													: "bg-muted",
+													? "bg-primary/45"
+													: "bg-border",
+											isSelected && !d.isToday && "ring-2 ring-primary/60",
 										)}
 										style={{ height: `${px}px` }}
 									/>
 									<span
 										className={cn(
 											"text-2xs",
-											d.isToday
+											d.isToday || isSelected
 												? "font-semibold text-foreground"
 												: "text-muted-foreground",
 										)}
 									>
 										{d.label}
 									</span>
-								</div>
+								</button>
 							);
 						})}
 					</div>
@@ -241,17 +304,23 @@ function OrgHome() {
 
 				<div className="pt-4 pb-1.5">
 					<div className="px-4 mb-2 text-2xs font-semibold tracking-wide text-muted-foreground uppercase sm:px-8">
-						Today's entries
+						{selectedDay === today
+							? "Today's entries"
+							: `${formatDayKey(selectedDay, { year: false })} entries`}
 					</div>
-					{todayEntries.length === 0 ? (
+					{selectedEntries.length === 0 ? (
 						<EmptyState
 							icon={Clock}
-							title="Nothing logged yet"
-							description="Add your first block to start tracking today's time."
+							title="Nothing logged"
+							description={
+								selectedDay === today
+									? "Add your first block to start tracking today's time."
+									: "No time was logged on this day."
+							}
 						/>
 					) : (
 						<div className="divide-y">
-							{todayEntries.map((entry) => (
+							{selectedEntries.map((entry) => (
 								<EntryBlockRow
 									key={entry.id}
 									entry={entry}

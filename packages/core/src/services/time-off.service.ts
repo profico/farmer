@@ -1,10 +1,14 @@
 import { and, count, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { db } from "../db";
-import { member, user } from "../db/schema/auth";
+import { member, organization, user } from "../db/schema/auth";
 import { projectMember } from "../db/schema/domain";
 import { timeOffRequest } from "../db/schema/schedule";
 import { orgTimezone } from "../lib/org-time";
-import { countWorkingDays, dayKeyInTz } from "../lib/time";
+import {
+	countWorkingDays,
+	dayKeyInTz,
+	formatDayKeyRange,
+} from "../lib/time";
 import type {
 	CreateTimeOffRequestInput,
 	DecideTimeOffRequestInput,
@@ -12,6 +16,7 @@ import type {
 import { googleCalendarService } from "./google-calendar.service";
 import { holidaysService } from "./holidays.service";
 import { integrationSettingsService } from "./integration-settings.service";
+import { notificationsService } from "./notifications.service";
 import { timeOffPolicyService } from "./time-off-policy.service";
 import type { Ctx } from "./types";
 import { workingHoursService } from "./working-hours.service";
@@ -544,6 +549,38 @@ export const timeOffService = {
 				}
 			} catch (error) {
 				console.error("[time-off] Google Calendar write-back failed", error);
+			}
+		}
+
+		// Push the decision to the requester's devices — gated on THEIR
+		// preference (not the deciding admin's) and best-effort: a dead push
+		// endpoint must never fail an approval. notifyUser already no-ops when
+		// push is unconfigured or the user has no subscriptions.
+		if (updated) {
+			try {
+				const settings = await notificationsService.settingsFor(
+					ctx.organizationId,
+					existing.userId,
+				);
+				if (settings.timeOffDecisions) {
+					const org = await db.query.organization.findFirst({
+						where: eq(organization.id, ctx.organizationId),
+					});
+					const decided =
+						input.decision === "approved" ? "approved" : "denied";
+					const range = formatDayKeyRange(
+						existing.startDate,
+						existing.endDate,
+					);
+					await notificationsService.notifyUser(existing.userId, {
+						title: `Time off ${decided}`,
+						body: `Your ${existing.type} request (${range}) was ${decided}.`,
+						url: org ? `/${org.slug}/settings/time-off` : "/",
+						tag: `time-off-${existing.id}`,
+					});
+				}
+			} catch (error) {
+				console.error("[time-off] decision notification failed", error);
 			}
 		}
 

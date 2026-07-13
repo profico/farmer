@@ -42,7 +42,10 @@ export const reportsService = {
 		const tz = await orgTimezone(ctx.organizationId);
 
 		const members = await db.query.member.findMany({
-			where: eq(member.organizationId, ctx.organizationId),
+			where: and(
+				eq(member.organizationId, ctx.organizationId),
+				range.userId ? eq(member.userId, range.userId) : undefined,
+			),
 			with: { user: true },
 		});
 		const userIds = members.map((m) => m.userId);
@@ -69,6 +72,7 @@ export const reportsService = {
 					.where(
 						and(
 							eq(timeEntry.organizationId, ctx.organizationId),
+							range.userId ? eq(timeEntry.userId, range.userId) : undefined,
 							gte(timeEntry.startedAt, dayBoundsInTz(range.from, tz).start),
 							lt(timeEntry.startedAt, dayBoundsInTz(range.to, tz).end),
 							eq(timeEntry.fillsDay, false),

@@ -1,4 +1,8 @@
-import { formatDurationLong } from "@farmer/core/lib/time";
+import {
+	dayKeyInTz,
+	formatDurationLong,
+	timeKeyInTz,
+} from "@farmer/core/lib/time";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GitCommitHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -7,20 +11,10 @@ import {
 	AddBlockDialog,
 	type ExistingTimeEntry,
 } from "#/components/time/add-block-dialog.tsx";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-	AlertDialogTrigger,
-} from "#/components/ui/alert-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import {
+	createTimeEntry,
 	deleteTimeEntry,
 	updateTimeEntryDescription,
 } from "#/server/time-entries.ts";
@@ -42,7 +36,6 @@ export function EntryBlockRow({
 	dateOptions: { value: string; label: string }[];
 }) {
 	const queryClient = useQueryClient();
-	const [deleteOpen, setDeleteOpen] = useState(false);
 
 	// Inline note editing: local draft synced from the server value, saved on
 	// blur only when it actually changed.
@@ -71,11 +64,59 @@ export function EntryBlockRow({
 		noteMutation.mutate(trimmed);
 	};
 
+	// Re-creates a just-deleted block from its server snapshot, used by the undo
+	// toast. Reconstructs the date/start/end from the row's timestamps in the
+	// org timezone — the same shape createTimeEntry expects.
+	const restore = async (deleted: {
+		typeId: string;
+		projectId: string | null;
+		taskId: string | null;
+		description: string;
+		startedAt: string | Date;
+		stoppedAt: string | Date;
+		billable: boolean;
+	}) => {
+		try {
+			await createTimeEntry({
+				data: {
+					typeId: deleted.typeId,
+					projectId: deleted.projectId ?? undefined,
+					taskId: deleted.taskId ?? undefined,
+					description: deleted.description || undefined,
+					date: dayKeyInTz(new Date(deleted.startedAt), timezone),
+					startTime: timeKeyInTz(new Date(deleted.startedAt), timezone),
+					endTime: timeKeyInTz(new Date(deleted.stoppedAt), timezone),
+					billable: deleted.billable,
+				},
+			});
+			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Could not restore block",
+			);
+		}
+	};
+
 	const deleteMutation = useMutation({
 		mutationFn: () => deleteTimeEntry({ data: entry.id }),
-		onSuccess: async () => {
-			setDeleteOpen(false);
+		onSuccess: async (deleted) => {
 			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+			// Undo is only safe for plain manual blocks. Fill blocks are derived, a
+			// rule-generated block leaves a skip behind (re-creating it as a manual
+			// copy would double up), and a calendar-linked block leaves a tombstone —
+			// so for those we delete without offering undo.
+			const undoable =
+				deleted &&
+				!deleted.fillsDay &&
+				!deleted.generatedFromRuleId &&
+				!deleted.calendarEventId;
+			if (undoable) {
+				toast("Block deleted", {
+					action: { label: "Undo", onClick: () => restore(deleted) },
+				});
+			} else {
+				toast("Block deleted");
+			}
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not delete time entry");
@@ -134,33 +175,14 @@ export function EntryBlockRow({
 					</Button>
 				}
 			/>
-			<AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-				<AlertDialogTrigger
-					render={
-						<Button variant="ghost" size="sm">
-							Delete
-						</Button>
-					}
-				/>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Delete this time entry?</AlertDialogTitle>
-						<AlertDialogDescription>
-							This action cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							variant="destructive"
-							onClick={() => deleteMutation.mutate()}
-							disabled={deleteMutation.isPending}
-						>
-							Delete
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<Button
+				variant="ghost"
+				size="sm"
+				onClick={() => deleteMutation.mutate()}
+				disabled={deleteMutation.isPending}
+			>
+				Delete
+			</Button>
 		</div>
 	);
 }

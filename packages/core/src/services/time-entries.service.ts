@@ -22,13 +22,16 @@ import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { orgTimezone } from "../lib/org-time";
 import {
+	addDaysToKey,
 	anchorDateTime,
 	dayBoundsInTz,
 	dayKeyInTz,
 	secondsBetween,
+	timeKeyInTz,
 	weekdayInTz,
 } from "../lib/time";
 import type {
+	CopyTimeEntriesInput,
 	CreateTimeEntryInput,
 	UpdateTimeEntryDescriptionInput,
 	UpdateTimeEntryInput,
@@ -762,5 +765,10 @@ export const timeEntriesService = {
 			const tz = await orgTimezone(ctx.organizationId);
 			await recomputeDayFill(ctx, dayKeyInTz(deleted.startedAt, tz), tz);
 		}
+
+		// Returned so the caller can offer an "undo" that re-creates the row. The
+		// row carries every field (incl. calendarEventId/generatedFromRuleId) the
+		// client needs to decide whether undo is safe to offer.
+		return deleted ?? null;
 	},
 };

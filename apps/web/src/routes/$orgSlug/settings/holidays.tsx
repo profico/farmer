@@ -46,6 +46,15 @@ const weekdayFor = (dateKey: string) =>
 		timeZone: "UTC",
 	});
 
+// "2026-01-01" → "January 1". The year lives in the year selector and the
+// weekday in its own column, so the date cell just needs month + day.
+const formatHolidayDate = (dateKey: string) =>
+	new Date(`${dateKey}T00:00:00Z`).toLocaleDateString("en-US", {
+		month: "long",
+		day: "numeric",
+		timeZone: "UTC",
+	});
+
 function HolidaysSettingsPage() {
 	const { organization, role } = Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
@@ -98,7 +107,9 @@ function HolidaysSettingsPage() {
 					>
 						<ChevronLeft className="size-4" />
 					</Button>
-					<span className="w-14 text-center font-display text-lg">{year}</span>
+					<span className="w-24 text-center font-display text-4xl tnum">
+						{year}
+					</span>
 					<Button
 						variant="ghost"
 						size="icon"
@@ -132,7 +143,9 @@ function HolidaysSettingsPage() {
 					<TableBody>
 						{holidays.map((h) => (
 							<TableRow key={h.date} className={cn(h.disabled && "opacity-50")}>
-								<TableCell className="tnum">{h.date}</TableCell>
+								<TableCell className="tnum">
+									{formatHolidayDate(h.date)}
+								</TableCell>
 								<TableCell>{weekdayFor(h.date)}</TableCell>
 								<TableCell className="font-medium">{h.name}</TableCell>
 								<TableCell className="text-right">

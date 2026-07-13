@@ -127,6 +127,13 @@
       "when": 1783863055524,
       "tag": "0017_flimsy_retro_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783930272473,
+      "tag": "0018_wise_whirlwind",
+      "breakpoints": true
     }
   ]
 }
