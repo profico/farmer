@@ -78,10 +78,9 @@ export function MobileTabBar({
 								key={item.to}
 								to={item.to}
 								params={{ orgSlug }}
-								viewTransition={!active}
 								// Re-tapping the tab you're already on is a no-op — skip
-								// the navigation entirely so it doesn't replay the
-								// page-transition animation.
+								// the navigation entirely so it doesn't re-run the route's
+								// loader for no reason.
 								onClick={(e) => active && e.preventDefault()}
 								className={cn(
 									"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform active:scale-95",

@@ -57,7 +57,6 @@ export function MonthView({
 								to="/$orgSlug/time/month"
 								params={{ orgSlug }}
 								search={{ month: shiftMonthKey(month, -1) }}
-								viewTransition={false}
 							>
 								‹
 							</Link>
@@ -75,7 +74,6 @@ export function MonthView({
 								to="/$orgSlug/time/month"
 								params={{ orgSlug }}
 								search={{ month: shiftMonthKey(month, 1) }}
-								viewTransition={false}
 							>
 								›
 							</Link>
@@ -86,12 +84,7 @@ export function MonthView({
 						size="sm"
 						nativeButton={false}
 						render={
-							<Link
-								to="/$orgSlug/time/month"
-								params={{ orgSlug }}
-								search={{}}
-								viewTransition={false}
-							>
+							<Link to="/$orgSlug/time/month" params={{ orgSlug }} search={{}}>
 								Today
 							</Link>
 						}
@@ -140,7 +133,6 @@ export function MonthView({
 								to="/$orgSlug/time"
 								params={{ orgSlug }}
 								search={{ date }}
-								viewTransition={false}
 								title={holidayName}
 								className={cn(
 									"overflow-hidden border-r border-b p-2 text-left hover:bg-accent",

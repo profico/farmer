@@ -3,9 +3,7 @@ import {
 	Link,
 	Outlet,
 	useLocation,
-	useRouterState,
 } from "@tanstack/react-router";
-import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -24,15 +22,8 @@ const TABS = [
 function TimeLayout() {
 	const { organization } = Route.useRouteContext();
 	// The active pill tracks the *pending* location so it moves the instant a tab
-	// is clicked (responsive), while the FadeSwap keys on the *resolved* location
-	// so the crossfade only fires once the new view's loader has committed —
-	// otherwise the transition plays out against the still-old Outlet and the new
-	// content blinks in unanimated after it lands.
+	// is clicked, before the new view's loader has committed.
 	const pathname = useLocation({ select: (location) => location.pathname });
-	const resolvedPathname = useRouterState({
-		select: (state) =>
-			state.resolvedLocation?.pathname ?? state.location.pathname,
-	});
 
 	return (
 		<div className="flex h-[calc(100svh-var(--mobile-nav-h))] flex-col p-4 sm:p-8">
@@ -50,7 +41,6 @@ function TimeLayout() {
 									<Link
 										to={tab.to}
 										params={{ orgSlug: organization.slug }}
-										viewTransition={false}
 										aria-current={active ? "page" : undefined}
 									/>
 								}
@@ -61,12 +51,9 @@ function TimeLayout() {
 					})}
 				</SegmentedControl>
 			</div>
-			<FadeSwap
-				activeKey={resolvedPathname}
-				className="mt-5 flex min-h-0 flex-1 flex-col"
-			>
+			<div className="mt-5 flex min-h-0 flex-1 flex-col">
 				<Outlet />
-			</FadeSwap>
+			</div>
 		</div>
 	);
 }

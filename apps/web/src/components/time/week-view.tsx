@@ -42,7 +42,6 @@ export function WeekView({
 								to="/$orgSlug/time/week"
 								params={{ orgSlug }}
 								search={{ weekStart: addDaysToKey(weekStart, -7) }}
-								viewTransition={false}
 							>
 								‹
 							</Link>
@@ -60,7 +59,6 @@ export function WeekView({
 								to="/$orgSlug/time/week"
 								params={{ orgSlug }}
 								search={{ weekStart: addDaysToKey(weekStart, 7) }}
-								viewTransition={false}
 							>
 								›
 							</Link>
@@ -71,12 +69,7 @@ export function WeekView({
 						size="sm"
 						nativeButton={false}
 						render={
-							<Link
-								to="/$orgSlug/time/week"
-								params={{ orgSlug }}
-								search={{}}
-								viewTransition={false}
-							>
+							<Link to="/$orgSlug/time/week" params={{ orgSlug }} search={{}}>
 								Today
 							</Link>
 						}

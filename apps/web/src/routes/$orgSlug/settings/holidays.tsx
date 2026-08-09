@@ -85,7 +85,6 @@ function HolidaysSettingsPage() {
 	const goToYear = (next: number) =>
 		navigate({
 			search: { year: next === currentYear ? undefined : next },
-			viewTransition: false,
 		});
 
 	return (

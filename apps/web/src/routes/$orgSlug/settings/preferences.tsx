@@ -3,10 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { AnimationSpeedSlider } from "#/components/animation-speed-slider.tsx";
 import { GoogleIcon } from "#/components/google-sign-in-button.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
-import { TransitionPicker } from "#/components/transition-picker.tsx";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -20,9 +18,7 @@ import {
 } from "#/components/ui/alert-dialog.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { usePreferences } from "#/hooks/use-preferences.ts";
 import { authClient } from "#/lib/auth-client.ts";
-import { savePreferences } from "#/lib/preferences.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
@@ -157,7 +153,6 @@ function GoogleSignInMethod() {
 }
 
 function PreferencesSettingsPage() {
-	const { pageTransition, animationSpeed } = usePreferences();
 	const { data: methods } = useSuspenseQuery(signInMethodsQuery());
 
 	return (
@@ -194,34 +189,6 @@ function PreferencesSettingsPage() {
 			</div>
 
 			<NotificationSettings />
-
-			<div className="-mx-4 mt-6 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-				<span className="text-sm font-semibold">Animation responsiveness</span>
-				<p className="mt-1 text-xs text-muted-foreground">
-					Stored on this device only. How lively motion feels across the app —
-					the tab switches, panel changes, and page transitions all follow this.
-				</p>
-				<div className="mt-4">
-					<AnimationSpeedSlider
-						value={animationSpeed}
-						onChange={(animationSpeed) => savePreferences({ animationSpeed })}
-					/>
-				</div>
-			</div>
-
-			<div className="-mx-4 mt-6 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-				<span className="text-sm font-semibold">Page transition</span>
-				<p className="mt-1 text-xs text-muted-foreground">
-					Stored on this device only. Hover a style to preview it — applied when
-					navigating between pages.
-				</p>
-				<div className="mt-3 max-w-xl">
-					<TransitionPicker
-						value={pageTransition}
-						onChange={(pageTransition) => savePreferences({ pageTransition })}
-					/>
-				</div>
-			</div>
 		</div>
 	);
 }

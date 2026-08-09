@@ -7,7 +7,6 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { MotionConfig } from "motion/react";
-import { PreferencesSync } from "../components/preferences-sync";
 import { RouteError } from "../components/route-error";
 import { RouteNotFound } from "../components/route-not-found";
 import { RoutePending } from "../components/route-pending";
@@ -75,12 +74,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<HeadContent />
 			</head>
 			<body>
-				<PreferencesSync />
 				{/* reducedMotion="user" degrades every spring under
             prefers-reduced-motion: transform/scale/slide are dropped (opacity
             is kept), so dialogs & menus cross-fade, sheets fade, and the
             tab-bar pill jumps instead of gliding — no per-component branching.
-            Complements the View-Transitions kill-switch in styles.css. */}
+            This is the app's only reduced-motion mechanism. */}
 				<MotionConfig reducedMotion="user">{children}</MotionConfig>
 				<Toaster />
 				<TanStackDevtools

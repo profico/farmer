@@ -12,10 +12,9 @@ import * as React from "react";
  *   - `visualDuration` → time to visually reach the target (≈ Apple "response"),
  *     NOT total settle time.
  *
- * Speed is tuned to the page-transition scale (`--motion-duration-fast`, 0.12s
- * in styles.css) so opening a dialog/menu/sheet feels as snappy as navigating
+ * Speed is tuned so opening a dialog/menu/sheet feels as snappy as navigating
  * between pages — the spring adds interruptibility and a touch of physicality
- * on top of that same tempo, it doesn't make things slower.
+ * on top of that tempo, it doesn't make things slower.
  *
  * Bounce is deliberately restrained: only surfaces that feel physical
  * (dialog popup, the sliding tab-bar pill, drawers) get any overshoot;

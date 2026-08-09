@@ -48,7 +48,6 @@ export function DayView({
 								to="/$orgSlug/time"
 								params={{ orgSlug }}
 								search={{ date: addDaysToKey(date, -1) }}
-								viewTransition={false}
 							>
 								‹
 							</Link>
@@ -76,7 +75,6 @@ export function DayView({
 								to="/$orgSlug/time"
 								params={{ orgSlug }}
 								search={{ date: addDaysToKey(date, 1) }}
-								viewTransition={false}
 							>
 								›
 							</Link>
@@ -88,12 +86,7 @@ export function DayView({
 							size="sm"
 							nativeButton={false}
 							render={
-								<Link
-									to="/$orgSlug/time"
-									params={{ orgSlug }}
-									search={{}}
-									viewTransition={false}
-								>
+								<Link to="/$orgSlug/time" params={{ orgSlug }} search={{}}>
 									Today
 								</Link>
 							}

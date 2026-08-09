@@ -74,8 +74,7 @@ function UtilizationTab() {
 		utilizationReportQuery({ from: weekStart, to: weekEnd }),
 	);
 
-	const goToWeek = (next: string) =>
-		navigate({ search: { weekStart: next }, viewTransition: false });
+	const goToWeek = (next: string) => navigate({ search: { weekStart: next } });
 
 	return (
 		<div>

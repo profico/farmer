@@ -137,7 +137,6 @@ export function AppSidebar({
 		<Link
 			to={item.to}
 			params={{ orgSlug }}
-			viewTransition={!isActive}
 			onMouseDown={(e) => {
 				swallowClickRef.current = false;
 				// Only fast-path a plain primary-button press. Modifier / middle
@@ -148,8 +147,7 @@ export function AppSidebar({
 				// This press owns the interaction, so its click is a duplicate.
 				swallowClickRef.current = true;
 				// Re-pressing the tab you're on stays a no-op (matches onClick).
-				if (!isActive)
-					navigate({ to: item.to, params: { orgSlug }, viewTransition: true });
+				if (!isActive) navigate({ to: item.to, params: { orgSlug } });
 			}}
 			onClick={(e) => {
 				// A mouse press already navigated on mousedown — swallow its click
