@@ -24,11 +24,11 @@ import { syncedMeetingTombstone } from "../db/schema/settings";
 import { summarizeCommitMessages } from "../lib/day-plan";
 import { orgTimezone } from "../lib/org-time";
 import {
-	dayKeyInTz,
-	monthBounds,
-	snapToQuarterHour,
-	weekdayInTz,
-} from "../lib/time";
+	remainingSeconds,
+	spokenForSeconds,
+	targetSecondsFor,
+} from "../lib/working-day";
+import { dayKeyInTz, monthBounds, snapToQuarterHour } from "../lib/time";
 import type {
 	CopyTimeEntriesInput,
 	CreateAbsenceForUserInput,
@@ -50,26 +50,15 @@ import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
 import {
-	dayDurationSeconds,
 	type WorkingHoursDay,
 	workingHoursService,
 } from "./working-hours.service";
 
-// The day's expected working seconds — the target a fill block expands up to.
-const dayFillTargetSeconds = (
-	workingHours: WorkingHoursDay[],
-	dateKey: string,
-	tz: string,
-): number => {
-	const weekday = weekdayInTz(dateKey, tz);
-	const day = workingHours.find((d) => d.dayOfWeek === weekday);
-	return day ? dayDurationSeconds(day) : 0;
-};
-
 type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // How long a fill block on this day should be: the day's working-hours target
-// minus every other (non-fill) entry that day, floored at 0.
+// minus every other (non-fill) entry that day, floored at 0. The rules are in
+// lib/working-day; this only fetches what they need.
 const computeDayFillSeconds = async (
 	ctx: Ctx,
 	dateKey: string,
@@ -90,11 +79,10 @@ const computeDayFillSeconds = async (
 			? Promise.resolve(workingHours)
 			: workingHoursService.list(ctx),
 	]);
-	const target = dayFillTargetSeconds(hours, dateKey, tz);
-	const others = dayEntries
-		.filter((e) => !e.fillsDay)
-		.reduce((sum, e) => sum + e.durationSeconds, 0);
-	return Math.max(0, target - others);
+	return remainingSeconds(
+		targetSecondsFor(hours, dateKey, tz),
+		spokenForSeconds(dayEntries),
+	);
 };
 
 // Re-derive the duration of the day's fill block (if any) after a sibling entry
@@ -449,14 +437,17 @@ export const timeEntriesService = {
 		const fills = rows.filter((r) => r.fillsDay);
 		if (fills.length > 0) {
 			const workingHours = await workingHoursService.list(ctx);
-			const sumByDay = new Map<string, number>();
+			const claimsByDay = new Map<string, typeof rows>();
 			for (const r of rows) {
-				if (r.fillsDay) continue;
-				sumByDay.set(r.date, (sumByDay.get(r.date) ?? 0) + r.durationSeconds);
+				const list = claimsByDay.get(r.date) ?? [];
+				list.push(r);
+				claimsByDay.set(r.date, list);
 			}
 			for (const fill of fills) {
-				const target = dayFillTargetSeconds(workingHours, fill.date, tz);
-				const next = Math.max(0, target - (sumByDay.get(fill.date) ?? 0));
+				const next = remainingSeconds(
+					targetSecondsFor(workingHours, fill.date, tz),
+					spokenForSeconds(claimsByDay.get(fill.date) ?? []),
+				);
 				if (next === fill.durationSeconds) continue;
 				await db
 					.update(timeEntry)

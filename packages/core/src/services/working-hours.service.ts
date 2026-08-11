@@ -2,46 +2,19 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { memberSchedule, memberWorkingHoursDay } from "../db/schema/schedule";
 import { parseDuration } from "../lib/time";
+// The schedule arithmetic lives in lib/working-day (pure); this service owns
+// the reads and writes. Re-exported here because callers that already depend on
+// this service for the rows shouldn't need a second import for the maths.
+import { type WorkingHoursDay, defaultDayRow } from "../lib/working-day";
 import type {
 	SetWeeklyTargetInput,
 	UpsertWorkingHoursDayInput,
 } from "../schema/working-hours";
 import type { Ctx } from "./types";
 
+export { dayDurationSeconds, type WorkingHoursDay } from "../lib/working-day";
+
 const DEFAULT_WEEKLY_TARGET_SECONDS = 144000; // 40h
-
-export type WorkingHoursDay = {
-	dayOfWeek: number;
-	enabled: boolean;
-	startTime: string | null;
-	endTime: string | null;
-};
-
-// A day without a stored row gets a synthesized Mon-Fri 9-5 default rather
-// than requiring a backfill.
-const defaultDayRow = (dayOfWeek: number): WorkingHoursDay => {
-	const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-	return {
-		dayOfWeek,
-		enabled: isWeekday,
-		startTime: isWeekday ? "09:00" : null,
-		endTime: isWeekday ? "17:00" : null,
-	};
-};
-
-const timeToMinutes = (time: string): number => {
-	const [hours, minutes] = time.split(":").map(Number);
-	return (hours ?? 0) * 60 + (minutes ?? 0);
-};
-
-// Expected working seconds for a day row — 0 if disabled or times are unset.
-export const dayDurationSeconds = (day: WorkingHoursDay): number => {
-	if (!day.enabled || !day.startTime || !day.endTime) return 0;
-	return Math.max(
-		0,
-		(timeToMinutes(day.endTime) - timeToMinutes(day.startTime)) * 60,
-	);
-};
 
 export const workingHoursService = {
 	// Always returns all 7 days (0=Sun..6=Sat) for the requesting user.

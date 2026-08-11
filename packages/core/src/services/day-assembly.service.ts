@@ -10,11 +10,13 @@ import {
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { splitProportionally, summarizeCommitMessages } from "../lib/day-plan";
 import { orgTimezone } from "../lib/org-time";
+import { QUARTER_HOUR_SECONDS, snapToQuarterHour } from "../lib/time";
 import {
-	QUARTER_HOUR_SECONDS,
-	snapToQuarterHour,
-	weekdayInTz,
-} from "../lib/time";
+	loggedSeconds,
+	remainingSeconds,
+	spokenForSeconds,
+	targetSecondsFor,
+} from "../lib/working-day";
 import type {
 	ApplyDayAssemblyInput,
 	SuggestDayAssemblyInput,
@@ -25,10 +27,7 @@ import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
-import {
-	dayDurationSeconds,
-	workingHoursService,
-} from "./working-hours.service";
+import { workingHoursService } from "./working-hours.service";
 
 // "Assemble my day": gather every signal we have about a day (calendar meetings,
 // GitHub commits per project, working hours) and propose the entries that would
@@ -160,19 +159,9 @@ export const dayAssemblyService = {
 			hasLinkedAccount(ctx.userId, "github"),
 		]);
 
-		const weekday = weekdayInTz(date, tz);
-		const day = workingHours.find((d) => d.dayOfWeek === weekday);
-		const targetSeconds = day ? dayDurationSeconds(day) : 0;
-
-		const loggedSeconds = existing.reduce(
-			(sum, e) => sum + e.durationSeconds,
-			0,
-		);
-		// Fill blocks don't consume the remaining budget: their duration is derived
-		// and re-shrinks as siblings appear.
-		const spokenFor = existing
-			.filter((e) => !e.fillsDay)
-			.reduce((sum, e) => sum + e.durationSeconds, 0);
+		const targetSeconds = targetSecondsFor(workingHours, date, tz);
+		const logged = loggedSeconds(existing);
+		const spokenFor = spokenForSeconds(existing);
 
 		const suggestions: DaySuggestion[] = [];
 
@@ -219,9 +208,10 @@ export const dayAssemblyService = {
 
 		// ── Break: carved out of the day, not added on top ──────────────────────
 		let breakSeconds = 0;
-		const preBreakRemaining = Math.max(
-			0,
-			targetSeconds - spokenFor - meetingSeconds,
+		const preBreakRemaining = remainingSeconds(
+			targetSeconds,
+			spokenFor,
+			meetingSeconds,
 		);
 		const alreadyHasBreak =
 			breakTask != null && existing.some((e) => e.taskId === breakTask.id);
@@ -248,7 +238,12 @@ export const dayAssemblyService = {
 			});
 		}
 
-		const remainingSeconds = Math.max(0, preBreakRemaining - breakSeconds);
+		const remaining = remainingSeconds(
+			targetSeconds,
+			spokenFor,
+			meetingSeconds,
+			breakSeconds,
+		);
 
 		// ── Work: one entry per project the user committed to that day ──────────
 		const commitsByProject = new Map<string, typeof commits>();
@@ -270,7 +265,7 @@ export const dayAssemblyService = {
 			commitsByProject.size > 0 &&
 			workTask &&
 			!hasFillBlock &&
-			remainingSeconds >= QUARTER_HOUR_SECONDS
+			remaining >= QUARTER_HOUR_SECONDS
 		) {
 			const projectIds = [...commitsByProject.keys()];
 			const [projects, picked] = await Promise.all([
@@ -305,7 +300,7 @@ export const dayAssemblyService = {
 				}));
 
 			const shares = splitProportionally(
-				remainingSeconds,
+				remaining,
 				groups.map((g) => g.commits.length),
 			);
 
@@ -339,7 +334,7 @@ export const dayAssemblyService = {
 		return {
 			date,
 			targetSeconds,
-			loggedSeconds,
+			loggedSeconds: logged,
 			suggestions,
 			sources: {
 				calendar:

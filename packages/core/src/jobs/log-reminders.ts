@@ -8,12 +8,10 @@ import {
 	timeKeyInTz,
 	weekdayInTz,
 } from "../lib/time";
+import { dayDurationSeconds, dayForWeekday } from "../lib/working-day";
 import { holidaysService } from "../services/holidays.service";
 import { notificationsService } from "../services/notifications.service";
-import {
-	dayDurationSeconds,
-	workingHoursService,
-} from "../services/working-hours.service";
+import { workingHoursService } from "../services/working-hours.service";
 import type { Ctx } from "../services/types";
 
 export type LogReminderSummary = {
@@ -85,8 +83,7 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 
 			// A scheduled working day with a defined end time, and the day is over.
 			const workingHours = await workingHoursService.list(ctx);
-			const weekday = weekdayInTz(todayKey, tz);
-			const day = workingHours[weekday];
+			const day = dayForWeekday(workingHours, weekdayInTz(todayKey, tz));
 			const expectedSeconds = day ? dayDurationSeconds(day) : 0;
 			if (expectedSeconds <= 0 || !day?.endTime) {
 				skipped++;
