@@ -2,26 +2,15 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { account, organization } from "../db/schema/auth";
 import { integrationSettings } from "../db/schema/settings";
+import { meetingSyncWindow } from "../lib/meeting-window";
 import { orgTimezone } from "../lib/org-time";
-import { addDaysToKey, dayKeyInTz } from "../lib/time";
+import { dayKeyInTz } from "../lib/time";
 import { timeEntriesService } from "../services/time-entries.service";
 import type { Ctx } from "../services/types";
 
-// How far the background window reaches around "today" (computed in each user's
-// org timezone). A little into the past catches meetings that were rescheduled
-// after they first synced; the forward reach pre-populates upcoming days so a
-// meeting is already a block before the user ever opens the time page.
-const PAST_DAYS = 1;
-const FUTURE_DAYS = 14;
-
-// The reconcile window for one user around a day-key already resolved in their
-// org timezone. Single source of truth for the window policy so the background
-// scheduler and the manual "Sync now" button import/expire the exact same set
-// of meetings.
-export const meetingSyncWindow = (todayKey: string) => ({
-	from: addDaysToKey(todayKey, -PAST_DAYS),
-	to: addDaysToKey(todayKey, FUTURE_DAYS),
-});
+// The window policy lives in lib/meeting-window so the service layer's
+// write-on-read sync can honour the same one — see the note there.
+export { meetingSyncWindow } from "../lib/meeting-window";
 
 // Sync one (org, user)'s meetings on demand: resolve the org timezone, pin
 // "today" in it, and reconcile the standard window. Backs the manual sync

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { clampToMeetingSyncWindow } from "./meeting-window";
 import {
 	countWorkingDays,
 	formatDurationInput,
@@ -116,5 +117,35 @@ describe("formatDurationInput", () => {
 		for (const seconds of [15 * MINUTE, HOUR, 90 * MINUTE, 8 * HOUR]) {
 			expect(parseDuration(formatDurationInput(seconds))).toBe(seconds);
 		}
+	});
+});
+
+describe("clampToMeetingSyncWindow", () => {
+	const TODAY = "2026-08-10";
+
+	test("a month in the past syncs nothing", () => {
+		// The reported failure: paging back through the Month view imported every
+		// meeting in those months as an unfiled entry, dozens at a time.
+		expect(
+			clampToMeetingSyncWindow({ from: "2026-06-01", to: "2026-06-30" }, TODAY),
+		).toBeNull();
+	});
+
+	test("the current month is trimmed to the window, not synced whole", () => {
+		expect(
+			clampToMeetingSyncWindow({ from: "2026-08-01", to: "2026-08-31" }, TODAY),
+		).toEqual({ from: "2026-08-09", to: "2026-08-24" });
+	});
+
+	test("a range already inside the window is left alone", () => {
+		expect(
+			clampToMeetingSyncWindow({ from: "2026-08-10", to: "2026-08-12" }, TODAY),
+		).toEqual({ from: "2026-08-10", to: "2026-08-12" });
+	});
+
+	test("a range far in the future syncs nothing", () => {
+		expect(
+			clampToMeetingSyncWindow({ from: "2027-01-01", to: "2027-01-31" }, TODAY),
+		).toBeNull();
 	});
 });

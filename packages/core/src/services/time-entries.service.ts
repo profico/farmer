@@ -22,6 +22,7 @@ import {
 import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { summarizeCommitMessages } from "../lib/day-plan";
+import { clampToMeetingSyncWindow } from "../lib/meeting-window";
 import { dayKeyInTz, monthBounds, snapToQuarterHour } from "../lib/time";
 import {
 	MAX_DAY_SECONDS,
@@ -33,6 +34,7 @@ import type {
 	CopyTimeEntriesInput,
 	CreateAbsenceForUserInput,
 	CreateTimeEntryInput,
+	FileTimeEntriesInput,
 	FileTimeEntryInput,
 	ListAbsenceForUserInput,
 	OverrideAbsenceEntryInput,
@@ -421,9 +423,19 @@ export const timeEntriesService = {
 		try {
 			const settings = await integrationSettingsService.get(ctx);
 			if (settings.googleAutoSyncMeetings) {
-				await syncMeetingsForRange(ctx, range, tz).catch((error) =>
-					console.error("[time-entries] meeting sync failed", error),
+				// Only the part of the requested range the sync window covers. Reading
+				// a month is not a request to import a month of meetings — see
+				// lib/meeting-window. Outside the window this is simply skipped, and
+				// the entries already imported there are still read and shown.
+				const syncable = clampToMeetingSyncWindow(
+					range,
+					dayKeyInTz(new Date(), tz),
 				);
+				if (syncable) {
+					await syncMeetingsForRange(ctx, syncable, tz).catch((error) =>
+						console.error("[time-entries] meeting sync failed", error),
+					);
+				}
 			}
 			if (settings.githubSyncCommitsAsWorkTime) {
 				await syncCommitWorkTimeForRange(ctx, range, tz).catch((error) =>
@@ -759,6 +771,40 @@ export const timeEntriesService = {
 			.returning();
 		if (!updated) throw new Error("Failed to file entry");
 		return updated;
+	},
+
+	/**
+	 * File many entries against one project in a single call.
+	 *
+	 * Best-effort per entry rather than all-or-nothing: the one thing that
+	 * legitimately fails here is a task the target project has not picked, and a
+	 * mixed selection (a Meeting and a Design review, say) would otherwise be
+	 * refused whole with no indication of which row was the problem. The caller
+	 * gets a count and the first reason, and the entries that could be filed are.
+	 */
+	fileMany: async (ctx: Ctx, input: FileTimeEntriesInput) => {
+		// Resolved once for the whole batch — `file` re-checks per entry, but the
+		// project-level checks would otherwise be repeated up to 200 times.
+		await assertProjectInOrg(ctx, input.projectId);
+		const access = await ctxAccess(ctx);
+		access.assertCanTrackOn(input.projectId);
+
+		let filed = 0;
+		const reasons: string[] = [];
+		for (const timeEntryId of input.timeEntryIds) {
+			try {
+				await timeEntriesService.file(ctx, {
+					timeEntryId,
+					projectId: input.projectId,
+				});
+				filed++;
+			} catch (error) {
+				reasons.push(
+					error instanceof Error ? error.message : "Could not file entry",
+				);
+			}
+		}
+		return { filed, failed: reasons.length, firstError: reasons[0] };
 	},
 
 	/** Inline note edit. No duration/day change, so no fill recompute. */

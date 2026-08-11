@@ -95,6 +95,16 @@ export const fileTimeEntryInput = z.object({
 });
 export type FileTimeEntryInput = z.infer<typeof fileTimeEntryInput>;
 
+// Filing several entries at once. The calendar sync imports one unfiled entry
+// per meeting, so the backlog is measured in dozens — a recurring stand-up alone
+// is forty rows of the same answer. Bounded rather than unbounded: a request
+// that files more than a couple of hundred entries is a mistake, not a workflow.
+export const fileTimeEntriesInput = z.object({
+	timeEntryIds: z.array(z.uuid()).min(1).max(200),
+	projectId: z.uuid(),
+});
+export type FileTimeEntriesInput = z.infer<typeof fileTimeEntriesInput>;
+
 // Toggling overtime is a one-field mutation from the week grid.
 export const setTimeEntryOvertimeInput = z.object({
 	timeEntryId: z.uuid(),
