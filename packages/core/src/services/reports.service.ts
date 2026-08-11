@@ -3,7 +3,9 @@ import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
 import { client, project, task, timeEntry } from "../db/schema/domain";
+import { trailingMonths } from "../lib/report-period";
 import { monthBounds } from "../lib/time";
+import { rollUpUtilization, utilizationPctOf } from "../lib/utilization";
 import type {
 	AbsenceReportInput,
 	MonthReportInput,
@@ -358,6 +360,8 @@ export const reportsService = {
 				.select({
 					userId: timeEntry.userId,
 					name: user.name,
+					taskId: task.id,
+					taskKey: task.systemKey,
 					taskName: task.name,
 					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
 				})
@@ -372,12 +376,35 @@ export const reportsService = {
 						lte(timeEntry.date, to),
 					),
 				)
-				.groupBy(timeEntry.userId, user.name, task.name);
+				.groupBy(timeEntry.userId, user.name, task.id, task.systemKey, task.name);
 
-		const [ytdRows, monthRows] = await Promise.all([
+		const [absenceTasks, ytdRows, monthRows] = await Promise.all([
+			// The columns the table draws, named by the caller-stable system key
+			// rather than by label. The route used to look its two columns up by the
+			// literal strings "Vacation" and "Sick Leave", which is a display name:
+			// renaming the task, or adding a third kind of absence, silently emptied
+			// or omitted a column. Every absence task is site-scoped (the schema's
+			// check constraint sees to it) and therefore carries a key.
+			db
+				.select({
+					key: task.systemKey,
+					id: task.id,
+					label: task.name,
+				})
+				.from(task)
+				.where(and(eq(task.scope, "site"), eq(task.isAbsence, true)))
+				// Seed order, so Vacation stays the leftmost column it has always
+				// been; a third absence task would land after both rather than
+				// alphabetically between them.
+				.orderBy(asc(task.createdAt), asc(task.name)),
 			select(yearStart, yearEnd),
 			monthRange ? select(monthRange.from, monthRange.to) : Promise.resolve([]),
 		]);
+
+		// Key on the system key where there is one, the task id otherwise, so a
+		// column can never collide with another task that happens to share a name.
+		const columnKey = (row: { taskKey: string | null; taskId: string }) =>
+			row.taskKey ?? row.taskId;
 
 		const byUser = new Map<
 			string,
@@ -408,12 +435,12 @@ export const reportsService = {
 
 		for (const r of ytdRows) {
 			const row = ensure(r.userId, r.name);
-			row.ytdByTask[r.taskName] = Number(r.total);
+			row.ytdByTask[columnKey(r)] = Number(r.total);
 			row.ytdSeconds += Number(r.total);
 		}
 		for (const r of monthRows) {
 			const row = ensure(r.userId, r.name);
-			row.monthByTask[r.taskName] = Number(r.total);
+			row.monthByTask[columnKey(r)] = Number(r.total);
 			row.monthSeconds += Number(r.total);
 		}
 
@@ -421,6 +448,10 @@ export const reportsService = {
 		// the divisor travels with the payload rather than being hardcoded there.
 		return {
 			workingDaySeconds: WORKING_DAY_SECONDS,
+			columns: absenceTasks.map((t) => ({
+				key: t.key ?? t.id,
+				label: t.label,
+			})),
 			rows: [...byUser.values()].sort((a, b) => a.name.localeCompare(b.name)),
 		};
 	},
@@ -487,24 +518,12 @@ export const reportsService = {
 	) => {
 		await requireAdmin(ctx);
 
-		const periods: { year: number; month: number }[] = [];
-		let { year, month } = input;
-		for (let i = 0; i < input.months; i++) {
-			periods.unshift({ year, month });
-			month -= 1;
-			if (month === 0) {
-				month = 12;
-				year -= 1;
-			}
-		}
-
-		const results = await Promise.all(
-			periods.map(async (p) => ({
+		return Promise.all(
+			trailingMonths(input, input.months).map(async (p) => ({
 				...p,
 				rows: await reportsService.variance(ctx, p),
 			})),
 		);
-		return results;
 	},
 
 	/**
@@ -523,12 +542,11 @@ export const reportsService = {
 	},
 
 	/**
-	 * Utilization across months, plus the team average per month.
+	 * Utilization across months.
 	 *
-	 * The average is over people who HAVE a percentage — a contractor with no
-	 * Expected figure has no utilization to average, and counting them as 0%
-	 * would drag the team line down every month for a number that was never
-	 * measured.
+	 * Each point is the same roll-up as the single-month headline, so the trend's
+	 * last point and the number above it can never disagree — they used to, the
+	 * trend averaging percentages while the PDF divided the totals.
 	 */
 	utilizationTrend: async (
 		ctx: Ctx,
@@ -536,34 +554,11 @@ export const reportsService = {
 	) => {
 		await requireAdmin(ctx);
 
-		const periods: { year: number; month: number }[] = [];
-		let { year, month } = input;
-		for (let i = 0; i < input.months; i++) {
-			periods.unshift({ year, month });
-			month -= 1;
-			if (month === 0) {
-				month = 12;
-				year -= 1;
-			}
-		}
-
 		return Promise.all(
-			periods.map(async (p) => {
-				const rows = await computeUtilization(ctx, p);
-				const measured = rows.filter((r) => r.utilizationPct != null);
-				return {
-					...p,
-					peopleMeasured: measured.length,
-					teamAveragePct:
-						measured.length > 0
-							? Math.round(
-									measured.reduce((sum, r) => sum + (r.utilizationPct ?? 0), 0) /
-										measured.length,
-								)
-							: null,
-					finalSeconds: rows.reduce((sum, r) => sum + r.finalSeconds, 0),
-				};
-			}),
+			trailingMonths(input, input.months).map(async (p) => ({
+				...p,
+				...rollUpUtilization(await computeUtilization(ctx, p)),
+			})),
 		);
 	},
 };
@@ -658,10 +653,7 @@ const computeUtilization = async (
 				expectedSeconds,
 				// A contractor with no explicit expected value displays Final hours
 				// with no percentage — the "/" rows of the old sheet.
-				utilizationPct:
-					expectedSeconds != null && expectedSeconds > 0
-						? Math.round((finalSeconds / expectedSeconds) * 100)
-						: null,
+				utilizationPct: utilizationPctOf(finalSeconds, expectedSeconds),
 			};
 		})
 	.sort((a, b) => a.name.localeCompare(b.name));

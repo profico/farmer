@@ -12,13 +12,19 @@ export const Route = createFileRoute("/api/reports/pdf")({
 				if (!ctx) {
 					return Response.json({ error: "Unauthorized" }, { status: 401 });
 				}
-				const { membersService, reportPdfService } = await import(
+				const { accessService, AccessError, reportPdfService } = await import(
 					"@farmer/core/services"
 				);
-				// Mirrors the reports page's admin gate — the PDF is the same data.
-				const role = await membersService.getRole(ctx);
-				if (role !== "owner" && role !== "admin") {
-					return Response.json({ error: "Forbidden" }, { status: 403 });
+				// The same gate every report service call makes, rather than this
+				// route's own reading of the role — "owner or admin" was spelled out
+				// here by hand, so a change to what Admin means would have missed it.
+				try {
+					await accessService.requireAdmin(ctx);
+				} catch (error) {
+					if (error instanceof AccessError) {
+						return Response.json({ error: "Forbidden" }, { status: 403 });
+					}
+					throw error;
 				}
 
 				const url = new URL(request.url);

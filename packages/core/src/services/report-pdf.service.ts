@@ -1,4 +1,5 @@
 import type { ReportPdfData } from "../lib/report-pdf";
+import { rollUpUtilization } from "../lib/utilization";
 import type { MonthReportInput } from "../schema/reports";
 import { organizationService } from "./organization.service";
 import { reportsService } from "./reports.service";
@@ -36,17 +37,12 @@ export const reportPdfService = {
 			reportsService.budgetBurn(ctx),
 		]);
 
-		// Contractors without an expected figure contribute Final hours but no
-		// denominator, so they're summed into the numerator and skipped in the
-		// denominator rather than counted as zero-expected.
-		const expectedSeconds = utilization.reduce(
-			(sum, row) => sum + (row.expectedSeconds ?? 0),
-			0,
-		);
-		const finalSeconds = utilization.reduce(
-			(sum, row) => sum + row.finalSeconds,
-			0,
-		);
+		// One definition, shared with the reports screen and the trend — see
+		// `lib/utilization.ts`. This used to sum Final over every row while summing
+		// Expected only over the rows that had one, so an unmeasured contractor's
+		// hours inflated the headline percentage.
+		const { expectedSeconds, finalSeconds, utilizationPct } =
+			rollUpUtilization(utilization);
 
 		const typeLabels = {
 			billable: "Billable",
@@ -71,13 +67,8 @@ export const reportPdfService = {
 					unit: "h",
 				},
 				utilization:
-					expectedSeconds > 0
-						? {
-								value: String(
-									Math.round((finalSeconds / expectedSeconds) * 100),
-								),
-								unit: "%",
-							}
+					utilizationPct != null
+						? { value: String(utilizationPct), unit: "%" }
 						: { value: "—", unit: null },
 				activeProjects: { value: String(budgets.length), unit: null },
 			},
