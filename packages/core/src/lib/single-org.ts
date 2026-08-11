@@ -1,6 +1,7 @@
 import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { invitation, member, organization } from "../db/schema/auth";
+import { ensureOrgTasks } from "../db/seed-tasks";
 
 /**
  * Single-organization mode — the whole switch is one env var.
@@ -94,5 +95,9 @@ export const bootstrapSingleOrg = async (userId: string): Promise<boolean> => {
 		role: "owner",
 		createdAt: new Date(),
 	});
+	// The starter taxonomy, same as the multi-tenant signup path. Without it the
+	// instance comes up with no tasks at all, which means no entry can be logged
+	// and the calendar/day-assembly engines have nothing to resolve.
+	await ensureOrgTasks(created.id);
 	return true;
 };

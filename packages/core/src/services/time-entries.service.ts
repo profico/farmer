@@ -32,6 +32,7 @@ import type {
 	CopyTimeEntriesInput,
 	CreateAbsenceForUserInput,
 	CreateTimeEntryInput,
+	FileTimeEntryInput,
 	ListAbsenceForUserInput,
 	OverrideAbsenceEntryInput,
 	SetTimeEntryOvertimeInput,
@@ -40,9 +41,9 @@ import type {
 	UpdateTimeEntryInput,
 } from "../schema/time-entries";
 import { accessService } from "./access.service";
-import { assertProjectInOrg, assertTaskAvailable } from "./guards";
-import { githubService } from "./github.service";
+import { githubService, type ScannedCommit } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
+import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { integrationSettingsService } from "./integration-settings.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
@@ -84,7 +85,9 @@ const computeDayFillSeconds = async (
 			),
 			columns: { durationSeconds: true, fillsDay: true },
 		}),
-		workingHours ? Promise.resolve(workingHours) : workingHoursService.list(ctx),
+		workingHours
+			? Promise.resolve(workingHours)
+			: workingHoursService.list(ctx),
 	]);
 	const target = dayFillTargetSeconds(hours, dateKey, tz);
 	const others = dayEntries
@@ -124,6 +127,24 @@ const recomputeDayFill = async (
 // time page reflects external state without an explicit "sync" click. Each is
 // best-effort and idempotent; a failure logs and leaves the page working.
 
+// How a person recognises "the same meeting" when the calendar event id behind
+// it has changed: it's on the same day and either reads the same and runs the
+// same length, or points at the same join link. Both keys are deliberately
+// day-scoped — a weekly stand-up shares its title, length AND Meet link across
+// every occurrence, so a key without the date would collapse the whole series.
+const meetingIdentityKeys = (row: {
+	date: string;
+	description: string;
+	durationSeconds: number;
+	meetingUrl: string | null;
+}): string[] => {
+	const keys = [
+		`t|${row.date}|${row.description.trim().toLowerCase()}|${row.durationSeconds}`,
+	];
+	if (row.meetingUrl) keys.push(`u|${row.date}|${row.meetingUrl}`);
+	return keys;
+};
+
 // Reconcile a range against Google Calendar so the user's meeting entries mirror
 // their calendar. Google is the source of truth ONLY for sync-owned rows
 // (syncLocked = false). Tombstones keep a user-deleted meeting from returning.
@@ -141,14 +162,10 @@ const syncMeetingsForRange = async (
 	// without deleting, or we'd wipe synced entries we merely failed to fetch.
 	if (events === null) return;
 
-	const meetingTask = await db.query.task.findFirst({
-		where: and(
-			eq(task.organizationId, ctx.organizationId),
-			eq(task.name, "Meeting"),
-			eq(task.isAbsence, false),
-		),
-		columns: { id: true },
-	});
+	// Resolved by system key, not by name: "Meeting" is a site built-in that an
+	// org may have relabelled, and the old name match meant a relabel silently
+	// switched this whole engine off.
+	const meetingTask = await tasksService.findBySystemKey(ctx, "meeting");
 	if (!meetingTask) return;
 
 	const tombstones = await db.query.syncedMeetingTombstone.findMany({
@@ -159,6 +176,42 @@ const syncMeetingsForRange = async (
 		columns: { calendarEventId: true },
 	});
 	const tombstoned = new Set(tombstones.map((t) => t.calendarEventId));
+
+	// Duplicate guard for REISSUED event ids. Google mints new instance ids when a
+	// recurring series is edited with "this and following", and a cancelled-and-
+	// recreated meeting is a new event outright. Delete-by-absence below would
+	// retire the old block — except it deliberately spares sync-locked rows, and
+	// every meeting the person has filed against a project is sync-locked. So the
+	// new id imports next to the old one and the day shows the same meeting twice.
+	//
+	// Match on what a person actually sees rather than on ids: same day + same
+	// title + same length, or same day + same join link.
+	const lockedRows = await db.query.timeEntry.findMany({
+		where: and(
+			eq(timeEntry.organizationId, ctx.organizationId),
+			eq(timeEntry.userId, ctx.userId),
+			eq(timeEntry.syncLocked, true),
+			isNotNull(timeEntry.calendarEventId),
+			gte(timeEntry.date, range.from),
+			lte(timeEntry.date, range.to),
+		),
+		columns: {
+			calendarEventId: true,
+			date: true,
+			description: true,
+			durationSeconds: true,
+			meetingUrl: true,
+		},
+	});
+	// key -> the event id already holding that slot, so an event never shadows
+	// its own entry (the ordinary case: the row IS this event, already locked).
+	const lockedBy = new Map<string, string>();
+	for (const row of lockedRows) {
+		if (!row.calendarEventId) continue;
+		for (const key of meetingIdentityKeys(row)) {
+			lockedBy.set(key, row.calendarEventId);
+		}
+	}
 
 	const rows = events
 		.filter((event) => !tombstoned.has(event.id))
@@ -182,7 +235,19 @@ const syncMeetingsForRange = async (
 				calendarEventId: event.id,
 			};
 		})
-		.filter((row) => row.durationSeconds > 0);
+		.filter((row) => row.durationSeconds > 0)
+		.filter((row) => {
+			const holder = meetingIdentityKeys(row)
+				.map((key) => lockedBy.get(key))
+				.find((eventId) => eventId != null);
+			if (holder == null || holder === row.calendarEventId) return true;
+			console.info("[time-entries] skipping reissued calendar event", {
+				keptEventId: holder,
+				skippedEventId: row.calendarEventId,
+				date: row.date,
+			});
+			return false;
+		});
 
 	if (rows.length > 0) {
 		await db
@@ -226,46 +291,65 @@ const syncMeetingsForRange = async (
 		);
 };
 
+// The day's commit subjects, as the description of the block they produced.
+// Mandatory descriptions mean this engine has to write one, and the subjects are
+// the only raw material it has; the person edits it like any other entry.
+const COMMIT_SUMMARY_LIMIT = 3;
+const commitSummary = (commits: ScannedCommit[]): string => {
+	const subjects = commits
+		.slice(0, COMMIT_SUMMARY_LIMIT)
+		.map((c) => c.message.split("\n")[0]?.trim() ?? "")
+		.filter(Boolean);
+	if (subjects.length === 0) return "";
+	const rest = commits.length - subjects.length;
+	return rest > 0
+		? `${subjects.join("; ")} (+${rest} more)`
+		: subjects.join("; ");
+};
+
 // For every day the user pushed commits, ensure a "rest of day" fill block
 // exists so tracked time auto-expands to that day's working hours — the user
-// only logs meetings and breaks, the fill absorbs the remainder.
+// only logs meetings and breaks, the fill absorbs the remainder. The commits
+// themselves ride along: they name the block and attach to it as evidence, so
+// the entry can answer "what was this?" without the person retyping it.
 const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
 	tz: string,
 ) => {
-	const dayKeys = await githubService.listUserCommitDays(ctx, range);
-	if (dayKeys.length === 0) return;
+	const days = await githubService.listUserCommitsByDay(ctx, range);
+	if (days.length === 0) return;
 
-	// The fill block needs a task like any other entry. "Development" is the
-	// conventional name; without it there's nothing sensible to attribute the
-	// time to, so the engine stays out of the way rather than guessing.
-	const workTask = await db.query.task.findFirst({
-		where: and(
-			eq(task.organizationId, ctx.organizationId),
-			eq(task.name, "Development"),
-			eq(task.isAbsence, false),
-		),
-		columns: { id: true },
-	});
+	// Resolved by system key, not by display name. The old lookup matched
+	// `name = 'Development'` scoped to the org, so an org that renamed the task
+	// (or one seeded before the key existed) had this engine silently switched
+	// off — no block, no error.
+	const workTask = await tasksService.findBySystemKey(ctx, "development");
 	if (!workTask) return;
 
 	const workingHours = await workingHoursService.list(ctx);
-	for (const dayKey of dayKeys) {
+	for (const { dayKey, commits } of days) {
 		const durationSeconds = await computeDayFillSeconds(
 			ctx,
 			dayKey,
 			tz,
 			workingHours,
 		);
-		await db
+		// A day already accounted for in full gets no block. Inserting a 0-second
+		// one would just park an empty second "Development" row next to the entries
+		// that already filled the day.
+		if (durationSeconds <= 0) continue;
+
+		const description = commitSummary(commits);
+
+		const [created] = await db
 			.insert(timeEntry)
 			.values({
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
 				taskId: workTask.id,
 				projectId: null,
-				description: "",
+				description,
 				date: dayKey,
 				durationSeconds,
 				fillsDay: true,
@@ -276,7 +360,49 @@ const syncCommitWorkTimeForRange = async (
 			.onConflictDoNothing({
 				target: [timeEntry.organizationId, timeEntry.userId, timeEntry.date],
 				where: sql`${timeEntry.fillsDay} = true`,
-			});
+			})
+			.returning();
+
+		// Nothing returned => the day already had a fill block: this engine's, from
+		// an earlier run, or one the person made by hand. Either way today's
+		// commits belong on it.
+		const entry =
+			created ??
+			(await db.query.timeEntry.findFirst({
+				where: and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.date, dayKey),
+					eq(timeEntry.fillsDay, true),
+				),
+				columns: { id: true, description: true },
+			}));
+		if (!entry) continue;
+
+		// Only ever fill a blank description — a person's own wording outranks
+		// generated commit subjects, and this runs on every read.
+		if (!created && entry.description.trim() === "" && description) {
+			await db
+				.update(timeEntry)
+				.set({ description, updatedAt: new Date() })
+				.where(eq(timeEntry.id, entry.id));
+		}
+
+		await db
+			.insert(timeEntryGithubCommit)
+			.values(
+				commits.map((commit) => ({
+					timeEntryId: entry.id,
+					projectGithubRepoId: commit.projectGithubRepoId,
+					sha: commit.sha,
+					message: commit.message,
+					authorLogin: commit.authorLogin,
+					committedAt: commit.committedAt,
+					url: commit.url,
+				})),
+			)
+			// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
+			.onConflictDoNothing();
 	}
 };
 
@@ -298,7 +424,11 @@ const projectIdsForUser = async (ctx: Ctx, userId: string) => {
 
 export const timeEntriesService = {
 	listRange: async (ctx: Ctx, range: { from: string; to: string }) => {
-		await recurringBlockRulesService.materializeRange(ctx, range.from, range.to);
+		await recurringBlockRulesService.materializeRange(
+			ctx,
+			range.from,
+			range.to,
+		);
 
 		const tz = await orgTimezone(ctx.organizationId);
 
@@ -547,6 +677,47 @@ export const timeEntriesService = {
 		return updated;
 	},
 
+	/**
+	 * File an unfiled entry against a project — the one thing the time page's
+	 * unfiled worklist does. Narrower than `update` on purpose: filing must not
+	 * require the caller to resupply date, duration and task just to attribute a
+	 * synced meeting, and the entry keeps its duration, so there is no fill to
+	 * recompute.
+	 */
+	file: async (ctx: Ctx, input: FileTimeEntryInput) => {
+		const existing = await db.query.timeEntry.findFirst({
+			where: and(
+				eq(timeEntry.id, input.timeEntryId),
+				eq(timeEntry.organizationId, ctx.organizationId),
+				// Filing is self-service: nobody else attributes your time for you.
+				eq(timeEntry.userId, ctx.userId),
+			),
+			columns: { id: true, taskId: true, calendarEventId: true },
+		});
+		if (!existing) throw new Error("Time entry not found");
+
+		await assertProjectInOrg(ctx, input.projectId);
+		const access = await accessService.resolve(ctx);
+		access.assertCanTrackOn(input.projectId);
+		// The task still has to be one the target project picked, exactly as if the
+		// entry had been created against that project by hand.
+		await assertTaskAvailable(ctx, existing.taskId, input.projectId);
+
+		const [updated] = await db
+			.update(timeEntry)
+			.set({
+				projectId: input.projectId,
+				// Filing a synced meeting is the user taking ownership of it; without
+				// this the next sync would treat it as its own row again.
+				syncLocked: existing.calendarEventId != null ? true : undefined,
+				updatedAt: new Date(),
+			})
+			.where(eq(timeEntry.id, input.timeEntryId))
+			.returning();
+		if (!updated) throw new Error("Failed to file entry");
+		return updated;
+	},
+
 	/** Inline note edit. No duration/day change, so no fill recompute. */
 	updateDescription: async (
 		ctx: Ctx,
@@ -694,7 +865,8 @@ export const timeEntriesService = {
 					updatedAt: new Date(),
 				})
 				.where(eq(timeEntry.id, primary.id));
-			for (const row of duplicates) await timeEntriesService.remove(ctx, row.id);
+			for (const row of duplicates)
+				await timeEntriesService.remove(ctx, row.id);
 			await recomputeDayFill(ctx, input.date, tz);
 			return { entryId: primary.id };
 		}
@@ -862,7 +1034,9 @@ export const timeEntriesService = {
 		});
 		if (!existing) throw new Error("Time entry not found");
 		if (!existing.task.isAbsence) {
-			throw new Error("Only Vacation and Sick Leave entries can be removed here");
+			throw new Error(
+				"Only Vacation and Sick Leave entries can be removed here",
+			);
 		}
 
 		const access = await accessService.resolve(ctx);

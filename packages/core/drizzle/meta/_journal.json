@@ -162,6 +162,20 @@
       "when": 1786435518490,
       "tag": "0022_lush_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786441043160,
+      "tag": "0023_ambitious_hex",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786441461210,
+      "tag": "0024_promote_meeting_break_to_site",
+      "breakpoints": true
     }
   ]
 }

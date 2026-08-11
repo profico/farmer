@@ -299,7 +299,7 @@ export function ProjectMembersPanel({
 										</Button>
 									</div>
 									<div className="grid gap-1.5">
-										<Label className="eyebrow">Role on this project</Label>
+										<Label className="eyebrow">Role</Label>
 										<Select
 											value={r.role}
 											onValueChange={(value) =>

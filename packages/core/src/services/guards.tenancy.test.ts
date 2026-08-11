@@ -85,10 +85,24 @@ const [absenceTask] = await db
 	.returning();
 if (!absenceTask) throw new Error("Failed to seed absence task");
 
+// A site-scoped non-absence built-in (Meeting/Break in production). Deliberately
+// never linked through projectTask — being available without a link is the whole
+// property under test.
+const [universalTask] = await db
+	.insert(task)
+	.values({
+		scope: "site" as const,
+		name: `Test Meeting ${crypto.randomUUID()}`,
+		isAbsence: false,
+	})
+	.returning();
+if (!universalTask) throw new Error("Failed to seed universal task");
+
 afterAll(async () => {
 	await db.delete(organization).where(eq(organization.id, orgA.id));
 	await db.delete(organization).where(eq(organization.id, orgB.id));
 	await db.delete(task).where(eq(task.id, absenceTask.id));
+	await db.delete(task).where(eq(task.id, universalTask.id));
 });
 
 const ctxForOrgA: Ctx = { organizationId: orgA.id, userId: "test-user" };
@@ -143,10 +157,27 @@ describe("assertTaskAvailable", () => {
 		).resolves.toBeUndefined();
 	});
 
-	test("throws when a worked task is logged without a project", async () => {
+	// Was a rejection ("Pick a project"), now the legal UNFILED shape. The guard
+	// used to forbid it while the calendar-sync, commit-fill and day-assembly
+	// engines all wrote it straight to the database anyway — so the app produced
+	// rows that neither `create` nor `update` would accept, which made a synced
+	// meeting impossible to edit. Being unfiled is surfaced and chased elsewhere
+	// (the time page's banner, the close sheet, and finalize refusing outright);
+	// it is not the taxonomy guard's job to reject it.
+	test("resolves for a worked task with no project yet (unfiled)", async () => {
 		await expect(
 			assertTaskAvailable(ctxForOrgA, taskInA.id, undefined),
-		).rejects.toThrow("Pick a project");
+		).resolves.toBeUndefined();
+	});
+
+	// The cherry-pick bypass. Requiring an admin to add Meeting to every project
+	// individually meant forgetting it on one made that project unable to accept
+	// the calendar sync's own entries — a failure mode with no upside, since no
+	// org opts out of meetings.
+	test("resolves for a universal built-in the project never picked", async () => {
+		await expect(
+			assertTaskAvailable(ctxForOrgA, universalTask.id, projectInA.id),
+		).resolves.toBeUndefined();
 	});
 
 	test("resolves for a site-wide absence task with no project", async () => {

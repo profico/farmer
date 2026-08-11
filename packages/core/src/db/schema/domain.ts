@@ -40,6 +40,21 @@ export const projectRole = pgEnum("project_role", ["member", "team_lead", "pm"])
 // cherry-pick from it via `projectTask` (PRD 3.5).
 export const taskScope = pgEnum("task_scope", ["site", "organization"]);
 
+// The stable identity of a task the engines bind to, independent of its display
+// name and its scope. Three engines need to find a specific task — the calendar
+// sync files meetings, the day assembler proposes work and carves breaks — and
+// they used to do it by matching `name` against a string literal, which meant
+// renaming "Meeting" in Settings silently switched calendar sync off. The key is
+// what they resolve now; the name stays freely editable.
+export const taskSystemKey = pgEnum("task_system_key", [
+	"meeting",
+	"development",
+	"break",
+	"vacation",
+	"sick",
+]);
+export type TaskSystemKey = (typeof taskSystemKey.enumValues)[number];
+
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });
 const org = () =>
@@ -120,6 +135,10 @@ export const task = pgTable(
 		name: text("name").notNull(),
 		color: text("color"),
 		description: text("description"),
+		// Null for ordinary admin-created tasks. Set on the ones an engine needs to
+		// locate (see `taskSystemKey`). Never exposed as an editable field — it is
+		// assigned by the seeders and only read.
+		systemKey: taskSystemKey("system_key"),
 		// Vacation and Sick Leave. Absence tasks are special-cased everywhere: they
 		// carry no project, are not cherry-pickable onto projects, cannot be
 		// archived, and feed the absence-day count on close sheets and report 6.3.
@@ -146,6 +165,21 @@ export const task = pgTable(
 		uniqueIndex("task_org_name_uidx")
 			.on(t.organizationId, t.name)
 			.where(sql`${t.scope} = 'organization' and ${t.archivedAt} is null`),
+		// One live task per system key: once per org for org-scoped ones, once
+		// platform-wide for site-scoped ones. Two indexes rather than one because a
+		// site task's organization_id is NULL and Postgres treats NULLs as distinct
+		// in a unique index — a single (organization_id, system_key) index would
+		// happily allow unlimited site rows claiming the same key.
+		uniqueIndex("task_org_system_key_uidx")
+			.on(t.organizationId, t.systemKey)
+			.where(
+				sql`${t.scope} = 'organization' and ${t.systemKey} is not null and ${t.archivedAt} is null`,
+			),
+		uniqueIndex("task_site_system_key_uidx")
+			.on(t.systemKey)
+			.where(
+				sql`${t.scope} = 'site' and ${t.systemKey} is not null and ${t.archivedAt} is null`,
+			),
 	],
 );
 

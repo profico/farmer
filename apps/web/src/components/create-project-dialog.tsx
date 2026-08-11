@@ -28,6 +28,7 @@ import {
 	FormMessage,
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
+import { PillToggleGroup } from "#/components/ui/pill-toggle-group.tsx";
 import {
 	Select,
 	SelectContent,
@@ -36,11 +37,11 @@ import {
 	SelectValue,
 } from "#/components/ui/select.tsx";
 import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
-import { cn } from "#/lib/utils.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
 import { createProject } from "#/server/projects.ts";
+import { PlusIcon } from "@phosphor-icons/react";
 
 const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 
@@ -130,9 +131,14 @@ export function CreateProjectDialog() {
 
 	const type = form.watch("type");
 	const taskIds = form.watch("taskIds");
-	// Absence tasks belong to nobody's project — Vacation and Sick Leave are
-	// logged without one, so they can't be cherry-picked here.
-	const pickableTasks = allTasks.filter((t) => !t.isAbsence);
+	// Neither universal shape is cherry-picked here. Absence tasks belong to
+	// nobody's project — Vacation and Sick Leave are logged without one — and the
+	// site built-ins (Meeting, Break) come with every project already, so offering
+	// them as pills would imply you could create a project without them.
+	const pickableTasks = allTasks.filter(
+		(t) => !t.isAbsence && t.scope !== "site",
+	);
+	const builtInTasks = allTasks.filter((t) => !t.isAbsence && t.scope === "site");
 
 	const toggleTask = (taskId: string) => {
 		const current = form.getValues("taskIds");
@@ -183,7 +189,9 @@ export function CreateProjectDialog() {
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger render={<Button>+ New project</Button>} />
+            <DialogTrigger render={<Button>
+                <PlusIcon weight='light' />
+                New project</Button>} />
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Create project</DialogTitle>
@@ -385,25 +393,21 @@ export function CreateProjectDialog() {
 						    comparable. */}
 						<FormItem className="border-t pt-3.5">
 							<FormLabel>Tasks on this project</FormLabel>
-							<div className="flex flex-wrap gap-1.5">
-								{pickableTasks.map((t) => (
-									<button
-										key={t.id}
-										type="button"
-										onClick={() => toggleTask(t.id)}
-										className={cn(
-											"rounded-full border px-3 py-1.5 text-xs transition-colors duration-(--dur-fast)",
-											taskIds.includes(t.id)
-												? "border-primary/40 bg-primary/8 font-medium text-primary"
-												: "border-border text-muted-foreground",
-										)}
-									>
-										{t.name}
-									</button>
-								))}
-							</div>
+							<PillToggleGroup
+								items={pickableTasks.map((t) => ({ id: t.id, label: t.name }))}
+								selectedIds={taskIds}
+								onToggle={toggleTask}
+							/>
 							<p className="text-sm text-muted-foreground">
-								People can only log time against the tasks you pick here.
+								People can only log time against the tasks you pick here
+								{builtInTasks.length > 0 && (
+									<>
+										, plus {builtInTasks.map((t) => t.name).join(" and ")},
+										which every project gets
+									</>
+								)}
+								. You can change the picks later from the project's Manage
+								tasks action.
 							</p>
 						</FormItem>
 						<DialogFooter>

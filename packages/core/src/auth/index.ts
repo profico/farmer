@@ -6,6 +6,7 @@ import { genericOAuth, organization } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
+import { ensureOrgTasks } from "../db/seed-tasks";
 import { sendMail } from "../lib/email";
 import {
 	bootstrapSingleOrg,
@@ -125,6 +126,11 @@ export const auth = betterAuth({
 						role: "owner",
 						createdAt: new Date(),
 					});
+					// Seed the starter taxonomy here rather than leaving it to the dev
+					// seed script: a brand-new org with no tasks cannot log a single
+					// entry, and the calendar-sync and day-assembly engines have nothing
+					// to resolve, both of which fail silently.
+					await ensureOrgTasks(organizationId);
 				},
 			},
 		},

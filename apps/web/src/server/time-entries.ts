@@ -3,6 +3,7 @@ import {
 	createAbsenceForUserInput,
 	createTimeEntryInput,
 	deleteTimeEntryInput,
+	fileTimeEntryInput,
 	listAbsenceForUserInput,
 	listTimeEntriesRangeInput,
 	overrideAbsenceEntryInput,
@@ -44,6 +45,25 @@ export const updateTimeEntryDescription = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
 		return timeEntriesService.updateDescription(context.ctx, data);
+	});
+
+// The unfiled worklist: entries with no project yet (synced meetings, fill
+// blocks), and the mutation that attributes one. Both are caller-scoped —
+// filing your own time is not something anyone else does for you.
+export const listUnfiledEntries = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(listTimeEntriesRangeInput)
+	.handler(async ({ data, context }) => {
+		const { listUnfiledForUser } = await import("@farmer/core/services");
+		return listUnfiledForUser(context.ctx, data);
+	});
+
+export const fileTimeEntry = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(fileTimeEntryInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.file(context.ctx, data);
 	});
 
 export const setTimeEntryOvertime = createServerFn({ method: "POST" })

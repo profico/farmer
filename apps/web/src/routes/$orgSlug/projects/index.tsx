@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CreateProjectDialog } from "#/components/create-project-dialog.tsx";
 import { ManageProjectGithubReposDialog } from "#/components/manage-project-github-repos-dialog.tsx";
+import { ManageProjectTasksDialog } from "#/components/manage-project-tasks-dialog.tsx";
 import { ProjectMembersPanel } from "#/components/project-members-panel.tsx";
 import { EmptyState } from "#/components/states/empty-state.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
@@ -57,6 +58,9 @@ function ProjectsPage() {
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 	const [manageReposProjectId, setManageReposProjectId] = useState<
+		string | null
+	>(null);
+	const [manageTasksProjectId, setManageTasksProjectId] = useState<
 		string | null
 	>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -113,7 +117,7 @@ function ProjectsPage() {
 	const main = (
 		<div className="flex min-w-0 flex-1 flex-col p-4 sm:px-8 sm:py-8">
 			<PageHeader
-				eyebrow={`${counts.active} active · ${counts.all} total`}
+				eyebrow={``}
 				title="Projects"
 				action={
 					<div className="flex items-center gap-2">
@@ -190,6 +194,14 @@ function ProjectsPage() {
 							{filtered.map((project) => {
 								const category = resolveCategoryColor(project.color);
 								const archived = project.status === "archived";
+								// Editing the task subset is the same capability as editing the
+								// team — Team Lead and up, which the service enforces anyway;
+								// this just keeps the action off menus where it would only ever
+								// fail.
+								const canManageTasks =
+									isAdmin ||
+									project.myRole === "team_lead" ||
+									project.myRole === "pm";
 								const shownContributors = project.contributors.slice(
 									0,
 									MAX_AVATARS_SHOWN,
@@ -258,6 +270,12 @@ function ProjectsPage() {
 											    renders a lone action as its own button, not a menu. */}
 											<RowActions
 												actions={[
+													!archived &&
+														canManageTasks && {
+															label: "Manage tasks",
+															onClick: () =>
+																setManageTasksProjectId(project.id),
+														},
 													!archived && {
 														label: "Manage GitHub repos",
 														onClick: () => setManageReposProjectId(project.id),
@@ -290,6 +308,14 @@ function ProjectsPage() {
 				projectId={manageReposProjectId}
 				orgSlug={organization.slug}
 				onOpenChange={(open) => !open && setManageReposProjectId(null)}
+			/>
+
+			<ManageProjectTasksDialog
+				projectId={manageTasksProjectId}
+				projectName={
+					projects.find((p) => p.id === manageTasksProjectId)?.name ?? null
+				}
+				onOpenChange={(open) => !open && setManageTasksProjectId(null)}
 			/>
 		</div>
 	);

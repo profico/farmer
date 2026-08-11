@@ -1,8 +1,15 @@
 import { and, asc, count, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "../db";
-import { project, projectTask, task, timeEntry } from "../db/schema/domain";
+import {
+	project,
+	projectTask,
+	task,
+	type TaskSystemKey,
+	timeEntry,
+} from "../db/schema/domain";
 import type { CreateTaskInput, UpdateTaskInput } from "../schema/tasks";
 import { accessService } from "./access.service";
+import { isUniversalTask } from "./guards";
 import type { Ctx } from "./types";
 
 // The two built-in absence tasks. Site-scoped, seeded once, never archivable and
@@ -43,25 +50,81 @@ export const tasksService = {
 	listForProject: async (ctx: Ctx, projectId: string | undefined) => {
 		if (!projectId) return tasksService.listAbsenceTasks();
 
-		const rows = await db
-			.select({
-				id: task.id,
-				name: task.name,
-				color: task.color,
-				description: task.description,
-				isAbsence: task.isAbsence,
-			})
-			.from(projectTask)
-			.innerJoin(task, eq(projectTask.taskId, task.id))
-			.where(
-				and(
-					eq(projectTask.organizationId, ctx.organizationId),
-					eq(projectTask.projectId, projectId),
-					isNull(task.archivedAt),
+		const columns = {
+			id: task.id,
+			name: task.name,
+			color: task.color,
+			description: task.description,
+			isAbsence: task.isAbsence,
+		};
+
+		// Two sources, because a project's options are its cherry-picked subset
+		// PLUS the universal built-ins it never had to pick (see isUniversalTask).
+		const [picked, universal] = await Promise.all([
+			db
+				.select(columns)
+				.from(projectTask)
+				.innerJoin(task, eq(projectTask.taskId, task.id))
+				.where(
+					and(
+						eq(projectTask.organizationId, ctx.organizationId),
+						eq(projectTask.projectId, projectId),
+						isNull(task.archivedAt),
+					),
 				),
-			)
-			.orderBy(asc(task.name));
-		return rows;
+			db
+				.select(columns)
+				.from(task)
+				.where(
+					and(
+						eq(task.scope, "site"),
+						eq(task.isAbsence, false),
+						isNull(task.archivedAt),
+					),
+				),
+		]);
+
+		// Dedupe: a project may still carry a projectTask row pointing at a built-in
+		// — either picked by hand before they were universal, or inherited from the
+		// org copy that migration 0024 folded into the shared row. Those rows are
+		// now redundant rather than wrong, so they're tolerated here instead of
+		// being migrated away.
+		const byId = new Map([...picked, ...universal].map((t) => [t.id, t]));
+		return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+	},
+
+	/**
+	 * Resolve the task an engine binds to, by its stable key rather than its
+	 * display name. Three engines depend on this — the calendar sync files
+	 * meetings, the day assembler proposes work and carves breaks — and all three
+	 * used to match `task.name` against a string literal, so renaming a task in
+	 * Settings switched the engine off with no error anywhere.
+	 *
+	 * Accepts either scope: `meeting` and `break` live as site built-ins, while
+	 * `development` is org-scoped and renameable. Site wins the tie-break, since
+	 * an org row sharing a built-in's key can only be a leftover from before the
+	 * built-in was promoted.
+	 *
+	 * Archived tasks are excluded. That mattered: the old meeting lookup had no
+	 * `archivedAt` filter, so archiving the task left the sync engine writing
+	 * entries against a dead row.
+	 */
+	findBySystemKey: async (ctx: Ctx, key: TaskSystemKey) => {
+		const rows = await db.query.task.findMany({
+			where: and(
+				eq(task.systemKey, key),
+				isNull(task.archivedAt),
+				or(
+					eq(task.scope, "site"),
+					and(
+						eq(task.scope, "organization"),
+						eq(task.organizationId, ctx.organizationId),
+					),
+				),
+			),
+			columns: { id: true, name: true, scope: true },
+		});
+		return rows.find((r) => r.scope === "site") ?? rows[0] ?? null;
 	},
 
 	/** The whole global list this org may cherry-pick from: site built-ins that
@@ -106,11 +169,56 @@ export const tasksService = {
 			.groupBy(timeEntry.taskId);
 		const countByTask = new Map(counts.map((c) => [c.taskId, c.count]));
 
-		return tasks.map((t) => ({ ...t, entryCount: countByTask.get(t.id) ?? 0 }));
+		// How many of this org's projects offer each task. Org-scoped for the same
+		// reason as the entry counts: a shared site task may be picked by a hundred
+		// projects platform-wide and that number means nothing here.
+		const projectCounts = await db
+			.select({ taskId: projectTask.taskId, count: count() })
+			.from(projectTask)
+			.where(eq(projectTask.organizationId, ctx.organizationId))
+			.groupBy(projectTask.taskId);
+		const projectCountByTask = new Map(
+			projectCounts.map((c) => [c.taskId, c.count]),
+		);
+
+		// Universal built-ins have no meaningful project count — they are on every
+		// project by definition, and any projectTask rows they still carry are
+		// leftovers. The flag lets the screen say "All" instead of a number that
+		// would read as "only these 3 projects offer Meeting".
+		return tasks.map((t) => ({
+			...t,
+			universal: isUniversalTask(t),
+			entryCount: countByTask.get(t.id) ?? 0,
+			projectCount: projectCountByTask.get(t.id) ?? 0,
+		}));
 	},
 
 	create: async (ctx: Ctx, input: CreateTaskInput) => {
 		await accessService.requireAdmin(ctx);
+		const name = input.name.trim();
+
+		// `task_org_name_uidx` only covers LIVE rows, so nothing at the database
+		// level stopped create → archive → create from stacking up an unbounded pile
+		// of same-named archived tasks — which is how a settings screen ends up
+		// listing twenty "Development"s with no way to tell them apart. Collisions
+		// are resolved here instead, with a message per case rather than a raw
+		// 23505 for the live one and silent duplication for the archived one.
+		const clash = await db.query.task.findFirst({
+			where: and(
+				eq(task.scope, "organization"),
+				eq(task.organizationId, ctx.organizationId),
+				eq(task.name, name),
+			),
+			columns: { id: true, archivedAt: true },
+		});
+		if (clash) {
+			throw new Error(
+				clash.archivedAt
+					? `An archived task is already called "${name}". Restore it instead of creating a second one.`
+					: `A task called "${name}" already exists.`,
+			);
+		}
+
 		const [created] = await db
 			.insert(task)
 			.values({
@@ -118,7 +226,7 @@ export const tasksService = {
 				// global and projects cherry-pick from it.
 				scope: "organization",
 				organizationId: ctx.organizationId,
-				name: input.name.trim(),
+				name,
 				color: input.color,
 				description: input.description,
 			})
@@ -127,12 +235,65 @@ export const tasksService = {
 		return created;
 	},
 
-	update: async (ctx: Ctx, input: UpdateTaskInput) => {
+	/** Bring an archived task back, keeping its id — so every entry already
+	 *  pointing at it stays attached and its history reads continuously. The
+	 *  alternative users reach for otherwise is creating a same-named replacement,
+	 *  which strands all of that on a dead row. */
+	unarchive: async (ctx: Ctx, taskId: string) => {
 		await accessService.requireAdmin(ctx);
 		const existing = await db.query.task.findFirst({
 			where: and(
-				eq(task.id, input.taskId),
+				eq(task.id, taskId),
+				eq(task.scope, "organization"),
 				eq(task.organizationId, ctx.organizationId),
+			),
+			columns: { id: true, name: true, archivedAt: true, systemKey: true },
+		});
+		if (!existing) throw new Error("Task not found");
+		if (!existing.archivedAt) return;
+
+		// Both partial unique indexes ignore archived rows, so a live task may have
+		// taken this one's name or system key while it was away. Restoring would
+		// then hit a raw constraint violation; say which it is instead.
+		const blocker = await db.query.task.findFirst({
+			where: and(
+				eq(task.scope, "organization"),
+				eq(task.organizationId, ctx.organizationId),
+				isNull(task.archivedAt),
+				existing.systemKey
+					? or(
+							eq(task.name, existing.name),
+							eq(task.systemKey, existing.systemKey),
+						)
+					: eq(task.name, existing.name),
+			),
+			columns: { id: true },
+		});
+		if (blocker) {
+			throw new Error(
+				`Another live task already uses the name "${existing.name}". Rename or archive it first.`,
+			);
+		}
+
+		await db
+			.update(task)
+			.set({ archivedAt: null, updatedAt: new Date() })
+			.where(eq(task.id, taskId));
+	},
+
+	update: async (ctx: Ctx, input: UpdateTaskInput) => {
+		await accessService.requireAdmin(ctx);
+		// Site tasks are matched too, so the rejection below is the one the caller
+		// sees. Looking up on organization_id alone silently excluded them — a site
+		// row's organization_id is NULL, so the comparison is never true — and the
+		// admin got "Task not found" for a row plainly listed on their screen.
+		const existing = await db.query.task.findFirst({
+			where: and(
+				eq(task.id, input.taskId),
+				or(
+					eq(task.scope, "site"),
+					eq(task.organizationId, ctx.organizationId),
+				),
 			),
 		});
 		if (!existing) throw new Error("Task not found");
@@ -157,14 +318,23 @@ export const tasksService = {
 
 	archive: async (ctx: Ctx, taskId: string) => {
 		await accessService.requireAdmin(ctx);
+		// Site rows matched here for the same reason as in `update` above: so the
+		// caller gets the real reason rather than "Task not found".
 		const existing = await db.query.task.findFirst({
 			where: and(
 				eq(task.id, taskId),
-				eq(task.organizationId, ctx.organizationId),
+				or(
+					eq(task.scope, "site"),
+					eq(task.organizationId, ctx.organizationId),
+				),
 			),
 		});
 		if (!existing) throw new Error("Task not found");
-		// Vacation and Sick Leave are built-ins and cannot be removed (PRD §8).
+		// Vacation, Sick Leave, Meeting and Break are built-ins and cannot be
+		// removed (PRD §8). For Meeting and Break that unarchivability is the whole
+		// point of their being site-scoped: the calendar sync and the day assembler
+		// resolve them on every run, and an admin archiving one would switch that
+		// engine off with nothing to indicate why.
 		if (existing.scope === "site" || existing.isAbsence) {
 			throw new Error("Built-in tasks cannot be archived");
 		}
@@ -176,6 +346,102 @@ export const tasksService = {
 	},
 
 	// ── Per-project cherry-picking ────────────────────────────────────────────
+	//
+	// One join table, two directions. `setProjectTasks` edits a row of it from the
+	// project's side (Team Lead and up, per project); `setTaskProjects` edits a
+	// column of it from the task's side, which spans projects the caller may not
+	// individually lead and so is Admin-only. Both replace wholesale rather than
+	// diffing, so neither can half-apply.
+
+	/** Which of this org's projects currently offer a given task. Admin only —
+	 *  it is the read half of `setTaskProjects`. */
+	listProjectsForTask: async (ctx: Ctx, taskId: string) => {
+		await accessService.requireAdmin(ctx);
+
+		const rows = await db
+			.select({ projectId: projectTask.projectId })
+			.from(projectTask)
+			.where(
+				and(
+					eq(projectTask.organizationId, ctx.organizationId),
+					eq(projectTask.taskId, taskId),
+				),
+			);
+		return rows.map((r) => r.projectId);
+	},
+
+	/** Replace the set of projects offering a task, wholesale. Admin only: this
+	 *  reaches across every project in the org at once, which no per-project role
+	 *  grants. */
+	setTaskProjects: async (ctx: Ctx, taskId: string, projectIds: string[]) => {
+		await accessService.requireAdmin(ctx);
+
+		// The task must be one this org may actually put on a project: live, not an
+		// absence task, and either a site built-in or its own. Checked in the query
+		// so another org's task id can't be smuggled in.
+		const usable = await db.query.task.findFirst({
+			where: and(
+				eq(task.id, taskId),
+				isNull(task.archivedAt),
+				eq(task.isAbsence, false),
+				or(
+					eq(task.scope, "site"),
+					and(
+						eq(task.scope, "organization"),
+						eq(task.organizationId, ctx.organizationId),
+					),
+				),
+			),
+			columns: { id: true, scope: true, isAbsence: true },
+		});
+		if (!usable) throw new Error("Task is not available to this organization");
+
+		// Rejected rather than ignored: unlike setProjectTasks this names one task
+		// explicitly, so a caller reaching here for Meeting has the wrong model of
+		// it — and honouring the call would let an admin produce a project list that
+		// the entry form then contradicts.
+		if (isUniversalTask(usable)) {
+			throw new Error(
+				"Built-in tasks are available on every project and can't be limited to some of them",
+			);
+		}
+
+		const unique = [...new Set(projectIds)];
+		if (unique.length > 0) {
+			const valid = await db.query.project.findMany({
+				where: and(
+					inArray(project.id, unique),
+					eq(project.organizationId, ctx.organizationId),
+				),
+				columns: { id: true },
+			});
+			if (valid.length !== unique.length) {
+				throw new Error("One or more projects are not in this organization");
+			}
+		}
+
+		await db.transaction(async (tx) => {
+			// Org-scoped delete, so unlinking a shared site task here leaves every
+			// other org's links to it untouched.
+			await tx
+				.delete(projectTask)
+				.where(
+					and(
+						eq(projectTask.organizationId, ctx.organizationId),
+						eq(projectTask.taskId, taskId),
+					),
+				);
+			if (unique.length > 0) {
+				await tx.insert(projectTask).values(
+					unique.map((projectId) => ({
+						organizationId: ctx.organizationId,
+						projectId,
+						taskId,
+					})),
+				);
+			}
+		});
+	},
 
 	/** Replace a project's picked task subset wholesale. Absence tasks are
 	 *  rejected: they carry no project by definition. */
@@ -193,6 +459,7 @@ export const tasksService = {
 		if (!owned) throw new Error("Project not found");
 
 		const unique = [...new Set(taskIds)];
+		let toLink = unique;
 		if (unique.length > 0) {
 			// Every id must be a live, non-absence task this org may use. Checked in
 			// the query (not by comparing in JS after the fact) so a caller can't
@@ -210,11 +477,22 @@ export const tasksService = {
 						),
 					),
 				),
-				columns: { id: true },
+				columns: { id: true, scope: true, isAbsence: true },
 			});
 			if (valid.length !== unique.length) {
 				throw new Error("One or more tasks are not available to this project");
 			}
+
+			// Universal built-ins are dropped rather than rejected. This endpoint
+			// replaces a project's whole set, so a client that includes Meeting is
+			// asking for something already true, not something wrong — erroring would
+			// fail the entire save over a no-op. Storing the row instead would be
+			// worse: it implies the link is what grants access, and deleting it later
+			// would look like it should revoke access when it can't.
+			const universal = new Set(
+				valid.filter(isUniversalTask).map((t) => t.id),
+			);
+			toLink = unique.filter((id) => !universal.has(id));
 		}
 
 		await db.transaction(async (tx) => {
@@ -226,9 +504,9 @@ export const tasksService = {
 						eq(projectTask.projectId, projectId),
 					),
 				);
-			if (unique.length > 0) {
+			if (toLink.length > 0) {
 				await tx.insert(projectTask).values(
-					unique.map((taskId) => ({
+					toLink.map((taskId) => ({
 						organizationId: ctx.organizationId,
 						projectId,
 						taskId,

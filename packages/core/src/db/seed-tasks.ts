@@ -2,12 +2,34 @@ import { eq, and } from "drizzle-orm";
 import { db } from "./index";
 import { task } from "./schema/domain";
 
-// The two built-in absence tasks. Site-scoped, unarchivable, and the ONLY tasks
-// that may be logged without a project (PRD 3.5). Everything else in the
-// taxonomy is org-scoped and admin-managed in Settings.
+// The site-wide built-ins: one shared row each, owned by no org, uneditable and
+// unarchivable (tasksService.update/archive reject site scope). Two kinds live
+// here, for two different reasons:
+//
+//   * Vacation and Sick Leave are the absence tasks — the only ones that may be
+//     logged without a project (PRD 3.5).
+//   * Meeting and Break are engine plumbing. The calendar sync needs somewhere
+//     to file imported meetings and the day assembler needs something to carve a
+//     break out of, so both must exist for every org, always. Site scope is what
+//     guarantees that: an admin cannot archive the row out from under the engine.
+//     They are not renameable for the same reason site scope makes them
+//     reliable — one row is shared by every org — which is precisely why the
+//     *taxonomy* tasks below stayed org-scoped.
 const SITE_TASKS = [
-	{ name: "Vacation", color: "green", isAbsence: true },
-	{ name: "Sick Leave", color: "red", isAbsence: true },
+	{
+		name: "Vacation",
+		color: "green",
+		isAbsence: true,
+		systemKey: "vacation",
+	},
+	{
+		name: "Sick Leave",
+		color: "red",
+		isAbsence: true,
+		systemKey: "sick",
+	},
+	{ name: "Meeting", color: "purple", isAbsence: false, systemKey: "meeting" },
+	{ name: "Break", color: "orange", isAbsence: false, systemKey: "break" },
 ] as const;
 
 // Starter taxonomy for a new org. Deliberately small and generic — the point of
@@ -15,19 +37,16 @@ const SITE_TASKS = [
 // reporting comparable, so orgs are expected to curate this, not extend it
 // per project (per-project tasks do not exist).
 //
-// Three of these names are load-bearing beyond the taxonomy: "Meeting" is what
-// the Google Calendar sync files imported meetings under, and "Development" and
-// "Break" are what the day assembler proposes. Renaming them in Settings simply
-// switches those engines off rather than breaking anything.
+// Unlike the site built-ins above these are all renameable, including
+// "Development" — the day assembler resolves it by `systemKey`, so calling it
+// "Engineering" changes the label and nothing else.
 export const DEFAULT_ORG_TASKS = [
-	{ name: "Development", color: "blue" },
-	{ name: "Design", color: "violet" },
-	{ name: "Meeting", color: "purple" },
-	{ name: "Code review", color: "cyan" },
-	{ name: "QA & testing", color: "amber" },
-	{ name: "Project management", color: "slate" },
-	{ name: "Support & maintenance", color: "teal" },
-	{ name: "Break", color: "orange" },
+	{ name: "Development", color: "blue", systemKey: "development" },
+	{ name: "Design", color: "violet", systemKey: null },
+	{ name: "Code review", color: "cyan", systemKey: null },
+	{ name: "QA & testing", color: "amber", systemKey: null },
+	{ name: "Project management", color: "slate", systemKey: null },
+	{ name: "Support & maintenance", color: "teal", systemKey: null },
 ] as const;
 
 /**
@@ -45,6 +64,7 @@ export async function ensureSiteTasks() {
 				name: t.name,
 				color: t.color,
 				isAbsence: t.isAbsence,
+				systemKey: t.systemKey,
 			})),
 		)
 		.onConflictDoNothing();
@@ -59,10 +79,22 @@ export async function ensureOrgTasks(organizationId: string) {
 			eq(task.organizationId, organizationId),
 			eq(task.scope, "organization"),
 		),
-		columns: { name: true },
+		columns: { name: true, systemKey: true },
 	});
-	const known = new Set(existing.map((t) => t.name));
-	const missing = DEFAULT_ORG_TASKS.filter((t) => !known.has(t.name));
+	const knownNames = new Set(existing.map((t) => t.name));
+	// Skipping on the system key as well as the name matters now that this runs on
+	// every boot: an org that renamed "Development" to "Engineering" still holds
+	// the `development` key, and matching on name alone would seed a second,
+	// competing "Development" underneath them on the next pass.
+	const knownKeys = new Set(
+		existing.flatMap((t) => (t.systemKey ? [t.systemKey] : [])),
+	);
+	// Archived rows count as known, deliberately: archiving a starter task means
+	// "we don't use this", and re-seeding would resurrect it every boot.
+	const missing = DEFAULT_ORG_TASKS.filter(
+		(t) =>
+			!knownNames.has(t.name) && !(t.systemKey && knownKeys.has(t.systemKey)),
+	);
 	if (missing.length === 0) return 0;
 
 	await db
@@ -73,10 +105,24 @@ export async function ensureOrgTasks(organizationId: string) {
 				organizationId,
 				name: t.name,
 				color: t.color,
+				systemKey: t.systemKey,
 			})),
 		)
 		.onConflictDoNothing();
 	return missing.length;
+}
+
+/**
+ * Bring every existing org up to the current starter taxonomy. Idempotent per
+ * org (see above), so this is safe to run on every deploy — which is the point:
+ * orgs created before task seeding was wired into signup have no tasks at all,
+ * and this is what heals them without a bespoke one-off migration.
+ */
+export async function ensureOrgTasksForAllOrgs() {
+	const orgs = await db.query.organization.findMany({ columns: { id: true } });
+	let seeded = 0;
+	for (const o of orgs) seeded += await ensureOrgTasks(o.id);
+	return { organizations: orgs.length, seeded };
 }
 
 // Standalone entrypoint: `bun run db:seed-tasks` and the Docker entrypoint run
@@ -85,5 +131,7 @@ export async function ensureOrgTasks(organizationId: string) {
 if (import.meta.main) {
 	const count = await ensureSiteTasks();
 	console.log(`Seeded ${count} site-wide tasks.`);
+	const { organizations, seeded } = await ensureOrgTasksForAllOrgs();
+	console.log(`Seeded ${seeded} org tasks across ${organizations} orgs.`);
 	process.exit(0);
 }

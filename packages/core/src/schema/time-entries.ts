@@ -86,6 +86,15 @@ export type UpdateTimeEntryDescriptionInput = z.infer<
 	typeof updateTimeEntryDescriptionInput
 >;
 
+// Attributing an already-existing entry to a project. Carries only the project,
+// because everything else about the entry is already right — a synced meeting
+// has its date, duration and task; what it lacks is where the time went.
+export const fileTimeEntryInput = z.object({
+	timeEntryId: z.uuid(),
+	projectId: z.uuid(),
+});
+export type FileTimeEntryInput = z.infer<typeof fileTimeEntryInput>;
+
 // Toggling overtime is a one-field mutation from the week grid.
 export const setTimeEntryOvertimeInput = z.object({
 	timeEntryId: z.uuid(),

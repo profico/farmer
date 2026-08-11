@@ -15,6 +15,7 @@ import { assertProjectInOrg } from "./guards";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { membersService, type ResolvedMemberType } from "./members.service";
 import type { Ctx } from "./types";
+import { unfiledByUser } from "./unfiled";
 
 export type CloseStatus = "open" | "submitted" | "finalized";
 
@@ -37,6 +38,13 @@ export type CloseSheetRow = {
 	 *  the project type doesn't carry Expected. */
 	expectedSeconds: number | null;
 	overtimeSeconds: number;
+	/** This person's time for the month that carries no project at all — synced
+	 *  meetings and fill blocks they haven't filed yet. Org-wide, not per project,
+	 *  because an unfiled entry has no project to be counted against: some of it
+	 *  may belong on this sheet and there is no way to know which until they file
+	 *  it. Surfaced so the PM can chase before finalization, which `finalize`
+	 *  refuses while this is non-zero. */
+	unfiledSeconds: number;
 	/** Computed from the person's Vacation/Sick entries... */
 	absenceDaysComputed: number;
 	/** ...and the PM's override, which lives on the sheet ONLY and never writes
@@ -249,7 +257,7 @@ export const closeService = {
 
 		const { from, to } = monthBounds(input.year, input.month);
 
-		const [proj, record, reported, absence, fundSeconds, types] =
+		const [proj, record, reported, absence, fundSeconds, types, unfiled] =
 			await Promise.all([
 				db.query.project.findFirst({
 					where: eq(project.id, input.projectId),
@@ -260,6 +268,7 @@ export const closeService = {
 				absenceDaysByUser(ctx, from, to),
 				hourFundService.get(ctx, input.year, input.month),
 				membersService.typesForMonth(ctx, input.year, input.month),
+				unfiledByUser(ctx, { from, to }),
 			]);
 		if (!proj) throw new Error("Project not found");
 
@@ -332,6 +341,7 @@ export const closeService = {
 						? expectedSecondsFor(memberType, fundSeconds, absenceDays)
 						: null,
 					overtimeSeconds: totals.overtime,
+					unfiledSeconds: unfiled.get(userId)?.seconds ?? 0,
 					absenceDaysComputed,
 					absenceDaysOverride: stored?.absenceDaysOverride ?? null,
 					comment: stored?.comment ?? null,
@@ -517,6 +527,26 @@ export const closeService = {
 		await assertProjectInOrg(ctx, input.projectId);
 
 		const sheet = await closeService.getSheet(ctx, input);
+
+		// Refuse to freeze a month that still has unattributed time. Finalization is
+		// the irreversible step and it snapshots Reported — if someone files their
+		// meetings next week, that time lands on a project whose month is already
+		// closed against a number that predates it, and report 6.4's variance
+		// silently compares against the wrong baseline.
+		//
+		// Deliberately NOT enforced on `submit`: submitting is a PM action, unfiled
+		// entries belong to individuals, and only the person themselves can file
+		// their own time — blocking the PM would leave them stuck on something they
+		// have no way to fix. They get the per-row warning on the sheet to chase
+		// with, and the hard stop lands on the admin, who has org-wide reach.
+		const holdouts = sheet.rows.filter((r) => r.unfiledSeconds > 0);
+		if (holdouts.length > 0) {
+			const names = holdouts.map((r) => r.name).join(", ");
+			throw new Error(
+				`Cannot finalize: ${names} ${holdouts.length === 1 ? "has" : "have"} time this month not filed against any project. It must be filed or deleted first.`,
+			);
+		}
+
 		const closeId = await ensureClose(
 			ctx,
 			input.projectId,

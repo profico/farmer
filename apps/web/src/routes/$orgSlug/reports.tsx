@@ -675,6 +675,20 @@ function TimeSummary({
 				</span>
 			</div>
 
+			{/* Time with no project — synced meetings and fill blocks nobody has
+			    filed yet. It cannot appear in the rows below (there is no client or
+			    project to group it under) and it is deliberately not added to the
+			    total, or the rows would stop summing to the figure above. Saying so
+			    is the point: the old behaviour was to drop it silently, which just
+			    made the total quietly wrong. */}
+			{data.unfiledSeconds > 0 && (
+				<p className="mt-4 text-sm text-muted-foreground">
+					<span className="mono">{formatHoursShort(data.unfiledSeconds)}</span>{" "}
+					in this period isn't filed against any project and is not included
+					above.
+				</p>
+			)}
+
 			{data.rows.length === 0 ? (
 				<p className="mt-5 border-t pt-5 text-base text-muted-foreground">
 					Nothing logged in this period.

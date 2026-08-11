@@ -100,3 +100,17 @@ Dev is `vite dev` (no port-binding server needed). **Production is a Bun-native 
 - The `nitro-nightly` package and `.bin/nitro` symlink present in `node_modules` are dead leftovers from initial scaffolding, not wired into `vite.config.ts`. The build has no hosting preset at all; production is served by the hand-written `apps/web/server.ts` (see Production above), which is *why* one is needed.
 - Base UI shadcn components have runtime-only failure modes that typecheck/build/lint all miss: `<Button render={<Link/>}>` to a non-`<button>` element needs `nativeButton={false}` or it throws in the console; `<Select>` needs an `items={[{value, label}]}` prop or the trigger displays the raw value instead of the resolved label.
 - Always verify interactive changes in a real browser, not curl/SSR output — the hydration crash described above passed every curl-based check while silently breaking every form in the app. A headless Chromium is available via `playwright-core` + system `google-chrome` if no browser tool is otherwise configured.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in the `profico/farmer` GitHub Issues, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — one root `CONTEXT.md` plus `docs/adr/`. See `docs/agents/domain.md`.

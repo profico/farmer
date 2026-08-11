@@ -22,4 +22,5 @@ export * from "./slack.service";
 export * from "./tasks.service";
 export * from "./time-entries.service";
 export * from "./types";
+export * from "./unfiled";
 export * from "./working-hours.service";

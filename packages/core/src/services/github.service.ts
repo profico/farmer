@@ -27,6 +27,19 @@ import type {
 } from "../schema/github";
 import type { Ctx } from "./types";
 
+// A commit as it comes back from a repo scan, already carrying every field
+// `timeEntryGithubCommit` stores — so a caller can attach it without a second
+// round trip to GitHub.
+export type ScannedCommit = {
+	projectGithubRepoId: string;
+	projectId: string;
+	sha: string;
+	message: string;
+	authorLogin: string | null;
+	committedAt: Date;
+	url: string;
+};
+
 // The user's OAuth token is used ONLY for identity — resolving their GitHub
 // login (to filter commits by author) and enumerating installations they may
 // connect. All repo/commit reads go through installation tokens instead.
@@ -199,7 +212,8 @@ export const githubService = {
 				eq(orgGithubInstallation.organizationId, ctx.organizationId),
 			),
 		});
-		if (!inst) throw new Error("Installation not connected to this organization");
+		if (!inst)
+			throw new Error("Installation not connected to this organization");
 
 		const token = await getInstallationToken(inst.installationId);
 		const repo = await getRepoById(token, input.githubRepoId);
@@ -300,15 +314,21 @@ export const githubService = {
 			.sort((a, b) => b.committedAt.getTime() - a.committedAt.getTime());
 	},
 
-	// Cross-repo commit-day scan for the "sync commits as work time" engine
+	// Cross-repo commit scan for the "sync commits as work time" engine
 	// (timeEntriesService.listRange). Unlike suggestCommits (one project), this
 	// sweeps every repo linked anywhere in the org, authored by the current user,
-	// and returns the distinct org-tz day keys they committed on. Returns [] when
-	// GitHub isn't connected so the time page never breaks.
-	listUserCommitDays: async (
+	// and buckets what it finds by org-tz day key. Returns [] when GitHub isn't
+	// connected so the time page never breaks.
+	//
+	// It returns whole commits rather than just the day keys it used to, because
+	// the engine attaches them to the block it creates as evidence — and the
+	// listing response already carries every field `timeEntryGithubCommit` needs,
+	// so that costs no extra API call (attachCommits re-fetches per commit only
+	// because it starts from a caller-supplied sha).
+	listUserCommitsByDay: async (
 		ctx: Ctx,
 		input: { from: string; to: string },
-	): Promise<string[]> => {
+	): Promise<{ dayKey: string; commits: ScannedCommit[] }[]> => {
 		const token = await getAccessToken(ctx);
 		if (!token) return [];
 		const githubUser = await getAuthenticatedUser(token);
@@ -325,7 +345,7 @@ export const githubService = {
 
 		const perRepo = await Promise.all(
 			repos.map(async (repo) => {
-				if (!repo.installationId) return [] as Date[];
+				if (!repo.installationId) return [] as ScannedCommit[];
 				try {
 					const instToken = await getInstallationToken(repo.installationId);
 					const commits = await listCommits(instToken, repo.owner, repo.name, {
@@ -333,25 +353,41 @@ export const githubService = {
 						since: start,
 						until: end,
 					});
-					return commits.map(
-						(commit) => new Date(commit.commit.author?.date ?? new Date()),
-					);
+					return commits.map((commit) => ({
+						projectGithubRepoId: repo.id,
+						projectId: repo.projectId,
+						sha: commit.sha,
+						message: commit.commit.message,
+						authorLogin: commit.author?.login ?? null,
+						committedAt: new Date(commit.commit.author?.date ?? new Date()),
+						url: commit.html_url,
+					}));
 				} catch (error) {
-					console.error("[github] listUserCommitDays repo failed", {
+					console.error("[github] listUserCommitsByDay repo failed", {
 						repoId: repo.id,
 						installationId: repo.installationId,
 						error,
 					});
-					return [] as Date[];
+					return [] as ScannedCommit[];
 				}
 			}),
 		);
 
-		const dayKeys = new Set<string>();
-		for (const committedAt of perRepo.flat()) {
-			dayKeys.add(dayKeyInTz(committedAt, tz));
+		const byDay = new Map<string, ScannedCommit[]>();
+		for (const commit of perRepo.flat()) {
+			const dayKey = dayKeyInTz(commit.committedAt, tz);
+			const bucket = byDay.get(dayKey);
+			if (bucket) bucket.push(commit);
+			else byDay.set(dayKey, [commit]);
 		}
-		return [...dayKeys];
+		return [...byDay].map(([dayKey, commits]) => ({
+			dayKey,
+			// Oldest first, so a description built from the first few subjects reads
+			// as the day unfolded.
+			commits: commits.sort(
+				(a, b) => a.committedAt.getTime() - b.committedAt.getTime(),
+			),
+		}));
 	},
 
 	// Day-assembly variant of the commit scan: every repo linked anywhere in the
@@ -410,7 +446,9 @@ export const githubService = {
 	attachCommits: async (ctx: Ctx, input: AttachCommitsInput) => {
 		await assertTimeEntryOwnedByUser(ctx, input.timeEntryId);
 
-		const repoIds = [...new Set(input.commits.map((c) => c.projectGithubRepoId))];
+		const repoIds = [
+			...new Set(input.commits.map((c) => c.projectGithubRepoId)),
+		];
 		const repos = await db.query.projectGithubRepo.findMany({
 			where: and(
 				inArray(projectGithubRepo.id, repoIds),
@@ -438,7 +476,12 @@ export const githubService = {
 				if (!repo || !repo.installationId) return null;
 				const instToken = tokenByInstallation.get(repo.installationId);
 				if (!instToken) return null;
-				const fresh = await getCommit(instToken, repo.owner, repo.name, commit.sha);
+				const fresh = await getCommit(
+					instToken,
+					repo.owner,
+					repo.name,
+					commit.sha,
+				);
 				if (!fresh) return null;
 				return { repo, fresh };
 			}),

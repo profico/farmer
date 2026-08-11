@@ -19,6 +19,7 @@ import {
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { membersService } from "./members.service";
 import type { Ctx } from "./types";
+import { unfiledTotals } from "./unfiled";
 
 // ── Scoping ────────────────────────────────────────────────────────────────
 // Admin sees everything. PM and Team Lead see the report scoped to THEIR
@@ -38,6 +39,14 @@ const reportScope = async (ctx: Ctx): Promise<{ access: Access; projectIds: stri
 // The Time Report covers PROJECT time. Absence entries carry no project and no
 // client, so they'd have nothing to group under; they are reported separately by
 // the Absence report (6.3), which is the only place they belong.
+//
+// UNFILED entries — synced meetings and fill blocks not yet attributed to a
+// project — are excluded by the same `isNotNull` and for the same reason: there
+// is no client or project to file them under, and inventing an "Unfiled" client
+// would put a fake row in a report whose whole shape is real clients. They are
+// not dropped silently any more, though: `timeSummary` returns `unfiledSeconds`
+// alongside the rows so the screen can say how much time is missing from the
+// total instead of the number just being quietly short.
 const projectTimeWhere = (
 	ctx: Ctx,
 	input: { from: string; to: string; clientId?: string; projectId?: string; taskId?: string; userId?: string },
@@ -83,7 +92,11 @@ export const reportsService = {
 	timeSummary: async (
 		ctx: Ctx,
 		input: TimeReportSummaryInput,
-	): Promise<{ rows: TimeReportRow[]; totalSeconds: number }> => {
+	): Promise<{
+		rows: TimeReportRow[];
+		totalSeconds: number;
+		unfiledSeconds: number;
+	}> => {
 		const { projectIds } = await reportScope(ctx);
 		const where = projectTimeWhere(ctx, input, projectIds);
 
@@ -113,9 +126,26 @@ export const reportsService = {
 			name: r.name,
 			secondsTotal: Number(r.secondsTotal),
 		}));
+		// Reported separately from `totalSeconds`, not folded into it: this is time
+		// the report cannot attribute, and adding it to the total would make the
+		// per-client rows stop summing to the figure above them.
+		//
+		// Only meaningful org-wide. A Team Lead scoped to a subset of projects has
+		// no claim on time that is attributed to no project at all, and neither does
+		// a run already filtered to one client or project.
+		const orgWide =
+			projectIds === null &&
+			!input.projectId &&
+			!input.clientId &&
+			!input.userId;
+		const unfiled = orgWide
+			? await unfiledTotals(ctx, { from: input.from, to: input.to })
+			: { seconds: 0 };
+
 		return {
 			rows: mapped,
 			totalSeconds: mapped.reduce((sum, r) => sum + r.secondsTotal, 0),
+			unfiledSeconds: unfiled.seconds,
 		};
 	},
 

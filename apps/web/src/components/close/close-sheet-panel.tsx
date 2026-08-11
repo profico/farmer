@@ -314,6 +314,16 @@ export function CloseSheetPanel({
 								<TableCell>
 									<span className="block font-medium">{row.name}</span>
 									<span className="eyebrow block">{row.memberType}</span>
+									{/* Org-wide for the month, not this project's share — an
+									    unfiled entry has no project, so some of it may belong
+									    here and there's no way to tell until they file it. Shown
+									    so the PM can chase during the month; finalize refuses
+									    outright while any of it is outstanding. */}
+									{row.unfiledSeconds > 0 && (
+										<span className="mt-0.5 block text-xs text-warn">
+											{formatHoursShort(row.unfiledSeconds)} unfiled
+										</span>
+									)}
 								</TableCell>
 								{sheet.showsExpected && (
 									<TableCell className="mono text-right text-muted-foreground">

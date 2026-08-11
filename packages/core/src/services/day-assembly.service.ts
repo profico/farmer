@@ -1,7 +1,12 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
-import { project, projectTask, task, timeEntry } from "../db/schema/domain";
+import {
+	project,
+	projectTask,
+	type TaskSystemKey,
+	timeEntry,
+} from "../db/schema/domain";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { orgTimezone } from "../lib/org-time";
 import {
@@ -16,6 +21,7 @@ import type {
 import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
+import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 import {
@@ -106,17 +112,16 @@ const splitProportionally = (total: number, weights: number[]): number[] => {
 	});
 };
 
-/** Look up a named task from the org taxonomy — the assembler can only propose
- *  entries the user could have created by hand, so it needs real task rows. */
-const findTaskByName = async (ctx: Ctx, name: string) =>
-	db.query.task.findFirst({
-		where: and(
-			eq(task.organizationId, ctx.organizationId),
-			eq(task.name, name),
-			eq(task.isAbsence, false),
-		),
-		columns: { id: true, name: true },
-	});
+/** Look up one of the tasks this engine proposes against — the assembler can
+ *  only suggest entries the user could have created by hand, so it needs real
+ *  task rows.
+ *
+ *  Resolved by system key rather than display name: `meeting` and `break` are
+ *  site built-ins, `development` is org-scoped and freely renameable, and under
+ *  the old name match renaming any of them switched off the corresponding half
+ *  of the assembler with no error anywhere. */
+const findEngineTask = (ctx: Ctx, key: TaskSystemKey) =>
+	tasksService.findBySystemKey(ctx, key);
 
 export const dayAssemblyService = {
 	/** Read-only preview. Nothing is written except the recurring materializer,
@@ -155,9 +160,9 @@ export const dayAssemblyService = {
 				},
 			}),
 			workingHoursService.list(ctx),
-			findTaskByName(ctx, "Meeting"),
-			findTaskByName(ctx, "Development"),
-			findTaskByName(ctx, "Break"),
+			findEngineTask(ctx, "meeting"),
+			findEngineTask(ctx, "development"),
+			findEngineTask(ctx, "break"),
 			googleCalendarService
 				.listEventsForRange(ctx, { from: date, to: date })
 				.catch((error) => {
@@ -168,7 +173,10 @@ export const dayAssemblyService = {
 				console.error("[day-assembly] commit read failed", error);
 				return [];
 			}),
-			hasLinkedAccount(ctx.userId, "google"),
+			// "google-calendar", not "google": the plain Google provider is only a
+			// sign-in link and carries no calendar scope, so checking it reported
+			// "connect your calendar" at people who had already connected it.
+			hasLinkedAccount(ctx.userId, "google-calendar"),
 			hasLinkedAccount(ctx.userId, "github"),
 		]);
 
@@ -270,9 +278,18 @@ export const dayAssemblyService = {
 			commitsByProject.set(commit.projectId, list);
 		}
 
+		// A day that already has a fill block is already claiming the rest of its
+		// working hours — usually the commit-sync engine's own block, built from
+		// these very commits. Proposing project work on top of it produces a second
+		// Development entry that starves the fill down to 0 seconds, leaving an
+		// empty block sitting next to the real one. The fill wins: it's the entry
+		// the person can already see.
+		const hasFillBlock = existing.some((e) => e.fillsDay);
+
 		if (
 			commitsByProject.size > 0 &&
 			workTask &&
+			!hasFillBlock &&
 			remainingSeconds >= QUARTER_HOUR_SECONDS
 		) {
 			const projectIds = [...commitsByProject.keys()];
@@ -302,7 +319,10 @@ export const dayAssemblyService = {
 
 			const groups = projectIds
 				.filter((id) => nameById.has(id) && pickedIds.has(id))
-				.map((id) => ({ projectId: id, commits: commitsByProject.get(id) ?? [] }));
+				.map((id) => ({
+					projectId: id,
+					commits: commitsByProject.get(id) ?? [],
+				}));
 
 			const shares = splitProportionally(
 				remainingSeconds,
@@ -346,7 +366,8 @@ export const dayAssemblyService = {
 			loggedSeconds,
 			suggestions,
 			sources: {
-				calendar: calendarLinked && calendarEvents !== null ? "ok" : "unavailable",
+				calendar:
+					calendarLinked && calendarEvents !== null ? "ok" : "unavailable",
 				github: githubLinked ? "ok" : "unavailable",
 			},
 		};

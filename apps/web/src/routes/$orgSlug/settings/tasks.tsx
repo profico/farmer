@@ -11,6 +11,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
 import { ColorPicker } from "#/components/color-picker.tsx";
+import { ManageTaskProjectsDialog } from "#/components/manage-task-projects-dialog.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -31,6 +32,7 @@ import {
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { RowActions } from "#/components/ui/row-actions.tsx";
 import {
 	Table,
 	TableBody,
@@ -43,16 +45,23 @@ import {
 	CATEGORY_COLORS,
 	resolveCategoryColor,
 } from "#/lib/category-colors.ts";
+import { formatDateKeyLong } from "#/lib/format-date.ts";
+import { projectsQuery } from "#/queries/projects.ts";
 import { managedTasksQuery } from "#/queries/tasks.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";
-import { archiveTask, createTask } from "#/server/tasks.ts";
+import { archiveTask, createTask, unarchiveTask } from "#/server/tasks.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/tasks")({
 	beforeLoad: async () => {
 		await requireOrgAdmin();
 	},
 	loader: async ({ context }) => {
-		await context.queryClient.ensureQueryData(managedTasksQuery());
+		// The projects list is what the "Manage projects" dialog picks from —
+		// prefetched here so opening it doesn't flash a loading line.
+		await Promise.all([
+			context.queryClient.ensureQueryData(managedTasksQuery()),
+			context.queryClient.ensureQueryData(projectsQuery()),
+		]);
 	},
 	component: TasksPage,
 });
@@ -148,15 +157,30 @@ function CreateTaskDialog() {
 function TasksPage() {
 	const queryClient = useQueryClient();
 	const { data: tasks } = useSuspenseQuery(managedTasksQuery());
+	const [manageProjectsTaskId, setManageProjectsTaskId] = useState<
+		string | null
+	>(null);
+
+	// Archived tasks are hidden by default. Archiving means "stop showing me
+	// this", and interleaving the dead rows with the live ones is what made a
+	// screen with several same-named archived copies unreadable.
+	const [showArchived, setShowArchived] = useState(false);
+	const archivedCount = tasks.filter((t) => t.archivedAt).length;
+	const visible = showArchived ? tasks : tasks.filter((t) => !t.archivedAt);
+
+	const invalidate = () =>
+		queryClient.invalidateQueries({ queryKey: managedTasksQuery().queryKey });
 
 	const archiveMutation = useMutation({
 		mutationFn: (taskId: string) => archiveTask({ data: taskId }),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: managedTasksQuery().queryKey,
-			});
-		},
+		onSuccess: invalidate,
 		onError: (error) => toast.error(error.message ?? "Could not archive task"),
+	});
+
+	const unarchiveMutation = useMutation({
+		mutationFn: (taskId: string) => unarchiveTask({ data: taskId }),
+		onSuccess: invalidate,
+		onError: (error) => toast.error(error.message ?? "Could not restore task"),
 	});
 
 	return (
@@ -164,23 +188,36 @@ function TasksPage() {
 			<PageHeader
 				eyebrow="Workspace"
 				title="Tasks"
-				lede={`One global list for the whole company. Projects pick the subset that applies to them, which is what keeps a "Development" hour on one project comparable to a "Development" hour on another. Vacation and Sick Leave are built in and can't be changed.`}
+				lede={`One global list for the whole company.`}
 				action={<CreateTaskDialog />}
 				className="mb-0"
 			/>
+
+			{archivedCount > 0 && (
+				<div className="mt-4 flex justify-end">
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => setShowArchived((shown) => !shown)}
+					>
+						{showArchived ? "Hide archived" : `Show ${archivedCount} archived`}
+					</Button>
+				</div>
+			)}
 
 			<Table containerClassName="mt-6">
 				<TableHeader>
 					<TableRow>
 						<TableHead>Task</TableHead>
 						<TableHead>Kind</TableHead>
+						<TableHead className="text-right">Projects</TableHead>
 						<TableHead className="text-right">Entries</TableHead>
 						<TableHead>Status</TableHead>
 						<TableHead />
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{tasks.map((task) => {
+					{visible.map((task) => {
 						const category = resolveCategoryColor(task.color);
 						const builtIn = task.scope === "site";
 						return (
@@ -201,6 +238,19 @@ function TasksPage() {
 											? "Built-in"
 											: "Org task"}
 								</TableCell>
+								{/* Absence tasks are never on a project, so a 0 there would read
+								    as "none yet" rather than "not applicable". Built-ins are on
+								    every project without being picked, so a count would read as
+								    a limit that isn't there. */}
+								<TableCell className="mono text-right">
+									{task.isAbsence ? (
+										<span className="text-faint">—</span>
+									) : task.universal ? (
+										<span className="text-muted-foreground">All</span>
+									) : (
+										task.projectCount
+									)}
+								</TableCell>
 								<TableCell className="mono text-right">
 									{task.entryCount}
 								</TableCell>
@@ -208,26 +258,61 @@ function TasksPage() {
 									<StatusPill tone={task.archivedAt ? "neutral" : "positive"}>
 										{task.archivedAt ? "Archived" : "Active"}
 									</StatusPill>
+									{/* Dated, because the name alone doesn't distinguish two
+									    archived copies of the same task from each other. */}
+									{task.archivedAt && (
+										<span className="mt-1 block text-xs text-muted-foreground">
+											{formatDateKeyLong(
+												new Date(task.archivedAt).toISOString().slice(0, 10),
+											)}
+										</span>
+									)}
 								</TableCell>
 								<TableCell className="text-right">
-									{/* Archiving, never deleting: entries keep pointing at the
-										    task, so the history stays readable. */}
-									{!builtIn && !task.archivedAt && (
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={archiveMutation.isPending}
-											onClick={() => archiveMutation.mutate(task.id)}
-										>
-											Archive
-										</Button>
-									)}
+									{/* Built-ins have no actions at all: they can't be archived,
+									    and they're on every project already so there's no project
+									    list to manage. Archiving, never deleting: entries keep
+									    pointing at the task, so the history stays readable. */}
+									<RowActions
+										actions={[
+											!task.isAbsence &&
+												!task.universal &&
+												!task.archivedAt && {
+													label: "Manage projects",
+													onClick: () => setManageProjectsTaskId(task.id),
+												},
+											!builtIn &&
+												!task.archivedAt && {
+													label: "Archive",
+													disabled: archiveMutation.isPending,
+													onClick: () => archiveMutation.mutate(task.id),
+												},
+											// Restoring keeps the id, so the entries counted in this
+											// row's Entries column come back attached to it. That's
+											// the alternative to creating a same-named replacement,
+											// which is how the archived pile grew in the first place.
+											!builtIn &&
+												task.archivedAt && {
+													label: "Restore",
+													disabled: unarchiveMutation.isPending,
+													onClick: () => unarchiveMutation.mutate(task.id),
+												},
+										]}
+									/>
 								</TableCell>
 							</TableRow>
 						);
 					})}
 				</TableBody>
 			</Table>
+
+			<ManageTaskProjectsDialog
+				taskId={manageProjectsTaskId}
+				taskName={
+					tasks.find((t) => t.id === manageProjectsTaskId)?.name ?? null
+				}
+				onOpenChange={(open) => !open && setManageProjectsTaskId(null)}
+			/>
 		</Page>
 	);
 }

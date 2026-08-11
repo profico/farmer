@@ -1,9 +1,11 @@
+import { dayKeyInTz } from "@farmer/core/lib/time";
 import {
 	createFileRoute,
 	Link,
 	Outlet,
 	useLocation,
 } from "@tanstack/react-router";
+import { UnfiledEntriesBanner } from "#/components/time/unfiled-entries-banner.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
 import {
 	SegmentedControl,
@@ -56,7 +58,13 @@ function TimeLayout() {
 					})}
 				</SegmentedControl>
 			</div>
+			{/* Above the tabs' content rather than inside a view, because unfiled time
+			    isn't scoped to the day/week/month you happen to be looking at — it's
+			    a standing worklist that follows you across all three. */}
 			<div className="mt-6 flex min-h-0 flex-1 flex-col">
+				<UnfiledEntriesBanner
+					todayKey={dayKeyInTz(new Date(), organization.timezone)}
+				/>
 				<Outlet />
 			</div>
 		</PageFull>

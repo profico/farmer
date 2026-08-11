@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import {
 	listManagedTasks,
+	listProjectsForTask,
 	listSelectableTasks,
 	listTasksForProject,
 } from "#/server/tasks.ts";
@@ -25,4 +26,12 @@ export const managedTasksQuery = () =>
 	queryOptions({
 		queryKey: ["tasks", "managed"],
 		queryFn: () => listManagedTasks(),
+	});
+
+// The mirror of `projectTasksQuery`: which projects offer a given task. Ids
+// only — the names come from the projects list the dialog already has.
+export const projectsForTaskQuery = (taskId: string) =>
+	queryOptions({
+		queryKey: ["tasks", "projects-for-task", taskId],
+		queryFn: () => listProjectsForTask({ data: taskId }),
 	});
