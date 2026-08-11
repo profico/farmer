@@ -660,9 +660,13 @@ function GridCell({
 				}
 				// Up/Down only. Left/Right stay bound to the caret, which is what
 				// anyone typing into a text box expects them to do.
+				//
+				// No explicit blur here, unlike Enter: focusing the next cell blurs
+				// this one on its own, and so commits it. Blurring first would mean
+				// that at the top and bottom rows — where there is no next cell —
+				// the arrow key threw you out of the grid instead of doing nothing.
 				if (e.key === "ArrowUp" || e.key === "ArrowDown") {
 					e.preventDefault();
-					e.currentTarget.blur();
 					onMove(rowIndex, colIndex, e.key === "ArrowDown" ? 1 : -1);
 					return;
 				}
