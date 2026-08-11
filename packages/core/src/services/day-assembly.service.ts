@@ -21,6 +21,7 @@ import type {
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
 import { ctxTimezone } from "./context";
+import { calendarSource, commitSource } from "./ports";
 import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
@@ -142,13 +143,13 @@ export const dayAssemblyService = {
 			findEngineTask(ctx, "meeting"),
 			findEngineTask(ctx, "development"),
 			findEngineTask(ctx, "break"),
-			googleCalendarService
+			calendarSource()
 				.listEventsForRange(ctx, { from: date, to: date })
 				.catch((error) => {
 					console.error("[day-assembly] calendar read failed", error);
 					return null;
 				}),
-			githubService.listUserCommitsForDay(ctx, date).catch((error) => {
+			commitSource().listUserCommitsForDay(ctx, date).catch((error) => {
 				console.error("[day-assembly] commit read failed", error);
 				return [];
 			}),

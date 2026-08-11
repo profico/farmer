@@ -147,7 +147,7 @@ export function ManageProjectGithubReposDialog({
 						<div className="min-w-0">
 							<p className="eyebrow mb-2">Linked repositories</p>
 							{visibleLinkedRepos.length > 0 ? (
-								<div className="scrollbar-stable max-h-56 overflow-y-auto rounded-md border">
+								<div className="scrollbar-stable max-h-[min(14rem,25dvh)] overflow-y-auto rounded-md border">
 									{visibleLinkedRepos.map((repo) => (
 										<div
 											key={repo.id}
@@ -187,7 +187,7 @@ export function ManageProjectGithubReposDialog({
 						<div className="min-w-0">
 							<p className="eyebrow mb-2">Link a repository</p>
 							{linkableRepos.length > 0 ? (
-								<div className="scrollbar-stable max-h-96 overflow-y-auto rounded-md border">
+								<div className="scrollbar-stable max-h-[min(24rem,45dvh)] overflow-y-auto rounded-md border">
 									{linkableRepos.map((repo) => (
 										<div
 											key={repo.githubRepoId}

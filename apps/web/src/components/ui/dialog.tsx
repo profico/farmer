@@ -197,8 +197,14 @@ function DialogFooter({
 			// so on a form taller than the viewport the actions stay reachable
 			// instead of scrolling off the bottom. `bg-popover` is what stops the
 			// scrolled content showing through it.
+			//
+			// `-bottom-5` (not `bottom-0`): the sticky inset resolves against the
+			// scroll container's CONTENT box, which the body's `p-5` sits 1.25rem
+			// inside of — the same 1.25rem the `-mb-5` bleed already spends. Pinning
+			// at 0 parks the footer that far above the popup's edge and leaves a
+			// stripe of scrolled content showing underneath it.
 			className={cn(
-				"-mx-5 -mb-5 sticky bottom-0 z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-5 sm:flex-row sm:justify-end",
+				"-mx-5 -mb-5 -bottom-5 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-5 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}

@@ -41,6 +41,7 @@ import type {
 	UpdateTimeEntryInput,
 } from "../schema/time-entries";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
+import { calendarSource, commitSource } from "./ports";
 import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
@@ -143,7 +144,7 @@ const syncMeetingsForRange = async (
 	range: { from: string; to: string },
 	tz: string,
 ) => {
-	const events = await googleCalendarService.listEventsForRange(ctx, range);
+	const events = await calendarSource().listEventsForRange(ctx, range);
 	// null => couldn't read the calendar (disconnected / revoked token). Bail
 	// without deleting, or we'd wipe synced entries we merely failed to fetch.
 	if (events === null) return;
@@ -287,7 +288,7 @@ const syncCommitWorkTimeForRange = async (
 	range: { from: string; to: string },
 	tz: string,
 ) => {
-	const days = await githubService.listUserCommitsByDay(ctx, range);
+	const days = await commitSource().listUserCommitsByDay(ctx, range);
 	if (days.length === 0) return;
 
 	// Resolved by system key, not by display name. The old lookup matched

@@ -1,25 +1,26 @@
 {
-  "name": "farmer",
-  "private": true,
-  "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/profico/farmer.git"
-  },
-  "packageManager": "bun@1.3.14",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "db:generate": "turbo run db:generate",
-    "db:migrate": "turbo run db:migrate",
-    "db:check": "turbo run db:check",
-    "db:studio": "turbo run db:studio"
-  },
-  "devDependencies": {
-    "turbo": "2.10.4"
-  }
+	"name": "farmer",
+	"private": true,
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/profico/farmer.git"
+	},
+	"packageManager": "bun@1.3.14",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"dev": "turbo run dev",
+		"build": "turbo run build",
+		"db:generate": "turbo run db:generate",
+		"db:migrate": "turbo run db:migrate",
+		"db:check": "turbo run db:check",
+		"db:studio": "turbo run db:studio",
+		"test": "turbo run test"
+	},
+	"devDependencies": {
+		"turbo": "2.10.4"
+	}
 }
