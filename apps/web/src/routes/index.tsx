@@ -8,7 +8,6 @@ import {
 	FolderIcon,
 	GitBranchIcon,
 	GitCommitIcon,
-	HardDrivesIcon,
 	PlusIcon,
 	SignOutIcon,
 	SparkleIcon,
@@ -16,17 +15,7 @@ import {
 	UsersIcon,
 } from "@phosphor-icons/react";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import type { Transition, Variants } from "motion/react";
-import {
-	animate,
-	MotionConfig,
-	motion,
-	useInView,
-	useMotionValue,
-	useReducedMotion,
-	useTransform,
-} from "motion/react";
-import { useEffect, useRef } from "react";
+import { MotionConfig } from "motion/react";
 import { getSession } from "#/server/auth.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
@@ -62,7 +51,6 @@ export const Route = createFileRoute("/")({
 });
 
 const GITHUB_URL = "https://github.com/profico/farmer";
-const DOCS_URL = "https://github.com/profico/farmer#readme";
 const PROFICO_URL = "https://profi.co";
 
 // The page's one CTA, in the product's own button: straight into the viewer's
@@ -162,200 +150,6 @@ html:has(.fm-landing){scroll-behavior:smooth}
 }
 `;
 
-// ---- Bento scroll-in demos -------------------------------------------------
-// Tuned separately from the product springs in #/lib/motion.ts: these play
-// once per tile as it scrolls into view, so they get a longer, more theatrical
-// travel than in-app chrome. Bounce stays reserved for the "physical" beats —
-// the hours badge stamping in, the active calendar block dropping onto the
-// grid. Reduced-motion users get plain cross-fades via <MotionConfig
-// reducedMotion="user"> (and CountUp checks the preference itself).
-
-const tileSpring: Transition = {
-	type: "spring",
-	bounce: 0,
-	visualDuration: 0.55,
-};
-const stampSpring: Transition = {
-	type: "spring",
-	bounce: 0.4,
-	visualDuration: 0.3,
-};
-const fillEase: Transition = { duration: 0.9, ease: [0.22, 1, 0.36, 1] };
-
-const rise = (delay = 0): Variants => ({
-	hidden: { opacity: 0, y: 10 },
-	show: { opacity: 1, y: 0, transition: { ...tileSpring, delay } },
-});
-const slideIn = (delay = 0): Variants => ({
-	hidden: { opacity: 0, x: -18 },
-	show: { opacity: 1, x: 0, transition: { ...tileSpring, delay } },
-});
-const stamp = (delay = 0): Variants => ({
-	hidden: { opacity: 0, scale: 0.5 },
-	show: { opacity: 1, scale: 1, transition: { ...stampSpring, delay } },
-});
-const fillIn = (delay = 0): Variants => ({
-	hidden: { scaleX: 0 },
-	show: { scaleX: 1, transition: { ...fillEase, delay } },
-});
-const fadeIn = (delay = 0): Variants => ({
-	hidden: { opacity: 0 },
-	show: { opacity: 1, transition: { duration: 0.4, delay } },
-});
-// No `hidden` state on purpose: the arrow stays visible with its row, then
-// nudges toward the badge once the row has landed.
-const nudge = (delay = 0): Variants => ({
-	show: {
-		x: [0, 6, 0],
-		transition: { delay, duration: 0.7, ease: "easeInOut" },
-	},
-});
-const drop = (delay = 0, bounce = 0): Variants => ({
-	hidden: { opacity: 0, scaleY: 0 },
-	show: {
-		opacity: 1,
-		scaleY: 1,
-		transition: { type: "spring", bounce, visualDuration: 0.4, delay },
-	},
-});
-
-// A bento tile that reveals itself on first scroll-in and drives its inner
-// demo elements (any motion child with `variants`) through the same
-// hidden → show switch.
-function Tile({
-	delay = 0,
-	style,
-	children,
-	href,
-	className,
-}: {
-	delay?: number;
-	style?: React.CSSProperties;
-	children: React.ReactNode;
-	href?: string;
-	className?: string;
-}) {
-	const Component = href ? motion.a : motion.div;
-	return (
-		<Component
-			className={className}
-			href={href}
-			{...(href?.startsWith("http")
-				? { target: "_blank", rel: "noreferrer" }
-				: {})}
-			variants={{
-				hidden: { opacity: 0, y: 24, scale: 0.98 },
-				show: {
-					opacity: 1,
-					y: 0,
-					scale: 1,
-					transition: { ...tileSpring, delay },
-				},
-			}}
-			initial="hidden"
-			whileInView="show"
-			viewport={{ once: true, amount: 0.35 }}
-			style={style}
-		>
-			{children}
-		</Component>
-	);
-}
-
-// Renders the target value in SSR/no-JS markup, then counts up from 0 the
-// first time it scrolls into view. Skips the animation entirely under
-// prefers-reduced-motion.
-function CountUp({
-	to,
-	decimals = 1,
-	delay = 0,
-	className,
-	style,
-}: {
-	to: number;
-	decimals?: number;
-	delay?: number;
-	className?: string;
-	style?: React.CSSProperties;
-}) {
-	const ref = useRef<HTMLSpanElement>(null);
-	const inView = useInView(ref, { once: true, amount: 0.6 });
-	const reducedMotion = useReducedMotion();
-	const value = useMotionValue(to);
-	const text = useTransform(value, (v) => v.toFixed(decimals));
-	useEffect(() => {
-		if (!inView || reducedMotion) return;
-		value.set(0);
-		const controls = animate(value, to, {
-			delay,
-			duration: 1.3,
-			ease: [0.16, 1, 0.3, 1],
-		});
-		return () => controls.stop();
-	}, [inView, reducedMotion, value, to, delay]);
-	return (
-		<motion.span ref={ref} className={className} style={style}>
-			{text}
-		</motion.span>
-	);
-}
-
-// The reports screen is a table — name, hours, share — so the tile is one too,
-// with the app's single accent under each row instead of a colour per project.
-// There is one accent in this palette; three would read as three states.
-const projects = [
-	{ name: "Acme Rebrand", hours: "14.0h", pct: "78%" },
-	{ name: "Harbor App", hours: "11.5h", pct: "62%" },
-	{ name: "Internal", hours: "6.0h", pct: "34%" },
-];
-
-function ProjectBars() {
-	return (
-		<>
-			{projects.map((p, i) => (
-				<div key={p.name}>
-					<div
-						style={{
-							display: "flex",
-							alignItems: "baseline",
-							justifyContent: "space-between",
-							gap: "8px",
-							marginBottom: "6px",
-						}}
-					>
-						<span style={{ fontSize: "11.5px" }}>{p.name}</span>
-						<motion.span
-							variants={rise(0.55 + i * 0.15)}
-							className="fm-mono"
-							style={{ fontSize: "12px" }}
-						>
-							{p.hours}
-						</motion.span>
-					</div>
-					<div
-						style={{
-							position: "relative",
-							height: "2px",
-							background: "rgba(27,26,23,.055)",
-							overflow: "hidden",
-						}}
-					>
-						<motion.div
-							variants={fillIn(0.25 + i * 0.15)}
-							style={{
-								position: "absolute",
-								inset: "0 auto 0 0",
-								width: p.pct,
-								background: "#6f4ebe",
-								originX: 0,
-							}}
-						/>
-					</div>
-				</div>
-			))}
-		</>
-	);
-}
 
 // ---- App-preview mock data -------------------------------------------------
 
@@ -430,54 +224,6 @@ const recentEntries = [
 		sub: "Internal · Planning",
 		badge: null,
 		hours: "1.5h",
-	},
-];
-
-const weekDays = [
-	{
-		label: "Mon",
-		active: false,
-		last: false,
-		blocks: [
-			{ h: 26, bg: "#dce0e0", bl: "#55707d" },
-			{ h: 34, bg: "#e0e3dd", bl: "#6b7f6a" },
-		],
-	},
-	{
-		label: "Tue",
-		active: true,
-		last: false,
-		blocks: [
-			{ h: 22, bg: "#e3dfe2", bl: "#7a6a86", shadow: true },
-			{ h: 38, bg: "#e6dfcf", bl: "#8a6a1f" },
-		],
-	},
-	{
-		label: "Wed",
-		active: false,
-		last: false,
-		blocks: [
-			{ h: 18, bg: "#dce0e0", bl: "#55707d" },
-			{ h: 44, bg: "#e6dfcf", bl: "#8a6a1f" },
-		],
-	},
-	{
-		label: "Thu",
-		active: false,
-		last: false,
-		blocks: [
-			{ h: 40, bg: "#e0e3dd", bl: "#6b7f6a" },
-			{ h: 20, bg: "#e9dcd6", bl: "#9c5a44" },
-		],
-	},
-	{
-		label: "Fri",
-		active: false,
-		last: true,
-		blocks: [
-			{ h: 32, bg: "#e6dfcf", bl: "#8a6a1f" },
-			{ h: 18, bg: "#dce0e0", bl: "#55707d" },
-		],
 	},
 ];
 
