@@ -11,6 +11,7 @@ import {
 	DialogTitle,
 } from "#/components/ui/dialog.tsx";
 import { PillToggleGroup } from "#/components/ui/pill-toggle-group.tsx";
+import { queryKeys } from "#/queries/keys.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { projectsForTaskQuery } from "#/queries/tasks.ts";
 import { setTaskProjects } from "#/server/tasks.ts";
@@ -78,8 +79,8 @@ export function ManageTaskProjectsDialog({
 			setTaskProjects({ data: { taskId: taskId ?? "", projectIds: selected } }),
 		onSuccess: async () => {
 			await Promise.all([
-				queryClient.invalidateQueries({ queryKey: ["projects"] }),
-				queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+				queryClient.invalidateQueries({ queryKey: [...queryKeys.projects] }),
+				queryClient.invalidateQueries({ queryKey: [...queryKeys.tasks] }),
 			]);
 			setDraft(null);
 			onOpenChange(false);

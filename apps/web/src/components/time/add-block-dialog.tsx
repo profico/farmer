@@ -61,6 +61,7 @@ import {
 	googleCalendarStatusQuery,
 } from "#/queries/google-calendar.ts";
 import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
@@ -422,7 +423,9 @@ export function AddBlockDialog({
 					});
 				}
 			}
-			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.timeEntries],
+			});
 			if (!entry) {
 				await queryClient.invalidateQueries({
 					queryKey: recurringBlockRulesQuery().queryKey,

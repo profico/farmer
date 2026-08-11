@@ -7,34 +7,35 @@ import {
 	listProjectGithubRepos,
 	suggestCommitsForEntry,
 } from "#/server/github.ts";
+import { queryKeys } from "./keys.ts";
 
 export const githubConnectionStatusQuery = () =>
 	queryOptions({
-		queryKey: ["github", "connection-status"],
+		queryKey: [...queryKeys.github, "connection-status"],
 		queryFn: () => getGithubConnectionStatus(),
 	});
 
 export const githubInstallationsQuery = () =>
 	queryOptions({
-		queryKey: ["github", "installations"],
+		queryKey: [...queryKeys.github, "installations"],
 		queryFn: () => listGithubInstallations(),
 	});
 
 export const projectGithubReposQuery = (projectId: string) =>
 	queryOptions({
-		queryKey: ["github", "project-repos", projectId],
+		queryKey: [...queryKeys.github, "project-repos", projectId],
 		queryFn: () => listProjectGithubRepos({ data: projectId }),
 	});
 
 export const availableGithubReposQuery = () =>
 	queryOptions({
-		queryKey: ["github", "available-repos"],
+		queryKey: [...queryKeys.github, "available-repos"],
 		queryFn: () => listAvailableGithubRepos(),
 	});
 
 export const attachedCommitsQuery = (timeEntryId: string) =>
 	queryOptions({
-		queryKey: ["github", "attached-commits", timeEntryId],
+		queryKey: [...queryKeys.github, "attached-commits", timeEntryId],
 		queryFn: () => listAttachedCommits({ data: timeEntryId }),
 	});
 
@@ -43,6 +44,6 @@ export const attachedCommitsQuery = (timeEntryId: string) =>
 // caller only when the "auto-load commits" toggle is on and a project is set.
 export const suggestedCommitsQuery = (projectId: string, date: string) =>
 	queryOptions({
-		queryKey: ["github", "suggested-commits", projectId, date],
+		queryKey: [...queryKeys.github, "suggested-commits", projectId, date],
 		queryFn: () => suggestCommitsForEntry({ data: { projectId, date } }),
 	});

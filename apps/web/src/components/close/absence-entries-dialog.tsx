@@ -24,6 +24,7 @@ import {
 } from "#/components/ui/select.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { closeSheetQuery } from "#/queries/close.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
 import { absenceForUserQuery } from "#/queries/time-entries.ts";
 import {
@@ -126,7 +127,9 @@ function AbsenceEditor({
 			queryClient.invalidateQueries({
 				queryKey: closeSheetQuery({ projectId, year, month }).queryKey,
 			}),
-			queryClient.invalidateQueries({ queryKey: ["reports", "absence"] }),
+			queryClient.invalidateQueries({
+				queryKey: [...queryKeys.reports, "absence"],
+			}),
 		]);
 
 	const onError = (error: Error) =>

@@ -21,6 +21,7 @@ import {
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { unfiledEntriesQuery } from "#/queries/time-entries.ts";
 import { fileTimeEntry } from "#/server/time-entries.ts";
@@ -149,7 +150,9 @@ function FileEntriesDialog({
 							entry={entry}
 							items={items}
 							onFiled={() =>
-								queryClient.invalidateQueries({ queryKey: ["time-entries"] })
+								queryClient.invalidateQueries({
+									queryKey: [...queryKeys.timeEntries],
+								})
 							}
 						/>
 					))}

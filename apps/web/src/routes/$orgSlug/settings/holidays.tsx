@@ -21,6 +21,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { cn } from "#/lib/utils.ts";
 import { holidaysForYearWithStatusQuery } from "#/queries/holidays.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import { setHolidayDisabled } from "#/server/holidays.ts";
 
 const searchSchema = z.object({
@@ -94,7 +95,8 @@ function HolidaysSettingsPage() {
 			toast.error(error.message ?? "Could not update holiday");
 		},
 		// Other holiday views (calendar ranges) still need the server's answer.
-		onSettled: () => queryClient.invalidateQueries({ queryKey: ["holidays"] }),
+		onSettled: () =>
+			queryClient.invalidateQueries({ queryKey: [...queryKeys.holidays] }),
 	});
 
 	const goToYear = (next: number) =>

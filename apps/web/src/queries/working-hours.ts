@@ -1,14 +1,15 @@
 import { queryOptions } from "@tanstack/react-query";
 import { getWeeklyTarget, listWorkingHours } from "#/server/working-hours.ts";
+import { queryKeys } from "./keys.ts";
 
 export const workingHoursQuery = () =>
 	queryOptions({
-		queryKey: ["working-hours"],
+		queryKey: [...queryKeys.workingHours],
 		queryFn: () => listWorkingHours(),
 	});
 
 export const weeklyTargetQuery = () =>
 	queryOptions({
-		queryKey: ["working-hours", "target"],
+		queryKey: [...queryKeys.workingHours, "target"],
 		queryFn: () => getWeeklyTarget(),
 	});

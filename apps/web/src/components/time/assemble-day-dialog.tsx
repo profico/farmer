@@ -20,6 +20,7 @@ import {
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { dayAssemblySuggestionsQuery } from "#/queries/day-assembly.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import {
 	applyDayAssembly,
 	type suggestDayAssembly,
@@ -114,8 +115,12 @@ export function AssembleDayDialog({
 				},
 			}),
 		onSuccess: async ({ created, errors }) => {
-			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
-			await queryClient.invalidateQueries({ queryKey: ["day-assembly"] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.timeEntries],
+			});
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.dayAssembly],
+			});
 			if (errors.length > 0) {
 				toast.error(
 					`Added ${created} ${created === 1 ? "block" : "blocks"}, ${errors.length} failed: ${errors[0]}`,

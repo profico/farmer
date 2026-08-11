@@ -31,6 +31,7 @@ import { Textarea } from "#/components/ui/textarea.tsx";
 import { formatWeekRange } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import {
 	deleteTimeEntry,
 	setWeekCell,
@@ -152,7 +153,7 @@ export function WeekView({
 	const weekTotal = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
 	const invalidate = () =>
-		queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+		queryClient.invalidateQueries({ queryKey: [...queryKeys.timeEntries] });
 
 	const cellMutation = useMutation({
 		mutationFn: (input: {

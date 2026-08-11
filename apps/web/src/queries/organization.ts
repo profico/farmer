@@ -1,9 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
 import { getOrgPolicySettings, getOrgSettings } from "#/server/organization.ts";
+import { queryKeys } from "./keys.ts";
 
 export const orgSettingsQuery = () =>
 	queryOptions({
-		queryKey: ["organization", "settings"],
+		queryKey: [...queryKeys.organization, "settings"],
 		queryFn: () => getOrgSettings(),
 	});
 
@@ -12,6 +13,6 @@ export const orgSettingsQuery = () =>
 // compliance number is deliberately hardcoded.
 export const orgPolicySettingsQuery = () =>
 	queryOptions({
-		queryKey: ["organization", "policy-settings"],
+		queryKey: [...queryKeys.organization, "policy-settings"],
 		queryFn: () => getOrgPolicySettings(),
 	});

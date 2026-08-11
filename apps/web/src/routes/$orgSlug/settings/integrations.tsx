@@ -42,6 +42,7 @@ import {
 } from "#/queries/github.ts";
 import { googleCalendarStatusQuery } from "#/queries/google-calendar.ts";
 import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import { slackStatusQuery } from "#/queries/slack.ts";
 import {
 	disconnectGithubInstallation,
@@ -172,7 +173,9 @@ function IntegrationsSettingsPage() {
 	const syncMeetingsMutation = useMutation({
 		mutationFn: () => syncGoogleMeetings(),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.timeEntries],
+			});
 			toast.success("Meetings synced from Google Calendar");
 		},
 		onError: (error) => {
