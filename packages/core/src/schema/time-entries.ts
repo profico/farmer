@@ -149,9 +149,13 @@ export const setWeekCellInput = z.object({
 		.refine((value) => value % QUARTER_HOUR_SECONDS === 0, {
 			message: "Time must be in 15-minute steps",
 		}),
-	// Carried by the grid ROW, so every cell in that row shares one note. The
-	// row's note is set when the row is added, which is how the grid honors the
-	// mandatory-description rule without a note prompt on every keystroke.
+	// Optional, and the grid never sends it: a cell write says how long you
+	// worked, not what you did. Absent means "leave the note alone", which is
+	// what makes correcting hours safe for a day that already has a note. Notes
+	// are written per day through the row's note button instead, so worked time
+	// logged from the grid may legitimately start out with none — the
+	// mandatory-description rule holds where it can be answered (the Day
+	// dialog's createTimeEntry), not on a spreadsheet cell.
 	description: z.string().max(10_000).optional(),
 });
 export type SetWeekCellInput = z.infer<typeof setWeekCellInput>;

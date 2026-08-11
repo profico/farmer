@@ -18,7 +18,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
-import { Textarea } from "#/components/ui/textarea.tsx";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
 
@@ -31,14 +30,17 @@ export type DraftRow = {
 	heading: string;
 	taskName: string;
 	color: string | null;
-	description: string;
 };
 
 /**
- * Adds an empty row to the week grid. The note is captured HERE rather than per
- * cell, which is what lets the grid honor the mandatory-description rule without
- * interrupting someone who is just typing hours across five days: pick the work
- * once, describe it once, then fill the boxes.
+ * Adds an empty row to the week grid — the work, and nothing else.
+ *
+ * The note used to be captured here, on the theory that asking once up front
+ * beat prompting on every keystroke. Both are wrong: you are picking a row to
+ * fill in, and you do not yet know what you will have done on Thursday. This is
+ * the order Harvest uses and the one people expect — add the row empty, type
+ * the hours, and describe each day afterwards through the row's note button,
+ * which only appears once there is time for a note to attach to.
  */
 export function AddRowDialog({
 	existingKeys,
@@ -52,7 +54,6 @@ export function AddRowDialog({
 	const [open, setOpen] = useState(false);
 	const [projectId, setProjectId] = useState(NO_PROJECT);
 	const [taskId, setTaskId] = useState("");
-	const [description, setDescription] = useState("");
 
 	const { data: projects } = useSuspenseQuery(myProjectsQuery());
 	const { data: tasks = [] } = useQuery({
@@ -71,15 +72,13 @@ export function AddRowDialog({
 
 	const selectedProject = projects.find((p) => p.id === projectId) ?? null;
 	const selectedTask = tasks.find((t) => t.id === taskId) ?? null;
-	// Same rule as everywhere else: worked time needs a note, absence doesn't.
-	const needsDescription = projectId !== NO_PROJECT;
-	const canAdd =
-		taskId !== "" && (!needsDescription || description.trim().length > 0);
+	// The work is the whole form now — a row with no hours in it is scaffolding,
+	// not an entry, so there is nothing yet for a note to describe.
+	const canAdd = taskId !== "";
 
 	const reset = () => {
 		setProjectId(NO_PROJECT);
 		setTaskId("");
-		setDescription("");
 	};
 
 	const submit = () => {
@@ -103,7 +102,6 @@ export function AddRowDialog({
 				: selectedTask.name,
 			taskName: selectedProject ? selectedTask.name : "",
 			color: selectedTask.color,
-			description: description.trim(),
 		});
 		reset();
 		setOpen(false);
@@ -175,22 +173,6 @@ export function AddRowDialog({
 						</Select>
 					</div>
 
-					<div className="grid gap-1.5">
-						<Label>
-							What you did{" "}
-							{!needsDescription && (
-								<span className="font-normal text-muted-foreground">
-									(optional)
-								</span>
-							)}
-						</Label>
-						<Textarea
-							rows={3}
-							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-							placeholder="Shared by every day in this row"
-						/>
-					</div>
 				</div>
 				<DialogFooter>
 					<Button disabled={!canAdd} onClick={submit}>

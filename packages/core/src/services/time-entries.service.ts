@@ -978,9 +978,11 @@ export const timeEntriesService = {
 				return { entryId: primary.id };
 			}
 
-			// Creating fresh: the mandatory-description rule still applies, so reuse
-			// the row's note from another day in the same grid row rather than
-			// inventing one or writing an empty string.
+			// Creating fresh. The grid sends no description, so this is normally an
+			// empty note, filled in afterwards through the row's note button — the
+			// mandatory-description rule is enforced at the createTimeEntry
+			// boundary, which is the path where a person is being asked the
+			// question. A spreadsheet cell cannot answer it.
 			const description = input.description?.trim() ?? "";
 			const created = await timeEntriesService.create(txCtx, {
 				date: input.date,

@@ -61,18 +61,6 @@ type GridRow = {
 	heading: string;
 	taskName: string;
 	color: string | null;
-	/**
-	 * The note to put on a cell that does not exist yet.
-	 *
-	 * ONLY that. It used to be sent with every cell write, which meant typing
-	 * hours into Thursday overwrote Thursday's note with whichever day in the row
-	 * happened to carry one — `setWeekCell` treats a supplied description as
-	 * "set it", so the grid was quietly destroying notes as you corrected hours.
-	 * A day that already has entries keeps its own note; the seed exists only
-	 * because a brand-new entry against a project must carry a note at all (the
-	 * mandatory-description rule), and inventing an empty one would fail.
-	 */
-	noteSeed: string;
 	/** date -> the entries behind that cell (usually exactly one). */
 	byDate: Map<string, EntryBlockRowEntry[]>;
 	/** True when nothing in the row may be edited from the grid. */
@@ -138,16 +126,11 @@ export function WeekView({
 				heading: entryHeading(entry),
 				taskName: entry.project ? entry.task.name : "",
 				color: entry.task.color,
-				noteSeed: "",
 				byDate: new Map(),
 				locked: false,
 			};
 			rowsByKey.set(key, row);
 		}
-		// The LAST noted day in the row wins, not the first one the loop happens to
-		// see: `entries` arrives in date order, so this is "what you last said you
-		// were doing on this project", which is the likeliest thing to be repeating.
-		if (entry.description) row.noteSeed = entry.description;
 		if (entry.fillsDay || entry.generatedFromRuleId) row.locked = true;
 		const cell = row.byDate.get(entry.date);
 		if (cell) cell.push(entry);
@@ -162,7 +145,6 @@ export function WeekView({
 			heading: draft.heading,
 			taskName: draft.taskName,
 			color: draft.color,
-			noteSeed: draft.description,
 			byDate: new Map(),
 			locked: false,
 		});
@@ -215,17 +197,15 @@ export function WeekView({
 			projectId: string | null;
 			taskId: string;
 			durationSeconds: number;
-			/** Omitted for a day that already has entries — `setWeekCell` reads an
-			 *  absent description as "leave the note alone". */
-			description?: string;
 		}) =>
+			// No description, ever. `setWeekCell` reads an absent one as "leave the
+			// note alone", so a cell write can only ever change the hours.
 			setWeekCell({
 				data: {
 					date: input.date,
 					projectId: input.projectId ?? undefined,
 					taskId: input.taskId,
 					durationSeconds: input.durationSeconds,
-					description: input.description || undefined,
 				},
 			}),
 		onSuccess: invalidate,
@@ -422,7 +402,15 @@ export function WeekView({
 											</div>
 										</div>
 									</td>
+									{/* The note button appears only once the row has hours. An
+									    empty row is scaffolding — a note is stored on a time
+									    entry, so until one exists there is nothing to write it
+									    on. The cell keeps the button's footprint so adding the
+									    first hours doesn't shift the grid sideways. */}
 									<td className="px-1 py-2">
+										{rowTotal === 0 ? (
+											<span className="block size-7" aria-hidden />
+										) : (
 										<RowNoteDialog
 											heading={row.heading}
 											dates={dates}
@@ -443,6 +431,7 @@ export function WeekView({
 												await invalidate();
 											}}
 										/>
+										)}
 									</td>
 									{dates.map((date, colIndex) => (
 										<td key={date} className="px-1 py-2">
@@ -460,20 +449,17 @@ export function WeekView({
 														? "Generated automatically — edit it in the Day view"
 														: undefined
 												}
+												// Hours only, never a note: a cell write says how long
+												// you worked and nothing about what you did. The note
+												// is the row's note button, per day, after the fact.
+												// Passing one here is what used to overwrite Thursday's
+												// note with Monday's every time hours were corrected.
 												onCommit={(durationSeconds) =>
 													cellMutation.mutate({
 														date,
 														projectId: row.projectId,
 														taskId: row.taskId,
 														durationSeconds,
-														// Only a cell that does not exist yet takes the
-														// row's note. A day that already has entries keeps
-														// its own — passing the seed unconditionally is
-														// what used to overwrite Thursday's note with
-														// Monday's every time the hours were corrected.
-														description: row.byDate.has(date)
-															? undefined
-															: row.noteSeed,
 													})
 												}
 											/>
@@ -689,7 +675,10 @@ function GridCell({
  * moment you saved. A note describes a day's work, so a day gets its own box.
  *
  * Only days with hours get one: a description is stored on a time entry, so
- * there is nothing for a note on an empty day to attach to.
+ * there is nothing for a note on an empty day to attach to. The trigger itself
+ * is hidden until the row has hours, for the same reason — but the empty case
+ * is still handled here, because the last entry in a row can be cleared from
+ * another tab while this dialog is open.
  */
 function RowNoteDialog({
 	heading,
