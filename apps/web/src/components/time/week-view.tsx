@@ -1,4 +1,4 @@
-import { parseDuration, QUARTER_HOUR_SECONDS } from "@farmer/core/lib/time";
+import { parseDuration, snapToQuarterHour } from "@farmer/core/lib/time";
 import { NoteIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -466,8 +466,11 @@ function GridCell({
 			setText(seconds > 0 ? formatClock(seconds) : "");
 			return;
 		}
-		const snapped =
-			Math.round(parsed / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS;
+		// A literal "0" is the other way to clear a cell, so it stays 0. Anything
+		// else goes through the shared snap, which floors at 15 minutes — the local
+		// `Math.round(parsed / 900) * 900` this replaces turned a typed "0.1" into
+		// 0, which the cell then read as "delete this row".
+		const snapped = parsed === 0 ? 0 : snapToQuarterHour(parsed);
 		if (snapped === seconds) {
 			setText(seconds > 0 ? formatClock(seconds) : "");
 			return;

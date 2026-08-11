@@ -22,13 +22,13 @@ import {
 import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { summarizeCommitMessages } from "../lib/day-plan";
+import { dayKeyInTz, monthBounds, snapToQuarterHour } from "../lib/time";
 import {
 	MAX_DAY_SECONDS,
 	remainingSeconds,
 	spokenForSeconds,
 	targetSecondsFor,
 } from "../lib/working-day";
-import { dayKeyInTz, monthBounds, snapToQuarterHour } from "../lib/time";
 import type {
 	CopyTimeEntriesInput,
 	CreateAbsenceForUserInput,
@@ -42,9 +42,9 @@ import type {
 	UpdateTimeEntryInput,
 } from "../schema/time-entries";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
-import { calendarSource, commitSource } from "./ports";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { integrationSettingsService } from "./integration-settings.service";
+import { calendarSource, commitSource } from "./ports";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";

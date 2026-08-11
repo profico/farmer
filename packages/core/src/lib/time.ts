@@ -133,10 +133,20 @@ const evalArithmetic = (expr: string): number | null => {
 	return result;
 };
 
-// Accepts "1h30m", "90m", "2h", a bare number of hours ("1.5" or ".5"), or an
-// arithmetic expression of hours ("1.5*4" -> 6h, "(1+2)/2" -> 1h30m).
+// Accepts "1h30m", "1h30", "90m", "2h", "1:30", a bare number of hours ("1.5",
+// "1,5" or ".5"), or an arithmetic expression of hours ("1.5*4" -> 6h,
+// "(1+2)/2" -> 1h30m).
+//
+// Returns null for anything it cannot read IN FULL. That last part is the rule
+// worth stating: this used to accept "1h30" as one hour, quietly dropping the
+// 30, because the unit pattern scanned for matches instead of consuming the
+// string. A duration input that silently discards half of what was typed is the
+// one failure mode with no user-visible symptom, so unconsumed text is now an
+// error and the caller shows it.
 export const parseDuration = (input: string): number | null => {
-	const trimmed = input.trim().toLowerCase();
+	// A comma is what half of Europe types for a decimal point, and it can mean
+	// nothing else in a duration — there is no thousands separator in "1,5 hours".
+	const trimmed = input.trim().toLowerCase().replace(/,/g, ".");
 	if (!trimmed) return null;
 
 	// H:MM — the format every duration is DISPLAYED in, so it has to be readable
@@ -148,17 +158,39 @@ export const parseDuration = (input: string): number | null => {
 		return Number(clock[1]) * 3600 + Number(clock[2]) * 60;
 	}
 
+	// "1h30" — hours, then a bare number that can only be minutes. Written by
+	// anyone who reads "1h30m" and thinks the trailing m is optional, which it
+	// visibly is on a clock face.
+	const hoursThenMinutes = /^(\d+)\s*h\s*([0-5]?\d)$/.exec(trimmed);
+	if (hoursThenMinutes) {
+		return (
+			Number(hoursThenMinutes[1]) * 3600 + Number(hoursThenMinutes[2]) * 60
+		);
+	}
+
 	// Unit form takes priority whenever an h/m suffix is present.
 	if (/[hm]/.test(trimmed)) {
 		const unitPattern = /(\d+(?:\.\d+)?)\s*(h|m)/g;
 		let totalSeconds = 0;
 		let matched = false;
+		// Where the last match ended, so a tail the pattern never looked at (the
+		// "30" in "1h30x") fails the whole input instead of vanishing.
+		let consumedTo = 0;
 		for (const match of trimmed.matchAll(unitPattern)) {
+			if (
+				match.index !== consumedTo &&
+				trimmed.slice(consumedTo, match.index).trim() !== ""
+			) {
+				return null;
+			}
 			matched = true;
 			const value = Number.parseFloat(match[1] ?? "0");
 			totalSeconds += match[2] === "h" ? value * 3600 : value * 60;
+			consumedTo = match.index + match[0].length;
 		}
-		return matched ? Math.round(totalSeconds) : null;
+		if (!matched) return null;
+		if (trimmed.slice(consumedTo).trim() !== "") return null;
+		return Math.round(totalSeconds);
 	}
 
 	// Otherwise treat the input as a number/expression of hours.
@@ -294,4 +326,3 @@ export const endOfMonthKey = (dateStr: string): string => {
 // 0=Sun..6=Sat, matching Date#getDay() and recurringBlockRule.daysOfWeek.
 export const weekdayInTz = (dateStr: string, tz: string): number =>
 	anchorDate(dateStr, tz).getDay();
-

@@ -1,7 +1,7 @@
 import {
 	formatDurationInput,
 	parseDuration,
-	QUARTER_HOUR_SECONDS,
+	snapToQuarterHour,
 	timeKeyInTz,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
@@ -94,12 +94,31 @@ type FormValues = {
 	projectId: string;
 	taskId: string;
 	date: string;
+	/** Free text, exactly as typed — `parseDuration` reads it. In the form rather
+	 *  than in its own useState so it validates and reports errors inline like
+	 *  every other field, instead of bouncing off the server as a toast. */
+	duration: string;
 	description: string;
 	overtime: boolean;
 	fillsDay: boolean;
 	repeatEnabled: boolean;
 	daysOfWeek: number[];
 	repeatEndDate: string;
+};
+
+const MAX_ENTRY_SECONDS = 24 * 3600;
+
+/** The client half of the server's duration rule (schema/time-entries.ts). Same
+ *  three checks, so an empty or unreadable box is answered next to the box. */
+const validateDuration = (value: string): string | true => {
+	if (!value.trim()) return "Enter some time";
+	const parsed = parseDuration(value);
+	if (parsed === null) return "Try 1.5, 1h30m or 1:30";
+	if (parsed <= 0) return "Enter some time";
+	if (snapToQuarterHour(parsed) > MAX_ENTRY_SECONDS) {
+		return "A single entry cannot exceed 24 hours";
+	}
+	return true;
 };
 
 function commitKey(projectGithubRepoId: string, sha: string): string {
@@ -130,6 +149,7 @@ export function AddBlockDialog({
 		projectId: entry?.projectId ?? NO_PROJECT,
 		taskId: entry?.taskId ?? "",
 		date: defaultDate,
+		duration: entry ? formatDurationInput(entry.durationSeconds) : "",
 		description: entry?.description ?? "",
 		overtime: entry?.overtime ?? false,
 		fillsDay: entry?.fillsDay ?? false,
@@ -144,7 +164,6 @@ export function AddBlockDialog({
 	useEffect(() => {
 		if (!open) return;
 		form.reset(buildDefaults());
-		setDurationText(entry ? formatDurationInput(entry.durationSeconds) : "");
 	}, [open]);
 
 	const projectId = form.watch("projectId");
@@ -180,13 +199,14 @@ export function AddBlockDialog({
 
 	// Duration is typed, not derived: there is no clock in this system, so an
 	// entry is a date plus an amount of time, in 15-minute steps.
-	const [durationText, setDurationText] = useState(
-		entry ? formatDurationInput(entry.durationSeconds) : "",
-	);
+	const durationText = form.watch("duration");
 	const parsedSeconds = parseDuration(durationText);
+	// `snapToQuarterHour` rather than a local `Math.round(x / 900) * 900`: the
+	// shared one floors at 15 minutes, so "0.1" becomes a real 15-minute block
+	// instead of a 0 the server then rejects with a toast.
 	const snappedSeconds =
-		parsedSeconds && parsedSeconds > 0
-			? Math.round(parsedSeconds / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS
+		parsedSeconds !== null && parsedSeconds > 0
+			? snapToQuarterHour(parsedSeconds)
 			: null;
 	// Show the rounding before the user commits to it, rather than silently
 	// changing what they typed on save.
@@ -333,9 +353,12 @@ export function AddBlockDialog({
 		// quarter hour.
 		const seconds =
 			(new Date(event.end).getTime() - new Date(event.start).getTime()) / 1000;
-		setDurationText(
-			formatDurationInput(Math.max(seconds, QUARTER_HOUR_SECONDS)),
-		);
+		// `snapToQuarterHour` is the whole rule in one call — nearest quarter hour,
+		// floored at one. Flooring alone (what this used to do) put "25m" in the box
+		// and then saved 30m, so the box disagreed with the entry it produced.
+		form.setValue("duration", formatDurationInput(snapToQuarterHour(seconds)), {
+			shouldValidate: true,
+		});
 		if (!form.getValues("description")) {
 			form.setValue("description", event.title);
 		}
@@ -371,6 +394,12 @@ export function AddBlockDialog({
 
 	const mutation = useMutation<{ id: string }, Error, FormValues>({
 		mutationFn: (values: FormValues) => {
+			// Read from the submitted values rather than the render-time snapshot, so
+			// what is validated is exactly what is sent.
+			const parsed = parseDuration(values.duration);
+			const seconds =
+				parsed !== null && parsed > 0 ? snapToQuarterHour(parsed) : undefined;
+
 			if (!entry && values.repeatEnabled) {
 				return createRecurringBlockRule({
 					data: {
@@ -379,7 +408,7 @@ export function AddBlockDialog({
 							values.projectId === NO_PROJECT ? undefined : values.projectId,
 						description: values.description || undefined,
 						daysOfWeek: values.daysOfWeek,
-						duration: durationText,
+						duration: values.duration,
 						effectiveFrom: values.date,
 						effectiveUntil: values.repeatEndDate || undefined,
 					},
@@ -393,9 +422,7 @@ export function AddBlockDialog({
 				date: values.date,
 				// A fill block's duration is derived server-side from the day's
 				// remaining working hours, so none is sent.
-				durationSeconds: values.fillsDay
-					? undefined
-					: (snappedSeconds ?? undefined),
+				durationSeconds: values.fillsDay ? undefined : seconds,
 				overtime: values.overtime,
 				fillsDay: values.fillsDay,
 				meetingUrl: values.fillsDay ? undefined : meetingUrl || undefined,
@@ -589,22 +616,55 @@ export function AddBlockDialog({
 								automatically — no duration needed.
 							</p>
 						) : (
-							<FormItem>
-								<FormLabel>Time</FormLabel>
-								<FormControl>
-									<Input
-										className="w-32 text-base"
-										placeholder="1.5 or 1h30m"
-										value={durationText}
-										onChange={(e) => setDurationText(e.target.value)}
-									/>
-								</FormControl>
-								<p className="text-sm text-muted-foreground">
-									{willSnap && snappedSeconds != null
-										? `Rounds to ${formatDurationInput(snappedSeconds)} — time is tracked in 15-minute steps.`
-										: "In 15-minute steps."}
-								</p>
-							</FormItem>
+							<FormField
+								control={form.control}
+								name="duration"
+								// A fill block's duration is derived server-side, so the box is
+								// not rendered at all — but react-hook-form keeps unmounted
+								// fields registered, so the rule has to stand down explicitly
+								// or it would block the submit over a box nobody can see.
+								rules={{
+									validate: (value: string, values: FormValues) =>
+										values.fillsDay ? true : validateDuration(value),
+								}}
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Time</FormLabel>
+										<FormControl>
+											<Input
+												{...field}
+												className="w-32 text-base"
+												placeholder="1.5 or 1h30m"
+												// Normalise on blur, the way the week grid's cells
+												// already do — "1.5" becomes "1h30m", so what is on
+												// screen is what will be saved rather than a form the
+												// reader has to snap in their own head.
+												onBlur={(e) => {
+													field.onBlur();
+													const parsed = parseDuration(e.target.value);
+													if (parsed !== null && parsed > 0) {
+														field.onChange(
+															formatDurationInput(snapToQuarterHour(parsed)),
+														);
+													}
+												}}
+											/>
+										</FormControl>
+										{/* The rounding hint gives way to the error: two lines of
+										    small print under one box is one too many, and the
+										    error is the one that needs acting on. */}
+										{form.formState.errors.duration ? (
+											<FormMessage />
+										) : (
+											<p className="text-sm text-muted-foreground">
+												{willSnap && snappedSeconds != null
+													? `Rounds to ${formatDurationInput(snappedSeconds)} — time is tracked in 15-minute steps.`
+													: "In 15-minute steps."}
+											</p>
+										)}
+									</FormItem>
+								)}
+							/>
 						)}
 						{showCalendarPicker && (
 							<div className="border-t pt-3.5">

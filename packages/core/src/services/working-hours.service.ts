@@ -5,7 +5,7 @@ import { parseDuration } from "../lib/time";
 // The schedule arithmetic lives in lib/working-day (pure); this service owns
 // the reads and writes. Re-exported here because callers that already depend on
 // this service for the rows shouldn't need a second import for the maths.
-import { type WorkingHoursDay, defaultDayRow } from "../lib/working-day";
+import { defaultDayRow, type WorkingHoursDay } from "../lib/working-day";
 import type {
 	SetWeeklyTargetInput,
 	UpsertWorkingHoursDayInput,
