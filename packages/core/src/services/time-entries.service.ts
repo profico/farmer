@@ -21,6 +21,7 @@ import {
 } from "../db/schema/domain";
 import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
+import { summarizeCommitMessages } from "../lib/day-plan";
 import { orgTimezone } from "../lib/org-time";
 import {
 	dayKeyInTz,
@@ -41,7 +42,7 @@ import type {
 	UpdateTimeEntryInput,
 } from "../schema/time-entries";
 import { accessService } from "./access.service";
-import { githubService, type ScannedCommit } from "./github.service";
+import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { integrationSettingsService } from "./integration-settings.service";
@@ -291,22 +292,6 @@ const syncMeetingsForRange = async (
 		);
 };
 
-// The day's commit subjects, as the description of the block they produced.
-// Mandatory descriptions mean this engine has to write one, and the subjects are
-// the only raw material it has; the person edits it like any other entry.
-const COMMIT_SUMMARY_LIMIT = 3;
-const commitSummary = (commits: ScannedCommit[]): string => {
-	const subjects = commits
-		.slice(0, COMMIT_SUMMARY_LIMIT)
-		.map((c) => c.message.split("\n")[0]?.trim() ?? "")
-		.filter(Boolean);
-	if (subjects.length === 0) return "";
-	const rest = commits.length - subjects.length;
-	return rest > 0
-		? `${subjects.join("; ")} (+${rest} more)`
-		: subjects.join("; ");
-};
-
 // For every day the user pushed commits, ensure a "rest of day" fill block
 // exists so tracked time auto-expands to that day's working hours — the user
 // only logs meetings and breaks, the fill absorbs the remainder. The commits
@@ -340,7 +325,7 @@ const syncCommitWorkTimeForRange = async (
 		// that already filled the day.
 		if (durationSeconds <= 0) continue;
 
-		const description = commitSummary(commits);
+		const description = summarizeCommitMessages(commits.map((c) => c.message));
 
 		const [created] = await db
 			.insert(timeEntry)

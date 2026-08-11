@@ -8,6 +8,7 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import { syncedMeetingTombstone } from "../db/schema/settings";
+import { splitProportionally, summarizeCommitMessages } from "../lib/day-plan";
 import { orgTimezone } from "../lib/org-time";
 import {
 	QUARTER_HOUR_SECONDS,
@@ -89,27 +90,6 @@ const hasLinkedAccount = async (userId: string, providerId: string) => {
 		columns: { id: true },
 	});
 	return !!row;
-};
-
-/** Split `total` across weights, snapped to the 15-minute grid, so the parts
- *  sum to no more than the total. */
-const splitProportionally = (total: number, weights: number[]): number[] => {
-	const sum = weights.reduce((a, b) => a + b, 0);
-	if (sum <= 0) return weights.map(() => 0);
-	let remaining = total;
-	return weights.map((weight, index) => {
-		if (index === weights.length - 1) {
-			return Math.max(
-				0,
-				Math.floor(remaining / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS,
-			);
-		}
-		const share =
-			Math.floor((total * weight) / sum / QUARTER_HOUR_SECONDS) *
-			QUARTER_HOUR_SECONDS;
-		remaining -= share;
-		return share;
-	});
 };
 
 /** Look up one of the tasks this engine proposes against — the assembler can
@@ -339,13 +319,9 @@ export const dayAssemblyService = {
 					taskName: workTask.name,
 					projectId: group.projectId,
 					projectName: nameById.get(group.projectId) ?? null,
-					// Mandatory descriptions mean the assembler has to propose one; the
-					// commit subjects are the best raw material available, and the person
-					// edits before accepting.
-					description: group.commits
-						.slice(0, 3)
-						.map((c) => c.message.split("\n")[0])
-						.join("; "),
+					description: summarizeCommitMessages(
+						group.commits.map((c) => c.message),
+					),
 					durationSeconds: share,
 					fillsDay: false,
 					meetingUrl: null,
