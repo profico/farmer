@@ -13,6 +13,7 @@ import {
 } from "@farmer/core/lib/report-period";
 import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
 import { rollUpUtilization } from "@farmer/core/lib/utilization";
+import type { TimeReportDetailInput } from "@farmer/core/schema";
 import {
 	useMutation,
 	useQueryClient,
@@ -43,6 +44,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { Skeleton } from "#/components/ui/skeleton.tsx";
 import {
 	Table,
 	TableBody,
@@ -220,7 +222,14 @@ function ReportsPage() {
 			    tab, it crossfades one panel into the next, and the spinner-to-table
 			    step inside stays uncrossfaded — that one is a sub-second wait on a
 			    panel you are already looking at, and fading it would just make the
-			    data land later than it actually did. */}
+			    data land later than it actually did.
+
+			    This one only covers the *first* render of a tab. Every control that
+			    changes what a tab shows — the month stepper, the period preset, the
+			    Clients/Projects/Teammates grouping, the drill-down filters — is
+			    rendered outside a nested boundary of its own, so moving one replaces
+			    the figures it changes and nothing else. A control that vanishes into
+			    the skeleton it just triggered can't be clicked twice in a row. */}
 			<FadeSwap activeKey={tab} className="mt-6">
 				<Suspense key={tab} fallback={<TabPending />}>
 					{tab === "time" && (
@@ -299,11 +308,30 @@ function ReportsPage() {
  * only gestured at: the panel is roughly the height of what replaces it, so the
  * tab strip above doesn't jump when the data lands.
  */
-function TabPending() {
+function TabPending({ className = "pt-1" }: { className?: string }) {
 	return (
-		<div className="pt-1">
+		<div className={className}>
 			<TableLoadingSkeleton />
 		</div>
+	);
+}
+
+/** The placeholder for a single figure — a total or a percentage — that sits in
+ *  a row of controls. The label stays: only the number is unknown. */
+function FigurePending({
+	label,
+	className,
+}: {
+	label: string;
+	className?: string;
+}) {
+	return (
+		<span
+			className={cn("flex items-baseline gap-2 whitespace-nowrap", className)}
+		>
+			<span className="eyebrow">{label}</span>
+			<Skeleton className="h-4 w-16" />
+		</span>
 	);
 }
 
@@ -312,7 +340,16 @@ function TabPending() {
 // it's shared across Day/Week/Month there: the eye should not have to re-find
 // the arrows when the screen changes.
 
-/** Wraps a month-based report in the month stepper. */
+/**
+ * Wraps a month-based report in the month stepper.
+ *
+ * The stepper is chrome, not content: it owns its own Suspense boundary around
+ * the report below it so that stepping to a month that isn't cached yet swaps
+ * the table and leaves the arrows in place. Without it the suspension escapes to
+ * the tab-level boundary, which replaces the stepper with the skeleton it just
+ * triggered — you'd have to wait for the data to come back before you could
+ * press "previous month" twice.
+ */
 function MonthFramed({
 	orgSlug,
 	search,
@@ -361,7 +398,9 @@ function MonthFramed({
 					)
 				}
 			/>
-			<div className="mt-6">{children}</div>
+			<div className="mt-6">
+				<Suspense fallback={<TabPending />}>{children}</Suspense>
+			</div>
 		</>
 	);
 }
@@ -596,6 +635,16 @@ function TimeTab({
 	);
 }
 
+/**
+ * The Clients/Projects/Teammates grouping, and the figures behind it.
+ *
+ * The grouping control is deliberately *not* inside the boundary that its own
+ * clicks trip: switching group changes the query key, and if the control were
+ * part of the suspended subtree it would disappear along with the table for as
+ * long as the new grouping takes to load. Only the total and the rows are
+ * replaced — and they suspend on the same query, so the two boundaries below
+ * resolve in the same commit rather than landing one after the other.
+ */
 function TimeSummary({
 	orgSlug,
 	search,
@@ -609,10 +658,6 @@ function TimeSummary({
 	from: string;
 	to: string;
 }) {
-	const { data } = useSuspenseQuery(
-		timeReportSummaryQuery({ from, to, tab: group }),
-	);
-
 	return (
 		<>
 			<div className="mt-6 flex flex-wrap items-center justify-between gap-3">
@@ -633,14 +678,65 @@ function TimeSummary({
 						</SegmentedControlItem>
 					))}
 				</SegmentedControl>
-				<span className="flex items-baseline gap-2 whitespace-nowrap">
-					<span className="eyebrow">Total</span>
-					<span className="mono text-lg">
-						{formatHoursLabel(data.totalSeconds)}
-					</span>
-				</span>
+				<Suspense fallback={<FigurePending label="Total" />}>
+					<TimeSummaryTotal group={group} from={from} to={to} />
+				</Suspense>
 			</div>
 
+			<Suspense fallback={<TabPending className="mt-6" />}>
+				<TimeSummaryRows
+					orgSlug={orgSlug}
+					search={search}
+					group={group}
+					from={from}
+					to={to}
+				/>
+			</Suspense>
+		</>
+	);
+}
+
+function TimeSummaryTotal({
+	group,
+	from,
+	to,
+}: {
+	group: "clients" | "projects" | "teammates";
+	from: string;
+	to: string;
+}) {
+	const { data } = useSuspenseQuery(
+		timeReportSummaryQuery({ from, to, tab: group }),
+	);
+	return (
+		<span className="flex items-baseline gap-2 whitespace-nowrap">
+			<span className="eyebrow">Total</span>
+			<span className="mono text-lg">
+				{formatHoursLabel(data.totalSeconds)}
+			</span>
+		</span>
+	);
+}
+
+function TimeSummaryRows({
+	orgSlug,
+	search,
+	group,
+	from,
+	to,
+}: {
+	orgSlug: string;
+	search: Search;
+	group: "clients" | "projects" | "teammates";
+	from: string;
+	to: string;
+}) {
+	const { data } = useSuspenseQuery(
+		timeReportSummaryQuery({ from, to, tab: group }),
+	);
+
+	return (
+		<>
 			{/* Time with no project — synced meetings and fill blocks nobody has
 			    filed yet. It cannot appear in the rows below (there is no client or
 			    project to group it under) and it is deliberately not added to the
@@ -725,6 +821,12 @@ function TimeSummary({
  * Grouped by date with daily subtotals, because that is how the raw data is
  * read back to somebody — "what happened on the 14th" — and the project
  * drill-down can regroup by person instead.
+ *
+ * The header and the three filters are outside the boundary the filters trip,
+ * for the same reason the grouping control is upstairs: narrowing to one task
+ * shouldn't take the select you narrowed with off the screen. The title comes
+ * from the summary rather than the entries, so it survives a filter that
+ * matches nothing.
  */
 function TimeDetail({
 	orgSlug,
@@ -762,26 +864,10 @@ function TimeDetail({
 		taskId: taskFilter,
 	};
 
-	const { data: rows } = useSuspenseQuery(timeReportDetailQuery(input));
 	const { data: summary } = useSuspenseQuery(
 		timeReportSummaryQuery({ from, to, tab: kind }),
 	);
 	const title = summary.rows.find((r) => r.id === id)?.name ?? "Detail";
-	const total = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
-
-	// One pass, in the order the service already sorted them: it grouped by the
-	// same key, so a running group beats re-sorting the rows here.
-	const groups: { key: string; rows: typeof rows; seconds: number }[] = [];
-	for (const row of rows) {
-		const key = groupBy === "person" ? row.userName : row.date;
-		const last = groups[groups.length - 1];
-		if (last && last.key === key) {
-			last.rows.push(row);
-			last.seconds += row.durationSeconds;
-		} else {
-			groups.push({ key, rows: [row], seconds: row.durationSeconds });
-		}
-	}
 
 	return (
 		<>
@@ -797,44 +883,9 @@ function TimeDetail({
 					</Link>
 					<h2 className="h2">{title}</h2>
 				</div>
-				<div className="flex items-center gap-3">
-					<span className="flex items-baseline gap-2 whitespace-nowrap">
-						<span className="eyebrow">Total</span>
-						<span className="mono text-lg">{formatHoursLabel(total)}</span>
-					</span>
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={rows.length === 0}
-						onClick={() =>
-							downloadCsv(
-								`time-report_${from}_${to}.csv`,
-								[
-									"Date",
-									"Client",
-									"Project",
-									"Task",
-									"Person",
-									"Description",
-									"Hours",
-									"Overtime",
-								],
-								rows.map((r) => [
-									r.date,
-									r.clientName,
-									r.projectName,
-									r.taskName,
-									r.userName,
-									r.description,
-									formatDecimalHours(r.durationSeconds),
-									r.overtime ? "yes" : "",
-								]),
-							)
-						}
-					>
-						Export CSV
-					</Button>
-				</div>
+				<Suspense fallback={<TimeDetailActionsPending />}>
+					<TimeDetailActions input={input} from={from} to={to} />
+				</Suspense>
 			</div>
 
 			<div className="mt-4 flex flex-wrap items-center gap-2">
@@ -881,6 +932,107 @@ function TimeDetail({
 				)}
 			</div>
 
+			<Suspense fallback={<TabPending className="mt-6" />}>
+				<TimeDetailTable input={input} groupBy={groupBy} />
+			</Suspense>
+		</>
+	);
+}
+
+/** The total and the export, both of which are a function of the rows the
+ *  filters selected — so they load with the table, not with the header. */
+function TimeDetailActions({
+	input,
+	from,
+	to,
+}: {
+	input: TimeReportDetailInput;
+	from: string;
+	to: string;
+}) {
+	const { data: rows } = useSuspenseQuery(timeReportDetailQuery(input));
+	const total = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
+
+	return (
+		<div className="flex items-center gap-3">
+			<span className="flex items-baseline gap-2 whitespace-nowrap">
+				<span className="eyebrow">Total</span>
+				<span className="mono text-lg">{formatHoursLabel(total)}</span>
+			</span>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={rows.length === 0}
+				onClick={() =>
+					downloadCsv(
+						`time-report_${from}_${to}.csv`,
+						[
+							"Date",
+							"Client",
+							"Project",
+							"Task",
+							"Person",
+							"Description",
+							"Hours",
+							"Overtime",
+						],
+						rows.map((r) => [
+							r.date,
+							r.clientName,
+							r.projectName,
+							r.taskName,
+							r.userName,
+							r.description,
+							formatDecimalHours(r.durationSeconds),
+							r.overtime ? "yes" : "",
+						]),
+					)
+				}
+			>
+				Export CSV
+			</Button>
+		</div>
+	);
+}
+
+/** Holds the export button's place while the rows load, so the header doesn't
+ *  reflow around a button that pops in a moment later. */
+function TimeDetailActionsPending() {
+	return (
+		<div className="flex items-center gap-3">
+			<FigurePending label="Total" />
+			<Button variant="outline" size="sm" disabled>
+				Export CSV
+			</Button>
+		</div>
+	);
+}
+
+function TimeDetailTable({
+	input,
+	groupBy,
+}: {
+	input: TimeReportDetailInput;
+	groupBy: "date" | "person";
+}) {
+	const { data: rows } = useSuspenseQuery(timeReportDetailQuery(input));
+
+	// One pass, in the order the service already sorted them: it grouped by the
+	// same key, so a running group beats re-sorting the rows here.
+	const groups: { key: string; rows: typeof rows; seconds: number }[] = [];
+	for (const row of rows) {
+		const key = groupBy === "person" ? row.userName : row.date;
+		const last = groups[groups.length - 1];
+		if (last && last.key === key) {
+			last.rows.push(row);
+			last.seconds += row.durationSeconds;
+		} else {
+			groups.push({ key, rows: [row], seconds: row.durationSeconds });
+		}
+	}
+
+	return (
+		<>
 			{rows.length === 0 ? (
 				<p className="mt-5 border-t pt-5 text-base text-muted-foreground">
 					No entries match these filters.
