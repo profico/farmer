@@ -36,6 +36,16 @@ export const Route = createFileRoute("/$orgSlug/time/week")({
 				holidaysForRangeQuery({ from: weekStart, to: weekEnd }),
 			),
 		]);
+
+		// Warm the weeks either side without holding this navigation up, so a step
+		// with the ‹ / › buttons is a cache hit rather than a blocking fetch that
+		// swaps the grid out for the pending state. Same reasoning as the Day route.
+		for (const offset of [-7, 7]) {
+			const start = addDaysToKey(weekStart, offset);
+			void context.queryClient.prefetchQuery(
+				timeEntriesRangeQuery(start, addDaysToKey(start, 6)),
+			);
+		}
 	},
 	component: WeekRoute,
 });

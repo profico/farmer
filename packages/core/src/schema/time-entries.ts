@@ -167,6 +167,16 @@ export const copyTimeEntriesInput = z.object({
 });
 export type CopyTimeEntriesInput = z.infer<typeof copyTimeEntriesInput>;
 
+// The same affordance a week at a time, which is how Harvest offers it and how
+// anyone whose week is shaped like the last one actually works. Takes the two
+// week STARTS rather than a range: the seven days are paired up by offset, so
+// last Tuesday's entries land on this Tuesday.
+export const copyWeekEntriesInput = z.object({
+	fromWeekStart: dateKey,
+	toWeekStart: dateKey,
+});
+export type CopyWeekEntriesInput = z.infer<typeof copyWeekEntriesInput>;
+
 // PMs may correct the Vacation/Sick entries of people on their projects, and
 // only those. Worked-time corrections live in the close sheet's Adjusted column.
 export const overrideAbsenceEntryInput = z.object({

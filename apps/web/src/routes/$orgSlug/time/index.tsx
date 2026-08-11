@@ -38,6 +38,18 @@ export const Route = createFileRoute("/$orgSlug/time/")({
 				holidaysForRangeQuery({ from: weekStart, to: weekEnd }),
 			),
 		]);
+
+		// The neighbouring weeks, warmed but NOT awaited. Stepping between days
+		// inside a week is a cache hit and lands instantly; the step that crosses a
+		// week boundary used to miss, and the loader blocks navigation, so the whole
+		// view was replaced by the pending state for at least 300ms while it
+		// fetched. Prefetching removes the miss without holding up this navigation.
+		for (const offset of [-7, 7]) {
+			const start = addDaysToKey(weekStart, offset);
+			void context.queryClient.prefetchQuery(
+				timeEntriesRangeQuery(start, addDaysToKey(start, 6)),
+			);
+		}
 	},
 	component: DayRoute,
 });

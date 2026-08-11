@@ -23,7 +23,12 @@ import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { summarizeCommitMessages } from "../lib/day-plan";
 import { clampToMeetingSyncWindow } from "../lib/meeting-window";
-import { dayKeyInTz, monthBounds, snapToQuarterHour } from "../lib/time";
+import {
+	addDaysToKey,
+	dayKeyInTz,
+	monthBounds,
+	snapToQuarterHour,
+} from "../lib/time";
 import {
 	MAX_DAY_SECONDS,
 	remainingSeconds,
@@ -32,6 +37,7 @@ import {
 } from "../lib/working-day";
 import type {
 	CopyTimeEntriesInput,
+	CopyWeekEntriesInput,
 	CreateAbsenceForUserInput,
 	CreateTimeEntryInput,
 	FileTimeEntriesInput,
@@ -1080,6 +1086,42 @@ export const timeEntriesService = {
 			const tz = await ctxTimezone(txCtx);
 			await recomputeDayFill(txCtx, input.toDate, tz);
 			return { copied: copyable.length, skipped };
+		});
+	},
+
+	/** `copyDay` seven times, pairing the weeks up by offset so last Tuesday
+	 *  lands on this Tuesday.
+	 *
+	 *  A day that would breach the 24-hour ceiling is reported rather than
+	 *  aborting the week: one over-full Wednesday should not cost you the other
+	 *  six days. `copyDay` checks the ceiling before it writes anything, so
+	 *  catching here cannot leave a day half-copied. */
+	copyWeek: async (ctx: Ctx, input: CopyWeekEntriesInput) => {
+		if (input.fromWeekStart === input.toWeekStart) {
+			return { copied: 0, skipped: 0, blockedDays: [] as string[] };
+		}
+
+		return withCtxTx(ctx, async (txCtx) => {
+			let copied = 0;
+			let skipped = 0;
+			const blockedDays: string[] = [];
+
+			for (let offset = 0; offset < 7; offset++) {
+				const fromDate = addDaysToKey(input.fromWeekStart, offset);
+				const toDate = addDaysToKey(input.toWeekStart, offset);
+				try {
+					const result = await timeEntriesService.copyDay(txCtx, {
+						fromDate,
+						toDate,
+					});
+					copied += result.copied;
+					skipped += result.skipped;
+				} catch {
+					blockedDays.push(toDate);
+				}
+			}
+
+			return { copied, skipped, blockedDays };
 		});
 	},
 

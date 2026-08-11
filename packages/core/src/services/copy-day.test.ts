@@ -199,6 +199,62 @@ describe("copyDay", () => {
 	});
 });
 
+describe("copyWeek", () => {
+	const LAST_MON = "2026-08-03";
+	const LAST_WED = "2026-08-05";
+	const THIS_MON = "2026-08-10";
+	const THIS_WED = "2026-08-12";
+
+	test("pairs the two weeks up by weekday", async () => {
+		await log(LAST_MON, 2, "Monday work");
+		await log(LAST_WED, 3, "Wednesday work");
+
+		const result = await timeEntriesService.copyWeek(ctx, {
+			fromWeekStart: LAST_MON,
+			toWeekStart: THIS_MON,
+		});
+
+		expect(result.copied).toBe(2);
+		expect(result.blockedDays).toEqual([]);
+		// Monday's work lands on Monday, not on whatever day came first.
+		expect((await entriesOn(THIS_MON))[0]?.description).toBe("Monday work");
+		expect((await entriesOn(THIS_WED))[0]?.description).toBe("Wednesday work");
+	});
+
+	test("a second copy of the same week adds nothing", async () => {
+		await log(LAST_MON, 2, "Monday work");
+		await timeEntriesService.copyWeek(ctx, {
+			fromWeekStart: LAST_MON,
+			toWeekStart: THIS_MON,
+		});
+
+		const second = await timeEntriesService.copyWeek(ctx, {
+			fromWeekStart: LAST_MON,
+			toWeekStart: THIS_MON,
+		});
+		expect(second.copied).toBe(0);
+		expect(second.skipped).toBe(1);
+		expect(await entriesOn(THIS_MON)).toHaveLength(1);
+	});
+
+	test("one over-full day does not cost the rest of the week", async () => {
+		await log(LAST_MON, 13, "Long Monday");
+		await log(LAST_WED, 3, "Wednesday work");
+		await log(THIS_MON, 12, "Already a long Monday");
+
+		const result = await timeEntriesService.copyWeek(ctx, {
+			fromWeekStart: LAST_MON,
+			toWeekStart: THIS_MON,
+		});
+
+		expect(result.blockedDays).toEqual([THIS_MON]);
+		expect(result.copied).toBe(1);
+		// Monday refused, Wednesday still landed.
+		expect(await entriesOn(THIS_MON)).toHaveLength(1);
+		expect(await entriesOn(THIS_WED)).toHaveLength(1);
+	});
+});
+
 describe("fill blocks", () => {
 	test("a fill block squeezed to nothing is removed, not stored at 0:00", async () => {
 		await timeEntriesService.create(ctx, {

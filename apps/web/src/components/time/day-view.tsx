@@ -1,7 +1,7 @@
 import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
 import { PlusIcon, SparkleIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { EmptyState } from "#/components/states/empty-state.tsx";
@@ -44,6 +44,7 @@ export function DayView({
 	holidays: Map<string, string>;
 }) {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 	const total = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 	// A fill ("rest of day") block is a catch-all, so it always sorts last; the
 	// stable sort otherwise preserves the server's insertion ordering.
@@ -142,6 +143,15 @@ export function DayView({
 						→
 					</Link>
 				}
+				jumpTo={{
+					value: date,
+					onPick: (picked) =>
+						navigate({
+							to: "/$orgSlug/time",
+							params: { orgSlug },
+							search: { date: picked },
+						}),
+				}}
 				returnLink={
 					!isToday && (
 						<Link

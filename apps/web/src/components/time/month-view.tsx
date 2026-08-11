@@ -4,7 +4,7 @@ import {
 	endOfMonthKey,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import type { EntryBlockRowEntry } from "#/components/time/entry-block-row.tsx";
 import {
 	returnLinkClass,
@@ -46,6 +46,7 @@ export function MonthView({
 	entries: EntryBlockRowEntry[];
 	holidays: Map<string, string>;
 }) {
+	const navigate = useNavigate();
 	const monthStart = `${month}-01`;
 	const monthEnd = endOfMonthKey(monthStart);
 	const days = datesBetween(monthStart, monthEnd);
@@ -80,6 +81,15 @@ export function MonthView({
 						→
 					</Link>
 				}
+				jumpTo={{
+					value: monthStart,
+					onPick: (picked) =>
+						navigate({
+							to: "/$orgSlug/time/month",
+							params: { orgSlug },
+							search: { month: picked.slice(0, 7) },
+						}),
+				}}
 				returnLink={
 					month !== today.slice(0, 7) && (
 						<Link

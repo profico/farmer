@@ -1,7 +1,11 @@
-import { parseDuration, snapToQuarterHour } from "@farmer/core/lib/time";
+import {
+	parseDuration,
+	snapToQuarterHour,
+	startOfWeekKey,
+} from "@farmer/core/lib/time";
 import { NoteIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -33,6 +37,7 @@ import { formatClock } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
+	copyTimeEntriesWeek,
 	deleteTimeEntry,
 	setWeekCell,
 	updateTimeEntryDescription,
@@ -105,6 +110,7 @@ export function WeekView({
 	holidays: Map<string, string>;
 }) {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 
 	// Rows the user added but hasn't typed hours into yet. They have no entries
 	// behind them, so they'd vanish on the next refetch without this.
@@ -226,6 +232,44 @@ export function WeekView({
 		onError: (error) => toast.error(error.message ?? "Could not save"),
 	});
 
+	const copyWeek = useMutation({
+		mutationFn: () =>
+			copyTimeEntriesWeek({
+				data: {
+					fromWeekStart: shiftWeek(weekStart, -7),
+					toWeekStart: weekStart,
+				},
+			}),
+		onSuccess: async (result) => {
+			await invalidate();
+			// Three outcomes worth telling apart: nothing to copy, everything was
+			// already here (a second click), and some days refused because copying
+			// would have pushed them past 24 hours.
+			const parts: string[] = [];
+			if (result.copied > 0) {
+				parts.push(
+					`Copied ${result.copied} ${result.copied === 1 ? "entry" : "entries"}`,
+				);
+			}
+			if (result.skipped > 0) parts.push(`${result.skipped} already here`);
+			if (result.blockedDays.length > 0) {
+				parts.push(
+					`${result.blockedDays.length} ${
+						result.blockedDays.length === 1 ? "day" : "days"
+					} would exceed 24 hours`,
+				);
+			}
+			if (parts.length === 0) {
+				toast.success("Nothing to copy from last week");
+			} else if (result.blockedDays.length > 0) {
+				toast.warning(parts.join(", "));
+			} else {
+				toast.success(parts.join(", "));
+			}
+		},
+		onError: (error) => toast.error(error.message ?? "Could not copy the week"),
+	});
+
 	const removeRow = useMutation({
 		mutationFn: async (row: GridRow) => {
 			for (const cell of row.byDate.values()) {
@@ -278,6 +322,17 @@ export function WeekView({
 						→
 					</Link>
 				}
+				jumpTo={{
+					value: weekStart,
+					// Any day in a week identifies that week, so the picker snaps to
+					// the Monday it belongs to rather than refusing a mid-week date.
+					onPick: (picked) =>
+						navigate({
+							to: "/$orgSlug/time/week",
+							params: { orgSlug },
+							search: { weekStart: startOfWeekKey(picked) },
+						}),
+				}}
 				returnLink={
 					!isCurrentWeek && (
 						<Link
@@ -488,6 +543,16 @@ export function WeekView({
 						</Button>
 					}
 				/>
+				{/* Day has had this since the beginning; a week whose shape repeats is
+				    the more common case, and the one Harvest offers it for. */}
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={copyWeek.isPending}
+					onClick={() => copyWeek.mutate()}
+				>
+					{copyWeek.isPending ? "Copying…" : "Copy from previous week"}
+				</Button>
 			</div>
 		</div>
 	);
