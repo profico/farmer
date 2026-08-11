@@ -34,20 +34,21 @@ import {
 	SelectValue,
 } from "#/components/ui/select.tsx";
 import { cn } from "#/lib/utils.ts";
-import { availableEntryTypesQuery } from "#/queries/entry-types.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
+import { tasksForProjectQuery } from "#/queries/tasks.ts";
 import { createRecurringBlockRule } from "#/server/recurring-block-rules.ts";
 
 const NO_PROJECT = "__none__";
 const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
+// No start time: a recurring block reserves an AMOUNT of time on a weekday, not
+// a slot on a clock, which is the whole point of the duration-only model.
 const formSchema = z.object({
-	typeId: z.string().min(1, "Type is required"),
+	taskId: z.string().min(1, "Pick a task"),
 	projectId: z.string(),
 	description: z.string(),
 	daysOfWeek: z.array(z.number()).min(1, "Pick at least one day"),
-	startTime: z.string().min(1, "Start time is required"),
 	duration: z.string().min(1, "Duration is required"),
 });
 
@@ -55,27 +56,25 @@ export function CreateRecurringBlockRuleDialog() {
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const { data: projects } = useSuspenseQuery(projectsQuery());
-	const { data: availableTypes } = useSuspenseQuery(availableEntryTypesQuery());
 
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
-			typeId: "",
+			taskId: "",
 			projectId: NO_PROJECT,
 			description: "",
 			daysOfWeek: [1, 2, 3, 4, 5],
-			startTime: "12:00",
 			duration: "30m",
 		},
 	});
 
 	const projectId = form.watch("projectId");
 	const daysOfWeek = form.watch("daysOfWeek");
-	const selectedProject = projects.find((p) => p.id === projectId);
-	const typeOptions = [
-		...availableTypes,
-		...(selectedProject?.entryTypes ?? []),
-	];
+	// The task list follows the chosen project — tasks are a global taxonomy that
+	// each project cherry-picks from.
+	const { data: taskOptions = [] } = useSuspenseQuery(
+		tasksForProjectQuery(projectId === NO_PROJECT ? undefined : projectId),
+	);
 
 	const toggleDay = (day: number) => {
 		const current = form.getValues("daysOfWeek");
@@ -92,12 +91,11 @@ export function CreateRecurringBlockRuleDialog() {
 		mutationFn: (values: z.infer<typeof formSchema>) =>
 			createRecurringBlockRule({
 				data: {
-					typeId: values.typeId,
+					taskId: values.taskId,
 					projectId:
 						values.projectId === NO_PROJECT ? undefined : values.projectId,
 					description: values.description || undefined,
 					daysOfWeek: values.daysOfWeek,
-					startTime: values.startTime,
 					duration: values.duration,
 				},
 			}),
@@ -129,25 +127,25 @@ export function CreateRecurringBlockRuleDialog() {
 					>
 						<FormField
 							control={form.control}
-							name="typeId"
+							name="taskId"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Type</FormLabel>
+									<FormLabel>Task</FormLabel>
 									<Select
 										value={field.value}
 										onValueChange={field.onChange}
-										items={typeOptions.map((t) => ({
+										items={taskOptions.map((t) => ({
 											value: t.id,
 											label: t.name,
 										}))}
 									>
 										<FormControl>
 											<SelectTrigger className="w-full">
-												<SelectValue placeholder="Select a type" />
+												<SelectValue placeholder="Select a task" />
 											</SelectTrigger>
 										</FormControl>
 										<SelectContent>
-											{typeOptions.map((t) => (
+											{taskOptions.map((t) => (
 												<SelectItem key={t.id} value={t.id}>
 													{t.name}
 												</SelectItem>
@@ -163,10 +161,13 @@ export function CreateRecurringBlockRuleDialog() {
 							name="projectId"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Project (optional)</FormLabel>
+									<FormLabel>Project</FormLabel>
 									<Select
 										value={field.value}
-										onValueChange={field.onChange}
+										onValueChange={(value) => {
+											field.onChange(value);
+											form.setValue("taskId", "");
+										}}
 										items={[
 											{ value: NO_PROJECT, label: "No project" },
 											...projects.map((p) => ({ value: p.id, label: p.name })),
@@ -216,19 +217,6 @@ export function CreateRecurringBlockRuleDialog() {
 								</p>
 							)}
 						</FormItem>
-						<FormField
-							control={form.control}
-							name="startTime"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Start time</FormLabel>
-									<FormControl>
-										<Input type="time" {...field} />
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
 						<FormField
 							control={form.control}
 							name="duration"

@@ -1,17 +1,15 @@
-import { dayKeyInTz } from "@farmer/core/lib/time";
-
-export function groupByDay<T extends { startedAt: Date | string }>(
+// Entries carry their own day now (a `date` column, in the org's timezone), so
+// grouping is a plain bucket — no timezone conversion, no timestamps.
+export function groupByDay<T extends { date: string }>(
 	entries: T[],
-	timezone: string,
 ): Array<[string, T[]]> {
 	const groups = new Map<string, T[]>();
 	for (const entry of entries) {
-		const key = dayKeyInTz(new Date(entry.startedAt), timezone);
-		const list = groups.get(key);
+		const list = groups.get(entry.date);
 		if (list) {
 			list.push(entry);
 		} else {
-			groups.set(key, [entry]);
+			groups.set(entry.date, [entry]);
 		}
 	}
 	return [...groups.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));

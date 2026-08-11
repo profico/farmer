@@ -1,7 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import {
 	listHolidaysForRange,
-	listHolidaysForYear,
 	listHolidaysForYearWithStatus,
 	listSupportedCountries,
 } from "#/server/holidays.ts";
@@ -11,12 +10,6 @@ export const supportedCountriesQuery = () =>
 		queryKey: ["holidays", "countries"],
 		queryFn: () => listSupportedCountries(),
 		staleTime: Number.POSITIVE_INFINITY,
-	});
-
-export const holidaysForYearQuery = (year: number) =>
-	queryOptions({
-		queryKey: ["holidays", "year", year],
-		queryFn: () => listHolidaysForYear({ data: year }),
 	});
 
 export const holidaysForYearWithStatusQuery = (year: number) =>

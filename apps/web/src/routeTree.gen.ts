@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as NoAccessRouteImport } from './routes/no-access'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
@@ -16,26 +17,34 @@ import { Route as AcceptInviteInvitationIdRouteImport } from './routes/accept-in
 import { Route as authRegisterRouteImport } from './routes/(auth)/register'
 import { Route as authLoginRouteImport } from './routes/(auth)/login'
 import { Route as OrgSlugReportsRouteImport } from './routes/$orgSlug/reports'
+import { Route as OrgSlugCloseRouteImport } from './routes/$orgSlug/close'
 import { Route as OrgSlugTimeRouteRouteImport } from './routes/$orgSlug/time/route'
 import { Route as OrgSlugTimeIndexRouteImport } from './routes/$orgSlug/time/index'
 import { Route as OrgSlugProjectsIndexRouteImport } from './routes/$orgSlug/projects/index'
 import { Route as ApiV1TimeEntriesRouteImport } from './routes/api/v1/time-entries'
 import { Route as ApiV1ProjectsRouteImport } from './routes/api/v1/projects'
+import { Route as ApiSlackCallbackRouteImport } from './routes/api/slack/callback'
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as OrgSlugTimeWeekRouteImport } from './routes/$orgSlug/time/week'
 import { Route as OrgSlugTimeMonthRouteImport } from './routes/$orgSlug/time/month'
-import { Route as OrgSlugSettingsTimeOffRouteImport } from './routes/$orgSlug/settings/time-off'
+import { Route as OrgSlugSettingsTasksRouteImport } from './routes/$orgSlug/settings/tasks'
 import { Route as OrgSlugSettingsRecurringBlocksRouteImport } from './routes/$orgSlug/settings/recurring-blocks'
 import { Route as OrgSlugSettingsPreferencesRouteImport } from './routes/$orgSlug/settings/preferences'
 import { Route as OrgSlugSettingsOrganizationRouteImport } from './routes/$orgSlug/settings/organization'
 import { Route as OrgSlugSettingsMyScheduleRouteImport } from './routes/$orgSlug/settings/my-schedule'
 import { Route as OrgSlugSettingsMembersRouteImport } from './routes/$orgSlug/settings/members'
 import { Route as OrgSlugSettingsIntegrationsRouteImport } from './routes/$orgSlug/settings/integrations'
+import { Route as OrgSlugSettingsHourFundRouteImport } from './routes/$orgSlug/settings/hour-fund'
 import { Route as OrgSlugSettingsHolidaysRouteImport } from './routes/$orgSlug/settings/holidays'
-import { Route as OrgSlugSettingsEntryTypesRouteImport } from './routes/$orgSlug/settings/entry-types'
+import { Route as OrgSlugSettingsClientsRouteImport } from './routes/$orgSlug/settings/clients'
 
+const NoAccessRoute = NoAccessRouteImport.update({
+  id: '/no-access',
+  path: '/no-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
   id: '/$orgSlug',
   path: '/$orgSlug',
@@ -72,6 +81,11 @@ const OrgSlugReportsRoute = OrgSlugReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugCloseRoute = OrgSlugCloseRouteImport.update({
+  id: '/close',
+  path: '/close',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugTimeRouteRoute = OrgSlugTimeRouteRouteImport.update({
   id: '/time',
   path: '/time',
@@ -95,6 +109,11 @@ const ApiV1TimeEntriesRoute = ApiV1TimeEntriesRouteImport.update({
 const ApiV1ProjectsRoute = ApiV1ProjectsRouteImport.update({
   id: '/api/v1/projects',
   path: '/api/v1/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSlackCallbackRoute = ApiSlackCallbackRouteImport.update({
+  id: '/api/slack/callback',
+  path: '/api/slack/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiReportsPdfRoute = ApiReportsPdfRouteImport.update({
@@ -122,9 +141,9 @@ const OrgSlugTimeMonthRoute = OrgSlugTimeMonthRouteImport.update({
   path: '/month',
   getParentRoute: () => OrgSlugTimeRouteRoute,
 } as any)
-const OrgSlugSettingsTimeOffRoute = OrgSlugSettingsTimeOffRouteImport.update({
-  id: '/settings/time-off',
-  path: '/settings/time-off',
+const OrgSlugSettingsTasksRoute = OrgSlugSettingsTasksRouteImport.update({
+  id: '/settings/tasks',
+  path: '/settings/tasks',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
 const OrgSlugSettingsRecurringBlocksRoute =
@@ -162,41 +181,49 @@ const OrgSlugSettingsIntegrationsRoute =
     path: '/settings/integrations',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const OrgSlugSettingsHourFundRoute = OrgSlugSettingsHourFundRouteImport.update({
+  id: '/settings/hour-fund',
+  path: '/settings/hour-fund',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugSettingsHolidaysRoute = OrgSlugSettingsHolidaysRouteImport.update({
   id: '/settings/holidays',
   path: '/settings/holidays',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
-const OrgSlugSettingsEntryTypesRoute =
-  OrgSlugSettingsEntryTypesRouteImport.update({
-    id: '/settings/entry-types',
-    path: '/settings/entry-types',
-    getParentRoute: () => OrgSlugRouteRoute,
-  } as any)
+const OrgSlugSettingsClientsRoute = OrgSlugSettingsClientsRouteImport.update({
+  id: '/settings/clients',
+  path: '/settings/clients',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/no-access': typeof NoAccessRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
+  '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
-  '/$orgSlug/settings/entry-types': typeof OrgSlugSettingsEntryTypesRoute
+  '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
+  '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
   '/$orgSlug/settings/integrations': typeof OrgSlugSettingsIntegrationsRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
-  '/$orgSlug/settings/time-off': typeof OrgSlugSettingsTimeOffRoute
+  '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
   '/$orgSlug/projects/': typeof OrgSlugProjectsIndexRoute
@@ -204,25 +231,29 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/no-access': typeof NoAccessRoute
+  '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/login': typeof authLoginRoute
   '/register': typeof authRegisterRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
-  '/$orgSlug/settings/entry-types': typeof OrgSlugSettingsEntryTypesRoute
+  '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
+  '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
   '/$orgSlug/settings/integrations': typeof OrgSlugSettingsIntegrationsRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
-  '/$orgSlug/settings/time-off': typeof OrgSlugSettingsTimeOffRoute
+  '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
   '/$orgSlug/projects': typeof OrgSlugProjectsIndexRoute
@@ -232,26 +263,30 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/no-access': typeof NoAccessRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
+  '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/(auth)/login': typeof authLoginRoute
   '/(auth)/register': typeof authRegisterRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
-  '/$orgSlug/settings/entry-types': typeof OrgSlugSettingsEntryTypesRoute
+  '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
+  '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
   '/$orgSlug/settings/integrations': typeof OrgSlugSettingsIntegrationsRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
-  '/$orgSlug/settings/time-off': typeof OrgSlugSettingsTimeOffRoute
+  '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
+  '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
   '/$orgSlug/projects/': typeof OrgSlugProjectsIndexRoute
@@ -262,26 +297,30 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$orgSlug'
+    | '/no-access'
     | '/$orgSlug/time'
+    | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/login'
     | '/register'
     | '/accept-invite/$invitationId'
     | '/$orgSlug/'
-    | '/$orgSlug/settings/entry-types'
+    | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
+    | '/$orgSlug/settings/hour-fund'
     | '/$orgSlug/settings/integrations'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
-    | '/$orgSlug/settings/time-off'
+    | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/reports/pdf'
+    | '/api/slack/callback'
     | '/api/v1/projects'
     | '/api/v1/time-entries'
     | '/$orgSlug/projects/'
@@ -289,25 +328,29 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/no-access'
+    | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/login'
     | '/register'
     | '/accept-invite/$invitationId'
     | '/$orgSlug'
-    | '/$orgSlug/settings/entry-types'
+    | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
+    | '/$orgSlug/settings/hour-fund'
     | '/$orgSlug/settings/integrations'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
-    | '/$orgSlug/settings/time-off'
+    | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/reports/pdf'
+    | '/api/slack/callback'
     | '/api/v1/projects'
     | '/api/v1/time-entries'
     | '/$orgSlug/projects'
@@ -316,26 +359,30 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$orgSlug'
+    | '/no-access'
     | '/$orgSlug/time'
+    | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/(auth)/login'
     | '/(auth)/register'
     | '/accept-invite/$invitationId'
     | '/$orgSlug/'
-    | '/$orgSlug/settings/entry-types'
+    | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
+    | '/$orgSlug/settings/hour-fund'
     | '/$orgSlug/settings/integrations'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
-    | '/$orgSlug/settings/time-off'
+    | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/reports/pdf'
+    | '/api/slack/callback'
     | '/api/v1/projects'
     | '/api/v1/time-entries'
     | '/$orgSlug/projects/'
@@ -345,18 +392,27 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
+  NoAccessRoute: typeof NoAccessRoute
   authLoginRoute: typeof authLoginRoute
   authRegisterRoute: typeof authRegisterRoute
   AcceptInviteInvitationIdRoute: typeof AcceptInviteInvitationIdRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
+  ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
   ApiV1ProjectsRoute: typeof ApiV1ProjectsRoute
   ApiV1TimeEntriesRoute: typeof ApiV1TimeEntriesRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/no-access': {
+      id: '/no-access'
+      path: '/no-access'
+      fullPath: '/no-access'
+      preLoaderRoute: typeof NoAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$orgSlug': {
       id: '/$orgSlug'
       path: '/$orgSlug'
@@ -406,6 +462,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugReportsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/close': {
+      id: '/$orgSlug/close'
+      path: '/close'
+      fullPath: '/$orgSlug/close'
+      preLoaderRoute: typeof OrgSlugCloseRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/time': {
       id: '/$orgSlug/time'
       path: '/time'
@@ -439,6 +502,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/projects'
       fullPath: '/api/v1/projects'
       preLoaderRoute: typeof ApiV1ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/slack/callback': {
+      id: '/api/slack/callback'
+      path: '/api/slack/callback'
+      fullPath: '/api/slack/callback'
+      preLoaderRoute: typeof ApiSlackCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/reports/pdf': {
@@ -476,11 +546,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugTimeMonthRouteImport
       parentRoute: typeof OrgSlugTimeRouteRoute
     }
-    '/$orgSlug/settings/time-off': {
-      id: '/$orgSlug/settings/time-off'
-      path: '/settings/time-off'
-      fullPath: '/$orgSlug/settings/time-off'
-      preLoaderRoute: typeof OrgSlugSettingsTimeOffRouteImport
+    '/$orgSlug/settings/tasks': {
+      id: '/$orgSlug/settings/tasks'
+      path: '/settings/tasks'
+      fullPath: '/$orgSlug/settings/tasks'
+      preLoaderRoute: typeof OrgSlugSettingsTasksRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/settings/recurring-blocks': {
@@ -525,6 +595,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsIntegrationsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/settings/hour-fund': {
+      id: '/$orgSlug/settings/hour-fund'
+      path: '/settings/hour-fund'
+      fullPath: '/$orgSlug/settings/hour-fund'
+      preLoaderRoute: typeof OrgSlugSettingsHourFundRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/settings/holidays': {
       id: '/$orgSlug/settings/holidays'
       path: '/settings/holidays'
@@ -532,11 +609,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsHolidaysRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
-    '/$orgSlug/settings/entry-types': {
-      id: '/$orgSlug/settings/entry-types'
-      path: '/settings/entry-types'
-      fullPath: '/$orgSlug/settings/entry-types'
-      preLoaderRoute: typeof OrgSlugSettingsEntryTypesRouteImport
+    '/$orgSlug/settings/clients': {
+      id: '/$orgSlug/settings/clients'
+      path: '/settings/clients'
+      fullPath: '/$orgSlug/settings/clients'
+      preLoaderRoute: typeof OrgSlugSettingsClientsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
   }
@@ -559,33 +636,37 @@ const OrgSlugTimeRouteRouteWithChildren =
 
 interface OrgSlugRouteRouteChildren {
   OrgSlugTimeRouteRoute: typeof OrgSlugTimeRouteRouteWithChildren
+  OrgSlugCloseRoute: typeof OrgSlugCloseRoute
   OrgSlugReportsRoute: typeof OrgSlugReportsRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
-  OrgSlugSettingsEntryTypesRoute: typeof OrgSlugSettingsEntryTypesRoute
+  OrgSlugSettingsClientsRoute: typeof OrgSlugSettingsClientsRoute
   OrgSlugSettingsHolidaysRoute: typeof OrgSlugSettingsHolidaysRoute
+  OrgSlugSettingsHourFundRoute: typeof OrgSlugSettingsHourFundRoute
   OrgSlugSettingsIntegrationsRoute: typeof OrgSlugSettingsIntegrationsRoute
   OrgSlugSettingsMembersRoute: typeof OrgSlugSettingsMembersRoute
   OrgSlugSettingsMyScheduleRoute: typeof OrgSlugSettingsMyScheduleRoute
   OrgSlugSettingsOrganizationRoute: typeof OrgSlugSettingsOrganizationRoute
   OrgSlugSettingsPreferencesRoute: typeof OrgSlugSettingsPreferencesRoute
   OrgSlugSettingsRecurringBlocksRoute: typeof OrgSlugSettingsRecurringBlocksRoute
-  OrgSlugSettingsTimeOffRoute: typeof OrgSlugSettingsTimeOffRoute
+  OrgSlugSettingsTasksRoute: typeof OrgSlugSettingsTasksRoute
   OrgSlugProjectsIndexRoute: typeof OrgSlugProjectsIndexRoute
 }
 
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugTimeRouteRoute: OrgSlugTimeRouteRouteWithChildren,
+  OrgSlugCloseRoute: OrgSlugCloseRoute,
   OrgSlugReportsRoute: OrgSlugReportsRoute,
   OrgSlugIndexRoute: OrgSlugIndexRoute,
-  OrgSlugSettingsEntryTypesRoute: OrgSlugSettingsEntryTypesRoute,
+  OrgSlugSettingsClientsRoute: OrgSlugSettingsClientsRoute,
   OrgSlugSettingsHolidaysRoute: OrgSlugSettingsHolidaysRoute,
+  OrgSlugSettingsHourFundRoute: OrgSlugSettingsHourFundRoute,
   OrgSlugSettingsIntegrationsRoute: OrgSlugSettingsIntegrationsRoute,
   OrgSlugSettingsMembersRoute: OrgSlugSettingsMembersRoute,
   OrgSlugSettingsMyScheduleRoute: OrgSlugSettingsMyScheduleRoute,
   OrgSlugSettingsOrganizationRoute: OrgSlugSettingsOrganizationRoute,
   OrgSlugSettingsPreferencesRoute: OrgSlugSettingsPreferencesRoute,
   OrgSlugSettingsRecurringBlocksRoute: OrgSlugSettingsRecurringBlocksRoute,
-  OrgSlugSettingsTimeOffRoute: OrgSlugSettingsTimeOffRoute,
+  OrgSlugSettingsTasksRoute: OrgSlugSettingsTasksRoute,
   OrgSlugProjectsIndexRoute: OrgSlugProjectsIndexRoute,
 }
 
@@ -596,12 +677,14 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
+  NoAccessRoute: NoAccessRoute,
   authLoginRoute: authLoginRoute,
   authRegisterRoute: authRegisterRoute,
   AcceptInviteInvitationIdRoute: AcceptInviteInvitationIdRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
+  ApiSlackCallbackRoute: ApiSlackCallbackRoute,
   ApiV1ProjectsRoute: ApiV1ProjectsRoute,
   ApiV1TimeEntriesRoute: ApiV1TimeEntriesRoute,
 }

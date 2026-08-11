@@ -8,7 +8,6 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { WeekView } from "#/components/time/week-view.tsx";
-import { availableEntryTypesQuery } from "#/queries/entry-types.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
@@ -33,7 +32,6 @@ export const Route = createFileRoute("/$orgSlug/time/week")({
 				timeEntriesRangeQuery(weekStart, weekEnd),
 			),
 			context.queryClient.ensureQueryData(myProjectsQuery()),
-			context.queryClient.ensureQueryData(availableEntryTypesQuery()),
 			context.queryClient.ensureQueryData(
 				holidaysForRangeQuery({ from: weekStart, to: weekEnd }),
 			),
@@ -56,14 +54,17 @@ function WeekRoute() {
 		holidaysForRangeQuery({ from: weekStart, to: weekEnd }),
 	);
 	const dates = datesBetween(weekStart, weekEnd);
+	const currentWeekStart = startOfWeekKey(
+		dayKeyInTz(new Date(), organization.timezone),
+	);
 
 	return (
 		<WeekView
 			orgSlug={organization.slug}
 			dates={dates}
-			timezone={organization.timezone}
 			entries={entries}
 			weekStart={weekStart}
+			isCurrentWeek={weekStart === currentWeekStart}
 			holidays={new Map(holidayEntries)}
 		/>
 	);

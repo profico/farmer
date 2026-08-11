@@ -6,13 +6,23 @@ import {
 } from "@farmer/core/lib/time";
 import { Link } from "@tanstack/react-router";
 import type { EntryBlockRowEntry } from "#/components/time/entry-block-row.tsx";
-import { Button } from "#/components/ui/button.tsx";
+import {
+	returnLinkClass,
+	stepperClass,
+	TimeToolbar,
+} from "#/components/time/time-toolbar.tsx";
 import { formatMonthKey } from "#/lib/format-date.ts";
-import { formatHoursShort } from "#/lib/format-hours.ts";
+import { formatClock } from "#/lib/format-hours.ts";
 import { groupByDay } from "#/lib/group-by-day.ts";
 import { cn } from "#/lib/utils.ts";
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Monday-first, like the week strip and the week grid. The month was the one
+// screen in the app that started its week on Sunday, which shifted the weekend
+// pair from the right edge to both edges as you moved between the three views.
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** 0=Mon..6=Sun, from the DB/Date convention of 0=Sun..6=Sat. */
+const monFirstIndex = (sundayFirst: number) => (sundayFirst + 6) % 7;
 const MAX_CHIPS_PER_DAY = 3;
 
 function shiftMonthKey(monthKey: string, delta: number): string {
@@ -39,64 +49,63 @@ export function MonthView({
 	const monthStart = `${month}-01`;
 	const monthEnd = endOfMonthKey(monthStart);
 	const days = datesBetween(monthStart, monthEnd);
-	const leadingBlanks = weekdayInTz(monthStart, timezone);
-	const byDay = new Map(groupByDay(entries, timezone));
+	const leadingBlanks = monFirstIndex(weekdayInTz(monthStart, timezone));
+	const byDay = new Map(groupByDay(entries));
 	const today = dayKeyInTz(new Date(), timezone);
 	const weekRows = Math.ceil((leadingBlanks + days.length) / 7);
 
 	return (
 		<div className="flex h-full flex-col">
-			<div className="flex shrink-0 items-center justify-between">
-				<div className="flex items-center gap-2">
-					<Button
-						variant="outline"
-						size="icon-sm"
-						nativeButton={false}
-						render={
-							<Link
-								to="/$orgSlug/time/month"
-								params={{ orgSlug }}
-								search={{ month: shiftMonthKey(month, -1) }}
-							>
-								‹
-							</Link>
-						}
-					/>
-					<h2 className="min-w-[110px] text-center text-[13px] font-semibold">
-						{formatMonthKey(month)}
-					</h2>
-					<Button
-						variant="outline"
-						size="icon-sm"
-						nativeButton={false}
-						render={
-							<Link
-								to="/$orgSlug/time/month"
-								params={{ orgSlug }}
-								search={{ month: shiftMonthKey(month, 1) }}
-							>
-								›
-							</Link>
-						}
-					/>
-					<Button
-						variant="outline"
-						size="sm"
-						nativeButton={false}
-						render={
-							<Link to="/$orgSlug/time/month" params={{ orgSlug }} search={{}}>
-								Today
-							</Link>
-						}
-					/>
-				</div>
-			</div>
-			<div className="-mx-4 mt-4 flex min-h-0 flex-1 flex-col overflow-hidden border-y sm:-mx-8">
-				<div className="grid shrink-0 grid-cols-7 border-b bg-muted/30">
+			<TimeToolbar
+				prev={
+					<Link
+						to="/$orgSlug/time/month"
+						params={{ orgSlug }}
+						search={{ month: shiftMonthKey(month, -1) }}
+						className={stepperClass}
+						aria-label="Previous month"
+					>
+						←
+					</Link>
+				}
+				label={formatMonthKey(month)}
+				next={
+					<Link
+						to="/$orgSlug/time/month"
+						params={{ orgSlug }}
+						search={{ month: shiftMonthKey(month, 1) }}
+						className={stepperClass}
+						aria-label="Next month"
+					>
+						→
+					</Link>
+				}
+				returnLink={
+					month !== today.slice(0, 7) && (
+						<Link
+							to="/$orgSlug/time/month"
+							params={{ orgSlug }}
+							search={{}}
+							className={returnLinkClass}
+						>
+							Return to this month
+						</Link>
+					)
+				}
+			/>
+			{/* Day and Week close on a footer bar because they have controls to put
+			    in one; Month has none, so it would have been a hairline with an
+			    empty band under it. The grid runs to the island's bottom edge
+			    instead — the island's own radius clips it. */}
+			<div className="-mx-4 -mb-4 mt-5 flex min-h-0 flex-1 flex-col overflow-hidden border-t sm:-mx-8 sm:-mb-7">
+				{/* The weekday header is the only banded row in the grid; every other
+				    division is a hairline, so the calendar reads as ruled paper rather
+				    than as a table of boxes. */}
+				<div className="grid shrink-0 grid-cols-7 border-b bg-secondary">
 					{WEEKDAY_LABELS.map((label) => (
 						<div
 							key={label}
-							className="border-r py-2 text-center text-2xs font-semibold tracking-wide text-muted-foreground uppercase last:border-r-0"
+							className="eyebrow border-r border-line2 py-2 text-center last:border-r-0"
 						>
 							{label}
 						</div>
@@ -110,7 +119,9 @@ export function MonthView({
 						<div
 							// biome-ignore lint/suspicious/noArrayIndexKey: fixed-length blank padding
 							key={`blank-${i}`}
-							className="border-r border-b bg-muted/10 last:border-r-0"
+							// Untinted: a day outside the month is empty ruled paper, and
+							// tinting it competes with the weekend band for the same signal.
+							className="border-r border-b border-line2 last:border-r-0"
 						/>
 					))}
 					{days.map((date, i) => {
@@ -135,19 +146,21 @@ export function MonthView({
 								search={{ date }}
 								title={holidayName}
 								className={cn(
-									"overflow-hidden border-r border-b p-2 text-left hover:bg-accent",
+									"overflow-hidden border-r border-b border-line2 p-2 text-left transition-colors duration-(--dur-fast) hover:bg-[var(--sel)]",
 									isLastColumn && "border-r-0",
-									isToday && "bg-accent ring-1 ring-inset ring-primary",
-									holidayName && !isToday && "bg-amber-500/10",
-									isWeekend && !isToday && !holidayName && "bg-muted/40",
+									// Today is marked by a 2px accent bar along its top edge,
+									// not a fill — one cell tinted inside a grid of tinted
+									// weekends and holidays stops being findable.
+									isToday && "border-t-2 border-t-primary",
+									holidayName && "bg-warn/8",
+									isWeekend && !holidayName && "bg-secondary",
 								)}
 							>
 								<div className="flex items-center justify-between">
 									<span
 										className={cn(
-											"text-sm font-medium",
-											isToday &&
-												"flex size-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground",
+											"mono text-sm",
+											isToday ? "text-primary" : "text-muted-foreground",
 										)}
 									>
 										{Number(date.slice(-2))}
@@ -155,41 +168,37 @@ export function MonthView({
 									{dayTotal > 0 && (
 										<span
 											className={cn(
-												"text-xs",
-												isToday
-													? "font-semibold text-primary"
-													: "text-muted-foreground",
+												"mono text-sm",
+												isToday ? "text-primary" : "text-foreground",
 											)}
 										>
-											{formatHoursShort(dayTotal)}
+											{formatClock(dayTotal)}
 										</span>
 									)}
 								</div>
 								{holidayName && (
-									<div className="truncate text-2xs font-medium text-amber-700 dark:text-amber-400">
+									<div className="mt-0.5 truncate text-2xs text-warn">
 										{holidayName}
 									</div>
 								)}
-								<div className="mt-1 space-y-0.5">
+								<div className="mt-1.5 space-y-1">
 									{shown.map((entry) => (
 										<div
 											key={entry.id}
-											className="flex items-center gap-1 truncate text-xs"
+											className="flex items-center gap-1.5 truncate text-xs"
 										>
 											<span
 												className="size-1.5 shrink-0 rounded-full"
 												style={{
 													backgroundColor:
-														entry.type.color ?? "var(--muted-foreground)",
+														entry.task.color ?? "var(--muted-foreground)",
 												}}
 											/>
-											<span className="truncate">{entry.type.name}</span>
+											<span className="truncate">{entry.task.name}</span>
 										</div>
 									))}
 									{extra > 0 && (
-										<div className="text-xs text-muted-foreground">
-											+{extra} more
-										</div>
+										<div className="text-xs text-faint">+{extra} more</div>
 									)}
 								</div>
 							</Link>

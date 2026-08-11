@@ -1,12 +1,12 @@
 // Pure planning helpers for the "assemble my day" suggestion engine — no db
 // or service imports so the placement math stays unit-testable in isolation.
 
-export type MinuteInterval = { startMin: number; endMin: number };
+type MinuteInterval = { startMin: number; endMin: number };
 
 const DAY_END_MIN = 24 * 60;
 
 // Suggested blocks snap to 15-minute steps.
-export const SLOT_SECONDS = 900;
+const SLOT_SECONDS = 900;
 
 export const timeKeyToMinutes = (time: string): number => {
 	const [hours, minutes] = time.split(":").map(Number);

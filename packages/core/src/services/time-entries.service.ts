@@ -6,14 +6,15 @@ import {
 	gte,
 	inArray,
 	isNotNull,
-	lt,
+	isNull,
+	lte,
 	notInArray,
 	sql,
 } from "drizzle-orm";
 import postgres from "postgres";
 import { db } from "../db";
 import {
-	project,
+	projectMember,
 	recurringBlockRuleSkip,
 	task,
 	timeEntry,
@@ -22,61 +23,35 @@ import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { orgTimezone } from "../lib/org-time";
 import {
-	addDaysToKey,
-	anchorDateTime,
-	dayBoundsInTz,
 	dayKeyInTz,
-	secondsBetween,
-	timeKeyInTz,
+	monthBounds,
+	snapToQuarterHour,
 	weekdayInTz,
 } from "../lib/time";
 import type {
 	CopyTimeEntriesInput,
+	CreateAbsenceForUserInput,
 	CreateTimeEntryInput,
+	ListAbsenceForUserInput,
+	OverrideAbsenceEntryInput,
+	SetTimeEntryOvertimeInput,
+	SetWeekCellInput,
 	UpdateTimeEntryDescriptionInput,
 	UpdateTimeEntryInput,
 } from "../schema/time-entries";
-import { entryTypesService } from "./entry-types.service";
+import { accessService } from "./access.service";
+import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
 import { integrationSettingsService } from "./integration-settings.service";
-import { projectsService } from "./projects.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
+import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
 import {
 	dayDurationSeconds,
 	type WorkingHoursDay,
 	workingHoursService,
 } from "./working-hours.service";
-
-// Cross-tenant guard: a projectId/taskId supplied by the client must actually
-// belong to the caller's org, or a user in one org could attach a time entry
-// to another org's project/task by guessing its id.
-// Exported (only the two of these) for time-entries.tenancy.test.ts.
-export const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
-	const row = await db.query.project.findFirst({
-		where: and(
-			eq(project.id, projectId),
-			eq(project.organizationId, ctx.organizationId),
-		),
-	});
-	if (!row) throw new Error("Project not found");
-};
-
-export const assertTaskBelongsToProject = async (
-	ctx: Ctx,
-	taskId: string,
-	projectId: string,
-) => {
-	const taskRow = await db.query.task.findFirst({
-		where: and(
-			eq(task.id, taskId),
-			eq(task.projectId, projectId),
-			eq(task.organizationId, ctx.organizationId),
-		),
-	});
-	if (!taskRow) throw new Error("Task does not belong to that project");
-};
 
 // The day's expected working seconds — the target a fill block expands up to.
 const dayFillTargetSeconds = (
@@ -89,17 +64,10 @@ const dayFillTargetSeconds = (
 	return day ? dayDurationSeconds(day) : 0;
 };
 
-// A db handle or an in-flight db.transaction callback's tx — both expose the
-// same query/insert/update surface, so callers that need atomicity (create,
-// update) can pass their tx through instead of these helpers reaching for the
-// ambient `db` and escaping the transaction.
 type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // How long a fill block on this day should be: the day's working-hours target
 // minus every other (non-fill) entry that day, floored at 0.
-// `workingHours`, when passed, skips the per-call working-hours fetch — used
-// by callers (e.g. syncCommitWorkTimeForRange) that already loaded it once
-// for a whole date range, to avoid an N+1 lookup inside a per-day loop.
 const computeDayFillSeconds = async (
 	ctx: Ctx,
 	dateKey: string,
@@ -107,14 +75,12 @@ const computeDayFillSeconds = async (
 	workingHours?: WorkingHoursDay[],
 	client: DbClient = db,
 ): Promise<number> => {
-	const { start, end } = dayBoundsInTz(dateKey, tz);
 	const [dayEntries, hours] = await Promise.all([
 		client.query.timeEntry.findMany({
 			where: and(
 				eq(timeEntry.organizationId, ctx.organizationId),
 				eq(timeEntry.userId, ctx.userId),
-				gte(timeEntry.startedAt, start),
-				lt(timeEntry.startedAt, end),
+				eq(timeEntry.date, dateKey),
 			),
 			columns: { durationSeconds: true, fillsDay: true },
 		}),
@@ -127,34 +93,29 @@ const computeDayFillSeconds = async (
 	return Math.max(0, target - others);
 };
 
-// Re-derive the duration of the day's fill block (if one exists) after any of
-// its sibling entries changed. No-op when the day has no fill block.
+// Re-derive the duration of the day's fill block (if any) after a sibling entry
+// changed. No-op when the day has no fill block.
 const recomputeDayFill = async (
 	ctx: Ctx,
 	dateKey: string,
 	tz: string,
 	client: DbClient = db,
 ) => {
-	const { start, end } = dayBoundsInTz(dateKey, tz);
 	const fill = await client.query.timeEntry.findFirst({
 		where: and(
 			eq(timeEntry.organizationId, ctx.organizationId),
 			eq(timeEntry.userId, ctx.userId),
+			eq(timeEntry.date, dateKey),
 			eq(timeEntry.fillsDay, true),
-			gte(timeEntry.startedAt, start),
-			lt(timeEntry.startedAt, end),
 		),
-		columns: { id: true, startedAt: true, durationSeconds: true },
+		columns: { id: true, durationSeconds: true },
 	});
 	if (!fill) return;
 	const next = await computeDayFillSeconds(ctx, dateKey, tz, undefined, client);
 	if (next === fill.durationSeconds) return;
 	await client
 		.update(timeEntry)
-		.set({
-			durationSeconds: next,
-			stoppedAt: new Date(fill.startedAt.getTime() + next * 1000),
-		})
+		.set({ durationSeconds: next, updatedAt: new Date() })
 		.where(eq(timeEntry.id, fill.id));
 };
 
@@ -163,30 +124,32 @@ const recomputeDayFill = async (
 // time page reflects external state without an explicit "sync" click. Each is
 // best-effort and idempotent; a failure logs and leaves the page working.
 
-// Reconcile a range against Google Calendar so the user's Meeting blocks mirror
-// their calendar: import new events, update ones whose time/title/link changed,
-// and delete blocks for events that were cancelled or moved out of the window.
-// Google is the source of truth ONLY for sync-owned rows (syncLocked = false);
-// a row the user has attached or edited (syncLocked = true) is never overwritten
-// or deleted. Tombstones (see remove) keep a user-deleted meeting from being
-// re-imported. Idempotent: re-running against an unchanged calendar is a no-op.
+// Reconcile a range against Google Calendar so the user's meeting entries mirror
+// their calendar. Google is the source of truth ONLY for sync-owned rows
+// (syncLocked = false). Tombstones keep a user-deleted meeting from returning.
+//
+// Under the duration-only entry model a meeting contributes its LENGTH, not its
+// slot — an event's start/end are read purely to derive a duration, which is
+// then snapped to the 15-minute grid every entry must sit on.
 const syncMeetingsForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
+	tz: string,
 ) => {
 	const events = await googleCalendarService.listEventsForRange(ctx, range);
 	// null => couldn't read the calendar (disconnected / revoked token). Bail
-	// without deleting, or we'd wipe synced blocks we merely failed to fetch.
-	// An empty array is authoritative ("no meetings in range") and DOES reconcile.
+	// without deleting, or we'd wipe synced entries we merely failed to fetch.
 	if (events === null) return;
 
-	const types = await entryTypesService.listAvailable(ctx);
-	const meetingType = types.find((t) => t.name === "Meeting");
-	if (!meetingType) return;
-
-	const tz = await orgTimezone(ctx.organizationId);
-	const { start } = dayBoundsInTz(range.from, tz);
-	const { end } = dayBoundsInTz(range.to, tz);
+	const meetingTask = await db.query.task.findFirst({
+		where: and(
+			eq(task.organizationId, ctx.organizationId),
+			eq(task.name, "Meeting"),
+			eq(task.isAbsence, false),
+		),
+		columns: { id: true },
+	});
+	if (!meetingTask) return;
 
 	const tombstones = await db.query.syncedMeetingTombstone.findMany({
 		where: and(
@@ -197,28 +160,30 @@ const syncMeetingsForRange = async (
 	});
 	const tombstoned = new Set(tombstones.map((t) => t.calendarEventId));
 
-	// Upsert every live, non-tombstoned event. On conflict we UPDATE the
-	// calendar-derived fields, but setWhere restricts that to sync-owned rows, so
-	// a user-edited (locked) block keeps its local values untouched.
 	const rows = events
 		.filter((event) => !tombstoned.has(event.id))
 		.map((event) => {
 			const startedAt = new Date(event.start);
 			const stoppedAt = new Date(event.end);
+			const rawSeconds = Math.floor(
+				(stoppedAt.getTime() - startedAt.getTime()) / 1000,
+			);
 			return {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
-				typeId: meetingType.id,
+				taskId: meetingTask.id,
+				// A synced meeting has no project: it's the user's job to file it
+				// against one. It lands as a project-less draft they can complete.
+				projectId: null,
 				description: event.title,
-				startedAt,
-				stoppedAt,
-				durationSeconds: Math.max(0, secondsBetween(startedAt, stoppedAt)),
+				date: dayKeyInTz(startedAt, tz),
+				durationSeconds: snapToQuarterHour(rawSeconds),
 				meetingUrl: event.meetingUrl,
 				calendarEventId: event.id,
-				billable: meetingType.billableDefault,
 			};
 		})
 		.filter((row) => row.durationSeconds > 0);
+
 	if (rows.length > 0) {
 		await db
 			.insert(timeEntry)
@@ -232,8 +197,7 @@ const syncMeetingsForRange = async (
 				targetWhere: sql`${timeEntry.calendarEventId} is not null`,
 				set: {
 					description: sql`excluded.description`,
-					startedAt: sql`excluded.started_at`,
-					stoppedAt: sql`excluded.stopped_at`,
+					date: sql`excluded.date`,
 					durationSeconds: sql`excluded.duration_seconds`,
 					meetingUrl: sql`excluded.meeting_url`,
 				},
@@ -241,37 +205,30 @@ const syncMeetingsForRange = async (
 			});
 	}
 
-	// Delete-by-absence: any sync-owned meeting block in the window whose event
-	// is NOT in the (complete, paginated) live set was cancelled or moved out of
-	// range, so it should disappear. Locked (user-owned) rows and non-meeting
-	// rows (null calendarEventId — fills, recurring blocks) are left alone.
-	//
-	// Safety guard: an EMPTY live set is deliberately treated like `null` here
-	// (skip deletion) rather than "the calendar has zero meetings in range".
-	// Google's calendar API can return an empty page on a throttled request, a
-	// partial/expired scope, or a transient API hiccup — none distinguishable
-	// from "genuinely no meetings" from here. Wiping every synced block on a
-	// false-empty response is unrecoverable data loss, whereas skipping the
-	// delete just leaves a stale block until the next successful sync.
+	// Delete-by-absence. An EMPTY live set is deliberately treated like `null`
+	// (skip deletion): Google can return an empty page on a throttled request or
+	// a partial scope, and wiping every synced entry on a false empty is
+	// unrecoverable, whereas skipping just leaves a stale row until next sync.
 	const liveIds = events.map((event) => event.id);
 	if (liveIds.length === 0) return;
-	const deleteConditions = [
-		eq(timeEntry.organizationId, ctx.organizationId),
-		eq(timeEntry.userId, ctx.userId),
-		eq(timeEntry.syncLocked, false),
-		isNotNull(timeEntry.calendarEventId),
-		gte(timeEntry.startedAt, start),
-		lt(timeEntry.startedAt, end),
-		notInArray(timeEntry.calendarEventId, liveIds),
-	];
-	await db.delete(timeEntry).where(and(...deleteConditions));
+	await db
+		.delete(timeEntry)
+		.where(
+			and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				eq(timeEntry.syncLocked, false),
+				isNotNull(timeEntry.calendarEventId),
+				gte(timeEntry.date, range.from),
+				lte(timeEntry.date, range.to),
+				notInArray(timeEntry.calendarEventId, liveIds),
+			),
+		);
 };
 
-// For every day the user pushed commits, ensure a Work "rest of day" fill block
-// exists so their tracked time auto-expands to that day's working hours (the
-// user only has to log meetings/breaks; the work block absorbs the rest). Skips
-// days that already have a fill block — the fill's duration is then kept in sync
-// on read by listRange's recompute pass.
+// For every day the user pushed commits, ensure a "rest of day" fill block
+// exists so tracked time auto-expands to that day's working hours — the user
+// only logs meetings and breaks, the fill absorbs the remainder.
 const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
@@ -280,31 +237,21 @@ const syncCommitWorkTimeForRange = async (
 	const dayKeys = await githubService.listUserCommitDays(ctx, range);
 	if (dayKeys.length === 0) return;
 
-	const types = await entryTypesService.listAvailable(ctx);
-	const workType = types.find((t) => t.name === "Work");
-	if (!workType) return;
+	// The fill block needs a task like any other entry. "Development" is the
+	// conventional name; without it there's nothing sensible to attribute the
+	// time to, so the engine stays out of the way rather than guessing.
+	const workTask = await db.query.task.findFirst({
+		where: and(
+			eq(task.organizationId, ctx.organizationId),
+			eq(task.name, "Development"),
+			eq(task.isAbsence, false),
+		),
+		columns: { id: true },
+	});
+	if (!workTask) return;
 
 	const workingHours = await workingHoursService.list(ctx);
 	for (const dayKey of dayKeys) {
-		const { start, end } = dayBoundsInTz(dayKey, tz);
-		const existingFill = await db.query.timeEntry.findFirst({
-			where: and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				eq(timeEntry.fillsDay, true),
-				gte(timeEntry.startedAt, start),
-				lt(timeEntry.startedAt, end),
-			),
-			columns: { id: true },
-		});
-		if (existingFill) continue;
-
-		const weekday = weekdayInTz(dayKey, tz);
-		const startTime =
-			workingHours.find((d) => d.dayOfWeek === weekday)?.startTime ?? "09:00";
-		const startedAt = anchorDateTime(dayKey, startTime, tz);
-		// Pass the already-fetched workingHours through so this doesn't re-fetch
-		// it once per day in the loop (see computeDayFillSeconds).
 		const durationSeconds = await computeDayFillSeconds(
 			ctx,
 			dayKey,
@@ -316,43 +263,49 @@ const syncCommitWorkTimeForRange = async (
 			.values({
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
-				typeId: workType.id,
+				taskId: workTask.id,
+				projectId: null,
 				description: "",
-				startedAt,
-				stoppedAt: new Date(startedAt.getTime() + durationSeconds * 1000),
+				date: dayKey,
 				durationSeconds,
 				fillsDay: true,
-				fillDate: dayKey,
-				billable: workType.billableDefault,
 			})
-			// The existingFill check above already avoids the common case; this is
-			// the DB-enforced backstop against a race with a concurrent create/update
-			// (te_fill_day_uidx) — silently skip rather than raise, since this is a
-			// best-effort background sync, not a user-initiated write.
+			// te_fill_day_uidx is the real guard against a second fill block on the
+			// day; silently skip rather than raise, since this is a best-effort
+			// background sync, not a user-initiated write.
 			.onConflictDoNothing({
-				target: [timeEntry.organizationId, timeEntry.userId, timeEntry.fillDate],
+				target: [timeEntry.organizationId, timeEntry.userId, timeEntry.date],
 				where: sql`${timeEntry.fillsDay} = true`,
 			});
 	}
 };
 
+/** Project ids the given person is assigned to — used to decide whether a PM may
+ *  correct that person's absence entries. */
+const projectIdsForUser = async (ctx: Ctx, userId: string) => {
+	const rows = await db
+		.select({ projectId: projectMember.projectId })
+		.from(projectMember)
+		.where(
+			and(
+				eq(projectMember.organizationId, ctx.organizationId),
+				eq(projectMember.userId, userId),
+				eq(projectMember.active, true),
+			),
+		);
+	return rows.map((r) => r.projectId);
+};
+
 export const timeEntriesService = {
 	listRange: async (ctx: Ctx, range: { from: string; to: string }) => {
-		await recurringBlockRulesService.materializeRange(
-			ctx,
-			range.from,
-			range.to,
-		);
+		await recurringBlockRulesService.materializeRange(ctx, range.from, range.to);
 
 		const tz = await orgTimezone(ctx.organizationId);
 
-		// Pull in external state (calendar meetings, commit work-time) before the
-		// read, gated on one settings lookup. Best-effort: each engine is isolated
-		// so an integration outage degrades to "no sync", never a broken page.
 		try {
 			const settings = await integrationSettingsService.get(ctx);
 			if (settings.googleAutoSyncMeetings) {
-				await syncMeetingsForRange(ctx, range).catch((error) =>
+				await syncMeetingsForRange(ctx, range, tz).catch((error) =>
 					console.error("[time-entries] meeting sync failed", error),
 				);
 			}
@@ -365,50 +318,42 @@ export const timeEntriesService = {
 			console.error("[time-entries] integration sync skipped", error);
 		}
 
-		const { start } = dayBoundsInTz(range.from, tz);
-		const { end } = dayBoundsInTz(range.to, tz);
-
 		const rows = await db.query.timeEntry.findMany({
 			where: and(
 				eq(timeEntry.organizationId, ctx.organizationId),
 				eq(timeEntry.userId, ctx.userId),
-				gte(timeEntry.startedAt, start),
-				lt(timeEntry.startedAt, end),
+				gte(timeEntry.date, range.from),
+				lte(timeEntry.date, range.to),
 			),
-			with: { project: true, task: true, type: true },
-			orderBy: asc(timeEntry.startedAt),
+			with: { project: { with: { client: true } }, task: true },
+			orderBy: [asc(timeEntry.date), asc(timeEntry.createdAt)],
 		});
 
-		// Keep each day's fill block in sync on read (write-on-read, like the
-		// recurring materializer above): its duration tracks the day's remaining
-		// working hours, so any sibling entry added/removed elsewhere is absorbed.
+		// Keep each day's fill block in sync on read: its duration tracks the day's
+		// remaining working hours, so a sibling entry added elsewhere is absorbed.
 		const fills = rows.filter((r) => r.fillsDay);
 		if (fills.length > 0) {
 			const workingHours = await workingHoursService.list(ctx);
 			const sumByDay = new Map<string, number>();
 			for (const r of rows) {
 				if (r.fillsDay) continue;
-				const key = dayKeyInTz(r.startedAt, tz);
-				sumByDay.set(key, (sumByDay.get(key) ?? 0) + r.durationSeconds);
+				sumByDay.set(r.date, (sumByDay.get(r.date) ?? 0) + r.durationSeconds);
 			}
 			for (const fill of fills) {
-				const key = dayKeyInTz(fill.startedAt, tz);
-				const target = dayFillTargetSeconds(workingHours, key, tz);
-				const next = Math.max(0, target - (sumByDay.get(key) ?? 0));
+				const target = dayFillTargetSeconds(workingHours, fill.date, tz);
+				const next = Math.max(0, target - (sumByDay.get(fill.date) ?? 0));
 				if (next === fill.durationSeconds) continue;
-				const stoppedAt = new Date(fill.startedAt.getTime() + next * 1000);
 				await db
 					.update(timeEntry)
-					.set({ durationSeconds: next, stoppedAt })
+					.set({ durationSeconds: next, updatedAt: new Date() })
 					.where(eq(timeEntry.id, fill.id));
 				fill.durationSeconds = next;
-				fill.stoppedAt = stoppedAt;
 			}
 		}
 
-		// Attach the count of GitHub commits linked to each entry, so the day view
-		// can badge blocks that have work evidence attached (a count query rather
-		// than a relation to avoid a domain.ts ↔ github.ts import cycle).
+		// Commit counts, so the week grid can badge entries that have work evidence
+		// attached (a count query rather than a relation, to avoid a
+		// domain.ts <-> github.ts import cycle).
 		const commitCountById = new Map<string, number>();
 		if (rows.length > 0) {
 			const counts = await db
@@ -433,87 +378,49 @@ export const timeEntriesService = {
 		}));
 	},
 
-	// Background-job entrypoint: import a user's Google Calendar meetings for a
-	// fixed window, without the rest of listRange's read work (no recurring
-	// materialize, no fill recompute). Callers must gate on the user's
-	// googleAutoSyncMeetings preference themselves — this runs the same
-	// idempotent engine the time page uses on read, so a scheduler tick and a
-	// page load converge on the same entries.
+	/** Background-job entrypoint: import a user's meetings for a fixed window,
+	 *  without the rest of listRange's read work. */
 	syncMeetingsForUser: async (
 		ctx: Ctx,
 		range: { from: string; to: string },
 	) => {
-		await syncMeetingsForRange(ctx, range);
+		const tz = await orgTimezone(ctx.organizationId);
+		await syncMeetingsForRange(ctx, range, tz);
 	},
 
 	create: async (ctx: Ctx, input: CreateTimeEntryInput) => {
-		const availableTypes = await entryTypesService.listAvailable(ctx, {
-			projectId: input.projectId,
-		});
-		const type = availableTypes.find((t) => t.id === input.typeId);
-		if (!type) throw new Error("Entry type not available");
-
 		if (input.projectId) {
 			await assertProjectInOrg(ctx, input.projectId);
-			await projectsService.assertProjectMembership(ctx, input.projectId);
+			const access = await accessService.resolve(ctx);
+			access.assertCanTrackOn(input.projectId);
 		}
-		if (input.taskId && input.projectId) {
-			await assertTaskBelongsToProject(ctx, input.taskId, input.projectId);
-		}
+		await assertTaskAvailable(ctx, input.taskId, input.projectId);
 
 		const tz = await orgTimezone(ctx.organizationId);
-		const startedAt = anchorDateTime(input.date, input.startTime, tz);
-
-		let stoppedAt: Date;
-		let durationSeconds: number;
-		if (input.fillsDay) {
-			// Only one work-time fill block per user/day; its duration is derived,
-			// not entered, and may legitimately be 0 when the day is already full.
-			// The DB-level te_fill_day_uidx (fillDate below) is the real guard —
-			// this just gives a friendlier error in the common non-racy case.
-			durationSeconds = await computeDayFillSeconds(ctx, input.date, tz);
-			stoppedAt = new Date(startedAt.getTime() + durationSeconds * 1000);
-		} else {
-			stoppedAt = anchorDateTime(input.date, input.endTime, tz);
-			durationSeconds = secondsBetween(startedAt, stoppedAt);
-			if (durationSeconds <= 0) {
-				throw new Error("End time must be after start time");
-			}
-		}
+		const durationSeconds = input.fillsDay
+			? await computeDayFillSeconds(ctx, input.date, tz)
+			: (input.durationSeconds ?? 0);
 
 		const values = {
 			organizationId: ctx.organizationId,
 			userId: ctx.userId,
-			projectId: input.projectId,
+			projectId: input.projectId ?? null,
 			taskId: input.taskId,
-			typeId: input.typeId,
-			description: input.description ?? "",
-			startedAt,
-			stoppedAt,
+			date: input.date,
+			description: input.description?.trim() ?? "",
 			durationSeconds,
-			fillsDay: input.fillsDay ?? false,
-			// Only stamped for fill rows — backs te_fill_day_uidx (see schema).
-			fillDate: input.fillsDay ? input.date : null,
-			billable: input.billable ?? type.billableDefault,
+			overtime: input.overtime,
+			fillsDay: input.fillsDay,
 			meetingUrl: input.meetingUrl ?? null,
 			calendarEventId: input.calendarEventId ?? null,
-			// A hand-created entry that attaches a calendar event is user-owned,
-			// not sync-owned — lock it so the sync engine never overwrites or
-			// deletes it (only rows the engine itself imports stay unlocked).
+			// A hand-created entry that attaches a calendar event is user-owned, not
+			// sync-owned — lock it so the sync engine never overwrites or deletes it.
 			syncLocked: input.calendarEventId != null,
 		};
 
-		// Insert + fill recompute happen atomically: a crash/error between the two
-		// must not leave a fill block stale relative to the entry that just
-		// changed its day's totals.
-		const created = await db.transaction(async (tx) => {
+		return db.transaction(async (tx) => {
 			let row: typeof timeEntry.$inferSelect | undefined;
 			if (input.fillsDay) {
-				// The pre-check above (computeDayFillSeconds/duration derivation)
-				// only prevents the common case; te_fill_day_uidx is the real,
-				// DB-enforced guard against a second fill block racing onto the
-				// same day, so a lost race surfaces as a clean, expected error
-				// rather than a raw unique-violation 500.
 				[row] = await tx
 					.insert(timeEntry)
 					.values(values)
@@ -521,7 +428,7 @@ export const timeEntriesService = {
 						target: [
 							timeEntry.organizationId,
 							timeEntry.userId,
-							timeEntry.fillDate,
+							timeEntry.date,
 						],
 						where: sql`${timeEntry.fillsDay} = true`,
 					})
@@ -530,9 +437,9 @@ export const timeEntriesService = {
 					throw new Error("A work-time block already exists for this day");
 				}
 			} else if (input.calendarEventId) {
-				// Manually attaching a calendar event that meeting-sync may already
-				// have imported would otherwise hit te_calendar_event_uidx and throw
-				// a raw 500. Take ownership of the existing synced row instead.
+				// Manually attaching an event meeting-sync may already have imported
+				// would otherwise hit te_calendar_event_uidx and throw a raw 500. Take
+				// ownership of the existing synced row instead.
 				[row] = await tx
 					.insert(timeEntry)
 					.values(values)
@@ -546,12 +453,10 @@ export const timeEntriesService = {
 						set: {
 							projectId: values.projectId,
 							taskId: values.taskId,
-							typeId: values.typeId,
+							date: values.date,
 							description: values.description,
-							startedAt: values.startedAt,
-							stoppedAt: values.stoppedAt,
 							durationSeconds: values.durationSeconds,
-							billable: values.billable,
+							overtime: values.overtime,
 							meetingUrl: values.meetingUrl,
 							syncLocked: true,
 						},
@@ -566,7 +471,6 @@ export const timeEntriesService = {
 			if (!input.fillsDay) await recomputeDayFill(ctx, input.date, tz, tx);
 			return row;
 		});
-		return created;
 	},
 
 	update: async (ctx: Ctx, input: UpdateTimeEntryInput) => {
@@ -574,103 +478,56 @@ export const timeEntriesService = {
 			where: and(
 				eq(timeEntry.id, input.timeEntryId),
 				eq(timeEntry.organizationId, ctx.organizationId),
+				// People edit their own entries — including in months that are already
+				// closed, deliberately (PRD decision 2). PMs never edit other people's
+				// worked time; corrections live in the close sheet's Adjusted column.
 				eq(timeEntry.userId, ctx.userId),
 			),
 		});
 		if (!existing) throw new Error("Time entry not found");
 
-		const availableTypes = await entryTypesService.listAvailable(ctx, {
-			projectId: input.projectId,
-		});
-		if (!availableTypes.some((t) => t.id === input.typeId)) {
-			throw new Error("Entry type not available");
-		}
-
 		if (input.projectId) {
 			await assertProjectInOrg(ctx, input.projectId);
-			await projectsService.assertProjectMembership(ctx, input.projectId);
+			const access = await accessService.resolve(ctx);
+			access.assertCanTrackOn(input.projectId);
 		}
-		if (input.taskId && input.projectId) {
-			await assertTaskBelongsToProject(ctx, input.taskId, input.projectId);
-		}
+		await assertTaskAvailable(ctx, input.taskId, input.projectId);
 
 		const tz = await orgTimezone(ctx.organizationId);
-		const startedAt = anchorDateTime(input.date, input.startTime, tz);
+		const durationSeconds = input.fillsDay
+			? await computeDayFillSeconds(ctx, input.date, tz)
+			: (input.durationSeconds ?? 0);
 
-		let stoppedAt: Date;
-		let durationSeconds: number;
-		if (input.fillsDay) {
-			// Guard against a second fill block sneaking onto the day via an edit.
-			// This only catches the common non-racy case — te_fill_day_uidx (caught
-			// below) is the real, DB-enforced guard.
-			const { start, end } = dayBoundsInTz(input.date, tz);
-			const otherFill = await db.query.timeEntry.findFirst({
-				where: and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					eq(timeEntry.userId, ctx.userId),
-					eq(timeEntry.fillsDay, true),
-					gte(timeEntry.startedAt, start),
-					lt(timeEntry.startedAt, end),
-				),
-				columns: { id: true },
-			});
-			if (otherFill && otherFill.id !== input.timeEntryId) {
-				throw new Error("A work-time block already exists for this day");
-			}
-			durationSeconds = await computeDayFillSeconds(ctx, input.date, tz);
-			stoppedAt = new Date(startedAt.getTime() + durationSeconds * 1000);
-		} else {
-			stoppedAt = anchorDateTime(input.date, input.endTime, tz);
-			durationSeconds = secondsBetween(startedAt, stoppedAt);
-			if (durationSeconds <= 0) {
-				throw new Error("End time must be after start time");
-			}
-		}
-
-		// Update + fill recompute (both the entry's old and new day) happen
-		// atomically, so a failure partway through never leaves a fill block
-		// stale relative to the entry that just moved/resized.
 		const updated = await db.transaction(async (tx) => {
 			let row: typeof timeEntry.$inferSelect | undefined;
 			try {
 				[row] = await tx
 					.update(timeEntry)
 					.set({
-						// Full-form edit: an absent project/task means "cleared", not
-						// "leave unchanged" (drizzle skips `undefined` values in .set()).
+						// Full-form edit: an absent project means "cleared", not "leave
+						// unchanged" (drizzle skips `undefined` in .set()).
 						projectId: input.projectId ?? null,
-						taskId: input.taskId ?? null,
-						typeId: input.typeId,
-						description: input.description ?? "",
-						startedAt,
-						stoppedAt,
+						taskId: input.taskId,
+						date: input.date,
+						description: input.description?.trim() ?? "",
 						durationSeconds,
-						fillsDay: input.fillsDay ?? false,
-						// Only stamped for fill rows — backs te_fill_day_uidx (see schema).
-						fillDate: input.fillsDay ? input.date : null,
-						billable: input.billable ?? existing.billable,
-						// Unlike project/task above, an absent meeting is "leave as-is",
-						// not "clear": drizzle skips `undefined` in .set(), so editing an
-						// entry's other fields never wipes a previously-attached meeting
-						// link. It's only overwritten when the caller re-picks a
-						// calendar event.
+						overtime: input.overtime,
+						fillsDay: input.fillsDay,
+						// Unlike project above, an absent meeting is "leave as-is": editing
+						// an entry's other fields never wipes a previously attached link.
 						meetingUrl: input.meetingUrl,
 						calendarEventId: input.calendarEventId,
-						// Editing a calendar-linked entry in any way takes it out of the
-						// sync engine's hands: Google is the source of truth only until
-						// the first local edit, after which the local version wins for
-						// good.
+						// Editing a calendar-linked entry takes it out of the sync
+						// engine's hands for good.
 						syncLocked:
 							existing.calendarEventId != null || input.calendarEventId != null
 								? true
 								: undefined,
+						updatedAt: new Date(),
 					})
 					.where(eq(timeEntry.id, input.timeEntryId))
 					.returning();
 			} catch (error) {
-				// A race with a concurrent create/update lost to te_fill_day_uidx:
-				// surface the same friendly error the pre-check above gives in the
-				// non-racy case, instead of a raw unique-violation 500.
 				if (
 					error instanceof postgres.PostgresError &&
 					error.code === "23505" &&
@@ -681,19 +538,16 @@ export const timeEntriesService = {
 				throw error;
 			}
 
-			// The edit may have changed this entry's day and/or duration, so
-			// refresh the fill block on both the old and new day.
-			const oldDay = dayKeyInTz(existing.startedAt, tz);
 			await recomputeDayFill(ctx, input.date, tz, tx);
-			if (oldDay !== input.date) await recomputeDayFill(ctx, oldDay, tz, tx);
+			if (existing.date !== input.date) {
+				await recomputeDayFill(ctx, existing.date, tz, tx);
+			}
 			return row;
 		});
 		return updated;
 	},
 
-	// Inline note edit: patch the description only. No duration/day change, so
-	// no fill recompute is needed. Like any local edit, touching a calendar-linked
-	// entry locks it against the sync engine re-importing over the change.
+	/** Inline note edit. No duration/day change, so no fill recompute. */
 	updateDescription: async (
 		ctx: Ctx,
 		input: UpdateTimeEntryDescriptionInput,
@@ -713,10 +567,28 @@ export const timeEntriesService = {
 			.set({
 				description: input.description,
 				syncLocked: existing.calendarEventId != null ? true : undefined,
+				updatedAt: new Date(),
 			})
 			.where(eq(timeEntry.id, input.timeEntryId))
 			.returning();
 		if (!updated) throw new Error("Failed to update note");
+		return updated;
+	},
+
+	/** Overtime is purely manual — this is the only thing that ever sets it. */
+	setOvertime: async (ctx: Ctx, input: SetTimeEntryOvertimeInput) => {
+		const [updated] = await db
+			.update(timeEntry)
+			.set({ overtime: input.overtime, updatedAt: new Date() })
+			.where(
+				and(
+					eq(timeEntry.id, input.timeEntryId),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			)
+			.returning();
+		if (!updated) throw new Error("Time entry not found");
 		return updated;
 	},
 
@@ -743,9 +615,7 @@ export const timeEntriesService = {
 					.onConflictDoNothing();
 			}
 
-			// Deleting an auto-synced meeting must make it "stay deleted": record a
-			// tombstone so the meeting-sync engine won't re-import the same calendar
-			// event on the next read.
+			// Deleting an auto-synced meeting must make it "stay deleted".
 			if (existing?.calendarEventId) {
 				await tx
 					.insert(syncedMeetingTombstone)
@@ -759,16 +629,249 @@ export const timeEntriesService = {
 			return existing;
 		});
 
-		// Deleting a normal entry frees up time the day's fill block reclaims.
-		// (If the deleted entry *was* the fill, there's nothing left to recompute.)
 		if (deleted && !deleted.fillsDay) {
 			const tz = await orgTimezone(ctx.organizationId);
-			await recomputeDayFill(ctx, dayKeyInTz(deleted.startedAt, tz), tz);
+			await recomputeDayFill(ctx, deleted.date, tz);
 		}
 
-		// Returned so the caller can offer an "undo" that re-creates the row. The
-		// row carries every field (incl. calendarEventId/generatedFromRuleId) the
-		// client needs to decide whether undo is safe to offer.
+		// Returned so the caller can offer an "undo" that re-creates the row.
 		return deleted ?? null;
+	},
+
+	/**
+	 * Write one cell of the week grid: "this project+task, on this date, is now
+	 * N seconds". Zero clears it.
+	 *
+	 * The grid's unit is a (project, task, day) triple, not an entry id — that's
+	 * what makes typing into a box work without the client tracking which cells
+	 * already have rows behind them. Where several entries share the triple (a
+	 * synced meeting plus a manual one, say), the grid collapses them: the first
+	 * absorbs the new total and the rest are removed, because showing 6:00 in a
+	 * box and then leaving 8:00 in the database would make the grid lie.
+	 *
+	 * Derived entries are deliberately out of scope — a fill block is computed
+	 * from the day's remaining hours, so letting a cell overwrite it would just
+	 * be undone on the next read.
+	 */
+	setWeekCell: async (ctx: Ctx, input: SetWeekCellInput) => {
+		if (input.projectId) {
+			await assertProjectInOrg(ctx, input.projectId);
+			const access = await accessService.resolve(ctx);
+			access.assertCanTrackOn(input.projectId);
+		}
+		await assertTaskAvailable(ctx, input.taskId, input.projectId);
+
+		const matches = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				eq(timeEntry.date, input.date),
+				eq(timeEntry.taskId, input.taskId),
+				input.projectId
+					? eq(timeEntry.projectId, input.projectId)
+					: isNull(timeEntry.projectId),
+				eq(timeEntry.fillsDay, false),
+			),
+			orderBy: [asc(timeEntry.createdAt)],
+		});
+
+		const tz = await orgTimezone(ctx.organizationId);
+		const [primary, ...duplicates] = matches;
+
+		if (input.durationSeconds === 0) {
+			for (const row of matches) await timeEntriesService.remove(ctx, row.id);
+			return { cleared: matches.length };
+		}
+
+		if (primary) {
+			await db
+				.update(timeEntry)
+				.set({
+					durationSeconds: input.durationSeconds,
+					...(input.description !== undefined
+						? { description: input.description.trim() }
+						: {}),
+					updatedAt: new Date(),
+				})
+				.where(eq(timeEntry.id, primary.id));
+			for (const row of duplicates) await timeEntriesService.remove(ctx, row.id);
+			await recomputeDayFill(ctx, input.date, tz);
+			return { entryId: primary.id };
+		}
+
+		// Creating fresh: the mandatory-description rule still applies, so reuse
+		// the row's note from another day in the same grid row rather than
+		// inventing one or writing an empty string.
+		const description = input.description?.trim() ?? "";
+		const created = await timeEntriesService.create(ctx, {
+			date: input.date,
+			projectId: input.projectId,
+			taskId: input.taskId,
+			description: description || undefined,
+			durationSeconds: input.durationSeconds,
+			overtime: false,
+			fillsDay: false,
+		});
+		return { entryId: created.id };
+	},
+
+	/** Copy a day's entries onto another day. The backfill affordance that stands
+	 *  in for a running timer: most people work a similar shape most days. */
+	copyDay: async (ctx: Ctx, input: CopyTimeEntriesInput) => {
+		if (input.fromDate === input.toDate) return { copied: 0 };
+
+		const source = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				eq(timeEntry.date, input.fromDate),
+				// Fill blocks are derived, and calendar meetings belong to the day they
+				// actually happened — neither is meaningful to duplicate.
+				eq(timeEntry.fillsDay, false),
+			),
+		});
+		const copyable = source.filter((e) => e.calendarEventId == null);
+		if (copyable.length === 0) return { copied: 0 };
+
+		await db.insert(timeEntry).values(
+			copyable.map((e) => ({
+				organizationId: ctx.organizationId,
+				userId: ctx.userId,
+				projectId: e.projectId,
+				taskId: e.taskId,
+				date: input.toDate,
+				description: e.description,
+				durationSeconds: e.durationSeconds,
+				overtime: e.overtime,
+			})),
+		);
+
+		const tz = await orgTimezone(ctx.organizationId);
+		await recomputeDayFill(ctx, input.toDate, tz);
+		return { copied: copyable.length };
+	},
+
+	// ── Absence corrections (PM / Admin) ──────────────────────────────────────
+	// PMs can override or correct Vacation and Sick Leave entries for people on
+	// their projects (PRD 3.5). This is the ONE case where someone edits another
+	// person's entries — and it is deliberately limited to absence: worked-time
+	// corrections belong in the close sheet's Adjusted column, which is what keeps
+	// "what people said they worked" and "what we billed" separate.
+
+	/** One person's Vacation/Sick entries for a month, for the PM correcting them
+	 *  from the close sheet. Same permission as the writes below — a PM may read
+	 *  the absence of people on their own projects, nobody else's. */
+	listAbsenceForUser: async (ctx: Ctx, input: ListAbsenceForUserInput) => {
+		const access = await accessService.resolve(ctx);
+		const shared = await projectIdsForUser(ctx, input.userId);
+		if (!access.canOverrideAbsenceFor(shared)) {
+			throw new Error("You cannot see this person's absence");
+		}
+		const { from, to } = monthBounds(input.year, input.month);
+		return db
+			.select({
+				id: timeEntry.id,
+				date: timeEntry.date,
+				taskId: timeEntry.taskId,
+				taskName: task.name,
+				description: timeEntry.description,
+				durationSeconds: timeEntry.durationSeconds,
+			})
+			.from(timeEntry)
+			.innerJoin(task, eq(timeEntry.taskId, task.id))
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, input.userId),
+					eq(task.isAbsence, true),
+					gte(timeEntry.date, from),
+					lte(timeEntry.date, to),
+				),
+			)
+			.orderBy(asc(timeEntry.date));
+	},
+
+	overrideAbsence: async (ctx: Ctx, input: OverrideAbsenceEntryInput) => {
+		const existing = await db.query.timeEntry.findFirst({
+			where: and(
+				eq(timeEntry.id, input.timeEntryId),
+				eq(timeEntry.organizationId, ctx.organizationId),
+			),
+			with: { task: true },
+		});
+		if (!existing) throw new Error("Time entry not found");
+		if (!existing.task.isAbsence) {
+			throw new Error("Only Vacation and Sick Leave entries can be corrected");
+		}
+
+		const access = await accessService.resolve(ctx);
+		const shared = await projectIdsForUser(ctx, existing.userId);
+		if (!access.canOverrideAbsenceFor(shared)) {
+			throw new Error("You cannot correct this person's absence");
+		}
+
+		const [updated] = await db
+			.update(timeEntry)
+			.set({
+				durationSeconds: input.durationSeconds,
+				...(input.description !== undefined
+					? { description: input.description }
+					: {}),
+				updatedAt: new Date(),
+			})
+			.where(eq(timeEntry.id, input.timeEntryId))
+			.returning();
+		return updated;
+	},
+
+	createAbsenceForUser: async (ctx: Ctx, input: CreateAbsenceForUserInput) => {
+		const absenceIds = await tasksService.absenceTaskIds();
+		if (!absenceIds.has(input.taskId)) {
+			throw new Error("Only Vacation and Sick Leave can be logged this way");
+		}
+
+		const access = await accessService.resolve(ctx);
+		const shared = await projectIdsForUser(ctx, input.userId);
+		if (!access.canOverrideAbsenceFor(shared)) {
+			throw new Error("You cannot log absence for this person");
+		}
+
+		const [created] = await db
+			.insert(timeEntry)
+			.values({
+				organizationId: ctx.organizationId,
+				userId: input.userId,
+				projectId: null,
+				taskId: input.taskId,
+				date: input.date,
+				description: input.description ?? "",
+				durationSeconds: input.durationSeconds,
+			})
+			.returning();
+		if (!created) throw new Error("Failed to log absence");
+		return created;
+	},
+
+	removeAbsence: async (ctx: Ctx, timeEntryId: string) => {
+		const existing = await db.query.timeEntry.findFirst({
+			where: and(
+				eq(timeEntry.id, timeEntryId),
+				eq(timeEntry.organizationId, ctx.organizationId),
+			),
+			with: { task: true },
+		});
+		if (!existing) throw new Error("Time entry not found");
+		if (!existing.task.isAbsence) {
+			throw new Error("Only Vacation and Sick Leave entries can be removed here");
+		}
+
+		const access = await accessService.resolve(ctx);
+		const shared = await projectIdsForUser(ctx, existing.userId);
+		if (!access.canOverrideAbsenceFor(shared)) {
+			throw new Error("You cannot correct this person's absence");
+		}
+
+		await db.delete(timeEntry).where(eq(timeEntry.id, timeEntryId));
+		return existing;
 	},
 };

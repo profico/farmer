@@ -1,7 +1,13 @@
 import {
+	copyTimeEntriesInput,
+	createAbsenceForUserInput,
 	createTimeEntryInput,
 	deleteTimeEntryInput,
+	listAbsenceForUserInput,
 	listTimeEntriesRangeInput,
+	overrideAbsenceEntryInput,
+	setTimeEntryOvertimeInput,
+	setWeekCellInput,
 	updateTimeEntryDescriptionInput,
 	updateTimeEntryInput,
 } from "@farmer/core/schema";
@@ -40,10 +46,77 @@ export const updateTimeEntryDescription = createServerFn({ method: "POST" })
 		return timeEntriesService.updateDescription(context.ctx, data);
 	});
 
+export const setTimeEntryOvertime = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(setTimeEntryOvertimeInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.setOvertime(context.ctx, data);
+	});
+
 export const deleteTimeEntry = createServerFn({ method: "POST" })
 	.middleware([orgMiddleware])
 	.validator(deleteTimeEntryInput)
 	.handler(async ({ data: timeEntryId, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
 		return timeEntriesService.remove(context.ctx, timeEntryId);
+	});
+
+// Copy a whole day onto another day. With no timer to run, this is the main
+// affordance for people whose days have a repeating shape.
+// One cell of the week grid. Deliberately its own endpoint rather than a
+// create-or-update dance on the client: the grid addresses cells by
+// (project, task, date), and resolving that to an entry id is the server's job.
+export const setWeekCell = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(setWeekCellInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.setWeekCell(context.ctx, data);
+	});
+
+export const copyTimeEntriesDay = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(copyTimeEntriesInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.copyDay(context.ctx, data);
+	});
+
+// ── PM absence corrections (PRD 4.1) ────────────────────────────────────────
+// A PM may fix the Vacation/Sick entries of people on their projects, and only
+// those. Worked-time corrections deliberately do NOT live here — they belong in
+// the close sheet's Adjusted column, which is what keeps "what people said they
+// worked" separate from "what we billed".
+
+export const overrideAbsenceEntry = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(overrideAbsenceEntryInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.overrideAbsence(context.ctx, data);
+	});
+
+export const listAbsenceForUser = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(listAbsenceForUserInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.listAbsenceForUser(context.ctx, data);
+	});
+
+export const createAbsenceForUser = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(createAbsenceForUserInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.createAbsenceForUser(context.ctx, data);
+	});
+
+export const removeAbsenceEntry = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(deleteTimeEntryInput)
+	.handler(async ({ data: timeEntryId, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.removeAbsence(context.ctx, timeEntryId);
 	});

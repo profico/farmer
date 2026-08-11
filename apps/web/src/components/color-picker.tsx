@@ -1,8 +1,8 @@
-import { Plus } from "lucide-react";
+import { PlusIcon } from "@phosphor-icons/react";
 import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
 import { cn } from "#/lib/utils.ts";
 
-const NEUTRAL_SWATCH = "#4a5568";
+const NEUTRAL_SWATCH = "#79736a";
 
 // The preset row: the 5 palette colors plus a neutral gray, in picker order.
 const PRESET_SWATCHES = [...CATEGORY_COLORS.map((c) => c.dot), NEUTRAL_SWATCH];
@@ -38,7 +38,7 @@ export function ColorPicker({
 							aria-label={swatch}
 							onClick={() => onChange(swatch)}
 							className={cn(
-								"size-6 rounded-md ring-offset-2 ring-offset-background transition-shadow",
+								"size-6 rounded-full ring-offset-2 ring-offset-background transition-shadow duration-(--dur-fast)",
 								selected && "ring-2 ring-ring",
 							)}
 							style={{ backgroundColor: swatch }}
@@ -54,7 +54,7 @@ export function ColorPicker({
 				<label
 					title="Custom color"
 					className={cn(
-						"relative size-6 shrink-0 cursor-pointer rounded-md ring-offset-2 ring-offset-background transition-shadow",
+						"relative size-6 shrink-0 cursor-pointer rounded-full ring-offset-2 ring-offset-background transition-shadow duration-(--dur-fast)",
 						customColor && "ring-2 ring-ring",
 					)}
 					style={
@@ -69,18 +69,23 @@ export function ColorPicker({
 					<input
 						type="color"
 						aria-label="Custom color"
-						value={customColor ?? "#7b54d6"}
+						value={customColor ?? "#6b7f6a"}
 						onChange={(e) => onChange(e.target.value)}
 						className="absolute inset-0 size-full cursor-pointer opacity-0"
 					/>
 					{!customColor && (
-						<Plus className="pointer-events-none absolute inset-0 m-auto size-3.5 text-white drop-shadow-sm" />
+						<PlusIcon
+							weight="regular"
+							className="pointer-events-none absolute inset-0 m-auto size-3.5 text-white drop-shadow-sm"
+						/>
 					)}
 				</label>
-				<span className="text-xs text-muted-foreground">
-					Custom color
+				<span className="eyebrow">
+					Custom colour
 					{customColor && (
-						<span className="ml-1.5 font-mono uppercase">{customColor}</span>
+						<span className="mono ml-2 text-foreground uppercase">
+							{customColor}
+						</span>
 					)}
 				</span>
 			</div>

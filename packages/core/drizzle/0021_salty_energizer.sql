@@ -1,0 +1,1 @@
+ALTER TABLE "member_profile" ADD COLUMN "archived_at" timestamp with time zone;

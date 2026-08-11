@@ -37,6 +37,42 @@ export const getMyRole = createServerFn({ method: "GET" }).handler(async () => {
 	return membersService.getRole(ctx);
 });
 
+// The caller's §4 capability picture, flattened into something that survives
+// JSON and can gate UI. Authorization itself is NOT enforced here — every
+// service re-resolves `Access` server-side and asserts. This exists so the app
+// can avoid rendering a Close tab that would only 403, not to be trusted.
+export type MyAccess = {
+	isAdmin: boolean;
+	canCreateProjects: boolean;
+	/** projectId → the caller's role on it. Absent = unassigned. Admins get
+	 *  their real assignments here, not a synthesised PM on everything. */
+	projectRoles: Record<string, "member" | "team_lead" | "pm">;
+	/** Any PM assignment at all — the cheap "show the Close nav item" test. */
+	isPmSomewhere: boolean;
+	/** Any Team Lead or PM assignment — gates the project-level reports. */
+	isLeadSomewhere: boolean;
+};
+
+export const getMyAccess = createServerFn({ method: "GET" }).handler(
+	async (): Promise<MyAccess> => {
+		const ctx = await requireOrgContext();
+		const { accessService } = await import("@farmer/core/services");
+		const access = await accessService.resolve(ctx);
+
+		const projectRoles = Object.fromEntries(access.assignments());
+
+		return {
+			isAdmin: access.isAdmin,
+			canCreateProjects: access.canCreateProjects(),
+			projectRoles,
+			isPmSomewhere: Object.values(projectRoles).includes("pm"),
+			isLeadSomewhere: Object.values(projectRoles).some(
+				(r) => r === "pm" || r === "team_lead",
+			),
+		};
+	},
+);
+
 // Deliberately routes the role check through the `getMyRole` server fn
 // instead of importing `@farmer/core/services` directly: this function is
 // called straight from route `beforeLoad`s (not itself wrapped in

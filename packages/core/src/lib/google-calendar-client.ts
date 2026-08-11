@@ -121,26 +121,6 @@ export const insertAllDayEvent = async (
 	return body.id ?? null;
 };
 
-// Deletes an event from the primary calendar. Treats 404/410 as success (the
-// event is already gone). Returns false on 401/403 so callers can degrade.
-export const deleteCalendarEvent = async (
-	token: string,
-	eventId: string,
-): Promise<boolean> => {
-	const response = await fetch(
-		`${GOOGLE_API}/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
-		{ method: "DELETE", headers: authHeaders(token) },
-	);
-	if (response.status === 401 || response.status === 403) return false;
-	if (response.status === 404 || response.status === 410) return true;
-	if (!response.ok) {
-		throw new Error(
-			`Google Calendar API error ${response.status}: delete event`,
-		);
-	}
-	return true;
-};
-
 // Best join link for a meeting, in priority order:
 //  1. hangoutLink            — Google Meet, the common case
 //  2. conferenceData video   — Meet/Zoom/Teams via a calendar add-on

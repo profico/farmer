@@ -1,5 +1,9 @@
+import { sql } from "drizzle-orm";
 import {
 	boolean,
+	check,
+	index,
+	integer,
 	pgTable,
 	text,
 	timestamp,
@@ -36,7 +40,6 @@ export const integrationSettings = pgTable(
 		googleAutoSyncMeetings: boolean("google_auto_sync_meetings")
 			.notNull()
 			.default(false),
-		googleSyncTimeOff: boolean("google_sync_time_off").notNull().default(false),
 		// GitHub
 		githubAutoLoadCommits: boolean("github_auto_load_commits")
 			.notNull()
@@ -70,6 +73,111 @@ export const syncedMeetingTombstone = pgTable(
 			t.organizationId,
 			t.userId,
 			t.calendarEventId,
+		),
+	],
+);
+
+// Org-wide knobs (PRD §8). One row per org; a missing row implies the column
+// defaults (see orgSettingsService.get) so no backfill is needed.
+// Deliberately NOT configurable and therefore absent here: the behind-pace
+// threshold (~90%), the reminder days (Tue/Fri), the 15-minute entry
+// granularity and the close lifecycle.
+export const orgSettings = pgTable(
+	"org_settings",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		// N working days without any entry before a person is flagged by the
+		// tracking-compliance report (6.2, View 1) and nudged on Slack.
+		complianceMissingDays: integer("compliance_missing_days")
+			.notNull()
+			.default(3),
+		...stamps,
+	},
+	(t) => [
+		unique("org_settings_org_unq").on(t.organizationId),
+		check(
+			"org_settings_missing_days_valid",
+			sql`${t.complianceMissingDays} >= 1 and ${t.complianceMissingDays} <= 30`,
+		),
+	],
+);
+
+// The Croatian monthly working-hour fund, currently looked up by hand on
+// isplate.info (PRD 3.7). Feeds the Expected formula everywhere it appears:
+//   Expected = monthly fund - (absence days x 8)
+// Admins can prefill it from the official holiday calendar (roadmap item 5,
+// implemented via holidaysService) instead of typing it.
+export const monthlyHourFund = pgTable(
+	"monthly_hour_fund",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		year: integer("year").notNull(),
+		month: integer("month").notNull(), // 1-12
+		fundSeconds: integer("fund_seconds").notNull(),
+		...stamps,
+	},
+	(t) => [
+		unique("monthly_hour_fund_unq").on(t.organizationId, t.year, t.month),
+		check(
+			"monthly_hour_fund_month_valid",
+			sql`${t.month} >= 1 and ${t.month} <= 12`,
+		),
+		check("monthly_hour_fund_seconds_valid", sql`${t.fundSeconds} >= 0`),
+	],
+);
+
+// The fixed status set for the "not on the invoice" report (6.7). Deliberately a
+// managed list rather than free text: it makes the report a trend instrument
+// over time (bench hours per month, time-to-billable per person) instead of a
+// one-off email. Defaults seeded per org: Bench / Internal work / Onboarding /
+// Leave / Ramping onto project.
+export const notOnInvoiceStatusOption = pgTable(
+	"not_on_invoice_status_option",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		label: text("label").notNull(),
+		sortOrder: integer("sort_order").notNull().default(0),
+		archivedAt: ts("archived_at"),
+		...stamps,
+	},
+	(t) => [index("noiso_org_idx").on(t.organizationId)],
+);
+
+// The Admin's judgment layer on top of the generated list: for each person the
+// report surfaces for a month, a status from the set above plus an optional
+// comment. The list itself is derived (every billable person with zero Final
+// hours on any non-Internal project), so only the annotation is stored.
+export const notOnInvoiceEntry = pgTable(
+	"not_on_invoice_entry",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		year: integer("year").notNull(),
+		month: integer("month").notNull(), // 1-12
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		// set null so retiring a status option never deletes the historical note.
+		statusOptionId: uuid("status_option_id").references(
+			() => notOnInvoiceStatusOption.id,
+			{ onDelete: "set null" },
+		),
+		comment: text("comment"),
+		...stamps,
+	},
+	(t) => [
+		unique("not_on_invoice_entry_unq").on(
+			t.organizationId,
+			t.year,
+			t.month,
+			t.userId,
+		),
+		check(
+			"not_on_invoice_entry_month_valid",
+			sql`${t.month} >= 1 and ${t.month} <= 12`,
 		),
 	],
 );

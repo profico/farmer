@@ -9,7 +9,9 @@ export const getIntegrationSettings = createServerFn({
 })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
-		const { integrationSettingsService } = await import("@farmer/core/services");
+		const { integrationSettingsService } = await import(
+			"@farmer/core/services"
+		);
 		return integrationSettingsService.get(context.ctx);
 	});
 

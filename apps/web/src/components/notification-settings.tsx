@@ -4,11 +4,15 @@ import {
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import {
+	PageSection,
+	SettingList,
+	SettingRow,
+} from "#/components/ui/page-header.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import {
 	currentPermission,
@@ -49,17 +53,17 @@ function NotifyToggleRow({
 		},
 	});
 	return (
-		<div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
-			<div className="min-w-0">
-				<span className="text-sm font-medium">{title}</span>
-				<p className="text-xs text-muted-foreground">{description}</p>
-			</div>
-			<Switch
-				checked={checked}
-				onCheckedChange={(value) => mutation.mutate(value)}
-				disabled={disabled || mutation.isPending}
-			/>
-		</div>
+		<SettingRow
+			title={title}
+			description={description}
+			action={
+				<Switch
+					checked={checked}
+					onCheckedChange={(value) => mutation.mutate(value)}
+					disabled={disabled || mutation.isPending}
+				/>
+			}
+		/>
 	);
 }
 
@@ -105,7 +109,9 @@ export function NotificationSettings() {
 			}
 		} catch (error) {
 			toast.error(
-				error instanceof Error ? error.message : "Could not enable notifications",
+				error instanceof Error
+					? error.message
+					: "Could not enable notifications",
 			);
 		} finally {
 			setBusy(false);
@@ -128,58 +134,60 @@ export function NotificationSettings() {
 	const togglesDisabled = !subscribed;
 
 	return (
-		<div className="-mx-4 mt-6 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-			<div className="flex items-center gap-2">
-				<Bell className="size-4 text-muted-foreground" />
-				<span className="text-sm font-semibold">Notifications</span>
-				{subscribed && <Badge variant="secondary">On this device</Badge>}
-			</div>
-			<p className="mt-1 text-xs text-muted-foreground">
-				Get OS-level notifications — they reach you even when Farmer isn't open.
-				You enable them per device.
-			</p>
-
-			<div className="mt-4 flex flex-col items-start gap-3 rounded-lg border bg-muted/40 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-				<div className="min-w-0">
-					<span className="text-sm font-medium">This device</span>
-					<p className="text-xs text-muted-foreground">
-						{!supported
+		<PageSection
+			title={
+				<span className="flex items-center gap-2">
+					Notifications
+					{subscribed && <Badge variant="secondary">On this device</Badge>}
+				</span>
+			}
+			description="Get OS-level notifications — they reach you even when Farmer isn't open. You enable them per device."
+		>
+			{/* Rows, not tinted panels. Everything on this page is a setting with a
+			    label, a note and a control; giving each one a filled rectangle turned
+			    a list into a stack of cards for no gain in legibility. */}
+			<SettingList>
+				<SettingRow
+					title="This device"
+					description={
+						!supported
 							? "This browser doesn't support push notifications."
 							: permission === "denied"
 								? "Blocked. Allow notifications for this site in your browser settings, then try again."
 								: subscribed
 									? "This device will receive notifications."
-									: "Turn on to receive notifications on this device."}
-					</p>
-				</div>
-				{supported &&
-					(subscribed ? (
-						<Button variant="outline" onClick={disable} disabled={busy}>
-							{busy ? "Working…" : "Turn off"}
-						</Button>
-					) : (
-						<Button onClick={enable} disabled={busy || permission === "denied"}>
-							{busy ? "Working…" : "Enable"}
-						</Button>
-					))}
-			</div>
-
-			<div className="mt-3 flex flex-col gap-2.5">
-				<NotifyToggleRow
-					title="Time-off decisions"
-					description="Get notified when your time-off request is approved or denied."
-					checked={settings.timeOffDecisions}
-					patch={(value) => ({ timeOffDecisions: value })}
-					disabled={togglesDisabled}
+									: "Turn on to receive notifications on this device."
+					}
+					action={
+						supported &&
+						(subscribed ? (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={disable}
+								disabled={busy}
+							>
+								{busy ? "Working…" : "Turn off"}
+							</Button>
+						) : (
+							<Button
+								size="sm"
+								onClick={enable}
+								disabled={busy || permission === "denied"}
+							>
+								{busy ? "Working…" : "Enable"}
+							</Button>
+						))
+					}
 				/>
 				<NotifyToggleRow
 					title="Log reminders"
-					description="A nudge at the end of the day if you're under your expected hours."
+					description="A nudge when you have unlogged days, mirroring the Slack reminder."
 					checked={settings.logReminders}
 					patch={(value) => ({ logReminders: value })}
 					disabled={togglesDisabled}
 				/>
-			</div>
-		</div>
+			</SettingList>
+		</PageSection>
 	);
 }

@@ -1,11 +1,18 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError } from "better-auth/api";
 import { genericOAuth, organization } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { sendMail } from "../lib/email";
+import {
+	bootstrapSingleOrg,
+	findPendingInvitation,
+	findSingleOrg,
+	isSingleOrgMode,
+} from "../lib/single-org";
 import { slugify } from "../lib/slug";
 
 const uniqueSlugFor = async (name: string) => {
@@ -75,7 +82,33 @@ export const auth = betterAuth({
 	databaseHooks: {
 		user: {
 			create: {
+				// Single-org mode's signup gate. It lives here, on user creation,
+				// rather than on the register screen, because the screen is not the
+				// only way in: a direct POST to /api/auth/sign-up/email and "Sign in
+				// with Google" (which creates a user on first use) both land here and
+				// nowhere near the form. One hook covers every provider.
+				before: async (user) => {
+					if (!isSingleOrgMode()) return;
+					const org = await findSingleOrg();
+					// Instance not claimed yet — this signup bootstraps it (see the
+					// `after` hook). Deliberately open: whoever reaches a fresh
+					// deployment first becomes its owner, so deploy and sign up in the
+					// same sitting.
+					if (!org) return;
+					if (await findPendingInvitation(org.id, user.email)) return;
+					throw new APIError("FORBIDDEN", {
+						message:
+							"This workspace is invite-only. Ask an admin to send you an invitation.",
+					});
+				},
 				after: async (user) => {
+					if (isSingleOrgMode()) {
+						// Either this call claims the instance, or the user was invited
+						// and their membership comes from accepting the invitation — not
+						// from signing up. Never a second organization.
+						await bootstrapSingleOrg(user.id);
+						return;
+					}
 					const organizationId = crypto.randomUUID();
 					await db.insert(schema.organization).values({
 						id: organizationId,
@@ -98,8 +131,19 @@ export const auth = betterAuth({
 		session: {
 			create: {
 				before: async (session) => {
+					// In single-org mode, pin the session to *the* organization rather
+					// than to whichever membership happens to come back first. Only
+					// matters for a database that had several organizations before the
+					// mode was switched on — but that's exactly when picking the wrong
+					// one would be hardest to notice.
+					const singleOrg = isSingleOrgMode() ? await findSingleOrg() : null;
 					const membership = await db.query.member.findFirst({
-						where: eq(schema.member.userId, session.userId),
+						where: singleOrg
+							? and(
+									eq(schema.member.userId, session.userId),
+									eq(schema.member.organizationId, singleOrg.id),
+								)
+							: eq(schema.member.userId, session.userId),
 					});
 					if (!membership) return;
 					return { data: { activeOrganizationId: membership.organizationId } };
@@ -110,6 +154,12 @@ export const auth = betterAuth({
 	// tanstackStartCookies MUST be last — see better-auth/better-auth#5639
 	plugins: [
 		organization({
+			// The API-level half of single-org mode. Hiding the "New organization"
+			// item in the switcher is cosmetic; these two are what actually make a
+			// second organization (or the loss of the only one) impossible, however
+			// the endpoint is reached.
+			allowUserToCreateOrganization: !isSingleOrgMode(),
+			disableOrganizationDeletion: isSingleOrgMode(),
 			schema: {
 				organization: {
 					additionalFields: {

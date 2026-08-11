@@ -1,10 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { CheckIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Check } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { AuthSplitPanel } from "#/components/auth-split-panel.tsx";
+import { AUTH_INK, AuthSplitPanel } from "#/components/auth-split-panel.tsx";
 import {
 	buildCallbackURL,
 	GoogleSignInButton,
@@ -20,6 +20,7 @@ import {
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { authClient } from "#/lib/auth-client.ts";
+import { getPublicAppConfig } from "#/server/config.ts";
 
 const registerSchema = z.object({
 	name: z.string().min(1, "Name is required"),
@@ -41,11 +42,13 @@ export const Route = createFileRoute("/(auth)/register")({
 		orgSlug: z.string().optional(),
 		role: z.string().optional(),
 	}),
+	loader: () => getPublicAppConfig(),
 	component: RegisterPage,
 });
 
 function RegisterPage() {
 	const navigate = useNavigate();
+	const config = Route.useLoaderData();
 	const { redirect, email, ...inviteContext } = Route.useSearch();
 	const form = useForm<z.infer<typeof registerSchema>>({
 		resolver: zodResolver(registerSchema),
@@ -71,27 +74,63 @@ function RegisterPage() {
 		});
 	};
 
+	// Invite-only, and the instance is already claimed: there is nothing this
+	// form could successfully submit. The real gate is server-side (the user
+	// create hook in packages/core/src/auth) — this branch only stops the screen
+	// promising something that would be rejected. Arriving with an invite link's
+	// `email` param is what makes the form worth rendering; forging that param
+	// gets you a form and then a 403, not an account.
+	if (config.singleOrgMode && config.org && !email) {
+		return (
+			<AuthSplitPanel
+				tagline="Every hour, accounted for — without the friction."
+				brand={config.org}
+			>
+				<div className="eyebrow-lg">Invitation only</div>
+				<h1 className="h2 mt-3">{config.org.name} is invite-only</h1>
+				<p className="lede mt-2">
+					Ask an admin to send you an invitation — the email links straight back
+					here.
+				</p>
+				<Button
+					className="mt-6 w-full"
+					nativeButton={false}
+					render={
+						<Link to="/login" search={{ redirect }}>
+							Back to sign in
+						</Link>
+					}
+				/>
+			</AuthSplitPanel>
+		);
+	}
+
 	return (
 		<AuthSplitPanel
 			tagline="Start tracking in under a minute."
+			brand={config.org}
 			brandContent={
 				<div className="mt-5 flex flex-col gap-2.5">
 					{FEATURES.map((feature) => (
 						<div
 							key={feature}
-							className="flex items-center gap-2.5 text-[13px] text-[#c9c2d6]"
+							className="flex items-center gap-2.5 text-sm"
+							style={{ color: AUTH_INK.mut }}
 						>
-							<Check className="size-4 shrink-0 text-[#c19bf0]" />
+							<CheckIcon
+								weight="regular"
+								className="size-4 shrink-0"
+								style={{ color: AUTH_INK.acc }}
+							/>
 							{feature}
 						</div>
 					))}
 				</div>
 			}
 		>
-			<h1 className="font-display text-xl">Create your account</h1>
-			<p className="mt-1 text-[13.5px] text-muted-foreground">
-				Set up your workspace to start tracking time.
-			</p>
+			<div className="eyebrow-lg">Get started</div>
+			<h1 className="h2 mt-3">Create your account</h1>
+			<p className="lede mt-2">Set up your workspace to start tracking time.</p>
 			<div className="mt-6">
 				<GoogleSignInButton
 					label="Sign up with Google"
@@ -162,12 +201,12 @@ function RegisterPage() {
 					</Button>
 				</form>
 			</Form>
-			<p className="mt-6 text-center text-sm text-muted-foreground">
+			<p className="mt-6 text-sm text-muted-foreground">
 				Already have an account?{" "}
 				<Link
 					to="/login"
 					search={{ redirect, email, ...inviteContext }}
-					className="font-semibold text-primary"
+					className="underlined text-primary"
 				>
 					Sign in
 				</Link>

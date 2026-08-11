@@ -68,10 +68,12 @@ export function WorkingHoursRow({ day }: { day: WorkingHoursDay }) {
 			: 0;
 
 	return (
+		// A day off is dimmed rather than the working days being tinted: seven
+		// tinted rows out of seven is not a highlight, it's a background.
 		<div
 			className={cn(
 				"flex min-h-8 items-center gap-3 px-4 py-2.5 sm:px-8",
-				day.enabled && "bg-accent/40",
+				!day.enabled && "text-muted-foreground",
 			)}
 		>
 			<Switch
@@ -80,7 +82,9 @@ export function WorkingHoursRow({ day }: { day: WorkingHoursDay }) {
 					mutation.mutate({ enabled, startTime, endTime })
 				}
 			/>
-			<span className="w-24 shrink-0 text-sm font-medium">
+			<span
+				className={cn("w-24 shrink-0 text-base", day.enabled && "font-medium")}
+			>
 				{DAY_LABELS[day.dayOfWeek]}
 			</span>
 			{day.enabled ? (
@@ -92,9 +96,9 @@ export function WorkingHoursRow({ day }: { day: WorkingHoursDay }) {
 						onBlur={() =>
 							mutation.mutate({ enabled: true, startTime, endTime })
 						}
-						className="w-28"
+						className="w-32"
 					/>
-					<span className="text-muted-foreground">–</span>
+					<span className="text-faint">–</span>
 					<Input
 						type="time"
 						value={endTime}
@@ -102,14 +106,14 @@ export function WorkingHoursRow({ day }: { day: WorkingHoursDay }) {
 						onBlur={() =>
 							mutation.mutate({ enabled: true, startTime, endTime })
 						}
-						className="w-28"
+						className="w-32"
 					/>
-					<span className="ml-auto shrink-0 font-mono text-sm tabular-nums text-muted-foreground">
+					<span className="mono ml-auto shrink-0 text-sm text-muted-foreground">
 						{formatDurationInput(dailySeconds)}
 					</span>
 				</>
 			) : (
-				<span className="ml-auto text-sm text-muted-foreground">Day off</span>
+				<span className="eyebrow ml-auto">Day off</span>
 			)}
 		</div>
 	);

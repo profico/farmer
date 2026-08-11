@@ -1,37 +1,102 @@
-import { utilizationRangeInput } from "@farmer/core/schema";
+import {
+	absenceReportInput,
+	monthReportInput,
+	overtimeDetailInput,
+	timeReportDetailInput,
+	timeReportSummaryInput,
+	utilizationTrendInput,
+	varianceTrendInput,
+} from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 import { orgAdminMiddleware, orgMiddleware } from "./auth";
 
+// Reports split cleanly in two:
+//
+//   * Project-scoped (Time, Budget burn) — everyone may call them; the service
+//     narrows the rows to the caller's Team Lead/PM projects, and a plain
+//     Member sees only their own entries. Hence `orgMiddleware`.
+//   * Org-wide (Overtime, Absence, Variance, Utilization) — these are
+//     statements about the whole company, so they're Admin-only at the
+//     middleware AND asserted again in the service.
+
+export const getTimeReportSummary = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(timeReportSummaryInput)
+	.handler(async ({ data, context }) => {
+		const { reportsService } = await import("@farmer/core/services");
+		return reportsService.timeSummary(context.ctx, data);
+	});
+
+export const getTimeReportDetail = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(timeReportDetailInput)
+	.handler(async ({ data, context }) => {
+		const { reportsService } = await import("@farmer/core/services");
+		return reportsService.timeDetail(context.ctx, data);
+	});
+
+export const getBudgetBurnReport = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { reportsService } = await import("@farmer/core/services");
+		return reportsService.budgetBurn(context.ctx);
+	});
+
+// Overtime is project-scoped, not org-wide: Admin sees everyone, a PM or Team
+// Lead sees the overtime logged on their own projects (PRD 6.5). The service
+// resolves that scope itself, so the middleware only has to establish the org.
+export const getOvertimeReport = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(monthReportInput)
+	.handler(async ({ data, context }) => {
+		const { reportsService } = await import("@farmer/core/services");
+		return reportsService.overtime(context.ctx, data);
+	});
+
+export const getOvertimeDetail = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(overtimeDetailInput)
+	.handler(async ({ data, context }) => {
+		const { reportsService } = await import("@farmer/core/services");
+		return reportsService.overtimeDetail(context.ctx, data);
+	});
+
+export const getAbsenceReport = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.validator(absenceReportInput)
+	.handler(async ({ data, context }) => {
+		const { reportsService } = await import("@farmer/core/services");
+		return reportsService.absence(context.ctx, data);
+	});
+
+export const getVarianceReport = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.validator(monthReportInput)
+	.handler(async ({ data, context }) => {
+		const { reportsService } = await import("@farmer/core/services");
+		return reportsService.variance(context.ctx, data);
+	});
+
+export const getVarianceTrend = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.validator(varianceTrendInput)
+	.handler(async ({ data, context }) => {
+		const { reportsService } = await import("@farmer/core/services");
+		return reportsService.varianceTrend(context.ctx, data);
+	});
+
 export const getUtilizationReport = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
-	.validator(utilizationRangeInput)
+	.validator(monthReportInput)
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
 		return reportsService.utilization(context.ctx, data);
 	});
 
-// The member-facing counterpart to getUtilizationReport: any member may see
-// their OWN expected-vs-logged hours (no rates/cost/margin are in this shape).
-// Guarded by orgMiddleware, and the userId is forced to the caller's — a member
-// can never request another member's row.
-export const getMyUtilization = createServerFn({ method: "GET" })
-	.middleware([orgMiddleware])
-	.validator(utilizationRangeInput)
+export const getUtilizationTrend = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.validator(utilizationTrendInput)
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
-		const rows = await reportsService.utilization(context.ctx, {
-			from: data.from,
-			to: data.to,
-			userId: context.ctx.userId,
-		});
-		return rows[0] ?? null;
-	});
-
-export const getBudgetsAndMarginReport = createServerFn({
-	method: "GET",
-})
-	.middleware([orgAdminMiddleware])
-	.handler(async ({ context }) => {
-		const { reportsService } = await import("@farmer/core/services");
-		return reportsService.budgetsAndMargin(context.ctx);
+		return reportsService.utilizationTrend(context.ctx, data);
 	});

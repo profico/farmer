@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 import { db } from "./index";
-import { organization } from "./schema/auth";
-import { client, project, task } from "./schema/domain";
+import { member, organization } from "./schema/auth";
+import { client, project, projectMember, projectTask, task } from "./schema/domain";
+import { memberTypeHistory } from "./schema/people";
+import { monthlyHourFund } from "./schema/settings";
+import { ensureOrgTasks, ensureSiteTasks } from "./seed-tasks";
 
 const targetSlug = process.argv[2];
 
@@ -20,32 +23,146 @@ if (!org) {
 	process.exit(1);
 }
 
+await ensureSiteTasks();
+await ensureOrgTasks(org.id);
+
+const orgTasks = await db.query.task.findMany({
+	where: eq(task.organizationId, org.id),
+	columns: { id: true, name: true },
+});
+const taskIdByName = new Map(orgTasks.map((t) => [t.name, t.id]));
+
+// Every project belongs to a client, and internal work goes to the org's own
+// client — which is why `project.clientId` can be NOT NULL.
+const [internalClient] = await db
+	.insert(client)
+	.values({ organizationId: org.id, name: org.name, isInternal: true })
+	.onConflictDoNothing()
+	.returning();
+
 const [seedClient] = await db
 	.insert(client)
 	.values({ organizationId: org.id, name: "Acme Inc." })
 	.returning();
 if (!seedClient) throw new Error("Failed to insert seed client");
 
-const [seedProject] = await db
+// One project per type that behaves differently, so the close sheet's full vs
+// lean rendering is visible immediately after seeding.
+const [productTeam] = await db
 	.insert(project)
 	.values({
 		organizationId: org.id,
 		clientId: seedClient.id,
-		name: "Website Redesign",
-		code: "WEB",
+		name: "Acme Product Team",
+		code: "ACME",
+		type: "product_team",
 	})
 	.returning();
-if (!seedProject) throw new Error("Failed to insert seed project");
+if (!productTeam) throw new Error("Failed to insert seed project");
 
-await db.insert(task).values([
-	{ organizationId: org.id, projectId: seedProject.id, name: "Design mockups" },
-	{
+const [fixedScope] = await db
+	.insert(project)
+	.values({
 		organizationId: org.id,
-		projectId: seedProject.id,
-		name: "Frontend implementation",
-	},
-	{ organizationId: org.id, projectId: seedProject.id, name: "QA & bug fixes" },
-]);
+		clientId: seedClient.id,
+		name: "Acme Website Redesign",
+		code: "AWR",
+		type: "fixed_scope",
+		budgetSeconds: 400 * 3600,
+		budgetAmount: "32000.00",
+	})
+	.returning();
 
-console.log(`Seeded client/project/tasks for organization "${org.name}" (${org.slug}).`);
+const internal =
+	internalClient ??
+	(await db.query.client.findFirst({
+		where: eq(client.organizationId, org.id),
+		columns: { id: true, name: true, isInternal: true },
+	}));
+
+if (internal?.isInternal) {
+	await db.insert(project).values({
+		organizationId: org.id,
+		clientId: internal.id,
+		name: "Internal",
+		type: "internal",
+	});
+}
+
+// Projects cherry-pick their applicable subset of the global task list.
+const pickFor = (projectId: string, names: string[]) =>
+	names
+		.map((name) => taskIdByName.get(name))
+		.filter((id): id is string => !!id)
+		.map((taskId) => ({ organizationId: org.id, projectId, taskId }));
+
+const picks = [
+	...pickFor(productTeam.id, [
+		"Development",
+		"Design",
+		"Meeting",
+		"Code review",
+		"QA & testing",
+		"Project management",
+	]),
+	...(fixedScope
+		? pickFor(fixedScope.id, ["Development", "Design", "QA & testing"])
+		: []),
+];
+if (picks.length > 0) {
+	await db.insert(projectTask).values(picks).onConflictDoNothing();
+}
+
+// Assign every org member to the product-team project, with the first member as
+// its PM so the close sheet is reachable straight after seeding.
+const members = await db.query.member.findMany({
+	where: eq(member.organizationId, org.id),
+	columns: { userId: true },
+});
+if (members.length > 0) {
+	await db
+		.insert(projectMember)
+		.values(
+			members.map((m, index) => ({
+				organizationId: org.id,
+				projectId: productTeam.id,
+				userId: m.userId,
+				role: index === 0 ? ("pm" as const) : ("member" as const),
+			})),
+		)
+		.onConflictDoNothing();
+
+	// Everyone starts Billable, effective-dated from the start of this year so
+	// past-month reports resolve to something.
+	const thisYear = new Date().getUTCFullYear();
+	await db
+		.insert(memberTypeHistory)
+		.values(
+			members.map((m) => ({
+				organizationId: org.id,
+				userId: m.userId,
+				type: "billable" as const,
+				effectiveFrom: `${thisYear}-01-01`,
+			})),
+		)
+		.onConflictDoNothing();
+}
+
+// A monthly hour fund for the current month, so Expected has something to
+// compute from. In production these come from the official calendar (or are
+// typed in by an admin); 160h is the common Croatian month.
+const now = new Date();
+await db
+	.insert(monthlyHourFund)
+	.values({
+		organizationId: org.id,
+		year: now.getUTCFullYear(),
+		month: now.getUTCMonth() + 1,
+		fundSeconds: 160 * 3600,
+	})
+	.onConflictDoNothing();
+
+console.log(
+	`Seeded clients, projects, task picks, assignments and an hour fund for "${org.name}" (${org.slug}).`,
+);
 process.exit(0);

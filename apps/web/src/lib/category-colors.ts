@@ -7,23 +7,27 @@ export type CategoryColor = {
 	text: string;
 };
 
-// The 5 project/entry-type category colors from the design system, in
-// picker order.
-// Tint/text are only consumed by the calendar day/week blocks (CalendarBlock)
-// — kept noticeably more saturated than a typical pastel badge tint so
-// blocks stay easy to tell apart against the grid without a border rail.
+// The 5 project/task category colors, in picker order.
+//
+// All five sit in the same muted, earthy register as the rest of the palette
+// and are deliberately kept a step *below* the ember accent in chroma. A dot
+// beside a task name is a label, not a signal: if a category read louder than
+// the one accent colour the app uses for "act on this", the eye would start
+// following project colours around the page instead of following actions. They
+// still separate cleanly from each other by hue, which is all a category has to
+// do.
 export const CATEGORY_COLORS: CategoryColor[] = [
-	{ dot: "#7b54d6", tint: "#e0d1f7", text: "#4a2f8f" }, // violet
-	{ dot: "#2fa1a0", tint: "#bfe9e8", text: "#145251" }, // teal
-	{ dot: "#d98a2b", tint: "#f5deac", text: "#7a5215" }, // amber
-	{ dot: "#d2607a", tint: "#f5cad6", text: "#8a2e47" }, // rose
-	{ dot: "#4fa36b", tint: "#c8e8d6", text: "#235736" }, // green
+	{ dot: "#6b7f6a", tint: "#e0e3dd", text: "#455345" }, // sage
+	{ dot: "#55707d", tint: "#dce0e0", text: "#374951" }, // slate
+	{ dot: "#8a6a1f", tint: "#e6dfcf", text: "#5a4514" }, // ochre
+	{ dot: "#9c5a44", tint: "#e9dcd6", text: "#653a2c" }, // rust
+	{ dot: "#7a6a86", tint: "#e3dfe2", text: "#4f4557" }, // mauve
 ];
 
 const FALLBACK_COLOR: CategoryColor = {
-	dot: "#4a5568",
-	tint: "#dadce2",
-	text: "#252b38",
+	dot: "#79736a",
+	tint: "#e3e1dd",
+	text: "#4f4b45",
 };
 
 const hexToRgb = (hex: string): [number, number, number] | null => {
@@ -53,7 +57,10 @@ const mix = (
 	rgb[2] + (target[2] - rgb[2]) * amount,
 ];
 
-const WHITE: [number, number, number] = [255, 255, 255];
+// Tints wash toward the page, not toward white: on warm paper a white-based
+// tint reads as a lighter patch of some other material laid on top of the
+// sheet, which is exactly the cut-out-card look this design avoids.
+const PAPER: [number, number, number] = [250, 249, 246];
 const BLACK: [number, number, number] = [0, 0, 0];
 
 // The palette (+ neutral fallback) colors have hand-tuned tint/text pairs;
@@ -71,8 +78,8 @@ const deriveCategoryColor = (
 	rgb: [number, number, number],
 ): CategoryColor => ({
 	dot: hex,
-	tint: rgbToHex(...mix(rgb, WHITE, 0.8)),
-	text: rgbToHex(...mix(rgb, BLACK, 0.45)),
+	tint: rgbToHex(...mix(rgb, PAPER, 0.82)),
+	text: rgbToHex(...mix(rgb, BLACK, 0.35)),
 });
 
 // Resolves a stored hex to its display color set. Exact palette/neutral picks

@@ -71,10 +71,8 @@ function AcceptInvitePage() {
 		<div className="flex min-h-svh items-center justify-center p-4">
 			<Card className="w-full max-w-sm">
 				<CardHeader>
-					<CardTitle className="font-display text-xl">
-						You've been invited
-					</CardTitle>
-					<CardDescription>
+					<CardTitle className="h2">You've been invited</CardTitle>
+					<CardDescription className="text-base">
 						Join{" "}
 						<strong className="text-foreground">
 							{org ?? "the organization"}

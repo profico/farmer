@@ -1,5 +1,6 @@
 import {
 	boolean,
+	integer,
 	pgTable,
 	text,
 	timestamp,
@@ -7,6 +8,7 @@ import {
 	uuid,
 } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth";
+import { project } from "./domain";
 
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });
@@ -52,11 +54,16 @@ export const notificationSettings = pgTable(
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
 		logReminders: boolean("log_reminders").notNull().default(true),
-		timeOffDecisions: boolean("time_off_decisions").notNull().default(true),
 		// The org-day-key (yyyy-MM-dd, resolved in the org timezone) we last sent
 		// this user a "forgot to log" reminder for. Lets the once-a-day scheduler
 		// stay idempotent across ticks and process restarts.
 		lastLogReminderDay: text("last_log_reminder_day"),
+		// Same idempotency trick for the two Slack channels (PRD §7): the org-day
+		// key of the last compliance nudge (max 2/week, Tue + Fri) and of the last
+		// month-end "close is coming" push. Separate columns because the month-end
+		// push must fire even on a day a nudge already went out.
+		lastSlackNudgeDay: text("last_slack_nudge_day"),
+		lastMonthEndPushDay: text("last_month_end_push_day"),
 		...stamps,
 	},
 	(t) => [
@@ -65,4 +72,25 @@ export const notificationSettings = pgTable(
 			t.userId,
 		),
 	],
+);
+
+// One row per (Fixed Scope project, threshold) that has already been announced,
+// so the 80%/100% budget alerts (PRD 6.6) fire once each rather than on every
+// tick of the scheduler. The row is deleted again if burn falls back under the
+// threshold — raising a budget mid-project should re-arm the alarm, not silence
+// it forever.
+export const projectBudgetAlert = pgTable(
+	"project_budget_alert",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		projectId: uuid("project_id")
+			.notNull()
+			.references(() => project.id, { onDelete: "cascade" }),
+		/** 80 or 100. An integer rather than an enum so a third step is a one-line
+		 *  change if the product ever wants one. */
+		threshold: integer("threshold").notNull(),
+		notifiedAt: ts("notified_at").notNull().defaultNow(),
+	},
+	(t) => [unique("project_budget_alert_unq").on(t.projectId, t.threshold)],
 );

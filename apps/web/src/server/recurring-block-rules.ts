@@ -11,7 +11,9 @@ export const listRecurringBlockRules = createServerFn({
 })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
-		const { recurringBlockRulesService } = await import("@farmer/core/services");
+		const { recurringBlockRulesService } = await import(
+			"@farmer/core/services"
+		);
 		return recurringBlockRulesService.list(context.ctx);
 	});
 

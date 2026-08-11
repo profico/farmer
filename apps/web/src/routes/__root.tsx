@@ -1,3 +1,4 @@
+import { IconContext } from "@phosphor-icons/react";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -37,6 +38,10 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 			},
 			{
 				name: "theme-color",
+				// The logo violet — the flat fill and top gradient stop of
+				// Icon.svg / logo.svg. Deliberately not `--acc` (the terracotta
+				// UI accent): browser chrome and the PWA title bar are brand
+				// surfaces, so they take the mark's colour, not the app's.
 				content: "#6f4ebe",
 			},
 		],
@@ -74,13 +79,22 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<HeadContent />
 			</head>
 			<body>
-				{/* reducedMotion="user" degrades every spring under
-            prefers-reduced-motion: transform/scale/slide are dropped (opacity
-            is kept), so dialogs & menus cross-fade, sheets fade, and the
-            tab-bar pill jumps instead of gliding — no per-component branching.
-            This is the app's only reduced-motion mechanism. */}
-				<MotionConfig reducedMotion="user">{children}</MotionConfig>
-				<Toaster />
+				{/* Every icon in the app is Phosphor duotone, set once here rather
+            than repeated as a `weight` prop on every call site. Individual
+            icons still override it — check / X / plus glyphs and every arrow
+            or caret are always weight="regular": duotone turns a line-drawn
+            glyph into a muddy blob at the sizes those are used at.
+            Size stays unset so Tailwind's `size-*` classes keep control.
+            Wraps the Toaster too, whose status icons are Phosphor as well. */}
+				<IconContext.Provider value={{ weight: "duotone" }}>
+					{/* reducedMotion="user" degrades every spring under
+              prefers-reduced-motion: transform/scale/slide are dropped (opacity
+              is kept), so dialogs & menus cross-fade, sheets fade, and the
+              tab-bar pill jumps instead of gliding — no per-component branching.
+              This is the app's only reduced-motion mechanism. */}
+					<MotionConfig reducedMotion="user">{children}</MotionConfig>
+					<Toaster />
+				</IconContext.Provider>
 				<TanStackDevtools
 					config={{
 						position: "bottom-right",

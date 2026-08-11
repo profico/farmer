@@ -1,39 +1,43 @@
+import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "#/components/ui/button.tsx";
 
 /**
  * App-wide fallback for `defaultErrorComponent` / route `errorComponent`.
  * Any `useSuspenseQuery`/loader rejection anywhere under the router lands
  * here instead of TanStack Router's unstyled default error screen.
+ *
+ * Left-aligned, no warning glyph, no centred column. An error screen is still a
+ * page of the app, and the previous version — a red-tinted icon tile floating in
+ * the middle of the viewport — announced the failure far more loudly than the
+ * failure usually deserves. The sentence says what happened; the button fixes
+ * it.
  */
 export function RouteError({ error, reset }: ErrorComponentProps) {
 	const message = error instanceof Error ? error.message : String(error);
 
 	return (
-		<div className="flex min-h-[60vh] flex-col items-center justify-center px-6 py-10 text-center">
-			<span className="flex size-13 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
-				<AlertTriangle className="size-6" />
-			</span>
-			<p className="mt-4 text-[15px] font-semibold">Something went wrong</p>
-			<p className="mt-1.5 max-w-[320px] text-sm leading-relaxed text-muted-foreground">
+		<div className="island island-pad flex-1">
+			<div className="eyebrow-lg">Error</div>
+			<h1 className="h2 mt-3">Something went wrong</h1>
+			<p className="lede mt-2 max-w-[52ch]">
 				This page ran into an unexpected error. Try again, and if it keeps
 				happening, let us know.
 			</p>
 			{import.meta.env.DEV && message && (
-				<pre className="mt-3 max-w-[420px] overflow-x-auto rounded-lg bg-muted px-3 py-2 text-left text-xs text-muted-foreground">
+				<pre className="mono mt-5 max-w-[68ch] overflow-x-auto border-t pt-4 text-xs text-muted-foreground">
 					{message}
 				</pre>
 			)}
 			<Button
 				variant="outline"
 				size="sm"
-				className="mt-4"
+				className="mt-6"
 				onClick={() => {
 					reset();
 				}}
 			>
-				<RefreshCw className="size-3.5" />
+				<ArrowsClockwiseIcon weight="regular" className="size-3.5" />
 				Try again
 			</Button>
 		</div>

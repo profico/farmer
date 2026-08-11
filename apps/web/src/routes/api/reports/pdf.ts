@@ -1,4 +1,4 @@
-import { utilizationRangeInput } from "@farmer/core/schema";
+import { monthReportInput } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 import { resolveApiOrgContext } from "#/server/auth.ts";
 
@@ -22,13 +22,13 @@ export const Route = createFileRoute("/api/reports/pdf")({
 				}
 
 				const url = new URL(request.url);
-				const parsed = utilizationRangeInput.safeParse({
-					from: url.searchParams.get("from"),
-					to: url.searchParams.get("to"),
+				const parsed = monthReportInput.safeParse({
+					year: Number(url.searchParams.get("year")),
+					month: Number(url.searchParams.get("month")),
 				});
 				if (!parsed.success) {
 					return Response.json(
-						{ error: "Expected ?from=yyyy-MM-dd&to=yyyy-MM-dd" },
+						{ error: "Expected ?year=2026&month=6" },
 						{ status: 400 },
 					);
 				}

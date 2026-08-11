@@ -80,14 +80,14 @@ RUN cd apps/web && bun build ../../packages/core/src/db/migrate.ts \
       --external "@myriaddreamin/typst-ts-node-compiler" \
       --outfile /out/migrate.js
 
-# 4) bundle the site-wide entry-types seed. It's idempotent (onConflictDoNothing)
-#    and org-independent (scope: "site"), so the entrypoint can safely run it on
-#    every boot to ensure the default entry types exist. The demo seed (seed.ts)
-#    is intentionally NOT bundled — it inserts non-idempotent demo data.
-RUN cd apps/web && bun build ../../packages/core/src/db/seed-entry-types.ts \
+# 4) bundle the site-wide task seed (Vacation, Sick Leave). It's idempotent
+#    (onConflictDoNothing) and org-independent (scope: "site"), so the entrypoint
+#    can safely run it on every boot. The demo seed (seed.ts) is intentionally
+#    NOT bundled — it inserts non-idempotent demo data.
+RUN cd apps/web && bun build ../../packages/core/src/db/seed-tasks.ts \
       --target=bun \
       --external "@myriaddreamin/typst-ts-node-compiler" \
-      --outfile /out/seed-entry-types.js
+      --outfile /out/seed-tasks.js
 
 # ---- runtime: bundles + minimal node_modules, nothing else ----
 FROM oven/bun:${BUN_VERSION}-slim AS runtime
@@ -101,7 +101,7 @@ WORKDIR /app
 # installs on an arm64 builder previously corrupted a platform-binary tarball).
 COPY --from=build /out/app.js ./app.js
 COPY --from=build /out/migrate.js ./migrate.js
-COPY --from=build /out/seed-entry-types.js ./seed-entry-types.js
+COPY --from=build /out/seed-tasks.js ./seed-tasks.js
 COPY --from=build /app/apps/web/dist ./dist
 COPY --from=build /app/packages/core/drizzle ./drizzle
 COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh

@@ -16,3 +16,11 @@ export const updateOrganizationSettingsInput = z.object({
 export type UpdateOrganizationSettingsInput = z.infer<
 	typeof updateOrganizationSettingsInput
 >;
+
+// The org's one behavioural knob (PRD §8). Everything else about compliance —
+// the behind-pace threshold, the reminder weekdays, the 15-minute granularity —
+// is deliberately hardcoded, so this schema stays a single field on purpose.
+export const updateOrgSettingsInput = z.object({
+	complianceMissingDays: z.number().int().min(1).max(30),
+});
+export type UpdateOrgSettingsInput = z.infer<typeof updateOrgSettingsInput>;

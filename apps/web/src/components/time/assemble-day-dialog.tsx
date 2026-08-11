@@ -1,12 +1,11 @@
+import {
+	CalendarDotIcon,
+	CoffeeIcon,
+	GitCommitIcon,
+	VideoCameraIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-	CalendarClock,
-	Coffee,
-	GitCommitHorizontal,
-	Sparkles,
-	Video,
-} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#/components/ui/button.tsx";
@@ -31,7 +30,7 @@ type DaySuggestion = DayAssembly["suggestions"][number];
 
 function suggestionTitle(s: DaySuggestion): string {
 	if (s.kind === "meeting") return s.description || "Meeting";
-	if (s.kind === "work") return s.projectName ?? "Work";
+	if (s.kind === "work") return s.projectName ?? s.taskName;
 	if (s.kind === "break") return "Break";
 	return "Work — rest of day";
 }
@@ -39,12 +38,12 @@ function suggestionTitle(s: DaySuggestion): string {
 function SuggestionIcon({ kind }: { kind: DaySuggestion["kind"] }) {
 	const Icon =
 		kind === "meeting"
-			? Video
+			? VideoCameraIcon
 			: kind === "work"
-				? GitCommitHorizontal
+				? GitCommitIcon
 				: kind === "break"
-					? Coffee
-					: CalendarClock;
+					? CoffeeIcon
+					: CalendarDotIcon;
 	return <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />;
 }
 
@@ -95,12 +94,12 @@ export function AssembleDayDialog({
 				data: {
 					date,
 					entries: selected.map((s) => ({
-						typeId: s.typeId,
+						taskId: s.taskId,
 						projectId: s.projectId ?? undefined,
 						description: s.description || undefined,
-						startTime: s.startTime,
-						endTime: s.endTime,
-						billable: s.billable,
+						// A fill suggestion's duration is recomputed server-side from the
+						// day's remaining working hours, so it deliberately sends none.
+						durationSeconds: s.fillsDay ? undefined : s.durationSeconds,
 						fillsDay: s.fillsDay || undefined,
 						meetingUrl: s.meetingUrl ?? undefined,
 						calendarEventId: s.calendarEventId ?? undefined,
@@ -142,10 +141,7 @@ export function AssembleDayDialog({
 			<DialogTrigger render={trigger} />
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2">
-						<Sparkles className="size-4" />
-						Assemble my day
-					</DialogTitle>
+					<DialogTitle>Assemble my day</DialogTitle>
 					<p className="text-sm text-muted-foreground">
 						{formatDateKeyLong(date)}
 						{assembly && (
@@ -158,24 +154,29 @@ export function AssembleDayDialog({
 					</p>
 				</DialogHeader>
 
+				{/* Left-aligned like every other message in the app — centred text
+				    inside a dialog reads as a placeholder screen, not as an answer to
+				    the question the title just asked. */}
 				{suggestionsQ.isPending ? (
-					<p className="py-8 text-center text-sm text-muted-foreground">
+					<p className="py-6 text-base text-muted-foreground">
 						Reading your calendar, commits, and working hours…
 					</p>
 				) : suggestionsQ.isError ? (
-					<p className="py-8 text-center text-sm text-destructive">
+					<p className="py-6 text-base text-destructive">
 						Could not build suggestions. Try again in a moment.
 					</p>
 				) : suggestions.length === 0 ? (
-					<p className="py-8 text-center text-sm text-muted-foreground">
+					<p className="py-6 text-base text-muted-foreground">
 						Nothing to add — this day already matches your working hours.
 					</p>
 				) : (
-					<div className="-mx-1 max-h-80 overflow-y-auto rounded-md border">
+					// A list, not a card: hairlines above and below, rows divided by the
+					// lighter repeat-rule weight.
+					<div className="-mx-6 max-h-80 divide-y divide-line2 overflow-y-auto border-y">
 						{suggestions.map((s) => (
 							<label
 								key={s.key}
-								className="flex cursor-pointer items-start gap-3 border-b px-3 py-2.5 last:border-b-0"
+								className="flex cursor-pointer items-start gap-3 px-6 py-2.5 transition-colors duration-(--dur-fast) hover:bg-muted"
 							>
 								<input
 									type="checkbox"
@@ -191,7 +192,7 @@ export function AssembleDayDialog({
 									<span className="block text-xs text-muted-foreground">
 										{s.fillsDay
 											? `Fills the rest of the day · ~${formatHoursShort(s.durationSeconds)}`
-											: `${s.startTime}–${s.endTime} · ${formatHoursShort(s.durationSeconds)}`}
+											: `${s.taskName} · ${formatHoursShort(s.durationSeconds)}`}
 										{s.commits.length > 0 &&
 											` · ${s.commits.length} ${s.commits.length === 1 ? "commit" : "commits"}`}
 									</span>
@@ -207,12 +208,12 @@ export function AssembleDayDialog({
 				)}
 
 				{missingSources.length > 0 && suggestionsQ.isSuccess && (
-					<p className="text-xs text-muted-foreground">
+					<p className="text-sm text-muted-foreground">
 						{missingSources.join(" and ")} not connected —{" "}
 						<Link
 							to="/$orgSlug/settings/integrations"
 							params={{ orgSlug }}
-							className="text-primary hover:underline"
+							className="underlined text-primary"
 							onClick={() => setOpen(false)}
 						>
 							connect in settings

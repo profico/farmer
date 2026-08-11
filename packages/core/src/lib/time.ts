@@ -1,14 +1,6 @@
 import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
 
-export const secondsBetween = (a: Date, b: Date): number =>
-	Math.floor((b.getTime() - a.getTime()) / 1000);
-
-export const finalizeDuration = (
-	startedAt: Date,
-	stoppedAt = new Date(),
-): number => secondsBetween(startedAt, stoppedAt);
-
 export const formatDuration = (totalSeconds: number): string => {
 	const hours = Math.floor(totalSeconds / 3600);
 	const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -54,18 +46,6 @@ export const formatDayKey = (
 	const [y, m, d] = key.split("-");
 	const base = `${MONTHS_SHORT[Number(m) - 1]} ${Number(d)}`;
 	return year ? `${base}, ${y}` : base;
-};
-
-// A start–end day-key range in human form:
-//   same day       -> "Jul 12, 2026"
-//   same year      -> "Dec 1 – Dec 12, 2026"  (year shown once, at the end)
-//   spanning years -> "Jun 10, 2025 – Jan 15, 2026"
-export const formatDayKeyRange = (start: string, end: string): string => {
-	if (start === end) return formatDayKey(start);
-	const sameYear = start.slice(0, 4) === end.slice(0, 4);
-	return sameYear
-		? `${formatDayKey(start, { year: false })} – ${formatDayKey(end)}`
-		: `${formatDayKey(start)} – ${formatDayKey(end)}`;
 };
 
 // Compact form for prefilling a duration input, e.g. 5400 -> "1h30m".
@@ -159,6 +139,15 @@ export const parseDuration = (input: string): number | null => {
 	const trimmed = input.trim().toLowerCase();
 	if (!trimmed) return null;
 
+	// H:MM — the format every duration is DISPLAYED in, so it has to be readable
+	// back or editing a cell in place would silently fail. "8:00" is 8 hours,
+	// "0:30" is 30 minutes. Checked before the arithmetic branch, which would
+	// otherwise choke on the colon.
+	const clock = /^(\d+):([0-5]?\d)$/.exec(trimmed);
+	if (clock) {
+		return Number(clock[1]) * 3600 + Number(clock[2]) * 60;
+	}
+
 	// Unit form takes priority whenever an h/m suffix is present.
 	if (/[hm]/.test(trimmed)) {
 		const unitPattern = /(\d+(?:\.\d+)?)\s*(h|m)/g;
@@ -178,6 +167,31 @@ export const parseDuration = (input: string): number | null => {
 	return Math.round(hours * 3600);
 };
 
+// Entries snap to 15-minute steps (PRD 3.6), enforced by a CHECK constraint. Any
+// duration that arrives from outside — a 25-minute calendar meeting, a
+// commit-derived estimate — has to be snapped before it can be stored, or the
+// insert fails. Rounds to nearest, with a 15-minute floor so a 3-minute event
+// still becomes a real block rather than vanishing.
+export const QUARTER_HOUR_SECONDS = 900;
+
+export const snapToQuarterHour = (seconds: number): number =>
+	Math.max(
+		QUARTER_HOUR_SECONDS,
+		Math.round(seconds / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS,
+	);
+
+// yyyy-MM (the month a day key belongs to).
+export const monthKeyOf = (dateKey: string): string => dateKey.slice(0, 7);
+
+// First and last day keys of a calendar month.
+export const monthBounds = (
+	year: number,
+	month: number,
+): { from: string; to: string } => {
+	const from = `${year}-${String(month).padStart(2, "0")}-01`;
+	return { from, to: endOfMonthKey(from) };
+};
+
 export const dayKeyInTz = (instant: Date, ianaTz: string): string =>
 	format(new TZDate(instant, ianaTz), "yyyy-MM-dd");
 
@@ -186,7 +200,7 @@ export const timeKeyInTz = (instant: Date, ianaTz: string): string =>
 
 // Anchors a "yyyy-MM-dd" calendar date to noon in the given timezone, so the
 // stored UTC instant still falls on the intended day after dayKeyInTz.
-export const anchorDate = (dateStr: string, tz: string): Date => {
+const anchorDate = (dateStr: string, tz: string): Date => {
 	const [year, month, day] = dateStr.split("-").map(Number);
 	return new TZDate(year ?? 1970, (month ?? 1) - 1, day ?? 1, 12, 0, 0, tz);
 };
@@ -281,30 +295,3 @@ export const endOfMonthKey = (dateStr: string): string => {
 export const weekdayInTz = (dateStr: string, tz: string): number =>
 	anchorDate(dateStr, tz).getDay();
 
-// Minutes since local midnight, in the given timezone (0-1439).
-export const minutesSinceMidnightInTz = (
-	instant: Date,
-	ianaTz: string,
-): number => {
-	const zoned = new TZDate(instant, ianaTz);
-	return zoned.getHours() * 60 + zoned.getMinutes();
-};
-
-// Anchors a "yyyy-MM-dd" date + "HH:mm" time to an instant in the given timezone.
-export const anchorDateTime = (
-	dateStr: string,
-	timeStr: string,
-	tz: string,
-): Date => {
-	const [year, month, day] = dateStr.split("-").map(Number);
-	const [hours, minutes] = timeStr.split(":").map(Number);
-	return new TZDate(
-		year ?? 1970,
-		(month ?? 1) - 1,
-		day ?? 1,
-		hours ?? 0,
-		minutes ?? 0,
-		0,
-		tz,
-	);
-};
