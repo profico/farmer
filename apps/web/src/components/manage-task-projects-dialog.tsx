@@ -115,7 +115,7 @@ export function ManageTaskProjectsDialog({
 						No active projects to add this task to.
 					</p>
 				) : (
-					<div className="scrollbar-stable -mx-1 max-h-72 overflow-y-auto px-1 py-1">
+					<div className="-mx-1 px-1 py-1">
 						<PillToggleGroup
 							items={items}
 							selectedIds={selected}

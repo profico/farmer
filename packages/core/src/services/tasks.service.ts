@@ -8,7 +8,7 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import type { CreateTaskInput, UpdateTaskInput } from "../schema/tasks";
-import { accessService } from "./access.service";
+import { ctxAccess, requireAdmin } from "./context";
 import { isUniversalTask } from "./guards";
 import type { Ctx } from "./types";
 
@@ -149,7 +149,7 @@ export const tasksService = {
 	/** Everything relevant to this org including archived, with usage counts, for
 	 *  the Settings screen. Admin only. */
 	listManaged: async (ctx: Ctx) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const tasks = await db.query.task.findMany({
 			where: or(
@@ -194,7 +194,7 @@ export const tasksService = {
 	},
 
 	create: async (ctx: Ctx, input: CreateTaskInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		const name = input.name.trim();
 
 		// `task_org_name_uidx` only covers LIVE rows, so nothing at the database
@@ -240,7 +240,7 @@ export const tasksService = {
 	 *  alternative users reach for otherwise is creating a same-named replacement,
 	 *  which strands all of that on a dead row. */
 	unarchive: async (ctx: Ctx, taskId: string) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		const existing = await db.query.task.findFirst({
 			where: and(
 				eq(task.id, taskId),
@@ -282,7 +282,7 @@ export const tasksService = {
 	},
 
 	update: async (ctx: Ctx, input: UpdateTaskInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		// Site tasks are matched too, so the rejection below is the one the caller
 		// sees. Looking up on organization_id alone silently excluded them — a site
 		// row's organization_id is NULL, so the comparison is never true — and the
@@ -317,7 +317,7 @@ export const tasksService = {
 	},
 
 	archive: async (ctx: Ctx, taskId: string) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		// Site rows matched here for the same reason as in `update` above: so the
 		// caller gets the real reason rather than "Task not found".
 		const existing = await db.query.task.findFirst({
@@ -356,7 +356,7 @@ export const tasksService = {
 	/** Which of this org's projects currently offer a given task. Admin only —
 	 *  it is the read half of `setTaskProjects`. */
 	listProjectsForTask: async (ctx: Ctx, taskId: string) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const rows = await db
 			.select({ projectId: projectTask.projectId })
@@ -374,7 +374,7 @@ export const tasksService = {
 	 *  reaches across every project in the org at once, which no per-project role
 	 *  grants. */
 	setTaskProjects: async (ctx: Ctx, taskId: string, projectIds: string[]) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		// The task must be one this org may actually put on a project: live, not an
 		// absence task, and either a site built-in or its own. Checked in the query
@@ -446,7 +446,7 @@ export const tasksService = {
 	/** Replace a project's picked task subset wholesale. Absence tasks are
 	 *  rejected: they carry no project by definition. */
 	setProjectTasks: async (ctx: Ctx, projectId: string, taskIds: string[]) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanManageProjectMembers(projectId);
 
 		const owned = await db.query.project.findFirst({

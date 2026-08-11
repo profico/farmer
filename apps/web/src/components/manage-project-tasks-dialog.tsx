@@ -121,8 +121,8 @@ export function ManageProjectTasksDialog({
 					<DialogTitle>Tasks on {projectName ?? "this project"}</DialogTitle>
 					<DialogDescription>
 						Tasks are one global list; a project opts into the subset that
-						applies to it. Apart from the built-ins noted below, people can
-						only log time against the tasks picked here.
+						applies to it. Apart from the built-ins noted below, people can only
+						log time against the tasks picked here.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -133,7 +133,7 @@ export function ManageProjectTasksDialog({
 						No tasks exist yet. An admin can add them under Settings → Tasks.
 					</p>
 				) : (
-					<div className="scrollbar-stable -mx-1 max-h-72 overflow-y-auto px-1 py-1">
+					<div className="-mx-1 px-1 py-1">
 						<PillToggleGroup
 							items={pickable.map((t) => ({ id: t.id, label: t.name }))}
 							selectedIds={selected}

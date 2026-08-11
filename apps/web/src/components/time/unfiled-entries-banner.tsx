@@ -137,12 +137,12 @@ function FileEntriesDialog({
 					    brittle in the first place. */}
 					<DialogDescription>
 						Pick the project each entry belongs to. Built-in tasks fit any
-						project; for the rest, the project has to offer that task — if
-						yours doesn't, an admin adds it under Settings → Tasks.
+						project; for the rest, the project has to offer that task — if yours
+						doesn't, an admin adds it under Settings → Tasks.
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="flex max-h-[60vh] flex-col divide-y overflow-y-auto">
+				<div className="flex flex-col divide-y">
 					{(entries ?? []).map((entry) => (
 						<UnfiledRow
 							key={entry.id}

@@ -172,11 +172,11 @@ export function AssembleDayDialog({
 				) : (
 					// A list, not a card: hairlines above and below, rows divided by the
 					// lighter repeat-rule weight.
-					<div className="-mx-6 max-h-80 divide-y divide-line2 overflow-y-auto border-y">
+					<div className="-mx-5 divide-y divide-line2 border-y">
 						{suggestions.map((s) => (
 							<label
 								key={s.key}
-								className="flex cursor-pointer items-start gap-3 px-6 py-2.5 transition-colors duration-(--dur-fast) hover:bg-muted"
+								className="flex cursor-pointer items-start gap-3 px-5 py-2.5 transition-colors duration-(--dur-fast) hover:bg-muted"
 							>
 								<input
 									type="checkbox"

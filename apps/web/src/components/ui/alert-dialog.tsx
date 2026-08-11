@@ -38,6 +38,7 @@ function AlertDialogOverlay({
 function AlertDialogContent({
 	className,
 	size = "default",
+	children,
 	...props
 }: AlertDialogPrimitive.Popup.Props & {
 	size?: "default" | "sm";
@@ -48,12 +49,22 @@ function AlertDialogContent({
 			<AlertDialogPrimitive.Popup
 				data-slot="alert-dialog-content"
 				data-size={size}
+				// Same split as Dialog (see dialog.tsx): the popup is capped and never
+				// scrolls, the body inside it does, so a long confirmation message
+				// can't push the confirm button off-screen.
 				className={cn(
-					"group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover p-5 text-base text-popover-foreground duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+					"group/alert-dialog-content fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-base text-popover-foreground duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
 					className,
 				)}
 				{...props}
-			/>
+			>
+				<div
+					data-slot="alert-dialog-body"
+					className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5"
+				>
+					{children}
+				</div>
+			</AlertDialogPrimitive.Popup>
 		</AlertDialogPortal>
 	);
 }
@@ -82,7 +93,7 @@ function AlertDialogFooter({
 		<div
 			data-slot="alert-dialog-footer"
 			className={cn(
-				"-mx-5 -mb-5 mt-1 flex flex-col-reverse gap-2 rounded-b-xl border-t border-line2 p-4 px-5 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
+				"-mx-5 -mb-5 sticky bottom-0 z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-5 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}

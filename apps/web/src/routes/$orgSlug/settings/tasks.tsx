@@ -6,7 +6,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
@@ -49,7 +49,12 @@ import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { managedTasksQuery } from "#/queries/tasks.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";
-import { archiveTask, createTask, unarchiveTask } from "#/server/tasks.ts";
+import {
+	archiveTask,
+	createTask,
+	unarchiveTask,
+	updateTask,
+} from "#/server/tasks.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/tasks")({
 	beforeLoad: async () => {
@@ -154,12 +159,132 @@ function CreateTaskDialog() {
 	);
 }
 
+type EditableTask = {
+	id: string;
+	name: string;
+	color: string | null;
+	description: string | null;
+};
+
+function EditTaskDialog({
+	task,
+	onOpenChange,
+}: {
+	task: EditableTask | null;
+	onOpenChange: (open: boolean) => void;
+}) {
+	const open = task !== null;
+	const queryClient = useQueryClient();
+	const form = useForm<z.infer<typeof createTaskInput>>({
+		resolver: zodResolver(createTaskInput),
+		defaultValues: { name: "", color: DEFAULT_COLOR, description: "" },
+	});
+
+	// One dialog serves every row, so the fields are re-seeded each time it opens
+	// on a different task rather than at mount.
+	const { reset } = form;
+	useEffect(() => {
+		if (task) {
+			reset({
+				name: task.name,
+				color: task.color ?? DEFAULT_COLOR,
+				description: task.description ?? "",
+			});
+		}
+	}, [task, reset]);
+
+	const mutation = useMutation({
+		mutationFn: (data: z.infer<typeof createTaskInput>) =>
+			updateTask({ data: { taskId: task?.id ?? "", ...data } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: managedTasksQuery().queryKey,
+			});
+			onOpenChange(false);
+		},
+		onError: (error) => toast.error(error.message ?? "Could not save the task"),
+	});
+
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Edit task</DialogTitle>
+				</DialogHeader>
+				<Form {...form}>
+					<form
+						onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+						className="grid gap-4"
+					>
+						<FormField
+							control={form.control}
+							name="name"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Name</FormLabel>
+									<FormControl>
+										<Input autoFocus {...field} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name="color"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Color</FormLabel>
+									<FormControl>
+										<ColorPicker
+											value={field.value ?? DEFAULT_COLOR}
+											onChange={field.onChange}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name="description"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Description (optional)</FormLabel>
+									<FormControl>
+										<Input {...field} value={field.value ?? ""} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<DialogFooter>
+							<Button
+								type="button"
+								variant="ghost"
+								onClick={() => onOpenChange(false)}
+								disabled={mutation.isPending}
+							>
+								Cancel
+							</Button>
+							<Button type="submit" disabled={mutation.isPending}>
+								{mutation.isPending ? "Saving…" : "Save"}
+							</Button>
+						</DialogFooter>
+					</form>
+				</Form>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 function TasksPage() {
 	const queryClient = useQueryClient();
 	const { data: tasks } = useSuspenseQuery(managedTasksQuery());
 	const [manageProjectsTaskId, setManageProjectsTaskId] = useState<
 		string | null
 	>(null);
+	const [editTaskId, setEditTaskId] = useState<string | null>(null);
 
 	// Archived tasks are hidden by default. Archiving means "stop showing me
 	// this", and interleaving the dead rows with the live ones is what made a
@@ -275,6 +400,14 @@ function TasksPage() {
 									    pointing at the task, so the history stays readable. */}
 									<RowActions
 										actions={[
+											// Built-ins are the site's, not the org's — the service
+											// rejects editing them, so the action stays off menus
+											// where it would only ever fail.
+											!builtIn &&
+												!task.archivedAt && {
+													label: "Edit task",
+													onClick: () => setEditTaskId(task.id),
+												},
 											!task.isAbsence &&
 												!task.universal &&
 												!task.archivedAt && {
@@ -305,6 +438,11 @@ function TasksPage() {
 					})}
 				</TableBody>
 			</Table>
+
+			<EditTaskDialog
+				task={tasks.find((t) => t.id === editTaskId) ?? null}
+				onOpenChange={(open) => !open && setEditTaskId(null)}
+			/>
 
 			<ManageTaskProjectsDialog
 				taskId={manageProjectsTaskId}

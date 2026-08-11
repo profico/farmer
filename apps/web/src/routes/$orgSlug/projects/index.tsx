@@ -8,6 +8,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CreateProjectDialog } from "#/components/create-project-dialog.tsx";
+import { EditProjectDialog } from "#/components/edit-project-dialog.tsx";
 import { ManageProjectGithubReposDialog } from "#/components/manage-project-github-repos-dialog.tsx";
 import { ManageProjectTasksDialog } from "#/components/manage-project-tasks-dialog.tsx";
 import { ProjectMembersPanel } from "#/components/project-members-panel.tsx";
@@ -63,6 +64,7 @@ function ProjectsPage() {
 	const [manageTasksProjectId, setManageTasksProjectId] = useState<
 		string | null
 	>(null);
+	const [editProjectId, setEditProjectId] = useState<string | null>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 
 	const invalidateProjects = () =>
@@ -202,6 +204,9 @@ function ProjectsPage() {
 									isAdmin ||
 									project.myRole === "team_lead" ||
 									project.myRole === "pm";
+								// Editing the project's own record is PM territory, the same
+								// bar projectsService.update enforces.
+								const canEdit = isAdmin || project.myRole === "pm";
 								const shownContributors = project.contributors.slice(
 									0,
 									MAX_AVATARS_SHOWN,
@@ -271,6 +276,11 @@ function ProjectsPage() {
 											<RowActions
 												actions={[
 													!archived &&
+														canEdit && {
+															label: "Edit project",
+															onClick: () => setEditProjectId(project.id),
+														},
+													!archived &&
 														canManageTasks && {
 															label: "Manage tasks",
 															onClick: () =>
@@ -303,6 +313,11 @@ function ProjectsPage() {
 					</Table>
 				)}
 			</div>
+
+			<EditProjectDialog
+				project={projects.find((p) => p.id === editProjectId) ?? null}
+				onOpenChange={(open) => !open && setEditProjectId(null)}
+			/>
 
 			<ManageProjectGithubReposDialog
 				projectId={manageReposProjectId}

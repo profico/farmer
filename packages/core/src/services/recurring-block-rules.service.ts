@@ -5,7 +5,6 @@ import {
 	recurringBlockRuleSkip,
 	timeEntry,
 } from "../db/schema/domain";
-import { orgTimezone } from "../lib/org-time";
 import {
 	datesBetween,
 	parseDuration,
@@ -16,6 +15,7 @@ import type {
 	CreateRecurringBlockRuleInput,
 	UpdateRecurringBlockRuleInput,
 } from "../schema/recurring-block-rules";
+import { ctxTimezone } from "./context";
 import { assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
 
@@ -154,7 +154,7 @@ export const recurringBlockRulesService = {
 		});
 		const skipSet = new Set(skips.map((s) => `${s.ruleId}:${s.date}`));
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const dates = datesBetween(from, to);
 		const weekdayByDate = new Map(dates.map((d) => [d, weekdayInTz(d, tz)]));
 

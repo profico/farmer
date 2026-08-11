@@ -10,12 +10,13 @@ import type {
 	TimeReportDetailInput,
 	TimeReportSummaryInput,
 } from "../schema/reports";
-import { type Access, accessService } from "./access.service";
+import type { Access } from "./access.service";
 import {
 	absenceDaysByUser,
 	effectiveFinal,
 	expectedSecondsFor,
 } from "./close.service";
+import { ctxAccess, requireAdmin } from "./context";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { membersService } from "./members.service";
 import type { Ctx } from "./types";
@@ -28,7 +29,7 @@ import { unfiledTotals } from "./unfiled";
 // learn what people do for other clients. Members have no access at all.
 
 const reportScope = async (ctx: Ctx): Promise<{ access: Access; projectIds: string[] | null }> => {
-	const access = await accessService.resolve(ctx);
+	const access = await ctxAccess(ctx);
 	const projectIds = access.scopeFor("team_lead");
 	if (projectIds !== null && projectIds.length === 0) {
 		throw new Error("You do not have access to reports");
@@ -332,7 +333,7 @@ export const reportsService = {
 	 * means someone forgot to log absence (PRD decision 3).
 	 */
 	absence: async (ctx: Ctx, input: AbsenceReportInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const yearStart = `${input.year}-01-01`;
 		const yearEnd = `${input.year}-12-31`;
@@ -423,7 +424,7 @@ export const reportsService = {
 	 * quietly stop meaning anything.
 	 */
 	variance: async (ctx: Ctx, input: MonthReportInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const rows = await db
 			.select({
@@ -472,7 +473,7 @@ export const reportsService = {
 		ctx: Ctx,
 		input: { year: number; month: number; months: number },
 	) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const periods: { year: number; month: number }[] = [];
 		let { year, month } = input;
@@ -505,7 +506,7 @@ export const reportsService = {
 	 * project type and close data.
 	 */
 	utilization: async (ctx: Ctx, input: MonthReportInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		return computeUtilization(ctx, input);
 	},
 
@@ -521,7 +522,7 @@ export const reportsService = {
 		ctx: Ctx,
 		input: { year: number; month: number; months: number },
 	) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const periods: { year: number; month: number }[] = [];
 		let { year, month } = input;

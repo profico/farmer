@@ -42,7 +42,7 @@ const baseProject = {
 // config at all in v1, and an Internal project is always billed to nobody.
 const typeConfigRefinement = <
 	T extends {
-		type: ProjectTypeValue;
+		type?: ProjectTypeValue;
 		budgetHours?: number | null;
 		budgetAmount?: string | null;
 		hourlyPrice?: string | null;
@@ -51,6 +51,22 @@ const typeConfigRefinement = <
 	data: T,
 	ctx: z.RefinementCtx,
 ) => {
+	// A patch that leaves `type` alone must also leave the type-specific config
+	// alone: without knowing the type there is nothing to validate the budget
+	// against, and silently accepting it is how a rename would come to carry an
+	// hour budget onto a Maintenance project.
+	if (data.type === undefined) {
+		for (const field of ["budgetHours", "budgetAmount", "hourlyPrice"] as const) {
+			if (data[field] != null) {
+				ctx.addIssue({
+					code: "custom",
+					path: [field],
+					message: "Send the project type alongside its budget or price",
+				});
+			}
+		}
+		return;
+	}
 	if (data.type !== "fixed_scope") {
 		if (data.budgetHours != null) {
 			ctx.addIssue({
@@ -81,8 +97,24 @@ export const createProjectInput = z
 	.superRefine(typeConfigRefinement);
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
+// A partial patch, matching updateTaskInput: an edit form that only owns the
+// name and the colour must not have to round-trip the client, budgets and task
+// subset just to avoid nulling them. Every key is optional and an omitted one
+// is left untouched by the service — note that means `taskIds` drops its
+// create-side `.default([])`, since "[]" and "don't touch" are different edits.
 export const updateProjectInput = z
-	.object({ projectId: z.uuid(), ...baseProject })
+	.object({
+		projectId: z.uuid(),
+		name: baseProject.name.optional(),
+		clientId: baseProject.clientId.optional(),
+		code: baseProject.code,
+		type: baseProject.type.optional(),
+		color: baseProject.color,
+		budgetHours: baseProject.budgetHours,
+		budgetAmount: baseProject.budgetAmount,
+		hourlyPrice: baseProject.hourlyPrice,
+		taskIds: z.array(z.uuid()).optional(),
+	})
 	.superRefine(typeConfigRefinement);
 export type UpdateProjectInput = z.infer<typeof updateProjectInput>;
 

@@ -4,7 +4,7 @@ import { member, user } from "../db/schema/auth";
 import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import { endOfMonthKey } from "../lib/time";
 import type { SetMemberTypeInput } from "../schema/members";
-import { accessService } from "./access.service";
+import { requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
 export type MemberType = "billable" | "overhead" | "contractor";
@@ -160,7 +160,7 @@ export const membersService = {
 	 *  transaction — that pairing is what keeps `mth_current_uidx` (at most one
 	 *  open-ended row per person) satisfiable. */
 	setType: async (ctx: Ctx, input: SetMemberTypeInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		await db.transaction(async (tx) => {
 			const current = await tx.query.memberTypeHistory.findFirst({
@@ -223,7 +223,7 @@ export const membersService = {
 	/** Archive or restore a person. Never a delete: their entries, close rows and
 	 *  finalized months have to survive them leaving. */
 	setArchived: async (ctx: Ctx, userId: string, archived: boolean) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		// Archiving yourself would drop you out of the very lists you administer
 		// while leaving you logged in — a state with no way back through the UI.
 		if (archived && userId === ctx.userId) {
@@ -240,7 +240,7 @@ export const membersService = {
 	},
 
 	setStartDate: async (ctx: Ctx, userId: string, startDate: string | null) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		await db
 			.insert(memberProfile)
 			.values({ organizationId: ctx.organizationId, userId, startDate })
@@ -253,7 +253,7 @@ export const membersService = {
 	/** Type history for one person, newest first — the audit trail behind
 	 *  "why does last March say contractor?". */
 	typeHistory: async (ctx: Ctx, userId: string) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		return db.query.memberTypeHistory.findMany({
 			where: and(
 				eq(memberTypeHistory.organizationId, ctx.organizationId),

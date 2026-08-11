@@ -10,7 +10,7 @@ import type {
 	SaveCloseRowInput,
 	SetCloseRowFinalInput,
 } from "../schema/close";
-import { accessService } from "./access.service";
+import { ctxAccess } from "./context";
 import { assertProjectInOrg } from "./guards";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { membersService, type ResolvedMemberType } from "./members.service";
@@ -251,7 +251,7 @@ export const closeService = {
 	 * the sheet, since the sheet is what gets invoiced.
 	 */
 	getSheet: async (ctx: Ctx, input: CloseSheetInput): Promise<CloseSheet> => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -371,7 +371,7 @@ export const closeService = {
 
 	/** PM edits: Adjusted, the absence-day override, and the comment. */
 	saveRow: async (ctx: Ctx, input: SaveCloseRowInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -420,7 +420,7 @@ export const closeService = {
 
 	/** Admin-only: the Final column, the number that gets invoiced. */
 	setFinal: async (ctx: Ctx, input: SetCloseRowFinalInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertAdmin();
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -452,7 +452,7 @@ export const closeService = {
 	// finalized month.
 
 	submit: async (ctx: Ctx, input: CloseTransitionInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -482,7 +482,7 @@ export const closeService = {
 	},
 
 	reopen: async (ctx: Ctx, input: CloseTransitionInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 
 		const record = await loadCloseRecord(
@@ -522,7 +522,7 @@ export const closeService = {
 	 * quietly become meaningless.
 	 */
 	finalize: async (ctx: Ctx, input: CloseTransitionInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertAdmin();
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -602,7 +602,7 @@ export const closeService = {
 	 * submitted queue ("what is waiting for me") is just this, filtered.
 	 */
 	overview: async (ctx: Ctx, year: number, month: number) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		const scope = access.scopeFor("pm");
 		if (scope !== null && scope.length === 0) return [];
 

@@ -2,7 +2,6 @@ import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { timeEntry } from "../db/schema/domain";
-import { orgTimezone } from "../lib/org-time";
 import {
 	addDaysToKey,
 	datesBetween,
@@ -10,8 +9,8 @@ import {
 	monthBounds,
 	startOfMonthKey,
 } from "../lib/time";
-import { accessService } from "./access.service";
 import { absenceDaysByUser, expectedSecondsFor } from "./close.service";
+import { ctxTimezone, requireAdmin } from "./context";
 import { holidaysService } from "./holidays.service";
 import { hourFundService } from "./hour-fund.service";
 import { membersService, type ResolvedMemberType } from "./members.service";
@@ -94,10 +93,10 @@ export const complianceService = {
 	 * still has to tell us what they did, even though no hour fund applies to them.
 	 */
 	noEntries: async (ctx: Ctx, opts?: { skipAdminCheck?: boolean }) => {
-		if (!opts?.skipAdminCheck) await accessService.requireAdmin(ctx);
+		if (!opts?.skipAdminCheck) await requireAdmin(ctx);
 
 		const [tz, settings] = await Promise.all([
-			orgTimezone(ctx.organizationId),
+			ctxTimezone(ctx),
 			orgSettingsService.get(ctx),
 		]);
 		const today = dayKeyInTz(new Date(), tz);
@@ -175,9 +174,9 @@ export const complianceService = {
 	 * value: without a monthly fund there is no pace to be behind.
 	 */
 	behindPace: async (ctx: Ctx, opts?: { skipAdminCheck?: boolean }) => {
-		if (!opts?.skipAdminCheck) await accessService.requireAdmin(ctx);
+		if (!opts?.skipAdminCheck) await requireAdmin(ctx);
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const today = dayKeyInTz(new Date(), tz);
 		const year = Number(today.slice(0, 4));
 		const month = Number(today.slice(5, 7));

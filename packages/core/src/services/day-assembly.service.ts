@@ -9,7 +9,6 @@ import {
 } from "../db/schema/domain";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { splitProportionally, summarizeCommitMessages } from "../lib/day-plan";
-import { orgTimezone } from "../lib/org-time";
 import { QUARTER_HOUR_SECONDS, snapToQuarterHour } from "../lib/time";
 import {
 	loggedSeconds,
@@ -21,6 +20,7 @@ import type {
 	ApplyDayAssemblyInput,
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
+import { ctxTimezone } from "./context";
 import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
@@ -112,7 +112,7 @@ export const dayAssemblyService = {
 		const { date } = input;
 		await recurringBlockRulesService.materializeRange(ctx, date, date);
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 
 		const [
 			existing,

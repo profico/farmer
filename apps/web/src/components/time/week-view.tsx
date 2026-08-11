@@ -585,10 +585,10 @@ function RowNoteDialog({
 					</button>
 				}
 			/>
-			{/* Resizable, and the day list scrolls inside it: a full week of boxes
-			    is taller than a short viewport, and a dialog that grows past the
-			    screen puts its own save button out of reach. */}
-			<DialogContent className="flex max-h-[85svh] min-h-64 resize flex-col overflow-hidden sm:max-w-lg">
+			{/* Height cap, body scroll and sticky footer are DialogContent's job now
+			    (see dialog.tsx) — a full week of boxes is taller than a short
+			    viewport, and this dialog is only wider than default. */}
+			<DialogContent className="sm:max-w-lg">
 				<DialogHeader>
 					<DialogTitle>{heading}</DialogTitle>
 				</DialogHeader>
@@ -599,7 +599,7 @@ function RowNoteDialog({
 						is saved onto the entry for that day.
 					</p>
 				) : (
-					<div className="scrollbar-stable -mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto px-1">
+					<div className="space-y-4">
 						{loggedDates.map((date, i) => {
 							const seconds = (byDate.get(date) ?? []).reduce(
 								(sum, e) => sum + e.durationSeconds,
@@ -645,7 +645,7 @@ function RowNoteDialog({
 					</div>
 				)}
 
-				<DialogFooter className="shrink-0">
+				<DialogFooter>
 					<Button
 						disabled={saving || loggedDates.length === 0}
 						onClick={async () => {

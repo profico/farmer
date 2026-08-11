@@ -22,7 +22,6 @@ import {
 import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { summarizeCommitMessages } from "../lib/day-plan";
-import { orgTimezone } from "../lib/org-time";
 import {
 	remainingSeconds,
 	spokenForSeconds,
@@ -41,7 +40,7 @@ import type {
 	UpdateTimeEntryDescriptionInput,
 	UpdateTimeEntryInput,
 } from "../schema/time-entries";
-import { accessService } from "./access.service";
+import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
@@ -54,20 +53,22 @@ import {
 	workingHoursService,
 } from "./working-hours.service";
 
-type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
-
 // How long a fill block on this day should be: the day's working-hours target
 // minus every other (non-fill) entry that day, floored at 0. The rules are in
 // lib/working-day; this only fetches what they need.
+//
+// Reads through `ctxDb(ctx)` rather than taking a client parameter: inside
+// `withCtxTx` that IS the transaction, so a caller cannot accidentally recompute
+// a day on the ambient pool after its own transaction has committed — which is
+// exactly what remove, setWeekCell and copyDay used to do.
 const computeDayFillSeconds = async (
 	ctx: Ctx,
 	dateKey: string,
 	tz: string,
 	workingHours?: WorkingHoursDay[],
-	client: DbClient = db,
 ): Promise<number> => {
 	const [dayEntries, hours] = await Promise.all([
-		client.query.timeEntry.findMany({
+		ctxDb(ctx).query.timeEntry.findMany({
 			where: and(
 				eq(timeEntry.organizationId, ctx.organizationId),
 				eq(timeEntry.userId, ctx.userId),
@@ -87,12 +88,8 @@ const computeDayFillSeconds = async (
 
 // Re-derive the duration of the day's fill block (if any) after a sibling entry
 // changed. No-op when the day has no fill block.
-const recomputeDayFill = async (
-	ctx: Ctx,
-	dateKey: string,
-	tz: string,
-	client: DbClient = db,
-) => {
+const recomputeDayFill = async (ctx: Ctx, dateKey: string, tz: string) => {
+	const client = ctxDb(ctx);
 	const fill = await client.query.timeEntry.findFirst({
 		where: and(
 			eq(timeEntry.organizationId, ctx.organizationId),
@@ -103,7 +100,7 @@ const recomputeDayFill = async (
 		columns: { id: true, durationSeconds: true },
 	});
 	if (!fill) return;
-	const next = await computeDayFillSeconds(ctx, dateKey, tz, undefined, client);
+	const next = await computeDayFillSeconds(ctx, dateKey, tz);
 	if (next === fill.durationSeconds) return;
 	await client
 		.update(timeEntry)
@@ -403,7 +400,7 @@ export const timeEntriesService = {
 			range.to,
 		);
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 
 		try {
 			const settings = await integrationSettingsService.get(ctx);
@@ -490,19 +487,19 @@ export const timeEntriesService = {
 		ctx: Ctx,
 		range: { from: string; to: string },
 	) => {
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		await syncMeetingsForRange(ctx, range, tz);
 	},
 
 	create: async (ctx: Ctx, input: CreateTimeEntryInput) => {
 		if (input.projectId) {
 			await assertProjectInOrg(ctx, input.projectId);
-			const access = await accessService.resolve(ctx);
+			const access = await ctxAccess(ctx);
 			access.assertCanTrackOn(input.projectId);
 		}
 		await assertTaskAvailable(ctx, input.taskId, input.projectId);
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const durationSeconds = input.fillsDay
 			? await computeDayFillSeconds(ctx, input.date, tz)
 			: (input.durationSeconds ?? 0);
@@ -524,7 +521,8 @@ export const timeEntriesService = {
 			syncLocked: input.calendarEventId != null,
 		};
 
-		return db.transaction(async (tx) => {
+		return withCtxTx(ctx, async (txCtx) => {
+			const tx = ctxDb(txCtx);
 			let row: typeof timeEntry.$inferSelect | undefined;
 			if (input.fillsDay) {
 				[row] = await tx
@@ -574,7 +572,7 @@ export const timeEntriesService = {
 			if (!row) throw new Error("Failed to create time entry");
 
 			// A new normal entry shrinks whatever fill block shares its day.
-			if (!input.fillsDay) await recomputeDayFill(ctx, input.date, tz, tx);
+			if (!input.fillsDay) await recomputeDayFill(txCtx, input.date, tz);
 			return row;
 		});
 	},
@@ -594,20 +592,20 @@ export const timeEntriesService = {
 
 		if (input.projectId) {
 			await assertProjectInOrg(ctx, input.projectId);
-			const access = await accessService.resolve(ctx);
+			const access = await ctxAccess(ctx);
 			access.assertCanTrackOn(input.projectId);
 		}
 		await assertTaskAvailable(ctx, input.taskId, input.projectId);
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const durationSeconds = input.fillsDay
 			? await computeDayFillSeconds(ctx, input.date, tz)
 			: (input.durationSeconds ?? 0);
 
-		const updated = await db.transaction(async (tx) => {
+		const updated = await withCtxTx(ctx, async (txCtx) => {
 			let row: typeof timeEntry.$inferSelect | undefined;
 			try {
-				[row] = await tx
+				[row] = await ctxDb(txCtx)
 					.update(timeEntry)
 					.set({
 						// Full-form edit: an absent project means "cleared", not "leave
@@ -644,9 +642,9 @@ export const timeEntriesService = {
 				throw error;
 			}
 
-			await recomputeDayFill(ctx, input.date, tz, tx);
+			await recomputeDayFill(txCtx, input.date, tz);
 			if (existing.date !== input.date) {
-				await recomputeDayFill(ctx, existing.date, tz, tx);
+				await recomputeDayFill(txCtx, existing.date, tz);
 			}
 			return row;
 		});
@@ -673,7 +671,7 @@ export const timeEntriesService = {
 		if (!existing) throw new Error("Time entry not found");
 
 		await assertProjectInOrg(ctx, input.projectId);
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanTrackOn(input.projectId);
 		// The task still has to be one the target project picked, exactly as if the
 		// entry had been created against that project by hand.
@@ -740,7 +738,8 @@ export const timeEntriesService = {
 	},
 
 	remove: async (ctx: Ctx, timeEntryId: string) => {
-		const deleted = await db.transaction(async (tx) => {
+		return withCtxTx(ctx, async (txCtx) => {
+			const tx = ctxDb(txCtx);
 			const [existing] = await tx
 				.delete(timeEntry)
 				.where(
@@ -773,16 +772,17 @@ export const timeEntriesService = {
 					})
 					.onConflictDoNothing();
 			}
-			return existing;
+			// Inside the transaction: the deletion and the fill block it resizes
+			// have to land together, or a reader between the two sees a day whose
+			// fill has not yet absorbed the freed time.
+			if (existing && !existing.fillsDay) {
+				const tz = await ctxTimezone(txCtx);
+				await recomputeDayFill(txCtx, existing.date, tz);
+			}
+
+			// Returned so the caller can offer an "undo" that re-creates the row.
+			return existing ?? null;
 		});
-
-		if (deleted && !deleted.fillsDay) {
-			const tz = await orgTimezone(ctx.organizationId);
-			await recomputeDayFill(ctx, deleted.date, tz);
-		}
-
-		// Returned so the caller can offer an "undo" that re-creates the row.
-		return deleted ?? null;
 	},
 
 	/**
@@ -803,64 +803,75 @@ export const timeEntriesService = {
 	setWeekCell: async (ctx: Ctx, input: SetWeekCellInput) => {
 		if (input.projectId) {
 			await assertProjectInOrg(ctx, input.projectId);
-			const access = await accessService.resolve(ctx);
+			const access = await ctxAccess(ctx);
 			access.assertCanTrackOn(input.projectId);
 		}
 		await assertTaskAvailable(ctx, input.taskId, input.projectId);
 
-		const matches = await db.query.timeEntry.findMany({
-			where: and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				eq(timeEntry.date, input.date),
-				eq(timeEntry.taskId, input.taskId),
-				input.projectId
-					? eq(timeEntry.projectId, input.projectId)
-					: isNull(timeEntry.projectId),
-				eq(timeEntry.fillsDay, false),
-			),
-			orderBy: [asc(timeEntry.createdAt)],
+		// One transaction for the whole cell write. `remove` and `create` below are
+		// this same service and open their own transactions when called directly;
+		// handed a Ctx that already carries one they join it instead, so clearing
+		// three duplicates and resizing the fill block is one atomic write rather
+		// than five independent ones.
+		return withCtxTx(ctx, async (txCtx) => {
+			const tx = ctxDb(txCtx);
+			const matches = await tx.query.timeEntry.findMany({
+				where: and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.date, input.date),
+					eq(timeEntry.taskId, input.taskId),
+					input.projectId
+						? eq(timeEntry.projectId, input.projectId)
+						: isNull(timeEntry.projectId),
+					eq(timeEntry.fillsDay, false),
+				),
+				orderBy: [asc(timeEntry.createdAt)],
+			});
+
+			const tz = await ctxTimezone(txCtx);
+			const [primary, ...duplicates] = matches;
+
+			if (input.durationSeconds === 0) {
+				for (const row of matches) {
+					await timeEntriesService.remove(txCtx, row.id);
+				}
+				return { cleared: matches.length };
+			}
+
+			if (primary) {
+				await tx
+					.update(timeEntry)
+					.set({
+						durationSeconds: input.durationSeconds,
+						...(input.description !== undefined
+							? { description: input.description.trim() }
+							: {}),
+						updatedAt: new Date(),
+					})
+					.where(eq(timeEntry.id, primary.id));
+				for (const row of duplicates) {
+					await timeEntriesService.remove(txCtx, row.id);
+				}
+				await recomputeDayFill(txCtx, input.date, tz);
+				return { entryId: primary.id };
+			}
+
+			// Creating fresh: the mandatory-description rule still applies, so reuse
+			// the row's note from another day in the same grid row rather than
+			// inventing one or writing an empty string.
+			const description = input.description?.trim() ?? "";
+			const created = await timeEntriesService.create(txCtx, {
+				date: input.date,
+				projectId: input.projectId,
+				taskId: input.taskId,
+				description: description || undefined,
+				durationSeconds: input.durationSeconds,
+				overtime: false,
+				fillsDay: false,
+			});
+			return { entryId: created.id };
 		});
-
-		const tz = await orgTimezone(ctx.organizationId);
-		const [primary, ...duplicates] = matches;
-
-		if (input.durationSeconds === 0) {
-			for (const row of matches) await timeEntriesService.remove(ctx, row.id);
-			return { cleared: matches.length };
-		}
-
-		if (primary) {
-			await db
-				.update(timeEntry)
-				.set({
-					durationSeconds: input.durationSeconds,
-					...(input.description !== undefined
-						? { description: input.description.trim() }
-						: {}),
-					updatedAt: new Date(),
-				})
-				.where(eq(timeEntry.id, primary.id));
-			for (const row of duplicates)
-				await timeEntriesService.remove(ctx, row.id);
-			await recomputeDayFill(ctx, input.date, tz);
-			return { entryId: primary.id };
-		}
-
-		// Creating fresh: the mandatory-description rule still applies, so reuse
-		// the row's note from another day in the same grid row rather than
-		// inventing one or writing an empty string.
-		const description = input.description?.trim() ?? "";
-		const created = await timeEntriesService.create(ctx, {
-			date: input.date,
-			projectId: input.projectId,
-			taskId: input.taskId,
-			description: description || undefined,
-			durationSeconds: input.durationSeconds,
-			overtime: false,
-			fillsDay: false,
-		});
-		return { entryId: created.id };
 	},
 
 	/** Copy a day's entries onto another day. The backfill affordance that stands
@@ -868,35 +879,38 @@ export const timeEntriesService = {
 	copyDay: async (ctx: Ctx, input: CopyTimeEntriesInput) => {
 		if (input.fromDate === input.toDate) return { copied: 0 };
 
-		const source = await db.query.timeEntry.findMany({
-			where: and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				eq(timeEntry.date, input.fromDate),
-				// Fill blocks are derived, and calendar meetings belong to the day they
-				// actually happened — neither is meaningful to duplicate.
-				eq(timeEntry.fillsDay, false),
-			),
+		return withCtxTx(ctx, async (txCtx) => {
+			const tx = ctxDb(txCtx);
+			const source = await tx.query.timeEntry.findMany({
+				where: and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.date, input.fromDate),
+					// Fill blocks are derived, and calendar meetings belong to the day
+					// they actually happened — neither is meaningful to duplicate.
+					eq(timeEntry.fillsDay, false),
+				),
+			});
+			const copyable = source.filter((e) => e.calendarEventId == null);
+			if (copyable.length === 0) return { copied: 0 };
+
+			await tx.insert(timeEntry).values(
+				copyable.map((e) => ({
+					organizationId: ctx.organizationId,
+					userId: ctx.userId,
+					projectId: e.projectId,
+					taskId: e.taskId,
+					date: input.toDate,
+					description: e.description,
+					durationSeconds: e.durationSeconds,
+					overtime: e.overtime,
+				})),
+			);
+
+			const tz = await ctxTimezone(txCtx);
+			await recomputeDayFill(txCtx, input.toDate, tz);
+			return { copied: copyable.length };
 		});
-		const copyable = source.filter((e) => e.calendarEventId == null);
-		if (copyable.length === 0) return { copied: 0 };
-
-		await db.insert(timeEntry).values(
-			copyable.map((e) => ({
-				organizationId: ctx.organizationId,
-				userId: ctx.userId,
-				projectId: e.projectId,
-				taskId: e.taskId,
-				date: input.toDate,
-				description: e.description,
-				durationSeconds: e.durationSeconds,
-				overtime: e.overtime,
-			})),
-		);
-
-		const tz = await orgTimezone(ctx.organizationId);
-		await recomputeDayFill(ctx, input.toDate, tz);
-		return { copied: copyable.length };
 	},
 
 	// ── Absence corrections (PM / Admin) ──────────────────────────────────────
@@ -910,7 +924,7 @@ export const timeEntriesService = {
 	 *  from the close sheet. Same permission as the writes below — a PM may read
 	 *  the absence of people on their own projects, nobody else's. */
 	listAbsenceForUser: async (ctx: Ctx, input: ListAbsenceForUserInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, input.userId);
 		if (!access.canOverrideAbsenceFor(shared)) {
 			throw new Error("You cannot see this person's absence");
@@ -952,7 +966,7 @@ export const timeEntriesService = {
 			throw new Error("Only Vacation and Sick Leave entries can be corrected");
 		}
 
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, existing.userId);
 		if (!access.canOverrideAbsenceFor(shared)) {
 			throw new Error("You cannot correct this person's absence");
@@ -978,7 +992,7 @@ export const timeEntriesService = {
 			throw new Error("Only Vacation and Sick Leave can be logged this way");
 		}
 
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, input.userId);
 		if (!access.canOverrideAbsenceFor(shared)) {
 			throw new Error("You cannot log absence for this person");
@@ -1015,7 +1029,7 @@ export const timeEntriesService = {
 			);
 		}
 
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, existing.userId);
 		if (!access.canOverrideAbsenceFor(shared)) {
 			throw new Error("You cannot correct this person's absence");

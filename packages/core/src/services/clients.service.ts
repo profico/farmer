@@ -2,7 +2,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { client, project } from "../db/schema/domain";
 import type { CreateClientInput, UpdateClientInput } from "../schema/clients";
-import { accessService } from "./access.service";
+import { ctxAccess, requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
 // The org's own client, holding every Internal project. Named for the company by
@@ -73,7 +73,7 @@ export const clientsService = {
 	create: async (ctx: Ctx, input: CreateClientInput) => {
 		// Admins, PMs and Team Leads can create clients (PRD 3.3) — in practice
 		// anyone holding PM or TL on at least one project.
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCreateProjects();
 
 		const [created] = await db
@@ -88,7 +88,7 @@ export const clientsService = {
 	},
 
 	update: async (ctx: Ctx, input: UpdateClientInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		const [updated] = await db
 			.update(client)
 			.set({ name: input.name.trim(), updatedAt: new Date() })
@@ -108,7 +108,7 @@ export const clientsService = {
 	 *  `project.clientId` is restrict-on-delete and a project with an archived
 	 *  client would be unreachable from the client filter. */
 	archive: async (ctx: Ctx, clientId: string) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const target = await db.query.client.findFirst({
 			where: and(
@@ -140,7 +140,7 @@ export const clientsService = {
 	},
 
 	unarchive: async (ctx: Ctx, clientId: string) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		await db
 			.update(client)
 			.set({ archivedAt: null, updatedAt: new Date() })

@@ -3,7 +3,7 @@ import { db } from "../db";
 import { monthlyHourFund } from "../db/schema/settings";
 import { datesBetween, endOfMonthKey } from "../lib/time";
 import type { SetMonthlyHourFundInput } from "../schema/hour-fund";
-import { accessService } from "./access.service";
+import { requireAdmin } from "./context";
 import { holidaysService } from "./holidays.service";
 import type { Ctx } from "./types";
 
@@ -42,7 +42,7 @@ export const hourFundService = {
 		}),
 
 	set: async (ctx: Ctx, input: SetMonthlyHourFundInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		await db
 			.insert(monthlyHourFund)
 			.values({
@@ -70,7 +70,7 @@ export const hourFundService = {
 	 *  way to un-stick `prefillYear`, which skips any month that already has a
 	 *  row — without this, one wrong figure was permanent. */
 	clear: async (ctx: Ctx, year: number, month: number) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		await db
 			.delete(monthlyHourFund)
 			.where(
@@ -111,7 +111,7 @@ export const hourFundService = {
 	/** Prefill a whole year at once from the holiday calendar, skipping months an
 	 *  admin has already set so a re-run never clobbers a hand-corrected figure. */
 	prefillYear: async (ctx: Ctx, year: number) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const existing = await hourFundService.listForYear(ctx, year);
 		const known = new Set(existing.map((r) => r.month));
