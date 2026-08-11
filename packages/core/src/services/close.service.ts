@@ -11,6 +11,7 @@ import type {
 	SetCloseRowFinalInput,
 } from "../schema/close";
 import { ctxAccess } from "./context";
+import { ledgerByProject } from "./ledger";
 import { assertProjectInOrg } from "./guards";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { membersService, type ResolvedMemberType } from "./members.service";
@@ -618,7 +619,7 @@ export const closeService = {
 		if (projects.length === 0) return [];
 		const projectIds = projects.map((p) => p.id);
 
-		const [records, reportedRows, finalRows] = await Promise.all([
+		const [records, reportedByProject, finalRows] = await Promise.all([
 			db.query.monthlyClose.findMany({
 				where: and(
 					eq(monthlyClose.organizationId, ctx.organizationId),
@@ -627,21 +628,7 @@ export const closeService = {
 					inArray(monthlyClose.projectId, projectIds),
 				),
 			}),
-			db
-				.select({
-					projectId: timeEntry.projectId,
-					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-				})
-				.from(timeEntry)
-				.where(
-					and(
-						eq(timeEntry.organizationId, ctx.organizationId),
-						inArray(timeEntry.projectId, projectIds),
-						gte(timeEntry.date, from),
-						lte(timeEntry.date, to),
-					),
-				)
-				.groupBy(timeEntry.projectId),
+			ledgerByProject(ctx, { from, to }, "project", { projectIds }),
 			db
 				.select({
 					projectId: monthlyClose.projectId,
@@ -662,9 +649,6 @@ export const closeService = {
 		]);
 
 		const recordByProject = new Map(records.map((r) => [r.projectId, r]));
-		const reportedByProject = new Map(
-			reportedRows.map((r) => [r.projectId ?? "", Number(r.total)]),
-		);
 		const finalByProject = new Map(
 			finalRows.map((r) => [r.projectId, Number(r.total)]),
 		);

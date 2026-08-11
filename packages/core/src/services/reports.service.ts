@@ -205,7 +205,19 @@ export const reportsService = {
 			})
 			.from(project)
 			.innerJoin(client, eq(project.clientId, client.id))
-			.leftJoin(timeEntry, eq(timeEntry.projectId, project.id))
+			// The org predicate is stated on the entry side too, rather than left to
+			// the FK argument ("a foreign org's entry cannot point at this org's
+			// project"). It belongs in the JOIN, not the WHERE — in the WHERE it
+			// would turn this left join into an inner one and silently drop every
+			// project with no time logged against it, which is exactly the row a
+			// burn report needs to show as 0%.
+			.leftJoin(
+				timeEntry,
+				and(
+					eq(timeEntry.projectId, project.id),
+					eq(timeEntry.organizationId, ctx.organizationId),
+				),
+			)
 			.where(
 				and(
 					eq(project.organizationId, ctx.organizationId),

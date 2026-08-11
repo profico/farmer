@@ -127,7 +127,7 @@ export function MobileTabBar({
 								className="absolute inset-0 -z-10 rounded-full bg-muted"
 							/>
 						)}
-						<DotsThreeIcon className="size-[21px]" />
+						<DotsThreeIcon weight='regular' className="size-[21px]" />
 						<span className="text-[10px] leading-none">More</span>
 					</button>
 				</div>

@@ -23,7 +23,6 @@ import type {
 import { ctxTimezone } from "./context";
 import { calendarSource, commitSource } from "./ports";
 import { githubService } from "./github.service";
-import { googleCalendarService } from "./google-calendar.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";

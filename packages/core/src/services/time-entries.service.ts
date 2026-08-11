@@ -42,8 +42,6 @@ import type {
 } from "../schema/time-entries";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import { calendarSource, commitSource } from "./ports";
-import { githubService } from "./github.service";
-import { googleCalendarService } from "./google-calendar.service";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { integrationSettingsService } from "./integration-settings.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";

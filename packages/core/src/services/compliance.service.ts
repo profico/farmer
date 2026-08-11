@@ -13,6 +13,7 @@ import { absenceDaysByUser, expectedSecondsFor } from "./close.service";
 import { ctxTimezone, requireAdmin } from "./context";
 import { holidaysService } from "./holidays.service";
 import { hourFundService } from "./hour-fund.service";
+import { ledgerByUser } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
 import { BEHIND_PACE_THRESHOLD, orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
@@ -198,26 +199,17 @@ export const complianceService = {
 		if (total.length === 0 || elapsed.length === 0) return [];
 		const elapsedFraction = elapsed.length / total.length;
 
-		const logged = await db
-			.select({
-				userId: timeEntry.userId,
-				total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-			})
-			.from(timeEntry)
-			.where(
-				and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					inArray(
-						timeEntry.userId,
-						cohort.map((c) => c.userId),
-					),
-					gte(timeEntry.date, from),
-					lte(timeEntry.date, today),
-				),
-			)
-			.groupBy(timeEntry.userId);
-		const loggedByUser = new Map(
-			logged.map((r) => [r.userId, Number(r.total)]),
+		// Scope "worked", NOT "all". This query used to sum every entry in the
+		// range with no absence exclusion, while `expectedSecondsFor` below
+		// SUBTRACTS absence days from the target — so a person on vacation had
+		// their expectation lowered AND their vacation counted as hours worked,
+		// crediting it twice and hiding them from the pace check. Unfiled time
+		// stays in: an imported meeting is work, it is just not attributed yet.
+		const loggedByUser = await ledgerByUser(
+			ctx,
+			{ from, to: today },
+			"worked",
+			{ userIds: cohort.map((c) => c.userId) },
 		);
 
 		const rows: BehindPaceRow[] = [];
