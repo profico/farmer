@@ -1,11 +1,11 @@
+import type { ProjectRoleValue } from "@farmer/core/schema";
+import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, XIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "#/components/ui/avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { Input } from "#/components/ui/input.tsx";
 import { Label } from "#/components/ui/label.tsx";
 import {
 	Select,
@@ -14,43 +14,56 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
-import { Switch } from "#/components/ui/switch.tsx";
 import { springProductive } from "#/lib/motion.ts";
 import { getInitials } from "#/lib/utils.ts";
-import { membersQuery } from "#/queries/members.ts";
-import { projectMembersQuery, projectsQuery } from "#/queries/projects.ts";
+import {
+	assignableMembersQuery,
+	projectMembersQuery,
+	projectsQuery,
+} from "#/queries/projects.ts";
 import { assignProjectMember, removeProjectMember } from "#/server/projects.ts";
+
+// The project role is per assignment, not per person: the same person is PM on
+// one project and a plain member on another. Everything a role unlocks is
+// scoped to that project alone.
+const ROLES: { value: ProjectRoleValue; label: string; hint: string }[] = [
+	{
+		value: "member",
+		label: "Member",
+		hint: "Logs their own time. Sees only their own entries.",
+	},
+	{
+		value: "team_lead",
+		label: "Team lead",
+		hint: "Sees everyone's entries on this project and manages its team.",
+	},
+	{
+		value: "pm",
+		label: "PM",
+		hint: "Team lead, plus the monthly close and this project's money.",
+	},
+];
 
 type DraftRow = {
 	userId: string;
 	name: string;
 	email: string;
-	isVacationApprover: boolean;
-	billableRate: string;
-	costRate: string;
+	role: ProjectRoleValue;
 };
 
-// Normalizes a server member row into the draft shape (rates ⇒ "" when null).
 const toDraft = (m: {
 	userId: string;
 	name: string;
 	email: string;
-	isVacationApprover: boolean;
-	billableRate: string | null;
-	costRate: string | null;
+	role: ProjectRoleValue;
 }): DraftRow => ({
 	userId: m.userId,
 	name: m.name,
 	email: m.email,
-	isVacationApprover: m.isVacationApprover,
-	billableRate: m.billableRate ?? "",
-	costRate: m.costRate ?? "",
+	role: m.role,
 });
 
-const sameRow = (a: DraftRow, b: DraftRow) =>
-	a.isVacationApprover === b.isVacationApprover &&
-	a.billableRate === b.billableRate &&
-	a.costRate === b.costRate;
+const sameRow = (a: DraftRow, b: DraftRow) => a.role === b.role;
 
 // Persistent right-rail panel that manages the selected project's members.
 // Lives inline in the projects page (not an overlay) and swaps its contents
@@ -76,7 +89,12 @@ export function ProjectMembersPanel({
 		...projectMembersQuery(projectId ?? ""),
 		enabled: !!projectId,
 	});
-	const { data: orgMembers } = useQuery(membersQuery());
+	// Server-side "who isn't on this project yet" — the panel no longer has to
+	// diff the whole org membership list against the assignments itself.
+	const { data: assignable } = useQuery({
+		...assignableMembersQuery(projectId ?? ""),
+		enabled: !!projectId,
+	});
 
 	// Baseline the draft is diffed against — the server rows keyed by userId.
 	const baseline = useMemo(() => {
@@ -103,9 +121,11 @@ export function ProjectMembersPanel({
 	const hydrated = draft?.pid === projectId;
 	const rows = hydrated ? draft.rows : [];
 	const assignedIds = useMemo(() => new Set(rows.map((r) => r.userId)), [rows]);
+	// The server list is a snapshot; a person added to the draft but not yet
+	// saved must still disappear from the picker.
 	const unassigned = useMemo(
-		() => (orgMembers?.members ?? []).filter((m) => !assignedIds.has(m.userId)),
-		[orgMembers, assignedIds],
+		() => (assignable ?? []).filter((m) => !assignedIds.has(m.userId)),
+		[assignable, assignedIds],
 	);
 
 	const dirty = useMemo(() => {
@@ -137,7 +157,7 @@ export function ProjectMembersPanel({
 		);
 
 	const addRow = (userId: string) => {
-		const m = (orgMembers?.members ?? []).find((x) => x.userId === userId);
+		const m = (assignable ?? []).find((x) => x.userId === userId);
 		if (!m) return;
 		setDraft((prev) =>
 			prev
@@ -147,11 +167,9 @@ export function ProjectMembersPanel({
 							...prev.rows,
 							{
 								userId,
-								name: m.user.name,
-								email: m.user.email,
-								isVacationApprover: false,
-								billableRate: "",
-								costRate: "",
+								name: m.name,
+								email: m.email,
+								role: "member",
 							},
 						],
 					}
@@ -168,7 +186,7 @@ export function ProjectMembersPanel({
 			const removals = [...baseline.keys()].filter(
 				(id) => !rows.some((r) => r.userId === id),
 			);
-			// Upserts: new rows, or rows whose fields changed.
+			// Upserts: new rows, or rows whose role changed.
 			const upserts = rows.filter((r) => {
 				const base = baseline.get(r.userId);
 				return !base || !sameRow(r, base);
@@ -179,13 +197,7 @@ export function ProjectMembersPanel({
 				),
 				...upserts.map((r) =>
 					assignProjectMember({
-						data: {
-							projectId,
-							userId: r.userId,
-							isVacationApprover: r.isVacationApprover,
-							billableRate: r.billableRate || null,
-							costRate: r.costRate || null,
-						},
+						data: { projectId, userId: r.userId, role: r.role },
 					}),
 				),
 			]);
@@ -194,6 +206,9 @@ export function ProjectMembersPanel({
 			await Promise.all([
 				queryClient.invalidateQueries({
 					queryKey: projectMembersQuery(projectId ?? "").queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: assignableMembersQuery(projectId ?? "").queryKey,
 				}),
 				queryClient.invalidateQueries({ queryKey: projectsQuery().queryKey }),
 			]);
@@ -205,32 +220,32 @@ export function ProjectMembersPanel({
 	return (
 		<div className="flex h-full flex-col">
 			<div className="shrink-0 border-b px-4 py-3.5">
-				<p className="text-sm font-medium">Members</p>
-				<p className="truncate text-xs text-muted-foreground">
+				<p className="eyebrow">Team</p>
+				<p className="mt-1.5 truncate text-base font-medium">
 					{projectName ?? "No project selected"}
 				</p>
 			</div>
 
 			{!projectId ? (
-				<p className="flex flex-1 items-center justify-center px-4 text-center text-sm text-muted-foreground">
-					Select a project to manage its members.
+				<p className="px-4 py-8 text-base text-muted-foreground">
+					Select a project to manage its team.
 				</p>
 			) : (
 				<div className="min-h-0 flex-1 overflow-y-auto p-4">
-					<div className="grid gap-2 pb-4">
-						<Label className="text-2xs">Add member</Label>
+					<div className="grid gap-2 pb-5">
+						<Label className="eyebrow">Add member</Label>
 						<Select
 							value={addUserId}
 							onValueChange={(v) => v && addRow(v)}
 							disabled={unassigned.length === 0}
 							items={unassigned.map((m) => ({
 								value: m.userId,
-								label: m.user.name,
+								label: m.name,
 							}))}
 						>
 							<SelectTrigger>
 								<span className="flex items-center gap-1.5 text-muted-foreground">
-									<PlusIcon className="size-3.5" />
+									<PlusIcon weight="regular" className="size-3.5" />
 									<SelectValue
 										placeholder={
 											unassigned.length === 0
@@ -243,7 +258,7 @@ export function ProjectMembersPanel({
 							<SelectContent>
 								{unassigned.map((m) => (
 									<SelectItem key={m.userId} value={m.userId}>
-										{m.user.name}
+										{m.name}
 									</SelectItem>
 								))}
 							</SelectContent>
@@ -251,29 +266,28 @@ export function ProjectMembersPanel({
 					</div>
 
 					{isLoading && !hydrated ? (
-						<p className="py-6 text-center text-sm text-muted-foreground">
-							Loading…
-						</p>
+						<p className="py-6 text-sm text-muted-foreground">Loading…</p>
 					) : rows.length === 0 ? (
-						<p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
+						<p className="border-t py-6 text-base text-muted-foreground">
 							No one is assigned yet.
 						</p>
 					) : (
-						<div className="grid gap-2">
+						// Hairline-separated rows rather than a stack of bordered cards:
+						// six people in six boxes is six times the framing and no more
+						// information than six lines.
+						<div className="grid">
 							{rows.map((r) => (
 								<div
 									key={r.userId}
-									className="grid gap-3 rounded-lg border p-3"
+									className="grid gap-3 border-t border-line2 py-4 first:border-t-0 first:pt-0"
 								>
 									<div className="flex items-center gap-2.5">
 										<Avatar size="sm">
 											<AvatarFallback>{getInitials(r.name)}</AvatarFallback>
 										</Avatar>
 										<div className="min-w-0 flex-1">
-											<p className="truncate text-sm font-medium">{r.name}</p>
-											<p className="truncate text-2xs text-muted-foreground">
-												{r.email}
-											</p>
+											<p className="truncate text-base font-medium">{r.name}</p>
+											<p className="truncate text-xs text-faint">{r.email}</p>
 										</div>
 										<Button
 											variant="ghost"
@@ -281,47 +295,37 @@ export function ProjectMembersPanel({
 											aria-label={`Remove ${r.name}`}
 											onClick={() => removeRow(r.userId)}
 										>
-											<XIcon className="size-4" />
+											<XIcon weight="regular" className="size-4" />
 										</Button>
 									</div>
-									<div className="flex items-center justify-between gap-2">
-										<Label className="text-2xs font-normal text-muted-foreground">
-											Can approve time off
-										</Label>
-										<Switch
-											checked={r.isVacationApprover}
-											onCheckedChange={(checked) =>
-												patchRow(r.userId, { isVacationApprover: checked })
+									<div className="grid gap-1.5">
+										<Label className="eyebrow">Role on this project</Label>
+										<Select
+											value={r.role}
+											onValueChange={(value) =>
+												patchRow(r.userId, {
+													role: value as ProjectRoleValue,
+												})
 											}
-										/>
-									</div>
-									<div className="grid grid-cols-2 gap-2">
-										<div className="grid gap-1">
-											<Label className="text-2xs font-normal text-muted-foreground">
-												Billable rate
-											</Label>
-											<Input
-												inputMode="decimal"
-												value={r.billableRate}
-												onChange={(e) =>
-													patchRow(r.userId, { billableRate: e.target.value })
-												}
-												placeholder="—"
-											/>
-										</div>
-										<div className="grid gap-1">
-											<Label className="text-2xs font-normal text-muted-foreground">
-												Cost rate
-											</Label>
-											<Input
-												inputMode="decimal"
-												value={r.costRate}
-												onChange={(e) =>
-													patchRow(r.userId, { costRate: e.target.value })
-												}
-												placeholder="—"
-											/>
-										</div>
+											items={ROLES.map((role) => ({
+												value: role.value,
+												label: role.label,
+											}))}
+										>
+											<SelectTrigger className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{ROLES.map((role) => (
+													<SelectItem key={role.value} value={role.value}>
+														{role.label}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<p className="text-xs text-muted-foreground">
+											{ROLES.find((role) => role.value === r.role)?.hint}
+										</p>
 									</div>
 								</div>
 							))}

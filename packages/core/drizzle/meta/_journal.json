@@ -134,6 +134,34 @@
       "when": 1783930272473,
       "tag": "0018_wise_whirlwind",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786370700657,
+      "tag": "0019_sudden_gauntlet",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786373928637,
+      "tag": "0020_minor_cable",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786435166306,
+      "tag": "0021_salty_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786435518490,
+      "tag": "0022_lush_paper_doll",
+      "breakpoints": true
     }
   ]
 }

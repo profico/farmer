@@ -1,7 +1,7 @@
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { XIcon } from "lucide-react";
+import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import * as React from "react";
 import { Button } from "#/components/ui/button.tsx";
@@ -73,7 +73,7 @@ function DialogOverlay({
 		<DialogPrimitive.Backdrop
 			data-slot="dialog-overlay"
 			className={cn(
-				"fixed inset-0 isolate z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs",
+				"fixed inset-0 isolate z-50 bg-black/25 supports-backdrop-filter:backdrop-blur-xs",
 				className,
 			)}
 			render={
@@ -124,7 +124,7 @@ function DialogContent({
 						// top/left-1/2 anchors; centering translate lives in the motion
 						// variants (x/y: -50%) because motion owns the transform.
 						className={cn(
-							"fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none sm:max-w-sm",
+							"fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover p-5 text-base text-popover-foreground outline-none sm:max-w-md",
 							className,
 						)}
 						render={
@@ -150,7 +150,7 @@ function DialogContent({
 									/>
 								}
 							>
-								<XIcon />
+								<XIcon weight="regular" />
 								<span className="sr-only">Close</span>
 							</DialogPrimitive.Close>
 						)}
@@ -183,7 +183,7 @@ function DialogFooter({
 		<div
 			data-slot="dialog-footer"
 			className={cn(
-				"-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+				"-mx-5 -mb-5 mt-1 flex flex-col-reverse gap-2 rounded-b-xl border-t border-line2 p-4 px-5 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}
@@ -202,7 +202,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
 	return (
 		<DialogPrimitive.Title
 			data-slot="dialog-title"
-			className={cn("text-base leading-none font-medium", className)}
+			className={cn("h2 pr-6", className)}
 			{...props}
 		/>
 	);
@@ -216,7 +216,7 @@ function DialogDescription({
 		<DialogPrimitive.Description
 			data-slot="dialog-description"
 			className={cn(
-				"text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+				"text-base leading-normal text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
 				className,
 			)}
 			{...props}

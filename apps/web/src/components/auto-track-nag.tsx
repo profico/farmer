@@ -1,6 +1,6 @@
+import { SparkleIcon, XIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Sparkles, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Button } from "#/components/ui/button.tsx";
@@ -120,20 +120,19 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 					animate={{ height: "auto", opacity: 1 }}
 					exit={{ height: 0, opacity: 0 }}
 					transition={springProductive}
-					// mb matches |−mt| at each breakpoint (16px / 32px) so when the
-					// height springs to 0 the row below lands exactly where it sits
-					// once this element unmounts — no final reflow pop.
-					className="-mx-4 -mt-4 mb-4 overflow-hidden border-b border-primary/15 bg-primary/5 sm:-mx-8 sm:-mt-8 sm:mb-8"
+					// The negative insets cancel `island-pad` exactly, so this banner
+					// meets the island's own edge: 1rem all round below sm, and
+					// 1.75rem vertical / 2rem horizontal at sm and up. mb matches
+					// |−mt| at each breakpoint so when the height springs to 0 the row
+					// below lands exactly where it sits once this element unmounts —
+					// no final reflow pop.
+					className="-mx-4 -mt-4 mb-4 overflow-hidden border-b bg-secondary sm:-mx-8 sm:-mt-7 sm:mb-7"
 				>
 					<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
-						<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-							<Sparkles className="size-4" />
-						</span>
+						<SparkleIcon className="size-4 shrink-0 text-primary" />
 						<div className="min-w-0 flex-1">
-							<p className="text-sm font-medium">{message.title}</p>
-							<p className="text-2xs text-muted-foreground sm:text-xs">
-								{message.body}
-							</p>
+							<p className="text-base font-medium">{message.title}</p>
+							<p className="text-sm text-muted-foreground">{message.body}</p>
 						</div>
 						<Button
 							size="sm"
@@ -148,9 +147,9 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 							type="button"
 							onClick={handleDismiss}
 							aria-label="Dismiss"
-							className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+							className="quiet shrink-0 rounded-md p-1"
 						>
-							<X className="size-4" />
+							<XIcon weight="regular" className="size-4" />
 						</button>
 					</div>
 				</motion.div>

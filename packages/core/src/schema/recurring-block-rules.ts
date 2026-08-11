@@ -3,13 +3,12 @@ import { z } from "zod";
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
 export const createRecurringBlockRuleInput = z.object({
-	typeId: z.uuid(),
+	taskId: z.uuid(),
 	projectId: z.uuid().optional(),
 	description: z.string().optional(),
 	daysOfWeek: z
 		.array(z.number().int().min(0).max(6))
 		.min(1, "Pick at least one day"),
-	startTime: z.string().regex(/^\d{2}:\d{2}$/, "Expected HH:mm"),
 	duration: z.string().min(1, "Duration is required"),
 	effectiveFrom: dateKey.optional(),
 	effectiveUntil: dateKey.optional(),
@@ -20,14 +19,13 @@ export type CreateRecurringBlockRuleInput = z.infer<
 
 export const updateRecurringBlockRuleInput = z.object({
 	ruleId: z.uuid(),
-	typeId: z.uuid().optional(),
+	taskId: z.uuid().optional(),
 	projectId: z.uuid().optional(),
 	description: z.string().optional(),
 	daysOfWeek: z
 		.array(z.number().int().min(0).max(6))
 		.min(1, "Pick at least one day")
 		.optional(),
-	startTime: z.string().regex(/^\d{2}:\d{2}$/, "Expected HH:mm").optional(),
 	duration: z.string().min(1).optional(),
 	effectiveFrom: dateKey.optional(),
 	effectiveUntil: dateKey.optional(),

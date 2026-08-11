@@ -38,7 +38,7 @@ export const getGithubInstallUrl = createServerFn({ method: "GET" })
 	.handler(async ({ context }) => {
 		const slug = process.env.GITHUB_APP_SLUG;
 		if (!slug) throw new Error("GITHUB_APP_SLUG not configured");
-		const { signOrgState } = await import("@farmer/core/lib/github-state");
+		const { signOrgState } = await import("@farmer/core/lib/oauth-state");
 		const url = new URL(`https://github.com/apps/${slug}/installations/new`);
 		url.searchParams.set("state", signOrgState(context.ctx.organizationId));
 		return { url: url.toString() };
@@ -49,10 +49,7 @@ export const disconnectGithubInstallation = createServerFn({ method: "POST" })
 	.validator(disconnectInstallationInput)
 	.handler(async ({ data: installationRowId, context }) => {
 		const { githubService } = await import("@farmer/core/services");
-		return githubService.disconnectInstallation(
-			context.ctx,
-			installationRowId,
-		);
+		return githubService.disconnectInstallation(context.ctx, installationRowId);
 	});
 
 export const listAvailableGithubRepos = createServerFn({

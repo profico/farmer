@@ -5,27 +5,30 @@ import {
 	formatDurationLong,
 	startOfWeekKey,
 } from "@farmer/core/lib/time";
+import {
+	ArrowRightIcon,
+	CalendarBlankIcon,
+	GitCommitIcon,
+	PlusIcon,
+	SparkleIcon,
+} from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-	Calendar,
-	Clock,
-	GitCommitHorizontal,
-	Plus,
-	Sparkles,
-} from "lucide-react";
+import { AnimatePresence } from "motion/react";
 import { useState } from "react";
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { EmptyState } from "#/components/states/empty-state.tsx";
+import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { EntryBlockRow } from "#/components/time/entry-block-row.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { Metric } from "#/components/ui/metric.tsx";
+import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
-import { availableEntryTypesQuery } from "#/queries/entry-types.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
-import { myUtilizationQuery } from "#/queries/reports.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
+import { weeklyTargetQuery } from "#/queries/working-hours.ts";
 
 export const Route = createFileRoute("/$orgSlug/")({
 	loader: async ({ context }) => {
@@ -37,12 +40,13 @@ export const Route = createFileRoute("/$orgSlug/")({
 				timeEntriesRangeQuery(weekStart, weekEnd),
 			),
 			context.queryClient.ensureQueryData(myProjectsQuery()),
-			context.queryClient.ensureQueryData(availableEntryTypesQuery()),
-			context.queryClient.ensureQueryData(
-				myUtilizationQuery({ from: weekStart, to: weekEnd }),
-			),
+			context.queryClient.ensureQueryData(weeklyTargetQuery()),
 		]);
 	},
+	// The generic page placeholder is a header over a ruled list, which is the
+	// shape of most screens here and not of this one — it put four ragged lines
+	// where the two figures and the week's bars were about to land.
+	pendingComponent: DashboardLoadingSkeleton,
 	component: OrgHome,
 });
 
@@ -63,27 +67,23 @@ function OrgHome() {
 	const { data: weekEntries } = useSuspenseQuery(
 		timeEntriesRangeQuery(weekStart, weekEnd),
 	);
-	const { data: myWeek } = useSuspenseQuery(
-		myUtilizationQuery({ from: weekStart, to: weekEnd }),
-	);
+	// The week's yardstick is the person's own working-hours target, not the close
+	// sheet's Expected — Expected is a monthly figure that only settles once the
+	// month is finalized, so it says nothing about a week still in progress.
+	const { data: weeklyTargetSeconds } = useSuspenseQuery(weeklyTargetQuery());
 
 	// The "by day" bars are clickable; the day the user picks drives the entry
 	// list at the bottom. Defaults to today.
 	const [selectedDay, setSelectedDay] = useState(today);
 
-	const todayEntries = weekEntries.filter(
-		(entry) =>
-			dayKeyInTz(new Date(entry.startedAt), organization.timezone) === today,
-	);
+	const todayEntries = weekEntries.filter((entry) => entry.date === today);
 	const todayTotal = todayEntries.reduce(
 		(sum, e) => sum + e.durationSeconds,
 		0,
 	);
 
 	const selectedEntries = weekEntries.filter(
-		(entry) =>
-			dayKeyInTz(new Date(entry.startedAt), organization.timezone) ===
-			selectedDay,
+		(entry) => entry.date === selectedDay,
 	);
 	const weekTotal = weekEntries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
@@ -92,9 +92,7 @@ function OrgHome() {
 	const perDay = WEEKDAY_LABELS.map((label, i) => {
 		const key = addDaysToKey(weekStart, i);
 		const seconds = weekEntries
-			.filter(
-				(e) => dayKeyInTz(new Date(e.startedAt), organization.timezone) === key,
-			)
+			.filter((e) => e.date === key)
 			.reduce((sum, e) => sum + e.durationSeconds, 0);
 		return { label, key, seconds, isToday: key === today };
 	});
@@ -123,194 +121,189 @@ function OrgHome() {
 	const firstName = session.user.name.split(" ")[0];
 
 	return (
-		<div className="page-shell">
+		<Page className="screen">
 			<AutoTrackNag orgSlug={organization.slug} />
-			<div className="flex items-center justify-between gap-4">
-				<div>
-					<h1 className="font-display text-xl">
-						{greetingForHour(new Date().getHours())}, {firstName}
-					</h1>
-					<p className="mt-0.5 text-[12.5px] text-muted-foreground">
-						{formatDayKey(today)} · {formatDurationLong(todayTotal)} logged
-					</p>
-				</div>
-				<AddBlockDialog
-					timezone={organization.timezone}
-					dateOptions={dateOptions}
-					trigger={
-						<Button size="sm">
-							<Plus className="size-4" />
-							Add block
-						</Button>
-					}
-				/>
-			</div>
+			<PageHeader
+				eyebrow={`${formatDayKey(today)} · ${formatDurationLong(todayTotal)} logged`}
+				title={`${greetingForHour(new Date().getHours())}, ${firstName}`}
+				action={
+					<AddBlockDialog
+						timezone={organization.timezone}
+						dateOptions={dateOptions}
+						trigger={
+							<Button size="sm">
+								<PlusIcon weight="regular" className="size-4" />
+								Add block
+							</Button>
+						}
+					/>
+				}
+				className="mb-6"
+			/>
 
-			<div className="-mx-4 mt-6 border-t border-b sm:-mx-8">
-				<div className="grid grid-cols-2 divide-x border-b">
-					<div className="px-4 py-4 sm:px-8">
-						<div className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
-							Logged today
-						</div>
-						<div className="font-display mt-1.5 text-2xl">
-							{formatHoursShort(todayTotal)}
-						</div>
+			{/* Below xl this is one vertical stack: summary, then the selected day's
+			    entries. From xl the two sit side by side — the summary is a fixed
+			    reading width and the entry list takes the rest, which is what turns
+			    a tall scroll into one screenful on a wide monitor. The day bars
+			    already drive the list's selection, so the split makes the existing
+			    interaction visible instead of scrolling between cause and effect. */}
+			<div className="-mx-4 mt-6 grid border-t border-b sm:-mx-8 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:divide-x">
+				{/* Whichever summary section lands last keeps its rule when stacked
+				    (it separates summary from entries) but drops it side by side,
+				    where it would just be a stray line across the column. */}
+				<div className="min-w-0 xl:[&>*:last-child]:border-b-0">
+					<div className="grid grid-cols-2 divide-x border-b">
+						<Metric
+							className="px-4 py-5 sm:px-8"
+							label="Logged today"
+							value={formatHoursShort(todayTotal)}
+							accent={todayTotal > 0}
+						/>
+						<Metric
+							className="px-4 py-5 sm:px-8"
+							label="This week"
+							value={formatHoursShort(weekTotal)}
+						/>
 					</div>
-					<div className="px-4 py-4 sm:px-8">
-						<div className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
-							This week
-						</div>
-						<div className="font-display mt-1.5 text-2xl">
-							{formatHoursShort(weekTotal)}
-						</div>
-					</div>
-				</div>
 
-				{myWeek && myWeek.expectedSeconds > 0 && (
-					<div className="border-b px-4 py-4 sm:px-8">
-						<div className="flex items-baseline justify-between gap-3">
-							<div className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
-								This week vs. expected
-							</div>
-							<div className="text-2xs font-semibold text-muted-foreground tabular-nums">
-								{formatHoursShort(myWeek.loggedSeconds)} /{" "}
-								{formatHoursShort(myWeek.expectedSeconds)}
-								{myWeek.utilizationPct != null && (
+					{weeklyTargetSeconds > 0 && (
+						<div className="border-b px-4 py-4 sm:px-8">
+							<div className="flex items-baseline justify-between gap-3">
+								<div className="eyebrow">This week vs. your target</div>
+								<div className="mono text-xs text-muted-foreground">
+									{formatHoursShort(weekTotal)} /{" "}
+									{formatHoursShort(weeklyTargetSeconds)}
 									<span className="ml-1.5 text-foreground">
-										{myWeek.utilizationPct}%
+										{Math.round((weekTotal / weeklyTargetSeconds) * 100)}%
 									</span>
-								)}
+								</div>
+							</div>
+							{/* A 2px rail, one hairline of ground and an accent fill — the
+							    app's only progress indicator. */}
+							<div className="bar mt-3">
+								<span
+									style={{
+										width: `${Math.min(
+											Math.round((weekTotal / weeklyTargetSeconds) * 100),
+											100,
+										)}%`,
+									}}
+								/>
 							</div>
 						</div>
-						<div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-							<div
-								className={cn(
-									"h-full rounded-full",
-									myWeek.loggedSeconds >= myWeek.expectedSeconds
-										? "bg-primary"
-										: "bg-secondary",
-								)}
-								style={{
-									width: `${Math.min(
-										Math.round(
-											(myWeek.loggedSeconds / myWeek.expectedSeconds) * 100,
-										),
-										100,
-									)}%`,
-								}}
-							/>
-						</div>
-					</div>
-				)}
+					)}
 
-				<div className="border-b px-4 py-4 sm:px-8">
-					<div className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
-						This week by day
-					</div>
-					<div className="mt-3 flex items-end gap-2">
-						{perDay.map((d) => {
-							const px =
-								d.seconds > 0
-									? Math.max(Math.round((d.seconds / maxDaySeconds) * 48), 4)
-									: 2;
-							const isSelected = d.key === selectedDay;
-							return (
-								<button
-									type="button"
-									key={d.key}
-									onClick={() => setSelectedDay(d.key)}
-									aria-pressed={isSelected}
-									className={cn(
-										"flex flex-1 flex-col items-center gap-1.5 rounded-md py-1 transition-colors hover:bg-muted",
-										isSelected && "bg-muted",
-									)}
-								>
-									<div
+					<div className="border-b px-4 py-4 sm:px-8">
+						<div className="eyebrow">This week by day</div>
+						<div className="mt-3.5 flex gap-2">
+							{perDay.map((d) => {
+								const px =
+									d.seconds > 0
+										? Math.max(Math.round((d.seconds / maxDaySeconds) * 48), 4)
+										: 2;
+								const isSelected = d.key === selectedDay;
+								return (
+									<button
+										type="button"
+										key={d.key}
+										onClick={() => setSelectedDay(d.key)}
+										aria-pressed={isSelected}
+										// basis-0 + min-w-0 so the day labels can't widen their own
+										// column: every day is an identical hit target regardless of
+										// how much (or how little) was logged.
 										className={cn(
-											"w-full rounded-sm ring-offset-2 ring-offset-background",
-											d.isToday
-												? "bg-primary"
-												: d.seconds > 0
-													? "bg-primary/45"
-													: "bg-border",
-											isSelected && !d.isToday && "ring-2 ring-primary/60",
-										)}
-										style={{ height: `${px}px` }}
-									/>
-									<span
-										className={cn(
-											"text-2xs",
-											d.isToday || isSelected
-												? "font-semibold text-foreground"
-												: "text-muted-foreground",
+											"flex min-w-0 flex-1 basis-0 flex-col items-center gap-2 rounded-sm py-1 transition-colors duration-(--dur-fast) hover:bg-muted",
+											isSelected && "bg-muted",
 										)}
 									>
-										{d.label}
-									</span>
-								</button>
-							);
-						})}
+										{/* The 48px track is always here, bottom-aligned — an empty
+										    day used to collapse to a 2px-tall button that was
+										    almost impossible to hit. */}
+										<div className="flex h-12 w-full items-end justify-center">
+											<div
+												className={cn(
+													// Capped width: a full-width fill turns a 48px-tall bar
+													// into a 40px-wide slab, which out-weighs everything
+													// else on the screen. A column reads as a measurement.
+													"w-full max-w-6 rounded-[2px]",
+													d.isToday
+														? "bg-primary"
+														: d.seconds > 0
+															? "bg-primary/40"
+															: "bg-line",
+													isSelected && !d.isToday && "bg-primary/70",
+												)}
+												style={{ height: `${px}px` }}
+											/>
+										</div>
+										<span
+											className={cn(
+												"eyebrow",
+												(d.isToday || isSelected) && "text-foreground",
+											)}
+										>
+											{d.label}
+										</span>
+									</button>
+								);
+							})}
+						</div>
 					</div>
+
+					{hasAutoTracked && (
+						<div className="border-b">
+							<div className="eyebrow flex items-center gap-1.5 px-4 pt-4 pb-1 sm:px-8">
+								<SparkleIcon className="size-3" />
+								Auto-tracked today
+							</div>
+							<div>
+								{meetingEntries.length > 0 && (
+									<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
+										<CalendarBlankIcon className="size-4 shrink-0 text-muted-foreground" />
+										<div className="min-w-0 flex-1">
+											<p className="text-base">
+												{meetingEntries.length} meeting
+												{meetingEntries.length === 1 ? "" : "s"} synced
+											</p>
+											<p className="mt-0.5 text-xs text-faint">
+												Google Calendar
+											</p>
+										</div>
+										<span className="mono shrink-0 text-sm">
+											{formatHoursShort(meetingSeconds)}
+										</span>
+									</div>
+								)}
+								{commitEntries.length > 0 && (
+									<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
+										<GitCommitIcon className="size-4 shrink-0 text-muted-foreground" />
+										<div className="min-w-0 flex-1">
+											<p className="text-base">
+												{commitTotal} commit{commitTotal === 1 ? "" : "s"}
+											</p>
+											<p className="mt-0.5 text-xs text-faint">
+												across {commitEntries.length} block
+												{commitEntries.length === 1 ? "" : "s"}
+											</p>
+										</div>
+										<span className="mono shrink-0 text-sm">
+											{formatHoursShort(commitSeconds)}
+										</span>
+									</div>
+								)}
+							</div>
+						</div>
+					)}
 				</div>
 
-				{hasAutoTracked && (
-					<div className="border-b">
-						<div className="flex items-center gap-1.5 px-4 pt-4 pb-2 text-2xs font-semibold tracking-wide text-muted-foreground uppercase sm:px-8">
-							<Sparkles className="size-3.5" />
-							Auto-tracked today
-						</div>
-						<div className="divide-y">
-							{meetingEntries.length > 0 && (
-								<div className="flex items-center gap-3 px-4 py-2.5 sm:px-8">
-									<span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
-										<Calendar className="size-4" />
-									</span>
-									<div className="min-w-0 flex-1">
-										<p className="text-sm font-medium">
-											{meetingEntries.length} meeting
-											{meetingEntries.length === 1 ? "" : "s"} synced
-										</p>
-										<p className="text-2xs text-muted-foreground">
-											Google Calendar
-										</p>
-									</div>
-									<span className="shrink-0 font-mono text-sm tabular-nums">
-										{formatHoursShort(meetingSeconds)}
-									</span>
-								</div>
-							)}
-							{commitEntries.length > 0 && (
-								<div className="flex items-center gap-3 px-4 py-2.5 sm:px-8">
-									<span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
-										<GitCommitHorizontal className="size-4" />
-									</span>
-									<div className="min-w-0 flex-1">
-										<p className="text-sm font-medium">
-											{commitTotal} commit{commitTotal === 1 ? "" : "s"}
-										</p>
-										<p className="text-2xs text-muted-foreground">
-											across {commitEntries.length} block
-											{commitEntries.length === 1 ? "" : "s"}
-										</p>
-									</div>
-									<span className="shrink-0 font-mono text-sm tabular-nums">
-										{formatHoursShort(commitSeconds)}
-									</span>
-								</div>
-							)}
-						</div>
-					</div>
-				)}
-
-				<div className="pt-4 pb-1.5">
-					<div className="px-4 mb-2 text-2xs font-semibold tracking-wide text-muted-foreground uppercase sm:px-8">
+				<div className="min-w-0 pt-4 pb-1.5">
+					<div className="eyebrow mb-1 px-4 sm:px-8">
 						{selectedDay === today
 							? "Today's entries"
 							: `${formatDayKey(selectedDay, { year: false })} entries`}
 					</div>
 					{selectedEntries.length === 0 ? (
 						<EmptyState
-							icon={Clock}
 							title="Nothing logged"
 							description={
 								selectedDay === today
@@ -319,29 +312,35 @@ function OrgHome() {
 							}
 						/>
 					) : (
-						<div className="divide-y">
-							{selectedEntries.map((entry) => (
-								<EntryBlockRow
-									key={entry.id}
-									entry={entry}
-									timezone={organization.timezone}
-									dateOptions={dateOptions}
-								/>
-							))}
+						<div className="divide-y divide-line2">
+							{/* `initial={false}` so the list doesn't animate on mount —
+							    rows only animate on the way *out*. See EntryBlockRow. */}
+							<AnimatePresence initial={false}>
+								{selectedEntries.map((entry) => (
+									<EntryBlockRow
+										key={entry.id}
+										entry={entry}
+										timezone={organization.timezone}
+										dateOptions={dateOptions}
+									/>
+								))}
+							</AnimatePresence>
 						</div>
 					)}
 				</div>
 			</div>
 
-			<div className="mt-4">
+			<div className="mt-5">
 				<Link
 					to="/$orgSlug/time"
 					params={{ orgSlug: organization.slug }}
-					className="text-sm text-primary hover:underline"
+					className="action serif text-primary transition-colors duration-(--dur-base) hover:text-foreground"
+					style={{ fontSize: 21 }}
 				>
-					View full calendar →
+					View full calendar
+					<ArrowRightIcon weight="regular" className="size-4" />
 				</Link>
 			</div>
-		</div>
+		</Page>
 	);
 }

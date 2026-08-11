@@ -19,6 +19,7 @@ import {
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { authClient } from "#/lib/auth-client.ts";
+import { getPublicAppConfig } from "#/server/config.ts";
 
 const loginSchema = z.object({
 	email: z.email(),
@@ -33,11 +34,13 @@ export const Route = createFileRoute("/(auth)/login")({
 		orgSlug: z.string().optional(),
 		role: z.string().optional(),
 	}),
+	loader: () => getPublicAppConfig(),
 	component: LoginPage,
 });
 
 function LoginPage() {
 	const navigate = useNavigate();
+	const config = Route.useLoaderData();
 	const { redirect, ...inviteContext } = Route.useSearch();
 	const form = useForm<z.infer<typeof loginSchema>>({
 		resolver: zodResolver(loginSchema),
@@ -59,10 +62,16 @@ function LoginPage() {
 	};
 
 	return (
-		<AuthSplitPanel tagline="Every hour, accounted for — without the friction.">
-			<h1 className="font-display text-xl">Welcome back</h1>
-			<p className="mt-1 text-[13.5px] text-muted-foreground">
-				Sign in to your workspace to continue.
+		<AuthSplitPanel
+			tagline="Every hour, accounted for — without the friction."
+			brand={config.org}
+		>
+			<div className="eyebrow-lg">Sign in</div>
+			<h1 className="h2 mt-3">Welcome back</h1>
+			<p className="lede mt-2">
+				{config.org
+					? `Sign in to ${config.org.name} to continue.`
+					: "Sign in to your workspace to continue."}
 			</p>
 			<div className="mt-6">
 				<GoogleSignInButton
@@ -116,15 +125,23 @@ function LoginPage() {
 					</Button>
 				</form>
 			</Form>
-			<p className="mt-6 text-center text-sm text-muted-foreground">
-				New here?{" "}
-				<Link
-					to="/register"
-					search={{ redirect, ...inviteContext }}
-					className="font-semibold text-primary"
-				>
-					Create an account
-				</Link>
+			{/* Nothing to sign up for once the instance is claimed and invite-only —
+			    but before it's claimed, registering is how you claim it. */}
+			<p className="mt-6 text-sm text-muted-foreground">
+				{config.singleOrgMode && config.org ? (
+					"Access is by invitation. Ask an admin to invite you."
+				) : (
+					<>
+						New here?{" "}
+						<Link
+							to="/register"
+							search={{ redirect, ...inviteContext }}
+							className="underlined text-primary"
+						>
+							Create an account
+						</Link>
+					</>
+				)}
 			</p>
 		</AuthSplitPanel>
 	);

@@ -28,11 +28,11 @@ fi
 
 # Seed the site-wide default entry types. Idempotent (onConflictDoNothing), so
 # re-running on every boot is safe; set RUN_SEED=false to skip. Runs after
-# migrations so the timeEntryType table exists. This is only the site defaults —
-# the demo seed (client/project/tasks) is never run automatically.
+# migrations so the task table exists. This is only the two built-in absence
+# tasks — the demo seed (client/project/tasks) is never run automatically.
 if [ "${RUN_SEED:-true}" = "true" ]; then
-	echo "[entrypoint] seeding default entry types..."
-	bun run /app/seed-entry-types.js
+	echo "[entrypoint] seeding built-in tasks..."
+	bun run /app/seed-tasks.js
 else
 	echo "[entrypoint] RUN_SEED=false — skipping seed"
 fi

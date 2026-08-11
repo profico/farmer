@@ -15,14 +15,6 @@ export const listSupportedCountries = createServerFn({
 		return holidaysService.listSupportedCountries();
 	});
 
-export const listHolidaysForYear = createServerFn({ method: "GET" })
-	.middleware([orgMiddleware])
-	.validator(listHolidaysForYearInput)
-	.handler(async ({ data: year, context }) => {
-		const { holidaysService } = await import("@farmer/core/services");
-		return holidaysService.listForYear(context.ctx, year);
-	});
-
 export const listHolidaysForYearWithStatus = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.validator(listHolidaysForYearInput)

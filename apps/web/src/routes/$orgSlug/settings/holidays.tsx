@@ -1,14 +1,15 @@
 import { dayKeyInTz } from "@farmer/core/lib/time";
+import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "#/components/ui/button.tsx";
+import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
@@ -69,67 +70,81 @@ function HolidaysSettingsPage() {
 		holidaysForYearWithStatusQuery(year),
 	);
 
+	/* Optimistic, and scoped to the one holiday: the whole table shares this
+	   mutation, so anything keyed off `isPending` (or a refetch-before-paint)
+	   would dim every other row while a single switch is in flight. */
 	const toggleMutation = useMutation({
 		mutationFn: (vars: { name: string; disabled: boolean }) =>
 			setHolidayDisabled({ data: vars }),
-		onSuccess: async () => {
-			await Promise.all([
-				queryClient.invalidateQueries({ queryKey: ["holidays"] }),
-			]);
+		onMutate: async (vars) => {
+			const queryKey = holidaysForYearWithStatusQuery(year).queryKey;
+			await queryClient.cancelQueries({ queryKey });
+			const previous = queryClient.getQueryData(queryKey);
+			queryClient.setQueryData(queryKey, (old) =>
+				old?.map((h) =>
+					h.name === vars.name ? { ...h, disabled: vars.disabled } : h,
+				),
+			);
+			return { queryKey, previous };
 		},
-		onError: (error) => {
+		onError: (error, _vars, context) => {
+			if (context) {
+				queryClient.setQueryData(context.queryKey, context.previous);
+			}
 			toast.error(error.message ?? "Could not update holiday");
 		},
+		// Other holiday views (calendar ranges) still need the server's answer.
+		onSettled: () => queryClient.invalidateQueries({ queryKey: ["holidays"] }),
 	});
 
 	const goToYear = (next: number) =>
 		navigate({
 			search: { year: next === currentYear ? undefined : next },
-			viewTransition: false,
 		});
 
 	return (
-		<div className="page-shell">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h1 className="font-display text-xl">Holidays</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
+		<Page className="screen">
+			<PageHeader
+				eyebrow="Workspace"
+				title="Holidays"
+				lede={
+					<>
 						Public holidays for this organization's country.
 						{isAdmin && " Turn off any your company doesn't observe."}
-					</p>
-				</div>
-				<div className="flex items-center gap-1">
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={() => goToYear(year - 1)}
-						aria-label="Previous year"
-					>
-						<ChevronLeft className="size-4" />
-					</Button>
-					<span className="w-24 text-center font-display text-4xl tnum">
-						{year}
-					</span>
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={() => goToYear(year + 1)}
-						aria-label="Next year"
-					>
-						<ChevronRight className="size-4" />
-					</Button>
-				</div>
-			</div>
+					</>
+				}
+				/* The year is the page's subject, so it is set as a figure — mono,
+				   large, with the steppers reduced to quiet glyphs either side. */
+				action={
+					<div className="flex items-center gap-1">
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							onClick={() => goToYear(year - 1)}
+							aria-label="Previous year"
+						>
+							<CaretLeftIcon weight="regular" className="size-4" />
+						</Button>
+						<span className="mono w-20 text-center text-xl">{year}</span>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							onClick={() => goToYear(year + 1)}
+							aria-label="Next year"
+						>
+							<CaretRightIcon weight="regular" className="size-4" />
+						</Button>
+					</div>
+				}
+				className="mb-0"
+			/>
 
 			{holidays.length === 0 ? (
 				<p className="mt-6 text-sm text-muted-foreground">
 					No public holidays found for this country and year.
 				</p>
 			) : (
-				<Table
-					className="border-t [&_td:first-child]:pl-8 [&_td:last-child]:pr-8 [&_th:first-child]:pl-8 [&_th:last-child]:pr-8"
-					containerClassName="-mx-4 mt-6 border-b sm:-mx-8"
-				>
+				<Table containerClassName="mt-6">
 					<TableHeader>
 						<TableRow>
 							<TableHead>Date</TableHead>
@@ -158,7 +173,6 @@ function HolidaysSettingsPage() {
 													disabled: !checked,
 												})
 											}
-											disabled={toggleMutation.isPending}
 										/>
 									) : (
 										<span className="text-sm text-muted-foreground">
@@ -171,6 +185,6 @@ function HolidaysSettingsPage() {
 					</TableBody>
 				</Table>
 			)}
-		</div>
+		</Page>
 	);
 }

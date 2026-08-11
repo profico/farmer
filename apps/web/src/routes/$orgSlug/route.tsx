@@ -3,8 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { AppSidebar } from "#/components/app-sidebar.tsx";
 import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
+import { AppShellLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { SidebarInset, SidebarProvider } from "#/components/ui/sidebar.tsx";
 import { getMyRole, requireSession } from "#/server/auth.ts";
+import { getPublicAppConfig } from "#/server/config.ts";
 import { setActiveOrgBySlug } from "#/server/organization.ts";
 
 // Query keys are org-blind (["projects"], ["time-entries", from, to], …), so
@@ -23,8 +25,18 @@ type OrgStampedQueryClient = QueryClient & { lastOrganizationId?: string };
 export const Route = createFileRoute("/$orgSlug")({
 	beforeLoad: async ({ params, context }) => {
 		const session = await requireSession();
+		const config = await getPublicAppConfig();
+		// Single-org mode keeps the `/$orgSlug` prefix — tenancy stays an explicit
+		// route parameter rather than becoming ambient, which is the same rule the
+		// service layer is built on — and simply refuses to answer under any other
+		// slug.
+		if (config.org && params.orgSlug !== config.org.slug) {
+			throw redirect({ to: "/$orgSlug", params: { orgSlug: config.org.slug } });
+		}
 		const organization = await setActiveOrgBySlug({ data: params.orgSlug });
 		if (!organization) {
+			// `/` resolves where a session with no active org belongs: the marketing
+			// page in multi-tenant mode, the no-access dead end in single-org mode.
 			throw redirect({ to: "/" });
 		}
 		const role = await getMyRole();
@@ -43,13 +55,20 @@ export const Route = createFileRoute("/$orgSlug")({
 			await queryClient.invalidateQueries();
 		}
 		queryClient.lastOrganizationId = organization.id;
-		return { session, organization, role };
+		return { session, organization, role, singleOrg: config.singleOrgMode };
 	},
+	// The router-wide default renders a lone page skeleton, which is right for a
+	// route *inside* this layout — it lands in the Outlet, with the real sidebar
+	// already beside it. It is wrong for this route, whose pending state replaces
+	// the layout itself: the frame, the sidebar and the ground between them all
+	// live in OrgLayout below, so the default left a bare island floating on the
+	// page. This one draws the shell it is standing in for.
+	pendingComponent: AppShellLoadingSkeleton,
 	component: OrgLayout,
 });
 
 function OrgLayout() {
-	const { session, organization, role } = Route.useRouteContext();
+	const { session, organization, role, singleOrg } = Route.useRouteContext();
 	const queryClient = useQueryClient() as OrgStampedQueryClient;
 	queryClient.lastOrganizationId ??= organization.id;
 	const isAdmin = role === "owner" || role === "admin";
@@ -63,6 +82,7 @@ function OrgLayout() {
 				isAdmin={isAdmin}
 				userName={session.user.name}
 				userEmail={session.user.email}
+				singleOrg={singleOrg}
 			/>
 			<SidebarInset>
 				<Outlet />

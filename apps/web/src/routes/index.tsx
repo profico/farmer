@@ -1,30 +1,23 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-	ArrowRight,
-	BarChart3,
-	Calendar,
-	Clock,
-	Folder,
-	GitBranch,
-	LayoutDashboard,
-	Pencil,
-	Plus,
-	Server,
-	Sparkles,
-	Sprout,
-} from "lucide-react";
-import type { Transition, Variants } from "motion/react";
-import {
-	animate,
-	MotionConfig,
-	motion,
-	useInView,
-	useMotionValue,
-	useReducedMotion,
-	useTransform,
-} from "motion/react";
-import { useEffect, useRef } from "react";
+	ArrowRightIcon,
+	CalendarBlankIcon,
+	CalendarDotsIcon,
+	CaretUpDownIcon,
+	ChartLineIcon,
+	ClockIcon,
+	FolderIcon,
+	GitBranchIcon,
+	GitCommitIcon,
+	PlusIcon,
+	SignOutIcon,
+	SparkleIcon,
+	SquaresFourIcon,
+	UsersIcon,
+} from "@phosphor-icons/react";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { MotionConfig } from "motion/react";
 import { getSession } from "#/server/auth.ts";
+import { getPublicAppConfig } from "#/server/config.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
 export const Route = createFileRoute("/")({
@@ -32,8 +25,22 @@ export const Route = createFileRoute("/")({
 	// redirect, so a logged-in user can still visit `/`). The loader resolves the
 	// viewer's default org slug (null when logged out / org-less) so the CTAs can
 	// point at the dashboard when there is one, and at login otherwise.
+	//
+	// In single-org mode there is no marketing page: `/` is just the front door
+	// of the one workspace, so every branch below redirects and the component
+	// never renders.
 	loader: async (): Promise<{ orgSlug: string | null }> => {
+		const config = await getPublicAppConfig();
 		const session = await getSession();
+		if (config.singleOrgMode) {
+			if (!session) throw redirect({ to: "/login" });
+			const orgSlug = await getDefaultOrgSlugForSession();
+			// Signed in with no membership: invitation revoked, or an account that
+			// predates the mode being switched on. A dead end, not a bounce back to
+			// `/` — that would loop.
+			if (!orgSlug) throw redirect({ to: "/no-access" });
+			throw redirect({ to: "/$orgSlug", params: { orgSlug } });
+		}
 		if (!session) return { orgSlug: null };
 		// Server fn resolves userId/activeOrganizationId from the session itself —
 		// it no longer accepts a client-supplied identity.
@@ -44,34 +51,33 @@ export const Route = createFileRoute("/")({
 });
 
 const GITHUB_URL = "https://github.com/profico/farmer";
-const DOCS_URL = "https://github.com/profico/farmer#readme";
 const PROFICO_URL = "https://profi.co";
 
-// A CTA that leads to the app: straight to the viewer's dashboard when they
-// have an org, otherwise to login (which lands on the dashboard afterwards).
-function DashLink({
+// The page's one CTA, in the product's own button: straight into the viewer's
+// workspace when they have an org, otherwise to login. Rendered identically in
+// the header and in the body — same component, same class, same label — so the
+// action never changes shape as you scroll past it.
+function DashButton({
 	orgSlug,
-	className,
-	style,
-	children,
+	className = "fm-btn",
 }: {
 	orgSlug: string | null;
 	className?: string;
-	style?: React.CSSProperties;
-	children: React.ReactNode;
 }) {
+	const label = orgSlug ? "Open dashboard" : "Log in";
+	const content = (
+		<>
+			{label}
+			<ArrowRightIcon weight="regular" size={15} data-icon="inline-end" />
+		</>
+	);
 	return orgSlug ? (
-		<Link
-			className={className}
-			style={style}
-			to="/$orgSlug"
-			params={{ orgSlug }}
-		>
-			{children}
+		<Link className={className} to="/$orgSlug" params={{ orgSlug }}>
+			{content}
 		</Link>
 	) : (
-		<Link className={className} style={style} to="/login">
-			{children}
+		<Link className={className} to="/login">
+			{content}
 		</Link>
 	);
 }
@@ -80,22 +86,40 @@ function DashLink({
 // React unmounts it with the route) rather than in the global stylesheet, so
 // these marketing-only helpers and the smooth-scroll behaviour don't leak into
 // the dense product UI.
+//
+// The colour literals below are the product's own tokens (styles.css), spelled
+// out rather than read through `var(--…)` because this page deliberately does
+// not inherit the app theme — but they are the same values, so the landing and
+// the app read as one product: --bg #faf9f6, --ground #efece5, --bg2 #f4f2ed,
+// --fg #1b1a17, --mut #79736a, --faint #a9a296, --line rgba(27,26,23,.11),
+// --line2 rgba(27,26,23,.055), --sel rgba(27,26,23,.045), --acc #6f4ebe.
 const landingCss = `
-.fm-landing{background:#f7f5f1;color:#26232b;font-family:'Geist',system-ui,sans-serif;line-height:1.5;overflow-x:hidden;min-height:100vh;user-select:none;cursor:default}
+.fm-landing{background:#faf9f6;color:#1b1a17;font-family:'Instrument Sans',system-ui,sans-serif;line-height:1.5;overflow-x:hidden;min-height:100vh;user-select:none;cursor:default}
 .fm-landing *{box-sizing:border-box;cursor:default}
 .fm-landing a,.fm-landing button,.fm-landing [role="button"]{cursor:pointer}
 .fm-landing .self-host-card{text-decoration:none;color:inherit}
 .fm-landing .self-host-card:hover .u-link::after{transform:scaleX(1)}
-.fm-landing ::selection{background:#efeafb;color:#5b3aad}
-.fm-landing .fm-serif{font-family:'Instrument Serif',Georgia,serif;font-weight:400}
+.fm-landing ::selection{background:rgba(27,26,23,.045)}
+.fm-landing .fm-serif{font-family:'Instrument Serif',Georgia,serif;font-weight:400;letter-spacing:.01em}
 html:has(.fm-landing){scroll-behavior:smooth}
-.fm-landing .u-link{position:relative;color:#26232b;text-decoration:none}
+.fm-landing .u-link{position:relative;color:#1b1a17;text-decoration:none}
 .fm-landing .u-link::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:1px;background:currentColor;transform:scaleX(0);transform-origin:left;transition:transform .25s}
 .fm-landing .u-link:hover::after{transform:scaleX(1)}
-.fm-landing .pill{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border:1px solid #26232b;border-radius:999px;color:#26232b;text-decoration:none;font-weight:600;font-size:14px;transition:background .18s,color .18s}
-.fm-landing .pill:hover{background:#26232b;color:#f7f5f1}
-.fm-landing .pill-dark{background:#241c33;color:#f7f5f1;border-color:#241c33}
-.fm-landing .pill-dark:hover{background:#000;color:#fff}
+
+/* The product's Button (components/ui/button.tsx), transcribed: the same 32px
+   height, 5px corner, 13px medium label and single violet fill. One button, used
+   everywhere a CTA appears — header and body — so the page's main action looks
+   like the action it leads to rather than a marketing pill. */
+.fm-landing .fm-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px 0 12px;border:1px solid transparent;border-radius:5px;background:#6f4ebe;color:#faf9f6;font:500 13px/1 'Instrument Sans',sans-serif;text-decoration:none;white-space:nowrap;transition:background-color .15s,border-color .15s,color .15s,transform .15s}
+.fm-landing .fm-btn:has([data-icon="inline-start"]){padding:0 12px 0 10px}
+.fm-landing .fm-btn:hover{background:color-mix(in srgb,#6f4ebe 86%,#1b1a17)}
+.fm-landing .fm-btn:active{transform:scale(.985)}
+.fm-landing .fm-btn-outline{background:transparent;color:#1b1a17;border-color:rgba(27,26,23,.11)}
+.fm-landing .fm-btn-outline:hover{background:rgba(27,26,23,.045);border-color:rgba(121,115,106,.6)}
+
+/* The app's .eyebrow and .mono, at the reduced sizes the UI mock is drawn to. */
+.fm-landing .fm-eyebrow{font:400 9.5px/1 'Instrument Sans',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#a9a296}
+.fm-landing .fm-mono{font-family:'Geist Mono',ui-monospace,monospace;font-weight:400;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 
 /* ---- Mobile ------------------------------------------------------------
    The layout is built with fixed-pixel inline styles, so the responsive
@@ -111,6 +135,8 @@ html:has(.fm-landing){scroll-behavior:smooth}
   .fm-landing .fm-appwindow-section{padding:0 20px !important}
   .fm-landing .fm-preview-sidebar{display:none !important}
   .fm-landing .fm-preview-body{height:auto !important}
+  .fm-landing .fm-preview-split{flex-direction:column !important}
+  .fm-landing .fm-preview-col{width:auto !important;border-right:0 !important;border-bottom:1px solid rgba(27,26,23,.11)}
   .fm-landing .fm-features-section{padding:72px 20px 0 !important}
   .fm-landing .fm-section-title{font-size:34px !important}
   .fm-landing .fm-bento{grid-template-columns:1fr !important;grid-auto-rows:auto !important}
@@ -118,295 +144,86 @@ html:has(.fm-landing){scroll-behavior:smooth}
   .fm-landing .fm-tile-wide-body{min-height:200px}
   .fm-landing .fm-os-section{padding:72px 20px 0 !important}
   .fm-landing .fm-os-title{font-size:40px !important}
-  .fm-landing .fm-os-actions{width:100%;flex-direction:column !important}
-  .fm-landing .fm-os-actions .pill{justify-content:center}
+  .fm-landing .fm-os-actions{width:100%;flex-direction:column !important;align-items:stretch}
+  .fm-landing .fm-hero-cta .fm-btn,.fm-landing .fm-os-actions .fm-btn{width:100%}
   .fm-landing .fm-footer-inner{padding:26px 20px !important}
 }
 `;
 
-// ---- Bento scroll-in demos -------------------------------------------------
-// Tuned separately from the product springs in #/lib/motion.ts: these play
-// once per tile as it scrolls into view, so they get a longer, more theatrical
-// travel than in-app chrome. Bounce stays reserved for the "physical" beats —
-// the hours badge stamping in, the active calendar block dropping onto the
-// grid. Reduced-motion users get plain cross-fades via <MotionConfig
-// reducedMotion="user"> (and CountUp checks the preference itself).
 
-const tileSpring: Transition = {
-	type: "spring",
-	bounce: 0,
-	visualDuration: 0.55,
+// ---- App-preview mock data -------------------------------------------------
+
+type PreviewNavItem = {
+	Icon: typeof SquaresFourIcon;
+	label: string;
+	active?: boolean;
 };
-const stampSpring: Transition = {
-	type: "spring",
-	bounce: 0.4,
-	visualDuration: 0.3,
-};
-const fillEase: Transition = { duration: 0.9, ease: [0.22, 1, 0.36, 1] };
 
-const rise = (delay = 0): Variants => ({
-	hidden: { opacity: 0, y: 10 },
-	show: { opacity: 1, y: 0, transition: { ...tileSpring, delay } },
-});
-const slideIn = (delay = 0): Variants => ({
-	hidden: { opacity: 0, x: -18 },
-	show: { opacity: 1, x: 0, transition: { ...tileSpring, delay } },
-});
-const stamp = (delay = 0): Variants => ({
-	hidden: { opacity: 0, scale: 0.5 },
-	show: { opacity: 1, scale: 1, transition: { ...stampSpring, delay } },
-});
-const fillIn = (delay = 0): Variants => ({
-	hidden: { scaleX: 0 },
-	show: { scaleX: 1, transition: { ...fillEase, delay } },
-});
-const fadeIn = (delay = 0): Variants => ({
-	hidden: { opacity: 0 },
-	show: { opacity: 1, transition: { duration: 0.4, delay } },
-});
-// No `hidden` state on purpose: the arrow stays visible with its row, then
-// nudges toward the badge once the row has landed.
-const nudge = (delay = 0): Variants => ({
-	show: {
-		x: [0, 6, 0],
-		transition: { delay, duration: 0.7, ease: "easeInOut" },
-	},
-});
-const drop = (delay = 0, bounce = 0): Variants => ({
-	hidden: { opacity: 0, scaleY: 0 },
-	show: {
-		opacity: 1,
-		scaleY: 1,
-		transition: { type: "spring", bounce, visualDuration: 0.4, delay },
-	},
-});
-
-// A bento tile that reveals itself on first scroll-in and drives its inner
-// demo elements (any motion child with `variants`) through the same
-// hidden → show switch.
-function Tile({
-	delay = 0,
-	style,
-	children,
-	href,
-	className,
-}: {
-	delay?: number;
-	style?: React.CSSProperties;
-	children: React.ReactNode;
-	href?: string;
-	className?: string;
-}) {
-	const Component = href ? motion.a : motion.div;
-	return (
-		<Component
-			className={className}
-			href={href}
-			{...(href?.startsWith("http")
-				? { target: "_blank", rel: "noreferrer" }
-				: {})}
-			variants={{
-				hidden: { opacity: 0, y: 24, scale: 0.98 },
-				show: {
-					opacity: 1,
-					y: 0,
-					scale: 1,
-					transition: { ...tileSpring, delay },
-				},
-			}}
-			initial="hidden"
-			whileInView="show"
-			viewport={{ once: true, amount: 0.35 }}
-			style={style}
-		>
-			{children}
-		</Component>
-	);
-}
-
-// Renders the target value in SSR/no-JS markup, then counts up from 0 the
-// first time it scrolls into view. Skips the animation entirely under
-// prefers-reduced-motion.
-function CountUp({
-	to,
-	decimals = 1,
-	delay = 0,
-	className,
-	style,
-}: {
-	to: number;
-	decimals?: number;
-	delay?: number;
-	className?: string;
-	style?: React.CSSProperties;
-}) {
-	const ref = useRef<HTMLSpanElement>(null);
-	const inView = useInView(ref, { once: true, amount: 0.6 });
-	const reducedMotion = useReducedMotion();
-	const value = useMotionValue(to);
-	const text = useTransform(value, (v) => v.toFixed(decimals));
-	useEffect(() => {
-		if (!inView || reducedMotion) return;
-		value.set(0);
-		const controls = animate(value, to, {
-			delay,
-			duration: 1.3,
-			ease: [0.16, 1, 0.3, 1],
-		});
-		return () => controls.stop();
-	}, [inView, reducedMotion, value, to, delay]);
-	return (
-		<motion.span ref={ref} className={className} style={style}>
-			{text}
-		</motion.span>
-	);
-}
-
-const projects = [
+const previewNavGroups: { label: string; items: PreviewNavItem[] }[] = [
 	{
-		name: "Acme Rebrand",
-		labelColor: "#5b3aad",
-		track: "#efeafb",
-		fill: "#7b54d6",
-		hours: "14.0h",
-		pct: "78%",
+		label: "Workspace",
+		items: [
+			{ Icon: SquaresFourIcon, label: "Home", active: true },
+			{ Icon: FolderIcon, label: "Projects" },
+			{ Icon: ClockIcon, label: "Time" },
+			{ Icon: CalendarDotsIcon, label: "My schedule" },
+		],
 	},
 	{
-		name: "Harbor App",
-		labelColor: "#9a6a1c",
-		track: "#f6ecda",
-		fill: "#d98a2b",
-		hours: "11.5h",
-		pct: "62%",
-	},
-	{
-		name: "Internal",
-		labelColor: "#1c6b6a",
-		track: "#e2f2f2",
-		fill: "#2fa1a0",
-		hours: "6.0h",
-		pct: "34%",
+		label: "Admin",
+		items: [
+			{ Icon: ChartLineIcon, label: "Reports" },
+			{ Icon: UsersIcon, label: "People" },
+		],
 	},
 ];
 
-function ProjectBars() {
-	return (
-		<>
-			{projects.map((p, i) => (
-				<div key={p.name}>
-					<div
-						style={{
-							display: "flex",
-							justifyContent: "space-between",
-							fontSize: "10.5px",
-							marginBottom: "3px",
-						}}
-					>
-						<span style={{ color: p.labelColor, fontWeight: 600 }}>
-							{p.name}
-						</span>
-						<motion.span
-							variants={rise(0.55 + i * 0.15)}
-							className="fm-serif"
-							style={{ fontSize: "15px" }}
-						>
-							{p.hours}
-						</motion.span>
-					</div>
-					<div
-						style={{ height: "7px", borderRadius: "4px", background: p.track }}
-					>
-						<motion.div
-							variants={fillIn(0.25 + i * 0.15)}
-							style={{
-								width: p.pct,
-								height: "100%",
-								borderRadius: "4px",
-								background: p.fill,
-								originX: 0,
-							}}
-						/>
-					</div>
-				</div>
-			))}
-		</>
-	);
-}
+const previewWeek = [
+	{ d: "Mon", px: 22 },
+	{ d: "Tue", px: 34, today: true },
+	{ d: "Wed", px: 27 },
+	{ d: "Thu", px: 31 },
+	{ d: "Fri", px: 19 },
+	{ d: "Sat", px: 2 },
+	{ d: "Sun", px: 2 },
+];
+
+const autoTracked = [
+	{
+		Icon: CalendarBlankIcon,
+		title: "2 meetings synced",
+		sub: "Google Calendar",
+		hours: "3.0h",
+	},
+	{
+		Icon: GitCommitIcon,
+		title: "12 commits",
+		sub: "across 3 blocks",
+		hours: "2.5h",
+	},
+];
 
 const recentEntries = [
 	{
-		dot: "#7b54d6",
+		dot: "#6b7f6a",
 		title: "Design review",
-		sub: "Acme Rebrand",
-		badge: {
-			Icon: Calendar,
-			text: "Calendar",
-			color: "#1c6b6a",
-			bg: "#e2f2f2",
-		},
+		sub: "Acme Rebrand · Meetings",
+		badge: { Icon: CalendarBlankIcon, text: "Synced" },
 		hours: "1.0h",
 	},
 	{
-		dot: "#d98a2b",
+		dot: "#8a6a1f",
 		title: "Auth refactor",
-		sub: "Harbor App",
-		badge: { Icon: GitBranch, text: "GitHub", color: "#9a6a1c", bg: "#f6ecda" },
+		sub: "Harbor App · Development",
+		badge: { Icon: GitCommitIcon, text: "12" },
 		hours: "2.5h",
 	},
 	{
-		dot: "#2fa1a0",
+		dot: "#55707d",
 		title: "Sprint planning",
-		sub: "Internal",
-		badge: { Icon: Pencil, text: "Manual", color: "#79747f", bg: "#efece8" },
+		sub: "Internal · Planning",
+		badge: null,
 		hours: "1.5h",
-	},
-];
-
-const weekDays = [
-	{
-		label: "Mon",
-		active: false,
-		last: false,
-		blocks: [
-			{ h: 26, bg: "#e2f2f2", bl: "#2fa1a0" },
-			{ h: 34, bg: "#efeafb", bl: "#7b54d6" },
-		],
-	},
-	{
-		label: "Tue",
-		active: true,
-		last: false,
-		blocks: [
-			{ h: 22, bg: "#efeafb", bl: "#7b54d6", shadow: true },
-			{ h: 38, bg: "#f6ecda", bl: "#d98a2b" },
-		],
-	},
-	{
-		label: "Wed",
-		active: false,
-		last: false,
-		blocks: [
-			{ h: 18, bg: "#e2f2f2", bl: "#2fa1a0" },
-			{ h: 44, bg: "#f6ecda", bl: "#d98a2b" },
-		],
-	},
-	{
-		label: "Thu",
-		active: false,
-		last: false,
-		blocks: [
-			{ h: 40, bg: "#efeafb", bl: "#7b54d6" },
-			{ h: 20, bg: "#f7e7ec", bl: "#d2607a" },
-		],
-	},
-	{
-		label: "Fri",
-		active: false,
-		last: true,
-		blocks: [
-			{ h: 32, bg: "#f6ecda", bl: "#d98a2b" },
-			{ h: 18, bg: "#e2f2f2", bl: "#2fa1a0" },
-		],
 	},
 ];
 
@@ -421,13 +238,15 @@ function Home() {
 				/>
 
 				{/* ============ HEADER ============ */}
+				{/* Painted with the page's own paper rather than a translucent wash of
+				    a slightly different white — the tint used to show as a seam across
+				    the top of the hero the moment anything scrolled under it. */}
 				<header
 					style={{
 						position: "sticky",
 						top: 0,
 						zIndex: 50,
-						background: "rgba(247,245,241,.82)",
-						backdropFilter: "blur(10px)",
+						background: "#faf9f6",
 					}}
 				>
 					<div
@@ -460,34 +279,12 @@ function Home() {
 						>
 							<a
 								className="u-link fm-nav-section"
-								href="#features"
-								style={{ color: "rgba(38,35,43,.6)" }}
-							>
-								Features
-							</a>
-							<a
-								className="u-link fm-nav-section"
-								href="#integrations"
-								style={{ color: "rgba(38,35,43,.6)" }}
-							>
-								Integrations
-							</a>
-							<a
-								className="u-link fm-nav-section"
 								href="#opensource"
 								style={{ color: "rgba(38,35,43,.6)" }}
 							>
 								Open source
 							</a>
-							{orgSlug ? (
-								<Link className="pill" to="/$orgSlug" params={{ orgSlug }}>
-									Open dashboard <ArrowRight size={15} strokeWidth={1.6} />
-								</Link>
-							) : (
-								<Link className="pill" to="/login">
-									Log in
-								</Link>
-							)}
+							<DashButton orgSlug={orgSlug} />
 						</div>
 					</div>
 				</header>
@@ -517,7 +314,7 @@ function Home() {
 						Do less tracking,
 						<br />
 						do more{" "}
-						<span style={{ fontStyle: "italic", color: "#6a45c8" }}>
+						<span style={{ fontStyle: "italic", color: "#6f4ebe" }}>
 							doing.
 						</span>
 					</h1>
@@ -541,35 +338,24 @@ function Home() {
 							display: "flex",
 							justifyContent: "center",
 							alignItems: "center",
-							gap: "24px",
+							gap: "10px",
 							marginTop: "30px",
-							font: "600 14.5px 'Geist',sans-serif",
 						}}
 					>
-						<DashLink
-							orgSlug={orgSlug}
-							className="u-link"
-							style={{
-								display: "inline-flex",
-								alignItems: "center",
-								gap: "6px",
-								color: "#26232b",
-							}}
-						>
-							Open the dashboard
-							<ArrowRight size={16} strokeWidth={1.6} />
-						</DashLink>
-						<a
-							className="u-link"
-							href={GITHUB_URL}
-							style={{ color: "rgba(38,35,43,.6)" }}
-						>
+						<DashButton orgSlug={orgSlug} />
+						<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
+							<GitBranchIcon size={15} data-icon="inline-start" />
 							Star on GitHub
 						</a>
 					</div>
 				</section>
 
 				{/* ============ APP WINDOW ============ */}
+				{/* A facsimile of the real product, drawn against the app's own tokens:
+				    the ground with two islands standing on it — the sidebar and the
+				    page — separated by the gap rather than by a border, captions in the
+				    faint uppercase eyebrow, and every figure in the mono face. The app
+				    names things in the serif and measures them in mono; so does this. */}
 				<section
 					className="fm-appwindow-section"
 					style={{
@@ -582,9 +368,9 @@ function Home() {
 						style={{
 							borderRadius: "16px",
 							overflow: "hidden",
-							border: "1px solid #e7e3e8",
-							background: "#f7f5f1",
-							boxShadow: "0 1px 3px rgba(34,28,51,.05)",
+							border: "1px solid rgba(27,26,23,.11)",
+							background: "#efece5",
+							boxShadow: "0 1px 3px rgba(27,26,23,.05)",
 						}}
 					>
 						<div
@@ -593,8 +379,7 @@ function Home() {
 								alignItems: "center",
 								gap: "12px",
 								padding: "11px 16px",
-								borderBottom: "1px solid #efece8",
-								background: "#f7f5f1",
+								borderBottom: "1px solid rgba(27,26,23,.055)",
 							}}
 						>
 							<div style={{ display: "flex", gap: "6px" }}>
@@ -603,7 +388,7 @@ function Home() {
 										width: "10px",
 										height: "10px",
 										borderRadius: "50%",
-										background: "#e0dbd6",
+										background: "rgba(27,26,23,.11)",
 									}}
 								/>
 								<span
@@ -611,7 +396,7 @@ function Home() {
 										width: "10px",
 										height: "10px",
 										borderRadius: "50%",
-										background: "#e0dbd6",
+										background: "rgba(27,26,23,.11)",
 									}}
 								/>
 								<span
@@ -619,1038 +404,547 @@ function Home() {
 										width: "10px",
 										height: "10px",
 										borderRadius: "50%",
-										background: "#e0dbd6",
+										background: "rgba(27,26,23,.11)",
 									}}
 								/>
 							</div>
 							<div
+								className="fm-mono"
 								style={{
 									flex: 1,
 									textAlign: "center",
-									font: "500 12px 'Geist Mono',monospace",
-									color: "#a8a3ad",
+									fontSize: "12px",
+									color: "#79736a",
 								}}
 							>
 								farmer.profi.co
 							</div>
 						</div>
+						{/* The frame: ground, with the two islands floating in it. */}
 						<div
 							className="fm-preview-body"
 							style={{
 								display: "flex",
-								height: "452px",
-								background: "#f7f5f1",
+								gap: "10px",
+								padding: "10px",
+								// Tall enough for the summary column's natural height: the
+								// island clips, so a few pixels short silently cropped the
+								// last auto-tracked row.
+								height: "492px",
 							}}
 						>
-							{/* sidebar */}
 							<aside
 								className="fm-preview-sidebar"
 								style={{
-									width: "196px",
+									width: "186px",
 									flex: "none",
-									borderRight: "1px solid #e7e3e8",
-									padding: "14px 12px",
+									background: "#faf9f6",
+									borderRadius: "12px",
+									overflow: "hidden",
 									display: "flex",
 									flexDirection: "column",
-									gap: "3px",
 								}}
 							>
-								<div
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: "9px",
-										padding: "6px 8px",
-										border: "1px solid #e7e3e8",
-										background: "#fff",
-										borderRadius: "8px",
-										marginBottom: "10px",
-									}}
-								>
-									<span
-										style={{
-											width: "22px",
-											height: "22px",
-											borderRadius: "6px",
-											background: "#241c33",
-											color: "#a9e0b0",
-											display: "flex",
-											alignItems: "center",
-											justifyContent: "center",
-											flex: "none",
-										}}
-									>
-										<Sprout size={13} strokeWidth={1.6} />
-									</span>
-									<span style={{ fontSize: "12px", fontWeight: 600 }}>
-										Profico
-									</span>
-								</div>
-								<div
-									style={{
-										font: "600 9.5px 'Geist',sans-serif",
-										letterSpacing: ".09em",
-										textTransform: "uppercase",
-										color: "#a8a3ad",
-										padding: "8px 8px 4px",
-									}}
-								>
-									Workspace
-								</div>
-								<span
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: "9px",
-										padding: "6px 8px",
-										borderRadius: "7px",
-										background: "#fff",
-										border: "1px solid #e7e3e8",
-										color: "#26232b",
-										fontSize: "12.5px",
-										fontWeight: 600,
-									}}
-								>
-									<LayoutDashboard
-										size={15}
-										strokeWidth={1.6}
-										color="#6a45c8"
-									/>
-									Home
-								</span>
-								{[
-									{ Icon: Folder, label: "Projects" },
-									{ Icon: Clock, label: "Time" },
-									{ Icon: BarChart3, label: "Reports" },
-								].map(({ Icon, label }) => (
-									<span
-										key={label}
+								<div style={{ padding: "7px" }}>
+									<div
 										style={{
 											display: "flex",
 											alignItems: "center",
-											gap: "9px",
-											padding: "6px 8px",
-											borderRadius: "7px",
-											color: "#79747f",
-											fontSize: "12.5px",
-											fontWeight: 500,
+											gap: "7px",
+											padding: "5px 6px",
+											borderRadius: "8px",
 										}}
 									>
-										<Icon size={15} strokeWidth={1.6} />
-										{label}
-									</span>
-								))}
-								<div
-									style={{
-										font: "600 9.5px 'Geist',sans-serif",
-										letterSpacing: ".09em",
-										textTransform: "uppercase",
-										color: "#a8a3ad",
-										padding: "12px 8px 4px",
-									}}
-								>
-									Integrations
-								</div>
-								{[
-									{ Icon: Calendar, label: "Google Calendar" },
-									{ Icon: GitBranch, label: "GitHub" },
-								].map(({ Icon, label }) => (
-									<span
-										key={label}
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: "9px",
-											padding: "6px 8px",
-											borderRadius: "7px",
-											color: "#79747f",
-											fontSize: "12.5px",
-											fontWeight: 500,
-										}}
-									>
-										<Icon size={15} strokeWidth={1.6} />
-										{label}
 										<span
 											style={{
-												marginLeft: "auto",
-												width: "6px",
-												height: "6px",
-												borderRadius: "50%",
-												background: "#4fa36b",
+												width: "19px",
+												height: "19px",
+												borderRadius: "4px",
+												background: "#6f4ebe",
+												color: "#faf9f6",
+												display: "flex",
+												alignItems: "center",
+												justifyContent: "center",
+												fontSize: "9.5px",
+												fontWeight: 500,
+												flex: "none",
 											}}
+										>
+											P
+										</span>
+										<span
+											style={{ flex: 1, fontSize: "11.5px", fontWeight: 500 }}
+										>
+											Profico
+										</span>
+										<CaretUpDownIcon
+											weight="regular"
+											size={11}
+											color="#79736a"
 										/>
-									</span>
-								))}
+									</div>
+								</div>
+								<div
+									style={{
+										padding: "0 7px",
+										display: "flex",
+										flexDirection: "column",
+										gap: "7px",
+									}}
+								>
+									{previewNavGroups.map((group) => (
+										<div key={group.label}>
+											<div
+												className="fm-eyebrow"
+												style={{
+													display: "flex",
+													alignItems: "center",
+													height: "20px",
+													padding: "0 6px",
+												}}
+											>
+												{group.label}
+											</div>
+											{group.items.map(({ Icon, label, active }) => (
+												<span
+													key={label}
+													style={{
+														display: "flex",
+														alignItems: "center",
+														gap: "8px",
+														padding: "5px 7px",
+														borderRadius: "8px",
+														fontSize: "12px",
+														fontWeight: active ? 500 : 400,
+														color: active ? "#1b1a17" : "#79736a",
+														background: active
+															? "rgba(27,26,23,.045)"
+															: undefined,
+														boxShadow: active
+															? "0 1px 2px rgba(27,26,23,.05)"
+															: undefined,
+													}}
+												>
+													<Icon size={14} />
+													{label}
+												</span>
+											))}
+										</div>
+									))}
+								</div>
 								<div
 									style={{
 										marginTop: "auto",
 										display: "flex",
 										alignItems: "center",
 										gap: "8px",
-										paddingTop: "10px",
-										borderTop: "1px solid #e7e3e8",
+										padding: "10px 11px",
+										borderTop: "1px solid rgba(27,26,23,.11)",
 									}}
 								>
 									<span
 										style={{
-											width: "24px",
-											height: "24px",
+											width: "20px",
+											height: "20px",
 											borderRadius: "50%",
-											background: "#e9dfce",
-											color: "#8a6a2e",
+											background: "rgba(27,26,23,.08)",
+											color: "#79736a",
 											display: "flex",
 											alignItems: "center",
 											justifyContent: "center",
-											fontSize: "10px",
-											fontWeight: 600,
+											fontSize: "9px",
+											fontWeight: 500,
+											flex: "none",
 										}}
 									>
 										OZ
 									</span>
-									<span style={{ fontSize: "11.5px", fontWeight: 600 }}>
+									<span style={{ flex: 1, fontSize: "11px", fontWeight: 500 }}>
 										Omar Zunic
 									</span>
+									<SignOutIcon weight="regular" size={12} color="#a9a296" />
 								</div>
 							</aside>
-							{/* main — an edge-to-edge facsimile of the real dashboard home */}
+							{/* The page island — a facsimile of $orgSlug/index.tsx. */}
 							<main
 								style={{
 									flex: 1,
 									minWidth: 0,
+									background: "#faf9f6",
+									borderRadius: "12px",
+									overflow: "hidden",
 									display: "flex",
 									flexDirection: "column",
 								}}
 							>
-								{/* greeting */}
-								<div
-									style={{
-										display: "flex",
-										alignItems: "flex-start",
-										justifyContent: "space-between",
-										gap: "12px",
-										padding: "18px 22px 14px",
-									}}
-								>
-									<div>
-										<div
-											className="fm-serif"
-											style={{ fontSize: "23px", lineHeight: 1 }}
-										>
-											Good morning, Omar
-										</div>
-										<div
-											style={{
-												marginTop: "5px",
-												fontSize: "12px",
-												color: "#a8a3ad",
-											}}
-										>
-											Tue, Jul 8 · 3.0h logged
-										</div>
-									</div>
-									<span
+								<div style={{ padding: "15px 20px 14px" }}>
+									<div
 										style={{
 											display: "flex",
 											alignItems: "center",
-											gap: "6px",
-											padding: "6px 11px",
-											background: "#6a45c8",
-											color: "#fff",
-											borderRadius: "7px",
-											fontSize: "12px",
-											fontWeight: 600,
+											justifyContent: "space-between",
+											gap: "12px",
+										}}
+									>
+										<div
+											className="fm-eyebrow"
+											style={{ letterSpacing: ".14em" }}
+										>
+											Tue, Jul 8 · 3h logged
+										</div>
+										<span
+											style={{
+												display: "inline-flex",
+												alignItems: "center",
+												gap: "4px",
+												height: "21px",
+												padding: "0 7px 0 8px",
+												borderRadius: "4px",
+												background: "#6f4ebe",
+												color: "#faf9f6",
+												fontSize: "10.5px",
+												fontWeight: 500,
+												flex: "none",
+											}}
+										>
+											<PlusIcon weight="regular" size={11} />
+											Add block
+										</span>
+									</div>
+									<div
+										className="fm-serif"
+										style={{
+											marginTop: "11px",
+											fontSize: "24px",
+											lineHeight: 1.1,
+										}}
+									>
+										Good morning, Omar
+									</div>
+								</div>
+								<div
+									className="fm-preview-split"
+									style={{
+										display: "flex",
+										flex: 1,
+										minHeight: 0,
+										borderTop: "1px solid rgba(27,26,23,.11)",
+										borderBottom: "1px solid rgba(27,26,23,.11)",
+									}}
+								>
+									<div
+										className="fm-preview-col"
+										style={{
+											width: "53%",
 											flex: "none",
+											borderRight: "1px solid rgba(27,26,23,.11)",
 										}}
 									>
-										<Plus size={14} strokeWidth={1.6} /> Add block
-									</span>
-								</div>
-								{/* stat grid */}
-								<div
-									style={{
-										display: "grid",
-										gridTemplateColumns: "1fr 1fr",
-										borderTop: "1px solid #e7e3e8",
-										borderBottom: "1px solid #e7e3e8",
-									}}
-								>
-									<div
-										style={{
-											padding: "13px 22px",
-											borderRight: "1px solid #e7e3e8",
-										}}
-									>
+										{/* The two figures, mono over an eyebrow — the app's Metric. */}
 										<div
 											style={{
-												font: "600 9.5px 'Geist',sans-serif",
-												letterSpacing: ".09em",
-												textTransform: "uppercase",
-												color: "#a8a3ad",
+												display: "grid",
+												gridTemplateColumns: "1fr 1fr",
+												borderBottom: "1px solid rgba(27,26,23,.11)",
 											}}
 										>
-											Logged today
-										</div>
-										<div
-											className="fm-serif"
-											style={{
-												fontSize: "30px",
-												lineHeight: 1,
-												marginTop: "5px",
-											}}
-										>
-											3.0h
-										</div>
-									</div>
-									<div style={{ padding: "13px 22px" }}>
-										<div
-											style={{
-												font: "600 9.5px 'Geist',sans-serif",
-												letterSpacing: ".09em",
-												textTransform: "uppercase",
-												color: "#a8a3ad",
-											}}
-										>
-											This week
-										</div>
-										<div
-											className="fm-serif"
-											style={{
-												fontSize: "30px",
-												lineHeight: 1,
-												marginTop: "5px",
-											}}
-										>
-											37.5h
-										</div>
-									</div>
-								</div>
-								{/* weekly sparkline */}
-								<div
-									style={{
-										padding: "13px 22px",
-										borderBottom: "1px solid #e7e3e8",
-									}}
-								>
-									<div
-										style={{
-											font: "600 9.5px 'Geist',sans-serif",
-											letterSpacing: ".09em",
-											textTransform: "uppercase",
-											color: "#a8a3ad",
-										}}
-									>
-										This week by day
-									</div>
-									<div
-										style={{
-											marginTop: "10px",
-											display: "flex",
-											alignItems: "flex-end",
-											gap: "8px",
-										}}
-									>
-										{[
-											{ d: "Mon", px: 22 },
-											{ d: "Tue", px: 46, active: true },
-											{ d: "Wed", px: 30 },
-											{ d: "Thu", px: 38 },
-											{ d: "Fri", px: 26 },
-											{ d: "Sat", px: 8 },
-											{ d: "Sun", px: 2 },
-										].map((b) => (
 											<div
-												key={b.d}
 												style={{
-													flex: 1,
+													padding: "12px 16px",
+													borderRight: "1px solid rgba(27,26,23,.11)",
+												}}
+											>
+												<div
+													className="fm-mono"
+													style={{
+														fontSize: "22px",
+														lineHeight: 1,
+														letterSpacing: "-.04em",
+														color: "#6f4ebe",
+													}}
+												>
+													3.0h
+												</div>
+												<div
+													className="fm-eyebrow"
+													style={{ marginTop: "9px", color: "#79736a" }}
+												>
+													Logged today
+												</div>
+											</div>
+											<div style={{ padding: "12px 16px" }}>
+												<div
+													className="fm-mono"
+													style={{
+														fontSize: "22px",
+														lineHeight: 1,
+														letterSpacing: "-.04em",
+													}}
+												>
+													37.5h
+												</div>
+												<div
+													className="fm-eyebrow"
+													style={{ marginTop: "9px", color: "#79736a" }}
+												>
+													This week
+												</div>
+											</div>
+										</div>
+										{/* The app's one progress rail: 2px, hairline ground, accent fill. */}
+										<div
+											style={{
+												padding: "11px 16px",
+												borderBottom: "1px solid rgba(27,26,23,.11)",
+											}}
+										>
+											<div
+												style={{
 													display: "flex",
-													flexDirection: "column",
-													alignItems: "center",
-													gap: "6px",
+													alignItems: "baseline",
+													justifyContent: "space-between",
+													gap: "8px",
+												}}
+											>
+												<div className="fm-eyebrow">
+													This week vs. your target
+												</div>
+												<div
+													className="fm-mono"
+													style={{ fontSize: "10px", color: "#79736a" }}
+												>
+													37.5 / 40.0h{" "}
+													<span style={{ color: "#1b1a17" }}>94%</span>
+												</div>
+											</div>
+											<div
+												style={{
+													position: "relative",
+													height: "2px",
+													marginTop: "10px",
+													background: "rgba(27,26,23,.055)",
+													overflow: "hidden",
 												}}
 											>
 												<span
 													style={{
-														width: "100%",
-														height: `${b.px}px`,
-														borderRadius: "3px",
-														background: b.active
-															? "#7b54d6"
-															: b.px > 2
-																? "#e6def7"
-																: "#efece8",
+														position: "absolute",
+														inset: "0 auto 0 0",
+														width: "94%",
+														background: "#6f4ebe",
 													}}
 												/>
-												<span
+											</div>
+										</div>
+										<div
+											style={{
+												padding: "11px 16px",
+												borderBottom: "1px solid rgba(27,26,23,.11)",
+											}}
+										>
+											<div className="fm-eyebrow">This week by day</div>
+											<div
+												style={{
+													marginTop: "11px",
+													display: "flex",
+													gap: "6px",
+												}}
+											>
+												{previewWeek.map((b) => (
+													<div
+														key={b.d}
+														style={{
+															flex: "1 1 0",
+															minWidth: 0,
+															display: "flex",
+															flexDirection: "column",
+															alignItems: "center",
+															gap: "7px",
+														}}
+													>
+														<div
+															style={{
+																display: "flex",
+																width: "100%",
+																height: "34px",
+																alignItems: "flex-end",
+																justifyContent: "center",
+															}}
+														>
+															<span
+																style={{
+																	width: "100%",
+																	maxWidth: "17px",
+																	height: `${b.px}px`,
+																	borderRadius: "2px",
+																	background: b.today
+																		? "#6f4ebe"
+																		: b.px > 2
+																			? "rgba(111,78,190,.4)"
+																			: "rgba(27,26,23,.11)",
+																}}
+															/>
+														</div>
+														<span
+															className="fm-eyebrow"
+															style={{
+																color: b.today ? "#1b1a17" : undefined,
+															}}
+														>
+															{b.d}
+														</span>
+													</div>
+												))}
+											</div>
+										</div>
+										<div>
+											<div
+												className="fm-eyebrow"
+												style={{
+													display: "flex",
+													alignItems: "center",
+													gap: "5px",
+													padding: "12px 16px 3px",
+												}}
+											>
+												<SparkleIcon weight="regular" size={11} />
+												Auto-tracked today
+											</div>
+											{autoTracked.map(({ Icon, title, sub, hours }) => (
+												<div
+													key={title}
 													style={{
-														fontSize: "9.5px",
-														fontWeight: b.active ? 600 : 500,
-														color: b.active ? "#26232b" : "#a8a3ad",
+														display: "flex",
+														alignItems: "center",
+														gap: "9px",
+														padding: "7px 16px",
 													}}
 												>
-													{b.d}
+													<Icon size={13} color="#79736a" />
+													<div style={{ flex: 1, minWidth: 0 }}>
+														<div style={{ fontSize: "11.5px" }}>{title}</div>
+														<div
+															style={{
+																marginTop: "1px",
+																fontSize: "10px",
+																color: "#a9a296",
+															}}
+														>
+															{sub}
+														</div>
+													</div>
+													<span
+														className="fm-mono"
+														style={{ fontSize: "11px" }}
+													>
+														{hours}
+													</span>
+												</div>
+											))}
+										</div>
+									</div>
+									<div style={{ flex: 1, minWidth: 0, padding: "13px 0 4px" }}>
+										<div
+											className="fm-eyebrow"
+											style={{ padding: "0 16px 5px" }}
+										>
+											Today's entries
+										</div>
+										{recentEntries.map((e, i) => (
+											<div
+												key={e.title}
+												style={{
+													display: "flex",
+													alignItems: "flex-start",
+													gap: "9px",
+													padding: "9px 16px",
+													borderTop:
+														i === 0
+															? undefined
+															: "1px solid rgba(27,26,23,.055)",
+												}}
+											>
+												<span
+													style={{
+														marginTop: "4px",
+														width: "7px",
+														height: "7px",
+														borderRadius: "50%",
+														background: e.dot,
+														flex: "none",
+													}}
+												/>
+												<div style={{ flex: 1, minWidth: 0 }}>
+													<div
+														style={{
+															display: "flex",
+															alignItems: "center",
+															gap: "6px",
+														}}
+													>
+														<span
+															style={{ fontSize: "11.5px", fontWeight: 500 }}
+														>
+															{e.title}
+														</span>
+														{e.badge && (
+															<span
+																className="fm-eyebrow"
+																style={{
+																	display: "inline-flex",
+																	alignItems: "center",
+																	gap: "3px",
+																	padding: "2px 6px",
+																	borderRadius: "999px",
+																	background: "rgba(27,26,23,.045)",
+																	color: "#79736a",
+																}}
+															>
+																<e.badge.Icon weight="regular" size={10} />
+																{e.badge.text}
+															</span>
+														)}
+													</div>
+													<div
+														style={{
+															marginTop: "2px",
+															fontSize: "10.5px",
+															color: "#79736a",
+														}}
+													>
+														{e.sub}
+													</div>
+												</div>
+												<span
+													className="fm-mono"
+													style={{ fontSize: "11.5px", flex: "none" }}
+												>
+													{e.hours}
 												</span>
 											</div>
 										))}
 									</div>
 								</div>
-								{/* auto-tracked today */}
-								<div style={{ borderBottom: "1px solid #e7e3e8" }}>
-									<div
+								{/* The page's closing action: the serif accent link. */}
+								<div style={{ padding: "12px 20px" }}>
+									<span
+										className="fm-serif"
 										style={{
-											display: "flex",
+											display: "inline-flex",
 											alignItems: "center",
 											gap: "6px",
-											padding: "12px 22px 7px",
-											font: "600 9.5px 'Geist',sans-serif",
-											letterSpacing: ".09em",
-											textTransform: "uppercase",
-											color: "#a8a3ad",
+											fontSize: "16px",
+											color: "#6f4ebe",
 										}}
 									>
-										<Sparkles size={12} strokeWidth={1.6} /> Auto-tracked today
-									</div>
-									<div
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: "11px",
-											padding: "8px 22px",
-										}}
-									>
-										<span
-											style={{
-												width: "26px",
-												height: "26px",
-												borderRadius: "7px",
-												background: "#e2f2f2",
-												color: "#1c6b6a",
-												display: "flex",
-												alignItems: "center",
-												justifyContent: "center",
-												flex: "none",
-											}}
-										>
-											<Calendar size={13} strokeWidth={1.6} />
-										</span>
-										<div style={{ flex: 1, minWidth: 0 }}>
-											<div style={{ fontSize: "12px", fontWeight: 600 }}>
-												2 meetings synced
-											</div>
-											<div style={{ fontSize: "10.5px", color: "#a8a3ad" }}>
-												Google Calendar
-											</div>
-										</div>
-										<span className="fm-serif" style={{ fontSize: "16px" }}>
-											3.0h
-										</span>
-									</div>
-									<div
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: "11px",
-											padding: "8px 22px",
-											borderTop: "1px solid #f2eee8",
-										}}
-									>
-										<span
-											style={{
-												width: "26px",
-												height: "26px",
-												borderRadius: "7px",
-												background: "#f6ecda",
-												color: "#9a6a1c",
-												display: "flex",
-												alignItems: "center",
-												justifyContent: "center",
-												flex: "none",
-											}}
-										>
-											<GitBranch size={13} strokeWidth={1.6} />
-										</span>
-										<div style={{ flex: 1, minWidth: 0 }}>
-											<div style={{ fontSize: "12px", fontWeight: 600 }}>
-												12 commits
-											</div>
-											<div style={{ fontSize: "10.5px", color: "#a8a3ad" }}>
-												across 3 blocks
-											</div>
-										</div>
-										<span className="fm-serif" style={{ fontSize: "16px" }}>
-											2.5h
-										</span>
-									</div>
-								</div>
-								{/* today's entries */}
-								<div style={{ flex: 1 }}>
-									<div
-										style={{
-											padding: "12px 22px 7px",
-											font: "600 9.5px 'Geist',sans-serif",
-											letterSpacing: ".09em",
-											textTransform: "uppercase",
-											color: "#a8a3ad",
-										}}
-									>
-										Today's entries
-									</div>
-									{recentEntries.map((e, i) => (
-										<div
-											key={e.title}
-											style={{
-												display: "flex",
-												alignItems: "center",
-												gap: "11px",
-												padding: "9px 22px",
-												borderTop: i === 0 ? undefined : "1px solid #f2eee8",
-											}}
-										>
-											<span
-												style={{
-													width: "8px",
-													height: "8px",
-													borderRadius: "50%",
-													background: e.dot,
-													flex: "none",
-												}}
-											/>
-											<div style={{ flex: 1, minWidth: 0 }}>
-												<div style={{ fontSize: "12px", fontWeight: 600 }}>
-													{e.title}
-												</div>
-												<div style={{ fontSize: "10.5px", color: "#a8a3ad" }}>
-													{e.sub}
-												</div>
-											</div>
-											<span
-												style={{
-													display: "inline-flex",
-													alignItems: "center",
-													gap: "4px",
-													fontSize: "10px",
-													fontWeight: 600,
-													color: e.badge.color,
-													background: e.badge.bg,
-													borderRadius: "5px",
-													padding: "3px 6px",
-												}}
-											>
-												<e.badge.Icon size={11} strokeWidth={1.6} />{" "}
-												{e.badge.text}
-											</span>
-											<span
-												className="fm-serif"
-												style={{ fontSize: "17px", flex: "none" }}
-											>
-												{e.hours}
-											</span>
-										</div>
-									))}
+										View full calendar
+										<ArrowRightIcon weight="regular" size={13} />
+									</span>
 								</div>
 							</main>
 						</div>
 					</div>
 				</section>
-
-				{/* ============ INTEGRATIONS + FEATURES BENTO ============ */}
-				<section
-					id="features"
-					className="fm-features-section"
-					style={{
-						maxWidth: "1140px",
-						margin: "0 auto",
-						padding: "104px 40px 0",
-					}}
-				>
-					<div
-						id="integrations"
-						style={{ maxWidth: "560px", scrollMarginTop: "90px" }}
-					>
-						<h2
-							className="fm-serif fm-section-title"
-							style={{
-								margin: 0,
-								fontSize: "46px",
-								lineHeight: 1.02,
-								letterSpacing: "-.01em",
-								textWrap: "balance",
-							}}
-						>
-							The hours track{" "}
-							<span style={{ fontStyle: "italic", color: "#6a45c8" }}>
-								themselves.
-							</span>
-						</h2>
-						<p
-							style={{
-								margin: "16px 0 0",
-								fontSize: "16px",
-								lineHeight: 1.6,
-								color: "rgba(38,35,43,.62)",
-							}}
-						>
-							Connect your calendar and repos once. Farmer drafts the blocks;
-							you just confirm.
-						</p>
-					</div>
-
-					<div
-						className="fm-bento"
-						style={{
-							display: "grid",
-							gridTemplateColumns: "repeat(3,1fr)",
-							gridAutoRows: "198px",
-							gap: "16px",
-							marginTop: "40px",
-						}}
-					>
-						{/* Integrations feature (big) */}
-						<Tile
-							className="fm-tile-lg"
-							style={{
-								gridColumn: "span 2",
-								gridRow: "span 2",
-								background: "#241c33",
-								color: "#f7f5f1",
-								borderRadius: "18px",
-								padding: "34px",
-								display: "flex",
-								flexDirection: "column",
-								position: "relative",
-								overflow: "hidden",
-							}}
-						>
-							<div
-								style={{
-									position: "absolute",
-									top: "-50px",
-									right: "-40px",
-									width: "280px",
-									height: "280px",
-									borderRadius: "50%",
-									background:
-										"radial-gradient(circle,rgba(169,224,176,.13),transparent 70%)",
-								}}
-							/>
-							<div style={{ position: "relative" }}>
-								<div
-									style={{
-										font: "600 10.5px 'Geist Mono',monospace",
-										letterSpacing: ".16em",
-										textTransform: "uppercase",
-										color: "#a9e0b0",
-									}}
-								>
-									Automatic tracking
-								</div>
-								<h3
-									className="fm-serif"
-									style={{
-										margin: "12px 0 0",
-										fontSize: "34px",
-										lineHeight: 1.02,
-									}}
-								>
-									Meetings and commits,
-									<br />
-									logged for you.
-								</h3>
-							</div>
-							<div
-								style={{
-									position: "relative",
-									marginTop: "auto",
-									display: "flex",
-									flexDirection: "column",
-									gap: "10px",
-								}}
-							>
-								<motion.div
-									variants={slideIn(0.25)}
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: "12px",
-										background: "rgba(247,245,241,.06)",
-										border: "1px solid rgba(247,245,241,.12)",
-										borderRadius: "11px",
-										padding: "11px 14px",
-									}}
-								>
-									<span
-										style={{
-											width: "30px",
-											height: "30px",
-											borderRadius: "8px",
-											background: "#e2f2f2",
-											color: "#1c6b6a",
-											display: "flex",
-											alignItems: "center",
-											justifyContent: "center",
-											flex: "none",
-										}}
-									>
-										<Calendar size={16} strokeWidth={1.6} />
-									</span>
-									<div style={{ flex: 1, minWidth: 0 }}>
-										<div style={{ fontSize: "12.5px", fontWeight: 600 }}>
-											Design review · Google Calendar
-										</div>
-										<div
-											style={{
-												fontSize: "11px",
-												color: "rgba(247,245,241,.5)",
-											}}
-										>
-											10:00 – 11:00 · Acme Rebrand
-										</div>
-									</div>
-									<motion.span
-										variants={nudge(0.65)}
-										style={{ display: "flex", flex: "none" }}
-									>
-										<ArrowRight
-											size={15}
-											strokeWidth={1.6}
-											color="rgba(247,245,241,.4)"
-										/>
-									</motion.span>
-									<motion.span
-										variants={stamp(0.9)}
-										style={{
-											background: "#efeafb",
-											color: "#5b3aad",
-											borderRadius: "7px",
-											padding: "5px 9px",
-											fontSize: "11px",
-											fontWeight: 600,
-											flex: "none",
-										}}
-									>
-										1.0h logged
-									</motion.span>
-								</motion.div>
-								<motion.div
-									variants={slideIn(0.45)}
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: "12px",
-										background: "rgba(247,245,241,.06)",
-										border: "1px solid rgba(247,245,241,.12)",
-										borderRadius: "11px",
-										padding: "11px 14px",
-									}}
-								>
-									<span
-										style={{
-											width: "30px",
-											height: "30px",
-											borderRadius: "8px",
-											background: "#f6ecda",
-											color: "#9a6a1c",
-											display: "flex",
-											alignItems: "center",
-											justifyContent: "center",
-											flex: "none",
-										}}
-									>
-										<GitBranch size={16} strokeWidth={1.6} />
-									</span>
-									<div style={{ flex: 1, minWidth: 0 }}>
-										<div style={{ fontSize: "12.5px", fontWeight: 600 }}>
-											12 commits · GitHub
-										</div>
-										<div
-											style={{
-												fontSize: "11px",
-												color: "rgba(247,245,241,.5)",
-											}}
-										>
-											harbor-app · auth refactor
-										</div>
-									</div>
-									<motion.span
-										variants={nudge(0.85)}
-										style={{ display: "flex", flex: "none" }}
-									>
-										<ArrowRight
-											size={15}
-											strokeWidth={1.6}
-											color="rgba(247,245,241,.4)"
-										/>
-									</motion.span>
-									<motion.span
-										variants={stamp(1.1)}
-										style={{
-											background: "#f6ecda",
-											color: "#9a6a1c",
-											borderRadius: "7px",
-											padding: "5px 9px",
-											fontSize: "11px",
-											fontWeight: 600,
-											flex: "none",
-										}}
-									>
-										2.5h logged
-									</motion.span>
-								</motion.div>
-							</div>
-						</Tile>
-
-						{/* Reports tile */}
-						<Tile
-							delay={0.1}
-							style={{
-								background: "#fff",
-								border: "1px solid #e7e3e8",
-								borderRadius: "18px",
-								padding: "22px",
-								display: "flex",
-								flexDirection: "column",
-								gap: "13px",
-							}}
-						>
-							<div
-								style={{
-									display: "flex",
-									alignItems: "center",
-									justifyContent: "space-between",
-								}}
-							>
-								<span style={{ fontSize: "12.5px", fontWeight: 600 }}>
-									Reports by project
-								</span>
-								<BarChart3 size={15} strokeWidth={1.6} color="#a8a3ad" />
-							</div>
-							<div
-								style={{
-									display: "flex",
-									flexDirection: "column",
-									gap: "10px",
-								}}
-							>
-								<ProjectBars />
-							</div>
-						</Tile>
-
-						{/* Stat tile */}
-						<Tile
-							delay={0.18}
-							style={{
-								background: "#fff",
-								border: "1px solid #e7e3e8",
-								borderRadius: "18px",
-								padding: "22px",
-								display: "flex",
-								flexDirection: "column",
-								justifyContent: "space-between",
-							}}
-						>
-							<div
-								style={{
-									fontSize: "12.5px",
-									fontWeight: 600,
-									color: "#79747f",
-								}}
-							>
-								Logged this week
-							</div>
-							<div>
-								<CountUp
-									to={37.5}
-									delay={0.35}
-									className="fm-serif"
-									style={{
-										fontSize: "72px",
-										lineHeight: 0.75,
-										letterSpacing: "-.01em",
-									}}
-								/>
-								<span
-									className="fm-serif"
-									style={{ fontSize: "28px", color: "#a8a3ad" }}
-								>
-									h
-								</span>
-							</div>
-							<div style={{ display: "flex", gap: "4px" }}>
-								<motion.span
-									variants={fillIn(0.45)}
-									style={{
-										flex: 1,
-										height: "6px",
-										borderRadius: "3px",
-										background: "#7b54d6",
-										originX: 0,
-									}}
-								/>
-								<motion.span
-									variants={fillIn(0.6)}
-									style={{
-										flex: 1,
-										height: "6px",
-										borderRadius: "3px",
-										background: "#d98a2b",
-										originX: 0,
-									}}
-								/>
-								<motion.span
-									variants={fillIn(0.75)}
-									style={{
-										flex: 0.5,
-										height: "6px",
-										borderRadius: "3px",
-										background: "#2fa1a0",
-										originX: 0,
-									}}
-								/>
-							</div>
-						</Tile>
-
-						{/* Calendar-first tile (wide) */}
-						<Tile
-							className="fm-tile-wide"
-							style={{
-								gridColumn: "span 2",
-								background: "#fff",
-								border: "1px solid #e7e3e8",
-								borderRadius: "18px",
-								overflow: "hidden",
-								display: "flex",
-								flexDirection: "column",
-							}}
-						>
-							<div
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "9px",
-									padding: "14px 18px",
-									borderBottom: "1px solid #efece8",
-								}}
-							>
-								<Clock size={15} strokeWidth={1.6} color="#6a45c8" />
-								<span style={{ fontSize: "13px", fontWeight: 600 }}>
-									See what's done, whenever
-								</span>
-								<span
-									style={{
-										marginLeft: "auto",
-										fontSize: "11px",
-										color: "#a8a3ad",
-									}}
-								>
-									Jul 7 – 11
-								</span>
-							</div>
-							<div
-								className="fm-tile-wide-body"
-								style={{
-									flex: 1,
-									display: "grid",
-									gridTemplateColumns: "repeat(5,1fr)",
-								}}
-							>
-								{weekDays.map((d, di) => (
-									<div
-										key={d.label}
-										style={{
-											borderRight: d.last ? undefined : "1px solid #efece8",
-											padding: "7px 6px",
-											background: d.active ? "#efeafb" : undefined,
-										}}
-									>
-										<motion.div
-											variants={fadeIn(0.15 + di * 0.08)}
-											style={{
-												fontSize: "9px",
-												fontWeight: 600,
-												color: d.active ? "#6a45c8" : "#a8a3ad",
-												textTransform: "uppercase",
-											}}
-										>
-											{d.label}
-										</motion.div>
-										{d.blocks.map((b, i) => (
-											<motion.div
-												// biome-ignore lint/suspicious/noArrayIndexKey: static decorative blocks
-												key={i}
-												variants={drop(
-													0.25 + di * 0.09 + i * 0.07,
-													b.shadow ? 0.4 : 0,
-												)}
-												style={{
-													marginTop: i === 0 ? "5px" : "4px",
-													height: `${b.h}px`,
-													background: b.bg,
-													borderLeft: `2px solid ${b.bl}`,
-													borderRadius: "4px",
-													boxShadow: b.shadow
-														? "0 1px 5px -2px rgba(34,28,51,.4)"
-														: undefined,
-													originY: 0,
-												}}
-											/>
-										))}
-									</div>
-								))}
-							</div>
-						</Tile>
-
-						{/* Self-host tile */}
-						<Tile
-							delay={0.12}
-							href={DOCS_URL}
-							className="self-host-card"
-							style={{
-								background: "#efeafb",
-								border: "1px solid #e3d9f7",
-								borderRadius: "18px",
-								padding: "22px",
-								display: "flex",
-								flexDirection: "column",
-								justifyContent: "space-between",
-							}}
-						>
-							<motion.span
-								variants={stamp(0.3)}
-								style={{ display: "inline-flex", alignSelf: "flex-start" }}
-							>
-								<Server size={20} strokeWidth={1.6} color="#6a45c8" />
-							</motion.span>
-							<h3
-								className="fm-serif"
-								style={{
-									margin: 0,
-									fontSize: "27px",
-									lineHeight: 1.02,
-									color: "#5b3aad",
-								}}
-							>
-								Self-hostable.
-								<br />
-								No lock-in.
-							</h3>
-							<span
-								className="u-link"
-								style={{
-									display: "inline-flex",
-									alignSelf: "flex-start",
-									alignItems: "center",
-									gap: "5px",
-									color: "#5b3aad",
-									fontWeight: 600,
-									fontSize: "12.5px",
-								}}
-							>
-								Read the docs
-								<ArrowRight size={14} strokeWidth={1.6} />
-							</span>
-						</Tile>
-					</div>
-				</section>
-
 				{/* ============ OPEN SOURCE + CTA ============ */}
 				<section
 					id="opensource"
@@ -1679,15 +973,15 @@ function Home() {
 									alignItems: "center",
 									gap: "8px",
 									padding: "6px 13px",
-									background: "#efeafb",
-									border: "1px solid #e3d9f7",
+									background: "rgba(111,78,190,.08)",
+									border: "1px solid rgba(111,78,190,.16)",
 									borderRadius: "999px",
-									font: "600 12px 'Geist',sans-serif",
-									color: "#5b3aad",
+									font: "500 12px 'Instrument Sans',sans-serif",
+									color: "#6f4ebe",
 									marginBottom: "22px",
 								}}
 							>
-								<GitBranch size={14} strokeWidth={1.6} />
+								<GitBranchIcon size={14} />
 								Free · MIT licensed
 							</div>
 							<h2
@@ -1702,21 +996,20 @@ function Home() {
 								}}
 							>
 								Built in the open.{" "}
-								<span style={{ fontStyle: "italic", color: "#6a45c8" }}>
+								<span style={{ fontStyle: "italic", color: "#6f4ebe" }}>
 									Yours to run.
 								</span>
 							</h2>
 						</div>
 						<div
 							className="fm-os-actions"
-							style={{ display: "flex", gap: "12px" }}
+							style={{ display: "flex", gap: "10px" }}
 						>
-							<a className="pill pill-dark" href={GITHUB_URL}>
-								<GitBranch size={15} strokeWidth={1.6} /> View on GitHub
+							<DashButton orgSlug={orgSlug} />
+							<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
+								<GitBranchIcon size={15} data-icon="inline-start" />
+								View on GitHub
 							</a>
-							<DashLink orgSlug={orgSlug} className="pill">
-								Open dashboard <ArrowRight size={15} strokeWidth={1.6} />
-							</DashLink>
 						</div>
 					</div>
 				</section>
@@ -1778,7 +1071,7 @@ function Home() {
 							<a
 								className="u-link"
 								href={PROFICO_URL}
-								style={{ fontWeight: 600, color: "#26232b" }}
+								style={{ fontWeight: 600, color: "#1b1a17" }}
 							>
 								Profico ↗
 							</a>

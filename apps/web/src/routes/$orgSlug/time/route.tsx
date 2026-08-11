@@ -3,9 +3,8 @@ import {
 	Link,
 	Outlet,
 	useLocation,
-	useRouterState,
 } from "@tanstack/react-router";
-import { FadeSwap } from "#/components/ui/fade-swap.tsx";
+import { PageFull } from "#/components/ui/page-header.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -24,20 +23,17 @@ const TABS = [
 function TimeLayout() {
 	const { organization } = Route.useRouteContext();
 	// The active pill tracks the *pending* location so it moves the instant a tab
-	// is clicked (responsive), while the FadeSwap keys on the *resolved* location
-	// so the crossfade only fires once the new view's loader has committed —
-	// otherwise the transition plays out against the still-old Outlet and the new
-	// content blinks in unanimated after it lands.
+	// is clicked, before the new view's loader has committed.
 	const pathname = useLocation({ select: (location) => location.pathname });
-	const resolvedPathname = useRouterState({
-		select: (state) =>
-			state.resolvedLocation?.pathname ?? state.location.pathname,
-	});
 
 	return (
-		<div className="flex h-[calc(100svh-var(--mobile-nav-h))] flex-col p-4 sm:p-8">
-			<div className="flex shrink-0 items-center gap-3.5">
-				<h1 className="font-display text-xl">Time</h1>
+		// One island, one width. Day, Week and Month all fill it — previously this
+		// layout took the wide cap while DayView re-capped itself to the narrow
+		// one, so stepping between the three tabs changed the page's width and
+		// left Day's rules stopping short of where Week's and Month's did.
+		<PageFull className="min-h-0 flex-1">
+			<div className="flex shrink-0 flex-wrap items-baseline justify-between gap-3">
+				<h1 className="h1">Timesheet</h1>
 				<SegmentedControl>
 					{TABS.map((tab) => {
 						const resolved = tab.to.replace("$orgSlug", organization.slug);
@@ -50,7 +46,6 @@ function TimeLayout() {
 									<Link
 										to={tab.to}
 										params={{ orgSlug: organization.slug }}
-										viewTransition={false}
 										aria-current={active ? "page" : undefined}
 									/>
 								}
@@ -61,12 +56,9 @@ function TimeLayout() {
 					})}
 				</SegmentedControl>
 			</div>
-			<FadeSwap
-				activeKey={resolvedPathname}
-				className="mt-5 flex min-h-0 flex-1 flex-col"
-			>
+			<div className="mt-6 flex min-h-0 flex-1 flex-col">
 				<Outlet />
-			</FadeSwap>
-		</div>
+			</div>
+		</PageFull>
 	);
 }

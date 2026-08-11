@@ -1,81 +1,250 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap');
+/* Design tokens and shared primitives.
+ *
+ * Ported from the Garmin Companion design (see `garmin-mcp/app/src/styles.css`,
+ * where each decision is argued at length). The palette, the type scale, the
+ * two hairline weights, the single elevation and the three motion speeds are
+ * that design's; this file adds the bridge onto Tailwind v4 + shadcn so the
+ * component layer can keep using `bg-muted` / `text-muted-foreground` and land
+ * on the right colour without every call site being rewritten.
+ *
+ * Two layers, in this order:
+ *   1. `--bg`/`--fg`/`--acc`/… — the design's own names. Anything hand-written
+ *      in this file, or inline in a component, reads these.
+ *   2. `--background`/`--foreground`/… — shadcn's names, defined *in terms of*
+ *      the first layer. Nothing sets these to a literal colour.
+ * Adding a palette therefore means writing layer 1 again and nothing else. */
+
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500&display=swap');
 @import 'tailwindcss';
 
 @import 'tw-animate-css';
 
-@custom-variant dark (&:is(.dark *));
+/* Dark is an attribute on <html>, not a class, so the palette and the appearance
+   are set by the same handle (`data-theme`) the design uses. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ------------------------------------------------------------- palette --- */
+
+/* Paper: warm ground, violet accent — `--acc` is the logo's own #6f4ebe, so the
+   mark, the browser chrome (`theme-color`) and every accented control are one
+   colour. The ground stays warm on purpose; the violet is the only cool thing
+   in the palette, which is what makes it read as the accent.
+   The app's default and, for now, its only
+   selectable appearance — `color-scheme` below is pinned to light because the
+   calendar's category tints are light washes computed in JS (lib/category-colors.ts),
+   and a browser left to auto-darken them crushes their contrast entirely.
+   The ink block underneath is the same design's dark palette, kept complete and
+   in sync so switching is a matter of setting `data-theme="dark"` on <html>. */
+:root {
+  color-scheme: light;
+
+  /* `--bg` is the *island* surface — the paper every panel, table and the
+     sidebar are cut from. Nothing in the app paints directly onto `--ground`;
+     it only ever shows through as the gap between islands. */
+  --bg: #faf9f6;
+  /* The ground the islands float on. One step recessed from the paper, which is
+     the whole of the depth model: islands are lit, the gap between them is not.
+     This is what `body` is painted with. */
+  --ground: #efece5;
+  /* A band *inside* an island — a table's header row, the calendar's weekday
+     strip. Recessed from the island's own paper, not from the ground. */
+  --bg2: #f4f2ed;
+  --fg: #1b1a17;
+  --mut: #79736a;
+  --faint: #a9a296;
+
+  /* Two hairlines, and only two. `--line` divides sections and outlines
+     controls; `--line2` separates repeated rows inside one list. Anything that
+     draws a border picks one of these by that rule, so the same job never shows
+     up at two weights. */
+  --line: rgba(27, 26, 23, 0.11);
+  --line2: rgba(27, 26, 23, 0.055);
+
+  --acc: #6f4ebe;
+  --warn: #8a6a1f;
+  --ok: #4a7050;
+  --sel: rgba(27, 26, 23, 0.045);
+
+  /* The one elevation in the app: what something looks like while it is off the
+     page — a menu, a dialog, a row you are dragging. Nothing is raised because
+     it is important. */
+  --lift: 0 8px 22px rgba(27, 26, 23, 0.14);
+  /* What a menu or dialog sits on. Two shadows: a contact shadow to seat it and
+     a long soft one to lift it. */
+  --shadow-pop:
+    0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px -10px rgba(0, 0, 0, 0.22);
+
+  /* The display face, as a variable so it is swappable in one place. Every
+     serif rule below reads this rather than naming the family. */
+  --serif: 'Instrument Serif', ui-serif, Georgia, serif;
+
+  /* Motion. Three speeds, because the app only ever does three things: tint a
+     surface under the pointer, move a control between two states, and narrate
+     something slow. Entrances and exits take `--ease-out`; anything travelling
+     across the screen takes `--ease-in-out`. Plain hover colour changes keep the
+     browser default — they have no direction to express. */
+  --dur-fast: 120ms;
+  --dur-base: 150ms;
+  --dur-slow: 180ms;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* The type scale. Six steps; the floor is 12px and only uppercase tracked-out
+     captions go there — those read a size larger than their number. */
+  --fs-micro: 12px;
+  --fs-caption: 13px;
+  --fs-small: 14px;
+  --fs-base: 15px;
+  --fs-md: 16px;
+  --fs-lg: 17.5px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* The island paper. Lifted slightly from the old flat value so it still reads
+     as lit against the darker ground below it. */
+  --bg: #1a1914;
+  /* The ground. Recessed hard here on purpose: in the island model the gap is
+     meant to fall away, and at this end of the ramp a subtle step just reads as
+     a rendering artefact rather than as depth. */
+  --ground: #0e0d0a;
+  /* A band inside an island — raised from the island's paper rather than
+     recessed, since a step down from `--bg` lands on the ground's value and the
+     band would read as a hole punched through the panel. */
+  --bg2: #232219;
+  --fg: #ede8de;
+  --mut: #8f887c;
+  --faint: #6b6459;
+  --line: rgba(237, 232, 222, 0.13);
+  --line2: rgba(237, 232, 222, 0.06);
+  --acc: #9178de;
+  --warn: #c0a15a;
+  --ok: #7fa887;
+  --sel: rgba(237, 232, 222, 0.05);
+  /* The ground is dark enough that a tinted shadow disappears into it; only a
+     near-black one still reads as a gap. */
+  --lift: 0 8px 22px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+}
+
+/* ------------------------------------------------- shadcn token bridge --- */
 
 :root {
-  /* The app has no dark theme. Without this, browsers that prefer dark
-     (e.g. a dark GTK/OS theme) auto-darken the page's inline colors —
-     including the calendar category tints — which crushes their contrast
-     entirely. */
-  color-scheme: light;
-  --background: oklch(0.973 0.005 90);
-  --foreground: oklch(0.265 0.012 300);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.265 0.012 300);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.265 0.012 300);
+  /* Two surfaces, and only two: the ground, and the paper of the islands
+     standing on it. A card, a panel, a table and the sidebar are all the same
+     island paper — what separates them from each other is the ground showing
+     through the gap, not a border and not a third tint. `--background` is the
+     island surface because almost everything that reads a background token is
+     inside an island; `body` is painted `--ground` directly (see @layer base). */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card: var(--bg);
+  --card-foreground: var(--fg);
+  --popover: var(--bg);
+  --popover-foreground: var(--fg);
 
-  --primary: oklch(0.518 0.168 293);
-  --primary-foreground: oklch(0.99 0.003 90);
+  --primary: var(--acc);
+  --primary-foreground: var(--bg);
 
-  --secondary: oklch(0.955 0.018 300);
-  --secondary-foreground: oklch(0.518 0.168 293);
-  --accent: oklch(0.955 0.018 300);
-  --accent-foreground: oklch(0.518 0.168 293);
+  --secondary: var(--bg2);
+  --secondary-foreground: var(--fg);
 
-  --muted: oklch(0.955 0.006 90);
-  --muted-foreground: oklch(0.56 0.015 300);
+  /* `--muted` and `--accent` are both "the tint under the pointer" in shadcn's
+     vocabulary, and this design has exactly one of those. */
+  --muted: var(--sel);
+  --muted-foreground: var(--mut);
+  --accent: var(--sel);
+  --accent-foreground: var(--fg);
 
-  --destructive: oklch(0.62 0.13 12);
-  --destructive-foreground: oklch(0.99 0.003 90);
+  /* Destructive is the accent, deliberately. There is no red in this
+     palette at all, and the design's position is that an irreversible action
+     should sit at the same weight as its neighbours until you reach for it —
+     the words carry the warning, the colour only confirms it. */
+  --destructive: var(--acc);
+  --destructive-foreground: var(--bg);
 
-  --border: oklch(0.91 0.005 320);
-  --input: oklch(0.91 0.005 320);
-  --ring: oklch(0.518 0.168 293 / 0.45);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--acc);
 
-  --chart-1: oklch(0.56 0.17 295);
-  --chart-2: oklch(0.64 0.09 190);
-  --chart-3: oklch(0.7 0.13 70);
-  --chart-4: oklch(0.64 0.12 12);
-  --chart-5: oklch(0.64 0.1 150);
+  /* Charts: the accent leads, the rest are the earths that sit beside it.
+     `--chart-4` used to be a mauve; it moved to clay when the accent went
+     violet, because a desaturated purple next to `--chart-1` stopped being a
+     separate series and started looking like a faded one. */
+  --chart-1: var(--acc);
+  --chart-2: #6b7f6a;
+  --chart-3: var(--warn);
+  --chart-4: #86655a;
+  --chart-5: #55707d;
 
-  --radius: 0.5rem;
+  --radius: 5px;
 
-  --sidebar: oklch(0.973 0.005 90);
-  --sidebar-foreground: oklch(0.265 0.012 300);
-  --sidebar-primary: oklch(0.518 0.168 293);
-  --sidebar-primary-foreground: oklch(0.99 0.003 90);
-  --sidebar-accent: oklch(1 0 0);
-  --sidebar-accent-foreground: oklch(0.265 0.012 300);
-  --sidebar-border: oklch(0.91 0.005 320);
-  --sidebar-ring: oklch(0.518 0.168 293 / 0.45);
+  /* The wash under a duotone icon's glyph. Phosphor paints that layer with the
+     icon's own colour, which makes every icon in the app a two-tone grey; the
+     accent is the one place the theme is allowed to speak, so it speaks here.
+     Overridable per subtree — see the duotone rule in @layer base. */
+  --icon-duotone: var(--acc);
+  --icon-duotone-opacity: 0.28;
 
-  /* Height of the fixed mobile tab bar (mobile-tab-bar.tsx), including the
-     iOS home-indicator safe area. Zero on desktop, where the tab bar doesn't
-     render — components reference this instead of hard-coding the height so
-     there's one place to keep them in sync. */
+  /* The sidebar is an island like any other, so it is cut from the same paper
+     as the content panel beside it — the two are told apart by the ground in
+     the gap between them, not by tinting one of them. */
+  --sidebar: var(--bg);
+  --sidebar-foreground: var(--mut);
+  --sidebar-primary: var(--acc);
+  --sidebar-primary-foreground: var(--bg);
+  /* The lit nav entry can no longer be "the page's paper on a recessed ground"
+     — the sidebar *is* that paper now. It takes the same pointer tint every
+     other selected row in the app uses instead. */
+  --sidebar-accent: var(--sel);
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--acc);
+
+  /* Height of the fixed mobile tab bar (mobile-tab-bar.tsx), including the iOS
+     home-indicator safe area. Zero on desktop, where the tab bar doesn't
+     render — components reference this instead of hard-coding the height. */
   --mobile-nav-h: 0px;
 
-  /* Shared page-transition scale for the View Transitions API (the
-     data-transition rules below). Kept as tokens so the fade/slide/zoom
-     variants document one duration + easing instead of repeating magic
-     numbers. The cubic-bezier is a snappy decelerating curve (fast out,
-     gentle settle) that echoes the motion springs' character — the JS springs
-     in lib/motion.ts drive the primitives; these drive VT page changes, which
-     motion can't. */
-  --motion-duration-fast: 0.12s;
-  --motion-ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  /* The app is one centered frame holding two islands: the sidebar and the
+     content panel. Nothing in this app reads well at 3000px — a label ends up an
+     inch of screen away from the control it belongs to — so the frame is capped
+     and centered, and the ground takes the leftover width on both sides.
 
-  /* The user's animation-speed preference (settings → Preferences) scales the
-     page transitions: PreferencesSync sets --motion-scale from lib/animation.ts,
-     and the data-transition rules below animate over --vt-duration. Falls back
-     to 1 during SSR / before the effect runs. A scale of 0 ("Instant") makes
-     every page change immediate. */
-  --motion-scale: 1;
-  --vt-duration: calc(var(--motion-duration-fast) * var(--motion-scale));
+     One cap, not two. The previous layout had a normal cap and a wide cap and
+     let individual screens pick, which is exactly why Day, Week and Month ended
+     up three different widths on the same tab strip.
+
+     --frame-max   the whole frame: sidebar + gap + content.
+     --frame-pad   ground visible around the outside of the frame.
+     --frame-gap   ground visible between islands, and between stacked panels.
+     --island-radius  every island's corner, so they're cut the same way. */
+  --frame-max: 108rem;
+  --frame-pad: 0.5rem;
+  --frame-gap: 0.5rem;
+  --island-radius: 14px;
+
+  /* The height of the bar an island can close on, measured from its top rule to
+     the island's bottom edge: the sidebar's profile row, and the timesheet's
+     footer. Both islands end on the same y (the frame stretches them), so
+     pinning one height is what puts the two hairlines on the same line. It has
+     to be a fixed height rather than padding-plus-content, because the sidebar's
+     row is one line tall for an admin and two for everyone else. */
+  --footer-h: 3.5rem;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --frame-pad: 0.875rem;
+    --frame-gap: 0.875rem;
+  }
+}
+
+:root[data-theme='dark'] {
+  --chart-2: #8fa88c;
+  --chart-4: #ae8e83;
+  --chart-5: #7c9aa8;
 }
 
 @media (max-width: 767px) {
@@ -85,19 +254,22 @@
 }
 
 @theme inline {
-  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--serif);
   --font-mono: 'Geist Mono', ui-monospace, monospace;
 
-  /* Dense product-UI type scale (deliberately overrides several Tailwind
-     default sizes — this is a systemic density choice for the whole app). */
-  --text-2xs: 0.625rem;
-  --text-xs: 0.6875rem;
-  --text-sm: 0.78125rem;
-  --text-base: 0.8125rem;
-  --text-md: 0.875rem;
-  --text-lg: 1rem;
-  --text-xl: 1.5rem;
+  /* Tailwind's size ramp, pinned to the design's six steps. Deliberately
+     overrides several Tailwind defaults — a product UI this dense needs its
+     own scale, and having two of them is how you end up with half a pixel of
+     difference between two labels. `--text-xl` and up stay display sizes and
+     are written out at the point of use. */
+  --text-2xs: var(--fs-micro);
+  --text-xs: var(--fs-micro);
+  --text-sm: var(--fs-caption);
+  --text-base: var(--fs-small);
+  --text-md: var(--fs-base);
+  --text-lg: var(--fs-md);
+  --text-xl: 24px;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -123,11 +295,30 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: 0.4375rem;
-  --radius-md: calc(var(--radius) - 2px);
+
+  /* Direct handles on the design's own names, for the places where a semantic
+     shadcn token would be a lie — `text-faint` on a caption, `text-warn` on a
+     pending badge. */
+  --color-faint: var(--faint);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+
+  /* Radii, from the design: 3px on a list row, 5px on a control, 7px on a
+     floating card, 8px on the nav pill. Nothing in the app is rounder than
+     that except a genuine pill (`rounded-full`). */
+  --radius-sm: 3px;
+  --radius-md: 4px;
   --radius-lg: var(--radius);
-  --radius-xl: 0.9375rem;
-  --radius-2xl: 1rem;
+  --radius-xl: 7px;
+  --radius-2xl: 8px;
+
+  /* The app's one elevation, as a utility (`shadow-lift`). The menu/dialog pair
+     is `--shadow-pop`, read directly rather than through the theme — naming it
+     here would collide with the raw token it points at. */
+  --shadow-lift: var(--lift);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -147,6 +338,7 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
+  font-size: var(--fs-small);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -158,8 +350,34 @@ body {
    track by a transparent border (via background-clip) so it reads as floating. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 30%, transparent)
-    transparent;
+  scrollbar-color: color-mix(in oklab, var(--mut) 30%, transparent) transparent;
+}
+
+/* Keep the bar's width reserved at all times. The page scrolls on the document
+   — nothing between the app root and the viewport is a scroll container — so
+   the root is where it has to be reserved.
+
+   Styling `::-webkit-scrollbar` below opts Blink/WebKit out of overlay
+   scrollbars, which makes the bar take real layout width. Without this rule the
+   width appears and disappears with the content: a short page (holidays for a
+   sparse year) and a long one (a full month of entries) centre their containers
+   10px apart, so every navigation between them nudges the layout sideways.
+
+   `stable` rather than `stable both-edges`, so the strip sits only on the end
+   edge where the bar actually is. It also covers the modal case: Base UI's scroll
+   lock sets `overflow: hidden` inline on <html>, which on its own would drop the
+   reserved width and shove the page sideways under the dialog's own backdrop —
+   measured at 1280 with the lock and no gutter, against 1270 with it.
+
+   Overlay-scrollbar platforms (macOS default, touch) reserve nothing here, which
+   is correct: no scrollbar takes layout space there, so there is no shift.
+
+   If you ever need to check this, measure `document.body.getBoundingClientRect()
+   .width` on a page that doesn't overflow — NOT `innerWidth - clientWidth`, which
+   counts a real scrollbar but not a reserved gutter and so reads a working
+   `stable` as 0. */
+html {
+  scrollbar-gutter: stable;
 }
 
 ::-webkit-scrollbar {
@@ -172,44 +390,511 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+  background-color: color-mix(in oklab, var(--mut) 30%, transparent);
   background-clip: content-box;
   border: 2px solid transparent;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+  background-color: color-mix(in oklab, var(--mut) 55%, transparent);
 }
 
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-/* Display numerals — hours, durations, big stats. Apply via `font-display`. */
-.font-display {
-  font-family: var(--font-display);
-  font-weight: 400;
-  letter-spacing: 0.01em;
+/* Scroll with no visible bar. Referenced by the sidebar's centre region
+   (`ui/sidebar.tsx`), which scrolls against its own edge where a bar would crowd
+   the nav pills — but it was never defined anywhere, so the class was inert.
+
+   Unlayered, and deliberately not an `@utility`: `@utility` emits into Tailwind's
+   utilities layer, and the unlayered `*` rule above beats any layered rule
+   regardless of specificity, so the utility form computed `scrollbar-width: thin`
+   and stayed inert. This is the same precedence trap the components-layer note
+   below describes, arrived at from the other side. Unlayered, `.no-scrollbar`
+   (0,1,0) simply outranks `*` (0,0,0).
+
+   For the *opposite* need — a reserved gutter on an inner region — see
+   `scrollbar-stable` below. */
+.no-scrollbar {
+  scrollbar-width: none;
 }
 
-/* Tabular figures for any body-font numbers in tables. */
-.tnum {
-  font-variant-numeric: tabular-nums;
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
-/* Shared outer padding for $orgSlug/* page content. Its bottom padding
-   reserves space for the fixed mobile tab bar (mobile-tab-bar.tsx) so a
-   page's last row of content never ends up hidden underneath it. */
-.page-shell {
-  padding: 1rem;
-  padding-bottom: calc(1rem + var(--mobile-nav-h));
+/* `html`'s bargain, for a bounded scroll region: reserve the bar's width whether
+   or not it is showing. For a `max-h-*` list whose contents change while it is
+   on screen — linking a repo, attaching a commit, both of which move a row from
+   one list to the other — the bar otherwise appears on the row that overflows it
+   and reflows every row under the cursor.
+
+   `@utility` is safe here where it was not for `no-scrollbar`: the unlayered `*`
+   rule sets `scrollbar-width`/`-color` but never `scrollbar-gutter`, and the only
+   other rule touching it is the `html` element selector above, so nothing
+   unlayered competes for this property on an inner element. */
+@utility scrollbar-stable {
+  scrollbar-gutter: stable;
 }
 
-@media (min-width: 640px) {
-  .page-shell {
-    padding: 2rem;
-    padding-bottom: calc(2rem + var(--mobile-nav-h));
+::selection {
+  background: var(--sel);
+}
+
+/* Every primitive below lives in the components layer on purpose. Unlayered
+   CSS beats @layer utilities, so `.h1 { margin: 0 }` was silently winning over
+   a `mt-4` on the same element, and `.eyebrow`'s colour over a `text-warn`.
+   In the components layer the class is the default and a utility still wins. */
+@layer components {
+  /* ---------------------------------------------------------------- type --- */
+
+  /* Display numerals and editorial titles — hours, durations, page headings.
+     Apply via `font-display`, or via `.h1` / `.serif` below. */
+  .font-display,
+  .serif {
+    font-family: var(--serif);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+  }
+
+  /* Tabular figures for any body-font numbers in tables. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Small caps-ish section marker. Used everywhere a heading would otherwise be
+     too loud — which, in this design, is nearly everywhere. */
+  .eyebrow {
+    font: 400 var(--fs-micro) / 1 var(--font-sans);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  .eyebrow-lg {
+    font: 400 var(--fs-caption) / 1 var(--font-sans);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* A section's label and the one line of context that belongs beside it. The
+     pair reads as one line on a desktop and cannot on a phone, where the note
+     wraps to three lines against a one-line eyebrow — so it stacks and the note
+     becomes what it already was, a subtitle. Margins stay at the call site: every
+     one of these sits a different distance from what it introduces. */
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  @media (max-width: 767px) {
+    .section-head {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+  }
+
+  .h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 32px;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+    margin: 0;
+  }
+
+  .h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 23px;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    margin: 0;
+  }
+
+  .lede {
+    font-size: var(--fs-md);
+    line-height: 1.65;
+    color: var(--mut);
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  /* ------------------------------------------------------------- surfaces --- */
+
+  /* The only full-width divider. There is deliberately no faint variant: two
+     weights doing the same job on one screen reads as an accident, and hierarchy
+     comes from the space around a rule rather than from fading it out. */
+  .rule {
+    height: 1px;
+    background: var(--line);
+    border: 0;
+  }
+
+  /* A tappable list row. The hairline is an ::after so it sits inside the
+     negative margin the hover background bleeds into. */
+  .row {
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
+    width: calc(100% + 24px);
+    padding: 11px 12px;
+    margin: 0 -12px;
+    border-radius: 3px;
+    font-size: var(--fs-small);
+    text-align: left;
+    transition: background var(--dur-fast);
+  }
+
+  .row::after {
+    content: '';
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 0;
+    height: 1px;
+    background: var(--line2);
+  }
+
+  .row:last-child::after {
+    display: none;
+  }
+
+  .row:focus-visible {
+    background: var(--sel);
+    outline: none;
+  }
+
+  @media (hover: hover) {
+    .row:hover:not(:disabled) {
+      background: var(--sel);
+    }
+  }
+
+  /* Touch has no hover to darken on approach, so the press says it instead.
+     Outside the hover query on purpose: this is the case that query excludes. */
+  .row:active:not(:disabled) {
+    background: var(--sel);
+  }
+
+  .row:disabled {
+    cursor: default;
+  }
+
+  /* The same row without the hover — a line of figures you read rather than pick. */
+  .row-static {
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line2);
+    font-size: var(--fs-small);
+  }
+
+  .row-static:last-child {
+    border-bottom: 0;
+  }
+
+  /* ---------------------------------------------------------- row columns --- */
+
+  /* The cells inside a `.row` or `.row-static`. A list of figures only reads as a
+     list if the figures line up down the page, which means a fixed width per
+     column — and the right width is a property of the screen (the widest value it
+     has to hold), not of this rule. So it arrives as `--w` from the call site,
+     through a custom property rather than an inline `width`: an inline
+     declaration outranks every selector here and could not then be dropped on a
+     phone, which is exactly what the last block in this section does. */
+  .col {
+    flex: none;
+    width: var(--w);
+    text-align: right;
+  }
+
+  .col-key {
+    flex: none;
+    width: var(--w);
+    text-align: left;
+  }
+
+  /* The row's name, which has no width of its own: it takes whatever the columns
+     leave and truncates rather than wrapping the row to two lines. */
+  .col-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 767px) {
+    .row,
+    .row-static,
+    .cols {
+      flex-wrap: wrap;
+      column-gap: 14px;
+      row-gap: 5px;
+    }
+
+    .col,
+    .col-key {
+      width: auto;
+    }
+
+    /* The name goes first and takes the line to itself. It's the one cell that
+       can be any length, so leaving it in the wrap with the figures makes every
+       row in the list break in a different place. */
+    .col-name {
+      order: -1;
+      flex: 1 0 100%;
+    }
+  }
+
+  /* ------------------------------------------------------------- controls --- */
+
+  /* A quiet text control: the app's default action treatment. Same weight as the
+     text around it at rest, foreground under the pointer. */
+  .quiet {
+    color: var(--faint);
+    cursor: pointer;
+    transition: color var(--dur-base);
+  }
+
+  @media (hover: hover) {
+    .quiet:hover {
+      color: var(--fg);
+    }
+
+    /* The one action in a row that can't be undone. It shouts only once you have
+       reached for it. */
+    .quiet.danger:hover {
+      color: var(--acc);
+    }
+  }
+
+  .quiet:active {
+    color: var(--fg);
+  }
+
+  .quiet.danger:active {
+    color: var(--acc);
+  }
+
+  /* A text button with an icon in front of it. Only the arrangement — colour and
+     hover come from whatever else the button carries, so the icon takes the
+     label's colour through `currentColor`. */
+  .action {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  /* Icons never shrink to make room for a label. */
+  .action > svg {
+    flex: none;
+  }
+
+  .underlined {
+    color: var(--mut);
+    cursor: pointer;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 2px;
+    transition: color var(--dur-base);
+  }
+
+  @media (hover: hover) {
+    .underlined:hover {
+      color: var(--fg);
+    }
+  }
+
+  .underlined:active {
+    color: var(--fg);
+  }
+
+  /* A progress rail: 2px, one hairline of ground, accent fill. */
+  .bar {
+    height: 2px;
+    background: var(--line2);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bar > span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--acc);
+  }
+
+  /* --------------------------------------------------------------- shell --- */
+
+  /* The centered frame: the sidebar island and the content island, side by
+     side, capped and centered with the ground showing on both flanks. This is
+     the only element in the app that sets a max width — every island inside it
+     is simply as wide as the frame lets it be, which is what makes Day, Week
+     and Month (and every settings screen) line up with each other. */
+  .app-frame {
+    display: flex;
+    width: 100%;
+    max-width: var(--frame-max);
+    margin-inline: auto;
+    gap: var(--frame-gap);
+    padding: var(--frame-pad);
+    /* Reserves room for the fixed mobile tab bar so the last row of any island
+       never ends up underneath it. */
+    padding-bottom: calc(var(--frame-pad) + var(--mobile-nav-h));
+    min-height: 100svh;
+    align-items: stretch;
+  }
+
+  /* An island: the app's one container. A panel, a table, the sidebar and a
+     full-height view are all this. It carries the surface and the corner; what
+     separates it from its neighbour is the ground in the gap, so it deliberately
+     has no border and no shadow. */
+  .island {
+    background-color: var(--bg);
+    border-radius: var(--island-radius);
+    /* Islands hold tables and grids whose own rules run to their edge; without
+       this those rules square off the rounded corner. */
+    overflow: hidden;
+  }
+
+  /* The content island's inner padding. Its own class rather than padding on
+     `.island`, because tables and calendar grids fill their island edge to edge
+     and supply their own cell padding instead. */
+  .island-pad {
+    padding: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .island-pad {
+      padding: 1.75rem 2rem;
+    }
+  }
+
+  /* A page: the content island, and the column of stacked islands some pages
+     use instead of one. `min-width: 0` because it is a flex child holding
+     tables that would otherwise refuse to shrink below their content width. */
+  .page-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: var(--frame-gap);
+    min-width: 0;
+  }
+
+  /* --------------------------------------------------------------- motion --- */
+
+  /* The reading column arriving on a route change.
+   *
+   * The screen assembles rather than appears: moving its blocks a beat apart
+   * gives the page a reading order in time — header, then figures, then the body
+   * — so it arrives the way you were going to read it anyway. That is also what
+   * earns the 6px rise; a rigid plane travelling a distance too short to be
+   * movement is just a jolt, but a block that starts after its neighbour has
+   * somewhere to have come from.
+   *
+   * Transform and opacity only, so it composites. Capped at the fifth block:
+   * past that everything shares the fifth's delay, so this stays a short cascade
+   * at the top of the page rather than a wave travelling down it. Reduced motion
+   * drops the whole thing — a sequence of small movements is not gentler than one
+   * large one. */
+  .screen > * {
+    animation: block-in var(--dur-slow) var(--ease-out) backwards;
+  }
+
+  .screen > :nth-child(2) {
+    animation-delay: 28ms;
+  }
+  .screen > :nth-child(3) {
+    animation-delay: 56ms;
+  }
+  .screen > :nth-child(4) {
+    animation-delay: 84ms;
+  }
+  .screen > :nth-child(n + 5) {
+    animation-delay: 112ms;
+  }
+
+  @keyframes block-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 6px, 0);
+    }
+  }
+
+  .spin {
+    animation: spin 900ms linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* The skeleton breath.
+   *
+   * Not Tailwind's `animate-pulse`: that swings opacity 1 → .5 and back on a 2s
+   * ease-in-out, which is tuned for a mid-grey block. These bars are painted in
+   * `--line`, a hairline colour that is already close to the paper, so halving
+   * it reads as a flicker — the bar keeps nearly vanishing and coming back. This
+   * is a shallower swing on a slightly quicker cycle, so the placeholder looks
+   * like it is waiting rather than blinking.
+   *
+   * One shared cycle, deliberately unstaggered: every bar breathes together, for
+   * the same reason the `.screen` cascade caps its delay — a wave travelling
+   * down a column of placeholders is decoration on a screen the user is waiting
+   * to leave. */
+  .pulse-quiet {
+    animation: pulse-quiet 1600ms var(--ease-in-out) infinite;
+  }
+
+  @keyframes pulse-quiet {
+    50% {
+      opacity: 0.55;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .screen > *,
+    .screen > :nth-child(n + 2) {
+      animation: none;
+    }
+    /* The skeleton keeps its shape but stops breathing — the placeholder is
+       doing its job by being the right size, not by moving. */
+    .pulse-quiet {
+      animation: none;
+    }
+  }
+
+  /* For text only a screen reader needs. Clipped rather than hidden: anything
+     that removes it from the layout removes it from the accessibility tree too,
+     which is the one thing it exists for. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 }
 
@@ -217,209 +902,42 @@ body {
   * {
     @apply border-border outline-ring/50;
   }
+  /* The ground, and the only place it is painted. Everything visible on top of
+     it is an island cut from `--bg`. */
   body {
-    background-color: var(--background);
-    color: var(--foreground);
+    background-color: var(--ground);
+    color: var(--fg);
   }
   button:not(:disabled),
   [role='button']:not([data-disabled]):not([aria-disabled='true']) {
     cursor: pointer;
   }
-}
+  /* Links are the accent, and go to the foreground under the pointer — the same
+     direction every other quiet control moves in. */
+  a {
+    color: inherit;
+  }
 
-/*
- * Page-transition styles, driven by the `data-transition` attribute PreferencesSync
- * sets on <html> from the user's stored preference (apps/web/src/lib/preferences.ts).
- * Scoped to the sidebar-inset content pane (not `root`) so the sidebar itself
- * never re-renders/flashes on navigation — only the main content transitions.
- */
-[data-slot="sidebar-inset"] {
-  view-transition-name: main-content;
-}
+  /* Duotone icons, tinted. Phosphor's duotone weight is two paths: the glyph,
+     and a background layer marked `opacity="0.2"` that inherits the glyph's
+     colour — so a muted icon is a grey shape on a grey wash. Repainting just
+     that layer with the accent is what makes the icon set feel like it belongs
+     to this theme, and it costs nothing at the call sites: the icons stay
+     `currentColor` and keep taking their weight from the text around them.
+     Matched on the viewBox because that is the only marker Phosphor puts on the
+     svg — no data attribute, no class. */
+  svg[viewBox='0 0 256 256'] > path[opacity='0.2'] {
+    fill: var(--icon-duotone);
+    opacity: var(--icon-duotone-opacity);
+  }
 
-/* The unnamed `root` group would otherwise still crossfade the static chrome
-   around the named group; nothing there changes between navigations. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-}
-
-/* Without its own name, the fixed mobile tab bar (mobile-tab-bar.tsx) falls
-   into the `root` group, whose flattened snapshot is capped underneath the
-   `main-content` group's own snapshot for the duration of the transition —
-   the tab bar visibly disappears until the transition finishes. Giving it a
-   name pulls it into its own (non-animated) group so it stays put. */
-[data-slot="mobile-tab-bar"] {
-  view-transition-name: mobile-tab-bar;
-}
-
-::view-transition-old(mobile-tab-bar),
-::view-transition-new(mobile-tab-bar) {
-  animation: none;
-}
-
-/* The nav links (app-sidebar.tsx / mobile-tab-bar.tsx) set `viewTransition`
-   per-<Link>, which overrides the router's defaultViewTransition:false — so a
-   view transition still fires under "none" and the browser's default crossfade
-   plays on main-content. Zero it out explicitly so "none" really means none. */
-html[data-transition="none"]::view-transition-old(main-content),
-html[data-transition="none"]::view-transition-new(main-content) {
-  animation: none;
-}
-
-html[data-transition="fade"]::view-transition-old(main-content),
-html[data-transition="fade"]::view-transition-new(main-content) {
-  animation-duration: var(--vt-duration);
-  animation-timing-function: var(--motion-ease-standard);
-}
-
-html[data-transition="slide"]::view-transition-old(main-content) {
-  animation: transition-slide-out var(--vt-duration)
-    var(--motion-ease-standard) both;
-}
-html[data-transition="slide"]::view-transition-new(main-content) {
-  animation: transition-slide-in var(--vt-duration)
-    var(--motion-ease-standard) both;
-}
-
-@keyframes transition-slide-out {
-  to {
-    transform: translateX(-16px);
-    opacity: 0;
-  }
-}
-@keyframes transition-slide-in {
-  from {
-    transform: translateX(16px);
-    opacity: 0;
-  }
-}
-
-html[data-transition="zoom"]::view-transition-old(main-content) {
-  animation: transition-zoom-out var(--vt-duration)
-    var(--motion-ease-standard) both;
-}
-html[data-transition="zoom"]::view-transition-new(main-content) {
-  animation: transition-zoom-in var(--vt-duration)
-    var(--motion-ease-standard) both;
-}
-
-@keyframes transition-zoom-out {
-  to {
-    transform: scale(1.02);
-    opacity: 0;
-  }
-}
-@keyframes transition-zoom-in {
-  from {
-    transform: scale(0.98);
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
-  }
-}
-
-/*
- * Hover-preview loop for the transition-style picker cards
- * (components/transition-picker.tsx) — paused by default, runs on hover via
- * the `group-hover:` utility applied where these are referenced.
- *
- * Each pair pings old->new then pongs back new->old within one iteration, so
- * the state at 100% exactly matches 0% — `infinite` loops with no jump cut.
- */
-@keyframes preview-old-fade {
-  0%,
-  20% {
-    opacity: 1;
-  }
-  35%,
-  65% {
-    opacity: 0;
-  }
-  80%,
-  100% {
-    opacity: 1;
-  }
-}
-@keyframes preview-new-fade {
-  0%,
-  20% {
-    opacity: 0;
-  }
-  35%,
-  65% {
-    opacity: 1;
-  }
-  80%,
-  100% {
-    opacity: 0;
-  }
-}
-@keyframes preview-old-slide {
-  0%,
-  20% {
-    transform: translateX(0);
-  }
-  35%,
-  65% {
-    transform: translateX(-100%);
-  }
-  80%,
-  100% {
-    transform: translateX(0);
-  }
-}
-@keyframes preview-new-slide {
-  0%,
-  20% {
-    transform: translateX(100%);
-  }
-  35%,
-  65% {
-    transform: translateX(0);
-  }
-  80%,
-  100% {
-    transform: translateX(100%);
-  }
-}
-@keyframes preview-old-zoom {
-  0%,
-  20% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  35%,
-  65% {
-    opacity: 0;
-    transform: scale(1.1);
-  }
-  80%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes preview-new-zoom {
-  0%,
-  20% {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  35%,
-  65% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  80%,
-  100% {
-    opacity: 0;
-    transform: scale(0.9);
+  /* …except on the accent itself, where an accent wash would disappear into the
+     surface under it. Anything painted with the inverse foreground says so in
+     its own colour token, so that token is the hook — new accent surfaces are
+     covered the moment they use it, without touching this rule. */
+  .text-primary-foreground,
+  .text-sidebar-primary-foreground {
+    --icon-duotone: currentColor;
+    --icon-duotone-opacity: 0.24;
   }
 }

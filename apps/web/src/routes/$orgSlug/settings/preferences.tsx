@@ -1,12 +1,9 @@
+import { GoogleLogoIcon, KeyIcon } from "@phosphor-icons/react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { KeyRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { AnimationSpeedSlider } from "#/components/animation-speed-slider.tsx";
-import { GoogleIcon } from "#/components/google-sign-in-button.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
-import { TransitionPicker } from "#/components/transition-picker.tsx";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -20,9 +17,14 @@ import {
 } from "#/components/ui/alert-dialog.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { usePreferences } from "#/hooks/use-preferences.ts";
+import {
+	Page,
+	PageHeader,
+	PageSection,
+	SettingList,
+	SettingRow,
+} from "#/components/ui/page-header.tsx";
 import { authClient } from "#/lib/auth-client.ts";
-import { savePreferences } from "#/lib/preferences.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
@@ -37,38 +39,11 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 	component: PreferencesSettingsPage,
 });
 
-// A single sign-in method (how the user authenticates), rendered as an
-// icon + label + status badge + optional action. Kept generic so the password
-// and Google rows share one layout.
-function SignInMethodRow({
-	icon,
-	title,
-	description,
-	badge,
-	action,
-}: {
-	icon: React.ReactNode;
-	title: string;
-	description: string;
-	badge?: React.ReactNode;
-	action?: React.ReactNode;
-}) {
-	return (
-		<div className="flex items-center justify-between gap-4">
-			<div className="flex items-center gap-3">
-				<span className="flex size-5 items-center justify-center">{icon}</span>
-				<div>
-					<div className="flex items-center gap-2 text-sm font-semibold">
-						{title}
-						{badge}
-					</div>
-					<p className="mt-1 text-xs text-muted-foreground">{description}</p>
-				</div>
-			</div>
-			{action}
-		</div>
-	);
-}
+// A single sign-in method is just a SettingRow — the same ruled row the
+// notification toggles directly below it use. This file used to define its own
+// undivided row and stack the two with `gap-5`, so one screen answered "how do
+// I separate settings?" two different ways within a scroll of each other.
+const SignInMethodRow = SettingRow;
 
 function GoogleSignInMethod() {
 	const queryClient = useQueryClient();
@@ -104,7 +79,7 @@ function GoogleSignInMethod() {
 	if (!methods.google.linked) {
 		return (
 			<SignInMethodRow
-				icon={<GoogleIcon />}
+				icon={<GoogleLogoIcon className="size-5 text-muted-foreground" />}
 				title="Google"
 				description="Connect your Google account to sign in with one click."
 				action={<Button onClick={connect}>Connect Google</Button>}
@@ -118,7 +93,7 @@ function GoogleSignInMethod() {
 
 	return (
 		<SignInMethodRow
-			icon={<GoogleIcon />}
+			icon={<GoogleLogoIcon className="size-5 text-muted-foreground" />}
 			title="Google"
 			description={
 				canDisconnect
@@ -157,26 +132,25 @@ function GoogleSignInMethod() {
 }
 
 function PreferencesSettingsPage() {
-	const { pageTransition, animationSpeed } = usePreferences();
 	const { data: methods } = useSuspenseQuery(signInMethodsQuery());
 
 	return (
-		<div className="page-shell">
-			<h1 className="font-display text-xl">Preferences</h1>
-			<p className="mt-1 text-sm text-muted-foreground">
-				Your account and this device.
-			</p>
+		<Page className="screen">
+			<PageHeader
+				eyebrow="Your account"
+				title="Preferences"
+				lede="Your account and this device."
+				className="mb-0"
+			/>
 
 			{/* Sign-in methods — account-level auth, applies across every workspace */}
-			<div className="-mx-4 mt-8 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-				<span className="text-sm font-semibold">Sign-in methods</span>
-				<p className="mt-1 text-xs text-muted-foreground">
-					How you sign in to Farmer. These apply to your account everywhere, not
-					just this workspace.
-				</p>
-				<div className="mt-5 flex flex-col gap-5">
+			<PageSection
+				title="Sign-in methods"
+				description="How you sign in to Farmer. These apply to your account everywhere, not just this workspace."
+			>
+				<SettingList>
 					<SignInMethodRow
-						icon={<KeyRound className="size-5 text-muted-foreground" />}
+						icon={<KeyIcon className="size-5 text-muted-foreground" />}
 						title="Password"
 						description={
 							methods.hasPassword
@@ -190,38 +164,10 @@ function PreferencesSettingsPage() {
 						}
 					/>
 					<GoogleSignInMethod />
-				</div>
-			</div>
+				</SettingList>
+			</PageSection>
 
 			<NotificationSettings />
-
-			<div className="-mx-4 mt-6 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-				<span className="text-sm font-semibold">Animation responsiveness</span>
-				<p className="mt-1 text-xs text-muted-foreground">
-					Stored on this device only. How lively motion feels across the app —
-					the tab switches, panel changes, and page transitions all follow this.
-				</p>
-				<div className="mt-4">
-					<AnimationSpeedSlider
-						value={animationSpeed}
-						onChange={(animationSpeed) => savePreferences({ animationSpeed })}
-					/>
-				</div>
-			</div>
-
-			<div className="-mx-4 mt-6 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-				<span className="text-sm font-semibold">Page transition</span>
-				<p className="mt-1 text-xs text-muted-foreground">
-					Stored on this device only. Hover a style to preview it — applied when
-					navigating between pages.
-				</p>
-				<div className="mt-3 max-w-xl">
-					<TransitionPicker
-						value={pageTransition}
-						onChange={(pageTransition) => savePreferences({ pageTransition })}
-					/>
-				</div>
-			</div>
-		</div>
+		</Page>
 	);
 }

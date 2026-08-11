@@ -4,7 +4,12 @@ import { compileTypstPdf } from "./typst";
 // Data is fully pre-formatted here — the Typst template only does layout.
 // Numbers cross the boundary only where the template draws with them (bars),
 // plus boolean flags where the design colors by data semantics (over-budget,
-// negative margin, zero values).
+// zero values).
+//
+// This report is hours-only. There is deliberately no revenue, cost or margin
+// anywhere in it: rates do not exist in this system, so any money figure would
+// be invented. A EUR budget is the single exception and appears only as an
+// unmodified label beside the hour figures, never as an input to arithmetic.
 export type ReportPdfStat = {
 	value: string;
 	unit: string | null;
@@ -12,35 +17,33 @@ export type ReportPdfStat = {
 
 export type ReportPdfData = {
 	orgName: string;
-	periodLabel: string; // "Jun 1, 2026 – Jun 30, 2026" (masthead)
-	periodShortLabel: string; // "Jun 1 – Jun 30, 2026" (running header)
+	periodLabel: string; // "June 2026" (masthead)
+	periodShortLabel: string; // "Jun 2026" (running header)
 	generatedLabel: string;
 	memberCountLabel: string; // "9 members"
 	summary: {
-		logged: ReportPdfStat;
+		final: ReportPdfStat;
 		expected: ReportPdfStat;
 		utilization: ReportPdfStat;
 		activeProjects: ReportPdfStat;
 	};
 	utilization: {
 		name: string;
+		typeLabel: string; // "Billable" / "Contractor"
 		expected: string;
-		logged: string;
-		loggedIsZero: boolean;
+		final: string;
+		finalIsZero: boolean;
 		pct: number | null;
 	}[];
 	budgets: {
 		name: string;
+		clientName: string;
 		hours: string;
-		hoursBudget: string | null;
-		hoursBudgetOver: boolean;
-		revenue: string;
-		revenueIsZero: boolean;
-		revenueBudget: string | null;
-		cost: string;
-		margin: string;
-		marginNegative: boolean;
-		marginPct: string | null;
+		budget: string | null;
+		budgetAmount: string | null;
+		remaining: string | null;
+		remainingNegative: boolean;
+		pct: number | null;
 	}[];
 };
 
@@ -59,36 +62,29 @@ export const formatHoursLabel = (totalSeconds: number): string => {
 export const formatWholeHoursValue = (totalSeconds: number): string =>
 	Math.round(totalSeconds / 3600).toLocaleString("en-US");
 
-export const formatMoneyLabel = (amount: number, currency: string): string =>
-	new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency,
-		maximumFractionDigits: 0,
-	}).format(amount);
-
-// "2026-07-06" -> "Jul 6, 2026", timezone-independent (UTC-anchored key).
-export const formatDateKeyLabel = (dateKey: string): string =>
+// (2026, 7) -> "July 2026". The report is month-scoped because everything it
+// draws from — Final hours, Expected hours — only exists per closed month.
+export const formatMonthLabel = (year: number, month: number): string =>
 	new Intl.DateTimeFormat("en-US", {
-		month: "short",
-		day: "numeric",
+		month: "long",
 		year: "numeric",
 		timeZone: "UTC",
-	}).format(new Date(`${dateKey}T12:00:00Z`));
+	}).format(new Date(Date.UTC(year, month - 1, 15)));
 
-// "2026-07-06" -> "Jul 6" — for the running header's compact period.
-export const formatDateKeyMonthDayLabel = (dateKey: string): string =>
+// (2026, 7) -> "Jul 2026" — for the running header's compact period.
+export const formatMonthShortLabel = (year: number, month: number): string =>
 	new Intl.DateTimeFormat("en-US", {
 		month: "short",
-		day: "numeric",
+		year: "numeric",
 		timeZone: "UTC",
-	}).format(new Date(`${dateKey}T12:00:00Z`));
+	}).format(new Date(Date.UTC(year, month - 1, 15)));
 
 // Implements the approved "Time Report.dc.html" mockup from the Claude Design
-// project: warm near-black ink, violet brand accents, amber for overtime,
-// red/green for budget overrun and margin sign. Geist sans carries all
-// figures (tabular numerals); Geist Mono only the micro uppercase labels and
-// running header/footer meta. All faces are embedded via fontBlobs in
-// typst.ts. Sizes are the mockup's px values × 0.75 (CSS px → pt).
+// project: warm near-black ink, violet brand accents, amber for overtime, red
+// for budget overrun. Geist sans carries all figures (tabular numerals); Geist
+// Mono only the micro uppercase labels and running header/footer meta. All
+// faces are embedded via fontBlobs in typst.ts. Sizes are the mockup's px
+// values × 0.75 (CSS px → pt).
 const TEMPLATE = `
 #let data = json(bytes(sys.inputs.data))
 
@@ -194,7 +190,7 @@ const TEMPLATE = `
     columns: (1fr, 1fr, 1fr, 1fr),
     stroke: (x, y) => if x > 0 { (left: 0.75pt + hairline) },
     inset: (x: 10.5pt, y: 8.25pt),
-    stat("Logged hours", data.summary.logged),
+    stat("Final hours", data.summary.final),
     stat("Expected hours", data.summary.expected),
     stat(
       "Utilization",
@@ -223,7 +219,7 @@ const TEMPLATE = `
     columns: (1fr, 25.5pt),
     column-gutter: 6.75pt,
     align: (left + horizon, right + horizon),
-    text(size: 7pt, style: "italic", fill: muted)[No schedule],
+    text(size: 7pt, style: "italic", fill: muted)[No expected hours],
     num("—", size: 8.5pt, fill: muted),
   )
 } else {
@@ -245,6 +241,9 @@ const TEMPLATE = `
     ),
   )
 }
+#let subline(body, fill: muted) = text(
+  size: 6.75pt, fill: fill, number-width: "tabular", body,
+)
 #if data.utilization.len() == 0 [
   #text(size: 8.25pt, fill: muted)[No members in this period.]
 ] else [
@@ -262,68 +261,96 @@ const TEMPLATE = `
     table.header(
       th("Member"),
       th("Expected", al: right),
-      th("Logged", al: right),
+      th("Final", al: right),
       th("Utilization"),
     ),
     ..data.utilization.map(r => (
-      text(size: 8.25pt, weight: "semibold", r.name),
+      [
+        #text(size: 8.25pt, weight: "semibold", r.name)
+        #linebreak()#subline(r.typeLabel)
+      ],
       if r.pct == none { num("—", fill: muted) } else { num(r.expected, fill: secondary) },
-      num(r.logged, fill: if r.loggedIsZero { muted } else { ink }),
+      num(r.final, fill: if r.finalIsZero { muted } else { ink }),
       util-cell(r),
     )).flatten(),
   )
 ]
 #v(18pt)
 
-// ── Project budgets & margin ────────────────────────────────────────────────
+// ── Fixed-scope budget burn ─────────────────────────────────────────────────
+// Hours against hours. Where a project also carries a monetary budget it is
+// printed verbatim as a subline for context — nothing is computed from it.
 #grid(
   columns: (auto, auto, 1fr),
   column-gutter: 6.75pt,
   align: (left + horizon, left + horizon, horizon),
-  h2[Project budgets & margin],
+  h2[Fixed-scope budget burn],
   mlabel("All-time", size: 6.75pt, track: 0.06em, weight: "medium"),
   sec-rule,
 )
 #v(6pt)
-#let subline(body, fill: muted) = text(
-  size: 6.75pt, fill: fill, number-width: "tabular", body,
-)
+#let burn-cell(r) = if r.pct == none {
+  grid(
+    columns: (1fr, 25.5pt),
+    column-gutter: 6.75pt,
+    align: (left + horizon, right + horizon),
+    text(size: 7pt, style: "italic", fill: muted)[No hour budget],
+    num("—", size: 8.5pt, fill: muted),
+  )
+} else {
+  let over = r.pct > 100
+  let p = calc.min(calc.max(r.pct, 0), 100)
+  grid(
+    columns: (1fr, 25.5pt),
+    column-gutter: 6.75pt,
+    align: (left + horizon, right + horizon),
+    box(
+      width: 100%, height: 3.75pt, radius: 2.25pt, clip: true,
+      fill: if over { amber-track } else { hairline2 },
+      box(width: p * 1%, height: 100%, radius: 2.25pt, fill: if over { neg } else { violet-bar }),
+    ),
+    num(
+      str(r.pct) + "%", size: 8.5pt,
+      fill: if over { neg } else if r.pct == 0 { muted } else { ink },
+      weight: if over { "semibold" } else if r.pct == 0 { "regular" } else { "medium" },
+    ),
+  )
+}
 #if data.budgets.len() == 0 [
-  #text(size: 8.25pt, fill: muted)[No active projects.]
+  #text(size: 8.25pt, fill: muted)[No active fixed-scope projects.]
 ] else [
   #let n = data.budgets.len()
   #table(
-    columns: (1fr, 79.5pt, 84pt, 61.5pt, 70.5pt),
-    align: (left + horizon, right + horizon, right + horizon, right + horizon, right + horizon),
+    columns: (1fr, 64pt, 64pt, 64pt, 126pt),
+    align: (left + horizon, right + horizon, right + horizon, right + horizon, left + horizon),
     stroke: (x, y) => if y == 0 { (bottom: 0.75pt + hairline) } else if y < n { (bottom: 0.75pt + hairline2) },
     inset: (x, y) => (
-      left: if x == 0 { 0pt } else { 7.5pt },
+      left: if x == 0 { 0pt } else if x == 4 { 10.5pt } else { 7.5pt },
       right: if x == 4 { 0pt } else { 7.5pt },
       top: if y == 0 { 0pt } else { 6pt },
       bottom: if y == 0 { 4.5pt } else { 6pt },
     ),
     table.header(
       th("Project"),
-      th("Hours logged", al: right),
-      th("Revenue", al: right),
-      th("Cost", al: right),
-      th("Margin", al: right),
+      th("Logged", al: right),
+      th("Budget", al: right),
+      th("Remaining", al: right),
+      th("Burn"),
     ),
     ..data.budgets.map(r => (
-      text(size: 8.25pt, weight: "semibold", r.name),
       [
-        #num(r.hours)
-        #if r.hoursBudget != none [#linebreak()#subline(r.hoursBudget, fill: if r.hoursBudgetOver { neg } else { muted })]
+        #text(size: 8.25pt, weight: "semibold", r.name)
+        #linebreak()#subline(r.clientName)
       ],
+      num(r.hours),
       [
-        #num(r.revenue, fill: if r.revenueIsZero { muted } else { ink })
-        #if r.revenueBudget != none [#linebreak()#subline(r.revenueBudget)]
+        #if r.budget == none { num("—", fill: muted) } else { num(r.budget, fill: secondary) }
+        #if r.budgetAmount != none [#linebreak()#subline(r.budgetAmount)]
       ],
-      num(r.cost, fill: secondary),
-      [
-        #num(r.margin, fill: if r.marginNegative { neg } else { pos })
-        #if r.marginPct != none [#linebreak()#subline(r.marginPct, fill: if r.marginNegative { neg } else { pos-light })]
-      ],
+      if r.remaining == none { num("—", fill: muted) } else {
+        num(r.remaining, fill: if r.remainingNegative { neg } else { pos })
+      },
+      burn-cell(r),
     )).flatten(),
   )
 ]

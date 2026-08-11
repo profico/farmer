@@ -1,4 +1,4 @@
-import { createProjectInput } from "@farmer/core/schema";
+import { createProjectInput, type ProjectTypeValue } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	useMutation,
@@ -35,59 +35,138 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
-import { Switch } from "#/components/ui/switch.tsx";
 import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
+import { cn } from "#/lib/utils.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
+import { selectableTasksQuery } from "#/queries/tasks.ts";
 import { createProject } from "#/server/projects.ts";
 
-const NO_CLIENT = "__none__";
 const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 
-// Built from the individual field schemas (rather than .pick()) so `billable`
-// doesn't carry its z.infer/z.input mismatch through to zodResolver — the
-// default is applied via the form's defaultValues instead.
+// The five project types, in the order the PRD lists them. Type is not
+// cosmetic: it decides which config fields exist, whether the close sheet shows
+// Expected hours, and whether the project counts as billable in Utilization.
+const PROJECT_TYPES: {
+	value: ProjectTypeValue;
+	label: string;
+	hint: string;
+}[] = [
+	{
+		value: "product_team",
+		label: "Product team",
+		hint: "A standing team on a retainer. The only type whose close sheet shows Expected hours.",
+	},
+	{
+		value: "fixed_scope",
+		label: "Fixed scope",
+		hint: "A bounded piece of work with an hour budget. The only type budget burn is computed for.",
+	},
+	{ value: "hourly", label: "Hourly", hint: "Billed by the hour as it goes." },
+	{
+		value: "maintenance",
+		label: "Maintenance",
+		hint: "Ongoing upkeep. No budget or price configuration in v1.",
+	},
+	{
+		value: "internal",
+		label: "Internal",
+		hint: "Our own work. Never billed, and excluded from Utilization.",
+	},
+];
+
+// The server's money fields are `regex(...).optional()`, which an EMPTY STRING
+// fails — and the empty string is exactly what an untouched input holds. Since
+// these inputs are only rendered for two of the five project types, that made
+// every other type unsubmittable: zodResolver rejected a field the user could
+// not see, so handleSubmit silently never fired. Accept "" explicitly here and
+// let the mutation map it to undefined on the way out.
+const optionalMoney = z.union([
+	z.literal(""),
+	z
+		.string()
+		.trim()
+		.regex(/^\d+(\.\d{1,2})?$/, "Expected an amount like 1500 or 1500.00"),
+]);
+
+// Built from the individual field schemas (rather than .pick()) so the fields
+// carrying zod defaults don't leak their z.infer/z.input mismatch into
+// zodResolver — defaults are applied via the form's defaultValues instead.
 const formSchema = z.object({
 	name: createProjectInput.shape.name,
-	firstTaskName: createProjectInput.shape.firstTaskName,
+	code: createProjectInput.shape.code,
 	color: createProjectInput.shape.color,
 	clientId: createProjectInput.shape.clientId,
-	billable: z.boolean(),
-	billableRate: createProjectInput.shape.billableRate,
+	type: createProjectInput.shape.type,
 	// Kept as a plain string in the form (not the server's z.coerce.number())
-	// to avoid the same z.infer/z.input mismatch noted above for `billable` —
-	// the server's createProjectInput coerces it on submit either way.
+	// for the same reason — createProjectInput coerces it on submit either way.
 	budgetHours: z.string().optional(),
-	budgetAmount: createProjectInput.shape.budgetAmount,
+	budgetAmount: optionalMoney,
+	hourlyPrice: optionalMoney,
+	taskIds: z.array(z.string()),
 });
+
+const EMPTY: z.infer<typeof formSchema> = {
+	name: "",
+	code: "",
+	color: DEFAULT_COLOR,
+	clientId: "",
+	type: "product_team",
+	budgetHours: "",
+	budgetAmount: "",
+	hourlyPrice: "",
+	taskIds: [],
+};
 
 export function CreateProjectDialog() {
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const { data: clients } = useSuspenseQuery(clientsQuery());
+	const { data: allTasks } = useSuspenseQuery(selectableTasksQuery());
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
-		defaultValues: {
-			name: "",
-			firstTaskName: "",
-			color: DEFAULT_COLOR,
-			clientId: undefined,
-			billable: true,
-			billableRate: "",
-			budgetHours: "",
-			budgetAmount: "",
-		},
+		defaultValues: EMPTY,
 	});
+
+	const type = form.watch("type");
+	const taskIds = form.watch("taskIds");
+	// Absence tasks belong to nobody's project — Vacation and Sick Leave are
+	// logged without one, so they can't be cherry-picked here.
+	const pickableTasks = allTasks.filter((t) => !t.isAbsence);
+
+	const toggleTask = (taskId: string) => {
+		const current = form.getValues("taskIds");
+		form.setValue(
+			"taskIds",
+			current.includes(taskId)
+				? current.filter((id) => id !== taskId)
+				: [...current, taskId],
+		);
+	};
 
 	const mutation = useMutation({
 		mutationFn: (data: z.infer<typeof formSchema>) =>
 			createProject({
 				data: {
-					...data,
-					clientId: data.clientId === NO_CLIENT ? undefined : data.clientId,
-					billableRate: data.billableRate || undefined,
-					budgetHours: data.budgetHours || undefined,
-					budgetAmount: data.budgetAmount || undefined,
+					name: data.name,
+					code: data.code || undefined,
+					color: data.color,
+					clientId: data.clientId,
+					type: data.type,
+					taskIds: data.taskIds,
+					// Type-specific config: the server rejects a budget on a non-Fixed
+					// Scope project, so clear the fields the current type doesn't own
+					// rather than sending stale values from a type the user switched off.
+					budgetHours:
+						data.type === "fixed_scope"
+							? data.budgetHours || undefined
+							: undefined,
+					budgetAmount:
+						data.type === "fixed_scope"
+							? data.budgetAmount || undefined
+							: undefined,
+					hourlyPrice:
+						data.type === "hourly" ? data.hourlyPrice || undefined : undefined,
 				},
 			}),
 		onSuccess: async () => {
@@ -95,16 +174,7 @@ export function CreateProjectDialog() {
 				queryKey: projectsQuery().queryKey,
 			});
 			setOpen(false);
-			form.reset({
-				name: "",
-				firstTaskName: "",
-				color: DEFAULT_COLOR,
-				clientId: undefined,
-				billable: true,
-				billableRate: "",
-				budgetHours: "",
-				budgetAmount: "",
-			});
+			form.reset(EMPTY);
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not create project");
@@ -123,15 +193,106 @@ export function CreateProjectDialog() {
 						onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
 						className="grid gap-4"
 					>
+						<div className="grid grid-cols-[1fr_auto] gap-4">
+							<FormField
+								control={form.control}
+								name="name"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Name</FormLabel>
+										<FormControl>
+											<Input autoFocus {...field} />
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+							<FormField
+								control={form.control}
+								name="code"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>Code</FormLabel>
+										<FormControl>
+											<Input
+												className="w-24"
+												placeholder="ACME"
+												{...field}
+												value={field.value ?? ""}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+						</div>
+						{/* Client is mandatory: every project belongs to one, and our own
+						    work belongs to the org's internal client. */}
 						<FormField
 							control={form.control}
-							name="name"
+							name="clientId"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Name</FormLabel>
-									<FormControl>
-										<Input autoFocus {...field} />
-									</FormControl>
+									<FormLabel>Client</FormLabel>
+									<Select
+										value={field.value}
+										onValueChange={field.onChange}
+										disabled={clients.length === 0}
+										items={clients.map((c) => ({ value: c.id, label: c.name }))}
+									>
+										<FormControl>
+											<SelectTrigger className="w-full">
+												<SelectValue
+													placeholder={
+														clients.length === 0
+															? "Create a client first"
+															: "Pick a client"
+													}
+												/>
+											</SelectTrigger>
+										</FormControl>
+										<SelectContent>
+											{clients.map((c) => (
+												<SelectItem key={c.id} value={c.id}>
+													{c.name}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name="type"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Type</FormLabel>
+									<Select
+										value={field.value}
+										onValueChange={field.onChange}
+										items={PROJECT_TYPES.map((t) => ({
+											value: t.value,
+											label: t.label,
+										}))}
+									>
+										<FormControl>
+											<SelectTrigger className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+										</FormControl>
+										<SelectContent>
+											{PROJECT_TYPES.map((t) => (
+												<SelectItem key={t.value} value={t.value}>
+													{t.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									<p className="text-sm text-muted-foreground">
+										{PROJECT_TYPES.find((t) => t.value === field.value)?.hint}
+									</p>
 									<FormMessage />
 								</FormItem>
 							)}
@@ -152,132 +313,99 @@ export function CreateProjectDialog() {
 								</FormItem>
 							)}
 						/>
-						<FormField
-							control={form.control}
-							name="clientId"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Client (optional)</FormLabel>
-									<Select
-										value={field.value ?? NO_CLIENT}
-										onValueChange={field.onChange}
-										disabled={clients.length === 0}
-										items={[
-											{ value: NO_CLIENT, label: "No client" },
-											...clients.map((c) => ({ value: c.id, label: c.name })),
-										]}
-									>
-										<FormControl>
-											<SelectTrigger className="w-full">
-												<SelectValue
-													placeholder={
-														clients.length === 0
-															? "No clients yet"
-															: "No client"
-													}
+						{type === "fixed_scope" && (
+							<div className="grid grid-cols-2 gap-4 border-t pt-3.5">
+								<FormField
+									control={form.control}
+									name="budgetHours"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Budget, hours</FormLabel>
+											<FormControl>
+												<Input
+													inputMode="decimal"
+													placeholder="e.g. 400"
+													{...field}
+													value={field.value ?? ""}
 												/>
-											</SelectTrigger>
-										</FormControl>
-										<SelectContent>
-											<SelectItem value={NO_CLIENT}>No client</SelectItem>
-											{clients.map((c) => (
-												<SelectItem key={c.id} value={c.id}>
-													{c.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-						<FormField
-							control={form.control}
-							name="firstTaskName"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>First task (optional)</FormLabel>
-									<FormControl>
-										<Input {...field} />
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-						<div className="flex items-center justify-between border-t pt-3.5">
-							<div>
-								<span className="text-sm font-semibold">Billable</span>
-								<p className="text-xs text-muted-foreground">
-									New blocks start marked billable
-								</p>
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name="budgetAmount"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Budget, amount</FormLabel>
+											<FormControl>
+												<Input
+													inputMode="decimal"
+													placeholder="e.g. 32000"
+													{...field}
+													value={field.value ?? ""}
+												/>
+											</FormControl>
+											<p className="text-sm text-muted-foreground">
+												Shown as context beside the hours. Nothing is computed
+												from it.
+											</p>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
 							</div>
+						)}
+						{type === "hourly" && (
 							<FormField
 								control={form.control}
-								name="billable"
+								name="hourlyPrice"
 								render={({ field }) => (
-									<Switch
-										checked={field.value}
-										onCheckedChange={field.onChange}
-									/>
-								)}
-							/>
-						</div>
-						<div className="grid grid-cols-2 gap-4 border-t pt-3.5">
-							<FormField
-								control={form.control}
-								name="billableRate"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Rate / hour (optional)</FormLabel>
+									<FormItem className="border-t pt-3.5">
+										<FormLabel>Hourly price</FormLabel>
 										<FormControl>
 											<Input
 												inputMode="decimal"
-												placeholder="0.00"
+												placeholder="e.g. 85"
 												{...field}
 												value={field.value ?? ""}
 											/>
 										</FormControl>
+										<p className="text-sm text-muted-foreground">
+											Visible to this project's PMs and admins only.
+										</p>
 										<FormMessage />
 									</FormItem>
 								)}
 							/>
-							<FormField
-								control={form.control}
-								name="budgetHours"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Budget, hours (optional)</FormLabel>
-										<FormControl>
-											<Input
-												inputMode="decimal"
-												placeholder="e.g. 100"
-												{...field}
-												value={field.value ?? ""}
-											/>
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							<FormField
-								control={form.control}
-								name="budgetAmount"
-								render={({ field }) => (
-									<FormItem className="col-span-2">
-										<FormLabel>Budget, amount (optional)</FormLabel>
-										<FormControl>
-											<Input
-												inputMode="decimal"
-												placeholder="e.g. 5000"
-												{...field}
-												value={field.value ?? ""}
-											/>
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						</div>
+						)}
+						{/* Tasks are a single global list; a project opts into the subset
+						    that applies to it, which is what keeps cross-project reporting
+						    comparable. */}
+						<FormItem className="border-t pt-3.5">
+							<FormLabel>Tasks on this project</FormLabel>
+							<div className="flex flex-wrap gap-1.5">
+								{pickableTasks.map((t) => (
+									<button
+										key={t.id}
+										type="button"
+										onClick={() => toggleTask(t.id)}
+										className={cn(
+											"rounded-full border px-3 py-1.5 text-xs transition-colors duration-(--dur-fast)",
+											taskIds.includes(t.id)
+												? "border-primary/40 bg-primary/8 font-medium text-primary"
+												: "border-border text-muted-foreground",
+										)}
+									>
+										{t.name}
+									</button>
+								))}
+							</div>
+							<p className="text-sm text-muted-foreground">
+								People can only log time against the tasks you pick here.
+							</p>
+						</FormItem>
 						<DialogFooter>
 							<Button type="submit" disabled={mutation.isPending}>
 								Create

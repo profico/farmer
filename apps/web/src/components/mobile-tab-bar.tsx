@@ -1,11 +1,14 @@
+import { DotsThreeIcon, SignOutIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
-import { LogOut, MoreHorizontal } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import {
 	ADMIN_ITEMS,
+	CLIENTS_ITEM,
+	CLOSE_ITEM,
 	isNavItemActive,
+	REPORTS_ITEM,
 	WORKSPACE_ITEMS,
 } from "#/components/app-sidebar.tsx";
 import {
@@ -19,7 +22,7 @@ import { useMediaQuery } from "#/hooks/use-media-query.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { springExpressive } from "#/lib/motion.ts";
 import { cn, getInitials } from "#/lib/utils.ts";
-import { pendingTimeOffCountQuery } from "#/queries/time-off.ts";
+import { myAccessQuery } from "#/queries/access.ts";
 
 export function MobileTabBar({
 	orgSlug,
@@ -43,17 +46,20 @@ export function MobileTabBar({
 	const primaryItems = WORKSPACE_ITEMS.slice(0, primaryCount);
 	const moreWorkspaceItems = WORKSPACE_ITEMS.slice(primaryCount);
 
-	// Same rationale as AppSidebar: not a suspense query, `enabled: isAdmin`
-	// keeps non-admins from ever hitting the admin-only server fn.
-	const { data: pendingTimeOffCount } = useQuery({
-		...pendingTimeOffCountQuery(),
-		enabled: isAdmin,
-		staleTime: 60_000,
-	});
+	// Same rationale as AppSidebar: not a suspense query. The close sheet is
+	// gated on a per-project PM role, which the org role can't tell us.
+	const { data: access } = useQuery(myAccessQuery());
+	const canClose = isAdmin || !!access?.isPmSomewhere;
+	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
 
-	const moreItems = isAdmin
-		? [...moreWorkspaceItems, ...ADMIN_ITEMS]
-		: moreWorkspaceItems;
+	const moreItems = [
+		...moreWorkspaceItems,
+		...(canManageClients ? [CLIENTS_ITEM] : []),
+		...(canClose ? [CLOSE_ITEM] : []),
+		// Reports are scoped for a PM/TL, not admin-only — same gate as Clients.
+		...(canManageClients ? [REPORTS_ITEM] : []),
+		...(isAdmin ? ADMIN_ITEMS : []),
+	];
 	const isMoreActive = moreItems.some((item) =>
 		isNavItemActive(pathname, item.to, orgSlug),
 	);
@@ -70,7 +76,9 @@ export function MobileTabBar({
 				data-slot="mobile-tab-bar"
 				className="fixed inset-x-0 bottom-0 z-40 flex justify-center pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
 			>
-				<div className="flex h-16 items-center gap-1 rounded-full border bg-background p-1.5 shadow-lg">
+				{/* One lift, the design's only one. The bar floats over the page, so it is
+				    the single element in the app entitled to a shadow. */}
+				<div className="flex h-16 items-center gap-1 rounded-full border bg-background p-1.5 shadow-lift">
 					{primaryItems.map((item) => {
 						const active = isNavItemActive(pathname, item.to, orgSlug);
 						return (
@@ -78,10 +86,9 @@ export function MobileTabBar({
 								key={item.to}
 								to={item.to}
 								params={{ orgSlug }}
-								viewTransition={!active}
 								// Re-tapping the tab you're already on is a no-op — skip
-								// the navigation entirely so it doesn't replay the
-								// page-transition animation.
+								// the navigation entirely so it doesn't re-run the route's
+								// loader for no reason.
 								onClick={(e) => active && e.preventDefault()}
 								className={cn(
 									"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform active:scale-95",
@@ -95,11 +102,11 @@ export function MobileTabBar({
 									<motion.div
 										layoutId="tab-bar-active-pill"
 										transition={springExpressive}
-										className="absolute inset-0 -z-10 rounded-full bg-accent"
+										className="absolute inset-0 -z-10 rounded-full bg-muted"
 									/>
 								)}
 								<item.icon className="size-[21px]" />
-								<span className="text-[10px] font-medium leading-none">
+								<span className="w-full truncate px-0.5 text-center text-[10px] leading-none">
 									{item.label}
 								</span>
 							</Link>
@@ -117,11 +124,11 @@ export function MobileTabBar({
 							<motion.div
 								layoutId="tab-bar-active-pill"
 								transition={springExpressive}
-								className="absolute inset-0 -z-10 rounded-full bg-accent"
+								className="absolute inset-0 -z-10 rounded-full bg-muted"
 							/>
 						)}
-						<MoreHorizontal className="size-[21px]" />
-						<span className="text-[10px] font-medium leading-none">More</span>
+						<DotsThreeIcon className="size-[21px]" />
+						<span className="text-[10px] leading-none">More</span>
 					</button>
 				</div>
 			</nav>
@@ -131,9 +138,12 @@ export function MobileTabBar({
 					side="bottom"
 					className="max-h-[80svh] rounded-t-2xl pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
 				>
-					<div className="absolute top-2 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-muted" />
-					<SheetHeader className="shrink-0 pt-2 pb-0 text-center">
-						<SheetTitle className="text-center text-sm">More</SheetTitle>
+					<div className="absolute top-2 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-line" />
+					{/* Left-aligned on the rows' own gutter — a centred label over a
+					    left-aligned list is the one thing on the sheet that doesn't
+					    line up with anything. */}
+					<SheetHeader className="shrink-0 px-5 pt-2.5 pb-0">
+						<SheetTitle>More</SheetTitle>
 						<SheetDescription className="sr-only">
 							Additional navigation and account options.
 						</SheetDescription>
@@ -148,42 +158,33 @@ export function MobileTabBar({
 									params={{ orgSlug }}
 									onClick={() => setMoreOpen(false)}
 									className={cn(
-										"flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
+										"flex min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-base transition-colors duration-(--dur-fast) active:scale-[0.985]",
 										active
-											? "bg-accent text-primary"
-											: "text-foreground hover:bg-muted",
+											? "bg-muted font-medium text-foreground"
+											: "text-muted-foreground",
 									)}
 								>
 									<item.icon className="size-4.5" />
 									{item.label}
-									{item.to === "/$orgSlug/settings/time-off" &&
-										!!pendingTimeOffCount &&
-										pendingTimeOffCount > 0 && (
-											<span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-primary-foreground">
-												{pendingTimeOffCount}
-											</span>
-										)}
 								</Link>
 							);
 						})}
 					</div>
 					<div className="mt-1 flex shrink-0 items-center gap-2.5 border-t px-4 pt-3">
-						<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground">
+						<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--fg)_8%,transparent)] text-xs font-medium">
 							{getInitials(userName)}
 						</span>
 						<div className="min-w-0 flex-1">
-							<div className="truncate text-sm font-semibold">{userName}</div>
-							<div className="truncate text-2xs text-muted-foreground">
-								{userEmail}
-							</div>
+							<div className="truncate text-base font-medium">{userName}</div>
+							<div className="truncate text-xs text-faint">{userEmail}</div>
 						</div>
 						<button
 							type="button"
 							onClick={handleLogout}
 							title="Log out"
-							className="shrink-0 p-1 text-muted-foreground hover:text-foreground"
+							className="quiet shrink-0 p-1"
 						>
-							<LogOut className="size-4" />
+							<SignOutIcon className="size-4" />
 						</button>
 					</div>
 				</SheetContent>

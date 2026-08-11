@@ -1,5 +1,5 @@
+import { PencilSimpleIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { PencilIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#/components/ui/button.tsx";
@@ -49,7 +49,7 @@ export function EditWeeklyTargetDialog({
 			<DialogTrigger
 				render={
 					<Button variant="ghost" size="icon-xs">
-						<PencilIcon className="size-3" />
+						<PencilSimpleIcon className="size-3" />
 						<span className="sr-only">Edit weekly target</span>
 					</Button>
 				}

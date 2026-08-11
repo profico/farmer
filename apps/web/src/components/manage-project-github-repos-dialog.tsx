@@ -1,6 +1,6 @@
+import { LockIcon, PlugIcon, XIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Lock, Plug, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
@@ -93,7 +93,7 @@ export function ManageProjectGithubReposDialog({
 
 				{status && !status.connected ? (
 					<div className="flex flex-col items-center gap-3 py-6 text-center">
-						<Plug className="size-6 text-muted-foreground" />
+						<PlugIcon className="size-6 text-muted-foreground" />
 						<p className="text-sm text-muted-foreground">
 							Connect your GitHub account to link repositories to this project.
 						</p>
@@ -110,11 +110,9 @@ export function ManageProjectGithubReposDialog({
 				) : (
 					<div className="grid min-w-0 gap-4">
 						<div className="min-w-0">
-							<p className="mb-1.5 text-xs font-semibold text-muted-foreground">
-								Linked repositories
-							</p>
+							<p className="eyebrow mb-2">Linked repositories</p>
 							{linkedRepos && linkedRepos.length > 0 ? (
-								<div className="-mx-1 max-h-40 overflow-y-auto rounded-md border">
+								<div className="scrollbar-stable -mx-1 max-h-40 overflow-y-auto rounded-md border">
 									{linkedRepos.map((repo) => (
 										<div
 											key={repo.id}
@@ -124,7 +122,7 @@ export function ManageProjectGithubReposDialog({
 												<span className="truncate">{repo.fullName}</span>
 												{repo.private && (
 													<Badge variant="outline" className="shrink-0 gap-1">
-														<Lock className="size-3" />
+														<LockIcon className="size-3" />
 														Private
 													</Badge>
 												)}
@@ -136,7 +134,7 @@ export function ManageProjectGithubReposDialog({
 												onClick={() => unlinkMutation.mutate(repo.id)}
 												disabled={unlinkMutation.isPending}
 											>
-												<XIcon className="size-3" />
+												<XIcon weight="regular" className="size-3" />
 												<span className="sr-only">Unlink</span>
 											</Button>
 										</div>
@@ -150,11 +148,9 @@ export function ManageProjectGithubReposDialog({
 						</div>
 
 						<div className="min-w-0">
-							<p className="mb-1.5 text-xs font-semibold text-muted-foreground">
-								Link a repository
-							</p>
+							<p className="eyebrow mb-2">Link a repository</p>
 							{linkableRepos.length > 0 ? (
-								<div className="-mx-1 max-h-52 overflow-y-auto rounded-md border">
+								<div className="scrollbar-stable -mx-1 max-h-52 overflow-y-auto rounded-md border">
 									{linkableRepos.map((repo) => (
 										<div
 											key={repo.githubRepoId}
@@ -164,7 +160,7 @@ export function ManageProjectGithubReposDialog({
 												<span className="truncate">{repo.fullName}</span>
 												{repo.private && (
 													<Badge variant="outline" className="shrink-0 gap-1">
-														<Lock className="size-3" />
+														<LockIcon className="size-3" />
 														Private
 													</Badge>
 												)}

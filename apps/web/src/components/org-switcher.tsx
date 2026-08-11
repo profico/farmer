@@ -1,6 +1,6 @@
 import { slugify } from "@farmer/core/lib/slug";
+import { CaretUpDownIcon, CheckIcon, PlusIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#/components/ui/button.tsx";
@@ -27,10 +27,18 @@ export function OrgSwitcher({
 	orgSlug,
 	organizationName,
 	organizationLogo,
+	singleOrg = false,
 }: {
 	orgSlug: string;
 	organizationName: string;
 	organizationLogo?: string | null;
+	/**
+	 * Single-org mode: there is nothing to switch to and nothing to create, so
+	 * the control collapses to the brand row it was already drawing. Cosmetic
+	 * only — `allowUserToCreateOrganization` in the auth config is what actually
+	 * closes the endpoint.
+	 */
+	singleOrg?: boolean;
 }) {
 	const navigate = useNavigate();
 	const { data: organizations, refetch: refetchOrganizations } =
@@ -63,6 +71,36 @@ export function OrgSwitcher({
 		await navigate({ to: "/$orgSlug", params: { orgSlug: data.slug } });
 	};
 
+	// The mark + name, identical in both modes — only what wraps it changes.
+	const brand = (
+		<>
+			{organizationLogo ? (
+				<img
+					src={organizationLogo}
+					alt=""
+					className="size-6.5 shrink-0 rounded-md object-contain"
+				/>
+			) : (
+				<span className="flex size-6.5 shrink-0 items-center justify-center rounded-md bg-primary text-[11.5px] font-medium text-primary-foreground">
+					{getInitials(organizationName)}
+				</span>
+			)}
+			<span className="min-w-0 flex-1 truncate text-base font-medium">
+				{organizationName}
+			</span>
+		</>
+	);
+
+	if (singleOrg) {
+		// A label, not a disabled button: a control that can never do anything
+		// shouldn't offer a hover state or take focus.
+		return (
+			<div className="flex h-auto w-full items-center gap-2.5 rounded-2xl p-2 text-left">
+				{brand}
+			</div>
+		);
+	}
+
 	return (
 		<>
 			<DropdownMenu>
@@ -70,23 +108,13 @@ export function OrgSwitcher({
 					render={
 						<Button
 							variant="outline"
-							className="h-auto w-full justify-start gap-2.5 rounded-md border-border bg-card p-2 text-left"
+							className="h-auto w-full justify-start gap-2.5 rounded-2xl border-transparent bg-transparent p-2 text-left hover:border-transparent hover:bg-muted"
 						>
-							{organizationLogo ? (
-								<img
-									src={organizationLogo}
-									alt=""
-									className="size-6.5 shrink-0 rounded-md object-contain"
-								/>
-							) : (
-								<span className="flex size-6.5 shrink-0 items-center justify-center rounded-md bg-[#241c33] text-[11.5px] font-semibold text-white">
-									{getInitials(organizationName)}
-								</span>
-							)}
-							<span className="min-w-0 flex-1 truncate text-sm font-semibold">
-								{organizationName}
-							</span>
-							<ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+							{brand}
+							<CaretUpDownIcon
+								weight="regular"
+								className="size-3.5 shrink-0 text-muted-foreground"
+							/>
 						</Button>
 					}
 				/>
@@ -95,10 +123,15 @@ export function OrgSwitcher({
 						<DropdownMenuItem
 							key={org.id}
 							onClick={() =>
-								navigate({ to: "/$orgSlug", params: { orgSlug: org.slug } })
+								navigate({
+									to: "/$orgSlug",
+									params: { orgSlug: org.slug },
+								})
 							}
 						>
-							{org.slug === orgSlug && <Check className="size-4" />}
+							{org.slug === orgSlug && (
+								<CheckIcon weight="regular" className="size-4" />
+							)}
 							<span className={org.slug === orgSlug ? "" : "ml-6"}>
 								{org.name}
 							</span>
@@ -106,7 +139,7 @@ export function OrgSwitcher({
 					))}
 					<DropdownMenuSeparator />
 					<DropdownMenuItem onClick={() => setCreateOpen(true)}>
-						<Plus className="size-4" />
+						<PlusIcon weight="regular" className="size-4" />
 						New organization
 					</DropdownMenuItem>
 				</DropdownMenuContent>

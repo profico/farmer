@@ -1,10 +1,8 @@
-import { and, eq, gte, lt, lte } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { timeEntry } from "../db/schema/domain";
-import { timeOffRequest } from "../db/schema/schedule";
 import {
-	dayBoundsInTz,
 	dayKeyInTz,
 	formatDuration,
 	timeKeyInTz,
@@ -36,7 +34,6 @@ export type LogReminderSummary = {
 //   - today isn't a scheduled working day for them (or has no end time),
 //   - their workday hasn't ended yet in the org timezone,
 //   - today is an org holiday,
-//   - they have an approved time-off request covering today, or
 //   - they've already logged at least their expected hours.
 //
 // Best-effort per user: one failure is logged and skipped, never aborts the run.
@@ -112,31 +109,19 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 				continue;
 			}
 
-			// Not on approved time off covering today.
-			const off = await db.query.timeOffRequest.findFirst({
-				where: and(
-					eq(timeOffRequest.organizationId, row.organizationId),
-					eq(timeOffRequest.userId, row.userId),
-					eq(timeOffRequest.status, "approved"),
-					lte(timeOffRequest.startDate, todayKey),
-					gte(timeOffRequest.endDate, todayKey),
-				),
-			});
-			if (off) {
-				skipped++;
-				continue;
-			}
-
-			// Sum everything logged today (fill blocks included — a fill block means
-			// the user has intentionally accounted for the rest of the day).
-			const { start, end } = dayBoundsInTz(todayKey, tz);
+			// Everything logged today, absence included. Vacation and Sick Leave are
+			// ordinary time entries now (against the two built-in absence tasks), so
+			// a day off accounts for itself and needs no separate approved-time-off
+			// lookup: the absence entry alone clears the expected hours below.
+			// Fill blocks count too — one means the user deliberately accounted for
+			// the rest of the day.
 			const entries = await db.query.timeEntry.findMany({
 				where: and(
 					eq(timeEntry.organizationId, row.organizationId),
 					eq(timeEntry.userId, row.userId),
-					gte(timeEntry.startedAt, start),
-					lt(timeEntry.startedAt, end),
+					eq(timeEntry.date, todayKey),
 				),
+				columns: { durationSeconds: true },
 			});
 			const loggedSeconds = entries.reduce(
 				(total, entry) => total + entry.durationSeconds,

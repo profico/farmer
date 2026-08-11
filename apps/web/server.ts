@@ -682,9 +682,10 @@ interface SchedulerConfig {
  * Start the in-process background schedulers.
  *
  * Self-hosted here as a single long-lived Bun process, so an interval loop is
- * the whole mechanism — no external cron needed. Both jobs are idempotent by
+ * the whole mechanism — no external cron needed. Every job is idempotent by
  * construction (the meeting sync uses onConflictDoNothing + tombstones; the log
- * reminder guards on notificationSettings.lastLogReminderDay), so a missed or
+ * reminder guards on notificationSettings.lastLogReminderDay; the Slack reminder
+ * claims a row in slack_reminder_log before each send), so a missed or
  * overlapping tick is harmless.
  *
  * Environment Variables:
@@ -692,6 +693,10 @@ interface SchedulerConfig {
  *   MEETING_SYNC_INTERVAL_MINUTES    - minutes between meeting syncs (default: 20)
  *   LOG_REMINDERS_ENABLED            - "false" to disable log reminders (default: on)
  *   LOG_REMINDERS_INTERVAL_MINUTES   - minutes between reminder sweeps (default: 30)
+ *   SLACK_REMINDERS_ENABLED          - "false" to disable Slack reminders (default: on)
+ *   SLACK_REMINDERS_INTERVAL_MINUTES - minutes between Slack sweeps (default: 60)
+ *   BUDGET_ALERTS_ENABLED            - "false" to disable budget burn alerts (default: on)
+ *   BUDGET_ALERTS_INTERVAL_MINUTES   - minutes between budget sweeps (default: 60)
  *
  * NOTE: assumes a single instance. If ever scaled to multiple replicas, each
  * runs its own loop — harmless (idempotent) but redundant; move to a single
@@ -700,9 +705,12 @@ interface SchedulerConfig {
 async function startSchedulers(): Promise<SchedulerHandle[]> {
 	// Deferred import: pulling in @farmer/core loads the postgres client, so keep
 	// it out of module scope and only touch the DB layer once the server is up.
-	const { runMeetingSyncOnce, runLogRemindersOnce } = await import(
-		"@farmer/core/jobs"
-	);
+	const {
+		runMeetingSyncOnce,
+		runLogRemindersOnce,
+		runSlackRemindersOnce,
+		runBudgetAlertsOnce,
+	} = await import("@farmer/core/jobs");
 
 	const handles = await Promise.all([
 		startIntervalScheduler({
@@ -723,6 +731,30 @@ async function startSchedulers(): Promise<SchedulerHandle[]> {
 			run: async () => {
 				const s = await runLogRemindersOnce();
 				return `${String(s.sent)} sent, ${String(s.skipped)} skipped, ${String(s.failed)} failed (${String(s.eligible)} members)`;
+			},
+		}),
+		startIntervalScheduler({
+			name: "Slack reminders",
+			enabledEnv: "SLACK_REMINDERS_ENABLED",
+			intervalEnv: "SLACK_REMINDERS_INTERVAL_MINUTES",
+			// Hourly is plenty: the job itself decides which day and hour it may
+			// send on, so a finer interval would only re-check the same answer.
+			defaultIntervalMinutes: 60,
+			run: async () => {
+				const s = await runSlackRemindersOnce();
+				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
+			},
+		}),
+		startIntervalScheduler({
+			name: "Budget alerts",
+			enabledEnv: "BUDGET_ALERTS_ENABLED",
+			intervalEnv: "BUDGET_ALERTS_INTERVAL_MINUTES",
+			// An hour budget moves at the speed of people logging time; hourly is
+			// far more resolution than a "you're at 80%" note needs.
+			defaultIntervalMinutes: 60,
+			run: async () => {
+				const s = await runBudgetAlertsOnce();
+				return `${String(s.alerts)} alerts to ${String(s.recipients)} recipients (${String(s.projects)} budgeted projects)`;
 			},
 		}),
 	]);

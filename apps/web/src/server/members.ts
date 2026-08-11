@@ -1,12 +1,80 @@
 import {
 	cancelInvitationInput,
 	inviteMemberInput,
+	memberUserIdInput,
+	monthPeriodInput,
 	removeMemberInput,
+	setMemberArchivedInput,
+	setMemberStartDateInput,
+	setMemberTypeInput,
 	updateMemberRoleInput,
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { orgAdminMiddleware, orgMiddleware } from "./auth";
+
+// The People screen (PRD 3.1): everyone with their org role, person type and
+// start date. Distinct from `listMembers` below, which is better-auth's raw
+// membership list and carries no product data.
+export const listPeople = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.handler(async ({ context }) => {
+		const { membersService } = await import("@farmer/core/services");
+		return membersService.list(context.ctx);
+	});
+
+// Person types resolved as of a given month, which is what every report and the
+// close sheet read — a type change is effective-dated, so "what is Ana" is only
+// answerable relative to a month.
+export const listMemberTypesForMonth = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.validator(monthPeriodInput)
+	.handler(async ({ data, context }) => {
+		const { membersService } = await import("@farmer/core/services");
+		const types = await membersService.typesForMonth(
+			context.ctx,
+			data.year,
+			data.month,
+		);
+		// A Map doesn't survive the server-fn JSON boundary.
+		return Object.fromEntries(types);
+	});
+
+export const getMemberTypeHistory = createServerFn({ method: "GET" })
+	.middleware([orgAdminMiddleware])
+	.validator(memberUserIdInput)
+	.handler(async ({ data: userId, context }) => {
+		const { membersService } = await import("@farmer/core/services");
+		return membersService.typeHistory(context.ctx, userId);
+	});
+
+export const setMemberType = createServerFn({ method: "POST" })
+	.middleware([orgAdminMiddleware])
+	.validator(setMemberTypeInput)
+	.handler(async ({ data, context }) => {
+		const { membersService } = await import("@farmer/core/services");
+		return membersService.setType(context.ctx, data);
+	});
+
+export const setMemberStartDate = createServerFn({ method: "POST" })
+	.middleware([orgAdminMiddleware])
+	.validator(setMemberStartDateInput)
+	.handler(async ({ data, context }) => {
+		const { membersService } = await import("@farmer/core/services");
+		return membersService.setStartDate(
+			context.ctx,
+			data.userId,
+			data.startDate,
+		);
+	});
+
+export const setMemberArchived = createServerFn({ method: "POST" })
+	.middleware([orgAdminMiddleware])
+	.validator(setMemberArchivedInput)
+	.handler(async ({ data, context }) => {
+		const { membersService } = await import("@farmer/core/services");
+		return membersService.setArchived(context.ctx, data.userId, data.archived);
+	});
 
 export const listMembers = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])

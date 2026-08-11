@@ -6,14 +6,12 @@ import type { Ctx } from "./types";
 
 export type IntegrationSettings = {
 	googleAutoSyncMeetings: boolean;
-	googleSyncTimeOff: boolean;
 	githubAutoLoadCommits: boolean;
 	githubSyncCommitsAsWorkTime: boolean;
 };
 
 const DEFAULTS: IntegrationSettings = {
 	googleAutoSyncMeetings: false,
-	googleSyncTimeOff: false,
 	githubAutoLoadCommits: false,
 	githubSyncCommitsAsWorkTime: false,
 };
@@ -31,7 +29,6 @@ export const integrationSettingsService = {
 		if (!row) return { ...DEFAULTS };
 		return {
 			googleAutoSyncMeetings: row.googleAutoSyncMeetings,
-			googleSyncTimeOff: row.googleSyncTimeOff,
 			githubAutoLoadCommits: row.githubAutoLoadCommits,
 			githubSyncCommitsAsWorkTime: row.githubSyncCommitsAsWorkTime,
 		};
@@ -50,7 +47,6 @@ export const integrationSettingsService = {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
 				googleAutoSyncMeetings: input.googleAutoSyncMeetings ?? undefined,
-				googleSyncTimeOff: input.googleSyncTimeOff ?? undefined,
 				githubAutoLoadCommits: input.githubAutoLoadCommits ?? undefined,
 				githubSyncCommitsAsWorkTime:
 					input.githubSyncCommitsAsWorkTime ?? undefined,
@@ -62,7 +58,6 @@ export const integrationSettingsService = {
 				],
 				set: {
 					googleAutoSyncMeetings: input.googleAutoSyncMeetings,
-					googleSyncTimeOff: input.googleSyncTimeOff,
 					githubAutoLoadCommits: input.githubAutoLoadCommits,
 					githubSyncCommitsAsWorkTime: input.githubSyncCommitsAsWorkTime,
 					updatedAt: new Date(),
@@ -72,7 +67,6 @@ export const integrationSettingsService = {
 		if (!row) throw new Error("Failed to save integration settings");
 		return {
 			googleAutoSyncMeetings: row.googleAutoSyncMeetings,
-			googleSyncTimeOff: row.googleSyncTimeOff,
 			githubAutoLoadCommits: row.githubAutoLoadCommits,
 			githubSyncCommitsAsWorkTime: row.githubSyncCommitsAsWorkTime,
 		};

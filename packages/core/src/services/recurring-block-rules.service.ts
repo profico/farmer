@@ -6,51 +6,59 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import { orgTimezone } from "../lib/org-time";
-import { anchorDateTime, datesBetween, parseDuration, weekdayInTz } from "../lib/time";
+import {
+	datesBetween,
+	parseDuration,
+	QUARTER_HOUR_SECONDS,
+	weekdayInTz,
+} from "../lib/time";
 import type {
 	CreateRecurringBlockRuleInput,
 	UpdateRecurringBlockRuleInput,
 } from "../schema/recurring-block-rules";
-import { entryTypesService } from "./entry-types.service";
+import { assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
 
+// A recurring rule is now "N hours of task T on these weekdays", with no clock:
+// under the duration-only entry model there is no time of day to place it at.
+// Everything else about the rule — effective dating, per-date skips, idempotent
+// materialization — is unchanged.
+const parseRuleDuration = (input: string): number => {
+	const seconds = parseDuration(input);
+	if (seconds === null) throw new Error("Could not understand that duration");
+	if (seconds <= 0) throw new Error("Duration must be greater than zero");
+	if (seconds % QUARTER_HOUR_SECONDS !== 0) {
+		throw new Error("Duration must be in 15-minute steps");
+	}
+	return seconds;
+};
+
 export const recurringBlockRulesService = {
-	list: (ctx: Ctx) => {
-		return db.query.recurringBlockRule.findMany({
+	list: (ctx: Ctx) =>
+		db.query.recurringBlockRule.findMany({
 			where: and(
 				eq(recurringBlockRule.organizationId, ctx.organizationId),
 				eq(recurringBlockRule.userId, ctx.userId),
 			),
-			with: { type: true, project: true },
+			with: { task: true, project: true },
 			orderBy: asc(recurringBlockRule.createdAt),
-		});
-	},
+		}),
 
 	create: async (ctx: Ctx, input: CreateRecurringBlockRuleInput) => {
-		const available = await entryTypesService.listAvailable(ctx, {
-			projectId: input.projectId,
-		});
-		if (!available.some((t) => t.id === input.typeId)) {
-			throw new Error("Entry type not available");
-		}
-		const durationSeconds = parseDuration(input.duration);
-		if (durationSeconds === null) {
-			throw new Error("Could not understand that duration");
-		}
-		if (durationSeconds <= 0) {
-			throw new Error("Duration must be greater than zero");
-		}
+		// Same taxonomy gate as a hand-made entry: the rule can only produce
+		// entries the user could have created themselves.
+		await assertTaskAvailable(ctx, input.taskId, input.projectId);
+		const durationSeconds = parseRuleDuration(input.duration);
 
 		const [created] = await db
 			.insert(recurringBlockRule)
 			.values({
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
-				typeId: input.typeId,
+				taskId: input.taskId,
 				projectId: input.projectId,
 				description: input.description ?? "",
 				daysOfWeek: input.daysOfWeek,
-				startTime: input.startTime,
 				durationSeconds,
 				effectiveFrom: input.effectiveFrom,
 				effectiveUntil: input.effectiveUntil,
@@ -70,45 +78,25 @@ export const recurringBlockRulesService = {
 		});
 		if (!existing) throw new Error("Recurring block rule not found");
 
-		if (input.typeId !== undefined || input.projectId !== undefined) {
-			const projectId =
+		if (input.taskId !== undefined || input.projectId !== undefined) {
+			await assertTaskAvailable(
+				ctx,
+				input.taskId ?? existing.taskId,
 				input.projectId !== undefined
 					? input.projectId
-					: (existing.projectId ?? undefined);
-			const typeId = input.typeId ?? existing.typeId;
-			const available = await entryTypesService.listAvailable(ctx, {
-				projectId,
-			});
-			if (!available.some((t) => t.id === typeId)) {
-				throw new Error("Entry type not available");
-			}
+					: (existing.projectId ?? undefined),
+			);
 		}
 
-		const patch: {
-			typeId?: string;
-			projectId?: string;
-			description?: string;
-			daysOfWeek?: number[];
-			startTime?: string;
-			durationSeconds?: number;
-			effectiveFrom?: string;
-			effectiveUntil?: string;
-			active?: boolean;
-		} = {};
-		if (input.typeId !== undefined) patch.typeId = input.typeId;
+		const patch: Partial<typeof recurringBlockRule.$inferInsert> = {
+			updatedAt: new Date(),
+		};
+		if (input.taskId !== undefined) patch.taskId = input.taskId;
 		if (input.projectId !== undefined) patch.projectId = input.projectId;
 		if (input.description !== undefined) patch.description = input.description;
 		if (input.daysOfWeek !== undefined) patch.daysOfWeek = input.daysOfWeek;
-		if (input.startTime !== undefined) patch.startTime = input.startTime;
 		if (input.duration !== undefined) {
-			const durationSeconds = parseDuration(input.duration);
-			if (durationSeconds === null) {
-				throw new Error("Could not understand that duration");
-			}
-			if (durationSeconds <= 0) {
-				throw new Error("Duration must be greater than zero");
-			}
-			patch.durationSeconds = durationSeconds;
+			patch.durationSeconds = parseRuleDuration(input.duration);
 		}
 		if (input.effectiveFrom !== undefined) {
 			patch.effectiveFrom = input.effectiveFrom;
@@ -178,19 +166,13 @@ export const recurringBlockRulesService = {
 				if (!rule.daysOfWeek.includes(weekdayByDate.get(date) ?? -1)) continue;
 				if (skipSet.has(`${rule.id}:${date}`)) continue;
 
-				const startedAt = anchorDateTime(date, rule.startTime, tz);
-				const stoppedAt = new Date(
-					startedAt.getTime() + rule.durationSeconds * 1000,
-				);
-
 				rows.push({
 					organizationId: ctx.organizationId,
 					userId: ctx.userId,
 					projectId: rule.projectId,
-					typeId: rule.typeId,
+					taskId: rule.taskId,
 					description: rule.description,
-					startedAt,
-					stoppedAt,
+					date,
 					durationSeconds: rule.durationSeconds,
 					generatedFromRuleId: rule.id,
 					generatedForDate: date,

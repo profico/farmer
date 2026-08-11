@@ -1,59 +1,34 @@
-import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import {
 	client,
 	project,
 	projectMember,
+	projectTask,
 	task,
 	timeEntry,
-	timeEntryType,
 } from "../db/schema/domain";
 import { orgTimezone } from "../lib/org-time";
-import {
-	dayBoundsInTz,
-	dayKeyInTz,
-	endOfMonthKey,
-	startOfMonthKey,
-} from "../lib/time";
+import { dayKeyInTz, endOfMonthKey, startOfMonthKey } from "../lib/time";
 import type {
 	AssignProjectMemberInput,
 	CreateProjectInput,
 	RemoveProjectMemberInput,
+	UpdateProjectInput,
 } from "../schema/projects";
+import { type Access, accessService } from "./access.service";
+import { assertProjectInOrg } from "./guards";
+import { membersService } from "./members.service";
+import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
 
 export type ProjectMemberRow = {
 	userId: string;
 	name: string;
 	email: string;
-	isVacationApprover: boolean;
-	billableRate: string | null;
-	costRate: string | null;
-};
-
-// Owners/admins bypass the project-membership gate (they may log to and manage
-// any project). Kept local to avoid a service import cycle.
-const isOrgAdmin = async (ctx: Ctx): Promise<boolean> => {
-	const row = await db.query.member.findFirst({
-		where: and(
-			eq(member.organizationId, ctx.organizationId),
-			eq(member.userId, ctx.userId),
-		),
-	});
-	return row?.role === "owner" || row?.role === "admin";
-};
-
-// Local org-ownership guard (time-entries.service exports its own; duplicated
-// here to avoid an import cycle between the two services).
-const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
-	const row = await db.query.project.findFirst({
-		where: and(
-			eq(project.id, projectId),
-			eq(project.organizationId, ctx.organizationId),
-		),
-	});
-	if (!row) throw new Error("Project not found");
+	role: "member" | "team_lead" | "pm";
+	active: boolean;
 };
 
 export type ProjectStats = {
@@ -68,22 +43,14 @@ const emptyStats = (): ProjectStats => ({
 	contributorCount: 0,
 });
 
-// Org-wide (not just the requesting user's) reporting bounds for "this month",
-// anchored to the org's timezone.
-const currentMonthBoundsForOrg = async (organizationId: string) => {
-	const tz = await orgTimezone(organizationId);
-	const todayKey = dayKeyInTz(new Date(), tz);
-	return {
-		start: dayBoundsInTz(startOfMonthKey(todayKey), tz).start,
-		end: dayBoundsInTz(endOfMonthKey(todayKey), tz).end,
-	};
-};
-
 const MAX_CONTRIBUTORS_SHOWN = 5;
 
-// Per-project monthly time total + a capped, most-recently-active contributor
-// list, derived from actual logged time entries (there's no membership model
-// in use — see projectMember's doc comment in the schema).
+const currentMonthKeysForOrg = async (organizationId: string) => {
+	const tz = await orgTimezone(organizationId);
+	const todayKey = dayKeyInTz(new Date(), tz);
+	return { from: startOfMonthKey(todayKey), to: endOfMonthKey(todayKey) };
+};
+
 const loadProjectStats = async (
 	ctx: Ctx,
 	projectIds: string[],
@@ -92,9 +59,9 @@ const loadProjectStats = async (
 	if (projectIds.length === 0) return stats;
 	for (const id of projectIds) stats.set(id, emptyStats());
 
-	const { start, end } = await currentMonthBoundsForOrg(ctx.organizationId);
+	const { from, to } = await currentMonthKeysForOrg(ctx.organizationId);
 
-	const [totals, contributorRows] = await Promise.all([
+	const [totals, memberRows] = await Promise.all([
 		db
 			.select({
 				projectId: timeEntry.projectId,
@@ -103,14 +70,13 @@ const loadProjectStats = async (
 			.from(timeEntry)
 			.where(
 				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
 					inArray(timeEntry.projectId, projectIds),
-					gte(timeEntry.startedAt, start),
-					lt(timeEntry.startedAt, end),
+					sql`${timeEntry.date} >= ${from}`,
+					sql`${timeEntry.date} <= ${to}`,
 				),
 			)
 			.groupBy(timeEntry.projectId),
-		// Team is now the assigned members (projectMember), not derived from
-		// logged time.
 		db
 			.select({
 				projectId: projectMember.projectId,
@@ -119,7 +85,13 @@ const loadProjectStats = async (
 			})
 			.from(projectMember)
 			.innerJoin(user, eq(projectMember.userId, user.id))
-			.where(inArray(projectMember.projectId, projectIds))
+			.where(
+				and(
+					eq(projectMember.organizationId, ctx.organizationId),
+					inArray(projectMember.projectId, projectIds),
+					eq(projectMember.active, true),
+				),
+			)
 			.orderBy(user.name),
 	]);
 
@@ -129,17 +101,13 @@ const loadProjectStats = async (
 		if (entry) entry.monthlyTotalSeconds = Number(row.totalSeconds);
 	}
 
-	const contributorsByProject = new Map<
-		string,
-		{ id: string; name: string }[]
-	>();
-	for (const row of contributorRows) {
-		if (!row.projectId) continue;
-		const list = contributorsByProject.get(row.projectId) ?? [];
+	const byProject = new Map<string, { id: string; name: string }[]>();
+	for (const row of memberRows) {
+		const list = byProject.get(row.projectId) ?? [];
 		list.push({ id: row.userId, name: row.name });
-		contributorsByProject.set(row.projectId, list);
+		byProject.set(row.projectId, list);
 	}
-	for (const [projectId, contributors] of contributorsByProject) {
+	for (const [projectId, contributors] of byProject) {
 		const entry = stats.get(projectId);
 		if (!entry) continue;
 		entry.contributorCount = contributors.length;
@@ -149,9 +117,29 @@ const loadProjectStats = async (
 	return stats;
 };
 
-// Shared enriched listing. `projectIds` scopes the result (used by listMine);
-// omit for the whole org.
-const enrichedProjects = async (ctx: Ctx, projectIds?: string[]) => {
+// The two money fields exist but are PM/Admin-visible only, so they are stripped
+// from the payload for anyone else rather than merely hidden in the UI — a
+// non-PM never receives them over the wire.
+const redactMoney = <
+	T extends {
+		id: string;
+		budgetSeconds: number | null;
+		budgetAmount: string | null;
+		hourlyPrice: string | null;
+	},
+>(
+	row: T,
+	access: Access,
+): T => {
+	if (access.canViewProjectMoney(row.id)) return row;
+	return { ...row, budgetSeconds: null, budgetAmount: null, hourlyPrice: null };
+};
+
+const enrichedProjects = async (
+	ctx: Ctx,
+	access: Access,
+	projectIds?: string[],
+) => {
 	if (projectIds && projectIds.length === 0) return [];
 	const projects = await db.query.project.findMany({
 		where: projectIds
@@ -162,8 +150,7 @@ const enrichedProjects = async (ctx: Ctx, projectIds?: string[]) => {
 			: eq(project.organizationId, ctx.organizationId),
 		with: {
 			client: true,
-			tasks: true,
-			entryTypes: { where: isNull(timeEntryType.archivedAt) },
+			projectTasks: { with: { task: true } },
 		},
 		orderBy: desc(project.createdAt),
 	});
@@ -174,59 +161,62 @@ const enrichedProjects = async (ctx: Ctx, projectIds?: string[]) => {
 	);
 
 	return projects.map((p) => ({
-		...p,
+		...redactMoney(p, access),
+		tasks: p.projectTasks
+			.map((pt) => pt.task)
+			.filter((t) => t.archivedAt === null)
+			.sort((a, b) => a.name.localeCompare(b.name)),
+		myRole: access.roleOn(p.id),
 		...(stats.get(p.id) ?? emptyStats()),
 	}));
 };
 
 export const projectsService = {
-	list: async (ctx: Ctx) => enrichedProjects(ctx),
-
-	// Projects the caller may log time against: all projects for owners/admins,
-	// otherwise only those they're assigned to. Feeds the time-entry picker.
-	listMine: async (ctx: Ctx) => {
-		if (await isOrgAdmin(ctx)) return enrichedProjects(ctx);
-		const rows = await db
-			.select({ projectId: projectMember.projectId })
-			.from(projectMember)
-			.where(
-				and(
-					eq(projectMember.organizationId, ctx.organizationId),
-					eq(projectMember.userId, ctx.userId),
-				),
-			);
-		return enrichedProjects(
-			ctx,
-			rows.map((r) => r.projectId),
-		);
+	/** Every project in the org. Admin-facing; the project list screen scopes to
+	 *  `listMine` for everyone else. */
+	list: async (ctx: Ctx) => {
+		const access = await accessService.resolve(ctx);
+		return enrichedProjects(ctx, access);
 	},
 
-	// Throws unless the caller may log time to this project (assigned member or
-	// owner/admin). Called from the time-entry create/update gate.
+	/** Projects the caller may log time against: everything for admins, otherwise
+	 *  strictly their assignments. Feeds the time-entry picker, which is why the
+	 *  assignment gate exists at all — short dropdowns and clean data. */
+	listMine: async (ctx: Ctx) => {
+		const access = await accessService.resolve(ctx);
+		const scope = access.scopeFor("member");
+		return enrichedProjects(ctx, access, scope ?? undefined);
+	},
+
+	get: async (ctx: Ctx, projectId: string) => {
+		const access = await accessService.resolve(ctx);
+		const rows = await enrichedProjects(ctx, access, [projectId]);
+		const row = rows[0];
+		if (!row) throw new Error("Project not found");
+		return row;
+	},
+
+	/** Throws unless the caller may log time to this project. */
 	assertProjectMembership: async (ctx: Ctx, projectId: string) => {
-		if (await isOrgAdmin(ctx)) return;
-		const row = await db.query.projectMember.findFirst({
-			where: and(
-				eq(projectMember.organizationId, ctx.organizationId),
-				eq(projectMember.projectId, projectId),
-				eq(projectMember.userId, ctx.userId),
-			),
-		});
-		if (!row) throw new Error("You are not assigned to this project");
+		const access = await accessService.resolve(ctx);
+		access.assertCanTrackOn(projectId);
 	},
 
 	listMembers: async (
 		ctx: Ctx,
 		projectId: string,
 	): Promise<ProjectMemberRow[]> => {
-		const rows = await db
+		const access = await accessService.resolve(ctx);
+		// A plain Member sees nothing at project level, not even the team.
+		access.assertCanViewProjectEntries(projectId);
+
+		return db
 			.select({
 				userId: projectMember.userId,
 				name: user.name,
 				email: user.email,
-				isVacationApprover: projectMember.isVacationApprover,
-				billableRate: projectMember.billableRate,
-				costRate: projectMember.costRate,
+				role: projectMember.role,
+				active: projectMember.active,
 			})
 			.from(projectMember)
 			.innerJoin(user, eq(projectMember.userId, user.id))
@@ -237,35 +227,37 @@ export const projectsService = {
 				),
 			)
 			.orderBy(user.name);
-		return rows;
 	},
 
 	assignMember: async (ctx: Ctx, input: AssignProjectMemberInput) => {
+		const access = await accessService.resolve(ctx);
+		access.assertCanManageProjectMembers(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
+
 		await db
 			.insert(projectMember)
 			.values({
 				organizationId: ctx.organizationId,
 				projectId: input.projectId,
 				userId: input.userId,
-				isVacationApprover: input.isVacationApprover,
-				billableRate: input.billableRate ?? null,
-				costRate: input.costRate ?? null,
+				role: input.role,
 			})
 			.onConflictDoUpdate({
 				target: [projectMember.projectId, projectMember.userId],
-				set: {
-					isVacationApprover: input.isVacationApprover,
-					billableRate: input.billableRate ?? null,
-					costRate: input.costRate ?? null,
-					updatedAt: new Date(),
-				},
+				set: { role: input.role, active: true, updatedAt: new Date() },
 			});
 	},
 
+	/** Deactivates rather than deletes: the person stays on historical close
+	 *  sheets (their hours were real) but the assignment grants nothing going
+	 *  forward and they drop off future sheets. */
 	removeMember: async (ctx: Ctx, input: RemoveProjectMemberInput) => {
+		const access = await accessService.resolve(ctx);
+		access.assertCanManageProjectMembers(input.projectId);
+
 		await db
-			.delete(projectMember)
+			.update(projectMember)
+			.set({ active: false, updatedAt: new Date() })
 			.where(
 				and(
 					eq(projectMember.organizationId, ctx.organizationId),
@@ -276,69 +268,167 @@ export const projectsService = {
 	},
 
 	create: async (ctx: Ctx, input: CreateProjectInput) => {
-		const full = await db.transaction(async (tx) => {
-			if (input.clientId) {
-				const ownedClient = await tx.query.client.findFirst({
-					where: and(
-						eq(client.id, input.clientId),
-						eq(client.organizationId, ctx.organizationId),
-					),
-				});
-				if (!ownedClient) throw new Error("Client not found");
-			}
+		const access = await accessService.resolve(ctx);
+		access.assertCanCreateProjects();
 
-			const [created] = await tx
+		const created = await db.transaction(async (tx) => {
+			const ownedClient = await tx.query.client.findFirst({
+				where: and(
+					eq(client.id, input.clientId),
+					eq(client.organizationId, ctx.organizationId),
+				),
+				columns: { id: true },
+			});
+			if (!ownedClient) throw new Error("Client not found");
+
+			const [row] = await tx
 				.insert(project)
 				.values({
 					organizationId: ctx.organizationId,
 					name: input.name,
 					clientId: input.clientId,
-					code: input.code,
-					billable: input.billable,
-					billableRate: input.billableRate,
-					currency: input.currency,
+					code: input.code || null,
+					type: input.type,
 					color: input.color,
 					budgetSeconds: input.budgetHours
 						? Math.round(input.budgetHours * 3600)
-						: undefined,
-					budgetAmount: input.budgetAmount,
+						: null,
+					budgetAmount: input.budgetAmount ?? null,
+					hourlyPrice: input.hourlyPrice ?? null,
 				})
 				.returning();
-			if (!created) throw new Error("Failed to create project");
-
-			if (input.firstTaskName?.trim()) {
-				await tx.insert(task).values({
-					organizationId: ctx.organizationId,
-					projectId: created.id,
-					name: input.firstTaskName.trim(),
-				});
-			}
-
-			const row = await tx.query.project.findFirst({
-				where: eq(project.id, created.id),
-				with: {
-					client: true,
-					tasks: true,
-					entryTypes: { where: isNull(timeEntryType.archivedAt) },
-				},
-			});
 			if (!row) throw new Error("Failed to create project");
+
+			// The creator becomes the project's PM (PRD §11.1). Without this a PM/TL
+			// could create a project they immediately cannot close or staff.
+			await tx.insert(projectMember).values({
+				organizationId: ctx.organizationId,
+				projectId: row.id,
+				userId: ctx.userId,
+				role: "pm",
+			});
+
+			if (input.taskIds.length > 0) {
+				const valid = await tx.query.task.findMany({
+					where: and(
+						inArray(task.id, input.taskIds),
+						isNull(task.archivedAt),
+						eq(task.isAbsence, false),
+					),
+					columns: { id: true, scope: true, organizationId: true },
+				});
+				const usable = valid.filter(
+					(t) =>
+						t.scope === "site" || t.organizationId === ctx.organizationId,
+				);
+				if (usable.length !== input.taskIds.length) {
+					throw new Error("One or more tasks are not available");
+				}
+				await tx.insert(projectTask).values(
+					usable.map((t) => ({
+						organizationId: ctx.organizationId,
+						projectId: row.id,
+						taskId: t.id,
+					})),
+				);
+			}
 			return row;
 		});
 
-		// A project can't have any logged time the instant it's created.
-		return { ...full, ...emptyStats() };
+		// The caller is now this project's PM, so re-resolve before returning —
+		// otherwise the response would redact the money fields they just set.
+		return projectsService.get(ctx, created.id);
 	},
 
+	update: async (ctx: Ctx, input: UpdateProjectInput) => {
+		const access = await accessService.resolve(ctx);
+		// Editing budgets/prices is PM territory; TLs manage people, not config.
+		access.assertCanCloseProject(input.projectId);
+		await assertProjectInOrg(ctx, input.projectId);
+
+		await db.transaction(async (tx) => {
+			const ownedClient = await tx.query.client.findFirst({
+				where: and(
+					eq(client.id, input.clientId),
+					eq(client.organizationId, ctx.organizationId),
+				),
+				columns: { id: true },
+			});
+			if (!ownedClient) throw new Error("Client not found");
+
+			await tx
+				.update(project)
+				.set({
+					name: input.name,
+					clientId: input.clientId,
+					code: input.code || null,
+					// Project type is changeable after creation without history (e.g. a
+					// Fixed Scope engagement rolling into Maintenance). Close sheets
+					// render according to the type at the time of viewing.
+					type: input.type,
+					color: input.color,
+					budgetSeconds: input.budgetHours
+						? Math.round(input.budgetHours * 3600)
+						: null,
+					budgetAmount: input.budgetAmount ?? null,
+					hourlyPrice: input.hourlyPrice ?? null,
+					updatedAt: new Date(),
+				})
+				.where(eq(project.id, input.projectId));
+		});
+
+		await tasksService.setProjectTasks(ctx, input.projectId, input.taskIds);
+		return projectsService.get(ctx, input.projectId);
+	},
+
+	/** Archive, never hard delete — agencies churn projects and history must
+	 *  survive (close sheets, reports and variance all read backwards). */
 	archive: async (ctx: Ctx, projectId: string) => {
+		const access = await accessService.resolve(ctx);
+		access.assertCanCloseProject(projectId);
 		await db
 			.update(project)
-			.set({ status: "archived" })
+			.set({ status: "archived", updatedAt: new Date() })
 			.where(
 				and(
 					eq(project.id, projectId),
 					eq(project.organizationId, ctx.organizationId),
 				),
 			);
+	},
+
+	unarchive: async (ctx: Ctx, projectId: string) => {
+		const access = await accessService.resolve(ctx);
+		access.assertCanCloseProject(projectId);
+		await db
+			.update(project)
+			.set({ status: "active", updatedAt: new Date() })
+			.where(
+				and(
+					eq(project.id, projectId),
+					eq(project.organizationId, ctx.organizationId),
+				),
+			);
+	},
+
+	/** The tasks selectable on this project — its cherry-picked subset. */
+	listTasks: async (ctx: Ctx, projectId: string) =>
+		tasksService.listForProject(ctx, projectId),
+
+	/** Assignable people: every active member of the org, for the team panel. Read
+	 *  off `member` (not `projectMember`) so people with no assignment yet — the
+	 *  ones you actually want to add — are in the list. Archived people are not:
+	 *  they keep the assignments they already had, and can't be given new ones. */
+	listAssignable: async (ctx: Ctx, projectId: string) => {
+		const access = await accessService.resolve(ctx);
+		access.assertCanManageProjectMembers(projectId);
+		const archived = await membersService.archivedUserIds(ctx);
+		const rows = await db
+			.select({ userId: user.id, name: user.name, email: user.email })
+			.from(member)
+			.innerJoin(user, eq(member.userId, user.id))
+			.where(eq(member.organizationId, ctx.organizationId))
+			.orderBy(asc(user.name));
+		return rows.filter((r) => !archived.has(r.userId));
 	},
 };

@@ -21,9 +21,7 @@ export const Route = createFileRoute("/api/github/setup")({
 				const session = await auth.api.getSession({ headers: request.headers });
 				if (!session) return redirectTo("/login");
 
-				const { verifyOrgState } = await import(
-					"@farmer/core/lib/github-state"
-				);
+				const { verifyOrgState } = await import("@farmer/core/lib/oauth-state");
 				const orgId =
 					(state ? verifyOrgState(state) : null) ??
 					session.session.activeOrganizationId;

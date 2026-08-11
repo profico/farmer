@@ -1,18 +1,24 @@
 import {
-	dayKeyInTz,
 	formatDurationInput,
 	parseDuration,
+	QUARTER_HOUR_SECONDS,
 	timeKeyInTz,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
+import {
+	CalendarDotIcon,
+	GitCommitIcon,
+	VideoCameraIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQuery,
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { CalendarClock, GitCommitHorizontal, Video, XIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "#/components/ui/button.tsx";
@@ -42,8 +48,8 @@ import {
 } from "#/components/ui/select.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
+import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
-import { availableEntryTypesQuery } from "#/queries/entry-types.ts";
 import {
 	attachedCommitsQuery,
 	githubConnectionStatusQuery,
@@ -57,8 +63,8 @@ import {
 import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
+import { tasksForProjectQuery } from "#/queries/tasks.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
-import { workingHoursQuery } from "#/queries/working-hours.ts";
 import {
 	attachCommitsToEntry,
 	detachCommitFromEntry,
@@ -69,86 +75,34 @@ import { createRecurringBlockRule } from "#/server/recurring-block-rules.ts";
 import { createTimeEntry, updateTimeEntry } from "#/server/time-entries.ts";
 
 const NO_PROJECT = "__none__";
-const NO_TASK = "__none__";
 const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
 export type ExistingTimeEntry = {
 	id: string;
-	typeId: string;
+	date: string;
 	projectId: string | null;
-	taskId: string | null;
+	taskId: string;
 	description: string;
 	durationSeconds: number;
-	startedAt: string | Date;
-	billable: boolean;
+	overtime: boolean;
 	fillsDay: boolean;
 	generatedFromRuleId: string | null;
 };
 
 type FormValues = {
-	typeId: string;
 	projectId: string;
 	taskId: string;
 	date: string;
-	startTime: string;
-	endTime: string;
 	description: string;
-	billable: boolean;
+	overtime: boolean;
 	fillsDay: boolean;
 	repeatEnabled: boolean;
 	daysOfWeek: number[];
 	repeatEndDate: string;
 };
 
-function minutesBetween(start: string, end: string): number {
-	const [sh, sm] = start.split(":").map(Number);
-	const [eh, em] = end.split(":").map(Number);
-	return eh * 60 + (em ?? 0) - (sh * 60 + (sm ?? 0));
-}
-
-function addMinutesToTime(time: string, minutes: number): string {
-	const [h, m] = time.split(":").map(Number);
-	const total = ((((h ?? 0) * 60 + (m ?? 0) + minutes) % 1440) + 1440) % 1440;
-	return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
-
 function commitKey(projectGithubRepoId: string, sha: string): string {
 	return `${projectGithubRepoId}:${sha}`;
-}
-
-// Where a new block should start when the user hasn't picked a time: right
-// after the last block already logged that day, or the day's configured
-// working-hours start if nothing's logged yet.
-function anchorStartTime({
-	dayEntries,
-	workingHours,
-	targetDate,
-	timezone,
-}: {
-	dayEntries: { startedAt: string | Date; durationSeconds: number }[];
-	workingHours: {
-		dayOfWeek: number;
-		enabled: boolean;
-		startTime: string | null;
-	}[];
-	targetDate: string;
-	timezone: string;
-}): string {
-	if (dayEntries.length > 0) {
-		const latestEndMinutes = Math.max(
-			...dayEntries.map((e) => {
-				const [h, m] = timeKeyInTz(new Date(e.startedAt), timezone)
-					.split(":")
-					.map(Number);
-				return (h ?? 0) * 60 + (m ?? 0) + Math.round(e.durationSeconds / 60);
-			}),
-		);
-		return addMinutesToTime("00:00", latestEndMinutes);
-	}
-	const day = workingHours.find(
-		(d) => d.dayOfWeek === weekdayInTz(targetDate, timezone),
-	);
-	return day?.enabled && day.startTime ? day.startTime : "09:00";
 }
 
 export function AddBlockDialog({
@@ -167,33 +121,16 @@ export function AddBlockDialog({
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const { data: projects } = useSuspenseQuery(myProjectsQuery());
-	const { data: availableTypes } = useSuspenseQuery(availableEntryTypesQuery());
 
-	const defaultDate = entry
-		? dayKeyInTz(new Date(entry.startedAt), timezone)
-		: (defaultDateProp ?? dateOptions[0]?.value ?? "");
-
-	const defaultStartTime = entry
-		? timeKeyInTz(new Date(entry.startedAt), timezone)
-		: "09:00";
-	const defaultEndTime = entry
-		? timeKeyInTz(
-				new Date(
-					new Date(entry.startedAt).getTime() + entry.durationSeconds * 1000,
-				),
-				timezone,
-			)
-		: "10:00";
+	const defaultDate =
+		entry?.date ?? defaultDateProp ?? dateOptions[0]?.value ?? "";
 
 	const buildDefaults = (): FormValues => ({
-		typeId: entry?.typeId ?? "",
 		projectId: entry?.projectId ?? NO_PROJECT,
-		taskId: entry?.taskId ?? NO_TASK,
+		taskId: entry?.taskId ?? "",
 		date: defaultDate,
-		startTime: defaultStartTime,
-		endTime: defaultEndTime,
 		description: entry?.description ?? "",
-		billable: entry?.billable ?? true,
+		overtime: entry?.overtime ?? false,
 		fillsDay: entry?.fillsDay ?? false,
 		repeatEnabled: false,
 		daysOfWeek: [weekdayInTz(defaultDate, timezone)],
@@ -206,67 +143,59 @@ export function AddBlockDialog({
 	useEffect(() => {
 		if (!open) return;
 		form.reset(buildDefaults());
+		setDurationText(entry ? formatDurationInput(entry.durationSeconds) : "");
 	}, [open]);
 
 	const projectId = form.watch("projectId");
-	const selectedProject = projects.find((p) => p.id === projectId);
-	const typeOptions = [
-		...availableTypes,
-		...(selectedProject?.entryTypes ?? []),
-	];
-	const startTime = form.watch("startTime");
-	const endTime = form.watch("endTime");
+	const taskId = form.watch("taskId");
 	const targetDate = form.watch("date") || defaultDate;
 	const repeatEnabled = form.watch("repeatEnabled");
 	const fillsDay = form.watch("fillsDay");
 	const daysOfWeek = form.watch("daysOfWeek");
-	const durationMinutes = minutesBetween(startTime, endTime);
 
-	const [showExactTime, setShowExactTime] = useState(!!entry);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reset the exact-time disclosure whenever the dialog (re)opens
+	// The task list is the project's cherry-picked subset plus the two absence
+	// tasks — so it can't be resolved until a project is chosen, and switching
+	// project may invalidate the current pick.
+	const { data: tasks = [] } = useQuery({
+		...tasksForProjectQuery(projectId === NO_PROJECT ? undefined : projectId),
+		enabled: open,
+	});
+	const selectedTask = tasks.find((t) => t.id === taskId);
 	useEffect(() => {
-		if (open) setShowExactTime(!!entry);
-	}, [open]);
-
-	// A free-text mirror of startTime/endTime — typing here recomputes endTime
-	// instead of requiring both clock times to be set by hand. Re-derived from
-	// the times whenever they change elsewhere, but only on blur here so it
-	// doesn't fight the user's keystrokes while they're still typing.
-	const [durationText, setDurationText] = useState(
-		formatDurationInput(Math.max(durationMinutes, 0) * 60),
-	);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: only re-derive when start/end/open change, not on every durationText edit
-	useEffect(() => {
-		setDurationText(formatDurationInput(Math.max(durationMinutes, 0) * 60));
-	}, [startTime, endTime, open]);
-
-	const commitDuration = () => {
-		const seconds = parseDuration(durationText);
-		if (!seconds || seconds <= 0) {
-			setDurationText(formatDurationInput(Math.max(durationMinutes, 0) * 60));
-			return;
+		if (!taskId) return;
+		if (tasks.length > 0 && !tasks.some((t) => t.id === taskId)) {
+			form.setValue("taskId", "");
 		}
-		form.setValue(
-			"endTime",
-			addMinutesToTime(startTime, Math.round(seconds / 60)),
-		);
-	};
+	}, [tasks, taskId, form]);
 
-	// For a brand-new block, anchor the start time to "right after the last
-	// block logged that day" (or the day's working-hours start if none yet)
-	// so quick-adding just needs a duration — no clock times required. Only
-	// applies until the user directly edits the Start field themselves.
-	const startTimeTouchedRef = useRef(false);
+	// An absence task (Vacation / Sick Leave) is logged against no project and
+	// needs no note; picking one clears any project already chosen.
+	const isAbsence = !!selectedTask?.isAbsence;
 	useEffect(() => {
-		if (!open) startTimeTouchedRef.current = false;
-	}, [open]);
+		if (isAbsence && form.getValues("projectId") !== NO_PROJECT) {
+			form.setValue("projectId", NO_PROJECT);
+		}
+	}, [isAbsence, form]);
+
+	// Duration is typed, not derived: there is no clock in this system, so an
+	// entry is a date plus an amount of time, in 15-minute steps.
+	const [durationText, setDurationText] = useState(
+		entry ? formatDurationInput(entry.durationSeconds) : "",
+	);
+	const parsedSeconds = parseDuration(durationText);
+	const snappedSeconds =
+		parsedSeconds && parsedSeconds > 0
+			? Math.round(parsedSeconds / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS
+			: null;
+	// Show the rounding before the user commits to it, rather than silently
+	// changing what they typed on save.
+	const willSnap =
+		snappedSeconds != null &&
+		parsedSeconds != null &&
+		snappedSeconds !== parsedSeconds;
 
 	const { data: dayEntries } = useQuery({
 		...timeEntriesRangeQuery(targetDate, targetDate),
-		enabled: open && !entry,
-	});
-	const { data: workingHours } = useQuery({
-		...workingHoursQuery(),
 		enabled: open && !entry,
 	});
 
@@ -383,14 +312,12 @@ export function AddBlockDialog({
 		setCalendarEventId(null);
 	}, [open]);
 
-	const selectedType = typeOptions.find((t) => t.id === form.watch("typeId"));
-	const isMeetingType = selectedType?.name?.trim().toLowerCase() === "meeting";
+	const isMeetingTask = selectedTask?.name?.trim().toLowerCase() === "meeting";
 	const showCalendarPicker =
-		!repeatEnabled && !fillsDay && isMeetingType && !!googleStatus?.connected;
+		!repeatEnabled && !fillsDay && isMeetingTask && !!googleStatus?.connected;
 
-	// Auto-load the day's meetings the moment the picker becomes relevant (a
-	// Meeting type on a connected account) — no "Load meetings" click. Refetches
-	// automatically when the target day changes.
+	// Auto-load the day's meetings the moment the picker becomes relevant (the
+	// Meeting task on a connected account) — no "Load meetings" click.
 	const calendarEventsQ = useQuery({
 		...calendarEventsForDayQuery(targetDate),
 		enabled: open && showCalendarPicker,
@@ -400,38 +327,20 @@ export function AddBlockDialog({
 	const pickCalendarEvent = (
 		event: Awaited<ReturnType<typeof listCalendarEventsForDay>>[number],
 	) => {
-		// A picked meeting owns the time — mark the start as user-touched so the
-		// auto-anchor won't override it, and reveal the exact-time fields so the
-		// filled range stays visible and editable.
-		startTimeTouchedRef.current = true;
-		form.setValue("startTime", timeKeyInTz(new Date(event.start), timezone));
-		form.setValue("endTime", timeKeyInTz(new Date(event.end), timezone));
-		setShowExactTime(true);
+		// A picked meeting contributes its LENGTH, not its slot — a 25-minute
+		// stand-up becomes 30 minutes of logged time, since entries snap to the
+		// quarter hour.
+		const seconds =
+			(new Date(event.end).getTime() - new Date(event.start).getTime()) / 1000;
+		setDurationText(
+			formatDurationInput(Math.max(seconds, QUARTER_HOUR_SECONDS)),
+		);
 		if (!form.getValues("description")) {
 			form.setValue("description", event.title);
 		}
 		setMeetingUrl(event.meetingUrl);
 		setCalendarEventId(event.id);
 	};
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: re-anchors whenever the target day or its data changes, as long as the user hasn't manually set a start time
-	useEffect(() => {
-		if (!open || entry || startTimeTouchedRef.current) return;
-		if (!dayEntries || !workingHours) return;
-		const anchored = anchorStartTime({
-			dayEntries,
-			workingHours,
-			targetDate,
-			timezone,
-		});
-		if (anchored === form.getValues("startTime")) return;
-		const duration = Math.max(
-			minutesBetween(form.getValues("startTime"), form.getValues("endTime")),
-			60,
-		);
-		form.setValue("startTime", anchored);
-		form.setValue("endTime", addMinutesToTime(anchored, duration));
-	}, [open, entry, dayEntries, workingHours, targetDate, timezone]);
 
 	const toggleDay = (day: number) => {
 		const current = form.getValues("daysOfWeek");
@@ -464,34 +373,30 @@ export function AddBlockDialog({
 			if (!entry && values.repeatEnabled) {
 				return createRecurringBlockRule({
 					data: {
-						typeId: values.typeId,
+						taskId: values.taskId,
 						projectId:
 							values.projectId === NO_PROJECT ? undefined : values.projectId,
 						description: values.description || undefined,
 						daysOfWeek: values.daysOfWeek,
-						startTime: values.startTime,
-						duration: formatDurationInput(
-							Math.max(minutesBetween(values.startTime, values.endTime), 1) *
-								60,
-						),
+						duration: durationText,
 						effectiveFrom: values.date,
 						effectiveUntil: values.repeatEndDate || undefined,
 					},
 				});
 			}
 			const payload = {
-				typeId: values.typeId,
+				taskId: values.taskId,
 				projectId:
 					values.projectId === NO_PROJECT ? undefined : values.projectId,
-				taskId: values.taskId === NO_TASK ? undefined : values.taskId,
 				description: values.description || undefined,
 				date: values.date,
-				startTime: values.startTime,
-				// A fill block carries no real end — its duration is derived server-side
-				// from the day's remaining working hours — so end mirrors start.
-				endTime: values.fillsDay ? values.startTime : values.endTime,
-				billable: values.billable,
-				fillsDay: values.fillsDay || undefined,
+				// A fill block's duration is derived server-side from the day's
+				// remaining working hours, so none is sent.
+				durationSeconds: values.fillsDay
+					? undefined
+					: (snappedSeconds ?? undefined),
+				overtime: values.overtime,
+				fillsDay: values.fillsDay,
 				meetingUrl: values.fillsDay ? undefined : meetingUrl || undefined,
 				calendarEventId: values.fillsDay
 					? undefined
@@ -530,14 +435,14 @@ export function AddBlockDialog({
 		},
 	});
 
-	const showRepeatSection = !entry && !fillsDay;
+	const showRepeatSection = !entry && !fillsDay && !isAbsence;
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger render={trigger} />
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>{entry ? "Edit block" : "Add time block"}</DialogTitle>
+					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
 					<p className="text-sm text-muted-foreground">{dialogDateLabel}</p>
 				</DialogHeader>
 				<Form {...form}>
@@ -547,61 +452,30 @@ export function AddBlockDialog({
 					>
 						<FormField
 							control={form.control}
-							name="typeId"
-							rules={{ required: "Type is required" }}
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Entry type</FormLabel>
-									<FormControl>
-										<div className="flex flex-wrap gap-1.5">
-											{typeOptions.map((t) => {
-												const selected = field.value === t.id;
-												return (
-													<button
-														key={t.id}
-														type="button"
-														onClick={() => field.onChange(t.id)}
-														className={cn(
-															"rounded-full border px-3 py-1.5 text-xs font-semibold",
-															selected
-																? "border-primary bg-accent text-primary"
-																: "border-border text-muted-foreground",
-														)}
-													>
-														{t.name}
-													</button>
-												);
-											})}
-										</div>
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-						<FormField
-							control={form.control}
 							name="projectId"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Project (optional)</FormLabel>
+									<FormLabel>Project</FormLabel>
 									<Select
 										value={field.value}
 										onValueChange={(value) => {
 											field.onChange(value);
-											form.setValue("taskId", NO_TASK);
+											form.setValue("taskId", "");
 										}}
 										items={[
-											{ value: NO_PROJECT, label: "No project" },
+											{ value: NO_PROJECT, label: "No project (absence)" },
 											...projects.map((p) => ({ value: p.id, label: p.name })),
 										]}
 									>
 										<FormControl>
 											<SelectTrigger className="w-full">
-												<SelectValue placeholder="No project" />
+												<SelectValue placeholder="Pick a project" />
 											</SelectTrigger>
 										</FormControl>
 										<SelectContent>
-											<SelectItem value={NO_PROJECT}>No project</SelectItem>
+											<SelectItem value={NO_PROJECT}>
+												No project (absence)
+											</SelectItem>
 											{projects.map((p) => (
 												<SelectItem key={p.id} value={p.id}>
 													{p.name}
@@ -613,43 +487,45 @@ export function AddBlockDialog({
 								</FormItem>
 							)}
 						/>
-						{selectedProject && selectedProject.tasks.length > 0 && (
-							<FormField
-								control={form.control}
-								name="taskId"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Task (optional)</FormLabel>
-										<Select
-											value={field.value}
-											onValueChange={field.onChange}
-											items={[
-												{ value: NO_TASK, label: "No task" },
-												...selectedProject.tasks.map((t) => ({
-													value: t.id,
-													label: t.name,
-												})),
-											]}
-										>
-											<FormControl>
-												<SelectTrigger className="w-full">
-													<SelectValue placeholder="No task" />
-												</SelectTrigger>
-											</FormControl>
-											<SelectContent>
-												<SelectItem value={NO_TASK}>No task</SelectItem>
-												{selectedProject.tasks.map((t) => (
-													<SelectItem key={t.id} value={t.id}>
+						<FormField
+							control={form.control}
+							name="taskId"
+							rules={{ required: "Pick a task" }}
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Task</FormLabel>
+									<FormControl>
+										<div className="flex flex-wrap gap-1.5">
+											{tasks.map((t) => {
+												const selected = field.value === t.id;
+												return (
+													<button
+														key={t.id}
+														type="button"
+														onClick={() => field.onChange(t.id)}
+														className={cn(
+															"rounded-full border px-3 py-1.5 text-xs transition-colors duration-(--dur-fast)",
+															selected
+																? "border-primary/40 bg-primary/8 font-medium text-primary"
+																: "border-border text-muted-foreground hover:bg-muted",
+														)}
+													>
 														{t.name}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						)}
+													</button>
+												);
+											})}
+											{tasks.length === 0 && (
+												<p className="text-sm text-muted-foreground">
+													This project has no tasks yet — ask its lead to add
+													some in project settings.
+												</p>
+											)}
+										</div>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
 						{dateOptions.length > 1 && (
 							<FormField
 								control={form.control}
@@ -680,13 +556,16 @@ export function AddBlockDialog({
 								)}
 							/>
 						)}
-						{!repeatEnabled && (
-							<div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+						{!repeatEnabled && !isAbsence && (
+							// Same hairline row as Repeat and Overtime below. It used to be a
+							// tinted box, which read as a different *kind* of control when it
+							// is the same kind: a toggle with a sentence under it.
+							<div className="flex items-center justify-between gap-3 border-t pt-3.5">
 								<div className="min-w-0">
-									<span className="text-sm font-semibold">
+									<span className="text-base font-medium">
 										Fill rest of day
 									</span>
-									<p className="text-xs text-muted-foreground">
+									<p className="text-sm text-muted-foreground">
 										{dayHasFill
 											? "This day already has a fill block — edit or delete that one instead."
 											: "Auto-expands to your working hours minus everything else logged that day."}
@@ -695,98 +574,49 @@ export function AddBlockDialog({
 								<Switch
 									checked={fillsDay}
 									disabled={dayHasFill}
-									onCheckedChange={(checked) => {
-										form.setValue("fillsDay", checked);
-										if (checked) setShowExactTime(false);
-									}}
+									onCheckedChange={(checked) =>
+										form.setValue("fillsDay", checked)
+									}
 								/>
 							</div>
 						)}
 						{fillsDay ? (
 							<p className="text-sm text-muted-foreground">
-								This block fills the rest of the day's working hours
+								This entry fills the rest of the day's working hours
 								automatically — no duration needed.
 							</p>
 						) : (
-							<>
-								<FormItem>
-									<FormLabel>Duration</FormLabel>
-									<FormControl>
-										<Input
-											className="w-28 text-base"
-											placeholder="1.5 or 1h30m"
-											value={durationText}
-											onChange={(e) => setDurationText(e.target.value)}
-											onBlur={commitDuration}
-										/>
-									</FormControl>
-								</FormItem>
-								{showExactTime ? (
-									<div className="grid grid-cols-2 gap-2.5">
-										<FormField
-											control={form.control}
-											name="startTime"
-											rules={{ required: true }}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel>Start</FormLabel>
-													<FormControl>
-														<Input
-															type="time"
-															className="text-base"
-															{...field}
-															onChange={(e) => {
-																startTimeTouchedRef.current = true;
-																field.onChange(e);
-															}}
-														/>
-													</FormControl>
-												</FormItem>
-											)}
-										/>
-										<FormField
-											control={form.control}
-											name="endTime"
-											rules={{ required: true }}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel>End</FormLabel>
-													<FormControl>
-														<Input
-															type="time"
-															className="text-base"
-															{...field}
-														/>
-													</FormControl>
-												</FormItem>
-											)}
-										/>
-									</div>
-								) : (
-									<button
-										type="button"
-										onClick={() => setShowExactTime(true)}
-										className="w-fit text-sm text-primary hover:underline"
-									>
-										Set exact time
-									</button>
-								)}
-							</>
+							<FormItem>
+								<FormLabel>Time</FormLabel>
+								<FormControl>
+									<Input
+										className="w-32 text-base"
+										placeholder="1.5 or 1h30m"
+										value={durationText}
+										onChange={(e) => setDurationText(e.target.value)}
+									/>
+								</FormControl>
+								<p className="text-sm text-muted-foreground">
+									{willSnap && snappedSeconds != null
+										? `Rounds to ${formatDurationInput(snappedSeconds)} — time is tracked in 15-minute steps.`
+										: "In 15-minute steps."}
+								</p>
+							</FormItem>
 						)}
 						{showCalendarPicker && (
 							<div className="border-t pt-3.5">
 								<div className="flex items-center justify-between">
-									<span className="text-sm font-semibold">Google Calendar</span>
+									<span className="text-base font-medium">Google Calendar</span>
 									{calendarEventsQ.isFetching && (
 										<span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-											<CalendarClock className="size-3.5 animate-pulse" />
+											<CalendarDotIcon className="size-3.5 animate-pulse" />
 											Loading…
 										</span>
 									)}
 								</div>
 
 								{calendarEvents.length > 0 && (
-									<div className="-mx-1 mt-3 max-h-52 overflow-y-auto rounded-md border">
+									<div className="scrollbar-stable -mx-1 mt-3 max-h-52 overflow-y-auto rounded-md border">
 										{calendarEvents.map((event) => {
 											const selected = calendarEventId === event.id;
 											return (
@@ -796,7 +626,7 @@ export function AddBlockDialog({
 													onClick={() => pickCalendarEvent(event)}
 													className={cn(
 														"flex w-full items-start gap-2 border-b px-3 py-2 text-left last:border-b-0",
-														selected && "bg-accent",
+														selected && "bg-muted",
 													)}
 												>
 													<span className="min-w-0 flex-1">
@@ -810,7 +640,7 @@ export function AddBlockDialog({
 														</span>
 													</span>
 													{event.meetingUrl && (
-														<Video className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+														<VideoCameraIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
 													)}
 												</button>
 											);
@@ -831,13 +661,13 @@ export function AddBlockDialog({
 								)}
 
 								{meetingUrl && (
-									<p className="mt-2 truncate text-xs text-muted-foreground">
+									<p className="mt-2 truncate text-sm text-muted-foreground">
 										Meeting link:{" "}
 										<a
 											href={meetingUrl}
 											target="_blank"
 											rel="noreferrer"
-											className="text-primary hover:underline"
+											className="underlined text-primary"
 										>
 											{meetingUrl}
 										</a>
@@ -848,7 +678,7 @@ export function AddBlockDialog({
 						{showRepeatSection && (
 							<div className="border-t pt-3.5">
 								<div className="flex items-center justify-between">
-									<span className="text-sm font-semibold">Repeat</span>
+									<span className="text-base font-medium">Repeat</span>
 									<Switch
 										checked={repeatEnabled}
 										onCheckedChange={(checked) =>
@@ -856,61 +686,97 @@ export function AddBlockDialog({
 										}
 									/>
 								</div>
-								{repeatEnabled && (
-									<div className="mt-3 flex flex-col gap-3 rounded-lg border bg-muted/40 p-3">
-										<div className="flex gap-1">
-											{DAY_LABELS.map((label, day) => (
-												<button
-													// biome-ignore lint/suspicious/noArrayIndexKey: day is the stable weekday number (0-6)
-													key={day}
-													type="button"
-													onClick={() => toggleDay(day)}
-													className={cn(
-														"size-7 rounded-full border text-xs font-semibold",
-														daysOfWeek.includes(day)
-															? "border-primary bg-primary text-primary-foreground"
-															: "border-border bg-background text-muted-foreground",
+								{/* A disclosure, not a bare conditional render. Flipping the
+								    switch used to insert this block instantly, which jumped the
+								    dialog's height and shoved the footer buttons down under
+								    whatever the pointer was already over.
+
+								    Opened with motion rather than the CSS `0fr → 1fr` grid-row
+								    trick: the fields unmount when collapsed, exactly as they did
+								    before this was animated, so nothing here can be tabbed into
+								    or submitted while the switch is off. The grid version had to
+								    keep them mounted and hold them shut with `inert` instead.
+								    `springProductive` is the same spring the sidebar rows and the
+								    entry rows open with.
+
+								    `overflow-hidden` clips the content to the collapsing box; the
+								    controls sit behind `mt-3` + `p-3`, so it never reaches a
+								    focus ring. Reduced motion is handled globally by the root
+								    <MotionConfig reducedMotion="user">. */}
+								<AnimatePresence initial={false}>
+									{repeatEnabled && (
+										<motion.div
+											key="repeat-options"
+											initial={{ height: 0, opacity: 0 }}
+											animate={{ height: "auto", opacity: 1 }}
+											exit={{ height: 0, opacity: 0 }}
+											transition={springProductive}
+											className="overflow-hidden"
+										>
+											<div className="mt-3 flex flex-col gap-3 rounded-lg border bg-muted/40 p-3">
+												<div className="flex gap-1">
+													{DAY_LABELS.map((label, day) => (
+														<button
+															// biome-ignore lint/suspicious/noArrayIndexKey: day is the stable weekday number (0-6)
+															key={day}
+															type="button"
+															onClick={() => toggleDay(day)}
+															className={cn(
+																"mono size-7 rounded-full border text-xs transition-colors duration-(--dur-fast)",
+																daysOfWeek.includes(day)
+																	? "border-primary bg-primary text-primary-foreground"
+																	: "border-border bg-background text-muted-foreground",
+															)}
+														>
+															{label}
+														</button>
+													))}
+												</div>
+												<FormField
+													control={form.control}
+													name="repeatEndDate"
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel className="text-xs">
+																Ends (optional)
+															</FormLabel>
+															<FormControl>
+																<Input type="date" {...field} />
+															</FormControl>
+														</FormItem>
 													)}
-												>
-													{label}
-												</button>
-											))}
-										</div>
-										<FormField
-											control={form.control}
-											name="repeatEndDate"
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="text-xs">
-														Ends (optional)
-													</FormLabel>
-													<FormControl>
-														<Input type="date" {...field} />
-													</FormControl>
-												</FormItem>
-											)}
-										/>
-									</div>
-								)}
+												/>
+											</div>
+										</motion.div>
+									)}
+								</AnimatePresence>
 							</div>
 						)}
-						<div className="flex items-center justify-between border-t pt-3.5">
-							<span className="text-sm font-semibold">Billable</span>
-							<FormField
-								control={form.control}
-								name="billable"
-								render={({ field }) => (
-									<Switch
-										checked={field.value}
-										onCheckedChange={field.onChange}
-									/>
-								)}
-							/>
-						</div>
+						{!isAbsence && (
+							<div className="flex items-center justify-between border-t pt-3.5">
+								<div className="min-w-0">
+									<span className="text-base font-medium">Overtime</span>
+									<p className="text-sm text-muted-foreground">
+										Flag it yourself — nothing is counted as overtime
+										automatically.
+									</p>
+								</div>
+								<FormField
+									control={form.control}
+									name="overtime"
+									render={({ field }) => (
+										<Switch
+											checked={field.value}
+											onCheckedChange={field.onChange}
+										/>
+									)}
+								/>
+							</div>
+						)}
 						{showCommitPicker && (
 							<div className="border-t pt-3.5">
 								<div className="flex items-center justify-between">
-									<span className="text-sm font-semibold">GitHub commits</span>
+									<span className="text-base font-medium">GitHub commits</span>
 									{autoLoadCommits ? (
 										<Button
 											type="button"
@@ -919,7 +785,7 @@ export function AddBlockDialog({
 											onClick={() => suggestedCommitsQ.refetch()}
 											disabled={suggestedCommitsQ.isFetching}
 										>
-											<GitCommitHorizontal className="size-3.5" />
+											<GitCommitIcon className="size-3.5" />
 											{suggestedCommitsQ.isFetching ? "Loading…" : "Refresh"}
 										</Button>
 									) : (
@@ -930,7 +796,7 @@ export function AddBlockDialog({
 											onClick={() => suggestCommitsMutation.mutate()}
 											disabled={suggestCommitsMutation.isPending}
 										>
-											<GitCommitHorizontal className="size-3.5" />
+											<GitCommitIcon className="size-3.5" />
 											{suggestCommitsMutation.isPending
 												? "Finding…"
 												: "Find commits"}
@@ -939,14 +805,14 @@ export function AddBlockDialog({
 								</div>
 
 								{attachedCommits && attachedCommits.length > 0 && (
-									<div className="-mx-1 mt-3 max-h-40 overflow-y-auto rounded-md border">
+									<div className="scrollbar-stable -mx-1 mt-3 max-h-40 overflow-y-auto rounded-md border">
 										{attachedCommits.map((commit) => (
 											<div
 												key={commit.id}
 												className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
 											>
 												<span className="min-w-0 truncate text-sm">
-													<span className="font-mono text-xs text-muted-foreground">
+													<span className="mono text-xs text-muted-foreground">
 														{commit.sha.slice(0, 7)}
 													</span>{" "}
 													{commit.message.split("\n")[0]}
@@ -958,7 +824,7 @@ export function AddBlockDialog({
 													onClick={() => detachCommitMutation.mutate(commit.id)}
 													disabled={detachCommitMutation.isPending}
 												>
-													<XIcon className="size-3" />
+													<XIcon weight="regular" className="size-3" />
 													<span className="sr-only">Remove</span>
 												</Button>
 											</div>
@@ -967,7 +833,7 @@ export function AddBlockDialog({
 								)}
 
 								{pickableCommits.length > 0 && (
-									<div className="-mx-1 mt-3 max-h-52 overflow-y-auto rounded-md border">
+									<div className="scrollbar-stable -mx-1 mt-3 max-h-52 overflow-y-auto rounded-md border">
 										{pickableCommits.map((commit) => {
 											const key = commitKey(
 												commit.projectGithubRepoId,
@@ -1012,9 +878,16 @@ export function AddBlockDialog({
 						<FormField
 							control={form.control}
 							name="description"
+							rules={
+								isAbsence || fillsDay
+									? undefined
+									: { required: "Describe what you worked on" }
+							}
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Note (optional)</FormLabel>
+									<FormLabel>
+										{isAbsence || fillsDay ? "Note (optional)" : "What you did"}
+									</FormLabel>
 									<FormControl>
 										<Textarea rows={3} className="resize-y" {...field} />
 									</FormControl>
@@ -1025,10 +898,10 @@ export function AddBlockDialog({
 						<DialogFooter>
 							<Button type="submit" disabled={mutation.isPending}>
 								{entry
-									? "Save block"
+									? "Save entry"
 									: repeatEnabled
-										? "Create repeating block"
-										: "Add block"}
+										? "Create repeating entry"
+										: "Log time"}
 							</Button>
 						</DialogFooter>
 					</form>

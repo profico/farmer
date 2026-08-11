@@ -13,7 +13,8 @@ import { defineConfig, type Plugin } from "vite";
 // stays a bare import — in dev and in the SSR build alike.
 const TYPST = "@myriaddreamin/typst-ts-node-compiler";
 
-// Dev-server startup hook: ensure the site-wide default entry types exist when
+// Dev-server startup hook: ensure the site-wide built-in tasks (Vacation, Sick
+// Leave) exist when
 // `vite dev` boots. Prod covers this via the Docker entrypoint (which runs the
 // bundled seed script after migrations); dev never touches that entrypoint, so
 // a fresh local DB would otherwise lack the defaults the app depends on. We run
@@ -24,12 +25,12 @@ const TYPST = "@myriaddreamin/typst-ts-node-compiler";
 // config under Node, so we shell out to `bun` rather than use Bun APIs here.)
 // Failures are logged, not fatal — a missing DB shouldn't block dev startup.
 const SEED_SCRIPT = fileURLToPath(
-	new URL("../../packages/core/src/db/seed-entry-types.ts", import.meta.url),
+	new URL("../../packages/core/src/db/seed-tasks.ts", import.meta.url),
 );
 
-function seedSiteEntryTypes(): Plugin {
+function seedSiteTasks(): Plugin {
 	return {
-		name: "farmer:seed-site-entry-types",
+		name: "farmer:seed-site-tasks",
 		apply: "serve",
 		configureServer() {
 			const proc = spawn("bun", ["run", SEED_SCRIPT], { stdio: "pipe" });
@@ -38,14 +39,14 @@ function seedSiteEntryTypes(): Plugin {
 				stderr += chunk;
 			});
 			proc.on("error", (err) => {
-				console.warn(`[dev] could not run entry-types seed: ${err.message}`);
+				console.warn(`[dev] could not run site-task seed: ${err.message}`);
 			});
 			proc.on("close", (code) => {
 				if (code === 0) {
-					console.log("[dev] ensured site-wide entry types");
+					console.log("[dev] ensured site-wide tasks");
 				} else {
 					console.warn(
-						`[dev] failed to seed site entry types (is the DB up?):\n${stderr.trim()}`,
+						`[dev] failed to seed site tasks (is the DB up?):\n${stderr.trim()}`,
 					);
 				}
 			});
@@ -69,7 +70,7 @@ export default defineConfig(({ command }) => ({
 		optimizeDeps: { exclude: [TYPST] },
 	},
 	plugins: [
-		seedSiteEntryTypes(),
+		seedSiteTasks(),
 		devtools(),
 		tailwindcss(),
 		tanstackStart(),

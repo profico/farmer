@@ -1,187 +1,629 @@
-import { and, eq, gte, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { member } from "../db/schema/auth";
-import { project, projectMember, timeEntry } from "../db/schema/domain";
-import { timeOffRequest } from "../db/schema/schedule";
-import { orgTimezone } from "../lib/org-time";
-import { dayBoundsInTz, datesBetween, weekdayInTz } from "../lib/time";
-import type { UtilizationRangeInput } from "../schema/reports";
-import { holidaysService } from "./holidays.service";
+import { member, user } from "../db/schema/auth";
+import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
+import { client, project, task, timeEntry } from "../db/schema/domain";
+import { monthBounds } from "../lib/time";
+import type {
+	AbsenceReportInput,
+	MonthReportInput,
+	TimeReportDetailInput,
+	TimeReportSummaryInput,
+} from "../schema/reports";
+import { type Access, accessService } from "./access.service";
+import {
+	absenceDaysByUser,
+	effectiveFinal,
+	expectedSecondsFor,
+} from "./close.service";
+import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
+import { membersService } from "./members.service";
 import type { Ctx } from "./types";
-import { dayDurationSeconds, workingHoursService } from "./working-hours.service";
 
-export type MemberUtilization = {
-	userId: string;
-	name: string;
-	expectedSeconds: number;
-	loggedSeconds: number;
-	utilizationPct: number | null;
+// ── Scoping ────────────────────────────────────────────────────────────────
+// Admin sees everything. PM and Team Lead see the report scoped to THEIR
+// projects, and on the Teammates tab only people's hours within those shared
+// projects — never a person's company-wide total, or a TL on one project could
+// learn what people do for other clients. Members have no access at all.
+
+const reportScope = async (ctx: Ctx): Promise<{ access: Access; projectIds: string[] | null }> => {
+	const access = await accessService.resolve(ctx);
+	const projectIds = access.scopeFor("team_lead");
+	if (projectIds !== null && projectIds.length === 0) {
+		throw new Error("You do not have access to reports");
+	}
+	return { access, projectIds };
 };
 
-export type ProjectBudgetAndMargin = {
-	projectId: string;
+// The Time Report covers PROJECT time. Absence entries carry no project and no
+// client, so they'd have nothing to group under; they are reported separately by
+// the Absence report (6.3), which is the only place they belong.
+const projectTimeWhere = (
+	ctx: Ctx,
+	input: { from: string; to: string; clientId?: string; projectId?: string; taskId?: string; userId?: string },
+	scope: string[] | null,
+) =>
+	and(
+		eq(timeEntry.organizationId, ctx.organizationId),
+		isNotNull(timeEntry.projectId),
+		gte(timeEntry.date, input.from),
+		lte(timeEntry.date, input.to),
+		scope ? inArray(timeEntry.projectId, scope) : undefined,
+		input.projectId ? eq(timeEntry.projectId, input.projectId) : undefined,
+		input.clientId ? eq(project.clientId, input.clientId) : undefined,
+		input.taskId ? eq(timeEntry.taskId, input.taskId) : undefined,
+		input.userId ? eq(timeEntry.userId, input.userId) : undefined,
+	);
+
+export type TimeReportRow = {
+	id: string;
 	name: string;
-	currency: string;
-	budgetSeconds: number | null;
-	budgetAmount: number | null;
-	actualSeconds: number;
-	billableSeconds: number;
-	revenue: number;
-	cost: number;
-	margin: number;
-	marginPct: number | null;
-	budgetSecondsPct: number | null;
-	budgetAmountPct: number | null;
+	secondsTotal: number;
+};
+
+export type TimeReportDetailRow = {
+	id: string;
+	date: string;
+	clientName: string;
+	projectName: string;
+	taskName: string;
+	description: string;
+	userName: string;
+	overtime: boolean;
+	durationSeconds: number;
 };
 
 export const reportsService = {
-	utilization: async (
+	/**
+	 * Time Report level 1 (PRD 6.1) — a deliberate 1:1 structural replica of
+	 * Harvest's most-used screen, minus every money concept. Tabs are Clients /
+	 * Projects / Teammates; there is no Tasks tab (grouping by task adds no value
+	 * for how these reports are read).
+	 */
+	timeSummary: async (
 		ctx: Ctx,
-		range: UtilizationRangeInput,
-	): Promise<MemberUtilization[]> => {
-		const tz = await orgTimezone(ctx.organizationId);
+		input: TimeReportSummaryInput,
+	): Promise<{ rows: TimeReportRow[]; totalSeconds: number }> => {
+		const { projectIds } = await reportScope(ctx);
+		const where = projectTimeWhere(ctx, input, projectIds);
 
-		const members = await db.query.member.findMany({
-			where: and(
-				eq(member.organizationId, ctx.organizationId),
-				range.userId ? eq(member.userId, range.userId) : undefined,
-			),
-			with: { user: true },
-		});
-		const userIds = members.map((m) => m.userId);
-		if (userIds.length === 0) return [];
+		const grouping =
+			input.tab === "clients"
+				? { id: client.id, name: client.name }
+				: input.tab === "projects"
+					? { id: project.id, name: project.name }
+					: { id: user.id, name: user.name };
 
-		const [holidaySet, workingHoursByUser, approvedTimeOff, loggedRows] =
-			await Promise.all([
-				holidaysService.holidaySetForRange(ctx, range.from, range.to),
-				workingHoursService.listForOrg(ctx, userIds),
-				db.query.timeOffRequest.findMany({
-					where: and(
-						eq(timeOffRequest.organizationId, ctx.organizationId),
-						eq(timeOffRequest.status, "approved"),
-						lte(timeOffRequest.startDate, range.to),
-						gte(timeOffRequest.endDate, range.from),
-					),
-				}),
-				db
-					.select({
-						userId: timeEntry.userId,
-						total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-					})
-					.from(timeEntry)
-					.where(
-						and(
-							eq(timeEntry.organizationId, ctx.organizationId),
-							range.userId ? eq(timeEntry.userId, range.userId) : undefined,
-							gte(timeEntry.startedAt, dayBoundsInTz(range.from, tz).start),
-							lt(timeEntry.startedAt, dayBoundsInTz(range.to, tz).end),
-							eq(timeEntry.fillsDay, false),
-						),
-					)
-					.groupBy(timeEntry.userId),
-			]);
-
-		const loggedByUser = new Map(loggedRows.map((r) => [r.userId, Number(r.total)]));
-		const dates = datesBetween(range.from, range.to);
-		const timeOffByUser = new Map<string, typeof approvedTimeOff>();
-		for (const request of approvedTimeOff) {
-			const list = timeOffByUser.get(request.userId) ?? [];
-			list.push(request);
-			timeOffByUser.set(request.userId, list);
-		}
-
-		return members
-			.map((m) => {
-				const days = workingHoursByUser.get(m.userId) ?? [];
-				const timeOff = timeOffByUser.get(m.userId) ?? [];
-				const expectedSeconds = dates.reduce((sum, date) => {
-					if (holidaySet.has(date)) return sum;
-					if (timeOff.some((r) => date >= r.startDate && date <= r.endDate)) {
-						return sum;
-					}
-					const day = days[weekdayInTz(date, tz)];
-					return sum + (day ? dayDurationSeconds(day) : 0);
-				}, 0);
-				const loggedSeconds = loggedByUser.get(m.userId) ?? 0;
-
-				return {
-					userId: m.userId,
-					name: m.user.name,
-					expectedSeconds,
-					loggedSeconds,
-					utilizationPct:
-						expectedSeconds > 0
-							? Math.round((loggedSeconds / expectedSeconds) * 100)
-							: null,
-				};
+		const rows = await db
+			.select({
+				id: grouping.id,
+				name: grouping.name,
+				secondsTotal: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
 			})
-			.sort((a, b) => a.name.localeCompare(b.name));
+			.from(timeEntry)
+			.innerJoin(project, eq(timeEntry.projectId, project.id))
+			.innerJoin(client, eq(project.clientId, client.id))
+			.innerJoin(user, eq(timeEntry.userId, user.id))
+			.where(where)
+			.groupBy(grouping.id, grouping.name)
+			.orderBy(desc(sql`sum(${timeEntry.durationSeconds})`));
+
+		const mapped = rows.map((r) => ({
+			id: r.id,
+			name: r.name,
+			secondsTotal: Number(r.secondsTotal),
+		}));
+		return {
+			rows: mapped,
+			totalSeconds: mapped.reduce((sum, r) => sum + r.secondsTotal, 0),
+		};
 	},
 
-	// All-time (not period-bound) per active project — budgets are running
-	// caps against total project life, not a single reporting window.
-	budgetsAndMargin: async (ctx: Ctx): Promise<ProjectBudgetAndMargin[]> => {
+	/** Time Report level 2: every entry behind the clicked number. */
+	timeDetail: async (
+		ctx: Ctx,
+		input: TimeReportDetailInput,
+	): Promise<TimeReportDetailRow[]> => {
+		const { projectIds } = await reportScope(ctx);
+		const where = projectTimeWhere(ctx, input, projectIds);
+
+		const rows = await db
+			.select({
+				id: timeEntry.id,
+				date: timeEntry.date,
+				clientName: client.name,
+				projectName: project.name,
+				taskName: task.name,
+				description: timeEntry.description,
+				userName: user.name,
+				overtime: timeEntry.overtime,
+				durationSeconds: timeEntry.durationSeconds,
+			})
+			.from(timeEntry)
+			.innerJoin(project, eq(timeEntry.projectId, project.id))
+			.innerJoin(client, eq(project.clientId, client.id))
+			.innerJoin(task, eq(timeEntry.taskId, task.id))
+			.innerJoin(user, eq(timeEntry.userId, user.id))
+			.where(where)
+			.orderBy(
+				input.groupBy === "person"
+					? asc(user.name)
+					: desc(timeEntry.date),
+				input.groupBy === "person" ? desc(timeEntry.date) : asc(user.name),
+			);
+
+		return rows;
+	},
+
+	/**
+	 * Budget burn (6.6). Hours-only math by design: a EUR budget, when entered, is
+	 * shown as context beside the hour figures and never computed against — there
+	 * are no rates in this system to compute with.
+	 */
+	budgetBurn: async (ctx: Ctx) => {
+		const { access, projectIds } = await reportScope(ctx);
+
 		const rows = await db
 			.select({
 				projectId: project.id,
 				name: project.name,
-				currency: project.currency,
+				clientName: client.name,
 				budgetSeconds: project.budgetSeconds,
 				budgetAmount: project.budgetAmount,
-				actualSeconds: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-				billableSeconds: sql<string>`coalesce(sum(case when ${timeEntry.billable} then ${timeEntry.durationSeconds} else 0 end), 0)`,
-				// Cost rate has no project-level default (unlike billableRate) — a
-				// member without a projectMember.costRate override contributes 0
-				// cost, so margin reads as "at least this much" until rates are set.
-				revenue: sql<string>`coalesce(sum(case when ${timeEntry.billable} then ${timeEntry.durationSeconds} * coalesce(${projectMember.billableRate}, ${project.billableRate}, 0) / 3600.0 else 0 end), 0)`,
-				cost: sql<string>`coalesce(sum(${timeEntry.durationSeconds} * coalesce(${projectMember.costRate}, 0) / 3600.0), 0)`,
+				consumedSeconds: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
 			})
 			.from(project)
+			.innerJoin(client, eq(project.clientId, client.id))
 			.leftJoin(timeEntry, eq(timeEntry.projectId, project.id))
-			.leftJoin(
-				projectMember,
-				and(
-					eq(projectMember.projectId, project.id),
-					eq(projectMember.userId, timeEntry.userId),
-				),
-			)
 			.where(
 				and(
 					eq(project.organizationId, ctx.organizationId),
 					eq(project.status, "active"),
+					// One row per active Fixed Scope project — the only type that carries
+					// an hour budget.
+					eq(project.type, "fixed_scope"),
+					projectIds ? inArray(project.id, projectIds) : undefined,
 				),
 			)
-			.groupBy(project.id);
+			.groupBy(project.id, client.name);
 
 		return rows
 			.map((r) => {
-				const actualSeconds = Number(r.actualSeconds);
-				const billableSeconds = Number(r.billableSeconds);
-				const revenue = Number(r.revenue);
-				const cost = Number(r.cost);
-				const margin = revenue - cost;
-				const budgetAmount = r.budgetAmount ? Number(r.budgetAmount) : null;
-
+				const consumedSeconds = Number(r.consumedSeconds);
+				const budgetSeconds = r.budgetSeconds;
 				return {
 					projectId: r.projectId,
 					name: r.name,
-					currency: r.currency,
-					budgetSeconds: r.budgetSeconds,
-					budgetAmount,
-					actualSeconds,
-					billableSeconds,
-					revenue,
-					cost,
-					margin,
-					marginPct: revenue > 0 ? Math.round((margin / revenue) * 100) : null,
-					budgetSecondsPct: r.budgetSeconds
-						? Math.round((actualSeconds / r.budgetSeconds) * 100)
+					clientName: r.clientName,
+					budgetSeconds,
+					// Display-only context, and only for those allowed to see money.
+					budgetAmount: access.canViewProjectMoney(r.projectId)
+						? r.budgetAmount
 						: null,
-					budgetAmountPct: budgetAmount
-						? Math.round((revenue / budgetAmount) * 100)
-						: null,
+					consumedSeconds,
+					remainingSeconds:
+						budgetSeconds != null ? budgetSeconds - consumedSeconds : null,
+					burnPct:
+						budgetSeconds != null && budgetSeconds > 0
+							? Math.round((consumedSeconds / budgetSeconds) * 100)
+							: null,
 				};
 			})
-			.sort((a, b) => a.name.localeCompare(b.name));
+			.sort((a, b) => (b.burnPct ?? -1) - (a.burnPct ?? -1));
+	},
+
+	/** Overtime report (6.5). Admin sees everyone; PM/TL scoped to their projects. */
+	overtime: async (ctx: Ctx, input: MonthReportInput) => {
+		const { projectIds } = await reportScope(ctx);
+		const { from, to } = monthBounds(input.year, input.month);
+		const yearStart = `${input.year}-01-01`;
+		const yearEnd = `${input.year}-12-31`;
+
+		const scopeWhere = (rangeFrom: string, rangeTo: string) =>
+			and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.overtime, true),
+				isNotNull(timeEntry.projectId),
+				gte(timeEntry.date, rangeFrom),
+				lte(timeEntry.date, rangeTo),
+				projectIds ? inArray(timeEntry.projectId, projectIds) : undefined,
+			);
+
+		const [monthRows, yearRows] = await Promise.all([
+			db
+				.select({
+					userId: timeEntry.userId,
+					name: user.name,
+					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+				})
+				.from(timeEntry)
+				.innerJoin(user, eq(timeEntry.userId, user.id))
+				.where(scopeWhere(from, to))
+				.groupBy(timeEntry.userId, user.name),
+			db
+				.select({
+					userId: timeEntry.userId,
+					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+				})
+				.from(timeEntry)
+				.where(scopeWhere(yearStart, yearEnd))
+				.groupBy(timeEntry.userId),
+		]);
+
+		const yearByUser = new Map(
+			yearRows.map((r) => [r.userId, Number(r.total)]),
+		);
+		return monthRows
+			.map((r) => ({
+				userId: r.userId,
+				name: r.name,
+				monthSeconds: Number(r.total),
+				yearSeconds: yearByUser.get(r.userId) ?? 0,
+			}))
+			.sort((a, b) => b.monthSeconds - a.monthSeconds);
+	},
+
+	/** The entries behind an overtime number. */
+	overtimeDetail: async (
+		ctx: Ctx,
+		input: MonthReportInput & { userId: string },
+	) => {
+		const { projectIds } = await reportScope(ctx);
+		const { from, to } = monthBounds(input.year, input.month);
+
+		return db
+			.select({
+				id: timeEntry.id,
+				date: timeEntry.date,
+				projectName: project.name,
+				taskName: task.name,
+				description: timeEntry.description,
+				durationSeconds: timeEntry.durationSeconds,
+			})
+			.from(timeEntry)
+			.innerJoin(project, eq(timeEntry.projectId, project.id))
+			.innerJoin(task, eq(timeEntry.taskId, task.id))
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, input.userId),
+					eq(timeEntry.overtime, true),
+					gte(timeEntry.date, from),
+					lte(timeEntry.date, to),
+					projectIds ? inArray(timeEntry.projectId, projectIds) : undefined,
+				),
+			)
+			.orderBy(asc(timeEntry.date));
+	},
+
+	/**
+	 * Absence report (6.3), Admin only. Computed from ENTRIES only, never from
+	 * close-sheet overrides — the two are allowed to diverge, and when they do it
+	 * means someone forgot to log absence (PRD decision 3).
+	 */
+	absence: async (ctx: Ctx, input: AbsenceReportInput) => {
+		await accessService.requireAdmin(ctx);
+
+		const yearStart = `${input.year}-01-01`;
+		const yearEnd = `${input.year}-12-31`;
+		const monthRange = input.month
+			? monthBounds(input.year, input.month)
+			: null;
+
+		const select = (from: string, to: string) =>
+			db
+				.select({
+					userId: timeEntry.userId,
+					name: user.name,
+					taskName: task.name,
+					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+				})
+				.from(timeEntry)
+				.innerJoin(task, eq(timeEntry.taskId, task.id))
+				.innerJoin(user, eq(timeEntry.userId, user.id))
+				.where(
+					and(
+						eq(timeEntry.organizationId, ctx.organizationId),
+						eq(task.isAbsence, true),
+						gte(timeEntry.date, from),
+						lte(timeEntry.date, to),
+					),
+				)
+				.groupBy(timeEntry.userId, user.name, task.name);
+
+		const [ytdRows, monthRows] = await Promise.all([
+			select(yearStart, yearEnd),
+			monthRange ? select(monthRange.from, monthRange.to) : Promise.resolve([]),
+		]);
+
+		const byUser = new Map<
+			string,
+			{
+				userId: string;
+				name: string;
+				monthByTask: Record<string, number>;
+				ytdByTask: Record<string, number>;
+				monthSeconds: number;
+				ytdSeconds: number;
+			}
+		>();
+		const ensure = (userId: string, name: string) => {
+			let row = byUser.get(userId);
+			if (!row) {
+				row = {
+					userId,
+					name,
+					monthByTask: {},
+					ytdByTask: {},
+					monthSeconds: 0,
+					ytdSeconds: 0,
+				};
+				byUser.set(userId, row);
+			}
+			return row;
+		};
+
+		for (const r of ytdRows) {
+			const row = ensure(r.userId, r.name);
+			row.ytdByTask[r.taskName] = Number(r.total);
+			row.ytdSeconds += Number(r.total);
+		}
+		for (const r of monthRows) {
+			const row = ensure(r.userId, r.name);
+			row.monthByTask[r.taskName] = Number(r.total);
+			row.monthSeconds += Number(r.total);
+		}
+
+		// Unit is hours; the UI offers a toggle to display as days, which is why
+		// the divisor travels with the payload rather than being hardcoded there.
+		return {
+			workingDaySeconds: WORKING_DAY_SECONDS,
+			rows: [...byUser.values()].sort((a, b) => a.name.localeCompare(b.name)),
+		};
+	},
+
+	/**
+	 * Reported vs Final variance (6.4), Admin only. The undertracking diagnostic —
+	 * and the reason free entry editing is tolerated: instead of preventing drift,
+	 * we measure it.
+	 *
+	 * Reads the Reported value SNAPSHOTTED at finalization, not a live recompute.
+	 * Entries stay editable after a month is finalized, so a live Reported would
+	 * drift away from the Final it was compared against and the variance would
+	 * quietly stop meaning anything.
+	 */
+	variance: async (ctx: Ctx, input: MonthReportInput) => {
+		await accessService.requireAdmin(ctx);
+
+		const rows = await db
+			.select({
+				userId: monthlyCloseRow.userId,
+				name: user.name,
+				reported: sql<string>`coalesce(sum(${monthlyCloseRow.reportedAtFinalizeSeconds}), 0)`,
+				final: sql<string>`coalesce(sum(${monthlyCloseRow.finalSeconds}), 0)`,
+			})
+			.from(monthlyCloseRow)
+			.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
+			.innerJoin(user, eq(monthlyCloseRow.userId, user.id))
+			.where(
+				and(
+					eq(monthlyClose.organizationId, ctx.organizationId),
+					eq(monthlyClose.year, input.year),
+					eq(monthlyClose.month, input.month),
+					// Populates as closes are finalized; empty for open months.
+					eq(monthlyClose.status, "finalized"),
+				),
+			)
+			.groupBy(monthlyCloseRow.userId, user.name);
+
+		return rows
+			.map((r) => {
+				const reportedSeconds = Number(r.reported);
+				const finalSeconds = Number(r.final);
+				return {
+					userId: r.userId,
+					name: r.name,
+					reportedSeconds,
+					finalSeconds,
+					diffSeconds: finalSeconds - reportedSeconds,
+					diffPct:
+						reportedSeconds > 0
+							? Math.round(
+									((finalSeconds - reportedSeconds) / reportedSeconds) * 1000,
+								) / 10
+							: null,
+				};
+			})
+			.sort((a, b) => b.diffSeconds - a.diffSeconds);
+	},
+
+	/** Variance across months, to spot chronic undertrackers. */
+	varianceTrend: async (
+		ctx: Ctx,
+		input: { year: number; month: number; months: number },
+	) => {
+		await accessService.requireAdmin(ctx);
+
+		const periods: { year: number; month: number }[] = [];
+		let { year, month } = input;
+		for (let i = 0; i < input.months; i++) {
+			periods.unshift({ year, month });
+			month -= 1;
+			if (month === 0) {
+				month = 12;
+				year -= 1;
+			}
+		}
+
+		const results = await Promise.all(
+			periods.map(async (p) => ({
+				...p,
+				rows: await reportsService.variance(ctx, p),
+			})),
+		);
+		return results;
+	},
+
+	/**
+	 * Utilization (6.8), Admin only. Deliberately NOT Harvest's definition:
+	 *
+	 *     Utilization = Final hours on non-Internal projects / Expected hours
+	 *
+	 * The numerator is what was actually invoiced after all adjustments, the
+	 * denominator the same Expected the close sheet uses. Note there is no
+	 * billable flag anywhere in the system — "billable" is derived entirely from
+	 * project type and close data.
+	 */
+	utilization: async (ctx: Ctx, input: MonthReportInput) => {
+		await accessService.requireAdmin(ctx);
+		return computeUtilization(ctx, input);
+	},
+
+	/**
+	 * Utilization across months, plus the team average per month.
+	 *
+	 * The average is over people who HAVE a percentage — a contractor with no
+	 * Expected figure has no utilization to average, and counting them as 0%
+	 * would drag the team line down every month for a number that was never
+	 * measured.
+	 */
+	utilizationTrend: async (
+		ctx: Ctx,
+		input: { year: number; month: number; months: number },
+	) => {
+		await accessService.requireAdmin(ctx);
+
+		const periods: { year: number; month: number }[] = [];
+		let { year, month } = input;
+		for (let i = 0; i < input.months; i++) {
+			periods.unshift({ year, month });
+			month -= 1;
+			if (month === 0) {
+				month = 12;
+				year -= 1;
+			}
+		}
+
+		return Promise.all(
+			periods.map(async (p) => {
+				const rows = await computeUtilization(ctx, p);
+				const measured = rows.filter((r) => r.utilizationPct != null);
+				return {
+					...p,
+					peopleMeasured: measured.length,
+					teamAveragePct:
+						measured.length > 0
+							? Math.round(
+									measured.reduce((sum, r) => sum + (r.utilizationPct ?? 0), 0) /
+										measured.length,
+								)
+							: null,
+					finalSeconds: rows.reduce((sum, r) => sum + r.finalSeconds, 0),
+				};
+			}),
+		);
 	},
 };
+
+const computeUtilization = async (
+	ctx: Ctx,
+	input: MonthReportInput,
+	onlyUserId?: string,
+) => {
+	const { from, to } = monthBounds(input.year, input.month);
+
+	const [finalRows, types, fundSeconds, absence, members, archived] = await Promise.all([
+		db
+			.select({
+				userId: monthlyCloseRow.userId,
+				// Prefer the frozen Expected from finalization, so an admin editing a
+				// past month's hour fund can't retroactively move percentages that
+				// have already been reported.
+				expected: sql<string | null>`max(${monthlyCloseRow.expectedAtFinalizeSeconds})`,
+				final: sql<string>`coalesce(sum(case when ${project.type} <> 'internal' then ${monthlyCloseRow.finalSeconds} else 0 end), 0)`,
+			})
+			.from(monthlyCloseRow)
+			.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
+			.innerJoin(project, eq(monthlyClose.projectId, project.id))
+			.where(
+				and(
+					eq(monthlyClose.organizationId, ctx.organizationId),
+					eq(monthlyClose.year, input.year),
+					eq(monthlyClose.month, input.month),
+					eq(monthlyClose.status, "finalized"),
+				),
+			)
+			.groupBy(monthlyCloseRow.userId),
+		membersService.typesForMonth(ctx, input.year, input.month),
+		hourFundService.get(ctx, input.year, input.month),
+		absenceDaysByUser(ctx, from, to),
+		db
+			.select({ userId: member.userId, name: user.name })
+			.from(member)
+			.innerJoin(user, eq(member.userId, user.id))
+			.where(
+				and(
+					eq(member.organizationId, ctx.organizationId),
+					onlyUserId ? eq(member.userId, onlyUserId) : undefined,
+				),
+			),
+		membersService.archivedUserIds(ctx),
+	]);
+
+	const finalByUser = new Map(
+		finalRows.map((r) => [
+			r.userId,
+			{
+				final: Number(r.final),
+				expected: r.expected == null ? null : Number(r.expected),
+			},
+		]),
+	);
+
+	return members
+		// Overhead is excluded from the org-wide list: these people almost never
+		// work on client projects, and including them would drag every team
+		// average down. Archived people go for the same reason — a leaver with no
+		// hours is not an under-sold month. The single-person view keeps both — an
+		// overhead person asking about their own month should still get an answer.
+		.filter(
+			(m) =>
+				onlyUserId != null ||
+				((types.get(m.userId)?.type ?? "billable") !== "overhead" &&
+					!archived.has(m.userId)),
+		)
+		.map((m) => {
+			const memberType = types.get(m.userId) ?? {
+				type: "billable" as const,
+				expectedSecondsOverride: null,
+			};
+			const totals = finalByUser.get(m.userId);
+			const expectedSeconds =
+				totals?.expected ??
+				expectedSecondsFor(
+					memberType,
+					fundSeconds,
+					absence.get(m.userId) ?? 0,
+				);
+			const finalSeconds = totals?.final ?? 0;
+
+			return {
+				userId: m.userId,
+				name: m.name,
+				memberType: memberType.type,
+				finalSeconds,
+				expectedSeconds,
+				// A contractor with no explicit expected value displays Final hours
+				// with no percentage — the "/" rows of the old sheet.
+				utilizationPct:
+					expectedSeconds != null && expectedSeconds > 0
+						? Math.round((finalSeconds / expectedSeconds) * 100)
+						: null,
+			};
+		})
+	.sort((a, b) => a.name.localeCompare(b.name));
+};
+
+// Re-exported so callers computing Expected outside the close sheet (Slack
+// nudges, the compliance report) share one definition of the formula.
+export { effectiveFinal, expectedSecondsFor };

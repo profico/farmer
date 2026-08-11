@@ -1,10 +1,10 @@
+import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { FolderKanban, MoreHorizontal, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CreateProjectDialog } from "#/components/create-project-dialog.tsx";
@@ -18,14 +18,9 @@ import {
 	AvatarGroup,
 	AvatarGroupCount,
 } from "#/components/ui/avatar.tsx";
-import { Button } from "#/components/ui/button.tsx";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "#/components/ui/dropdown-menu.tsx";
 import { Input } from "#/components/ui/input.tsx";
+import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
+import { RowActions } from "#/components/ui/row-actions.tsx";
 import {
 	Table,
 	TableBody,
@@ -39,7 +34,7 @@ import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn, getInitials } from "#/lib/utils.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
-import { archiveProject } from "#/server/projects.ts";
+import { archiveProject, unarchiveProject } from "#/server/projects.ts";
 
 type StatusFilter = "all" | "active" | "archived";
 
@@ -66,17 +61,26 @@ function ProjectsPage() {
 	>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 
+	const invalidateProjects = () =>
+		queryClient.invalidateQueries({ queryKey: projectsQuery().queryKey });
+
 	const archiveMutation = useMutation({
 		mutationFn: (projectId: string) => archiveProject({ data: projectId }),
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({
-				queryKey: projectsQuery().queryKey,
-			});
-		},
+		onSuccess: invalidateProjects,
 		onError: (error) => {
 			toast.error(error.message ?? "Could not archive project");
 		},
 	});
+
+	const unarchiveMutation = useMutation({
+		mutationFn: (projectId: string) => unarchiveProject({ data: projectId }),
+		onSuccess: invalidateProjects,
+		onError: (error) => {
+			toast.error(error.message ?? "Could not restore project");
+		},
+	});
+
+	const busy = archiveMutation.isPending || unarchiveMutation.isPending;
 
 	const counts = useMemo(
 		() => ({
@@ -107,25 +111,29 @@ function ProjectsPage() {
 		null;
 
 	const main = (
-		<div className="flex min-w-0 flex-1 flex-col p-4 sm:p-8">
-			<div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-				<h1 className="font-display text-xl">Projects</h1>
-				<div className="flex items-center gap-2">
-					<div className="relative flex-1 sm:flex-none">
-						<Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-						<Input
-							value={search}
-							onChange={(e) => setSearch(e.target.value)}
-							placeholder="Search projects…"
-							className="w-full pl-8 sm:w-56"
-						/>
+		<div className="flex min-w-0 flex-1 flex-col p-4 sm:px-8 sm:py-8">
+			<PageHeader
+				eyebrow={`${counts.active} active · ${counts.all} total`}
+				title="Projects"
+				action={
+					<div className="flex items-center gap-2">
+						<div className="relative flex-1 sm:flex-none">
+							<MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
+							<Input
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+								placeholder="Search projects…"
+								className="w-full pl-8 sm:w-56"
+							/>
+						</div>
+						{isAdmin && <CreateProjectDialog />}
 					</div>
-					{isAdmin && <CreateProjectDialog />}
-				</div>
-			</div>
+				}
+				className="mb-0 shrink-0"
+			/>
 
 			{projects.length > 0 && (
-				<div className="mt-5 flex shrink-0 items-center gap-1.5">
+				<div className="mt-6 flex shrink-0 items-center gap-1.5">
 					<FilterPill
 						label="All"
 						count={counts.all}
@@ -147,11 +155,12 @@ function ProjectsPage() {
 				</div>
 			)}
 
+			{/* This scroller already bleeds to the island edge, so the table inside
+			    it takes gutters only — bleeding twice would pull it clean out. */}
 			<div className="-mx-4 mt-6 min-h-0 flex-1 overflow-y-auto sm:-mx-8">
 				{projects.length === 0 ? (
 					<div className="border-t border-b">
 						<EmptyState
-							icon={FolderKanban}
 							title="No projects yet"
 							description={
 								isAdmin
@@ -162,14 +171,11 @@ function ProjectsPage() {
 						/>
 					</div>
 				) : filtered.length === 0 ? (
-					<p className="mt-8 text-center text-sm text-muted-foreground">
+					<p className="border-t px-4 py-8 text-base text-muted-foreground sm:px-8">
 						No projects match your search.
 					</p>
 				) : (
-					<Table
-						className="border-t [&_td:first-child]:pl-8 [&_td:last-child]:pr-8 [&_th:first-child]:pl-8 [&_th:last-child]:pr-8"
-						containerClassName="border-b"
-					>
+					<Table bleed={false} containerClassName="border-y">
 						<TableHeader>
 							<TableRow>
 								<TableHead>Project</TableHead>
@@ -198,7 +204,7 @@ function ProjectsPage() {
 											isAdmin && "cursor-pointer",
 											isAdmin &&
 												selectedProject?.id === project.id &&
-												"bg-accent",
+												"bg-[var(--sel)]",
 										)}
 										onClick={
 											isAdmin ? () => setSelectedId(project.id) : undefined
@@ -237,7 +243,7 @@ function ProjectsPage() {
 											)}
 										</TableCell>
 										<TableCell>
-											<span className="font-display text-[15px]">
+											<span className="mono text-sm">
 												{formatHoursShort(project.monthlyTotalSeconds)}
 											</span>
 										</TableCell>
@@ -247,31 +253,30 @@ function ProjectsPage() {
 											</StatusPill>
 										</TableCell>
 										<TableCell onClick={(e) => e.stopPropagation()}>
-											{!archived && (
-												<DropdownMenu>
-													<DropdownMenuTrigger
-														render={
-															<Button variant="ghost" size="icon-sm">
-																<MoreHorizontal />
-															</Button>
-														}
-													/>
-													<DropdownMenuContent align="end">
-														<DropdownMenuItem
-															onClick={() =>
-																setManageReposProjectId(project.id)
+											{/* An archived project is dormant, not gone — the only
+											    thing you can do to it is bring it back, and RowActions
+											    renders a lone action as its own button, not a menu. */}
+											<RowActions
+												actions={[
+													!archived && {
+														label: "Manage GitHub repos",
+														onClick: () => setManageReposProjectId(project.id),
+													},
+													archived
+														? {
+																label: "Restore",
+																disabled: busy,
+																onClick: () =>
+																	unarchiveMutation.mutate(project.id),
 															}
-														>
-															Manage GitHub repos
-														</DropdownMenuItem>
-														<DropdownMenuItem
-															onClick={() => archiveMutation.mutate(project.id)}
-														>
-															Archive
-														</DropdownMenuItem>
-													</DropdownMenuContent>
-												</DropdownMenu>
-											)}
+														: {
+																label: "Archive",
+																disabled: busy,
+																onClick: () =>
+																	archiveMutation.mutate(project.id),
+															},
+												]}
+											/>
 										</TableCell>
 									</TableRow>
 								);
@@ -291,22 +296,26 @@ function ProjectsPage() {
 
 	if (!isAdmin) {
 		return (
-			<div className="flex h-[calc(100svh-var(--mobile-nav-h))] flex-col">
+			// No detail panel for non-admins — the table is the whole island.
+			<PageFull padded={false} className="flex-col">
 				{main}
-			</div>
+			</PageFull>
 		);
 	}
 
 	return (
-		<div className="flex h-[calc(100svh-var(--mobile-nav-h))]">
+		// Master/detail inside one island. Both panes used to pick their own cap
+		// (narrow here, wide there), so the same route rendered at two different
+		// widths depending on your role; the frame decides now, for both.
+		<PageFull padded={false} className="flex-row">
 			{main}
-			<aside className="hidden w-80 shrink-0 flex-col border-l lg:flex xl:w-96">
+			<aside className="hidden w-80 shrink-0 flex-col border-l lg:flex xl:w-96 2xl:w-[28rem]">
 				<ProjectMembersPanel
 					projectId={selectedProject?.id ?? null}
 					projectName={selectedProject?.name ?? null}
 				/>
 			</aside>
-		</div>
+		</PageFull>
 	);
 }
 
@@ -326,9 +335,9 @@ function FilterPill({
 			type="button"
 			onClick={onClick}
 			className={cn(
-				"rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+				"rounded-full border px-3 py-1 text-xs transition-colors duration-(--dur-fast)",
 				active
-					? "border-primary bg-accent text-primary"
+					? "border-primary/40 bg-primary/8 font-medium text-primary"
 					: "border-border text-muted-foreground hover:bg-muted",
 			)}
 		>

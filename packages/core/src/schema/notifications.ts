@@ -26,7 +26,6 @@ export type RemovePushSubscriptionInput = z.infer<
 // present in the payload change.
 export const updateNotificationSettingsInput = z.object({
 	logReminders: z.boolean().optional(),
-	timeOffDecisions: z.boolean().optional(),
 });
 export type UpdateNotificationSettingsInput = z.infer<
 	typeof updateNotificationSettingsInput

@@ -1,64 +1,83 @@
 import { z } from "zod";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
-const timeKey = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected HH:mm");
 
-const timeRangeRefine = <
-	T extends { startTime: string; endTime: string; fillsDay?: boolean },
+/** 15-minute granularity (PRD 3.6): 0.25, 0.5, 0.75... No timer, no clock — an
+ *  entry is a date and an amount of time. */
+export const QUARTER_HOUR_SECONDS = 900;
+
+const duration = z
+	.number()
+	.int()
+	.positive("Enter some time")
+	.max(24 * 3600, "A single entry cannot exceed 24 hours")
+	.refine((value) => value % QUARTER_HOUR_SECONDS === 0, {
+		message: "Time must be in 15-minute steps",
+	});
+
+// A fill block's duration is derived from the day's remaining working hours
+// rather than entered, so it is neither supplied nor granularity-checked.
+const entryBody = {
+	date: dateKey,
+	// Absent for Vacation / Sick Leave, which carry no client and no project.
+	projectId: z.uuid().optional(),
+	// Required on every entry — the structural half of the answer to
+	// "descriptions vary wildly"; the mandatory description below is the other.
+	taskId: z.uuid(),
+	description: z.string().max(10_000).optional(),
+	durationSeconds: duration.optional(),
+	// Purely manual: no weekend automation, no rules. The person flags it.
+	overtime: z.boolean().default(false),
+	fillsDay: z.boolean().default(false),
+	meetingUrl: z.url().optional(),
+	calendarEventId: z.string().optional(),
+};
+
+// A description is mandatory on worked time. It is NOT required for absence
+// entries (which carry no project — "Vacation" needs no elaboration) or for
+// auto-derived fill blocks, since neither is the free-text chaos the rule exists
+// to fix. The project/absence distinction is re-checked in the service against
+// the task's actual `isAbsence` flag; here we can only see whether a project was
+// supplied, which is the same thing from the client's side.
+const entryRefinement = <
+	T extends {
+		projectId?: string;
+		description?: string;
+		durationSeconds?: number;
+		fillsDay: boolean;
+	},
 >(
 	data: T,
-	// A fill block carries no real time range — its duration is derived from the
-	// day's remaining working hours — so the start<end check doesn't apply.
-) => data.fillsDay === true || data.startTime < data.endTime;
-const timeRangeRefineOptions = {
-	message: "End time must be after start time",
-	path: ["endTime"],
+	ctx: z.RefinementCtx,
+) => {
+	if (data.projectId && !data.fillsDay && !data.description?.trim()) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["description"],
+			message: "Describe what you worked on",
+		});
+	}
+	if (!data.fillsDay && data.durationSeconds == null) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["durationSeconds"],
+			message: "Enter some time",
+		});
+	}
 };
 
 export const createTimeEntryInput = z
-	.object({
-		typeId: z.uuid(),
-		projectId: z.uuid().optional(),
-		taskId: z.uuid().optional(),
-		description: z.string().optional(),
-		date: dateKey,
-		startTime: timeKey,
-		endTime: timeKey,
-		billable: z.boolean().optional(),
-		// A "work time" block that auto-expands to fill the rest of the day's
-		// working hours; its duration is computed, not taken from start/end.
-		fillsDay: z.boolean().optional(),
-		// Optional Google Calendar meeting captured when logging a "Meeting" block.
-		meetingUrl: z.url().optional(),
-		calendarEventId: z.string().optional(),
-	})
-	.refine(timeRangeRefine, timeRangeRefineOptions);
+	.object(entryBody)
+	.superRefine(entryRefinement);
 export type CreateTimeEntryInput = z.infer<typeof createTimeEntryInput>;
 
 export const updateTimeEntryInput = z
-	.object({
-		timeEntryId: z.uuid(),
-		typeId: z.uuid(),
-		projectId: z.uuid().optional(),
-		taskId: z.uuid().optional(),
-		description: z.string().optional(),
-		date: dateKey,
-		startTime: timeKey,
-		endTime: timeKey,
-		billable: z.boolean().optional(),
-		// A "work time" block that auto-expands to fill the rest of the day's
-		// working hours; its duration is computed, not taken from start/end.
-		fillsDay: z.boolean().optional(),
-		// Absent means "leave the attached meeting unchanged" (see the service) —
-		// only sent when the user picks a (new) calendar event while editing.
-		meetingUrl: z.url().optional(),
-		calendarEventId: z.string().optional(),
-	})
-	.refine(timeRangeRefine, timeRangeRefineOptions);
+	.object({ timeEntryId: z.uuid(), ...entryBody })
+	.superRefine(entryRefinement);
 export type UpdateTimeEntryInput = z.infer<typeof updateTimeEntryInput>;
 
-// Patches only the note/description of an entry — used by inline editing on the
-// day view, so it deliberately touches nothing time/fill/meeting-related.
+// Patches only the note of an entry — used by inline editing, so it deliberately
+// touches nothing duration/day/meeting-related.
 export const updateTimeEntryDescriptionInput = z.object({
 	timeEntryId: z.uuid(),
 	description: z.string().max(10_000),
@@ -67,11 +86,17 @@ export type UpdateTimeEntryDescriptionInput = z.infer<
 	typeof updateTimeEntryDescriptionInput
 >;
 
+// Toggling overtime is a one-field mutation from the week grid.
+export const setTimeEntryOvertimeInput = z.object({
+	timeEntryId: z.uuid(),
+	overtime: z.boolean(),
+});
+export type SetTimeEntryOvertimeInput = z.infer<
+	typeof setTimeEntryOvertimeInput
+>;
+
 export const listTimeEntriesRangeInput = z
-	.object({
-		from: dateKey,
-		to: dateKey,
-	})
+	.object({ from: dateKey, to: dateKey })
 	.refine((data) => data.from <= data.to, {
 		message: "from must not be after to",
 		path: ["to"],
@@ -80,8 +105,7 @@ export const listTimeEntriesRangeInput = z
 		(data) => {
 			const from = new Date(`${data.from}T00:00:00Z`);
 			const to = new Date(`${data.to}T00:00:00Z`);
-			const days = (to.getTime() - from.getTime()) / 86_400_000;
-			return days <= 62;
+			return (to.getTime() - from.getTime()) / 86_400_000 <= 62;
 		},
 		{ message: "Range too large (max 62 days)", path: ["to"] },
 	);
@@ -89,5 +113,66 @@ export type ListTimeEntriesRangeInput = z.infer<
 	typeof listTimeEntriesRangeInput
 >;
 
+// The week grid writes a whole cell at once: "this project+task, on this day,
+// is now N hours". Zero clears the cell, which is why this duration allows 0
+// where every other one demands a positive value — in a grid, emptying a box IS
+// the delete gesture, and routing it through a separate call would make the two
+// racy against each other.
+export const setWeekCellInput = z.object({
+	date: dateKey,
+	projectId: z.uuid().optional(),
+	taskId: z.uuid(),
+	durationSeconds: z
+		.number()
+		.int()
+		.min(0)
+		.max(24 * 3600, "A single entry cannot exceed 24 hours")
+		.refine((value) => value % QUARTER_HOUR_SECONDS === 0, {
+			message: "Time must be in 15-minute steps",
+		}),
+	// Carried by the grid ROW, so every cell in that row shares one note. The
+	// row's note is set when the row is added, which is how the grid honors the
+	// mandatory-description rule without a note prompt on every keystroke.
+	description: z.string().max(10_000).optional(),
+});
+export type SetWeekCellInput = z.infer<typeof setWeekCellInput>;
+
 export const deleteTimeEntryInput = z.uuid();
 export type DeleteTimeEntryInput = z.infer<typeof deleteTimeEntryInput>;
+
+// Copy a whole day's entries onto another day — the backfill affordance that
+// replaces a running timer for people who work a similar shape most days.
+export const copyTimeEntriesInput = z.object({
+	fromDate: dateKey,
+	toDate: dateKey,
+});
+export type CopyTimeEntriesInput = z.infer<typeof copyTimeEntriesInput>;
+
+// PMs may correct the Vacation/Sick entries of people on their projects, and
+// only those. Worked-time corrections live in the close sheet's Adjusted column.
+export const overrideAbsenceEntryInput = z.object({
+	timeEntryId: z.uuid(),
+	durationSeconds: duration,
+	description: z.string().max(10_000).optional(),
+});
+export type OverrideAbsenceEntryInput = z.infer<
+	typeof overrideAbsenceEntryInput
+>;
+
+export const listAbsenceForUserInput = z.object({
+	userId: z.string().min(1),
+	year: z.number().int().min(2000).max(2100),
+	month: z.number().int().min(1).max(12),
+});
+export type ListAbsenceForUserInput = z.infer<typeof listAbsenceForUserInput>;
+
+export const createAbsenceForUserInput = z.object({
+	userId: z.string().min(1),
+	taskId: z.uuid(),
+	date: dateKey,
+	durationSeconds: duration,
+	description: z.string().max(10_000).optional(),
+});
+export type CreateAbsenceForUserInput = z.infer<
+	typeof createAbsenceForUserInput
+>;

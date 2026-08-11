@@ -13,12 +13,10 @@ import type { Ctx } from "./types";
 
 export type NotificationSettings = {
 	logReminders: boolean;
-	timeOffDecisions: boolean;
 };
 
 const DEFAULTS: NotificationSettings = {
 	logReminders: true,
-	timeOffDecisions: true,
 };
 
 // The payload the service worker's `push` handler expects (see
@@ -58,7 +56,6 @@ const settingsFor = async (
 	if (!row) return { ...DEFAULTS };
 	return {
 		logReminders: row.logReminders,
-		timeOffDecisions: row.timeOffDecisions,
 	};
 };
 
@@ -119,7 +116,6 @@ export const notificationsService = {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
 				logReminders: input.logReminders ?? undefined,
-				timeOffDecisions: input.timeOffDecisions ?? undefined,
 			})
 			.onConflictDoUpdate({
 				target: [
@@ -128,7 +124,6 @@ export const notificationsService = {
 				],
 				set: {
 					logReminders: input.logReminders,
-					timeOffDecisions: input.timeOffDecisions,
 					updatedAt: new Date(),
 				},
 			})
@@ -136,7 +131,6 @@ export const notificationsService = {
 		if (!row) throw new Error("Failed to save notification settings");
 		return {
 			logReminders: row.logReminders,
-			timeOffDecisions: row.timeOffDecisions,
 		};
 	},
 
