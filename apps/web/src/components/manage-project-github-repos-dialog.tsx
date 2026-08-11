@@ -1,6 +1,12 @@
-import { LockIcon, PlugIcon, XIcon } from "@phosphor-icons/react";
+import {
+	LockIcon,
+	MagnifyingGlassIcon,
+	PlugIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
@@ -10,6 +16,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "#/components/ui/dialog.tsx";
+import { Input } from "#/components/ui/input.tsx";
 import {
 	availableGithubReposQuery,
 	githubConnectionStatusQuery,
@@ -31,6 +38,13 @@ export function ManageProjectGithubReposDialog({
 }) {
 	const open = projectId !== null;
 	const queryClient = useQueryClient();
+	const [search, setSearch] = useState("");
+
+	// The dialog is kept mounted across projects (it's driven by `projectId`), so
+	// a query typed for one project would still be filtering the next one's list.
+	useEffect(() => {
+		if (!open) setSearch("");
+	}, [open]);
 
 	const { data: status } = useQuery({
 		...githubConnectionStatusQuery(),
@@ -80,13 +94,24 @@ export function ManageProjectGithubReposDialog({
 	const linkedGithubRepoIds = new Set(
 		linkedRepos?.map((r) => r.githubRepoId) ?? [],
 	);
-	const linkableRepos = (availableRepos ?? []).filter(
+	const query = search.trim().toLowerCase();
+	const unlinkedRepos = (availableRepos ?? []).filter(
 		(r) => !linkedGithubRepoIds.has(r.githubRepoId),
 	);
+	// Search spans both lists: an installation can expose hundreds of repos, and
+	// "is this one already linked?" is the same question as "where is it?".
+	const linkableRepos = query
+		? unlinkedRepos.filter((r) => r.fullName.toLowerCase().includes(query))
+		: unlinkedRepos;
+	const visibleLinkedRepos = query
+		? (linkedRepos ?? []).filter((r) =>
+				r.fullName.toLowerCase().includes(query),
+			)
+		: (linkedRepos ?? []);
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent>
+			<DialogContent className="sm:max-w-lg">
 				<DialogHeader>
 					<DialogTitle>Manage GitHub repos</DialogTitle>
 				</DialogHeader>
@@ -109,11 +134,21 @@ export function ManageProjectGithubReposDialog({
 					</div>
 				) : (
 					<div className="grid min-w-0 gap-4">
+						<div className="relative">
+							<MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
+							<Input
+								value={search}
+								onChange={(e) => setSearch(e.target.value)}
+								placeholder="Search repositories…"
+								className="w-full pl-8"
+							/>
+						</div>
+
 						<div className="min-w-0">
 							<p className="eyebrow mb-2">Linked repositories</p>
-							{linkedRepos && linkedRepos.length > 0 ? (
-								<div className="scrollbar-stable -mx-1 max-h-40 overflow-y-auto rounded-md border">
-									{linkedRepos.map((repo) => (
+							{visibleLinkedRepos.length > 0 ? (
+								<div className="scrollbar-stable max-h-[min(14rem,25dvh)] overflow-y-auto rounded-md border">
+									{visibleLinkedRepos.map((repo) => (
 										<div
 											key={repo.id}
 											className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
@@ -142,7 +177,9 @@ export function ManageProjectGithubReposDialog({
 								</div>
 							) : (
 								<p className="text-sm text-muted-foreground">
-									No repositories linked yet.
+									{query
+										? "No linked repositories match your search."
+										: "No repositories linked yet."}
 								</p>
 							)}
 						</div>
@@ -150,7 +187,7 @@ export function ManageProjectGithubReposDialog({
 						<div className="min-w-0">
 							<p className="eyebrow mb-2">Link a repository</p>
 							{linkableRepos.length > 0 ? (
-								<div className="scrollbar-stable -mx-1 max-h-52 overflow-y-auto rounded-md border">
+								<div className="scrollbar-stable max-h-[min(24rem,45dvh)] overflow-y-auto rounded-md border">
 									{linkableRepos.map((repo) => (
 										<div
 											key={repo.githubRepoId}
@@ -184,9 +221,11 @@ export function ManageProjectGithubReposDialog({
 								</div>
 							) : (
 								<p className="text-sm text-muted-foreground">
-									{availableRepos
-										? "No more repositories to link."
-										: "Loading repositories…"}
+									{!availableRepos
+										? "Loading repositories…"
+										: query
+											? "No repositories match your search."
+											: "No more repositories to link."}
 								</p>
 							)}
 						</div>

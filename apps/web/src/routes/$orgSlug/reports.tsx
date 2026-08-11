@@ -1,4 +1,19 @@
-import { addDaysToKey, dayKeyInTz, endOfMonthKey } from "@farmer/core/lib/time";
+import {
+	formatDaysLabel,
+	formatDecimalHours,
+	formatHoursLabel,
+	formatPctLabel,
+} from "@farmer/core/lib/report-format";
+import {
+	isCurrentPeriod,
+	PERIOD_PRESETS,
+	parseMonthKey,
+	resolveReportPeriod,
+	shiftMonthKey,
+} from "@farmer/core/lib/report-period";
+import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
+import { rollUpUtilization } from "@farmer/core/lib/utilization";
+import type { TimeReportDetailInput } from "@farmer/core/schema";
 import {
 	useMutation,
 	useQueryClient,
@@ -29,6 +44,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { Skeleton } from "#/components/ui/skeleton.tsx";
 import {
 	Table,
 	TableBody,
@@ -39,7 +55,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { downloadCsv } from "#/lib/csv.ts";
 import { formatMonthKey, formatWeekRange } from "#/lib/format-date.ts";
-import { formatClock, formatHoursShort } from "#/lib/format-hours.ts";
+import { formatClock } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { clientsQuery } from "#/queries/clients.ts";
@@ -113,25 +129,6 @@ const searchSchema = z.object({
 
 type Search = z.infer<typeof searchSchema>;
 
-const parseMonth = (key: string) => {
-	const [year, month] = key.split("-").map(Number);
-	return { year: year ?? 1970, month: month ?? 1 };
-};
-
-const shiftMonthKey = (key: string, delta: number): string => {
-	const { year, month } = parseMonth(key);
-	const total = year * 12 + (month - 1) + delta;
-	return `${Math.floor(total / 12)}-${String((((total % 12) + 12) % 12) + 1).padStart(2, "0")}`;
-};
-
-/** Monday of the week `key` falls in — the app starts weeks on Monday
- *  everywhere, and a report that disagreed with the timesheet would make the
- *  same seven days add up differently on two screens. */
-const startOfWeekKey = (key: string): string => {
-	const weekday = (new Date(`${key}T00:00:00Z`).getUTCDay() + 6) % 7;
-	return addDaysToKey(key, -weekday);
-};
-
 export const Route = createFileRoute("/$orgSlug/reports")({
 	validateSearch: searchSchema,
 	loader: async ({ context }) => {
@@ -148,7 +145,7 @@ function ReportsPage() {
 	const today = dayKeyInTz(new Date(), organization.timezone);
 	const thisMonth = today.slice(0, 7);
 	const month = search.month ?? thisMonth;
-	const period = parseMonth(month);
+	const period = parseMonthKey(month);
 
 	const visibleTabs = TABS.filter((t) => !t.adminOnly || access.isAdmin);
 	// A tab this person can't see is treated as if it weren't asked for: the
@@ -225,7 +222,14 @@ function ReportsPage() {
 			    tab, it crossfades one panel into the next, and the spinner-to-table
 			    step inside stays uncrossfaded — that one is a sub-second wait on a
 			    panel you are already looking at, and fading it would just make the
-			    data land later than it actually did. */}
+			    data land later than it actually did.
+
+			    This one only covers the *first* render of a tab. Every control that
+			    changes what a tab shows — the month stepper, the period preset, the
+			    Clients/Projects/Teammates grouping, the drill-down filters — is
+			    rendered outside a nested boundary of its own, so moving one replaces
+			    the figures it changes and nothing else. A control that vanishes into
+			    the skeleton it just triggered can't be clicked twice in a row. */}
 			<FadeSwap activeKey={tab} className="mt-6">
 				<Suspense key={tab} fallback={<TabPending />}>
 					{tab === "time" && (
@@ -304,11 +308,30 @@ function ReportsPage() {
  * only gestured at: the panel is roughly the height of what replaces it, so the
  * tab strip above doesn't jump when the data lands.
  */
-function TabPending() {
+function TabPending({ className = "pt-1" }: { className?: string }) {
 	return (
-		<div className="pt-1">
+		<div className={className}>
 			<TableLoadingSkeleton />
 		</div>
+	);
+}
+
+/** The placeholder for a single figure — a total or a percentage — that sits in
+ *  a row of controls. The label stays: only the number is unknown. */
+function FigurePending({
+	label,
+	className,
+}: {
+	label: string;
+	className?: string;
+}) {
+	return (
+		<span
+			className={cn("flex items-baseline gap-2 whitespace-nowrap", className)}
+		>
+			<span className="eyebrow">{label}</span>
+			<Skeleton className="h-4 w-16" />
+		</span>
 	);
 }
 
@@ -317,7 +340,16 @@ function TabPending() {
 // it's shared across Day/Week/Month there: the eye should not have to re-find
 // the arrows when the screen changes.
 
-/** Wraps a month-based report in the month stepper. */
+/**
+ * Wraps a month-based report in the month stepper.
+ *
+ * The stepper is chrome, not content: it owns its own Suspense boundary around
+ * the report below it so that stepping to a month that isn't cached yet swaps
+ * the table and leaves the arrows in place. Without it the suspension escapes to
+ * the tab-level boundary, which replaces the stepper with the skeleton it just
+ * triggered — you'd have to wait for the data to come back before you could
+ * press "previous month" twice.
+ */
 function MonthFramed({
 	orgSlug,
 	search,
@@ -366,38 +398,12 @@ function MonthFramed({
 					)
 				}
 			/>
-			<div className="mt-6">{children}</div>
+			<div className="mt-6">
+				<Suspense fallback={<TabPending />}>{children}</Suspense>
+			</div>
 		</>
 	);
 }
-
-const PRESETS = [
-	{ id: "month", label: "Month" },
-	{ id: "week", label: "Week" },
-	{ id: "custom", label: "Custom" },
-] as const;
-
-/** Resolves the Time tab's period out of the search params. Month is the
- *  default because a month is what the close, the invoice and every other
- *  report in the product are keyed on. */
-const resolveRange = (search: Search, today: string, thisMonth: string) => {
-	const preset = search.preset ?? "month";
-	if (preset === "week") {
-		const from = search.from ?? startOfWeekKey(today);
-		return { preset, from, to: addDaysToKey(from, 6) };
-	}
-	if (preset === "custom") {
-		const from = search.from ?? `${search.month ?? thisMonth}-01`;
-		const to = search.to ?? today;
-		return { preset, from, to: to < from ? from : to };
-	}
-	const month = search.month ?? thisMonth;
-	return {
-		preset,
-		from: `${month}-01`,
-		to: endOfMonthKey(`${month}-01`),
-	};
-};
 
 function PeriodPicker({
 	orgSlug,
@@ -412,7 +418,7 @@ function PeriodPicker({
 	thisMonth: string;
 	children?: React.ReactNode;
 }) {
-	const { preset, from, to } = resolveRange(search, today, thisMonth);
+	const { preset, from, to } = resolveReportPeriod(search, today);
 	const month = search.month ?? thisMonth;
 
 	const withSearch = (patch: Partial<Search>) => ({
@@ -435,8 +441,7 @@ function PeriodPicker({
 	const label =
 		preset === "month" ? formatMonthKey(month) : formatWeekRange(from, to);
 
-	const atNow =
-		preset === "week" ? from === startOfWeekKey(today) : month === thisMonth;
+	const atNow = isCurrentPeriod(search, today);
 
 	return (
 		<div className="flex flex-wrap items-center gap-3">
@@ -496,7 +501,7 @@ function PeriodPicker({
 			)}
 
 			<SegmentedControl>
-				{PRESETS.map((p) => (
+				{PERIOD_PRESETS.map((p) => (
 					<SegmentedControlItem
 						key={p.id}
 						active={preset === p.id}
@@ -592,7 +597,7 @@ function TimeTab({
 	thisMonth: string;
 }) {
 	const group = search.group ?? "projects";
-	const { from, to } = resolveRange(search, today, thisMonth);
+	const { from, to } = resolveReportPeriod(search, today);
 
 	if (
 		search.detailId &&
@@ -630,6 +635,16 @@ function TimeTab({
 	);
 }
 
+/**
+ * The Clients/Projects/Teammates grouping, and the figures behind it.
+ *
+ * The grouping control is deliberately *not* inside the boundary that its own
+ * clicks trip: switching group changes the query key, and if the control were
+ * part of the suspended subtree it would disappear along with the table for as
+ * long as the new grouping takes to load. Only the total and the rows are
+ * replaced — and they suspend on the same query, so the two boundaries below
+ * resolve in the same commit rather than landing one after the other.
+ */
 function TimeSummary({
 	orgSlug,
 	search,
@@ -643,10 +658,6 @@ function TimeSummary({
 	from: string;
 	to: string;
 }) {
-	const { data } = useSuspenseQuery(
-		timeReportSummaryQuery({ from, to, tab: group }),
-	);
-
 	return (
 		<>
 			<div className="mt-6 flex flex-wrap items-center justify-between gap-3">
@@ -667,14 +678,65 @@ function TimeSummary({
 						</SegmentedControlItem>
 					))}
 				</SegmentedControl>
-				<span className="flex items-baseline gap-2 whitespace-nowrap">
-					<span className="eyebrow">Total</span>
-					<span className="mono text-lg">
-						{formatHoursShort(data.totalSeconds)}
-					</span>
-				</span>
+				<Suspense fallback={<FigurePending label="Total" />}>
+					<TimeSummaryTotal group={group} from={from} to={to} />
+				</Suspense>
 			</div>
 
+			<Suspense fallback={<TabPending className="mt-6" />}>
+				<TimeSummaryRows
+					orgSlug={orgSlug}
+					search={search}
+					group={group}
+					from={from}
+					to={to}
+				/>
+			</Suspense>
+		</>
+	);
+}
+
+function TimeSummaryTotal({
+	group,
+	from,
+	to,
+}: {
+	group: "clients" | "projects" | "teammates";
+	from: string;
+	to: string;
+}) {
+	const { data } = useSuspenseQuery(
+		timeReportSummaryQuery({ from, to, tab: group }),
+	);
+	return (
+		<span className="flex items-baseline gap-2 whitespace-nowrap">
+			<span className="eyebrow">Total</span>
+			<span className="mono text-lg">
+				{formatHoursLabel(data.totalSeconds)}
+			</span>
+		</span>
+	);
+}
+
+function TimeSummaryRows({
+	orgSlug,
+	search,
+	group,
+	from,
+	to,
+}: {
+	orgSlug: string;
+	search: Search;
+	group: "clients" | "projects" | "teammates";
+	from: string;
+	to: string;
+}) {
+	const { data } = useSuspenseQuery(
+		timeReportSummaryQuery({ from, to, tab: group }),
+	);
+
+	return (
+		<>
 			{/* Time with no project — synced meetings and fill blocks nobody has
 			    filed yet. It cannot appear in the rows below (there is no client or
 			    project to group it under) and it is deliberately not added to the
@@ -683,7 +745,7 @@ function TimeSummary({
 			    made the total quietly wrong. */}
 			{data.unfiledSeconds > 0 && (
 				<p className="mt-4 text-sm text-muted-foreground">
-					<span className="mono">{formatHoursShort(data.unfiledSeconds)}</span>{" "}
+					<span className="mono">{formatHoursLabel(data.unfiledSeconds)}</span>{" "}
 					in this period isn't filed against any project and is not included
 					above.
 				</p>
@@ -724,7 +786,7 @@ function TimeSummary({
 											}}
 											className="mono underlined"
 										>
-											{formatHoursShort(row.secondsTotal)}
+											{formatHoursLabel(row.secondsTotal)}
 										</Link>
 									</TableCell>
 									<TableCell>
@@ -759,6 +821,12 @@ function TimeSummary({
  * Grouped by date with daily subtotals, because that is how the raw data is
  * read back to somebody — "what happened on the 14th" — and the project
  * drill-down can regroup by person instead.
+ *
+ * The header and the three filters are outside the boundary the filters trip,
+ * for the same reason the grouping control is upstairs: narrowing to one task
+ * shouldn't take the select you narrowed with off the screen. The title comes
+ * from the summary rather than the entries, so it survives a filter that
+ * matches nothing.
  */
 function TimeDetail({
 	orgSlug,
@@ -796,26 +864,10 @@ function TimeDetail({
 		taskId: taskFilter,
 	};
 
-	const { data: rows } = useSuspenseQuery(timeReportDetailQuery(input));
 	const { data: summary } = useSuspenseQuery(
 		timeReportSummaryQuery({ from, to, tab: kind }),
 	);
 	const title = summary.rows.find((r) => r.id === id)?.name ?? "Detail";
-	const total = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
-
-	// One pass, in the order the service already sorted them: it grouped by the
-	// same key, so a running group beats re-sorting the rows here.
-	const groups: { key: string; rows: typeof rows; seconds: number }[] = [];
-	for (const row of rows) {
-		const key = groupBy === "person" ? row.userName : row.date;
-		const last = groups[groups.length - 1];
-		if (last && last.key === key) {
-			last.rows.push(row);
-			last.seconds += row.durationSeconds;
-		} else {
-			groups.push({ key, rows: [row], seconds: row.durationSeconds });
-		}
-	}
 
 	return (
 		<>
@@ -831,46 +883,9 @@ function TimeDetail({
 					</Link>
 					<h2 className="h2">{title}</h2>
 				</div>
-				<div className="flex items-center gap-3">
-					<span className="flex items-baseline gap-2 whitespace-nowrap">
-						<span className="eyebrow">Total</span>
-						<span className="mono text-lg">{formatHoursShort(total)}</span>
-					</span>
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={rows.length === 0}
-						onClick={() =>
-							downloadCsv(
-								`time-report_${from}_${to}.csv`,
-								[
-									"Date",
-									"Client",
-									"Project",
-									"Task",
-									"Person",
-									"Description",
-									"Hours",
-									"Overtime",
-								],
-								rows.map((r) => [
-									r.date,
-									r.clientName,
-									r.projectName,
-									r.taskName,
-									r.userName,
-									r.description,
-									// Decimal hours, not H:MM — the destination is a
-									// spreadsheet, where "7:30" is a time of day.
-									(r.durationSeconds / 3600).toFixed(2),
-									r.overtime ? "yes" : "",
-								]),
-							)
-						}
-					>
-						Export CSV
-					</Button>
-				</div>
+				<Suspense fallback={<TimeDetailActionsPending />}>
+					<TimeDetailActions input={input} from={from} to={to} />
+				</Suspense>
 			</div>
 
 			<div className="mt-4 flex flex-wrap items-center gap-2">
@@ -917,6 +932,107 @@ function TimeDetail({
 				)}
 			</div>
 
+			<Suspense fallback={<TabPending className="mt-6" />}>
+				<TimeDetailTable input={input} groupBy={groupBy} />
+			</Suspense>
+		</>
+	);
+}
+
+/** The total and the export, both of which are a function of the rows the
+ *  filters selected — so they load with the table, not with the header. */
+function TimeDetailActions({
+	input,
+	from,
+	to,
+}: {
+	input: TimeReportDetailInput;
+	from: string;
+	to: string;
+}) {
+	const { data: rows } = useSuspenseQuery(timeReportDetailQuery(input));
+	const total = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
+
+	return (
+		<div className="flex items-center gap-3">
+			<span className="flex items-baseline gap-2 whitespace-nowrap">
+				<span className="eyebrow">Total</span>
+				<span className="mono text-lg">{formatHoursLabel(total)}</span>
+			</span>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={rows.length === 0}
+				onClick={() =>
+					downloadCsv(
+						`time-report_${from}_${to}.csv`,
+						[
+							"Date",
+							"Client",
+							"Project",
+							"Task",
+							"Person",
+							"Description",
+							"Hours",
+							"Overtime",
+						],
+						rows.map((r) => [
+							r.date,
+							r.clientName,
+							r.projectName,
+							r.taskName,
+							r.userName,
+							r.description,
+							formatDecimalHours(r.durationSeconds),
+							r.overtime ? "yes" : "",
+						]),
+					)
+				}
+			>
+				Export CSV
+			</Button>
+		</div>
+	);
+}
+
+/** Holds the export button's place while the rows load, so the header doesn't
+ *  reflow around a button that pops in a moment later. */
+function TimeDetailActionsPending() {
+	return (
+		<div className="flex items-center gap-3">
+			<FigurePending label="Total" />
+			<Button variant="outline" size="sm" disabled>
+				Export CSV
+			</Button>
+		</div>
+	);
+}
+
+function TimeDetailTable({
+	input,
+	groupBy,
+}: {
+	input: TimeReportDetailInput;
+	groupBy: "date" | "person";
+}) {
+	const { data: rows } = useSuspenseQuery(timeReportDetailQuery(input));
+
+	// One pass, in the order the service already sorted them: it grouped by the
+	// same key, so a running group beats re-sorting the rows here.
+	const groups: { key: string; rows: typeof rows; seconds: number }[] = [];
+	for (const row of rows) {
+		const key = groupBy === "person" ? row.userName : row.date;
+		const last = groups[groups.length - 1];
+		if (last && last.key === key) {
+			last.rows.push(row);
+			last.seconds += row.durationSeconds;
+		} else {
+			groups.push({ key, rows: [row], seconds: row.durationSeconds });
+		}
+	}
+
+	return (
+		<>
 			{rows.length === 0 ? (
 				<p className="mt-5 border-t pt-5 text-base text-muted-foreground">
 					No entries match these filters.
@@ -1049,11 +1165,11 @@ function BudgetBurnTab() {
 				rows={rows.map((r) => [
 					r.name,
 					r.clientName,
-					formatHoursShort(r.consumedSeconds),
-					r.budgetSeconds == null ? "—" : formatHoursShort(r.budgetSeconds),
+					formatHoursLabel(r.consumedSeconds),
+					r.budgetSeconds == null ? "—" : formatHoursLabel(r.budgetSeconds),
 					r.remainingSeconds == null
 						? "—"
-						: formatHoursShort(r.remainingSeconds),
+						: formatHoursLabel(r.remainingSeconds),
 					r.burnPct == null ? "—" : `${r.burnPct}%`,
 				])}
 				empty="No active fixed-scope projects — those are the only ones with an hour budget."
@@ -1107,10 +1223,10 @@ function ComplianceTab() {
 					headers={["Person", "Logged", "Expected so far", "Pace", "Short by"]}
 					rows={data.behindPace.map((r) => [
 						r.name,
-						formatHoursShort(r.loggedSeconds),
-						formatHoursShort(r.proratedExpectedSeconds),
+						formatHoursLabel(r.loggedSeconds),
+						formatHoursLabel(r.proratedExpectedSeconds),
 						`${r.pacePct}%`,
-						formatHoursShort(r.shortfallSeconds),
+						formatHoursLabel(r.shortfallSeconds),
 					])}
 					empty="Nobody is behind pace."
 				/>
@@ -1321,11 +1437,11 @@ function OvertimeTab({
 								}}
 								className="mono underlined"
 							>
-								{formatHoursShort(row.monthSeconds)}
+								{formatHoursLabel(row.monthSeconds)}
 							</Link>
 						</TableCell>
 						<TableCell className="mono text-right">
-							{formatHoursShort(row.yearSeconds)}
+							{formatHoursLabel(row.yearSeconds)}
 						</TableCell>
 					</TableRow>
 				))}
@@ -1372,7 +1488,7 @@ function OvertimeDetail({
 				</div>
 				<span className="flex items-baseline gap-2">
 					<span className="eyebrow">Overtime</span>
-					<span className="mono text-lg">{formatHoursShort(total)}</span>
+					<span className="mono text-lg">{formatHoursLabel(total)}</span>
 				</span>
 			</div>
 			<ReportTable
@@ -1401,13 +1517,15 @@ function AbsenceTab({ year, month }: { year: number; month: number }) {
 
 	const format = (seconds: number) =>
 		unit === "hours"
-			? formatHoursShort(seconds)
-			: `${Math.round((seconds / data.workingDaySeconds) * 10) / 10}d`;
+			? formatHoursLabel(seconds)
+			: formatDaysLabel(seconds, data.workingDaySeconds);
 
-	// The service returns each absence task's own total; naming them here keeps
-	// the split explicit rather than trusting the map's key order.
-	const cell = (byTask: Record<string, number>, taskName: string) =>
-		format(byTask[taskName] ?? 0);
+	// The columns are whatever absence tasks the site defines, named by the
+	// service. This used to read `byTask["Vacation"]` and `byTask["Sick Leave"]`
+	// — display names, which meant a third kind of absence was invisible here and
+	// a rename would have emptied both columns without failing anything.
+	const cell = (byTask: Record<string, number>, key: string) =>
+		format(byTask[key] ?? 0);
 
 	return (
 		<>
@@ -1442,11 +1560,17 @@ function AbsenceTab({ year, month }: { year: number; month: number }) {
 					<TableHeader>
 						<TableRow>
 							<TableHead>Person</TableHead>
-							<TableHead className="text-right">Vacation (month)</TableHead>
-							<TableHead className="text-right">Sick (month)</TableHead>
+							{data.columns.map((c) => (
+								<TableHead key={`m-${c.key}`} className="text-right">
+									{c.label} (month)
+								</TableHead>
+							))}
 							<TableHead className="text-right">Month</TableHead>
-							<TableHead className="text-right">Vacation (YTD)</TableHead>
-							<TableHead className="text-right">Sick (YTD)</TableHead>
+							{data.columns.map((c) => (
+								<TableHead key={`y-${c.key}`} className="text-right">
+									{c.label} (YTD)
+								</TableHead>
+							))}
 							<TableHead className="text-right">Year to date</TableHead>
 						</TableRow>
 					</TableHeader>
@@ -1454,21 +1578,19 @@ function AbsenceTab({ year, month }: { year: number; month: number }) {
 						{data.rows.map((row) => (
 							<TableRow key={row.userId}>
 								<TableCell className="font-medium">{row.name}</TableCell>
-								<TableCell className="mono text-right">
-									{cell(row.monthByTask, "Vacation")}
-								</TableCell>
-								<TableCell className="mono text-right">
-									{cell(row.monthByTask, "Sick Leave")}
-								</TableCell>
+								{data.columns.map((c) => (
+									<TableCell key={`m-${c.key}`} className="mono text-right">
+										{cell(row.monthByTask, c.key)}
+									</TableCell>
+								))}
 								<TableCell className="mono text-right font-medium">
 									{format(row.monthSeconds)}
 								</TableCell>
-								<TableCell className="mono text-right">
-									{cell(row.ytdByTask, "Vacation")}
-								</TableCell>
-								<TableCell className="mono text-right">
-									{cell(row.ytdByTask, "Sick Leave")}
-								</TableCell>
+								{data.columns.map((c) => (
+									<TableCell key={`y-${c.key}`} className="mono text-right">
+										{cell(row.ytdByTask, c.key)}
+									</TableCell>
+								))}
 								<TableCell className="mono text-right font-medium">
 									{format(row.ytdSeconds)}
 								</TableCell>
@@ -1507,10 +1629,10 @@ function VarianceTab({ year, month }: { year: number; month: number }) {
 				headers={["Person", "Reported", "Final", "Difference"]}
 				rows={rows.map((r) => [
 					r.name,
-					formatHoursShort(r.reportedSeconds),
-					formatHoursShort(r.finalSeconds),
+					formatHoursLabel(r.reportedSeconds),
+					formatHoursLabel(r.finalSeconds),
 					r.diffPct == null
-						? formatHoursShort(r.diffSeconds)
+						? formatHoursLabel(r.diffSeconds)
 						: `${r.diffPct > 0 ? "+" : ""}${r.diffPct}%`,
 				])}
 				empty="No month has been finalized yet, so there's nothing to compare."
@@ -1579,14 +1701,9 @@ function UtilizationTab({ year, month }: { year: number; month: number }) {
 		utilizationTrendQuery({ year, month, months: TREND_MONTHS }),
 	);
 
-	const measured = rows.filter((r) => r.utilizationPct != null);
-	const teamAverage =
-		measured.length > 0
-			? Math.round(
-					measured.reduce((sum, r) => sum + (r.utilizationPct ?? 0), 0) /
-						measured.length,
-				)
-			: null;
+	// The same roll-up the PDF headline and every trend point use, so the three
+	// can no longer disagree. See `@farmer/core/lib/utilization`.
+	const totals = rollUpUtilization(rows);
 
 	return (
 		<>
@@ -1594,12 +1711,13 @@ function UtilizationTab({ year, month }: { year: number; month: number }) {
 				<p className="max-w-[68ch] text-sm text-muted-foreground">
 					Final hours on non-internal projects, over expected hours. Overhead
 					people are excluded; contractors without an expected figure show hours
-					but no percentage, and are left out of the average.
+					but no percentage, and count toward neither side of the org figure —
+					which is total final over total expected, not an average of the rows.
 				</p>
 				<span className="flex items-baseline gap-2 whitespace-nowrap">
-					<span className="eyebrow">Team average</span>
+					<span className="eyebrow">Org utilization</span>
 					<span className="mono text-lg">
-						{teamAverage == null ? "—" : `${teamAverage}%`}
+						{formatPctLabel(totals.utilizationPct)}
 					</span>
 				</span>
 			</div>
@@ -1609,14 +1727,14 @@ function UtilizationTab({ year, month }: { year: number; month: number }) {
 				rows={rows.map((r) => [
 					r.name,
 					r.memberType,
-					formatHoursShort(r.finalSeconds),
-					r.expectedSeconds == null ? "—" : formatHoursShort(r.expectedSeconds),
-					r.utilizationPct == null ? "—" : `${r.utilizationPct}%`,
+					formatHoursLabel(r.finalSeconds),
+					r.expectedSeconds == null ? "—" : formatHoursLabel(r.expectedSeconds),
+					formatPctLabel(r.utilizationPct),
 				])}
 				empty="No finalized months yet."
 			/>
 
-			{trend.some((t) => t.teamAveragePct != null) && (
+			{trend.some((t) => t.utilizationPct != null) && (
 				<section className="-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
 					<h2 className="eyebrow">Last {TREND_MONTHS} months</h2>
 					<Table containerClassName="mt-5">
@@ -1625,7 +1743,7 @@ function UtilizationTab({ year, month }: { year: number; month: number }) {
 								<TableHead>Month</TableHead>
 								<TableHead className="text-right">People measured</TableHead>
 								<TableHead className="text-right">Invoiced hours</TableHead>
-								<TableHead className="text-right">Team average</TableHead>
+								<TableHead className="text-right">Utilization</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -1640,10 +1758,10 @@ function UtilizationTab({ year, month }: { year: number; month: number }) {
 										{t.peopleMeasured}
 									</TableCell>
 									<TableCell className="mono text-right">
-										{formatHoursShort(t.finalSeconds)}
+										{formatHoursLabel(t.finalSeconds)}
 									</TableCell>
 									<TableCell className="mono text-right">
-										{t.teamAveragePct == null ? "—" : `${t.teamAveragePct}%`}
+										{formatPctLabel(t.utilizationPct)}
 									</TableCell>
 								</TableRow>
 							))}

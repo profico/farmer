@@ -40,6 +40,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { myAccessQuery } from "#/queries/access.ts";
 import { allClientsQuery } from "#/queries/clients.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import {
 	archiveClient,
 	createClient,
@@ -68,7 +69,7 @@ function CreateClientDialog() {
 		mutationFn: (data: z.infer<typeof createClientInput>) =>
 			createClient({ data }),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: ["clients"] });
+			await queryClient.invalidateQueries({ queryKey: [...queryKeys.clients] });
 			setOpen(false);
 			form.reset({ name: "" });
 		},
@@ -118,7 +119,7 @@ function ClientsPage() {
 	const { data: access } = useSuspenseQuery(myAccessQuery());
 
 	const invalidate = () =>
-		queryClient.invalidateQueries({ queryKey: ["clients"] });
+		queryClient.invalidateQueries({ queryKey: [...queryKeys.clients] });
 
 	const archive = useMutation({
 		mutationFn: (clientId: string) => archiveClient({ data: clientId }),

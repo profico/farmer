@@ -3,10 +3,11 @@ import {
 	listHourFundsForYear,
 	suggestMonthlyHourFund,
 } from "#/server/hour-fund.ts";
+import { queryKeys } from "./keys.ts";
 
 export const hourFundYearQuery = (year: number) =>
 	queryOptions({
-		queryKey: ["hour-fund", year],
+		queryKey: [...queryKeys.hourFund, year],
 		queryFn: () => listHourFundsForYear({ data: { year } }),
 	});
 
@@ -14,6 +15,6 @@ export const hourFundYearQuery = (year: number) =>
 // written automatically — a wrong fund silently skews every Expected figure.
 export const hourFundSuggestionQuery = (year: number, month: number) =>
 	queryOptions({
-		queryKey: ["hour-fund", "suggestion", year, month],
+		queryKey: [...queryKeys.hourFund, "suggestion", year, month],
 		queryFn: () => suggestMonthlyHourFund({ data: { year, month } }),
 	});

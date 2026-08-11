@@ -190,7 +190,7 @@ export function CreateProjectDialog() {
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger render={<Button>
-                <PlusIcon weight='light' />
+                <PlusIcon weight='regular' />
                 New project</Button>} />
 			<DialogContent>
 				<DialogHeader>

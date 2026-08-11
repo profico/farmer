@@ -20,6 +20,7 @@ import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import { copyTimeEntriesDay } from "#/server/time-entries.ts";
 
 export function DayView({
@@ -69,7 +70,9 @@ export function DayView({
 		mutationFn: () =>
 			copyTimeEntriesDay({ data: { fromDate: previousDay, toDate: date } }),
 		onSuccess: async (result) => {
-			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.timeEntries],
+			});
 			toast.success(
 				result.copied === 0
 					? "Nothing to copy from the previous day"

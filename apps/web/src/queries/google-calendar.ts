@@ -3,15 +3,16 @@ import {
 	getGoogleCalendarStatus,
 	listCalendarEventsForDay,
 } from "#/server/google-calendar.ts";
+import { queryKeys } from "./keys.ts";
 
 export const googleCalendarStatusQuery = () =>
 	queryOptions({
-		queryKey: ["google-calendar", "connection-status"],
+		queryKey: [...queryKeys.googleCalendar, "connection-status"],
 		queryFn: () => getGoogleCalendarStatus(),
 	});
 
 export const calendarEventsForDayQuery = (date: string) =>
 	queryOptions({
-		queryKey: ["google-calendar", "events", date],
+		queryKey: [...queryKeys.googleCalendar, "events", date],
 		queryFn: () => listCalendarEventsForDay({ data: { date } }),
 	});

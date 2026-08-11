@@ -8,14 +8,14 @@ import {
 	slackClient,
 	slackRedirectUri,
 } from "../lib/slack-client";
-import { accessService } from "./access.service";
+import { requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
 export const slackService = {
 	/** Connection status for the Settings screen. Never returns the bot token —
 	 *  it is a workspace-wide credential and no client has any use for it. */
 	status: async (ctx: Ctx) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		const row = await db.query.slackInstallation.findFirst({
 			where: eq(slackInstallation.organizationId, ctx.organizationId),
 			columns: { teamId: true, teamName: true, createdAt: true },
@@ -43,7 +43,7 @@ export const slackService = {
 	 * App setup redirect relies on.
 	 */
 	installUrl: async (ctx: Ctx) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		const clientId = process.env.SLACK_CLIENT_ID;
 		if (!clientId) throw new Error("SLACK_CLIENT_ID not configured");
 
@@ -65,7 +65,7 @@ export const slackService = {
 	 * of failing on the unique constraint.
 	 */
 	completeInstall: async (ctx: Ctx, code: string) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const result = await slackClient.exchangeOAuthCode(code);
 		const teamName = result.team.name ?? null;
@@ -97,7 +97,7 @@ export const slackService = {
 	},
 
 	disconnect: async (ctx: Ctx) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		await db
 			.delete(slackInstallation)
 			.where(eq(slackInstallation.organizationId, ctx.organizationId));
@@ -182,11 +182,21 @@ export const slackService = {
 	},
 
 	sendTest: async (ctx: Ctx, userId: string) => {
-		await accessService.requireAdmin(ctx);
-		const sent = await slackService.sendDm(
-			ctx.organizationId,
-			userId,
-			"Test message from your time tracker. Reminders are wired up correctly.",
+		await requireAdmin(ctx);
+		// Through `notify` like every other send, so a test that passes proves the
+		// same path the reminders take — including the membership check. Imported
+		// here rather than at the top because `notify` imports this module for its
+		// Slack adapter, and a static cycle would leave one of the two consts in
+		// its temporal dead zone at call time.
+		const { notify, wasDelivered } = await import("./notify");
+		const sent = wasDelivered(
+			await notify(
+				{ organizationId: ctx.organizationId, userId },
+				{
+					kind: "test",
+					body: "Test message from your time tracker. Reminders are wired up correctly.",
+				},
+			),
 		);
 		if (!sent) {
 			throw new Error(

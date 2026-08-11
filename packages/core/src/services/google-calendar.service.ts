@@ -8,9 +8,9 @@ import {
 	insertAllDayEvent,
 	listCalendarEvents,
 } from "../lib/google-calendar-client";
-import { orgTimezone } from "../lib/org-time";
 import { addDaysToKey, dayBoundsInTz } from "../lib/time";
 import type { ListCalendarEventsInput } from "../schema/google-calendar";
+import { ctxTimezone } from "./context";
 import type { Ctx } from "./types";
 
 // Google access tokens live ~1h; getAccessToken transparently refreshes them
@@ -71,7 +71,7 @@ export const googleCalendarService = {
 		const token = await getAccessToken(ctx);
 		if (!token) throw new Error("Google Calendar not connected");
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const { start, end } = dayBoundsInTz(input.date, tz);
 		return fetchTimedEvents(token, start, end);
 	},
@@ -88,7 +88,7 @@ export const googleCalendarService = {
 		const token = await getAccessToken(ctx);
 		if (!token) return null;
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const start = dayBoundsInTz(input.from, tz).start;
 		const end = dayBoundsInTz(input.to, tz).end;
 		return fetchTimedEvents(token, start, end);

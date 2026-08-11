@@ -17,7 +17,8 @@ import type {
 	RemoveProjectMemberInput,
 	UpdateProjectInput,
 } from "../schema/projects";
-import { type Access, accessService } from "./access.service";
+import type { Access } from "./access.service";
+import { ctxAccess, invalidateCtxAccess } from "./context";
 import { assertProjectInOrg } from "./guards";
 import { membersService } from "./members.service";
 import { tasksService } from "./tasks.service";
@@ -175,7 +176,7 @@ export const projectsService = {
 	/** Every project in the org. Admin-facing; the project list screen scopes to
 	 *  `listMine` for everyone else. */
 	list: async (ctx: Ctx) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		return enrichedProjects(ctx, access);
 	},
 
@@ -183,13 +184,13 @@ export const projectsService = {
 	 *  strictly their assignments. Feeds the time-entry picker, which is why the
 	 *  assignment gate exists at all — short dropdowns and clean data. */
 	listMine: async (ctx: Ctx) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		const scope = access.scopeFor("member");
 		return enrichedProjects(ctx, access, scope ?? undefined);
 	},
 
 	get: async (ctx: Ctx, projectId: string) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		const rows = await enrichedProjects(ctx, access, [projectId]);
 		const row = rows[0];
 		if (!row) throw new Error("Project not found");
@@ -198,7 +199,7 @@ export const projectsService = {
 
 	/** Throws unless the caller may log time to this project. */
 	assertProjectMembership: async (ctx: Ctx, projectId: string) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanTrackOn(projectId);
 	},
 
@@ -206,7 +207,7 @@ export const projectsService = {
 		ctx: Ctx,
 		projectId: string,
 	): Promise<ProjectMemberRow[]> => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		// A plain Member sees nothing at project level, not even the team.
 		access.assertCanViewProjectEntries(projectId);
 
@@ -230,7 +231,7 @@ export const projectsService = {
 	},
 
 	assignMember: async (ctx: Ctx, input: AssignProjectMemberInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanManageProjectMembers(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -246,13 +247,17 @@ export const projectsService = {
 				target: [projectMember.projectId, projectMember.userId],
 				set: { role: input.role, active: true, updatedAt: new Date() },
 			});
+
+		// The assignment may be the caller's own, which would leave the memoized
+		// authorization picture describing the world before this write.
+		invalidateCtxAccess(ctx);
 	},
 
 	/** Deactivates rather than deletes: the person stays on historical close
 	 *  sheets (their hours were real) but the assignment grants nothing going
 	 *  forward and they drop off future sheets. */
 	removeMember: async (ctx: Ctx, input: RemoveProjectMemberInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanManageProjectMembers(input.projectId);
 
 		await db
@@ -265,10 +270,12 @@ export const projectsService = {
 					eq(projectMember.userId, input.userId),
 				),
 			);
+
+		invalidateCtxAccess(ctx);
 	},
 
 	create: async (ctx: Ctx, input: CreateProjectInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCreateProjects();
 
 		const created = await db.transaction(async (tx) => {
@@ -337,54 +344,73 @@ export const projectsService = {
 
 		// The caller is now this project's PM, so re-resolve before returning —
 		// otherwise the response would redact the money fields they just set.
+		// The memoized picture predates the assignment above and would still say
+		// "not a member", so it has to be dropped for the re-resolve to see it.
+		invalidateCtxAccess(ctx);
 		return projectsService.get(ctx, created.id);
 	},
 
 	update: async (ctx: Ctx, input: UpdateProjectInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		// Editing budgets/prices is PM territory; TLs manage people, not config.
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
+		// A patch: only the keys the caller sent are written, so a rename doesn't
+		// have to carry the budget, the client and the task subset along with it
+		// just to keep them. See updateProjectInput.
 		await db.transaction(async (tx) => {
-			const ownedClient = await tx.query.client.findFirst({
-				where: and(
-					eq(client.id, input.clientId),
-					eq(client.organizationId, ctx.organizationId),
-				),
-				columns: { id: true },
-			});
-			if (!ownedClient) throw new Error("Client not found");
+			if (input.clientId !== undefined) {
+				const ownedClient = await tx.query.client.findFirst({
+					where: and(
+						eq(client.id, input.clientId),
+						eq(client.organizationId, ctx.organizationId),
+					),
+					columns: { id: true },
+				});
+				if (!ownedClient) throw new Error("Client not found");
+			}
 
 			await tx
 				.update(project)
 				.set({
-					name: input.name,
-					clientId: input.clientId,
-					code: input.code || null,
+					...(input.name !== undefined ? { name: input.name } : {}),
+					...(input.clientId !== undefined
+						? { clientId: input.clientId }
+						: {}),
+					...(input.code !== undefined ? { code: input.code || null } : {}),
 					// Project type is changeable after creation without history (e.g. a
 					// Fixed Scope engagement rolling into Maintenance). Close sheets
-					// render according to the type at the time of viewing.
-					type: input.type,
-					color: input.color,
-					budgetSeconds: input.budgetHours
-						? Math.round(input.budgetHours * 3600)
-						: null,
-					budgetAmount: input.budgetAmount ?? null,
-					hourlyPrice: input.hourlyPrice ?? null,
+					// render according to the type at the time of viewing. The
+					// type-specific config moves with it — the schema refuses a budget
+					// or price that arrives without its type — so the three are set
+					// together or not at all.
+					...(input.type !== undefined
+						? {
+								type: input.type,
+								budgetSeconds: input.budgetHours
+									? Math.round(input.budgetHours * 3600)
+									: null,
+								budgetAmount: input.budgetAmount ?? null,
+								hourlyPrice: input.hourlyPrice ?? null,
+							}
+						: {}),
+					...(input.color !== undefined ? { color: input.color } : {}),
 					updatedAt: new Date(),
 				})
 				.where(eq(project.id, input.projectId));
 		});
 
-		await tasksService.setProjectTasks(ctx, input.projectId, input.taskIds);
+		if (input.taskIds !== undefined) {
+			await tasksService.setProjectTasks(ctx, input.projectId, input.taskIds);
+		}
 		return projectsService.get(ctx, input.projectId);
 	},
 
 	/** Archive, never hard delete — agencies churn projects and history must
 	 *  survive (close sheets, reports and variance all read backwards). */
 	archive: async (ctx: Ctx, projectId: string) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(projectId);
 		await db
 			.update(project)
@@ -398,7 +424,7 @@ export const projectsService = {
 	},
 
 	unarchive: async (ctx: Ctx, projectId: string) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(projectId);
 		await db
 			.update(project)
@@ -420,7 +446,7 @@ export const projectsService = {
 	 *  ones you actually want to add — are in the list. Archived people are not:
 	 *  they keep the assignments they already had, and can't be given new ones. */
 	listAssignable: async (ctx: Ctx, projectId: string) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanManageProjectMembers(projectId);
 		const archived = await membersService.archivedUserIds(ctx);
 		const rows = await db

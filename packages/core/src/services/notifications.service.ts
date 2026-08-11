@@ -29,7 +29,7 @@ export type PushPayload = {
 };
 
 // Configure web-push once from env. Missing keys is not fatal — the app runs
-// fine without push (notifyUser becomes a no-op) so a dev without VAPID keys
+// fine without push (sendPush becomes a no-op) so a dev without VAPID keys
 // isn't blocked. Guarded so we only call setVapidDetails when fully configured.
 let vapidReady = false;
 const configureVapid = (): boolean => {
@@ -170,11 +170,17 @@ export const notificationsService = {
 			});
 	},
 
-	// Send a push to every device the user has registered. Best-effort by
-	// construction: never throws into the caller (a decision/reminder must not
-	// fail because a push endpoint is dead), and prunes subscriptions the push
-	// service reports as gone (404/410) so dead devices don't accumulate.
-	notifyUser: async (userId: string, payload: PushPayload): Promise<void> => {
+	// The push TRANSPORT: send to every device this user has registered. Push
+	// subscriptions belong to a device and therefore to a person, not to an
+	// organization, which is exactly why nothing here can decide whether the
+	// person should be hearing from a given org — go through `notify()`, which
+	// owns that question for every channel.
+	//
+	// Best-effort by construction: never throws into the caller (a decision or
+	// reminder must not fail because a push endpoint is dead), and prunes
+	// subscriptions the push service reports as gone (404/410) so dead devices
+	// don't accumulate.
+	sendPush: async (userId: string, payload: PushPayload): Promise<void> => {
 		if (!configureVapid()) return;
 		let subs: (typeof pushSubscription.$inferSelect)[];
 		try {

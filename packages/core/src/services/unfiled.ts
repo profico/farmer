@@ -1,6 +1,7 @@
-import { and, count, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { task, timeEntry } from "../db/schema/domain";
+import { ledgerWhere } from "./ledger";
 import type { Ctx } from "./types";
 
 // An UNFILED entry is real tracked time that carries no project yet: a Google
@@ -17,19 +18,14 @@ import type { Ctx } from "./types";
 // time-entries all need the same definition and importing one of those services
 // from another would make the set circular.
 
+// The predicate itself now lives in `ledger.ts` as the `unfiled` scope, so the
+// definition this module was created to hold is stated in the same place as its
+// siblings (`worked`, `project`, `absence`) and cannot drift from them.
 const unfiledWhere = (
 	ctx: Ctx,
 	range: { from: string; to: string },
 	userId?: string,
-) =>
-	and(
-		eq(timeEntry.organizationId, ctx.organizationId),
-		isNull(timeEntry.projectId),
-		eq(task.isAbsence, false),
-		gte(timeEntry.date, range.from),
-		lte(timeEntry.date, range.to),
-		userId ? eq(timeEntry.userId, userId) : undefined,
-	);
+) => ledgerWhere(ctx, range, "unfiled", userId ? { userId } : {});
 
 /** Count and total duration of unfiled time in a range, optionally for one
  *  person. Used for the time page's nag and the close sheet's warning. */

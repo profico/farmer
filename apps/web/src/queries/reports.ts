@@ -19,31 +19,32 @@ import {
 	getVarianceReport,
 	getVarianceTrend,
 } from "#/server/reports.ts";
+import { queryKeys } from "./keys.ts";
 
 // Report keys carry their whole input in the key. Filters are part of the
 // identity of the result — two different filter sets are two different
 // reports, not one report to be refetched.
 export const timeReportSummaryQuery = (input: TimeReportSummaryInput) =>
 	queryOptions({
-		queryKey: ["reports", "time-summary", input],
+		queryKey: [...queryKeys.reports, "time-summary", input],
 		queryFn: () => getTimeReportSummary({ data: input }),
 	});
 
 export const timeReportDetailQuery = (input: TimeReportDetailInput) =>
 	queryOptions({
-		queryKey: ["reports", "time-detail", input],
+		queryKey: [...queryKeys.reports, "time-detail", input],
 		queryFn: () => getTimeReportDetail({ data: input }),
 	});
 
 export const budgetBurnReportQuery = () =>
 	queryOptions({
-		queryKey: ["reports", "budget-burn"],
+		queryKey: [...queryKeys.reports, "budget-burn"],
 		queryFn: () => getBudgetBurnReport(),
 	});
 
 export const overtimeReportQuery = (input: MonthReportInput) =>
 	queryOptions({
-		queryKey: ["reports", "overtime", input],
+		queryKey: [...queryKeys.reports, "overtime", input],
 		queryFn: () => getOvertimeReport({ data: input }),
 	});
 
@@ -51,36 +52,36 @@ export const overtimeDetailQuery = (
 	input: MonthReportInput & { userId: string },
 ) =>
 	queryOptions({
-		queryKey: ["reports", "overtime-detail", input],
+		queryKey: [...queryKeys.reports, "overtime-detail", input],
 		queryFn: () => getOvertimeDetail({ data: input }),
 	});
 
 export const absenceReportQuery = (input: AbsenceReportInput) =>
 	queryOptions({
-		queryKey: ["reports", "absence", input],
+		queryKey: [...queryKeys.reports, "absence", input],
 		queryFn: () => getAbsenceReport({ data: input }),
 	});
 
 export const varianceReportQuery = (input: MonthReportInput) =>
 	queryOptions({
-		queryKey: ["reports", "variance", input],
+		queryKey: [...queryKeys.reports, "variance", input],
 		queryFn: () => getVarianceReport({ data: input }),
 	});
 
 export const varianceTrendQuery = (input: VarianceTrendInput) =>
 	queryOptions({
-		queryKey: ["reports", "variance-trend", input],
+		queryKey: [...queryKeys.reports, "variance-trend", input],
 		queryFn: () => getVarianceTrend({ data: input }),
 	});
 
 export const utilizationReportQuery = (input: MonthReportInput) =>
 	queryOptions({
-		queryKey: ["reports", "utilization", input],
+		queryKey: [...queryKeys.reports, "utilization", input],
 		queryFn: () => getUtilizationReport({ data: input }),
 	});
 
 export const utilizationTrendQuery = (input: UtilizationTrendInput) =>
 	queryOptions({
-		queryKey: ["reports", "utilization-trend", input],
+		queryKey: [...queryKeys.reports, "utilization-trend", input],
 		queryFn: () => getUtilizationTrend({ data: input }),
 	});

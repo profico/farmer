@@ -8,26 +8,26 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import { syncedMeetingTombstone } from "../db/schema/settings";
-import { orgTimezone } from "../lib/org-time";
+import { splitProportionally, summarizeCommitMessages } from "../lib/day-plan";
+import { QUARTER_HOUR_SECONDS, snapToQuarterHour } from "../lib/time";
 import {
-	QUARTER_HOUR_SECONDS,
-	snapToQuarterHour,
-	weekdayInTz,
-} from "../lib/time";
+	loggedSeconds,
+	remainingSeconds,
+	spokenForSeconds,
+	targetSecondsFor,
+} from "../lib/working-day";
 import type {
 	ApplyDayAssemblyInput,
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
+import { ctxTimezone } from "./context";
+import { calendarSource, commitSource } from "./ports";
 import { githubService } from "./github.service";
-import { googleCalendarService } from "./google-calendar.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
-import {
-	dayDurationSeconds,
-	workingHoursService,
-} from "./working-hours.service";
+import { workingHoursService } from "./working-hours.service";
 
 // "Assemble my day": gather every signal we have about a day (calendar meetings,
 // GitHub commits per project, working hours) and propose the entries that would
@@ -91,27 +91,6 @@ const hasLinkedAccount = async (userId: string, providerId: string) => {
 	return !!row;
 };
 
-/** Split `total` across weights, snapped to the 15-minute grid, so the parts
- *  sum to no more than the total. */
-const splitProportionally = (total: number, weights: number[]): number[] => {
-	const sum = weights.reduce((a, b) => a + b, 0);
-	if (sum <= 0) return weights.map(() => 0);
-	let remaining = total;
-	return weights.map((weight, index) => {
-		if (index === weights.length - 1) {
-			return Math.max(
-				0,
-				Math.floor(remaining / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS,
-			);
-		}
-		const share =
-			Math.floor((total * weight) / sum / QUARTER_HOUR_SECONDS) *
-			QUARTER_HOUR_SECONDS;
-		remaining -= share;
-		return share;
-	});
-};
-
 /** Look up one of the tasks this engine proposes against — the assembler can
  *  only suggest entries the user could have created by hand, so it needs real
  *  task rows.
@@ -133,7 +112,7 @@ export const dayAssemblyService = {
 		const { date } = input;
 		await recurringBlockRulesService.materializeRange(ctx, date, date);
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 
 		const [
 			existing,
@@ -163,13 +142,13 @@ export const dayAssemblyService = {
 			findEngineTask(ctx, "meeting"),
 			findEngineTask(ctx, "development"),
 			findEngineTask(ctx, "break"),
-			googleCalendarService
+			calendarSource()
 				.listEventsForRange(ctx, { from: date, to: date })
 				.catch((error) => {
 					console.error("[day-assembly] calendar read failed", error);
 					return null;
 				}),
-			githubService.listUserCommitsForDay(ctx, date).catch((error) => {
+			commitSource().listUserCommitsForDay(ctx, date).catch((error) => {
 				console.error("[day-assembly] commit read failed", error);
 				return [];
 			}),
@@ -180,19 +159,9 @@ export const dayAssemblyService = {
 			hasLinkedAccount(ctx.userId, "github"),
 		]);
 
-		const weekday = weekdayInTz(date, tz);
-		const day = workingHours.find((d) => d.dayOfWeek === weekday);
-		const targetSeconds = day ? dayDurationSeconds(day) : 0;
-
-		const loggedSeconds = existing.reduce(
-			(sum, e) => sum + e.durationSeconds,
-			0,
-		);
-		// Fill blocks don't consume the remaining budget: their duration is derived
-		// and re-shrinks as siblings appear.
-		const spokenFor = existing
-			.filter((e) => !e.fillsDay)
-			.reduce((sum, e) => sum + e.durationSeconds, 0);
+		const targetSeconds = targetSecondsFor(workingHours, date, tz);
+		const logged = loggedSeconds(existing);
+		const spokenFor = spokenForSeconds(existing);
 
 		const suggestions: DaySuggestion[] = [];
 
@@ -239,9 +208,10 @@ export const dayAssemblyService = {
 
 		// ── Break: carved out of the day, not added on top ──────────────────────
 		let breakSeconds = 0;
-		const preBreakRemaining = Math.max(
-			0,
-			targetSeconds - spokenFor - meetingSeconds,
+		const preBreakRemaining = remainingSeconds(
+			targetSeconds,
+			spokenFor,
+			meetingSeconds,
 		);
 		const alreadyHasBreak =
 			breakTask != null && existing.some((e) => e.taskId === breakTask.id);
@@ -268,7 +238,12 @@ export const dayAssemblyService = {
 			});
 		}
 
-		const remainingSeconds = Math.max(0, preBreakRemaining - breakSeconds);
+		const remaining = remainingSeconds(
+			targetSeconds,
+			spokenFor,
+			meetingSeconds,
+			breakSeconds,
+		);
 
 		// ── Work: one entry per project the user committed to that day ──────────
 		const commitsByProject = new Map<string, typeof commits>();
@@ -290,7 +265,7 @@ export const dayAssemblyService = {
 			commitsByProject.size > 0 &&
 			workTask &&
 			!hasFillBlock &&
-			remainingSeconds >= QUARTER_HOUR_SECONDS
+			remaining >= QUARTER_HOUR_SECONDS
 		) {
 			const projectIds = [...commitsByProject.keys()];
 			const [projects, picked] = await Promise.all([
@@ -325,7 +300,7 @@ export const dayAssemblyService = {
 				}));
 
 			const shares = splitProportionally(
-				remainingSeconds,
+				remaining,
 				groups.map((g) => g.commits.length),
 			);
 
@@ -339,13 +314,9 @@ export const dayAssemblyService = {
 					taskName: workTask.name,
 					projectId: group.projectId,
 					projectName: nameById.get(group.projectId) ?? null,
-					// Mandatory descriptions mean the assembler has to propose one; the
-					// commit subjects are the best raw material available, and the person
-					// edits before accepting.
-					description: group.commits
-						.slice(0, 3)
-						.map((c) => c.message.split("\n")[0])
-						.join("; "),
+					description: summarizeCommitMessages(
+						group.commits.map((c) => c.message),
+					),
 					durationSeconds: share,
 					fillsDay: false,
 					meetingUrl: null,
@@ -363,7 +334,7 @@ export const dayAssemblyService = {
 		return {
 			date,
 			targetSeconds,
-			loggedSeconds,
+			loggedSeconds: logged,
 			suggestions,
 			sources: {
 				calendar:

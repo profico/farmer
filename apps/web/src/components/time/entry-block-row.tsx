@@ -12,6 +12,7 @@ import { Textarea } from "#/components/ui/textarea.tsx";
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import {
 	createTimeEntry,
 	deleteTimeEntry,
@@ -63,7 +64,9 @@ export function EntryBlockRow({
 				data: { timeEntryId: entry.id, description },
 			}),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.timeEntries],
+			});
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not save note");
@@ -81,7 +84,9 @@ export function EntryBlockRow({
 		mutationFn: (overtime: boolean) =>
 			setTimeEntryOvertime({ data: { timeEntryId: entry.id, overtime } }),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.timeEntries],
+			});
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not update overtime");
@@ -111,7 +116,9 @@ export function EntryBlockRow({
 					fillsDay: false,
 				},
 			});
-			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.timeEntries],
+			});
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "Could not restore entry",
@@ -122,7 +129,9 @@ export function EntryBlockRow({
 	const deleteMutation = useMutation({
 		mutationFn: () => deleteTimeEntry({ data: entry.id }),
 		onSuccess: async (deleted) => {
-			await queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys.timeEntries],
+			});
 			// Undo is only safe for plain manual entries. Fill blocks are derived, a
 			// rule-generated entry leaves a skip behind (re-creating it as a manual
 			// copy would double up), and a calendar-linked entry leaves a tombstone —

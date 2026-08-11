@@ -47,37 +47,16 @@ export type ReportPdfData = {
 	}[];
 };
 
-export const formatHoursLabel = (totalSeconds: number): string => {
-	const hours = Math.floor(totalSeconds / 3600);
-	const minutes = Math.round((totalSeconds % 3600) / 60);
-	const h = hours.toLocaleString("en-US");
-	if (hours === 0 && minutes === 0) return "0h";
-	if (minutes === 0) return `${h}h`;
-	if (hours === 0) return `${minutes}m`;
-	return `${h}h ${minutes}m`;
-};
-
-// Whole-hour figure for the summary stats, where the design renders a large
-// number with a separate "h" unit suffix.
-export const formatWholeHoursValue = (totalSeconds: number): string =>
-	Math.round(totalSeconds / 3600).toLocaleString("en-US");
-
-// (2026, 7) -> "July 2026". The report is month-scoped because everything it
-// draws from — Final hours, Expected hours — only exists per closed month.
-export const formatMonthLabel = (year: number, month: number): string =>
-	new Intl.DateTimeFormat("en-US", {
-		month: "long",
-		year: "numeric",
-		timeZone: "UTC",
-	}).format(new Date(Date.UTC(year, month - 1, 15)));
-
-// (2026, 7) -> "Jul 2026" — for the running header's compact period.
-export const formatMonthShortLabel = (year: number, month: number): string =>
-	new Intl.DateTimeFormat("en-US", {
-		month: "short",
-		year: "numeric",
-		timeZone: "UTC",
-	}).format(new Date(Date.UTC(year, month - 1, 15)));
+// The number formatting lives in `report-format.ts`, which the reports screen
+// and the CSV export import as well — this module cannot be imported from a
+// route, because `./typst` above binds a native compiler. Re-exported here so
+// the PDF pipeline still has one import.
+export {
+	formatHoursLabel,
+	formatMonthLabel,
+	formatMonthShortLabel,
+	formatWholeHoursValue,
+} from "./report-format";
 
 // Implements the approved "Time Report.dc.html" mockup from the Claude Design
 // project: warm near-black ink, violet brand accents, amber for overtime, red

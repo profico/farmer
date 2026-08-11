@@ -18,6 +18,7 @@ import {
 } from "#/components/ui/select.tsx";
 import { getInitials } from "#/lib/utils.ts";
 import { supportedCountriesQuery } from "#/queries/holidays.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import { notOnInvoiceStatusOptionsQuery } from "#/queries/not-on-invoice.ts";
 import {
 	orgPolicySettingsQuery,
@@ -66,7 +67,7 @@ function OrganizationSettingsPage() {
 				queryClient.invalidateQueries({
 					queryKey: orgSettingsQuery().queryKey,
 				}),
-				queryClient.invalidateQueries({ queryKey: ["holidays"] }),
+				queryClient.invalidateQueries({ queryKey: [...queryKeys.holidays] }),
 			]);
 			// The sidebar/switcher read the org (name + logo) from route context,
 			// resolved in the layout's beforeLoad — re-run it so a change shows
@@ -238,7 +239,9 @@ function NotOnInvoiceStatusSection() {
 			queryClient.invalidateQueries({
 				queryKey: notOnInvoiceStatusOptionsQuery().queryKey,
 			}),
-			queryClient.invalidateQueries({ queryKey: ["not-on-invoice"] }),
+			queryClient.invalidateQueries({
+				queryKey: [...queryKeys.notOnInvoice],
+			}),
 		]);
 
 	const create = useMutation({
@@ -378,7 +381,7 @@ function CompliancePolicySection() {
 				queryClient.invalidateQueries({
 					queryKey: orgPolicySettingsQuery().queryKey,
 				}),
-				queryClient.invalidateQueries({ queryKey: ["compliance"] }),
+				queryClient.invalidateQueries({ queryKey: [...queryKeys.compliance] }),
 			]);
 			toast.success("Compliance policy saved");
 		},

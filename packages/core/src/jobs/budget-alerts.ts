@@ -4,8 +4,7 @@ import { member, organization } from "../db/schema/auth";
 import { client, project, projectMember, timeEntry } from "../db/schema/domain";
 import { projectBudgetAlert } from "../db/schema/notifications";
 import { formatDuration } from "../lib/time";
-import { notificationsService } from "../services/notifications.service";
-import { slackService } from "../services/slack.service";
+import { notify } from "../services/notify";
 
 export type BudgetAlertSummary = {
 	projects: number;
@@ -105,16 +104,15 @@ export const runBudgetAlertsOnce = async (): Promise<BudgetAlertSummary> => {
 
 		for (const userId of audience) {
 			recipients++;
-			await slackService
-				.sendDm(row.organizationId, userId, `${headline}. ${detail}`)
-				.catch(() => false);
-			await notificationsService
-				.notifyUser(userId, {
+			await notify(
+				{ organizationId: row.organizationId, userId },
+				{
+					kind: "budget-alert",
 					title: headline,
 					body: detail,
 					url: `/${row.orgSlug}/reports?tab=budget`,
-				})
-				.catch(() => {});
+				},
+			);
 		}
 	}
 

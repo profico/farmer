@@ -10,7 +10,8 @@ import type {
 	SaveCloseRowInput,
 	SetCloseRowFinalInput,
 } from "../schema/close";
-import { accessService } from "./access.service";
+import { ctxAccess } from "./context";
+import { ledgerByProject } from "./ledger";
 import { assertProjectInOrg } from "./guards";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { membersService, type ResolvedMemberType } from "./members.service";
@@ -251,7 +252,7 @@ export const closeService = {
 	 * the sheet, since the sheet is what gets invoiced.
 	 */
 	getSheet: async (ctx: Ctx, input: CloseSheetInput): Promise<CloseSheet> => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -371,7 +372,7 @@ export const closeService = {
 
 	/** PM edits: Adjusted, the absence-day override, and the comment. */
 	saveRow: async (ctx: Ctx, input: SaveCloseRowInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -420,7 +421,7 @@ export const closeService = {
 
 	/** Admin-only: the Final column, the number that gets invoiced. */
 	setFinal: async (ctx: Ctx, input: SetCloseRowFinalInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertAdmin();
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -452,7 +453,7 @@ export const closeService = {
 	// finalized month.
 
 	submit: async (ctx: Ctx, input: CloseTransitionInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -482,7 +483,7 @@ export const closeService = {
 	},
 
 	reopen: async (ctx: Ctx, input: CloseTransitionInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 
 		const record = await loadCloseRecord(
@@ -522,7 +523,7 @@ export const closeService = {
 	 * quietly become meaningless.
 	 */
 	finalize: async (ctx: Ctx, input: CloseTransitionInput) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		access.assertAdmin();
 		await assertProjectInOrg(ctx, input.projectId);
 
@@ -602,7 +603,7 @@ export const closeService = {
 	 * submitted queue ("what is waiting for me") is just this, filtered.
 	 */
 	overview: async (ctx: Ctx, year: number, month: number) => {
-		const access = await accessService.resolve(ctx);
+		const access = await ctxAccess(ctx);
 		const scope = access.scopeFor("pm");
 		if (scope !== null && scope.length === 0) return [];
 
@@ -618,7 +619,7 @@ export const closeService = {
 		if (projects.length === 0) return [];
 		const projectIds = projects.map((p) => p.id);
 
-		const [records, reportedRows, finalRows] = await Promise.all([
+		const [records, reportedByProject, finalRows] = await Promise.all([
 			db.query.monthlyClose.findMany({
 				where: and(
 					eq(monthlyClose.organizationId, ctx.organizationId),
@@ -627,21 +628,7 @@ export const closeService = {
 					inArray(monthlyClose.projectId, projectIds),
 				),
 			}),
-			db
-				.select({
-					projectId: timeEntry.projectId,
-					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-				})
-				.from(timeEntry)
-				.where(
-					and(
-						eq(timeEntry.organizationId, ctx.organizationId),
-						inArray(timeEntry.projectId, projectIds),
-						gte(timeEntry.date, from),
-						lte(timeEntry.date, to),
-					),
-				)
-				.groupBy(timeEntry.projectId),
+			ledgerByProject(ctx, { from, to }, "project", { projectIds }),
 			db
 				.select({
 					projectId: monthlyClose.projectId,
@@ -662,9 +649,6 @@ export const closeService = {
 		]);
 
 		const recordByProject = new Map(records.map((r) => [r.projectId, r]));
-		const reportedByProject = new Map(
-			reportedRows.map((r) => [r.projectId ?? "", Number(r.total)]),
-		);
 		const finalByProject = new Map(
 			finalRows.map((r) => [r.projectId, Number(r.total)]),
 		);

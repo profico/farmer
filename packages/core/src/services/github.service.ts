@@ -17,7 +17,6 @@ import {
 	listInstallationRepos,
 	listUserInstallations,
 } from "../lib/github-client";
-import { orgTimezone } from "../lib/org-time";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
 import type {
 	AttachCommitsInput,
@@ -25,6 +24,7 @@ import type {
 	LinkProjectRepoInput,
 	SuggestCommitsInput,
 } from "../schema/github";
+import { ctxTimezone } from "./context";
 import type { Ctx } from "./types";
 
 // A commit as it comes back from a repo scan, already carrying every field
@@ -276,7 +276,7 @@ export const githubService = {
 		});
 		if (repos.length === 0) return [];
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const { start, end } = dayBoundsInTz(input.date, tz);
 
 		const perRepo = await Promise.all(
@@ -339,7 +339,7 @@ export const githubService = {
 		});
 		if (repos.length === 0) return [];
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const start = dayBoundsInTz(input.from, tz).start;
 		const end = dayBoundsInTz(input.to, tz).end;
 
@@ -406,7 +406,7 @@ export const githubService = {
 		});
 		if (repos.length === 0) return [];
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const { start, end } = dayBoundsInTz(date, tz);
 
 		const perRepo = await Promise.all(

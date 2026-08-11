@@ -37,12 +37,13 @@ jobs:
         working-directory: packages/core
         run: bunx tsc --noEmit -p tsconfig.json
 
-      - name: Test (apps/web)
-        working-directory: apps/web
-        # --passWithNoTests: no test files exist yet, but the step should
-        # still run (and start failing the moment a test does) rather than
-        # being skipped outright.
-        run: bunx vitest run --passWithNoTests
+      # packages/core's suite runs against PGLite (real Postgres in-process, see
+      # src/test/harness.ts), so this step needs no service container and no
+      # DATABASE_URL. It previously ran vitest in apps/web — a workspace with no
+      # test files and no vitest dependency — so it passed unconditionally and
+      # the three real tests in packages/core ran nowhere.
+      - name: Test
+        run: bun run test
 
       - name: Build
         run: bun run build

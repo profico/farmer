@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { orgSettings } from "../db/schema/settings";
-import { accessService } from "./access.service";
+import { requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
 export type OrgSettings = {
@@ -32,7 +32,7 @@ export const orgSettingsService = {
 	},
 
 	update: async (ctx: Ctx, patch: Partial<OrgSettings>) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		await db
 			.insert(orgSettings)
 			.values({

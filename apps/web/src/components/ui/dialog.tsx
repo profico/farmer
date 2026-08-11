@@ -123,8 +123,14 @@ function DialogContent({
 						data-slot="dialog-content"
 						// top/left-1/2 anchors; centering translate lives in the motion
 						// variants (x/y: -50%) because motion owns the transform.
+						//
+						// The popup itself never scrolls and is capped at the viewport
+						// minus the same 1rem gutter the width uses: the padding, the
+						// scrolling and the sticky footer all live on the inner body, so
+						// the close button (absolute against the popup) and the footer
+						// stay put while a tall form scrolls under them.
 						className={cn(
-							"fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover p-5 text-base text-popover-foreground outline-none sm:max-w-md",
+							"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-base text-popover-foreground outline-none sm:max-w-md",
 							className,
 						)}
 						render={
@@ -138,7 +144,12 @@ function DialogContent({
 						}
 						{...props}
 					>
-						{children}
+						<div
+							data-slot="dialog-body"
+							className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5"
+						>
+							{children}
+						</div>
 						{showCloseButton && (
 							<DialogPrimitive.Close
 								data-slot="dialog-close"
@@ -182,8 +193,18 @@ function DialogFooter({
 	return (
 		<div
 			data-slot="dialog-footer"
+			// Sticky rather than merely last: the body it sits in is the scrollport,
+			// so on a form taller than the viewport the actions stay reachable
+			// instead of scrolling off the bottom. `bg-popover` is what stops the
+			// scrolled content showing through it.
+			//
+			// `-bottom-5` (not `bottom-0`): the sticky inset resolves against the
+			// scroll container's CONTENT box, which the body's `p-5` sits 1.25rem
+			// inside of — the same 1.25rem the `-mb-5` bleed already spends. Pinning
+			// at 0 parks the footer that far above the popup's edge and leaves a
+			// stripe of scrolled content showing underneath it.
 			className={cn(
-				"-mx-5 -mb-5 mt-1 flex flex-col-reverse gap-2 rounded-b-xl border-t border-line2 p-4 px-5 sm:flex-row sm:justify-end",
+				"-mx-5 -mb-5 -bottom-5 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-5 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}

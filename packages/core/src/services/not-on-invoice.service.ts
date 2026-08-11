@@ -13,7 +13,7 @@ import type {
 	SetNotOnInvoiceStatusInput,
 	UpdateStatusOptionInput,
 } from "../schema/not-on-invoice";
-import { accessService } from "./access.service";
+import { requireAdmin } from "./context";
 import { membersService } from "./members.service";
 import type { Ctx } from "./types";
 
@@ -72,7 +72,7 @@ export const notOnInvoiceService = {
 	},
 
 	createStatusOption: async (ctx: Ctx, input: CreateStatusOptionInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		const [created] = await db
 			.insert(notOnInvoiceStatusOption)
 			.values({
@@ -85,7 +85,7 @@ export const notOnInvoiceService = {
 	},
 
 	updateStatusOption: async (ctx: Ctx, input: UpdateStatusOptionInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		const [updated] = await db
 			.update(notOnInvoiceStatusOption)
 			.set({
@@ -107,7 +107,7 @@ export const notOnInvoiceService = {
 	},
 
 	archiveStatusOption: async (ctx: Ctx, statusOptionId: string) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 		await db
 			.update(notOnInvoiceStatusOption)
 			.set({ archivedAt: new Date(), updatedAt: new Date() })
@@ -128,7 +128,7 @@ export const notOnInvoiceService = {
 	 * Final does not appear. Contractors and Overhead are excluded.
 	 */
 	report: async (ctx: Ctx, input: NotOnInvoiceReportInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		const [
 			people,
@@ -224,7 +224,7 @@ export const notOnInvoiceService = {
 	},
 
 	setStatus: async (ctx: Ctx, input: SetNotOnInvoiceStatusInput) => {
-		await accessService.requireAdmin(ctx);
+		await requireAdmin(ctx);
 
 		if (input.statusOptionId) {
 			const owned = await db.query.notOnInvoiceStatusOption.findFirst({

@@ -8,115 +8,124 @@
 //
 // assertTaskAvailable also carries the absence invariant the database can't
 // express (it needs a join), so that is covered here too.
-import { afterAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+//
+// Runs against an ephemeral PGLite instance (src/test/harness) — real Postgres,
+// real migrations, but its own database. It previously wrote into whatever
+// DATABASE_URL pointed at, seeded at module top level outside any hook, and
+// suffixed site-scoped task names with a UUID to dodge task_site_name_uidx; a
+// crashed run leaked those rows into a developer's dev database.
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { client, project, projectTask, task } from "../db/schema/domain";
+import { type TestDb, createTestDb } from "../test/harness";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
 
-const orgAId = `test-org-a-${crypto.randomUUID()}`;
-const orgBId = `test-org-b-${crypto.randomUUID()}`;
+let harness: TestDb;
 
-const [orgA, orgB] = await db
-	.insert(organization)
-	.values([
-		{
-			id: orgAId,
-			name: "Tenancy Test Org A",
-			slug: orgAId,
-			createdAt: new Date(),
-		},
-		{
-			id: orgBId,
-			name: "Tenancy Test Org B",
-			slug: orgBId,
-			createdAt: new Date(),
-		},
-	])
-	.returning();
-if (!orgA || !orgB) throw new Error("Failed to seed test organizations");
+let orgAId: string;
+let orgBId: string;
+let projectInAId: string;
+let projectInBId: string;
+let taskInAId: string;
+let taskInBId: string;
+let absenceTaskId: string;
+let universalTaskId: string;
+let ctxForOrgA: Ctx;
 
-// Every project needs a client now, so each org gets one.
-const [clientInA, clientInB] = await db
-	.insert(client)
-	.values([
-		{ organizationId: orgA.id, name: "Client A" },
-		{ organizationId: orgB.id, name: "Client B" },
-	])
-	.returning();
-if (!clientInA || !clientInB) throw new Error("Failed to seed test clients");
+beforeAll(async () => {
+	harness = await createTestDb();
 
-const [projectInA, projectInB] = await db
-	.insert(project)
-	.values([
-		{ organizationId: orgA.id, clientId: clientInA.id, name: "Org A Project" },
-		{ organizationId: orgB.id, clientId: clientInB.id, name: "Org B Project" },
-	])
-	.returning();
-if (!projectInA || !projectInB) throw new Error("Failed to seed test projects");
+	const [orgA, orgB] = await db
+		.insert(organization)
+		.values([
+			{ id: "org-a", name: "Tenancy Test Org A", slug: "org-a", createdAt: new Date() },
+			{ id: "org-b", name: "Tenancy Test Org B", slug: "org-b", createdAt: new Date() },
+		])
+		.returning();
+	if (!orgA || !orgB) throw new Error("Failed to seed test organizations");
+	orgAId = orgA.id;
+	orgBId = orgB.id;
 
-// Tasks are org-scoped taxonomy now, not per-project rows; a project opts into
-// one through projectTask. Org B picks its own task; org A leaves its task
-// unpicked so the "not on this project" branch has something to fail on.
-const [taskInA, taskInB] = await db
-	.insert(task)
-	.values([
-		{ scope: "organization" as const, organizationId: orgA.id, name: "Dev A" },
-		{ scope: "organization" as const, organizationId: orgB.id, name: "Dev B" },
-	])
-	.returning();
-if (!taskInA || !taskInB) throw new Error("Failed to seed test tasks");
+	// Every project needs a client, so each org gets one.
+	const [clientInA, clientInB] = await db
+		.insert(client)
+		.values([
+			{ organizationId: orgAId, name: "Client A" },
+			{ organizationId: orgBId, name: "Client B" },
+		])
+		.returning();
+	if (!clientInA || !clientInB) throw new Error("Failed to seed test clients");
 
-await db.insert(projectTask).values({
-	organizationId: orgB.id,
-	projectId: projectInB.id,
-	taskId: taskInB.id,
+	const [projectInA, projectInB] = await db
+		.insert(project)
+		.values([
+			{ organizationId: orgAId, clientId: clientInA.id, name: "Org A Project" },
+			{ organizationId: orgBId, clientId: clientInB.id, name: "Org B Project" },
+		])
+		.returning();
+	if (!projectInA || !projectInB) throw new Error("Failed to seed test projects");
+	projectInAId = projectInA.id;
+	projectInBId = projectInB.id;
+
+	// Tasks are org-scoped taxonomy, not per-project rows; a project opts into one
+	// through projectTask. Org B picks its own task; org A leaves its task
+	// unpicked so the "not on this project" branch has something to fail on.
+	const [taskInA, taskInB] = await db
+		.insert(task)
+		.values([
+			{ scope: "organization" as const, organizationId: orgAId, name: "Dev A" },
+			{ scope: "organization" as const, organizationId: orgBId, name: "Dev B" },
+		])
+		.returning();
+	if (!taskInA || !taskInB) throw new Error("Failed to seed test tasks");
+	taskInAId = taskInA.id;
+	taskInBId = taskInB.id;
+
+	await db.insert(projectTask).values({
+		organizationId: orgBId,
+		projectId: projectInBId,
+		taskId: taskInBId,
+	});
+
+	// A fresh database per run, so these no longer need UUID-suffixed names to
+	// avoid colliding with a previous run's leftovers.
+	const [absenceTask] = await db
+		.insert(task)
+		.values({ scope: "site" as const, name: "Test Vacation", isAbsence: true })
+		.returning();
+	if (!absenceTask) throw new Error("Failed to seed absence task");
+	absenceTaskId = absenceTask.id;
+
+	// A site-scoped non-absence built-in (Meeting/Break in production).
+	// Deliberately never linked through projectTask — being available without a
+	// link is the whole property under test.
+	const [universalTask] = await db
+		.insert(task)
+		.values({ scope: "site" as const, name: "Test Meeting", isAbsence: false })
+		.returning();
+	if (!universalTask) throw new Error("Failed to seed universal task");
+	universalTaskId = universalTask.id;
+
+	ctxForOrgA = { organizationId: orgAId, userId: "test-user" };
 });
-
-const [absenceTask] = await db
-	.insert(task)
-	.values({
-		scope: "site" as const,
-		name: `Test Vacation ${crypto.randomUUID()}`,
-		isAbsence: true,
-	})
-	.returning();
-if (!absenceTask) throw new Error("Failed to seed absence task");
-
-// A site-scoped non-absence built-in (Meeting/Break in production). Deliberately
-// never linked through projectTask — being available without a link is the whole
-// property under test.
-const [universalTask] = await db
-	.insert(task)
-	.values({
-		scope: "site" as const,
-		name: `Test Meeting ${crypto.randomUUID()}`,
-		isAbsence: false,
-	})
-	.returning();
-if (!universalTask) throw new Error("Failed to seed universal task");
 
 afterAll(async () => {
-	await db.delete(organization).where(eq(organization.id, orgA.id));
-	await db.delete(organization).where(eq(organization.id, orgB.id));
-	await db.delete(task).where(eq(task.id, absenceTask.id));
-	await db.delete(task).where(eq(task.id, universalTask.id));
+	// No row-by-row cleanup: the database goes away with the harness.
+	await harness.close();
 });
-
-const ctxForOrgA: Ctx = { organizationId: orgA.id, userId: "test-user" };
 
 describe("assertProjectInOrg", () => {
 	test("throws when the project belongs to a different org (cross-tenant IDOR)", async () => {
-		await expect(
-			assertProjectInOrg(ctxForOrgA, projectInB.id),
-		).rejects.toThrow("Project not found");
+		await expect(assertProjectInOrg(ctxForOrgA, projectInBId)).rejects.toThrow(
+			"Project not found",
+		);
 	});
 
 	test("resolves when the project belongs to the caller's org", async () => {
 		await expect(
-			assertProjectInOrg(ctxForOrgA, projectInA.id),
+			assertProjectInOrg(ctxForOrgA, projectInAId),
 		).resolves.toBeUndefined();
 	});
 
@@ -133,13 +142,13 @@ describe("assertTaskAvailable", () => {
 		// pair together — org B genuinely picked that task for that project, so
 		// only the org constraint stops this.
 		await expect(
-			assertTaskAvailable(ctxForOrgA, taskInB.id, projectInB.id),
+			assertTaskAvailable(ctxForOrgA, taskInBId, projectInBId),
 		).rejects.toThrow("Task not available");
 	});
 
 	test("throws when the project has not picked the task", async () => {
 		await expect(
-			assertTaskAvailable(ctxForOrgA, taskInA.id, projectInA.id),
+			assertTaskAvailable(ctxForOrgA, taskInAId, projectInAId),
 		).rejects.toThrow("not available on this project");
 	});
 
@@ -147,13 +156,13 @@ describe("assertTaskAvailable", () => {
 		await db
 			.insert(projectTask)
 			.values({
-				organizationId: orgA.id,
-				projectId: projectInA.id,
-				taskId: taskInA.id,
+				organizationId: orgAId,
+				projectId: projectInAId,
+				taskId: taskInAId,
 			})
 			.onConflictDoNothing();
 		await expect(
-			assertTaskAvailable(ctxForOrgA, taskInA.id, projectInA.id),
+			assertTaskAvailable(ctxForOrgA, taskInAId, projectInAId),
 		).resolves.toBeUndefined();
 	});
 
@@ -166,7 +175,7 @@ describe("assertTaskAvailable", () => {
 	// it is not the taxonomy guard's job to reject it.
 	test("resolves for a worked task with no project yet (unfiled)", async () => {
 		await expect(
-			assertTaskAvailable(ctxForOrgA, taskInA.id, undefined),
+			assertTaskAvailable(ctxForOrgA, taskInAId, undefined),
 		).resolves.toBeUndefined();
 	});
 
@@ -176,19 +185,19 @@ describe("assertTaskAvailable", () => {
 	// org opts out of meetings.
 	test("resolves for a universal built-in the project never picked", async () => {
 		await expect(
-			assertTaskAvailable(ctxForOrgA, universalTask.id, projectInA.id),
+			assertTaskAvailable(ctxForOrgA, universalTaskId, projectInAId),
 		).resolves.toBeUndefined();
 	});
 
 	test("resolves for a site-wide absence task with no project", async () => {
 		await expect(
-			assertTaskAvailable(ctxForOrgA, absenceTask.id, undefined),
+			assertTaskAvailable(ctxForOrgA, absenceTaskId, undefined),
 		).resolves.toBeUndefined();
 	});
 
 	test("throws when an absence task is pinned to a project", async () => {
 		await expect(
-			assertTaskAvailable(ctxForOrgA, absenceTask.id, projectInA.id),
+			assertTaskAvailable(ctxForOrgA, absenceTaskId, projectInAId),
 		).rejects.toThrow("without a project");
 	});
 
@@ -197,14 +206,14 @@ describe("assertTaskAvailable", () => {
 			.insert(task)
 			.values({
 				scope: "organization" as const,
-				organizationId: orgA.id,
+				organizationId: orgAId,
 				name: "Retired",
 				archivedAt: new Date(),
 			})
 			.returning();
 		if (!archived) throw new Error("Failed to seed archived task");
 		await expect(
-			assertTaskAvailable(ctxForOrgA, archived.id, projectInA.id),
+			assertTaskAvailable(ctxForOrgA, archived.id, projectInAId),
 		).rejects.toThrow("Task not available");
 	});
 });

@@ -5,26 +5,27 @@ import {
 	listSelectableTasks,
 	listTasksForProject,
 } from "#/server/tasks.ts";
+import { queryKeys } from "./keys.ts";
 
 // The picker for one entry form: the project's cherry-picked tasks plus the two
 // absence tasks. `undefined` means "no project yet", which legitimately returns
 // only the absence tasks rather than nothing.
 export const tasksForProjectQuery = (projectId: string | undefined) =>
 	queryOptions({
-		queryKey: ["tasks", "for-project", projectId ?? null],
+		queryKey: [...queryKeys.tasks, "for-project", projectId ?? null],
 		queryFn: () => listTasksForProject({ data: projectId }),
 	});
 
 export const selectableTasksQuery = () =>
 	queryOptions({
-		queryKey: ["tasks", "selectable"],
+		queryKey: [...queryKeys.tasks, "selectable"],
 		queryFn: () => listSelectableTasks(),
 	});
 
 // Admin's Settings list: org tasks with usage counts, including archived.
 export const managedTasksQuery = () =>
 	queryOptions({
-		queryKey: ["tasks", "managed"],
+		queryKey: [...queryKeys.tasks, "managed"],
 		queryFn: () => listManagedTasks(),
 	});
 
@@ -32,6 +33,6 @@ export const managedTasksQuery = () =>
 // only — the names come from the projects list the dialog already has.
 export const projectsForTaskQuery = (taskId: string) =>
 	queryOptions({
-		queryKey: ["tasks", "projects-for-task", taskId],
+		queryKey: [...queryKeys.tasks, "projects-for-task", taskId],
 		queryFn: () => listProjectsForTask({ data: taskId }),
 	});

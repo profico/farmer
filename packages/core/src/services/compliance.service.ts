@@ -2,7 +2,6 @@ import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { timeEntry } from "../db/schema/domain";
-import { orgTimezone } from "../lib/org-time";
 import {
 	addDaysToKey,
 	datesBetween,
@@ -10,10 +9,11 @@ import {
 	monthBounds,
 	startOfMonthKey,
 } from "../lib/time";
-import { accessService } from "./access.service";
 import { absenceDaysByUser, expectedSecondsFor } from "./close.service";
+import { ctxTimezone, requireAdmin } from "./context";
 import { holidaysService } from "./holidays.service";
 import { hourFundService } from "./hour-fund.service";
+import { ledgerByUser } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
 import { BEHIND_PACE_THRESHOLD, orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
@@ -94,10 +94,10 @@ export const complianceService = {
 	 * still has to tell us what they did, even though no hour fund applies to them.
 	 */
 	noEntries: async (ctx: Ctx, opts?: { skipAdminCheck?: boolean }) => {
-		if (!opts?.skipAdminCheck) await accessService.requireAdmin(ctx);
+		if (!opts?.skipAdminCheck) await requireAdmin(ctx);
 
 		const [tz, settings] = await Promise.all([
-			orgTimezone(ctx.organizationId),
+			ctxTimezone(ctx),
 			orgSettingsService.get(ctx),
 		]);
 		const today = dayKeyInTz(new Date(), tz);
@@ -175,9 +175,9 @@ export const complianceService = {
 	 * value: without a monthly fund there is no pace to be behind.
 	 */
 	behindPace: async (ctx: Ctx, opts?: { skipAdminCheck?: boolean }) => {
-		if (!opts?.skipAdminCheck) await accessService.requireAdmin(ctx);
+		if (!opts?.skipAdminCheck) await requireAdmin(ctx);
 
-		const tz = await orgTimezone(ctx.organizationId);
+		const tz = await ctxTimezone(ctx);
 		const today = dayKeyInTz(new Date(), tz);
 		const year = Number(today.slice(0, 4));
 		const month = Number(today.slice(5, 7));
@@ -199,26 +199,17 @@ export const complianceService = {
 		if (total.length === 0 || elapsed.length === 0) return [];
 		const elapsedFraction = elapsed.length / total.length;
 
-		const logged = await db
-			.select({
-				userId: timeEntry.userId,
-				total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-			})
-			.from(timeEntry)
-			.where(
-				and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					inArray(
-						timeEntry.userId,
-						cohort.map((c) => c.userId),
-					),
-					gte(timeEntry.date, from),
-					lte(timeEntry.date, today),
-				),
-			)
-			.groupBy(timeEntry.userId);
-		const loggedByUser = new Map(
-			logged.map((r) => [r.userId, Number(r.total)]),
+		// Scope "worked", NOT "all". This query used to sum every entry in the
+		// range with no absence exclusion, while `expectedSecondsFor` below
+		// SUBTRACTS absence days from the target — so a person on vacation had
+		// their expectation lowered AND their vacation counted as hours worked,
+		// crediting it twice and hiding them from the pace check. Unfiled time
+		// stays in: an imported meeting is work, it is just not attributed yet.
+		const loggedByUser = await ledgerByUser(
+			ctx,
+			{ from, to: today },
+			"worked",
+			{ userIds: cohort.map((c) => c.userId) },
 		);
 
 		const rows: BehindPaceRow[] = [];
