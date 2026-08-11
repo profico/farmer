@@ -38,6 +38,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from "#/components/ui/form.tsx";
+import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import {
 	Select,
@@ -804,7 +805,18 @@ export function AddBlockDialog({
 																Ends (optional)
 															</FormLabel>
 															<FormControl>
-																<Input type="date" {...field} />
+																{/* Genuinely optional — a repeat with no end
+																    date runs until it is removed — so this is
+																    the second of the two clearable pickers. */}
+																<DatePicker
+																	aria-label="Repeat ends"
+																	placeholder="No end date"
+																	clearable
+																	value={field.value || null}
+																	onValueChange={(next) =>
+																		field.onChange(next ?? "")
+																	}
+																/>
 															</FormControl>
 														</FormItem>
 													)}

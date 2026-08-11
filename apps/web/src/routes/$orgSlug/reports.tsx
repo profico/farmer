@@ -31,6 +31,7 @@ import {
 } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
+import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import {
@@ -546,30 +547,32 @@ function CustomRangeFields({
 	const navigate = Route.useNavigate();
 	return (
 		<div className="flex items-center gap-2">
-			<Input
-				type="date"
-				className="h-8 w-36 text-xs"
+			<DatePicker
+				aria-label="From date"
+				className="w-40 text-xs"
 				value={from}
-				onChange={(e) =>
-					e.target.value &&
+				max={to}
+				onValueChange={(next) =>
+					next &&
 					navigate({
 						to: "/$orgSlug/reports",
 						params: { orgSlug },
-						search: { ...search, from: e.target.value, detailId: undefined },
+						search: { ...search, from: next, detailId: undefined },
 					})
 				}
 			/>
 			<span className="text-sm text-muted-foreground">to</span>
-			<Input
-				type="date"
-				className="h-8 w-36 text-xs"
+			<DatePicker
+				aria-label="To date"
+				className="w-40 text-xs"
 				value={to}
-				onChange={(e) =>
-					e.target.value &&
+				min={from}
+				onValueChange={(next) =>
+					next &&
 					navigate({
 						to: "/$orgSlug/reports",
 						params: { orgSlug },
-						search: { ...search, to: e.target.value, detailId: undefined },
+						search: { ...search, to: next, detailId: undefined },
 					})
 				}
 			/>

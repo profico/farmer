@@ -1,5 +1,11 @@
 import { CalendarDotsIcon } from "@phosphor-icons/react";
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useRef, useState } from "react";
+import { Calendar } from "#/components/ui/calendar.tsx";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "#/components/ui/popover.tsx";
 import { cn } from "#/lib/utils.ts";
 
 // The toolbar every timesheet view shares, laid out the way Harvest lays it out:
@@ -52,13 +58,10 @@ export function TimeToolbar({
 /**
  * The calendar icon, made to do what it looks like it does.
  *
- * A native `<input type="date">` rather than a hand-built calendar popover: this
- * app has no calendar primitive (`components/ui` has none, and the five date
- * fields it already has are all native), the native one is localized, keyboard
- * accessible and screen-reader labelled for free, and on mobile it is the
- * platform picker. The input is laid over the icon at zero opacity so the icon
- * stays the visual affordance; `showPicker()` opens it on click where supported,
- * and where it is not, clicking the input itself still does.
+ * This one is the icon itself rather than the shared DatePicker box: it lives
+ * inside the ‹ date › stepper group, where a bordered field would read as a
+ * second control sitting on top of the first. Same popover and same calendar as
+ * everywhere else — only the trigger differs.
  */
 function DateJump({
 	value,
@@ -67,23 +70,41 @@ function DateJump({
 	value: string;
 	onPick: (date: string) => void;
 }) {
-	const inputRef = useRef<HTMLInputElement>(null);
+	const [open, setOpen] = useState(false);
+	const gridRef = useRef<HTMLDivElement>(null);
 
 	return (
-		<span className="relative flex items-center">
-			<CalendarDotsIcon className="size-3.5 text-muted-foreground" />
-			<input
-				ref={inputRef}
-				type="date"
-				aria-label="Jump to date"
-				value={value}
-				onChange={(e) => {
-					if (e.target.value) onPick(e.target.value);
-				}}
-				onClick={() => inputRef.current?.showPicker?.()}
-				className="absolute -inset-1.5 cursor-pointer opacity-0"
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger
+				render={
+					<button
+						type="button"
+						aria-label="Jump to date"
+						className="flex items-center rounded-md p-1 text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40"
+					>
+						<CalendarDotsIcon className="size-3.5" />
+					</button>
+				}
 			/>
-		</span>
+			<PopoverContent
+				align="center"
+				initialFocus={() =>
+					gridRef.current?.querySelector<HTMLButtonElement>(
+						'[data-day][tabindex="0"]',
+					)
+				}
+			>
+				<Calendar
+					gridRef={gridRef}
+					value={value}
+					today={value}
+					onSelect={(next) => {
+						onPick(next);
+						setOpen(false);
+					}}
+				/>
+			</PopoverContent>
+		</Popover>
 	);
 }
 
