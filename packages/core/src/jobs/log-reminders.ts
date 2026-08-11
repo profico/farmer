@@ -11,8 +11,9 @@ import {
 import { dayDurationSeconds, dayForWeekday } from "../lib/working-day";
 import { holidaysService } from "../services/holidays.service";
 import { notificationsService } from "../services/notifications.service";
-import { workingHoursService } from "../services/working-hours.service";
+import { notify, wasDelivered } from "../services/notify";
 import type { Ctx } from "../services/types";
+import { workingHoursService } from "../services/working-hours.service";
 
 export type LogReminderSummary = {
 	eligible: number;
@@ -61,15 +62,12 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 			const tz = row.timezone ?? "UTC";
 			const todayKey = dayKeyInTz(now, tz);
 
-			// Preference gate (missing row = default ON).
-			const settings = await notificationsService.settingsFor(
-				row.organizationId,
-				row.userId,
-			);
-			if (!settings.logReminders) {
-				skipped++;
-				continue;
-			}
+			// The "log reminders off" preference used to be checked right here, so
+			// an opted-out person skipped the rest of the loop cheaply. `notify`
+			// owns it now — for every channel, not just this one — which means the
+			// checks below run for them too and the skip happens at the send. That
+			// is a few extra reads per opted-out member on a background job, in
+			// exchange for the preference being enforced in one place.
 
 			// Already reminded for this day?
 			const lastReminded = await notificationsService.lastLogReminderDay(
@@ -129,16 +127,26 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 				continue;
 			}
 
-			await notificationsService.notifyUser(row.userId, {
-				title: "Don't forget to log your hours",
-				body: `You've logged ${formatDuration(loggedSeconds)} of ${formatDuration(
-					expectedSeconds,
-				)} expected today.`,
-				url: `/${row.slug}/time`,
-				tag: `log-reminder-${todayKey}`,
-			});
+			const outcome = await notify(
+				{ organizationId: row.organizationId, userId: row.userId },
+				{
+					kind: "log-reminder",
+					title: "Don't forget to log your hours",
+					body: `You've logged ${formatDuration(loggedSeconds)} of ${formatDuration(
+						expectedSeconds,
+					)} expected today.`,
+					url: `/${row.slug}/time`,
+					tag: `log-reminder-${todayKey}`,
+				},
+			);
 			// Claim the day only after a successful send, so a send failure can be
-			// retried on the next tick rather than being silently swallowed.
+			// retried on the next tick rather than being silently swallowed. A
+			// person who turned reminders off delivers nothing and is skipped, not
+			// claimed — turning them back on the same day still reminds them.
+			if (!wasDelivered(outcome)) {
+				skipped++;
+				continue;
+			}
 			await notificationsService.markLogReminded(
 				row.organizationId,
 				row.userId,

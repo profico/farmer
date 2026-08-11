@@ -10,7 +10,11 @@ import {
 } from "../lib/time";
 import { complianceService } from "../services/compliance.service";
 import { holidaysService } from "../services/holidays.service";
-import { orgSettingsService, REMINDER_WEEKDAYS } from "../services/org-settings.service";
+import { notify, wasDelivered } from "../services/notify";
+import {
+	orgSettingsService,
+	REMINDER_WEEKDAYS,
+} from "../services/org-settings.service";
 import { slackService } from "../services/slack.service";
 import type { Ctx } from "../services/types";
 
@@ -145,7 +149,11 @@ export const runSlackRemindersOnce = async (): Promise<SlackReminderSummary> => 
 
 				for (const [userId, text] of messageByUser) {
 					if (!(await claim(org.id, userId, "nudge", today))) continue;
-					if (await slackService.sendDm(org.id, userId, text)) summary.nudges++;
+					const outcome = await notify(
+						{ organizationId: org.id, userId },
+						{ kind: "compliance-nudge", body: text },
+					);
+					if (wasDelivered(outcome)) summary.nudges++;
 				}
 			}
 
@@ -162,8 +170,11 @@ export const runSlackRemindersOnce = async (): Promise<SlackReminderSummary> => 
 				for (const person of people) {
 					if (!(await claim(org.id, person.userId, "month_end", today)))
 						continue;
-					if (await slackService.sendDm(org.id, person.userId, text))
-						summary.monthEnd++;
+					const outcome = await notify(
+						{ organizationId: org.id, userId: person.userId },
+						{ kind: "month-end", body: text },
+					);
+					if (wasDelivered(outcome)) summary.monthEnd++;
 				}
 			}
 
@@ -191,8 +202,11 @@ export const runSlackRemindersOnce = async (): Promise<SlackReminderSummary> => 
 					if (admin.role !== "owner" && admin.role !== "admin") continue;
 					if (!(await claim(org.id, admin.userId, "admin_digest", today)))
 						continue;
-					if (await slackService.sendDm(org.id, admin.userId, digest))
-						summary.digests++;
+					const outcome = await notify(
+						{ organizationId: org.id, userId: admin.userId },
+						{ kind: "admin-digest", body: digest },
+					);
+					if (wasDelivered(outcome)) summary.digests++;
 				}
 			}
 		} catch (error) {

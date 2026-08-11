@@ -183,10 +183,20 @@ export const slackService = {
 
 	sendTest: async (ctx: Ctx, userId: string) => {
 		await requireAdmin(ctx);
-		const sent = await slackService.sendDm(
-			ctx.organizationId,
-			userId,
-			"Test message from your time tracker. Reminders are wired up correctly.",
+		// Through `notify` like every other send, so a test that passes proves the
+		// same path the reminders take — including the membership check. Imported
+		// here rather than at the top because `notify` imports this module for its
+		// Slack adapter, and a static cycle would leave one of the two consts in
+		// its temporal dead zone at call time.
+		const { notify, wasDelivered } = await import("./notify");
+		const sent = wasDelivered(
+			await notify(
+				{ organizationId: ctx.organizationId, userId },
+				{
+					kind: "test",
+					body: "Test message from your time tracker. Reminders are wired up correctly.",
+				},
+			),
 		);
 		if (!sent) {
 			throw new Error(
