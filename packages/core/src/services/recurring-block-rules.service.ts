@@ -106,6 +106,24 @@ export const recurringBlockRulesService = {
 		}
 		if (input.active !== undefined) patch.active = input.active;
 
+		// Checked against the MERGED rule, not the patch: `update` is partial, so
+		// neither field is necessarily present, and the pair only makes sense
+		// together. Same rule as `createRecurringBlockRuleInput` enforces — a rule
+		// that materializes worked time has to say what the work is, or the entries
+		// it writes are ones the app itself would refuse to save.
+		//
+		// Rules created before this rule existed are grandfathered: they are only
+		// caught here if something else about them is edited.
+		const mergedProjectId =
+			input.projectId !== undefined ? input.projectId : existing.projectId;
+		const mergedDescription =
+			input.description !== undefined
+				? input.description
+				: existing.description;
+		if (mergedProjectId && !mergedDescription?.trim()) {
+			throw new Error("Describe what this block is for");
+		}
+
 		const [updated] = await db
 			.update(recurringBlockRule)
 			.set(patch)

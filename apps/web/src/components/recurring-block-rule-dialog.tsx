@@ -44,13 +44,27 @@ const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
 // No start time: a recurring block reserves an AMOUNT of time on a weekday, not
 // a slot on a clock, which is the whole point of the duration-only model.
-const formSchema = z.object({
-	taskId: z.string().min(1, "Pick a task"),
-	projectId: z.string(),
-	description: z.string(),
-	daysOfWeek: z.array(z.number()).min(1, "Pick at least one day"),
-	duration: z.string().min(1, "Duration is required"),
-});
+const formSchema = z
+	.object({
+		taskId: z.string().min(1, "Pick a task"),
+		projectId: z.string(),
+		description: z.string(),
+		daysOfWeek: z.array(z.number()).min(1, "Pick at least one day"),
+		duration: z.string().min(1, "Duration is required"),
+	})
+	// Same rule the server enforces, restated against this form's shape (it uses
+	// a sentinel string for "no project" rather than omitting the field). The
+	// entries this rule generates are worked time and must carry a note; saying
+	// so here means the answer arrives under the box rather than as a toast.
+	.superRefine((data, ctx) => {
+		if (data.projectId !== NO_PROJECT && !data.description.trim()) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["description"],
+				message: "Describe what this block is for",
+			});
+		}
+	});
 
 export function CreateRecurringBlockRuleDialog() {
 	const [open, setOpen] = useState(false);
@@ -235,7 +249,11 @@ export function CreateRecurringBlockRuleDialog() {
 							name="description"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Note (optional)</FormLabel>
+									{/* Honest either way: a rule against a project generates
+									    worked time, which must say what the work was. */}
+									<FormLabel>
+										{projectId === NO_PROJECT ? "Note (optional)" : "Note"}
+									</FormLabel>
 									<FormControl>
 										<Input {...field} />
 									</FormControl>
