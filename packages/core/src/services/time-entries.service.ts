@@ -23,6 +23,7 @@ import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { summarizeCommitMessages } from "../lib/day-plan";
 import {
+	MAX_DAY_SECONDS,
 	remainingSeconds,
 	spokenForSeconds,
 	targetSecondsFor,
@@ -65,6 +66,9 @@ const computeDayFillSeconds = async (
 	dateKey: string,
 	tz: string,
 	workingHours?: WorkingHoursDay[],
+	/** Entry to leave out of the claims — the one being converted INTO the fill
+	 *  block, which would otherwise be counted as competing with itself. */
+	excludeEntryId?: string,
 ): Promise<number> => {
 	const [dayEntries, hours] = await Promise.all([
 		ctxDb(ctx).query.timeEntry.findMany({
@@ -73,7 +77,7 @@ const computeDayFillSeconds = async (
 				eq(timeEntry.userId, ctx.userId),
 				eq(timeEntry.date, dateKey),
 			),
-			columns: { durationSeconds: true, fillsDay: true },
+			columns: { id: true, durationSeconds: true, fillsDay: true },
 		}),
 		workingHours
 			? Promise.resolve(workingHours)
@@ -81,12 +85,21 @@ const computeDayFillSeconds = async (
 	]);
 	return remainingSeconds(
 		targetSecondsFor(hours, dateKey, tz),
-		spokenForSeconds(dayEntries),
+		spokenForSeconds(dayEntries.filter((e) => e.id !== excludeEntryId)),
 	);
 };
 
 // Re-derive the duration of the day's fill block (if any) after a sibling entry
 // changed. No-op when the day has no fill block.
+//
+// A fill block that recomputes to ZERO is DELETED, not stored at 0. The day's
+// working hours are already spoken for, so what it now describes is "nothing" —
+// and `remainingSeconds` floors at 0, so the row can never come back on its own
+// while the day stays full. Keeping it left a literal `0:00 — rest of day` row
+// sitting in the Day view after any bulk write that filled the day (copyDay,
+// day assembly), which is what people reported as "it adds items with 0 time".
+// The DB CHECK still permits `fills_day = true and duration_seconds >= 0`; this
+// is the layer that decides a zero-length block is not worth keeping.
 const recomputeDayFill = async (ctx: Ctx, dateKey: string, tz: string) => {
 	const client = ctxDb(ctx);
 	const fill = await client.query.timeEntry.findFirst({
@@ -100,6 +113,10 @@ const recomputeDayFill = async (ctx: Ctx, dateKey: string, tz: string) => {
 	});
 	if (!fill) return;
 	const next = await computeDayFillSeconds(ctx, dateKey, tz);
+	if (next === 0) {
+		await client.delete(timeEntry).where(eq(timeEntry.id, fill.id));
+		return;
+	}
 	if (next === fill.durationSeconds) return;
 	await client
 		.update(timeEntry)
@@ -430,7 +447,10 @@ export const timeEntriesService = {
 
 		// Keep each day's fill block in sync on read: its duration tracks the day's
 		// remaining working hours, so a sibling entry added elsewhere is absorbed.
+		// A block squeezed down to nothing is dropped rather than shown as 0:00 —
+		// same rule as recomputeDayFill, applied to the entries already in hand.
 		const fills = rows.filter((r) => r.fillsDay);
+		let visible = rows;
 		if (fills.length > 0) {
 			const workingHours = await workingHoursService.list(ctx);
 			const claimsByDay = new Map<string, typeof rows>();
@@ -439,11 +459,16 @@ export const timeEntriesService = {
 				list.push(r);
 				claimsByDay.set(r.date, list);
 			}
+			const emptied: string[] = [];
 			for (const fill of fills) {
 				const next = remainingSeconds(
 					targetSecondsFor(workingHours, fill.date, tz),
 					spokenForSeconds(claimsByDay.get(fill.date) ?? []),
 				);
+				if (next === 0) {
+					emptied.push(fill.id);
+					continue;
+				}
 				if (next === fill.durationSeconds) continue;
 				await db
 					.update(timeEntry)
@@ -451,13 +476,18 @@ export const timeEntriesService = {
 					.where(eq(timeEntry.id, fill.id));
 				fill.durationSeconds = next;
 			}
+			if (emptied.length > 0) {
+				await db.delete(timeEntry).where(inArray(timeEntry.id, emptied));
+				const dropped = new Set(emptied);
+				visible = rows.filter((r) => !dropped.has(r.id));
+			}
 		}
 
 		// Commit counts, so the week grid can badge entries that have work evidence
 		// attached (a count query rather than a relation, to avoid a
 		// domain.ts <-> github.ts import cycle).
 		const commitCountById = new Map<string, number>();
-		if (rows.length > 0) {
+		if (visible.length > 0) {
 			const counts = await db
 				.select({
 					timeEntryId: timeEntryGithubCommit.timeEntryId,
@@ -467,14 +497,14 @@ export const timeEntriesService = {
 				.where(
 					inArray(
 						timeEntryGithubCommit.timeEntryId,
-						rows.map((r) => r.id),
+						visible.map((r) => r.id),
 					),
 				)
 				.groupBy(timeEntryGithubCommit.timeEntryId);
 			for (const c of counts) commitCountById.set(c.timeEntryId, c.count);
 		}
 
-		return rows.map((row) => ({
+		return visible.map((row) => ({
 			...row,
 			commitCount: commitCountById.get(row.id) ?? 0,
 		}));
@@ -502,6 +532,15 @@ export const timeEntriesService = {
 		const durationSeconds = input.fillsDay
 			? await computeDayFillSeconds(ctx, input.date, tz)
 			: (input.durationSeconds ?? 0);
+
+		// A fill block with nothing left to fill is not an entry, it's a 0:00 row.
+		// Refuse it up front with a reason rather than storing one — the mirror of
+		// recomputeDayFill deleting a block that has been squeezed down to nothing.
+		if (input.fillsDay && durationSeconds === 0) {
+			throw new Error(
+				"This day's working hours are already fully logged — nothing left to fill",
+			);
+		}
 
 		const values = {
 			organizationId: ctx.organizationId,
@@ -570,6 +609,22 @@ export const timeEntriesService = {
 			}
 			if (!row) throw new Error("Failed to create time entry");
 
+			// Deliberately creating an entry for a calendar event un-tombstones it.
+			// Deleting a synced meeting writes a tombstone so the sync engine leaves
+			// it deleted; without this, that decision was permanent and nothing —
+			// not undo, not a re-sync — could ever bring the meeting back.
+			if (input.calendarEventId) {
+				await tx
+					.delete(syncedMeetingTombstone)
+					.where(
+						and(
+							eq(syncedMeetingTombstone.organizationId, ctx.organizationId),
+							eq(syncedMeetingTombstone.userId, ctx.userId),
+							eq(syncedMeetingTombstone.calendarEventId, input.calendarEventId),
+						),
+					);
+			}
+
 			// A new normal entry shrinks whatever fill block shares its day.
 			if (!input.fillsDay) await recomputeDayFill(txCtx, input.date, tz);
 			return row;
@@ -597,9 +652,24 @@ export const timeEntriesService = {
 		await assertTaskAvailable(ctx, input.taskId, input.projectId);
 
 		const tz = await ctxTimezone(ctx);
+		// The entry being edited is excluded from its own claim: converting a 2h
+		// block into the day's fill block must not count that 2h as competing with
+		// the fill it is becoming.
 		const durationSeconds = input.fillsDay
-			? await computeDayFillSeconds(ctx, input.date, tz)
+			? await computeDayFillSeconds(
+					ctx,
+					input.date,
+					tz,
+					undefined,
+					input.timeEntryId,
+				)
 			: (input.durationSeconds ?? 0);
+
+		if (input.fillsDay && durationSeconds === 0) {
+			throw new Error(
+				"This day's working hours are already fully logged — nothing left to fill",
+			);
+		}
 
 		const updated = await withCtxTx(ctx, async (txCtx) => {
 			let row: typeof timeEntry.$inferSelect | undefined;
@@ -874,24 +944,79 @@ export const timeEntriesService = {
 	},
 
 	/** Copy a day's entries onto another day. The backfill affordance that stands
-	 *  in for a running timer: most people work a similar shape most days. */
+	 *  in for a running timer: most people work a similar shape most days.
+	 *
+	 *  Three rules, each of which used to be missing:
+	 *
+	 *  - A calendar-derived entry IS copied, as a plain manual entry. It used to
+	 *    be skipped on the reasoning that "a meeting belongs to the day it
+	 *    happened" — true of the calendar link, not of the time. Combined with
+	 *    the tombstone written on delete, skipping it meant a meeting entry
+	 *    deleted by mistake could not be recovered by ANY route. The link
+	 *    (`calendarEventId`, `meetingUrl`) is deliberately not carried over: the
+	 *    copy is new, hand-made time that happens to look like a meeting, and
+	 *    binding it to an event on another day would put it back under the sync
+	 *    engine's control.
+	 *  - Copying twice is a no-op, not a doubling. An entry whose (project, task,
+	 *    duration, note) already sits on the target day is skipped, so leaning on
+	 *    the button is harmless.
+	 *  - The result must fit in a day. */
 	copyDay: async (ctx: Ctx, input: CopyTimeEntriesInput) => {
-		if (input.fromDate === input.toDate) return { copied: 0 };
+		if (input.fromDate === input.toDate) return { copied: 0, skipped: 0 };
 
 		return withCtxTx(ctx, async (txCtx) => {
 			const tx = ctxDb(txCtx);
-			const source = await tx.query.timeEntry.findMany({
-				where: and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					eq(timeEntry.userId, ctx.userId),
-					eq(timeEntry.date, input.fromDate),
-					// Fill blocks are derived, and calendar meetings belong to the day
-					// they actually happened — neither is meaningful to duplicate.
-					eq(timeEntry.fillsDay, false),
-				),
-			});
-			const copyable = source.filter((e) => e.calendarEventId == null);
-			if (copyable.length === 0) return { copied: 0 };
+			const dayRows = (date: string) =>
+				tx.query.timeEntry.findMany({
+					where: and(
+						eq(timeEntry.organizationId, ctx.organizationId),
+						eq(timeEntry.userId, ctx.userId),
+						eq(timeEntry.date, date),
+						// A fill block is derived from what is left of the day, so copying
+						// one forward would just be recomputed away.
+						eq(timeEntry.fillsDay, false),
+					),
+				});
+
+			const [source, target] = await Promise.all([
+				dayRows(input.fromDate),
+				dayRows(input.toDate),
+			]);
+			if (source.length === 0) return { copied: 0, skipped: 0 };
+
+			// What makes two entries "the same work" for the purpose of not copying
+			// it twice. Deliberately not the entry id — the point is to recognise a
+			// row this same button already produced on a previous click.
+			const sameWork = (e: {
+				projectId: string | null;
+				taskId: string;
+				durationSeconds: number;
+				description: string;
+			}) =>
+				`${e.projectId ?? "none"}|${e.taskId}|${e.durationSeconds}|${e.description.trim()}`;
+
+			const alreadyThere = new Set(target.map(sameWork));
+			const copyable: typeof source = [];
+			for (const entry of source) {
+				const key = sameWork(entry);
+				if (alreadyThere.has(key)) continue;
+				// Guards against a source day that itself holds two identical rows.
+				alreadyThere.add(key);
+				copyable.push(entry);
+			}
+			const skipped = source.length - copyable.length;
+			if (copyable.length === 0) return { copied: 0, skipped };
+
+			const addedSeconds = copyable.reduce(
+				(sum, e) => sum + e.durationSeconds,
+				0,
+			);
+			const existingSeconds = spokenForSeconds(target);
+			if (existingSeconds + addedSeconds > MAX_DAY_SECONDS) {
+				throw new Error(
+					`Copying this would put more than 24 hours on ${input.toDate}`,
+				);
+			}
 
 			await tx.insert(timeEntry).values(
 				copyable.map((e) => ({
@@ -908,7 +1033,7 @@ export const timeEntriesService = {
 
 			const tz = await ctxTimezone(txCtx);
 			await recomputeDayFill(txCtx, input.toDate, tz);
-			return { copied: copyable.length };
+			return { copied: copyable.length, skipped };
 		});
 	},
 

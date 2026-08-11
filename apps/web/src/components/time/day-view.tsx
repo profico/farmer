@@ -73,10 +73,21 @@ export function DayView({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys.timeEntries],
 			});
+			// `skipped` is what the copy already found here — say so rather than
+			// reporting "Copied 0" for a second click, which reads like a failure.
+			if (result.copied === 0) {
+				toast.success(
+					result.skipped > 0
+						? "Already copied — the previous day's entries are all here"
+						: "Nothing to copy from the previous day",
+				);
+				return;
+			}
+			const noun = result.copied === 1 ? "entry" : "entries";
 			toast.success(
-				result.copied === 0
-					? "Nothing to copy from the previous day"
-					: `Copied ${result.copied} ${result.copied === 1 ? "entry" : "entries"}`,
+				result.skipped > 0
+					? `Copied ${result.copied} ${noun}, skipped ${result.skipped} already here`
+					: `Copied ${result.copied} ${noun}`,
 			);
 		},
 		onError: (error) => toast.error(error.message ?? "Could not copy"),

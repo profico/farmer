@@ -103,6 +103,8 @@ export function EntryBlockRow({
 		date: string;
 		durationSeconds: number;
 		overtime: boolean;
+		meetingUrl: string | null;
+		calendarEventId: string | null;
 	}) => {
 		try {
 			await createTimeEntry({
@@ -114,6 +116,11 @@ export function EntryBlockRow({
 					durationSeconds: deleted.durationSeconds,
 					overtime: deleted.overtime,
 					fillsDay: false,
+					// Carried so a restored meeting keeps its link — and so the service
+					// clears the tombstone the delete just wrote, which is what makes
+					// undo work at all for a synced meeting.
+					meetingUrl: deleted.meetingUrl ?? undefined,
+					calendarEventId: deleted.calendarEventId ?? undefined,
 				},
 			});
 			await queryClient.invalidateQueries({
@@ -132,15 +139,17 @@ export function EntryBlockRow({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys.timeEntries],
 			});
-			// Undo is only safe for plain manual entries. Fill blocks are derived, a
-			// rule-generated entry leaves a skip behind (re-creating it as a manual
-			// copy would double up), and a calendar-linked entry leaves a tombstone —
-			// so for those we delete without offering undo.
+			// Fill blocks are derived, and a rule-generated entry leaves a skip behind
+			// (re-creating it as a manual copy would double up) — neither can be
+			// restored by re-creating a row, so neither offers undo.
+			//
+			// A calendar-linked entry USED to be in that list, because deleting one
+			// writes a tombstone the sync engine honours forever. It offers undo now:
+			// re-creating an entry with its `calendarEventId` clears that tombstone
+			// (timeEntriesService.create), so the restore is real and the meeting is
+			// not lost to one misclick.
 			const undoable =
-				deleted &&
-				!deleted.fillsDay &&
-				!deleted.generatedFromRuleId &&
-				!deleted.calendarEventId;
+				deleted && !deleted.fillsDay && !deleted.generatedFromRuleId;
 			if (undoable) {
 				toast("Entry deleted", {
 					action: { label: "Undo", onClick: () => restore(deleted) },
