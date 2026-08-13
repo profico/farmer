@@ -14,6 +14,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "#/components/ui/dialog.tsx";
+import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import {
 	Select,
@@ -214,11 +215,11 @@ function AbsenceEditor({
 					add.mutate({ taskId, date, durationSeconds: parsed });
 				}}
 			>
-				<Input
-					type="date"
-					className="h-8 w-40 text-xs"
+				<DatePicker
+					aria-label="Date"
+					className="w-40 text-xs"
 					value={date}
-					onChange={(e) => setDate(e.target.value)}
+					onValueChange={(next) => next && setDate(next)}
 				/>
 				<Select
 					items={taskItems}

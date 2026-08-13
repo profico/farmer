@@ -1,8 +1,10 @@
 import {
 	copyTimeEntriesInput,
+	copyWeekEntriesInput,
 	createAbsenceForUserInput,
 	createTimeEntryInput,
 	deleteTimeEntryInput,
+	fileTimeEntriesInput,
 	fileTimeEntryInput,
 	listAbsenceForUserInput,
 	listTimeEntriesRangeInput,
@@ -64,6 +66,22 @@ export const fileTimeEntry = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
 		return timeEntriesService.file(context.ctx, data);
+	});
+
+export const fileTimeEntries = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(fileTimeEntriesInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.fileMany(context.ctx, data);
+	});
+
+export const copyTimeEntriesWeek = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(copyWeekEntriesInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.copyWeek(context.ctx, data);
 	});
 
 export const setTimeEntryOvertime = createServerFn({ method: "POST" })

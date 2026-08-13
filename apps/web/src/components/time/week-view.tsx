@@ -1,8 +1,12 @@
-import { parseDuration, QUARTER_HOUR_SECONDS } from "@farmer/core/lib/time";
+import {
+	parseDuration,
+	snapToQuarterHour,
+	startOfWeekKey,
+} from "@farmer/core/lib/time";
 import { NoteIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
 	AddRowDialog,
@@ -33,12 +37,21 @@ import { formatClock } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
+	copyTimeEntriesWeek,
 	deleteTimeEntry,
 	setWeekCell,
 	updateTimeEntryDescription,
 } from "#/server/time-entries.ts";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "Tue 11" — the day as the column header shows it, for a cell's accessible
+ *  name. A `<th>` alone would not do it: a screen reader announces the column
+ *  header for a `<td>`, not for the input inside it. */
+const dayLabel = (date: string) =>
+	`${WEEKDAY_LABELS[new Date(`${date}T12:00:00Z`).getUTCDay()]} ${Number(
+		date.slice(-2),
+	)}`;
 
 /** A grid row is one (project, task) pair across the whole week. */
 type GridRow = {
@@ -48,8 +61,6 @@ type GridRow = {
 	heading: string;
 	taskName: string;
 	color: string | null;
-	/** The note shared by the row — taken from whichever cell has one. */
-	description: string;
 	/** date -> the entries behind that cell (usually exactly one). */
 	byDate: Map<string, EntryBlockRowEntry[]>;
 	/** True when nothing in the row may be edited from the grid. */
@@ -87,6 +98,7 @@ export function WeekView({
 	holidays: Map<string, string>;
 }) {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 
 	// Rows the user added but hasn't typed hours into yet. They have no entries
 	// behind them, so they'd vanish on the next refetch without this.
@@ -114,14 +126,11 @@ export function WeekView({
 				heading: entryHeading(entry),
 				taskName: entry.project ? entry.task.name : "",
 				color: entry.task.color,
-				description: "",
 				byDate: new Map(),
 				locked: false,
 			};
 			rowsByKey.set(key, row);
 		}
-		if (!row.description && entry.description)
-			row.description = entry.description;
 		if (entry.fillsDay || entry.generatedFromRuleId) row.locked = true;
 		const cell = row.byDate.get(entry.date);
 		if (cell) cell.push(entry);
@@ -130,7 +139,12 @@ export function WeekView({
 	for (const draft of draftRows) {
 		if (rowsByKey.has(draft.key)) continue;
 		rowsByKey.set(draft.key, {
-			...draft,
+			key: draft.key,
+			projectId: draft.projectId,
+			taskId: draft.taskId,
+			heading: draft.heading,
+			taskName: draft.taskName,
+			color: draft.color,
 			byDate: new Map(),
 			locked: false,
 		});
@@ -155,25 +169,85 @@ export function WeekView({
 	const invalidate = () =>
 		queryClient.invalidateQueries({ queryKey: [...queryKeys.timeEntries] });
 
+	// Cell-to-cell keyboard movement. Scoped to this table's own node rather than
+	// the document, so a second grid on the page could never be walked into, and
+	// resolved by query at the moment of the move: rows re-sort as work is logged,
+	// so a map of refs built at render time would be stale by the time it is read.
+	const gridRef = useRef<HTMLTableElement>(null);
+	const moveFocus = (fromRow: number, colIndex: number, step: 1 | -1) => {
+		// A derived row's cells are disabled and cannot take focus, so step over
+		// them in the direction of travel rather than stalling on one. Bounded by
+		// the row count: past either end the move is simply a no-op, which is what
+		// arrow keys do at the edge of any grid.
+		for (let i = fromRow + step; i >= 0 && i < rows.length; i += step) {
+			const cell = gridRef.current?.querySelector<HTMLInputElement>(
+				`[data-grid-cell="${i}:${colIndex}"]`,
+			);
+			if (cell && !cell.disabled) {
+				cell.focus();
+				cell.select();
+				return;
+			}
+		}
+	};
+
 	const cellMutation = useMutation({
 		mutationFn: (input: {
 			date: string;
 			projectId: string | null;
 			taskId: string;
 			durationSeconds: number;
-			description: string;
 		}) =>
+			// No description, ever. `setWeekCell` reads an absent one as "leave the
+			// note alone", so a cell write can only ever change the hours.
 			setWeekCell({
 				data: {
 					date: input.date,
 					projectId: input.projectId ?? undefined,
 					taskId: input.taskId,
 					durationSeconds: input.durationSeconds,
-					description: input.description || undefined,
 				},
 			}),
 		onSuccess: invalidate,
 		onError: (error) => toast.error(error.message ?? "Could not save"),
+	});
+
+	const copyWeek = useMutation({
+		mutationFn: () =>
+			copyTimeEntriesWeek({
+				data: {
+					fromWeekStart: shiftWeek(weekStart, -7),
+					toWeekStart: weekStart,
+				},
+			}),
+		onSuccess: async (result) => {
+			await invalidate();
+			// Three outcomes worth telling apart: nothing to copy, everything was
+			// already here (a second click), and some days refused because copying
+			// would have pushed them past 24 hours.
+			const parts: string[] = [];
+			if (result.copied > 0) {
+				parts.push(
+					`Copied ${result.copied} ${result.copied === 1 ? "entry" : "entries"}`,
+				);
+			}
+			if (result.skipped > 0) parts.push(`${result.skipped} already here`);
+			if (result.blockedDays.length > 0) {
+				parts.push(
+					`${result.blockedDays.length} ${
+						result.blockedDays.length === 1 ? "day" : "days"
+					} would exceed 24 hours`,
+				);
+			}
+			if (parts.length === 0) {
+				toast.success("Nothing to copy from last week");
+			} else if (result.blockedDays.length > 0) {
+				toast.warning(parts.join(", "));
+			} else {
+				toast.success(parts.join(", "));
+			}
+		},
+		onError: (error) => toast.error(error.message ?? "Could not copy the week"),
 	});
 
 	const removeRow = useMutation({
@@ -228,6 +302,17 @@ export function WeekView({
 						→
 					</Link>
 				}
+				jumpTo={{
+					value: weekStart,
+					// Any day in a week identifies that week, so the picker snaps to
+					// the Monday it belongs to rather than refusing a mid-week date.
+					onPick: (picked) =>
+						navigate({
+							to: "/$orgSlug/time/week",
+							params: { orgSlug },
+							search: { weekStart: startOfWeekKey(picked) },
+						}),
+				}}
 				returnLink={
 					!isCurrentWeek && (
 						<Link
@@ -246,7 +331,7 @@ export function WeekView({
 			    that overflows and one that doesn't would lay them out 10px apart
 			    and shift every column on each navigation. */}
 			<div className="scrollbar-stable -mx-4 mt-5 min-h-0 flex-1 overflow-auto sm:-mx-8">
-				<table className="w-full min-w-[900px] border-collapse">
+				<table ref={gridRef} className="w-full min-w-[900px] border-collapse">
 					<thead>
 						<tr className="border-b">
 							<th className="w-[34%] px-4 py-2 text-left sm:pl-8" />
@@ -286,7 +371,7 @@ export function WeekView({
 						</tr>
 					</thead>
 					<tbody>
-						{rows.map((row) => {
+						{rows.map((row, rowIndex) => {
 							const rowTotal = dates.reduce(
 								(sum, date) => sum + cellSeconds(row, date),
 								0,
@@ -317,12 +402,22 @@ export function WeekView({
 											</div>
 										</div>
 									</td>
+									{/* The note button appears only once the row has hours. An
+									    empty row is scaffolding — a note is stored on a time
+									    entry, so until one exists there is nothing to write it
+									    on. The cell keeps the button's footprint so adding the
+									    first hours doesn't shift the grid sideways. */}
 									<td className="px-1 py-2">
+										{rowTotal === 0 ? (
+											<span className="block size-7" aria-hidden />
+										) : (
 										<RowNoteDialog
 											heading={row.heading}
 											dates={dates}
 											byDate={row.byDate}
-											hasNote={Boolean(row.description)}
+											hasNote={dates.some((date) =>
+												(row.byDate.get(date) ?? []).some((e) => e.description),
+											)}
 											disabled={row.locked}
 											onSave={async (notesByDate) => {
 												// Each day's note goes onto that day's entries only.
@@ -336,25 +431,35 @@ export function WeekView({
 												await invalidate();
 											}}
 										/>
+										)}
 									</td>
-									{dates.map((date) => (
+									{dates.map((date, colIndex) => (
 										<td key={date} className="px-1 py-2">
 											<GridCell
 												seconds={cellSeconds(row, date)}
 												disabled={row.locked}
-												// A row with nothing logged anywhere is one you just
-												// added and are about to type into, so its cells keep
-												// their outlines. Dropping them made an empty week's
-												// new row read as a blank strip with no indication of
-												// where — or whether — you could type.
-												outlined={row.byDate.size === 0}
+												rowIndex={rowIndex}
+												colIndex={colIndex}
+												onMove={moveFocus}
+												label={`${row.heading}${
+													row.taskName ? ` — ${row.taskName}` : ""
+												}, ${dayLabel(date)}`}
+												lockedReason={
+													row.locked
+														? "Generated automatically — edit it in the Day view"
+														: undefined
+												}
+												// Hours only, never a note: a cell write says how long
+												// you worked and nothing about what you did. The note
+												// is the row's note button, per day, after the fact.
+												// Passing one here is what used to overwrite Thursday's
+												// note with Monday's every time hours were corrected.
 												onCommit={(durationSeconds) =>
 													cellMutation.mutate({
 														date,
 														projectId: row.projectId,
 														taskId: row.taskId,
 														durationSeconds,
-														description: row.description,
 													})
 												}
 											/>
@@ -424,22 +529,53 @@ export function WeekView({
 						</Button>
 					}
 				/>
+				{/* Day has had this since the beginning; a week whose shape repeats is
+				    the more common case, and the one Harvest offers it for. */}
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={copyWeek.isPending}
+					onClick={() => copyWeek.mutate()}
+				>
+					{copyWeek.isPending ? "Copying…" : "Copy from previous week"}
+				</Button>
 			</div>
 		</div>
 	);
 }
 
-/** One editable hours box. Free text in, 15-minute steps out. */
+/**
+ * One editable hours box. Free text in, 15-minute steps out.
+ *
+ * Two things it is deliberately not: a bare `<input>` with no accessible name
+ * (it announced "edit text, blank", with no way to tell which project or which
+ * day you had landed on), and a box you can only find with a pointer (empty
+ * cells used to drop their border entirely and get it back on hover, which is
+ * exactly backwards — the days you have NOT filled in are the ones you are
+ * looking for, and on a touch screen there is no hover to find them with).
+ */
 function GridCell({
 	seconds,
 	disabled,
-	outlined = false,
+	label,
+	lockedReason,
+	rowIndex,
+	colIndex,
+	onMove,
 	onCommit,
 }: {
 	seconds: number;
 	disabled: boolean;
-	/** Keep the outline even when empty — see the call site. */
-	outlined?: boolean;
+	/** What this box IS, for a screen reader: the row's work and the day. */
+	label: string;
+	/** Why it cannot be edited here, if it cannot. Part of the accessible name
+	 *  rather than a `title` tooltip, which no keyboard user ever sees. */
+	lockedReason?: string;
+	rowIndex: number;
+	colIndex: number;
+	/** Move focus one cell up or down this column — the grid's job, since only it
+	 *  knows the shape and which rows are editable. */
+	onMove: (fromRow: number, colIndex: number, step: 1 | -1) => void;
 	onCommit: (seconds: number) => void;
 }) {
 	const [text, setText] = useState(seconds > 0 ? formatClock(seconds) : "");
@@ -466,8 +602,11 @@ function GridCell({
 			setText(seconds > 0 ? formatClock(seconds) : "");
 			return;
 		}
-		const snapped =
-			Math.round(parsed / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS;
+		// A literal "0" is the other way to clear a cell, so it stays 0. Anything
+		// else goes through the shared snap, which floors at 15 minutes — the local
+		// `Math.round(parsed / 900) * 900` this replaces turned a typed "0.1" into
+		// 0, which the cell then read as "delete this row".
+		const snapped = parsed === 0 ? 0 : snapToQuarterHour(parsed);
 		if (snapped === seconds) {
 			setText(seconds > 0 ? formatClock(seconds) : "");
 			return;
@@ -479,29 +618,44 @@ function GridCell({
 		<Input
 			className={cn(
 				"mono h-8 w-full min-w-16 px-1.5 text-center text-sm",
-				// An empty cell drops its outline. Seven days × N rows of visible
-				// boxes is a grid of empty rectangles that reads as the content;
-				// the hairline comes back the moment you point at one, which is
-				// the only moment it says anything. `outlined` opts out, for a row
-				// that has no filled cells to give it shape in the first place.
-				seconds === 0 && "text-faint",
-				seconds === 0 &&
-					!outlined &&
-					"border-transparent hover:not-disabled:border-border",
+				// An empty cell is quieter than a filled one, but it is still a box.
+				// Seven days × N rows of full-strength outlines reads as the content
+				// rather than the frame, so the border thins out — it does not
+				// disappear, which is what made the grid unfindable without a mouse.
+				seconds === 0 && "border-line2 text-faint",
 			)}
 			inputMode="decimal"
 			disabled={disabled}
 			value={text}
-			title={
-				disabled
-					? "Generated automatically — edit it in the Day view"
-					: undefined
-			}
+			data-grid-cell={`${rowIndex}:${colIndex}`}
+			aria-label={lockedReason ? `${label} — ${lockedReason}` : label}
+			aria-readonly={disabled || undefined}
+			title={lockedReason}
 			onFocus={() => setFocused(true)}
 			onChange={(e) => setText(e.target.value)}
 			onBlur={commit}
 			onKeyDown={(e) => {
-				if (e.key === "Enter") e.currentTarget.blur();
+				// Enter commits and steps DOWN, the spreadsheet convention — it used
+				// to just blur, which left you with no keyboard way out of a cell
+				// except Tab, and Tab runs along the row through the note and delete
+				// buttons. Filling one day down a column took ten presses per row.
+				if (e.key === "Enter") {
+					e.currentTarget.blur();
+					onMove(rowIndex, colIndex, 1);
+					return;
+				}
+				// Up/Down only. Left/Right stay bound to the caret, which is what
+				// anyone typing into a text box expects them to do.
+				//
+				// No explicit blur here, unlike Enter: focusing the next cell blurs
+				// this one on its own, and so commits it. Blurring first would mean
+				// that at the top and bottom rows — where there is no next cell —
+				// the arrow key threw you out of the grid instead of doing nothing.
+				if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+					e.preventDefault();
+					onMove(rowIndex, colIndex, e.key === "ArrowDown" ? 1 : -1);
+					return;
+				}
 				if (e.key === "Escape") {
 					setFocused(false);
 					setText(seconds > 0 ? formatClock(seconds) : "");
@@ -521,7 +675,10 @@ function GridCell({
  * moment you saved. A note describes a day's work, so a day gets its own box.
  *
  * Only days with hours get one: a description is stored on a time entry, so
- * there is nothing for a note on an empty day to attach to.
+ * there is nothing for a note on an empty day to attach to. The trigger itself
+ * is hidden until the row has hours, for the same reason — but the empty case
+ * is still handled here, because the last entry in a row can be cleared from
+ * another tab while this dialog is open.
  */
 function RowNoteDialog({
 	heading,

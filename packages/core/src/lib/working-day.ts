@@ -91,6 +91,14 @@ export const spokenForSeconds = (claims: DayClaim[]): number =>
 export const loggedSeconds = (claims: DayClaim[]): number =>
 	claims.reduce((sum, c) => sum + c.durationSeconds, 0);
 
+/** The most time that may sit on one day, in seconds.
+ *
+ *  A per-ENTRY ceiling has always existed (schema/time-entries), but nothing
+ *  bounded the day itself, so any bulk write — `copyDay` above all — could stack
+ *  a day arbitrarily high one click at a time. A day is 24 hours; that is the
+ *  only ceiling that needs no policy discussion. */
+export const MAX_DAY_SECONDS = 24 * 3600;
+
 /** What is left of the day after the given claims, floored at 0.
  *
  *  Also the size a fill block should be: `remainingSeconds(target, spokenFor)`.

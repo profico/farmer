@@ -95,6 +95,16 @@ export const fileTimeEntryInput = z.object({
 });
 export type FileTimeEntryInput = z.infer<typeof fileTimeEntryInput>;
 
+// Filing several entries at once. The calendar sync imports one unfiled entry
+// per meeting, so the backlog is measured in dozens — a recurring stand-up alone
+// is forty rows of the same answer. Bounded rather than unbounded: a request
+// that files more than a couple of hundred entries is a mistake, not a workflow.
+export const fileTimeEntriesInput = z.object({
+	timeEntryIds: z.array(z.uuid()).min(1).max(200),
+	projectId: z.uuid(),
+});
+export type FileTimeEntriesInput = z.infer<typeof fileTimeEntriesInput>;
+
 // Toggling overtime is a one-field mutation from the week grid.
 export const setTimeEntryOvertimeInput = z.object({
 	timeEntryId: z.uuid(),
@@ -139,9 +149,13 @@ export const setWeekCellInput = z.object({
 		.refine((value) => value % QUARTER_HOUR_SECONDS === 0, {
 			message: "Time must be in 15-minute steps",
 		}),
-	// Carried by the grid ROW, so every cell in that row shares one note. The
-	// row's note is set when the row is added, which is how the grid honors the
-	// mandatory-description rule without a note prompt on every keystroke.
+	// Optional, and the grid never sends it: a cell write says how long you
+	// worked, not what you did. Absent means "leave the note alone", which is
+	// what makes correcting hours safe for a day that already has a note. Notes
+	// are written per day through the row's note button instead, so worked time
+	// logged from the grid may legitimately start out with none — the
+	// mandatory-description rule holds where it can be answered (the Day
+	// dialog's createTimeEntry), not on a spreadsheet cell.
 	description: z.string().max(10_000).optional(),
 });
 export type SetWeekCellInput = z.infer<typeof setWeekCellInput>;
@@ -156,6 +170,16 @@ export const copyTimeEntriesInput = z.object({
 	toDate: dateKey,
 });
 export type CopyTimeEntriesInput = z.infer<typeof copyTimeEntriesInput>;
+
+// The same affordance a week at a time, which is how Harvest offers it and how
+// anyone whose week is shaped like the last one actually works. Takes the two
+// week STARTS rather than a range: the seven days are paired up by offset, so
+// last Tuesday's entries land on this Tuesday.
+export const copyWeekEntriesInput = z.object({
+	fromWeekStart: dateKey,
+	toWeekStart: dateKey,
+});
+export type CopyWeekEntriesInput = z.infer<typeof copyWeekEntriesInput>;
 
 // PMs may correct the Vacation/Sick entries of people on their projects, and
 // only those. Worked-time corrections live in the close sheet's Adjusted column.

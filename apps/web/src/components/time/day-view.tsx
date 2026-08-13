@@ -1,7 +1,7 @@
 import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
 import { PlusIcon, SparkleIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { EmptyState } from "#/components/states/empty-state.tsx";
@@ -44,6 +44,7 @@ export function DayView({
 	holidays: Map<string, string>;
 }) {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 	const total = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 	// A fill ("rest of day") block is a catch-all, so it always sorts last; the
 	// stable sort otherwise preserves the server's insertion ordering.
@@ -73,10 +74,21 @@ export function DayView({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys.timeEntries],
 			});
+			// `skipped` is what the copy already found here — say so rather than
+			// reporting "Copied 0" for a second click, which reads like a failure.
+			if (result.copied === 0) {
+				toast.success(
+					result.skipped > 0
+						? "Already copied — the previous day's entries are all here"
+						: "Nothing to copy from the previous day",
+				);
+				return;
+			}
+			const noun = result.copied === 1 ? "entry" : "entries";
 			toast.success(
-				result.copied === 0
-					? "Nothing to copy from the previous day"
-					: `Copied ${result.copied} ${result.copied === 1 ? "entry" : "entries"}`,
+				result.skipped > 0
+					? `Copied ${result.copied} ${noun}, skipped ${result.skipped} already here`
+					: `Copied ${result.copied} ${noun}`,
 			);
 		},
 		onError: (error) => toast.error(error.message ?? "Could not copy"),
@@ -131,6 +143,15 @@ export function DayView({
 						→
 					</Link>
 				}
+				jumpTo={{
+					value: date,
+					onPick: (picked) =>
+						navigate({
+							to: "/$orgSlug/time",
+							params: { orgSlug },
+							search: { date: picked },
+						}),
+				}}
 				returnLink={
 					!isToday && (
 						<Link

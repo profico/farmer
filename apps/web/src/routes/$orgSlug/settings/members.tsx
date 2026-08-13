@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { InviteMemberDialog } from "#/components/invite-member-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import {
@@ -401,9 +402,11 @@ function ExpectedHoursCell({
 	);
 }
 
-// Controlled rather than uncontrolled-with-defaultValue: React ignores a changed
-// defaultValue, so after the mutation refetched the row this cell would keep
-// showing the old date (and Base UI warns about it).
+// A start date can legitimately be unset, so this is the one picker in the app
+// with a clear button. It commits on pick rather than on blur: picking a day in
+// the calendar closes the popover, which is an unambiguous "done" — the local
+// draft state the text input needed (and the effect that resynced it after a
+// refetch) has nothing left to do.
 function StartDateCell({
 	startDate,
 	onCommit,
@@ -411,19 +414,14 @@ function StartDateCell({
 	startDate: string | null;
 	onCommit: (startDate: string | null) => void;
 }) {
-	const [value, setValue] = useState(startDate ?? "");
-	useEffect(() => {
-		setValue(startDate ?? "");
-	}, [startDate]);
-
 	return (
-		<Input
-			type="date"
+		<DatePicker
+			aria-label="Start date"
 			className="h-7 w-36 text-xs"
-			value={value}
-			onChange={(e) => setValue(e.target.value)}
-			onBlur={() => {
-				const next = value || null;
+			placeholder="Not set"
+			clearable
+			value={startDate}
+			onValueChange={(next) => {
 				if (next !== startDate) onCommit(next);
 			}}
 		/>
