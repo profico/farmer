@@ -10,6 +10,7 @@ import {
 	GearSixIcon,
 	HashIcon,
 	PlugIcon,
+	RepeatIcon,
 	SignOutIcon,
 	SquaresFourIcon,
 	TagIcon,
@@ -50,6 +51,7 @@ export type OrgRoutePath =
 	| "/$orgSlug/reports"
 	| "/$orgSlug/settings/clients"
 	| "/$orgSlug/settings/my-schedule"
+	| "/$orgSlug/settings/recurring-blocks"
 	| "/$orgSlug/settings/holidays"
 	| "/$orgSlug/settings/integrations"
 	| "/$orgSlug/settings/tasks"
@@ -74,6 +76,14 @@ export const WORKSPACE_ITEMS: NavItem[] = [
 		label: "My schedule",
 		to: "/$orgSlug/settings/my-schedule",
 		icon: CalendarDotsIcon,
+	},
+	// Next to My schedule rather than buried in settings: a recurring block is
+	// the other half of "what my week looks like", and it writes entries onto
+	// days by itself — which is not something to hide behind two clicks.
+	{
+		label: "Recurring blocks",
+		to: "/$orgSlug/settings/recurring-blocks",
+		icon: RepeatIcon,
 	},
 	{
 		label: "Holidays",

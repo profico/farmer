@@ -46,10 +46,18 @@ export const tasksService = {
 
 	/** Tasks selectable when logging against a given project: strictly the
 	 *  project's cherry-picked subset (PRD 3.5 — a project shows only its picked
-	 *  tasks). With no project, the absence tasks are what's on offer. */
+	 *  tasks).
+	 *
+	 *  With no project it is every SITE task: the two absence built-ins, and the
+	 *  universal built-ins (Break, Meeting). The universal ones used to be left
+	 *  out, so "No project" offered Vacation and Sick Leave and nothing else —
+	 *  which made a break impossible to log, or to write a recurring rule for,
+	 *  without attributing it to a client's project. A break is time off the
+	 *  clock; nothing about it belongs to a project, and every other layer already
+	 *  agrees: `assertTaskAvailable` admits the shape, and the ledger scores a
+	 *  project-less break as worked time that is explicitly never "unfiled". The
+	 *  picker was the last thing insisting otherwise. */
 	listForProject: async (ctx: Ctx, projectId: string | undefined) => {
-		if (!projectId) return tasksService.listAbsenceTasks();
-
 		const columns = {
 			id: task.id,
 			name: task.name,
@@ -57,6 +65,28 @@ export const tasksService = {
 			description: task.description,
 			isAbsence: task.isAbsence,
 		};
+
+		if (!projectId) {
+			// Tenancy in the WHERE as ever. The second arm is defensive: absence is
+			// a site-scoped concept today, and an org-scoped absence row could only
+			// be a leftover — but if one exists it must still be this org's.
+			const rows = await db
+				.select(columns)
+				.from(task)
+				.where(
+					and(
+						isNull(task.archivedAt),
+						or(
+							eq(task.scope, "site"),
+							and(
+								eq(task.isAbsence, true),
+								eq(task.organizationId, ctx.organizationId),
+							),
+						),
+					),
+				);
+			return rows.sort((a, b) => a.name.localeCompare(b.name));
+		}
 
 		// Two sources, because a project's options are its cherry-picked subset
 		// PLUS the universal built-ins it never had to pick (see isUniversalTask).

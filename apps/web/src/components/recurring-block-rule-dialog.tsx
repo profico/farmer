@@ -127,9 +127,9 @@ function RecurringBlockRuleDialog({
 
 	// A rule's own task is pinned into its options while the project is unchanged,
 	// because the list is what you may PICK and that is a narrower set than what a
-	// rule may already hold: the break block's task is a site built-in that
-	// `listForProject(undefined)` deliberately doesn't offer, so editing a break
-	// otherwise showed an empty Task select and lost the task on save.
+	// rule may already hold — a task the project has since stopped offering, say.
+	// Without the pin, editing such a rule showed an empty Task select and lost
+	// the task on save.
 	const originalProjectId = rule?.projectId ?? NO_PROJECT;
 	const options =
 		rule && projectId === originalProjectId

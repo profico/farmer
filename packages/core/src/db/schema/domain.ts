@@ -253,6 +253,15 @@ export const recurringBlockRule = pgTable(
 		effectiveFrom: text("effective_from"), // yyyy-MM-dd, null = unbounded start
 		effectiveUntil: text("effective_until"), // yyyy-MM-dd, null = ongoing
 		active: boolean("active").notNull().default(true),
+		// When this rule last became active — set at creation and re-set every time
+		// the switch goes off->on, and the earliest day it may write to.
+		//
+		// `effective_from` cannot answer this. It is the schedule the rule keeps,
+		// not the moment someone asked for it, and it is null on every rule the UI
+		// creates — so without this the materializer reached back to the beginning
+		// of time, and switching a paused rule back on refilled every day it had
+		// been off for. Turning something on is a statement about tomorrow.
+		activeSince: ts("active_since").notNull().defaultNow(),
 		...stamps,
 	},
 	(t) => [

@@ -113,10 +113,14 @@ function AbsenceEditor({
 	const { data: entries } = useSuspenseQuery(
 		absenceForUserQuery({ userId, year, month }),
 	);
-	// No project → the two absence tasks, which is exactly the list here.
-	const { data: absenceTasks } = useSuspenseQuery(
+	// The project-less list is every site built-in — the absence pair plus Break
+	// and Meeting — so it is narrowed here. This screen corrects absence and only
+	// absence: a PM may touch someone else's Vacation and Sick Leave, and nothing
+	// else of theirs.
+	const { data: projectlessTasks } = useSuspenseQuery(
 		tasksForProjectQuery(undefined),
 	);
+	const absenceTasks = projectlessTasks.filter((t) => t.isAbsence);
 
 	const invalidate = () =>
 		Promise.all([

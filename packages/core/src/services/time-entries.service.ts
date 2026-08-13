@@ -21,6 +21,10 @@ import {
 } from "../db/schema/domain";
 import { timeEntryGithubCommit } from "../db/schema/github";
 import { syncedMeetingTombstone } from "../db/schema/settings";
+import {
+	clampToEnabledSince,
+	enabledSinceKey,
+} from "../lib/automation-window";
 import { summarizeCommitMessages } from "../lib/day-plan";
 import { clampToMeetingSyncWindow } from "../lib/meeting-window";
 import {
@@ -164,9 +168,20 @@ const meetingIdentityKeys = (row: {
 // then snapped to the 15-minute grid every entry must sit on.
 const syncMeetingsForRange = async (
 	ctx: Ctx,
-	range: { from: string; to: string },
+	requestedRange: { from: string; to: string },
 	tz: string,
+	/** The day the switch was turned on; days before it are left alone. */
+	sinceKey: string | null,
 ) => {
+	// The forward window (lib/meeting-window) already stops browsing from pulling
+	// in months of history. This is the other end of it: a calendar full of last
+	// year's meetings should not land on the day someone first ticks the box.
+	//
+	// Everything below — including the delete-by-absence pass, which is the
+	// dangerous one — reads `range`, so the clamp is applied once here rather
+	// than at each use.
+	const range = clampToEnabledSince(requestedRange, sinceKey);
+	if (!range) return;
 	const events = await calendarSource().listEventsForRange(ctx, range);
 	// null => couldn't read the calendar (disconnected / revoked token). Bail
 	// without deleting, or we'd wipe synced entries we merely failed to fetch.
@@ -310,8 +325,16 @@ const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
 	tz: string,
+	/** The day the switch was turned on; days before it are left alone. */
+	sinceKey: string | null,
 ) => {
-	const days = await commitSource().listUserCommitsByDay(ctx, range);
+	// This engine had no window of any kind, unlike the calendar sync — it ran
+	// over whatever range was being read. Paging back through the Month view was
+	// enough to have it file a "rest of day" block onto every past day the person
+	// had ever pushed a commit on.
+	const syncable = clampToEnabledSince(range, sinceKey);
+	if (!syncable) return;
+	const days = await commitSource().listUserCommitsByDay(ctx, syncable);
 	if (days.length === 0) return;
 
 	// Resolved by system key, not by display name. The old lookup matched
@@ -438,13 +461,23 @@ export const timeEntriesService = {
 					dayKeyInTz(new Date(), tz),
 				);
 				if (syncable) {
-					await syncMeetingsForRange(ctx, syncable, tz).catch((error) =>
+					await syncMeetingsForRange(
+						ctx,
+						syncable,
+						tz,
+						enabledSinceKey(settings.googleAutoSyncMeetingsSince, tz),
+					).catch((error) =>
 						console.error("[time-entries] meeting sync failed", error),
 					);
 				}
 			}
 			if (settings.githubSyncCommitsAsWorkTime) {
-				await syncCommitWorkTimeForRange(ctx, range, tz).catch((error) =>
+				await syncCommitWorkTimeForRange(
+					ctx,
+					range,
+					tz,
+					enabledSinceKey(settings.githubSyncCommitsAsWorkTimeSince, tz),
+				).catch((error) =>
 					console.error("[time-entries] commit work-time sync failed", error),
 				);
 			}
@@ -530,12 +563,22 @@ export const timeEntriesService = {
 
 	/** Background-job entrypoint: import a user's meetings for a fixed window,
 	 *  without the rest of listRange's read work. */
+	// The background job's and the "Sync now" button's way in. It reads the
+	// settings row itself rather than taking the floor as an argument: the job
+	// selects its targets in SQL and has never had the row in hand, and a floor
+	// that a caller can forget to pass is not a floor.
 	syncMeetingsForUser: async (
 		ctx: Ctx,
 		range: { from: string; to: string },
 	) => {
 		const tz = await ctxTimezone(ctx);
-		await syncMeetingsForRange(ctx, range, tz);
+		const settings = await integrationSettingsService.get(ctx);
+		await syncMeetingsForRange(
+			ctx,
+			range,
+			tz,
+			enabledSinceKey(settings.googleAutoSyncMeetingsSince, tz),
+		);
 	},
 
 	create: async (ctx: Ctx, input: CreateTimeEntryInput) => {

@@ -7,6 +7,7 @@ import {
 } from "../db/schema/domain";
 import {
 	datesBetween,
+	dayKeyInTz,
 	parseDuration,
 	QUARTER_HOUR_SECONDS,
 	weekdayInTz,
@@ -73,10 +74,11 @@ export const recurringBlockRulesService = {
 	/** Turn the proposed daily break (`DEFAULT_BREAK_BLOCK`) into a real rule.
 	 *
 	 *  A separate entry point rather than the generic `create` because the caller
-	 *  is a switch, not a form: the Break task is a site built-in resolved by
-	 *  system key here, and it is deliberately not offered by
-	 *  `tasksService.listForProject(ctx, undefined)`, so a client could not name
-	 *  its id even if we wanted it to.
+	 *  is a switch, not a form: it names no task, no days and no duration, so the
+	 *  Break task is resolved by system key here rather than by an id the client
+	 *  had to send. The same rule is writable through `create` — the "No project"
+	 *  task list offers Break like any other built-in — this is just the one-click
+	 *  path to the shape everybody wants.
 	 *
 	 *  Idempotent. The page only shows the switch when no break rule exists, but a
 	 *  double click or a second tab must not leave someone with two breaks a day —
@@ -94,9 +96,10 @@ export const recurringBlockRulesService = {
 		});
 		if (existing) {
 			if (existing.active) return existing;
+			const now = new Date();
 			const [resumed] = await db
 				.update(recurringBlockRule)
-				.set({ active: true, updatedAt: new Date() })
+				.set({ active: true, activeSince: now, updatedAt: now })
 				.where(eq(recurringBlockRule.id, existing.id))
 				.returning();
 			return resumed ?? existing;
@@ -155,7 +158,12 @@ export const recurringBlockRulesService = {
 		if (input.effectiveUntil !== undefined) {
 			patch.effectiveUntil = input.effectiveUntil;
 		}
-		if (input.active !== undefined) patch.active = input.active;
+		if (input.active !== undefined) {
+			patch.active = input.active;
+			// Resuming is switching on: the floor moves to today rather than
+			// refilling every day the rule spent paused.
+			if (input.active && !existing.active) patch.activeSince = new Date();
+		}
 
 		// Checked against the MERGED rule, not the patch: `update` is partial, so
 		// neither field is necessarily present, and the pair only makes sense
@@ -227,14 +235,62 @@ export const recurringBlockRulesService = {
 		const dates = datesBetween(from, to);
 		const weekdayByDate = new Map(dates.map((d) => [d, weekdayInTz(d, tz)]));
 
+		// What the day already holds, so a rule cannot put a second copy of its own
+		// block on it. `onConflictDoNothing` below only recognises an entry THIS
+		// rule generated — so a break that arrived any other way (the day assembler
+		// carving one, "copy from previous day" bringing one forward, or someone
+		// logging one by hand) was invisible to it, and the rule added a second
+		// break to a day that plainly already had one. The day assembler has always
+		// made this check before proposing its break; the materializer never did.
+		const existing = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				gte(timeEntry.date, from),
+				lte(timeEntry.date, to),
+			),
+			columns: { date: true, taskId: true, projectId: true },
+		});
+		// Keyed by project as well as task: two rules for the same task on
+		// different projects are different blocks, and a day may legitimately hold
+		// both. A break carries no project, so break-vs-break matches on the task.
+		const blockKey = (e: { date: string; taskId: string; projectId: string | null }) =>
+			`${e.date}|${e.taskId}|${e.projectId ?? ""}`;
+		const dayAlreadyHas = new Set(existing.map(blockKey));
+
 		const rows: (typeof timeEntry.$inferInsert)[] = [];
 		for (const rule of rules) {
+			// A rule never writes to a day before it was switched on. Without this
+			// floor, turning the daily break on wrote one onto every past day the
+			// time page was scrolled back to — silently editing months of
+			// already-filed timesheets, including closed ones.
+			//
+			// `effectiveFrom` narrows further but cannot widen: it is how you say
+			// "start next month", not a way back into the past. Nothing offers
+			// backfill, because nobody asked for their history to be rewritten.
+			const activeSince = dayKeyInTz(rule.activeSince, tz);
+			const startsOn =
+				rule.effectiveFrom && rule.effectiveFrom > activeSince
+					? rule.effectiveFrom
+					: activeSince;
 			for (const date of dates) {
-				if (rule.effectiveFrom && date < rule.effectiveFrom) continue;
+				if (date < startsOn) continue;
 				if (rule.effectiveUntil && date > rule.effectiveUntil) continue;
 				if (!rule.daysOfWeek.includes(weekdayByDate.get(date) ?? -1)) continue;
 				if (skipSet.has(`${rule.id}:${date}`)) continue;
+				if (
+					dayAlreadyHas.has(
+						blockKey({ date, taskId: rule.taskId, projectId: rule.projectId }),
+					)
+				) {
+					continue;
+				}
 
+				// Claimed as this batch goes, so two rules for the same block on the
+				// same weekday produce one entry rather than racing each other.
+				dayAlreadyHas.add(
+					blockKey({ date, taskId: rule.taskId, projectId: rule.projectId }),
+				);
 				rows.push({
 					organizationId: ctx.organizationId,
 					userId: ctx.userId,

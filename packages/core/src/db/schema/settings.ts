@@ -47,6 +47,21 @@ export const integrationSettings = pgTable(
 		githubSyncCommitsAsWorkTime: boolean("github_sync_commits_as_work_time")
 			.notNull()
 			.default(false),
+		// The day each automation was switched ON, and the floor it may write from.
+		// Flipping a switch is a statement about how you want tomorrow to work, not
+		// permission to rewrite a year of timesheets — so an engine that finds
+		// evidence on an older day leaves that day alone. Set on the false->true
+		// transition, cleared on the way back down, so switching off and on again
+		// moves the floor rather than reopening the whole past.
+		//
+		// Null means no floor. Only reachable for rows written before these columns
+		// existed, which the migration backfills from `created_at` — the settings
+		// row is created by the first toggle, so that IS roughly when automation
+		// started for that person.
+		googleAutoSyncMeetingsSince: ts("google_auto_sync_meetings_since"),
+		githubSyncCommitsAsWorkTimeSince: ts(
+			"github_sync_commits_as_work_time_since",
+		),
 		...stamps,
 	},
 	(t) => [unique("integration_settings_org_user_unq").on(t.organizationId, t.userId)],

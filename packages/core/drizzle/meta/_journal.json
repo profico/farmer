@@ -176,6 +176,20 @@
       "when": 1786441461210,
       "tag": "0024_promote_meeting_break_to_site",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786626836131,
+      "tag": "0025_brief_quasimodo",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786627097872,
+      "tag": "0026_free_war_machine",
+      "breakpoints": true
     }
   ]
 }
