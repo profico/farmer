@@ -100,6 +100,7 @@ export function Calendar({
 	// Focus follows the roving tabstop, but only once the user is actually
 	// inside the grid — otherwise opening the popover would steal focus on
 	// every re-render.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: gridRef is a ref, stable for the component's life — biome can't see that through the `externalGridRef ?? ownGridRef` fallback.
 	React.useEffect(() => {
 		if (!focusedDay) return;
 		gridRef.current
@@ -195,7 +196,7 @@ export function Calendar({
 				))}
 			</div>
 
-			{/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role -- the cells are the widgets; this is their container */}
+			{/* biome-ignore lint/a11y/useSemanticElements: the layout is CSS grid, not a table; the ARIA grid pattern is what the roving tabstop below implements. */}
 			<div
 				ref={gridRef}
 				role="grid"
@@ -208,6 +209,7 @@ export function Calendar({
 					const selected = value === day;
 					const isToday = today === day;
 					return (
+						// biome-ignore lint/a11y/useSemanticElements: a <td> is not the widget — the cell is the button that gets focused and pressed, so the role goes on it.
 						<button
 							key={day}
 							type="button"
