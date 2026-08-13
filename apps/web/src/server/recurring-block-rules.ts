@@ -27,6 +27,18 @@ export const createRecurringBlockRule = createServerFn({ method: "POST" })
 		return recurringBlockRulesService.create(context.ctx, data);
 	});
 
+// No validator: the only input is who is asking. The Break task is resolved
+// server-side by system key, so the client never names a task id it has no way
+// of knowing.
+export const enableDefaultBreakBlock = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { recurringBlockRulesService } = await import(
+			"@farmer/core/services"
+		);
+		return recurringBlockRulesService.enableBreak(context.ctx);
+	});
+
 export const updateRecurringBlockRule = createServerFn({ method: "POST" })
 	.middleware([orgMiddleware])
 	.validator(updateRecurringBlockRuleInput)

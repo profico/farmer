@@ -22,8 +22,8 @@ import { listMyPendingInvitations } from "#/server/organization.ts";
  * is reachable in single-org mode (invitation revoked, or an account that
  * predates the mode being switched on) and harmless elsewhere.
  *
- * It also does the recovery, not just the apology: a user who registered from
- * the register screen rather than from their invite link has a live invitation
+ * It also does the recovery, not just the apology: a user who signed in from
+ * the front door rather than from their invite link has a live invitation
  * sitting unaccepted, and this is where they can accept it.
  */
 export const Route = createFileRoute("/no-access")({

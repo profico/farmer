@@ -14,7 +14,6 @@ import {
 } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AnimatePresence } from "motion/react";
 import { useState } from "react";
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { EmptyState } from "#/components/states/empty-state.tsx";
@@ -312,19 +311,19 @@ function OrgHome() {
 							}
 						/>
 					) : (
+						// No AnimatePresence — see the note in DayView. It mattered most
+						// here: picking another day in "This week by day" swaps every row
+						// at once, so the whole list collapsed as if each entry had been
+						// deleted. Switching days is navigation, not removal.
 						<div className="divide-y divide-line2">
-							{/* `initial={false}` so the list doesn't animate on mount —
-							    rows only animate on the way *out*. See EntryBlockRow. */}
-							<AnimatePresence initial={false}>
-								{selectedEntries.map((entry) => (
-									<EntryBlockRow
-										key={entry.id}
-										entry={entry}
-										timezone={organization.timezone}
-										dateOptions={dateOptions}
-									/>
-								))}
-							</AnimatePresence>
+							{selectedEntries.map((entry) => (
+								<EntryBlockRow
+									key={entry.id}
+									entry={entry}
+									timezone={organization.timezone}
+									dateOptions={dateOptions}
+								/>
+							))}
 						</div>
 					)}
 				</div>

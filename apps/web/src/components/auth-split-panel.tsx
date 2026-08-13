@@ -1,8 +1,13 @@
 import type { ReactNode } from "react";
 
 /**
- * The two-pane frame both auth screens sit in: a dark brand column on the left,
- * the form on the right.
+ * The two-pane frame the sign-in screen sits in: a dark brand column on the
+ * left, the message on the right.
+ *
+ * Only `/login`'s OAuth-error state uses it now that Google is the sole
+ * identity and there is no form to frame — but that is exactly the moment
+ * branding earns its keep, since "this instance is invite-only" only makes
+ * sense next to the name of the instance saying it.
  *
  * The brand column is the app's ink palette rendered literally — the same
  * values the stylesheet reserves for a dark theme, hard-coded here because this
@@ -90,6 +95,3 @@ export function AuthSplitPanel({
 		</div>
 	);
 }
-
-/** Exposed so the register screen's feature list can match the panel. */
-export const AUTH_INK = INK;

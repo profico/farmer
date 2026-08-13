@@ -1,3 +1,4 @@
+import { DEFAULT_BREAK_BLOCK } from "@farmer/core/schema";
 import type { UseMutationResult } from "@tanstack/react-query";
 import {
 	useMutation,
@@ -7,8 +8,10 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { CreateRecurringBlockRuleDialog } from "#/components/recurring-block-rule-dialog.tsx";
-import { StatusPill } from "#/components/status-pill.tsx";
+import {
+	CreateRecurringBlockRuleDialog,
+	EditRecurringBlockRuleDialog,
+} from "#/components/recurring-block-rule-dialog.tsx";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -20,8 +23,10 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "#/components/ui/alert-dialog.tsx";
+import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
 	TableBody,
@@ -33,10 +38,12 @@ import {
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
 import {
 	deleteRecurringBlockRule,
+	enableDefaultBreakBlock,
 	updateRecurringBlockRule,
 } from "#/server/recurring-block-rules.ts";
 
@@ -77,10 +84,28 @@ function RecurringBlocksPage() {
 	const { data: rules } = useSuspenseQuery(recurringBlockRulesQuery());
 	const queryClient = useQueryClient();
 
+	// Rules materialize into real entries lazily, on the next read of a date
+	// range — so switching one on or off changes days the time page may already
+	// have cached.
 	const invalidate = () =>
-		queryClient.invalidateQueries({
-			queryKey: recurringBlockRulesQuery().queryKey,
-		});
+		Promise.all([
+			queryClient.invalidateQueries({
+				queryKey: recurringBlockRulesQuery().queryKey,
+			}),
+			queryClient.invalidateQueries({ queryKey: [...queryKeys.timeEntries] }),
+		]);
+
+	// The proposed break is offered only while the person has no break rule of
+	// their own — including a paused one, which is a decision they already made.
+	const hasBreakRule = rules.some((rule) => rule.task.systemKey === "break");
+
+	const enableBreakMutation = useMutation({
+		mutationFn: () => enableDefaultBreakBlock(),
+		onSuccess: invalidate,
+		onError: (error) => {
+			toast.error(error.message ?? "Could not turn on the break");
+		},
+	});
 
 	const toggleMutation = useMutation({
 		mutationFn: (vars: { ruleId: string; active: boolean }) =>
@@ -108,80 +133,96 @@ function RecurringBlocksPage() {
 				action={<CreateRecurringBlockRuleDialog />}
 				className="mb-0"
 			/>
-			{rules.length === 0 ? (
-				<div className="mt-8 border-t pt-6">
-					<p className="h2">No recurring blocks yet</p>
-					<p className="lede mt-2">
-						Add one and it will fill itself in every week.
-					</p>
-				</div>
-			) : (
-				<Table containerClassName="mt-6">
-					<TableHeader>
-						<TableRow>
-							<TableHead>Task</TableHead>
-							<TableHead>Project</TableHead>
-							<TableHead>Days</TableHead>
-							<TableHead>Duration</TableHead>
-							<TableHead>Status</TableHead>
-							<TableHead />
+			<Table containerClassName="mt-6">
+				<TableHeader>
+					<TableRow>
+						<TableHead>Task</TableHead>
+						<TableHead>Project</TableHead>
+						<TableHead>Days</TableHead>
+						<TableHead>Duration</TableHead>
+						<TableHead>On</TableHead>
+						<TableHead />
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{/* The one block that is true of everybody, filled in and switched
+					    off. Nothing is written until the switch is flipped — after that
+					    it is an ordinary rule, editable and deletable like any other. */}
+					{!hasBreakRule && (
+						<TableRow className="opacity-70">
+							<TableCell className="font-medium">
+								<span className="flex items-center gap-2">
+									Break
+									<Badge variant="secondary">Suggested</Badge>
+								</span>
+							</TableCell>
+							<TableCell>—</TableCell>
+							<TableCell>
+								<DayPills daysOfWeek={[...DEFAULT_BREAK_BLOCK.daysOfWeek]} />
+							</TableCell>
+							<TableCell>
+								<span className="font-display text-[15px]">
+									{formatHoursShort(DEFAULT_BREAK_BLOCK.durationSeconds)}
+								</span>
+							</TableCell>
+							<TableCell>
+								<Switch
+									checked={false}
+									aria-label="Turn on the daily break"
+									disabled={enableBreakMutation.isPending}
+									onCheckedChange={() => enableBreakMutation.mutate()}
+								/>
+							</TableCell>
+							<TableCell />
 						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{rules.map((rule) => {
-							const category = resolveCategoryColor(rule.task.color);
-							return (
-								<TableRow
-									key={rule.id}
-									className={cn(!rule.active && "opacity-60")}
-								>
-									<TableCell className="font-medium">
-										<span className="flex items-center gap-2">
-											<span
-												className="size-2 shrink-0 rounded-full"
-												style={{ backgroundColor: category.dot }}
-											/>
-											{rule.task.name}
-										</span>
-									</TableCell>
-									<TableCell>{rule.project?.name ?? "—"}</TableCell>
-									<TableCell>
-										<DayPills daysOfWeek={rule.daysOfWeek} />
-									</TableCell>
-									<TableCell>
-										<span className="font-display text-[15px]">
-											{formatHoursShort(rule.durationSeconds)}
-										</span>
-									</TableCell>
-									<TableCell>
-										<StatusPill tone={rule.active ? "positive" : "neutral"}>
-											{rule.active ? "Active" : "Paused"}
-										</StatusPill>
-									</TableCell>
-									<TableCell className="flex gap-1">
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() =>
-												toggleMutation.mutate({
-													ruleId: rule.id,
-													active: !rule.active,
-												})
-											}
-										>
-											{rule.active ? "Pause" : "Resume"}
-										</Button>
-										<DeleteRuleButton
-											ruleId={rule.id}
-											deleteMutation={deleteMutation}
+					)}
+					{rules.map((rule) => {
+						const category = resolveCategoryColor(rule.task.color);
+						return (
+							<TableRow
+								key={rule.id}
+								className={cn(!rule.active && "opacity-60")}
+							>
+								<TableCell className="font-medium">
+									<span className="flex items-center gap-2">
+										<span
+											className="size-2 shrink-0 rounded-full"
+											style={{ backgroundColor: category.dot }}
 										/>
-									</TableCell>
-								</TableRow>
-							);
-						})}
-					</TableBody>
-				</Table>
-			)}
+										{rule.task.name}
+									</span>
+								</TableCell>
+								<TableCell>{rule.project?.name ?? "—"}</TableCell>
+								<TableCell>
+									<DayPills daysOfWeek={rule.daysOfWeek} />
+								</TableCell>
+								<TableCell>
+									<span className="font-display text-[15px]">
+										{formatHoursShort(rule.durationSeconds)}
+									</span>
+								</TableCell>
+								<TableCell>
+									<Switch
+										checked={rule.active}
+										aria-label={`Turn ${rule.active ? "off" : "on"} the ${rule.task.name} block`}
+										disabled={toggleMutation.isPending}
+										onCheckedChange={(active) =>
+											toggleMutation.mutate({ ruleId: rule.id, active })
+										}
+									/>
+								</TableCell>
+								<TableCell className="flex gap-1">
+									<EditRecurringBlockRuleDialog rule={rule} />
+									<DeleteRuleButton
+										ruleId={rule.id}
+										deleteMutation={deleteMutation}
+									/>
+								</TableCell>
+							</TableRow>
+						);
+					})}
+				</TableBody>
+			</Table>
 		</Page>
 	);
 }

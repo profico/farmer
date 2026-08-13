@@ -1,0 +1,328 @@
+// What "assemble my day" is for, finally asserted.
+//
+// The engine could only ever propose what it had external evidence for —
+// meetings from the calendar, work split across the projects you committed to —
+// plus a break carved OUT of the day's target. Nothing covered the remainder.
+// So the common case (no calendar, no commits, a heads-down day) offered a
+// 30-minute break against an 8-hour target and the dialog concluded the day
+// "already matches your working hours".
+//
+// The `fill` suggestion kind had been declared on the type and rendered by the
+// dialog the whole time; only the branch that emits it was missing. These tests
+// pin the property that actually matters to a person: what the assembler
+// proposes adds up to their working day.
+
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	test,
+} from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { db } from "../db";
+import { member, organization, user } from "../db/schema/auth";
+import {
+	client,
+	project,
+	projectTask,
+	task,
+	timeEntry,
+} from "../db/schema/domain";
+import { memberWorkingHoursDay } from "../db/schema/schedule";
+import { createTestDb, type TestDb } from "../test/harness";
+import { dayAssemblyService } from "./day-assembly.service";
+import { setCalendarSourceForTests, setCommitSourceForTests } from "./ports";
+import { timeEntriesService } from "./time-entries.service";
+import type { Ctx } from "./types";
+
+const ORG_ID = "org-assembly";
+const USER_ID = "user-assembly";
+const MONDAY = "2026-08-10";
+const SATURDAY = "2026-08-15";
+const EIGHT_HOURS = 8 * 3600;
+
+const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
+
+let harness: TestDb;
+let devTaskId: string;
+let breakTaskId: string;
+let projectId: string;
+
+const noCalendar = {
+	listEventsForRange: async () => [],
+	listEventsForDay: async () => [],
+};
+const noCommits = {
+	listUserCommitsForDay: async () => [],
+	listUserCommitsByDay: async () => [],
+};
+
+const siteTask = async (systemKey: "development" | "break" | "meeting") => {
+	const existing = await db.query.task.findFirst({
+		where: and(eq(task.scope, "site"), eq(task.systemKey, systemKey)),
+		columns: { id: true },
+	});
+	if (existing) return existing.id;
+	const [row] = await db
+		.insert(task)
+		.values({
+			scope: "site" as const,
+			name: systemKey,
+			systemKey,
+			isAbsence: false,
+		})
+		.returning({ id: task.id });
+	return row!.id;
+};
+
+/** Total of what the assembler proposes. Break is carved out of the target
+ *  rather than added to it, so a complete proposal sums to exactly the target. */
+const proposed = (suggestions: { durationSeconds: number }[]) =>
+	suggestions.reduce((sum, s) => sum + s.durationSeconds, 0);
+
+beforeAll(async () => {
+	harness = await createTestDb();
+
+	await db.insert(organization).values({
+		id: ORG_ID,
+		name: "Assembly Org",
+		slug: ORG_ID,
+		createdAt: new Date(),
+		timezone: "Europe/Zagreb",
+	});
+	await db.insert(user).values({
+		id: USER_ID,
+		name: "Tester",
+		email: "assembly@example.com",
+		emailVerified: true,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	});
+	await db.insert(member).values({
+		id: "member-assembly",
+		organizationId: ORG_ID,
+		userId: USER_ID,
+		role: "owner",
+		createdAt: new Date(),
+	});
+
+	const [c] = await db
+		.insert(client)
+		.values({ organizationId: ORG_ID, name: "Acme" })
+		.returning();
+	const [p] = await db
+		.insert(project)
+		.values({ organizationId: ORG_ID, clientId: c!.id, name: "Farmer" })
+		.returning();
+	projectId = p!.id;
+
+	devTaskId = await siteTask("development");
+	breakTaskId = await siteTask("break");
+	await siteTask("meeting");
+	await db
+		.insert(projectTask)
+		.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
+
+	// An explicit Mon-Fri 9-17, so the target is stated rather than defaulted.
+	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+		const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+		await db.insert(memberWorkingHoursDay).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			dayOfWeek,
+			enabled: isWeekday,
+			startTime: isWeekday ? "09:00" : null,
+			endTime: isWeekday ? "17:00" : null,
+		});
+	}
+});
+
+afterAll(async () => {
+	setCalendarSourceForTests(null);
+	setCommitSourceForTests(null);
+	await harness.close();
+});
+
+beforeEach(async () => {
+	await db.delete(timeEntry);
+	setCalendarSourceForTests(noCalendar);
+	setCommitSourceForTests(noCommits);
+});
+
+describe("assemble my day", () => {
+	test("an empty day is proposed in full, not just a break", async () => {
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.targetSeconds).toBe(EIGHT_HOURS);
+		// The regression: this used to be exactly one 30-minute break.
+		expect(proposed(assembly.suggestions)).toBe(EIGHT_HOURS);
+
+		const fill = assembly.suggestions.find((s) => s.kind === "fill");
+		expect(fill).toBeDefined();
+		expect(fill?.fillsDay).toBe(true);
+		expect(fill?.durationSeconds).toBe(EIGHT_HOURS - 30 * 60);
+	});
+
+	test("meetings and the break are covered, and the fill takes the rest", async () => {
+		setCalendarSourceForTests({
+			...noCalendar,
+			listEventsForRange: async () => [
+				{
+					id: "event-1",
+					title: "Standup",
+					start: `${MONDAY}T09:00:00.000Z`,
+					end: `${MONDAY}T10:00:00.000Z`,
+					meetingUrl: null,
+					htmlLink: null,
+				},
+			],
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		const kinds = assembly.suggestions.map((s) => s.kind);
+
+		expect(kinds).toContain("meeting");
+		expect(kinds).toContain("break");
+		expect(kinds).toContain("fill");
+		expect(proposed(assembly.suggestions)).toBe(EIGHT_HOURS);
+	});
+
+	test("commits claim the day, so no fill is proposed on top of them", async () => {
+		setCommitSourceForTests({
+			...noCommits,
+			listUserCommitsForDay: async () => [
+				{
+					projectId,
+					projectGithubRepoId: "00000000-0000-0000-0000-000000000001",
+					repoFullName: "acme/farmer",
+					sha: "abc123",
+					message: "fix: the thing",
+					committedAt: new Date(`${MONDAY}T12:00:00.000Z`),
+				},
+			],
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		// The commit split already consumes the whole remainder in 15-minute units.
+		expect(assembly.suggestions.some((s) => s.kind === "work")).toBe(true);
+		expect(assembly.suggestions.some((s) => s.kind === "fill")).toBe(false);
+		expect(proposed(assembly.suggestions)).toBe(EIGHT_HOURS);
+	});
+
+	test("a day that already has a fill block gets no second one", async () => {
+		await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			date: MONDAY,
+			description: "Rest of day",
+			overtime: false,
+			fillsDay: true,
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		// One fill block per day is a database constraint, not a preference.
+		expect(assembly.suggestions.some((s) => s.kind === "fill")).toBe(false);
+	});
+
+	test("the fill covers only what existing entries left over", async () => {
+		await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			projectId,
+			description: "Already logged",
+			date: MONDAY,
+			durationSeconds: 3 * 3600,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.loggedSeconds).toBe(3 * 3600);
+		expect(proposed(assembly.suggestions)).toBe(EIGHT_HOURS - 3 * 3600);
+	});
+
+	test("a day already logged to target proposes nothing", async () => {
+		await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			projectId,
+			description: "Full day",
+			date: MONDAY,
+			durationSeconds: EIGHT_HOURS,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		// Only now is the dialog's "this day already matches your working hours"
+		// a true statement.
+		expect(assembly.suggestions).toHaveLength(0);
+	});
+
+	test("a non-working day proposes nothing", async () => {
+		const assembly = await dayAssemblyService.suggest(ctx, { date: SATURDAY });
+
+		expect(assembly.targetSeconds).toBe(0);
+		expect(assembly.suggestions).toHaveLength(0);
+	});
+
+	test("applying the proposal fills the day to target", async () => {
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		const { created, errors } = await dayAssemblyService.apply(ctx, {
+			date: MONDAY,
+			entries: assembly.suggestions.map((s) => ({
+				taskId: s.taskId,
+				projectId: s.projectId ?? undefined,
+				description: s.description || undefined,
+				// The dialog deliberately sends no duration for a fill block; the
+				// service re-derives it. Mirror that, so this covers the real path.
+				durationSeconds: s.fillsDay ? undefined : s.durationSeconds,
+				fillsDay: s.fillsDay || undefined,
+			})),
+		});
+
+		expect(errors).toEqual([]);
+		expect(created).toBe(assembly.suggestions.length);
+
+		const rows = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ORG_ID),
+				eq(timeEntry.userId, USER_ID),
+				eq(timeEntry.date, MONDAY),
+			),
+		});
+		const logged = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
+		expect(logged).toBe(EIGHT_HOURS);
+		expect(rows.some((r) => r.taskId === breakTaskId)).toBe(true);
+	});
+
+	test("deselecting the break grows the fill to cover it", async () => {
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		const withoutBreak = assembly.suggestions.filter((s) => s.kind !== "break");
+
+		await dayAssemblyService.apply(ctx, {
+			date: MONDAY,
+			entries: withoutBreak.map((s) => ({
+				taskId: s.taskId,
+				projectId: s.projectId ?? undefined,
+				description: s.description || undefined,
+				durationSeconds: s.fillsDay ? undefined : s.durationSeconds,
+				fillsDay: s.fillsDay || undefined,
+			})),
+		});
+
+		const rows = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ORG_ID),
+				eq(timeEntry.userId, USER_ID),
+				eq(timeEntry.date, MONDAY),
+			),
+		});
+		// The fill is derived on write, so dropping the break leaves no hole.
+		const logged = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
+		expect(logged).toBe(EIGHT_HOURS);
+	});
+});

@@ -32,7 +32,11 @@ const uniqueSlugFor = async (name: string) => {
 
 export const auth = betterAuth({
 	database: drizzleAdapter(db, { provider: "pg", schema }),
-	emailAndPassword: { enabled: true },
+	// No `emailAndPassword`. Google is the only identity this app accepts, which
+	// is why there is no login screen either — `/login` is a redirect into the
+	// Google flow (apps/web/src/routes/api/login.ts). Leaving the email/password
+	// endpoints enabled would keep a second, unreachable-by-design way in:
+	// /api/auth/sign-up/email is a public POST whether or not a form points at it.
 	session: {
 		// better-auth guards unlink-account / session-management behind a "fresh
 		// session" check (freshSessionMiddleware) that 403s SESSION_NOT_FRESH once
@@ -78,16 +82,23 @@ export const auth = betterAuth({
 			// (below) so logging in never demands calendar access or forces the
 			// consent screen, and so a plain login row can't be mistaken for a
 			// live calendar connection.
+			//
+			// Always show Google's account chooser. Without a login screen there is
+			// nowhere else to offer "use a different account", so a browser already
+			// signed into Google would otherwise pick one silently and give the
+			// visitor no way back — which matters most on an invite-only instance,
+			// where the invitation is tied to one specific address.
+			prompt: "select_account",
 		},
 	},
 	databaseHooks: {
 		user: {
 			create: {
 				// Single-org mode's signup gate. It lives here, on user creation,
-				// rather than on the register screen, because the screen is not the
-				// only way in: a direct POST to /api/auth/sign-up/email and "Sign in
-				// with Google" (which creates a user on first use) both land here and
-				// nowhere near the form. One hook covers every provider.
+				// rather than on a screen, because signing in with Google *is* the
+				// signup — a first-time Google user is created on the way through the
+				// OAuth callback, with no form anywhere in the path. One hook is the
+				// only place that covers it.
 				before: async (user) => {
 					if (!isSingleOrgMode()) return;
 					const org = await findSingleOrg();
@@ -97,9 +108,16 @@ export const auth = betterAuth({
 					// same sitting.
 					if (!org) return;
 					if (await findPendingInvitation(org.id, user.email)) return;
+					// `code` is load-bearing, not decoration: the OAuth callback only
+					// converts a thrown APIError into a redirect back to
+					// `errorCallbackURL` when one is present (see better-auth's
+					// api/routes/callback). Without it this surfaces as a raw 403 in
+					// the middle of the Google round-trip instead of the sign-in
+					// screen's own message.
 					throw new APIError("FORBIDDEN", {
+						code: "INVITE_ONLY",
 						message:
-							"This workspace is invite-only. Ask an admin to send you an invitation.",
+							"This workspace is invite-only. Sign in with the Google account the invitation was sent to, or ask an admin to invite you.",
 					});
 				},
 				after: async (user) => {

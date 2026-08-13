@@ -21,8 +21,8 @@ import type {
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
 import { ctxTimezone } from "./context";
-import { calendarSource, commitSource } from "./ports";
 import { githubService } from "./github.service";
+import { calendarSource, commitSource } from "./ports";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
@@ -148,10 +148,12 @@ export const dayAssemblyService = {
 					console.error("[day-assembly] calendar read failed", error);
 					return null;
 				}),
-			commitSource().listUserCommitsForDay(ctx, date).catch((error) => {
-				console.error("[day-assembly] commit read failed", error);
-				return [];
-			}),
+			commitSource()
+				.listUserCommitsForDay(ctx, date)
+				.catch((error) => {
+					console.error("[day-assembly] commit read failed", error);
+					return [];
+				}),
 			// "google-calendar", not "google": the plain Google provider is only a
 			// sign-in link and carries no calendar scope, so checking it reported
 			// "connect your calendar" at people who had already connected it.
@@ -246,6 +248,7 @@ export const dayAssemblyService = {
 		);
 
 		// ── Work: one entry per project the user committed to that day ──────────
+		let workSeconds = 0;
 		const commitsByProject = new Map<string, typeof commits>();
 		for (const commit of commits) {
 			const list = commitsByProject.get(commit.projectId) ?? [];
@@ -307,6 +310,7 @@ export const dayAssemblyService = {
 			groups.forEach((group, index) => {
 				const share = shares[index] ?? 0;
 				if (share <= 0) return;
+				workSeconds += share;
 				suggestions.push({
 					key: `work:${group.projectId}`,
 					kind: "work",
@@ -328,6 +332,36 @@ export const dayAssemblyService = {
 						repoFullName: c.repoFullName,
 					})),
 				});
+			});
+		}
+
+		// ── Fill: whatever the signals above did not account for ────────────────
+		//
+		// Without this the assembler could only ever propose what it had evidence
+		// for, so a person with no calendar and no commits — the common case on a
+		// heads-down day — was offered a 30-minute break against an 8-hour target
+		// and told the day "already matches your working hours". The break is
+		// carved out of the day, so on its own it never adds up to one.
+		//
+		// It is deliberately last and deliberately un-sized on apply: `create`
+		// derives a fill block's duration from what the day has left, so
+		// deselecting a meeting above grows this to match instead of leaving a
+		// hole. The number here is the estimate that pairs with the dialog's "~".
+		const unaccounted = remainingSeconds(remaining, workSeconds);
+		if (workTask && !hasFillBlock && unaccounted >= QUARTER_HOUR_SECONDS) {
+			suggestions.push({
+				key: "fill",
+				kind: "fill",
+				taskId: workTask.id,
+				taskName: workTask.name,
+				projectId: null,
+				projectName: null,
+				description: "Rest of day",
+				durationSeconds: unaccounted,
+				fillsDay: true,
+				meetingUrl: null,
+				calendarEventId: null,
+				commits: [],
 			});
 		}
 

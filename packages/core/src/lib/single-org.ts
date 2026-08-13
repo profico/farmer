@@ -8,9 +8,9 @@ import { ensureOrgTasks } from "../db/seed-tasks";
  *
  * Setting `SINGLE_ORG_SLUG` turns a deployment into a one-workspace instance:
  * nobody can create a second organization, signup is invitation-only, `/` is
- * the app instead of the marketing page, and the login screen wears that
- * organization's name and logo. Unset (the default) is the normal multi-tenant
- * product, unchanged.
+ * the app instead of the marketing page, and the one screen sign-in can still
+ * show — its error state — wears that organization's name and logo. Unset (the
+ * default) is the normal multi-tenant product, unchanged.
  *
  * It is a *slug*, not a boolean, on purpose: a boolean would leave "which
  * organization?" implicit, and the only implicit answer available ("the oldest
@@ -74,7 +74,7 @@ export const bootstrapSingleOrg = async (userId: string): Promise<boolean> => {
 		.values({
 			id: crypto.randomUUID(),
 			// Title-cased from the slug — a placeholder the owner renames in
-			// Settings → Organization, which is also where the login screen's
+			// Settings → Organization, which is also where the sign-in screen's
 			// branding is read from, so it's worth doing on day one.
 			name: SINGLE_ORG_SLUG.split("-")
 				.map((word) => word.charAt(0).toUpperCase() + word.slice(1))

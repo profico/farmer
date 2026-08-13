@@ -133,6 +133,21 @@ export function EntryBlockRow({
 		}
 	};
 
+	// The collapse is driven from local state rather than from an `exit` prop,
+	// because the row is the only thing that knows it is being deleted.
+	//
+	// It used to be an AnimatePresence `exit`, which had two failure modes. The
+	// loud one: presence knows a row *left*, not *why*, so paging to another day
+	// replaced every entry at once and the whole list played the delete
+	// animation. The silent one: motion compares `presenceContext` against
+	// `prevPresenceContext` to spot the leaving edge, but shifts that pair on
+	// every commit — so when the delete's query invalidation landed several
+	// commits in a burst, the edge was consumed unobserved, the exit never ran,
+	// and `onExitComplete` never fired. AnimatePresence then held the row in the
+	// DOM permanently: a full-height entry, showing time that was no longer
+	// logged, next to a total that no longer counted it.
+	const [collapsing, setCollapsing] = useState(false);
+
 	const deleteMutation = useMutation({
 		mutationFn: () => deleteTimeEntry({ data: entry.id }),
 		onSuccess: async (deleted) => {
@@ -159,6 +174,9 @@ export function EntryBlockRow({
 			}
 		},
 		onError: (error) => {
+			// Put the row back — it is still there, and a collapsed one would read
+			// as deleted while the toast says otherwise.
+			setCollapsing(false);
 			toast.error(error.message ?? "Could not delete time entry");
 		},
 	});
@@ -169,12 +187,16 @@ export function EntryBlockRow({
 		// name down to a dozen characters and turned every note into a five-line
 		// column, so below `sm` they drop to their own right-aligned line.
 		//
-		// Exit only, no enter. Deleting a row used to drop it instantly and snap
+		// Delete only, no enter. Deleting a row used to drop it instantly and snap
 		// everything below it upward while the "Undo" toast slid in from the far
 		// corner — two unrelated movements for one action, and no clue which row
 		// the toast was offering back. Collapsing the row instead keeps the two
 		// tied together. There is deliberately no matching enter: a new row
-		// arrives as its dialog closes, and that exit already covers the beat.
+		// arrives as its dialog closes, and that beat is already covered.
+		//
+		// Collapsing and deleting start together rather than in sequence: the
+		// request is never gated on an animation finishing, so a frame that never
+		// arrives can cost the collapse but never the delete.
 		//
 		// `overflow-hidden` is what makes the collapse read as the row closing
 		// rather than its contents spilling; the controls inside are inset far
@@ -182,7 +204,11 @@ export function EntryBlockRow({
 		// `prefers-reduced-motion` is handled globally by the root
 		// <MotionConfig reducedMotion="user">.
 		<motion.div
-			exit={{ height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0 }}
+			animate={
+				collapsing
+					? { height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0 }
+					: undefined
+			}
 			transition={springProductive}
 			className="group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted sm:flex-nowrap sm:px-8"
 		>
@@ -263,7 +289,10 @@ export function EntryBlockRow({
 					variant="ghost"
 					size="sm"
 					className="text-faint hover:text-primary"
-					onClick={() => deleteMutation.mutate()}
+					onClick={() => {
+						setCollapsing(true);
+						deleteMutation.mutate();
+					}}
 					disabled={deleteMutation.isPending}
 				>
 					Delete

@@ -29,9 +29,14 @@ export type DateRange = { from: string; to: string };
 /** Which slice of tracked time a caller means.
  *
  *  `worked`, `absence` and `all` partition the ledger; `project` and `unfiled`
- *  partition `worked`. Absence carries no project by definition — the taxonomy
- *  guard rejects an absence entry pinned to one — which is what makes
- *  `project` and `unfiled` a clean split of the rest. */
+ *  very nearly partition `worked`. Absence carries no project by definition —
+ *  the taxonomy guard rejects an absence entry pinned to one — which is what
+ *  makes `project` and `unfiled` a split of the rest.
+ *
+ *  The one gap is the Break built-in logged without a project: worked time
+ *  (a rest break is counted within working hours, which is why the day assembler
+ *  carves it out of the day's target rather than adding it on top) that is
+ *  nonetheless in neither bucket. See `unfiled` below for why. */
 export type LedgerScope =
 	/** Time the person actually worked, attributed or not. The honest answer to
 	 *  "did they log enough hours", because an unfiled meeting is still work. */
@@ -39,8 +44,16 @@ export type LedgerScope =
 	/** Worked time attributed to a project. What client-facing reporting means:
 	 *  absence and unfiled have no client to group under. */
 	| "project"
-	/** Worked time with no project yet — a synced meeting, a commit fill block,
-	 *  an accepted day-assembly suggestion. Real work, not yet attributed. */
+	/** Worked time with no project YET — a synced meeting, a commit fill block,
+	 *  an accepted day-assembly suggestion. Real work, not yet attributed, and
+	 *  therefore a to-do: this scope feeds the time page's nag and the guard that
+	 *  stops a month being finalized while someone still owes an attribution.
+	 *
+	 *  Which is why the Break built-in is excluded. A break has no project and
+	 *  never will — nobody bills a client for lunch — so counting it here nagged
+	 *  people to file something unfileable and blocked the close on it. That was
+	 *  already reachable through the day assembler's break suggestion; a daily
+	 *  recurring break block made it every working day of the month. */
 	| "unfiled"
 	/** Vacation and Sick Leave. Never counted as worked time. */
 	| "absence"
@@ -79,7 +92,14 @@ const scopePredicate = (scope: LedgerScope): SQL | undefined => {
 			// it — no task join needed for this scope.
 			return isNotNull(timeEntry.projectId);
 		case "unfiled":
-			return and(isNull(timeEntry.projectId), eq(task.isAbsence, false));
+			// `is distinct from` rather than `!=`: system_key is null on every
+			// ordinary task, and null != 'break' is null, which would drop the whole
+			// unfiled category on the floor.
+			return and(
+				isNull(timeEntry.projectId),
+				eq(task.isAbsence, false),
+				sql`${task.systemKey} is distinct from 'break'`,
+			);
 		case "absence":
 			return eq(task.isAbsence, true);
 		case "all":

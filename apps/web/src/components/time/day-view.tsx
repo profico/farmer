@@ -1,8 +1,9 @@
 import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
 import { PlusIcon, SparkleIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+// `useNavigate` for the toolbar's jump-to-date; no AnimatePresence — the list
+// stopped using it (see the note over the rows below).
 import { Link, useNavigate } from "@tanstack/react-router";
-import { AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { EmptyState } from "#/components/states/empty-state.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
@@ -195,19 +196,20 @@ export function DayView({
 					/>
 				) : (
 					<>
+						{/* No AnimatePresence: a row's delete collapse is owned by the row
+						    itself (see EntryBlockRow). Presence only knows that a row
+						    left, not why — so stepping to another day, which replaces
+						    every entry at once, played the delete animation across the
+						    whole list. */}
 						<div className="divide-y divide-line2">
-							{/* `initial={false}` so the list doesn't animate on mount —
-							    rows only animate on the way *out*. See EntryBlockRow. */}
-							<AnimatePresence initial={false}>
-								{sortedEntries.map((entry) => (
-									<EntryBlockRow
-										key={entry.id}
-										entry={entry}
-										timezone={timezone}
-										dateOptions={dateOptions}
-									/>
-								))}
-							</AnimatePresence>
+							{sortedEntries.map((entry) => (
+								<EntryBlockRow
+									key={entry.id}
+									entry={entry}
+									timezone={timezone}
+									dateOptions={dateOptions}
+								/>
+							))}
 						</div>
 						{/* Harvest puts the day total under the list rather than over it,
 						    so it reads as the sum of what you just scanned. */}

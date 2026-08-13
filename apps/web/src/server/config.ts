@@ -12,11 +12,12 @@ export type PublicAppConfig = {
 	singleOrgMode: boolean;
 	/**
 	 * The one organization's public face — name, logo and slug, and nothing
-	 * else. This is an unauthenticated read (the login screen needs it before
-	 * anyone has signed in), so it returns branding rather than the org row.
+	 * else. This is an unauthenticated read (`/login`'s error screen needs it
+	 * before anyone has signed in), so it returns branding rather than the org
+	 * row.
 	 *
 	 * Null while `singleOrgMode` is true means the mode is on but the instance
-	 * has not been claimed yet: the first person to register creates it.
+	 * has not been claimed yet: the first person to sign in creates it.
 	 */
 	org: { slug: string; name: string; logo: string | null } | null;
 };

@@ -1000,7 +1000,7 @@ export const timeEntriesService = {
 	/** Copy a day's entries onto another day. The backfill affordance that stands
 	 *  in for a running timer: most people work a similar shape most days.
 	 *
-	 *  Three rules, each of which used to be missing:
+	 *  Four rules, each of which used to be missing:
 	 *
 	 *  - A calendar-derived entry IS copied, as a plain manual entry. It used to
 	 *    be skipped on the reasoning that "a meeting belongs to the day it
@@ -1011,6 +1011,13 @@ export const timeEntriesService = {
 	 *    copy is new, hand-made time that happens to look like a meeting, and
 	 *    binding it to an event on another day would put it back under the sync
 	 *    engine's control.
+	 *  - A fill block IS copied — RE-DERIVED, not duplicated. Its duration is a
+	 *    function of what the TARGET day leaves over, so it is recreated at that
+	 *    size rather than at the source's. Dropping it entirely (which is what
+	 *    "copying one forward would just be recomputed away" actually did) meant
+	 *    a day whose hours live in a single "rest of day" block — the shape the
+	 *    day assembler produces — copied across as nothing at all, which is the
+	 *    "the copy button sometimes doesn't copy the day" report.
 	 *  - Copying twice is a no-op, not a doubling. An entry whose (project, task,
 	 *    duration, note) already sits on the target day is skipped, so leaning on
 	 *    the button is harmless.
@@ -1020,15 +1027,15 @@ export const timeEntriesService = {
 
 		return withCtxTx(ctx, async (txCtx) => {
 			const tx = ctxDb(txCtx);
+			// Fill blocks included, unlike before: they are handled separately below
+			// rather than filtered out of the read, because the target's fill block
+			// is also what decides whether the source's can be recreated at all.
 			const dayRows = (date: string) =>
 				tx.query.timeEntry.findMany({
 					where: and(
 						eq(timeEntry.organizationId, ctx.organizationId),
 						eq(timeEntry.userId, ctx.userId),
 						eq(timeEntry.date, date),
-						// A fill block is derived from what is left of the day, so copying
-						// one forward would just be recomputed away.
-						eq(timeEntry.fillsDay, false),
 					),
 				});
 
@@ -1049,17 +1056,27 @@ export const timeEntriesService = {
 			}) =>
 				`${e.projectId ?? "none"}|${e.taskId}|${e.durationSeconds}|${e.description.trim()}`;
 
-			const alreadyThere = new Set(target.map(sameWork));
+			const alreadyThere = new Set(
+				target.filter((e) => !e.fillsDay).map(sameWork),
+			);
 			const copyable: typeof source = [];
 			for (const entry of source) {
+				if (entry.fillsDay) continue;
 				const key = sameWork(entry);
 				if (alreadyThere.has(key)) continue;
 				// Guards against a source day that itself holds two identical rows.
 				alreadyThere.add(key);
 				copyable.push(entry);
 			}
-			const skipped = source.length - copyable.length;
-			if (copyable.length === 0) return { copied: 0, skipped };
+
+			// A day may hold at most one fill block (`te_fill_day_uidx`), so the
+			// target's own survives and simply resizes around what just landed.
+			const sourceFill = source.find((e) => e.fillsDay);
+			const copyFill = sourceFill !== undefined && !target.some((e) => e.fillsDay);
+
+			let copied = copyable.length;
+			let skipped = source.length - copied - (copyFill ? 1 : 0);
+			if (copied === 0 && !copyFill) return { copied: 0, skipped };
 
 			const addedSeconds = copyable.reduce(
 				(sum, e) => sum + e.durationSeconds,
@@ -1072,22 +1089,52 @@ export const timeEntriesService = {
 				);
 			}
 
-			await tx.insert(timeEntry).values(
-				copyable.map((e) => ({
-					organizationId: ctx.organizationId,
-					userId: ctx.userId,
-					projectId: e.projectId,
-					taskId: e.taskId,
-					date: input.toDate,
-					description: e.description,
-					durationSeconds: e.durationSeconds,
-					overtime: e.overtime,
-				})),
-			);
+			if (copyable.length > 0) {
+				await tx.insert(timeEntry).values(
+					copyable.map((e) => ({
+						organizationId: ctx.organizationId,
+						userId: ctx.userId,
+						projectId: e.projectId,
+						taskId: e.taskId,
+						date: input.toDate,
+						description: e.description,
+						durationSeconds: e.durationSeconds,
+						overtime: e.overtime,
+					})),
+				);
+			}
 
 			const tz = await ctxTimezone(txCtx);
-			await recomputeDayFill(txCtx, input.toDate, tz);
-			return { copied: copyable.length, skipped };
+			if (copyFill && sourceFill) {
+				// Sized last, from what the rows just inserted left over. Zero means
+				// the target day is already spoken for and the block would describe
+				// nothing, so it is not written at all — the same call `recomputeDayFill`
+				// makes when an existing one recomputes to zero.
+				const fillSeconds = await computeDayFillSeconds(
+					txCtx,
+					input.toDate,
+					tz,
+				);
+				if (fillSeconds > 0) {
+					await tx.insert(timeEntry).values({
+						organizationId: ctx.organizationId,
+						userId: ctx.userId,
+						projectId: sourceFill.projectId,
+						taskId: sourceFill.taskId,
+						date: input.toDate,
+						description: sourceFill.description,
+						durationSeconds: fillSeconds,
+						overtime: sourceFill.overtime,
+						fillsDay: true,
+					});
+					copied += 1;
+				} else {
+					skipped += 1;
+				}
+			} else {
+				await recomputeDayFill(txCtx, input.toDate, tz);
+			}
+			return { copied, skipped };
 		});
 	},
 

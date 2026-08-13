@@ -1,3 +1,4 @@
+import { formatDurationInput } from "@farmer/core/lib/time";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	useMutation,
@@ -37,7 +38,10 @@ import { cn } from "#/lib/utils.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
-import { createRecurringBlockRule } from "#/server/recurring-block-rules.ts";
+import {
+	createRecurringBlockRule,
+	updateRecurringBlockRule,
+} from "#/server/recurring-block-rules.ts";
 
 const NO_PROJECT = "__none__";
 const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
@@ -66,20 +70,51 @@ const formSchema = z
 		}
 	});
 
-export function CreateRecurringBlockRuleDialog() {
+type FormValues = z.infer<typeof formSchema>;
+
+/** The shape the settings table hands back for editing — a row from
+ *  `recurringBlockRulesService.list`, narrowed to what the form touches. */
+export type EditableRecurringBlockRule = {
+	id: string;
+	taskId: string;
+	task: { id: string; name: string };
+	projectId: string | null;
+	description: string;
+	daysOfWeek: number[];
+	durationSeconds: number;
+};
+
+function RecurringBlockRuleDialog({
+	rule,
+	trigger,
+}: {
+	/** Absent = create a new rule. */
+	rule?: EditableRecurringBlockRule;
+	trigger: React.ReactElement;
+}) {
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const { data: projects } = useSuspenseQuery(projectsQuery());
 
-	const form = useForm<z.infer<typeof formSchema>>({
+	const defaults: FormValues = rule
+		? {
+				taskId: rule.taskId,
+				projectId: rule.projectId ?? NO_PROJECT,
+				description: rule.description,
+				daysOfWeek: rule.daysOfWeek,
+				duration: formatDurationInput(rule.durationSeconds),
+			}
+		: {
+				taskId: "",
+				projectId: NO_PROJECT,
+				description: "",
+				daysOfWeek: [1, 2, 3, 4, 5],
+				duration: "30m",
+			};
+
+	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
-		defaultValues: {
-			taskId: "",
-			projectId: NO_PROJECT,
-			description: "",
-			daysOfWeek: [1, 2, 3, 4, 5],
-			duration: "30m",
-		},
+		defaultValues: defaults,
 	});
 
 	const projectId = form.watch("projectId");
@@ -89,6 +124,22 @@ export function CreateRecurringBlockRuleDialog() {
 	const { data: taskOptions = [] } = useSuspenseQuery(
 		tasksForProjectQuery(projectId === NO_PROJECT ? undefined : projectId),
 	);
+
+	// A rule's own task is pinned into its options while the project is unchanged,
+	// because the list is what you may PICK and that is a narrower set than what a
+	// rule may already hold: the break block's task is a site built-in that
+	// `listForProject(undefined)` deliberately doesn't offer, so editing a break
+	// otherwise showed an empty Task select and lost the task on save.
+	const originalProjectId = rule?.projectId ?? NO_PROJECT;
+	const options =
+		rule && projectId === originalProjectId
+			? [
+					...taskOptions
+						.map((t) => ({ value: t.id, label: t.name }))
+						.filter((o) => o.value !== rule.task.id),
+					{ value: rule.task.id, label: rule.task.name },
+				].sort((a, b) => a.label.localeCompare(b.label))
+			: taskOptions.map((t) => ({ value: t.id, label: t.name }));
 
 	const toggleDay = (day: number) => {
 		const current = form.getValues("daysOfWeek");
@@ -102,37 +153,61 @@ export function CreateRecurringBlockRuleDialog() {
 	};
 
 	const mutation = useMutation({
-		mutationFn: (values: z.infer<typeof formSchema>) =>
-			createRecurringBlockRule({
+		mutationFn: (values: FormValues) => {
+			const projectValue =
+				values.projectId === NO_PROJECT ? undefined : values.projectId;
+			if (rule) {
+				return updateRecurringBlockRule({
+					data: {
+						ruleId: rule.id,
+						taskId: values.taskId,
+						// Explicit null, not undefined: "No project" has to detach the
+						// project, and undefined means "leave it alone".
+						projectId: projectValue ?? null,
+						description: values.description,
+						daysOfWeek: values.daysOfWeek,
+						duration: values.duration,
+					},
+				});
+			}
+			return createRecurringBlockRule({
 				data: {
 					taskId: values.taskId,
-					projectId:
-						values.projectId === NO_PROJECT ? undefined : values.projectId,
+					projectId: projectValue,
 					description: values.description || undefined,
 					daysOfWeek: values.daysOfWeek,
 					duration: values.duration,
 				},
-			}),
+			});
+		},
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
 				queryKey: recurringBlockRulesQuery().queryKey,
 			});
 			setOpen(false);
-			form.reset();
+			if (!rule) form.reset();
 		},
 		onError: (error) => {
-			toast.error(error.message ?? "Could not create recurring block");
+			toast.error(error.message ?? "Could not save recurring block");
 		},
 	});
 
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger
-				render={<Button size="sm">+ New recurring block</Button>}
-			/>
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				setOpen(next);
+				// Reopening an edit dialog after a cancelled edit should show the rule
+				// as it stands, not the abandoned draft.
+				if (next) form.reset(defaults);
+			}}
+		>
+			<DialogTrigger render={trigger} />
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>New recurring block</DialogTitle>
+					<DialogTitle>
+						{rule ? "Edit recurring block" : "New recurring block"}
+					</DialogTitle>
 				</DialogHeader>
 				<Form {...form}>
 					<form
@@ -148,10 +223,7 @@ export function CreateRecurringBlockRuleDialog() {
 									<Select
 										value={field.value}
 										onValueChange={field.onChange}
-										items={taskOptions.map((t) => ({
-											value: t.id,
-											label: t.name,
-										}))}
+										items={options}
 									>
 										<FormControl>
 											<SelectTrigger className="w-full">
@@ -159,9 +231,9 @@ export function CreateRecurringBlockRuleDialog() {
 											</SelectTrigger>
 										</FormControl>
 										<SelectContent>
-											{taskOptions.map((t) => (
-												<SelectItem key={t.id} value={t.id}>
-													{t.name}
+											{options.map((t) => (
+												<SelectItem key={t.value} value={t.value}>
+													{t.label}
 												</SelectItem>
 											))}
 										</SelectContent>
@@ -263,12 +335,37 @@ export function CreateRecurringBlockRuleDialog() {
 						/>
 						<DialogFooter>
 							<Button type="submit" disabled={mutation.isPending}>
-								Create
+								{rule ? "Save" : "Create"}
 							</Button>
 						</DialogFooter>
 					</form>
 				</Form>
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+export function CreateRecurringBlockRuleDialog() {
+	return (
+		<RecurringBlockRuleDialog
+			trigger={<Button size="sm">+ New recurring block</Button>}
+		/>
+	);
+}
+
+export function EditRecurringBlockRuleDialog({
+	rule,
+}: {
+	rule: EditableRecurringBlockRule;
+}) {
+	return (
+		<RecurringBlockRuleDialog
+			rule={rule}
+			trigger={
+				<Button variant="ghost" size="sm">
+					Edit
+				</Button>
+			}
+		/>
 	);
 }

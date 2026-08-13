@@ -10,12 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as NoAccessRouteImport } from './routes/no-access'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
+import { Route as ApiLoginRouteImport } from './routes/api/login'
 import { Route as AcceptInviteInvitationIdRouteImport } from './routes/accept-invite/$invitationId'
-import { Route as authRegisterRouteImport } from './routes/(auth)/register'
-import { Route as authLoginRouteImport } from './routes/(auth)/login'
 import { Route as OrgSlugReportsRouteImport } from './routes/$orgSlug/reports'
 import { Route as OrgSlugCloseRouteImport } from './routes/$orgSlug/close'
 import { Route as OrgSlugTimeRouteRouteImport } from './routes/$orgSlug/time/route'
@@ -45,6 +45,11 @@ const NoAccessRoute = NoAccessRouteImport.update({
   path: '/no-access',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
   id: '/$orgSlug',
   path: '/$orgSlug',
@@ -60,22 +65,17 @@ const OrgSlugIndexRoute = OrgSlugIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const ApiLoginRoute = ApiLoginRouteImport.update({
+  id: '/api/login',
+  path: '/api/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AcceptInviteInvitationIdRoute =
   AcceptInviteInvitationIdRouteImport.update({
     id: '/accept-invite/$invitationId',
     path: '/accept-invite/$invitationId',
     getParentRoute: () => rootRouteImport,
   } as any)
-const authRegisterRoute = authRegisterRouteImport.update({
-  id: '/(auth)/register',
-  path: '/register',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const authLoginRoute = authLoginRouteImport.update({
-  id: '/(auth)/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const OrgSlugReportsRoute = OrgSlugReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -200,13 +200,13 @@ const OrgSlugSettingsClientsRoute = OrgSlugSettingsClientsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
-  '/login': typeof authLoginRoute
-  '/register': typeof authRegisterRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
+  '/api/login': typeof ApiLoginRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
@@ -231,12 +231,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
-  '/login': typeof authLoginRoute
-  '/register': typeof authRegisterRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
+  '/api/login': typeof ApiLoginRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
@@ -263,13 +263,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
-  '/(auth)/login': typeof authLoginRoute
-  '/(auth)/register': typeof authRegisterRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
+  '/api/login': typeof ApiLoginRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
@@ -297,13 +297,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$orgSlug'
+    | '/login'
     | '/no-access'
     | '/$orgSlug/time'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
-    | '/login'
-    | '/register'
     | '/accept-invite/$invitationId'
+    | '/api/login'
     | '/$orgSlug/'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
@@ -328,12 +328,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/no-access'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
-    | '/login'
-    | '/register'
     | '/accept-invite/$invitationId'
+    | '/api/login'
     | '/$orgSlug'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
@@ -359,13 +359,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$orgSlug'
+    | '/login'
     | '/no-access'
     | '/$orgSlug/time'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
-    | '/(auth)/login'
-    | '/(auth)/register'
     | '/accept-invite/$invitationId'
+    | '/api/login'
     | '/$orgSlug/'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
@@ -392,10 +392,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
+  LoginRoute: typeof LoginRoute
   NoAccessRoute: typeof NoAccessRoute
-  authLoginRoute: typeof authLoginRoute
-  authRegisterRoute: typeof authRegisterRoute
   AcceptInviteInvitationIdRoute: typeof AcceptInviteInvitationIdRoute
+  ApiLoginRoute: typeof ApiLoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
@@ -411,6 +411,13 @@ declare module '@tanstack/react-router' {
       path: '/no-access'
       fullPath: '/no-access'
       preLoaderRoute: typeof NoAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug': {
@@ -434,25 +441,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugIndexRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/api/login': {
+      id: '/api/login'
+      path: '/api/login'
+      fullPath: '/api/login'
+      preLoaderRoute: typeof ApiLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/accept-invite/$invitationId': {
       id: '/accept-invite/$invitationId'
       path: '/accept-invite/$invitationId'
       fullPath: '/accept-invite/$invitationId'
       preLoaderRoute: typeof AcceptInviteInvitationIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/(auth)/register': {
-      id: '/(auth)/register'
-      path: '/register'
-      fullPath: '/register'
-      preLoaderRoute: typeof authRegisterRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/(auth)/login': {
-      id: '/(auth)/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof authLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug/reports': {
@@ -677,10 +677,10 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
+  LoginRoute: LoginRoute,
   NoAccessRoute: NoAccessRoute,
-  authLoginRoute: authLoginRoute,
-  authRegisterRoute: authRegisterRoute,
   AcceptInviteInvitationIdRoute: AcceptInviteInvitationIdRoute,
+  ApiLoginRoute: ApiLoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,

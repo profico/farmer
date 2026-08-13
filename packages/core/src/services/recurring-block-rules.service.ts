@@ -11,12 +11,14 @@ import {
 	QUARTER_HOUR_SECONDS,
 	weekdayInTz,
 } from "../lib/time";
-import type {
-	CreateRecurringBlockRuleInput,
-	UpdateRecurringBlockRuleInput,
+import {
+	type CreateRecurringBlockRuleInput,
+	DEFAULT_BREAK_BLOCK,
+	type UpdateRecurringBlockRuleInput,
 } from "../schema/recurring-block-rules";
 import { ctxTimezone } from "./context";
 import { assertTaskAvailable } from "./guards";
+import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
 
 // A recurring rule is now "N hours of task T on these weekdays", with no clock:
@@ -68,6 +70,55 @@ export const recurringBlockRulesService = {
 		return created;
 	},
 
+	/** Turn the proposed daily break (`DEFAULT_BREAK_BLOCK`) into a real rule.
+	 *
+	 *  A separate entry point rather than the generic `create` because the caller
+	 *  is a switch, not a form: the Break task is a site built-in resolved by
+	 *  system key here, and it is deliberately not offered by
+	 *  `tasksService.listForProject(ctx, undefined)`, so a client could not name
+	 *  its id even if we wanted it to.
+	 *
+	 *  Idempotent. The page only shows the switch when no break rule exists, but a
+	 *  double click or a second tab must not leave someone with two breaks a day —
+	 *  so an existing rule is resumed instead of duplicated. */
+	enableBreak: async (ctx: Ctx) => {
+		const breakTask = await tasksService.findBySystemKey(ctx, "break");
+		if (!breakTask) throw new Error("The Break task is missing");
+
+		const existing = await db.query.recurringBlockRule.findFirst({
+			where: and(
+				eq(recurringBlockRule.organizationId, ctx.organizationId),
+				eq(recurringBlockRule.userId, ctx.userId),
+				eq(recurringBlockRule.taskId, breakTask.id),
+			),
+		});
+		if (existing) {
+			if (existing.active) return existing;
+			const [resumed] = await db
+				.update(recurringBlockRule)
+				.set({ active: true, updatedAt: new Date() })
+				.where(eq(recurringBlockRule.id, existing.id))
+				.returning();
+			return resumed ?? existing;
+		}
+
+		// No project, like every break the day assembler proposes: a break is time
+		// off the clock, not work anyone can attribute to a client.
+		const [created] = await db
+			.insert(recurringBlockRule)
+			.values({
+				organizationId: ctx.organizationId,
+				userId: ctx.userId,
+				taskId: breakTask.id,
+				description: DEFAULT_BREAK_BLOCK.description,
+				daysOfWeek: [...DEFAULT_BREAK_BLOCK.daysOfWeek],
+				durationSeconds: DEFAULT_BREAK_BLOCK.durationSeconds,
+			})
+			.returning();
+		if (!created) throw new Error("Failed to create the break block");
+		return created;
+	},
+
 	update: async (ctx: Ctx, input: UpdateRecurringBlockRuleInput) => {
 		const existing = await db.query.recurringBlockRule.findFirst({
 			where: and(
@@ -82,9 +133,9 @@ export const recurringBlockRulesService = {
 			await assertTaskAvailable(
 				ctx,
 				input.taskId ?? existing.taskId,
-				input.projectId !== undefined
+				(input.projectId !== undefined
 					? input.projectId
-					: (existing.projectId ?? undefined),
+					: existing.projectId) ?? undefined,
 			);
 		}
 

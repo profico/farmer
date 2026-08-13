@@ -35,7 +35,7 @@ function AcceptInvitePage() {
 	const [accepting, setAccepting] = useState(false);
 
 	const redirectTarget = `/accept-invite/${invitationId}`;
-	// Forwarded as login/register's own search params (not appended to
+	// Forwarded as `/login`'s own search params (not appended to
 	// `redirectTarget` itself — TanStack Router's `to` is a bare pathname, it
 	// doesn't parse a "?query" suffix out of a plain string) so this page can
 	// still render its context once the visitor lands back here post-auth.
@@ -82,32 +82,20 @@ function AcceptInvitePage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="grid gap-3">
+					{/* One button, because Google both signs in and signs up: a
+					    first-time invitee gets an account on the way through. */}
 					{!session && (
-						<>
-							<Button
-								nativeButton={false}
-								render={
-									<Link
-										to="/register"
-										search={{ redirect: redirectTarget, ...inviteContext }}
-									>
-										Create account
-									</Link>
-								}
-							/>
-							<Button
-								variant="outline"
-								nativeButton={false}
-								render={
-									<Link
-										to="/login"
-										search={{ redirect: redirectTarget, ...inviteContext }}
-									>
-										Sign in
-									</Link>
-								}
-							/>
-						</>
+						<Button
+							nativeButton={false}
+							render={
+								<Link
+									to="/login"
+									search={{ redirect: redirectTarget, ...inviteContext }}
+								>
+									Continue with Google
+								</Link>
+							}
+						/>
 					)}
 					{session && emailMismatch && (
 						<>

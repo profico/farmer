@@ -229,3 +229,50 @@ describe("filters", () => {
 		).toBe(5 * HOUR);
 	});
 });
+
+// A break is worked time nobody can attribute: it carries no project, and there
+// is no project it could ever be moved to. Counting it as unfiled turned the
+// time page's nag and the close guard into a demand the person cannot satisfy —
+// reachable through the day assembler's break suggestion, and once a recurring
+// break block exists, reachable on every working day of the month.
+describe("the Break built-in is worked but never unfiled", () => {
+	const BREAK_RANGE = { from: "2026-09-10", to: "2026-09-20" };
+	const DATE = "2026-09-15";
+
+	beforeAll(async () => {
+		const existing = await db.query.task.findFirst({
+			where: and(eq(task.scope, "site"), eq(task.systemKey, "break")),
+			columns: { id: true },
+		});
+		const breakTaskId =
+			existing?.id ??
+			(
+				await db
+					.insert(task)
+					.values({
+						scope: "site" as const,
+						name: "Break",
+						isAbsence: false,
+						systemKey: "break" as const,
+					})
+					.returning()
+			)[0]?.id;
+		if (!breakTaskId) throw new Error("break task");
+
+		await db.insert(timeEntry).values([
+			{ organizationId: ORG, userId: ALICE, projectId: null, taskId: breakTaskId, date: DATE, description: "Break", durationSeconds: 1800 },
+			{ organizationId: ORG, userId: ALICE, projectId: null, taskId: workTaskId, date: DATE, description: "meeting", durationSeconds: HOUR },
+		]);
+	});
+
+	test("worked counts it", async () => {
+		expect(await ledgerTotal(ctx, BREAK_RANGE, "worked")).toBe(HOUR + 1800);
+	});
+
+	// The other half of the assertion: excluding the break must not take the
+	// ordinary project-less entries with it. `system_key is distinct from` rather
+	// than `!=`, because null != 'break' is null and would drop every row.
+	test("unfiled counts the project-less meeting and not the break", async () => {
+		expect(await ledgerTotal(ctx, BREAK_RANGE, "unfiled")).toBe(HOUR);
+	});
+});

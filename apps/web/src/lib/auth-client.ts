@@ -20,4 +20,6 @@ export const authClient = createAuthClient({
 	],
 });
 
-export const { useSession, signIn, signOut, signUp } = authClient;
+// No `signUp`: Google is the only identity, and its callback creates the user
+// on first sign-in. There is nothing for a sign-up call to do.
+export const { useSession, signIn, signOut } = authClient;
