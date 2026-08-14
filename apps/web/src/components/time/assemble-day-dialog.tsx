@@ -17,6 +17,7 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "#/components/ui/dialog.tsx";
+import { Switch } from "#/components/ui/switch.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { dayAssemblySuggestionsQuery } from "#/queries/day-assembly.ts";
@@ -60,8 +61,17 @@ export function AssembleDayDialog({
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 
+	// Per-opening, not remembered. "Show me the ones I deleted" is a thing you
+	// want on the day you lost something, and a setting that stays on quietly
+	// re-offers every deletion you ever made, on every day, forever — which is
+	// the behaviour the tombstones exist to prevent.
+	const [includeDismissed, setIncludeDismissed] = useState(false);
+	useEffect(() => {
+		if (!open) setIncludeDismissed(false);
+	}, [open]);
+
 	const suggestionsQ = useQuery({
-		...dayAssemblySuggestionsQuery(date),
+		...dayAssemblySuggestionsQuery(date, includeDismissed),
 		enabled: open,
 	});
 	const assembly = suggestionsQ.data;
@@ -69,9 +79,13 @@ export function AssembleDayDialog({
 
 	const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 	// Fresh suggestions arrive pre-selected — assembling should be one click.
+	// Except the ones the person deleted before: those are here because they
+	// asked to see them, which is not the same as asking for them back.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only when a new suggestion set arrives
 	useEffect(() => {
-		setSelectedKeys(new Set(suggestions.map((s) => s.key)));
+		setSelectedKeys(
+			new Set(suggestions.filter((s) => !s.dismissed).map((s) => s.key)),
+		);
 	}, [suggestionsQ.dataUpdatedAt]);
 
 	const toggle = (key: string) => {
@@ -172,7 +186,9 @@ export function AssembleDayDialog({
 					</p>
 				) : suggestions.length === 0 ? (
 					<p className="py-6 text-base text-muted-foreground">
-						Nothing to add — this day already matches your working hours.
+						{(assembly?.dismissedCount ?? 0) > 0
+							? "Nothing new to add — but this day has blocks you deleted."
+							: "Nothing to add — this day already matches your working hours."}
 					</p>
 				) : (
 					// A list, not a card: hairlines above and below, rows divided by the
@@ -191,8 +207,17 @@ export function AssembleDayDialog({
 								/>
 								<SuggestionIcon kind={s.kind} />
 								<span className="min-w-0 flex-1">
-									<span className="block truncate text-sm font-medium">
-										{suggestionTitle(s)}
+									<span className="flex items-center gap-2">
+										<span className="min-w-0 truncate text-sm font-medium">
+											{suggestionTitle(s)}
+										</span>
+										{/* Named, not just silently present: a row that arrives
+										    unticked among ticked ones needs to say why. */}
+										{s.dismissed && (
+											<span className="shrink-0 text-xs text-muted-foreground">
+												deleted earlier
+											</span>
+										)}
 									</span>
 									<span className="block text-xs text-muted-foreground">
 										{s.fillsDay
@@ -210,6 +235,29 @@ export function AssembleDayDialog({
 							</label>
 						))}
 					</div>
+				)}
+
+				{/* Only on a day that actually has something behind it. A switch that
+				    is always there and usually does nothing is one people stop reading;
+				    one that appears saying "2 you deleted" answers a question they are
+				    already asking. Below the list, because it is an answer to "is that
+				    everything?" rather than a filter to set before looking. */}
+				{suggestionsQ.isSuccess && assembly && assembly.dismissedCount > 0 && (
+					<label className="flex cursor-pointer items-start gap-3">
+						<Switch
+							checked={includeDismissed}
+							onCheckedChange={setIncludeDismissed}
+							className="mt-0.5"
+						/>
+						<span className="min-w-0 flex-1 text-sm">
+							Also offer things I deleted
+							<span className="block text-xs text-muted-foreground">
+								{assembly.dismissedCount === 1
+									? "1 block deleted on this day — it won't come back on its own"
+									: `${assembly.dismissedCount} blocks deleted on this day — they won't come back on their own`}
+							</span>
+						</span>
+					</label>
 				)}
 
 				{missingSources.length > 0 && suggestionsQ.isSuccess && (

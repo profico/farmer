@@ -167,19 +167,37 @@ function IntegrationsSettingsPage() {
 		toast.success("Google Calendar disconnected");
 	};
 
-	// Manual on-demand meeting sync. Reconciles the same window the background
-	// scheduler uses, then refreshes any open time-entries view so freshly
+	// Manual on-demand sync. Runs the same pass over the same window the
+	// background worker does — every switched-on automation, not just the
+	// calendar — then refreshes any open time-entries view so freshly
 	// imported/removed blocks show up without a reload.
+	//
+	// It exists because the worker runs on an interval: somebody who has just
+	// connected an account shouldn't have to wait out a tick to find out whether
+	// it worked.
 	const syncMeetingsMutation = useMutation({
 		mutationFn: () => syncGoogleMeetings(),
-		onSuccess: async () => {
+		onSuccess: async (result) => {
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys.timeEntries],
 			});
-			toast.success("Meetings synced from Google Calendar");
+			// Four real outcomes, and only one of them is "Synced". Each engine is
+			// independently best-effort and each can be out of window, so collapsing
+			// the other three into a success tick would be a lie in three different
+			// ways — including the quiet one, where the pass ran and touched nothing
+			// because every window was closed.
+			if (result.stillRunning) {
+				toast.info("Still syncing — this is taking a while, carry on");
+			} else if (result.failed.length > 0) {
+				toast.warning(`Partly synced — ${result.failed.join(", ")} failed`);
+			} else if (result.ran.length === 0) {
+				toast.info("Nothing to sync right now");
+			} else {
+				toast.success("Synced");
+			}
 		},
 		onError: (error) => {
-			toast.error(error.message ?? "Could not sync meetings");
+			toast.error(error.message ?? "Could not sync");
 		},
 	});
 

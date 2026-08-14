@@ -7,7 +7,10 @@ import {
 	type TaskSystemKey,
 	timeEntry,
 } from "../db/schema/domain";
-import { syncedMeetingTombstone } from "../db/schema/settings";
+import {
+	commitFillTombstone,
+	syncedMeetingTombstone,
+} from "../db/schema/settings";
 import { splitProportionally, summarizeCommitMessages } from "../lib/day-plan";
 import { QUARTER_HOUR_SECONDS, snapToQuarterHour } from "../lib/time";
 import {
@@ -23,7 +26,6 @@ import type {
 import { ctxTimezone } from "./context";
 import { githubService } from "./github.service";
 import { calendarSource, commitSource } from "./ports";
-import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
@@ -68,6 +70,17 @@ export type DaySuggestion = {
 	meetingUrl: string | null;
 	calendarEventId: string | null;
 	commits: DaySuggestionCommit[];
+	/**
+	 * This one is only here because `includeDismissed` was asked for: the person
+	 * deleted it before, and the sync engines have been told to leave it alone.
+	 *
+	 * Carried per suggestion rather than inferred from the flag so the dialog can
+	 * offer these UNSELECTED. Everything else in this list arrives ticked, which
+	 * is right for a screen whose job is one-click assembly and wrong for a row
+	 * the person already said no to once — turning the switch on to find one
+	 * mistake should not silently re-add the four deletions that were deliberate.
+	 */
+	dismissed: boolean;
 };
 
 export type DayAssembly = {
@@ -81,6 +94,19 @@ export type DayAssembly = {
 		calendar: "ok" | "unavailable";
 		github: "ok" | "unavailable";
 	};
+	/**
+	 * How many suggestions this day is holding back because they were deleted
+	 * before — the count `includeDismissed` would add.
+	 *
+	 * Reported rather than left implicit so the dialog can offer the toggle only
+	 * on a day that has something behind it. A switch that is always visible and
+	 * usually does nothing teaches people to ignore it; one that appears saying
+	 * "2 you deleted" is an answer to a question they are already asking.
+	 *
+	 * Counted even when `includeDismissed` is on, so the toggle doesn't erase its
+	 * own reason for existing the moment it's used.
+	 */
+	dismissedCount: number;
 };
 
 const hasLinkedAccount = async (userId: string, providerId: string) => {
@@ -103,14 +129,17 @@ const findEngineTask = (ctx: Ctx, key: TaskSystemKey) =>
 	tasksService.findBySystemKey(ctx, key);
 
 export const dayAssemblyService = {
-	/** Read-only preview. Nothing is written except the recurring materializer,
-	 *  which every time-page read already runs. */
+	/** Read-only preview: nothing here writes. It used to run the recurring
+	 *  materializer first, back when every time-page read did too; the worker
+	 *  owns materialization now, and a preview that files entries as a side
+	 *  effect of being previewed is the exact thing we removed. A day whose
+	 *  recurring break has not materialized yet simply gets one proposed below,
+	 *  which is what the break branch has always done. */
 	suggest: async (
 		ctx: Ctx,
 		input: SuggestDayAssemblyInput,
 	): Promise<DayAssembly> => {
-		const { date } = input;
-		await recurringBlockRulesService.materializeRange(ctx, date, date);
+		const { date, includeDismissed = false } = input;
 
 		const tz = await ctxTimezone(ctx);
 
@@ -166,6 +195,8 @@ export const dayAssemblyService = {
 		const spokenFor = spokenForSeconds(existing);
 
 		const suggestions: DaySuggestion[] = [];
+		// Everything `includeDismissed` would add back, whether or not it is on.
+		let dismissedCount = 0;
 
 		// ── Meetings: calendar events not already logged ────────────────────────
 		let meetingSeconds = 0;
@@ -177,13 +208,23 @@ export const dayAssemblyService = {
 				),
 				columns: { calendarEventId: true },
 			});
-			const skipIds = new Set(tombstones.map((t) => t.calendarEventId));
-			for (const e of existing) {
-				if (e.calendarEventId) skipIds.add(e.calendarEventId);
-			}
+			// Two different reasons to leave an event out, and only one of them is a
+			// decision the toggle may override. A tombstoned meeting was deleted; a
+			// meeting already on an entry is simply here, and re-proposing it would
+			// offer a duplicate no matter what the toggle says.
+			const deletedIds = new Set(tombstones.map((t) => t.calendarEventId));
+			const loggedIds = new Set(
+				existing
+					.map((e) => e.calendarEventId)
+					.filter((id): id is string => id !== null),
+			);
 
 			for (const event of calendarEvents) {
-				if (skipIds.has(event.id)) continue;
+				if (loggedIds.has(event.id)) continue;
+				if (deletedIds.has(event.id)) {
+					dismissedCount++;
+					if (!includeDismissed) continue;
+				}
 				const raw = Math.floor(
 					(new Date(event.end).getTime() - new Date(event.start).getTime()) /
 						1000,
@@ -204,6 +245,7 @@ export const dayAssemblyService = {
 					meetingUrl: event.meetingUrl,
 					calendarEventId: event.id,
 					commits: [],
+					dismissed: deletedIds.has(event.id),
 				});
 			}
 		}
@@ -237,6 +279,11 @@ export const dayAssemblyService = {
 				meetingUrl: null,
 				calendarEventId: null,
 				commits: [],
+				// A recurring-break skip is a rule adjusted for one day, not a row
+				// lost, so the toggle deliberately doesn't cover it — see the note on
+				// `includeDismissed` in schema/day-assembly. This branch never
+				// suppresses anything, so nothing here is ever held back.
+				dismissed: false,
 			});
 		}
 
@@ -325,6 +372,10 @@ export const dayAssemblyService = {
 					fillsDay: false,
 					meetingUrl: null,
 					calendarEventId: null,
+					// Per-project commit work is derived fresh from the commits every
+					// time; there is no record of one having been deleted, so there is
+					// nothing here for the toggle to hold back.
+					dismissed: false,
 					commits: group.commits.map((c) => ({
 						projectGithubRepoId: c.projectGithubRepoId,
 						sha: c.sha,
@@ -349,20 +400,37 @@ export const dayAssemblyService = {
 		// hole. The number here is the estimate that pairs with the dialog's "~".
 		const unaccounted = remainingSeconds(remaining, workSeconds);
 		if (workTask && !hasFillBlock && unaccounted >= QUARTER_HOUR_SECONDS) {
-			suggestions.push({
-				key: "fill",
-				kind: "fill",
-				taskId: workTask.id,
-				taskName: workTask.name,
-				projectId: null,
-				projectName: null,
-				description: "Rest of day",
-				durationSeconds: unaccounted,
-				fillsDay: true,
-				meetingUrl: null,
-				calendarEventId: null,
-				commits: [],
+			// A day whose rest-of-day block the person deleted. The commit engine
+			// honours that tombstone and so does this — the assembler proposing the
+			// very thing the engine has been told not to rebuild is the same block
+			// coming back, just with an extra click in front of it.
+			const deletedFill = await db.query.commitFillTombstone.findFirst({
+				where: and(
+					eq(commitFillTombstone.organizationId, ctx.organizationId),
+					eq(commitFillTombstone.userId, ctx.userId),
+					eq(commitFillTombstone.date, date),
+				),
+				columns: { id: true },
 			});
+			if (deletedFill) dismissedCount++;
+
+			if (!deletedFill || includeDismissed) {
+				suggestions.push({
+					key: "fill",
+					kind: "fill",
+					taskId: workTask.id,
+					taskName: workTask.name,
+					projectId: null,
+					projectName: null,
+					description: "Rest of day",
+					durationSeconds: unaccounted,
+					fillsDay: true,
+					meetingUrl: null,
+					calendarEventId: null,
+					commits: [],
+					dismissed: !!deletedFill,
+				});
+			}
 		}
 
 		return {
@@ -375,6 +443,7 @@ export const dayAssemblyService = {
 					calendarLinked && calendarEvents !== null ? "ok" : "unavailable",
 				github: githubLinked ? "ok" : "unavailable",
 			},
+			dismissedCount,
 		};
 	},
 

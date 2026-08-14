@@ -20,13 +20,15 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import { timeEntryGithubCommit } from "../db/schema/github";
-import { syncedMeetingTombstone } from "../db/schema/settings";
 import {
-	clampToEnabledSince,
+	commitFillTombstone,
+	syncedMeetingTombstone,
+} from "../db/schema/settings";
+import {
+	automationWriteWindow,
 	enabledSinceKey,
 } from "../lib/automation-window";
 import { summarizeCommitMessages } from "../lib/day-plan";
-import { clampToMeetingSyncWindow } from "../lib/meeting-window";
 import {
 	addDaysToKey,
 	dayKeyInTz,
@@ -56,6 +58,7 @@ import type {
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { integrationSettingsService } from "./integration-settings.service";
+import { orgSettingsService } from "./org-settings.service";
 import { calendarSource, commitSource } from "./ports";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
@@ -136,10 +139,20 @@ const recomputeDayFill = async (ctx: Ctx, dateKey: string, tz: string) => {
 		.where(eq(timeEntry.id, fill.id));
 };
 
-// ── Integration write-on-read engines ──────────────────────────────────────
-// Both run inside listRange (like the recurring materializer) so opening the
-// time page reflects external state without an explicit "sync" click. Each is
-// best-effort and idempotent; a failure logs and leaves the page working.
+// ── Integration sync engines ───────────────────────────────────────────────
+// These used to run inside listRange, so the act of opening the time page — or
+// scrolling it — was what imported external state. That made a READ do writes
+// whose extent depended on which screen the person happened to be looking at,
+// which is how three engines ended up filing entries across months of
+// already-filed timesheets.
+//
+// They are scheduled jobs now (packages/core/src/jobs/automation-sync.ts),
+// driven by the worker, over the window in lib/automation-window. This host is
+// a long-lived Bun process, not a serverless function, so there is no reason
+// for a page load to be the trigger.
+//
+// Each is still best-effort and idempotent: a failure logs and the next tick
+// retries.
 
 // How a person recognises "the same meeting" when the calendar event id behind
 // it has changed: it's on the same day and either reads the same and runs the
@@ -166,22 +179,16 @@ const meetingIdentityKeys = (row: {
 // Under the duration-only entry model a meeting contributes its LENGTH, not its
 // slot — an event's start/end are read purely to derive a duration, which is
 // then snapped to the 15-minute grid every entry must sit on.
+//
+// `range` is the window the caller has already decided this engine may touch —
+// see lib/automation-window, and note that the delete-by-absence pass at the
+// bottom reads the same `range`, so narrowing the window narrows what can be
+// un-written as well as what can be written.
 const syncMeetingsForRange = async (
 	ctx: Ctx,
-	requestedRange: { from: string; to: string },
+	range: { from: string; to: string },
 	tz: string,
-	/** The day the switch was turned on; days before it are left alone. */
-	sinceKey: string | null,
 ) => {
-	// The forward window (lib/meeting-window) already stops browsing from pulling
-	// in months of history. This is the other end of it: a calendar full of last
-	// year's meetings should not land on the day someone first ticks the box.
-	//
-	// Everything below — including the delete-by-absence pass, which is the
-	// dangerous one — reads `range`, so the clamp is applied once here rather
-	// than at each use.
-	const range = clampToEnabledSince(requestedRange, sinceKey);
-	if (!range) return;
 	const events = await calendarSource().listEventsForRange(ctx, range);
 	// null => couldn't read the calendar (disconnected / revoked token). Bail
 	// without deleting, or we'd wipe synced entries we merely failed to fetch.
@@ -316,25 +323,37 @@ const syncMeetingsForRange = async (
 		);
 };
 
-// For every day the user pushed commits, ensure a "rest of day" fill block
-// exists so tracked time auto-expands to that day's working hours — the user
-// only logs meetings and breaks, the fill absorbs the remainder. The commits
-// themselves ride along: they name the block and attach to it as evidence, so
-// the entry can answer "what was this?" without the person retyping it.
+// For every day the user pushed commits: attach those commits to the work entry
+// that already describes the day, and — only if nothing does — file a "rest of
+// day" fill block so tracked time expands to that day's working hours.
+//
+// Two things this engine gets asked to do, and they are not the same thing:
+//
+//   1. ATTACH the commits. They are evidence: they name the block and let the
+//      entry answer "what was this?" without the person retyping it. This is
+//      almost free and is worth doing whenever there is anything to attach to.
+//   2. CREATE a block, when the day would otherwise go unaccounted for.
+//
+// They used to be welded together — the engine only ever wrote its own fill
+// block and only ever attached to that. So a person who had already logged their
+// day properly (a real Development entry per project, from Assemble my day or by
+// hand) got their commits attached to NOTHING: `computeDayFillSeconds` returned
+// <= 0 for a full day, the loop hit `continue`, and the evidence was dropped on
+// the floor. The commonest, best-behaved case was the one that lost data.
+//
+// So: resolve a target per project first (below), attach there, and treat the
+// fill block as the fallback it always was rather than the point.
+//
+// `range` is the window the caller has already decided this engine may touch —
+// see lib/automation-window, and note that this engine asks for
+// `completeDaysOnly`, because the block it writes is sized from the day's WHOLE
+// target and that number is only true once the day is over.
 const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
 	tz: string,
-	/** The day the switch was turned on; days before it are left alone. */
-	sinceKey: string | null,
 ) => {
-	// This engine had no window of any kind, unlike the calendar sync — it ran
-	// over whatever range was being read. Paging back through the Month view was
-	// enough to have it file a "rest of day" block onto every past day the person
-	// had ever pushed a commit on.
-	const syncable = clampToEnabledSince(range, sinceKey);
-	if (!syncable) return;
-	const days = await commitSource().listUserCommitsByDay(ctx, syncable);
+	const days = await commitSource().listUserCommitsByDay(ctx, range);
 	if (days.length === 0) return;
 
 	// Resolved by system key, not by display name. The old lookup matched
@@ -346,59 +365,140 @@ const syncCommitWorkTimeForRange = async (
 
 	const workingHours = await workingHoursService.list(ctx);
 	for (const { dayKey, commits } of days) {
-		const durationSeconds = await computeDayFillSeconds(
-			ctx,
-			dayKey,
-			tz,
-			workingHours,
-		);
-		// A day already accounted for in full gets no block. Inserting a 0-second
-		// one would just park an empty second "Development" row next to the entries
-		// that already filled the day.
-		if (durationSeconds <= 0) continue;
-
-		const description = summarizeCommitMessages(commits.map((c) => c.message));
-
-		const [created] = await db
-			.insert(timeEntry)
-			.values({
-				organizationId: ctx.organizationId,
-				userId: ctx.userId,
-				taskId: workTask.id,
-				projectId: null,
-				description,
-				date: dayKey,
-				durationSeconds,
+		// Every work entry already on the day, so the loop below can hand each
+		// project's commits to the entry that describes that project's work.
+		const dayEntries = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				eq(timeEntry.date, dayKey),
+				eq(timeEntry.taskId, workTask.id),
+			),
+			columns: {
+				id: true,
+				description: true,
+				projectId: true,
 				fillsDay: true,
-			})
-			// te_fill_day_uidx is the real guard against a second fill block on the
-			// day; silently skip rather than raise, since this is a best-effort
-			// background sync, not a user-initiated write.
-			.onConflictDoNothing({
-				target: [timeEntry.organizationId, timeEntry.userId, timeEntry.date],
-				where: sql`${timeEntry.fillsDay} = true`,
-			})
-			.returning();
+			},
+		});
 
-		// Nothing returned => the day already had a fill block: this engine's, from
-		// an earlier run, or one the person made by hand. Either way today's
-		// commits belong on it.
-		const entry =
-			created ??
-			(await db.query.timeEntry.findFirst({
-				where: and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					eq(timeEntry.userId, ctx.userId),
-					eq(timeEntry.date, dayKey),
-					eq(timeEntry.fillsDay, true),
-				),
-				columns: { id: true, description: true },
-			}));
-		if (!entry) continue;
+		const byProject = new Map(
+			dayEntries
+				.filter((e) => e.projectId !== null && !e.fillsDay)
+				.map((e) => [e.projectId as string, e]),
+		);
+		let fill = dayEntries.find((e) => e.fillsDay) ?? null;
+		// A project-less Development entry someone logged by hand. Not a fill block,
+		// but it is unmistakably "the work I did that day", so commits with no
+		// better home belong on it rather than on a new block competing with it.
+		const generalEntry =
+			dayEntries.find((e) => e.projectId === null && !e.fillsDay) ?? null;
 
-		// Only ever fill a blank description — a person's own wording outranks
-		// generated commit subjects, and this runs on every read.
-		if (!created && entry.description.trim() === "" && description) {
+		// Group by project so a commit lands on the entry for the project it was
+		// pushed to. Commits whose project has no entry fall through to the fill.
+		const commitsByProject = new Map<string, typeof commits>();
+		for (const commit of commits) {
+			const list = commitsByProject.get(commit.projectId) ?? [];
+			list.push(commit);
+			commitsByProject.set(commit.projectId, list);
+		}
+
+		const homeless = [...commitsByProject]
+			.filter(([projectId]) => !byProject.has(projectId))
+			.flatMap(([, group]) => group);
+
+		// The fill block is created only for commits that found no home, and only
+		// if the day still has room and nobody has said no.
+		if (homeless.length > 0 && !fill && !generalEntry) {
+			const durationSeconds = await computeDayFillSeconds(
+				ctx,
+				dayKey,
+				tz,
+				workingHours,
+			);
+			// A day already accounted for in full gets no block. Inserting a
+			// 0-second one would just park an empty second "Development" row next to
+			// the entries that already filled the day. Note this no longer skips the
+			// day: the attach pass below still runs, which is the fix described
+			// above.
+			if (durationSeconds > 0 && !(await hasCommitFillTombstone(ctx, dayKey))) {
+				const [created] = await db
+					.insert(timeEntry)
+					.values({
+						organizationId: ctx.organizationId,
+						userId: ctx.userId,
+						taskId: workTask.id,
+						projectId: null,
+						description: summarizeCommitMessages(
+							homeless.map((c) => c.message),
+						),
+						date: dayKey,
+						durationSeconds,
+						fillsDay: true,
+					})
+					// te_fill_day_uidx is the real guard against a second fill block on
+					// the day; silently skip rather than raise, since this is a
+					// best-effort background sync, not a user-initiated write. It also
+					// covers the race with a concurrent "Sync now".
+					.onConflictDoNothing({
+						target: [timeEntry.organizationId, timeEntry.userId, timeEntry.date],
+						where: sql`${timeEntry.fillsDay} = true`,
+					})
+					.returning({
+						id: timeEntry.id,
+						description: timeEntry.description,
+						projectId: timeEntry.projectId,
+						fillsDay: timeEntry.fillsDay,
+					});
+
+				fill =
+					created ??
+					// Nothing returned => something else filed the day's fill block
+					// between the read above and this insert. Attach to theirs.
+					(await db.query.timeEntry.findFirst({
+						where: and(
+							eq(timeEntry.organizationId, ctx.organizationId),
+							eq(timeEntry.userId, ctx.userId),
+							eq(timeEntry.date, dayKey),
+							eq(timeEntry.fillsDay, true),
+						),
+						columns: {
+							id: true,
+							description: true,
+							projectId: true,
+							fillsDay: true,
+						},
+					})) ??
+					null;
+			}
+		}
+
+		// Where each project's commits go, best home first. Null means the day has
+		// nothing to attach to — a full day with no work entry on it — and the
+		// commits are simply left for a later run, once there is.
+		const fallback = fill ?? generalEntry;
+		const attachments = new Map<string, typeof commits>();
+		for (const [projectId, group] of commitsByProject) {
+			const target = byProject.get(projectId) ?? fallback;
+			if (!target) continue;
+			const existing = attachments.get(target.id) ?? [];
+			existing.push(...group);
+			attachments.set(target.id, existing);
+		}
+		if (attachments.size === 0) continue;
+
+		// Only ever fill a BLANK description. A person's own wording outranks
+		// generated commit subjects — and now that this can write to an entry the
+		// person made themselves, that rule is doing real work rather than guarding
+		// against the engine overwriting its own output.
+		const blankDescribable = dayEntries
+			.concat(fill && !dayEntries.some((e) => e.id === fill.id) ? [fill] : [])
+			.filter((e) => e.description.trim() === "" && attachments.has(e.id));
+		for (const entry of blankDescribable) {
+			const description = summarizeCommitMessages(
+				(attachments.get(entry.id) ?? []).map((c) => c.message),
+			);
+			if (!description) continue;
 			await db
 				.update(timeEntry)
 				.set({ description, updatedAt: new Date() })
@@ -408,19 +508,35 @@ const syncCommitWorkTimeForRange = async (
 		await db
 			.insert(timeEntryGithubCommit)
 			.values(
-				commits.map((commit) => ({
-					timeEntryId: entry.id,
-					projectGithubRepoId: commit.projectGithubRepoId,
-					sha: commit.sha,
-					message: commit.message,
-					authorLogin: commit.authorLogin,
-					committedAt: commit.committedAt,
-					url: commit.url,
-				})),
+				[...attachments].flatMap(([timeEntryId, group]) =>
+					group.map((commit) => ({
+						timeEntryId,
+						projectGithubRepoId: commit.projectGithubRepoId,
+						sha: commit.sha,
+						message: commit.message,
+						authorLogin: commit.authorLogin,
+						committedAt: commit.committedAt,
+						url: commit.url,
+					})),
+				),
 			)
 			// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
 			.onConflictDoNothing();
 	}
+};
+
+/** Did this person delete the day's rest-of-day block? See the table comment in
+ *  db/schema/settings.ts — the engine's way of being told no. */
+const hasCommitFillTombstone = async (ctx: Ctx, dateKey: string) => {
+	const row = await db.query.commitFillTombstone.findFirst({
+		where: and(
+			eq(commitFillTombstone.organizationId, ctx.organizationId),
+			eq(commitFillTombstone.userId, ctx.userId),
+			eq(commitFillTombstone.date, dateKey),
+		),
+		columns: { id: true },
+	});
+	return !!row;
 };
 
 /** Project ids the given person is assigned to — used to decide whether a PM may
@@ -440,50 +556,17 @@ const projectIdsForUser = async (ctx: Ctx, userId: string) => {
 };
 
 export const timeEntriesService = {
+	// Reading is reading. This used to run the recurring materializer and both
+	// integration sync engines first, so which entries got created depended on
+	// which screen was open — see the note above the engines. The worker owns
+	// that now.
+	//
+	// The one write left below is not an import: a fill block's duration is
+	// derived from what else the day holds, so it is recomputed (and dropped when
+	// squeezed to nothing) against the rows just read. That keeps a value
+	// consistent rather than inventing an entry.
 	listRange: async (ctx: Ctx, range: { from: string; to: string }) => {
-		await recurringBlockRulesService.materializeRange(
-			ctx,
-			range.from,
-			range.to,
-		);
-
 		const tz = await ctxTimezone(ctx);
-
-		try {
-			const settings = await integrationSettingsService.get(ctx);
-			if (settings.googleAutoSyncMeetings) {
-				// Only the part of the requested range the sync window covers. Reading
-				// a month is not a request to import a month of meetings — see
-				// lib/meeting-window. Outside the window this is simply skipped, and
-				// the entries already imported there are still read and shown.
-				const syncable = clampToMeetingSyncWindow(
-					range,
-					dayKeyInTz(new Date(), tz),
-				);
-				if (syncable) {
-					await syncMeetingsForRange(
-						ctx,
-						syncable,
-						tz,
-						enabledSinceKey(settings.googleAutoSyncMeetingsSince, tz),
-					).catch((error) =>
-						console.error("[time-entries] meeting sync failed", error),
-					);
-				}
-			}
-			if (settings.githubSyncCommitsAsWorkTime) {
-				await syncCommitWorkTimeForRange(
-					ctx,
-					range,
-					tz,
-					enabledSinceKey(settings.githubSyncCommitsAsWorkTimeSince, tz),
-				).catch((error) =>
-					console.error("[time-entries] commit work-time sync failed", error),
-				);
-			}
-		} catch (error) {
-			console.error("[time-entries] integration sync skipped", error);
-		}
 
 		const rows = await db.query.timeEntry.findMany({
 			where: and(
@@ -561,24 +644,139 @@ export const timeEntriesService = {
 		}));
 	},
 
-	/** Background-job entrypoint: import a user's meetings for a fixed window,
-	 *  without the rest of listRange's read work. */
-	// The background job's and the "Sync now" button's way in. It reads the
-	// settings row itself rather than taking the floor as an argument: the job
-	// selects its targets in SQL and has never had the row in hand, and a floor
-	// that a caller can forget to pass is not a floor.
+	/**
+	 * The meeting engine on its own, over exactly the window it is handed.
+	 *
+	 * A TEST SEAM, and the only caller is `services/meeting-sync.test.ts`.
+	 * Production always goes through `runAutomationsForUser` below, which is where
+	 * the window policy lives — this entrypoint deliberately has none, so calling
+	 * it from a request or a job would reintroduce exactly the unbounded reach
+	 * that lib/automation-window exists to prevent. Kept rather than folded into
+	 * the test because the reissued-event dedup and delete-by-absence passes are
+	 * the densest logic here and are worth driving over a fixed, legible range.
+	 */
 	syncMeetingsForUser: async (
 		ctx: Ctx,
 		range: { from: string; to: string },
 	) => {
 		const tz = await ctxTimezone(ctx);
-		const settings = await integrationSettingsService.get(ctx);
-		await syncMeetingsForRange(
-			ctx,
-			range,
-			tz,
-			enabledSinceKey(settings.googleAutoSyncMeetingsSince, tz),
-		);
+		await syncMeetingsForRange(ctx, range, tz);
+	},
+
+	/**
+	 * One person's automations, in the order they depend on each other. This is
+	 * what the worker calls per (org, user) — see jobs/automation-sync.ts — and
+	 * what the manual "Sync now" button calls for one person on demand.
+	 *
+	 * The order is load-bearing. A commit fill block claims "the rest of the
+	 * day", and its duration is computed from what the day already holds, so the
+	 * recurring break has to exist before it is sized. Running them the other way
+	 * round produces a fill block that is half an hour too long and only
+	 * self-corrects on the next read.
+	 *
+	 * Each engine gets its own window because each has its own switch, and the
+	 * switches were flipped on different days. Every engine is independently
+	 * best-effort: a revoked Google token must not cost this person their
+	 * recurring blocks.
+	 *
+	 * The three outcomes are reported separately because they are three different
+	 * answers. `skipped` in particular is not a quiet success: an engine whose
+	 * window came back null did NOTHING, and folding that into `ran` is what let
+	 * the "Sync now" button say "Synced" after a pass that touched nothing at all.
+	 */
+	runAutomationsForUser: async (
+		ctx: Ctx,
+		opts: { now?: Date; tz?: string } = {},
+	): Promise<{ ran: string[]; skipped: string[]; failed: string[] }> => {
+		const tz = opts.tz ?? (await ctxTimezone(ctx));
+		const todayKey = dayKeyInTz(opts.now ?? new Date(), tz);
+		const ran: string[] = [];
+		const skipped: string[] = [];
+		const failed: string[] = [];
+
+		const attempt = async (name: string, work: () => Promise<void>) => {
+			try {
+				await work();
+				ran.push(name);
+			} catch (error) {
+				failed.push(name);
+				console.error(`[automations] ${name} failed`, {
+					organizationId: ctx.organizationId,
+					userId: ctx.userId,
+					error,
+				});
+			}
+		};
+
+		// Read once and apply to all three engines: the lock is a property of the
+		// org's books, not of any one integration. A failure to read it must not
+		// be interpreted as "unlocked", so it fails the whole pass rather than
+		// silently writing into a closed month.
+		let lockedThrough: string | null;
+		try {
+			lockedThrough = (await orgSettingsService.get(ctx))
+				.automationLockedThrough;
+		} catch (error) {
+			console.error("[automations] lock read failed", error);
+			return { ran, skipped, failed: [...failed, "org-settings"] };
+		}
+
+		// Recurring blocks carry no integration switch: each rule holds its own
+		// `activeSince`, which materializeRange applies per rule.
+		const blockWindow = automationWriteWindow(todayKey, { lockedThrough });
+		if (blockWindow) {
+			await attempt("recurring-blocks", () =>
+				recurringBlockRulesService.materializeRange(
+					ctx,
+					blockWindow.from,
+					blockWindow.to,
+				),
+			);
+		} else {
+			skipped.push("recurring-blocks");
+		}
+
+		let settings: Awaited<ReturnType<typeof integrationSettingsService.get>>;
+		try {
+			settings = await integrationSettingsService.get(ctx);
+		} catch (error) {
+			console.error("[automations] settings read failed", error);
+			return { ran, skipped, failed: [...failed, "integration-settings"] };
+		}
+
+		if (settings.googleAutoSyncMeetings) {
+			const window = automationWriteWindow(todayKey, {
+				since: enabledSinceKey(settings.googleAutoSyncMeetingsSince, tz),
+				lockedThrough,
+			});
+			if (window) {
+				await attempt("meetings", () => syncMeetingsForRange(ctx, window, tz));
+			} else {
+				skipped.push("meetings");
+			}
+		}
+
+		if (settings.githubSyncCommitsAsWorkTime) {
+			const window = automationWriteWindow(todayKey, {
+				since: enabledSinceKey(settings.githubSyncCommitsAsWorkTimeSince, tz),
+				lockedThrough,
+				// The one engine that may only write to days that are over: its block
+				// is sized from the day's WHOLE working target, which is a claim about
+				// a day that has been worked. See AutomationBounds.completeDaysOnly.
+				// Today is still reachable on demand — Assemble my day proposes the
+				// same fill without writing it.
+				completeDaysOnly: true,
+			});
+			if (window) {
+				await attempt("commit-work-time", () =>
+					syncCommitWorkTimeForRange(ctx, window, tz),
+				);
+			} else {
+				skipped.push("commit-work-time");
+			}
+		}
+
+		return { ran, skipped, failed };
 	},
 
 	create: async (ctx: Ctx, input: CreateTimeEntryInput) => {
@@ -639,6 +837,20 @@ export const timeEntriesService = {
 				if (!row) {
 					throw new Error("A work-time block already exists for this day");
 				}
+				// Deliberately asking for a rest-of-day block retracts an earlier "no"
+				// on this day. Without this, deleting the block once would suppress the
+				// engine on that day forever, including after the person changed their
+				// mind and made one by hand — a tombstone outliving the decision it
+				// recorded.
+				await tx
+					.delete(commitFillTombstone)
+					.where(
+						and(
+							eq(commitFillTombstone.organizationId, ctx.organizationId),
+							eq(commitFillTombstone.userId, ctx.userId),
+							eq(commitFillTombstone.date, input.date),
+						),
+					);
 			} else if (input.calendarEventId) {
 				// Manually attaching an event meeting-sync may already have imported
 				// would otherwise hit te_calendar_event_uidx and throw a raw 500. Take
@@ -933,6 +1145,21 @@ export const timeEntriesService = {
 						organizationId: ctx.organizationId,
 						userId: ctx.userId,
 						calendarEventId: existing.calendarEventId,
+					})
+					.onConflictDoNothing();
+			}
+
+			// And so must deleting the day's rest-of-day block. The commit engine's
+			// only guard was the one-fill-per-day index, which the deletion itself
+			// clears — so without this the next sweep files another one, twenty
+			// minutes later, with nobody watching.
+			if (existing?.fillsDay) {
+				await tx
+					.insert(commitFillTombstone)
+					.values({
+						organizationId: ctx.organizationId,
+						userId: ctx.userId,
+						date: existing.date,
 					})
 					.onConflictDoNothing();
 			}

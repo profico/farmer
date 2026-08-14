@@ -1,6 +1,8 @@
 // Minimal Slack Web API client. Only a handful of methods are needed, so this is
 // a thin fetch wrapper rather than a dependency on @slack/web-api.
 
+import { externalFetch } from "./http";
+
 const SLACK_API = "https://slack.com/api";
 
 /** Everything the bot needs: DM people (chat:write, im:write) and resolve them
@@ -33,7 +35,7 @@ const call = async <T>(
 	method: string,
 	body: Record<string, unknown>,
 ): Promise<SlackResponse<T> | SlackError> => {
-	const response = await fetch(`${SLACK_API}/${method}`, {
+	const response = await externalFetch(`${SLACK_API}/${method}`, {
 		method: "POST",
 		headers: {
 			Authorization: `Bearer ${botToken}`,
@@ -75,7 +77,7 @@ export const slackClient = {
 			throw new Error("SLACK_CLIENT_ID / SLACK_CLIENT_SECRET not configured");
 		}
 
-		const response = await fetch(`${SLACK_API}/oauth.v2.access`, {
+		const response = await externalFetch(`${SLACK_API}/oauth.v2.access`, {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body: new URLSearchParams({

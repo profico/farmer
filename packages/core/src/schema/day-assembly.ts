@@ -4,6 +4,23 @@ const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
 export const suggestDayAssemblyInput = z.object({
 	date: dateKey,
+	/**
+	 * Propose things this person previously deleted, too.
+	 *
+	 * Deleting a synced meeting or a rest-of-day block records a tombstone, which
+	 * is what stops the sync engines putting it straight back. That is the right
+	 * default and a dead end when the deletion was a mistake or a change of mind:
+	 * the block is gone, the engine has been told never to rebuild it, and the
+	 * assembler — the one screen whose whole job is "offer me what's missing" —
+	 * was the one place that agreed not to mention it.
+	 *
+	 * So it's a toggle on the dialog rather than a policy. Off by default, because
+	 * a deletion normally means what it says.
+	 *
+	 * Recurring-break skips are deliberately NOT covered: a skipped break is a
+	 * rule you adjusted for that day, not a row you lost.
+	 */
+	includeDismissed: z.boolean().optional(),
 });
 export type SuggestDayAssemblyInput = z.infer<typeof suggestDayAssemblyInput>;
 

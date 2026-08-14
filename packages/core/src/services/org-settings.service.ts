@@ -8,9 +8,16 @@ export type OrgSettings = {
 	/** N working days without any entry before a person is flagged (PRD §8,
 	 *  default 3). The one compliance knob that IS configurable. */
 	complianceMissingDays: number;
+	/** yyyy-MM-dd, or null for no lock. The automations may not write on or
+	 *  before this day — see the column comment in schema/settings.ts, and
+	 *  lib/automation-window, which is where it is enforced. */
+	automationLockedThrough: string | null;
 };
 
-const DEFAULTS: OrgSettings = { complianceMissingDays: 3 };
+const DEFAULTS: OrgSettings = {
+	complianceMissingDays: 3,
+	automationLockedThrough: null,
+};
 
 // Deliberately hardcoded and NOT settings (PRD §8): the behind-pace threshold,
 // the reminder days, the 15-minute entry granularity and the close lifecycle.
@@ -28,6 +35,8 @@ export const orgSettingsService = {
 		return {
 			complianceMissingDays:
 				row?.complianceMissingDays ?? DEFAULTS.complianceMissingDays,
+			automationLockedThrough:
+				row?.automationLockedThrough ?? DEFAULTS.automationLockedThrough,
 		};
 	},
 
@@ -39,12 +48,19 @@ export const orgSettingsService = {
 				organizationId: ctx.organizationId,
 				complianceMissingDays:
 					patch.complianceMissingDays ?? DEFAULTS.complianceMissingDays,
+				automationLockedThrough:
+					patch.automationLockedThrough ?? DEFAULTS.automationLockedThrough,
 			})
 			.onConflictDoUpdate({
 				target: orgSettings.organizationId,
 				set: {
 					...(patch.complianceMissingDays !== undefined
 						? { complianceMissingDays: patch.complianceMissingDays }
+						: {}),
+					// `undefined` means "not in this patch"; `null` is a real value here
+					// and means "clear the lock", so the two cannot be collapsed.
+					...(patch.automationLockedThrough !== undefined
+						? { automationLockedThrough: patch.automationLockedThrough }
 						: {}),
 					updatedAt: new Date(),
 				},

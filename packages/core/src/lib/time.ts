@@ -289,6 +289,19 @@ export const addDaysToKey = (dateStr: string, amount: number): string => {
 	return utcDateToKey(date);
 };
 
+// A day key that names a day that exists. The shape regex the schemas use is not
+// enough on its own: "2026-13-45" matches it, and every consumer downstream
+// compares day keys as STRINGS, so an impossible date doesn't throw anywhere —
+// it just sorts after every real one. That is harmless in a filter and not
+// harmless in `automationLockedThrough`, where it silently locks the automations
+// forever.
+//
+// Round-tripping through the date is the check: JS rolls 2026-13-45 over into
+// 2027-02-14, so a key that survives the trip unchanged is a real day.
+export const isValidDayKey = (dateStr: string): boolean =>
+	/^\d{4}-\d{2}-\d{2}$/.test(dateStr) &&
+	utcDateToKey(keyToUtcDate(dateStr)) === dateStr;
+
 // Count working days in the inclusive [from, to] range: days whose weekday is
 // in `enabledWeekdays` (0=Sun..6=Sat, matching memberWorkingHoursDay.dayOfWeek)
 // and whose key is not in `holidayKeys`. Pure — the caller supplies the member's

@@ -15,6 +15,11 @@
  * hybrid asset loading (preload small files into memory, stream large ones on
  * demand), ETag/304, gzip, and cache headers — all env-configurable.
  *
+ * It also starts the background schedulers in-process. Those live in
+ * @farmer/core/jobs (not here) so they can run as a standalone worker too —
+ * `bun run worker` from packages/core, which is what runs them under `vite dev`.
+ * Their env vars are documented there.
+ *
  * Environment Variables:
  *
  * PORT (number)
@@ -61,6 +66,9 @@
  */
 
 import path from "node:path";
+// Type-only, so this erases at runtime and the postgres client is still only
+// loaded by the deferred import inside startBackgroundSchedulers().
+import type { SchedulerHandle } from "@farmer/core/jobs";
 
 // Configuration
 const SERVER_PORT = Number(process.env.PORT ?? 3000);
@@ -579,22 +587,39 @@ async function initializeServer() {
 	log.success(`Server listening on http://localhost:${String(server.port)}`);
 
 	// In-process background schedulers, run on timers so work happens without a
-	// user present: the Google Calendar → time-block meeting sync, and the
-	// end-of-day "forgot to log" reminder. Fire-and-forget: a scheduler failure
-	// must never take the HTTP server down with it.
-	const schedulersHandle = startSchedulers().catch((error: unknown) => {
-		log.error(`Failed to start background schedulers: ${String(error)}`);
-		return [] as SchedulerHandle[];
-	});
+	// user present: the automation sweep (recurring blocks, calendar meetings,
+	// commit work-time blocks) and the reminder/alert jobs. The scheduler itself
+	// lives in @farmer/core/jobs so it can also run as its own process — see
+	// `bun run worker` there, which is how these run under `vite dev`.
+	//
+	// Fire-and-forget: a scheduler failure must never take the HTTP server down
+	// with it. Set AUTOMATION_SYNC_ENABLED=false (and friends) here if you run a
+	// separate worker container.
+	const schedulersHandle = startBackgroundSchedulers().catch(
+		(error: unknown) => {
+			log.error(`Failed to start background schedulers: ${String(error)}`);
+			return [] as SchedulerHandle[];
+		},
+	);
 
 	setupGracefulShutdown(server, schedulersHandle);
 }
 
 /**
- * Wire SIGTERM/SIGINT to a clean shutdown: stop accepting new HTTP
- * connections, stop the meeting-sync scheduler's timers, let any in-flight
- * sync tick finish (bounded by a grace period so a stuck tick can't hang
- * the process forever), then exit.
+ * Start the schedulers from @farmer/core/jobs.
+ *
+ * Deferred import: pulling in @farmer/core loads the postgres client, so keep
+ * it out of module scope and only touch the DB layer once the server is up.
+ */
+async function startBackgroundSchedulers(): Promise<SchedulerHandle[]> {
+	const { startSchedulers } = await import("@farmer/core/jobs");
+	return startSchedulers({ info: log.info, warn: log.warning, error: log.error });
+}
+
+/**
+ * Wire SIGTERM/SIGINT to a clean shutdown: stop the schedulers' timers, let any
+ * in-flight tick finish (bounded by a grace period so a stuck tick can't hang
+ * the process forever), stop accepting HTTP connections, then exit.
  */
 function setupGracefulShutdown(
 	server: ReturnType<typeof Bun.serve>,
@@ -608,29 +633,13 @@ function setupGracefulShutdown(
 		shuttingDown = true;
 		log.header(`Received ${signal}, shutting down gracefully...`);
 
-		// Stop every scheduler's timers first so no new tick starts, then wait
-		// (bounded) for any ticks already in flight to finish.
 		try {
-			const handles = await schedulersHandle;
-			if (handles.length > 0) {
-				for (const handle of handles) handle.stopTimers();
-				log.info("Background scheduler timers stopped");
-
-				const graceTimeout = new Promise<void>((resolve) => {
-					setTimeout(resolve, SHUTDOWN_GRACE_MS).unref();
-				});
-				await Promise.race([
-					Promise.all(handles.map((h) => h.waitUntilIdle())),
-					graceTimeout,
-				]);
-				if (handles.some((h) => h.isRunning())) {
-					log.warning(
-						"A scheduler tick is still in progress after grace period; continuing shutdown anyway",
-					);
-				} else {
-					log.info("Scheduler ticks (if any) finished cleanly");
-				}
-			}
+			const { stopSchedulers } = await import("@farmer/core/jobs");
+			await stopSchedulers(await schedulersHandle, SHUTDOWN_GRACE_MS, {
+				info: log.info,
+				warn: log.warning,
+				error: log.error,
+			});
 		} catch (error) {
 			log.error(
 				`Error while stopping background schedulers: ${String(error)}`,
@@ -654,176 +663,6 @@ function setupGracefulShutdown(
 	process.on("SIGINT", () => {
 		void shutdown("SIGINT");
 	});
-}
-
-interface SchedulerHandle {
-	/** Clear the startup timeout and the recurring interval; no new ticks fire after this. */
-	stopTimers: () => void;
-	/** True while a tick is actively running. */
-	isRunning: () => boolean;
-	/** Resolves once the in-flight tick (if any) completes; resolves immediately otherwise. */
-	waitUntilIdle: () => Promise<void>;
-}
-
-interface SchedulerConfig {
-	/** Human name used in log lines, e.g. "Meeting sync". */
-	name: string;
-	/** Env var set to "false" to disable this scheduler (default: enabled). */
-	enabledEnv: string;
-	/** Env var holding the interval in minutes. */
-	intervalEnv: string;
-	/** Interval used when intervalEnv is unset. */
-	defaultIntervalMinutes: number;
-	/** One tick of work; the returned string is logged as the run summary. */
-	run: () => Promise<string>;
-}
-
-/**
- * Start the in-process background schedulers.
- *
- * Self-hosted here as a single long-lived Bun process, so an interval loop is
- * the whole mechanism — no external cron needed. Every job is idempotent by
- * construction (the meeting sync uses onConflictDoNothing + tombstones; the log
- * reminder guards on notificationSettings.lastLogReminderDay; the Slack reminder
- * claims a row in slack_reminder_log before each send), so a missed or
- * overlapping tick is harmless.
- *
- * Environment Variables:
- *   MEETING_SYNC_ENABLED             - "false" to disable meeting sync (default: on)
- *   MEETING_SYNC_INTERVAL_MINUTES    - minutes between meeting syncs (default: 20)
- *   LOG_REMINDERS_ENABLED            - "false" to disable log reminders (default: on)
- *   LOG_REMINDERS_INTERVAL_MINUTES   - minutes between reminder sweeps (default: 30)
- *   SLACK_REMINDERS_ENABLED          - "false" to disable Slack reminders (default: on)
- *   SLACK_REMINDERS_INTERVAL_MINUTES - minutes between Slack sweeps (default: 60)
- *   BUDGET_ALERTS_ENABLED            - "false" to disable budget burn alerts (default: on)
- *   BUDGET_ALERTS_INTERVAL_MINUTES   - minutes between budget sweeps (default: 60)
- *
- * NOTE: assumes a single instance. If ever scaled to multiple replicas, each
- * runs its own loop — harmless (idempotent) but redundant; move to a single
- * external cron or a leader lock at that point.
- */
-async function startSchedulers(): Promise<SchedulerHandle[]> {
-	// Deferred import: pulling in @farmer/core loads the postgres client, so keep
-	// it out of module scope and only touch the DB layer once the server is up.
-	const {
-		runMeetingSyncOnce,
-		runLogRemindersOnce,
-		runSlackRemindersOnce,
-		runBudgetAlertsOnce,
-	} = await import("@farmer/core/jobs");
-
-	const handles = await Promise.all([
-		startIntervalScheduler({
-			name: "Meeting sync",
-			enabledEnv: "MEETING_SYNC_ENABLED",
-			intervalEnv: "MEETING_SYNC_INTERVAL_MINUTES",
-			defaultIntervalMinutes: 20,
-			run: async () => {
-				const s = await runMeetingSyncOnce();
-				return `${String(s.synced)}/${String(s.eligible)} users synced, ${String(s.failed)} failed`;
-			},
-		}),
-		startIntervalScheduler({
-			name: "Log reminders",
-			enabledEnv: "LOG_REMINDERS_ENABLED",
-			intervalEnv: "LOG_REMINDERS_INTERVAL_MINUTES",
-			defaultIntervalMinutes: 30,
-			run: async () => {
-				const s = await runLogRemindersOnce();
-				return `${String(s.sent)} sent, ${String(s.skipped)} skipped, ${String(s.failed)} failed (${String(s.eligible)} members)`;
-			},
-		}),
-		startIntervalScheduler({
-			name: "Slack reminders",
-			enabledEnv: "SLACK_REMINDERS_ENABLED",
-			intervalEnv: "SLACK_REMINDERS_INTERVAL_MINUTES",
-			// Hourly is plenty: the job itself decides which day and hour it may
-			// send on, so a finer interval would only re-check the same answer.
-			defaultIntervalMinutes: 60,
-			run: async () => {
-				const s = await runSlackRemindersOnce();
-				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
-			},
-		}),
-		startIntervalScheduler({
-			name: "Budget alerts",
-			enabledEnv: "BUDGET_ALERTS_ENABLED",
-			intervalEnv: "BUDGET_ALERTS_INTERVAL_MINUTES",
-			// An hour budget moves at the speed of people logging time; hourly is
-			// far more resolution than a "you're at 80%" note needs.
-			defaultIntervalMinutes: 60,
-			run: async () => {
-				const s = await runBudgetAlertsOnce();
-				return `${String(s.alerts)} alerts to ${String(s.recipients)} recipients (${String(s.projects)} budgeted projects)`;
-			},
-		}),
-	]);
-
-	return handles.filter((h): h is SchedulerHandle => h !== null);
-}
-
-function startIntervalScheduler(
-	config: SchedulerConfig,
-): SchedulerHandle | null {
-	if ((process.env[config.enabledEnv] ?? "true") !== "true") {
-		log.info(`${config.name} scheduler disabled (${config.enabledEnv})`);
-		return null;
-	}
-
-	const intervalMinutes = Number(
-		process.env[config.intervalEnv] ?? config.defaultIntervalMinutes,
-	);
-	if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
-		log.warning(
-			`Invalid ${config.intervalEnv} (${String(process.env[config.intervalEnv])}); ${config.name} scheduler not started`,
-		);
-		return null;
-	}
-
-	let running = false;
-	let idleWaiters: Array<() => void> = [];
-	const tick = async () => {
-		if (running) {
-			log.warning(
-				`${config.name}: previous run still in progress, skipping tick`,
-			);
-			return;
-		}
-		running = true;
-		try {
-			const summary = await config.run();
-			log.info(`${config.name}: ${summary}`);
-		} catch (error) {
-			log.error(`${config.name} run failed: ${String(error)}`);
-		} finally {
-			running = false;
-			const waiters = idleWaiters;
-			idleWaiters = [];
-			for (const resolve of waiters) resolve();
-		}
-	};
-
-	// First pass shortly after boot (don't compete with startup), then on the
-	// interval. unref() so these timers never keep the process alive on their own.
-	const startupTimer = setTimeout(tick, 15_000).unref();
-	const intervalTimer = setInterval(tick, intervalMinutes * 60_000).unref();
-	log.success(
-		`${config.name} scheduler started (every ${String(intervalMinutes)} min)`,
-	);
-
-	return {
-		stopTimers: () => {
-			clearTimeout(startupTimer);
-			clearInterval(intervalTimer);
-		},
-		isRunning: () => running,
-		waitUntilIdle: () =>
-			running
-				? new Promise<void>((resolve) => {
-						idleWaiters.push(resolve);
-					})
-				: Promise.resolve(),
-	};
 }
 
 // Initialize the server

@@ -53,7 +53,7 @@ Both integrations are opt-in per member under Settings → Integrations, but the
 
 ## Deploying
 
-`vite build` emits a fetch handler with nothing to serve it, so production runs on `apps/web/server.ts` — a Bun server that serves the build, preloads static assets, and runs the calendar-sync scheduler in-process. The scheduler assumes a single instance; if you run replicas, keep `MEETING_SYNC_ENABLED=true` on exactly one. The `Dockerfile` at the repo root builds all of this:
+`vite build` emits a fetch handler with nothing to serve it, so production runs on `apps/web/server.ts` — a Bun server that serves the build, preloads static assets, and runs the background jobs in-process. Those jobs are what import your meetings and commits and materialize recurring blocks; nothing syncs on page load. The scheduler assumes a single instance, so if you run replicas keep `AUTOMATION_SYNC_ENABLED=true` on exactly one — or set it to `false` everywhere and run `bun run worker` (from `packages/core`) as its own container. The `Dockerfile` at the repo root builds all of this:
 
 ```bash
 docker build -t farmer .

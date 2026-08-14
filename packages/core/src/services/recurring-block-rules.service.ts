@@ -5,6 +5,7 @@ import {
 	recurringBlockRuleSkip,
 	timeEntry,
 } from "../db/schema/domain";
+import { automationWriteWindow } from "../lib/automation-window";
 import {
 	datesBetween,
 	dayKeyInTz,
@@ -19,6 +20,7 @@ import {
 } from "../schema/recurring-block-rules";
 import { ctxTimezone } from "./context";
 import { assertTaskAvailable } from "./guards";
+import { orgSettingsService } from "./org-settings.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
 
@@ -34,6 +36,37 @@ const parseRuleDuration = (input: string): number => {
 		throw new Error("Duration must be in 15-minute steps");
 	}
 	return seconds;
+};
+
+/**
+ * Bring this person's blocks up to date right now, over the standard automation
+ * window.
+ *
+ * The worker materializes on a timer, which is right for the steady state and
+ * wrong for the moment somebody creates a rule: waiting out a tick to see
+ * today's break appear reads as a broken switch. So the mutations below call
+ * this — a user action explicitly asking for these blocks, not a page load
+ * quietly doing it. Cheap and purely local: no network, no external API.
+ *
+ * Best-effort. Failing to materialize must never fail the rule that was just
+ * saved; the next tick picks it up.
+ */
+const materializeNow = async (ctx: Ctx) => {
+	try {
+		const tz = await ctxTimezone(ctx);
+		const { automationLockedThrough } = await orgSettingsService.get(ctx);
+		const window = automationWriteWindow(dayKeyInTz(new Date(), tz), {
+			lockedThrough: automationLockedThrough,
+		});
+		if (!window) return;
+		await recurringBlockRulesService.materializeRange(
+			ctx,
+			window.from,
+			window.to,
+		);
+	} catch (error) {
+		console.error("[recurring-blocks] immediate materialize failed", error);
+	}
 };
 
 export const recurringBlockRulesService = {
@@ -68,6 +101,7 @@ export const recurringBlockRulesService = {
 			})
 			.returning();
 		if (!created) throw new Error("Failed to create recurring block rule");
+		await materializeNow(ctx);
 		return created;
 	},
 
@@ -102,6 +136,7 @@ export const recurringBlockRulesService = {
 				.set({ active: true, activeSince: now, updatedAt: now })
 				.where(eq(recurringBlockRule.id, existing.id))
 				.returning();
+			await materializeNow(ctx);
 			return resumed ?? existing;
 		}
 
@@ -119,6 +154,7 @@ export const recurringBlockRulesService = {
 			})
 			.returning();
 		if (!created) throw new Error("Failed to create the break block");
+		await materializeNow(ctx);
 		return created;
 	},
 
@@ -188,6 +224,10 @@ export const recurringBlockRulesService = {
 			.set(patch)
 			.where(eq(recurringBlockRule.id, input.ruleId))
 			.returning();
+		// Only on the resume: an edit to shape or duration doesn't retroactively
+		// rewrite blocks already on the calendar, and materializeRange skips any
+		// day that already holds this rule's block.
+		if (input.active && !existing.active) await materializeNow(ctx);
 		return updated;
 	},
 

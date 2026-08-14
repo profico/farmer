@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidDayKey } from "../lib/time";
 
 export const setActiveOrgBySlugInput = z.string().min(1);
 export type SetActiveOrgBySlugInput = z.infer<typeof setActiveOrgBySlugInput>;
@@ -17,10 +18,25 @@ export type UpdateOrganizationSettingsInput = z.infer<
 	typeof updateOrganizationSettingsInput
 >;
 
-// The org's one behavioural knob (PRD §8). Everything else about compliance —
-// the behind-pace threshold, the reminder weekdays, the 15-minute granularity —
-// is deliberately hardcoded, so this schema stays a single field on purpose.
+// Everything else about compliance — the behind-pace threshold, the reminder
+// weekdays, the 15-minute granularity — is deliberately hardcoded, so this stays
+// a very short list on purpose.
+//
+// Both fields are optional so each form section can save its own field without
+// having to send (and therefore be able to clobber) the other.
 export const updateOrgSettingsInput = z.object({
-	complianceMissingDays: z.number().int().min(1).max(30),
+	complianceMissingDays: z.number().int().min(1).max(30).optional(),
+	// yyyy-MM-dd; null clears the lock. Explicitly nullable rather than
+	// "" -> null, so "clear it" is something the caller has to actually say.
+	//
+	// Checked as a real DAY, not just the shape: "2026-13-45" matches the regex,
+	// and every consumer compares day keys as strings, so an impossible date
+	// throws nowhere — it just sorts after every real one and silently locks
+	// every automation forever.
+	automationLockedThrough: z
+		.string()
+		.refine(isValidDayKey, "Use a real YYYY-MM-DD date")
+		.nullable()
+		.optional(),
 });
 export type UpdateOrgSettingsInput = z.infer<typeof updateOrgSettingsInput>;

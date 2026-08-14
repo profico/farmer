@@ -1,3 +1,5 @@
+import { externalFetch } from "./http";
+
 const GOOGLE_API = "https://www.googleapis.com";
 
 const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -13,7 +15,7 @@ export type GoogleUserInfo = {
 export const getGoogleUserInfo = async (
 	token: string,
 ): Promise<GoogleUserInfo | null> => {
-	const response = await fetch(`${GOOGLE_API}/oauth2/v3/userinfo`, {
+	const response = await externalFetch(`${GOOGLE_API}/oauth2/v3/userinfo`, {
 		headers: authHeaders(token),
 	});
 	if (response.status === 401 || response.status === 403) return null;
@@ -69,7 +71,7 @@ export const listCalendarEvents = async (
 			maxResults: "250",
 		});
 		if (pageToken) params.set("pageToken", pageToken);
-		const response = await fetch(
+		const response = await externalFetch(
 			`${GOOGLE_API}/calendar/v3/calendars/primary/events?${params}`,
 			{ headers: authHeaders(token) },
 		);
@@ -98,7 +100,7 @@ export const insertAllDayEvent = async (
 	token: string,
 	input: { summary: string; startDate: string; endDate: string },
 ): Promise<string | null> => {
-	const response = await fetch(
+	const response = await externalFetch(
 		`${GOOGLE_API}/calendar/v3/calendars/primary/events`,
 		{
 			method: "POST",

@@ -215,6 +215,7 @@ function OrganizationSettingsPage() {
 			</div>
 
 			<CompliancePolicySection />
+			<AutomationLockSection />
 			<NotOnInvoiceStatusSection />
 		</Page>
 	);
@@ -423,6 +424,86 @@ function CompliancePolicySection() {
 					onChange={(e) => setDays(e.target.value)}
 				/>
 				<span className="text-sm text-muted-foreground">working days</span>
+				<Button
+					type="submit"
+					size="sm"
+					disabled={!changed || mutation.isPending}
+					className="ml-auto"
+				>
+					Save
+				</Button>
+			</form>
+		</div>
+	);
+}
+
+// The automation lock: the last day the sync engines may not write to.
+//
+// It exists because the engines reach a few days back — that grace window is
+// how a day still gets its meetings and commit blocks if the worker was down
+// over a weekend. Harmless most of the time, except at the turn of the month:
+// for the first days of every month that window reaches into the month that was
+// just reconciled and invoiced. Setting this to the last day of a closed month
+// is how you say "that one's done."
+//
+// It locks the automations, not the people. Entries stay hand-editable in
+// finalized months on purpose (close decision 2) and this doesn't change that —
+// hence the copy below, which has to be specific or it reads like a freeze on
+// everything.
+function AutomationLockSection() {
+	const queryClient = useQueryClient();
+	const { data: policy } = useSuspenseQuery(orgPolicySettingsQuery());
+	const [value, setValue] = useState(policy.automationLockedThrough ?? "");
+
+	const mutation = useMutation({
+		mutationFn: (automationLockedThrough: string | null) =>
+			updateOrgPolicySettings({ data: { automationLockedThrough } }),
+		onSuccess: async (_result, submitted) => {
+			await queryClient.invalidateQueries({
+				queryKey: orgPolicySettingsQuery().queryKey,
+			});
+			toast.success(
+				submitted
+					? `Automation locked through ${submitted}`
+					: "Automation lock cleared",
+			);
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not save");
+			setValue(policy.automationLockedThrough ?? "");
+		},
+	});
+
+	// An empty field is a real value here — it means "no lock" — so it is valid,
+	// and "changed" has to compare against null rather than against "".
+	const trimmed = value.trim();
+	const next = trimmed === "" ? null : trimmed;
+	const valid = next === null || /^\d{4}-\d{2}-\d{2}$/.test(next);
+	const changed = valid && next !== (policy.automationLockedThrough ?? null);
+
+	return (
+		<div className="-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
+			<h2 className="eyebrow">Automation lock</h2>
+			<p className="mt-1 max-w-prose text-sm text-muted-foreground">
+				The last day the sync engines may not touch. Recurring blocks, calendar
+				meetings and commit work-time blocks stop at this date, so a month
+				you've already closed can't quietly gain hours. People can still edit
+				their own entries in those months — this only holds back the
+				automations. Leave it empty for no lock.
+			</p>
+			<form
+				className="mt-3 flex w-full max-w-sm items-center gap-2"
+				onSubmit={(e) => {
+					e.preventDefault();
+					if (changed) mutation.mutate(next);
+				}}
+			>
+				<Input
+					className="w-40 mono"
+					type="date"
+					value={value}
+					onChange={(e) => setValue(e.target.value)}
+				/>
 				<Button
 					type="submit"
 					size="sm"

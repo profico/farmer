@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { externalFetch } from "./http";
 
 const GITHUB_API = "https://api.github.com";
 
@@ -62,7 +63,7 @@ export type GithubInstallation = {
 export const listUserInstallations = async (
 	userToken: string,
 ): Promise<GithubInstallation[]> => {
-	const response = await fetch(
+	const response = await externalFetch(
 		`${GITHUB_API}/user/installations?per_page=100`,
 		{ headers: githubHeaders(userToken) },
 	);
@@ -90,7 +91,7 @@ export const getInstallationToken = async (
 	if (cached && cached.expiresAt - 5 * 60_000 > Date.now()) {
 		return cached.token;
 	}
-	const response = await fetch(
+	const response = await externalFetch(
 		`${GITHUB_API}/app/installations/${installationId}/access_tokens`,
 		{ method: "POST", headers: appHeaders() },
 	);
@@ -113,7 +114,7 @@ export const listInstallationRepos = async (
 ): Promise<GithubRepo[]> => {
 	const all: GithubRepo[] = [];
 	for (let page = 1; ; page++) {
-		const response = await fetch(
+		const response = await externalFetch(
 			`${GITHUB_API}/installation/repositories?per_page=100&page=${page}`,
 			{ headers: githubHeaders(token) },
 		);
@@ -150,7 +151,7 @@ export type GithubCommit = {
 export type GithubUser = { login: string };
 
 const githubGet = async <T>(url: string, token: string): Promise<T | null> => {
-	const response = await fetch(url, { headers: githubHeaders(token) });
+	const response = await externalFetch(url, { headers: githubHeaders(token) });
 	if (response.status === 403 || response.status === 404) return null;
 	if (!response.ok) {
 		throw new Error(`GitHub API error ${response.status}: ${url}`);

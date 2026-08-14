@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { clampToMeetingSyncWindow } from "./meeting-window";
+import { automationWriteWindow } from "./automation-window";
 import {
 	countWorkingDays,
 	formatDurationInput,
+	isValidDayKey,
 	parseDuration,
 	snapToQuarterHour,
 } from "./time";
@@ -120,32 +121,143 @@ describe("formatDurationInput", () => {
 	});
 });
 
-describe("clampToMeetingSyncWindow", () => {
+describe("automationWriteWindow", () => {
 	const TODAY = "2026-08-10";
 
-	test("a month in the past syncs nothing", () => {
-		// The reported failure: paging back through the Month view imported every
-		// meeting in those months as an unfiled entry, dozens at a time.
+	test("never reaches past today", () => {
+		// The old meeting sync ran to today+14, filing rows onto days nobody had
+		// lived yet. Showing next week's meetings is the assembler's job.
+		expect(automationWriteWindow(TODAY)?.to).toBe(TODAY);
+	});
+
+	test("an unfloored automation still only gets the grace window", () => {
+		// A null stamp grandfathers rows written before the *_since columns
+		// existed. Grandfathered must not mean unbounded.
+		expect(automationWriteWindow(TODAY)).toEqual({
+			from: "2026-08-07",
+			to: TODAY,
+		});
+	});
+
+	test("a switch flipped inside the window narrows it", () => {
+		expect(automationWriteWindow(TODAY, { since: "2026-08-09" })).toEqual({
+			from: "2026-08-09",
+			to: TODAY,
+		});
+	});
+
+	test("a switch flipped long ago does not widen it", () => {
+		// The reported failure: `since` was a floor, not a window, so the longer a
+		// switch had been on the further back the engines wrote.
+		expect(automationWriteWindow(TODAY, { since: "2026-01-01" })).toEqual({
+			from: "2026-08-07",
+			to: TODAY,
+		});
+	});
+
+	test("a switch flipped after today writes nothing", () => {
+		expect(automationWriteWindow(TODAY, { since: "2026-08-11" })).toBeNull();
+	});
+
+	test("the lock starts the window the day after it", () => {
+		// The lock names the last CLOSED day, so the 8th being locked means the
+		// 9th is the first day automation may touch.
+		expect(automationWriteWindow(TODAY, { lockedThrough: "2026-08-08" })).toEqual(
+			{ from: "2026-08-09", to: TODAY },
+		);
+	});
+
+	test("a lock covering today stops the engine entirely", () => {
+		expect(automationWriteWindow(TODAY, { lockedThrough: TODAY })).toBeNull();
+	});
+
+	test("a lock older than the grace window changes nothing", () => {
 		expect(
-			clampToMeetingSyncWindow({ from: "2026-06-01", to: "2026-06-30" }, TODAY),
+			automationWriteWindow(TODAY, { lockedThrough: "2026-06-30" }),
+		).toEqual({ from: "2026-08-07", to: TODAY });
+	});
+
+	test("the tightest floor wins whichever one it is", () => {
+		expect(
+			automationWriteWindow(TODAY, {
+				since: "2026-08-08",
+				lockedThrough: "2026-08-05",
+			}),
+		).toEqual({ from: "2026-08-08", to: TODAY });
+		expect(
+			automationWriteWindow(TODAY, {
+				since: "2026-08-08",
+				lockedThrough: "2026-08-09",
+			}),
+		).toEqual({ from: "2026-08-10", to: TODAY });
+	});
+
+	test("a month-end lock holds the line on the 1st", () => {
+		// The case the grace window cannot cover on its own: for the first few days
+		// of every month, "today - 3" reaches back into the month that was just
+		// reconciled and invoiced.
+		expect(automationWriteWindow("2026-09-01", { lockedThrough: "2026-08-31" }))
+			.toEqual({ from: "2026-09-01", to: "2026-09-01" });
+		expect(
+			automationWriteWindow("2026-09-01", { lockedThrough: null }),
+		).toEqual({ from: "2026-08-29", to: "2026-09-01" });
+	});
+
+	// The one ceiling, and it belongs to the commit work-time engine alone. Its
+	// block claims the rest of the working day and is sized from the day's WHOLE
+	// target, which is a claim about a day that has been worked — so run against
+	// today, a 09:15 commit produced a 7.5-hour block at 09:20 that no later tick
+	// ever corrected.
+	test("completeDaysOnly stops at yesterday", () => {
+		expect(automationWriteWindow(TODAY, { completeDaysOnly: true })).toEqual({
+			from: "2026-08-07",
+			to: "2026-08-09",
+		});
+	});
+
+	test("completeDaysOnly closes a window that had only today in it", () => {
+		// A switch flipped today leaves nothing complete to write to. Null rather
+		// than an inverted range, so the caller skips the engine outright.
+		expect(
+			automationWriteWindow(TODAY, {
+				since: TODAY,
+				completeDaysOnly: true,
+			}),
 		).toBeNull();
 	});
 
-	test("the current month is trimmed to the window, not synced whole", () => {
+	test("completeDaysOnly still respects the lock", () => {
+		// Two bounds from opposite ends; neither cancels the other.
 		expect(
-			clampToMeetingSyncWindow({ from: "2026-08-01", to: "2026-08-31" }, TODAY),
-		).toEqual({ from: "2026-08-09", to: "2026-08-24" });
+			automationWriteWindow(TODAY, {
+				lockedThrough: "2026-08-08",
+				completeDaysOnly: true,
+			}),
+		).toEqual({ from: "2026-08-09", to: "2026-08-09" });
+	});
+});
+
+describe("isValidDayKey", () => {
+	test("accepts a real day", () => {
+		expect(isValidDayKey("2026-08-10")).toBe(true);
+		// A leap day in a leap year — the case a naive range check gets wrong in
+		// the other direction.
+		expect(isValidDayKey("2028-02-29")).toBe(true);
 	});
 
-	test("a range already inside the window is left alone", () => {
-		expect(
-			clampToMeetingSyncWindow({ from: "2026-08-10", to: "2026-08-12" }, TODAY),
-		).toEqual({ from: "2026-08-10", to: "2026-08-12" });
+	test("rejects a day that matches the shape but does not exist", () => {
+		// The whole reason this exists. Every consumer compares day keys as
+		// STRINGS, so an impossible date throws nowhere — it just sorts after every
+		// real one, which in `automationLockedThrough` means locking the
+		// automations forever.
+		expect(isValidDayKey("2026-13-45")).toBe(false);
+		expect(isValidDayKey("2026-02-30")).toBe(false);
+		expect(isValidDayKey("2027-02-29")).toBe(false);
 	});
 
-	test("a range far in the future syncs nothing", () => {
-		expect(
-			clampToMeetingSyncWindow({ from: "2027-01-01", to: "2027-01-31" }, TODAY),
-		).toBeNull();
+	test("rejects anything that is not the shape at all", () => {
+		expect(isValidDayKey("2026-8-10")).toBe(false);
+		expect(isValidDayKey("10/08/2026")).toBe(false);
+		expect(isValidDayKey("")).toBe(false);
 	});
 });

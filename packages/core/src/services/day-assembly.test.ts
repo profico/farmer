@@ -31,6 +31,10 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
+import {
+	commitFillTombstone,
+	syncedMeetingTombstone,
+} from "../db/schema/settings";
 import { createTestDb, type TestDb } from "../test/harness";
 import { dayAssemblyService } from "./day-assembly.service";
 import { setCalendarSourceForTests, setCommitSourceForTests } from "./ports";
@@ -147,6 +151,11 @@ afterAll(async () => {
 
 beforeEach(async () => {
 	await db.delete(timeEntry);
+	// Tombstones outlive the entry they were left by — that is their entire job —
+	// so they have to be cleared explicitly or one test's deletion becomes the
+	// next one's starting state.
+	await db.delete(syncedMeetingTombstone);
+	await db.delete(commitFillTombstone);
 	setCalendarSourceForTests(noCalendar);
 	setCommitSourceForTests(noCommits);
 });
@@ -324,5 +333,123 @@ describe("assemble my day", () => {
 		// The fill is derived on write, so dropping the break leaves no hole.
 		const logged = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
 		expect(logged).toBe(EIGHT_HOURS);
+	});
+});
+
+// Deleting a synced block records a tombstone, which is what stops the engines
+// putting it straight back. Right by default, and a dead end when the deletion
+// was a mistake: the block is gone, the engine has been told never to rebuild
+// it, and the assembler — the one screen whose whole job is "offer me what's
+// missing" — was the one place that agreed not to mention it.
+describe("offering back what was deleted", () => {
+	const meetingOn = (date: string) => ({
+		...noCalendar,
+		listEventsForRange: async () => [
+			{
+				id: "event-deleted",
+				title: "Standup",
+				start: `${date}T09:00:00.000Z`,
+				end: `${date}T10:00:00.000Z`,
+				meetingUrl: null,
+				htmlLink: null,
+			},
+		],
+	});
+
+	/** Import the meeting the way the sync engine would, then delete it the way a
+	 *  person would — which is what leaves the tombstone. */
+	const importAndDeleteTheMeeting = async () => {
+		const created = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			date: MONDAY,
+			durationSeconds: 3600,
+			overtime: false,
+			fillsDay: false,
+			calendarEventId: "event-deleted",
+		});
+		await timeEntriesService.remove(ctx, created.id);
+	};
+
+	test("a deleted meeting is not re-proposed by default", async () => {
+		setCalendarSourceForTests(meetingOn(MONDAY));
+		await importAndDeleteTheMeeting();
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		expect(assembly.suggestions.map((s) => s.kind)).not.toContain("meeting");
+		// But it is COUNTED, so the dialog can offer the toggle at all. A switch
+		// with nothing behind it is a switch people learn to ignore.
+		expect(assembly.dismissedCount).toBe(1);
+	});
+
+	test("includeDismissed brings it back, flagged", async () => {
+		setCalendarSourceForTests(meetingOn(MONDAY));
+		await importAndDeleteTheMeeting();
+
+		const assembly = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+
+		const meeting = assembly.suggestions.find((s) => s.kind === "meeting");
+		expect(meeting).toBeDefined();
+		// Flagged rather than silently mixed in: the dialog offers these UNTICKED,
+		// so asking to see one mistake doesn't re-add four deliberate deletions.
+		expect(meeting?.dismissed).toBe(true);
+		// Still counted with the toggle on, or it would erase its own reason for
+		// existing the moment it was used.
+		expect(assembly.dismissedCount).toBe(1);
+	});
+
+	test("a meeting already logged is never re-proposed, toggle or not", async () => {
+		// Two different reasons to leave an event out, and only one of them is a
+		// decision the toggle may override.
+		setCalendarSourceForTests(meetingOn(MONDAY));
+		await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			date: MONDAY,
+			durationSeconds: 3600,
+			overtime: false,
+			fillsDay: false,
+			calendarEventId: "event-deleted",
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+
+		expect(assembly.suggestions.map((s) => s.kind)).not.toContain("meeting");
+		expect(assembly.dismissedCount).toBe(0);
+	});
+
+	test("a deleted rest-of-day block is held back, then offered", async () => {
+		const created = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			date: MONDAY,
+			overtime: false,
+			fillsDay: true,
+		});
+		await timeEntriesService.remove(ctx, created.id);
+
+		const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		expect(quiet.suggestions.map((s) => s.kind)).not.toContain("fill");
+		expect(quiet.dismissedCount).toBe(1);
+
+		const loud = await dayAssemblyService.suggest(ctx, {
+			date: MONDAY,
+			includeDismissed: true,
+		});
+		expect(loud.suggestions.find((s) => s.kind === "fill")?.dismissed).toBe(
+			true,
+		);
+	});
+
+	test("a day with nothing deleted reports nothing to offer", async () => {
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		// The dialog hides the toggle on this answer, which is almost every day.
+		expect(assembly.dismissedCount).toBe(0);
+		expect(assembly.suggestions.every((s) => !s.dismissed)).toBe(true);
 	});
 });

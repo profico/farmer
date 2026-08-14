@@ -54,6 +54,67 @@ function seedSiteTasks(): Plugin {
 	};
 }
 
+// The background task worker (@farmer/core/jobs), started alongside `vite dev`.
+//
+// Production runs these schedulers in-process inside server.ts, which `vite dev`
+// never loads — and since the sync engines moved OFF the read path (they used to
+// run inside timeEntriesService.listRange, so opening the time page is what
+// imported your meetings), nothing would materialize a recurring block or import
+// a meeting in development at all. Same subprocess trick as the seed above, and
+// for the same reason: this config is loaded under Node, and importing
+// @farmer/core here would drag `postgres` into the config graph.
+//
+// Set DEV_WORKER=false to run it yourself instead (`bun run worker` from
+// packages/core) — or to have it stay quiet while you work on something else.
+const WORKER_SCRIPT = fileURLToPath(
+	new URL("../../packages/core/src/jobs/worker.ts", import.meta.url),
+);
+
+// Only the automation sweep runs by default in development. The other three
+// schedulers TALK TO PEOPLE — log-reminder emails, Slack nudges and DMs, budget
+// alerts to project managers — and the dev worker runs against whatever
+// DATABASE_URL the local .env points at, which is routinely a shared or restored
+// staging database full of real addresses. `bun run dev` is not consent to page
+// a colleague. The sweep is the one that has to run locally anyway, since it is
+// what replaced the write-on-read engines.
+//
+// Set any of these to "true" in your own .env to opt back in.
+const DEV_WORKER_JOB_DEFAULTS: Record<string, string> = {
+	AUTOMATION_SYNC_ENABLED: "true",
+	LOG_REMINDERS_ENABLED: "false",
+	SLACK_REMINDERS_ENABLED: "false",
+	BUDGET_ALERTS_ENABLED: "false",
+};
+
+function devWorker(): Plugin {
+	return {
+		name: "farmer:dev-worker",
+		apply: "serve",
+		configureServer(server) {
+			if (process.env.DEV_WORKER === "false") return;
+			const proc = spawn("bun", ["run", WORKER_SCRIPT], {
+				stdio: "inherit",
+				env: {
+					...DEV_WORKER_JOB_DEFAULTS,
+					// After the defaults, so an explicit setting in the environment
+					// always wins over them.
+					...process.env,
+					// Don't wait out the usual 15s startup delay every time the dev
+					// server restarts; locally you want the first tick while you're
+					// still looking at the page.
+					SCHEDULER_STARTUP_DELAY_MS: "2000",
+				},
+			});
+			proc.on("error", (err) => {
+				console.warn(`[dev] could not start task worker: ${err.message}`);
+			});
+			// Vite's own SIGINT handling kills the tree, but an explicit close hook
+			// covers restarts, which would otherwise stack up workers.
+			server.httpServer?.on("close", () => proc.kill());
+		},
+	};
+}
+
 export default defineConfig(({ command }) => ({
 	resolve: { tsconfigPaths: true },
 	optimizeDeps: { exclude: [TYPST] },
@@ -71,6 +132,7 @@ export default defineConfig(({ command }) => ({
 	},
 	plugins: [
 		seedSiteTasks(),
+		devWorker(),
 		devtools(),
 		tailwindcss(),
 		tanstackStart(),

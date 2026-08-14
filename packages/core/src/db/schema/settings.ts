@@ -92,6 +92,42 @@ export const syncedMeetingTombstone = pgTable(
 	],
 );
 
+// The same idea for the commit work-time engine's fill block: a day whose
+// "rest of day" block the person deleted.
+//
+// Every other automation already had a way to be told no — a deleted meeting
+// leaves a `syncedMeetingTombstone`, a deleted recurring block leaves a
+// `recurringBlockRuleSkip` — and this engine had nothing. Its only guard was
+// `te_fill_day_uidx`, which stops a SECOND fill block existing and says nothing
+// about one that used to. So deleting the block removed the row the guard was
+// reading and the next sweep put it straight back.
+//
+// It went unnoticed while the engines ran on page load, because you had to
+// reload the page to make it happen and it looked like the page had simply not
+// caught up. On a 20-minute timer it is a block that will not stay deleted.
+//
+// Keyed by DAY, not by entry: what the person rejected is "a rest-of-day block
+// on this day", and it has to outlive the row they deleted or it means nothing.
+// Any fill block counts, not just this engine's — there is no marker
+// distinguishing one it wrote from one made by hand, and "I deleted the
+// rest-of-day block, don't put another one back" is the right reading of both.
+export const commitFillTombstone = pgTable(
+	"commit_fill_tombstone",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		/** yyyy-MM-dd, in the org timezone — the same key `timeEntry.date` uses. */
+		date: text("date").notNull(),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [
+		unique("cft_org_user_date_unq").on(t.organizationId, t.userId, t.date),
+	],
+);
+
 // Org-wide knobs (PRD §8). One row per org; a missing row implies the column
 // defaults (see orgSettingsService.get) so no backfill is needed.
 // Deliberately NOT configurable and therefore absent here: the behind-pace
@@ -107,6 +143,21 @@ export const orgSettings = pgTable(
 		complianceMissingDays: integer("compliance_missing_days")
 			.notNull()
 			.default(3),
+		// The last day the automations may not write to — yyyy-MM-dd, null (the
+		// default) meaning no lock. Everything on or before it is off limits to the
+		// recurring block materializer, the calendar sync and the commit work-time
+		// engine.
+		//
+		// It locks the ROBOTS, not the people: entries stay hand-editable in
+		// finalized months on purpose (see monthlyCloseRow's finalization
+		// snapshots), and this doesn't change that. The point is narrower — once a
+		// month has been reconciled and invoiced, nothing should quietly add hours
+		// to it while nobody is looking.
+		//
+		// A single watermark rather than a per-month lock table: "we've closed
+		// through July" is what anyone actually means, and locking non-contiguous
+		// months isn't a thing to want.
+		automationLockedThrough: text("automation_locked_through"),
 		...stamps,
 	},
 	(t) => [

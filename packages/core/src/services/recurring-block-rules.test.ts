@@ -19,7 +19,7 @@ import {
 	expect,
 	test,
 } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import {
@@ -37,12 +37,15 @@ import type { Ctx } from "./types";
 
 const ORG_ID = "org-recurring";
 const USER_ID = "user-recurring";
-// Fixed and permanently in the past, so "does this backfill?" never depends on
-// the day the suite happens to run.
-const MONDAY = "2026-08-10";
-const TUESDAY = "2026-08-11";
-const WEDNESDAY = "2026-08-12";
-const FRIDAY = "2026-08-14";
+// Fixed and safely in the past, so "does this backfill?" never depends on the
+// day the suite happens to run. It has to be a week nobody's real "today" can
+// fall inside: creating or resuming a rule materializes today's block now (see
+// `materializeNow` in the service), and a fixture week containing today would
+// count that block as a backfill.
+const MONDAY = "2026-03-09";
+const TUESDAY = "2026-03-10";
+const WEDNESDAY = "2026-03-11";
+const FRIDAY = "2026-03-13";
 const WEEKDAYS = [1, 2, 3, 4, 5];
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
@@ -61,11 +64,19 @@ const entriesOn = (date: string) =>
 		),
 	});
 
+/** Every entry in the fixture week.
+ *
+ *  Scoped to the week rather than to the whole table because creating or
+ *  resuming a rule now materializes TODAY's block immediately (see
+ *  `materializeNow` in the service) — a real, wanted side effect, and one that
+ *  would otherwise show up as a phantom row in every backfill assertion below. */
 const allEntries = () =>
 	db.query.timeEntry.findMany({
 		where: and(
 			eq(timeEntry.organizationId, ORG_ID),
 			eq(timeEntry.userId, USER_ID),
+			gte(timeEntry.date, MONDAY),
+			lte(timeEntry.date, FRIDAY),
 		),
 	});
 
