@@ -15,6 +15,7 @@ import {
 	isSingleOrgMode,
 } from "../lib/single-org";
 import { slugify } from "../lib/slug";
+import { slackService } from "../services/slack.service";
 
 const uniqueSlugFor = async (name: string) => {
 	const base = slugify(name);
@@ -184,6 +185,31 @@ export const auth = betterAuth({
 			// the endpoint is reached.
 			allowUserToCreateOrganization: !isSingleOrgMode(),
 			disableOrganizationDeletion: isSingleOrgMode(),
+			// Becoming a member of an organization is the moment to match somebody to
+			// Slack, and it was previously nobody's job: the only path was an admin
+			// pressing "Re-match people" on the integrations screen, so a new hire got
+			// no reminder DMs until an admin happened to remember. Nothing tells the
+			// person that, and a reminder that silently never arrives is worse than
+			// one that does — it looks like the app has nothing to say.
+			//
+			// Both hooks, because there are two ways to become a member: accepting an
+			// invitation (the normal path) and an admin adding somebody directly.
+			// Neither can fail on this — `linkMember` swallows its own errors, so a
+			// Slack outage or an uninstalled app costs the match, not the membership.
+			organizationHooks: {
+				afterAcceptInvitation: async ({ member: newMember }) => {
+					await slackService.linkMember(
+						newMember.organizationId,
+						newMember.userId,
+					);
+				},
+				afterAddMember: async ({ member: newMember }) => {
+					await slackService.linkMember(
+						newMember.organizationId,
+						newMember.userId,
+					);
+				},
+			},
 			schema: {
 				organization: {
 					additionalFields: {

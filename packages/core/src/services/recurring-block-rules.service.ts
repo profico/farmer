@@ -291,12 +291,36 @@ export const recurringBlockRulesService = {
 			),
 			columns: { date: true, taskId: true, projectId: true },
 		});
-		// Keyed by project as well as task: two rules for the same task on
-		// different projects are different blocks, and a day may legitimately hold
-		// both. A break carries no project, so break-vs-break matches on the task.
-		const blockKey = (e: { date: string; taskId: string; projectId: string | null }) =>
-			`${e.date}|${e.taskId}|${e.projectId ?? ""}`;
-		const dayAlreadyHas = new Set(existing.map(blockKey));
+		// Two keys, because "is this block already here?" has two answers depending
+		// on whether the rule names a project.
+		//
+		// A rule WITH a project is project-specific: two rules for the same task on
+		// different projects are different blocks and a day may legitimately hold
+		// both, so it only recognises its own project's entry.
+		//
+		// A rule with NO project — every break rule, since a break is time off the
+		// clock that nobody can attribute to a client — matches on the task alone.
+		// It has to: this key used to be project-qualified in both directions, so a
+		// break someone had already logged against a project was invisible to the
+		// break rule, and the rule filed a second, project-less one next to it. That
+		// is not two blocks, it is one break counted twice, and it is what the
+		// materializer's own guard was added to prevent.
+		const taskKey = (e: { date: string; taskId: string }) =>
+			`${e.date}|${e.taskId}`;
+		const projectKey = (e: {
+			date: string;
+			taskId: string;
+			projectId: string | null;
+		}) => `${taskKey(e)}|${e.projectId ?? ""}`;
+		const dayHasTask = new Set(existing.map(taskKey));
+		const dayHasTaskOnProject = new Set(existing.map(projectKey));
+		const dayAlreadyHas = (rule: {
+			taskId: string;
+			projectId: string | null;
+		}, date: string) =>
+			rule.projectId
+				? dayHasTaskOnProject.has(projectKey({ ...rule, date }))
+				: dayHasTask.has(taskKey({ ...rule, date }));
 
 		const rows: (typeof timeEntry.$inferInsert)[] = [];
 		for (const rule of rules) {
@@ -318,18 +342,14 @@ export const recurringBlockRulesService = {
 				if (rule.effectiveUntil && date > rule.effectiveUntil) continue;
 				if (!rule.daysOfWeek.includes(weekdayByDate.get(date) ?? -1)) continue;
 				if (skipSet.has(`${rule.id}:${date}`)) continue;
-				if (
-					dayAlreadyHas.has(
-						blockKey({ date, taskId: rule.taskId, projectId: rule.projectId }),
-					)
-				) {
-					continue;
-				}
+				if (dayAlreadyHas(rule, date)) continue;
 
 				// Claimed as this batch goes, so two rules for the same block on the
-				// same weekday produce one entry rather than racing each other.
-				dayAlreadyHas.add(
-					blockKey({ date, taskId: rule.taskId, projectId: rule.projectId }),
+				// same weekday produce one entry rather than racing each other. Both
+				// sets, so the claim is visible to whichever question the next rule asks.
+				dayHasTask.add(taskKey({ date, taskId: rule.taskId }));
+				dayHasTaskOnProject.add(
+					projectKey({ date, taskId: rule.taskId, projectId: rule.projectId }),
 				);
 				rows.push({
 					organizationId: ctx.organizationId,

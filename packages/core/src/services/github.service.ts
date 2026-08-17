@@ -84,7 +84,14 @@ export const githubService = {
 	// ── User identity (per user) ─────────────────────────────────────────────
 	connectionStatus: async (
 		ctx: Ctx,
-	): Promise<{ connected: boolean; login: string | null }> => {
+	): Promise<{
+		connected: boolean;
+		login: string | null;
+		/** GitHub answered neither yes nor no — an outage, not a disconnection.
+		 *  `connected` stays true, because whether the account is linked is not
+		 *  GitHub's to tell us. */
+		unreachable: boolean;
+	}> => {
 		// auth.api.accountInfo requires either an explicit accountId or a
 		// stored account cookie (account.storeAccountCookie, unset here) —
 		// without either it always throws ACCOUNT_NOT_FOUND, even for a
@@ -95,12 +102,37 @@ export const githubService = {
 				eq(account.providerId, "github"),
 			),
 		});
-		if (!linkedAccount) return { connected: false, login: null };
+		if (!linkedAccount) {
+			return { connected: false, login: null, unreachable: false };
+		}
 
 		const token = await getAccessToken(ctx);
-		if (!token) return { connected: true, login: null };
-		const githubUser = await getAuthenticatedUser(token);
-		return { connected: true, login: githubUser?.login ?? null };
+		if (!token) return { connected: true, login: null, unreachable: false };
+
+		// Whether the account is linked is a LOCAL fact, already answered above.
+		// The login name is a nicety fetched from GitHub, so a GitHub outage has to
+		// degrade the name and not the answer.
+		//
+		// It didn't. `githubGet` maps 403/404 to null but throws on anything else —
+		// including the 503s GitHub serves during an incident — and the Integrations
+		// route prefetches this status into a `useSuspenseQuery`. So a GitHub
+		// incident error-boundaried the WHOLE page, taking Google Calendar and Slack
+		// down with it, neither of which had anything wrong. An integration being
+		// unreachable is a state to render, not an exception to propagate.
+		try {
+			const githubUser = await getAuthenticatedUser(token);
+			return {
+				connected: true,
+				login: githubUser?.login ?? null,
+				unreachable: false,
+			};
+		} catch (error) {
+			console.error("[github] could not resolve the user's login", {
+				userId: ctx.userId,
+				error,
+			});
+			return { connected: true, login: null, unreachable: true };
+		}
 	},
 
 	// ── Org installations (per org, one-or-many) ─────────────────────────────

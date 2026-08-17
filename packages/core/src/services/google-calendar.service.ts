@@ -43,7 +43,13 @@ export type CalendarEventOption = {
 export const googleCalendarService = {
 	connectionStatus: async (
 		ctx: Ctx,
-	): Promise<{ connected: boolean; email: string | null }> => {
+	): Promise<{
+		connected: boolean;
+		email: string | null;
+		/** Google answered neither yes nor no. See the note below `getAccessToken`
+		 *  in githubService.connectionStatus — same hazard, same page. */
+		unreachable: boolean;
+	}> => {
 		// Mirror githubService.connectionStatus: read the account table directly
 		// rather than auth.api.accountInfo, which needs a stored account cookie
 		// (unset here) and otherwise always throws ACCOUNT_NOT_FOUND.
@@ -56,12 +62,27 @@ export const googleCalendarService = {
 				eq(account.providerId, "google-calendar"),
 			),
 		});
-		if (!linkedAccount) return { connected: false, email: null };
+		if (!linkedAccount) {
+			return { connected: false, email: null, unreachable: false };
+		}
 
 		const token = await getAccessToken(ctx);
-		if (!token) return { connected: true, email: null };
-		const info = await getGoogleUserInfo(token);
-		return { connected: true, email: info?.email ?? null };
+		if (!token) return { connected: true, email: null, unreachable: false };
+
+		// The linked account is a local fact; the email is a nicety fetched from
+		// Google. `getGoogleUserInfo` throws on any status that isn't 401/403, and
+		// `externalFetch` throws on its own deadline too — so this took the whole
+		// Integrations page down on a slow network, not just a Google outage.
+		try {
+			const info = await getGoogleUserInfo(token);
+			return { connected: true, email: info?.email ?? null, unreachable: false };
+		} catch (error) {
+			console.error("[google-calendar] could not resolve the account email", {
+				userId: ctx.userId,
+				error,
+			});
+			return { connected: true, email: null, unreachable: true };
+		}
 	},
 
 	listEventsForDay: async (

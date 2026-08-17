@@ -260,6 +260,32 @@ describe("materializing a recurring block", () => {
 		expect(await allEntries()).toHaveLength(5);
 	});
 
+	test("a break already filed against a project still counts as the day's break", async () => {
+		// The report, from real data: a hand-logged 30-minute break carrying a
+		// project sat next to a project-less one the rule wrote hours later, on
+		// three consecutive days. The guard above was project-qualified in both
+		// directions, so the rule could not see a break that had been attributed to
+		// a client — and a break is exactly the block nobody should be attributing
+		// twice.
+		await runningBreakRuleSince(MONDAY);
+		await db.insert(timeEntry).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: breakTaskId,
+			projectId,
+			date: TUESDAY,
+			description: "Break",
+			durationSeconds: 30 * 60,
+		});
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		const tuesday = await entriesOn(TUESDAY);
+		expect(tuesday).toHaveLength(1);
+		expect(tuesday[0]?.projectId).toBe(projectId);
+		expect(await allEntries()).toHaveLength(5);
+	});
+
 	test("materializing the same range twice writes nothing the second time", async () => {
 		await runningBreakRuleSince(MONDAY);
 

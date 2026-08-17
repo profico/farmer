@@ -106,8 +106,68 @@ export const slackService = {
 			.where(eq(memberSlackIdentity.organizationId, ctx.organizationId));
 	},
 
+	/**
+	 * Resolve ONE person's Slack id from their email and record it.
+	 *
+	 * Takes raw ids rather than a Ctx, and asks for no authorization, because the
+	 * caller that matters is not an admin: it's the `member.create` hook, running
+	 * inside the invitation the new member just accepted for themselves. The
+	 * privilege here is the workspace bot token, which the org already granted —
+	 * looking a member up by their own email adds none.
+	 *
+	 * Returns whether the person was found in the workspace. Never throws: joining
+	 * an organization must not fail because Slack is down, uninstalled, or the
+	 * person simply isn't in the workspace.
+	 */
+	linkMember: async (
+		organizationId: string,
+		userId: string,
+	): Promise<boolean> => {
+		try {
+			const installation = await slackService.installationFor(organizationId);
+			if (!installation) return false;
+
+			const person = await db.query.user.findFirst({
+				where: eq(user.id, userId),
+				columns: { email: true },
+			});
+			if (!person) return false;
+
+			const slackUserId = await slackClient.lookupUserByEmail(
+				installation.botToken,
+				person.email,
+			);
+			if (!slackUserId) return false;
+
+			await db
+				.insert(memberSlackIdentity)
+				.values({ organizationId, userId, slackUserId })
+				.onConflictDoUpdate({
+					target: [
+						memberSlackIdentity.organizationId,
+						memberSlackIdentity.userId,
+					],
+					set: { slackUserId, updatedAt: new Date() },
+				});
+			return true;
+		} catch (error) {
+			console.error("[slack] could not match new member", {
+				organizationId,
+				userId,
+				error,
+			});
+			return false;
+		}
+	},
+
 	/** Re-resolve every member's Slack id from their email. Safe to re-run; people
-	 *  who aren't in the workspace are skipped rather than failing the run. */
+	 *  who aren't in the workspace are skipped rather than failing the run.
+	 *
+	 *  Joining is handled on its own by the `member.create` hook (see
+	 *  `linkMember`), so this is no longer the way somebody new gets matched. It
+	 *  stays for the case the hook cannot cover: a member who was already in the
+	 *  organization before they were in the Slack workspace. Nothing about joining
+	 *  Slack reaches this app, so that match can only be made by asking again. */
 	syncIdentities: async (ctx: Ctx): Promise<number> => {
 		const installation = await slackService.installationFor(ctx.organizationId);
 		if (!installation) return 0;

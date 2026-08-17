@@ -53,6 +53,7 @@ import { updateIntegrationSettings } from "#/server/integration-settings.ts";
 import {
 	disconnectSlack,
 	getSlackInstallUrl,
+	sendTestSlackMessage,
 	syncSlackIdentities,
 } from "#/server/slack.ts";
 
@@ -216,13 +217,25 @@ function IntegrationsSettingsPage() {
 					icon={<GithubLogoIcon className="size-5" />}
 					title="GitHub"
 					badge={
-						status.connected && (
-							<Badge variant="secondary">
-								Connected{status.login ? ` as ${status.login}` : ""}
-							</Badge>
+						status.unreachable ? (
+							// Two facts, not one: the account is still linked, and GitHub is
+							// not answering. Collapsing them into "Connected" hides a real
+							// outage, and into "Disconnected" invites someone to reconnect an
+							// account that was never disconnected.
+							<Badge variant="outline">Connected — GitHub not responding</Badge>
+						) : (
+							status.connected && (
+								<Badge variant="secondary">
+									Connected{status.login ? ` as ${status.login}` : ""}
+								</Badge>
+							)
 						)
 					}
-					description="Identifies you so commits you author can be matched to your time entries."
+					description={
+						status.unreachable
+							? "Your account is still linked — GitHub itself isn't reachable right now, so your username and commit sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
+							: "Identifies you so commits you author can be matched to your time entries."
+					}
 					action={
 						status.connected ? (
 							<AlertDialog
@@ -286,14 +299,22 @@ function IntegrationsSettingsPage() {
 					icon={<CalendarBlankIcon className="size-5" />}
 					title="Google Calendar"
 					badge={
-						googleStatus.connected && (
-							<Badge variant="secondary">
-								Connected
-								{googleStatus.email ? ` as ${googleStatus.email}` : ""}
-							</Badge>
+						googleStatus.unreachable ? (
+							<Badge variant="outline">Connected — Google not responding</Badge>
+						) : (
+							googleStatus.connected && (
+								<Badge variant="secondary">
+									Connected
+									{googleStatus.email ? ` as ${googleStatus.email}` : ""}
+								</Badge>
+							)
 						)
 					}
-					description="Lets you pick a meeting from your calendar when logging time — it autofills the start/end and captures the join link."
+					description={
+						googleStatus.unreachable
+							? "Your account is still linked — Google isn't reachable right now, so meeting autofill and calendar sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
+							: "Lets you pick a meeting from your calendar when logging time — it autofills the start/end and captures the join link."
+					}
 					action={
 						googleStatus.connected ? (
 							<AlertDialog
@@ -371,6 +392,7 @@ function IntegrationsSettingsPage() {
 // is a `useQuery` inside a gated child rather than a loader prefetch.
 function SlackSection() {
 	const queryClient = useQueryClient();
+	const { session } = Route.useRouteContext();
 	const { data: status, isPending } = useQuery(slackStatusQuery());
 
 	const invalidate = () =>
@@ -409,6 +431,20 @@ function SlackSection() {
 		onError: (error) => toast.error(error.message ?? "Could not re-sync"),
 	});
 
+	// Deliberately addressed to the admin pressing the button, not to a person
+	// picked from a list. The question this answers is "is the wiring live?", and
+	// the only answer worth trusting is one you can see arrive — sending a
+	// stranger a message they didn't ask for to find out proves less and costs
+	// more. `notify` runs the real reminder path, so a DM landing here means a
+	// Tuesday nudge would land too.
+	const sendTest = useMutation({
+		mutationFn: () =>
+			sendTestSlackMessage({ data: { userId: session.user.id } }),
+		onSuccess: () => toast.success("Sent — check your Slack DMs"),
+		onError: (error) =>
+			toast.error(error.message ?? "Could not send the test message"),
+	});
+
 	const connected = status?.connected ?? false;
 
 	return (
@@ -439,9 +475,9 @@ function SlackSection() {
 									<AlertDialogTitle>Disconnect Slack</AlertDialogTitle>
 									<AlertDialogDescription>
 										Nobody in the workspace will receive reminder DMs any more.
-										This also forgets which SlackLogoIcon account each person
-										maps to. It does not remove the app in SlackLogoIcon — do
-										that from SlackLogoIcon if you want to fully revoke access.
+										This also forgets which Slack account each person maps to.
+										It does not remove the app in Slack — do that from Slack if
+										you want to fully revoke access.
 									</AlertDialogDescription>
 								</AlertDialogHeader>
 								<AlertDialogFooter>
@@ -466,8 +502,21 @@ function SlackSection() {
 			{connected && (
 				<SettingList className="mt-1">
 					<SettingRow
+						title="Send a test message"
+						description="DMs you through the same path the reminders use. If it arrives, they will too."
+						action={
+							<Button
+								variant="outline"
+								disabled={sendTest.isPending}
+								onClick={() => sendTest.mutate()}
+							>
+								{sendTest.isPending ? "Sending…" : "Send test DM"}
+							</Button>
+						}
+					/>
+					<SettingRow
 						title="Matched people"
-						description="People are matched to Slack by email. Anyone whose work email isn't in the workspace simply doesn't get reminders — nothing breaks. Re-match after someone joins."
+						description="People are matched to Slack by email when they join, automatically. Anyone whose work email isn't in the workspace simply doesn't get reminders — nothing breaks. Re-match by hand only if someone joined Slack after joining here."
 						badge={
 							<Badge variant="outline">
 								{status?.connected ? status.mappedPeople : 0} matched
