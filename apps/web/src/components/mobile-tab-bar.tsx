@@ -30,14 +30,15 @@ export function MobileTabBar({
 	isAdmin,
 	userName,
 	userEmail,
-	assistantEnabled,
+	assistantAvailable,
 }: {
 	orgSlug: string;
 	isAdmin: boolean;
 	userName: string;
 	userEmail: string;
-	/** `ASSISTANT_ENABLED` on this deployment, from the layout's route context. */
-	assistantEnabled: boolean;
+	/** Deployment flag AND connected AND not paused — resolved in the layout
+	 *  route. See the same prop on `AppSidebar`. */
+	assistantAvailable: boolean;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const router = useRouter();
@@ -49,7 +50,7 @@ export function MobileTabBar({
 	const primaryCount = hasRoomForFourth ? 4 : 3;
 	// Not the same list as the sidebar's: there the assistant is the Chat tab
 	// rather than a row, and a phone has no such tabs. See mobileWorkspaceItems.
-	const items = mobileWorkspaceItems(assistantEnabled);
+	const items = mobileWorkspaceItems(assistantAvailable);
 	const primaryItems = items.slice(0, primaryCount);
 	const moreWorkspaceItems = items.slice(primaryCount);
 

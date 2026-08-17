@@ -1,8 +1,10 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { AppSidebar } from "#/components/app-sidebar.tsx";
 import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
 import { AppShellLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { SidebarInset, SidebarProvider } from "#/components/ui/sidebar.tsx";
+import { assistantSettingsQuery } from "#/queries/assistant.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
 import { enterOrganization } from "#/server/organization.ts";
 
@@ -63,6 +65,16 @@ export const Route = createFileRoute("/$orgSlug")({
 	// live in OrgLayout below, so the default left a bare island floating on the
 	// page. This one draws the shell it is standing in for.
 	pendingComponent: AppShellLoadingSkeleton,
+	// Warmed here, not fetched in the sidebar, and only when the deployment has
+	// the feature at all. Whether this org has actually connected OpenRouter
+	// decides whether the nav shows a Chat tab, so arriving a moment late means
+	// the tab appears and then vanishes — the one thing worse than not having it.
+	loader: async ({ context }) => {
+		if (!context.assistantEnabled) return;
+		await context.queryClient.ensureQueryData(
+			assistantSettingsQuery(context.organization.slug),
+		);
+	},
 	component: OrgLayout,
 });
 
@@ -70,6 +82,23 @@ function OrgLayout() {
 	const { session, organization, role, singleOrg, assistantEnabled } =
 		Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
+
+	// Three switches decide whether the assistant exists for this reader, and
+	// only the first one was ever consulted here: the deployment flag
+	// (`ASSISTANT_ENABLED`), whether an admin has connected a key, and whether
+	// they have paused it for this org. A nav that reads only the first offers a
+	// Chat tab whose destination is a page explaining it isn't connected.
+	//
+	// Not a suspense query, like `myAccess` in the sidebar: the whole app must
+	// not block on it. The loader above means it is normally already in cache, so
+	// the tabs are settled on the first paint rather than popping in.
+	const { data: assistantSettings } = useQuery({
+		...assistantSettingsQuery(organization.slug),
+		enabled: assistantEnabled,
+	});
+	const assistantAvailable =
+		assistantEnabled &&
+		Boolean(assistantSettings?.configured && assistantSettings.enabled);
 
 	return (
 		<SidebarProvider>
@@ -81,7 +110,7 @@ function OrgLayout() {
 				userName={session.user.name}
 				userEmail={session.user.email}
 				singleOrg={singleOrg}
-				assistantEnabled={assistantEnabled}
+				assistantAvailable={assistantAvailable}
 			/>
 			<SidebarInset>
 				<Outlet />
@@ -91,7 +120,7 @@ function OrgLayout() {
 				isAdmin={isAdmin}
 				userName={session.user.name}
 				userEmail={session.user.email}
-				assistantEnabled={assistantEnabled}
+				assistantAvailable={assistantAvailable}
 			/>
 		</SidebarProvider>
 	);

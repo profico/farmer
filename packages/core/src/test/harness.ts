@@ -25,16 +25,51 @@ const migrationsFolder = resolve(
 
 export type TestDb = {
 	db: Db;
-	/** Restore the ambient handle and free the instance. */
+	/** Restore the ambient handle. */
 	close: () => Promise<void>;
 };
+
+/**
+ * One PGLite ENGINE for the whole run, re-schema'd per file.
+ *
+ * Each file still gets what it asks for — an empty, freshly migrated database
+ * that nothing else has written to — but it is a new schema inside one Postgres
+ * rather than a new Postgres.
+ *
+ * That distinction is the difference between a green CI and a red one. `bun
+ * test` runs every file in ONE process, and a PGLite instance is a few hundred
+ * megabytes of WASM linear memory: a `WebAssembly.Memory` never shrinks, and
+ * closing the client drops the reference without giving the pages back — a
+ * forced `Bun.gc(true)` between files does not move the number either. So the
+ * suite's footprint was the SUM of every database it had ever opened: ~450MB
+ * per file, ~11GB across thirty, which a laptop absorbs and a 7GB runner
+ * answers with SIGKILL. Sharing the engine makes the peak the cost of one
+ * database plus the largest file's data.
+ *
+ * It relies on test files running sequentially in one process, which is what
+ * `bun test` does. Should that ever change, this needs to become one engine per
+ * worker rather than one per run — the reset below would otherwise pull the
+ * schema out from under a file running beside it.
+ */
+let engine: PGlite | null = null;
 
 /** Spin up a migrated, empty database and point `db` at it.
  *
  *  Call in `beforeAll`, and `close()` in `afterAll`. Because every consumer
  *  reads through the lazy `db` proxy, services need no change to run here. */
 export const createTestDb = async (): Promise<TestDb> => {
-	const client = new PGlite();
+	if (!engine) engine = new PGlite();
+	const client = engine;
+
+	// A fresh database, spelled as a schema reset. `drizzle` holds the migration
+	// ledger, so it goes too — otherwise the migrator would find every migration
+	// already applied and hand the next file an empty database with no tables.
+	await client.exec(`
+		DROP SCHEMA IF EXISTS drizzle CASCADE;
+		DROP SCHEMA IF EXISTS public CASCADE;
+		CREATE SCHEMA public;
+	`);
+
 	const handle = drizzle(client, { schema });
 
 	await migrate(handle, { migrationsFolder });
@@ -43,9 +78,24 @@ export const createTestDb = async (): Promise<TestDb> => {
 
 	return {
 		db: handle as unknown as Db,
+		// The engine deliberately outlives this: the next file resets it, and
+		// `closeTestEngine` below shuts it down once the whole run is over.
 		close: async () => {
 			setDbForTests(null);
-			await client.close();
 		},
 	};
+};
+
+/**
+ * Shut the shared engine down. Called once for the whole run from
+ * `src/test/preload.ts`, never from a test file.
+ *
+ * An engine left open is a live handle at exit, and `bun test` marks the run
+ * failed (exit 99) on that alone — a red CI for a suite where nothing failed.
+ */
+export const closeTestEngine = async (): Promise<void> => {
+	if (!engine) return;
+	const client = engine;
+	engine = null;
+	await client.close();
 };

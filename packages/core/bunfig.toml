@@ -1,0 +1,9 @@
+# Test-run configuration for packages/core.
+#
+# The preload registers ONE `afterAll` for the entire run, which is the only
+# place the shared PGLite engine can be closed: `src/test/harness.ts` keeps a
+# single engine alive across every file (per-file instances cost ~11GB and
+# SIGKILL'd CI), and a file-level hook would close it out from under the file
+# that runs next.
+[test]
+preload = ["./src/test/preload.ts"]

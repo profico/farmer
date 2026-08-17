@@ -84,7 +84,8 @@ export type NavItem = {
 //
 // Ungated by ROLE on purpose — the assistant answers through the caller's own
 // Access, so a Member's is simply a narrower assistant, not a forbidden one —
-// but gated by the deployment flag.
+// but gated on the feature being available at all: the deployment flag, a
+// connected key, and not paused for this org (see `assistantAvailable`).
 export const ASSISTANT_ITEM: NavItem = {
 	label: "Assistant",
 	to: "/$orgSlug/assistant",
@@ -137,8 +138,8 @@ export const WORKSPACE_ITEMS: NavItem[] = [
  * work happens on. Appended rather than filtered because the bar slices by
  * POSITION, so a conditional row has to be placed before the slice.
  */
-export const mobileWorkspaceItems = (assistantEnabled: boolean): NavItem[] =>
-	assistantEnabled ? [...WORKSPACE_ITEMS, ASSISTANT_ITEM] : WORKSPACE_ITEMS;
+export const mobileWorkspaceItems = (assistantAvailable: boolean): NavItem[] =>
+	assistantAvailable ? [...WORKSPACE_ITEMS, ASSISTANT_ITEM] : WORKSPACE_ITEMS;
 
 // Gated on a PROJECT role rather than the org role, so neither list fits: the
 // close sheet belongs to whoever runs a project, and clients are creatable by
@@ -217,7 +218,7 @@ export function AppSidebar({
 	userName,
 	userEmail,
 	singleOrg = false,
-	assistantEnabled,
+	assistantAvailable,
 }: {
 	orgSlug: string;
 	organizationName: string;
@@ -226,8 +227,14 @@ export function AppSidebar({
 	userName: string;
 	userEmail: string;
 	singleOrg?: boolean;
-	/** `ASSISTANT_ENABLED` on this deployment, from the layout's route context. */
-	assistantEnabled: boolean;
+	/**
+	 * Whether the assistant exists for this reader at all — the deployment flag
+	 * AND a connected key AND not paused for this org, resolved once in the
+	 * layout route. Deliberately not just `ASSISTANT_ENABLED`: a Chat tab whose
+	 * destination explains that it isn't connected is a tab that shouldn't be
+	 * there.
+	 */
+	assistantAvailable: boolean;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const router = useRouter();
@@ -245,7 +252,12 @@ export function AppSidebar({
 
 	const onAssistant = isNavItemActive(pathname, ASSISTANT_ITEM.to, orgSlug);
 	const [tabOverride, setTabOverride] = useState<SidebarTab | null>(null);
-	const tab: SidebarTab = tabOverride ?? (onAssistant ? "chat" : "browse");
+	// With no assistant there is no second list, so the tab is pinned rather than
+	// merely unswitchable — otherwise an admin who pauses it mid-session is left
+	// looking at an empty thread rail with no control to leave it by.
+	const tab: SidebarTab = !assistantAvailable
+		? "browse"
+		: (tabOverride ?? (onAssistant ? "chat" : "browse"));
 	// biome-ignore lint/correctness/useExhaustiveDependencies: it exists to clear the override on navigation, and `pathname` is the navigation
 	useEffect(() => {
 		setTabOverride(null);
@@ -368,7 +380,7 @@ export function AppSidebar({
 					organizationLogo={organizationLogo}
 					singleOrg={singleOrg}
 				/>
-				{assistantEnabled && (
+				{assistantAvailable && (
 					<SegmentedControl className="w-full">
 						{/* Browse only switches the list — you may want the nav while
 						    staying in a conversation. */}
