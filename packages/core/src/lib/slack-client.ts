@@ -30,18 +30,35 @@ export const slackRedirectUri = (): string => {
 type SlackResponse<T> = { ok: true } & T;
 type SlackError = { ok: false; error: string };
 
+/**
+ * Every call is form-encoded, not JSON.
+ *
+ * Slack's docs list `application/json` among the accepted content types for
+ * methods it does not actually accept it for — `users.lookupByEmail` answers a
+ * JSON body with `invalid_arguments`, which read as "that person isn't in the
+ * workspace" all the way up to a Settings screen reporting "matched 0 people".
+ * Form encoding is accepted by *every* Web API method, so it's the encoding
+ * that can't be wrong per-method. Non-string values (chat.postMessage `blocks`)
+ * are JSON-stringified, which is how Slack documents passing them in a form
+ * body.
+ */
 const call = async <T>(
 	botToken: string,
 	method: string,
 	body: Record<string, unknown>,
 ): Promise<SlackResponse<T> | SlackError> => {
+	const form = new URLSearchParams();
+	for (const [key, value] of Object.entries(body)) {
+		if (value === undefined) continue;
+		form.set(key, typeof value === "string" ? value : JSON.stringify(value));
+	}
 	const response = await externalFetch(`${SLACK_API}/${method}`, {
 		method: "POST",
 		headers: {
 			Authorization: `Bearer ${botToken}`,
-			"Content-Type": "application/json; charset=utf-8",
+			"Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
 		},
-		body: JSON.stringify(body),
+		body: form.toString(),
 	});
 	if (!response.ok) {
 		return { ok: false, error: `http_${response.status}` };

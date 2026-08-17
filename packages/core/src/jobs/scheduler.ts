@@ -63,17 +63,40 @@ export interface SchedulerLogger {
 	error: (message: string) => void;
 }
 
-const defaultLogger: SchedulerLogger = {
-	info: (message) => {
-		console.log(`[INFO] ${message}`);
-	},
-	warn: (message) => {
-		console.log(`[WARNING] ${message}`);
-	},
-	error: (message) => {
-		console.log(`[ERROR] ${message}`);
-	},
-};
+/**
+ * Both of this module's tables — the default logger and the job list below —
+ * are built by a hoisted function rather than held in a module-scope `const`,
+ * and that is load-bearing in the production bundle.
+ *
+ * `bun build` (Dockerfile) wraps each module in a lazy initializer, and any
+ * module that reaches an `--external` package (better-auth, via
+ * auth → github.service → ports → automation-sync) becomes an *async* one. This
+ * module's initializer therefore suspends at its `await` on the automation-sync
+ * import — but the barrel in `index.ts` calls it without awaiting, so
+ * `await import("@farmer/core/jobs")` hands out a namespace whose functions are
+ * hoisted and callable while its `const`s are still unassigned. A `const JOBS`
+ * read at that moment is `undefined`, which is exactly how the web host used to
+ * die on startup with "undefined is not an object (evaluating 'JOBS.map')" —
+ * silently, since the caller catches and the HTTP server comes up regardless,
+ * leaving a deployment with no automation and no reminders at all.
+ *
+ * Function declarations are hoisted whole, so they cannot be observed
+ * half-initialized. Keep it that way: a `const` here is a latent startup crash
+ * that only ever reproduces in the built image, never in dev or in tests.
+ */
+function createDefaultLogger(): SchedulerLogger {
+	return {
+		info: (message) => {
+			console.log(`[INFO] ${message}`);
+		},
+		warn: (message) => {
+			console.log(`[WARNING] ${message}`);
+		},
+		error: (message) => {
+			console.log(`[ERROR] ${message}`);
+		},
+	};
+}
 
 interface SchedulerConfig {
 	/** Human name used in log lines, e.g. "Automation sync". */
@@ -91,7 +114,8 @@ interface SchedulerConfig {
 	run: (logger: SchedulerLogger) => Promise<string>;
 }
 
-const JOBS: SchedulerConfig[] = [
+function schedulerJobs(): SchedulerConfig[] {
+	return [
 	{
 		name: "Automation sync",
 		enabledEnv: "AUTOMATION_SYNC_ENABLED",
@@ -139,15 +163,16 @@ const JOBS: SchedulerConfig[] = [
 			return `${String(s.alerts)} alerts to ${String(s.recipients)} recipients (${String(s.projects)} budgeted projects)`;
 		},
 	},
-];
+	];
+}
 
 /** Start every scheduled job. Returns a handle per job that actually started. */
 export const startSchedulers = (
-	logger: SchedulerLogger = defaultLogger,
+	logger: SchedulerLogger = createDefaultLogger(),
 ): SchedulerHandle[] =>
-	JOBS.map((config) => startIntervalScheduler(config, logger)).filter(
-		(handle): handle is SchedulerHandle => handle !== null,
-	);
+	schedulerJobs()
+		.map((config) => startIntervalScheduler(config, logger))
+		.filter((handle): handle is SchedulerHandle => handle !== null);
 
 const startIntervalScheduler = (
 	config: SchedulerConfig,
@@ -230,7 +255,7 @@ const startIntervalScheduler = (
 export const stopSchedulers = async (
 	handles: SchedulerHandle[],
 	graceMs: number,
-	logger: SchedulerLogger = defaultLogger,
+	logger: SchedulerLogger = createDefaultLogger(),
 ): Promise<void> => {
 	if (handles.length === 0) return;
 	for (const handle of handles) handle.stopTimers();
