@@ -105,7 +105,10 @@ export const slackClient = {
 
 	/** Resolve a person's Slack user id from their email. Returns null when they
 	 *  aren't in the workspace — that person simply receives no nudges, which is
-	 *  not an error worth failing a whole reminder run over. */
+	 *  not an error worth failing a whole reminder run over. Logs why, because
+	 *  the caller only counts matches: "matched 0 people" reads the same whether
+	 *  the token is missing a scope or nobody's address is in the workspace, and
+	 *  without this line the difference is only visible by hand-curling Slack. */
 	lookupUserByEmail: async (
 		botToken: string,
 		email: string,
@@ -115,7 +118,10 @@ export const slackClient = {
 			"users.lookupByEmail",
 			{ email },
 		);
-		if (!result.ok) return null;
+		if (!result.ok) {
+			console.error(`[slack] lookupByEmail(${email}) failed: ${result.error}`);
+			return null;
+		}
 		return result.user.id;
 	},
 
