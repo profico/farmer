@@ -15,7 +15,10 @@ import { holidaysService } from "./holidays.service";
 import { hourFundService } from "./hour-fund.service";
 import { ledgerByUser } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
-import { BEHIND_PACE_THRESHOLD, orgSettingsService } from "./org-settings.service";
+import {
+	BEHIND_PACE_THRESHOLD,
+	orgSettingsService,
+} from "./org-settings.service";
 import type { Ctx } from "./types";
 
 // Tracking compliance (PRD 6.2) — the forgetting-detector, and the engine behind
@@ -63,7 +66,10 @@ const workingDaysIn = async (
 /** People the compliance machinery applies to at all. Overhead people never
  *  appear anywhere in it — the system never nags the CEO about timesheets — and
  *  neither do archived people, who cannot act on a nudge at all. */
-const complianceCohort = async (ctx: Ctx, asOfMonth: { year: number; month: number }) => {
+const complianceCohort = async (
+	ctx: Ctx,
+	asOfMonth: { year: number; month: number },
+) => {
 	const [people, types, archived] = await Promise.all([
 		db
 			.select({ userId: member.userId, name: user.name, email: user.email })
@@ -82,9 +88,7 @@ const complianceCohort = async (ctx: Ctx, asOfMonth: { year: number; month: numb
 				expectedSecondsOverride: null,
 			},
 		}))
-		.filter(
-			(p) => p.memberType.type !== "overhead" && !archived.has(p.userId),
-		);
+		.filter((p) => p.memberType.type !== "overhead" && !archived.has(p.userId));
 };
 
 export const complianceService = {
@@ -109,7 +113,10 @@ export const complianceService = {
 
 		// Look back far enough to always contain N working days even across a long
 		// holiday stretch, then take the last N.
-		const windowStart = addDaysToKey(today, -(settings.complianceMissingDays * 4 + 14));
+		const windowStart = addDaysToKey(
+			today,
+			-(settings.complianceMissingDays * 4 + 14),
+		);
 		const working = await workingDaysIn(ctx, windowStart, today);
 		const recentWorkingDays = working.slice(-settings.complianceMissingDays);
 		if (recentWorkingDays.length === 0) return [];

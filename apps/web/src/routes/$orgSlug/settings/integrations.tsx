@@ -270,26 +270,35 @@ function IntegrationsSettingsPage() {
 					}
 				/>
 
-				{status.connected && (
+				{/* One list, not two stacked ones. `SettingRow` suppresses the top
+				    hairline and padding on its first row, so a second adjacent list
+				    made the org-installations heading open flush against the toggle
+				    above it — the only block on the page not separated like the rest.
+				    Sharing the list makes the separation fall out of the idiom. */}
+				{(status.connected || isAdmin) && (
 					<SettingList className="mt-1">
-						<SettingToggleRow
-							title="Auto-load commits"
-							description="Show the day's commits automatically in the add-block dialog — no 'Find commits' click."
-							checked={settings.githubAutoLoadCommits}
-							patch={(value) => ({ githubAutoLoadCommits: value })}
-						/>
-						<SettingToggleRow
-							title="Sync commits as work time"
-							description="On days you push commits, automatically log a work block that fills your working hours."
-							checked={settings.githubSyncCommitsAsWorkTime}
-							patch={(value) => ({ githubSyncCommitsAsWorkTime: value })}
-						/>
-					</SettingList>
-				)}
+						{status.connected && (
+							<>
+								<SettingToggleRow
+									title="Auto-load commits"
+									description="Show the day's commits automatically in the add-block dialog — no 'Find commits' click."
+									checked={settings.githubAutoLoadCommits}
+									patch={(value) => ({ githubAutoLoadCommits: value })}
+								/>
+								<SettingToggleRow
+									title="Sync commits as work time"
+									description="On days you push commits, automatically log a work block that fills your working hours."
+									checked={settings.githubSyncCommitsAsWorkTime}
+									patch={(value) => ({ githubSyncCommitsAsWorkTime: value })}
+								/>
+							</>
+						)}
 
-				{/* Per-org GitHub App installations — repo & commit access */}
-				{isAdmin && (
-					<OrgInstallationsSection personalConnected={status.connected} />
+						{/* Per-org GitHub App installations — repo & commit access */}
+						{isAdmin && (
+							<OrgInstallationsSection personalConnected={status.connected} />
+						)}
+					</SettingList>
 				)}
 			</PageSection>
 
@@ -570,11 +579,13 @@ function OrgInstallationsSection({
 	});
 
 	return (
-		// Just another row in the list. It used to be indented behind a lone
-		// `border-l`, an idiom used nowhere else in the app, which read as a stray
-		// rule rather than as nesting — it was the only left-hand border on the
-		// screen and had no matching right, top or bottom edge to belong to.
-		<SettingList className="mt-1">
+		// Just another row in the list — literally: a fragment, so these land as
+		// children of the caller's `SettingList` and are ruled and padded like every
+		// other row. It used to be indented behind a lone `border-l`, an idiom used
+		// nowhere else in the app, which read as a stray rule rather than as nesting
+		// — it was the only left-hand border on the screen and had no matching
+		// right, top or bottom edge to belong to.
+		<>
 			<SettingRow
 				icon={<BuildingsIcon className="size-5 text-muted-foreground" />}
 				title="Organization GitHub accounts"
@@ -653,6 +664,6 @@ function OrgInstallationsSection({
 					))}
 				</div>
 			)}
-		</SettingList>
+		</>
 	);
 }

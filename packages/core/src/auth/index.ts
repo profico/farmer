@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { genericOAuth, organization } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
@@ -70,8 +70,28 @@ export const auth = betterAuth({
 			clientId: process.env.GITHUB_CLIENT_ID!,
 			clientSecret: process.env.GITHUB_CLIENT_SECRET!,
 			// Appended to better-auth's default ["read:user","user:email"].
-			// Classic OAuth has no read-only-private-repos scope — `repo` is
-			// needed so commit tracking works for private repos too.
+			//
+			// `repo` is a broad grant — read AND write on every private repository
+			// the person can reach — and it is NOT what reads commits. That is the
+			// per-org App installation token; this user token never touches repo
+			// content, only `GET /user` and `GET /user/installations`.
+			//
+			// It is kept for exactly one reason, so don't "tidy" it away:
+			// `GET /user/installations` is documented as working only for OAuth app
+			// and classic tokens that carry `repo`, and that call is the
+			// authorization gate in `githubService.connectInstallation` — the check
+			// that you may only attach an installation you actually administer.
+			// Remove the scope and connecting the GitHub App breaks for everyone who
+			// links their account afterwards.
+			//
+			// (The older note here — "so commit tracking works for private repos" —
+			// stopped being true when commit reads moved to the installation token.
+			// The scope stayed necessary; the reason changed underneath it.)
+			//
+			// The way out, if the grant is ever judged too broad, is to stop using a
+			// classic OAuth app for GitHub identity and issue a GitHub App *user
+			// access token* instead, which enumerates installations without `repo`.
+			// That is a provider change, not a one-line scope edit.
 			scope: ["repo"],
 		},
 		google: {

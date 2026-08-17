@@ -1,9 +1,7 @@
 import { z } from "zod";
 
 export const listHolidaysForYearInput = z.coerce.number().int();
-export type ListHolidaysForYearInput = z.infer<
-	typeof listHolidaysForYearInput
->;
+export type ListHolidaysForYearInput = z.infer<typeof listHolidaysForYearInput>;
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 

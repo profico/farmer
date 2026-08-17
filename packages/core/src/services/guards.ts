@@ -76,10 +76,7 @@ export const assertTaskAvailable = async (
 	const row = await db.query.task.findFirst({
 		where: and(
 			eq(task.id, taskId),
-			or(
-				eq(task.scope, "site"),
-				eq(task.organizationId, ctx.organizationId),
-			),
+			or(eq(task.scope, "site"), eq(task.organizationId, ctx.organizationId)),
 		),
 		columns: { id: true, scope: true, isAbsence: true, archivedAt: true },
 	});

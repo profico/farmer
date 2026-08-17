@@ -43,8 +43,8 @@
  * lock or run exactly one worker container at that point.
  */
 
-import { runBudgetAlertsOnce } from "./budget-alerts";
 import { runAutomationSyncOnce } from "./automation-sync";
+import { runBudgetAlertsOnce } from "./budget-alerts";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
 
@@ -116,53 +116,53 @@ interface SchedulerConfig {
 
 function schedulerJobs(): SchedulerConfig[] {
 	return [
-	{
-		name: "Automation sync",
-		enabledEnv: "AUTOMATION_SYNC_ENABLED",
-		intervalEnv: "AUTOMATION_SYNC_INTERVAL_MINUTES",
-		// Twenty minutes is the resolution at which "my meeting showed up as a
-		// block" feels automatic. The window is a whole day wide, so a finer
-		// interval buys nothing but API calls.
-		defaultIntervalMinutes: 20,
-		run: async (logger) => {
-			const s = await runAutomationSyncOnce(logger);
-			return `${String(s.synced)}/${String(s.eligible)} people synced, ${String(s.failed)} failed`;
+		{
+			name: "Automation sync",
+			enabledEnv: "AUTOMATION_SYNC_ENABLED",
+			intervalEnv: "AUTOMATION_SYNC_INTERVAL_MINUTES",
+			// Twenty minutes is the resolution at which "my meeting showed up as a
+			// block" feels automatic. The window is a whole day wide, so a finer
+			// interval buys nothing but API calls.
+			defaultIntervalMinutes: 20,
+			run: async (logger) => {
+				const s = await runAutomationSyncOnce(logger);
+				return `${String(s.synced)}/${String(s.eligible)} people synced, ${String(s.failed)} failed`;
+			},
 		},
-	},
-	{
-		name: "Log reminders",
-		enabledEnv: "LOG_REMINDERS_ENABLED",
-		intervalEnv: "LOG_REMINDERS_INTERVAL_MINUTES",
-		defaultIntervalMinutes: 30,
-		run: async () => {
-			const s = await runLogRemindersOnce();
-			return `${String(s.sent)} sent, ${String(s.skipped)} skipped, ${String(s.failed)} failed (${String(s.eligible)} members)`;
+		{
+			name: "Log reminders",
+			enabledEnv: "LOG_REMINDERS_ENABLED",
+			intervalEnv: "LOG_REMINDERS_INTERVAL_MINUTES",
+			defaultIntervalMinutes: 30,
+			run: async () => {
+				const s = await runLogRemindersOnce();
+				return `${String(s.sent)} sent, ${String(s.skipped)} skipped, ${String(s.failed)} failed (${String(s.eligible)} members)`;
+			},
 		},
-	},
-	{
-		name: "Slack reminders",
-		enabledEnv: "SLACK_REMINDERS_ENABLED",
-		intervalEnv: "SLACK_REMINDERS_INTERVAL_MINUTES",
-		// Hourly is plenty: the job itself decides which day and hour it may send
-		// on, so a finer interval would only re-check the same answer.
-		defaultIntervalMinutes: 60,
-		run: async () => {
-			const s = await runSlackRemindersOnce();
-			return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
+		{
+			name: "Slack reminders",
+			enabledEnv: "SLACK_REMINDERS_ENABLED",
+			intervalEnv: "SLACK_REMINDERS_INTERVAL_MINUTES",
+			// Hourly is plenty: the job itself decides which day and hour it may send
+			// on, so a finer interval would only re-check the same answer.
+			defaultIntervalMinutes: 60,
+			run: async () => {
+				const s = await runSlackRemindersOnce();
+				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
+			},
 		},
-	},
-	{
-		name: "Budget alerts",
-		enabledEnv: "BUDGET_ALERTS_ENABLED",
-		intervalEnv: "BUDGET_ALERTS_INTERVAL_MINUTES",
-		// An hour budget moves at the speed of people logging time; hourly is far
-		// more resolution than a "you're at 80%" note needs.
-		defaultIntervalMinutes: 60,
-		run: async () => {
-			const s = await runBudgetAlertsOnce();
-			return `${String(s.alerts)} alerts to ${String(s.recipients)} recipients (${String(s.projects)} budgeted projects)`;
+		{
+			name: "Budget alerts",
+			enabledEnv: "BUDGET_ALERTS_ENABLED",
+			intervalEnv: "BUDGET_ALERTS_INTERVAL_MINUTES",
+			// An hour budget moves at the speed of people logging time; hourly is far
+			// more resolution than a "you're at 80%" note needs.
+			defaultIntervalMinutes: 60,
+			run: async () => {
+				const s = await runBudgetAlertsOnce();
+				return `${String(s.alerts)} alerts to ${String(s.recipients)} recipients (${String(s.projects)} budgeted projects)`;
+			},
 		},
-	},
 	];
 }
 

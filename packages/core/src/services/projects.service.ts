@@ -325,8 +325,7 @@ export const projectsService = {
 					columns: { id: true, scope: true, organizationId: true },
 				});
 				const usable = valid.filter(
-					(t) =>
-						t.scope === "site" || t.organizationId === ctx.organizationId,
+					(t) => t.scope === "site" || t.organizationId === ctx.organizationId,
 				);
 				if (usable.length !== input.taskIds.length) {
 					throw new Error("One or more tasks are not available");
@@ -375,9 +374,7 @@ export const projectsService = {
 				.update(project)
 				.set({
 					...(input.name !== undefined ? { name: input.name } : {}),
-					...(input.clientId !== undefined
-						? { clientId: input.clientId }
-						: {}),
+					...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
 					...(input.code !== undefined ? { code: input.code || null } : {}),
 					// Project type is changeable after creation without history (e.g. a
 					// Fixed Scope engagement rolling into Maintenance). Close sheets

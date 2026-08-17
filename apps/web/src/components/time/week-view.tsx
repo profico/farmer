@@ -411,26 +411,28 @@ export function WeekView({
 										{rowTotal === 0 ? (
 											<span className="block size-7" aria-hidden />
 										) : (
-										<RowNoteDialog
-											heading={row.heading}
-											dates={dates}
-											byDate={row.byDate}
-											hasNote={dates.some((date) =>
-												(row.byDate.get(date) ?? []).some((e) => e.description),
-											)}
-											disabled={row.locked}
-											onSave={async (notesByDate) => {
-												// Each day's note goes onto that day's entries only.
-												for (const [date, description] of notesByDate) {
-													for (const entry of row.byDate.get(date) ?? []) {
-														await updateTimeEntryDescription({
-															data: { timeEntryId: entry.id, description },
-														});
+											<RowNoteDialog
+												heading={row.heading}
+												dates={dates}
+												byDate={row.byDate}
+												hasNote={dates.some((date) =>
+													(row.byDate.get(date) ?? []).some(
+														(e) => e.description,
+													),
+												)}
+												disabled={row.locked}
+												onSave={async (notesByDate) => {
+													// Each day's note goes onto that day's entries only.
+													for (const [date, description] of notesByDate) {
+														for (const entry of row.byDate.get(date) ?? []) {
+															await updateTimeEntryDescription({
+																data: { timeEntryId: entry.id, description },
+															});
+														}
 													}
-												}
-												await invalidate();
-											}}
-										/>
+													await invalidate();
+												}}
+											/>
 										)}
 									</td>
 									{dates.map((date, colIndex) => (

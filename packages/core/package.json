@@ -15,6 +15,9 @@
 	},
 	"scripts": {
 		"test": "bun test",
+		"lint": "biome lint",
+		"format": "biome format --write",
+		"check": "biome check",
 		"worker": "bun run src/jobs/worker.ts",
 		"auth:generate": "better-auth generate --config ./src/auth/index.ts --output ./src/db/schema/auth.ts -y",
 		"db:generate": "drizzle-kit generate",

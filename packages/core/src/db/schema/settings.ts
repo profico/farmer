@@ -64,7 +64,9 @@ export const integrationSettings = pgTable(
 		),
 		...stamps,
 	},
-	(t) => [unique("integration_settings_org_user_unq").on(t.organizationId, t.userId)],
+	(t) => [
+		unique("integration_settings_org_user_unq").on(t.organizationId, t.userId),
+	],
 );
 
 // Records a Google Calendar event the user deleted after it was auto-synced

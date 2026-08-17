@@ -20,7 +20,11 @@ export const hourFundService = {
 	 *  Null is meaningful and must NOT be coerced to a default: without a fund
 	 *  there is no Expected value, so the close sheet shows blank rather than
 	 *  inventing a number to reconcile against. */
-	get: async (ctx: Ctx, year: number, month: number): Promise<number | null> => {
+	get: async (
+		ctx: Ctx,
+		year: number,
+		month: number,
+	): Promise<number | null> => {
 		const row = await db.query.monthlyHourFund.findFirst({
 			where: and(
 				eq(monthlyHourFund.organizationId, ctx.organizationId),

@@ -127,7 +127,9 @@ export const insertAllDayEvent = async (
 //  1. hangoutLink            — Google Meet, the common case
 //  2. conferenceData video   — Meet/Zoom/Teams via a calendar add-on
 //  3. first URL in location  — Zoom/Teams links are often just pasted here
-export const extractMeetingUrl = (event: GoogleCalendarEvent): string | null => {
+export const extractMeetingUrl = (
+	event: GoogleCalendarEvent,
+): string | null => {
 	if (event.hangoutLink) return event.hangoutLink;
 	const video = event.conferenceData?.entryPoints?.find(
 		(entry) => entry.entryPointType === "video" && entry.uri,

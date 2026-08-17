@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { organization, user } from "../db/schema/auth";
 import { client, project, task, timeEntry } from "../db/schema/domain";
-import { type TestDb, createTestDb } from "../test/harness";
+import { createTestDb, type TestDb } from "../test/harness";
 import { ledgerByProject, ledgerByUser, ledgerTotal } from "./ledger";
 import type { Ctx } from "./types";
 
@@ -34,11 +34,30 @@ beforeAll(async () => {
 
 	await db.insert(organization).values([
 		{ id: ORG, name: "Ledger Org", slug: ORG, createdAt: new Date() },
-		{ id: OTHER_ORG, name: "Other Org", slug: OTHER_ORG, createdAt: new Date() },
+		{
+			id: OTHER_ORG,
+			name: "Other Org",
+			slug: OTHER_ORG,
+			createdAt: new Date(),
+		},
 	]);
 	await db.insert(user).values([
-		{ id: ALICE, name: "Alice", email: "a@example.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date() },
-		{ id: BOB, name: "Bob", email: "b@example.com", emailVerified: true, createdAt: new Date(), updatedAt: new Date() },
+		{
+			id: ALICE,
+			name: "Alice",
+			email: "a@example.com",
+			emailVerified: true,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		},
+		{
+			id: BOB,
+			name: "Bob",
+			email: "b@example.com",
+			emailVerified: true,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		},
 	]);
 
 	const [c] = await db
@@ -60,7 +79,11 @@ beforeAll(async () => {
 
 	const [work] = await db
 		.insert(task)
-		.values({ scope: "organization" as const, organizationId: ORG, name: "Dev" })
+		.values({
+			scope: "organization" as const,
+			organizationId: ORG,
+			name: "Dev",
+		})
 		.returning();
 	if (!work) throw new Error("task");
 	workTaskId = work.id;
@@ -82,14 +105,62 @@ beforeAll(async () => {
 
 	await db.insert(timeEntry).values([
 		// Alice: 3h on a project, 1h unfiled, 8h vacation.
-		{ organizationId: ORG, userId: ALICE, projectId, taskId: workTaskId, date: "2026-08-10", description: "work", durationSeconds: 3 * HOUR },
-		{ organizationId: ORG, userId: ALICE, projectId: null, taskId: workTaskId, date: "2026-08-11", description: "meeting", durationSeconds: HOUR },
-		{ organizationId: ORG, userId: ALICE, projectId: null, taskId: absenceTaskId, date: "2026-08-12", description: "vacation", durationSeconds: 8 * HOUR },
+		{
+			organizationId: ORG,
+			userId: ALICE,
+			projectId,
+			taskId: workTaskId,
+			date: "2026-08-10",
+			description: "work",
+			durationSeconds: 3 * HOUR,
+		},
+		{
+			organizationId: ORG,
+			userId: ALICE,
+			projectId: null,
+			taskId: workTaskId,
+			date: "2026-08-11",
+			description: "meeting",
+			durationSeconds: HOUR,
+		},
+		{
+			organizationId: ORG,
+			userId: ALICE,
+			projectId: null,
+			taskId: absenceTaskId,
+			date: "2026-08-12",
+			description: "vacation",
+			durationSeconds: 8 * HOUR,
+		},
 		// Bob: 2h on the other project.
-		{ organizationId: ORG, userId: BOB, projectId: otherProjectId, taskId: workTaskId, date: "2026-08-10", description: "work", durationSeconds: 2 * HOUR },
+		{
+			organizationId: ORG,
+			userId: BOB,
+			projectId: otherProjectId,
+			taskId: workTaskId,
+			date: "2026-08-10",
+			description: "work",
+			durationSeconds: 2 * HOUR,
+		},
 		// Outside the range.
-		{ organizationId: ORG, userId: ALICE, projectId, taskId: workTaskId, date: "2026-07-31", description: "last month", durationSeconds: 5 * HOUR },
-		{ organizationId: ORG, userId: ALICE, projectId, taskId: workTaskId, date: "2026-09-01", description: "next month", durationSeconds: 5 * HOUR },
+		{
+			organizationId: ORG,
+			userId: ALICE,
+			projectId,
+			taskId: workTaskId,
+			date: "2026-07-31",
+			description: "last month",
+			durationSeconds: 5 * HOUR,
+		},
+		{
+			organizationId: ORG,
+			userId: ALICE,
+			projectId,
+			taskId: workTaskId,
+			date: "2026-09-01",
+			description: "next month",
+			durationSeconds: 5 * HOUR,
+		},
 	]);
 });
 
@@ -142,7 +213,11 @@ describe("tenancy and range", () => {
 	test("entries outside the range are excluded at both ends", async () => {
 		expect(await ledgerTotal(ctx, RANGE, "project")).toBe(5 * HOUR);
 		expect(
-			await ledgerTotal(ctx, { from: "2026-07-01", to: "2026-09-30" }, "project"),
+			await ledgerTotal(
+				ctx,
+				{ from: "2026-07-01", to: "2026-09-30" },
+				"project",
+			),
 		).toBe(15 * HOUR);
 	});
 
@@ -154,9 +229,14 @@ describe("tenancy and range", () => {
 			3 * HOUR,
 		);
 		expect(
-			await ledgerTotal(ctx, { from: "2026-08-11", to: "2026-08-31" }, "project", {
-				userId: ALICE,
-			}),
+			await ledgerTotal(
+				ctx,
+				{ from: "2026-08-11", to: "2026-08-31" },
+				"project",
+				{
+					userId: ALICE,
+				},
+			),
 		).toBe(0);
 	});
 });
@@ -201,20 +281,22 @@ describe("grouping", () => {
 
 describe("filters", () => {
 	test("by user", async () => {
-		expect(
-			await ledgerTotal(ctx, RANGE, "project", { userId: ALICE }),
-		).toBe(3 * HOUR);
+		expect(await ledgerTotal(ctx, RANGE, "project", { userId: ALICE })).toBe(
+			3 * HOUR,
+		);
 	});
 
 	test("by project", async () => {
-		expect(
-			await ledgerTotal(ctx, RANGE, "project", { projectId }),
-		).toBe(3 * HOUR);
+		expect(await ledgerTotal(ctx, RANGE, "project", { projectId })).toBe(
+			3 * HOUR,
+		);
 	});
 
 	test("visibleProjectIds scopes to the caller's projects", async () => {
 		expect(
-			await ledgerTotal(ctx, RANGE, "project", { visibleProjectIds: [projectId] }),
+			await ledgerTotal(ctx, RANGE, "project", {
+				visibleProjectIds: [projectId],
+			}),
 		).toBe(3 * HOUR);
 	});
 
@@ -260,8 +342,24 @@ describe("the Break built-in is worked but never unfiled", () => {
 		if (!breakTaskId) throw new Error("break task");
 
 		await db.insert(timeEntry).values([
-			{ organizationId: ORG, userId: ALICE, projectId: null, taskId: breakTaskId, date: DATE, description: "Break", durationSeconds: 1800 },
-			{ organizationId: ORG, userId: ALICE, projectId: null, taskId: workTaskId, date: DATE, description: "meeting", durationSeconds: HOUR },
+			{
+				organizationId: ORG,
+				userId: ALICE,
+				projectId: null,
+				taskId: breakTaskId,
+				date: DATE,
+				description: "Break",
+				durationSeconds: 1800,
+			},
+			{
+				organizationId: ORG,
+				userId: ALICE,
+				projectId: null,
+				taskId: workTaskId,
+				date: DATE,
+				description: "meeting",
+				durationSeconds: HOUR,
+			},
 		]);
 	});
 

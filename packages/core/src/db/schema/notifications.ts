@@ -67,10 +67,7 @@ export const notificationSettings = pgTable(
 		...stamps,
 	},
 	(t) => [
-		unique("notification_settings_org_user_unq").on(
-			t.organizationId,
-			t.userId,
-		),
+		unique("notification_settings_org_user_unq").on(t.organizationId, t.userId),
 	],
 );
 

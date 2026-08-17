@@ -75,7 +75,11 @@ export const googleCalendarService = {
 		// Integrations page down on a slow network, not just a Google outage.
 		try {
 			const info = await getGoogleUserInfo(token);
-			return { connected: true, email: info?.email ?? null, unreachable: false };
+			return {
+				connected: true,
+				email: info?.email ?? null,
+				unreachable: false,
+			};
 		} catch (error) {
 			console.error("[google-calendar] could not resolve the account email", {
 				userId: ctx.userId,

@@ -60,9 +60,17 @@ export const monthlyClose = pgTable(
 		...stamps,
 	},
 	(t) => [
-		unique("monthly_close_unq").on(t.organizationId, t.projectId, t.year, t.month),
+		unique("monthly_close_unq").on(
+			t.organizationId,
+			t.projectId,
+			t.year,
+			t.month,
+		),
 		index("monthly_close_period_idx").on(t.organizationId, t.year, t.month),
-		check("monthly_close_month_valid", sql`${t.month} >= 1 and ${t.month} <= 12`),
+		check(
+			"monthly_close_month_valid",
+			sql`${t.month} >= 1 and ${t.month} <= 12`,
+		),
 	],
 );
 
@@ -124,13 +132,16 @@ export const monthlyCloseRelations = relations(
 	}),
 );
 
-export const monthlyCloseRowRelations = relations(monthlyCloseRow, ({ one }) => ({
-	close: one(monthlyClose, {
-		fields: [monthlyCloseRow.closeId],
-		references: [monthlyClose.id],
+export const monthlyCloseRowRelations = relations(
+	monthlyCloseRow,
+	({ one }) => ({
+		close: one(monthlyClose, {
+			fields: [monthlyCloseRow.closeId],
+			references: [monthlyClose.id],
+		}),
+		user: one(user, {
+			fields: [monthlyCloseRow.userId],
+			references: [user.id],
+		}),
 	}),
-	user: one(user, {
-		fields: [monthlyCloseRow.userId],
-		references: [user.id],
-	}),
-}));
+);

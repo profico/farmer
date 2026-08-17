@@ -56,7 +56,11 @@ const typeConfigRefinement = <
 	// against, and silently accepting it is how a rename would come to carry an
 	// hour budget onto a Maintenance project.
 	if (data.type === undefined) {
-		for (const field of ["budgetHours", "budgetAmount", "hourlyPrice"] as const) {
+		for (const field of [
+			"budgetHours",
+			"budgetAmount",
+			"hourlyPrice",
+		] as const) {
 			if (data[field] != null) {
 				ctx.addIssue({
 					code: "custom",

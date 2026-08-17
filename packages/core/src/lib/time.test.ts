@@ -162,9 +162,9 @@ describe("automationWriteWindow", () => {
 	test("the lock starts the window the day after it", () => {
 		// The lock names the last CLOSED day, so the 8th being locked means the
 		// 9th is the first day automation may touch.
-		expect(automationWriteWindow(TODAY, { lockedThrough: "2026-08-08" })).toEqual(
-			{ from: "2026-08-09", to: TODAY },
-		);
+		expect(
+			automationWriteWindow(TODAY, { lockedThrough: "2026-08-08" }),
+		).toEqual({ from: "2026-08-09", to: TODAY });
 	});
 
 	test("a lock covering today stops the engine entirely", () => {
@@ -196,8 +196,9 @@ describe("automationWriteWindow", () => {
 		// The case the grace window cannot cover on its own: for the first few days
 		// of every month, "today - 3" reaches back into the month that was just
 		// reconciled and invoiced.
-		expect(automationWriteWindow("2026-09-01", { lockedThrough: "2026-08-31" }))
-			.toEqual({ from: "2026-09-01", to: "2026-09-01" });
+		expect(
+			automationWriteWindow("2026-09-01", { lockedThrough: "2026-08-31" }),
+		).toEqual({ from: "2026-09-01", to: "2026-09-01" });
 		expect(
 			automationWriteWindow("2026-09-01", { lockedThrough: null }),
 		).toEqual({ from: "2026-08-29", to: "2026-09-01" });

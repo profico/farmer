@@ -3,8 +3,8 @@ import { db } from "../db";
 import {
 	project,
 	projectTask,
-	task,
 	type TaskSystemKey,
+	task,
 	timeEntry,
 } from "../db/schema/domain";
 import type { CreateTaskInput, UpdateTaskInput } from "../schema/tasks";
@@ -320,10 +320,7 @@ export const tasksService = {
 		const existing = await db.query.task.findFirst({
 			where: and(
 				eq(task.id, input.taskId),
-				or(
-					eq(task.scope, "site"),
-					eq(task.organizationId, ctx.organizationId),
-				),
+				or(eq(task.scope, "site"), eq(task.organizationId, ctx.organizationId)),
 			),
 		});
 		if (!existing) throw new Error("Task not found");
@@ -353,10 +350,7 @@ export const tasksService = {
 		const existing = await db.query.task.findFirst({
 			where: and(
 				eq(task.id, taskId),
-				or(
-					eq(task.scope, "site"),
-					eq(task.organizationId, ctx.organizationId),
-				),
+				or(eq(task.scope, "site"), eq(task.organizationId, ctx.organizationId)),
 			),
 		});
 		if (!existing) throw new Error("Task not found");
@@ -519,9 +513,7 @@ export const tasksService = {
 			// fail the entire save over a no-op. Storing the row instead would be
 			// worse: it implies the link is what grants access, and deleting it later
 			// would look like it should revoke access when it can't.
-			const universal = new Set(
-				valid.filter(isUniversalTask).map((t) => t.id),
-			);
+			const universal = new Set(valid.filter(isUniversalTask).map((t) => t.id));
 			toLink = unique.filter((id) => !universal.has(id));
 		}
 

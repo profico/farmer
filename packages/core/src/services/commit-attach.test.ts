@@ -85,9 +85,7 @@ const commitsAttachedTo = async (timeEntryId: string) =>
 
 /** One commit per (day, project), so "which entry did it land on?" has a single
  *  unambiguous answer per project. */
-const commitsFor = (
-	entries: { day: string; project: "main" | "other" }[],
-) => ({
+const commitsFor = (entries: { day: string; project: "main" | "other" }[]) => ({
 	listUserCommitsForDay: async () => [],
 	listUserCommitsByDay: async (
 		_ctx: Ctx,
@@ -263,9 +261,7 @@ describe("where the commit engine attaches", () => {
 			projectId,
 			durationSeconds: 4 * 60 * 60,
 		});
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
 
@@ -281,9 +277,7 @@ describe("where the commit engine attaches", () => {
 			projectId,
 			durationSeconds: 8 * 60 * 60,
 		});
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
 
@@ -327,9 +321,7 @@ describe("where the commit engine attaches", () => {
 			projectId: null,
 			durationSeconds: 6 * 60 * 60,
 		});
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
 
@@ -338,9 +330,7 @@ describe("where the commit engine attaches", () => {
 	});
 
 	test("to a fill block it creates when the day holds nothing", async () => {
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
 
@@ -357,9 +347,7 @@ describe("where the commit engine attaches", () => {
 			durationSeconds: 4 * 60 * 60,
 			description: "Pairing on the importer",
 		});
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
 
@@ -374,9 +362,7 @@ describe("where the commit engine attaches", () => {
 			durationSeconds: 4 * 60 * 60,
 			description: "",
 		});
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
 
@@ -386,9 +372,7 @@ describe("where the commit engine attaches", () => {
 	});
 
 	test("re-running attaches nothing twice", async () => {
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
 		await runAutomations();
@@ -401,9 +385,7 @@ describe("where the commit engine attaches", () => {
 
 describe("a deleted rest-of-day block", () => {
 	test("stays deleted", async () => {
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 		await runAutomations();
 		const [created] = await entriesOn(YESTERDAY);
 		expect(created).toBeDefined();
@@ -417,9 +399,7 @@ describe("a deleted rest-of-day block", () => {
 	});
 
 	test("records the day, not the row", async () => {
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 		await runAutomations();
 		const [created] = await entriesOn(YESTERDAY);
 		await timeEntriesService.remove(ctx, created?.id ?? "");
@@ -435,9 +415,7 @@ describe("a deleted rest-of-day block", () => {
 	});
 
 	test("is retracted by deliberately making a new one", async () => {
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 		await runAutomations();
 		const [created] = await entriesOn(YESTERDAY);
 		await timeEntriesService.remove(ctx, created?.id ?? "");
@@ -459,9 +437,7 @@ describe("a deleted rest-of-day block", () => {
 
 	test("does not stop commits attaching to what is still there", async () => {
 		// The "no" was to the block, not to the evidence.
-		setCommitSourceForTests(
-			commitsFor([{ day: YESTERDAY, project: "main" }]),
-		);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 		await runAutomations();
 		const [created] = await entriesOn(YESTERDAY);
 		await timeEntriesService.remove(ctx, created?.id ?? "");

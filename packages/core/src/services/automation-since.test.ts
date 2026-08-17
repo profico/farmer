@@ -95,10 +95,7 @@ const switchedOnAt = async (
 /** A calendar that filters by the range it is handed, the way the real Google
  *  adapter does — otherwise a clamped range would prove nothing here. */
 const calendarWithMeetingsOn = (dates: string[]) => ({
-	listEventsForRange: async (
-		_ctx: Ctx,
-		range: { from: string; to: string },
-	) =>
+	listEventsForRange: async (_ctx: Ctx, range: { from: string; to: string }) =>
 		dates
 			.filter((d) => d >= range.from && d <= range.to)
 			.map((d) => ({

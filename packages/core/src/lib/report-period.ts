@@ -7,7 +7,12 @@
 // only a browser could exercise it — the route's own copy of `startOfWeekKey`
 // had already drifted into existence alongside the one in `time.ts`.
 
-import { addDaysToKey, endOfMonthKey, monthKeyOf, startOfWeekKey } from "./time";
+import {
+	addDaysToKey,
+	endOfMonthKey,
+	monthKeyOf,
+	startOfWeekKey,
+} from "./time";
 
 export type PeriodPreset = "month" | "week" | "custom";
 

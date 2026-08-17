@@ -1,5 +1,6 @@
 import { createProjectInput, type ProjectTypeValue } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { PlusIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQueryClient,
@@ -41,7 +42,6 @@ import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
 import { createProject } from "#/server/projects.ts";
-import { PlusIcon } from "@phosphor-icons/react";
 
 const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 
@@ -138,7 +138,9 @@ export function CreateProjectDialog() {
 	const pickableTasks = allTasks.filter(
 		(t) => !t.isAbsence && t.scope !== "site",
 	);
-	const builtInTasks = allTasks.filter((t) => !t.isAbsence && t.scope === "site");
+	const builtInTasks = allTasks.filter(
+		(t) => !t.isAbsence && t.scope === "site",
+	);
 
 	const toggleTask = (taskId: string) => {
 		const current = form.getValues("taskIds");
@@ -189,9 +191,14 @@ export function CreateProjectDialog() {
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger render={<Button>
-                <PlusIcon weight='regular' />
-                New project</Button>} />
+			<DialogTrigger
+				render={
+					<Button>
+						<PlusIcon weight="regular" />
+						New project
+					</Button>
+				}
+			/>
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Create project</DialogTitle>
@@ -406,8 +413,8 @@ export function CreateProjectDialog() {
 										which every project gets
 									</>
 								)}
-								. You can change the picks later from the project's Manage
-								tasks action.
+								. You can change the picks later from the project's Manage tasks
+								action.
 							</p>
 						</FormItem>
 						<DialogFooter>

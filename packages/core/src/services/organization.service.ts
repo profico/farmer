@@ -18,10 +18,7 @@ export const organizationService = {
 		};
 	},
 
-	updateSettings: async (
-		ctx: Ctx,
-		input: UpdateOrganizationSettingsInput,
-	) => {
+	updateSettings: async (ctx: Ctx, input: UpdateOrganizationSettingsInput) => {
 		const patch: Partial<{
 			name: string;
 			country: string;

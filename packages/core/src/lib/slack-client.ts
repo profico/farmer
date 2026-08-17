@@ -116,7 +116,8 @@ export const slackClient = {
 	/** Verifies a bot token and returns the workspace it belongs to. */
 	authTest: async (botToken: string) => {
 		const result = await call<SlackAuth>(botToken, "auth.test", {});
-		if (!result.ok) throw new Error(`Slack rejected the token: ${result.error}`);
+		if (!result.ok)
+			throw new Error(`Slack rejected the token: ${result.error}`);
 		return result;
 	},
 

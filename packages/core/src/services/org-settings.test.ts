@@ -10,7 +10,14 @@
 // so it cannot be collapsed with `undefined` ("not in this patch") the way a
 // `?? DEFAULT` would.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	test,
+} from "bun:test";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
@@ -106,7 +113,9 @@ describe("org settings", () => {
 		// `null` = clear it. If these two were collapsed, the lock could never be
 		// lifted through the settings screen.
 		await orgSettingsService.update(ctx, { automationLockedThrough: null });
-		expect((await orgSettingsService.get(ctx)).automationLockedThrough).toBeNull();
+		expect(
+			(await orgSettingsService.get(ctx)).automationLockedThrough,
+		).toBeNull();
 	});
 
 	test("the first save creates the row without inventing values", async () => {

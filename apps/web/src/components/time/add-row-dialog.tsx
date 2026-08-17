@@ -172,7 +172,6 @@ export function AddRowDialog({
 							</SelectContent>
 						</Select>
 					</div>
-
 				</div>
 				<DialogFooter>
 					<Button disabled={!canAdd} onClick={submit}>

@@ -28,9 +28,7 @@ export const listProjectReposInput = z.uuid();
 export type ListProjectReposInput = z.infer<typeof listProjectReposInput>;
 
 export const listAttachedCommitsInput = z.uuid();
-export type ListAttachedCommitsInput = z.infer<
-	typeof listAttachedCommitsInput
->;
+export type ListAttachedCommitsInput = z.infer<typeof listAttachedCommitsInput>;
 
 export const detachCommitInput = z.uuid();
 export type DetachCommitInput = z.infer<typeof detachCommitInput>;

@@ -62,7 +62,7 @@ export function RowActions({
 			<DropdownMenuTrigger
 				render={
 					<Button variant="ghost" size="icon-sm" className={className}>
-						<DotsThreeIcon weight='regular' />
+						<DotsThreeIcon weight="regular" />
 					</Button>
 				}
 			/>

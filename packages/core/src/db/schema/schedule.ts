@@ -72,11 +72,7 @@ export const memberWorkingHoursDay = pgTable(
 		...stamps,
 	},
 	(t) => [
-		unique("mwhd_org_user_day_unq").on(
-			t.organizationId,
-			t.userId,
-			t.dayOfWeek,
-		),
+		unique("mwhd_org_user_day_unq").on(t.organizationId, t.userId, t.dayOfWeek),
 		check(
 			"mwhd_day_of_week_valid",
 			sql`${t.dayOfWeek} >= 0 and ${t.dayOfWeek} <= 6`,

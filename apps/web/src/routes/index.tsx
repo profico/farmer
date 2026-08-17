@@ -150,7 +150,6 @@ html:has(.fm-landing){scroll-behavior:smooth}
 }
 `;
 
-
 // ---- App-preview mock data -------------------------------------------------
 
 type PreviewNavItem = {

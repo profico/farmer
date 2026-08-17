@@ -44,7 +44,8 @@ export const updateIntegrationSettings = createServerFn({ method: "POST" })
 		// token can't fail the save that just succeeded either way.
 		const switchedOn =
 			(!before.googleAutoSyncMeetings && after.googleAutoSyncMeetings) ||
-			(!before.githubSyncCommitsAsWorkTime && after.githubSyncCommitsAsWorkTime);
+			(!before.githubSyncCommitsAsWorkTime &&
+				after.githubSyncCommitsAsWorkTime);
 		if (!switchedOn) return { ...after, synced: false as const };
 
 		const { runAutomationSyncForCtx } = await import("@farmer/core/jobs");

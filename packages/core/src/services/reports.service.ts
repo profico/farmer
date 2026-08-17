@@ -1,4 +1,14 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	gte,
+	inArray,
+	isNotNull,
+	lte,
+	sql,
+} from "drizzle-orm";
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
@@ -30,7 +40,9 @@ import { unfiledTotals } from "./unfiled";
 // projects — never a person's company-wide total, or a TL on one project could
 // learn what people do for other clients. Members have no access at all.
 
-const reportScope = async (ctx: Ctx): Promise<{ access: Access; projectIds: string[] | null }> => {
+const reportScope = async (
+	ctx: Ctx,
+): Promise<{ access: Access; projectIds: string[] | null }> => {
 	const access = await ctxAccess(ctx);
 	const projectIds = access.scopeFor("team_lead");
 	if (projectIds !== null && projectIds.length === 0) {
@@ -52,7 +64,14 @@ const reportScope = async (ctx: Ctx): Promise<{ access: Access; projectIds: stri
 // total instead of the number just being quietly short.
 const projectTimeWhere = (
 	ctx: Ctx,
-	input: { from: string; to: string; clientId?: string; projectId?: string; taskId?: string; userId?: string },
+	input: {
+		from: string;
+		to: string;
+		clientId?: string;
+		projectId?: string;
+		taskId?: string;
+		userId?: string;
+	},
 	scope: string[] | null,
 ) =>
 	and(
@@ -179,9 +198,7 @@ export const reportsService = {
 			.innerJoin(user, eq(timeEntry.userId, user.id))
 			.where(where)
 			.orderBy(
-				input.groupBy === "person"
-					? asc(user.name)
-					: desc(timeEntry.date),
+				input.groupBy === "person" ? asc(user.name) : desc(timeEntry.date),
 				input.groupBy === "person" ? desc(timeEntry.date) : asc(user.name),
 			);
 
@@ -376,7 +393,13 @@ export const reportsService = {
 						lte(timeEntry.date, to),
 					),
 				)
-				.groupBy(timeEntry.userId, user.name, task.id, task.systemKey, task.name);
+				.groupBy(
+					timeEntry.userId,
+					user.name,
+					task.id,
+					task.systemKey,
+					task.name,
+				);
 
 		const [absenceTasks, ytdRows, monthRows] = await Promise.all([
 			// The columns the table draws, named by the caller-stable system key
@@ -570,43 +593,46 @@ const computeUtilization = async (
 ) => {
 	const { from, to } = monthBounds(input.year, input.month);
 
-	const [finalRows, types, fundSeconds, absence, members, archived] = await Promise.all([
-		db
-			.select({
-				userId: monthlyCloseRow.userId,
-				// Prefer the frozen Expected from finalization, so an admin editing a
-				// past month's hour fund can't retroactively move percentages that
-				// have already been reported.
-				expected: sql<string | null>`max(${monthlyCloseRow.expectedAtFinalizeSeconds})`,
-				final: sql<string>`coalesce(sum(case when ${project.type} <> 'internal' then ${monthlyCloseRow.finalSeconds} else 0 end), 0)`,
-			})
-			.from(monthlyCloseRow)
-			.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
-			.innerJoin(project, eq(monthlyClose.projectId, project.id))
-			.where(
-				and(
-					eq(monthlyClose.organizationId, ctx.organizationId),
-					eq(monthlyClose.year, input.year),
-					eq(monthlyClose.month, input.month),
-					eq(monthlyClose.status, "finalized"),
+	const [finalRows, types, fundSeconds, absence, members, archived] =
+		await Promise.all([
+			db
+				.select({
+					userId: monthlyCloseRow.userId,
+					// Prefer the frozen Expected from finalization, so an admin editing a
+					// past month's hour fund can't retroactively move percentages that
+					// have already been reported.
+					expected: sql<
+						string | null
+					>`max(${monthlyCloseRow.expectedAtFinalizeSeconds})`,
+					final: sql<string>`coalesce(sum(case when ${project.type} <> 'internal' then ${monthlyCloseRow.finalSeconds} else 0 end), 0)`,
+				})
+				.from(monthlyCloseRow)
+				.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
+				.innerJoin(project, eq(monthlyClose.projectId, project.id))
+				.where(
+					and(
+						eq(monthlyClose.organizationId, ctx.organizationId),
+						eq(monthlyClose.year, input.year),
+						eq(monthlyClose.month, input.month),
+						eq(monthlyClose.status, "finalized"),
+					),
+				)
+				.groupBy(monthlyCloseRow.userId),
+			membersService.typesForMonth(ctx, input.year, input.month),
+			hourFundService.get(ctx, input.year, input.month),
+			absenceDaysByUser(ctx, from, to),
+			db
+				.select({ userId: member.userId, name: user.name })
+				.from(member)
+				.innerJoin(user, eq(member.userId, user.id))
+				.where(
+					and(
+						eq(member.organizationId, ctx.organizationId),
+						onlyUserId ? eq(member.userId, onlyUserId) : undefined,
+					),
 				),
-			)
-			.groupBy(monthlyCloseRow.userId),
-		membersService.typesForMonth(ctx, input.year, input.month),
-		hourFundService.get(ctx, input.year, input.month),
-		absenceDaysByUser(ctx, from, to),
-		db
-			.select({ userId: member.userId, name: user.name })
-			.from(member)
-			.innerJoin(user, eq(member.userId, user.id))
-			.where(
-				and(
-					eq(member.organizationId, ctx.organizationId),
-					onlyUserId ? eq(member.userId, onlyUserId) : undefined,
-				),
-			),
-		membersService.archivedUserIds(ctx),
-	]);
+			membersService.archivedUserIds(ctx),
+		]);
 
 	const finalByUser = new Map(
 		finalRows.map((r) => [
@@ -618,45 +644,47 @@ const computeUtilization = async (
 		]),
 	);
 
-	return members
-		// Overhead is excluded from the org-wide list: these people almost never
-		// work on client projects, and including them would drag every team
-		// average down. Archived people go for the same reason — a leaver with no
-		// hours is not an under-sold month. The single-person view keeps both — an
-		// overhead person asking about their own month should still get an answer.
-		.filter(
-			(m) =>
-				onlyUserId != null ||
-				((types.get(m.userId)?.type ?? "billable") !== "overhead" &&
-					!archived.has(m.userId)),
-		)
-		.map((m) => {
-			const memberType = types.get(m.userId) ?? {
-				type: "billable" as const,
-				expectedSecondsOverride: null,
-			};
-			const totals = finalByUser.get(m.userId);
-			const expectedSeconds =
-				totals?.expected ??
-				expectedSecondsFor(
-					memberType,
-					fundSeconds,
-					absence.get(m.userId) ?? 0,
-				);
-			const finalSeconds = totals?.final ?? 0;
+	return (
+		members
+			// Overhead is excluded from the org-wide list: these people almost never
+			// work on client projects, and including them would drag every team
+			// average down. Archived people go for the same reason — a leaver with no
+			// hours is not an under-sold month. The single-person view keeps both — an
+			// overhead person asking about their own month should still get an answer.
+			.filter(
+				(m) =>
+					onlyUserId != null ||
+					((types.get(m.userId)?.type ?? "billable") !== "overhead" &&
+						!archived.has(m.userId)),
+			)
+			.map((m) => {
+				const memberType = types.get(m.userId) ?? {
+					type: "billable" as const,
+					expectedSecondsOverride: null,
+				};
+				const totals = finalByUser.get(m.userId);
+				const expectedSeconds =
+					totals?.expected ??
+					expectedSecondsFor(
+						memberType,
+						fundSeconds,
+						absence.get(m.userId) ?? 0,
+					);
+				const finalSeconds = totals?.final ?? 0;
 
-			return {
-				userId: m.userId,
-				name: m.name,
-				memberType: memberType.type,
-				finalSeconds,
-				expectedSeconds,
-				// A contractor with no explicit expected value displays Final hours
-				// with no percentage — the "/" rows of the old sheet.
-				utilizationPct: utilizationPctOf(finalSeconds, expectedSeconds),
-			};
-		})
-	.sort((a, b) => a.name.localeCompare(b.name));
+				return {
+					userId: m.userId,
+					name: m.name,
+					memberType: memberType.type,
+					finalSeconds,
+					expectedSeconds,
+					// A contractor with no explicit expected value displays Final hours
+					// with no percentage — the "/" rows of the old sheet.
+					utilizationPct: utilizationPctOf(finalSeconds, expectedSeconds),
+				};
+			})
+			.sort((a, b) => a.name.localeCompare(b.name))
+	);
 };
 
 // Re-exported so callers computing Expected outside the close sheet (Slack

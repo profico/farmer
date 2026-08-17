@@ -32,7 +32,11 @@ export const projectType = pgEnum("project_type", [
 // Per-assignment, NOT per-person: the same person is PM on one project and a
 // plain member on another (PRD 3.4). The only global role is org admin, which
 // lives on better-auth's `member.role`.
-export const projectRole = pgEnum("project_role", ["member", "team_lead", "pm"]);
+export const projectRole = pgEnum("project_role", [
+	"member",
+	"team_lead",
+	"pm",
+]);
 
 // Site-scoped tasks are platform built-ins (Vacation / Sick Leave), seeded and
 // not creatable through the app. Organization-scoped are admin-created. There is

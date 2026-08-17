@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-	type WorkingHoursDay,
 	dayDurationSeconds,
 	dayForWeekday,
 	defaultDayRow,
@@ -8,6 +7,7 @@ import {
 	remainingSeconds,
 	spokenForSeconds,
 	targetSecondsFor,
+	type WorkingHoursDay,
 } from "./working-day";
 
 const fullWeek = (): WorkingHoursDay[] =>

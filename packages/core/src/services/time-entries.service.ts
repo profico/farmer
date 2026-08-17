@@ -441,7 +441,11 @@ const syncCommitWorkTimeForRange = async (
 					// best-effort background sync, not a user-initiated write. It also
 					// covers the race with a concurrent "Sync now".
 					.onConflictDoNothing({
-						target: [timeEntry.organizationId, timeEntry.userId, timeEntry.date],
+						target: [
+							timeEntry.organizationId,
+							timeEntry.userId,
+							timeEntry.date,
+						],
 						where: sql`${timeEntry.fillsDay} = true`,
 					})
 					.returning({
@@ -1342,7 +1346,8 @@ export const timeEntriesService = {
 			// A day may hold at most one fill block (`te_fill_day_uidx`), so the
 			// target's own survives and simply resizes around what just landed.
 			const sourceFill = source.find((e) => e.fillsDay);
-			const copyFill = sourceFill !== undefined && !target.some((e) => e.fillsDay);
+			const copyFill =
+				sourceFill !== undefined && !target.some((e) => e.fillsDay);
 
 			let copied = copyable.length;
 			let skipped = source.length - copied - (copyFill ? 1 : 0);

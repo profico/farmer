@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { client, project, projectTask, task } from "../db/schema/domain";
-import { type TestDb, createTestDb } from "../test/harness";
+import { createTestDb, type TestDb } from "../test/harness";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
 
@@ -40,8 +40,18 @@ beforeAll(async () => {
 	const [orgA, orgB] = await db
 		.insert(organization)
 		.values([
-			{ id: "org-a", name: "Tenancy Test Org A", slug: "org-a", createdAt: new Date() },
-			{ id: "org-b", name: "Tenancy Test Org B", slug: "org-b", createdAt: new Date() },
+			{
+				id: "org-a",
+				name: "Tenancy Test Org A",
+				slug: "org-a",
+				createdAt: new Date(),
+			},
+			{
+				id: "org-b",
+				name: "Tenancy Test Org B",
+				slug: "org-b",
+				createdAt: new Date(),
+			},
 		])
 		.returning();
 	if (!orgA || !orgB) throw new Error("Failed to seed test organizations");
@@ -65,7 +75,8 @@ beforeAll(async () => {
 			{ organizationId: orgBId, clientId: clientInB.id, name: "Org B Project" },
 		])
 		.returning();
-	if (!projectInA || !projectInB) throw new Error("Failed to seed test projects");
+	if (!projectInA || !projectInB)
+		throw new Error("Failed to seed test projects");
 	projectInAId = projectInA.id;
 	projectInBId = projectInB.id;
 

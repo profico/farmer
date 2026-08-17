@@ -11,13 +11,20 @@
 // an unchanged calendar leaves the day exactly as it was, and a meeting they
 // deleted stays deleted.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	test,
+} from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { organization, user } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
 import { syncedMeetingTombstone } from "../db/schema/settings";
-import { type TestDb, createTestDb } from "../test/harness";
+import { createTestDb, type TestDb } from "../test/harness";
 import { setCalendarSourceForTests } from "./ports";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";

@@ -314,10 +314,13 @@ export const recurringBlockRulesService = {
 		}) => `${taskKey(e)}|${e.projectId ?? ""}`;
 		const dayHasTask = new Set(existing.map(taskKey));
 		const dayHasTaskOnProject = new Set(existing.map(projectKey));
-		const dayAlreadyHas = (rule: {
-			taskId: string;
-			projectId: string | null;
-		}, date: string) =>
+		const dayAlreadyHas = (
+			rule: {
+				taskId: string;
+				projectId: string | null;
+			},
+			date: string,
+		) =>
 			rule.projectId
 				? dayHasTaskOnProject.has(projectKey({ ...rule, date }))
 				: dayHasTask.has(taskKey({ ...rule, date }));

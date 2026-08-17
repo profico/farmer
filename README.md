@@ -6,13 +6,18 @@ This will eventually have a cooler description. All the feature descriptions bel
 
 ## What's inside
 
-- Time entries on list, week, and month views, typed (work, meeting, break, …) and tied to client → project → task
+- Time entries on day, week, and month views, tied to client → project → task, at 15-minute granularity
 - Recurring blocks — rules that pre-fill repeating entries, with per-occurrence skips
-- Working schedules per member, time-off requests with approval, public holidays per country
-- Reports: member utilization, project budget and margin
-- Organizations with roles and email invites; members only ever see their own org
-- GitHub: an admin installs the GitHub App once per org, then each member links their account and gets entries suggested from their own commits
-- Google Calendar: meetings sync into the timesheet on a schedule; approved time off syncs back out as all-day events
+- "Assemble my day" — proposes the day's meetings, work and breaks without writing anything until you accept
+- Vacation and sick leave logged as ordinary entries against two built-in absence tasks, so absence reporting falls out of the same table
+- Monthly close: a per-project sheet with Reported → Adjusted (PM) → Final (Admin), submitted and finalized, with the finalized figures snapshotted
+- Reports: time by client/project/teammate, budget burn, tracking compliance, overtime, absence, variance, utilization, and "not on the invoice"
+- Working schedules per member, public holidays per country, and a monthly hour fund that drives Expected hours
+- Organizations with org roles and per-project roles (Member / Team Lead / PM), email invites; members only ever see their own org
+- GitHub: an admin installs the GitHub App once per org, then each member links their account and gets commits attached to their entries
+- Google Calendar: meetings sync into the timesheet on a schedule
+- Slack: an admin installs the app once per org; people get reminder DMs when they forget to log
+- Web push notifications, and email for invitations
 - Read-only REST endpoints under `/api/v1`, using the same session auth as the app
 
 ## Stack
@@ -36,20 +41,23 @@ bun run db:migrate
 bun run dev
 ```
 
-Open http://localhost:3000 and register — signup creates your organization automatically. Optionally seed the default entry types (work, break, meeting, vacation, sick leave):
+Seed the two built-in absence tasks (Vacation, Sick Leave) — the app needs them before anyone can log absence, and the command is idempotent:
 
 ```bash
-cd packages/core && bun run db:seed-entry-types
+cd packages/core && bun run db:seed-tasks
 ```
 
-The only required settings are `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL`. SMTP and the integration credentials can stay empty until you want email invites, GitHub, or Google Calendar — `.env.example` documents each block and where the callback URLs go.
+Then open http://localhost:3000 and sign in with Google — **Google is the only way in**, and signing in for the first time is what creates your account and your organization. There is no registration form and no password, so `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are required to get past the front page even locally.
+
+The required settings are `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the Google OAuth pair. SMTP and the other integration credentials can stay empty until you want email invites, GitHub, Slack or Calendar sync — `.env.example` documents each block and where the callback URLs go.
 
 ### GitHub and Google credentials
 
 Both integrations are opt-in per member under Settings → Integrations, but they need app credentials first:
 
 - **GitHub** needs two things, and they aren't interchangeable: an OAuth app (identity — matching commits to members) and a GitHub App (the thing that actually reads repos and commits, installed per organization). `GITHUB_CLIENT_ID`/`SECRET` belong to the former, `GITHUB_APP_*` to the latter.
-- **Google** needs an OAuth client with the Calendar API enabled and the `calendar.events` scope. Farmer requests offline access, so sync keeps working after the first access token expires.
+- **Google** is used twice over the same OAuth client, deliberately as two separate grants: sign-in (identity only) and the Calendar link (`calendar.events`, requested separately from Settings → Integrations). Enable the Calendar API on the client. Farmer requests offline access, so sync keeps working after the first access token expires.
+- **Slack** needs an app with the `chat:write`, `im:write`, `users:read` and `users:read.email` bot scopes and `{BETTER_AUTH_URL}/api/slack/callback` as a redirect URL. An admin installs it per organization from Settings → Integrations; no token is ever pasted into the app.
 
 ## Deploying
 
@@ -66,7 +74,8 @@ Commands, architecture notes, and the sharp edges we've already hit are in [CLAU
 
 - `bun run db:generate` / `bun run db:migrate` after schema changes (Drizzle)
 - `packages/core/src/db/schema/auth.ts` is generated by better-auth's CLI — regenerate it with `bun run auth:generate`, never edit it by hand
-- `bun run check` in `apps/web` runs Biome lint + format
+- `bun run test` runs the `packages/core` suite against an in-process PGLite — real Postgres, real migrations, no container and no `DATABASE_URL`
+- `bun run check` at the repo root runs Biome lint + format + import order across both workspaces — the same command CI runs
 
 ## License
 

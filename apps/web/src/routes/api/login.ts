@@ -43,8 +43,7 @@ export const Route = createFileRoute("/api/login")({
 					? `${target}${target.includes("?") ? "&" : "?"}${query}`
 					: target;
 
-				const absolute = (path: string) =>
-					new URL(path, url.origin).toString();
+				const absolute = (path: string) => new URL(path, url.origin).toString();
 
 				const { auth } = await import("@farmer/core/auth");
 

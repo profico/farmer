@@ -243,8 +243,12 @@ export function AssembleDayDialog({
 				    already asking. Below the list, because it is an answer to "is that
 				    everything?" rather than a filter to set before looking. */}
 				{suggestionsQ.isSuccess && assembly && assembly.dismissedCount > 0 && (
-					<label className="flex cursor-pointer items-start gap-3">
+					<label
+						htmlFor="assemble-include-dismissed"
+						className="flex cursor-pointer items-start gap-3"
+					>
 						<Switch
+							id="assemble-include-dismissed"
 							checked={includeDismissed}
 							onCheckedChange={setIncludeDismissed}
 							className="mt-0.5"

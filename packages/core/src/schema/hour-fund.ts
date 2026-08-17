@@ -8,7 +8,11 @@ export const setMonthlyHourFundInput = z.object({
 	month,
 	// Stored in seconds like every other duration in the system; the Settings UI
 	// takes hours and converts.
-	fundSeconds: z.number().int().min(0).max(400 * 3600),
+	fundSeconds: z
+		.number()
+		.int()
+		.min(0)
+		.max(400 * 3600),
 });
 export type SetMonthlyHourFundInput = z.infer<typeof setMonthlyHourFundInput>;
 

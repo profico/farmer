@@ -37,8 +37,7 @@ export const calendarSource = (): CalendarSource =>
 	calendarOverride ?? googleCalendarService;
 
 /** The commit log the engines should read. */
-export const commitSource = (): CommitSource =>
-	commitOverride ?? githubService;
+export const commitSource = (): CommitSource => commitOverride ?? githubService;
 
 /** Test-only: substitute an in-memory adapter. Pass null to restore. */
 export const setCalendarSourceForTests = (

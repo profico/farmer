@@ -9,8 +9,33 @@ import type { Ctx } from "./types";
 // aren't actual non-working days.
 const HOLIDAY_TYPES: HolidaysTypes.HolidayType[] = ["public", "bank"];
 
-const holidaysForCountry = (country: string) =>
-	new Holidays(country, { types: HOLIDAY_TYPES });
+// One `Holidays` instance per country, built on first use and kept.
+//
+// Constructing one parses the library's whole rule set for that country, and
+// `holidaySetForRange` is called from inside the reminder jobs' per-member loop
+// — so an org of 200 people rebuilt the same Croatian calendar 200 times per
+// tick. Reuse is safe: `getHolidays(year)` is a pure read against those rules,
+// verified to return identical results for a year whether or not other years
+// were queried in between, and the instance carries no per-call state.
+//
+// Keyed by country because that is the only input: the org's opt-outs are
+// applied by the callers below, against a set read fresh from the database
+// every time, so nothing org-specific or mutable is cached here. The set of
+// countries is small and fixed, so this never needs eviction.
+const holidaysByCountry = new Map<string, Holidays>();
+
+const holidaysForCountry = (country: string): Holidays => {
+	const cached = holidaysByCountry.get(country);
+	if (cached) return cached;
+	const created = new Holidays(country, { types: HOLIDAY_TYPES });
+	holidaysByCountry.set(country, created);
+	return created;
+};
+
+// The country list is static reference data — the same few hundred rows for the
+// life of the process — and building it means constructing a throwaway
+// `Holidays` just to read its table.
+let cachedCountries: { code: string; name: string }[] | null = null;
 
 export type PublicHoliday = { date: string; name: string };
 export type HolidayWithStatus = PublicHoliday & { disabled: boolean };
@@ -27,12 +52,16 @@ const disabledNamesFor = async (ctx: Ctx): Promise<Set<string>> => {
 
 export const holidaysService = {
 	listSupportedCountries: (): { code: string; name: string }[] => {
+		if (cachedCountries) return [...cachedCountries];
 		// Force English names — getCountries() defaults to each country's own
 		// language (e.g. "Hrvatska"), which isn't findable in an English UI.
 		const countries = new Holidays().getCountries("en");
-		return Object.entries(countries)
+		cachedCountries = Object.entries(countries)
 			.map(([code, name]) => ({ code, name }))
 			.sort((a, b) => a.name.localeCompare(b.name));
+		// A copy, so the contract is unchanged from when this built a fresh array
+		// every call and a caller sorting or splicing the result harmed nobody.
+		return [...cachedCountries];
 	},
 
 	// Enabled (non-disabled) holidays for the year.

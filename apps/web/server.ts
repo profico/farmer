@@ -613,7 +613,11 @@ async function initializeServer() {
  */
 async function startBackgroundSchedulers(): Promise<SchedulerHandle[]> {
 	const { startSchedulers } = await import("@farmer/core/jobs");
-	return startSchedulers({ info: log.info, warn: log.warning, error: log.error });
+	return startSchedulers({
+		info: log.info,
+		warn: log.warning,
+		error: log.error,
+	});
 }
 
 /**
@@ -641,9 +645,7 @@ function setupGracefulShutdown(
 				error: log.error,
 			});
 		} catch (error) {
-			log.error(
-				`Error while stopping background schedulers: ${String(error)}`,
-			);
+			log.error(`Error while stopping background schedulers: ${String(error)}`);
 		}
 
 		// Stop accepting new connections and close existing ones.

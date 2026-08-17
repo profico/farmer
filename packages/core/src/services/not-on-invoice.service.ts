@@ -139,53 +139,53 @@ export const notOnInvoiceService = {
 			finalizedCount,
 			archived,
 		] = await Promise.all([
-				db
-					.select({ userId: member.userId, name: user.name, email: user.email })
-					.from(member)
-					.innerJoin(user, eq(member.userId, user.id))
-					.where(eq(member.organizationId, ctx.organizationId)),
-				membersService.typesForMonth(ctx, input.year, input.month),
-				// Final hours on non-Internal projects, per person.
-				db
-					.select({
-						userId: monthlyCloseRow.userId,
-						total: sql<string>`coalesce(sum(${monthlyCloseRow.finalSeconds}), 0)`,
-					})
-					.from(monthlyCloseRow)
-					.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
-					.innerJoin(project, eq(monthlyClose.projectId, project.id))
-					.where(
-						and(
-							eq(monthlyClose.organizationId, ctx.organizationId),
-							eq(monthlyClose.year, input.year),
-							eq(monthlyClose.month, input.month),
-							eq(monthlyClose.status, "finalized"),
-							// Hours on Internal projects never count as invoiced anywhere.
-							sql`${project.type} <> 'internal'`,
-						),
-					)
-					.groupBy(monthlyCloseRow.userId),
-				db.query.notOnInvoiceEntry.findMany({
-					where: and(
-						eq(notOnInvoiceEntry.organizationId, ctx.organizationId),
-						eq(notOnInvoiceEntry.year, input.year),
-						eq(notOnInvoiceEntry.month, input.month),
+			db
+				.select({ userId: member.userId, name: user.name, email: user.email })
+				.from(member)
+				.innerJoin(user, eq(member.userId, user.id))
+				.where(eq(member.organizationId, ctx.organizationId)),
+			membersService.typesForMonth(ctx, input.year, input.month),
+			// Final hours on non-Internal projects, per person.
+			db
+				.select({
+					userId: monthlyCloseRow.userId,
+					total: sql<string>`coalesce(sum(${monthlyCloseRow.finalSeconds}), 0)`,
+				})
+				.from(monthlyCloseRow)
+				.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
+				.innerJoin(project, eq(monthlyClose.projectId, project.id))
+				.where(
+					and(
+						eq(monthlyClose.organizationId, ctx.organizationId),
+						eq(monthlyClose.year, input.year),
+						eq(monthlyClose.month, input.month),
+						eq(monthlyClose.status, "finalized"),
+						// Hours on Internal projects never count as invoiced anywhere.
+						sql`${project.type} <> 'internal'`,
 					),
-				}),
-				notOnInvoiceService.listStatusOptions(ctx),
-				db
-					.select({ count: sql<string>`count(*)` })
-					.from(monthlyClose)
-					.where(
-						and(
-							eq(monthlyClose.organizationId, ctx.organizationId),
-							eq(monthlyClose.year, input.year),
-							eq(monthlyClose.month, input.month),
-							eq(monthlyClose.status, "finalized"),
-						),
+				)
+				.groupBy(monthlyCloseRow.userId),
+			db.query.notOnInvoiceEntry.findMany({
+				where: and(
+					eq(notOnInvoiceEntry.organizationId, ctx.organizationId),
+					eq(notOnInvoiceEntry.year, input.year),
+					eq(notOnInvoiceEntry.month, input.month),
+				),
+			}),
+			notOnInvoiceService.listStatusOptions(ctx),
+			db
+				.select({ count: sql<string>`count(*)` })
+				.from(monthlyClose)
+				.where(
+					and(
+						eq(monthlyClose.organizationId, ctx.organizationId),
+						eq(monthlyClose.year, input.year),
+						eq(monthlyClose.month, input.month),
+						eq(monthlyClose.status, "finalized"),
 					),
-				membersService.archivedUserIds(ctx),
-			]);
+				),
+			membersService.archivedUserIds(ctx),
+		]);
 
 		const billedByUser = new Map(
 			billedRows.map((r) => [r.userId, Number(r.total)]),

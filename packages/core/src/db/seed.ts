@@ -1,7 +1,13 @@
 import { eq } from "drizzle-orm";
 import { db } from "./index";
 import { member, organization } from "./schema/auth";
-import { client, project, projectMember, projectTask, task } from "./schema/domain";
+import {
+	client,
+	project,
+	projectMember,
+	projectTask,
+	task,
+} from "./schema/domain";
 import { memberTypeHistory } from "./schema/people";
 import { monthlyHourFund } from "./schema/settings";
 import { ensureOrgTasks, ensureSiteTasks } from "./seed-tasks";

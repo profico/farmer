@@ -40,7 +40,9 @@ export function TimeToolbar({
 			<div className="flex h-8 items-center rounded-lg border">
 				{prev}
 				<span className="flex items-center gap-1.5 border-x px-3 text-sm font-medium whitespace-nowrap">
-					{jumpTo ? <DateJump {...jumpTo} /> : (
+					{jumpTo ? (
+						<DateJump {...jumpTo} />
+					) : (
 						<CalendarDotsIcon className="size-3.5 text-muted-foreground" />
 					)}
 					{label}

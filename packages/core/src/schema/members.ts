@@ -43,7 +43,8 @@ export const setMemberTypeInput = z
 		effectiveFrom: dateKey,
 	})
 	.refine(
-		(data) => data.type === "contractor" || data.expectedSecondsOverride == null,
+		(data) =>
+			data.type === "contractor" || data.expectedSecondsOverride == null,
 		{
 			message: "An expected-hours override only applies to contractors",
 			path: ["expectedSecondsOverride"],

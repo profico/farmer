@@ -11,11 +11,11 @@
 // names with a UUID. Each harness here is a fresh database that exists only for
 // the file that asked for it.
 
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import { type Db, schema, setDbForTests } from "../db";
 
 const migrationsFolder = resolve(

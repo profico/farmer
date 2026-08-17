@@ -51,7 +51,12 @@ const db = drizzle(client);
 // the drizzle/ SQL folder at fixed, unrelated paths).
 const migrationsFolder =
 	process.env.DRIZZLE_MIGRATIONS_DIR ??
-	path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "drizzle");
+	path.join(
+		path.dirname(fileURLToPath(import.meta.url)),
+		"..",
+		"..",
+		"drizzle",
+	);
 
 try {
 	console.log("[migrate] waiting for advisory lock...");

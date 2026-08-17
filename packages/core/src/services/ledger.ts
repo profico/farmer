@@ -19,7 +19,17 @@
 // utilization) sum `monthlyCloseRow`, which is a different aggregate with its
 // own snapshot semantics, and are deliberately not folded in here.
 
-import { type SQL, and, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import {
+	and,
+	eq,
+	gte,
+	inArray,
+	isNotNull,
+	isNull,
+	lte,
+	type SQL,
+	sql,
+} from "drizzle-orm";
 import { db } from "../db";
 import { project, task, timeEntry } from "../db/schema/domain";
 import type { Ctx } from "./types";
@@ -128,7 +138,9 @@ export const ledgerWhere = (
 			? inArray(timeEntry.projectId, filter.visibleProjectIds)
 			: undefined,
 		filter.projectId ? eq(timeEntry.projectId, filter.projectId) : undefined,
-		filter.projectIds ? inArray(timeEntry.projectId, filter.projectIds) : undefined,
+		filter.projectIds
+			? inArray(timeEntry.projectId, filter.projectIds)
+			: undefined,
 		filter.clientId ? eq(project.clientId, filter.clientId) : undefined,
 		filter.taskId ? eq(timeEntry.taskId, filter.taskId) : undefined,
 		filter.userId ? eq(timeEntry.userId, filter.userId) : undefined,

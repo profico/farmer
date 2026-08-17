@@ -12,6 +12,39 @@ const range = {
 	to: dateKey,
 };
 
+// The widest span a range report may cover.
+//
+// `from <= to` was the only constraint, so `2000-01-01 → 2099-12-31` was a
+// request any Team Lead could make and the server would answer by scanning and
+// grouping the entire entry table. The month and week presets are bounded by
+// construction; Custom is free text and is what needed a ceiling.
+//
+// 366 rather than something tighter because a full calendar year — including a
+// leap year — is a report somebody genuinely runs. This is a backstop against
+// the pathological case, not an opinion about how people should slice time.
+const MAX_REPORT_SPAN_DAYS = 366;
+
+const spanWithinLimit = (data: { from: string; to: string }) => {
+	const from = new Date(`${data.from}T00:00:00Z`).getTime();
+	const to = new Date(`${data.to}T00:00:00Z`).getTime();
+	return (to - from) / 86_400_000 <= MAX_REPORT_SPAN_DAYS;
+};
+
+/** `from <= to`, and no wider than a year. Applied to every range-based report
+ *  so the two rules cannot drift apart between the summary and the detail. */
+const withRangeLimits = <T extends z.ZodType<{ from: string; to: string }>>(
+	schema: T,
+) =>
+	schema
+		.refine((d) => d.from <= d.to, {
+			message: "from must not be after to",
+			path: ["to"],
+		})
+		.refine(spanWithinLimit, {
+			message: `Range too large (max ${MAX_REPORT_SPAN_DAYS} days)`,
+			path: ["to"],
+		});
+
 const filters = {
 	clientId: z.uuid().optional(),
 	projectId: z.uuid().optional(),
@@ -19,25 +52,19 @@ const filters = {
 	userId: z.string().min(1).optional(),
 };
 
-export const timeReportSummaryInput = z
-	.object({ ...range, tab: timeReportTab, ...filters })
-	.refine((d) => d.from <= d.to, {
-		message: "from must not be after to",
-		path: ["to"],
-	});
+export const timeReportSummaryInput = withRangeLimits(
+	z.object({ ...range, tab: timeReportTab, ...filters }),
+);
 export type TimeReportSummaryInput = z.infer<typeof timeReportSummaryInput>;
 
-export const timeReportDetailInput = z
-	.object({
+export const timeReportDetailInput = withRangeLimits(
+	z.object({
 		...range,
 		...filters,
 		// The project drill-down offers a group-by toggle: person or date.
 		groupBy: z.enum(["date", "person"]).default("date"),
-	})
-	.refine((d) => d.from <= d.to, {
-		message: "from must not be after to",
-		path: ["to"],
-	});
+	}),
+);
 export type TimeReportDetailInput = z.infer<typeof timeReportDetailInput>;
 
 export const monthReportInput = z.object({ year, month });
