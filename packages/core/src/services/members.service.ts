@@ -5,6 +5,7 @@ import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import { endOfMonthKey } from "../lib/time";
 import type { SetMemberTypeInput } from "../schema/members";
 import { requireAdmin } from "./context";
+import { assertUserInOrg } from "./guards";
 import type { Ctx } from "./types";
 
 export type MemberType = "billable" | "overhead" | "contractor";
@@ -161,6 +162,7 @@ export const membersService = {
 	 *  open-ended row per person) satisfiable. */
 	setType: async (ctx: Ctx, input: SetMemberTypeInput) => {
 		await requireAdmin(ctx);
+		await assertUserInOrg(ctx, input.userId);
 
 		await db.transaction(async (tx) => {
 			const current = await tx.query.memberTypeHistory.findFirst({
@@ -224,6 +226,7 @@ export const membersService = {
 	 *  finalized months have to survive them leaving. */
 	setArchived: async (ctx: Ctx, userId: string, archived: boolean) => {
 		await requireAdmin(ctx);
+		await assertUserInOrg(ctx, userId);
 		// Archiving yourself would drop you out of the very lists you administer
 		// while leaving you logged in — a state with no way back through the UI.
 		if (archived && userId === ctx.userId) {
@@ -241,6 +244,7 @@ export const membersService = {
 
 	setStartDate: async (ctx: Ctx, userId: string, startDate: string | null) => {
 		await requireAdmin(ctx);
+		await assertUserInOrg(ctx, userId);
 		await db
 			.insert(memberProfile)
 			.values({ organizationId: ctx.organizationId, userId, startDate })

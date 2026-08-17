@@ -1,6 +1,9 @@
 import { redirect } from "@tanstack/react-router";
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
-import { getRequestHeaders } from "@tanstack/react-start/server";
+import {
+	getRequestHeaders,
+	setResponseStatus,
+} from "@tanstack/react-start/server";
 
 export const getSession = createServerFn({ method: "GET" }).handler(
 	async () => {
@@ -97,6 +100,46 @@ export const requireOrgAdmin = async () => {
 // first line in the handler body. These wrap the same `require*` helpers above,
 // which stay exported because route `beforeLoad`s call them directly.
 
+/**
+ * Run the rest of the chain, and give an authorization refusal its status code.
+ *
+ * Services signal "you may not do that" by throwing `AccessError`
+ * (services/access.service.ts) — every capability assertion on `Access` raises
+ * one, as do the handful of checks that guard another person's data. Nothing
+ * turned that into an HTTP status: it was mapped in exactly one place, the PDF
+ * route, and every server function let it through as an ordinary error, so a
+ * Member touching a PM-only action got a 500. A 403 is not decoration here — it
+ * is the difference between "you can't" and "it broke", and the client cannot
+ * tell them apart from a message.
+ *
+ * Deliberately re-throws rather than answering: the error's message is written
+ * for the person and TanStack still carries it to the caller. This only sets the
+ * status alongside it.
+ *
+ * `redirect(...)` throws are how the middleware below sends a non-member home,
+ * and they are NOT errors — `instanceof AccessError` leaves them untouched, and
+ * they carry their own response.
+ *
+ * The `AccessError` class is a PARAMETER, not something this function imports.
+ * A top-level function body in this module ships to the browser, so a deferred
+ * `import("@farmer/core/services")` in here would become a real client chunk of
+ * the services barrel and break the build on the native typst binding — the
+ * same trap documented on `requireOrgAdmin` and `orgMiddleware`. The callers
+ * below are `.server()` callbacks, which are stripped from the client bundle,
+ * so they can import it and hand it in.
+ */
+const withAccessStatus = async <T>(
+	AccessError: new (...args: never[]) => Error,
+	run: () => Promise<T>,
+): Promise<T> => {
+	try {
+		return await run();
+	} catch (error) {
+		if (error instanceof AccessError) setResponseStatus(403);
+		throw error;
+	}
+};
+
 // Authenticated session only (no active-org requirement).
 export const sessionMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
@@ -135,7 +178,7 @@ export const sessionMiddleware = createMiddleware({ type: "function" }).server(
 export const orgMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const ctx = await requireOrgContext();
-		const { ctxAccess, NotAMemberError } = await import(
+		const { AccessError, ctxAccess, NotAMemberError } = await import(
 			"@farmer/core/services"
 		);
 		try {
@@ -147,14 +190,43 @@ export const orgMiddleware = createMiddleware({ type: "function" }).server(
 			if (error instanceof NotAMemberError) throw redirect({ to: "/" });
 			throw error;
 		}
-		return next({ context: { ctx } });
+		return withAccessStatus(AccessError, () => next({ context: { ctx } }));
 	},
 );
 
 // Authenticated + active org + owner/admin role → `context.ctx`.
+//
+// Deliberately NOT `requireOrgAdmin()`, even though that helper says the same
+// thing. It is written for route `beforeLoad`s, which also run in the browser,
+// so it routes the role check through the `getMyRole` server function rather
+// than importing services — and that costs a second full session resolution
+// (`requireOrgContext` → `getSession`, then `getMyRole` → `requireOrgContext` →
+// `getSession` again) plus a `member` lookup, before the handler's first
+// `requireAdmin(ctx)` then resolves `Access` from cold because the ctx it was
+// handed carries no memo.
+//
+// A `.server()` callback is stripped from the browser bundle, so none of that
+// applies here: resolve `Access` once, assert on it, and hand the handler the
+// very Ctx whose memo now holds it. Same shape as `orgMiddleware` above, and
+// for the same reasons — see the note there about keeping the import INSIDE the
+// callback.
 export const orgAdminMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
-		const ctx = await requireOrgAdmin();
-		return next({ context: { ctx } });
+		const ctx = await requireOrgContext();
+		const { AccessError, ctxAccess, NotAMemberError } = await import(
+			"@farmer/core/services"
+		);
+		let access: Awaited<ReturnType<typeof ctxAccess>>;
+		try {
+			access = await ctxAccess(ctx);
+		} catch (error) {
+			if (error instanceof NotAMemberError) throw redirect({ to: "/" });
+			throw error;
+		}
+		// Matches `requireOrgAdmin`'s behaviour: a non-admin member is sent home
+		// rather than shown an error, because every caller of this middleware backs
+		// a screen they should not have reached.
+		if (!access.isAdmin) throw redirect({ to: "/" });
+		return withAccessStatus(AccessError, () => next({ context: { ctx } }));
 	},
 );

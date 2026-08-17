@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { auth } from "../auth";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
-import { project, timeEntry } from "../db/schema/domain";
+import { project, projectMember, timeEntry } from "../db/schema/domain";
 import {
 	orgGithubInstallation,
 	projectGithubRepo,
@@ -24,6 +24,7 @@ import type {
 	LinkProjectRepoInput,
 	SuggestCommitsInput,
 } from "../schema/github";
+import { AccessError } from "./access.service";
 import { ctxTimezone } from "./context";
 import type { Ctx } from "./types";
 
@@ -66,6 +67,83 @@ const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
 		),
 	});
 	if (!row) throw new Error("Project not found");
+};
+
+/**
+ * The linked repos a commit scan for this person should read.
+ *
+ * Scoped to the projects they hold an ACTIVE assignment on, not to every repo
+ * in the organization — which is what the two cross-repo scans below used to do,
+ * and it is what made the automation sweep cost (org repos x people) GitHub
+ * calls every twenty minutes. Thirty repos and forty people is 1,200 calls a
+ * sweep, 3,600 an hour, against an installation rate limit that starts at 5,000
+ * — and the sweep runs four people at a time, so each of those was also thirty
+ * sockets opened at once.
+ *
+ * The scope is also the more correct answer, not merely the cheaper one. A
+ * commit on a project you are not assigned to cannot be attributed to it: the
+ * engine attaches per project by finding YOUR work entry on that project, and
+ * `assertCanTrackOn` means you have none. Such commits only ever fell through to
+ * the day's project-less fill block, so the effect of scoping is that work you
+ * are not on stops seeding a block about work you are not on. If somebody's
+ * commits ought to count, the fix is to assign them to the project — which is
+ * the same thing that lets them log the time.
+ *
+ * `suggestCommits` deliberately does NOT go through here: it is scoped to one
+ * project the caller named and already gated by `assertProjectInOrg`.
+ */
+const reposForUser = async (ctx: Ctx) =>
+	db
+		.select({
+			id: projectGithubRepo.id,
+			projectId: projectGithubRepo.projectId,
+			owner: projectGithubRepo.owner,
+			name: projectGithubRepo.name,
+			fullName: projectGithubRepo.fullName,
+			installationId: projectGithubRepo.installationId,
+		})
+		.from(projectGithubRepo)
+		.innerJoin(
+			projectMember,
+			and(
+				eq(projectMember.projectId, projectGithubRepo.projectId),
+				eq(projectMember.organizationId, projectGithubRepo.organizationId),
+				eq(projectMember.userId, ctx.userId),
+				eq(projectMember.active, true),
+			),
+		)
+		.where(eq(projectGithubRepo.organizationId, ctx.organizationId));
+
+/** How many repos one person's scan may have in flight at once.
+ *
+ *  The per-repo work is a GitHub round trip, so the ceiling that matters is
+ *  somebody else's rate limiter, not this machine — same reasoning as
+ *  AUTOMATION_SYNC_CONCURRENCY, and these multiply: the sweep runs four people
+ *  concurrently, each of which lands here. */
+const REPO_SCAN_CONCURRENCY = Number(
+	process.env.GITHUB_REPO_SCAN_CONCURRENCY ?? 4,
+);
+
+/** `Promise.all(items.map(fn))` with a ceiling on how many run at once, results
+ *  in input order. `fn` is expected to handle its own failures (all three
+ *  callers log and return an empty list), so one bad repo cannot abort a scan. */
+const mapBounded = async <T, R>(
+	items: T[],
+	limit: number,
+	fn: (item: T) => Promise<R>,
+): Promise<R[]> => {
+	const results = new Array<R>(items.length);
+	let next = 0;
+	const workers = Array.from(
+		{ length: Math.min(Math.max(limit, 1), items.length) },
+		async () => {
+			for (let i = next++; i < items.length; i = next++) {
+				results[i] = await fn(items[i] as T);
+			}
+		},
+	);
+	await Promise.all(workers);
+	return results;
 };
 
 const assertTimeEntryOwnedByUser = async (ctx: Ctx, timeEntryId: string) => {
@@ -153,7 +231,9 @@ export const githubService = {
 		const installs = await listUserInstallations(token);
 		const match = installs.find((i) => i.id === input.installationId);
 		if (!match) {
-			throw new Error("You don't have access to that GitHub installation");
+			throw new AccessError(
+				"You don't have access to that GitHub installation",
+			);
 		}
 
 		const [row] = await db
@@ -366,17 +446,17 @@ export const githubService = {
 		const githubUser = await getAuthenticatedUser(token);
 		if (!githubUser) return [];
 
-		const repos = await db.query.projectGithubRepo.findMany({
-			where: eq(projectGithubRepo.organizationId, ctx.organizationId),
-		});
+		const repos = await reposForUser(ctx);
 		if (repos.length === 0) return [];
 
 		const tz = await ctxTimezone(ctx);
 		const start = dayBoundsInTz(input.from, tz).start;
 		const end = dayBoundsInTz(input.to, tz).end;
 
-		const perRepo = await Promise.all(
-			repos.map(async (repo) => {
+		const perRepo = await mapBounded(
+			repos,
+			REPO_SCAN_CONCURRENCY,
+			async (repo) => {
 				if (!repo.installationId) return [] as ScannedCommit[];
 				try {
 					const instToken = await getInstallationToken(repo.installationId);
@@ -402,7 +482,7 @@ export const githubService = {
 					});
 					return [] as ScannedCommit[];
 				}
-			}),
+			},
 		);
 
 		const byDay = new Map<string, ScannedCommit[]>();
@@ -433,16 +513,16 @@ export const githubService = {
 		const githubUser = await getAuthenticatedUser(token);
 		if (!githubUser) return [];
 
-		const repos = await db.query.projectGithubRepo.findMany({
-			where: eq(projectGithubRepo.organizationId, ctx.organizationId),
-		});
+		const repos = await reposForUser(ctx);
 		if (repos.length === 0) return [];
 
 		const tz = await ctxTimezone(ctx);
 		const { start, end } = dayBoundsInTz(date, tz);
 
-		const perRepo = await Promise.all(
-			repos.map(async (repo) => {
+		const perRepo = await mapBounded(
+			repos,
+			REPO_SCAN_CONCURRENCY,
+			async (repo) => {
 				if (!repo.installationId) return [];
 				try {
 					const instToken = await getInstallationToken(repo.installationId);
@@ -467,7 +547,7 @@ export const githubService = {
 					});
 					return [];
 				}
-			}),
+			},
 		);
 
 		return perRepo

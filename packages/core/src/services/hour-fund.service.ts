@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, or } from "drizzle-orm";
 import { db } from "../db";
 import { monthlyHourFund } from "../db/schema/settings";
 import { datesBetween, endOfMonthKey } from "../lib/time";
@@ -34,6 +34,48 @@ export const hourFundService = {
 			columns: { fundSeconds: true },
 		});
 		return row?.fundSeconds ?? null;
+	},
+
+	/** The funds for a run of months, keyed `yyyy-MM`.
+	 *
+	 *  For callers that walk a span — the utilization trend runs up to 24 months
+	 *  and used to call `get` once per point. A month with no row is absent from
+	 *  the map, which callers must keep reading as null (no Expected at all)
+	 *  rather than zero; see the note on `get`. */
+	getMany: async (
+		ctx: Ctx,
+		months: { year: number; month: number }[],
+	): Promise<Map<string, number>> => {
+		if (months.length === 0) return new Map();
+		const rows = await db
+			.select({
+				year: monthlyHourFund.year,
+				month: monthlyHourFund.month,
+				fundSeconds: monthlyHourFund.fundSeconds,
+			})
+			.from(monthlyHourFund)
+			.where(
+				and(
+					eq(monthlyHourFund.organizationId, ctx.organizationId),
+					// An OR over the exact (year, month) pairs asked for, rather than a
+					// min/max range: a 24-month trend spans three calendar years, and a
+					// range would pull in months no point on it reads.
+					or(
+						...months.map((m) =>
+							and(
+								eq(monthlyHourFund.year, m.year),
+								eq(monthlyHourFund.month, m.month),
+							),
+						),
+					),
+				),
+			);
+		return new Map(
+			rows.map((r) => [
+				`${r.year}-${String(r.month).padStart(2, "0")}`,
+				r.fundSeconds,
+			]),
+		);
 	},
 
 	listForYear: async (ctx: Ctx, year: number) =>
@@ -132,14 +174,30 @@ export const hourFundService = {
 		}
 		if (rows.length === 0) return { filled: 0 };
 
-		await db.insert(monthlyHourFund).values(
-			rows.map((r) => ({
-				organizationId: ctx.organizationId,
-				year,
-				month: r.month,
-				fundSeconds: r.fundSeconds,
-			})),
-		);
-		return { filled: rows.length };
+		const inserted = await db
+			.insert(monthlyHourFund)
+			.values(
+				rows.map((r) => ({
+					organizationId: ctx.organizationId,
+					year,
+					month: r.month,
+					fundSeconds: r.fundSeconds,
+				})),
+			)
+			// The `known` set above is a read, and this is the write — a second admin
+			// setting one of these months in between made the whole batch fail on
+			// `monthly_hour_fund`'s unique index, so a prefill of eleven untouched
+			// months filled none of them and surfaced a raw constraint error. Skipping
+			// the conflict is the same rule the read already implements: never
+			// clobber a figure somebody entered by hand.
+			.onConflictDoNothing({
+				target: [
+					monthlyHourFund.organizationId,
+					monthlyHourFund.year,
+					monthlyHourFund.month,
+				],
+			})
+			.returning({ month: monthlyHourFund.month });
+		return { filled: inserted.length };
 	},
 };

@@ -8,9 +8,10 @@ import {
 	CLIENTS_ITEM,
 	CLOSE_ITEM,
 	isNavItemActive,
+	mobileWorkspaceItems,
 	REPORTS_ITEM,
-	WORKSPACE_ITEMS,
 } from "#/components/app-sidebar.tsx";
+import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import {
 	Sheet,
 	SheetContent,
@@ -29,11 +30,14 @@ export function MobileTabBar({
 	isAdmin,
 	userName,
 	userEmail,
+	assistantEnabled,
 }: {
 	orgSlug: string;
 	isAdmin: boolean;
 	userName: string;
 	userEmail: string;
+	/** `ASSISTANT_ENABLED` on this deployment, from the layout's route context. */
+	assistantEnabled: boolean;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const router = useRouter();
@@ -43,8 +47,11 @@ export function MobileTabBar({
 	// give regular-and-up phones a 4th before anything overflows into More.
 	const hasRoomForFourth = useMediaQuery("(min-width: 380px)");
 	const primaryCount = hasRoomForFourth ? 4 : 3;
-	const primaryItems = WORKSPACE_ITEMS.slice(0, primaryCount);
-	const moreWorkspaceItems = WORKSPACE_ITEMS.slice(primaryCount);
+	// Not the same list as the sidebar's: there the assistant is the Chat tab
+	// rather than a row, and a phone has no such tabs. See mobileWorkspaceItems.
+	const items = mobileWorkspaceItems(assistantEnabled);
+	const primaryItems = items.slice(0, primaryCount);
+	const moreWorkspaceItems = items.slice(primaryCount);
 
 	// Same rationale as AppSidebar: not a suspense query. The close sheet is
 	// gated on a per-project PM role, which the org role can't tell us.
@@ -178,6 +185,7 @@ export function MobileTabBar({
 							<div className="truncate text-base font-medium">{userName}</div>
 							<div className="truncate text-xs text-faint">{userEmail}</div>
 						</div>
+						<ThemeToggle className="p-1" iconClassName="size-4" />
 						<button
 							type="button"
 							onClick={handleLogout}

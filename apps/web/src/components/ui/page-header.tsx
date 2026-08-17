@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ScrollFade } from "#/components/ui/scroll-fade.tsx";
 import { cn } from "#/lib/utils.ts";
 
 /**
@@ -32,6 +33,13 @@ import { cn } from "#/lib/utils.ts";
  * island is only as tall as its content, so a two-setting page floated as a
  * stub near the top of the viewport with a large field of bare ground under it
  * — the island has to *be* the page, not a card sitting on one.
+ *
+ * On desktop full height is also the CEILING, not just the floor: the island is
+ * exactly as tall as the frame and its content moves inside it (`ScrollFade`),
+ * so the ground stays visible on all four sides however long the page is.
+ * Before this, a long timesheet grew the island past the bottom of the screen
+ * and took the frame padding with it. On a phone the document still scrolls —
+ * see the note on `.scroll-fade`.
  */
 export function Page({
 	children,
@@ -41,7 +49,11 @@ export function Page({
 	className?: string;
 }) {
 	return (
-		<div className={cn("island island-pad flex-1", className)}>{children}</div>
+		<div className="island flex flex-1 flex-col">
+			<ScrollFade className={cn("island-pad", className)}>
+				{children}
+			</ScrollFade>
+		</div>
 	);
 }
 

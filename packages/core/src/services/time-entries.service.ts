@@ -31,6 +31,7 @@ import {
 import { summarizeCommitMessages } from "../lib/day-plan";
 import {
 	addDaysToKey,
+	datesBetween,
 	dayKeyInTz,
 	monthBounds,
 	snapToQuarterHour,
@@ -42,6 +43,7 @@ import {
 	targetSecondsFor,
 } from "../lib/working-day";
 import type {
+	AbsenceTotalsInput,
 	CopyTimeEntriesInput,
 	CopyWeekEntriesInput,
 	CreateAbsenceForUserInput,
@@ -49,15 +51,24 @@ import type {
 	FileTimeEntriesInput,
 	FileTimeEntryInput,
 	ListAbsenceForUserInput,
+	LogAbsenceRangeInput,
 	OverrideAbsenceEntryInput,
 	SetTimeEntryOvertimeInput,
 	SetWeekCellInput,
 	UpdateTimeEntryDescriptionInput,
 	UpdateTimeEntryInput,
 } from "../schema/time-entries";
+import { AccessError } from "./access.service";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
-import { assertProjectInOrg, assertTaskAvailable } from "./guards";
+import {
+	assertProjectInOrg,
+	assertTaskAvailable,
+	assertUserInOrg,
+} from "./guards";
+import { holidaysService } from "./holidays.service";
+import { WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { integrationSettingsService } from "./integration-settings.service";
+import { ledgerWhere } from "./ledger";
 import { orgSettingsService } from "./org-settings.service";
 import { calendarSource, commitSource } from "./ports";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
@@ -559,6 +570,24 @@ const projectIdsForUser = async (ctx: Ctx, userId: string) => {
 	return rows.map((r) => r.projectId);
 };
 
+/** May the caller READ this person's absence?
+ *
+ *  Own absence always: these are the person's own time entries, and `listRange`
+ *  hands them back already — a stricter answer here would only mean the same
+ *  rows were reachable one way and not another. The PM gate exists for OTHER
+ *  people's absence, and stating it as `canOverrideAbsenceFor` alone left the
+ *  trivial case out: a plain Member could not ask how much vacation they
+ *  themselves had taken, because they are PM of nothing.
+ *
+ *  Reads only. The writes below keep calling `canOverrideAbsenceFor` directly
+ *  and stay PM-only — correcting your OWN absence is `update`/`remove` on your
+ *  own entry, which is a different door with its own ownership check. */
+const canReadAbsenceOf = async (ctx: Ctx, userId: string): Promise<boolean> => {
+	if (userId === ctx.userId) return true;
+	const access = await ctxAccess(ctx);
+	return access.canOverrideAbsenceFor(await projectIdsForUser(ctx, userId));
+};
+
 export const timeEntriesService = {
 	// Reading is reading. This used to run the recurring materializer and both
 	// integration sync engines first, so which entries got created depended on
@@ -782,6 +811,22 @@ export const timeEntriesService = {
 
 		return { ran, skipped, failed };
 	},
+
+	/** One of the caller's OWN entries by id, or undefined.
+	 *
+	 *  Ownership is the filter rather than a check that throws, matching `remove`
+	 *  one door down: the caller for this is the assistant's approval card, which
+	 *  needs to name what is about to be deleted, and a card that threw instead of
+	 *  rendering would leave somebody unable to answer either way. */
+	getOwn: async (ctx: Ctx, timeEntryId: string) =>
+		db.query.timeEntry.findFirst({
+			where: and(
+				eq(timeEntry.id, timeEntryId),
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+			),
+			with: { task: true },
+		}),
 
 	create: async (ctx: Ctx, input: CreateTimeEntryInput) => {
 		if (input.projectId) {
@@ -1460,10 +1505,8 @@ export const timeEntriesService = {
 	 *  from the close sheet. Same permission as the writes below — a PM may read
 	 *  the absence of people on their own projects, nobody else's. */
 	listAbsenceForUser: async (ctx: Ctx, input: ListAbsenceForUserInput) => {
-		const access = await ctxAccess(ctx);
-		const shared = await projectIdsForUser(ctx, input.userId);
-		if (!access.canOverrideAbsenceFor(shared)) {
-			throw new Error("You cannot see this person's absence");
+		if (!(await canReadAbsenceOf(ctx, input.userId))) {
+			throw new AccessError("You cannot see this person's absence");
 		}
 		const { from, to } = monthBounds(input.year, input.month);
 		return db
@@ -1489,6 +1532,137 @@ export const timeEntriesService = {
 			.orderBy(asc(timeEntry.date));
 	},
 
+	/** A whole year of absence, grouped by task — "how much vacation have I
+	 *  taken", which the month-shaped read above answers only twelve calls at a
+	 *  time.
+	 *
+	 *  Days as well as seconds, converted with the same `WORKING_DAY_SECONDS` the
+	 *  close sheet uses to subtract absence from Expected. Two divisors would mean
+	 *  a person and their PM reading different day counts off the same rows. */
+	absenceTotals: async (ctx: Ctx, input: AbsenceTotalsInput) => {
+		const userId = input.userId ?? ctx.userId;
+		if (!(await canReadAbsenceOf(ctx, userId))) {
+			throw new AccessError("You cannot see this person's absence");
+		}
+
+		const rows = await db
+			.select({
+				taskId: task.id,
+				taskName: task.name,
+				seconds: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+			})
+			.from(timeEntry)
+			.innerJoin(task, eq(timeEntry.taskId, task.id))
+			.where(
+				ledgerWhere(
+					ctx,
+					{ from: `${input.year}-01-01`, to: `${input.year}-12-31` },
+					"absence",
+					{ userId },
+				),
+			)
+			.groupBy(task.id, task.name)
+			.orderBy(asc(task.name));
+
+		return rows.map((row) => {
+			const seconds = Number(row.seconds);
+			return {
+				taskId: row.taskId,
+				taskName: row.taskName,
+				seconds,
+				days: Math.round((seconds / WORKING_DAY_SECONDS) * 100) / 100,
+			};
+		});
+	},
+
+	/**
+	 * Book absence across a span of days, for the caller.
+	 *
+	 * The expansion is the point. "I'm off the 4th to the 15th" is one sentence
+	 * and, day by day through `create`, ten calls — and the two rules that decide
+	 * WHICH of those days get an entry are not visible to a caller: the person's
+	 * own working-hours schedule (somebody who does not work Wednesdays takes no
+	 * Wednesday off) and the org's holiday calendar. Booked against the day's own
+	 * target rather than a flat eight hours, so a four-hour Friday costs four.
+	 *
+	 * Days that cannot take an entry are REPORTED rather than skipped silently:
+	 * "booked 8 days, skipped 3" is the difference between a caller that can tell
+	 * the person what happened and one that claims a fortnight it did not book.
+	 * A day that already carries absence is left alone — asking twice must not
+	 * book twice — and per-day failures are collected the same way, so one bad day
+	 * (a 24h ceiling, a task archived mid-loop) cannot abandon the range half
+	 * written.
+	 *
+	 * Self only. Booking absence FOR somebody else is `createAbsenceForUser`,
+	 * which is PM-gated; nothing here widens that.
+	 */
+	logAbsenceRange: async (ctx: Ctx, input: LogAbsenceRangeInput) => {
+		const absenceIds = await tasksService.absenceTaskIds();
+		if (!absenceIds.has(input.taskId)) {
+			throw new Error("Only Vacation and Sick Leave can be logged this way");
+		}
+
+		const range = { from: input.from, to: input.to };
+		const [tz, workingHours, holidays, existing] = await Promise.all([
+			ctxTimezone(ctx),
+			workingHoursService.list(ctx),
+			holidaysService.holidaySetForRange(ctx, input.from, input.to),
+			db
+				.select({ date: timeEntry.date })
+				.from(timeEntry)
+				.innerJoin(task, eq(timeEntry.taskId, task.id))
+				.where(ledgerWhere(ctx, range, "absence", { userId: ctx.userId })),
+		]);
+		const alreadyOff = new Set(existing.map((row) => row.date));
+
+		const booked: { date: string; durationSeconds: number }[] = [];
+		const skipped: { date: string; reason: string }[] = [];
+
+		for (const date of datesBetween(input.from, input.to)) {
+			if (holidays.has(date)) {
+				skipped.push({ date, reason: "public holiday" });
+				continue;
+			}
+			// The zero check comes BEFORE the snap, not after: `snapToQuarterHour`
+			// has a 15-minute floor (so a 3-minute meeting becomes a real block
+			// rather than vanishing), which turns "this person does not work
+			// Saturdays" into a quarter hour of vacation booked on a Saturday.
+			const targetSeconds = targetSecondsFor(workingHours, date, tz);
+			if (targetSeconds === 0) {
+				skipped.push({ date, reason: "not a working day for this person" });
+				continue;
+			}
+			// Snapped because a schedule is stored as two clock times and can
+			// describe a day that is not a whole number of quarter hours, which
+			// every other duration in the system is.
+			const durationSeconds = snapToQuarterHour(targetSeconds);
+			if (alreadyOff.has(date)) {
+				skipped.push({ date, reason: "absence already logged" });
+				continue;
+			}
+
+			try {
+				await timeEntriesService.create(ctx, {
+					date,
+					taskId: input.taskId,
+					description: input.description,
+					durationSeconds,
+					overtime: false,
+					fillsDay: false,
+				});
+				booked.push({ date, durationSeconds });
+			} catch (error) {
+				skipped.push({
+					date,
+					reason:
+						error instanceof Error ? error.message : "could not be logged",
+				});
+			}
+		}
+
+		return { booked, skipped };
+	},
+
 	overrideAbsence: async (ctx: Ctx, input: OverrideAbsenceEntryInput) => {
 		const existing = await db.query.timeEntry.findFirst({
 			where: and(
@@ -1505,7 +1679,7 @@ export const timeEntriesService = {
 		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, existing.userId);
 		if (!access.canOverrideAbsenceFor(shared)) {
-			throw new Error("You cannot correct this person's absence");
+			throw new AccessError("You cannot correct this person's absence");
 		}
 
 		const [updated] = await db
@@ -1528,10 +1702,11 @@ export const timeEntriesService = {
 			throw new Error("Only Vacation and Sick Leave can be logged this way");
 		}
 
+		await assertUserInOrg(ctx, input.userId);
 		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, input.userId);
 		if (!access.canOverrideAbsenceFor(shared)) {
-			throw new Error("You cannot log absence for this person");
+			throw new AccessError("You cannot log absence for this person");
 		}
 
 		const [created] = await db
@@ -1568,7 +1743,7 @@ export const timeEntriesService = {
 		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, existing.userId);
 		if (!access.canOverrideAbsenceFor(shared)) {
-			throw new Error("You cannot correct this person's absence");
+			throw new AccessError("You cannot correct this person's absence");
 		}
 
 		await db.delete(timeEntry).where(eq(timeEntry.id, timeEntryId));

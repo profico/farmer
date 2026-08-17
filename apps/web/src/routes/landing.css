@@ -65,6 +65,18 @@
 html:has(.fm-landing) {
 	scroll-behavior: smooth;
 }
+/* This page states its own colours rather than reading the app's tokens, so it
+   stays light whatever the reader's theme is — the browser has to be told the
+   same, or a dark-mode visitor gets dark scrollbars and the dark `--ground`
+   showing through around a light page. `!important` because the rule it has to
+   beat is `:root[data-theme='dark']` in styles.css, which is exactly as
+   specific as anything writable here and loads in an order this file doesn't
+   control. */
+html:has(.fm-landing),
+html:has(.fm-landing) body {
+	color-scheme: light !important;
+	background: #faf9f6 !important;
+}
 .fm-landing .u-link {
 	position: relative;
 	color: #1b1a17;

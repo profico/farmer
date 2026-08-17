@@ -1,5 +1,6 @@
 import { and, eq, or } from "drizzle-orm";
 import { db } from "../db";
+import { member } from "../db/schema/auth";
 import { project, projectTask, task } from "../db/schema/domain";
 import type { Ctx } from "./types";
 
@@ -39,6 +40,32 @@ export const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
 		columns: { id: true },
 	});
 	if (!row) throw new Error("Project not found");
+};
+
+/**
+ * The same guard for a caller-supplied userId: the person being written ABOUT
+ * must be a member of the caller's organization.
+ *
+ * Distinct from every authorization check, and needed alongside them rather
+ * than instead of them. The capability checks answer "may you act on this
+ * person" — `canOverrideAbsenceFor` looks at the projects you share, and
+ * `requireAdmin` at your tier. Neither asks whether the id names anybody here:
+ * an admin satisfies `canOverrideAbsenceFor` unconditionally (it short-circuits
+ * on `isAdmin`) and a non-member's shared-project list is empty either way, so
+ * a mistyped or copied id wrote a real row — an absence entry, a start date, an
+ * archive flag — keyed to somebody who is not in the workspace. Tenancy held
+ * (the rows carry `ctx.organizationId`), so it was never a leak; it was rows
+ * that no list would ever show and no screen could ever clean up.
+ */
+export const assertUserInOrg = async (ctx: Ctx, userId: string) => {
+	const row = await db.query.member.findFirst({
+		where: and(
+			eq(member.organizationId, ctx.organizationId),
+			eq(member.userId, userId),
+		),
+		columns: { id: true },
+	});
+	if (!row) throw new Error("That person is not a member of this organization");
 };
 
 /**

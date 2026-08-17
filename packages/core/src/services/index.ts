@@ -1,5 +1,7 @@
 export * from "./access.service";
 export * from "./account.service";
+export * from "./assistant.service";
+export * from "./assistant-tools";
 export * from "./clients.service";
 export * from "./close.service";
 export * from "./compliance.service";

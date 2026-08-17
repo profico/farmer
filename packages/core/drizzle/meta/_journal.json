@@ -204,6 +204,34 @@
       "when": 1786655829768,
       "tag": "0028_freezing_santa_claus",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786993878676,
+      "tag": "0029_panoramic_hercules",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786995203442,
+      "tag": "0030_pretty_master_chief",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786999744844,
+      "tag": "0031_tan_leopardon",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787003638946,
+      "tag": "0032_closed_sentinel",
+      "breakpoints": true
     }
   ]
 }

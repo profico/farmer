@@ -27,7 +27,8 @@
 		"db:check": "bun run src/db/check.ts",
 		"db:studio": "drizzle-kit studio",
 		"db:seed": "bun run src/db/seed.ts",
-		"db:seed-tasks": "bun run src/db/seed-tasks.ts"
+		"db:seed-tasks": "bun run src/db/seed-tasks.ts",
+		"db:seed-assistant-ui": "bun run src/db/seed-assistant-ui.ts"
 	},
 	"dependencies": {
 		"@date-fns/tz": "1.5.0",

@@ -10,7 +10,7 @@ import type {
 	SaveCloseRowInput,
 	SetCloseRowFinalInput,
 } from "../schema/close";
-import { ctxAccess } from "./context";
+import { ctxAccess, type DbClient } from "./context";
 import { assertProjectInOrg } from "./guards";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerByProject } from "./ledger";
@@ -167,6 +167,55 @@ export const absenceDaysByUser = async (
 };
 
 /**
+ * The same figure for a run of months at once, keyed `yyyy-MM` → userId → days.
+ *
+ * `absenceDaysByUser` answers one month, which is the right shape for a close
+ * sheet and the wrong one for a trend: the utilization trend covers up to 24
+ * months and called it once per point, so a single chart issued 24 copies of
+ * this query. The month is a plain prefix of the `date` column (which is text
+ * `yyyy-MM-dd` precisely so grouping needs no timezone math), so one grouped
+ * scan over the whole span answers every point.
+ *
+ * Months outside the range simply come back absent; callers default to 0, the
+ * same as a person with no absence in a month that IS covered.
+ */
+export const absenceDaysByUserPerMonth = async (
+	ctx: Ctx,
+	from: string,
+	to: string,
+): Promise<Map<string, Map<string, number>>> => {
+	const monthKey = sql<string>`substring(${timeEntry.date} from 1 for 7)`;
+	const rows = await db
+		.select({
+			month: monthKey,
+			userId: timeEntry.userId,
+			total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+		})
+		.from(timeEntry)
+		.innerJoin(task, eq(timeEntry.taskId, task.id))
+		.where(
+			and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(task.isAbsence, true),
+				gte(timeEntry.date, from),
+				lte(timeEntry.date, to),
+			),
+		)
+		.groupBy(monthKey, timeEntry.userId);
+
+	const byMonth = new Map<string, Map<string, number>>();
+	for (const r of rows) {
+		let bucket = byMonth.get(r.month);
+		if (!bucket) {
+			bucket = new Map();
+			byMonth.set(r.month, bucket);
+		}
+		bucket.set(r.userId, Number(r.total) / WORKING_DAY_SECONDS);
+	}
+	return byMonth;
+};
+
+/**
  * Expected hours for one person in a month:
  *
  *     Expected = monthly fund - (absence days x 8)
@@ -195,8 +244,9 @@ const loadCloseRecord = async (
 	projectId: string,
 	year: number,
 	month: number,
+	client: DbClient = db,
 ) =>
-	db.query.monthlyClose.findFirst({
+	client.query.monthlyClose.findFirst({
 		where: and(
 			eq(monthlyClose.organizationId, ctx.organizationId),
 			eq(monthlyClose.projectId, projectId),
@@ -207,14 +257,21 @@ const loadCloseRecord = async (
 	});
 
 /** Get-or-create the close record. Reads never call this — a read must not
- *  create state — so a month nobody has touched simply reports as Open. */
+ *  create state — so a month nobody has touched simply reports as Open.
+ *
+ *  Takes a client so `finalize` can run it inside the transaction that writes
+ *  the rows and flips the status: creating the record on the pool and then
+ *  filling it in a separate transaction leaves an empty Open close behind if
+ *  the transaction rolls back, which reads as "somebody started this month"
+ *  when nobody did. */
 const ensureClose = async (
 	ctx: Ctx,
 	projectId: string,
 	year: number,
 	month: number,
+	client: DbClient = db,
 ): Promise<string> => {
-	const [created] = await db
+	const [created] = await client
 		.insert(monthlyClose)
 		.values({
 			organizationId: ctx.organizationId,
@@ -233,7 +290,7 @@ const ensureClose = async (
 		.returning({ id: monthlyClose.id });
 	if (created) return created.id;
 
-	const existing = await loadCloseRecord(ctx, projectId, year, month);
+	const existing = await loadCloseRecord(ctx, projectId, year, month, client);
 	if (!existing) throw new Error("Failed to open the close sheet");
 	return existing.id;
 };
@@ -548,14 +605,19 @@ export const closeService = {
 			);
 		}
 
-		const closeId = await ensureClose(
-			ctx,
-			input.projectId,
-			input.year,
-			input.month,
-		);
-
 		await db.transaction(async (tx) => {
+			// Inside the transaction, not before it: the record, its rows and the
+			// status flip are one write. Created on the pool and then filled
+			// separately, a rollback anywhere below left an empty Open close record
+			// behind — a month that reads as "somebody started this" when nobody did.
+			const closeId = await ensureClose(
+				ctx,
+				input.projectId,
+				input.year,
+				input.month,
+				tx,
+			);
+
 			for (const row of sheet.rows) {
 				await tx
 					.insert(monthlyCloseRow)

@@ -11,6 +11,15 @@ import { createServerFn } from "@tanstack/react-start";
 export type PublicAppConfig = {
 	singleOrgMode: boolean;
 	/**
+	 * Whether the assistant runs on this deployment (`ASSISTANT_ENABLED`).
+	 *
+	 * What the client does with this is presentation — hide the nav row, refuse
+	 * the route. The switch that actually closes the feature is server-side, in
+	 * `assistantService` and the streaming route; same relationship as
+	 * `allowUserToCreateOrganization` and the hidden "New organization" item.
+	 */
+	assistantEnabled: boolean;
+	/**
 	 * The one organization's public face — name, logo and slug, and nothing
 	 * else. This is an unauthenticated read (`/login`'s error screen needs it
 	 * before anyone has signed in), so it returns branding rather than the org
@@ -24,13 +33,19 @@ export type PublicAppConfig = {
 
 export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 	async (): Promise<PublicAppConfig> => {
-		const { isSingleOrgMode, findSingleOrg } = await import(
-			"@farmer/core/lib/single-org"
-		);
-		if (!isSingleOrgMode()) return { singleOrgMode: false, org: null };
+		const [{ isSingleOrgMode, findSingleOrg }, { isAssistantEnabled }] =
+			await Promise.all([
+				import("@farmer/core/lib/single-org"),
+				import("@farmer/core/lib/assistant-flag"),
+			]);
+		const assistantEnabled = isAssistantEnabled();
+		if (!isSingleOrgMode()) {
+			return { singleOrgMode: false, assistantEnabled, org: null };
+		}
 		const org = await findSingleOrg();
 		return {
 			singleOrgMode: true,
+			assistantEnabled,
 			org: org
 				? { slug: org.slug, name: org.name, logo: org.logo ?? null }
 				: null,

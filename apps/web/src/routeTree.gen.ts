@@ -18,6 +18,7 @@ import { Route as ApiLoginRouteImport } from './routes/api/login'
 import { Route as AcceptInviteInvitationIdRouteImport } from './routes/accept-invite/$invitationId'
 import { Route as OrgSlugReportsRouteImport } from './routes/$orgSlug/reports'
 import { Route as OrgSlugCloseRouteImport } from './routes/$orgSlug/close'
+import { Route as OrgSlugAssistantRouteImport } from './routes/$orgSlug/assistant'
 import { Route as OrgSlugTimeRouteRouteImport } from './routes/$orgSlug/time/route'
 import { Route as OrgSlugTimeIndexRouteImport } from './routes/$orgSlug/time/index'
 import { Route as OrgSlugProjectsIndexRouteImport } from './routes/$orgSlug/projects/index'
@@ -27,6 +28,7 @@ import { Route as ApiSlackCallbackRouteImport } from './routes/api/slack/callbac
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiAssistantStreamRouteImport } from './routes/api/assistant/stream'
 import { Route as OrgSlugTimeWeekRouteImport } from './routes/$orgSlug/time/week'
 import { Route as OrgSlugTimeMonthRouteImport } from './routes/$orgSlug/time/month'
 import { Route as OrgSlugSettingsTasksRouteImport } from './routes/$orgSlug/settings/tasks'
@@ -86,6 +88,11 @@ const OrgSlugCloseRoute = OrgSlugCloseRouteImport.update({
   path: '/close',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugAssistantRoute = OrgSlugAssistantRouteImport.update({
+  id: '/assistant',
+  path: '/assistant',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugTimeRouteRoute = OrgSlugTimeRouteRouteImport.update({
   id: '/time',
   path: '/time',
@@ -129,6 +136,11 @@ const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAssistantStreamRoute = ApiAssistantStreamRouteImport.update({
+  id: '/api/assistant/stream',
+  path: '/api/assistant/stream',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrgSlugTimeWeekRoute = OrgSlugTimeWeekRouteImport.update({
@@ -203,6 +215,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
+  '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -220,6 +233,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
+  '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -233,6 +247,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
+  '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -250,6 +265,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
+  '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -266,6 +282,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
+  '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -283,6 +300,7 @@ export interface FileRoutesById {
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
+  '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
@@ -300,6 +318,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/no-access'
     | '/$orgSlug/time'
+    | '/$orgSlug/assistant'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/accept-invite/$invitationId'
@@ -317,6 +336,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
+    | '/api/assistant/stream'
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/reports/pdf'
@@ -330,6 +350,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/no-access'
+    | '/$orgSlug/assistant'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/accept-invite/$invitationId'
@@ -347,6 +368,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
+    | '/api/assistant/stream'
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/reports/pdf'
@@ -362,6 +384,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/no-access'
     | '/$orgSlug/time'
+    | '/$orgSlug/assistant'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/accept-invite/$invitationId'
@@ -379,6 +402,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
+    | '/api/assistant/stream'
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/reports/pdf'
@@ -396,6 +420,7 @@ export interface RootRouteChildren {
   NoAccessRoute: typeof NoAccessRoute
   AcceptInviteInvitationIdRoute: typeof AcceptInviteInvitationIdRoute
   ApiLoginRoute: typeof ApiLoginRoute
+  ApiAssistantStreamRoute: typeof ApiAssistantStreamRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
@@ -469,6 +494,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugCloseRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/assistant': {
+      id: '/$orgSlug/assistant'
+      path: '/assistant'
+      fullPath: '/$orgSlug/assistant'
+      preLoaderRoute: typeof OrgSlugAssistantRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/time': {
       id: '/$orgSlug/time'
       path: '/time'
@@ -530,6 +562,13 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/assistant/stream': {
+      id: '/api/assistant/stream'
+      path: '/api/assistant/stream'
+      fullPath: '/api/assistant/stream'
+      preLoaderRoute: typeof ApiAssistantStreamRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug/time/week': {
@@ -636,6 +675,7 @@ const OrgSlugTimeRouteRouteWithChildren =
 
 interface OrgSlugRouteRouteChildren {
   OrgSlugTimeRouteRoute: typeof OrgSlugTimeRouteRouteWithChildren
+  OrgSlugAssistantRoute: typeof OrgSlugAssistantRoute
   OrgSlugCloseRoute: typeof OrgSlugCloseRoute
   OrgSlugReportsRoute: typeof OrgSlugReportsRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
@@ -654,6 +694,7 @@ interface OrgSlugRouteRouteChildren {
 
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugTimeRouteRoute: OrgSlugTimeRouteRouteWithChildren,
+  OrgSlugAssistantRoute: OrgSlugAssistantRoute,
   OrgSlugCloseRoute: OrgSlugCloseRoute,
   OrgSlugReportsRoute: OrgSlugReportsRoute,
   OrgSlugIndexRoute: OrgSlugIndexRoute,
@@ -681,6 +722,7 @@ const rootRouteChildren: RootRouteChildren = {
   NoAccessRoute: NoAccessRoute,
   AcceptInviteInvitationIdRoute: AcceptInviteInvitationIdRoute,
   ApiLoginRoute: ApiLoginRoute,
+  ApiAssistantStreamRoute: ApiAssistantStreamRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,

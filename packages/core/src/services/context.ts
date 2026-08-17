@@ -13,8 +13,9 @@
 // rather than the value, so two concurrent callers inside one `Promise.all`
 // share a single query instead of racing to issue two.
 
+import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { orgTimezone } from "../lib/org-time";
+import { organization } from "../db/schema/auth";
 import { type Access, accessService } from "./access.service";
 import { CTX_MEMO, type Ctx, type CtxMemo } from "./types";
 
@@ -38,10 +39,31 @@ const memoOf = (ctx: Ctx): CtxMemo => {
 	return memo;
 };
 
-/** The organization's IANA timezone, resolved once per Ctx. Defaults to UTC. */
+/** The organization's IANA timezone, resolved once per Ctx. Defaults to UTC.
+ *
+ *  Reads through `ctxDb(ctx)` rather than delegating to `lib/org-time`'s
+ *  `orgTimezone`, which uses the ambient handle. Same reason
+ *  `workingHoursService.list` does — and the same bug, found the same way.
+ *
+ *  Three callers ask for the timezone from INSIDE `withCtxTx`
+ *  (`time-entries.service`: remove, setWeekCell, copyDay). `withCtxTx` copies
+ *  the parent's memo into the transaction's Ctx, so a warm memo resolves from
+ *  memory and nothing queries. A COLD one does not: the lookup then runs on the
+ *  ambient handle, from inside an open transaction — reading pre-transaction
+ *  state on a pool, and deadlocking outright on a single-connection handle
+ *  (PGLite, which is what the tests run on), because the transaction is waiting
+ *  on a query queued behind it.
+ *
+ *  That is not a test-only failure. It needs a Ctx whose timezone has not been
+ *  touched yet — which is exactly what a fresh Ctx built per call looks like,
+ *  and the assistant's tools build one per turn. */
 export const ctxTimezone = (ctx: Ctx): Promise<string> => {
 	const memo = memoOf(ctx);
-	memo.timezone ??= orgTimezone(ctx.organizationId);
+	memo.timezone ??= ctxDb(ctx)
+		.query.organization.findFirst({
+			where: eq(organization.id, ctx.organizationId),
+		})
+		.then((org) => org?.timezone ?? "UTC");
 	return memo.timezone;
 };
 

@@ -37,6 +37,32 @@ function suggestionTitle(s: DaySuggestion): string {
 	return "Work — rest of day";
 }
 
+/**
+ * Where this row came from, in the reader's words.
+ *
+ * Beautiful UI's Recommendation Card puts a confidence meter on every agent
+ * suggestion. A percentage would be invented here — nothing in `suggest`
+ * scores itself — but the thing a confidence meter is FOR is answering "why
+ * should I believe this row", and that this app can answer exactly: a meeting
+ * is a calendar event, work is N commits in a named repo, a break is a rule you
+ * wrote, and the rest-of-day block is arithmetic on your working hours. That
+ * last one is the only assumption in the list, and it is the one people most
+ * need to see labelled as such before they tick it.
+ *
+ * Deliberately not a badge and deliberately not a card — the surrounding list
+ * idiom is the app's, and the note above the list says why.
+ */
+function suggestionSource(s: DaySuggestion): string {
+	if (s.kind === "meeting") return "From your calendar";
+	if (s.kind === "work") {
+		const repos = [...new Set(s.commits.map((c) => c.repoFullName))];
+		const where = repos.length === 1 ? ` in ${repos[0]}` : "";
+		return `From ${s.commits.length} ${s.commits.length === 1 ? "commit" : "commits"}${where}`;
+	}
+	if (s.kind === "break") return "From your recurring blocks";
+	return "Assumed from your working hours";
+}
+
 function SuggestionIcon({ kind }: { kind: DaySuggestion["kind"] }) {
 	const Icon =
 		kind === "meeting"
@@ -223,8 +249,12 @@ export function AssembleDayDialog({
 										{s.fillsDay
 											? `Fills the rest of the day · ~${formatHoursShort(s.durationSeconds)}`
 											: `${s.taskName} · ${formatHoursShort(s.durationSeconds)}`}
-										{s.commits.length > 0 &&
-											` · ${s.commits.length} ${s.commits.length === 1 ? "commit" : "commits"}`}
+									</span>
+									{/* The evidence, on its own line under the figures rather than
+									    appended to them: it answers a different question ("why is
+									    this here") than the line above ("what would it log"). */}
+									<span className="block truncate text-xs text-faint">
+										{suggestionSource(s)}
 									</span>
 									{s.kind === "work" && s.description && (
 										<span className="block truncate text-xs text-muted-foreground">

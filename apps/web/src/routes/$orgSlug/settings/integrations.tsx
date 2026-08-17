@@ -1,9 +1,13 @@
-import type { UpdateIntegrationSettingsInput } from "@farmer/core/schema";
+import {
+	MAX_SYSTEM_PROMPT_CHARS,
+	type UpdateIntegrationSettingsInput,
+} from "@farmer/core/schema";
 import {
 	BuildingsIcon,
 	CalendarBlankIcon,
 	GithubLogoIcon,
 	SlackLogoIcon,
+	SparkleIcon,
 } from "@phosphor-icons/react";
 import {
 	useMutation,
@@ -27,6 +31,7 @@ import {
 } from "#/components/ui/alert-dialog.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { Input } from "#/components/ui/input.tsx";
 import {
 	Page,
 	PageHeader,
@@ -34,9 +39,21 @@ import {
 	SettingList,
 	SettingRow,
 } from "#/components/ui/page-header.tsx";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "#/components/ui/select.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
+import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
+import {
+	assistantModelsQuery,
+	assistantSettingsQuery,
+} from "#/queries/assistant.ts";
 import {
 	githubConnectionStatusQuery,
 	githubInstallationsQuery,
@@ -45,6 +62,11 @@ import { googleCalendarStatusQuery } from "#/queries/google-calendar.ts";
 import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { slackStatusQuery } from "#/queries/slack.ts";
+import {
+	disconnectAssistant,
+	setAssistantSettings,
+	updateAssistantSettings,
+} from "#/server/assistant.ts";
 import {
 	disconnectGithubInstallation,
 	getGithubInstallUrl,
@@ -115,7 +137,7 @@ function SettingToggleRow({
 
 function IntegrationsSettingsPage() {
 	const orgSlug = useOrgSlug();
-	const { role } = Route.useRouteContext();
+	const { role, assistantEnabled } = Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
 	const { data: status } = useSuspenseQuery(
 		githubConnectionStatusQuery(orgSlug),
@@ -401,7 +423,283 @@ function IntegrationsSettingsPage() {
 			    audience was narrower. Audience is a reason to gate a section, not a
 			    reason to move it off the page it belongs to. */}
 			{isAdmin && <SlackSection />}
+
+			{/* OpenRouter — one account per org, like Slack, and for the same reason:
+			    it is a billing relationship the workspace has, not a grant each
+			    person makes. Also behind the deployment's `ASSISTANT_ENABLED`
+			    switch: the services refuse to store a key while the feature is off,
+			    so offering the form would be offering an action that cannot
+			    succeed. */}
+			{isAdmin && assistantEnabled && <OpenRouterSection />}
 		</Page>
+	);
+}
+
+/**
+ * House rules appended to the assistant's system prompt.
+ *
+ * Its own row rather than a field in the list above because it is a textarea
+ * with a dirty state and an explicit save — the switches beside it write on
+ * change, which is wrong for prose somebody is still in the middle of typing.
+ */
+function HouseRulesRow({ stored }: { stored: string }) {
+	const orgSlug = useOrgSlug();
+	const queryClient = useQueryClient();
+	const [draft, setDraft] = useState(stored);
+	// Re-seed when the server's copy changes underneath (another admin, another
+	// tab) — but only when the box is clean, so it can't eat what is being typed.
+	const [baseline, setBaseline] = useState(stored);
+	if (stored !== baseline && draft === baseline) {
+		setBaseline(stored);
+		setDraft(stored);
+	}
+	const dirty = draft !== stored;
+
+	const save = useMutation({
+		mutationFn: () =>
+			updateAssistantSettings({
+				// Empty box clears the rules: null is "forget them", where undefined
+				// would mean "leave them alone".
+				data: { systemPrompt: draft.trim() ? draft.trim() : null },
+			}),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: queryKeys(orgSlug).assistant,
+			});
+			toast.success("House rules saved");
+		},
+		onError: (error) => toast.error(error.message ?? "Could not save"),
+	});
+
+	return (
+		<div className="mt-5 flex flex-col gap-2">
+			<div>
+				<h3 className="text-sm font-medium">House rules</h3>
+				<p className="mt-1 max-w-[68ch] text-sm leading-normal text-muted-foreground">
+					Added to the assistant's instructions for everyone in this workspace —
+					billing conventions, how you name projects, what to ask before acting.
+					It is appended to the built-in instructions, not a replacement for
+					them, and the built-in ones win any disagreement.
+				</p>
+			</div>
+			<Textarea
+				value={draft}
+				onChange={(event) => setDraft(event.target.value)}
+				rows={5}
+				maxLength={MAX_SYSTEM_PROMPT_CHARS}
+				placeholder={
+					"e.g. We bill in 30-minute blocks.\nAlways put internal work on the Internal project."
+				}
+				aria-label="House rules"
+			/>
+			<div className="flex items-center gap-3">
+				<Button
+					disabled={!dirty || save.isPending}
+					onClick={() => save.mutate()}
+				>
+					{save.isPending ? "Saving…" : "Save house rules"}
+				</Button>
+				<span className="text-2xs text-muted-foreground">
+					{draft.length} / {MAX_SYSTEM_PROMPT_CHARS}
+				</span>
+			</div>
+		</div>
+	);
+}
+
+// Admin-only and mounted only for admins: `assistantModelsQuery` sits behind
+// `orgAdminMiddleware` (it needs the key), so prefetching it in the route loader
+// would 403 for every member. Same shape as SlackSection below.
+function OpenRouterSection() {
+	const orgSlug = useOrgSlug();
+	const queryClient = useQueryClient();
+	const { data: settings } = useQuery(assistantSettingsQuery(orgSlug));
+	const [apiKey, setApiKey] = useState("");
+
+	const configured = settings?.configured ?? false;
+
+	const invalidate = () =>
+		queryClient.invalidateQueries({
+			queryKey: queryKeys(orgSlug).assistant,
+		});
+
+	// Only once a key exists — the catalogue call authenticates with it, so
+	// asking before then is a guaranteed error.
+	const { data: models = [] } = useQuery({
+		...assistantModelsQuery(orgSlug),
+		enabled: configured,
+	});
+
+	const connect = useMutation({
+		mutationFn: () =>
+			setAssistantSettings({
+				data: {
+					apiKey: apiKey.trim(),
+					// A safe, cheap, tool-capable default so the first question works
+					// before anyone has thought about models. Changeable right below.
+					defaultModel: settings?.defaultModel ?? "openai/gpt-4o-mini",
+				},
+			}),
+		onSuccess: async () => {
+			setApiKey("");
+			await invalidate();
+			toast.success("OpenRouter connected");
+		},
+		onError: (error) =>
+			toast.error(error.message ?? "Could not connect OpenRouter"),
+	});
+
+	const setModel = useMutation({
+		mutationFn: (defaultModel: string) =>
+			updateAssistantSettings({ data: { defaultModel } }),
+		onSuccess: async () => {
+			await invalidate();
+			toast.success("Default model updated");
+		},
+		onError: (error) => toast.error(error.message ?? "Could not update"),
+	});
+
+	const toggle = useMutation({
+		mutationFn: (enabled: boolean) =>
+			updateAssistantSettings({ data: { enabled } }),
+		onSuccess: invalidate,
+		onError: (error) => toast.error(error.message ?? "Could not update"),
+	});
+
+	const disconnect = useMutation({
+		mutationFn: () => disconnectAssistant(),
+		onSuccess: async () => {
+			await invalidate();
+			toast.success("OpenRouter disconnected");
+		},
+		onError: (error) => toast.error(error.message ?? "Could not disconnect"),
+	});
+
+	const modelItems = models.map((model) => ({
+		value: model.id,
+		label: model.name,
+	}));
+
+	return (
+		<PageSection>
+			<SettingRow
+				icon={<SparkleIcon className="size-5" />}
+				title="OpenRouter"
+				badge={
+					configured && (
+						<Badge variant="secondary">
+							{settings?.enabled ? "Connected" : "Paused"}
+						</Badge>
+					)
+				}
+				description="Powers the Assistant. Everyone in the workspace asks through this one account, and every answer is scoped to what that person is allowed to see."
+				action={
+					configured ? (
+						<AlertDialog>
+							<AlertDialogTrigger
+								render={
+									<Button variant="outline" disabled={disconnect.isPending}>
+										Disconnect
+									</Button>
+								}
+							/>
+							<AlertDialogContent>
+								<AlertDialogHeader>
+									<AlertDialogTitle>Disconnect OpenRouter</AlertDialogTitle>
+									<AlertDialogDescription>
+										The Assistant stops working for everyone in this workspace
+										and the stored key is forgotten. Past conversations are kept
+										— they belong to the people who had them. Revoke the key
+										itself from your OpenRouter dashboard if you want it dead
+										everywhere.
+									</AlertDialogDescription>
+								</AlertDialogHeader>
+								<AlertDialogFooter>
+									<AlertDialogCancel>Cancel</AlertDialogCancel>
+									<AlertDialogAction
+										variant="destructive"
+										onClick={() => disconnect.mutate()}
+									>
+										Disconnect
+									</AlertDialogAction>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
+					) : null
+				}
+			/>
+
+			<SettingList className="mt-1">
+				<SettingRow
+					title={configured ? "Replace the API key" : "API key"}
+					description={
+						configured
+							? `Currently ${settings?.keyHint}. Pasting a new one replaces it; the old key is not recoverable from here.`
+							: "Create a key at openrouter.ai/keys. It is verified before it is saved, and never shown again afterwards."
+					}
+					action={
+						<div className="flex items-center gap-2">
+							<Input
+								type="password"
+								value={apiKey}
+								onChange={(event) => setApiKey(event.target.value)}
+								placeholder="sk-or-v1-…"
+								autoComplete="off"
+								className="w-56"
+								aria-label="OpenRouter API key"
+							/>
+							<Button
+								disabled={connect.isPending || apiKey.trim().length < 20}
+								onClick={() => connect.mutate()}
+							>
+								{connect.isPending ? "Checking…" : "Save"}
+							</Button>
+						</div>
+					}
+				/>
+
+				{configured && (
+					<SettingRow
+						title="Default model"
+						description="What a new conversation starts on. Only models that support tool calling are listed — the assistant reads your data through tools, and one that ignores them just makes things up."
+						action={
+							<Select
+								value={settings?.defaultModel ?? ""}
+								onValueChange={(value) => setModel.mutate(value as string)}
+								items={modelItems}
+							>
+								<SelectTrigger className="w-64">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{modelItems.map((item) => (
+										<SelectItem key={item.value} value={item.value}>
+											{item.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						}
+					/>
+				)}
+
+				{configured && (
+					<SettingRow
+						title="Available to the workspace"
+						description="Turn off to take the Assistant away without forgetting the key or anybody's history."
+						action={
+							<Switch
+								checked={settings?.enabled ?? false}
+								onCheckedChange={(value) => toggle.mutate(value)}
+								disabled={toggle.isPending}
+							/>
+						}
+					/>
+				)}
+			</SettingList>
+
+			{configured && <HouseRulesRow stored={settings?.systemPrompt ?? ""} />}
+		</PageSection>
 	);
 }
 

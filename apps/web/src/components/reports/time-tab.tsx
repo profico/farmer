@@ -440,10 +440,14 @@ function TimeDetailActions({
 	to: string;
 }) {
 	const orgSlug = useOrgSlug();
-	const { data: rows } = useSuspenseQuery(
+	const { data: detail } = useSuspenseQuery(
 		timeReportDetailQuery(orgSlug, input),
 	);
-	const total = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
+	const rows = detail.rows;
+	// The service's figure, summed across every matching row — not `rows`, which
+	// the service caps. Summing what came back would quietly under-report the
+	// total on exactly the wide reports where the number matters most.
+	const total = detail.totalSeconds;
 
 	return (
 		<div className="flex items-center gap-3">
@@ -508,9 +512,10 @@ function TimeDetailTable({
 	groupBy: "date" | "person";
 }) {
 	const orgSlug = useOrgSlug();
-	const { data: rows } = useSuspenseQuery(
+	const { data: detail } = useSuspenseQuery(
 		timeReportDetailQuery(orgSlug, input),
 	);
+	const rows = detail.rows;
 
 	// One pass, in the order the service already sorted them: it grouped by the
 	// same key, so a running group beats re-sorting the rows here.
@@ -533,57 +538,73 @@ function TimeDetailTable({
 					No entries match these filters.
 				</p>
 			) : (
-				<Table containerClassName="mt-6">
-					<TableHeader>
-						<TableRow>
-							<TableHead>{groupBy === "person" ? "Date" : "Person"}</TableHead>
-							<TableHead>Client</TableHead>
-							<TableHead>Project</TableHead>
-							<TableHead>Task</TableHead>
-							<TableHead>Description</TableHead>
-							<TableHead className="text-right">Hours</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{groups.map((group) => (
-							<Fragment key={group.key}>
-								<TableRow className="bg-secondary/60">
-									<TableCell colSpan={5} className="font-medium">
-										{groupBy === "person"
-											? group.key
-											: formatDateHeading(group.key)}
-									</TableCell>
-									<TableCell className="mono text-right font-medium">
-										{formatClock(group.seconds)}
-									</TableCell>
-								</TableRow>
-								{group.rows.map((row) => (
-									<TableRow key={row.id}>
-										<TableCell className="text-muted-foreground">
+				<>
+					{detail.truncated && (
+						// Say it rather than just showing fewer rows: the Total above is the
+						// whole figure, so a quietly short table would read as a table that
+						// disagrees with its own total.
+						<p className="mt-5 border-t pt-5 text-base text-warn">
+							Showing the first {rows.length.toLocaleString()} of{" "}
+							{detail.totalRows.toLocaleString()} entries — the CSV export
+							covers the same {rows.length.toLocaleString()}. The Total above is
+							the full figure for all {detail.totalRows.toLocaleString()}.
+							Narrow the filters or the date range to see the rest.
+						</p>
+					)}
+					<Table containerClassName="mt-6">
+						<TableHeader>
+							<TableRow>
+								<TableHead>
+									{groupBy === "person" ? "Date" : "Person"}
+								</TableHead>
+								<TableHead>Client</TableHead>
+								<TableHead>Project</TableHead>
+								<TableHead>Task</TableHead>
+								<TableHead>Description</TableHead>
+								<TableHead className="text-right">Hours</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{groups.map((group) => (
+								<Fragment key={group.key}>
+									<TableRow className="bg-secondary/60">
+										<TableCell colSpan={5} className="font-medium">
 											{groupBy === "person"
-												? formatDateHeading(row.date)
-												: row.userName}
+												? group.key
+												: formatDateHeading(group.key)}
 										</TableCell>
-										<TableCell>{row.clientName}</TableCell>
-										<TableCell>{row.projectName}</TableCell>
-										<TableCell>{row.taskName}</TableCell>
-										<TableCell className="max-w-[42ch] truncate text-muted-foreground">
-											{row.description}
-											{row.overtime && (
-												<span className="ml-2 text-2xs text-warn">
-													overtime
-												</span>
-											)}
-										</TableCell>
-										<TableCell className="mono text-right">
-											{formatClock(row.durationSeconds)}
+										<TableCell className="mono text-right font-medium">
+											{formatClock(group.seconds)}
 										</TableCell>
 									</TableRow>
-								))}
-							</Fragment>
-						))}
-					</TableBody>
-				</Table>
+									{group.rows.map((row) => (
+										<TableRow key={row.id}>
+											<TableCell className="text-muted-foreground">
+												{groupBy === "person"
+													? formatDateHeading(row.date)
+													: row.userName}
+											</TableCell>
+											<TableCell>{row.clientName}</TableCell>
+											<TableCell>{row.projectName}</TableCell>
+											<TableCell>{row.taskName}</TableCell>
+											<TableCell className="max-w-[42ch] truncate text-muted-foreground">
+												{row.description}
+												{row.overtime && (
+													<span className="ml-2 text-2xs text-warn">
+														overtime
+													</span>
+												)}
+											</TableCell>
+											<TableCell className="mono text-right">
+												{formatClock(row.durationSeconds)}
+											</TableCell>
+										</TableRow>
+									))}
+								</Fragment>
+							))}
+						</TableBody>
+					</Table>
+				</>
 			)}
 		</>
 	);

@@ -189,6 +189,13 @@ export const auth = betterAuth({
 									eq(schema.member.organizationId, singleOrg.id),
 								)
 							: eq(schema.member.userId, session.userId),
+						// Oldest membership first, so a multi-org user lands in the same
+						// workspace on every sign-in. Unordered, "whichever comes back
+						// first" is whatever the planner felt like, which meant the same
+						// person could open the app in a different org from one login to
+						// the next with nothing having changed. Matches how
+						// `getDefaultOrgSlugForSession` picks its fallback.
+						orderBy: (m, { asc }) => asc(m.createdAt),
 					});
 					if (!membership) return;
 					return { data: { activeOrganizationId: membership.organizationId } };

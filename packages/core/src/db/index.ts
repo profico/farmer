@@ -1,6 +1,7 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import * as assistantSchema from "./schema/assistant";
 import * as authSchema from "./schema/auth";
 import * as closeSchema from "./schema/close";
 import * as domainSchema from "./schema/domain";
@@ -21,13 +22,44 @@ export const schema = {
 	...settingsSchema,
 	...notificationsSchema,
 	...slackSchema,
+	...assistantSchema,
 };
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
+/**
+ * Connection options, all overridable by environment.
+ *
+ * `postgres(url)` on its own was the whole configuration, which left this app's
+ * one long-lived process with three unstated defaults worth stating:
+ *
+ *   - **No connect deadline.** `lib/http.ts` exists because `fetch` has no
+ *     default timeout and one wedged socket ended the automation sweep; a
+ *     connection that hangs on open is the same failure through the other door,
+ *     and postgres.js will wait indefinitely by default. Every job here is
+ *     idempotent and retried on the next tick, so failing fast is strictly
+ *     better than holding the slot.
+ *   - **A pool of ten, shared with the schedulers.** Fine for the web host, and
+ *     the first thing to raise on a machine that also runs the worker — hence
+ *     an env var rather than a constant to go and find.
+ *   - **Prepared statements on.** Correct against Postgres directly, and fatal
+ *     behind a transaction-mode pooler (PgBouncer, the Supabase/Neon pooled
+ *     ports), which recycles the server connection between statements and never
+ *     sees the prepare. Set `DATABASE_PREPARE=false` when a pooler is in front;
+ *     it is a deployment fact this code cannot detect.
+ */
+const poolOptions = () => ({
+	max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+	/** Seconds a connection may sit unused before it is closed. */
+	idle_timeout: Number(process.env.DATABASE_IDLE_TIMEOUT ?? 30),
+	/** Seconds to wait for a connection to open before giving up. */
+	connect_timeout: Number(process.env.DATABASE_CONNECT_TIMEOUT ?? 10),
+	prepare: (process.env.DATABASE_PREPARE ?? "true") !== "false",
+});
+
 /** Open a handle against a specific database. */
 export const createDb = (connectionString: string): Db =>
-	drizzle(postgres(connectionString), { schema });
+	drizzle(postgres(connectionString, poolOptions()), { schema });
 
 let ambient: Db | null = null;
 let override: Db | null = null;

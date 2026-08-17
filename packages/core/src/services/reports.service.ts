@@ -7,6 +7,7 @@ import {
 	inArray,
 	isNotNull,
 	lte,
+	or,
 	sql,
 } from "drizzle-orm";
 import { db } from "../db";
@@ -22,15 +23,15 @@ import type {
 	TimeReportDetailInput,
 	TimeReportSummaryInput,
 } from "../schema/reports";
-import type { Access } from "./access.service";
+import { type Access, AccessError } from "./access.service";
 import {
-	absenceDaysByUser,
+	absenceDaysByUserPerMonth,
 	effectiveFinal,
 	expectedSecondsFor,
 } from "./close.service";
 import { ctxAccess, requireAdmin } from "./context";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
-import { membersService } from "./members.service";
+import { membersService, type ResolvedMemberType } from "./members.service";
 import type { Ctx } from "./types";
 import { unfiledTotals } from "./unfiled";
 
@@ -46,7 +47,7 @@ const reportScope = async (
 	const access = await ctxAccess(ctx);
 	const projectIds = access.scopeFor("team_lead");
 	if (projectIds !== null && projectIds.length === 0) {
-		throw new Error("You do not have access to reports");
+		throw new AccessError("You do not have access to reports");
 	}
 	return { access, projectIds };
 };
@@ -90,6 +91,23 @@ export type TimeReportRow = {
 	id: string;
 	name: string;
 	secondsTotal: number;
+};
+
+/** How many entry rows a single detail response may carry.
+ *
+ *  Large enough that no ordinary drill-down ever meets it (a month of one
+ *  project is a few hundred), small enough that the pathological request — a
+ *  year, org-wide, unfiltered — stays a response rather than an incident. When
+ *  it bites, `truncated` says so and the totals stay whole. */
+const MAX_DETAIL_ROWS = 5000;
+
+export type TimeReportDetail = {
+	rows: TimeReportDetailRow[];
+	/** Rows matching the filters, whether or not they all came back. */
+	totalRows: number;
+	/** Summed across ALL matching rows, not just the ones returned. */
+	totalSeconds: number;
+	truncated: boolean;
 };
 
 export type TimeReportDetailRow = {
@@ -171,38 +189,67 @@ export const reportsService = {
 		};
 	},
 
-	/** Time Report level 2: every entry behind the clicked number. */
+	/**
+	 * Time Report level 2: every entry behind the clicked number.
+	 *
+	 * Capped at `MAX_DETAIL_ROWS`, with the true totals fetched alongside rather
+	 * than summed from the rows. The date ceiling in `schema/reports.ts` bounds
+	 * how MUCH TIME a report may span and says nothing about how many rows that
+	 * is: a year-wide, unfiltered detail over a busy org is every entry it has,
+	 * serialized into one server-function response and then summed in the
+	 * browser. The aggregate is a second, cheap query precisely so the Total and
+	 * the CSV row count stay honest when the table itself is truncated — a
+	 * silently short total is a worse failure than a slow one.
+	 */
 	timeDetail: async (
 		ctx: Ctx,
 		input: TimeReportDetailInput,
-	): Promise<TimeReportDetailRow[]> => {
+	): Promise<TimeReportDetail> => {
 		const { projectIds } = await reportScope(ctx);
 		const where = projectTimeWhere(ctx, input, projectIds);
 
-		const rows = await db
-			.select({
-				id: timeEntry.id,
-				date: timeEntry.date,
-				clientName: client.name,
-				projectName: project.name,
-				taskName: task.name,
-				description: timeEntry.description,
-				userName: user.name,
-				overtime: timeEntry.overtime,
-				durationSeconds: timeEntry.durationSeconds,
-			})
-			.from(timeEntry)
-			.innerJoin(project, eq(timeEntry.projectId, project.id))
-			.innerJoin(client, eq(project.clientId, client.id))
-			.innerJoin(task, eq(timeEntry.taskId, task.id))
-			.innerJoin(user, eq(timeEntry.userId, user.id))
-			.where(where)
-			.orderBy(
-				input.groupBy === "person" ? asc(user.name) : desc(timeEntry.date),
-				input.groupBy === "person" ? desc(timeEntry.date) : asc(user.name),
-			);
+		const [rows, totals] = await Promise.all([
+			db
+				.select({
+					id: timeEntry.id,
+					date: timeEntry.date,
+					clientName: client.name,
+					projectName: project.name,
+					taskName: task.name,
+					description: timeEntry.description,
+					userName: user.name,
+					overtime: timeEntry.overtime,
+					durationSeconds: timeEntry.durationSeconds,
+				})
+				.from(timeEntry)
+				.innerJoin(project, eq(timeEntry.projectId, project.id))
+				.innerJoin(client, eq(project.clientId, client.id))
+				.innerJoin(task, eq(timeEntry.taskId, task.id))
+				.innerJoin(user, eq(timeEntry.userId, user.id))
+				.where(where)
+				.orderBy(
+					input.groupBy === "person" ? asc(user.name) : desc(timeEntry.date),
+					input.groupBy === "person" ? desc(timeEntry.date) : asc(user.name),
+				)
+				.limit(MAX_DETAIL_ROWS),
+			db
+				.select({
+					rowCount: sql<string>`count(*)`,
+					seconds: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+				})
+				.from(timeEntry)
+				.innerJoin(project, eq(timeEntry.projectId, project.id))
+				.innerJoin(client, eq(project.clientId, client.id))
+				.where(where),
+		]);
 
-		return rows;
+		const totalRows = Number(totals[0]?.rowCount ?? 0);
+		return {
+			rows,
+			totalRows,
+			totalSeconds: Number(totals[0]?.seconds ?? 0),
+			truncated: totalRows > rows.length,
+		};
 	},
 
 	/**
@@ -561,7 +608,8 @@ export const reportsService = {
 	 */
 	utilization: async (ctx: Ctx, input: MonthReportInput) => {
 		await requireAdmin(ctx);
-		return computeUtilization(ctx, input);
+		const shared = await utilizationSpan(ctx, [input]);
+		return computeUtilization(input, shared);
 	},
 
 	/**
@@ -570,6 +618,13 @@ export const reportsService = {
 	 * Each point is the same roll-up as the single-month headline, so the trend's
 	 * last point and the number above it can never disagree — they used to, the
 	 * trend averaging percentages while the PDF divided the totals.
+	 *
+	 * The reads are resolved for the WHOLE span up front (`utilizationSpan`) and
+	 * then sliced per point. This used to run `computeUtilization` once per month
+	 * inside a `Promise.all`, six queries each — so a 24-month trend fired ~144
+	 * queries simultaneously at a connection pool of ten, and two of the six
+	 * (the member list and the archived set) are not month-dependent at all and
+	 * were therefore issued 24 identical times.
 	 */
 	utilizationTrend: async (
 		ctx: Ctx,
@@ -577,26 +632,65 @@ export const reportsService = {
 	) => {
 		await requireAdmin(ctx);
 
-		return Promise.all(
-			trailingMonths(input, input.months).map(async (p) => ({
-				...p,
-				...rollUpUtilization(await computeUtilization(ctx, p)),
-			})),
-		);
+		const months = trailingMonths(input, input.months);
+		const shared = await utilizationSpan(ctx, months);
+
+		return months.map((p) => ({
+			...p,
+			...rollUpUtilization(computeUtilization(p, shared)),
+		}));
 	},
 };
 
-const computeUtilization = async (
-	ctx: Ctx,
-	input: MonthReportInput,
-	onlyUserId?: string,
-) => {
-	const { from, to } = monthBounds(input.year, input.month);
+const spanMonthKey = (m: { year: number; month: number }) =>
+	`${m.year}-${String(m.month).padStart(2, "0")}`;
 
-	const [finalRows, types, fundSeconds, absence, members, archived] =
+type UtilizationTotals = { final: number; expected: number | null };
+
+/** Everything a run of utilization months reads, resolved once for the span.
+ *
+ *  Split out from `computeUtilization` so a trend pays for each read once
+ *  instead of once per point. Everything here is either genuinely span-wide
+ *  (the member list, the archived set) or a single grouped query keyed by month
+ *  (`yyyy-MM`), which `computeUtilization` then indexes into synchronously. */
+type UtilizationSpan = {
+	members: { userId: string; name: string }[];
+	archived: Set<string>;
+	typesByMonth: Map<string, Map<string, ResolvedMemberType>>;
+	fundByMonth: Map<string, number>;
+	absenceByMonth: Map<string, Map<string, number>>;
+	totalsByMonth: Map<string, Map<string, UtilizationTotals>>;
+};
+
+const utilizationSpan = async (
+	ctx: Ctx,
+	months: { year: number; month: number }[],
+	onlyUserId?: string,
+): Promise<UtilizationSpan> => {
+	// trailingMonths always returns a contiguous, oldest-first run, so the span
+	// is just its ends. Guarded anyway: `months` is never empty in practice, and
+	// an empty span must not turn into an unbounded scan.
+	const first = months[0];
+	const last = months[months.length - 1];
+	if (!first || !last) {
+		return {
+			members: [],
+			archived: new Set(),
+			typesByMonth: new Map(),
+			fundByMonth: new Map(),
+			absenceByMonth: new Map(),
+			totalsByMonth: new Map(),
+		};
+	}
+	const spanFrom = monthBounds(first.year, first.month).from;
+	const spanTo = monthBounds(last.year, last.month).to;
+
+	const [rows, members, archived, fundByMonth, absenceByMonth, typeEntries] =
 		await Promise.all([
 			db
 				.select({
+					year: monthlyClose.year,
+					month: monthlyClose.month,
 					userId: monthlyCloseRow.userId,
 					// Prefer the frozen Expected from finalization, so an admin editing a
 					// past month's hour fund can't retroactively move percentages that
@@ -612,15 +706,18 @@ const computeUtilization = async (
 				.where(
 					and(
 						eq(monthlyClose.organizationId, ctx.organizationId),
-						eq(monthlyClose.year, input.year),
-						eq(monthlyClose.month, input.month),
 						eq(monthlyClose.status, "finalized"),
+						or(
+							...months.map((m) =>
+								and(
+									eq(monthlyClose.year, m.year),
+									eq(monthlyClose.month, m.month),
+								),
+							),
+						),
 					),
 				)
-				.groupBy(monthlyCloseRow.userId),
-			membersService.typesForMonth(ctx, input.year, input.month),
-			hourFundService.get(ctx, input.year, input.month),
-			absenceDaysByUser(ctx, from, to),
+				.groupBy(monthlyClose.year, monthlyClose.month, monthlyCloseRow.userId),
 			db
 				.select({ userId: member.userId, name: user.name })
 				.from(member)
@@ -632,17 +729,65 @@ const computeUtilization = async (
 					),
 				),
 			membersService.archivedUserIds(ctx),
+			hourFundService.getMany(ctx, months),
+			absenceDaysByUserPerMonth(ctx, spanFrom, spanTo),
+			// Member type is effective-dated, so it genuinely differs per month and
+			// stays one indexed read each — but they now run concurrently with
+			// everything else instead of serialized behind their own point.
+			Promise.all(
+				months.map(async (m) => {
+					const types = await membersService.typesForMonth(
+						ctx,
+						m.year,
+						m.month,
+					);
+					return [spanMonthKey(m), types] as const;
+				}),
+			),
 		]);
 
-	const finalByUser = new Map(
-		finalRows.map((r) => [
-			r.userId,
-			{
-				final: Number(r.final),
-				expected: r.expected == null ? null : Number(r.expected),
-			},
-		]),
-	);
+	const totalsByMonth = new Map<string, Map<string, UtilizationTotals>>();
+	for (const r of rows) {
+		const key = spanMonthKey({ year: r.year, month: r.month });
+		let bucket = totalsByMonth.get(key);
+		if (!bucket) {
+			bucket = new Map();
+			totalsByMonth.set(key, bucket);
+		}
+		bucket.set(r.userId, {
+			final: Number(r.final),
+			expected: r.expected == null ? null : Number(r.expected),
+		});
+	}
+
+	return {
+		members,
+		archived,
+		typesByMonth: new Map(typeEntries),
+		fundByMonth,
+		absenceByMonth,
+		totalsByMonth,
+	};
+};
+
+/** One month's rows, read entirely out of an already-resolved span. Synchronous
+ *  on purpose: every query it needs has been made, so a trend can map over its
+ *  points without fanning out again. */
+const computeUtilization = (
+	input: MonthReportInput,
+	span: UtilizationSpan,
+	onlyUserId?: string,
+) => {
+	const key = spanMonthKey(input);
+	const types =
+		span.typesByMonth.get(key) ?? new Map<string, ResolvedMemberType>();
+	// Absent means "no row for this month", which for a fund is null — no
+	// Expected math applies — and NOT zero. See hourFundService.get.
+	const fundSeconds = span.fundByMonth.get(key) ?? null;
+	const absence = span.absenceByMonth.get(key) ?? new Map<string, number>();
+	const finalByUser =
+		span.totalsByMonth.get(key) ?? new Map<string, UtilizationTotals>();
+	const { members, archived } = span;
 
 	return (
 		members

@@ -13,6 +13,7 @@ import { RouteNotFound } from "../components/route-not-found";
 import { RoutePending } from "../components/route-pending";
 import { Toaster } from "../components/ui/sonner";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
+import { themeInitScript } from "../lib/theme";
 import appCss from "../styles.css?url";
 
 interface MyRouterContext {
@@ -73,9 +74,20 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+	// `suppressHydrationWarning`: the theme script below writes `data-theme` onto
+	// <html> before React ever sees it, and the server has no way to render the
+	// same value — that mismatch is the point of the script, not a bug, and React
+	// otherwise logs it on every load. It suppresses one level only, which is
+	// exactly this attribute.
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<head>
+				{/* Before HeadContent, and therefore before the stylesheet: the
+				    reader's choice lives in localStorage, so the server can't render
+				    it, and applying it on hydrate instead would flash the light
+				    palette on every cold load. See lib/theme.ts. */}
+				{/* biome-ignore lint/security/noDangerouslySetInnerHtml: a fixed, non-interpolated string — this is the standard no-flash theme script and it has to be inline to run before paint */}
+				<script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
 				<HeadContent />
 			</head>
 			<body>

@@ -39,6 +39,39 @@ export const suggestCommitsInput = z.object({
 });
 export type SuggestCommitsInput = z.infer<typeof suggestCommitsInput>;
 
+// The same scan over a span of days.
+//
+// `suggestCommitsInput` is day-shaped because the day assembler is: it opens on
+// one date and proposes what belongs on it. Reconstructing a WEEK from commits
+// through a day-shaped read costs seven round trips, and an assistant turn gets
+// eight — so the interaction that motivated the feature could exhaust its step
+// budget before it wrote a single entry.
+//
+// Bounded well below the 62-day entry ceiling because the cost here is not a
+// query: every day in the span fans out across every repo linked anywhere in
+// the org, against GitHub's API and its rate limit. A month is the longest span
+// anyone reconstructs in one go.
+const MAX_COMMIT_SCAN_DAYS = 31;
+
+export const userCommitsRangeInput = z
+	.object({ from: dateKey, to: dateKey })
+	.refine((data) => data.from <= data.to, {
+		message: "from must not be after to",
+		path: ["to"],
+	})
+	.refine(
+		(data) => {
+			const from = new Date(`${data.from}T00:00:00Z`).getTime();
+			const to = new Date(`${data.to}T00:00:00Z`).getTime();
+			return (to - from) / 86_400_000 <= MAX_COMMIT_SCAN_DAYS;
+		},
+		{
+			message: `Range too large (max ${MAX_COMMIT_SCAN_DAYS} days)`,
+			path: ["to"],
+		},
+	);
+export type UserCommitsRangeInput = z.infer<typeof userCommitsRangeInput>;
+
 export const attachCommitsInput = z.object({
 	timeEntryId: z.uuid(),
 	commits: z

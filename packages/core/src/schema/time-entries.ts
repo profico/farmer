@@ -192,12 +192,53 @@ export type OverrideAbsenceEntryInput = z.infer<
 	typeof overrideAbsenceEntryInput
 >;
 
+// Absence is asked for as a SPAN, never as a list of days: "I'm off from the
+// 4th to the 15th" is one sentence, and through `create` it is ten separate
+// calls — most of an assistant turn's step budget spent restating the same
+// request, with a half-booked holiday as the failure mode if it runs out.
+//
+// The span is expanded server-side rather than by the caller because the
+// expansion needs two things a caller cannot see: the person's own working-hours
+// schedule (someone who does not work Wednesdays takes no Wednesday off) and the
+// org's holiday calendar. A client that guessed at either would book vacation on
+// days nobody was going to work anyway, which quietly inflates every absence
+// figure the close sheet subtracts from Expected.
+export const logAbsenceRangeInput = z
+	.object({
+		taskId: z.uuid(),
+		from: dateKey,
+		to: dateKey,
+		description: z.string().max(10_000).optional(),
+	})
+	.refine((data) => data.from <= data.to, {
+		message: "from must not be after to",
+		path: ["to"],
+	})
+	.refine(
+		(data) => {
+			const from = new Date(`${data.from}T00:00:00Z`).getTime();
+			const to = new Date(`${data.to}T00:00:00Z`).getTime();
+			return (to - from) / 86_400_000 <= 62;
+		},
+		{ message: "Range too large (max 62 days)", path: ["to"] },
+	);
+export type LogAbsenceRangeInput = z.infer<typeof logAbsenceRangeInput>;
+
 export const listAbsenceForUserInput = z.object({
 	userId: z.string().min(1),
 	year: z.number().int().min(2000).max(2100),
 	month: z.number().int().min(1).max(12),
 });
 export type ListAbsenceForUserInput = z.infer<typeof listAbsenceForUserInput>;
+
+// "How much vacation have I taken this year" — a whole year, grouped by task,
+// which is the question people actually ask and which the month-shaped read
+// above answers only twelve calls at a time. `userId` defaults to the caller.
+export const absenceTotalsInput = z.object({
+	userId: z.string().min(1).optional(),
+	year: z.number().int().min(2000).max(2100),
+});
+export type AbsenceTotalsInput = z.infer<typeof absenceTotalsInput>;
 
 export const createAbsenceForUserInput = z.object({
 	userId: z.string().min(1),

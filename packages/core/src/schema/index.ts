@@ -1,3 +1,4 @@
+export * from "./assistant";
 export * from "./clients";
 export * from "./close";
 export * from "./day-assembly";

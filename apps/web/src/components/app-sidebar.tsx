@@ -5,6 +5,7 @@ import {
 	CalendarDotsIcon,
 	CalendarHeartIcon,
 	ChartLineIcon,
+	ChatCircleDotsIcon,
 	ClockIcon,
 	FolderIcon,
 	GearSixIcon,
@@ -24,8 +25,15 @@ import {
 	useRouter,
 } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { type ComponentType, useRef, useState } from "react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
+import { ChatRail } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
+import { ThemeToggle } from "#/components/theme-toggle.tsx";
+import { useScrollFade } from "#/components/ui/scroll-fade.tsx";
+import {
+	SegmentedControl,
+	SegmentedControlItem,
+} from "#/components/ui/segmented-control.tsx";
 import {
 	Sidebar,
 	SidebarContent,
@@ -47,6 +55,7 @@ export type OrgRoutePath =
 	| "/$orgSlug"
 	| "/$orgSlug/projects"
 	| "/$orgSlug/time"
+	| "/$orgSlug/assistant"
 	| "/$orgSlug/close"
 	| "/$orgSlug/reports"
 	| "/$orgSlug/settings/clients"
@@ -60,10 +69,26 @@ export type OrgRoutePath =
 	| "/$orgSlug/settings/preferences"
 	| "/$orgSlug/settings/members";
 
+type SidebarTab = "browse" | "chat";
+
 export type NavItem = {
 	label: string;
 	to: OrgRoutePath;
 	icon: ComponentType<{ className?: string }>;
+};
+
+// Not a row in the desktop sidebar: there, the Chat tab IS the assistant, and a
+// nav entry beside it would be a second door to the same room. It survives as an
+// item for the MOBILE tab bar (below), which has no tabs and would otherwise
+// have no way in at all.
+//
+// Ungated by ROLE on purpose — the assistant answers through the caller's own
+// Access, so a Member's is simply a narrower assistant, not a forbidden one —
+// but gated by the deployment flag.
+export const ASSISTANT_ITEM: NavItem = {
+	label: "Assistant",
+	to: "/$orgSlug/assistant",
+	icon: ChatCircleDotsIcon,
 };
 
 // First 3 are the primary mobile tab-bar destinations (mobile-tab-bar.tsx);
@@ -101,6 +126,19 @@ export const WORKSPACE_ITEMS: NavItem[] = [
 		icon: GearSixIcon,
 	},
 ];
+
+/**
+ * The mobile tab bar's rows, which are the desktop sidebar's plus the assistant.
+ *
+ * There is no Browse/Chat switch on a phone — the bar is three tabs and a "More"
+ * sheet — so the assistant needs a row there or it is unreachable. It goes LAST:
+ * the bar turns the first three (or four, on a wider phone) entries into its
+ * primary tabs, and in a time-tracking app those slots belong to the screens the
+ * work happens on. Appended rather than filtered because the bar slices by
+ * POSITION, so a conditional row has to be placed before the slice.
+ */
+export const mobileWorkspaceItems = (assistantEnabled: boolean): NavItem[] =>
+	assistantEnabled ? [...WORKSPACE_ITEMS, ASSISTANT_ITEM] : WORKSPACE_ITEMS;
 
 // Gated on a PROJECT role rather than the org role, so neither list fits: the
 // close sheet belongs to whoever runs a project, and clients are creatable by
@@ -179,6 +217,7 @@ export function AppSidebar({
 	userName,
 	userEmail,
 	singleOrg = false,
+	assistantEnabled,
 }: {
 	orgSlug: string;
 	organizationName: string;
@@ -187,10 +226,30 @@ export function AppSidebar({
 	userName: string;
 	userEmail: string;
 	singleOrg?: boolean;
+	/** `ASSISTANT_ENABLED` on this deployment, from the layout's route context. */
+	assistantEnabled: boolean;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const router = useRouter();
 	const navigate = useNavigate();
+
+	// Which list the sidebar is showing.
+	//
+	// It FOLLOWS THE ROUTE by default — on the assistant you get your threads,
+	// anywhere else you get the nav — with a temporary override so you can peek
+	// at the other tab without navigating. The override is cleared by the next
+	// navigation, so the tab always settles back to describing where you are
+	// rather than becoming a third thing to keep track of.
+	const navScrollRef = useRef<HTMLDivElement>(null);
+	useScrollFade(navScrollRef);
+
+	const onAssistant = isNavItemActive(pathname, ASSISTANT_ITEM.to, orgSlug);
+	const [tabOverride, setTabOverride] = useState<SidebarTab | null>(null);
+	const tab: SidebarTab = tabOverride ?? (onAssistant ? "chat" : "browse");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: it exists to clear the override on navigation, and `pathname` is the navigation
+	useEffect(() => {
+		setTabOverride(null);
+	}, [pathname]);
 
 	// Navigate on mouse *press* rather than the full click (press + release) so
 	// the sidebar feels instant. Only one link is ever mid-interaction at a
@@ -302,35 +361,77 @@ export function AppSidebar({
 			// on all four sides as the page scrolls past it.
 			className="sticky top-(--frame-pad) hidden h-[calc(100svh-2*var(--frame-pad))] md:flex"
 		>
-			<SidebarHeader className="shrink-0 p-2.5">
+			<SidebarHeader className="shrink-0 gap-2.5 p-2.5">
 				<OrgSwitcher
 					orgSlug={orgSlug}
 					organizationName={organizationName}
 					organizationLogo={organizationLogo}
 					singleOrg={singleOrg}
 				/>
+				{assistantEnabled && (
+					<SegmentedControl className="w-full">
+						{/* Browse only switches the list — you may want the nav while
+						    staying in a conversation. */}
+						<SegmentedControlItem
+							active={tab === "browse"}
+							onClick={() => setTabOverride("browse")}
+							className="flex-1"
+						>
+							Browse
+						</SegmentedControlItem>
+						{/* Chat is a destination, because it is now the ONLY door to the
+						    assistant. Navigating only when you aren't already there keeps
+						    it from throwing away the thread you have open. */}
+						<SegmentedControlItem
+							active={tab === "chat"}
+							onClick={() => {
+								setTabOverride("chat");
+								if (!onAssistant) {
+									navigate({
+										to: "/$orgSlug/assistant",
+										params: { orgSlug },
+										search: {},
+									});
+								}
+							}}
+							className="flex-1"
+						>
+							Chat
+						</SegmentedControlItem>
+					</SegmentedControl>
+				)}
 			</SidebarHeader>
-			<SidebarContent className="px-2.5">
-				<SidebarGroup>
-					<SidebarGroupLabel>Workspace</SidebarGroupLabel>
-					<SidebarGroupContent>
-						<SidebarMenu>
-							{WORKSPACE_ITEMS.map(navRow)}
-							{[
-								...(canManageClients ? [CLIENTS_ITEM] : []),
-								...(canClose ? [CLOSE_ITEM] : []),
-								...(canSeeReports ? [REPORTS_ITEM] : []),
-							].map(lateNavRow)}
-						</SidebarMenu>
-					</SidebarGroupContent>
-				</SidebarGroup>
-				{isAdmin && (
-					<SidebarGroup>
-						<SidebarGroupLabel>Admin</SidebarGroupLabel>
-						<SidebarGroupContent>
-							<SidebarMenu>{ADMIN_ITEMS.map(navRow)}</SidebarMenu>
-						</SidebarGroupContent>
-					</SidebarGroup>
+			{/* Same fade as the page beside it. It earns its keep on the Chat tab,
+			    where the thread list is as long as your history — but it is the nav's
+			    too, since fourteen rows plus an Admin group already overflows a
+			    laptop. */}
+			<SidebarContent ref={navScrollRef} className="scroll-fade px-2.5">
+				{tab === "chat" ? (
+					<ChatRail orgSlug={orgSlug} />
+				) : (
+					<>
+						<SidebarGroup>
+							<SidebarGroupLabel>Workspace</SidebarGroupLabel>
+							<SidebarGroupContent>
+								<SidebarMenu>
+									{WORKSPACE_ITEMS.map(navRow)}
+									{[
+										...(canManageClients ? [CLIENTS_ITEM] : []),
+										...(canClose ? [CLOSE_ITEM] : []),
+										...(canSeeReports ? [REPORTS_ITEM] : []),
+									].map(lateNavRow)}
+								</SidebarMenu>
+							</SidebarGroupContent>
+						</SidebarGroup>
+						{isAdmin && (
+							<SidebarGroup>
+								<SidebarGroupLabel>Admin</SidebarGroupLabel>
+								<SidebarGroupContent>
+									<SidebarMenu>{ADMIN_ITEMS.map(navRow)}</SidebarMenu>
+								</SidebarGroupContent>
+							</SidebarGroup>
+						)}
+					</>
 				)}
 			</SidebarContent>
 			<SidebarFooter className="shrink-0 gap-0 p-0">
@@ -349,6 +450,7 @@ export function AppSidebar({
 							</div>
 						)}
 					</div>
+					<ThemeToggle />
 					<button
 						type="button"
 						onClick={handleLogout}

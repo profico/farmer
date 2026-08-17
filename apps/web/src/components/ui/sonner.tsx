@@ -6,11 +6,17 @@ import {
 	WarningOctagonIcon,
 } from "@phosphor-icons/react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
+import { useTheme } from "#/lib/theme.ts";
 
 const Toaster = ({ ...props }: ToasterProps) => {
+	const { theme } = useTheme();
 	return (
 		<Sonner
-			theme="light"
+			// Every colour below is a token that already flips with `data-theme`,
+			// so this only decides which of Sonner's own defaults it starts from —
+			// but leaving it pinned to light left the close button and the swipe
+			// affordance drawn for a white toast.
+			theme={theme}
 			className="toaster group"
 			icons={{
 				success: <CheckCircleIcon weight="regular" className="size-4" />,

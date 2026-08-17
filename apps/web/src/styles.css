@@ -23,18 +23,37 @@
    are set by the same handle (`data-theme`) the design uses. */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
+/* The scroll fade's two edge lengths, registered so they can be TRANSITIONED —
+   an unregistered custom property is an unanimatable string, and the fade would
+   snap on at the first pixel of scroll instead of easing in. Top level rather
+   than inside `@layer components` with the rule that uses them: `@property` is
+   a top-level at-rule and nesting it in a cascade layer is not reliably
+   honoured. See `.scroll-fade`. */
+@property --fade-top {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-bottom {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
 /* ------------------------------------------------------------- palette --- */
 
 /* Paper: warm ground, violet accent — `--acc` is the logo's own #6f4ebe, so the
    mark, the browser chrome (`theme-color`) and every accented control are one
    colour. The ground stays warm on purpose; the violet is the only cool thing
    in the palette, which is what makes it read as the accent.
-   The app's default and, for now, its only
-   selectable appearance — `color-scheme` below is pinned to light because the
-   calendar's category tints are light washes computed in JS (lib/category-colors.ts),
-   and a browser left to auto-darken them crushes their contrast entirely.
+   The app's default, and what an unset `data-theme` falls back to.
+   `color-scheme` is declared per palette rather than left to the browser: the
+   calendar's category tints are light washes computed in JS
+   (lib/category-colors.ts) and carry their own on-tint text colour, so a
+   browser left to auto-darken them crushes their contrast entirely.
    The ink block underneath is the same design's dark palette, kept complete and
-   in sync so switching is a matter of setting `data-theme="dark"` on <html>. */
+   in sync; `data-theme="dark"` on <html> is the whole switch, written by
+   `lib/theme.ts` (inline in <head> before paint, then by the footer toggle). */
 :root {
   color-scheme: light;
 
@@ -232,6 +251,49 @@
      to be a fixed height rather than padding-plus-content, because the sidebar's
      row is one line tall for an admin and two for everyone else. */
   --footer-h: 3.5rem;
+
+  /* ── the Beautiful UI vocabulary ─────────────────────────────────────────
+   *
+   * The assistant's primitives (components/assistant/*) are ported from
+   * beautifului.dev, which names its tokens `ink` / `surface` / `canvas` /
+   * `field` rather than shadcn's `foreground` / `card` / `background`. Rather
+   * than rewrite every class in every ported file — which is how a port stops
+   * tracking its source and becomes a fork — the vocabulary is aliased here,
+   * once, onto the palette this app already has.
+   *
+   * Defined in `:root` and NOT repeated in the dark block on purpose: every
+   * right-hand side is a layer-1 token that already switches with
+   * `data-theme`, so dark mode falls out of the aliases rather than being a
+   * second set of them to keep in sync.
+   *
+   * Both spellings are needed. The `--color-*` half in `@theme` below is what
+   * makes `bg-surface` / `text-ink-2` resolve as Tailwind utilities; these raw
+   * ones are what the ported files read directly in inline `style={{}}`
+   * (`var(--ink)`, `var(--line-strong)`) and in gradient stops. */
+  --canvas: var(--ground);
+  --page: var(--ground);
+  --surface: var(--bg);
+  --inset: var(--bg2);
+  --field: var(--bg2);
+  --ink: var(--fg);
+  --ink-2: var(--mut);
+  --ink-3: var(--faint);
+  --line-strong: color-mix(in srgb, var(--fg) 22%, transparent);
+  --hover: var(--sel);
+  --hover-2: color-mix(in srgb, var(--fg) 3%, transparent);
+  --accent-ink: var(--acc);
+  --accent-tint: color-mix(in srgb, var(--acc) 12%, transparent);
+  --green: var(--ok);
+  --green-tint: color-mix(in srgb, var(--ok) 14%, transparent);
+  --orange: var(--warn);
+  --orange-tint: color-mix(in srgb, var(--warn) 14%, transparent);
+  --shadow-btn: 0 1px 2px color-mix(in srgb, var(--fg) 6%, transparent);
+  --shadow-hairline: inset 0 0 0 1px var(--line2);
+  --shadow-card:
+    0 1px 2px color-mix(in srgb, var(--fg) 5%, transparent),
+    inset 0 0 0 1px var(--line2);
+  --shadow-raised: var(--shadow-pop);
+  --shadow-overlay: var(--lift);
 }
 
 @media (min-width: 640px) {
@@ -318,6 +380,35 @@
      is `--shadow-pop`, read directly rather than through the theme — naming it
      here would collide with the raw token it points at. */
   --shadow-lift: var(--lift);
+
+  /* The Tailwind half of the Beautiful UI alias layer described in `:root`.
+     Radii map onto the design's existing ramp rather than importing a second
+     one: a chip is a control, a card is the floating radius. */
+  --color-canvas: var(--canvas);
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-inset: var(--inset);
+  --color-field: var(--field);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line-strong: var(--line-strong);
+  --color-hover: var(--hover);
+  --color-hover-2: var(--hover-2);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
+  --color-green: var(--green);
+  --color-green-tint: var(--green-tint);
+  --color-orange: var(--orange);
+  --color-orange-tint: var(--orange-tint);
+  --radius-control: var(--radius);
+  --radius-chip: var(--radius);
+  --radius-card: 7px;
+  --shadow-btn: var(--shadow-btn);
+  --shadow-hairline: var(--shadow-hairline);
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -761,6 +852,25 @@ html {
     align-items: stretch;
   }
 
+  /* On desktop the frame IS the viewport: exactly one screen tall, and nothing
+     scrolls past it. Every island inside is therefore capped at the frame's
+     height and moves its own content (`.scroll-fade` below), which is what
+     keeps the ground visible on all four sides no matter how long the content
+     is — previously a long timesheet grew the island past the bottom of the
+     screen and the frame padding scrolled away with it.
+     
+     Deliberately desktop-only. On a phone the document should scroll: that is
+     what lets the browser chrome retract, and a viewport-height scroll
+     container inside a collapsing viewport is the classic way to lose the last
+     row under the URL bar. */
+  @media (min-width: 768px) {
+    .app-frame {
+      height: 100svh;
+      min-height: 0;
+      overflow: hidden;
+    }
+  }
+
   /* An island: the app's one container. A panel, a table, the sidebar and a
      full-height view are all this. It carries the surface and the corner; what
      separates it from its neighbour is the ground in the gap, so it deliberately
@@ -771,6 +881,9 @@ html {
     /* Islands hold tables and grids whose own rules run to their edge; without
        this those rules square off the rounded corner. */
     overflow: hidden;
+    /* A flex child holding a scroller has to be allowed to be shorter than its
+       content, or it grows to fit and the scroller never scrolls. */
+    min-height: 0;
   }
 
   /* The content island's inner padding. Its own class rather than padding on
@@ -795,6 +908,44 @@ html {
     flex: 1;
     gap: var(--frame-gap);
     min-width: 0;
+    min-height: 0;
+  }
+
+  /* ------------------------------------------------------- scroll fade --- */
+
+  /* `--fade-size` is how far the content dissolves at an edge that has more
+     behind it: enough to read as "there is more", short enough never to hide a
+     whole row. The two edge lengths are registered at the top of this file so
+     the transition below actually animates. */
+  .scroll-fade {
+    --fade-size: 2rem;
+    min-height: 0;
+    transition:
+      --fade-top var(--dur-base) var(--ease-out),
+      --fade-bottom var(--dur-base) var(--ease-out);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--fade-top),
+      #000 calc(100% - var(--fade-bottom)),
+      transparent 100%
+    );
+  }
+
+  /* Only a desktop island is height-capped, so only there is there anything to
+     scroll within. On a phone the region grows and the document scrolls, and a
+     mask over a full-height element is a no-op. */
+  @media (min-width: 768px) {
+    .scroll-fade {
+      flex: 1;
+      overflow-y: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-fade {
+      transition: none;
+    }
   }
 
   /* --------------------------------------------------------------- motion --- */
@@ -870,10 +1021,69 @@ html {
     }
   }
 
+  /* ── the assistant's motion ───────────────────────────────────────────────
+   *
+   * The four keyframes the ported Beautiful UI primitives reference by name.
+   * They live in the source's own global stylesheet, which the copy-paste
+   * distribution does not include, so they are re-stated here rather than
+   * inlined into each component — three of the four are shared by more than
+   * one primitive, and a keyframe defined twice is one that drifts.
+   *
+   * `shimmer-text` is the "thinking" label's travelling highlight; it animates
+   * background-position under `bg-clip-text`, which is why the elements using
+   * it set a 200% background and transparent text. */
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 4px, 0);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @keyframes shimmer-text {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+
+  /* The pixel-grid loader's cell: a brief lift out of its resting dimness. */
+  @keyframes pixel-on {
+    0%,
+    100% {
+      opacity: 0.15;
+    }
+    35% {
+      opacity: 0.85;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .screen > *,
     .screen > :nth-child(n + 2) {
       animation: none;
+    }
+    /* The assistant's entrances and the loader's shimmer are narration: with
+       reduced motion the content simply arrives. The loader grid stops at its
+       dim resting state, which still reads as "working" because the elapsed
+       timer beside it keeps counting. */
+    .assistant-motion,
+    .assistant-motion * {
+      animation: none !important;
     }
     /* The skeleton keeps its shape but stops breathing — the placeholder is
        doing its job by being the right size, not by moving. */

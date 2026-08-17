@@ -53,6 +53,7 @@ export const Route = createFileRoute("/$orgSlug")({
 			organization: entered.organization,
 			role: entered.role,
 			singleOrg: config.singleOrgMode,
+			assistantEnabled: config.assistantEnabled,
 		};
 	},
 	// The router-wide default renders a lone page skeleton, which is right for a
@@ -66,7 +67,8 @@ export const Route = createFileRoute("/$orgSlug")({
 });
 
 function OrgLayout() {
-	const { session, organization, role, singleOrg } = Route.useRouteContext();
+	const { session, organization, role, singleOrg, assistantEnabled } =
+		Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
 
 	return (
@@ -79,6 +81,7 @@ function OrgLayout() {
 				userName={session.user.name}
 				userEmail={session.user.email}
 				singleOrg={singleOrg}
+				assistantEnabled={assistantEnabled}
 			/>
 			<SidebarInset>
 				<Outlet />
@@ -88,6 +91,7 @@ function OrgLayout() {
 				isAdmin={isAdmin}
 				userName={session.user.name}
 				userEmail={session.user.email}
+				assistantEnabled={assistantEnabled}
 			/>
 		</SidebarProvider>
 	);

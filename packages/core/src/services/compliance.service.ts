@@ -91,6 +91,16 @@ const complianceCohort = async (
 		.filter((p) => p.memberType.type !== "overhead" && !archived.has(p.userId));
 };
 
+/** Both views answer "as of today", and `now` is how a caller says which today.
+ *
+ *  Passed in rather than read from the clock so the behaviour can be pinned:
+ *  every figure below is relative to how much of the month has elapsed, and a
+ *  suite that cannot choose the date can only assert what happens to be true on
+ *  the day it runs — including on the 1st, when no working day has elapsed yet
+ *  and `behindPace` is correctly empty. Production passes nothing and gets the
+ *  real clock. Same seam as `runAutomationsForUser(ctx, { now })`. */
+export type ComplianceOpts = { now?: Date };
+
 // The two views, computed without any authorization check.
 //
 // Deliberately module-private and deliberately not reachable through
@@ -109,12 +119,12 @@ const views = {
 	 * default 3). Both Billable people and Contractors appear here: a contractor
 	 * still has to tell us what they did, even though no hour fund applies to them.
 	 */
-	noEntries: async (ctx: Ctx) => {
+	noEntries: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
 		const [tz, settings] = await Promise.all([
 			ctxTimezone(ctx),
 			orgSettingsService.get(ctx),
 		]);
-		const today = dayKeyInTz(new Date(), tz);
+		const today = dayKeyInTz(opts.now ?? new Date(), tz);
 		const cohort = await complianceCohort(ctx, {
 			year: Number(today.slice(0, 4)),
 			month: Number(today.slice(5, 7)),
@@ -191,9 +201,9 @@ const views = {
 	 * Contractors appear here ONLY when they have an explicit expected-hours
 	 * value: without a monthly fund there is no pace to be behind.
 	 */
-	behindPace: async (ctx: Ctx) => {
+	behindPace: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
 		const tz = await ctxTimezone(ctx);
-		const today = dayKeyInTz(new Date(), tz);
+		const today = dayKeyInTz(opts.now ?? new Date(), tz);
 		const year = Number(today.slice(0, 4));
 		const month = Number(today.slice(5, 7));
 		const { from, to } = monthBounds(year, month);
@@ -260,29 +270,29 @@ const views = {
 
 	/** Both views at once — the Admin dashboard, and the input the Slack job
 	 *  iterates to decide who gets a DM. */
-	dashboard: async (ctx: Ctx) => {
+	dashboard: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
 		const [noEntries, behindPace] = await Promise.all([
-			views.noEntries(ctx),
-			views.behindPace(ctx),
+			views.noEntries(ctx, opts),
+			views.behindPace(ctx, opts),
 		]);
 		return { noEntries, behindPace };
 	},
 };
 
 export const complianceService = {
-	noEntries: async (ctx: Ctx) => {
+	noEntries: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
 		await requireAdmin(ctx);
-		return views.noEntries(ctx);
+		return views.noEntries(ctx, opts);
 	},
 
-	behindPace: async (ctx: Ctx) => {
+	behindPace: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
 		await requireAdmin(ctx);
-		return views.behindPace(ctx);
+		return views.behindPace(ctx, opts);
 	},
 
-	dashboard: async (ctx: Ctx) => {
+	dashboard: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
 		await requireAdmin(ctx);
-		return views.dashboard(ctx);
+		return views.dashboard(ctx, opts);
 	},
 
 	/**
@@ -298,5 +308,6 @@ export const complianceService = {
 	 *
 	 * Do not wire this to a server function or a REST route.
 	 */
-	dashboardForReminderJob: (ctx: Ctx) => views.dashboard(ctx),
+	dashboardForReminderJob: (ctx: Ctx, opts: ComplianceOpts = {}) =>
+		views.dashboard(ctx, opts),
 };
