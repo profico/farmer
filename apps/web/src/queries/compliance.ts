@@ -4,8 +4,8 @@ import { queryKeys } from "./keys.ts";
 
 // One query, both views. The two lists are computed from overlapping data, so
 // splitting them into separate round trips would only double the work.
-export const complianceDashboardQuery = () =>
+export const complianceDashboardQuery = (org: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.compliance, "dashboard"],
+		queryKey: [...queryKeys(org).compliance, "dashboard"],
 		queryFn: () => getComplianceDashboard(),
 	});

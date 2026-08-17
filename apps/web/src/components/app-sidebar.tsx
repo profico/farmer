@@ -282,7 +282,7 @@ export function AppSidebar({
 	// Not a suspense query: the sidebar is always mounted and shouldn't block or
 	// suspend on this. A PM on any project reaches the close sheet, so it can't
 	// be inferred from the org role alone.
-	const { data: access } = useQuery(myAccessQuery());
+	const { data: access } = useQuery(myAccessQuery(orgSlug));
 	const canClose = isAdmin || !!access?.isPmSomewhere;
 	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
 	// Team Lead is the floor for any report at all — a plain Member sees strictly

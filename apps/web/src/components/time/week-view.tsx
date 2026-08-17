@@ -167,7 +167,9 @@ export function WeekView({
 	const weekTotal = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
 	const invalidate = () =>
-		queryClient.invalidateQueries({ queryKey: [...queryKeys.timeEntries] });
+		queryClient.invalidateQueries({
+			queryKey: [...queryKeys(orgSlug).timeEntries],
+		});
 
 	// Cell-to-cell keyboard movement. Scoped to this table's own node rather than
 	// the document, so a second grid on the page could never be walked into, and

@@ -37,13 +37,14 @@ jobs:
       - name: Lint, format and import order
         run: bun run check
 
-      - name: Typecheck (apps/web)
-        working-directory: apps/web
-        run: bunx tsc --noEmit -p tsconfig.json
-
-      - name: Typecheck (packages/core)
-        working-directory: packages/core
-        run: bunx tsc --noEmit -p tsconfig.json
+      # Through turbo, like every other step, rather than two hand-written
+      # `bunx tsc` invocations with a `working-directory`. Those were the only
+      # check in this file that a developer could not run locally — there was no
+      # `typecheck` script anywhere, so type errors surfaced in an editor or in
+      # CI and nowhere in between, and a workspace added later would have had to
+      # be remembered here by hand.
+      - name: Typecheck
+        run: bun run typecheck
 
       # packages/core's suite runs against PGLite (real Postgres in-process, see
       # src/test/harness.ts), so this step needs no service container and no

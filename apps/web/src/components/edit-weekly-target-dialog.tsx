@@ -13,6 +13,7 @@ import {
 } from "#/components/ui/dialog.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Label } from "#/components/ui/label.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { weeklyTargetQuery } from "#/queries/working-hours.ts";
 import { setWeeklyTarget } from "#/server/working-hours.ts";
 
@@ -21,6 +22,7 @@ export function EditWeeklyTargetDialog({
 }: {
 	currentHours: number;
 }) {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const [hours, setHours] = useState(String(currentHours));
 	const queryClient = useQueryClient();
@@ -35,7 +37,7 @@ export function EditWeeklyTargetDialog({
 			setWeeklyTarget({ data: { weeklyTarget } }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: weeklyTargetQuery().queryKey,
+				queryKey: weeklyTargetQuery(orgSlug).queryKey,
 			});
 			setOpen(false);
 		},

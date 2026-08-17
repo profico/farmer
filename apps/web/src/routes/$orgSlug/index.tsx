@@ -23,6 +23,7 @@ import { EntryBlockRow } from "#/components/time/entry-block-row.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Metric } from "#/components/ui/metric.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
@@ -30,16 +31,17 @@ import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
 import { weeklyTargetQuery } from "#/queries/working-hours.ts";
 
 export const Route = createFileRoute("/$orgSlug/")({
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		const today = dayKeyInTz(new Date(), context.organization.timezone);
 		const weekStart = startOfWeekKey(today);
 		const weekEnd = addDaysToKey(weekStart, 6);
 		await Promise.all([
 			context.queryClient.ensureQueryData(
-				timeEntriesRangeQuery(weekStart, weekEnd),
+				timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 			),
-			context.queryClient.ensureQueryData(myProjectsQuery()),
-			context.queryClient.ensureQueryData(weeklyTargetQuery()),
+			context.queryClient.ensureQueryData(myProjectsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(weeklyTargetQuery(orgSlug)),
 		]);
 	},
 	// The generic page placeholder is a header over a ruled list, which is the
@@ -59,17 +61,20 @@ function greetingForHour(hour: number): string {
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function OrgHome() {
+	const orgSlug = useOrgSlug();
 	const { organization, session } = Route.useRouteContext();
 	const today = dayKeyInTz(new Date(), organization.timezone);
 	const weekStart = startOfWeekKey(today);
 	const weekEnd = addDaysToKey(weekStart, 6);
 	const { data: weekEntries } = useSuspenseQuery(
-		timeEntriesRangeQuery(weekStart, weekEnd),
+		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 	);
 	// The week's yardstick is the person's own working-hours target, not the close
 	// sheet's Expected — Expected is a monthly figure that only settles once the
 	// month is finalized, so it says nothing about a week still in progress.
-	const { data: weeklyTargetSeconds } = useSuspenseQuery(weeklyTargetQuery());
+	const { data: weeklyTargetSeconds } = useSuspenseQuery(
+		weeklyTargetQuery(orgSlug),
+	);
 
 	// The "by day" bars are clickable; the day the user picks drives the entry
 	// list at the bottom. Defaults to today.

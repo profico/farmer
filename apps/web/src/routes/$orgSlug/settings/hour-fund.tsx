@@ -18,6 +18,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { hourFundYearQuery } from "#/queries/hour-fund.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";
 import {
@@ -36,9 +37,10 @@ export const Route = createFileRoute("/$orgSlug/settings/hour-fund")({
 		await requireOrgAdmin();
 	},
 	loaderDeps: ({ search }) => ({ year: search.year }),
-	loader: async ({ context, deps }) => {
+	loader: async ({ context, deps, params }) => {
+		const orgSlug = params.orgSlug;
 		const year = deps.year ?? new Date().getUTCFullYear();
-		await context.queryClient.ensureQueryData(hourFundYearQuery(year));
+		await context.queryClient.ensureQueryData(hourFundYearQuery(orgSlug, year));
 	},
 	component: HourFundPage,
 });
@@ -59,6 +61,7 @@ function MonthRow({
 	month: number;
 	fundSeconds: number | null;
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const asText = fundSeconds == null ? "" : String(fundSeconds / 3600);
 	const [text, setText] = useState(asText);
@@ -86,7 +89,7 @@ function MonthRow({
 					}),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: hourFundYearQuery(year).queryKey,
+				queryKey: hourFundYearQuery(orgSlug, year).queryKey,
 			});
 		},
 		onError: (error) => {
@@ -136,17 +139,18 @@ function MonthRow({
 }
 
 function HourFundPage() {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const search = Route.useSearch();
 	const year = search.year ?? new Date().getUTCFullYear();
-	const { data: funds } = useSuspenseQuery(hourFundYearQuery(year));
+	const { data: funds } = useSuspenseQuery(hourFundYearQuery(orgSlug, year));
 	const byMonth = new Map(funds.map((f) => [f.month, f.fundSeconds]));
 
 	const prefill = useMutation({
 		mutationFn: () => prefillHourFundYear({ data: { year } }),
 		onSuccess: async (result) => {
 			await queryClient.invalidateQueries({
-				queryKey: hourFundYearQuery(year).queryKey,
+				queryKey: hourFundYearQuery(orgSlug, year).queryKey,
 			});
 			toast.success(
 				result.filled === 0

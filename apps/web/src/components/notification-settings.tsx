@@ -14,6 +14,7 @@ import {
 	SettingRow,
 } from "#/components/ui/page-header.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import {
 	currentPermission,
 	disablePush,
@@ -39,13 +40,14 @@ function NotifyToggleRow({
 	patch: (value: boolean) => UpdateNotificationSettingsInput;
 	disabled?: boolean;
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const mutation = useMutation({
 		mutationFn: (value: boolean) =>
 			updateNotificationSettings({ data: patch(value) }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: notificationSettingsQuery().queryKey,
+				queryKey: notificationSettingsQuery(orgSlug).queryKey,
 			});
 		},
 		onError: (error) => {
@@ -68,7 +70,10 @@ function NotifyToggleRow({
 }
 
 export function NotificationSettings() {
-	const { data: settings } = useSuspenseQuery(notificationSettingsQuery());
+	const orgSlug = useOrgSlug();
+	const { data: settings } = useSuspenseQuery(
+		notificationSettingsQuery(orgSlug),
+	);
 	const [supported, setSupported] = useState(true);
 	const [subscribed, setSubscribed] = useState(false);
 	const [permission, setPermission] = useState<

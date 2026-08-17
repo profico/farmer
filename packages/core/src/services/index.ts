@@ -3,6 +3,10 @@ export * from "./account.service";
 export * from "./clients.service";
 export * from "./close.service";
 export * from "./compliance.service";
+// The request-scoped helpers (ctxAccess, ctxTimezone, withCtxTx, …) are part of
+// the service API, not an internal: the web boundary resolves Access through
+// `ctxAccess` so the memo it warms is the one the handler's services read.
+export * from "./context";
 export * from "./day-assembly.service";
 export * from "./github.service";
 export * from "./google-calendar.service";

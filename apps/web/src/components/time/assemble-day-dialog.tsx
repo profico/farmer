@@ -71,7 +71,7 @@ export function AssembleDayDialog({
 	}, [open]);
 
 	const suggestionsQ = useQuery({
-		...dayAssemblySuggestionsQuery(date, includeDismissed),
+		...dayAssemblySuggestionsQuery(orgSlug, date, includeDismissed),
 		enabled: open,
 	});
 	const assembly = suggestionsQ.data;
@@ -130,10 +130,10 @@ export function AssembleDayDialog({
 			}),
 		onSuccess: async ({ created, errors }) => {
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.dayAssembly],
+				queryKey: [...queryKeys(orgSlug).dayAssembly],
 			});
 			if (errors.length > 0) {
 				toast.error(

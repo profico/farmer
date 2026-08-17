@@ -22,6 +22,7 @@ import {
 	FormMessage,
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { updateProject } from "#/server/projects.ts";
@@ -40,6 +41,7 @@ export function EditProjectDialog({
 	project: { id: string; name: string; color: string | null } | null;
 	onOpenChange: (open: boolean) => void;
 }) {
+	const orgSlug = useOrgSlug();
 	const open = project !== null;
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof formSchema>>({
@@ -69,7 +71,7 @@ export function EditProjectDialog({
 			}),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: projectsQuery().queryKey,
+				queryKey: projectsQuery(orgSlug).queryKey,
 			});
 			onOpenChange(false);
 		},

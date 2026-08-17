@@ -18,6 +18,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { closeOverviewQuery } from "#/queries/close.ts";
@@ -57,10 +58,11 @@ const defaultMonthKey = () => {
 export const Route = createFileRoute("/$orgSlug/close")({
 	validateSearch: searchSchema,
 	loaderDeps: ({ search }) => ({ month: search.month }),
-	loader: async ({ context, deps }) => {
+	loader: async ({ context, deps, params }) => {
+		const orgSlug = params.orgSlug;
 		const monthKey = deps.month ?? defaultMonthKey();
 		await context.queryClient.ensureQueryData(
-			closeOverviewQuery(parseMonth(monthKey)),
+			closeOverviewQuery(orgSlug, parseMonth(monthKey)),
 		);
 	},
 	component: ClosePage,
@@ -103,11 +105,14 @@ const STATUS_LABEL = {
 } as const;
 
 function ClosePage() {
+	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
 	const monthKey = search.month ?? defaultMonthKey();
 	const period = parseMonth(monthKey);
-	const { data: projects } = useSuspenseQuery(closeOverviewQuery(period));
+	const { data: projects } = useSuspenseQuery(
+		closeOverviewQuery(orgSlug, period),
+	);
 
 	const monthLabel = new Intl.DateTimeFormat("en-US", {
 		month: "long",

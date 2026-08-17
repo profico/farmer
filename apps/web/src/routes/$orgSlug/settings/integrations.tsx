@@ -35,6 +35,7 @@ import {
 	SettingRow,
 } from "#/components/ui/page-header.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import {
 	githubConnectionStatusQuery,
@@ -58,11 +59,12 @@ import {
 } from "#/server/slack.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/integrations")({
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		await Promise.all([
-			context.queryClient.ensureQueryData(githubConnectionStatusQuery()),
-			context.queryClient.ensureQueryData(googleCalendarStatusQuery()),
-			context.queryClient.ensureQueryData(integrationSettingsQuery()),
+			context.queryClient.ensureQueryData(githubConnectionStatusQuery(orgSlug)),
+			context.queryClient.ensureQueryData(googleCalendarStatusQuery(orgSlug)),
+			context.queryClient.ensureQueryData(integrationSettingsQuery(orgSlug)),
 		]);
 	},
 	component: IntegrationsSettingsPage,
@@ -82,13 +84,14 @@ function SettingToggleRow({
 	checked: boolean;
 	patch: (value: boolean) => UpdateIntegrationSettingsInput;
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const mutation = useMutation({
 		mutationFn: (value: boolean) =>
 			updateIntegrationSettings({ data: patch(value) }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: integrationSettingsQuery().queryKey,
+				queryKey: integrationSettingsQuery(orgSlug).queryKey,
 			});
 		},
 		onError: (error) => {
@@ -111,11 +114,18 @@ function SettingToggleRow({
 }
 
 function IntegrationsSettingsPage() {
+	const orgSlug = useOrgSlug();
 	const { role } = Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
-	const { data: status } = useSuspenseQuery(githubConnectionStatusQuery());
-	const { data: googleStatus } = useSuspenseQuery(googleCalendarStatusQuery());
-	const { data: settings } = useSuspenseQuery(integrationSettingsQuery());
+	const { data: status } = useSuspenseQuery(
+		githubConnectionStatusQuery(orgSlug),
+	);
+	const { data: googleStatus } = useSuspenseQuery(
+		googleCalendarStatusQuery(orgSlug),
+	);
+	const { data: settings } = useSuspenseQuery(
+		integrationSettingsQuery(orgSlug),
+	);
 	const queryClient = useQueryClient();
 	const [disconnectOpen, setDisconnectOpen] = useState(false);
 	const [googleDisconnectOpen, setGoogleDisconnectOpen] = useState(false);
@@ -138,7 +148,7 @@ function IntegrationsSettingsPage() {
 			return;
 		}
 		await queryClient.invalidateQueries({
-			queryKey: githubConnectionStatusQuery().queryKey,
+			queryKey: githubConnectionStatusQuery(orgSlug).queryKey,
 		});
 		toast.success("GitHub disconnected");
 	};
@@ -163,7 +173,7 @@ function IntegrationsSettingsPage() {
 			return;
 		}
 		await queryClient.invalidateQueries({
-			queryKey: googleCalendarStatusQuery().queryKey,
+			queryKey: googleCalendarStatusQuery(orgSlug).queryKey,
 		});
 		toast.success("Google Calendar disconnected");
 	};
@@ -180,7 +190,7 @@ function IntegrationsSettingsPage() {
 		mutationFn: () => syncGoogleMeetings(),
 		onSuccess: async (result) => {
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 			// Four real outcomes, and only one of them is "Synced". Each engine is
 			// independently best-effort and each can be out of window, so collapsing
@@ -400,12 +410,15 @@ function IntegrationsSettingsPage() {
 // member runs) would 403 for everyone else. Same reason `githubInstallationsQuery`
 // is a `useQuery` inside a gated child rather than a loader prefetch.
 function SlackSection() {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const { session } = Route.useRouteContext();
-	const { data: status, isPending } = useQuery(slackStatusQuery());
+	const { data: status, isPending } = useQuery(slackStatusQuery(orgSlug));
 
 	const invalidate = () =>
-		queryClient.invalidateQueries({ queryKey: slackStatusQuery().queryKey });
+		queryClient.invalidateQueries({
+			queryKey: slackStatusQuery(orgSlug).queryKey,
+		});
 
 	const handleInstall = async () => {
 		try {
@@ -552,8 +565,9 @@ function OrgInstallationsSection({
 }: {
 	personalConnected: boolean;
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
-	const { data: installations } = useQuery(githubInstallationsQuery());
+	const { data: installations } = useQuery(githubInstallationsQuery(orgSlug));
 
 	const handleConnectOrg = async () => {
 		try {
@@ -569,7 +583,7 @@ function OrgInstallationsSection({
 			disconnectGithubInstallation({ data: installationRowId }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: githubInstallationsQuery().queryKey,
+				queryKey: githubInstallationsQuery(orgSlug).queryKey,
 			});
 			toast.success("GitHub account disconnected");
 		},

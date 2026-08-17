@@ -14,6 +14,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { getInitials } from "#/lib/utils.ts";
 import {
@@ -75,6 +76,7 @@ export function ProjectMembersPanel({
 	projectId: string | null;
 	projectName: string | null;
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const [addUserId, setAddUserId] = useState("");
 	// The draft is tagged with the project it belongs to. Tagging (rather than a
@@ -86,13 +88,13 @@ export function ProjectMembersPanel({
 	);
 
 	const { data: members, isLoading } = useQuery({
-		...projectMembersQuery(projectId ?? ""),
+		...projectMembersQuery(orgSlug, projectId ?? ""),
 		enabled: !!projectId,
 	});
 	// Server-side "who isn't on this project yet" — the panel no longer has to
 	// diff the whole org membership list against the assignments itself.
 	const { data: assignable } = useQuery({
-		...assignableMembersQuery(projectId ?? ""),
+		...assignableMembersQuery(orgSlug, projectId ?? ""),
 		enabled: !!projectId,
 	});
 
@@ -205,12 +207,14 @@ export function ProjectMembersPanel({
 		onSuccess: async () => {
 			await Promise.all([
 				queryClient.invalidateQueries({
-					queryKey: projectMembersQuery(projectId ?? "").queryKey,
+					queryKey: projectMembersQuery(orgSlug, projectId ?? "").queryKey,
 				}),
 				queryClient.invalidateQueries({
-					queryKey: assignableMembersQuery(projectId ?? "").queryKey,
+					queryKey: assignableMembersQuery(orgSlug, projectId ?? "").queryKey,
 				}),
-				queryClient.invalidateQueries({ queryKey: projectsQuery().queryKey }),
+				queryClient.invalidateQueries({
+					queryKey: projectsQuery(orgSlug).queryKey,
+				}),
 			]);
 			toast.success("Members updated");
 		},

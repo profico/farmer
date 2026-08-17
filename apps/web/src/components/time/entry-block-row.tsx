@@ -9,6 +9,7 @@ import {
 } from "#/components/time/add-block-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
@@ -49,6 +50,7 @@ export function EntryBlockRow({
 	timezone: string;
 	dateOptions: { value: string; label: string }[];
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 
 	// Inline note editing: local draft synced from the server value, saved on
@@ -65,7 +67,7 @@ export function EntryBlockRow({
 			}),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 		},
 		onError: (error) => {
@@ -85,7 +87,7 @@ export function EntryBlockRow({
 			setTimeEntryOvertime({ data: { timeEntryId: entry.id, overtime } }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 		},
 		onError: (error) => {
@@ -124,7 +126,7 @@ export function EntryBlockRow({
 				},
 			});
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 		} catch (error) {
 			toast.error(
@@ -152,7 +154,7 @@ export function EntryBlockRow({
 		mutationFn: () => deleteTimeEntry({ data: entry.id }),
 		onSuccess: async (deleted) => {
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 			// Fill blocks are derived, and a rule-generated entry leaves a skip behind
 			// (re-creating it as a manual copy would double up) — neither can be

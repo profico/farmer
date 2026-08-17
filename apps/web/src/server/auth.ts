@@ -106,9 +106,47 @@ export const sessionMiddleware = createMiddleware({ type: "function" }).server(
 );
 
 // Authenticated + an active organization → `context.ctx` is the service ctx.
+//
+// The membership check is the point, and it is not the same check as
+// `requireOrgContext`'s. That one asks the session which organization is
+// active; `activeOrganizationId` is written when the workspace is entered and
+// is never revisited, and removing somebody from an organization does not
+// invalidate their sessions — so it says where they were, not where they still
+// belong. Resolving `Access` asks the database, and now throws `NotAMemberError`
+// when there is no membership row (services/access.service.ts).
+//
+// It also has to happen here rather than only inside each service, because the
+// org-wide reads are exactly the ones with nothing to assert: `clientsService.
+// list` and `orgSettingsService.get` are a tenancy predicate and no more, and
+// an ex-member's Ctx satisfies a tenancy predicate perfectly well.
+//
+// The resolved Access is memoized on the Ctx, so this costs the request
+// nothing: every handler that goes on to resolve it gets this one.
+//
+// The `import("@farmer/core/services")` is INSIDE the `.server()` callback, and
+// has to stay there. Pulled out into a shared top-level helper in this file it
+// still typechecks, still runs, and breaks the client build: `.server()`
+// callbacks are stripped from the browser bundle, a top-level function body is
+// not, so the deferred import becomes a real client chunk of the whole services
+// barrel — which reaches `report-pdf.service` and its native typst binding, a
+// `.node` file rolldown cannot load at all. (The barrel's other client-side
+// leftovers are merely dead weight, and `scripts/prune-client-assets.ts` deletes
+// them; this one is a hard build failure, which is at least loud.)
 export const orgMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const ctx = await requireOrgContext();
+		const { ctxAccess, NotAMemberError } = await import(
+			"@farmer/core/services"
+		);
+		try {
+			// Also warms the memo: this Ctx object is the one the handler receives.
+			await ctxAccess(ctx);
+		} catch (error) {
+			// "Not in this workspace" is a navigation outcome, not a failure — `/`
+			// sends them to a workspace they do belong to, or to `/no-access`.
+			if (error instanceof NotAMemberError) throw redirect({ to: "/" });
+			throw error;
+		}
 		return next({ context: { ctx } });
 	},
 );
@@ -120,19 +158,3 @@ export const orgAdminMiddleware = createMiddleware({ type: "function" }).server(
 		return next({ context: { ctx } });
 	},
 );
-
-// For REST routes (api/v1/*): same session-cookie auth as the UI for now,
-// resolved from the request instead of ambient request headers, and
-// returning null instead of throwing a router redirect on failure.
-// TODO: accept a bearer API key too, once better-auth's apiKey plugin is wired up.
-export const resolveApiOrgContext = async (request: Request) => {
-	const { auth } = await import("@farmer/core/auth");
-	const session = await auth.api.getSession({ headers: request.headers });
-	if (!session?.session.activeOrganizationId) {
-		return null;
-	}
-	return {
-		organizationId: session.session.activeOrganizationId,
-		userId: session.user.id,
-	};
-};

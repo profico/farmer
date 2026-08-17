@@ -156,10 +156,17 @@ const enrichedProjects = async (
 		orderBy: desc(project.createdAt),
 	});
 
-	const stats = await loadProjectStats(
-		ctx,
-		projects.map((p) => p.id),
-	);
+	// Project-level statistics are a Team Lead capability, so they are computed
+	// only for the projects that will be allowed to carry them. This is the same
+	// rule `redactMoney` applies one field-set over, and it is the §4 line "a
+	// Member sees nothing at project level — not even the project's total hours":
+	// a plain Member's row reports its own emptyStats() rather than the project's
+	// real hours blanked out afterwards, so the number is never read, never
+	// serialized and never one refactor away from being sent.
+	const visibleStatIds = projects
+		.map((p) => p.id)
+		.filter((id) => access.canViewProjectEntries(id));
+	const stats = await loadProjectStats(ctx, visibleStatIds);
 
 	return projects.map((p) => ({
 		...redactMoney(p, access),
@@ -173,11 +180,25 @@ const enrichedProjects = async (
 };
 
 export const projectsService = {
-	/** Every project in the org. Admin-facing; the project list screen scopes to
-	 *  `listMine` for everyone else. */
+	/** The projects screen: every project in the org for an Admin, otherwise
+	 *  strictly the caller's own assignments.
+	 *
+	 *  This used to be unscoped for everyone. Its docstring said "Admin-facing"
+	 *  and the only thing it resolved `Access` for was redacting the two money
+	 *  fields, but nothing asserted the adjective — `orgMiddleware` was the whole
+	 *  gate, so any member could enumerate every project in the organization,
+	 *  with its client and its month's hours, both through this and through
+	 *  `GET /api/v1/projects`. §4 is explicit that a Member sees nothing at
+	 *  project level, so the scope belongs here rather than in the sentence.
+	 *
+	 *  Kept distinct from `listMine` even though the two now agree for most
+	 *  callers: this one answers "what may I look at", `listMine` answers "what
+	 *  may I log time against", and an Admin is unscoped for the first and (via
+	 *  `canTrackOn`) unscoped for the second for a different reason. */
 	list: async (ctx: Ctx) => {
 		const access = await ctxAccess(ctx);
-		return enrichedProjects(ctx, access);
+		const scope = access.scopeFor("member");
+		return enrichedProjects(ctx, access, scope ?? undefined);
 	},
 
 	/** Projects the caller may log time against: everything for admins, otherwise

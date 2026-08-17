@@ -24,16 +24,18 @@ import {
 	SettingList,
 	SettingRow,
 } from "#/components/ui/page-header.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/preferences")({
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		await Promise.all([
-			context.queryClient.ensureQueryData(signInMethodsQuery()),
-			context.queryClient.ensureQueryData(notificationSettingsQuery()),
+			context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
 		]);
 	},
 	component: PreferencesSettingsPage,
@@ -46,8 +48,9 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 const SignInMethodRow = SettingRow;
 
 function GoogleSignInMethod() {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
-	const { data: methods } = useSuspenseQuery(signInMethodsQuery());
+	const { data: methods } = useSuspenseQuery(signInMethodsQuery(orgSlug));
 	const [disconnectOpen, setDisconnectOpen] = useState(false);
 
 	const connect = async () => {
@@ -71,7 +74,7 @@ function GoogleSignInMethod() {
 			return;
 		}
 		await queryClient.invalidateQueries({
-			queryKey: signInMethodsQuery().queryKey,
+			queryKey: signInMethodsQuery(orgSlug).queryKey,
 		});
 		toast.success("Google disconnected");
 	};
@@ -132,7 +135,8 @@ function GoogleSignInMethod() {
 }
 
 function PreferencesSettingsPage() {
-	const { data: methods } = useSuspenseQuery(signInMethodsQuery());
+	const orgSlug = useOrgSlug();
+	const { data: methods } = useSuspenseQuery(signInMethodsQuery(orgSlug));
 
 	return (
 		<Page className="screen">

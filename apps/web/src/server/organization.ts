@@ -22,6 +22,60 @@ export const setActiveOrgBySlug = createServerFn({ method: "POST" })
 		}
 	});
 
+/**
+ * Everything `/$orgSlug`'s `beforeLoad` needs about the workspace being
+ * entered, in one round trip: the session, the organization, and the caller's
+ * role in it.
+ *
+ * It replaces three sequential server-function calls — `requireSession()`, then
+ * `setActiveOrgBySlug()`, then `getMyRole()` — and `beforeLoad` runs on every
+ * client-side navigation into any org route, so those were three round trips
+ * deep on every link click, before a loader had started.
+ *
+ * The second of them was also a WRITE. `setActiveOrganization` updates the
+ * session row, and it ran on every navigation even when the session already
+ * named this organization, which is the overwhelmingly common case — the org
+ * only actually changes when somebody switches workspace. So the check is now
+ * conditional: the write happens when the active org differs, and a plain
+ * navigation inside one workspace does no writes at all.
+ *
+ * Returns null when the slug names an organization that does not exist or that
+ * the caller is not a member of — the two are deliberately the same answer, so
+ * this cannot be used to probe which slugs are taken.
+ */
+export const enterOrganization = createServerFn({ method: "POST" })
+	.middleware([sessionMiddleware])
+	.validator(setActiveOrgBySlugInput)
+	.handler(async ({ data: slug, context }) => {
+		const { auth } = await import("@farmer/core/auth");
+		const { db } = await import("@farmer/core/db");
+		const { organization } = await import("@farmer/core/schema/auth");
+		const { membersService } = await import("@farmer/core/services");
+
+		const org = await db.query.organization.findFirst({
+			where: eq(organization.slug, slug),
+		});
+		if (!org) return null;
+
+		// Membership before anything else: this is what decides whether the
+		// session may be repointed at this organization at all, and it is the
+		// same question `orgMiddleware` asks on every server function underneath.
+		const role = await membersService.getRole({
+			organizationId: org.id,
+			userId: context.session.user.id,
+		});
+		if (!role) return null;
+
+		if (context.session.session.activeOrganizationId !== org.id) {
+			await auth.api.setActiveOrganization({
+				body: { organizationId: org.id },
+				headers: getRequestHeaders(),
+			});
+		}
+
+		return { session: context.session, organization: org, role };
+	});
+
 // No client input: userId and activeOrganizationId are both derived from the
 // authenticated session, never trusted from the caller.
 export const getDefaultOrgSlugForSession = createServerFn({

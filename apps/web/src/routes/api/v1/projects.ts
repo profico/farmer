@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { resolveApiOrgContext } from "#/server/auth.ts";
+import { resolveApiOrgContext } from "#/server/api-auth.ts";
 
 export const Route = createFileRoute("/api/v1/projects")({
 	server: {

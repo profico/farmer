@@ -8,15 +8,15 @@ import {
 } from "#/server/members.ts";
 import { queryKeys } from "./keys.ts";
 
-export const membersQuery = () =>
+export const membersQuery = (org: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.members],
+		queryKey: [...queryKeys(org).members],
 		queryFn: () => listMembers(),
 	});
 
-export const pendingInvitationsQuery = () =>
+export const pendingInvitationsQuery = (org: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.members, "invitations"],
+		queryKey: [...queryKeys(org).members, "invitations"],
 		queryFn: async () => {
 			const invitations = await listInvitations();
 			return invitations.filter((i) => i.status === "pending");
@@ -24,22 +24,26 @@ export const pendingInvitationsQuery = () =>
 	});
 
 // The People screen: everyone with their org role, person type and start date.
-export const peopleQuery = () =>
+export const peopleQuery = (org: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.members, "people"],
+		queryKey: [...queryKeys(org).members, "people"],
 		queryFn: () => listPeople(),
 	});
 
-export const memberTypeHistoryQuery = (userId: string) =>
+export const memberTypeHistoryQuery = (org: string, userId: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.members, "type-history", userId],
+		queryKey: [...queryKeys(org).members, "type-history", userId],
 		queryFn: () => getMemberTypeHistory({ data: userId }),
 	});
 
 // Types resolved as of a month — a type change is effective-dated, so "what is
 // this person" is only answerable relative to a month.
-export const memberTypesForMonthQuery = (year: number, month: number) =>
+export const memberTypesForMonthQuery = (
+	org: string,
+	year: number,
+	month: number,
+) =>
 	queryOptions({
-		queryKey: [...queryKeys.members, "types", year, month],
+		queryKey: [...queryKeys(org).members, "types", year, month],
 		queryFn: () => listMemberTypesForMonth({ data: { year, month } }),
 	});

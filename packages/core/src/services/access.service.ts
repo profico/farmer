@@ -38,6 +38,18 @@ export class AccessError extends Error {
 	}
 }
 
+/** The caller is not a member of the organization their Ctx names.
+ *
+ *  Its own class because the boundary treats it differently from every other
+ *  AccessError: a member who lacks a capability gets an error, someone who is
+ *  not in the workspace at all gets shown the door (see `orgMiddleware`). */
+export class NotAMemberError extends AccessError {
+	constructor(readonly organizationId: string) {
+		super("You are not a member of this organization");
+		this.name = "NotAMemberError";
+	}
+}
+
 // A caller's full authorization picture, resolved with two queries and then
 // answered from memory. Services should resolve this ONCE per request and pass
 // it down rather than re-querying per project, which is what turns a report over
@@ -172,7 +184,19 @@ export class Access {
 }
 
 export const accessService = {
-	/** Resolve the caller's authorization picture. Two queries, no N+1. */
+	/** Resolve the caller's authorization picture. Two queries, no N+1.
+	 *
+	 *  Throws `NotAMemberError` when the caller has no membership row. A Ctx is
+	 *  built from `session.activeOrganizationId`, which is stamped onto the
+	 *  session when the workspace is entered and never revisited — removing
+	 *  someone from an organization does not invalidate their sessions, so
+	 *  without this the Ctx of an ex-member stayed a valid-looking Ctx until it
+	 *  expired. This used to resolve to `isAdmin: false, no assignments`, which
+	 *  is the correct answer to "what may they do on a project" and the WRONG
+	 *  answer to "are they in the room": every org-wide read that asks neither
+	 *  question (`clientsService.list`, `tasksService.list`) answered them
+	 *  anyway. Membership is the precondition, not a capability, so it is
+	 *  checked once here rather than re-asserted in each of those functions. */
 	resolve: async (ctx: Ctx): Promise<Access> => {
 		const [membership, assignments] = await Promise.all([
 			db.query.member.findFirst({
@@ -199,10 +223,11 @@ export const accessService = {
 				),
 		]);
 
+		if (!membership) throw new NotAMemberError(ctx.organizationId);
+
 		// better-auth models org ownership as a distinct role; both map to the
 		// single Admin tier this product has.
-		const isAdmin =
-			membership?.role === "owner" || membership?.role === "admin";
+		const isAdmin = membership.role === "owner" || membership.role === "admin";
 
 		return new Access(
 			ctx.userId,

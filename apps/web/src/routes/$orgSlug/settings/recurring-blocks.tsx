@@ -35,6 +35,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
@@ -50,10 +51,11 @@ import {
 const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
 export const Route = createFileRoute("/$orgSlug/settings/recurring-blocks")({
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		await Promise.all([
-			context.queryClient.ensureQueryData(recurringBlockRulesQuery()),
-			context.queryClient.ensureQueryData(projectsQuery()),
+			context.queryClient.ensureQueryData(recurringBlockRulesQuery(orgSlug)),
+			context.queryClient.ensureQueryData(projectsQuery(orgSlug)),
 		]);
 	},
 	component: RecurringBlocksPage,
@@ -81,7 +83,8 @@ function DayPills({ daysOfWeek }: { daysOfWeek: number[] }) {
 }
 
 function RecurringBlocksPage() {
-	const { data: rules } = useSuspenseQuery(recurringBlockRulesQuery());
+	const orgSlug = useOrgSlug();
+	const { data: rules } = useSuspenseQuery(recurringBlockRulesQuery(orgSlug));
 	const queryClient = useQueryClient();
 
 	// Rules materialize into real entries lazily, on the next read of a date
@@ -90,9 +93,11 @@ function RecurringBlocksPage() {
 	const invalidate = () =>
 		Promise.all([
 			queryClient.invalidateQueries({
-				queryKey: recurringBlockRulesQuery().queryKey,
+				queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
 			}),
-			queryClient.invalidateQueries({ queryKey: [...queryKeys.timeEntries] }),
+			queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			}),
 		]);
 
 	// The proposed break is offered only while the person has no break rule of

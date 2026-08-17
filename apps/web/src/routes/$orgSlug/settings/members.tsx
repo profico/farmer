@@ -26,6 +26,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
 import {
 	membersQuery,
@@ -60,32 +61,40 @@ export const Route = createFileRoute("/$orgSlug/settings/members")({
 	beforeLoad: async () => {
 		await requireOrgAdmin();
 	},
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		await Promise.all([
-			context.queryClient.ensureQueryData(membersQuery()),
-			context.queryClient.ensureQueryData(peopleQuery()),
-			context.queryClient.ensureQueryData(pendingInvitationsQuery()),
+			context.queryClient.ensureQueryData(membersQuery(orgSlug)),
+			context.queryClient.ensureQueryData(peopleQuery(orgSlug)),
+			context.queryClient.ensureQueryData(pendingInvitationsQuery(orgSlug)),
 		]);
 	},
 	component: MembersSettingsPage,
 });
 
 function MembersSettingsPage() {
+	const orgSlug = useOrgSlug();
 	const { session } = Route.useRouteContext();
-	const { data: membersData } = useSuspenseQuery(membersQuery());
-	const { data: people } = useSuspenseQuery(peopleQuery());
+	const { data: membersData } = useSuspenseQuery(membersQuery(orgSlug));
+	const { data: people } = useSuspenseQuery(peopleQuery(orgSlug));
 	const personByUserId = new Map(people.map((p) => [p.userId, p]));
-	const { data: invitations } = useSuspenseQuery(pendingInvitationsQuery());
+	const { data: invitations } = useSuspenseQuery(
+		pendingInvitationsQuery(orgSlug),
+	);
 	const queryClient = useQueryClient();
 
 	const owners = membersData.members.filter((m) => m.role === "owner");
 
 	const invalidate = () =>
 		Promise.all([
-			queryClient.invalidateQueries({ queryKey: membersQuery().queryKey }),
-			queryClient.invalidateQueries({ queryKey: peopleQuery().queryKey }),
 			queryClient.invalidateQueries({
-				queryKey: pendingInvitationsQuery().queryKey,
+				queryKey: membersQuery(orgSlug).queryKey,
+			}),
+			queryClient.invalidateQueries({
+				queryKey: peopleQuery(orgSlug).queryKey,
+			}),
+			queryClient.invalidateQueries({
+				queryKey: pendingInvitationsQuery(orgSlug).queryKey,
 			}),
 		]);
 

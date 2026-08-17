@@ -5,9 +5,9 @@ import { queryKeys } from "./keys.ts";
 // UI gating only — every server function re-resolves the same picture and
 // asserts. Cached generously: an assignment change is rare and a stale nav item
 // costs nothing worse than a 403 on click.
-export const myAccessQuery = () =>
+export const myAccessQuery = (org: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.access, "me"],
+		queryKey: [...queryKeys(org).access, "me"],
 		queryFn: () => getMyAccess(),
 		staleTime: 60_000,
 	});

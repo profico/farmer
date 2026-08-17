@@ -41,6 +41,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import {
 	CATEGORY_COLORS,
 	resolveCategoryColor,
@@ -60,12 +61,13 @@ export const Route = createFileRoute("/$orgSlug/settings/tasks")({
 	beforeLoad: async () => {
 		await requireOrgAdmin();
 	},
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		// The projects list is what the "Manage projects" dialog picks from —
 		// prefetched here so opening it doesn't flash a loading line.
 		await Promise.all([
-			context.queryClient.ensureQueryData(managedTasksQuery()),
-			context.queryClient.ensureQueryData(projectsQuery()),
+			context.queryClient.ensureQueryData(managedTasksQuery(orgSlug)),
+			context.queryClient.ensureQueryData(projectsQuery(orgSlug)),
 		]);
 	},
 	component: TasksPage,
@@ -74,6 +76,7 @@ export const Route = createFileRoute("/$orgSlug/settings/tasks")({
 const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 
 function CreateTaskDialog() {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof createTaskInput>>({
@@ -85,7 +88,7 @@ function CreateTaskDialog() {
 		mutationFn: (data: z.infer<typeof createTaskInput>) => createTask({ data }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: managedTasksQuery().queryKey,
+				queryKey: managedTasksQuery(orgSlug).queryKey,
 			});
 			setOpen(false);
 			form.reset({ name: "", color: DEFAULT_COLOR, description: "" });
@@ -173,6 +176,7 @@ function EditTaskDialog({
 	task: EditableTask | null;
 	onOpenChange: (open: boolean) => void;
 }) {
+	const orgSlug = useOrgSlug();
 	const open = task !== null;
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof createTaskInput>>({
@@ -198,7 +202,7 @@ function EditTaskDialog({
 			updateTask({ data: { taskId: task?.id ?? "", ...data } }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: managedTasksQuery().queryKey,
+				queryKey: managedTasksQuery(orgSlug).queryKey,
 			});
 			onOpenChange(false);
 		},
@@ -279,8 +283,9 @@ function EditTaskDialog({
 }
 
 function TasksPage() {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
-	const { data: tasks } = useSuspenseQuery(managedTasksQuery());
+	const { data: tasks } = useSuspenseQuery(managedTasksQuery(orgSlug));
 	const [manageProjectsTaskId, setManageProjectsTaskId] = useState<
 		string | null
 	>(null);
@@ -294,7 +299,9 @@ function TasksPage() {
 	const visible = showArchived ? tasks : tasks.filter((t) => !t.archivedAt);
 
 	const invalidate = () =>
-		queryClient.invalidateQueries({ queryKey: managedTasksQuery().queryKey });
+		queryClient.invalidateQueries({
+			queryKey: managedTasksQuery(orgSlug).queryKey,
+		});
 
 	const archiveMutation = useMutation({
 		mutationFn: (taskId: string) => archiveTask({ data: taskId }),

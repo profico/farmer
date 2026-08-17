@@ -23,6 +23,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { closeSheetQuery } from "#/queries/close.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -109,31 +110,33 @@ function AbsenceEditor({
 	month: number;
 	userId: string;
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const { data: entries } = useSuspenseQuery(
-		absenceForUserQuery({ userId, year, month }),
+		absenceForUserQuery(orgSlug, { userId, year, month }),
 	);
 	// The project-less list is every site built-in — the absence pair plus Break
 	// and Meeting — so it is narrowed here. This screen corrects absence and only
 	// absence: a PM may touch someone else's Vacation and Sick Leave, and nothing
 	// else of theirs.
 	const { data: projectlessTasks } = useSuspenseQuery(
-		tasksForProjectQuery(undefined),
+		tasksForProjectQuery(orgSlug, undefined),
 	);
 	const absenceTasks = projectlessTasks.filter((t) => t.isAbsence);
 
 	const invalidate = () =>
 		Promise.all([
 			queryClient.invalidateQueries({
-				queryKey: absenceForUserQuery({ userId, year, month }).queryKey,
+				queryKey: absenceForUserQuery(orgSlug, { userId, year, month })
+					.queryKey,
 			}),
 			// The close sheet recomputes its absence days (and Expected with them)
 			// from these entries.
 			queryClient.invalidateQueries({
-				queryKey: closeSheetQuery({ projectId, year, month }).queryKey,
+				queryKey: closeSheetQuery(orgSlug, { projectId, year, month }).queryKey,
 			}),
 			queryClient.invalidateQueries({
-				queryKey: [...queryKeys.reports, "absence"],
+				queryKey: [...queryKeys(orgSlug).reports, "absence"],
 			}),
 		]);
 

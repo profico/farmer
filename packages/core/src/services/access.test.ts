@@ -19,11 +19,17 @@
 //     live in the WHERE clause.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { client, project, projectMember } from "../db/schema/domain";
 import { createTestDb, type TestDb } from "../test/harness";
-import { Access, AccessError, accessService } from "./access.service";
+import {
+	Access,
+	AccessError,
+	accessService,
+	NotAMemberError,
+} from "./access.service";
 
 // ── The pure half: the capability matrix ────────────────────────────────────
 
@@ -413,23 +419,46 @@ describe("accessService.resolve", () => {
 	});
 
 	// The membership row is what makes someone an admin, and it is org-scoped.
-	// An admin of another organization must arrive here as nobody at all.
-	test("admin in another org is not an admin here, and carries no assignments", async () => {
-		const access = await accessService.resolve({
-			organizationId: ORG,
-			userId: "u-outsider",
-		});
-		expect(access.isAdmin).toBe(false);
-		expect(access.assignments()).toEqual([]);
+	// An admin of another organization must not arrive here as an admin.
+	//
+	// It used to resolve to "nobody" — isAdmin false, no assignments — which
+	// answers the project-level questions correctly and the prior question not
+	// at all. "Nobody" is still a caller: every org-wide read that only filters
+	// on organizationId (clients, tasks, org settings) served it happily. So a
+	// resolve for a non-member now refuses instead of describing them.
+	test("an admin of another org is refused, not described as nobody", async () => {
+		expect(
+			accessService.resolve({ organizationId: ORG, userId: "u-outsider" }),
+		).rejects.toBeInstanceOf(NotAMemberError);
 	});
 
-	test("a user with no membership at all resolves to nobody", async () => {
-		const access = await accessService.resolve({
+	test("a user with no membership at all is refused", async () => {
+		expect(
+			accessService.resolve({
+				organizationId: ORG,
+				userId: "u-does-not-exist",
+			}),
+		).rejects.toBeInstanceOf(NotAMemberError);
+	});
+
+	// The case the refusal is actually for: someone who WAS a member. Their
+	// session still names this organization — better-auth does not invalidate
+	// sessions when a membership is deleted — so their Ctx is indistinguishable
+	// from a current member's until this query runs.
+	test("a removed member is refused even though their Ctx still names the org", async () => {
+		await db.insert(member).values({
+			id: "m-transient",
 			organizationId: ORG,
-			userId: "u-does-not-exist",
+			userId: "u-outsider",
+			role: "member",
+			createdAt: new Date(),
 		});
-		expect(access.isAdmin).toBe(false);
-		expect(access.roleOn(projectAId)).toBeNull();
+		const ctx = { organizationId: ORG, userId: "u-outsider" };
+		expect((await accessService.resolve(ctx)).isAdmin).toBe(false);
+
+		await db.delete(member).where(eq(member.id, "m-transient"));
+
+		expect(accessService.resolve(ctx)).rejects.toBeInstanceOf(NotAMemberError);
 	});
 
 	// An inactive assignment keeps the person on historical close sheets but

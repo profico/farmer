@@ -6,14 +6,22 @@ import {
 } from "#/server/not-on-invoice.ts";
 import { queryKeys } from "./keys.ts";
 
-export const notOnInvoiceReportQuery = (input: NotOnInvoiceReportInput) =>
+export const notOnInvoiceReportQuery = (
+	org: string,
+	input: NotOnInvoiceReportInput,
+) =>
 	queryOptions({
-		queryKey: [...queryKeys.notOnInvoice, "report", input.year, input.month],
+		queryKey: [
+			...queryKeys(org).notOnInvoice,
+			"report",
+			input.year,
+			input.month,
+		],
 		queryFn: () => getNotOnInvoiceReport({ data: input }),
 	});
 
-export const notOnInvoiceStatusOptionsQuery = () =>
+export const notOnInvoiceStatusOptionsQuery = (org: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.notOnInvoice, "status-options"],
+		queryKey: [...queryKeys(org).notOnInvoice, "status-options"],
 		queryFn: () => listNotOnInvoiceStatusOptions(),
 	});

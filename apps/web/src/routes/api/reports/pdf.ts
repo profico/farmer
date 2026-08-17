@@ -1,6 +1,6 @@
 import { monthReportInput } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
-import { resolveApiOrgContext } from "#/server/auth.ts";
+import { resolveApiOrgContext } from "#/server/api-auth.ts";
 
 // Session-cookie authed (not api/v1): this exists for the "Download PDF"
 // button on the reports page, so a plain <a href> navigation downloads it.

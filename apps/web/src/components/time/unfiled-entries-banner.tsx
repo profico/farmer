@@ -19,11 +19,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { queryKeys } from "#/queries/keys.ts";
-import { projectsQuery } from "#/queries/projects.ts";
+import { myProjectsQuery } from "#/queries/projects.ts";
 import { unfiledEntriesQuery } from "#/queries/time-entries.ts";
 import { fileTimeEntries } from "#/server/time-entries.ts";
 
@@ -48,11 +49,12 @@ const shiftKey = (key: string, days: number) => {
 };
 
 export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const from = shiftKey(todayKey, -NAG_DAYS_BACK);
 
 	const { data: entries } = useQuery({
-		...unfiledEntriesQuery(from, todayKey),
+		...unfiledEntriesQuery(orgSlug, from, todayKey),
 		staleTime: 60_000,
 	});
 
@@ -162,12 +164,23 @@ function FileEntriesDialog({
 	from: string;
 	to: string;
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const { data: entries } = useQuery({
-		...unfiledEntriesQuery(from, to),
+		...unfiledEntriesQuery(orgSlug, from, to),
 		enabled: open,
 	});
-	const { data: projects } = useQuery({ ...projectsQuery(), enabled: open });
+	// `myProjectsQuery`, not `projectsQuery`: this dropdown is a "file this time
+	// against" picker, and the write behind it (`timeEntriesService.update`)
+	// asserts `canTrackOn`. Listing every project in the organization offered
+	// choices the server was always going to refuse — pick one you are not
+	// assigned to and filing failed with "You are not assigned to this project".
+	// Every other entry picker in the app (add-block, add-row) already asks this
+	// question this way.
+	const { data: projects } = useQuery({
+		...myProjectsQuery(orgSlug),
+		enabled: open,
+	});
 
 	// Archived projects are dormant: you don't file new time against one.
 	const items = (projects ?? [])
@@ -212,7 +225,7 @@ function FileEntriesDialog({
 			}),
 		onSuccess: async ({ filed, failed, firstError }) => {
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 			setSelectedIds(new Set());
 			if (failed > 0) {

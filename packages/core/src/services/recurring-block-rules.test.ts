@@ -25,12 +25,14 @@ import { member, organization, user } from "../db/schema/auth";
 import {
 	client,
 	project,
+	projectMember,
 	projectTask,
 	recurringBlockRule,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
 import { createTestDb, type TestDb } from "../test/harness";
+import { AccessError } from "./access.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
@@ -348,5 +350,101 @@ describe("the break needs no project", () => {
 		expect(names).toContain("Sick Leave");
 		// Still not everything: an org's own tasks belong to a project.
 		expect(names).not.toContain("Development");
+	});
+});
+
+// A rule is a time-entry factory — `materializeRange` inserts straight into
+// `timeEntry` — so it has to pass the same assignment gate a hand-made entry
+// does. It did not: `assertTaskAvailable` was the only check, and that asks
+// whether the TASK suits the project, not whether the author has any business
+// writing to it. So a rule naming any project in the organization saved happily
+// and then materialized real hours onto it, which is the exact write
+// `timeEntriesService.create` refuses with "You are not assigned to this
+// project".
+//
+// The fixture's main user is an owner, and an admin may track on everything, so
+// these run as a plain member — the only role that can tell the two checks
+// apart.
+describe("the assignment gate on a rule that names a project", () => {
+	const OUTSIDER = "user-recurring-outsider";
+	const outsiderCtx = (): Ctx => ({
+		organizationId: ORG_ID,
+		userId: OUTSIDER,
+	});
+
+	const ruleOnProject = (who: Ctx) =>
+		recurringBlockRulesService.create(who, {
+			taskId: devTaskId,
+			projectId,
+			daysOfWeek: WEEKDAYS,
+			duration: "1h",
+			description: "Dev",
+		});
+
+	beforeAll(async () => {
+		await db.insert(user).values({
+			id: OUTSIDER,
+			name: "Outsider",
+			email: "outsider@example.com",
+			emailVerified: true,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await db.insert(member).values({
+			id: "member-recurring-outsider",
+			organizationId: ORG_ID,
+			userId: OUTSIDER,
+			role: "member",
+			createdAt: new Date(),
+		});
+	});
+
+	test("a member not assigned to the project is refused", async () => {
+		expect(ruleOnProject(outsiderCtx())).rejects.toBeInstanceOf(AccessError);
+	});
+
+	test("the same member is allowed once assigned", async () => {
+		await db.insert(projectMember).values({
+			organizationId: ORG_ID,
+			projectId,
+			userId: OUTSIDER,
+			role: "member",
+		});
+
+		const rule = await ruleOnProject(outsiderCtx());
+		expect(rule.projectId).toBe(projectId);
+
+		await db.delete(projectMember).where(eq(projectMember.userId, OUTSIDER));
+	});
+
+	// Repointing an existing rule is the same write by a slower route, so the
+	// check belongs on update too — a rule created project-less and then edited
+	// would otherwise walk straight past it.
+	test("repointing a project-less rule at a project is refused too", async () => {
+		const rule = await recurringBlockRulesService.create(outsiderCtx(), {
+			taskId: breakTaskId,
+			daysOfWeek: WEEKDAYS,
+			duration: "30m",
+			description: "Break",
+		});
+
+		expect(
+			recurringBlockRulesService.update(outsiderCtx(), {
+				ruleId: rule.id,
+				projectId,
+			}),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	// A rule with no project is the common case (every break), and must stay
+	// unaffected by the gate.
+	test("a project-less rule is unaffected", async () => {
+		const rule = await recurringBlockRulesService.create(outsiderCtx(), {
+			taskId: breakTaskId,
+			daysOfWeek: WEEKDAYS,
+			duration: "30m",
+			description: "Break",
+		});
+		expect(rule.projectId).toBeNull();
 	});
 });

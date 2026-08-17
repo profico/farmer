@@ -49,6 +49,7 @@ import {
 } from "#/components/ui/select.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import {
@@ -139,9 +140,10 @@ export function AddBlockDialog({
 	entry?: ExistingTimeEntry;
 	trigger: React.ReactElement;
 }) {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
-	const { data: projects } = useSuspenseQuery(myProjectsQuery());
+	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
 
 	const defaultDate =
 		entry?.date ?? defaultDateProp ?? dateOptions[0]?.value ?? "";
@@ -178,7 +180,10 @@ export function AddBlockDialog({
 	// tasks — so it can't be resolved until a project is chosen, and switching
 	// project may invalidate the current pick.
 	const { data: tasks = [] } = useQuery({
-		...tasksForProjectQuery(projectId === NO_PROJECT ? undefined : projectId),
+		...tasksForProjectQuery(
+			orgSlug,
+			projectId === NO_PROJECT ? undefined : projectId,
+		),
 		enabled: open,
 	});
 	const selectedTask = tasks.find((t) => t.id === taskId);
@@ -217,7 +222,7 @@ export function AddBlockDialog({
 		snappedSeconds !== parsedSeconds;
 
 	const { data: dayEntries } = useQuery({
-		...timeEntriesRangeQuery(targetDate, targetDate),
+		...timeEntriesRangeQuery(orgSlug, targetDate, targetDate),
 		enabled: open && !entry,
 	});
 
@@ -233,23 +238,23 @@ export function AddBlockDialog({
 	}, [dayHasFill, form]);
 
 	const { data: githubStatus } = useQuery({
-		...githubConnectionStatusQuery(),
+		...githubConnectionStatusQuery(orgSlug),
 		enabled: open,
 	});
 	const { data: googleStatus } = useQuery({
-		...googleCalendarStatusQuery(),
+		...googleCalendarStatusQuery(orgSlug),
 		enabled: open,
 	});
 	const { data: linkedRepos } = useQuery({
-		...projectGithubReposQuery(projectId),
+		...projectGithubReposQuery(orgSlug, projectId),
 		enabled: open && projectId !== NO_PROJECT,
 	});
 	const { data: attachedCommits } = useQuery({
-		...attachedCommitsQuery(entry?.id ?? ""),
+		...attachedCommitsQuery(orgSlug, entry?.id ?? ""),
 		enabled: open && !!entry,
 	});
 	const { data: integrationSettings } = useQuery({
-		...integrationSettingsQuery(),
+		...integrationSettingsQuery(orgSlug),
 		enabled: open,
 	});
 	const autoLoadCommits = !!integrationSettings?.githubAutoLoadCommits;
@@ -278,7 +283,7 @@ export function AddBlockDialog({
 	// relevant — no "Find commits" click. When off, the manual mutation below is
 	// the only source and this query stays disabled.
 	const suggestedCommitsQ = useQuery({
-		...suggestedCommitsQuery(projectId, targetDate),
+		...suggestedCommitsQuery(orgSlug, projectId, targetDate),
 		enabled: open && showCommitPicker && autoLoadCommits,
 	});
 
@@ -317,7 +322,7 @@ export function AddBlockDialog({
 		onSuccess: async () => {
 			if (!entry) return;
 			await queryClient.invalidateQueries({
-				queryKey: attachedCommitsQuery(entry.id).queryKey,
+				queryKey: attachedCommitsQuery(orgSlug, entry.id).queryKey,
 			});
 		},
 		onError: (error) => {
@@ -341,7 +346,7 @@ export function AddBlockDialog({
 	// Auto-load the day's meetings the moment the picker becomes relevant (the
 	// Meeting task on a connected account) — no "Load meetings" click.
 	const calendarEventsQ = useQuery({
-		...calendarEventsForDayQuery(targetDate),
+		...calendarEventsForDayQuery(orgSlug, targetDate),
 		enabled: open && showCalendarPicker,
 	});
 	const calendarEvents = calendarEventsQ.data ?? [];
@@ -452,11 +457,11 @@ export function AddBlockDialog({
 				}
 			}
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 			if (!entry) {
 				await queryClient.invalidateQueries({
-					queryKey: recurringBlockRulesQuery().queryKey,
+					queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
 				});
 			}
 			setOpen(false);

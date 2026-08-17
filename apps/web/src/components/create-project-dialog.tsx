@@ -37,6 +37,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
@@ -120,10 +121,11 @@ const EMPTY: z.infer<typeof formSchema> = {
 };
 
 export function CreateProjectDialog() {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
-	const { data: clients } = useSuspenseQuery(clientsQuery());
-	const { data: allTasks } = useSuspenseQuery(selectableTasksQuery());
+	const { data: clients } = useSuspenseQuery(clientsQuery(orgSlug));
+	const { data: allTasks } = useSuspenseQuery(selectableTasksQuery(orgSlug));
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
 		defaultValues: EMPTY,
@@ -179,7 +181,7 @@ export function CreateProjectDialog() {
 			}),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: projectsQuery().queryKey,
+				queryKey: projectsQuery(orgSlug).queryKey,
 			});
 			setOpen(false);
 			form.reset(EMPTY);

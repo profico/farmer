@@ -36,17 +36,17 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 
 	// A dismissed user never pays for these fetches (both hit external APIs).
 	const github = useQuery({
-		...githubConnectionStatusQuery(),
+		...githubConnectionStatusQuery(orgSlug),
 		enabled: !dismissed,
 		staleTime: 5 * 60_000,
 	});
 	const google = useQuery({
-		...googleCalendarStatusQuery(),
+		...googleCalendarStatusQuery(orgSlug),
 		enabled: !dismissed,
 		staleTime: 5 * 60_000,
 	});
 	const settings = useQuery({
-		...integrationSettingsQuery(),
+		...integrationSettingsQuery(orgSlug),
 		enabled: !dismissed,
 		staleTime: 5 * 60_000,
 	});

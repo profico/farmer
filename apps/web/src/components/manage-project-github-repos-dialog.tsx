@@ -47,15 +47,15 @@ export function ManageProjectGithubReposDialog({
 	}, [open]);
 
 	const { data: status } = useQuery({
-		...githubConnectionStatusQuery(),
+		...githubConnectionStatusQuery(orgSlug),
 		enabled: open,
 	});
 	const { data: linkedRepos } = useQuery({
-		...projectGithubReposQuery(projectId ?? ""),
+		...projectGithubReposQuery(orgSlug, projectId ?? ""),
 		enabled: open && !!projectId,
 	});
 	const { data: availableRepos } = useQuery({
-		...availableGithubReposQuery(),
+		...availableGithubReposQuery(orgSlug),
 		enabled: open && !!projectId && !!status?.connected,
 	});
 
@@ -70,7 +70,7 @@ export function ManageProjectGithubReposDialog({
 			}),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: projectGithubReposQuery(projectId ?? "").queryKey,
+				queryKey: projectGithubReposQuery(orgSlug, projectId ?? "").queryKey,
 			});
 		},
 		onError: (error) => {
@@ -83,7 +83,7 @@ export function ManageProjectGithubReposDialog({
 			unlinkProjectGithubRepo({ data: projectGithubRepoId }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: projectGithubReposQuery(projectId ?? "").queryKey,
+				queryKey: projectGithubReposQuery(orgSlug, projectId ?? "").queryKey,
 			});
 		},
 		onError: (error) => {

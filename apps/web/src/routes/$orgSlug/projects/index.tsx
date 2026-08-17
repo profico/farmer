@@ -31,6 +31,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn, getInitials } from "#/lib/utils.ts";
@@ -43,18 +44,19 @@ type StatusFilter = "all" | "active" | "archived";
 const MAX_AVATARS_SHOWN = 4;
 
 export const Route = createFileRoute("/$orgSlug/projects/")({
-	loader: ({ context }) =>
+	loader: ({ context, params }) =>
 		Promise.all([
-			context.queryClient.ensureQueryData(projectsQuery()),
-			context.queryClient.ensureQueryData(clientsQuery()),
+			context.queryClient.ensureQueryData(projectsQuery(params.orgSlug)),
+			context.queryClient.ensureQueryData(clientsQuery(params.orgSlug)),
 		]),
 	component: ProjectsPage,
 });
 
 function ProjectsPage() {
+	const orgSlug = useOrgSlug();
 	const { organization, role } = Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
-	const { data: projects } = useSuspenseQuery(projectsQuery());
+	const { data: projects } = useSuspenseQuery(projectsQuery(orgSlug));
 	const queryClient = useQueryClient();
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -68,7 +70,9 @@ function ProjectsPage() {
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 
 	const invalidateProjects = () =>
-		queryClient.invalidateQueries({ queryKey: projectsQuery().queryKey });
+		queryClient.invalidateQueries({
+			queryKey: projectsQuery(orgSlug).queryKey,
+		});
 
 	const archiveMutation = useMutation({
 		mutationFn: (projectId: string) => archiveProject({ data: projectId }),

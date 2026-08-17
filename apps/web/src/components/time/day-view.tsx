@@ -73,7 +73,7 @@ export function DayView({
 			copyTimeEntriesDay({ data: { fromDate: previousDay, toDate: date } }),
 		onSuccess: async (result) => {
 			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys.timeEntries],
+				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 			// `skipped` is what the copy already found here — say so rather than
 			// reporting "Copied 0" for a second click, which reads like a failure.

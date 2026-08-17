@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Input } from "#/components/ui/input.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
 import { workingHoursQuery } from "#/queries/working-hours.ts";
 import { upsertWorkingHoursDay } from "#/server/working-hours.ts";
@@ -32,6 +33,7 @@ const minutesOf = (time: string): number => {
 };
 
 export function WorkingHoursRow({ day }: { day: WorkingHoursDay }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const [startTime, setStartTime] = useState(day.startTime ?? "09:00");
 	const [endTime, setEndTime] = useState(day.endTime ?? "17:00");
@@ -56,7 +58,9 @@ export function WorkingHoursRow({ day }: { day: WorkingHoursDay }) {
 				},
 			}),
 		onSuccess: () =>
-			queryClient.invalidateQueries({ queryKey: workingHoursQuery().queryKey }),
+			queryClient.invalidateQueries({
+				queryKey: workingHoursQuery(orgSlug).queryKey,
+			}),
 		onError: (error) => {
 			toast.error(error.message ?? "Could not update working hours");
 		},

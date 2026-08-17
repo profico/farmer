@@ -4,16 +4,18 @@ import { EditWeeklyTargetDialog } from "#/components/edit-weekly-target-dialog.t
 import { Unit } from "#/components/ui/metric.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { WorkingHoursRow } from "#/components/working-hours-row.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import {
 	weeklyTargetQuery,
 	workingHoursQuery,
 } from "#/queries/working-hours.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/my-schedule")({
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		await Promise.all([
-			context.queryClient.ensureQueryData(workingHoursQuery()),
-			context.queryClient.ensureQueryData(weeklyTargetQuery()),
+			context.queryClient.ensureQueryData(workingHoursQuery(orgSlug)),
+			context.queryClient.ensureQueryData(weeklyTargetQuery(orgSlug)),
 		]);
 	},
 	component: MySchedulePage,
@@ -25,9 +27,10 @@ export const Route = createFileRoute("/$orgSlug/settings/my-schedule")({
 const MON_FIRST_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 function MySchedulePage() {
+	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
-	const { data: days } = useSuspenseQuery(workingHoursQuery());
-	const { data: targetSeconds } = useSuspenseQuery(weeklyTargetQuery());
+	const { data: days } = useSuspenseQuery(workingHoursQuery(orgSlug));
+	const { data: targetSeconds } = useSuspenseQuery(weeklyTargetQuery(orgSlug));
 
 	const orderedDays = MON_FIRST_ORDER.map((dayOfWeek) =>
 		days.find((d) => d.dayOfWeek === dayOfWeek),

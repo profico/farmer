@@ -16,6 +16,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { getInitials } from "#/lib/utils.ts";
 import { supportedCountriesQuery } from "#/queries/holidays.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -39,20 +40,26 @@ export const Route = createFileRoute("/$orgSlug/settings/organization")({
 	beforeLoad: async () => {
 		await requireOrgAdmin();
 	},
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		await Promise.all([
-			context.queryClient.ensureQueryData(orgSettingsQuery()),
-			context.queryClient.ensureQueryData(supportedCountriesQuery()),
-			context.queryClient.ensureQueryData(orgPolicySettingsQuery()),
-			context.queryClient.ensureQueryData(notOnInvoiceStatusOptionsQuery()),
+			context.queryClient.ensureQueryData(orgSettingsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(supportedCountriesQuery(orgSlug)),
+			context.queryClient.ensureQueryData(orgPolicySettingsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(
+				notOnInvoiceStatusOptionsQuery(orgSlug),
+			),
 		]);
 	},
 	component: OrganizationSettingsPage,
 });
 
 function OrganizationSettingsPage() {
-	const { data: settings } = useSuspenseQuery(orgSettingsQuery());
-	const { data: countries } = useSuspenseQuery(supportedCountriesQuery());
+	const orgSlug = useOrgSlug();
+	const { data: settings } = useSuspenseQuery(orgSettingsQuery(orgSlug));
+	const { data: countries } = useSuspenseQuery(
+		supportedCountriesQuery(orgSlug),
+	);
 	const queryClient = useQueryClient();
 	const router = useRouter();
 
@@ -65,9 +72,11 @@ function OrganizationSettingsPage() {
 		onSuccess: async () => {
 			await Promise.all([
 				queryClient.invalidateQueries({
-					queryKey: orgSettingsQuery().queryKey,
+					queryKey: orgSettingsQuery(orgSlug).queryKey,
 				}),
-				queryClient.invalidateQueries({ queryKey: [...queryKeys.holidays] }),
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).holidays],
+				}),
 			]);
 			// The sidebar/switcher read the org (name + logo) from route context,
 			// resolved in the layout's beforeLoad — re-run it so a change shows
@@ -231,17 +240,20 @@ function OrganizationSettingsPage() {
  * reading correctly, which a delete would break.
  */
 function NotOnInvoiceStatusSection() {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
-	const { data: options } = useSuspenseQuery(notOnInvoiceStatusOptionsQuery());
+	const { data: options } = useSuspenseQuery(
+		notOnInvoiceStatusOptionsQuery(orgSlug),
+	);
 	const [label, setLabel] = useState("");
 
 	const invalidate = () =>
 		Promise.all([
 			queryClient.invalidateQueries({
-				queryKey: notOnInvoiceStatusOptionsQuery().queryKey,
+				queryKey: notOnInvoiceStatusOptionsQuery(orgSlug).queryKey,
 			}),
 			queryClient.invalidateQueries({
-				queryKey: [...queryKeys.notOnInvoice],
+				queryKey: [...queryKeys(orgSlug).notOnInvoice],
 			}),
 		]);
 
@@ -370,8 +382,9 @@ function StatusLabelInput({
 // decisions, and making them configurable invites every org to tune them until
 // the reports stop being comparable.
 function CompliancePolicySection() {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
-	const { data: policy } = useSuspenseQuery(orgPolicySettingsQuery());
+	const { data: policy } = useSuspenseQuery(orgPolicySettingsQuery(orgSlug));
 	const [days, setDays] = useState(String(policy.complianceMissingDays));
 
 	const mutation = useMutation({
@@ -380,9 +393,11 @@ function CompliancePolicySection() {
 		onSuccess: async () => {
 			await Promise.all([
 				queryClient.invalidateQueries({
-					queryKey: orgPolicySettingsQuery().queryKey,
+					queryKey: orgPolicySettingsQuery(orgSlug).queryKey,
 				}),
-				queryClient.invalidateQueries({ queryKey: [...queryKeys.compliance] }),
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).compliance],
+				}),
 			]);
 			toast.success("Compliance policy saved");
 		},
@@ -451,8 +466,9 @@ function CompliancePolicySection() {
 // hence the copy below, which has to be specific or it reads like a freeze on
 // everything.
 function AutomationLockSection() {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
-	const { data: policy } = useSuspenseQuery(orgPolicySettingsQuery());
+	const { data: policy } = useSuspenseQuery(orgPolicySettingsQuery(orgSlug));
 	const [value, setValue] = useState(policy.automationLockedThrough ?? "");
 
 	const mutation = useMutation({
@@ -460,7 +476,7 @@ function AutomationLockSection() {
 			updateOrgPolicySettings({ data: { automationLockedThrough } }),
 		onSuccess: async (_result, submitted) => {
 			await queryClient.invalidateQueries({
-				queryKey: orgPolicySettingsQuery().queryKey,
+				queryKey: orgPolicySettingsQuery(orgSlug).queryKey,
 			});
 			toast.success(
 				submitted

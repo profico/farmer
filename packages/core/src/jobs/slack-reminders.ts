@@ -121,7 +121,7 @@ export const runSlackRemindersOnce =
 				if (!isReminderDay && !isMonthEnd) continue;
 
 				const [{ noEntries, behindPace }, settings] = await Promise.all([
-					complianceService.dashboard(ctx, { skipAdminCheck: true }),
+					complianceService.dashboardForReminderJob(ctx),
 					orgSettingsService.get(ctx),
 				]);
 

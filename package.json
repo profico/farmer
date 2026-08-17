@@ -19,6 +19,7 @@
 		"db:check": "turbo run db:check",
 		"db:studio": "turbo run db:studio",
 		"test": "turbo run test",
+		"typecheck": "turbo run typecheck",
 		"lint": "biome lint",
 		"format": "biome format --write",
 		"check": "biome check"

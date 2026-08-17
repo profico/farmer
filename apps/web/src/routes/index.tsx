@@ -19,6 +19,9 @@ import { MotionConfig } from "motion/react";
 import { getSession } from "#/server/auth.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
+// Marketing-only styles, every rule scoped under `.fm-landing`. See the header
+// of that file for why it is a stylesheet rather than the inline <style> it was.
+import "./landing.css";
 
 export const Route = createFileRoute("/")({
 	// Public marketing homepage — rendered for everyone, signed in or not (no
@@ -81,74 +84,6 @@ function DashButton({
 		</Link>
 	);
 }
-
-// Scoped landing-page styles. Kept in an inline <style> (no `precedence`, so
-// React unmounts it with the route) rather than in the global stylesheet, so
-// these marketing-only helpers and the smooth-scroll behaviour don't leak into
-// the dense product UI.
-//
-// The colour literals below are the product's own tokens (styles.css), spelled
-// out rather than read through `var(--…)` because this page deliberately does
-// not inherit the app theme — but they are the same values, so the landing and
-// the app read as one product: --bg #faf9f6, --ground #efece5, --bg2 #f4f2ed,
-// --fg #1b1a17, --mut #79736a, --faint #a9a296, --line rgba(27,26,23,.11),
-// --line2 rgba(27,26,23,.055), --sel rgba(27,26,23,.045), --acc #6f4ebe.
-const landingCss = `
-.fm-landing{background:#faf9f6;color:#1b1a17;font-family:'Instrument Sans',system-ui,sans-serif;line-height:1.5;overflow-x:hidden;min-height:100vh;user-select:none;cursor:default}
-.fm-landing *{box-sizing:border-box;cursor:default}
-.fm-landing a,.fm-landing button,.fm-landing [role="button"]{cursor:pointer}
-.fm-landing .self-host-card{text-decoration:none;color:inherit}
-.fm-landing .self-host-card:hover .u-link::after{transform:scaleX(1)}
-.fm-landing ::selection{background:rgba(27,26,23,.045)}
-.fm-landing .fm-serif{font-family:'Instrument Serif',Georgia,serif;font-weight:400;letter-spacing:.01em}
-html:has(.fm-landing){scroll-behavior:smooth}
-.fm-landing .u-link{position:relative;color:#1b1a17;text-decoration:none}
-.fm-landing .u-link::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:1px;background:currentColor;transform:scaleX(0);transform-origin:left;transition:transform .25s}
-.fm-landing .u-link:hover::after{transform:scaleX(1)}
-
-/* The product's Button (components/ui/button.tsx), transcribed: the same 32px
-   height, 5px corner, 13px medium label and single violet fill. One button, used
-   everywhere a CTA appears — header and body — so the page's main action looks
-   like the action it leads to rather than a marketing pill. */
-.fm-landing .fm-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px 0 12px;border:1px solid transparent;border-radius:5px;background:#6f4ebe;color:#faf9f6;font:500 13px/1 'Instrument Sans',sans-serif;text-decoration:none;white-space:nowrap;transition:background-color .15s,border-color .15s,color .15s,transform .15s}
-.fm-landing .fm-btn:has([data-icon="inline-start"]){padding:0 12px 0 10px}
-.fm-landing .fm-btn:hover{background:color-mix(in srgb,#6f4ebe 86%,#1b1a17)}
-.fm-landing .fm-btn:active{transform:scale(.985)}
-.fm-landing .fm-btn-outline{background:transparent;color:#1b1a17;border-color:rgba(27,26,23,.11)}
-.fm-landing .fm-btn-outline:hover{background:rgba(27,26,23,.045);border-color:rgba(121,115,106,.6)}
-
-/* The app's .eyebrow and .mono, at the reduced sizes the UI mock is drawn to. */
-.fm-landing .fm-eyebrow{font:400 9.5px/1 'Instrument Sans',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#a9a296}
-.fm-landing .fm-mono{font-family:'Geist Mono',ui-monospace,monospace;font-weight:400;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-
-/* ---- Mobile ------------------------------------------------------------
-   The layout is built with fixed-pixel inline styles, so the responsive
-   overrides live here and win with !important. Breakpoint at 768px. */
-@media (max-width:768px){
-  .fm-landing .fm-header-inner{padding:14px 20px !important}
-  .fm-landing .fm-nav{gap:16px !important}
-  .fm-landing .fm-nav-section{display:none !important}
-  .fm-landing .fm-hero{padding:52px 20px 28px !important}
-  .fm-landing .fm-hero-title{font-size:46px !important}
-  .fm-landing .fm-hero-sub{font-size:16px !important}
-  .fm-landing .fm-hero-cta{flex-direction:column !important;gap:16px !important}
-  .fm-landing .fm-appwindow-section{padding:0 20px !important}
-  .fm-landing .fm-preview-sidebar{display:none !important}
-  .fm-landing .fm-preview-body{height:auto !important}
-  .fm-landing .fm-preview-split{flex-direction:column !important}
-  .fm-landing .fm-preview-col{width:auto !important;border-right:0 !important;border-bottom:1px solid rgba(27,26,23,.11)}
-  .fm-landing .fm-features-section{padding:72px 20px 0 !important}
-  .fm-landing .fm-section-title{font-size:34px !important}
-  .fm-landing .fm-bento{grid-template-columns:1fr !important;grid-auto-rows:auto !important}
-  .fm-landing .fm-tile-lg,.fm-landing .fm-tile-wide{grid-column:auto !important;grid-row:auto !important}
-  .fm-landing .fm-tile-wide-body{min-height:200px}
-  .fm-landing .fm-os-section{padding:72px 20px 0 !important}
-  .fm-landing .fm-os-title{font-size:40px !important}
-  .fm-landing .fm-os-actions{width:100%;flex-direction:column !important;align-items:stretch}
-  .fm-landing .fm-hero-cta .fm-btn,.fm-landing .fm-os-actions .fm-btn{width:100%}
-  .fm-landing .fm-footer-inner{padding:26px 20px !important}
-}
-`;
 
 // ---- App-preview mock data -------------------------------------------------
 
@@ -231,11 +166,6 @@ function Home() {
 	return (
 		<MotionConfig reducedMotion="user">
 			<div className="fm-landing">
-				<style
-					// biome-ignore lint/security/noDangerouslySetInnerHtml: static, self-authored CSS
-					dangerouslySetInnerHTML={{ __html: landingCss }}
-				/>
-
 				{/* ============ HEADER ============ */}
 				{/* Painted with the page's own paper rather than a translucent wash of
 				    a slightly different white — the tint used to show as a seam across

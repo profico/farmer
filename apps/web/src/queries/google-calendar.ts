@@ -5,14 +5,14 @@ import {
 } from "#/server/google-calendar.ts";
 import { queryKeys } from "./keys.ts";
 
-export const googleCalendarStatusQuery = () =>
+export const googleCalendarStatusQuery = (org: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.googleCalendar, "connection-status"],
+		queryKey: [...queryKeys(org).googleCalendar, "connection-status"],
 		queryFn: () => getGoogleCalendarStatus(),
 	});
 
-export const calendarEventsForDayQuery = (date: string) =>
+export const calendarEventsForDayQuery = (org: string, date: string) =>
 	queryOptions({
-		queryKey: [...queryKeys.googleCalendar, "events", date],
+		queryKey: [...queryKeys(org).googleCalendar, "events", date],
 		queryFn: () => listCalendarEventsForDay({ data: { date } }),
 	});

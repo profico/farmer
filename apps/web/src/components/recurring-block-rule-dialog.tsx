@@ -34,8 +34,9 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
-import { projectsQuery } from "#/queries/projects.ts";
+import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
 import {
@@ -92,9 +93,15 @@ function RecurringBlockRuleDialog({
 	rule?: EditableRecurringBlockRule;
 	trigger: React.ReactElement;
 }) {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
-	const { data: projects } = useSuspenseQuery(projectsQuery());
+	// A recurring block writes a time entry onto every matching day, so this is
+	// an "I may log time here" picker like the others — `myProjectsQuery`, not
+	// the org-wide list. Offering an unassigned project here failed later and
+	// less visibly than in the add-entry dialogs: the rule saved, then wrote
+	// nothing.
+	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
 
 	const defaults: FormValues = rule
 		? {
@@ -122,7 +129,10 @@ function RecurringBlockRuleDialog({
 	// The task list follows the chosen project — tasks are a global taxonomy that
 	// each project cherry-picks from.
 	const { data: taskOptions = [] } = useSuspenseQuery(
-		tasksForProjectQuery(projectId === NO_PROJECT ? undefined : projectId),
+		tasksForProjectQuery(
+			orgSlug,
+			projectId === NO_PROJECT ? undefined : projectId,
+		),
 	);
 
 	// A rule's own task is pinned into its options while the project is unchanged,
@@ -182,7 +192,7 @@ function RecurringBlockRuleDialog({
 		},
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
-				queryKey: recurringBlockRulesQuery().queryKey,
+				queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
 			});
 			setOpen(false);
 			if (!rule) form.reset();

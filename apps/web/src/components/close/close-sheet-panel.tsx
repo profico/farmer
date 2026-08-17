@@ -18,6 +18,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { closeOverviewQuery, closeSheetQuery } from "#/queries/close.ts";
@@ -170,18 +171,19 @@ export function CloseSheetPanel({
 	year: number;
 	month: number;
 }) {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const { data: sheet } = useSuspenseQuery(
-		closeSheetQuery({ projectId, year, month }),
+		closeSheetQuery(orgSlug, { projectId, year, month }),
 	);
 
 	const invalidate = () =>
 		Promise.all([
 			queryClient.invalidateQueries({
-				queryKey: closeSheetQuery({ projectId, year, month }).queryKey,
+				queryKey: closeSheetQuery(orgSlug, { projectId, year, month }).queryKey,
 			}),
 			queryClient.invalidateQueries({
-				queryKey: closeOverviewQuery({ year, month }).queryKey,
+				queryKey: closeOverviewQuery(orgSlug, { year, month }).queryKey,
 			}),
 		]);
 

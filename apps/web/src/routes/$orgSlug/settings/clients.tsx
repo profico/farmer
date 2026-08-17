@@ -38,6 +38,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { allClientsQuery } from "#/queries/clients.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -48,16 +49,18 @@ import {
 } from "#/server/clients.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/clients")({
-	loader: async ({ context }) => {
+	loader: async ({ context, params }) => {
+		const orgSlug = params.orgSlug;
 		await Promise.all([
-			context.queryClient.ensureQueryData(allClientsQuery()),
-			context.queryClient.ensureQueryData(myAccessQuery()),
+			context.queryClient.ensureQueryData(allClientsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(myAccessQuery(orgSlug)),
 		]);
 	},
 	component: ClientsPage,
 });
 
 function CreateClientDialog() {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof createClientInput>>({
@@ -69,7 +72,9 @@ function CreateClientDialog() {
 		mutationFn: (data: z.infer<typeof createClientInput>) =>
 			createClient({ data }),
 		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: [...queryKeys.clients] });
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).clients],
+			});
 			setOpen(false);
 			form.reset({ name: "" });
 		},
@@ -114,12 +119,15 @@ function CreateClientDialog() {
 }
 
 function ClientsPage() {
+	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
-	const { data: clients } = useSuspenseQuery(allClientsQuery());
-	const { data: access } = useSuspenseQuery(myAccessQuery());
+	const { data: clients } = useSuspenseQuery(allClientsQuery(orgSlug));
+	const { data: access } = useSuspenseQuery(myAccessQuery(orgSlug));
 
 	const invalidate = () =>
-		queryClient.invalidateQueries({ queryKey: [...queryKeys.clients] });
+		queryClient.invalidateQueries({
+			queryKey: [...queryKeys(orgSlug).clients],
+		});
 
 	const archive = useMutation({
 		mutationFn: (clientId: string) => archiveClient({ data: clientId }),

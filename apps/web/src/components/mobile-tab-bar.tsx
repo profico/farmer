@@ -48,7 +48,7 @@ export function MobileTabBar({
 
 	// Same rationale as AppSidebar: not a suspense query. The close sheet is
 	// gated on a per-project PM role, which the org role can't tell us.
-	const { data: access } = useQuery(myAccessQuery());
+	const { data: access } = useQuery(myAccessQuery(orgSlug));
 	const canClose = isAdmin || !!access?.isPmSomewhere;
 	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
 

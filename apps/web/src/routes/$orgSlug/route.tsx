@@ -1,31 +1,37 @@
-import type { QueryClient } from "@tanstack/react-query";
-import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { AppSidebar } from "#/components/app-sidebar.tsx";
 import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
 import { AppShellLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { SidebarInset, SidebarProvider } from "#/components/ui/sidebar.tsx";
-import { getMyRole, requireSession } from "#/server/auth.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
-import { setActiveOrgBySlug } from "#/server/organization.ts";
+import { enterOrganization } from "#/server/organization.ts";
 
-// Query keys are org-blind (["projects"], ["time-entries", from, to], …), so
-// the cache must not survive a workspace switch — it would serve the previous
-// org's data under the new org. The org the cache belongs to is stamped onto
-// the QueryClient instance itself, not a module variable: route code-splitting
-// compiles `component` into a separate module from the rest of the route
-// options, so a module-level variable here would be two disconnected copies.
-// OrgLayout seeds the stamp on hydration (beforeLoad doesn't re-run on the
-// client for the SSR'd initial match); beforeLoad then compares and clears on
-// later navigations, before the new org's loaders repopulate the cache. On the
-// server each SSR request gets a fresh QueryClient, so no stamp survives
-// between requests there.
-type OrgStampedQueryClient = QueryClient & { lastOrganizationId?: string };
+// Nothing here has to reconcile the query cache with the workspace any more.
+//
+// Query keys used to be org-blind (["projects"], ["time-entries", from, to]),
+// so an entry cached under one workspace was a valid-looking answer under the
+// next, and this route carried the machinery to stop that: the org id stamped
+// onto the QueryClient instance (not a module variable — route code-splitting
+// compiles `component` into a separate module from the route options, so a
+// module-level one would have been two disconnected copies), compared on every
+// navigation, then a staged purge on mismatch that removed only inactive
+// queries and invalidated the rest, because clear() made the still-mounted
+// outgoing page re-render against a dead cache mid-transition.
+//
+// Every key now names its organization (queries/keys.ts), so the previous
+// workspace's entries are unreachable rather than dangerous. There is nothing
+// to purge and no ordering to get right.
 
 export const Route = createFileRoute("/$orgSlug")({
-	beforeLoad: async ({ params, context }) => {
-		const session = await requireSession();
-		const config = await getPublicAppConfig();
+	beforeLoad: async ({ params }) => {
+		// Two round trips, in parallel, where there used to be four in sequence —
+		// and this runs on every client-side navigation into every org route, so
+		// it is the fixed cost in front of every screen in the app.
+		const [entered, config] = await Promise.all([
+			enterOrganization({ data: params.orgSlug }),
+			getPublicAppConfig(),
+		]);
+
 		// Single-org mode keeps the `/$orgSlug` prefix — tenancy stays an explicit
 		// route parameter rather than becoming ambient, which is the same rule the
 		// service layer is built on — and simply refuses to answer under any other
@@ -33,29 +39,21 @@ export const Route = createFileRoute("/$orgSlug")({
 		if (config.org && params.orgSlug !== config.org.slug) {
 			throw redirect({ to: "/$orgSlug", params: { orgSlug: config.org.slug } });
 		}
-		const organization = await setActiveOrgBySlug({ data: params.orgSlug });
-		if (!organization) {
-			// `/` resolves where a session with no active org belongs: the marketing
-			// page in multi-tenant mode, the no-access dead end in single-org mode.
+
+		if (!entered) {
+			// No such workspace, or not a member of it — deliberately the same
+			// outcome. `/` resolves where a session with no active org belongs: the
+			// marketing page in multi-tenant mode, the no-access dead end in
+			// single-org mode.
 			throw redirect({ to: "/" });
 		}
-		const role = await getMyRole();
-		const queryClient = context.queryClient as OrgStampedQueryClient;
-		if (
-			queryClient.lastOrganizationId &&
-			queryClient.lastOrganizationId !== organization.id
-		) {
-			// Don't clear(): removing actively-observed queries makes the
-			// still-mounted outgoing page re-render with undefined data (and a
-			// dead route context) mid-transition instead of suspending. Purge
-			// only what nothing is watching; actively-watched queries are
-			// refetched under the new org and awaited, so observers swap old-org
-			// data for new-org data in one step before the navigation commits.
-			queryClient.removeQueries({ type: "inactive" });
-			await queryClient.invalidateQueries();
-		}
-		queryClient.lastOrganizationId = organization.id;
-		return { session, organization, role, singleOrg: config.singleOrgMode };
+
+		return {
+			session: entered.session,
+			organization: entered.organization,
+			role: entered.role,
+			singleOrg: config.singleOrgMode,
+		};
 	},
 	// The router-wide default renders a lone page skeleton, which is right for a
 	// route *inside* this layout — it lands in the Outlet, with the real sidebar
@@ -69,8 +67,6 @@ export const Route = createFileRoute("/$orgSlug")({
 
 function OrgLayout() {
 	const { session, organization, role, singleOrg } = Route.useRouteContext();
-	const queryClient = useQueryClient() as OrgStampedQueryClient;
-	queryClient.lastOrganizationId ??= organization.id;
 	const isAdmin = role === "owner" || role === "admin";
 
 	return (

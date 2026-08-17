@@ -18,6 +18,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
 
@@ -51,13 +52,17 @@ export function AddRowDialog({
 	onAdd: (row: DraftRow) => void;
 	trigger: ReactElement;
 }) {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const [projectId, setProjectId] = useState(NO_PROJECT);
 	const [taskId, setTaskId] = useState("");
 
-	const { data: projects } = useSuspenseQuery(myProjectsQuery());
+	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
 	const { data: tasks = [] } = useQuery({
-		...tasksForProjectQuery(projectId === NO_PROJECT ? undefined : projectId),
+		...tasksForProjectQuery(
+			orgSlug,
+			projectId === NO_PROJECT ? undefined : projectId,
+		),
 		enabled: open,
 	});
 

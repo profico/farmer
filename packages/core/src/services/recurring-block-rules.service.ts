@@ -18,8 +18,8 @@ import {
 	DEFAULT_BREAK_BLOCK,
 	type UpdateRecurringBlockRuleInput,
 } from "../schema/recurring-block-rules";
-import { ctxTimezone } from "./context";
-import { assertTaskAvailable } from "./guards";
+import { ctxAccess, ctxTimezone } from "./context";
+import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { orgSettingsService } from "./org-settings.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
@@ -69,6 +69,25 @@ const materializeNow = async (ctx: Ctx) => {
 	}
 };
 
+/** The assignment gate a rule has to pass before it may name a project.
+ *
+ *  A rule is a time-entry factory: `materializeRange` inserts rows straight
+ *  into `timeEntry`, so whatever a rule may name, its author may write. The
+ *  taxonomy gate (`assertTaskAvailable`) was the only check here, and it asks a
+ *  different question — is this task usable on this project — which a project
+ *  the author has nothing to do with answers "yes" to just as readily. So the
+ *  rule path wrote entries onto projects `timeEntriesService.create` would have
+ *  refused, one `assertCanTrackOn` short of the same rule.
+ *
+ *  Null project is deliberately fine and is the common case: a Break belongs to
+ *  nobody's project, and unfiled time is a legitimate state. */
+const assertMayScheduleOn = async (ctx: Ctx, projectId: string | null) => {
+	if (!projectId) return;
+	await assertProjectInOrg(ctx, projectId);
+	const access = await ctxAccess(ctx);
+	access.assertCanTrackOn(projectId);
+};
+
 export const recurringBlockRulesService = {
 	list: (ctx: Ctx) =>
 		db.query.recurringBlockRule.findMany({
@@ -81,8 +100,10 @@ export const recurringBlockRulesService = {
 		}),
 
 	create: async (ctx: Ctx, input: CreateRecurringBlockRuleInput) => {
-		// Same taxonomy gate as a hand-made entry: the rule can only produce
-		// entries the user could have created themselves.
+		// Same gates as a hand-made entry, in the same order — the rule can only
+		// produce entries the user could have created themselves, which takes
+		// both the assignment check and the taxonomy one.
+		await assertMayScheduleOn(ctx, input.projectId ?? null);
 		await assertTaskAvailable(ctx, input.taskId, input.projectId);
 		const durationSeconds = parseRuleDuration(input.duration);
 
@@ -169,12 +190,17 @@ export const recurringBlockRulesService = {
 		if (!existing) throw new Error("Recurring block rule not found");
 
 		if (input.taskId !== undefined || input.projectId !== undefined) {
+			const nextProjectId =
+				(input.projectId !== undefined
+					? input.projectId
+					: existing.projectId) ?? null;
+			// Re-checked on update, not just on create: repointing an existing rule
+			// at another project is the same write by a slower route.
+			await assertMayScheduleOn(ctx, nextProjectId);
 			await assertTaskAvailable(
 				ctx,
 				input.taskId ?? existing.taskId,
-				(input.projectId !== undefined
-					? input.projectId
-					: existing.projectId) ?? undefined,
+				nextProjectId ?? undefined,
 			);
 		}
 

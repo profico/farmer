@@ -3,6 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { MonthView } from "#/components/time/month-view.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
@@ -20,17 +21,18 @@ const currentMonthKey = (timezone: string) =>
 export const Route = createFileRoute("/$orgSlug/time/month")({
 	validateSearch: searchSchema,
 	loaderDeps: ({ search }) => ({ month: search.month }),
-	loader: async ({ context, deps }) => {
+	loader: async ({ context, deps, params }) => {
+		const orgSlug = params.orgSlug;
 		const month = deps.month ?? currentMonthKey(context.organization.timezone);
 		const monthStart = `${month}-01`;
 		const monthEnd = endOfMonthKey(monthStart);
 		await Promise.all([
 			context.queryClient.ensureQueryData(
-				timeEntriesRangeQuery(monthStart, monthEnd),
+				timeEntriesRangeQuery(orgSlug, monthStart, monthEnd),
 			),
-			context.queryClient.ensureQueryData(myProjectsQuery()),
+			context.queryClient.ensureQueryData(myProjectsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(
-				holidaysForRangeQuery({ from: monthStart, to: monthEnd }),
+				holidaysForRangeQuery(orgSlug, { from: monthStart, to: monthEnd }),
 			),
 		]);
 	},
@@ -38,16 +40,17 @@ export const Route = createFileRoute("/$orgSlug/time/month")({
 });
 
 function MonthRoute() {
+	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
 	const month = search.month ?? currentMonthKey(organization.timezone);
 	const monthStart = `${month}-01`;
 	const monthEnd = endOfMonthKey(monthStart);
 	const { data: entries } = useSuspenseQuery(
-		timeEntriesRangeQuery(monthStart, monthEnd),
+		timeEntriesRangeQuery(orgSlug, monthStart, monthEnd),
 	);
 	const { data: holidayEntries } = useSuspenseQuery(
-		holidaysForRangeQuery({ from: monthStart, to: monthEnd }),
+		holidaysForRangeQuery(orgSlug, { from: monthStart, to: monthEnd }),
 	);
 
 	return (

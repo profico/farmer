@@ -91,15 +91,25 @@ const complianceCohort = async (
 		.filter((p) => p.memberType.type !== "overhead" && !archived.has(p.userId));
 };
 
-export const complianceService = {
+// The two views, computed without any authorization check.
+//
+// Deliberately module-private and deliberately not reachable through
+// `complianceService`. These used to be the public methods, each taking a
+// `{ skipAdminCheck?: boolean }` — an argument that switched authorization off,
+// sitting in the public signature of the one service whose whole subject is
+// org-wide data about people. One caller (the Slack reminder job) needed it and
+// every other caller needed it never to be set; a flag cannot express that, and
+// an options bag is exactly the shape that eventually gets spread from
+// somewhere validated. The escape hatch is now a named export below that says
+// out loud who it is for, and the flag no longer exists to be passed by
+// accident.
+const views = {
 	/**
 	 * View 1 — people with no entries in the last N working days (N configurable,
 	 * default 3). Both Billable people and Contractors appear here: a contractor
 	 * still has to tell us what they did, even though no hour fund applies to them.
 	 */
-	noEntries: async (ctx: Ctx, opts?: { skipAdminCheck?: boolean }) => {
-		if (!opts?.skipAdminCheck) await requireAdmin(ctx);
-
+	noEntries: async (ctx: Ctx) => {
 		const [tz, settings] = await Promise.all([
 			ctxTimezone(ctx),
 			orgSettingsService.get(ctx),
@@ -181,9 +191,7 @@ export const complianceService = {
 	 * Contractors appear here ONLY when they have an explicit expected-hours
 	 * value: without a monthly fund there is no pace to be behind.
 	 */
-	behindPace: async (ctx: Ctx, opts?: { skipAdminCheck?: boolean }) => {
-		if (!opts?.skipAdminCheck) await requireAdmin(ctx);
-
+	behindPace: async (ctx: Ctx) => {
 		const tz = await ctxTimezone(ctx);
 		const today = dayKeyInTz(new Date(), tz);
 		const year = Number(today.slice(0, 4));
@@ -252,11 +260,43 @@ export const complianceService = {
 
 	/** Both views at once — the Admin dashboard, and the input the Slack job
 	 *  iterates to decide who gets a DM. */
-	dashboard: async (ctx: Ctx, opts?: { skipAdminCheck?: boolean }) => {
+	dashboard: async (ctx: Ctx) => {
 		const [noEntries, behindPace] = await Promise.all([
-			complianceService.noEntries(ctx, opts),
-			complianceService.behindPace(ctx, opts),
+			views.noEntries(ctx),
+			views.behindPace(ctx),
 		]);
 		return { noEntries, behindPace };
 	},
+};
+
+export const complianceService = {
+	noEntries: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
+		return views.noEntries(ctx);
+	},
+
+	behindPace: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
+		return views.behindPace(ctx);
+	},
+
+	dashboard: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
+		return views.dashboard(ctx);
+	},
+
+	/**
+	 * The dashboard for the scheduled Slack reminder job, which runs it for a
+	 * whole organization on nobody's behalf.
+	 *
+	 * There is no caller to check: the job builds an org-only Ctx with an empty
+	 * `userId` (`jobs/slack-reminders.ts`), because the question it is asking is
+	 * about the whole organization and nobody in particular asked it. That Ctx
+	 * cannot satisfy an Admin check, or any other check, which is precisely why
+	 * the unchecked path needs a name of its own instead of a flag: being this
+	 * caller requires saying so at the call site.
+	 *
+	 * Do not wire this to a server function or a REST route.
+	 */
+	dashboardForReminderJob: (ctx: Ctx) => views.dashboard(ctx),
 };

@@ -19,6 +19,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
 import { holidaysForYearWithStatusQuery } from "#/queries/holidays.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -31,12 +32,13 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/$orgSlug/settings/holidays")({
 	validateSearch: searchSchema,
 	loaderDeps: ({ search }) => ({ year: search.year }),
-	loader: async ({ context, deps }) => {
+	loader: async ({ context, deps, params }) => {
+		const orgSlug = params.orgSlug;
 		const year =
 			deps.year ??
 			Number(dayKeyInTz(new Date(), context.organization.timezone).slice(0, 4));
 		await context.queryClient.ensureQueryData(
-			holidaysForYearWithStatusQuery(year),
+			holidaysForYearWithStatusQuery(orgSlug, year),
 		);
 	},
 	component: HolidaysSettingsPage,
@@ -58,6 +60,7 @@ const formatHolidayDate = (dateKey: string) =>
 	});
 
 function HolidaysSettingsPage() {
+	const orgSlug = useOrgSlug();
 	const { organization, role } = Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
 	const search = Route.useSearch();
@@ -68,7 +71,7 @@ function HolidaysSettingsPage() {
 	);
 	const year = search.year ?? currentYear;
 	const { data: holidays } = useSuspenseQuery(
-		holidaysForYearWithStatusQuery(year),
+		holidaysForYearWithStatusQuery(orgSlug, year),
 	);
 
 	/* Optimistic, and scoped to the one holiday: the whole table shares this
@@ -78,7 +81,7 @@ function HolidaysSettingsPage() {
 		mutationFn: (vars: { name: string; disabled: boolean }) =>
 			setHolidayDisabled({ data: vars }),
 		onMutate: async (vars) => {
-			const queryKey = holidaysForYearWithStatusQuery(year).queryKey;
+			const queryKey = holidaysForYearWithStatusQuery(orgSlug, year).queryKey;
 			await queryClient.cancelQueries({ queryKey });
 			const previous = queryClient.getQueryData(queryKey);
 			queryClient.setQueryData(queryKey, (old) =>
@@ -96,7 +99,9 @@ function HolidaysSettingsPage() {
 		},
 		// Other holiday views (calendar ranges) still need the server's answer.
 		onSettled: () =>
-			queryClient.invalidateQueries({ queryKey: [...queryKeys.holidays] }),
+			queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).holidays],
+			}),
 	});
 
 	const goToYear = (next: number) =>

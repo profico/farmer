@@ -8,6 +8,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { WeekView } from "#/components/time/week-view.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
@@ -22,18 +23,19 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/$orgSlug/time/week")({
 	validateSearch: searchSchema,
 	loaderDeps: ({ search }) => ({ weekStart: search.weekStart }),
-	loader: async ({ context, deps }) => {
+	loader: async ({ context, deps, params }) => {
+		const orgSlug = params.orgSlug;
 		const weekStart =
 			deps.weekStart ??
 			startOfWeekKey(dayKeyInTz(new Date(), context.organization.timezone));
 		const weekEnd = addDaysToKey(weekStart, 6);
 		await Promise.all([
 			context.queryClient.ensureQueryData(
-				timeEntriesRangeQuery(weekStart, weekEnd),
+				timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 			),
-			context.queryClient.ensureQueryData(myProjectsQuery()),
+			context.queryClient.ensureQueryData(myProjectsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(
-				holidaysForRangeQuery({ from: weekStart, to: weekEnd }),
+				holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 			),
 		]);
 
@@ -43,7 +45,7 @@ export const Route = createFileRoute("/$orgSlug/time/week")({
 		for (const offset of [-7, 7]) {
 			const start = addDaysToKey(weekStart, offset);
 			void context.queryClient.prefetchQuery(
-				timeEntriesRangeQuery(start, addDaysToKey(start, 6)),
+				timeEntriesRangeQuery(orgSlug, start, addDaysToKey(start, 6)),
 			);
 		}
 	},
@@ -51,6 +53,7 @@ export const Route = createFileRoute("/$orgSlug/time/week")({
 });
 
 function WeekRoute() {
+	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
 	const weekStart =
@@ -58,10 +61,10 @@ function WeekRoute() {
 		startOfWeekKey(dayKeyInTz(new Date(), organization.timezone));
 	const weekEnd = addDaysToKey(weekStart, 6);
 	const { data: entries } = useSuspenseQuery(
-		timeEntriesRangeQuery(weekStart, weekEnd),
+		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 	);
 	const { data: holidayEntries } = useSuspenseQuery(
-		holidaysForRangeQuery({ from: weekStart, to: weekEnd }),
+		holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 	);
 	const dates = datesBetween(weekStart, weekEnd);
 	const currentWeekStart = startOfWeekKey(

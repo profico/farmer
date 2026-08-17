@@ -30,6 +30,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { membersQuery, pendingInvitationsQuery } from "#/queries/members.ts";
 import { inviteMember } from "#/server/members.ts";
 
@@ -39,6 +40,7 @@ const ROLE_OPTIONS = [
 ];
 
 export function InviteMemberDialog() {
+	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof inviteMemberInput>>({
@@ -51,9 +53,11 @@ export function InviteMemberDialog() {
 			inviteMember({ data }),
 		onSuccess: async () => {
 			await Promise.all([
-				queryClient.invalidateQueries({ queryKey: membersQuery().queryKey }),
 				queryClient.invalidateQueries({
-					queryKey: pendingInvitationsQuery().queryKey,
+					queryKey: membersQuery(orgSlug).queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: pendingInvitationsQuery(orgSlug).queryKey,
 				}),
 			]);
 			toast.success("Invitation sent");

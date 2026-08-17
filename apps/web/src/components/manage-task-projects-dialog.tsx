@@ -11,6 +11,7 @@ import {
 	DialogTitle,
 } from "#/components/ui/dialog.tsx";
 import { PillToggleGroup } from "#/components/ui/pill-toggle-group.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { projectsForTaskQuery } from "#/queries/tasks.ts";
@@ -30,6 +31,7 @@ export function ManageTaskProjectsDialog({
 	taskName: string | null;
 	onOpenChange: (open: boolean) => void;
 }) {
+	const orgSlug = useOrgSlug();
 	const open = taskId !== null;
 	const queryClient = useQueryClient();
 
@@ -37,9 +39,12 @@ export function ManageTaskProjectsDialog({
 		null,
 	);
 
-	const { data: projects } = useQuery({ ...projectsQuery(), enabled: open });
+	const { data: projects } = useQuery({
+		...projectsQuery(orgSlug),
+		enabled: open,
+	});
 	const { data: linked } = useQuery({
-		...projectsForTaskQuery(taskId ?? ""),
+		...projectsForTaskQuery(orgSlug, taskId ?? ""),
 		enabled: open && !!taskId,
 	});
 
@@ -79,8 +84,12 @@ export function ManageTaskProjectsDialog({
 			setTaskProjects({ data: { taskId: taskId ?? "", projectIds: selected } }),
 		onSuccess: async () => {
 			await Promise.all([
-				queryClient.invalidateQueries({ queryKey: [...queryKeys.projects] }),
-				queryClient.invalidateQueries({ queryKey: [...queryKeys.tasks] }),
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).projects],
+				}),
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).tasks],
+				}),
 			]);
 			setDraft(null);
 			onOpenChange(false);
