@@ -271,6 +271,12 @@ export function AddBlockDialog({
 		setSelectedCommitKeys(new Set());
 	}, [open]);
 
+	// Two different questions, and conflating them hid the commits on exactly the
+	// entries that always have some. FINDING new commits needs a project and a
+	// date to look them up by, and makes no sense on a rest-of-day fill block
+	// whose commits the engine already attached. SHOWING what is attached needs
+	// nothing but the attachments — a project-less fill block is the commit
+	// engine's own output, so it is the one entry guaranteed to have them.
 	const showCommitPicker =
 		!repeatEnabled &&
 		!fillsDay &&
@@ -278,6 +284,9 @@ export function AddBlockDialog({
 		!!githubStatus?.connected &&
 		!!linkedRepos &&
 		linkedRepos.length > 0;
+	const showAttachedCommits =
+		!repeatEnabled && !!attachedCommits && attachedCommits.length > 0;
+	const showCommitSection = showCommitPicker || showAttachedCommits;
 
 	// With auto-load on, the day's commits populate the picker as soon as it's
 	// relevant — no "Find commits" click. When off, the manual mutation below is
@@ -853,11 +862,11 @@ export function AddBlockDialog({
 								/>
 							</div>
 						)}
-						{showCommitPicker && (
+						{showCommitSection && (
 							<div className="border-t pt-3.5">
-								<div className="flex items-center justify-between">
+								<div className="flex min-h-8 items-center justify-between">
 									<span className="text-base font-medium">GitHub commits</span>
-									{autoLoadCommits ? (
+									{!showCommitPicker ? null : autoLoadCommits ? (
 										<Button
 											type="button"
 											variant="outline"
@@ -884,18 +893,32 @@ export function AddBlockDialog({
 									)}
 								</div>
 
-								{attachedCommits && attachedCommits.length > 0 && (
+								{showAttachedCommits && (
 									<div className="scrollbar-stable -mx-1 mt-3 max-h-40 overflow-y-auto rounded-md border">
-										{attachedCommits.map((commit) => (
+										{(attachedCommits ?? []).map((commit) => (
 											<div
 												key={commit.id}
 												className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
 											>
-												<span className="min-w-0 truncate text-sm">
-													<span className="mono text-xs text-muted-foreground">
+												{/* The sha is the link, not the whole row: the row is
+												    also a click target for nothing else, and making the
+												    message a link would put an underline through a
+												    subject that is often the entry's own description.
+												    `url` has always been stored on the attachment; it
+												    simply had nothing rendering it. */}
+												<span className="flex min-w-0 items-baseline gap-1.5 text-sm">
+													<a
+														href={commit.url}
+														target="_blank"
+														rel="noreferrer"
+														className="mono shrink-0 text-xs text-muted-foreground underline underline-offset-3 hover:text-foreground"
+														title={commit.repo?.fullName ?? undefined}
+													>
 														{commit.sha.slice(0, 7)}
-													</span>{" "}
-													{commit.message.split("\n")[0]}
+													</a>
+													<span className="truncate">
+														{commit.message.split("\n")[0]}
+													</span>
 												</span>
 												<Button
 													type="button"

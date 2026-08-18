@@ -66,16 +66,11 @@ const toDraft = (m: {
 
 const sameRow = (a: DraftRow, b: DraftRow) => a.role === b.role;
 
-// Persistent right-rail panel that manages the selected project's members.
-// Lives inline in the projects page (not an overlay) and swaps its contents
-// as the selected project changes.
-export function ProjectMembersPanel({
-	projectId,
-	projectName,
-}: {
-	projectId: string | null;
-	projectName: string | null;
-}) {
+// The selected project's team: who is on it and at what project role. The body
+// only — the detail panel owns the header and the tab strip, so this renders the
+// same whether it is the panel's Members tab or (in future) anything else that
+// needs the roster.
+export function ProjectMembersTab({ projectId }: { projectId: string | null }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const [addUserId, setAddUserId] = useState("");
@@ -222,14 +217,7 @@ export function ProjectMembersPanel({
 	});
 
 	return (
-		<div className="flex h-full flex-col">
-			<div className="shrink-0 border-b px-4 py-3.5">
-				<p className="eyebrow">Team</p>
-				<p className="mt-1.5 truncate text-base font-medium">
-					{projectName ?? "No project selected"}
-				</p>
-			</div>
-
+		<div className="flex h-full min-h-0 flex-col">
 			{!projectId ? (
 				<p className="px-4 py-8 text-base text-muted-foreground">
 					Select a project to manage its team.

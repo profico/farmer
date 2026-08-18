@@ -2,14 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#/components/ui/button.tsx";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "#/components/ui/dialog.tsx";
 import { PillToggleGroup } from "#/components/ui/pill-toggle-group.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -27,39 +19,42 @@ const sameSet = (a: string[], b: string[]) =>
 const isUniversal = (t: { scope: string; isAbsence: boolean }) =>
 	t.scope === "site" && !t.isAbsence;
 
-/** Edit which of the global tasks a project offers, after the project exists —
- *  the picker that used to be reachable only inside the create form. */
-export function ManageProjectTasksDialog({
+/**
+ * Which of the org's tasks this project offers.
+ *
+ * Lives inside the detail panel's Edit tab rather than on a tab of its own: the
+ * task subset is a property of the project in the same way its name is, and a
+ * tab per field is how a panel turns into a filing cabinet. It keeps its own
+ * Save button because it is its own write (`setProjectTasks`) against a
+ * different service from the name/colour patch — one button spanning two
+ * mutations would have to invent what a half-failure means.
+ */
+export function ProjectTasksPicker({
 	projectId,
-	projectName,
-	onOpenChange,
 }: {
 	projectId: string | null;
-	projectName: string | null;
-	onOpenChange: (open: boolean) => void;
 }) {
 	const orgSlug = useOrgSlug();
-	const open = projectId !== null;
 	const queryClient = useQueryClient();
 
-	// The draft is tagged with the project it belongs to, so opening the dialog on
-	// a different row shows that row's tasks rather than the last row's edits.
+	// The draft is tagged with the project it belongs to, so selecting another
+	// row shows that row's tasks rather than the last row's edits.
 	const [draft, setDraft] = useState<{ pid: string; ids: string[] } | null>(
 		null,
 	);
 
 	const { data: allTasks } = useQuery({
 		...selectableTasksQuery(orgSlug),
-		enabled: open,
+		enabled: !!projectId,
 	});
 	const { data: picked } = useQuery({
 		...projectTasksQuery(orgSlug, projectId ?? ""),
-		enabled: open && !!projectId,
+		enabled: !!projectId,
 	});
 
 	// The two universal shapes are both excluded from the baseline: absence tasks
 	// can never be on a project, and built-ins are on every one of them. Neither
-	// is something this dialog decides, so neither counts as picked.
+	// is something this picker decides, so neither counts as picked.
 	const universalIds = useMemo(
 		() => new Set((allTasks ?? []).filter(isUniversal).map((t) => t.id)),
 		[allTasks],
@@ -109,73 +104,58 @@ export function ManageProjectTasksDialog({
 				}),
 			]);
 			setDraft(null);
-			onOpenChange(false);
+			toast.success("Tasks updated");
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not update tasks");
 		},
 	});
 
-	const close = (next: boolean) => {
-		if (!next) setDraft(null);
-		onOpenChange(next);
-	};
-
 	return (
-		<Dialog open={open} onOpenChange={close}>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>Tasks on {projectName ?? "this project"}</DialogTitle>
-					<DialogDescription>
-						Tasks are one global list; a project opts into the subset that
-						applies to it. Apart from the built-ins noted below, people can only
-						log time against the tasks picked here.
-					</DialogDescription>
-				</DialogHeader>
+		<div className="grid gap-3">
+			<div>
+				<p className="eyebrow">Tasks</p>
+				<p className="mt-2 text-sm leading-normal text-muted-foreground">
+					Tasks are one global list; a project opts into the subset that applies
+					to it. Apart from the built-ins below, people can only log time
+					against the tasks picked here.
+				</p>
+			</div>
 
-				{!loaded ? (
-					<p className="py-2 text-sm text-muted-foreground">Loading tasks…</p>
-				) : pickable.length === 0 ? (
-					<p className="py-2 text-sm text-muted-foreground">
-						No tasks exist yet. An admin can add them under Settings → Tasks.
-					</p>
-				) : (
-					<div className="-mx-1 px-1 py-1">
-						<PillToggleGroup
-							items={pickable.map((t) => ({ id: t.id, label: t.name }))}
-							selectedIds={selected}
-							onToggle={toggle}
-							disabled={saveMutation.isPending}
-						/>
-					</div>
-				)}
-
-				{builtIns.length > 0 && (
-					<p className="text-xs text-muted-foreground">
-						{builtIns.map((t) => t.name).join(" and ")}{" "}
-						{builtIns.length === 1 ? "is" : "are"} available on every project
-						and can't be turned off.
-					</p>
-				)}
-
-				<DialogFooter>
-					{/* Unpicking every task is a legitimate end state (the project stops
-					    accepting new entries), so an empty selection still saves. */}
-					<Button
-						variant="ghost"
-						onClick={() => close(false)}
+			{!loaded ? (
+				<p className="text-sm text-muted-foreground">Loading tasks…</p>
+			) : pickable.length === 0 ? (
+				<p className="text-sm text-muted-foreground">
+					No tasks exist yet. An admin can add them under Settings → Tasks.
+				</p>
+			) : (
+				<div className="-mx-1 px-1 py-1">
+					<PillToggleGroup
+						items={pickable.map((t) => ({ id: t.id, label: t.name }))}
+						selectedIds={selected}
+						onToggle={toggle}
 						disabled={saveMutation.isPending}
-					>
-						Cancel
-					</Button>
-					<Button
-						onClick={() => saveMutation.mutate()}
-						disabled={!dirty || saveMutation.isPending}
-					>
-						{saveMutation.isPending ? "Saving…" : "Save"}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
+					/>
+				</div>
+			)}
+
+			{builtIns.length > 0 && (
+				<p className="text-xs text-muted-foreground">
+					{builtIns.map((t) => t.name).join(" and ")}{" "}
+					{builtIns.length === 1 ? "is" : "are"} available on every project and
+					can't be turned off.
+				</p>
+			)}
+
+			{/* Unpicking every task is a legitimate end state (the project stops
+			    accepting new entries), so an empty selection still saves. */}
+			<Button
+				className="w-full"
+				disabled={!dirty || saveMutation.isPending}
+				onClick={() => saveMutation.mutate()}
+			>
+				{saveMutation.isPending ? "Saving…" : "Save tasks"}
+			</Button>
+		</div>
 	);
 }

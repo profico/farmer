@@ -302,6 +302,23 @@ export const githubService = {
 			}),
 		);
 
+		// Which project already holds each repo. A repo belongs to exactly one
+		// project org-wide, so the picker has to be able to say "linked to Farmer"
+		// rather than offering a Link button whose only outcome is the error from
+		// `linkRepo`. Answering it here is one query for the whole list; asking per
+		// row would be one per repo, and an installation can expose hundreds.
+		const linked = await db.query.projectGithubRepo.findMany({
+			where: eq(projectGithubRepo.organizationId, ctx.organizationId),
+			columns: { githubRepoId: true, projectId: true },
+			with: { project: { columns: { name: true } } },
+		});
+		const heldBy = new Map(
+			linked.map((row) => [
+				row.githubRepoId,
+				{ projectId: row.projectId, projectName: row.project?.name ?? null },
+			]),
+		);
+
 		// A repo could be reachable through more than one installation; keep the
 		// first and de-dup on the immutable repo id.
 		const seen = new Set<number>();
@@ -312,6 +329,7 @@ export const githubService = {
 				seen.add(r.githubRepoId);
 				return true;
 			})
+			.map((r) => ({ ...r, linkedTo: heldBy.get(r.githubRepoId) ?? null }))
 			.sort((a, b) => a.fullName.localeCompare(b.fullName));
 	},
 
@@ -330,6 +348,25 @@ export const githubService = {
 		const token = await getInstallationToken(inst.installationId);
 		const repo = await getRepoById(token, input.githubRepoId);
 		if (!repo) throw new Error("Repository not found or inaccessible");
+
+		// A repo is linked to exactly one project org-wide (pgr_org_repo_unq), so
+		// this is a real answer rather than a pre-flight check racing the insert:
+		// the constraint still settles a concurrent double-link, and this only
+		// decides what the person reads. Naming the holding project matters —
+		// "already linked" leaves them hunting through every project for it.
+		const held = await db.query.projectGithubRepo.findFirst({
+			where: and(
+				eq(projectGithubRepo.organizationId, ctx.organizationId),
+				eq(projectGithubRepo.githubRepoId, repo.id),
+			),
+			with: { project: { columns: { id: true, name: true } } },
+		});
+		if (held) {
+			if (held.projectId === input.projectId) return held;
+			throw new Error(
+				`${repo.full_name} is already linked to ${held.project?.name ?? "another project"}. Unlink it there first — a repo belongs to one project.`,
+			);
+		}
 
 		const [created] = await db
 			.insert(projectGithubRepo)

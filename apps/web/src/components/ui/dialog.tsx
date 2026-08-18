@@ -146,7 +146,15 @@ function DialogContent({
 					>
 						<div
 							data-slot="dialog-body"
-							className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5"
+							// `grid-cols-[minmax(0,1fr)]`, not a bare `grid`: an implicit
+							// grid column is `auto`-sized and its items get `min-width:
+							// auto`, so one long unbroken string — a commit subject, a
+							// squashed-PR title — widened the column past the popup and
+							// took every sibling with it. The popup clips, so the header's
+							// copy, the rows and the sticky footer all ran off the right
+							// edge. Pinning the column to the container is what lets the
+							// `min-w-0 truncate` the rows already carry actually bite.
+							className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto p-5"
 						>
 							{children}
 						</div>

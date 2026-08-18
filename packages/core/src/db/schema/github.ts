@@ -79,7 +79,14 @@ export const projectGithubRepo = pgTable(
 	(t) => [
 		index("pgr_org_idx").on(t.organizationId),
 		index("pgr_project_idx").on(t.projectId),
-		unique("pgr_project_repo_unq").on(t.projectId, t.githubRepoId),
+		// A repo belongs to exactly ONE project, org-wide — not one row per
+		// (project, repo) pair. The commit engine reads a commit's project off
+		// its repo, so a repo on two projects makes "which project did this
+		// commit bill to" unanswerable: the sync would attach the same commit to
+		// two entries and the rest-of-day block could not name a project at all.
+		// Linking a repo already linked elsewhere is a move, and the service says
+		// which project holds it rather than surfacing a constraint violation.
+		unique("pgr_org_repo_unq").on(t.organizationId, t.githubRepoId),
 	],
 );
 

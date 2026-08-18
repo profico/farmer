@@ -359,6 +359,54 @@ const syncMeetingsForRange = async (
 // see lib/automation-window, and note that this engine asks for
 // `completeDaysOnly`, because the block it writes is sized from the day's WHOLE
 // target and that number is only true once the day is over.
+/**
+ * Which project, if any, the day's rest-of-day block should be filed against.
+ *
+ * Only when EVERY commit that found no home belongs to the same project. A repo
+ * is linked to exactly one project org-wide (pgr_org_repo_unq), so one project
+ * across the day's homeless commits means there is no guess to make: the block
+ * describes work on that project and nothing else. Two projects and it stays
+ * null — the block is sized from the whole remaining day, so splitting it would
+ * be inventing a ratio the commits do not contain, and filing all of it to
+ * either project bills that project for the other one's hours.
+ *
+ * Note this deliberately does NOT read the commits' volume or timestamps. The
+ * block never claimed to measure the commits; it claims the rest of the working
+ * day, and the commits are the evidence that the day was spent on that project.
+ *
+ * Both gates fall back to null rather than throwing. This runs inside a
+ * background sweep over everybody, and a project that hasn't picked Development
+ * is a configuration answer, not a failure — the old project-less block is
+ * still the correct, if less helpful, thing to write.
+ */
+const resolveFillProject = async (
+	ctx: Ctx,
+	homelessProjectIds: string[],
+): Promise<string | null> => {
+	const [projectId] = homelessProjectIds;
+	if (!projectId || homelessProjectIds.length !== 1) return null;
+
+	// Belt and braces: `reposForUser` already inner-joins an active projectMember
+	// row, so a commit cannot reach here on a project the person isn't on. Kept
+	// because this writes billable project time and that invariant lives three
+	// files away — the memo makes it free.
+	const access = await ctxAccess(ctx);
+	if (!access.canTrackOn(projectId)) return null;
+
+	// The project must actually offer Development. `development` is org-scoped,
+	// not one of the universal site-scoped built-ins, so this is a real
+	// cherry-pick check — and writing an entry the person could not have created
+	// by hand is exactly what assertTaskAvailable exists to prevent.
+	const workTask = await tasksService.findBySystemKey(ctx, "development");
+	if (!workTask) return null;
+	try {
+		await assertTaskAvailable(ctx, workTask.id, projectId);
+	} catch {
+		return null;
+	}
+	return projectId;
+};
+
 const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
@@ -414,9 +462,12 @@ const syncCommitWorkTimeForRange = async (
 			commitsByProject.set(commit.projectId, list);
 		}
 
-		const homeless = [...commitsByProject]
-			.filter(([projectId]) => !byProject.has(projectId))
-			.flatMap(([, group]) => group);
+		const homelessProjectIds = [...commitsByProject.keys()].filter(
+			(projectId) => !byProject.has(projectId),
+		);
+		const homeless = homelessProjectIds.flatMap(
+			(projectId) => commitsByProject.get(projectId) ?? [],
+		);
 
 		// The fill block is created only for commits that found no home, and only
 		// if the day still has room and nobody has said no.
@@ -427,6 +478,7 @@ const syncCommitWorkTimeForRange = async (
 				tz,
 				workingHours,
 			);
+			const fillProjectId = await resolveFillProject(ctx, homelessProjectIds);
 			// A day already accounted for in full gets no block. Inserting a
 			// 0-second one would just park an empty second "Development" row next to
 			// the entries that already filled the day. Note this no longer skips the
@@ -439,7 +491,7 @@ const syncCommitWorkTimeForRange = async (
 						organizationId: ctx.organizationId,
 						userId: ctx.userId,
 						taskId: workTask.id,
-						projectId: null,
+						projectId: fillProjectId,
 						description: summarizeCommitMessages(
 							homeless.map((c) => c.message),
 						),

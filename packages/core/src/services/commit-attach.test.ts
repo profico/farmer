@@ -383,6 +383,82 @@ describe("where the commit engine attaches", () => {
 	});
 });
 
+describe("which project the rest-of-day block is filed against", () => {
+	// A repo belongs to exactly one project org-wide, so one project across the
+	// day's homeless commits is not a guess — it is the only project the day's
+	// evidence points at. Two projects and the block stays unfiled, because it is
+	// sized from the whole remaining day and nothing in the commits says how to
+	// divide it.
+	test("the one project all its commits came from", async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+
+		await runAutomations();
+
+		const [fill] = await entriesOn(YESTERDAY);
+		expect(fill?.fillsDay).toBe(true);
+		expect(fill?.projectId).toBe(projectId);
+	});
+
+	test("nothing, when its commits span two projects", async () => {
+		setCommitSourceForTests(
+			commitsFor([
+				{ day: YESTERDAY, project: "main" },
+				{ day: YESTERDAY, project: "other" },
+			]),
+		);
+
+		await runAutomations();
+
+		const [fill] = await entriesOn(YESTERDAY);
+		expect(fill?.fillsDay).toBe(true);
+		expect(fill?.projectId).toBeNull();
+		// Both projects' commits still land on it — unfiled, but not lost.
+		expect(await commitsAttachedTo(fill?.id ?? "")).toHaveLength(2);
+	});
+
+	test("nothing, when that project hasn't picked the Development task", async () => {
+		// assertTaskAvailable is not decoration here: filing the block would write
+		// an entry the person could not have created by hand. The engine falls back
+		// to the project-less block rather than failing the day.
+		await db
+			.delete(projectTask)
+			.where(
+				and(
+					eq(projectTask.organizationId, ORG_ID),
+					eq(projectTask.projectId, projectId),
+					eq(projectTask.taskId, devTaskId),
+				),
+			);
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+
+		await runAutomations();
+
+		const [fill] = await entriesOn(YESTERDAY);
+		expect(fill?.projectId).toBeNull();
+
+		await db
+			.insert(projectTask)
+			.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
+	});
+
+	test("nothing, when the commits already found a home", async () => {
+		// The block is only ever created for HOMELESS commits. A day whose commits
+		// all attached to an existing entry produces no block at all.
+		const entry = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 4 * 60 * 60,
+		});
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+
+		await runAutomations();
+
+		const rows = await entriesOn(YESTERDAY);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.id).toBe(entry.id);
+	});
+});
+
 describe("a deleted rest-of-day block", () => {
 	test("stays deleted", async () => {
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
