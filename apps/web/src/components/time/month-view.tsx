@@ -56,7 +56,7 @@ export function MonthView({
 	const weekRows = Math.ceil((leadingBlanks + days.length) / 7);
 
 	return (
-		<div className="flex h-full flex-col">
+		<div className="flex min-h-0 flex-1 flex-col">
 			<TimeToolbar
 				prev={
 					<Link
@@ -121,9 +121,14 @@ export function MonthView({
 						</div>
 					))}
 				</div>
+				{/* Rows have a floor as well as a share: `1fr` alone let a six-week
+				    month squeeze its cells until the entry chips inside them had
+				    nowhere to go. Below the floor the grid scrolls instead. */}
 				<div
-					className="grid min-h-0 flex-1 grid-cols-7"
-					style={{ gridTemplateRows: `repeat(${weekRows}, minmax(0, 1fr))` }}
+					className="scrollbar-stable grid min-h-0 flex-1 grid-cols-7 overflow-y-auto"
+					style={{
+						gridTemplateRows: `repeat(${weekRows}, minmax(var(--month-row-h), 1fr))`,
+					}}
 				>
 					{Array.from({ length: leadingBlanks }, (_, i) => (
 						<div

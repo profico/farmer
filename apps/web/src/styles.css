@@ -252,6 +252,13 @@
      row is one line tall for an admin and two for everyone else. */
   --footer-h: 3.5rem;
 
+  /* The floor a month-grid week row may shrink to. The grid still shares out
+     any spare height (`minmax(--month-row-h, 1fr)`), so a tall window shows a
+     month that exactly fills the island; a short one — or a six-week month —
+     scrolls rather than squeezing the day cells until their entry chips have
+     nowhere to go. */
+  --month-row-h: 7rem;
+
   /* ── the Beautiful UI vocabulary ─────────────────────────────────────────
    *
    * The assistant's primitives (components/assistant/*) are ported from

@@ -99,7 +99,7 @@ export function DayView({
 		// No width of its own: Day fills the timesheet island exactly like Week and
 		// Month do, so the three tabs are the same page at three zoom levels rather
 		// than three differently-sized pages.
-		<div className="flex h-full flex-col">
+		<div className="flex min-h-0 flex-1 flex-col">
 			<TimeToolbar
 				add={
 					<AddBlockDialog
