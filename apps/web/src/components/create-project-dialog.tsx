@@ -111,13 +111,10 @@ const formSchema = z.object({
 			.string()
 			.trim()
 			.regex(/^\d+(\.\d+)?$/, "Expected a number like 400 or 400.5")
-			.refine(
-				(v) => {
-					const n = Number(v);
-					return n > 0 && n <= 100_000;
-				},
-				"Must be between 1 and 100,000",
-			),
+			.refine((v) => {
+				const n = Number(v);
+				return n > 0 && n <= 100_000;
+			}, "Must be between 1 and 100,000"),
 	]),
 	budgetAmount: optionalMoney,
 	hourlyPrice: optionalMoney,
