@@ -5,6 +5,7 @@ import {
 	timeKeyInTz,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	CalendarDotIcon,
 	GitCommitIcon,
@@ -18,7 +19,6 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -576,10 +576,10 @@ export function AddBlockDialog({
 								</FormItem>
 							)}
 						/>
-					<FormField
-						control={form.control}
-						name="taskId"
-						render={({ field }) => (
+						<FormField
+							control={form.control}
+							name="taskId"
+							render={({ field }) => (
 								<FormItem>
 									<FormLabel required>Task</FormLabel>
 									<FormControl>
@@ -676,7 +676,7 @@ export function AddBlockDialog({
 						) : (
 							<FormField
 								control={form.control}
-							name="duration"
+								name="duration"
 								render={({ field }) => (
 									<FormItem>
 										<FormLabel required>Time</FormLabel>
@@ -1019,13 +1019,17 @@ export function AddBlockDialog({
 							</div>
 						)}
 						<FormField
-						control={form.control}
-						name="description"
+							control={form.control}
+							name="description"
 							render={({ field }) => (
 								<FormItem>
-								<FormLabel required={!isAbsence && !fillsDay && projectId !== NO_PROJECT}>
-									{isAbsence || fillsDay ? "Note (optional)" : "What you did"}
-								</FormLabel>
+									<FormLabel
+										required={
+											!isAbsence && !fillsDay && projectId !== NO_PROJECT
+										}
+									>
+										{isAbsence || fillsDay ? "Note (optional)" : "What you did"}
+									</FormLabel>
 									<FormControl>
 										<Textarea rows={3} className="resize-y" {...field} />
 									</FormControl>

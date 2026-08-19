@@ -331,11 +331,11 @@ function RecurringBlockRuleDialog({
 							name="description"
 							render={({ field }) => (
 								<FormItem>
-								{/* Honest either way: a rule against a project generates
+									{/* Honest either way: a rule against a project generates
 								    worked time, which must say what the work was. */}
-								<FormLabel required={projectId !== NO_PROJECT}>
-									{projectId === NO_PROJECT ? "Note (optional)" : "Note"}
-								</FormLabel>
+									<FormLabel required={projectId !== NO_PROJECT}>
+										{projectId === NO_PROJECT ? "Note (optional)" : "Note"}
+									</FormLabel>
 									<FormControl>
 										<Input {...field} />
 									</FormControl>
