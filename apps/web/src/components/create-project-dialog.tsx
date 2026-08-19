@@ -37,6 +37,11 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "#/components/ui/tooltip.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
 import { clientsQuery } from "#/queries/clients.ts";
@@ -154,6 +159,8 @@ export function CreateProjectDialog() {
 		);
 	};
 
+	const noClients = clients.length === 0;
+
 	const mutation = useMutation({
 		mutationFn: (data: z.infer<typeof formSchema>) =>
 			createProject({
@@ -191,16 +198,29 @@ export function CreateProjectDialog() {
 		},
 	});
 
+	const trigger = (
+		<Button disabled={noClients}>
+			<PlusIcon weight="regular" />
+			New project
+		</Button>
+	);
+
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger
-				render={
-					<Button>
-						<PlusIcon weight="regular" />
-						New project
-					</Button>
-				}
-			/>
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (next && noClients) return;
+				setOpen(next);
+			}}
+		>
+			{noClients ? (
+				<Tooltip>
+					<TooltipTrigger>{trigger}</TooltipTrigger>
+					<TooltipContent>Create a client first</TooltipContent>
+				</Tooltip>
+			) : (
+				<DialogTrigger render={trigger} />
+			)}
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Create project</DialogTitle>
@@ -254,18 +274,11 @@ export function CreateProjectDialog() {
 									<Select
 										value={field.value}
 										onValueChange={field.onChange}
-										disabled={clients.length === 0}
 										items={clients.map((c) => ({ value: c.id, label: c.name }))}
 									>
 										<FormControl>
 											<SelectTrigger className="w-full">
-												<SelectValue
-													placeholder={
-														clients.length === 0
-															? "Create a client first"
-															: "Pick a client"
-													}
-												/>
+												<SelectValue placeholder="Pick a client" />
 											</SelectTrigger>
 										</FormControl>
 										<SelectContent>

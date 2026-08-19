@@ -1,6 +1,6 @@
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { CreateProjectDialog } from "#/components/create-project-dialog.tsx";
 import {
@@ -15,6 +15,7 @@ import {
 	AvatarGroup,
 	AvatarGroupCount,
 } from "#/components/ui/avatar.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
 import {
@@ -58,6 +59,8 @@ function ProjectsPage() {
 	const { role } = Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
 	const { data: projects } = useSuspenseQuery(projectsQuery(orgSlug));
+	const { data: clients } = useSuspenseQuery(clientsQuery(orgSlug));
+	const noClients = clients.length === 0;
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 	const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -146,13 +149,35 @@ function ProjectsPage() {
 				{projects.length === 0 ? (
 					<div className="border-t border-b">
 						<EmptyState
-							title="No projects yet"
+							title={
+								isAdmin && noClients ? "No clients yet" : "No projects yet"
+							}
 							description={
 								isAdmin
-									? "Create your first project to start tracking time against it."
+									? noClients
+										? "Every project belongs to a client. Create a client first, then come back to add a project."
+										: "Create your first project to start tracking time against it."
 									: "No projects have been created yet."
 							}
-							action={isAdmin ? <CreateProjectDialog /> : undefined}
+							action={
+								isAdmin ? (
+									noClients ? (
+										<Button
+											nativeButton={false}
+											render={
+												<Link
+													to="/$orgSlug/settings/clients"
+													params={{ orgSlug }}
+												/>
+											}
+										>
+											Go to Clients
+										</Button>
+									) : (
+										<CreateProjectDialog />
+									)
+								) : undefined
+							}
 						/>
 					</div>
 				) : filtered.length === 0 ? (
