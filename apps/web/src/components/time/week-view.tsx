@@ -440,9 +440,7 @@ export function WeekView({
 									</td>
 									{dates.map((date, colIndex) => {
 										const dayEntries = row.byDate.get(date) ?? [];
-										const cellHasNote = dayEntries.some(
-											(e) => e.description,
-										);
+										const cellHasNote = dayEntries.some((e) => e.description);
 										return (
 											<td key={date} className="px-1 py-2">
 												<div className="relative">
@@ -488,7 +486,8 @@ export function WeekView({
 																		new Map<string, string>([
 																			[date, description],
 																		]),
-																	)}
+																	)
+																}
 																contentClassName="sm:max-w-sm"
 																trigger={({ hasNote, disabled }) => (
 																	<button
@@ -500,7 +499,8 @@ export function WeekView({
 																			hasNote
 																				? "border-primary/40 text-primary"
 																				: "border-border text-faint",
-																			!disabled && "hover:bg-muted hover:text-foreground",
+																			!disabled &&
+																				"hover:bg-muted hover:text-foreground",
 																			disabled && "opacity-40",
 																		)}
 																	>
@@ -772,9 +772,7 @@ function RowNoteDialog({
 			disabled={disabled}
 			className={cn(
 				"flex size-7 items-center justify-center rounded-md border transition-colors duration-(--dur-fast)",
-				hasNote
-					? "border-border text-foreground"
-					: "border-dashed text-faint",
+				hasNote ? "border-border text-foreground" : "border-dashed text-faint",
 				!disabled && "hover:bg-muted hover:text-foreground",
 				disabled && "opacity-40",
 			)}
@@ -978,11 +976,7 @@ function DayNoteDialog({
 					<div className="space-y-3">
 						<div className="flex items-baseline justify-between gap-3">
 							<span className="eyebrow">
-								{
-									WEEKDAY_LABELS[
-										new Date(`${date}T12:00:00Z`).getUTCDay()
-									]
-								}{" "}
+								{WEEKDAY_LABELS[new Date(`${date}T12:00:00Z`).getUTCDay()]}{" "}
 								{Number(date.slice(-2))}
 							</span>
 							<span className="mono text-sm text-muted-foreground">
