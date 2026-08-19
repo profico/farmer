@@ -378,6 +378,17 @@ export function WeekView({
 								(sum, date) => sum + cellSeconds(row, date),
 								0,
 							);
+							const saveRowNotes = async (notesByDate: Map<string, string>) => {
+								// Each day's note goes onto that day's entries only.
+								for (const [date, description] of notesByDate) {
+									for (const entry of row.byDate.get(date) ?? []) {
+										await updateTimeEntryDescription({
+											data: { timeEntryId: entry.id, description },
+										});
+									}
+								}
+								await invalidate();
+							};
 							return (
 								<tr
 									key={row.key}
@@ -423,52 +434,86 @@ export function WeekView({
 													),
 												)}
 												disabled={row.locked}
-												onSave={async (notesByDate) => {
-													// Each day's note goes onto that day's entries only.
-													for (const [date, description] of notesByDate) {
-														for (const entry of row.byDate.get(date) ?? []) {
-															await updateTimeEntryDescription({
-																data: { timeEntryId: entry.id, description },
-															});
-														}
-													}
-													await invalidate();
-												}}
+												onSave={saveRowNotes}
 											/>
 										)}
 									</td>
-									{dates.map((date, colIndex) => (
-										<td key={date} className="px-1 py-2">
-											<GridCell
-												seconds={cellSeconds(row, date)}
-												disabled={row.locked}
-												rowIndex={rowIndex}
-												colIndex={colIndex}
-												onMove={moveFocus}
-												label={`${row.heading}${
-													row.taskName ? ` — ${row.taskName}` : ""
-												}, ${dayLabel(date)}`}
-												lockedReason={
-													row.locked
-														? "Generated automatically — edit it in the Day view"
-														: undefined
-												}
-												// Hours only, never a note: a cell write says how long
-												// you worked and nothing about what you did. The note
-												// is the row's note button, per day, after the fact.
-												// Passing one here is what used to overwrite Thursday's
-												// note with Monday's every time hours were corrected.
-												onCommit={(durationSeconds) =>
-													cellMutation.mutate({
-														date,
-														projectId: row.projectId,
-														taskId: row.taskId,
-														durationSeconds,
-													})
-												}
-											/>
-										</td>
-									))}
+									{dates.map((date, colIndex) => {
+										const dayEntries = row.byDate.get(date) ?? [];
+										const cellHasNote = dayEntries.some(
+											(e) => e.description,
+										);
+										return (
+											<td key={date} className="px-1 py-2">
+												<div className="relative">
+													<GridCell
+														seconds={cellSeconds(row, date)}
+														disabled={row.locked}
+														rowIndex={rowIndex}
+														colIndex={colIndex}
+														onMove={moveFocus}
+														label={`${row.heading}${
+															row.taskName ? ` — ${row.taskName}` : ""
+														}, ${dayLabel(date)}`}
+														lockedReason={
+															row.locked
+																? "Generated automatically — edit it in the Day view"
+																: undefined
+														}
+														// Hours only: a cell write says how long you worked and
+														// nothing about what you did. Notes are edited via the
+														// note dialog triggers (row-level button or the per-cell
+														// icon inside the grid).
+														// Passing one here is what used to overwrite Thursday's
+														// note with Monday's every time hours were corrected.
+														onCommit={(durationSeconds) =>
+															cellMutation.mutate({
+																date,
+																projectId: row.projectId,
+																taskId: row.taskId,
+																durationSeconds,
+															})
+														}
+													/>
+													{rowTotal === 0 ? null : (
+														<div className="absolute left-1 top-1/2 z-10 -translate-y-1/2">
+															<DayNoteDialog
+																heading={row.heading}
+																date={date}
+																entries={dayEntries}
+																hasNote={cellHasNote}
+																disabled={row.locked}
+																onSave={async (description) =>
+																	saveRowNotes(
+																		new Map<string, string>([
+																			[date, description],
+																		]),
+																	)}
+																contentClassName="sm:max-w-sm"
+																trigger={({ hasNote, disabled }) => (
+																	<button
+																		type="button"
+																		aria-label={`Notes for ${row.heading} on ${date}`}
+																		disabled={disabled}
+																		className={cn(
+																			"flex size-5 items-center justify-center rounded-md border bg-background/80 shadow-sm backdrop-blur transition-colors duration-(--dur-fast)",
+																			hasNote
+																				? "border-primary/40 text-primary"
+																				: "border-border text-faint",
+																			!disabled && "hover:bg-muted hover:text-foreground",
+																			disabled && "opacity-40",
+																		)}
+																	>
+																		<NoteIcon className="size-3.5" />
+																	</button>
+																)}
+															/>
+														</div>
+													)}
+												</div>
+											</td>
+										);
+									})}
 									<td className="mono px-3 py-2 text-right text-sm sm:pr-8">
 										{rowTotal > 0 ? (
 											formatClock(rowTotal)
@@ -621,7 +666,7 @@ function GridCell({
 	return (
 		<Input
 			className={cn(
-				"mono h-8 w-full min-w-16 px-1.5 text-center text-sm",
+				"mono h-8 w-full min-w-20 pl-6 pr-2 text-center text-sm",
 				// An empty cell is quieter than a filled one, but it is still a box.
 				// Seven days × N rows of full-strength outlines reads as the content
 				// rather than the frame, so the border thins out — it does not
@@ -691,6 +736,8 @@ function RowNoteDialog({
 	hasNote,
 	disabled,
 	onSave,
+	trigger,
+	contentClassName,
 }: {
 	heading: string;
 	/** The week's seven day keys, in order. */
@@ -701,9 +748,42 @@ function RowNoteDialog({
 	disabled: boolean;
 	/** date -> the note to write onto every entry on that date. */
 	onSave: (notesByDate: Map<string, string>) => Promise<void>;
+	/**
+	 * Optional trigger override, used to place the note icon inside other UI.
+	 * If omitted, the original row-footprint button is rendered.
+	 */
+	trigger?: (args: { hasNote: boolean; disabled: boolean }) => unknown;
+	/** Allows a smaller popup when used inline inside grid cells. */
+	contentClassName?: string;
 }) {
 	const [open, setOpen] = useState(false);
 	const [saving, setSaving] = useState(false);
+
+	const defaultTrigger = ({
+		hasNote,
+		disabled,
+	}: {
+		hasNote: boolean;
+		disabled: boolean;
+	}) => (
+		<button
+			type="button"
+			aria-label={`Notes for ${heading}`}
+			disabled={disabled}
+			className={cn(
+				"flex size-7 items-center justify-center rounded-md border transition-colors duration-(--dur-fast)",
+				hasNote
+					? "border-border text-foreground"
+					: "border-dashed text-faint",
+				!disabled && "hover:bg-muted hover:text-foreground",
+				disabled && "opacity-40",
+			)}
+		>
+			<NoteIcon className="size-3.5" />
+		</button>
+	);
+
+	const triggerNode = (trigger ?? defaultTrigger)({ hasNote, disabled });
 
 	// Only the days this row has entries on are editable.
 	const loggedDates = dates.filter(
@@ -728,29 +808,11 @@ function RowNoteDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger
-				render={
-					<button
-						type="button"
-						aria-label={`Notes for ${heading}`}
-						disabled={disabled}
-						className={cn(
-							"flex size-7 items-center justify-center rounded-md border transition-colors duration-(--dur-fast)",
-							hasNote
-								? "border-border text-foreground"
-								: "border-dashed text-faint",
-							!disabled && "hover:bg-muted hover:text-foreground",
-							disabled && "opacity-40",
-						)}
-					>
-						<NoteIcon className="size-3.5" />
-					</button>
-				}
-			/>
+			<DialogTrigger render={triggerNode as never} />
 			{/* Height cap, body scroll and sticky footer are DialogContent's job now
 			    (see dialog.tsx) — a full week of boxes is taller than a short
 			    viewport, and this dialog is only wider than default. */}
-			<DialogContent className="sm:max-w-lg">
+			<DialogContent className={contentClassName ?? "sm:max-w-lg"}>
 				<DialogHeader>
 					<DialogTitle>{heading}</DialogTitle>
 				</DialogHeader>
@@ -828,6 +890,136 @@ function RowNoteDialog({
 						}}
 					>
 						{saving ? "Saving…" : "Save notes"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+/**
+ * Notes for a single day inside the week grid.
+ *
+ * This is the "singular" version of `RowNoteDialog`: it edits only the
+ * `entries` that exist for `date`, instead of showing one textarea per day
+ * in the row.
+ */
+function DayNoteDialog({
+	heading,
+	date,
+	entries,
+	hasNote,
+	disabled,
+	onSave,
+	trigger,
+	contentClassName,
+}: {
+	heading: string;
+	date: string;
+	entries: EntryBlockRowEntry[];
+	hasNote: boolean;
+	disabled: boolean;
+	onSave: (description: string) => Promise<void>;
+	trigger?: (args: { hasNote: boolean; disabled: boolean }) => unknown;
+	contentClassName?: string;
+}) {
+	const [open, setOpen] = useState(false);
+	const [saving, setSaving] = useState(false);
+
+	const storedNote = entries.find((e) => e.description)?.description ?? "";
+	const [draft, setDraft] = useState(storedNote);
+
+	const seconds = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
+
+	const [wasOpen, setWasOpen] = useState(false);
+	if (open !== wasOpen) {
+		setWasOpen(open);
+		if (open) setDraft(storedNote);
+	}
+
+	const defaultTrigger = ({
+		hasNote,
+		disabled,
+	}: {
+		hasNote: boolean;
+		disabled: boolean;
+	}) => (
+		<button
+			type="button"
+			aria-label={`Notes for ${heading} on ${date}`}
+			disabled={disabled}
+			className={cn(
+				"flex size-7 items-center justify-center rounded-md border transition-colors duration-(--dur-fast)",
+				hasNote ? "border-primary/40 text-primary" : "border-dashed text-faint",
+				!disabled && "hover:bg-muted hover:text-foreground",
+				disabled && "opacity-40",
+			)}
+		>
+			<NoteIcon className="size-3.5" />
+		</button>
+	);
+
+	const triggerNode = (trigger ?? defaultTrigger)({ hasNote, disabled });
+
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogTrigger render={triggerNode as never} />
+			<DialogContent className={contentClassName ?? "sm:max-w-sm"}>
+				<DialogHeader>
+					<DialogTitle>{heading}</DialogTitle>
+				</DialogHeader>
+
+				{entries.length === 0 ? (
+					<p className="text-sm text-muted-foreground">
+						Nothing logged on this day yet. Enter hours first — a note can only
+						be attached to existing entries.
+					</p>
+				) : (
+					<div className="space-y-3">
+						<div className="flex items-baseline justify-between gap-3">
+							<span className="eyebrow">
+								{
+									WEEKDAY_LABELS[
+										new Date(`${date}T12:00:00Z`).getUTCDay()
+									]
+								}{" "}
+								{Number(date.slice(-2))}
+							</span>
+							<span className="mono text-sm text-muted-foreground">
+								{formatClock(seconds)}
+							</span>
+						</div>
+
+						<Textarea
+							id={`note-${date}-single`}
+							autoFocus
+							rows={3}
+							className="resize-y"
+							value={draft}
+							onChange={(e) => setDraft(e.target.value)}
+							placeholder="What you did"
+						/>
+					</div>
+				)}
+
+				<DialogFooter>
+					<Button
+						disabled={
+							saving ||
+							entries.length === 0 ||
+							draft.trimEnd() === storedNote.trimEnd()
+						}
+						onClick={async () => {
+							setSaving(true);
+							try {
+								await onSave(draft.trimEnd());
+								setOpen(false);
+							} finally {
+								setSaving(false);
+							}
+						}}
+					>
+						{saving ? "Saving…" : "Save note"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
