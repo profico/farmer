@@ -105,9 +105,20 @@ const formSchema = z.object({
 	color: createProjectInput.shape.color,
 	clientId: createProjectInput.shape.clientId,
 	type: createProjectInput.shape.type,
-	// Kept as a plain string in the form (not the server's z.coerce.number())
-	// for the same reason — createProjectInput coerces it on submit either way.
-	budgetHours: z.string().optional(),
+	budgetHours: z.union([
+		z.literal(""),
+		z
+			.string()
+			.trim()
+			.regex(/^\d+(\.\d+)?$/, "Expected a number like 400 or 400.5")
+			.refine(
+				(v) => {
+					const n = Number(v);
+					return n > 0 && n <= 100_000;
+				},
+				"Must be between 1 and 100,000",
+			),
+	]),
 	budgetAmount: optionalMoney,
 	hourlyPrice: optionalMoney,
 	taskIds: z.array(z.string()),
@@ -236,7 +247,7 @@ export function CreateProjectDialog() {
 								name="name"
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Name</FormLabel>
+										<FormLabel required>Name</FormLabel>
 										<FormControl>
 											<Input autoFocus {...field} />
 										</FormControl>
@@ -270,7 +281,7 @@ export function CreateProjectDialog() {
 							name="clientId"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Client</FormLabel>
+									<FormLabel required>Client</FormLabel>
 									<Select
 										value={field.value}
 										onValueChange={field.onChange}
@@ -298,7 +309,7 @@ export function CreateProjectDialog() {
 							name="type"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Type</FormLabel>
+									<FormLabel required>Type</FormLabel>
 									<Select
 										value={field.value}
 										onValueChange={field.onChange}

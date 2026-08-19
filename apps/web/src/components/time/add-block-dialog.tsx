@@ -18,9 +18,11 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import {
@@ -92,36 +94,75 @@ export type ExistingTimeEntry = {
 	generatedFromRuleId: string | null;
 };
 
-type FormValues = {
-	projectId: string;
-	taskId: string;
-	date: string;
-	/** Free text, exactly as typed — `parseDuration` reads it. In the form rather
-	 *  than in its own useState so it validates and reports errors inline like
-	 *  every other field, instead of bouncing off the server as a toast. */
-	duration: string;
-	description: string;
-	overtime: boolean;
-	fillsDay: boolean;
-	repeatEnabled: boolean;
-	daysOfWeek: number[];
-	repeatEndDate: string;
-};
-
 const MAX_ENTRY_SECONDS = 24 * 3600;
 
-/** The client half of the server's duration rule (schema/time-entries.ts). Same
- *  three checks, so an empty or unreadable box is answered next to the box. */
-const validateDuration = (value: string): string | true => {
-	if (!value.trim()) return "Enter some time";
-	const parsed = parseDuration(value);
-	if (parsed === null) return "Try 1.5, 1h30m or 1:30";
-	if (parsed <= 0) return "Enter some time";
-	if (snapToQuarterHour(parsed) > MAX_ENTRY_SECONDS) {
-		return "A single entry cannot exceed 24 hours";
-	}
-	return true;
-};
+const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
+
+const formSchema = z
+	.object({
+		projectId: z.string().min(1),
+		taskId: z.uuid("Pick a task"),
+		date: dateKey,
+		duration: z.string(),
+		description: z.string().max(10_000),
+		overtime: z.boolean(),
+		fillsDay: z.boolean(),
+		repeatEnabled: z.boolean(),
+		daysOfWeek: z.array(z.number().int().min(0).max(6)),
+		repeatEndDate: z.string(),
+	})
+	.superRefine((data, ctx) => {
+		if (!data.fillsDay) {
+			if (!data.duration.trim()) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["duration"],
+					message: "Enter some time",
+				});
+			} else {
+				const parsed = parseDuration(data.duration);
+				if (parsed === null) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["duration"],
+						message: "Try 1.5, 1h30m or 1:30",
+					});
+				} else if (parsed <= 0) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["duration"],
+						message: "Enter some time",
+					});
+				} else if (snapToQuarterHour(parsed) > MAX_ENTRY_SECONDS) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["duration"],
+						message: "A single entry cannot exceed 24 hours",
+					});
+				}
+			}
+		}
+		if (
+			data.projectId !== NO_PROJECT &&
+			!data.fillsDay &&
+			!data.description?.trim()
+		) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["description"],
+				message: "Describe what you worked on",
+			});
+		}
+		if (data.repeatEnabled && data.daysOfWeek.length < 1) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["daysOfWeek"],
+				message: "Pick at least one day",
+			});
+		}
+	});
+
+type FormValues = z.infer<typeof formSchema>;
 
 function commitKey(projectGithubRepoId: string, sha: string): string {
 	return `${projectGithubRepoId}:${sha}`;
@@ -161,7 +202,10 @@ export function AddBlockDialog({
 		repeatEndDate: "",
 	});
 
-	const form = useForm<FormValues>({ defaultValues: buildDefaults() });
+	const form = useForm<FormValues>({
+		resolver: zodResolver(formSchema),
+		defaultValues: buildDefaults(),
+	});
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: only reset when the dialog opens
 	useEffect(() => {
@@ -532,13 +576,12 @@ export function AddBlockDialog({
 								</FormItem>
 							)}
 						/>
-						<FormField
-							control={form.control}
-							name="taskId"
-							rules={{ required: "Pick a task" }}
-							render={({ field }) => (
+					<FormField
+						control={form.control}
+						name="taskId"
+						render={({ field }) => (
 								<FormItem>
-									<FormLabel>Task</FormLabel>
+									<FormLabel required>Task</FormLabel>
 									<FormControl>
 										<div className="flex flex-wrap gap-1.5">
 											{tasks.map((t) => {
@@ -633,18 +676,10 @@ export function AddBlockDialog({
 						) : (
 							<FormField
 								control={form.control}
-								name="duration"
-								// A fill block's duration is derived server-side, so the box is
-								// not rendered at all — but react-hook-form keeps unmounted
-								// fields registered, so the rule has to stand down explicitly
-								// or it would block the submit over a box nobody can see.
-								rules={{
-									validate: (value: string, values: FormValues) =>
-										values.fillsDay ? true : validateDuration(value),
-								}}
+							name="duration"
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Time</FormLabel>
+										<FormLabel required>Time</FormLabel>
 										<FormControl>
 											<Input
 												{...field}
@@ -810,6 +845,11 @@ export function AddBlockDialog({
 														</button>
 													))}
 												</div>
+												{form.formState.errors.daysOfWeek && (
+													<p className="text-sm text-destructive">
+														{form.formState.errors.daysOfWeek.message}
+													</p>
+												)}
 												<FormField
 													control={form.control}
 													name="repeatEndDate"
@@ -979,18 +1019,13 @@ export function AddBlockDialog({
 							</div>
 						)}
 						<FormField
-							control={form.control}
-							name="description"
-							rules={
-								isAbsence || fillsDay
-									? undefined
-									: { required: "Describe what you worked on" }
-							}
+						control={form.control}
+						name="description"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>
-										{isAbsence || fillsDay ? "Note (optional)" : "What you did"}
-									</FormLabel>
+								<FormLabel required={!isAbsence && !fillsDay && projectId !== NO_PROJECT}>
+									{isAbsence || fillsDay ? "Note (optional)" : "What you did"}
+								</FormLabel>
 									<FormControl>
 										<Textarea rows={3} className="resize-y" {...field} />
 									</FormControl>

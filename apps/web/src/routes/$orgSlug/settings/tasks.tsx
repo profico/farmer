@@ -113,9 +113,9 @@ function CreateTaskDialog() {
 							name="name"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Name</FormLabel>
-									<FormControl>
-										<Input autoFocus {...field} />
+						<FormLabel required>Name</FormLabel>
+						<FormControl>
+							<Input autoFocus {...field} />
 									</FormControl>
 									<FormMessage />
 								</FormItem>
@@ -225,9 +225,9 @@ function EditTaskDialog({
 							name="name"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Name</FormLabel>
-									<FormControl>
-										<Input autoFocus {...field} />
+						<FormLabel required>Name</FormLabel>
+						<FormControl>
+							<Input autoFocus {...field} />
 									</FormControl>
 									<FormMessage />
 								</FormItem>
