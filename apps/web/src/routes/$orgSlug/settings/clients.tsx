@@ -98,7 +98,7 @@ function CreateClientDialog() {
 							name="name"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Name</FormLabel>
+									<FormLabel required>Name</FormLabel>
 									<FormControl>
 										<Input autoFocus {...field} />
 									</FormControl>

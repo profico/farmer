@@ -91,7 +91,10 @@ function OrganizationSettingsPage() {
 
 	const [name, setName] = useState(settings.name);
 	const trimmedName = name.trim();
-	const nameChanged = trimmedName.length > 0 && trimmedName !== settings.name;
+	const nameChanged =
+		trimmedName.length > 0 &&
+		trimmedName.length <= 120 &&
+		trimmedName !== settings.name;
 
 	const [logo, setLogo] = useState(settings.logo ?? "");
 	const trimmedLogo = logo.trim();
@@ -122,6 +125,7 @@ function OrganizationSettingsPage() {
 						value={name}
 						onChange={(e) => setName(e.target.value)}
 						placeholder="Acme Inc."
+						maxLength={120}
 						className="flex-1"
 					/>
 					<Button
@@ -194,6 +198,7 @@ function OrganizationSettingsPage() {
 							placeholder="https://example.com/logo.svg"
 							type="url"
 							inputMode="url"
+							maxLength={2048}
 							className="flex-1"
 						/>
 					</div>
@@ -331,6 +336,7 @@ function NotOnInvoiceStatusSection() {
 					className="flex-1"
 					placeholder="Add a status, e.g. Parental leave"
 					value={label}
+					maxLength={60}
 					onChange={(e) => setLabel(e.target.value)}
 				/>
 				<Button
@@ -363,6 +369,7 @@ function StatusLabelInput({
 		<Input
 			className="h-8 flex-1"
 			value={value}
+			maxLength={60}
 			onChange={(e) => setValue(e.target.value)}
 			onBlur={() => {
 				const trimmed = value.trim();
@@ -494,7 +501,11 @@ function AutomationLockSection() {
 	// and "changed" has to compare against null rather than against "".
 	const trimmed = value.trim();
 	const next = trimmed === "" ? null : trimmed;
-	const valid = next === null || /^\d{4}-\d{2}-\d{2}$/.test(next);
+	const valid =
+		next === null ||
+		(/^\d{4}-\d{2}-\d{2}$/.test(next) &&
+			!Number.isNaN(new Date(`${next}T00:00:00Z`).getTime()) &&
+			new Date(`${next}T00:00:00Z`).toISOString().startsWith(next));
 	const changed = valid && next !== (policy.automationLockedThrough ?? null);
 
 	return (

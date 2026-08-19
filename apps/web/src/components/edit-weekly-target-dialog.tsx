@@ -32,6 +32,9 @@ export function EditWeeklyTargetDialog({
 		if (open) setHours(String(currentHours));
 	}, [open]);
 
+	const trimmed = hours.trim();
+	const canSubmit = trimmed.length > 0 && !Number.isNaN(Number(trimmed));
+
 	const mutation = useMutation({
 		mutationFn: (weeklyTarget: string) =>
 			setWeeklyTarget({ data: { weeklyTarget } }),
@@ -63,7 +66,7 @@ export function EditWeeklyTargetDialog({
 				<form
 					onSubmit={(e) => {
 						e.preventDefault();
-						mutation.mutate(hours);
+						if (canSubmit) mutation.mutate(hours);
 					}}
 					className="grid gap-4"
 				>
@@ -80,7 +83,7 @@ export function EditWeeklyTargetDialog({
 						/>
 					</div>
 					<DialogFooter>
-						<Button type="submit" disabled={mutation.isPending}>
+						<Button type="submit" disabled={!canSubmit || mutation.isPending}>
 							Save
 						</Button>
 					</DialogFooter>

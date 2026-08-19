@@ -51,7 +51,7 @@ const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 // a slot on a clock, which is the whole point of the duration-only model.
 const formSchema = z
 	.object({
-		taskId: z.string().min(1, "Pick a task"),
+		taskId: z.uuid("Pick a task"),
 		projectId: z.string(),
 		description: z.string(),
 		daysOfWeek: z.array(z.number()).min(1, "Pick at least one day"),
@@ -229,7 +229,7 @@ function RecurringBlockRuleDialog({
 							name="taskId"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Task</FormLabel>
+									<FormLabel required>Task</FormLabel>
 									<Select
 										value={field.value}
 										onValueChange={field.onChange}
@@ -288,7 +288,7 @@ function RecurringBlockRuleDialog({
 							)}
 						/>
 						<FormItem>
-							<FormLabel>Days</FormLabel>
+							<FormLabel required>Days</FormLabel>
 							<div className="flex gap-1">
 								{DAY_LABELS.map((label, day) => (
 									<button
@@ -318,7 +318,7 @@ function RecurringBlockRuleDialog({
 							name="duration"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Duration</FormLabel>
+									<FormLabel required>Duration</FormLabel>
 									<FormControl>
 										<Input placeholder="1.5, 30m, or 1h30m" {...field} />
 									</FormControl>
@@ -331,11 +331,11 @@ function RecurringBlockRuleDialog({
 							name="description"
 							render={({ field }) => (
 								<FormItem>
-									{/* Honest either way: a rule against a project generates
-									    worked time, which must say what the work was. */}
-									<FormLabel>
-										{projectId === NO_PROJECT ? "Note (optional)" : "Note"}
-									</FormLabel>
+								{/* Honest either way: a rule against a project generates
+								    worked time, which must say what the work was. */}
+								<FormLabel required={projectId !== NO_PROJECT}>
+									{projectId === NO_PROJECT ? "Note (optional)" : "Note"}
+								</FormLabel>
 									<FormControl>
 										<Input {...field} />
 									</FormControl>

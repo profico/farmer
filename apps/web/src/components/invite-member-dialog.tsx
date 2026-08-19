@@ -86,7 +86,7 @@ export function InviteMemberDialog() {
 							name="email"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Email</FormLabel>
+									<FormLabel required>Email</FormLabel>
 									<FormControl>
 										<Input type="email" autoFocus {...field} />
 									</FormControl>
@@ -99,7 +99,7 @@ export function InviteMemberDialog() {
 							name="role"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Role</FormLabel>
+									<FormLabel required>Role</FormLabel>
 									<Select
 										value={field.value}
 										onValueChange={field.onChange}
