@@ -20,6 +20,16 @@ export type PublicAppConfig = {
 	 */
 	assistantEnabled: boolean;
 	/**
+	 * Whether `/login` should offer the email + password form alongside the
+	 * Google button (`packages/core/src/lib/dev-auth.ts`).
+	 *
+	 * Same relationship as `assistantEnabled`: this only decides whether the
+	 * form renders. What actually closes password sign-in is better-auth's
+	 * `emailAndPassword.enabled`, server-side — a form typed into by hand
+	 * against a production build gets a 404 from the endpoint.
+	 */
+	devAuth: boolean;
+	/**
 	 * The one organization's public face — name, logo and slug, and nothing
 	 * else. This is an unauthenticated read (`/login`'s error screen needs it
 	 * before anyone has signed in), so it returns branding rather than the org
@@ -33,19 +43,25 @@ export type PublicAppConfig = {
 
 export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 	async (): Promise<PublicAppConfig> => {
-		const [{ isSingleOrgMode, findSingleOrg }, { isAssistantEnabled }] =
-			await Promise.all([
-				import("@farmer/core/lib/single-org"),
-				import("@farmer/core/lib/assistant-flag"),
-			]);
+		const [
+			{ isSingleOrgMode, findSingleOrg },
+			{ isAssistantEnabled },
+			{ isDevAuthEnabled },
+		] = await Promise.all([
+			import("@farmer/core/lib/single-org"),
+			import("@farmer/core/lib/assistant-flag"),
+			import("@farmer/core/lib/dev-auth"),
+		]);
 		const assistantEnabled = isAssistantEnabled();
+		const devAuth = isDevAuthEnabled();
 		if (!isSingleOrgMode()) {
-			return { singleOrgMode: false, assistantEnabled, org: null };
+			return { singleOrgMode: false, assistantEnabled, devAuth, org: null };
 		}
 		const org = await findSingleOrg();
 		return {
 			singleOrgMode: true,
 			assistantEnabled,
+			devAuth,
 			org: org
 				? { slug: org.slug, name: org.name, logo: org.logo ?? null }
 				: null,

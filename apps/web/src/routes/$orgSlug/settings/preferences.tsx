@@ -34,9 +34,14 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 	loader: async ({ context, params }) => {
 		const orgSlug = params.orgSlug;
 		await Promise.all([
-			context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug)),
+			// Only worth fetching when the section that reads it renders — see
+			// PreferencesSettingsPage.
+			context.devAuth
+				? context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug))
+				: null,
 			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
 		]);
+		return { devAuth: context.devAuth };
 	},
 	component: PreferencesSettingsPage,
 });
@@ -134,9 +139,48 @@ function GoogleSignInMethod() {
 	);
 }
 
-function PreferencesSettingsPage() {
+/**
+ * Password + Google, and only where either is a real choice — i.e. development,
+ * where email/password sign-in is switched on (packages/core/src/lib/dev-auth.ts).
+ *
+ * On a deployed instance Google is the *only* identity: there is no endpoint
+ * that could set the password this section reports on, and disconnecting Google
+ * is refused because it would be the account's last way in. Both rows were
+ * therefore permanently "Not set" and permanently disabled — a section that
+ * asks to be read and then offers nothing to do.
+ */
+function SignInMethodsSection() {
 	const orgSlug = useOrgSlug();
 	const { data: methods } = useSuspenseQuery(signInMethodsQuery(orgSlug));
+
+	return (
+		<PageSection
+			title="Sign-in methods"
+			description="How you sign in to Farmer. These apply to your account everywhere, not just this workspace."
+		>
+			<SettingList>
+				<SignInMethodRow
+					icon={<KeyIcon className="size-5 text-muted-foreground" />}
+					title="Password"
+					description={
+						methods.hasPassword
+							? "Sign in with your email and password."
+							: "No password set — you sign in with Google."
+					}
+					badge={
+						<Badge variant="secondary">
+							{methods.hasPassword ? "Set" : "Not set"}
+						</Badge>
+					}
+				/>
+				<GoogleSignInMethod />
+			</SettingList>
+		</PageSection>
+	);
+}
+
+function PreferencesSettingsPage() {
+	const { devAuth } = Route.useLoaderData();
 
 	return (
 		<Page className="screen">
@@ -147,29 +191,7 @@ function PreferencesSettingsPage() {
 				className="mb-0"
 			/>
 
-			{/* Sign-in methods — account-level auth, applies across every workspace */}
-			<PageSection
-				title="Sign-in methods"
-				description="How you sign in to Farmer. These apply to your account everywhere, not just this workspace."
-			>
-				<SettingList>
-					<SignInMethodRow
-						icon={<KeyIcon className="size-5 text-muted-foreground" />}
-						title="Password"
-						description={
-							methods.hasPassword
-								? "Sign in with your email and password."
-								: "No password set — you sign in with Google."
-						}
-						badge={
-							<Badge variant="secondary">
-								{methods.hasPassword ? "Set" : "Not set"}
-							</Badge>
-						}
-					/>
-					<GoogleSignInMethod />
-				</SettingList>
-			</PageSection>
+			{devAuth ? <SignInMethodsSection /> : null}
 
 			<NotificationSettings />
 		</Page>

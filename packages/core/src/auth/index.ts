@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
+import { isDevAuthEnabled } from "../lib/dev-auth";
 import { sendMail } from "../lib/email";
 import {
 	bootstrapSingleOrg,
@@ -33,11 +34,27 @@ const uniqueSlugFor = async (name: string) => {
 
 export const auth = betterAuth({
 	database: drizzleAdapter(db, { provider: "pg", schema }),
-	// No `emailAndPassword`. Google is the only identity this app accepts, which
-	// is why there is no login screen either — `/login` is a redirect into the
-	// Google flow (apps/web/src/routes/api/login.ts). Leaving the email/password
-	// endpoints enabled would keep a second, unreachable-by-design way in:
-	// /api/auth/sign-up/email is a public POST whether or not a form points at it.
+	// Google is the only identity this app accepts in production, and these
+	// endpoints are OFF there — /api/auth/sign-up/email is a public POST whether
+	// or not a form points at it, so leaving it enabled would be a second,
+	// unreachable-by-design way in.
+	//
+	// In development it is on, so a fresh checkout can be signed into without a
+	// Google Cloud project (see lib/dev-auth.ts for why the gate is NODE_ENV and
+	// not an opt-in flag). Everything downstream is shared with the Google path
+	// rather than special-cased: the `databaseHooks.user.create` hooks below
+	// still bootstrap the org and seed its tasks, and single-org mode's
+	// invite-only gate still applies — signing up with a password does not get
+	// you past an invitation you don't have.
+	emailAndPassword: {
+		enabled: isDevAuthEnabled(),
+		// No verification flow exists anywhere in this app (see the note on
+		// `/no-access`), so requiring it would make every dev account unusable.
+		requireEmailVerification: false,
+		// One round trip from the form to a session. The whole point is to stop
+		// bootstrapping from being a chore.
+		autoSignIn: true,
+	},
 	session: {
 		// better-auth guards unlink-account / session-management behind a "fresh
 		// session" check (freshSessionMiddleware) that 403s SESSION_NOT_FRESH once

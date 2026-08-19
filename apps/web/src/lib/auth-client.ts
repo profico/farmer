@@ -20,6 +20,8 @@ export const authClient = createAuthClient({
 	],
 });
 
-// No `signUp`: Google is the only identity, and its callback creates the user
-// on first sign-in. There is nothing for a sign-up call to do.
-export const { useSession, signIn, signOut } = authClient;
+// `signUp` is here for the development-only email + password form on /login
+// (packages/core/src/lib/dev-auth.ts). In production the endpoint behind it does
+// not exist: Google is the only identity, and its callback creates the user on
+// first sign-in, so there is nothing for a sign-up call to do.
+export const { useSession, signIn, signUp, signOut } = authClient;

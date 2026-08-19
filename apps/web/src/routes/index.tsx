@@ -14,41 +14,36 @@ import {
 	SquaresFourIcon,
 	UsersIcon,
 } from "@phosphor-icons/react";
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
 import { getSession } from "#/server/auth.ts";
-import { getPublicAppConfig } from "#/server/config.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 // Marketing-only styles, every rule scoped under `.fm-landing`. See the header
 // of that file for why it is a stylesheet rather than the inline <style> it was.
 import "./landing.css";
 
 export const Route = createFileRoute("/")({
-	// Public marketing homepage — rendered for everyone, signed in or not (no
-	// redirect, so a logged-in user can still visit `/`). The loader resolves the
-	// viewer's default org slug (null when logged out / org-less) so the CTAs can
-	// point at the dashboard when there is one, and at login otherwise.
+	// Public homepage — rendered for everyone, signed in or not, in every mode.
+	// It never redirects. Single-org mode used to bounce every visitor straight
+	// through to the workspace (and, signed out, on to `/login` and from there to
+	// Google), which meant a deployment had no reachable front door at all: no
+	// address you could type to get a page instead of a round trip, and nowhere
+	// for a sign-in screen offering anything other than Google to live.
 	//
-	// In single-org mode there is no marketing page: `/` is just the front door
-	// of the one workspace, so every branch below redirects and the component
-	// never renders.
-	loader: async (): Promise<{ orgSlug: string | null }> => {
-		const config = await getPublicAppConfig();
+	// So the loader resolves who the viewer is and lets the CTAs say it: their
+	// workspace when they have one, `/no-access` when they are signed in without
+	// a membership (invitation revoked, or an account predating single-org mode),
+	// and `/login` when they are not signed in.
+	loader: async (): Promise<{
+		orgSlug: string | null;
+		signedIn: boolean;
+	}> => {
 		const session = await getSession();
-		if (config.singleOrgMode) {
-			if (!session) throw redirect({ to: "/login" });
-			const orgSlug = await getDefaultOrgSlugForSession();
-			// Signed in with no membership: invitation revoked, or an account that
-			// predates the mode being switched on. A dead end, not a bounce back to
-			// `/` — that would loop.
-			if (!orgSlug) throw redirect({ to: "/no-access" });
-			throw redirect({ to: "/$orgSlug", params: { orgSlug } });
-		}
-		if (!session) return { orgSlug: null };
+		if (!session) return { orgSlug: null, signedIn: false };
 		// Server fn resolves userId/activeOrganizationId from the session itself —
 		// it no longer accepts a client-supplied identity.
 		const orgSlug = await getDefaultOrgSlugForSession();
-		return { orgSlug };
+		return { orgSlug, signedIn: true };
 	},
 	component: Home,
 });
@@ -62,24 +57,33 @@ const PROFICO_URL = "https://profi.co";
 // action never changes shape as you scroll past it.
 function DashButton({
 	orgSlug,
+	signedIn,
 	className = "fm-btn",
 }: {
 	orgSlug: string | null;
+	// Signed in with no workspace is its own destination, not "log in again":
+	// `/no-access` is the screen that explains why and lists any live
+	// invitations. Sending them to `/login` would hand them a Google button that
+	// signs them into the account they are already in and returns them here.
+	signedIn: boolean;
 	className?: string;
 }) {
-	const label = orgSlug ? "Open dashboard" : "Log in";
+	const label = orgSlug || signedIn ? "Open dashboard" : "Log in";
 	const content = (
 		<>
 			{label}
 			<ArrowRightIcon weight="regular" size={15} data-icon="inline-end" />
 		</>
 	);
-	return orgSlug ? (
-		<Link className={className} to="/$orgSlug" params={{ orgSlug }}>
-			{content}
-		</Link>
-	) : (
-		<Link className={className} to="/login">
+	if (orgSlug) {
+		return (
+			<Link className={className} to="/$orgSlug" params={{ orgSlug }}>
+				{content}
+			</Link>
+		);
+	}
+	return (
+		<Link className={className} to={signedIn ? "/no-access" : "/login"}>
 			{content}
 		</Link>
 	);
@@ -162,7 +166,7 @@ const recentEntries = [
 ];
 
 function Home() {
-	const { orgSlug } = Route.useLoaderData();
+	const { orgSlug, signedIn } = Route.useLoaderData();
 	return (
 		<MotionConfig reducedMotion="user">
 			<div className="fm-landing">
@@ -213,7 +217,7 @@ function Home() {
 							>
 								Open source
 							</a>
-							<DashButton orgSlug={orgSlug} />
+							<DashButton orgSlug={orgSlug} signedIn={signedIn} />
 						</div>
 					</div>
 				</header>
@@ -271,7 +275,7 @@ function Home() {
 							marginTop: "30px",
 						}}
 					>
-						<DashButton orgSlug={orgSlug} />
+						<DashButton orgSlug={orgSlug} signedIn={signedIn} />
 						<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
 							<GitBranchIcon size={15} data-icon="inline-start" />
 							Star on GitHub
@@ -934,7 +938,7 @@ function Home() {
 							className="fm-os-actions"
 							style={{ display: "flex", gap: "10px" }}
 						>
-							<DashButton orgSlug={orgSlug} />
+							<DashButton orgSlug={orgSlug} signedIn={signedIn} />
 							<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
 								<GitBranchIcon size={15} data-icon="inline-start" />
 								View on GitHub

@@ -10,7 +10,7 @@
     "dev": "vite dev --port 3000",
     "generate-routes": "tsr generate",
     "build": "vite build && bun run scripts/prune-client-assets.ts",
-    "start": "bun run server.ts",
+    "start": "NODE_ENV=production bun run server.ts",
     "preview": "vite preview",
     "format": "biome format",
     "lint": "biome lint",

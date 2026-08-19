@@ -44,9 +44,9 @@ export const Route = createFileRoute("/$orgSlug")({
 
 		if (!entered) {
 			// No such workspace, or not a member of it — deliberately the same
-			// outcome. `/` resolves where a session with no active org belongs: the
-			// marketing page in multi-tenant mode, the no-access dead end in
-			// single-org mode.
+			// outcome. `/` is the homepage in every mode now, and its CTA resolves
+			// where a session with no active org belongs (`/no-access`, which
+			// explains it and lists any live invitations).
 			throw redirect({ to: "/" });
 		}
 
@@ -56,6 +56,10 @@ export const Route = createFileRoute("/$orgSlug")({
 			role: entered.role,
 			singleOrg: config.singleOrgMode,
 			assistantEnabled: config.assistantEnabled,
+			// Development-only email + password sign-in. Settings → Preferences
+			// hides its whole "Sign-in methods" section when this is off, since
+			// there is nothing there to change on a deployed instance.
+			devAuth: config.devAuth,
 		};
 	},
 	// The router-wide default renders a lone page skeleton, which is right for a
