@@ -4,13 +4,16 @@ import {
 	endOfMonthKey,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
+import { UmbrellaSimpleIcon } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { BookTimeOffDialog } from "#/components/time/book-time-off-dialog.tsx";
 import type { EntryBlockRowEntry } from "#/components/time/entry-block-row.tsx";
 import {
 	returnLinkClass,
 	stepperClass,
 	TimeToolbar,
 } from "#/components/time/time-toolbar.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { formatMonthKey } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { groupByDay } from "#/lib/group-by-day.ts";
@@ -102,7 +105,18 @@ export function MonthView({
 						</Link>
 					)
 				}
-			/>
+			>
+				<BookTimeOffDialog
+					orgSlug={orgSlug}
+					defaultDate={monthStart}
+					trigger={
+						<Button variant="outline" size="sm">
+							<UmbrellaSimpleIcon className="size-4" />
+							Time off
+						</Button>
+					}
+				/>
+			</TimeToolbar>
 			{/* Day and Week close on a footer bar because they have controls to put
 			    in one; Month has none, so it would have been a hairline with an
 			    empty band under it. The grid runs to the island's bottom edge

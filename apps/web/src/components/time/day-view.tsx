@@ -1,5 +1,9 @@
 import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
-import { PlusIcon, SparkleIcon } from "@phosphor-icons/react";
+import {
+	PlusIcon,
+	SparkleIcon,
+	UmbrellaSimpleIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 // `useNavigate` for the toolbar's jump-to-date; no AnimatePresence — the list
 // stopped using it (see the note over the rows below).
@@ -8,6 +12,7 @@ import { toast } from "sonner";
 import { EmptyState } from "#/components/states/empty-state.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";
+import { BookTimeOffDialog } from "#/components/time/book-time-off-dialog.tsx";
 import {
 	EntryBlockRow,
 	type EntryBlockRowEntry,
@@ -166,6 +171,16 @@ export function DayView({
 					)
 				}
 			>
+				<BookTimeOffDialog
+					orgSlug={orgSlug}
+					defaultDate={date}
+					trigger={
+						<Button variant="outline" size="sm">
+							<UmbrellaSimpleIcon className="size-4" />
+							Time off
+						</Button>
+					}
+				/>
 				<AssembleDayDialog
 					orgSlug={orgSlug}
 					date={date}

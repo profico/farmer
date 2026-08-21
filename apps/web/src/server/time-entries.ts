@@ -8,6 +8,7 @@ import {
 	fileTimeEntryInput,
 	listAbsenceForUserInput,
 	listTimeEntriesRangeInput,
+	logAbsenceRangeInput,
 	overrideAbsenceEntryInput,
 	setTimeEntryOvertimeInput,
 	setWeekCellInput,
@@ -119,6 +120,20 @@ export const copyTimeEntriesDay = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
 		return timeEntriesService.copyDay(context.ctx, data);
+	});
+
+// Booking your own Vacation / Sick Leave as a SPAN — "I'm off the 4th to the
+// 15th" — rather than one entry per day. Nothing about the expansion happens
+// here: which days of the range get an entry, and how long each one is, needs
+// the caller's own working-hours schedule and the org's holiday calendar, so
+// the service owns it (see `timeEntriesService.logAbsenceRange`). Self only;
+// booking for somebody else is `createAbsenceForUser` below, which is PM-gated.
+export const logAbsenceRange = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(logAbsenceRangeInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.logAbsenceRange(context.ctx, data);
 	});
 
 // ── PM absence corrections (PRD 4.1) ────────────────────────────────────────

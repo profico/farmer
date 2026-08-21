@@ -94,7 +94,9 @@ function MySchedulePage() {
 						Time
 					</Link>{" "}
 					screen, the same way you log everything else. There's no approval
-					step.
+					step. For a stretch of days, use <strong>Time off</strong> in the
+					timesheet toolbar — it books every working day in the span at the
+					hours above, and skips public holidays and days you don't work.
 				</p>
 			</div>
 		</Page>

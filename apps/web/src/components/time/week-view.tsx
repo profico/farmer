@@ -3,7 +3,12 @@ import {
 	snapToQuarterHour,
 	startOfWeekKey,
 } from "@farmer/core/lib/time";
-import { NoteIcon, PlusIcon, XIcon } from "@phosphor-icons/react";
+import {
+	NoteIcon,
+	PlusIcon,
+	UmbrellaSimpleIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -12,6 +17,7 @@ import {
 	AddRowDialog,
 	type DraftRow,
 } from "#/components/time/add-row-dialog.tsx";
+import { BookTimeOffDialog } from "#/components/time/book-time-off-dialog.tsx";
 import {
 	type EntryBlockRowEntry,
 	entryHeading,
@@ -327,7 +333,18 @@ export function WeekView({
 						</Link>
 					)
 				}
-			/>
+			>
+				<BookTimeOffDialog
+					orgSlug={orgSlug}
+					defaultDate={weekStart}
+					trigger={
+						<Button variant="outline" size="sm">
+							<UmbrellaSimpleIcon className="size-4" />
+							Time off
+						</Button>
+					}
+				/>
+			</TimeToolbar>
 
 			{/* Gutter reserved: the table's columns are percentage-width, so a week
 			    that overflows and one that doesn't would lay them out 10px apart
