@@ -4,6 +4,7 @@ import {
 	dayForWeekday,
 	defaultDayRow,
 	loggedSeconds,
+	NO_HOLIDAYS,
 	remainingSeconds,
 	spokenForSeconds,
 	targetSecondsFor,
@@ -85,17 +86,47 @@ describe("dayForWeekday", () => {
 describe("targetSecondsFor", () => {
 	// 2026-08-10 is a Monday, 2026-08-15 a Saturday.
 	test("a scheduled weekday returns its duration", () => {
-		expect(targetSecondsFor(fullWeek(), "2026-08-10", "Europe/Zagreb")).toBe(
-			8 * 3600,
-		);
+		expect(
+			targetSecondsFor(fullWeek(), "2026-08-10", "Europe/Zagreb", NO_HOLIDAYS),
+		).toBe(8 * 3600);
 	});
 
 	test("a non-working day is zero", () => {
-		expect(targetSecondsFor(fullWeek(), "2026-08-15", "Europe/Zagreb")).toBe(0);
+		expect(
+			targetSecondsFor(fullWeek(), "2026-08-15", "Europe/Zagreb", NO_HOLIDAYS),
+		).toBe(0);
 	});
 
 	test("an empty schedule is zero rather than throwing", () => {
-		expect(targetSecondsFor([], "2026-08-10", "Europe/Zagreb")).toBe(0);
+		expect(
+			targetSecondsFor([], "2026-08-10", "Europe/Zagreb", NO_HOLIDAYS),
+		).toBe(0);
+	});
+
+	// The rule this parameter exists for. A holiday is a non-working day the same
+	// way a Saturday is; it just lives in a different table, which is why the
+	// engines got the weekend right for free and the holiday wrong for months.
+	test("a public holiday on a scheduled weekday is zero", () => {
+		const holidays = new Set(["2026-08-10"]);
+		expect(
+			targetSecondsFor(fullWeek(), "2026-08-10", "Europe/Zagreb", holidays),
+		).toBe(0);
+	});
+
+	test("a holiday elsewhere in the range does not affect this day", () => {
+		const holidays = new Set(["2026-08-11"]);
+		expect(
+			targetSecondsFor(fullWeek(), "2026-08-10", "Europe/Zagreb", holidays),
+		).toBe(8 * 3600);
+	});
+
+	// holidaySetForRange returns a Map, targetSecondsFor takes a HolidayLookup;
+	// the point of the structural type is that no call site has to convert.
+	test("accepts the Map holidaySetForRange returns, not just a Set", () => {
+		const holidays = new Map([["2026-08-10", "Some holiday"]]);
+		expect(
+			targetSecondsFor(fullWeek(), "2026-08-10", "Europe/Zagreb", holidays),
+		).toBe(0);
 	});
 });
 

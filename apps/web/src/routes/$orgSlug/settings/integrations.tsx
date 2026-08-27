@@ -214,15 +214,19 @@ function IntegrationsSettingsPage() {
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
-			// Four real outcomes, and only one of them is "Synced". Each engine is
-			// independently best-effort and each can be out of window, so collapsing
-			// the other three into a success tick would be a lie in three different
-			// ways — including the quiet one, where the pass ran and touched nothing
-			// because every window was closed.
+			// Five real outcomes, and only one of them is "Synced". Each engine is
+			// independently best-effort, each can be out of window, and each can
+			// simply be switched off — so collapsing the rest into a success tick
+			// would be a lie in four different ways. The quietest of them is a pass
+			// that ran and touched nothing because every window was closed; the most
+			// confusing is a pass that had nothing to run because the switch the
+			// person came here for is off.
 			if (result.stillRunning) {
 				toast.info("Still syncing — this is taking a while, carry on");
 			} else if (result.failed.length > 0) {
 				toast.warning(`Partly synced — ${result.failed.join(", ")} failed`);
+			} else if (result.ran.length === 0 && result.off.length > 0) {
+				toast.info(`Nothing to sync — ${result.off.join(" and ")} is off`);
 			} else if (result.ran.length === 0) {
 				toast.info("Nothing to sync right now");
 			} else {

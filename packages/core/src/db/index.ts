@@ -27,6 +27,12 @@ export const schema = {
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
+/** The handle a read or write may run on: the ambient pool, or an in-flight
+ *  transaction. Declared here rather than in `services/context.ts` because
+ *  `lib/` needs it too, and a lib importing a service would invert the layering
+ *  that keeps `packages/core` reusable. */
+export type DbClient = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
 /**
  * Connection options, all overridable by environment.
  *

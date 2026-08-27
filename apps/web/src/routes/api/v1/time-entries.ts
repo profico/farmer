@@ -9,8 +9,10 @@ export const Route = createFileRoute("/api/v1/time-entries")({
 			// check the date shape by hand and hand `from`/`to` straight to
 			// `listRange`, which skipped the 62-day ceiling the schema carries — so
 			// `?from=1970-01-01&to=2999-12-31` was a full-table scan any authenticated
-			// caller could ask for. One schema, every call site; if the ceiling moves,
-			// it moves here too.
+			// caller could ask for. That mattered more than it looks, because
+			// `listRange` writes: it resizes and deletes fill blocks for the days it
+			// reads, so a read-only GET was the widest write surface in the app.
+			// One schema, every call site; if the ceiling moves, it moves here too.
 			GET: async ({ request }) => {
 				const ctx = await resolveApiOrgContext(request);
 				if (!ctx) {

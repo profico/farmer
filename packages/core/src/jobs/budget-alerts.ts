@@ -71,30 +71,43 @@ export const runBudgetAlertsOnce = async (): Promise<BudgetAlertSummary> => {
 				),
 			);
 
-		// Highest crossed threshold only: a project that lands straight on 100%
-		// should say "over budget", not send an 80% note alongside it.
-		const crossed = THRESHOLDS.filter((t) => burnPct >= t).sort(
-			(a, b) => b - a,
-		)[0];
-		if (crossed == null) continue;
+		// EVERY crossed threshold is claimed, not just the highest — then only the
+		// highest NEWLY claimed one is announced.
+		//
+		// Claiming just the highest left holes: a project going 70% -> 100% in one
+		// tick got a `100` row and no `80` row. The re-arm above deletes rows the
+		// project is no longer over, so the first dip back under 100 removed the
+		// only row it had, `crossed` resolved to 80, and the insert succeeded
+		// against a threshold that had never been claimed. The project then
+		// announced "has burned 95% of its hour budget" — a fresh alert for
+		// spending LESS than it had already been alerted about.
+		const crossed = THRESHOLDS.filter((t) => burnPct >= t);
+		if (crossed.length === 0) continue;
 
 		const claimed = await db
 			.insert(projectBudgetAlert)
-			.values({
-				organizationId: row.organizationId,
-				projectId: row.projectId,
-				threshold: crossed,
-			})
+			.values(
+				crossed.map((threshold) => ({
+					organizationId: row.organizationId,
+					projectId: row.projectId,
+					threshold,
+				})),
+			)
 			.onConflictDoNothing()
-			.returning({ id: projectBudgetAlert.id });
+			.returning({ threshold: projectBudgetAlert.threshold });
 		if (claimed.length === 0) continue;
+
+		// One message per tick even when two thresholds were claimed at once: a
+		// project that lands straight on 100% should say "over budget", not send an
+		// 80% note alongside it.
+		const announced = Math.max(...claimed.map((r) => r.threshold));
 
 		alerts++;
 
 		const audience = await alertAudience(row.organizationId, row.projectId);
 		const remaining = budgetSeconds - consumedSeconds;
 		const headline =
-			crossed >= 100
+			announced >= 100
 				? `${row.name} (${row.clientName}) is over its hour budget`
 				: `${row.name} (${row.clientName}) has burned ${burnPct}% of its hour budget`;
 		const detail =

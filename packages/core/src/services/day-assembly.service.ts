@@ -23,8 +23,9 @@ import type {
 	ApplyDayAssemblyInput,
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
-import { ctxTimezone } from "./context";
+import { ctxAccess, ctxTimezone } from "./context";
 import { githubService } from "./github.service";
+import { holidaysService } from "./holidays.service";
 import { calendarSource, commitSource } from "./ports";
 import { tasksService } from "./tasks.service";
 import { timeEntriesService } from "./time-entries.service";
@@ -153,6 +154,7 @@ export const dayAssemblyService = {
 			commits,
 			calendarLinked,
 			githubLinked,
+			holidays,
 		] = await Promise.all([
 			db.query.timeEntry.findMany({
 				where: and(
@@ -188,9 +190,14 @@ export const dayAssemblyService = {
 			// "connect your calendar" at people who had already connected it.
 			hasLinkedAccount(ctx.userId, "google-calendar"),
 			hasLinkedAccount(ctx.userId, "github"),
+			// The assembler proposes the same rest-of-day block the commit engine
+			// files, so it has to agree with it about whether the day is a working
+			// day at all. On a public holiday the target is 0 and the whole
+			// suggestion list collapses to nothing, which is the correct answer.
+			holidaysService.holidaySetForRange(ctx, date, date),
 		]);
 
-		const targetSeconds = targetSecondsFor(workingHours, date, tz);
+		const targetSeconds = targetSecondsFor(workingHours, date, tz, holidays);
 		const logged = loggedSeconds(existing);
 		const spokenFor = spokenForSeconds(existing);
 
@@ -318,7 +325,15 @@ export const dayAssemblyService = {
 			remaining >= QUARTER_HOUR_SECONDS
 		) {
 			const projectIds = [...commitsByProject.keys()];
-			const [projects, picked] = await Promise.all([
+			const [access, projects, picked] = await Promise.all([
+				// `listUserCommitsForDay` scans EVERY repo linked anywhere in the org,
+				// so a commit to a repo whose project you are not on is routine rather
+				// than exotic. Without this the assembler proposed work on it, arriving
+				// pre-ticked, and `apply` — which routes through `create` and does
+				// assert access — returned `{ created: 0, errors: ["You are not
+				// assigned to this project"] }`. A suggestion that cannot be accepted
+				// is worse than no suggestion.
+				ctxAccess(ctx),
 				db.query.project.findMany({
 					where: and(
 						eq(project.organizationId, ctx.organizationId),
@@ -343,7 +358,10 @@ export const dayAssemblyService = {
 			const pickedIds = new Set(picked.map((p) => p.projectId));
 
 			const groups = projectIds
-				.filter((id) => nameById.has(id) && pickedIds.has(id))
+				.filter(
+					(id) =>
+						nameById.has(id) && pickedIds.has(id) && access.canTrackOn(id),
+				)
 				.map((id) => ({
 					projectId: id,
 					commits: commitsByProject.get(id) ?? [],

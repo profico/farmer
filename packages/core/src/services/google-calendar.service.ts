@@ -6,6 +6,7 @@ import {
 	extractMeetingUrl,
 	getGoogleUserInfo,
 	insertAllDayEvent,
+	isImportableEvent,
 	listCalendarEvents,
 } from "../lib/google-calendar-client";
 import { addDaysToKey, dayBoundsInTz } from "../lib/time";
@@ -137,30 +138,24 @@ export const googleCalendarService = {
 	},
 };
 
-// Shared filter+shape for calendar reads: drop cancelled and all-day events
-// (all-day events carry `date` not `dateTime`, so they have no clock time to
-// import), and normalize to CalendarEventOption.
+// Shared filter+shape for calendar reads: keep only what `isImportableEvent`
+// calls a meeting the person actually attended, and normalize to
+// CalendarEventOption. The predicate lives in lib/google-calendar-client next to
+// the payload type it reads, so it can be exercised without a database.
 const fetchTimedEvents = async (
 	token: string,
 	timeMin: Date,
 	timeMax: Date,
 ): Promise<CalendarEventOption[]> => {
 	const events = await listCalendarEvents(token, { timeMin, timeMax });
-	return events
-		.filter(
-			(event) =>
-				event.status !== "cancelled" &&
-				!!event.start?.dateTime &&
-				!!event.end?.dateTime,
-		)
-		.map((event) => ({
-			id: event.id,
-			title: event.summary?.trim() || "(no title)",
-			// biome-ignore lint/style/noNonNullAssertion: guaranteed present by the filter above
-			start: event.start!.dateTime!,
-			// biome-ignore lint/style/noNonNullAssertion: guaranteed present by the filter above
-			end: event.end!.dateTime!,
-			meetingUrl: extractMeetingUrl(event),
-			htmlLink: event.htmlLink ?? null,
-		}));
+	return events.filter(isImportableEvent).map((event) => ({
+		id: event.id,
+		title: event.summary?.trim() || "(no title)",
+		// biome-ignore lint/style/noNonNullAssertion: guaranteed present by the filter above
+		start: event.start!.dateTime!,
+		// biome-ignore lint/style/noNonNullAssertion: guaranteed present by the filter above
+		end: event.end!.dateTime!,
+		meetingUrl: extractMeetingUrl(event),
+		htmlLink: event.htmlLink ?? null,
+	}));
 };

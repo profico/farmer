@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { timeEntry } from "../db/schema/domain";
+import { withTimeout } from "../lib/http";
 import {
 	dayKeyInTz,
 	formatDuration,
@@ -36,6 +37,18 @@ export type LogReminderSummary = {
 //   - they've already logged at least their expected hours.
 //
 // Best-effort per user: one failure is logged and skipped, never aborts the run.
+
+/** How many people are checked at once, and how long one person's check may
+ *  take. The same shape as the automation sweep (jobs/automation-sync.ts) and
+ *  for the same reason: this used to walk every member of every org serially,
+ *  ~4 queries each, with nothing bounding either the pass or any single step.
+ *  At a few hundred members that overran the tick, and one wedged query ended
+ *  the sweep rather than degrading it. */
+const SWEEP_CONCURRENCY = Number(process.env.LOG_REMINDERS_CONCURRENCY ?? 4);
+const PER_USER_TIMEOUT_MS = Number(
+	process.env.LOG_REMINDERS_USER_TIMEOUT_MS ?? 30_000,
+);
+
 export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 	const now = new Date();
 
@@ -53,7 +66,7 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 	let skipped = 0;
 	let failed = 0;
 
-	for (const row of rows) {
+	const checkOne = async (row: (typeof rows)[number]) => {
 		const ctx: Ctx = {
 			organizationId: row.organizationId,
 			userId: row.userId,
@@ -76,7 +89,7 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 			);
 			if (lastReminded === todayKey) {
 				skipped++;
-				continue;
+				return;
 			}
 
 			// A scheduled working day with a defined end time, and the day is over.
@@ -85,12 +98,12 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 			const expectedSeconds = day ? dayDurationSeconds(day) : 0;
 			if (expectedSeconds <= 0 || !day?.endTime) {
 				skipped++;
-				continue;
+				return;
 			}
 			// Only nag once the scheduled workday has ended (both "HH:mm", org tz).
 			if (timeKeyInTz(now, tz) < day.endTime) {
 				skipped++;
-				continue;
+				return;
 			}
 
 			// Not on an org holiday.
@@ -101,7 +114,7 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 			);
 			if (holidays.has(todayKey)) {
 				skipped++;
-				continue;
+				return;
 			}
 
 			// Everything logged today, absence included. Vacation and Sick Leave are
@@ -124,7 +137,7 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 			);
 			if (loggedSeconds >= expectedSeconds) {
 				skipped++;
-				continue;
+				return;
 			}
 
 			const outcome = await notify(
@@ -145,7 +158,7 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 			// claimed — turning them back on the same day still reminds them.
 			if (!wasDelivered(outcome)) {
 				skipped++;
-				continue;
+				return;
 			}
 			await notificationsService.markLogReminded(
 				row.organizationId,
@@ -161,7 +174,41 @@ export const runLogRemindersOnce = async (): Promise<LogReminderSummary> => {
 				error,
 			});
 		}
-	}
+	};
+
+	// A fixed pool pulling from one cursor, not chunked batches: a batch runs at
+	// the speed of its slowest member and leaves the rest of the pool idle.
+	let cursor = 0;
+	const workers = Array.from(
+		{ length: Math.max(1, Math.min(SWEEP_CONCURRENCY, rows.length)) },
+		async () => {
+			while (cursor < rows.length) {
+				const row = rows[cursor++];
+				if (!row) continue;
+				try {
+					await withTimeout(
+						checkOne(row),
+						PER_USER_TIMEOUT_MS,
+						() =>
+							new Error(
+								`log-reminder check exceeded ${String(PER_USER_TIMEOUT_MS)}ms`,
+							),
+					);
+				} catch (error) {
+					// Only a timeout reaches here — `checkOne` handles its own failures.
+					// The abandoned check keeps running and is harmless: the day is
+					// claimed only after a delivered send.
+					failed++;
+					console.error("[log-reminders] user check timed out", {
+						organizationId: row.organizationId,
+						userId: row.userId,
+						error,
+					});
+				}
+			}
+		},
+	);
+	await Promise.all(workers);
 
 	return { eligible: rows.length, sent, skipped, failed };
 };

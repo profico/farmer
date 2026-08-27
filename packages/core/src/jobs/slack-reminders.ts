@@ -5,6 +5,7 @@ import { slackReminderLog } from "../db/schema/slack";
 import {
 	addDaysToKey,
 	dayKeyInTz,
+	endOfMonthKey,
 	formatDuration,
 	timeKeyInTz,
 } from "../lib/time";
@@ -60,22 +61,42 @@ const claim = async (
 	return rows.length > 0;
 };
 
-/** Is `dayKey` the last Mon–Fri non-holiday day of its month? */
-const isLastWorkingDayOfMonth = async (ctx: Ctx, dayKey: string) => {
+/** Is `dayKey` the last Mon–Fri non-holiday day of its month?
+ *
+ *  Both halves matter. It used to ask only whether any LATER day in the month
+ *  was a working day, which is true of every trailing weekend day too — so a
+ *  month ending on a Sunday sent the month-end DM on the Friday, again on the
+ *  Saturday and again on the Sunday. The `slack_reminder_log` claim is keyed on
+ *  the day, so three different days meant three different claims and the
+ *  idempotency guard never saw them as duplicates. Everyone got the same nag
+ *  three times, twice of it on a weekend.
+ *
+ *  Exported for tests: the job itself reads `new Date()`, so the only way to
+ *  pin the day-of-month cases is to ask this directly. */
+export const isLastWorkingDayOfMonth = async (ctx: Ctx, dayKey: string) => {
 	const month = dayKey.slice(0, 7);
+	// To the end of the month rather than a fixed lookahead: the answer depends
+	// on every remaining day, not the next ten.
 	const holidays = await holidaysService.holidaySetForRange(
 		ctx,
 		dayKey,
-		addDaysToKey(dayKey, 10),
+		endOfMonthKey(dayKey),
 	);
+	const isWorkingDay = (key: string) => {
+		if (holidays.has(key)) return false;
+		const weekday = new Date(`${key}T00:00:00Z`).getUTCDay();
+		return weekday !== 0 && weekday !== 6;
+	};
+
+	// The day itself has to be one. "The last working day" is a working day.
+	if (!isWorkingDay(dayKey)) return false;
+
 	for (
 		let cursor = addDaysToKey(dayKey, 1);
 		cursor.slice(0, 7) === month;
 		cursor = addDaysToKey(cursor, 1)
 	) {
-		if (holidays.has(cursor)) continue;
-		const weekday = new Date(`${cursor}T00:00:00Z`).getUTCDay();
-		if (weekday !== 0 && weekday !== 6) return false;
+		if (isWorkingDay(cursor)) return false;
 	}
 	return true;
 };
@@ -162,10 +183,16 @@ export const runSlackRemindersOnce =
 					// The month-end push goes to EVERYONE in the compliance cohort, not
 					// just the laggards: the close starts tomorrow, and "I thought I was
 					// fine" is exactly the failure this prevents.
-					const people = await db
-						.select({ userId: member.userId })
-						.from(member)
-						.where(eq(member.organizationId, org.id));
+					//
+					// The COHORT, though — which is what this said and did not do. It
+					// selected every member of the org, so the two groups
+					// `complianceCohort` exists to exclude got it anyway: archived
+					// people, who cannot act on it, and overhead people, whom the system
+					// deliberately never nags about timesheets.
+					const people = await complianceService.cohortForReminderJob(ctx, {
+						year: Number(today.slice(0, 4)),
+						month: Number(today.slice(5, 7)),
+					});
 					const text =
 						"Today is the last working day of the month. Anything still unlogged needs to go in before the monthly close starts tomorrow.";
 					for (const person of people) {

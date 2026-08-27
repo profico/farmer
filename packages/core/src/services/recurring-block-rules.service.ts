@@ -19,6 +19,7 @@ import {
 	type UpdateRecurringBlockRuleInput,
 } from "../schema/recurring-block-rules";
 import { ctxAccess, ctxTimezone } from "./context";
+import { recomputeDayFill } from "./day-fill";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { orgSettingsService } from "./org-settings.service";
 import { tasksService } from "./tasks.service";
@@ -395,12 +396,39 @@ export const recurringBlockRulesService = {
 		}
 		if (rows.length === 0) return;
 
-		await db
+		const inserted = await db
 			.insert(timeEntry)
 			.values(rows)
 			.onConflictDoNothing({
 				target: [timeEntry.generatedFromRuleId, timeEntry.generatedForDate],
 				where: sql`${timeEntry.generatedFromRuleId} is not null`,
-			});
+			})
+			.returning({ date: timeEntry.date });
+
+		// A block that just landed on a day claims part of that day, so the day's
+		// fill block — which by definition is "whatever is left" — is now too long.
+		// Every hand-written path recomputes; this one did not, so turning the
+		// daily break on for a day already covered by a rest-of-day block left the
+		// day at 8h30 against an 8h target.
+		//
+		// It used to self-correct, but only by accident and only sometimes: the
+		// read path rewrote fill blocks for whatever range you happened to open.
+		// That is now bounded to the automation window, and reports read the ledger
+		// directly rather than through `listRange` — so a day nobody reopened
+		// simply stayed over-allocated on the close sheet.
+		//
+		// Best-effort and outside the insert: failing to resize a fill block must
+		// not cost the person the blocks that were just materialized.
+		const touched = [...new Set(inserted.map((row) => row.date))];
+		for (const date of touched) {
+			try {
+				await recomputeDayFill(ctx, date, tz);
+			} catch (error) {
+				console.error("[recurring-blocks] fill recompute failed", {
+					date,
+					error,
+				});
+			}
+		}
 	},
 };

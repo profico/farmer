@@ -54,6 +54,21 @@ const event = (id: string, title: string, hours: number): Event => ({
 	htmlLink: null,
 });
 
+/** An event whose end is at or before its start. Google emits these for
+ *  cancelled-but-still-listed slots and for the odd zero-length placeholder. */
+const degenerateEvent = (
+	id: string,
+	title: string,
+	minutes: number,
+): Event => ({
+	id,
+	title,
+	start: `${DATE}T09:00:00.000Z`,
+	end: `${DATE}T09:${String(Math.max(0, minutes)).padStart(2, "0")}:00.000Z`,
+	meetingUrl: null,
+	htmlLink: null,
+});
+
 /** In-memory calendar. `null` reproduces "couldn't read the calendar". */
 const calendarReturning = (events: Event[] | null) => ({
 	listEventsForRange: async () => events,
@@ -234,5 +249,63 @@ describe("meeting sync", () => {
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		expect(await meetingRows()).toHaveLength(1);
+	});
+	// `snapToQuarterHour` floors at 900s by design, so snap(0) and snap(-3600)
+	// are both 900. The engine filtered `durationSeconds > 0` AFTER snapping —
+	// a condition that is therefore always true — so a zero-length calendar slot
+	// became a 15-minute meeting on the timesheet. The day assembler had always
+	// guarded on the raw duration; the engine that actually writes did not.
+	test("a zero-length calendar event is not imported", async () => {
+		setCalendarSourceForTests(
+			calendarReturning([degenerateEvent("z1", "Placeholder", 0)]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		expect(await meetingRows()).toHaveLength(0);
+	});
+
+	test("an event that ends before it starts is not imported", async () => {
+		setCalendarSourceForTests(
+			calendarReturning([
+				{
+					id: "z2",
+					title: "Backwards",
+					start: `${DATE}T10:00:00.000Z`,
+					end: `${DATE}T09:00:00.000Z`,
+					meetingUrl: null,
+					htmlLink: null,
+				},
+			]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		expect(await meetingRows()).toHaveLength(0);
+	});
+
+	// The floor still applies to real meetings: a 5-minute call is a real thing
+	// that happened, and rounds up to the smallest slot the app can express.
+	test("a very short real meeting still rounds up to 15 minutes", async () => {
+		setCalendarSourceForTests(
+			calendarReturning([degenerateEvent("s1", "Quick sync", 5)]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		const rows = await meetingRows();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.durationSeconds).toBe(900);
+	});
+
+	test("a zero-length event alongside a real one imports only the real one", async () => {
+		setCalendarSourceForTests(
+			calendarReturning([
+				degenerateEvent("z1", "Placeholder", 0),
+				event("e1", "Standup", 1),
+			]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		const rows = await meetingRows();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.calendarEventId).toBe("e1");
 	});
 });

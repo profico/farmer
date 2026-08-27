@@ -17,6 +17,13 @@ export type WorkingHoursDay = {
 	endTime: string | null;
 };
 
+/**
+ * Anything that can answer "is this day off for the whole org?" — the Map
+ * `holidaysService.holidaySetForRange` returns, or a plain Set of day keys.
+ * Structural rather than a concrete type so neither caller has to convert.
+ */
+export type HolidayLookup = { has: (dateKey: string) => boolean };
+
 /** Anything that occupies part of a day. Only the two fields the rules read. */
 export type DayClaim = {
 	durationSeconds: number;
@@ -65,15 +72,34 @@ export const dayForWeekday = (
 	workingHours.find((d) => d.dayOfWeek === weekday);
 
 /** The day's expected working seconds — the target a fill block expands up to.
- *  0 when the date is not a scheduled working day. */
+ *  0 when the date is not a scheduled working day.
+ *
+ *  `holidays` is REQUIRED, and required on purpose. A public holiday is a
+ *  non-working day exactly the way a Saturday is, and the engines already got
+ *  Saturday right for free: a weekend is disabled in `memberWorkingHoursDay`, so
+ *  the target is 0 and no fill block is written. Holidays live in a different
+ *  table and so were simply never asked about — one commit pushed on Epiphany
+ *  produced a full 8-hour "rest of day" block, against a monthly fund that
+ *  `hourFundService.suggestForMonth` had already excluded that day from.
+ *
+ *  An optional parameter would have let every existing call site keep the bug
+ *  while still compiling, which is the one thing this must not do. Pass an
+ *  empty Set only where you mean "holidays cannot apply here". */
 export const targetSecondsFor = (
 	workingHours: WorkingHoursDay[],
 	dateKey: string,
 	tz: string,
+	holidays: HolidayLookup,
 ): number => {
+	if (holidays.has(dateKey)) return 0;
 	const day = dayForWeekday(workingHours, weekdayInTz(dateKey, tz));
 	return day ? dayDurationSeconds(day) : 0;
 };
+
+/** For the handful of call sites where the org calendar genuinely cannot apply
+ *  (unit tests of the weekday math, callers that have already excluded
+ *  holidays themselves). Named so it reads as a decision at the call site. */
+export const NO_HOLIDAYS: HolidayLookup = { has: () => false };
 
 /** Seconds of the day already claimed.
  *

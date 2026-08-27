@@ -9,6 +9,7 @@ import {
 } from "../db/schema/domain";
 import type { CreateTaskInput, UpdateTaskInput } from "../schema/tasks";
 import { ctxAccess, requireAdmin } from "./context";
+import { ctxDb } from "./db-ctx";
 import { isUniversalTask } from "./guards";
 import type { Ctx } from "./types";
 
@@ -140,7 +141,9 @@ export const tasksService = {
 	 * entries against a dead row.
 	 */
 	findBySystemKey: async (ctx: Ctx, key: TaskSystemKey) => {
-		const rows = await db.query.task.findMany({
+		// `ctxDb`: the engines call this, and so does `create`, which runs inside
+		// `setWeekCell`'s transaction. See ./db-ctx.
+		const rows = await ctxDb(ctx).query.task.findMany({
 			where: and(
 				eq(task.systemKey, key),
 				isNull(task.archivedAt),

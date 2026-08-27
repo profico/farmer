@@ -13,15 +13,16 @@
 // rather than the value, so two concurrent callers inside one `Promise.all`
 // share a single query instead of racing to issue two.
 
-import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { organization } from "../db/schema/auth";
+import { orgTimezone } from "../lib/org-time";
 import { type Access, accessService } from "./access.service";
+import { ctxDb, type DbClient } from "./db-ctx";
 import { CTX_MEMO, type Ctx, type CtxMemo } from "./types";
 
-export type DbClient =
-	| typeof db
-	| Parameters<Parameters<typeof db.transaction>[0]>[0];
+// Re-exported so the many `import { ctxDb } from "./context"` call sites keep
+// working; the definition lives in ./db-ctx to avoid an import cycle with the
+// helpers ./context itself depends on.
+export { ctxDb, type DbClient };
 
 const memoOf = (ctx: Ctx): CtxMemo => {
 	// Ctx objects arrive as plain literals from middleware, jobs and REST
@@ -41,9 +42,9 @@ const memoOf = (ctx: Ctx): CtxMemo => {
 
 /** The organization's IANA timezone, resolved once per Ctx. Defaults to UTC.
  *
- *  Reads through `ctxDb(ctx)` rather than delegating to `lib/org-time`'s
- *  `orgTimezone`, which uses the ambient handle. Same reason
- *  `workingHoursService.list` does — and the same bug, found the same way.
+ *  Runs on `ctxDb(ctx)`, not the ambient handle — and it has to delegate to
+ *  `lib/org-time`'s `orgTimezone` WITH that handle rather than letting it fall
+ *  back to its own default, so there stays one definition of the query.
  *
  *  Three callers ask for the timezone from INSIDE `withCtxTx`
  *  (`time-entries.service`: remove, setWeekCell, copyDay). `withCtxTx` copies
@@ -59,15 +60,12 @@ const memoOf = (ctx: Ctx): CtxMemo => {
  *  and the assistant's tools build one per turn. */
 export const ctxTimezone = (ctx: Ctx): Promise<string> => {
 	const memo = memoOf(ctx);
-	memo.timezone ??= ctxDb(ctx)
-		.query.organization.findFirst({
-			where: eq(organization.id, ctx.organizationId),
-		})
-		.then((org) => org?.timezone ?? "UTC");
+	memo.timezone ??= orgTimezone(ctx.organizationId, ctxDb(ctx));
 	return memo.timezone;
 };
 
-/** The caller's authorization picture, resolved once per Ctx. */
+/** The caller's authorization picture, resolved once per Ctx. Resolved through
+ *  `ctxDb` for the same reason as the timezone above. */
 export const ctxAccess = (ctx: Ctx): Promise<Access> => {
 	const memo = memoOf(ctx);
 	memo.access ??= accessService.resolve(ctx);
@@ -81,6 +79,11 @@ export const requireAdmin = async (ctx: Ctx): Promise<Access> => {
 	access.assertAdmin();
 	return access;
 };
+
+/** The raw memo slot, for a service that owns a per-Ctx cache of its own
+ *  (today: `holidays.service`). Everything else should go through one of the
+ *  named helpers above rather than reaching in here. */
+export const ctxMemo = (ctx: Ctx): CtxMemo => memoOf(ctx);
 
 /** Drop the memoized authorization picture.
  *
@@ -98,15 +101,6 @@ export const invalidateCtxTimezone = (ctx: Ctx): void => {
 	const memo = ctx[CTX_MEMO];
 	if (memo) memo.timezone = undefined;
 };
-
-/** The handle this Ctx should read and write through: the in-flight transaction
- *  when inside `withCtxTx`, otherwise the ambient pool.
- *
- *  This is what closes the leak where `remove`, `setWeekCell` and `copyDay`
- *  recomputed a day's fill block on the ambient handle AFTER their own
- *  transaction had committed, while `create` and `update` did it inside. */
-export const ctxDb = (ctx: Ctx): DbClient =>
-	(ctx[CTX_MEMO]?.tx as DbClient | undefined) ?? db;
 
 /** Run `fn` in a transaction, giving it a Ctx bound to that transaction.
  *

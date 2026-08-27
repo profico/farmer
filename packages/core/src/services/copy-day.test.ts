@@ -21,7 +21,7 @@ import {
 } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { organization, user } from "../db/schema/auth";
+import { member, organization, user } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
 import { syncedMeetingTombstone } from "../db/schema/settings";
 import { createTestDb, type TestDb } from "../test/harness";
@@ -49,8 +49,11 @@ const entriesOn = (date: string) =>
 		),
 	});
 
-/** A plain unfiled entry — no project, so the fixture needs no client, project
- *  or membership rows to satisfy the access guards. */
+/** A plain unfiled entry — no project, so the fixture needs no client or
+ *  project rows to satisfy the access guards. The membership row below is
+ *  still required: `copyDay` resolves the caller's Access to decide, per
+ *  (project, task) pair, whether they may write what they are copying, and
+ *  membership is a precondition of that rather than one of its answers. */
 const log = (date: string, hours: number, description: string) =>
 	timeEntriesService.create(ctx, {
 		date,
@@ -78,6 +81,13 @@ beforeAll(async () => {
 		emailVerified: true,
 		createdAt: new Date(),
 		updatedAt: new Date(),
+	});
+	await db.insert(member).values({
+		id: "member-copy-day",
+		organizationId: ORG_ID,
+		userId: USER_ID,
+		role: "owner",
+		createdAt: new Date(),
 	});
 
 	const meeting = await db.query.task.findFirst({

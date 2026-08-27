@@ -9,6 +9,7 @@ import {
 	timeEntryGithubCommit,
 } from "../db/schema/github";
 import {
+	GithubRateLimitError,
 	getAuthenticatedUser,
 	getCommit,
 	getInstallationToken,
@@ -428,8 +429,10 @@ export const githubService = {
 		const tz = await ctxTimezone(ctx);
 		const { start, end } = dayBoundsInTz(input.date, tz);
 
-		const perRepo = await Promise.all(
-			repos.map(async (repo) => {
+		const perRepo = await mapBounded(
+			repos,
+			REPO_SCAN_CONCURRENCY,
+			async (repo) => {
 				if (!repo.installationId) return [];
 				try {
 					const instToken = await getInstallationToken(repo.installationId);
@@ -448,6 +451,11 @@ export const githubService = {
 						url: commit.html_url,
 					}));
 				} catch (error) {
+					// A rate limit is not an answer. Degrading it to "no commits" is
+					// what let the commit engine file a full rest-of-day block on a day
+					// it never actually managed to read — so it ends the whole scan and
+					// the sweep records a failure it can retry.
+					if (error instanceof GithubRateLimitError) throw error;
 					console.error("[github] suggestCommits repo failed", {
 						repoId: repo.id,
 						installationId: repo.installationId,
@@ -455,7 +463,7 @@ export const githubService = {
 					});
 					return [];
 				}
-			}),
+			},
 		);
 
 		return perRepo
@@ -512,6 +520,11 @@ export const githubService = {
 						url: commit.html_url,
 					}));
 				} catch (error) {
+					// A rate limit is not an answer. Degrading it to "no commits" is
+					// what let the commit engine file a full rest-of-day block on a day
+					// it never actually managed to read — so it ends the whole scan and
+					// the sweep records a failure it can retry.
+					if (error instanceof GithubRateLimitError) throw error;
 					console.error("[github] listUserCommitsByDay repo failed", {
 						repoId: repo.id,
 						installationId: repo.installationId,
@@ -577,6 +590,11 @@ export const githubService = {
 						committedAt: new Date(commit.commit.author?.date ?? new Date()),
 					}));
 				} catch (error) {
+					// A rate limit is not an answer. Degrading it to "no commits" is
+					// what let the commit engine file a full rest-of-day block on a day
+					// it never actually managed to read — so it ends the whole scan and
+					// the sweep records a failure it can retry.
+					if (error instanceof GithubRateLimitError) throw error;
 					console.error("[github] listUserCommitsForDay repo failed", {
 						repoId: repo.id,
 						installationId: repo.installationId,

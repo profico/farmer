@@ -66,6 +66,7 @@ export const syncGoogleMeetings = createServerFn({ method: "POST" })
 				ran: [] as string[],
 				skipped: [] as string[],
 				failed: [] as string[],
+				off: [] as string[],
 			};
 		}
 		return {

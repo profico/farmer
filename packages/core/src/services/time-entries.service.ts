@@ -60,6 +60,7 @@ import type {
 } from "../schema/time-entries";
 import { AccessError } from "./access.service";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
+import { computeDayFillSeconds, recomputeDayFill } from "./day-fill";
 import {
 	assertProjectInOrg,
 	assertTaskAvailable,
@@ -74,81 +75,23 @@ import { calendarSource, commitSource } from "./ports";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
-import {
-	type WorkingHoursDay,
-	workingHoursService,
-} from "./working-hours.service";
+import { workingHoursService } from "./working-hours.service";
 
-// How long a fill block on this day should be: the day's working-hours target
-// minus every other (non-fill) entry that day, floored at 0. The rules are in
-// lib/working-day; this only fetches what they need.
-//
-// Reads through `ctxDb(ctx)` rather than taking a client parameter: inside
-// `withCtxTx` that IS the transaction, so a caller cannot accidentally recompute
-// a day on the ambient pool after its own transaction has committed — which is
-// exactly what remove, setWeekCell and copyDay used to do.
-const computeDayFillSeconds = async (
-	ctx: Ctx,
-	dateKey: string,
-	tz: string,
-	workingHours?: WorkingHoursDay[],
-	/** Entry to leave out of the claims — the one being converted INTO the fill
-	 *  block, which would otherwise be counted as competing with itself. */
-	excludeEntryId?: string,
-): Promise<number> => {
-	const [dayEntries, hours] = await Promise.all([
-		ctxDb(ctx).query.timeEntry.findMany({
-			where: and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				eq(timeEntry.date, dateKey),
-			),
-			columns: { id: true, durationSeconds: true, fillsDay: true },
-		}),
-		workingHours
-			? Promise.resolve(workingHours)
-			: workingHoursService.list(ctx),
-	]);
-	return remainingSeconds(
-		targetSecondsFor(hours, dateKey, tz),
-		spokenForSeconds(dayEntries.filter((e) => e.id !== excludeEntryId)),
-	);
-};
-
-// Re-derive the duration of the day's fill block (if any) after a sibling entry
-// changed. No-op when the day has no fill block.
-//
-// A fill block that recomputes to ZERO is DELETED, not stored at 0. The day's
-// working hours are already spoken for, so what it now describes is "nothing" —
-// and `remainingSeconds` floors at 0, so the row can never come back on its own
-// while the day stays full. Keeping it left a literal `0:00 — rest of day` row
-// sitting in the Day view after any bulk write that filled the day (copyDay,
-// day assembly), which is what people reported as "it adds items with 0 time".
-// The DB CHECK still permits `fills_day = true and duration_seconds >= 0`; this
-// is the layer that decides a zero-length block is not worth keeping.
-const recomputeDayFill = async (ctx: Ctx, dateKey: string, tz: string) => {
-	const client = ctxDb(ctx);
-	const fill = await client.query.timeEntry.findFirst({
-		where: and(
-			eq(timeEntry.organizationId, ctx.organizationId),
-			eq(timeEntry.userId, ctx.userId),
-			eq(timeEntry.date, dateKey),
-			eq(timeEntry.fillsDay, true),
-		),
-		columns: { id: true, durationSeconds: true },
-	});
-	if (!fill) return;
-	const next = await computeDayFillSeconds(ctx, dateKey, tz);
-	if (next === 0) {
-		await client.delete(timeEntry).where(eq(timeEntry.id, fill.id));
-		return;
+/**
+ * `copyDay` refusing a day because it would push past 24 hours.
+ *
+ * A type rather than a bare `Error` so `copyWeek` can catch THIS and nothing
+ * else. Its loop used to swallow everything and report the day as "blocked",
+ * which is the right answer for a day that is genuinely too full and a wrong,
+ * silent one for a database failure — reported to the person as though their
+ * data were the problem.
+ */
+export class DayCapacityError extends Error {
+	constructor(readonly dateKey: string) {
+		super(`Copying this would put more than 24 hours on ${dateKey}`);
+		this.name = "DayCapacityError";
 	}
-	if (next === fill.durationSeconds) return;
-	await client
-		.update(timeEntry)
-		.set({ durationSeconds: next, updatedAt: new Date() })
-		.where(eq(timeEntry.id, fill.id));
-};
+}
 
 // ── Integration sync engines ───────────────────────────────────────────────
 // These used to run inside listRange, so the act of opening the time page — or
@@ -261,9 +204,22 @@ const syncMeetingsForRange = async (
 		.map((event) => {
 			const startedAt = new Date(event.start);
 			const stoppedAt = new Date(event.end);
-			const rawSeconds = Math.floor(
-				(stoppedAt.getTime() - startedAt.getTime()) / 1000,
-			);
+			return {
+				event,
+				startedAt,
+				rawSeconds: Math.floor(
+					(stoppedAt.getTime() - startedAt.getTime()) / 1000,
+				),
+			};
+		})
+		// On the RAW duration, before the snap. `snapToQuarterHour` floors at 15
+		// minutes on purpose, so a 3-minute meeting is still a real block — which
+		// also means it turns a zero-length event (and an inverted one) into a
+		// 15-minute block rather than dropping it. The `durationSeconds > 0` filter
+		// that used to sit below the snap could therefore never be false. The day
+		// assembler has always checked `raw <= 0`; this is the engine that writes.
+		.filter(({ rawSeconds }) => rawSeconds > 0)
+		.map(({ event, startedAt, rawSeconds }) => {
 			return {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
@@ -278,7 +234,6 @@ const syncMeetingsForRange = async (
 				calendarEventId: event.id,
 			};
 		})
-		.filter((row) => row.durationSeconds > 0)
 		.filter((row) => {
 			const holder = meetingIdentityKeys(row)
 				.map((key) => lockedBy.get(key))
@@ -422,7 +377,14 @@ const syncCommitWorkTimeForRange = async (
 	const workTask = await tasksService.findBySystemKey(ctx, "development");
 	if (!workTask) return;
 
-	const workingHours = await workingHoursService.list(ctx);
+	const [workingHours, holidays] = await Promise.all([
+		workingHoursService.list(ctx),
+		// Once for the range, not once per day. A holiday is a zero-target day, so
+		// this is what stops a commit pushed on Epiphany from producing a full
+		// 8-hour "rest of day" block — the same way a Saturday already produced
+		// none, via that day being disabled in the person's working hours.
+		holidaysService.holidaySetForRange(ctx, range.from, range.to),
+	]);
 	for (const { dayKey, commits } of days) {
 		// Every work entry already on the day, so the loop below can hand each
 		// project's commits to the entry that describes that project's work.
@@ -472,12 +434,10 @@ const syncCommitWorkTimeForRange = async (
 		// The fill block is created only for commits that found no home, and only
 		// if the day still has room and nobody has said no.
 		if (homeless.length > 0 && !fill && !generalEntry) {
-			const durationSeconds = await computeDayFillSeconds(
-				ctx,
-				dayKey,
-				tz,
+			const durationSeconds = await computeDayFillSeconds(ctx, dayKey, tz, {
 				workingHours,
-			);
+				holidays,
+			});
 			const fillProjectId = await resolveFillProject(ctx, homelessProjectIds);
 			// A day already accounted for in full gets no block. Inserting a
 			// 0-second one would just park an empty second "Development" row next to
@@ -650,6 +610,23 @@ export const timeEntriesService = {
 	// derived from what else the day holds, so it is recomputed (and dropped when
 	// squeezed to nothing) against the rows just read. That keeps a value
 	// consistent rather than inventing an entry.
+	//
+	// It is BOUNDED BY THE AUTOMATION WINDOW, though, and that is not a detail.
+	// Unwindowed, this was the last write-on-read path in the app and it had the
+	// widest reach of any of them: scrolling the Month view back — or, worse,
+	// `GET /api/v1/time-entries?from=…&to=…`, whose range is caller-supplied —
+	// rewrote and deleted fill blocks across the whole of a person's history,
+	// including months already locked, finalized and invoiced. `targetSecondsFor`
+	// reads the person's CURRENT working hours with no effective dating, so
+	// shortening your day from 8h to 6h silently resized every fill block you had
+	// ever had, the next time anyone happened to open that range.
+	//
+	// So a read may only touch what an automation may touch. Outside the window a
+	// stored fill block is history and renders as it stands. Inside it, the block
+	// still tracks the day. A person editing their own old entry is a different
+	// thing entirely — a deliberate human act, which the app deliberately permits
+	// in closed months — so the WRITE path's recompute (`recomputeDayFill`) stays
+	// unwindowed. Automation is what the lock governs.
 	listRange: async (ctx: Ctx, range: { from: string; to: string }) => {
 		const tz = await ctxTimezone(ctx);
 
@@ -670,8 +647,24 @@ export const timeEntriesService = {
 		// same rule as recomputeDayFill, applied to the entries already in hand.
 		const fills = rows.filter((r) => r.fillsDay);
 		let visible = rows;
-		if (fills.length > 0) {
-			const workingHours = await workingHoursService.list(ctx);
+		// Only the fill blocks a background job would also have been allowed to
+		// rewrite. `null` means the window is closed entirely (the lock covers
+		// today), in which case a read touches nothing at all.
+		const writable =
+			fills.length > 0
+				? automationWriteWindow(dayKeyInTz(new Date(), tz), {
+						lockedThrough: (await orgSettingsService.get(ctx))
+							.automationLockedThrough,
+					})
+				: null;
+		const stale = writable
+			? fills.filter((f) => f.date >= writable.from && f.date <= writable.to)
+			: [];
+		if (writable && stale.length > 0) {
+			const [workingHours, holidays] = await Promise.all([
+				workingHoursService.list(ctx),
+				holidaysService.holidaySetForRange(ctx, writable.from, writable.to),
+			]);
 			const claimsByDay = new Map<string, typeof rows>();
 			for (const r of rows) {
 				const list = claimsByDay.get(r.date) ?? [];
@@ -679,9 +672,9 @@ export const timeEntriesService = {
 				claimsByDay.set(r.date, list);
 			}
 			const emptied: string[] = [];
-			for (const fill of fills) {
+			for (const fill of stale) {
 				const next = remainingSeconds(
-					targetSecondsFor(workingHours, fill.date, tz),
+					targetSecondsFor(workingHours, fill.date, tz, holidays),
 					spokenForSeconds(claimsByDay.get(fill.date) ?? []),
 				);
 				if (next === 0) {
@@ -764,20 +757,31 @@ export const timeEntriesService = {
 	 * best-effort: a revoked Google token must not cost this person their
 	 * recurring blocks.
 	 *
-	 * The three outcomes are reported separately because they are three different
+	 * The four outcomes are reported separately because they are four different
 	 * answers. `skipped` in particular is not a quiet success: an engine whose
 	 * window came back null did NOTHING, and folding that into `ran` is what let
 	 * the "Sync now" button say "Synced" after a pass that touched nothing at all.
+	 *
+	 * `off` is the fourth: an engine the person has not switched on appeared in
+	 * none of the other three, so "Sync now" could not distinguish "your calendar
+	 * sync is off" from "synced" — which is the answer somebody who just came
+	 * looking for their meetings actually needs.
 	 */
 	runAutomationsForUser: async (
 		ctx: Ctx,
 		opts: { now?: Date; tz?: string } = {},
-	): Promise<{ ran: string[]; skipped: string[]; failed: string[] }> => {
+	): Promise<{
+		ran: string[];
+		skipped: string[];
+		failed: string[];
+		off: string[];
+	}> => {
 		const tz = opts.tz ?? (await ctxTimezone(ctx));
 		const todayKey = dayKeyInTz(opts.now ?? new Date(), tz);
 		const ran: string[] = [];
 		const skipped: string[] = [];
 		const failed: string[] = [];
+		const off: string[] = [];
 
 		const attempt = async (name: string, work: () => Promise<void>) => {
 			try {
@@ -803,7 +807,7 @@ export const timeEntriesService = {
 				.automationLockedThrough;
 		} catch (error) {
 			console.error("[automations] lock read failed", error);
-			return { ran, skipped, failed: [...failed, "org-settings"] };
+			return { ran, skipped, failed: [...failed, "org-settings"], off };
 		}
 
 		// Recurring blocks carry no integration switch: each rule holds its own
@@ -826,7 +830,7 @@ export const timeEntriesService = {
 			settings = await integrationSettingsService.get(ctx);
 		} catch (error) {
 			console.error("[automations] settings read failed", error);
-			return { ran, skipped, failed: [...failed, "integration-settings"] };
+			return { ran, skipped, failed: [...failed, "integration-settings"], off };
 		}
 
 		if (settings.googleAutoSyncMeetings) {
@@ -839,6 +843,8 @@ export const timeEntriesService = {
 			} else {
 				skipped.push("meetings");
 			}
+		} else {
+			off.push("meetings");
 		}
 
 		if (settings.githubSyncCommitsAsWorkTime) {
@@ -859,9 +865,11 @@ export const timeEntriesService = {
 			} else {
 				skipped.push("commit-work-time");
 			}
+		} else {
+			off.push("commit-work-time");
 		}
 
-		return { ran, skipped, failed };
+		return { ran, skipped, failed, off };
 	},
 
 	/** One of the caller's OWN entries by id, or undefined.
@@ -1030,13 +1038,9 @@ export const timeEntriesService = {
 		// block into the day's fill block must not count that 2h as competing with
 		// the fill it is becoming.
 		const durationSeconds = input.fillsDay
-			? await computeDayFillSeconds(
-					ctx,
-					input.date,
-					tz,
-					undefined,
-					input.timeEntryId,
-				)
+			? await computeDayFillSeconds(ctx, input.date, tz, {
+					excludeEntryId: input.timeEntryId,
+				})
 			: (input.durationSeconds ?? 0);
 
 		if (input.fillsDay && durationSeconds === 0) {
@@ -1440,30 +1444,73 @@ export const timeEntriesService = {
 				copyable.push(entry);
 			}
 
+			// Copying is a WRITE, and it used to be the one write that checked
+			// nothing: `create` and `setWeekCell` both assert the project is in the
+			// org, that the caller may track on it, and that the task is still picked
+			// for it — copyDay inserted straight through. Tenancy was never at risk
+			// (the source rows are the caller's own), but taxonomy and assignment
+			// were: a project you have been removed from, or a task the project has
+			// since un-picked, came back with one click. The resulting row could then
+			// never be edited, because `update` does run the guards.
+			//
+			// Checked per distinct (project, task) pair rather than per row: a day is
+			// usually a handful of pairs across many entries, and the answer cannot
+			// differ within a pair.
+			const access = await ctxAccess(txCtx);
+			const verdicts = new Map<string, boolean>();
+			const mayCopy = async (e: {
+				projectId: string | null;
+				taskId: string;
+			}): Promise<boolean> => {
+				const key = `${e.projectId ?? ""}|${e.taskId}`;
+				const cached = verdicts.get(key);
+				if (cached !== undefined) return cached;
+				let allowed = true;
+				try {
+					if (e.projectId) {
+						await assertProjectInOrg(txCtx, e.projectId);
+						access.assertCanTrackOn(e.projectId);
+					}
+					await assertTaskAvailable(txCtx, e.taskId, e.projectId ?? undefined);
+				} catch (error) {
+					// A guard says no by throwing; anything else is a real failure and
+					// must not be reported to the person as "skipped".
+					if (error instanceof postgres.PostgresError) throw error;
+					allowed = false;
+				}
+				verdicts.set(key, allowed);
+				return allowed;
+			};
+
+			const permitted: typeof source = [];
+			for (const entry of copyable) {
+				if (await mayCopy(entry)) permitted.push(entry);
+			}
+
 			// A day may hold at most one fill block (`te_fill_day_uidx`), so the
 			// target's own survives and simply resizes around what just landed.
 			const sourceFill = source.find((e) => e.fillsDay);
 			const copyFill =
-				sourceFill !== undefined && !target.some((e) => e.fillsDay);
+				sourceFill !== undefined &&
+				!target.some((e) => e.fillsDay) &&
+				(await mayCopy(sourceFill));
 
-			let copied = copyable.length;
+			let copied = permitted.length;
 			let skipped = source.length - copied - (copyFill ? 1 : 0);
 			if (copied === 0 && !copyFill) return { copied: 0, skipped };
 
-			const addedSeconds = copyable.reduce(
+			const addedSeconds = permitted.reduce(
 				(sum, e) => sum + e.durationSeconds,
 				0,
 			);
 			const existingSeconds = spokenForSeconds(target);
 			if (existingSeconds + addedSeconds > MAX_DAY_SECONDS) {
-				throw new Error(
-					`Copying this would put more than 24 hours on ${input.toDate}`,
-				);
+				throw new DayCapacityError(input.toDate);
 			}
 
-			if (copyable.length > 0) {
+			if (permitted.length > 0) {
 				await tx.insert(timeEntry).values(
-					copyable.map((e) => ({
+					permitted.map((e) => ({
 						organizationId: ctx.organizationId,
 						userId: ctx.userId,
 						projectId: e.projectId,
@@ -1537,7 +1584,11 @@ export const timeEntriesService = {
 					});
 					copied += result.copied;
 					skipped += result.skipped;
-				} catch {
+				} catch (error) {
+					// Only the day's own capacity refusal is a "blocked day". Anything
+					// else is a real failure and has to abort the transaction rather
+					// than be reported as a full day.
+					if (!(error instanceof DayCapacityError)) throw error;
 					blockedDays.push(toDate);
 				}
 			}
@@ -1679,7 +1730,7 @@ export const timeEntriesService = {
 			// has a 15-minute floor (so a 3-minute meeting becomes a real block
 			// rather than vanishing), which turns "this person does not work
 			// Saturdays" into a quarter hour of vacation booked on a Saturday.
-			const targetSeconds = targetSecondsFor(workingHours, date, tz);
+			const targetSeconds = targetSecondsFor(workingHours, date, tz, holidays);
 			if (targetSeconds === 0) {
 				skipped.push({ date, reason: "not a working day for this person" });
 				continue;

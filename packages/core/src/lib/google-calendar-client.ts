@@ -38,8 +38,18 @@ export type GoogleCalendarEvent = {
 	htmlLink?: string;
 	hangoutLink?: string;
 	location?: string;
+	// "default" | "outOfOffice" | "focusTime" | "workingLocation" | "birthday"
+	eventType?: string;
 	start?: GoogleEventDateTime;
 	end?: GoogleEventDateTime;
+	attendees?: {
+		email?: string;
+		/** True on the row describing the calendar owner — the only one whose
+		 *  answer says anything about whether THIS person attended. */
+		self?: boolean;
+		// "accepted" | "declined" | "tentative" | "needsAction"
+		responseStatus?: string;
+	}[];
 	conferenceData?: {
 		entryPoints?: {
 			entryPointType?: string; // "video" | "phone" | "more" | ...
@@ -47,6 +57,43 @@ export type GoogleCalendarEvent = {
 			label?: string;
 		}[];
 	};
+};
+
+/** Blocks Google returns as events but which are not meetings anybody attended.
+ *  `workingLocation` and `birthday` are all-day and already excluded by the
+ *  dateTime check; these two are timed, so nothing else stops them. */
+const NON_MEETING_EVENT_TYPES = new Set(["outOfOffice", "focusTime"]);
+
+/**
+ * Is this event worth importing as a Meeting entry?
+ *
+ * Pure, and exported, because it is the whole of the policy: everything the
+ * engine writes passed through here.
+ *
+ * Cancelled and all-day events were the only exclusions. Two categories got
+ * through that nobody worked:
+ *
+ *   - a meeting the person DECLINED — still on their calendar, still returned
+ *     by the API, and turned into logged time they then had to find and delete
+ *     before the month would close;
+ *   - timed "Out of office" and "Focus time" blocks, which are Google's way of
+ *     saying "this person is not in a meeting" and which are frequently the
+ *     largest blocks on the day.
+ *
+ * `attendees` and `eventType` were both already in the payload. Neither was read.
+ */
+export const isImportableEvent = (event: GoogleCalendarEvent): boolean => {
+	if (event.status === "cancelled") return false;
+	// All-day events carry `date`, not `dateTime` — no clock time to import.
+	if (!event.start?.dateTime || !event.end?.dateTime) return false;
+	if (event.eventType && NON_MEETING_EVENT_TYPES.has(event.eventType)) {
+		return false;
+	}
+	// Only the owner's own row counts. An event with no attendees at all is a
+	// solo block the person put on their own calendar, which is real time.
+	const self = event.attendees?.find((a) => a.self);
+	if (self?.responseStatus === "declined") return false;
+	return true;
 };
 
 // Lists every timed/all-day event in [timeMin, timeMax). Follows nextPageToken
@@ -88,6 +135,17 @@ export const listCalendarEvents = async (
 		if (!body.nextPageToken) return items;
 		pageToken = body.nextPageToken;
 	}
+	// Reaching the cap means the list is TRUNCATED, and delete-by-absence reads
+	// absence as cancellation — so the meetings on the pages never fetched would
+	// have their entries deleted. It takes >5000 events in a window of a few
+	// days, which is why this is a log line and not a mechanism; without it the
+	// truncation is completely silent.
+	console.warn("[google-calendar] event list truncated at the page cap", {
+		pages: MAX_PAGES,
+		collected: items.length,
+		timeMin: options.timeMin.toISOString(),
+		timeMax: options.timeMax.toISOString(),
+	});
 	return items;
 };
 

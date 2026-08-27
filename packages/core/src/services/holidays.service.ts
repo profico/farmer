@@ -1,8 +1,9 @@
 import Holidays, { type HolidaysTypes } from "date-holidays";
 import { and, eq } from "drizzle-orm";
-import { db } from "../db";
 import { disabledHoliday } from "../db/schema/schedule";
 import { orgCountry } from "../lib/org-country";
+import { ctxMemo } from "./context";
+import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
 // Only "days off" types — excludes 'observance'/'optional'/'school' which
@@ -40,14 +41,62 @@ let cachedCountries: { code: string; name: string }[] | null = null;
 export type PublicHoliday = { date: string; name: string };
 export type HolidayWithStatus = PublicHoliday & { disabled: boolean };
 
-// Names of holidays the org has opted out of. Keyed by the date-holidays name,
-// which is stable across years for a country — one row disables it every year.
-const disabledNamesFor = async (ctx: Ctx): Promise<Set<string>> => {
-	const rows = await db
-		.select({ name: disabledHoliday.name })
-		.from(disabledHoliday)
-		.where(eq(disabledHoliday.organizationId, ctx.organizationId));
-	return new Set(rows.map((r) => r.name));
+// (country, year) -> the year's holidays.
+//
+// `new Holidays(country)` parses a rule set and `getHolidays(year)` evaluates
+// it, which was fine when this ran once per report and is not fine now that
+// `recomputeDayFill` consults the calendar on every entry write. The answer
+// depends on nothing but the country and the year, so it is cached for the life
+// of the process; the set is bounded by countries x years actually asked for.
+//
+// Deliberately does NOT cache the org's opted-out names — those are a database
+// row an admin can toggle, and caching them would make the toggle take a
+// restart to apply.
+//
+// Layered on `holidaysForCountry` above rather than replacing it: that one
+// avoids re-parsing a country's rule set, this one avoids re-evaluating a year
+// against it. A write asks for a single day, so the second is what makes the
+// per-write lookup free.
+const yearCache = new Map<string, PublicHoliday[]>();
+
+const holidaysForYear = (country: string, year: number): PublicHoliday[] => {
+	const key = `${country}:${String(year)}`;
+	const cached = yearCache.get(key);
+	if (cached) return cached;
+	const computed = holidaysForCountry(country)
+		.getHolidays(year)
+		.map((h) => ({ date: h.date.slice(0, 10), name: h.name }));
+	yearCache.set(key, computed);
+	return computed;
+};
+
+/** The org's calendar inputs: which country's holidays apply, and which ones
+ *  this org has opted out of.
+ *
+ *  Memoized on the Ctx like the timezone and the access picture, because the
+ *  fill-block recompute now asks for it on every write and a report asks for it
+ *  once per range. Read through `ctxDb`, so it stays on the transaction when
+ *  one is open — `recomputeDayFill` runs inside `withCtxTx`, and an ambient read
+ *  there deadlocks the pool (see ./db-ctx). */
+const calendarInputs = (
+	ctx: Ctx,
+): Promise<{ country: string; disabled: Set<string> }> => {
+	const memo = ctxMemo(ctx);
+	memo.holidayCalendar ??= (async () => {
+		const client = ctxDb(ctx);
+		const [country, rows] = await Promise.all([
+			orgCountry(ctx.organizationId, client),
+			client
+				.select({ name: disabledHoliday.name })
+				.from(disabledHoliday)
+				.where(eq(disabledHoliday.organizationId, ctx.organizationId)),
+		]);
+		return { country, disabled: new Set(rows.map((r) => r.name)) };
+	})();
+	return memo.holidayCalendar as Promise<{
+		country: string;
+		disabled: Set<string>;
+	}>;
 };
 
 export const holidaysService = {
@@ -66,14 +115,8 @@ export const holidaysService = {
 
 	// Enabled (non-disabled) holidays for the year.
 	listForYear: async (ctx: Ctx, year: number): Promise<PublicHoliday[]> => {
-		const [country, disabled] = await Promise.all([
-			orgCountry(ctx.organizationId),
-			disabledNamesFor(ctx),
-		]);
-		return holidaysForCountry(country)
-			.getHolidays(year)
-			.filter((h) => !disabled.has(h.name))
-			.map((h) => ({ date: h.date.slice(0, 10), name: h.name }));
+		const { country, disabled } = await calendarInputs(ctx);
+		return holidaysForYear(country, year).filter((h) => !disabled.has(h.name));
 	},
 
 	// Every holiday for the year with its disabled status, for the settings UI.
@@ -81,17 +124,11 @@ export const holidaysService = {
 		ctx: Ctx,
 		year: number,
 	): Promise<HolidayWithStatus[]> => {
-		const [country, disabled] = await Promise.all([
-			orgCountry(ctx.organizationId),
-			disabledNamesFor(ctx),
-		]);
-		return holidaysForCountry(country)
-			.getHolidays(year)
-			.map((h) => ({
-				date: h.date.slice(0, 10),
-				name: h.name,
-				disabled: disabled.has(h.name),
-			}));
+		const { country, disabled } = await calendarInputs(ctx);
+		return holidaysForYear(country, year).map((h) => ({
+			...h,
+			disabled: disabled.has(h.name),
+		}));
 	},
 
 	// Toggle a holiday on/off for the org. Row present = disabled.
@@ -99,13 +136,14 @@ export const holidaysService = {
 		ctx: Ctx,
 		input: { name: string; disabled: boolean },
 	): Promise<void> => {
+		const client = ctxDb(ctx);
 		if (input.disabled) {
-			await db
+			await client
 				.insert(disabledHoliday)
 				.values({ organizationId: ctx.organizationId, name: input.name })
 				.onConflictDoNothing();
 		} else {
-			await db
+			await client
 				.delete(disabledHoliday)
 				.where(
 					and(
@@ -114,30 +152,32 @@ export const holidaysService = {
 					),
 				);
 		}
+		// The Ctx memo would otherwise answer this same request from the picture
+		// as it was before the toggle.
+		ctxMemo(ctx).holidayCalendar = undefined;
 	},
 
 	// Handles ranges spanning a year boundary (e.g. a week straddling Dec/Jan).
-	// Excludes holidays the org has disabled, so weekend/holiday shading and
-	// utilization both treat a disabled holiday as an ordinary working day.
+	// Excludes holidays the org has disabled, so weekend/holiday shading,
+	// utilization and the day's working-hours target all treat a disabled holiday
+	// as an ordinary working day.
+	//
+	// The returned Map satisfies `HolidayLookup` (lib/working-day), which is what
+	// `targetSecondsFor` takes — no conversion at the call sites.
 	holidaySetForRange: async (
 		ctx: Ctx,
 		from: string,
 		to: string,
 	): Promise<Map<string, string>> => {
-		const [country, disabled] = await Promise.all([
-			orgCountry(ctx.organizationId),
-			disabledNamesFor(ctx),
-		]);
-		const hd = holidaysForCountry(country);
+		const { country, disabled } = await calendarInputs(ctx);
 		const fromYear = Number(from.slice(0, 4));
 		const toYear = Number(to.slice(0, 4));
 
 		const byDate = new Map<string, string>();
 		for (let year = fromYear; year <= toYear; year++) {
-			for (const h of hd.getHolidays(year)) {
+			for (const h of holidaysForYear(country, year)) {
 				if (disabled.has(h.name)) continue;
-				const date = h.date.slice(0, 10);
-				if (date >= from && date <= to) byDate.set(date, h.name);
+				if (h.date >= from && h.date <= to) byDate.set(h.date, h.name);
 			}
 		}
 		return byDate;

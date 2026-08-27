@@ -8,7 +8,9 @@ import {
 	dayKeyInTz,
 	monthBounds,
 	startOfMonthKey,
+	weekdayInTz,
 } from "../lib/time";
+import { dayDurationSeconds } from "../lib/working-day";
 import { absenceDaysByUser, expectedSecondsFor } from "./close.service";
 import { ctxTimezone, requireAdmin } from "./context";
 import { holidaysService } from "./holidays.service";
@@ -20,6 +22,7 @@ import {
 	orgSettingsService,
 } from "./org-settings.service";
 import type { Ctx } from "./types";
+import { workingHoursService } from "./working-hours.service";
 
 // Tracking compliance (PRD 6.2) — the forgetting-detector, and the engine behind
 // the Slack reminders. One mechanism, two outputs: a dashboard for Admin and DMs
@@ -48,7 +51,12 @@ export type BehindPaceRow = {
 	shortfallSeconds: number;
 };
 
-/** Working days in [from, to]: Mon-Fri minus org holidays. */
+/** Working days in [from, to] for the ORG: Mon-Fri minus org holidays.
+ *
+ *  The right denominator for prorating a month's hour fund, which is an
+ *  org-wide figure and knows nothing about any individual's schedule. It is the
+ *  WRONG answer to "has this person missed a working day" — see
+ *  `workingDaysForMember` below. */
 const workingDaysIn = async (
 	ctx: Ctx,
 	from: string,
@@ -63,13 +71,36 @@ const workingDaysIn = async (
 	});
 };
 
+/** Working days in [from, to] for ONE PERSON: the days their own schedule says
+ *  they work, minus org holidays.
+ *
+ *  `noEntries` is a per-person judgement — "you have logged nothing for three
+ *  working days" — and it was answering it from a hardcoded Mon-Fri. Somebody
+ *  contracted for Monday to Wednesday was therefore reported as three working
+ *  days behind every Thursday, appeared on the Admin compliance dashboard, and
+ *  got a Slack DM about it. The app has had per-member working hours all along;
+ *  `jobs/log-reminders` reads them for exactly this question and gets it right. */
+const workingDaysForMember = (
+	orgWorkingDays: string[],
+	enabledWeekdays: ReadonlySet<number>,
+	tz: string,
+): string[] =>
+	orgWorkingDays.filter((key) => enabledWeekdays.has(weekdayInTz(key, tz)));
+
 /** People the compliance machinery applies to at all. Overhead people never
  *  appear anywhere in it — the system never nags the CEO about timesheets — and
  *  neither do archived people, who cannot act on a nudge at all. */
+export type CohortMember = {
+	userId: string;
+	name: string;
+	email: string;
+	memberType: ResolvedMemberType;
+};
+
 const complianceCohort = async (
 	ctx: Ctx,
 	asOfMonth: { year: number; month: number },
-) => {
+): Promise<CohortMember[]> => {
 	const [people, types, archived] = await Promise.all([
 		db
 			.select({ userId: member.userId, name: user.name, email: user.email })
@@ -132,26 +163,56 @@ const views = {
 		if (cohort.length === 0) return [];
 
 		// Look back far enough to always contain N working days even across a long
-		// holiday stretch, then take the last N.
+		// holiday stretch — and, now that the count is per person, far enough for
+		// somebody who only works two days a week.
 		const windowStart = addDaysToKey(
 			today,
-			-(settings.complianceMissingDays * 4 + 14),
+			-(settings.complianceMissingDays * 9 + 14),
 		);
-		const working = await workingDaysIn(ctx, windowStart, today);
-		const recentWorkingDays = working.slice(-settings.complianceMissingDays);
-		if (recentWorkingDays.length === 0) return [];
-		const cutoff = recentWorkingDays[0] as string;
+		const orgWorkingDays = await workingDaysIn(ctx, windowStart, today);
 
 		const userIds = cohort.map((c) => c.userId);
-		const [recent, lastEntries] = await Promise.all([
+		const schedules = await workingHoursService.listForOrg(ctx, userIds);
+
+		// Each person's own working days inside the window, and therefore each
+		// person's own cutoff. A part-timer's "three working days ago" is further
+		// back than a full-timer's, which is the entire point.
+		const workingDaysByUser = new Map<string, string[]>();
+		const cutoffByUser = new Map<string, string>();
+		let earliestCutoff = today;
+		for (const person of cohort) {
+			const enabledWeekdays = new Set(
+				(schedules.get(person.userId) ?? [])
+					.filter((day) => dayDurationSeconds(day) > 0)
+					.map((day) => day.dayOfWeek),
+			);
+			const mine = workingDaysForMember(orgWorkingDays, enabledWeekdays, tz);
+			workingDaysByUser.set(person.userId, mine);
+			const recent = mine.slice(-settings.complianceMissingDays);
+			// Nobody with no working days in the window is ever "behind" — there was
+			// nothing they were supposed to log.
+			if (recent.length < settings.complianceMissingDays) continue;
+			const cutoff = recent[0] as string;
+			cutoffByUser.set(person.userId, cutoff);
+			if (cutoff < earliestCutoff) earliestCutoff = cutoff;
+		}
+		if (cutoffByUser.size === 0) return [];
+
+		// One query over the widest cutoff in the cohort; each person is then judged
+		// against their own. `max(date)` answers both questions at once — whether
+		// anything landed since their cutoff, and when they last logged at all.
+		const [recentRows, lastEntries] = await Promise.all([
 			db
-				.select({ userId: timeEntry.userId })
+				.select({
+					userId: timeEntry.userId,
+					lastDate: sql<string>`max(${timeEntry.date})`,
+				})
 				.from(timeEntry)
 				.where(
 					and(
 						eq(timeEntry.organizationId, ctx.organizationId),
 						inArray(timeEntry.userId, userIds),
-						gte(timeEntry.date, cutoff),
+						gte(timeEntry.date, earliestCutoff),
 						lte(timeEntry.date, today),
 					),
 				)
@@ -171,13 +232,19 @@ const views = {
 				.groupBy(timeEntry.userId),
 		]);
 
-		const hasRecent = new Set(recent.map((r) => r.userId));
+		const latestInWindow = new Map(
+			recentRows.map((r) => [r.userId, r.lastDate]),
+		);
 		const lastByUser = new Map(lastEntries.map((r) => [r.userId, r.lastDate]));
 
 		const rows: NoEntriesRow[] = [];
 		for (const person of cohort) {
-			if (hasRecent.has(person.userId)) continue;
+			const cutoff = cutoffByUser.get(person.userId);
+			if (!cutoff) continue;
+			const latest = latestInWindow.get(person.userId);
+			if (latest != null && latest >= cutoff) continue;
 			const lastEntryDate = lastByUser.get(person.userId) ?? null;
+			const working = workingDaysByUser.get(person.userId) ?? [];
 			const missing = lastEntryDate
 				? working.filter((d) => d > lastEntryDate).length
 				: working.length;
@@ -310,4 +377,21 @@ export const complianceService = {
 	 */
 	dashboardForReminderJob: (ctx: Ctx, opts: ComplianceOpts = {}) =>
 		views.dashboard(ctx, opts),
+
+	/**
+	 * The people the compliance machinery applies to — no overhead, no archived —
+	 * for the same job, on the same terms as `dashboardForReminderJob` above.
+	 *
+	 * It exists because the month-end Slack push addresses this exact set and was
+	 * selecting every member of the org instead, so the message went to precisely
+	 * the two groups the cohort exists to exclude: archived people, who cannot act
+	 * on it, and overhead people, whom the system deliberately never nags about
+	 * timesheets.
+	 *
+	 * Do not wire this to a server function or a REST route.
+	 */
+	cohortForReminderJob: (
+		ctx: Ctx,
+		asOfMonth: { year: number; month: number },
+	): Promise<CohortMember[]> => complianceCohort(ctx, asOfMonth),
 };

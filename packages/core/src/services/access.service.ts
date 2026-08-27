@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { db } from "../db";
 import { member } from "../db/schema/auth";
 import { projectMember } from "../db/schema/domain";
+import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
 // The section-4 capability matrix, in one place.
@@ -196,17 +196,21 @@ export const accessService = {
 	 *  answer to "are they in the room": every org-wide read that asks neither
 	 *  question (`clientsService.list`, `tasksService.list`) answered them
 	 *  anyway. Membership is the precondition, not a capability, so it is
-	 *  checked once here rather than re-asserted in each of those functions. */
+	 *  checked once here rather than re-asserted in each of those functions.
+	 *
+	 *  Runs through `ctxDb`, so it stays on the transaction when one is open —
+	 *  `setWeekCell` reaches this via `create(txCtx, …)`. See ./db-ctx. */
 	resolve: async (ctx: Ctx): Promise<Access> => {
+		const client = ctxDb(ctx);
 		const [membership, assignments] = await Promise.all([
-			db.query.member.findFirst({
+			client.query.member.findFirst({
 				where: and(
 					eq(member.organizationId, ctx.organizationId),
 					eq(member.userId, ctx.userId),
 				),
 				columns: { role: true },
 			}),
-			db
+			client
 				.select({
 					projectId: projectMember.projectId,
 					role: projectMember.role,

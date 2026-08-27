@@ -150,9 +150,39 @@ export type GithubCommit = {
 
 export type GithubUser = { login: string };
 
+/** A 403/429 that means "slow down", not "you may not see this".
+ *
+ *  These two answers arrive on the same status code and used to be collapsed
+ *  into the same `null`, so a rate-limited sweep was indistinguishable from a
+ *  repository with no commits: the engine wrote nothing, reported success, and
+ *  logged nothing. A throw makes the sweep record a failure it can retry. */
+export class GithubRateLimitError extends Error {
+	constructor(url: string) {
+		super(`GitHub rate limit reached: ${url}`);
+		this.name = "GithubRateLimitError";
+	}
+}
+
+/** GitHub signals both flavours of throttling on 403 as well as 429: the
+ *  primary limit zeroes `x-ratelimit-remaining`, the secondary/abuse limit sends
+ *  `retry-after` and says so in the body. A plain forbidden has neither. */
+const isThrottled = (response: Response, body: string): boolean => {
+	if (response.status === 429) return true;
+	if (response.headers.get("x-ratelimit-remaining") === "0") return true;
+	if (response.headers.get("retry-after") !== null) return true;
+	return /rate limit|abuse detection/i.test(body);
+};
+
 const githubGet = async <T>(url: string, token: string): Promise<T | null> => {
 	const response = await externalFetch(url, { headers: githubHeaders(token) });
-	if (response.status === 403 || response.status === 404) return null;
+	if (response.status === 403 || response.status === 429) {
+		const body = await response.text().catch(() => "");
+		if (isThrottled(response, body)) throw new GithubRateLimitError(url);
+		// A real forbidden: the App was uninstalled from this repo, or the token
+		// no longer covers it. Nothing to retry.
+		return null;
+	}
+	if (response.status === 404) return null;
 	if (!response.ok) {
 		throw new Error(`GitHub API error ${response.status}: ${url}`);
 	}
@@ -162,24 +192,50 @@ const githubGet = async <T>(url: string, token: string): Promise<T | null> => {
 export const getRepoById = (token: string, id: number) =>
 	githubGet<GithubRepo>(`${GITHUB_API}/repositories/${id}`, token);
 
+// A day's commits fit in one page; a multi-week catch-up after downtime does
+// not. The single unpaginated request silently truncated at 100 and the engine
+// treated the truncated set as the whole window, so the days it did not see were
+// filled as if nobody had worked them. Capped, because a runaway loop against a
+// paid API is worse than a short answer.
+const COMMIT_PAGE_SIZE = 100;
+const MAX_COMMIT_PAGES = 10;
+
 export const listCommits = async (
 	token: string,
 	owner: string,
 	repo: string,
 	options: { author: string; since: Date; until: Date },
 ): Promise<GithubCommit[]> => {
-	const params = new URLSearchParams({
-		author: options.author,
-		since: options.since.toISOString(),
-		until: options.until.toISOString(),
-		per_page: "100",
-	});
-	return (
-		(await githubGet<GithubCommit[]>(
+	const commits: GithubCommit[] = [];
+	for (let page = 1; page <= MAX_COMMIT_PAGES; page++) {
+		const params = new URLSearchParams({
+			author: options.author,
+			since: options.since.toISOString(),
+			until: options.until.toISOString(),
+			per_page: String(COMMIT_PAGE_SIZE),
+			page: String(page),
+		});
+		const batch = await githubGet<GithubCommit[]>(
 			`${GITHUB_API}/repos/${owner}/${repo}/commits?${params}`,
 			token,
-		)) ?? []
-	);
+		);
+		// null is "forbidden or missing" — for this repo there is nothing to read,
+		// which for a first page means no commits and for a later one means the
+		// pages already collected are all there is.
+		if (!batch) break;
+		commits.push(...batch);
+		// A short page is the last page. GitHub's commits endpoint has no total
+		// count, so this is the only stop signal short of an empty page.
+		if (batch.length < COMMIT_PAGE_SIZE) break;
+		if (page === MAX_COMMIT_PAGES) {
+			console.warn("[github] commit list truncated at the page cap", {
+				repo: `${owner}/${repo}`,
+				pages: MAX_COMMIT_PAGES,
+				collected: commits.length,
+			});
+		}
+	}
+	return commits;
 };
 
 export const getCommit = (

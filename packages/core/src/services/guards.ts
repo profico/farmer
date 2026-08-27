@@ -1,7 +1,7 @@
 import { and, eq, or } from "drizzle-orm";
-import { db } from "../db";
 import { member } from "../db/schema/auth";
 import { project, projectTask, task } from "../db/schema/domain";
+import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
 // Tenancy and taxonomy guards shared by every write path that accepts a
@@ -32,7 +32,9 @@ export const isUniversalTask = (t: { scope: string; isAbsence: boolean }) =>
  * row and comparing organizationId in JS afterwards.
  */
 export const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
-	const row = await db.query.project.findFirst({
+	// `ctxDb`, not the ambient handle: reachable from inside a transaction via
+	// `setWeekCell` -> `create(txCtx, …)`. See ./db-ctx.
+	const row = await ctxDb(ctx).query.project.findFirst({
 		where: and(
 			eq(project.id, projectId),
 			eq(project.organizationId, ctx.organizationId),
@@ -58,7 +60,10 @@ export const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
  * that no list would ever show and no screen could ever clean up.
  */
 export const assertUserInOrg = async (ctx: Ctx, userId: string) => {
-	const row = await db.query.member.findFirst({
+	// `ctxDb`, like the two guards below it: every guard in this file is
+	// reachable from inside an open transaction, and an ambient read from there
+	// sees pre-transaction state (and deadlocks a single-connection handle).
+	const row = await ctxDb(ctx).query.member.findFirst({
 		where: and(
 			eq(member.organizationId, ctx.organizationId),
 			eq(member.userId, userId),
@@ -100,7 +105,7 @@ export const assertTaskAvailable = async (
 ) => {
 	// Tenancy lives in the WHERE: a site-scoped task is everyone's, an
 	// org-scoped one is only its own org's. Never fetched-then-compared.
-	const row = await db.query.task.findFirst({
+	const row = await ctxDb(ctx).query.task.findFirst({
 		where: and(
 			eq(task.id, taskId),
 			or(eq(task.scope, "site"), eq(task.organizationId, ctx.organizationId)),
@@ -129,7 +134,7 @@ export const assertTaskAvailable = async (
 	// universal shape, handled above; they differ in taking no project at all.
 	if (isUniversalTask(row)) return;
 
-	const picked = await db.query.projectTask.findFirst({
+	const picked = await ctxDb(ctx).query.projectTask.findFirst({
 		where: and(
 			eq(projectTask.organizationId, ctx.organizationId),
 			eq(projectTask.projectId, projectId),
