@@ -285,13 +285,13 @@ describe("settings", () => {
 				apiKey: KEY,
 				defaultModel: "test/model",
 			}),
-		).rejects.toThrow();
+		).rejects.toThrow(/Admin access required/);
 		await expect(
 			assistantService.settings.update(ctxFor(WORKER), { enabled: false }),
-		).rejects.toThrow();
+		).rejects.toThrow(/Admin access required/);
 		await expect(
 			assistantService.settings.listModels(ctxFor(WORKER)),
-		).rejects.toThrow();
+		).rejects.toThrow(/Admin access required/);
 	});
 
 	test("disabled is a real state — the loop refuses, the history survives", async () => {
@@ -1251,7 +1251,7 @@ describe("house rules", () => {
 			assistantService.settings.update(ctxFor(WORKER), {
 				systemPrompt: "mine now",
 			}),
-		).rejects.toThrow();
+		).rejects.toThrow(/Admin access required/);
 	});
 });
 

@@ -3,7 +3,7 @@ import { defineConfig } from "oxlint";
 export default defineConfig({
 	ignorePatterns: [
 		".claude/**",
-		"tools/oxlint/anti-slop/**",
+		"tools/oxlint/**",
 		"**/routeTree.gen.ts",
 		"**/src/db/schema/auth.ts",
 		"**/src/lib/pdf-fonts.gen.ts",
@@ -13,6 +13,7 @@ export default defineConfig({
 	categories: { correctness: "error" },
 	jsPlugins: [
 		{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+		{ name: "stella", specifier: "./tools/oxlint/stella/index.ts" },
 	],
 	rules: {
 		// React 19's automatic JSX runtime — `React` is never in scope by design.
@@ -52,5 +53,13 @@ export default defineConfig({
 		"anti-slop/no-unsafe-dictionary-type": "error",
 		"anti-slop/no-widen-then-assert": "error",
 		"anti-slop/require-safety-comment-for-type-assertion": "error",
+
+		// Vendored from stella (see tools/oxlint/stella/index.ts). Each of these
+		// guards an invariant this repo already held with nothing enforcing it.
+		"stella/no-document-cookie": "error",
+		"stella/no-foreign-directive": "error",
+		"stella/no-partial-record-satisfies": "error",
+		"stella/no-vacuous-throw-assertion": "error",
+		"stella/require-suppression-description": "error",
 	},
 });

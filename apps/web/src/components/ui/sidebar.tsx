@@ -85,8 +85,13 @@ function SidebarProvider({
 				_setOpen(openState);
 			}
 
-			// This sets the cookie to keep the sidebar state.
-			// NOTE: shadcn sidebar persists its collapsed state via a plain cookie; the CookieStore API isn't broadly supported.
+			// Vendored shadcn: the sidebar persists its collapsed state so the server
+			// can render the right width on the next document request. This is UI
+			// preference, not a credential — there is no cookie utility to route it
+			// through, `Secure` would break http dev, and CookieStore is not broadly
+			// supported. `path=/` is explicit so the delete-clobbering case the rule
+			// guards against cannot arise.
+			// oxlint-disable-next-line stella/no-document-cookie -- see above
 			document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
 		},
 		[setOpenProp, open],

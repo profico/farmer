@@ -192,7 +192,7 @@ describe("copyDay write guards", () => {
 				overtime: false,
 				fillsDay: false,
 			}),
-		).rejects.toThrow();
+		).rejects.toThrow(/not assigned to this project/);
 
 		const result = await timeEntriesService.copyDay(ctx(), {
 			fromDate: MON,
