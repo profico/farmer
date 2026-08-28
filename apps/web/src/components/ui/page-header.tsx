@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+
 import { ScrollFade } from "#/components/ui/scroll-fade.tsx";
 import { cn } from "#/lib/utils.ts";
 

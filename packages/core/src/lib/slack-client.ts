@@ -2,6 +2,7 @@
 // a thin fetch wrapper rather than a dependency on @slack/web-api.
 
 import { externalFetch } from "./http";
+import type { JsonValue } from "./json";
 
 const SLACK_API = "https://slack.com/api";
 
@@ -42,14 +43,23 @@ type SlackError = { ok: false; error: string };
  * are JSON-stringified, which is how Slack documents passing them in a form
  * body.
  */
+/** What Slack's form encoding accepts. Strings go on the wire as-is; anything
+ *  else is JSON-stringified, which is how Slack documents passing structured
+ *  arguments like `chat.postMessage`'s `blocks`. */
+type SlackFormBody = Record<string, string | JsonValue | undefined>;
+
 const call = async <T>(
 	botToken: string,
 	method: string,
-	body: Record<string, unknown>,
+	body: SlackFormBody,
 ): Promise<SlackResponse<T> | SlackError> => {
 	const form = new URLSearchParams();
 	for (const [key, value] of Object.entries(body)) {
 		if (value === undefined) continue;
+		// Discriminating a declared union, not narrowing an unparsed value: a
+		// string is already form-encodable and everything else is JSON, which is
+		// exactly how Slack documents passing `blocks`.
+		// oxlint-disable-next-line anti-slop/no-runtime-typeof -- see above
 		form.set(key, typeof value === "string" ? value : JSON.stringify(value));
 	}
 	const response = await externalFetch(`${SLACK_API}/${method}`, {
@@ -63,6 +73,9 @@ const call = async <T>(
 	if (!response.ok) {
 		return { ok: false, error: `http_${response.status}` };
 	}
+	// SAFETY: an HTTP failure already returned a SlackError above, so this is a
+	// 200 — and Slack answers 200 for its own failures too, which is exactly why
+	// the type is a union the caller must discriminate on `ok` before reading.
 	return (await response.json()) as SlackResponse<T> | SlackError;
 };
 
@@ -104,6 +117,8 @@ export const slackClient = {
 				redirect_uri: slackRedirectUri(),
 			}),
 		});
+		// SAFETY: oauth.v2.access answers 200 for both outcomes and signals which one
+		// with `ok`, so the union is the contract and the check below is the narrowing.
 		const result = (await response.json()) as
 			| ({ ok: true } & SlackOAuthResult)
 			| SlackError;
@@ -148,13 +163,16 @@ export const slackClient = {
 		botToken: string,
 		channel: string,
 		text: string,
-		blocks?: unknown[],
+		/** Block Kit blocks. JSON by definition — Slack's own wire format. */
+		blocks?: JsonValue[],
 	): Promise<boolean> => {
-		const result = await call<{ ts: string }>(botToken, "chat.postMessage", {
-			channel,
-			text,
-			...(blocks ? { blocks } : {}),
-		});
+		// `blocks` only when there are some: Slack reads an empty `blocks` key as
+		// an instruction to render nothing, which silently drops the message body.
+		const result = await call<{ ts: string }>(
+			botToken,
+			"chat.postMessage",
+			blocks?.length ? { channel, text, blocks } : { channel, text },
+		);
 		if (!result.ok) {
 			console.error(`[slack] postMessage failed: ${result.error}`);
 			return false;

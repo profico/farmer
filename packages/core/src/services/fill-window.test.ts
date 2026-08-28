@@ -28,7 +28,9 @@ import {
 	expect,
 	test,
 } from "bun:test";
+
 import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import {
@@ -46,7 +48,7 @@ import {
 	integrationSettings,
 	orgSettings,
 } from "../db/schema/settings";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { holidaysService } from "./holidays.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import { setCommitSourceForTests } from "./ports";
@@ -423,7 +425,7 @@ describe("a public holiday is a non-working day", () => {
 
 		const disableCtx = ctx();
 		await holidaysService.setHolidayDisabled(disableCtx, {
-			name: name as string,
+			name: present(name, "the holiday name"),
 			disabled: true,
 		});
 
@@ -433,7 +435,7 @@ describe("a public holiday is a non-working day", () => {
 
 		// Leave the calendar as we found it for the other tests in this file.
 		await holidaysService.setHolidayDisabled(ctx(), {
-			name: name as string,
+			name: present(name, "the holiday name"),
 			disabled: false,
 		});
 	});

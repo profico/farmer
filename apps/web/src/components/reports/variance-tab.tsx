@@ -1,5 +1,6 @@
 import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
+
 import {
 	Table,
 	TableBody,
@@ -11,6 +12,7 @@ import {
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
 import { varianceReportQuery, varianceTrendQuery } from "#/queries/reports.ts";
+
 import { ReportTable, TREND_MONTHS } from "./shared.tsx";
 
 export function VarianceTab({ year, month }: { year: number; month: number }) {

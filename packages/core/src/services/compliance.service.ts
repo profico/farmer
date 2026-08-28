@@ -1,4 +1,5 @@
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { timeEntry } from "../db/schema/domain";
@@ -191,8 +192,13 @@ const views = {
 			const recent = mine.slice(-settings.complianceMissingDays);
 			// Nobody with no working days in the window is ever "behind" — there was
 			// nothing they were supposed to log.
-			if (recent.length < settings.complianceMissingDays) continue;
-			const cutoff = recent[0] as string;
+			const [cutoff] = recent;
+			if (
+				recent.length < settings.complianceMissingDays ||
+				cutoff === undefined
+			) {
+				continue;
+			}
 			cutoffByUser.set(person.userId, cutoff);
 			if (cutoff < earliestCutoff) earliestCutoff = cutoff;
 		}

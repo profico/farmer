@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { AbsenceEntriesDialog } from "#/components/close/absence-entries-dialog.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { Button } from "#/components/ui/button.tsx";

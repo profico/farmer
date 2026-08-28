@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { splitProportionally, summarizeCommitMessages } from "./day-plan";
 
 describe("splitProportionally", () => {

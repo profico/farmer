@@ -7,6 +7,7 @@ import {
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
+
 import { WeekView } from "#/components/time/week-view.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";

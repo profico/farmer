@@ -20,6 +20,7 @@
 // the other.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import {

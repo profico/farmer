@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import {
 	getGithubConnectionStatus,
 	listAttachedCommits,
@@ -7,6 +8,7 @@ import {
 	listProjectGithubRepos,
 	suggestCommitsForEntry,
 } from "#/server/github.ts";
+
 import { queryKeys } from "./keys.ts";
 
 export const githubConnectionStatusQuery = (org: string) =>

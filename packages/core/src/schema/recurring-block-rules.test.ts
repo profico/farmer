@@ -5,6 +5,7 @@
 // not be saved at all. Issue #4.
 
 import { describe, expect, test } from "bun:test";
+
 import { createRecurringBlockRuleInput } from "./recurring-block-rules";
 
 const TASK_ID = "11111111-1111-4111-8111-111111111111";

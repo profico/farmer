@@ -43,9 +43,12 @@ export type ResolvedPeriod = {
 	to: string;
 };
 
-/** `2026-07` -> `{ year: 2026, month: 7 }`. Month is 1-based, matching every
- *  month-keyed row in the database and every `MonthReportInput`. */
-export const parseMonthKey = (key: string): { year: number; month: number } => {
+/** A month key taken apart. Month is 1-based, matching every month-keyed row
+ *  in the database and every `MonthReportInput`. */
+export type MonthKeyParts = { year: number; month: number };
+
+/** `2026-07` -> `{ year: 2026, month: 7 }`. */
+export const parseMonthKey = (key: string): MonthKeyParts => {
 	const [year, month] = key.split("-").map(Number);
 	return { year: year ?? 1970, month: month ?? 1 };
 };

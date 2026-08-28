@@ -12,6 +12,9 @@ const SW_URL = "/sw.js";
 
 export function pushSupported(): boolean {
 	return (
+		// Not a narrowing: `window` may not be declared at all under SSR, and
+		// `typeof` is the only operator that can ask that without throwing.
+		// oxlint-disable-next-line anti-slop/no-runtime-typeof -- see above
 		typeof window !== "undefined" &&
 		"serviceWorker" in navigator &&
 		"PushManager" in window &&

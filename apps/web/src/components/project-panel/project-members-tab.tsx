@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
 import { Avatar, AvatarFallback } from "#/components/ui/avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Label } from "#/components/ui/label.tsx";
@@ -70,6 +71,10 @@ const sameRow = (a: DraftRow, b: DraftRow) => a.role === b.role;
 // only — the detail panel owns the header and the tab strip, so this renders the
 // same whether it is the panel's Members tab or (in future) anything else that
 // needs the roster.
+// A stable identity for the un-hydrated case, so the memos below actually
+// memoize instead of re-running on every render.
+const NO_ROWS: DraftRow[] = [];
+
 export function ProjectMembersTab({ projectId }: { projectId: string | null }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -108,7 +113,7 @@ export function ProjectMembersTab({ projectId }: { projectId: string | null }) {
 		}
 	}, [projectId, members]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally keyed on projectId — clears the add-member selection when a different project is chosen.
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on projectId — clears the add-member selection when a different project is chosen.
 	useEffect(() => {
 		setAddUserId("");
 	}, [projectId]);
@@ -116,7 +121,7 @@ export function ProjectMembersTab({ projectId }: { projectId: string | null }) {
 	// Only trust the draft once it's tagged for the currently selected project;
 	// during a switch it still holds the previous project until its rows load.
 	const hydrated = draft?.pid === projectId;
-	const rows = hydrated ? draft.rows : [];
+	const rows = hydrated ? draft.rows : NO_ROWS;
 	const assignedIds = useMemo(() => new Set(rows.map((r) => r.userId)), [rows]);
 	// The server list is a snapshot; a person added to the draft but not yet
 	// saved must still disappear from the picker.
@@ -294,11 +299,12 @@ export function ProjectMembersTab({ projectId }: { projectId: string | null }) {
 										<Label className="eyebrow">Role</Label>
 										<Select
 											value={r.role}
-											onValueChange={(value) =>
-												patchRow(r.userId, {
-													role: value as ProjectRoleValue,
-												})
-											}
+											onValueChange={(value) => {
+												const role = ROLES.find(
+													(option) => option.value === value,
+												);
+												if (role) patchRow(r.userId, { role: role.value });
+											}}
 											items={ROLES.map((role) => ({
 												value: role.value,
 												label: role.label,

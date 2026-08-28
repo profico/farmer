@@ -8,12 +8,14 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { MotionConfig } from "motion/react";
+
 import { RouteError } from "../components/route-error";
 import { RouteNotFound } from "../components/route-not-found";
 import { RoutePending } from "../components/route-pending";
 import { Toaster } from "../components/ui/sonner";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import { themeInitScript } from "../lib/theme";
+
 import appCss from "../styles.css?url";
 
 interface MyRouterContext {
@@ -86,7 +88,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				    reader's choice lives in localStorage, so the server can't render
 				    it, and applying it on hydrate instead would flash the light
 				    palette on every cold load. See lib/theme.ts. */}
-				{/* biome-ignore lint/security/noDangerouslySetInnerHtml: a fixed, non-interpolated string — this is the standard no-flash theme script and it has to be inline to run before paint */}
+				{/* oxlint-disable-next-line react/no-danger -- a fixed, non-interpolated string — this is the standard no-flash theme script and it has to be inline to run before paint */}
 				<script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
 				<HeadContent />
 			</head>

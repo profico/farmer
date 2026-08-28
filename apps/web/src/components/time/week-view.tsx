@@ -11,8 +11,10 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
 import {
 	AddRowDialog,
 	type DraftRow,
@@ -769,7 +771,7 @@ function RowNoteDialog({
 	 * Optional trigger override, used to place the note icon inside other UI.
 	 * If omitted, the original row-footprint button is rendered.
 	 */
-	trigger?: (args: { hasNote: boolean; disabled: boolean }) => unknown;
+	trigger?: (args: { hasNote: boolean; disabled: boolean }) => ReactNode;
 	/** Allows a smaller popup when used inline inside grid cells. */
 	contentClassName?: string;
 }) {
@@ -823,7 +825,19 @@ function RowNoteDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger render={triggerNode as never} />
+			{/* SAFETY: Base UI's `render` prop is typed against the element it
+			    composes with, and this trigger is whatever JSX the caller passed
+			    in. `never` is the escape Base UI's own docs use for a
+			    caller-provided node. */}
+			<DialogTrigger
+				render={
+					// SAFETY: Base UI's `render` prop is typed against the element it
+					// composes with, and this trigger is whatever JSX the caller passed
+					// in. `never` is the escape Base UI's own docs use for a
+					// caller-provided node.
+					triggerNode as never
+				}
+			/>
 			{/* Height cap, body scroll and sticky footer are DialogContent's job now
 			    (see dialog.tsx) — a full week of boxes is taller than a short
 			    viewport, and this dialog is only wider than default. */}
@@ -935,7 +949,7 @@ function DayNoteDialog({
 	hasNote: boolean;
 	disabled: boolean;
 	onSave: (description: string) => Promise<void>;
-	trigger?: (args: { hasNote: boolean; disabled: boolean }) => unknown;
+	trigger?: (args: { hasNote: boolean; disabled: boolean }) => ReactNode;
 	contentClassName?: string;
 }) {
 	const [open, setOpen] = useState(false);
@@ -978,7 +992,19 @@ function DayNoteDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger render={triggerNode as never} />
+			{/* SAFETY: Base UI's `render` prop is typed against the element it
+			    composes with, and this trigger is whatever JSX the caller passed
+			    in. `never` is the escape Base UI's own docs use for a
+			    caller-provided node. */}
+			<DialogTrigger
+				render={
+					// SAFETY: Base UI's `render` prop is typed against the element it
+					// composes with, and this trigger is whatever JSX the caller passed
+					// in. `never` is the escape Base UI's own docs use for a
+					// caller-provided node.
+					triggerNode as never
+				}
+			/>
 			<DialogContent className={contentClassName ?? "sm:max-w-sm"}>
 				<DialogHeader>
 					<DialogTitle>{heading}</DialogTitle>

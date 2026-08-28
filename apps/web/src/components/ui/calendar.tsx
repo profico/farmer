@@ -7,6 +7,7 @@ import {
 } from "@farmer/core/lib/time";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import * as React from "react";
+
 import { formatDateKeyLong, formatMonthKey } from "#/lib/format-date.ts";
 import { cn } from "#/lib/utils.ts";
 
@@ -100,13 +101,14 @@ export function Calendar({
 	// Focus follows the roving tabstop, but only once the user is actually
 	// inside the grid — otherwise opening the popover would steal focus on
 	// every re-render.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: gridRef is a ref, stable for the component's life — biome can't see that through the `externalGridRef ?? ownGridRef` fallback.
+	/* oxlint-disable react-hooks/exhaustive-deps -- gridRef is a ref, stable for the component's life — oxlint cannot see that through the `externalGridRef ?? ownGridRef` fallback. */
 	React.useEffect(() => {
 		if (!focusedDay) return;
 		gridRef.current
 			?.querySelector<HTMLButtonElement>(`[data-day="${focusedDay}"]`)
 			?.focus();
 	}, [focusedDay]);
+	/* oxlint-enable react-hooks/exhaustive-deps */
 
 	const moveTo = (day: string) => {
 		if (monthOf(day) !== month) setMonth(monthOf(day));
@@ -114,15 +116,19 @@ export function Calendar({
 	};
 
 	const onKeyDown = (event: React.KeyboardEvent, day: string) => {
-		const step: Record<string, number> = {
-			ArrowLeft: -1,
-			ArrowRight: 1,
-			ArrowUp: -7,
-			ArrowDown: 7,
-		};
-		if (event.key in step) {
+		// A Map rather than an object: its `get` answers `number | undefined`,
+		// which is the whole contract here — every other key falls through to the
+		// Home/End/PageUp handling below.
+		const step = new Map([
+			["ArrowLeft", -1],
+			["ArrowRight", 1],
+			["ArrowUp", -7],
+			["ArrowDown", 7],
+		]);
+		const delta = step.get(event.key);
+		if (delta !== undefined) {
 			event.preventDefault();
-			moveTo(addDaysToKey(day, step[event.key] as number));
+			moveTo(addDaysToKey(day, delta));
 			return;
 		}
 		if (event.key === "Home") {
@@ -196,9 +202,9 @@ export function Calendar({
 				))}
 			</div>
 
-			{/* biome-ignore lint/a11y/useSemanticElements: the layout is CSS grid, not a table; the ARIA grid pattern is what the roving tabstop below implements. */}
 			<div
 				ref={gridRef}
+				// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the layout is CSS grid, not a table; the ARIA grid pattern is what the roving tabstop below implements.
 				role="grid"
 				aria-label={formatMonthKey(month)}
 				className="grid grid-cols-7 gap-0.5"
@@ -209,10 +215,10 @@ export function Calendar({
 					const selected = value === day;
 					const isToday = today === day;
 					return (
-						// biome-ignore lint/a11y/useSemanticElements: a <td> is not the widget — the cell is the button that gets focused and pressed, so the role goes on it.
 						<button
 							key={day}
 							type="button"
+							// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a <td> is not the widget — the cell is the button that gets focused and pressed, so the role goes on it.
 							role="gridcell"
 							data-day={day}
 							// One tabstop for the whole grid: Tab moves past the calendar,

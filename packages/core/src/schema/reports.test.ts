@@ -7,6 +7,7 @@
 // pins both ends of it.
 
 import { describe, expect, test } from "bun:test";
+
 import { timeReportDetailInput, timeReportSummaryInput } from "./reports";
 
 const summary = (from: string, to: string) =>

@@ -22,6 +22,9 @@ export const getGoogleUserInfo = async (
 	if (!response.ok) {
 		throw new Error(`Google API error ${response.status}: /oauth2/v3/userinfo`);
 	}
+	// SAFETY: 401/403 returned null and every other non-2xx threw above, so this
+	// is Google's documented userinfo body. Only `email` is read from it, and the
+	// caller treats a missing one as an unusable connection.
 	return (await response.json()) as GoogleUserInfo;
 };
 
@@ -127,6 +130,9 @@ export const listCalendarEvents = async (
 				`Google Calendar API error ${response.status}: list events`,
 			);
 		}
+		// SAFETY: guarded by the `!response.ok` throw above. Both fields are declared
+		// optional precisely because the last page carries no `nextPageToken` and an
+		// empty calendar carries no `items`.
 		const body = (await response.json()) as {
 			items?: GoogleCalendarEvent[];
 			nextPageToken?: string;
@@ -177,6 +183,9 @@ export const insertAllDayEvent = async (
 			`Google Calendar API error ${response.status}: insert event`,
 		);
 	}
+	// SAFETY: 401/403 returned null and every other non-2xx threw above. `id` is
+	// optional here rather than asserted present — the caller maps a missing one
+	// to null, so a surprising body costs the id, not the request.
 	const body = (await response.json()) as { id?: string };
 	return body.id ?? null;
 };

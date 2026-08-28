@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { slackReminderLog } from "../db/schema/slack";
@@ -126,9 +127,7 @@ export const runSlackRemindersOnce =
 			const tz = org.timezone ?? "UTC";
 			const today = dayKeyInTz(now, tz);
 			const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
-			const isReminderDay = (REMINDER_WEEKDAYS as readonly number[]).includes(
-				weekday,
-			);
+			const isReminderDay = REMINDER_WEEKDAYS.some((day) => day === weekday);
 
 			// The job runs unattended, so it needs a ctx to satisfy the service
 			// signatures; every call below is explicitly told to skip the admin check

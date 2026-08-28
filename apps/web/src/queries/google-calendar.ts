@@ -1,8 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import {
 	getGoogleCalendarStatus,
 	listCalendarEventsForDay,
 } from "#/server/google-calendar.ts";
+
 import { queryKeys } from "./keys.ts";
 
 export const googleCalendarStatusQuery = (org: string) =>

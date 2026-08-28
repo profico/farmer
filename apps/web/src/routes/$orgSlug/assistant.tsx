@@ -4,6 +4,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+
 import { Answer, AnswerActions } from "#/components/assistant/answer.tsx";
 import { MobileChatBar } from "#/components/assistant/chat-rail.tsx";
 import {
@@ -159,7 +160,7 @@ function AssistantPage() {
 
 	// Follow the answer down. Scrolling the container rather than the document:
 	// this screen owns the viewport height, so the document never scrolls.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the effect reacts to the transcript growing, and these three are what grows it
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- the effect reacts to the transcript growing, and these three are what grows it
 	useEffect(() => {
 		const element = scrollRef.current;
 		if (element) element.scrollTop = element.scrollHeight;

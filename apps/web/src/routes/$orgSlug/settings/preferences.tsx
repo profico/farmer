@@ -3,6 +3,7 @@ import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { NotificationSettings } from "#/components/notification-settings.tsx";
 import {
 	AlertDialog,

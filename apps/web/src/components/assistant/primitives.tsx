@@ -11,7 +11,9 @@
 // Sources: LoadingState.tsx, ThinkingState.tsx, ApprovalCard.tsx.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
 import { cn } from "#/lib/utils.ts";
+
 import type { PendingApproval, ToolTrace } from "./use-assistant-stream.ts";
 
 /* ── the pixel-grid loader (LoadingState) ─────────────────────────────────── */
@@ -33,7 +35,7 @@ function LoaderGrid() {
 		>
 			{CHEVRON.map((delay, index) => (
 				<span
-					// biome-ignore lint/suspicious/noArrayIndexKey: a fixed 3x3 grid
+					// oxlint-disable-next-line react/no-array-index-key -- a fixed 3x3 grid
 					key={index}
 					className="size-[4px] rounded-[1px] bg-ink"
 					style={{
@@ -99,66 +101,71 @@ export function AssistantLoader({ label = "Thinking" }: { label?: string }) {
 // entries", not "list_time_entries". Unlabelled tools fall back to their name
 // with the underscores taken out, which is legible but reads as plumbing — so a
 // tool added to `assistant-tools.ts` belongs here too.
-const TOOL_LABELS: Record<string, string> = {
-	// reads
-	whoami: "Checked who you are",
-	list_time_entries: "Read time entries",
-	list_unfiled_entries: "Read unfiled time",
-	list_projects: "Read projects",
-	list_tasks: "Read tasks",
-	list_clients: "Read clients",
-	list_members: "Read the team",
-	list_project_members: "Read a project's team",
-	list_holidays: "Checked the holidays",
-	list_recurring_block_rules: "Read your recurring blocks",
-	list_commits: "Read your commits",
-	suggest_day: "Assembled the day",
-	time_report_summary: "Ran a time report",
-	time_report_detail: "Read the report's entries",
-	budget_burn: "Checked budget burn",
-	overtime_report: "Ran the overtime report",
-	unfiled_summary: "Checked unfiled time",
-	absence_totals: "Checked absence taken",
-	list_absences: "Read absence entries",
-	absence_report: "Ran the absence report",
-	close_overview: "Checked the month's close",
-	close_sheet: "Read a close sheet",
-	// writes
-	create_time_entry: "Log time",
-	update_time_entry: "Change an entry",
-	update_entry_description: "Reword an entry",
-	set_overtime: "Flag overtime",
-	file_time_entries: "File entries onto a project",
-	copy_day: "Copy a day",
-	copy_week: "Copy a week",
-	log_absence: "Book absence",
-	apply_day_assembly: "Log the day's entries",
-	attach_commits: "Attach commits",
-	create_client: "Create a client",
-	create_project: "Create a project",
-	update_project: "Change a project",
-	assign_project_member: "Change a project's team",
-	create_task: "Create a task type",
-	update_task: "Change a task type",
-	create_recurring_block_rule: "Create a recurring block",
-	update_recurring_block_rule: "Change a recurring block",
-	unarchive: "Restore from the archive",
-	close_save_row: "Adjust a close row",
-	close_set_final: "Set final hours",
-	close_submit: "Submit the month",
-	// destructive
-	delete_time_entry: "Delete an entry",
-	remove_absence: "Delete an absence entry",
-	delete_recurring_block_rule: "Delete a recurring block",
-	archive_project: "Archive a project",
-	archive_client: "Archive a client",
-	archive_task: "Archive a task type",
-	close_finalize: "Finalize the month",
-	close_reopen: "Re-open the month",
-};
+// A Map, not an object: the lookup key is a tool name off a stored transcript,
+// so `get` answering `string | undefined` is the honest contract — an object
+// would have to claim every string is a key.
+const TOOL_LABELS = new Map(
+	Object.entries({
+		// reads
+		whoami: "Checked who you are",
+		list_time_entries: "Read time entries",
+		list_unfiled_entries: "Read unfiled time",
+		list_projects: "Read projects",
+		list_tasks: "Read tasks",
+		list_clients: "Read clients",
+		list_members: "Read the team",
+		list_project_members: "Read a project's team",
+		list_holidays: "Checked the holidays",
+		list_recurring_block_rules: "Read your recurring blocks",
+		list_commits: "Read your commits",
+		suggest_day: "Assembled the day",
+		time_report_summary: "Ran a time report",
+		time_report_detail: "Read the report's entries",
+		budget_burn: "Checked budget burn",
+		overtime_report: "Ran the overtime report",
+		unfiled_summary: "Checked unfiled time",
+		absence_totals: "Checked absence taken",
+		list_absences: "Read absence entries",
+		absence_report: "Ran the absence report",
+		close_overview: "Checked the month's close",
+		close_sheet: "Read a close sheet",
+		// writes
+		create_time_entry: "Log time",
+		update_time_entry: "Change an entry",
+		update_entry_description: "Reword an entry",
+		set_overtime: "Flag overtime",
+		file_time_entries: "File entries onto a project",
+		copy_day: "Copy a day",
+		copy_week: "Copy a week",
+		log_absence: "Book absence",
+		apply_day_assembly: "Log the day's entries",
+		attach_commits: "Attach commits",
+		create_client: "Create a client",
+		create_project: "Create a project",
+		update_project: "Change a project",
+		assign_project_member: "Change a project's team",
+		create_task: "Create a task type",
+		update_task: "Change a task type",
+		create_recurring_block_rule: "Create a recurring block",
+		update_recurring_block_rule: "Change a recurring block",
+		unarchive: "Restore from the archive",
+		close_save_row: "Adjust a close row",
+		close_set_final: "Set final hours",
+		close_submit: "Submit the month",
+		// destructive
+		delete_time_entry: "Delete an entry",
+		remove_absence: "Delete an absence entry",
+		delete_recurring_block_rule: "Delete a recurring block",
+		archive_project: "Archive a project",
+		archive_client: "Archive a client",
+		archive_task: "Archive a task type",
+		close_finalize: "Finalize the month",
+		close_reopen: "Re-open the month",
+	}),
+);
 
 export const toolLabel = (name: string) =>
-	TOOL_LABELS[name] ?? name.replaceAll("_", " ");
+	TOOL_LABELS.get(name) ?? name.replaceAll("_", " ");
 
 /**
  * The expandable trace of what the assistant did to answer.
@@ -182,7 +189,7 @@ export function ToolTraceList({
 	// The vertical rule beside the steps is drawn to the measured height of the
 	// list rather than stretched by the layout, so it animates with the rows
 	// rather than snapping to its final length on the first frame.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: it measures the rendered list, so the deps are exactly what changes that list's height
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- it measures the rendered list, so the deps are exactly what changes that list's height
 	useLayoutEffect(() => {
 		if (traceRef.current) setLineHeight(traceRef.current.offsetHeight);
 	}, [traces.length, expanded]);
@@ -426,7 +433,7 @@ export function ApprovalCard({
 											)}
 											{row.cells.map((cell, index) => (
 												<td
-													// biome-ignore lint/suspicious/noArrayIndexKey: a fixed column order — position IS the column
+													// oxlint-disable-next-line react/no-array-index-key -- a fixed column order — position IS the column
 													key={index}
 													className={cn(
 														"px-1.5 py-1.5 align-top",

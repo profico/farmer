@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
+
 import { auth } from "../auth";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
@@ -139,6 +140,9 @@ const mapBounded = async <T, R>(
 		{ length: Math.min(Math.max(limit, 1), items.length) },
 		async () => {
 			for (let i = next++; i < items.length; i = next++) {
+				// SAFETY: `i < items.length` is the loop condition and `items` is a dense array
+				// the caller passed in, so the element is present. `noUncheckedIndexedAccess`
+				// cannot see that through the shared cursor.
 				results[i] = await fn(items[i] as T);
 			}
 		},
@@ -501,8 +505,8 @@ export const githubService = {
 		const perRepo = await mapBounded(
 			repos,
 			REPO_SCAN_CONCURRENCY,
-			async (repo) => {
-				if (!repo.installationId) return [] as ScannedCommit[];
+			async (repo): Promise<ScannedCommit[]> => {
+				if (!repo.installationId) return [];
 				try {
 					const instToken = await getInstallationToken(repo.installationId);
 					const commits = await listCommits(instToken, repo.owner, repo.name, {
@@ -530,7 +534,7 @@ export const githubService = {
 						installationId: repo.installationId,
 						error,
 					});
-					return [] as ScannedCommit[];
+					return [];
 				}
 			},
 		);

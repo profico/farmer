@@ -1,5 +1,6 @@
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
+
 import { Button } from "#/components/ui/button.tsx";
 
 /**

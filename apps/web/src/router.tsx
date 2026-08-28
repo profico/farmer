@@ -1,5 +1,6 @@
 import { createRouter as createTanStackRouter } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
+
 import { RouteError } from "./components/route-error";
 import { RouteNotFound } from "./components/route-not-found";
 import { RoutePending } from "./components/route-pending";

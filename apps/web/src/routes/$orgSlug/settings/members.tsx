@@ -6,6 +6,7 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { InviteMemberDialog } from "#/components/invite-member-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
@@ -46,7 +47,7 @@ import {
 const ROLE_ITEMS = [
 	{ value: "member", label: "Member" },
 	{ value: "admin", label: "Admin" },
-];
+] as const;
 
 // Person type drives who the compliance report, Slack reminders and utilization
 // apply to. Changing it is effective-dated so a past month keeps reporting the
@@ -55,7 +56,7 @@ const TYPE_ITEMS = [
 	{ value: "billable", label: "Billable" },
 	{ value: "overhead", label: "Overhead" },
 	{ value: "contractor", label: "Contractor" },
-];
+] as const;
 
 export const Route = createFileRoute("/$orgSlug/settings/members")({
 	beforeLoad: async () => {
@@ -198,21 +199,27 @@ function MembersSettingsPage() {
 								<TableCell>
 									<Select
 										value={type}
-										onValueChange={(next) =>
-											next &&
+										onValueChange={(next) => {
+											// Resolved against the list the Select was built from,
+											// so the union comes from the options rather than from
+											// an assertion about what the widget handed back.
+											const picked = TYPE_ITEMS.find(
+												(option) => option.value === next,
+											);
+											if (!picked) return;
 											typeMutation.mutate({
 												userId: m.userId,
-												type: next as "billable" | "overhead" | "contractor",
+												type: picked.value,
 												// The override only applies to contractors, and the
 												// input rejects it for anyone else — so switching a
 												// contractor to billable drops it rather than failing
 												// validation on a field the row no longer shows.
 												expectedSecondsOverride:
-													next === "contractor"
+													picked.value === "contractor"
 														? (person?.expectedSecondsOverride ?? null)
 														: null,
-											})
-										}
+											});
+										}}
 										disabled={typeMutation.isPending}
 										items={TYPE_ITEMS}
 									>
@@ -257,13 +264,16 @@ function MembersSettingsPage() {
 									) : (
 										<Select
 											value={m.role}
-											onValueChange={(role) =>
-												role &&
+											onValueChange={(role) => {
+												const picked = ROLE_ITEMS.find(
+													(option) => option.value === role,
+												);
+												if (!picked) return;
 												roleMutation.mutate({
 													memberId: m.id,
-													role: role as "admin" | "member",
-												})
-											}
+													role: picked.value,
+												});
+											}}
 											disabled={isSelf || roleMutation.isPending}
 											items={ROLE_ITEMS}
 										>

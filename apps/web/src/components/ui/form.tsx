@@ -10,6 +10,7 @@ import {
 	useFormContext,
 	useFormState,
 } from "react-hook-form";
+
 import { Label } from "#/components/ui/label.tsx";
 import { cn } from "#/lib/utils.ts";
 
@@ -23,6 +24,9 @@ type FormFieldContextValue<
 };
 
 const FormFieldContext = React.createContext<FormFieldContextValue>(
+	// SAFETY: the standard react-hook-form context seed. Nothing reads this default
+	// — `useFormField` throws if it is used outside a `<FormField>`, so the empty
+	// object is unreachable rather than merely unlikely.
 	{} as FormFieldContextValue,
 );
 
@@ -67,6 +71,8 @@ type FormItemContextValue = {
 };
 
 const FormItemContext = React.createContext<FormItemContextValue>(
+	// SAFETY: as above — `useFormField` refuses to run outside a `<FormItem>`, so
+	// this default is never the value anything reads.
 	{} as FormItemContextValue,
 );
 

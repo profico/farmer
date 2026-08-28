@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -292,7 +293,7 @@ function RecurringBlockRuleDialog({
 							<div className="flex gap-1">
 								{DAY_LABELS.map((label, day) => (
 									<button
-										// biome-ignore lint/suspicious/noArrayIndexKey: day is the stable weekday number (0-6), not an incidental index
+										// oxlint-disable-next-line react/no-array-index-key -- day is the stable weekday number (0-6), not an incidental index
 										key={day}
 										type="button"
 										onClick={() => toggleDay(day)}

@@ -13,6 +13,7 @@
 // the layer under the seam — `ports.ts` substitutes the service above it.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+
 import {
 	type GithubCommit,
 	GithubRateLimitError,
@@ -33,6 +34,9 @@ type Reply = {
 /** Answers each request from `replies` in order; the last one repeats. */
 const respondWith = (replies: Reply[]) => {
 	requested = [];
+	// SAFETY: a test stub for `fetch`. It accepts the argument shapes the code
+	// under test actually passes rather than restating the full overload set; a
+	// call outside that shape fails the test loudly instead of silently passing.
 	globalThis.fetch = (async (input: string | URL | Request) => {
 		requested.push(String(input instanceof Request ? input.url : input));
 		const reply =

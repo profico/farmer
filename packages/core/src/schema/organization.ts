@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { isValidDayKey } from "../lib/time";
 
 export const setActiveOrgBySlugInput = z.string().min(1);

@@ -15,9 +15,9 @@
 	},
 	"scripts": {
 		"test": "bun test",
-		"lint": "biome lint",
-		"format": "biome format --write",
-		"check": "biome check",
+		"lint": "oxlint --config ../../oxlint.config.ts .",
+		"format": "oxfmt --write",
+		"check": "oxfmt --check && oxlint --config ../../oxlint.config.ts .",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"worker": "bun run src/jobs/worker.ts",
 		"auth:generate": "better-auth generate --config ./src/auth/index.ts --output ./src/db/schema/auth.ts -y",

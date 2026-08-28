@@ -21,6 +21,8 @@
 // action that clears what blocks the close could only be aimed by guessing.
 
 import { z } from "zod";
+
+import type { JsonRecord, JsonValue, Serializable } from "../lib/json";
 import {
 	absenceReportInput,
 	absenceTotalsInput,
@@ -168,10 +170,7 @@ export type AssistantTool = {
 	 * phrase rather than throwing, because a card that failed to render is a
 	 * person stuck on a turn they can resolve neither way.
 	 */
-	summarize?: (
-		ctx: Ctx,
-		args: Record<string, unknown>,
-	) => string | Promise<string>;
+	summarize?: (ctx: Ctx, args: JsonRecord) => string | Promise<string>;
 	/**
 	 * The rows this call would write, for the approval card. Its PRESENCE is what
 	 * makes a `write` tool stop and ask — see `ApprovalPreview`.
@@ -181,10 +180,7 @@ export type AssistantTool = {
 	 * the table, not the card. Returning null falls back to the summary line
 	 * alone, which is the behaviour every other approval already has.
 	 */
-	preview?: (
-		ctx: Ctx,
-		args: Record<string, unknown>,
-	) => Promise<ApprovalPreview | null>;
+	preview?: (ctx: Ctx, args: JsonRecord) => Promise<ApprovalPreview | null>;
 	/**
 	 * Rebuild the arguments from the rows the person actually ticked.
 	 *
@@ -193,18 +189,36 @@ export type AssistantTool = {
 	 * nothing, which is right for a batch whose rows aren't separable. The ids
 	 * are the `preview` row ids, so the two are written together or not at all.
 	 */
-	withSelection?: (
-		args: Record<string, unknown>,
-		selectedRowIds: string[],
-	) => Record<string, unknown>;
-	run: (ctx: Ctx, args: unknown) => Promise<unknown>;
+	withSelection?: (args: JsonRecord, selectedRowIds: string[]) => JsonRecord;
+	/** Runs the tool. The result is stringified for the model and never
+	 *  inspected by the loop, so `Serializable | void` is the whole contract:
+	 *  domain rows with their Dates intact, or nothing at all. */
+	run: (ctx: Ctx, args: JsonRecord) => Promise<Serializable | void>;
 };
 
-const hours = (seconds: unknown) =>
-	typeof seconds === "number" ? `${(seconds / 3600).toFixed(2)}h` : "?";
+/** Seconds → a display string, for approval-card wording.
+ *
+ *  The argument comes off an unvalidated tool-call payload, so it is PARSED
+ *  here rather than hand-narrowed: a card is shown before the tool's own schema
+ *  has run, and "?" is the honest rendering of an argument the model got wrong. */
+const hours = (seconds: JsonValue | undefined) => {
+	const parsed = z.number().safeParse(seconds);
+	return parsed.success ? `${(parsed.data / 3600).toFixed(2)}h` : "?";
+};
 
 /** Seconds → hours, preserving null. Null is a real answer in the close sheet
  *  (nobody has overridden the column) and is not the same as zero. */
+/** The `timeEntryIds` argument, as it arrives from the model.
+ *
+ *  `.catch([])` rather than a throw: this runs on the way to an approval card,
+ *  and an argument the model got wrong should cost the row, not the card. */
+const entryIdList = z.array(z.string()).catch([]);
+
+/** One assembled row as it arrives from the model — parsed, not asserted, so a
+ *  row that is not an object renders as dashes instead of taking the card down
+ *  and leaving a pending write nobody can answer either way. */
+const assemblyRow = z.record(z.string(), z.json()).catch({});
+
 const optionalHours = (seconds: number | null | undefined) =>
 	seconds == null ? null : seconds / 3600;
 
@@ -414,7 +428,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				// Billable/overhead/contractor decides Expected on the close sheet, so
 				// it travels with the money picture rather than with the directory: a
 				// roster is not sensitive within an org, and who is a contractor is.
-				...(access.isAdmin ? { memberType: row.type } : {}),
+				// Null rather than absent, so the field's meaning does not depend on
+				// the reader noticing which key is missing.
+				memberType: access.isAdmin ? row.type : null,
 			}));
 		},
 	},
@@ -801,9 +817,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		// so an id the model invented drops out of the table instead of taking the
 		// card down with it.
 		preview: async (ctx, args) => {
-			const ids = Array.isArray(args.timeEntryIds)
-				? args.timeEntryIds.filter((id): id is string => typeof id === "string")
-				: [];
+			const ids = entryIdList.parse(args.timeEntryIds);
 			if (ids.length === 0) return null;
 			const shown = ids.slice(0, MAX_PREVIEW_ROWS);
 			const rows: ApprovalPreview["rows"] = [];
@@ -831,11 +845,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		},
 		withSelection: (args, selected) => ({
 			...args,
-			timeEntryIds: Array.isArray(args.timeEntryIds)
-				? args.timeEntryIds.filter(
-						(id) => typeof id === "string" && selected.includes(id),
-					)
-				: [],
+			timeEntryIds: entryIdList
+				.parse(args.timeEntryIds)
+				.filter((id) => selected.includes(id)),
 		}),
 		run: async (ctx, args) =>
 			timeEntriesService.fileMany(ctx, fileTimeEntriesInput.parse(args)),
@@ -899,7 +911,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			return {
 				columns: ["Task", "Project", "Hours", "Description"],
 				rows: shown.map((entry, index) => {
-					const row = (entry ?? {}) as Record<string, unknown>;
+					const row = assemblyRow.parse(entry);
 					const seconds = row.durationSeconds;
 					return {
 						id: String(index),
@@ -1246,6 +1258,8 @@ export const toolDefinitions = (access: Access) =>
 		function: {
 			name: tool.name,
 			description: tool.description,
+			// SAFETY: `z.toJSONSchema` returns Zod's own JSON Schema type; `JsonRecord` is
+			// the same value described as the JSON it is about to be serialized into.
 			parameters: z.toJSONSchema(tool.schema, {
 				// The schemas use `.refine()` for the range ceilings and the
 				// mandatory-description rule, which have no JSON Schema equivalent.
@@ -1254,7 +1268,7 @@ export const toolDefinitions = (access: Access) =>
 				// it actually happens — the `parse` inside each tool's `run`.
 				io: "input",
 				unrepresentable: "any",
-			}) as Record<string, unknown>,
+			}) as JsonRecord,
 		},
 	}));
 

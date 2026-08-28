@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+
 import { externalFetch } from "./http";
 
 const GITHUB_API = "https://api.github.com";
@@ -18,9 +19,7 @@ const githubHeaders = (token: string) => ({
 // Never mix these with the user OAuth token — that one is only for identity.
 
 const b64url = (input: Buffer | string) =>
-	(typeof input === "string" ? Buffer.from(input) : input).toString(
-		"base64url",
-	);
+	(Buffer.isBuffer(input) ? input : Buffer.from(input)).toString("base64url");
 
 let cachedAppJwt: { token: string; expiresAt: number } | null = null;
 
@@ -70,6 +69,9 @@ export const listUserInstallations = async (
 	if (!response.ok) {
 		throw new Error(`GitHub API error ${response.status}: /user/installations`);
 	}
+	// SAFETY: the non-2xx branch above has already thrown, so this is GitHub's
+	// documented 200 body for GET /user/installations. Only `installations` is
+	// read, and each field consumed off it is optional-safe downstream.
 	const body = (await response.json()) as {
 		total_count: number;
 		installations: GithubInstallation[];
@@ -100,6 +102,9 @@ export const getInstallationToken = async (
 			`GitHub API error ${response.status}: mint installation token`,
 		);
 	}
+	// SAFETY: guarded by the `!response.ok` throw above. This is the documented
+	// 201 body of POST /app/installations/:id/access_tokens; a malformed
+	// `expires_at` becomes NaN, which the cache treats as already expired.
 	const body = (await response.json()) as { token: string; expires_at: string };
 	installationTokenCache.set(installationId, {
 		token: body.token,
@@ -123,6 +128,8 @@ export const listInstallationRepos = async (
 				`GitHub API error ${response.status}: /installation/repositories`,
 			);
 		}
+		// SAFETY: guarded by the `!response.ok` throw above — GitHub's documented
+		// 200 body for GET /installation/repositories.
 		const body = (await response.json()) as {
 			total_count: number;
 			repositories: GithubRepo[];
@@ -186,6 +193,9 @@ const githubGet = async <T>(url: string, token: string): Promise<T | null> => {
 	if (!response.ok) {
 		throw new Error(`GitHub API error ${response.status}: ${url}`);
 	}
+	// SAFETY: every non-2xx status is handled above — 404 as null, the rest as a
+	// throw — so this is a 200 body. `T` is supplied by each caller from the
+	// endpoint it named, and no field is read here.
 	return (await response.json()) as T;
 };
 

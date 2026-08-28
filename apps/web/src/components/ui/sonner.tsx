@@ -6,6 +6,7 @@ import {
 	WarningOctagonIcon,
 } from "@phosphor-icons/react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
+
 import { useTheme } from "#/lib/theme.ts";
 
 const Toaster = ({ ...props }: ToasterProps) => {
@@ -25,6 +26,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
 				error: <WarningOctagonIcon className="size-4" />,
 				loading: <CircleNotchIcon className="size-4 animate-spin" />,
 			}}
+			// SAFETY: CSS custom properties are not in React's `CSSProperties`, and there
+			// is no way to declare one — this is the documented sonner theming shape.
 			style={
 				{
 					"--normal-bg": "var(--popover)",

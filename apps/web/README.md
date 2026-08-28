@@ -9,7 +9,7 @@ bun run dev     # vite dev server on :3000
 bun run build   # vite build → dist/{client,server}
 bun run start   # production server (server.ts serves dist/)
 bun run test    # vitest
-bun run check   # biome lint + format
+bun run check   # oxfmt --check + oxlint
 ```
 
 There is no hosting preset — `server.ts` *is* the production server. See "Deploying" in the root README.

@@ -8,6 +8,7 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import {
 	CreateRecurringBlockRuleDialog,
 	EditRecurringBlockRuleDialog,
@@ -66,7 +67,7 @@ function DayPills({ daysOfWeek }: { daysOfWeek: number[] }) {
 		<div className="flex gap-1">
 			{DAY_LABELS.map((label, day) => (
 				<span
-					// biome-ignore lint/suspicious/noArrayIndexKey: day is the stable weekday number (0-6), not an incidental index
+					// oxlint-disable-next-line react/no-array-index-key -- day is the stable weekday number (0-6), not an incidental index
 					key={day}
 					className={cn(
 						"mono flex size-5 items-center justify-center rounded-full text-[10px]",

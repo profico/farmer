@@ -12,6 +12,7 @@ import {
 	sql,
 } from "drizzle-orm";
 import postgres from "postgres";
+
 import { db } from "../db";
 import {
 	projectMember,
@@ -403,11 +404,13 @@ const syncCommitWorkTimeForRange = async (
 			},
 		});
 
-		const byProject = new Map(
-			dayEntries
-				.filter((e) => e.projectId !== null && !e.fillsDay)
-				.map((e) => [e.projectId as string, e]),
-		);
+		// A loop, not `filter().map()`: only this way does the null check actually
+		// narrow `projectId` into the key type.
+		const byProject = new Map<string, (typeof dayEntries)[number]>();
+		for (const entry of dayEntries) {
+			if (entry.projectId === null || entry.fillsDay) continue;
+			byProject.set(entry.projectId, entry);
+		}
 		let fill = dayEntries.find((e) => e.fillsDay) ?? null;
 		// A project-less Development entry someone logged by hand. Not a fill block,
 		// but it is unmistakably "the work I did that day", so commits with no
@@ -598,6 +601,15 @@ const canReadAbsenceOf = async (ctx: Ctx, userId: string): Promise<boolean> => {
 	if (userId === ctx.userId) return true;
 	const access = await ctxAccess(ctx);
 	return access.canOverrideAbsenceFor(await projectIdsForUser(ctx, userId));
+};
+
+/** What a week copy did. `blockedDays` names the days that would have breached
+ *  the 24-hour ceiling — reported rather than thrown, so one over-full
+ *  Wednesday does not cost the other six days. */
+type CopyWeekResult = {
+	copied: number;
+	skipped: number;
+	blockedDays: string[];
 };
 
 export const timeEntriesService = {
@@ -1336,15 +1348,16 @@ export const timeEntriesService = {
 			}
 
 			if (primary) {
+				const patch: Partial<typeof timeEntry.$inferInsert> = {
+					durationSeconds: input.durationSeconds,
+					updatedAt: new Date(),
+				};
+				if (input.description !== undefined) {
+					patch.description = input.description.trim();
+				}
 				await tx
 					.update(timeEntry)
-					.set({
-						durationSeconds: input.durationSeconds,
-						...(input.description !== undefined
-							? { description: input.description.trim() }
-							: {}),
-						updatedAt: new Date(),
-					})
+					.set(patch)
 					.where(eq(timeEntry.id, primary.id));
 				for (const row of duplicates) {
 					await timeEntriesService.remove(txCtx, row.id);
@@ -1564,9 +1577,12 @@ export const timeEntriesService = {
 	 *  aborting the week: one over-full Wednesday should not cost you the other
 	 *  six days. `copyDay` checks the ceiling before it writes anything, so
 	 *  catching here cannot leave a day half-copied. */
-	copyWeek: async (ctx: Ctx, input: CopyWeekEntriesInput) => {
+	copyWeek: async (
+		ctx: Ctx,
+		input: CopyWeekEntriesInput,
+	): Promise<CopyWeekResult> => {
 		if (input.fromWeekStart === input.toWeekStart) {
-			return { copied: 0, skipped: 0, blockedDays: [] as string[] };
+			return { copied: 0, skipped: 0, blockedDays: [] };
 		}
 
 		return withCtxTx(ctx, async (txCtx) => {
@@ -1785,15 +1801,15 @@ export const timeEntriesService = {
 			throw new AccessError("You cannot correct this person's absence");
 		}
 
+		const patch: Partial<typeof timeEntry.$inferInsert> = {
+			durationSeconds: input.durationSeconds,
+			updatedAt: new Date(),
+		};
+		if (input.description !== undefined) patch.description = input.description;
+
 		const [updated] = await db
 			.update(timeEntry)
-			.set({
-				durationSeconds: input.durationSeconds,
-				...(input.description !== undefined
-					? { description: input.description }
-					: {}),
-				updatedAt: new Date(),
-			})
+			.set(patch)
 			.where(eq(timeEntry.id, input.timeEntryId))
 			.returning();
 		return updated;

@@ -4,6 +4,7 @@ import {
 	setMonthlyHourFundInput,
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
+
 import { orgAdminMiddleware } from "./auth";
 
 // The monthly hour fund is the denominator of Expected for every non-contractor,

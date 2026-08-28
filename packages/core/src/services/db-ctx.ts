@@ -31,4 +31,7 @@ export type { DbClient };
  * what `requireOrgContext` hands every request) it deadlocked on the first try.
  */
 export const ctxDb = (ctx: Ctx): DbClient =>
+	// SAFETY: the memo slot is written only by `withCtxTx`, which puts a drizzle
+	// transaction handle there and clears it on the way out. Absent means "no
+	// transaction in flight", which is what the `?? db` fallback answers.
 	(ctx[CTX_MEMO]?.tx as DbClient | undefined) ?? db;

@@ -4,6 +4,7 @@ import {
 } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
+
 import {
 	SegmentedControl,
 	SegmentedControlItem,

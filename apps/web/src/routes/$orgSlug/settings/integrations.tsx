@@ -18,6 +18,7 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -669,7 +670,7 @@ function OpenRouterSection() {
 						action={
 							<Select
 								value={settings?.defaultModel ?? ""}
-								onValueChange={(value) => setModel.mutate(value as string)}
+								onValueChange={(value) => setModel.mutate(String(value))}
 								items={modelItems}
 							>
 								<SelectTrigger className="w-64">

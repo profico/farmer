@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import {
 	getProject,
 	listAssignableMembers,
@@ -7,6 +8,7 @@ import {
 	listProjects,
 	listProjectTasks,
 } from "#/server/projects.ts";
+
 import { queryKeys } from "./keys.ts";
 
 export const projectsQuery = (org: string) =>

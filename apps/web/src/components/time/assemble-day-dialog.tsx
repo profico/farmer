@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -107,12 +108,13 @@ export function AssembleDayDialog({
 	// Fresh suggestions arrive pre-selected — assembling should be one click.
 	// Except the ones the person deleted before: those are here because they
 	// asked to see them, which is not the same as asking for them back.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only when a new suggestion set arrives
+	/* oxlint-disable react-hooks/exhaustive-deps -- reset only when a new suggestion set arrives */
 	useEffect(() => {
 		setSelectedKeys(
 			new Set(suggestions.filter((s) => !s.dismissed).map((s) => s.key)),
 		);
 	}, [suggestionsQ.dataUpdatedAt]);
+	/* oxlint-enable react-hooks/exhaustive-deps */
 
 	const toggle = (key: string) => {
 		setSelectedKeys((current) => {

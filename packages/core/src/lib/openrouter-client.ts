@@ -7,6 +7,7 @@
 // follows is the chat-completions wire format and nothing else.
 
 import { externalFetch } from "./http";
+import type { JsonRecord } from "./json";
 
 const BASE = "https://openrouter.ai/api/v1";
 
@@ -42,7 +43,7 @@ export type ChatTool = {
 	function: {
 		name: string;
 		description: string;
-		parameters: Record<string, unknown>;
+		parameters: JsonRecord;
 	};
 };
 
@@ -105,6 +106,9 @@ export const listModels = async (
 			response.status,
 		);
 	}
+	// SAFETY: guarded by the non-2xx throw above. Every field below the top level
+	// is optional because OpenRouter's model list is a moving catalogue — a model
+	// missing its pricing is filtered out rather than read.
 	const body = (await response.json()) as {
 		data?: {
 			id: string;
@@ -193,6 +197,9 @@ export const streamChatCompletion = async (opts: {
 		const raw = await response.text().catch(() => "");
 		let detail = raw.slice(0, 300);
 		try {
+			// SAFETY: inside a try whose catch keeps the truncated raw body, and every
+			// field is optional — this is a best-effort read of an error body that may
+			// have come from a proxy rather than from OpenRouter at all.
 			const parsed = JSON.parse(raw) as { error?: { message?: string } };
 			if (parsed.error?.message) detail = parsed.error.message;
 		} catch {

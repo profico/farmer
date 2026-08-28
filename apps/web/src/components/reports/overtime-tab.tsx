@@ -1,6 +1,7 @@
 import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import {
 	Table,
@@ -12,6 +13,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { formatClock } from "#/lib/format-hours.ts";
 import { overtimeDetailQuery, overtimeReportQuery } from "#/queries/reports.ts";
+
 import type { Search } from "./search.ts";
 import { formatDateHeading, ReportTable } from "./shared.tsx";
 

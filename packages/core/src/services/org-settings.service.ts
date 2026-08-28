@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { orgSettings } from "../db/schema/settings";
 import { requireAdmin } from "./context";
@@ -42,6 +43,18 @@ export const orgSettingsService = {
 
 	update: async (ctx: Ctx, patch: Partial<OrgSettings>) => {
 		await requireAdmin(ctx);
+		// `undefined` means "not in this patch"; `null` is a real value here and
+		// means "clear the lock", so the two cannot be collapsed.
+		const updateSet: Partial<typeof orgSettings.$inferInsert> = {
+			updatedAt: new Date(),
+		};
+		if (patch.complianceMissingDays !== undefined) {
+			updateSet.complianceMissingDays = patch.complianceMissingDays;
+		}
+		if (patch.automationLockedThrough !== undefined) {
+			updateSet.automationLockedThrough = patch.automationLockedThrough;
+		}
+
 		await db
 			.insert(orgSettings)
 			.values({
@@ -53,17 +66,7 @@ export const orgSettingsService = {
 			})
 			.onConflictDoUpdate({
 				target: orgSettings.organizationId,
-				set: {
-					...(patch.complianceMissingDays !== undefined
-						? { complianceMissingDays: patch.complianceMissingDays }
-						: {}),
-					// `undefined` means "not in this patch"; `null` is a real value here
-					// and means "clear the lock", so the two cannot be collapsed.
-					...(patch.automationLockedThrough !== undefined
-						? { automationLockedThrough: patch.automationLockedThrough }
-						: {}),
-					updatedAt: new Date(),
-				},
+				set: updateSet,
 			});
 	},
 };

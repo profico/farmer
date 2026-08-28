@@ -2,6 +2,7 @@
 
 import { CalendarBlankIcon, XIcon } from "@phosphor-icons/react";
 import * as React from "react";
+
 import { Calendar } from "#/components/ui/calendar.tsx";
 import {
 	Popover,
@@ -87,8 +88,8 @@ export function DatePicker({
 							{value ? formatDateKeyLong(value) : placeholder}
 						</span>
 						{showClear && (
-							// biome-ignore lint/a11y/useSemanticElements: this sits inside the trigger <button>, and a button inside a button is invalid HTML — hence a span carrying the role, with the key handling written out below.
 							<span
+								// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- this sits inside the trigger <button>, and a button inside a button is invalid HTML — hence a span carrying the role, with the key handling written out below.
 								role="button"
 								tabIndex={0}
 								aria-label="Clear date"

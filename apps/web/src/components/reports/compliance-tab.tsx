@@ -1,7 +1,9 @@
 import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
+
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { complianceDashboardQuery } from "#/queries/compliance.ts";
+
 import { ReportTable } from "./shared.tsx";
 
 // PRD 6.2 — the forgetting-detector. Two lists, always shown together: "hasn't

@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import {
 	getMemberTypeHistory,
 	listInvitations,
@@ -6,6 +7,7 @@ import {
 	listMemberTypesForMonth,
 	listPeople,
 } from "#/server/members.ts";
+
 import { queryKeys } from "./keys.ts";
 
 export const membersQuery = (org: string) =>

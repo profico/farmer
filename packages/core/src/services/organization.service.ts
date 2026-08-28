@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import type { UpdateOrganizationSettingsInput } from "../schema/organization";
@@ -19,12 +20,7 @@ export const organizationService = {
 	},
 
 	updateSettings: async (ctx: Ctx, input: UpdateOrganizationSettingsInput) => {
-		const patch: Partial<{
-			name: string;
-			country: string;
-			timezone: string;
-			logo: string | null;
-		}> = {};
+		const patch: Partial<typeof organization.$inferInsert> = {};
 		if (input.name !== undefined) patch.name = input.name;
 		if (input.country !== undefined) patch.country = input.country;
 		if (input.timezone !== undefined) {

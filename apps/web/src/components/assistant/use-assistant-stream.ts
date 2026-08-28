@@ -139,6 +139,8 @@ export const useAssistantStream = (opts: {
 			});
 
 			if (!response.ok || !response.body) {
+				// SAFETY: this is the error path — `.catch(() => null)` already covers a body
+				// that is not JSON, and `error` is optional with a status-code fallback below.
 				const detail = (await response.json().catch(() => null)) as {
 					error?: string;
 				} | null;

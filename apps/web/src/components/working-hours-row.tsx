@@ -2,6 +2,7 @@ import { formatDurationInput } from "@farmer/core/lib/time";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { Input } from "#/components/ui/input.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
@@ -17,15 +18,15 @@ export type WorkingHoursDay = {
 };
 
 // DB dayOfWeek is 0=Sun..6=Sat (matches Date#getDay()/weekdayInTz).
-const DAY_LABELS: Record<number, string> = {
-	0: "Sunday",
-	1: "Monday",
-	2: "Tuesday",
-	3: "Wednesday",
-	4: "Thursday",
-	5: "Friday",
-	6: "Saturday",
-};
+const DAY_LABELS = [
+	"Sunday",
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+] as const;
 
 const minutesOf = (time: string): number => {
 	const [h, m] = time.split(":").map(Number);

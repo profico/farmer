@@ -1,10 +1,12 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import {
 	getAssistantSettings,
 	getConversation,
 	listAssistantModels,
 	listConversations,
 } from "#/server/assistant.ts";
+
 import { queryKeys } from "./keys.ts";
 
 export const assistantSettingsQuery = (org: string) =>

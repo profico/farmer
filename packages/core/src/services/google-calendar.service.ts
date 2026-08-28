@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+
 import { auth } from "../auth";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
@@ -151,9 +152,9 @@ const fetchTimedEvents = async (
 	return events.filter(isImportableEvent).map((event) => ({
 		id: event.id,
 		title: event.summary?.trim() || "(no title)",
-		// biome-ignore lint/style/noNonNullAssertion: guaranteed present by the filter above
+		// oxlint-disable-next-line typescript/no-non-null-assertion -- guaranteed present by the filter above
 		start: event.start!.dateTime!,
-		// biome-ignore lint/style/noNonNullAssertion: guaranteed present by the filter above
+		// oxlint-disable-next-line typescript/no-non-null-assertion -- guaranteed present by the filter above
 		end: event.end!.dateTime!,
 		meetingUrl: extractMeetingUrl(event),
 		htmlLink: event.htmlLink ?? null,

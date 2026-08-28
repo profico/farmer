@@ -1,5 +1,6 @@
 import Holidays, { type HolidaysTypes } from "date-holidays";
 import { and, eq } from "drizzle-orm";
+
 import { disabledHoliday } from "../db/schema/schedule";
 import { orgCountry } from "../lib/org-country";
 import { ctxMemo } from "./context";
@@ -93,6 +94,9 @@ const calendarInputs = (
 		]);
 		return { country, disabled: new Set(rows.map((r) => r.name)) };
 	})();
+	// SAFETY: the line above assigned this exact promise to the memo slot, which is
+	// typed loosely because the Ctx memo holds several unrelated things. This reads
+	// back what it just wrote.
 	return memo.holidayCalendar as Promise<{
 		country: string;
 		disabled: Set<string>;

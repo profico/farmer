@@ -2,6 +2,7 @@ import { PencilSimpleIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -27,10 +28,11 @@ export function EditWeeklyTargetDialog({
 	const [hours, setHours] = useState(String(currentHours));
 	const queryClient = useQueryClient();
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: only reset when the dialog opens
+	/* oxlint-disable react-hooks/exhaustive-deps -- only reset when the dialog opens */
 	useEffect(() => {
 		if (open) setHours(String(currentHours));
 	}, [open]);
+	/* oxlint-enable react-hooks/exhaustive-deps */
 
 	const trimmed = hours.trim();
 	const canSubmit = trimmed.length > 0 && !Number.isNaN(Number(trimmed));

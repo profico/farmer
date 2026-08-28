@@ -1,4 +1,5 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
@@ -86,15 +87,15 @@ export const notOnInvoiceService = {
 
 	updateStatusOption: async (ctx: Ctx, input: UpdateStatusOptionInput) => {
 		await requireAdmin(ctx);
+		const patch: Partial<typeof notOnInvoiceStatusOption.$inferInsert> = {
+			updatedAt: new Date(),
+		};
+		if (input.label !== undefined) patch.label = input.label;
+		if (input.sortOrder !== undefined) patch.sortOrder = input.sortOrder;
+
 		const [updated] = await db
 			.update(notOnInvoiceStatusOption)
-			.set({
-				...(input.label !== undefined ? { label: input.label } : {}),
-				...(input.sortOrder !== undefined
-					? { sortOrder: input.sortOrder }
-					: {}),
-				updatedAt: new Date(),
-			})
+			.set(patch)
 			.where(
 				and(
 					eq(notOnInvoiceStatusOption.id, input.statusOptionId),
@@ -237,6 +238,14 @@ export const notOnInvoiceService = {
 			if (!owned) throw new Error("Status not found");
 		}
 
+		// `undefined` means "the caller did not touch the comment"; clearing it is
+		// an explicit empty string.
+		const conflictSet: Partial<typeof notOnInvoiceEntry.$inferInsert> = {
+			statusOptionId: input.statusOptionId,
+			updatedAt: new Date(),
+		};
+		if (input.comment !== undefined) conflictSet.comment = input.comment;
+
 		await db
 			.insert(notOnInvoiceEntry)
 			.values({
@@ -254,11 +263,7 @@ export const notOnInvoiceService = {
 					notOnInvoiceEntry.month,
 					notOnInvoiceEntry.userId,
 				],
-				set: {
-					statusOptionId: input.statusOptionId,
-					...(input.comment !== undefined ? { comment: input.comment } : {}),
-					updatedAt: new Date(),
-				},
+				set: conflictSet,
 			});
 	},
 };

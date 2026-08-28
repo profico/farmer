@@ -83,12 +83,12 @@ export type SheetSide = "top" | "right" | "bottom" | "left";
  * animation in every exit so Base UI's `element.getAnimations()` unmount
  * detection stays reliable even though the visual change is a pure slide.
  */
-export const sheetVariants: Record<SheetSide, Variants> = {
+export const sheetVariants = {
 	top: { open: { y: 0, opacity: 1 }, closed: { y: "-100%", opacity: 0.999 } },
 	bottom: { open: { y: 0, opacity: 1 }, closed: { y: "100%", opacity: 0.999 } },
 	left: { open: { x: 0, opacity: 1 }, closed: { x: "-100%", opacity: 0.999 } },
 	right: { open: { x: 0, opacity: 1 }, closed: { x: "100%", opacity: 0.999 } },
-};
+} satisfies Record<SheetSide, Variants>;
 
 /** `{ open, actionsRef }` shared from a Base-UI popup wrapper to its content. */
 export type PopupPresence<Actions> = {

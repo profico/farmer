@@ -1,4 +1,5 @@
 import { and, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
+
 import { db } from "../db";
 import { user } from "../db/schema/auth";
 import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
@@ -448,6 +449,20 @@ export const closeService = {
 			input.month,
 		);
 
+		// `undefined` means "leave alone", `null` means "clear the override and
+		// fall back to the computed default". Drizzle's `.set()` skips `undefined`
+		// keys, which is what keeps the two apart.
+		const conflictSet: Partial<typeof monthlyCloseRow.$inferInsert> = {
+			updatedAt: new Date(),
+		};
+		if (input.adjustedSeconds !== undefined) {
+			conflictSet.adjustedSeconds = input.adjustedSeconds;
+		}
+		if (input.absenceDaysOverride !== undefined) {
+			conflictSet.absenceDaysOverride = input.absenceDaysOverride;
+		}
+		if (input.comment !== undefined) conflictSet.comment = input.comment;
+
 		await db
 			.insert(monthlyCloseRow)
 			.values({
@@ -460,19 +475,7 @@ export const closeService = {
 			})
 			.onConflictDoUpdate({
 				target: [monthlyCloseRow.closeId, monthlyCloseRow.userId],
-				set: {
-					// `undefined` means "leave alone", `null` means "clear the override
-					// and fall back to the computed default" — the two are distinct here
-					// and drizzle's .set() skipping `undefined` is what makes that work.
-					...(input.adjustedSeconds !== undefined
-						? { adjustedSeconds: input.adjustedSeconds }
-						: {}),
-					...(input.absenceDaysOverride !== undefined
-						? { absenceDaysOverride: input.absenceDaysOverride }
-						: {}),
-					...(input.comment !== undefined ? { comment: input.comment } : {}),
-					updatedAt: new Date(),
-				},
+				set: conflictSet,
 			});
 	},
 
@@ -724,7 +727,7 @@ export const closeService = {
 					projectType: p.type,
 					projectStatus: p.status,
 					clientName: p.client.name,
-					status: (record?.status ?? "open") as CloseStatus,
+					status: record?.status ?? "open",
 					submittedAt: record?.submittedAt ?? null,
 					finalizedAt: record?.finalizedAt ?? null,
 					reportedSeconds: reportedByProject.get(p.id) ?? 0,

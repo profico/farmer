@@ -6,6 +6,7 @@ import {
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { and, eq, gt, sql } from "drizzle-orm";
+
 import { orgAdminMiddleware, sessionMiddleware } from "./auth";
 
 export const setActiveOrgBySlug = createServerFn({ method: "POST" })
@@ -118,9 +119,8 @@ export const listMyPendingInvitations = createServerFn({ method: "GET" })
 	.handler(async ({ context }) => {
 		const email = context.session.user.email.toLowerCase();
 		const { db } = await import("@farmer/core/db");
-		const { invitation, organization } = await import(
-			"@farmer/core/schema/auth"
-		);
+		const { invitation, organization } =
+			await import("@farmer/core/schema/auth");
 		return db
 			.select({
 				id: invitation.id,

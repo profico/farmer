@@ -11,6 +11,7 @@ import {
 	uniqueIndex,
 	uuid,
 } from "drizzle-orm/pg-core";
+
 import { organization, user } from "./auth";
 
 // The single most consequential field in the reporting layer (PRD 3.1):

@@ -4,7 +4,7 @@ import { cn } from "#/lib/utils.ts";
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
 	return (
-		// biome-ignore lint/a11y/noLabelWithoutControl: generic primitive, htmlFor/children come from consumers via ...props
+		// oxlint-disable-next-line jsx-a11y/label-has-associated-control -- generic primitive, htmlFor/children come from consumers via ...props
 		<label
 			data-slot="label"
 			className={cn(

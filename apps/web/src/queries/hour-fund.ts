@@ -1,8 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import {
 	listHourFundsForYear,
 	suggestMonthlyHourFund,
 } from "#/server/hour-fund.ts";
+
 import { queryKeys } from "./keys.ts";
 
 export const hourFundYearQuery = (org: string, year: number) =>

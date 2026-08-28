@@ -1,6 +1,8 @@
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+
 import * as assistantSchema from "./schema/assistant";
 import * as authSchema from "./schema/auth";
 import * as closeSchema from "./schema/close";
@@ -26,6 +28,11 @@ export const schema = {
 };
 
 export type Db = PostgresJsDatabase<typeof schema>;
+
+/** Any drizzle handle over this schema, whatever driver backs it. The tests run
+ *  on PGLite rather than postgres-js: a different driver type, the same
+ *  `PgDatabase` query API over the same tables. */
+export type AnyDb = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 /** The handle a read or write may run on: the ambient pool, or an in-flight
  *  transaction. Declared here rather than in `services/context.ts` because
@@ -72,7 +79,10 @@ let override: Db | null = null;
 
 /** Point every `db` consumer at another handle — a PGLite instance in tests.
  *  Pass null to restore the ambient one. Test-only; nothing in src/ calls it. */
-export const setDbForTests = (handle: unknown): void => {
+export const setDbForTests = (handle: AnyDb | null): void => {
+	// SAFETY: `AnyDb` is `Db` minus the driver's result type, which nothing on
+	// this path reads — every consumer goes through the query builders, which are
+	// identical across both drivers and typed off the shared schema.
 	override = (handle as Db | null) ?? null;
 };
 
@@ -98,7 +108,14 @@ const resolve = (): Db => {
 // services layer unimportable in a test process, which is a large part of why
 // only three test files exist. Resolution now happens on first use, and tests
 // can substitute a handle before that first use.
+// SAFETY: the target of a Proxy whose every trap forwards to `resolve()`. No
+// property is ever read off this object — it exists only to give the Proxy
+// something to be, and `Db` is what the traps actually answer with.
 export const db = new Proxy({} as Db, {
+	// `Reflect.get` IS the correct body of a proxy `get` trap: it is what
+	// forwards the receiver, so a getter on the target resolves against the
+	// proxy rather than against the target.
+	// oxlint-disable-next-line anti-slop/no-reflect-get -- see above
 	get: (_target, prop, receiver) => Reflect.get(resolve(), prop, receiver),
 	set: (_target, prop, value, receiver) =>
 		Reflect.set(resolve(), prop, value, receiver),

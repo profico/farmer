@@ -29,7 +29,9 @@ import {
 	expect,
 	test,
 } from "bun:test";
+
 import { eq } from "drizzle-orm";
+
 import { db } from "../db";
 import {
 	assistantConversation,
@@ -46,14 +48,14 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import type { ChatMessage, ChatTurn } from "../lib/openrouter-client";
-import { createTestDb, type TestDb } from "../test/harness";
+import { at, createTestDb, type TestDb } from "../test/harness";
 import { type Access, accessService } from "./access.service";
+import { findTool, toolDefinitions, toolsFor } from "./assistant-tools";
 import {
 	type AssistantEvent,
 	assistantService,
 	setChatModelForTests,
 } from "./assistant.service";
-import { findTool, toolDefinitions, toolsFor } from "./assistant-tools";
 import { clientsService } from "./clients.service";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
@@ -543,6 +545,9 @@ describe("read tools", () => {
 		if (!unfiled) throw new Error("Failed to seed unfiled entry");
 
 		const range = { from: "2026-03-01", to: "2026-03-31" };
+		// SAFETY: `list_unfiled_entries` is asserted to exist by the `?.run` returning
+		// a value at all, and its projection is fixed in assistant-tools.ts. Only `id`
+		// is read, and the expectation below fails loudly if the shape ever changed.
 		const listed = (await findTool("list_unfiled_entries")?.run(
 			ctxFor(WORKER),
 			range,
@@ -1125,7 +1130,7 @@ describe("a batch write, approved row by row", () => {
 				toolCallId: "call-file",
 				decision: "approved",
 				// The middle row was un-ticked.
-				selectedRowIds: [ids[0] as string, ids[2] as string],
+				selectedRowIds: [at(ids, 0), at(ids, 2)],
 			},
 		});
 
@@ -1134,10 +1139,10 @@ describe("a batch write, approved row by row", () => {
 			.from(timeEntry)
 			.where(eq(timeEntry.userId, WORKER));
 		const byId = new Map(rows.map((row) => [row.id, row]));
-		expect(byId.get(ids[0] as string)?.projectId).toBe(projectId);
-		expect(byId.get(ids[2] as string)?.projectId).toBe(projectId);
+		expect(byId.get(at(ids, 0))?.projectId).toBe(projectId);
+		expect(byId.get(at(ids, 2))?.projectId).toBe(projectId);
 		// The un-ticked one is the whole point: it must still be unfiled.
-		expect(byId.get(ids[1] as string)?.projectId).toBeNull();
+		expect(byId.get(at(ids, 1))?.projectId).toBeNull();
 	});
 
 	test("approving with nothing ticked writes nothing and is answered as a refusal", async () => {
@@ -1168,8 +1173,8 @@ describe("a batch write, approved row by row", () => {
 			.from(timeEntry)
 			.where(eq(timeEntry.userId, WORKER));
 		const byId = new Map(rows.map((row) => [row.id, row]));
-		expect(byId.get(ids[0] as string)?.projectId).toBeNull();
-		expect(byId.get(ids[1] as string)?.projectId).toBeNull();
+		expect(byId.get(at(ids, 0))?.projectId).toBeNull();
+		expect(byId.get(at(ids, 1))?.projectId).toBeNull();
 
 		const messages = await db
 			.select()

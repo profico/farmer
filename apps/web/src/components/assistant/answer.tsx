@@ -1,7 +1,9 @@
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { Fragment, useEffect, useState } from "react";
+
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+
 import {
 	AnswerChart,
 	type ChartSpec,
@@ -147,6 +149,8 @@ const parseBlocks = (source: string): Block[] => {
 		if (heading) {
 			blocks.push({
 				kind: "h",
+				// SAFETY: the regex two lines up is `^(#{1,3})`, so group 1 is one to three
+				// characters and its length is exactly this union.
 				level: (heading[1]?.length ?? 1) as 1 | 2 | 3,
 				text: heading[2] ?? "",
 			});
@@ -330,11 +334,11 @@ const renderInline = (text: string) => {
 	});
 };
 
-const alignClass: Record<Align, string> = {
+const alignClass = {
 	left: "text-left",
 	right: "text-right",
 	center: "text-center",
-};
+} satisfies Record<Align, string>;
 
 /** Compact, and deliberately NOT `components/ui/table.tsx`: that one bleeds to
  *  its island's edges and carries 32px gutters, which is right for a screen
@@ -358,7 +362,7 @@ function AnswerTable({
 					<tr className="border-b border-line">
 						{head.map((cell, column) => (
 							<th
-								// biome-ignore lint/suspicious/noArrayIndexKey: re-derived from one string on every delta, so position IS the identity
+								// oxlint-disable-next-line react/no-array-index-key -- re-derived from one string on every delta, so position IS the identity
 								key={column}
 								className={`eyebrow px-1.5 py-1.5 align-bottom ${columnClass(column)}`}
 							>
@@ -369,11 +373,11 @@ function AnswerTable({
 				</thead>
 				<tbody>
 					{rows.map((row, rowIndex) => (
-						// biome-ignore lint/suspicious/noArrayIndexKey: same as above — the last row is rewritten character by character while it streams
+						// oxlint-disable-next-line react/no-array-index-key -- same as above — the last row is rewritten character by character while it streams
 						<tr key={rowIndex} className="border-b border-line2 last:border-0">
 							{row.map((cell, column) => (
 								<td
-									// biome-ignore lint/suspicious/noArrayIndexKey: same as above
+									// oxlint-disable-next-line react/no-array-index-key -- same as above
 									key={column}
 									className={`px-1.5 py-1.5 align-top ${columnClass(column)}`}
 								>
@@ -518,7 +522,7 @@ export function Answer({
 						<ol key={key} className="flex flex-col gap-1 pl-1">
 							{block.items.map((item, itemIndex) => (
 								<li
-									// biome-ignore lint/suspicious/noArrayIndexKey: the list is re-derived from one string on every delta, so position IS the identity — keying on content would remount the last item on each character
+									// oxlint-disable-next-line react/no-array-index-key -- the list is re-derived from one string on every delta, so position IS the identity — keying on content would remount the last item on each character
 									key={itemIndex}
 									className="flex gap-2"
 								>
@@ -536,7 +540,7 @@ export function Answer({
 						<ul key={key} className="flex flex-col gap-1 pl-1">
 							{block.items.map((item, itemIndex) => (
 								<li
-									// biome-ignore lint/suspicious/noArrayIndexKey: the list is re-derived from one string on every delta, so position IS the identity — keying on content would remount the last bullet on each character
+									// oxlint-disable-next-line react/no-array-index-key -- the list is re-derived from one string on every delta, so position IS the identity — keying on content would remount the last bullet on each character
 									key={itemIndex}
 									className="flex gap-2"
 								>

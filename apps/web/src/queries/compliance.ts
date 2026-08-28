@@ -1,5 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import { getComplianceDashboard } from "#/server/compliance.ts";
+
 import { queryKeys } from "./keys.ts";
 
 // One query, both views. The two lists are computed from overlapping data, so
