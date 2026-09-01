@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+
 import tailwindcss from "@tailwindcss/vite";
 import { devtools } from "@tanstack/devtools-vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
@@ -77,12 +78,12 @@ const WORKER_SCRIPT = fileURLToPath(
 // what replaced the write-on-read engines.
 //
 // Set any of these to "true" in your own .env to opt back in.
-const DEV_WORKER_JOB_DEFAULTS: Record<string, string> = {
+const DEV_WORKER_JOB_DEFAULTS = {
 	AUTOMATION_SYNC_ENABLED: "true",
 	LOG_REMINDERS_ENABLED: "false",
 	SLACK_REMINDERS_ENABLED: "false",
 	BUDGET_ALERTS_ENABLED: "false",
-};
+} satisfies Record<string, string>;
 
 function devWorker(): Plugin {
 	return {

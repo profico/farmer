@@ -1,7 +1,9 @@
 import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
+
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { budgetBurnReportQuery } from "#/queries/reports.ts";
+
 import { ReportTable } from "./shared.tsx";
 
 export function BudgetBurnTab() {

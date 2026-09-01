@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
+
 import { ColorPicker } from "#/components/color-picker.tsx";
 import { ManageTaskProjectsDialog } from "#/components/manage-task-projects-dialog.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";

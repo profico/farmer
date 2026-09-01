@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+
 import { member } from "../db/schema/auth";
 import { projectMember } from "../db/schema/domain";
 import { ctxDb } from "./db-ctx";
@@ -25,11 +26,11 @@ export type ProjectRole = "member" | "team_lead" | "pm";
 
 // Ordered so "at least this role" is a numeric comparison. Admin is not in here:
 // it is a separate axis that satisfies every project-level check by override.
-const RANK: Record<ProjectRole, number> = {
+const RANK = {
 	member: 1,
 	team_lead: 2,
 	pm: 3,
-};
+} satisfies Record<ProjectRole, number>;
 
 export class AccessError extends Error {
 	constructor(message: string) {

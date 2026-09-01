@@ -1,5 +1,9 @@
 import { runAssistantInput } from "@farmer/core/schema";
+// A TYPE-only import, so it is erased at compile time and never becomes the
+// static `@farmer/core/services` import the client-bundle rule forbids here.
+import type { AssistantEvent } from "@farmer/core/services";
 import { createFileRoute } from "@tanstack/react-router";
+
 import { resolveApiOrgContext } from "#/server/api-auth.ts";
 
 // One turn of the assistant, streamed.
@@ -15,7 +19,7 @@ import { resolveApiOrgContext } from "#/server/api-auth.ts";
 
 const encoder = new TextEncoder();
 
-const frame = (event: unknown) =>
+const frame = (event: AssistantEvent) =>
 	encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
 export const Route = createFileRoute("/api/assistant/stream")({
@@ -27,9 +31,8 @@ export const Route = createFileRoute("/api/assistant/stream")({
 				// than one that opens a stream and then explains itself. 404 rather
 				// than 403 for the same reason — there is nothing here to be
 				// authorized for.
-				const { isAssistantEnabled } = await import(
-					"@farmer/core/lib/assistant-flag"
-				);
+				const { isAssistantEnabled } =
+					await import("@farmer/core/lib/assistant-flag");
 				if (!isAssistantEnabled()) {
 					return Response.json({ error: "Not found" }, { status: 404 });
 				}
@@ -60,7 +63,7 @@ export const Route = createFileRoute("/api/assistant/stream")({
 						request.signal.addEventListener("abort", () => abort.abort());
 
 						let closed = false;
-						const send = (event: unknown) => {
+						const send = (event: AssistantEvent) => {
 							if (closed) return;
 							try {
 								controller.enqueue(frame(event));

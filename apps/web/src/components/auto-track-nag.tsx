@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
+
 import { Button } from "#/components/ui/button.tsx";
 import { springProductive } from "#/lib/motion.ts";
 import { githubConnectionStatusQuery } from "#/queries/github.ts";

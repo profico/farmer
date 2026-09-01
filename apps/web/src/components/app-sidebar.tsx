@@ -26,6 +26,7 @@ import {
 } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
+
 import { ChatRail } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
@@ -258,7 +259,7 @@ export function AppSidebar({
 	const tab: SidebarTab = !assistantAvailable
 		? "browse"
 		: (tabOverride ?? (onAssistant ? "chat" : "browse"));
-	// biome-ignore lint/correctness/useExhaustiveDependencies: it exists to clear the override on navigation, and `pathname` is the navigation
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- it exists to clear the override on navigation, and `pathname` is the navigation
 	useEffect(() => {
 		setTabOverride(null);
 	}, [pathname]);

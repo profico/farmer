@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 // stopped using it (see the note over the rows below).
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+
 import { EmptyState } from "#/components/states/empty-state.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";

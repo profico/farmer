@@ -31,7 +31,9 @@ import {
 	expect,
 	test,
 } from "bun:test";
+
 import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
@@ -571,14 +573,14 @@ describe("getSheet percentage columns", () => {
 // ── saveRow ─────────────────────────────────────────────────────────────────
 
 describe("saveRow", () => {
-	const save = (input: Record<string, unknown>) =>
+	const save = (input: Partial<Parameters<typeof closeService.saveRow>[1]>) =>
 		closeService.saveRow(ctxFor(PM), {
 			projectId: productProjectId,
 			year: YEAR,
 			month: MONTH,
 			userId: WORKER,
 			...input,
-		} as Parameters<typeof closeService.saveRow>[1]);
+		});
 
 	test("a plain member cannot", async () => {
 		await expect(

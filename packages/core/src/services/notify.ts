@@ -20,6 +20,7 @@
 // place to add a channel is that table plus one adapter, not four call sites.
 
 import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { member } from "../db/schema/auth";
 import { notificationsService } from "./notifications.service";
@@ -65,20 +66,20 @@ export type NotifyKind =
 // `notificationSettings` that turns this kind off; null means the kind has no
 // opt-out yet, and adding one is a column here plus a column there rather than
 // a hunt through the jobs.
-const KINDS: Record<
-	NotifyKind,
-	{
-		channels: readonly NotifyChannel[];
-		preference: "logReminders" | null;
-	}
-> = {
+const KINDS = {
 	"log-reminder": { channels: ["push"], preference: "logReminders" },
 	"budget-alert": { channels: ["slack", "push"], preference: null },
 	"compliance-nudge": { channels: ["slack"], preference: null },
 	"month-end": { channels: ["slack"], preference: null },
 	"admin-digest": { channels: ["slack"], preference: null },
 	test: { channels: ["slack"], preference: null },
-};
+} satisfies Record<
+	NotifyKind,
+	{
+		channels: readonly NotifyChannel[];
+		preference: "logReminders" | null;
+	}
+>;
 
 /** A way of reaching someone. Returns whether it delivered; it never throws,
  *  because a dead push endpoint or an uninstalled Slack app must not fail the
@@ -108,10 +109,10 @@ const slackAdapter: NotifyAdapter = (to, event) =>
 		event.title ? `${event.title}. ${event.body}` : event.body,
 	);
 
-let adapters: Record<NotifyChannel, NotifyAdapter> = {
+let adapters = {
 	push: pushAdapter,
 	slack: slackAdapter,
-};
+} satisfies Record<NotifyChannel, NotifyAdapter>;
 
 /** Substitute the wire in tests — the same seam `services/ports.ts` puts in
  *  front of Google Calendar and GitHub. Pass nothing to restore the real ones. */
@@ -121,7 +122,7 @@ export const setNotifyAdaptersForTests = (
 	adapters = { push: pushAdapter, slack: slackAdapter, ...overrides };
 };
 
-const NOTHING_SENT: NotifyOutcome = { push: false, slack: false };
+const NOTHING_SENT = { push: false, slack: false } satisfies NotifyOutcome;
 
 /**
  * Tell one member of one organization one thing.

@@ -7,6 +7,7 @@ import type { TimeReportDetailInput } from "@farmer/core/schema";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
+
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -40,6 +41,7 @@ import {
 	timeReportSummaryQuery,
 } from "#/queries/reports.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
+
 import type { Search } from "./search.ts";
 import { formatDateHeading, PeriodPicker, TabPending } from "./shared.tsx";
 

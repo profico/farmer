@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+
 import { EditWeeklyTargetDialog } from "#/components/edit-weekly-target-dialog.tsx";
 import { Unit } from "#/components/ui/metric.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";

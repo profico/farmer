@@ -5,6 +5,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { SidebarSimpleIcon } from "@phosphor-icons/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
+
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Separator } from "#/components/ui/separator.tsx";
@@ -74,6 +75,9 @@ function SidebarProvider({
 	const open = openProp ?? _open;
 	const setOpen = React.useCallback(
 		(value: boolean | ((value: boolean) => boolean)) => {
+			// React's own `SetStateAction` union. Discriminating it is what the
+			// setter contract IS, not evidence invented about an unparsed value.
+			// oxlint-disable-next-line anti-slop/no-runtime-typeof -- see above
 			const openState = typeof value === "function" ? value(open) : value;
 			if (setOpenProp) {
 				setOpenProp(openState);
@@ -81,15 +85,20 @@ function SidebarProvider({
 				_setOpen(openState);
 			}
 
-			// This sets the cookie to keep the sidebar state.
-			// biome-ignore lint/suspicious/noDocumentCookie: shadcn sidebar persists its collapsed state via a plain cookie; the CookieStore API isn't broadly supported.
+			// Vendored shadcn: the sidebar persists its collapsed state so the server
+			// can render the right width on the next document request. This is UI
+			// preference, not a credential — there is no cookie utility to route it
+			// through, `Secure` would break http dev, and CookieStore is not broadly
+			// supported. `path=/` is explicit so the delete-clobbering case the rule
+			// guards against cannot arise.
+			// oxlint-disable-next-line stella/no-document-cookie -- see above
 			document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
 		},
 		[setOpenProp, open],
 	);
 
 	// Helper to toggle the sidebar.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: deps match the upstream shadcn sidebar; setOpen/setOpenMobile are stable.
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- deps match the upstream shadcn sidebar; setOpen/setOpenMobile are stable.
 	const toggleSidebar = React.useCallback(() => {
 		return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
 	}, [isMobile, setOpen, setOpenMobile]);
@@ -114,7 +123,7 @@ function SidebarProvider({
 	// This makes it easier to style the sidebar with Tailwind classes.
 	const state = open ? "expanded" : "collapsed";
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: upstream shadcn sidebar memo deps; kept verbatim.
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream shadcn sidebar memo deps; kept verbatim.
 	const contextValue = React.useMemo<SidebarContextProps>(
 		() => ({
 			state,
@@ -132,6 +141,9 @@ function SidebarProvider({
 		<SidebarContext.Provider value={contextValue}>
 			<div
 				data-slot="sidebar-wrapper"
+				// SAFETY: CSS custom properties are not in React's `CSSProperties`,
+				// and there is no way to declare one — the cast is how a
+				// `--sidebar-width` reaches the style prop at all.
 				style={
 					{
 						"--sidebar-width": SIDEBAR_WIDTH,
@@ -201,6 +213,8 @@ function Sidebar({
 					data-slot="sidebar"
 					data-mobile="true"
 					className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+					// SAFETY: a CSS custom property through the style prop — see
+					// SidebarProvider above.
 					style={
 						{
 							"--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -546,6 +560,9 @@ function SidebarMenuButton({
 		return comp;
 	}
 
+	// The upstream shadcn prop is declared `string | TooltipProps`; this is the
+	// union's discriminant, not a guess about untyped input.
+	// oxlint-disable-next-line anti-slop/no-runtime-typeof -- see above
 	if (typeof tooltip === "string") {
 		tooltip = {
 			children: tooltip,
@@ -640,6 +657,7 @@ function SidebarMenuSkeleton({
 			<Skeleton
 				className="h-4 max-w-(--skeleton-width) flex-1"
 				data-sidebar="menu-skeleton-text"
+				// SAFETY: a CSS custom property through the style prop — see SidebarProvider.
 				style={
 					{
 						"--skeleton-width": width,

@@ -1,16 +1,16 @@
 {
-  "short_name": "Farmer",
-  "name": "Farmer — time tracking",
-  "description": "A simple, open-source time tracker.",
-  "icons": [
-    {
-      "src": "Icon.svg",
-      "type": "image/svg+xml",
-      "sizes": "any"
-    }
-  ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#6f4ebe",
-  "background_color": "#faf9f6"
+	"short_name": "Farmer",
+	"name": "Farmer — time tracking",
+	"description": "A simple, open-source time tracker.",
+	"icons": [
+		{
+			"src": "Icon.svg",
+			"type": "image/svg+xml",
+			"sizes": "any"
+		}
+	],
+	"start_url": ".",
+	"display": "standalone",
+	"theme_color": "#6f4ebe",
+	"background_color": "#faf9f6"
 }

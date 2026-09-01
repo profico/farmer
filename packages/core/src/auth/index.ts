@@ -4,6 +4,7 @@ import { APIError } from "better-auth/api";
 import { genericOAuth, organization } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";

@@ -1,4 +1,5 @@
 import { NodeCompiler } from "@myriaddreamin/typst-ts-node-compiler";
+
 import { PDF_FONTS_BASE64 } from "./pdf-fonts.gen";
 
 // One compiler per process — creation loads fonts, which is the expensive

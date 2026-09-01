@@ -13,6 +13,7 @@ import {
 	uniqueIndex,
 	uuid,
 } from "drizzle-orm/pg-core";
+
 import { organization, user } from "./auth";
 
 export const projectStatus = pgEnum("project_status", ["active", "archived"]);

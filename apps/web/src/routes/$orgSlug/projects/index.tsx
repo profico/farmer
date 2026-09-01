@@ -2,6 +2,7 @@ import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+
 import { CreateProjectDialog } from "#/components/create-project-dialog.tsx";
 import {
 	type ProjectCapabilities,

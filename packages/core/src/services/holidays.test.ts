@@ -18,6 +18,7 @@
 // instance stay stable — the property that makes reuse safe at all.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { createTestDb, type TestDb } from "../test/harness";

@@ -1,5 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import { suggestDayAssembly } from "#/server/day-assembly.ts";
+
 import { queryKeys } from "./keys.ts";
 
 export const dayAssemblySuggestionsQuery = (

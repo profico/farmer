@@ -1,4 +1,5 @@
 import { DotsThreeIcon } from "@phosphor-icons/react";
+
 import { Button } from "#/components/ui/button.tsx";
 import {
 	DropdownMenu,
@@ -35,10 +36,10 @@ export function RowActions({
 	className?: string;
 }) {
 	const visible = actions.filter((a): a is RowAction => Boolean(a));
-	if (visible.length === 0) return null;
+	const [action] = visible;
+	if (action === undefined) return null;
 
 	if (visible.length === 1) {
-		const [action] = visible as [RowAction];
 		return (
 			<Button
 				variant="ghost"

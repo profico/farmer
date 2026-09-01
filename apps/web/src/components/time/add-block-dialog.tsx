@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
+
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import {
@@ -207,11 +208,12 @@ export function AddBlockDialog({
 		defaultValues: buildDefaults(),
 	});
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: only reset when the dialog opens
+	/* oxlint-disable react-hooks/exhaustive-deps -- only reset when the dialog opens */
 	useEffect(() => {
 		if (!open) return;
 		form.reset(buildDefaults());
 	}, [open]);
+	/* oxlint-enable react-hooks/exhaustive-deps */
 
 	const projectId = form.watch("projectId");
 	const taskId = form.watch("taskId");
@@ -644,30 +646,31 @@ export function AddBlockDialog({
 								)}
 							/>
 						)}
-						{!repeatEnabled && !isAbsence && (
-							// Same hairline row as Repeat and Overtime below. It used to be a
-							// tinted box, which read as a different *kind* of control when it
-							// is the same kind: a toggle with a sentence under it.
-							<div className="flex items-center justify-between gap-3 border-t pt-3.5">
-								<div className="min-w-0">
-									<span className="text-base font-medium">
-										Fill rest of day
-									</span>
-									<p className="text-sm text-muted-foreground">
-										{dayHasFill
-											? "This day already has a fill block — edit or delete that one instead."
-											: "Auto-expands to your working hours minus everything else logged that day."}
-									</p>
+						{!repeatEnabled &&
+							!isAbsence && (
+								// Same hairline row as Repeat and Overtime below. It used to be a
+								// tinted box, which read as a different *kind* of control when it
+								// is the same kind: a toggle with a sentence under it.
+								<div className="flex items-center justify-between gap-3 border-t pt-3.5">
+									<div className="min-w-0">
+										<span className="text-base font-medium">
+											Fill rest of day
+										</span>
+										<p className="text-sm text-muted-foreground">
+											{dayHasFill
+												? "This day already has a fill block — edit or delete that one instead."
+												: "Auto-expands to your working hours minus everything else logged that day."}
+										</p>
+									</div>
+									<Switch
+										checked={fillsDay}
+										disabled={dayHasFill}
+										onCheckedChange={(checked) =>
+											form.setValue("fillsDay", checked)
+										}
+									/>
 								</div>
-								<Switch
-									checked={fillsDay}
-									disabled={dayHasFill}
-									onCheckedChange={(checked) =>
-										form.setValue("fillsDay", checked)
-									}
-								/>
-							</div>
-						)}
+							)}
 						{fillsDay ? (
 							<p className="text-sm text-muted-foreground">
 								This entry fills the rest of the day's working hours
@@ -830,7 +833,7 @@ export function AddBlockDialog({
 												<div className="flex gap-1">
 													{DAY_LABELS.map((label, day) => (
 														<button
-															// biome-ignore lint/suspicious/noArrayIndexKey: day is the stable weekday number (0-6)
+															// oxlint-disable-next-line react/no-array-index-key -- day is the stable weekday number (0-6)
 															key={day}
 															type="button"
 															onClick={() => toggleDay(day)}

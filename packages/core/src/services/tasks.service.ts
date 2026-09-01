@@ -1,4 +1,5 @@
 import { and, asc, count, eq, inArray, isNull, or } from "drizzle-orm";
+
 import { db } from "../db";
 import {
 	project,
@@ -331,16 +332,16 @@ export const tasksService = {
 			throw new Error("Built-in tasks cannot be edited");
 		}
 
+		// An absent field and a field set to null are different edits: drizzle's
+		// `.set()` skips `undefined` keys, which is what makes the distinction work.
+		const patch: Partial<typeof task.$inferInsert> = { updatedAt: new Date() };
+		if (input.name !== undefined) patch.name = input.name.trim();
+		if (input.color !== undefined) patch.color = input.color;
+		if (input.description !== undefined) patch.description = input.description;
+
 		const [updated] = await db
 			.update(task)
-			.set({
-				...(input.name !== undefined ? { name: input.name.trim() } : {}),
-				...(input.color !== undefined ? { color: input.color } : {}),
-				...(input.description !== undefined
-					? { description: input.description }
-					: {}),
-				updatedAt: new Date(),
-			})
+			.set(patch)
 			.where(eq(task.id, input.taskId))
 			.returning();
 		return updated;

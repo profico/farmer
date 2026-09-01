@@ -20,7 +20,9 @@ import {
 	expect,
 	test,
 } from "bun:test";
+
 import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import {
@@ -190,7 +192,7 @@ describe("copyDay write guards", () => {
 				overtime: false,
 				fillsDay: false,
 			}),
-		).rejects.toThrow();
+		).rejects.toThrow(/not assigned to this project/);
 
 		const result = await timeEntriesService.copyDay(ctx(), {
 			fromDate: MON,

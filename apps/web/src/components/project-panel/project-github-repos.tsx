@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
@@ -50,7 +51,7 @@ export function ProjectGithubRepos({
 
 	// Search is per project: this is kept mounted across selections, so a query
 	// typed for one project would still be filtering the next one's list.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally keyed on projectId — clears the filter when a different project is selected.
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on projectId — clears the filter when a different project is selected.
 	useEffect(() => {
 		setSearch("");
 	}, [projectId]);

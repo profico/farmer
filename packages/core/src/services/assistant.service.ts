@@ -1,4 +1,6 @@
 import { and, asc, desc, eq } from "drizzle-orm";
+import { z } from "zod";
+
 import { db } from "../db";
 import {
 	type AssistantToolCall,
@@ -7,6 +9,7 @@ import {
 	assistantSettings,
 } from "../db/schema/assistant";
 import { isAssistantEnabled } from "../lib/assistant-flag";
+import type { JsonRecord, Serializable } from "../lib/json";
 import {
 	type ChatMessage,
 	type ChatTurn,
@@ -176,20 +179,32 @@ const KEY_VISIBLE_CHARS = 15;
 const maskKey = (key: string) =>
 	`${key.slice(0, Math.min(KEY_VISIBLE_CHARS, key.length))}${"•".repeat(8)}`;
 
+/** What an admin is shown about the connection. A missing row is "never
+ *  connected" rather than an error, so every field is nullable and one shape
+ *  answers both cases. The key itself is never here — only a hint. */
+export type AssistantSettingsView = {
+	configured: boolean;
+	enabled: boolean;
+	defaultModel: string | null;
+	keyHint: string | null;
+	systemPrompt: string | null;
+	connectedAt: Date | null;
+};
+
 const settings = {
 	/** Never returns the key — see the note on the table. Readable by any member
 	 *  because the chat page needs to know whether to render itself; only the
 	 *  writes below are admin-gated. */
-	get: async (ctx: Ctx) => {
+	get: async (ctx: Ctx): Promise<AssistantSettingsView> => {
 		const row = await loadSettings(ctx);
 		if (!row) {
 			return {
 				configured: false,
 				enabled: false,
-				defaultModel: null as string | null,
-				keyHint: null as string | null,
-				systemPrompt: null as string | null,
-				connectedAt: null as Date | null,
+				defaultModel: null,
+				keyHint: null,
+				systemPrompt: null,
+				connectedAt: null,
 			};
 		}
 		return {
@@ -243,17 +258,19 @@ const settings = {
 		if (!isAssistantEnabled()) throw new AssistantDisabledError();
 		const existing = await loadSettings(ctx);
 		if (!existing) throw new AssistantNotConfiguredError();
+		const patch: Partial<typeof assistantSettings.$inferInsert> = {
+			updatedAt: new Date(),
+		};
+		if (input.defaultModel) patch.defaultModel = input.defaultModel;
+		if (input.enabled !== undefined) patch.enabled = input.enabled;
+		// `undefined` leaves the rules alone; an explicit null clears them.
+		if (input.systemPrompt !== undefined) {
+			patch.systemPrompt = input.systemPrompt || null;
+		}
+
 		await db
 			.update(assistantSettings)
-			.set({
-				...(input.defaultModel ? { defaultModel: input.defaultModel } : {}),
-				...(input.enabled === undefined ? {} : { enabled: input.enabled }),
-				// `undefined` leaves the rules alone; an explicit null clears them.
-				...(input.systemPrompt === undefined
-					? {}
-					: { systemPrompt: input.systemPrompt || null }),
-				updatedAt: new Date(),
-			})
+			.set(patch)
 			.where(eq(assistantSettings.id, existing.id));
 		return { ok: true };
 	},
@@ -394,19 +411,21 @@ const toWireMessages = (rows: StoredMessage[]): ChatMessage[] =>
 			};
 		}
 		if (row.role === "assistant") {
-			return {
-				role: "assistant" as const,
+			const message: ChatMessage = {
+				role: "assistant",
 				content: row.content,
-				...(row.toolCalls?.length
-					? {
-							tool_calls: row.toolCalls.map((call) => ({
-								id: call.id,
-								type: "function" as const,
-								function: { name: call.name, arguments: call.arguments },
-							})),
-						}
-					: {}),
 			};
+			// Only when there are calls: an assistant message carrying an EMPTY
+			// `tool_calls` array is not the same request as one carrying none, and
+			// the API rejects the former.
+			if (row.toolCalls?.length) {
+				message.tool_calls = row.toolCalls.map((call) => ({
+					id: call.id,
+					type: "function" as const,
+					function: { name: call.name, arguments: call.arguments },
+				}));
+			}
+			return message;
 		}
 		return { role: "user" as const, content: row.content };
 	});
@@ -450,7 +469,10 @@ const insertMessage = async (
 	return row;
 };
 
-const stringifyResult = (value: unknown) => {
+/** Every tool call's arguments, before the tool's own schema narrows them. */
+const argumentsPayload = z.record(z.string(), z.json());
+
+const stringifyResult = (value: Serializable | void) => {
 	const text = JSON.stringify(value ?? null);
 	return text.length > MAX_TOOL_RESULT_CHARS
 		? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n…truncated. Narrow the date range and ask again.`
@@ -476,9 +498,17 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 			content: `"${call.name}" is not available to this user.`,
 		};
 	}
-	let args: unknown;
+	// Two failures, not one. Text that isn't JSON and JSON that isn't an object
+	// are different mistakes, and telling the model which it made is the
+	// difference between it correcting the call and it repeating the call.
+	let args: JsonRecord;
 	try {
-		args = call.arguments.trim() ? JSON.parse(call.arguments) : {};
+		const decoded = call.arguments.trim() ? JSON.parse(call.arguments) : {};
+		const parsed = argumentsPayload.safeParse(decoded);
+		if (!parsed.success) {
+			return { ok: false, content: "The arguments were not a JSON object." };
+		}
+		args = parsed.data;
 	} catch {
 		return { ok: false, content: "The arguments were not valid JSON." };
 	}

@@ -16,8 +16,10 @@ import {
 } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
+
 import { getSession } from "#/server/auth.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
+
 // Marketing-only styles, every rule scoped under `.fm-landing`. See the header
 // of that file for why it is a stylesheet rather than the inline <style> it was.
 import "./landing.css";

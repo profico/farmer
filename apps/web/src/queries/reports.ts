@@ -7,6 +7,7 @@ import type {
 	VarianceTrendInput,
 } from "@farmer/core/schema";
 import { queryOptions } from "@tanstack/react-query";
+
 import {
 	getAbsenceReport,
 	getBudgetBurnReport,
@@ -19,6 +20,7 @@ import {
 	getVarianceReport,
 	getVarianceTrend,
 } from "#/server/reports.ts";
+
 import { queryKeys } from "./keys.ts";
 
 // Report keys carry their whole input in the key. Filters are part of the

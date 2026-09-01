@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import {
@@ -391,31 +392,30 @@ export const projectsService = {
 				if (!ownedClient) throw new Error("Client not found");
 			}
 
+			const patch: Partial<typeof project.$inferInsert> = {
+				updatedAt: new Date(),
+			};
+			if (input.name !== undefined) patch.name = input.name;
+			if (input.clientId !== undefined) patch.clientId = input.clientId;
+			if (input.code !== undefined) patch.code = input.code || null;
+			if (input.color !== undefined) patch.color = input.color;
+			// Project type is changeable after creation without history (e.g. a
+			// Fixed Scope engagement rolling into Maintenance). Close sheets render
+			// according to the type at the time of viewing. The type-specific config
+			// moves with it — the schema refuses a budget or price that arrives
+			// without its type — so the four are set together or not at all.
+			if (input.type !== undefined) {
+				patch.type = input.type;
+				patch.budgetSeconds = input.budgetHours
+					? Math.round(input.budgetHours * 3600)
+					: null;
+				patch.budgetAmount = input.budgetAmount ?? null;
+				patch.hourlyPrice = input.hourlyPrice ?? null;
+			}
+
 			await tx
 				.update(project)
-				.set({
-					...(input.name !== undefined ? { name: input.name } : {}),
-					...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
-					...(input.code !== undefined ? { code: input.code || null } : {}),
-					// Project type is changeable after creation without history (e.g. a
-					// Fixed Scope engagement rolling into Maintenance). Close sheets
-					// render according to the type at the time of viewing. The
-					// type-specific config moves with it — the schema refuses a budget
-					// or price that arrives without its type — so the three are set
-					// together or not at all.
-					...(input.type !== undefined
-						? {
-								type: input.type,
-								budgetSeconds: input.budgetHours
-									? Math.round(input.budgetHours * 3600)
-									: null,
-								budgetAmount: input.budgetAmount ?? null,
-								hourlyPrice: input.hourlyPrice ?? null,
-							}
-						: {}),
-					...(input.color !== undefined ? { color: input.color } : {}),
-					updatedAt: new Date(),
-				})
+				.set(patch)
 				.where(eq(project.id, input.projectId));
 		});
 

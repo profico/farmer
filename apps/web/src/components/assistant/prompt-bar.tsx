@@ -16,6 +16,7 @@
 // single biggest reason an assistant goes unused.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
 import { cn } from "#/lib/utils.ts";
 
 function Icon({
@@ -134,7 +135,7 @@ export function PromptBar({
 
 	// Reset the selection whenever the list underneath it changes, so the
 	// highlight can't sit on row 3 of a list that now has two rows.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `menuOpen` is derived from `token`, and both stand for "the list underneath changed"
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- `menuOpen` is derived from `token`, and both stand for "the list underneath changed"
 	useEffect(() => {
 		setActive(0);
 		setEngaged(false);
@@ -155,7 +156,7 @@ export function PromptBar({
 	// picker. With the picker gone there is one 28px button beside the input, so
 	// there is nothing to make room for and no second row to move to — the
 	// measuring span and the width arithmetic went with it.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: it re-measures the textarea, and `draft` is what changes its content height
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- it re-measures the textarea, and `draft` is what changes its content height
 	useLayoutEffect(() => {
 		const input = inputRef.current;
 		if (!input) return;

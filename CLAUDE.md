@@ -34,16 +34,36 @@ bun run worker               # the standalone background worker (see Production)
 bun test                     # the test suite (PGLite, no DATABASE_URL needed)
 ```
 
-Linting is repo-wide and runs from the root:
+Linting and formatting are repo-wide and run from the root. **Biome is gone** — `oxlint` lints and `oxfmt` formats:
 ```bash
-bun run check                # biome check (lint + format + import order) — what CI runs
+bun run check                # oxfmt --check + oxlint — what CI runs
 bun run typecheck            # turbo: tsc --noEmit in both workspaces — also what CI runs
-bun run lint                 # biome lint only
-bun run format               # biome format --write
+bun run lint                 # oxlint only
+bun run format               # oxfmt --write
 ```
-`biome.json` at the root is the real config and covers **both** workspaces; `apps/web/biome.json` and `packages/core/biome.json` are three-line `{"root": false, "extends": "//"}` stubs so the same scripts work from inside either package. Biome is a root devDependency — don't add a second copy to a workspace, since two versions format differently and the drift is invisible until CI disagrees with your editor.
 
-Fourteen `noNonNullAssertion` **warnings** are expected and do not fail the build: `process.env.X!` in the auth config and drizzle config, plus array-index assertions in two test files.
+Two root configs cover **both** workspaces, and each workspace's own `lint`/`check` scripts point back at them (`--config ../../oxlint.config.ts`) so the same commands work from inside either package. Both are root devDependencies — don't add a second copy to a workspace, since two versions format differently and the drift is invisible until CI disagrees with your editor.
+
+- **`.oxfmtrc.json`** — formatting. Migrated from the old biome config with `oxfmt --migrate=biome`, so the house style is unchanged: tabs, double quotes, width 80. `sortImports` replaces biome's `organizeImports`, and oxfmt also formats JSON and CSS, which biome's `files.includes` allowlist had left alone.
+- **`oxlint.config.ts`** — linting. Four layers:
+  1. `plugins` + `categories.correctness` — the parity layer, standing in for what biome's `recommended` used to catch (react, react-hooks, jsx-a11y, typescript, import, oxc).
+  2. **anti-slop** ([dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop)), vendored at `tools/oxlint/anti-slop/` and registered as a `jsPlugins` entry. Fifteen rules that reject low-evidence TypeScript: `unknown` in a contract, a `Record<string, unknown>` value type, a hand-rolled `typeof` narrowing where a parse belongs, a type assertion with no stated invariant. **Every one is an `error` and the tree is clean of them.**
+  3. **stella**, five rules vendored at `tools/oxlint/stella/` from [stella's `.oxlint-plugins`](https://github.com/stella/stella/tree/main/.oxlint-plugins) (Apache-2.0). That directory holds ~130 rules; these are the ones that survived being measured against this repo. Each guards an invariant the codebase already held with nothing keeping it that way: `no-vacuous-throw-assertion` (an argument-less `.toThrow()` passes for any thrown value, so it keeps passing once the code fails for an unrelated reason — it found five, four of them in `assistant.test.ts`), `no-document-cookie`, `require-suppression-description` + `no-foreign-directive` (the ratchet on the ~40 suppressions, and the thing that stops `biome-ignore` comments returning now that biome is gone), and `no-partial-record-satisfies`.
+  4. A handful of named rules that are none of the above — see the comments in the file.
+
+**Both plugins are vendored, not depended on — those files are ours to edit.** Four anti-slop rules carry a `Local amendment to the upstream rule` comment saying why: Zod's `.shape` is not a symbol this repo names; a `.catch()` handler's parameter is `unknown` because TypeScript makes it so; leading comments on an `export const` attach to the ExportNamedDeclaration, so the SAFETY lookup has to see through it. Read the comment before "fixing" one of these back. The stella rules were re-typed onto `defineRule` and share a trimmed `utils.ts`; provenance is in `tools/oxlint/stella/index.ts` so a re-sync stays a diff.
+
+**The other ~126 stella rules were skipped, and mostly not because they are wrong.** They fall in three groups: stella-domain (matter glyphs, playbook verdicts, case-law boundaries) or aimed at a stack this repo does not run (Effect, Eden, i18n); already covered by anti-slop or a native rule; and — the interesting group — rules this repo simply passes. `require-query-key-factory` finds nothing because every key already spreads `queryKeys(org)`; `require-fetch-timeout` finds nothing because the one browser `fetch` carries a controller signal and `externalFetch` owns the rest; `require-timestamptz-column` only hits CLI-generated `auth.ts`. Two were skipped as noise rather than as wrong: `forbid-process-env-outside-env-ts` (69 reads across 23 files — that is a refactor, not a lint adoption) and `no-db-await-in-loop` (~20 sites, all already triaged, including the reminder-job loop this file documents as a deferred fix).
+
+**Every suppression needs a reason.** `stella/require-suppression-description` fails the build on a bare `oxlint-disable`; the reason goes inline as a `-- <why>` trailer, or as a prose comment on the line directly above when it needs more than a clause. The directive must still be the **last** comment line either way, so the multi-line form reads explanation-then-directive.
+
+**`SAFETY:` comments are load-bearing.** `require-safety-comment-for-type-assertion` fails the build on any non-`as const` assertion without one, so every remaining `as` in the tree states the invariant that makes it sound. A new assertion needs a real reason, not a restatement of the cast. Placement is fussy: the comment must be the line directly above the assertion **or** its containing statement, `//` not `{/* */}` (JSX comments are nodes, not comments), and a multi-line explanation must put the directive line last.
+
+Tests have two helpers for the case that used to reach for an assertion — `at(rows, i)` and `present(value, what)` in `src/test/harness.ts`. Both fail the test naming what was missing, rather than turning a bad fixture into a null-dereference twenty lines later.
+
+**55 warnings are expected and do not fail the build.** Fourteen are `typescript/no-non-null-assertion` (`process.env.X!` in the auth and drizzle configs, plus array-index assertions in two test files). The other 41 are pre-existing React and a11y findings that biome's ruleset never reported — `react/set-state-in-effect` (17), `jsx-a11y/no-autofocus` (9), `jsx-a11y/control-has-associated-label` (9), and a few others. They are real and deliberately left visible rather than switched off; promote each to `"error"` in `oxlint.config.ts` as it is burned down.
+
+**One thing was lost in the move and is worth knowing:** nothing lints CSS any more. oxlint is JS/TS only and oxfmt only formats. `landing.css` carries a comment recording the two rules that used to be turned off for it and why both are right there.
 
 From `apps/web`:
 ```bash

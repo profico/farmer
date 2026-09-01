@@ -13,10 +13,12 @@
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { type Db, schema, setDbForTests } from "../db";
+
+import { type AnyDb, schema, setDbForTests } from "../db";
 
 const migrationsFolder = resolve(
 	dirname(fileURLToPath(import.meta.url)),
@@ -24,7 +26,7 @@ const migrationsFolder = resolve(
 );
 
 export type TestDb = {
-	db: Db;
+	db: AnyDb;
 	/** Restore the ambient handle. */
 	close: () => Promise<void>;
 };
@@ -77,7 +79,7 @@ export const createTestDb = async (): Promise<TestDb> => {
 	setDbForTests(handle);
 
 	return {
-		db: handle as unknown as Db,
+		db: handle,
 		// The engine deliberately outlives this: the next file resets it, and
 		// `closeTestEngine` below shuts it down once the whole run is over.
 		close: async () => {
@@ -98,4 +100,35 @@ export const closeTestEngine = async (): Promise<void> => {
 	const client = engine;
 	engine = null;
 	await client.close();
+};
+
+/**
+ * Index into a fixture array, failing the test rather than asserting.
+ *
+ * `noUncheckedIndexedAccess` types every element `T | undefined`, and the usual
+ * answer in a test is `rows[0] as Row` — which turns "the fixture didn't build
+ * what I thought" into a null-dereference twenty lines later, on a line that
+ * has nothing to do with the mistake. This names the row that is missing.
+ */
+export const at = <T>(rows: readonly T[], index: number): T => {
+	const row = rows[index];
+	if (row === undefined) {
+		throw new Error(`fixture has no row at index ${index} (of ${rows.length})`);
+	}
+	return row;
+};
+
+/**
+ * Assert a nullable fixture value is actually there, and hand back the narrowed
+ * value — the companion to `at` for `T | null` rather than `T | undefined`.
+ *
+ * `expect(x).not.toBeNull()` proves it at runtime but narrows nothing, so the
+ * line after it still needs `x as T`. This does both, and names what was
+ * missing when it wasn't.
+ */
+export const present = <T>(value: T | null | undefined, what: string): T => {
+	if (value === null || value === undefined) {
+		throw new Error(`expected ${what} to be present`);
+	}
+	return value;
 };

@@ -16,6 +16,8 @@
 // draws what it is handed and labels every bar with its own value, so nothing
 // here can only be read off a pixel length.
 
+import { z } from "zod";
+
 /** The JSON inside a ```farmer-chart fence. */
 export type ChartSpec = {
 	/** `bar` = one row per category, `trend` = columns left to right in time. */
@@ -26,40 +28,43 @@ export type ChartSpec = {
 	data: { label: string; value: number }[];
 };
 
+/**
+ * The fence body's schema.
+ *
+ * Every field degrades rather than throws where degrading is meaningful: a
+ * `type` the model misspelled is a bar chart, a non-string `title` is no title.
+ * The data itself does not degrade — a point without a finite number is a bar
+ * of NaN width, which is a chart drawn from nonsense, and the caller showing
+ * the fence as code is strictly better than that.
+ *
+ * The 40-row ceiling is there for the same reason the range schemas have one:
+ * the model can ask for a chart of 400 days, and the answer is a wall.
+ */
+const chartSpecSchema = z.object({
+	type: z.enum(["trend", "bar"]).catch("bar"),
+	title: z.string().optional().catch(undefined),
+	unit: z.string().optional().catch(undefined),
+	data: z
+		.array(
+			z.object({
+				label: z.string(),
+				value: z.number().refine(Number.isFinite),
+			}),
+		)
+		.min(1)
+		.max(40),
+});
+
 /** Parses and validates a fence body. Returns null for anything malformed, and
  *  the caller renders the block as code instead — a chart that silently
  *  disappears takes its numbers with it. */
 export const parseChartSpec = (source: string): ChartSpec | null => {
-	let raw: unknown;
 	try {
-		raw = JSON.parse(source);
+		const parsed = chartSpecSchema.safeParse(JSON.parse(source));
+		return parsed.success ? parsed.data : null;
 	} catch {
 		return null;
 	}
-	if (!raw || typeof raw !== "object") return null;
-	const candidate = raw as Record<string, unknown>;
-	const type = candidate.type === "trend" ? "trend" : "bar";
-	if (!Array.isArray(candidate.data) || candidate.data.length === 0)
-		return null;
-	const data: ChartSpec["data"] = [];
-	for (const point of candidate.data) {
-		if (!point || typeof point !== "object") return null;
-		const { label, value } = point as Record<string, unknown>;
-		// A non-finite value would render as a NaN-wide bar — a chart drawn from
-		// nonsense, which is worse than the fence showing as text.
-		if (typeof label !== "string" || typeof value !== "number") return null;
-		if (!Number.isFinite(value)) return null;
-		data.push({ label, value });
-	}
-	// A ceiling on the number of rows, for the same reason the range schemas have
-	// one: the model can ask for a chart of 400 days and the answer is a wall.
-	if (data.length > 40) return null;
-	return {
-		type,
-		title: typeof candidate.title === "string" ? candidate.title : undefined,
-		unit: typeof candidate.unit === "string" ? candidate.unit : undefined,
-		data,
-	};
 };
 
 /** Trailing zeros dropped: "7.5h", "8h", not "7.50h". */
@@ -86,7 +91,7 @@ export function AnswerChart({ spec }: { spec: ChartSpec }) {
 				<div className="flex items-end gap-1 overflow-x-auto">
 					{spec.data.map((point, index) => (
 						<div
-							// biome-ignore lint/suspicious/noArrayIndexKey: re-derived from one string on every streamed delta, so position IS the identity
+							// oxlint-disable-next-line react/no-array-index-key -- re-derived from one string on every streamed delta, so position IS the identity
 							key={index}
 							className="flex min-w-8 flex-1 flex-col items-center gap-1"
 						>
@@ -111,7 +116,7 @@ export function AnswerChart({ spec }: { spec: ChartSpec }) {
 				<div className="flex flex-col gap-1.5">
 					{spec.data.map((point, index) => (
 						<div
-							// biome-ignore lint/suspicious/noArrayIndexKey: same as above
+							// oxlint-disable-next-line react/no-array-index-key -- same as above
 							key={index}
 							className="grid grid-cols-[9rem_1fr_auto] items-center gap-2"
 						>

@@ -1,5 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import { getOrgPolicySettings, getOrgSettings } from "#/server/organization.ts";
+
 import { queryKeys } from "./keys.ts";
 
 export const orgSettingsQuery = (org: string) =>

@@ -6,6 +6,7 @@ import {
 } from "@farmer/core/lib/time";
 import { UmbrellaSimpleIcon } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
+
 import { BookTimeOffDialog } from "#/components/time/book-time-off-dialog.tsx";
 import type { EntryBlockRowEntry } from "#/components/time/entry-block-row.tsx";
 import {
@@ -146,7 +147,7 @@ export function MonthView({
 				>
 					{Array.from({ length: leadingBlanks }, (_, i) => (
 						<div
-							// biome-ignore lint/suspicious/noArrayIndexKey: fixed-length blank padding
+							// oxlint-disable-next-line react/no-array-index-key -- fixed-length blank padding
 							key={`blank-${i}`}
 							// Untinted: a day outside the month is empty ruled paper, and
 							// tinting it competes with the weekend band for the same signal.

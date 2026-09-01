@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+
 import { type DbClient, db } from "../db";
 import { organization } from "../db/schema/auth";
 

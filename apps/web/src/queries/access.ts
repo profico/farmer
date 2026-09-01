@@ -1,5 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
+
 import { getMyAccess } from "#/server/auth.ts";
+
 import { queryKeys } from "./keys.ts";
 
 // UI gating only — every server function re-resolves the same picture and

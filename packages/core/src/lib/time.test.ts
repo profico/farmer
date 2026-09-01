@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { automationWriteWindow } from "./automation-window";
 import {
 	countWorkingDays,

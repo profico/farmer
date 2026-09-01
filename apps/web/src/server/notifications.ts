@@ -4,6 +4,7 @@ import {
 	updateNotificationSettingsInput,
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
+
 import { orgMiddleware } from "./auth";
 
 // The VAPID public key is designed to be public (it's the application server

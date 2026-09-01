@@ -11,6 +11,7 @@
 // a green suite. Closing it here is the other half of sharing it.
 
 import { afterAll } from "bun:test";
+
 import { closeTestEngine } from "./harness";
 
 afterAll(async () => {

@@ -215,11 +215,14 @@ export const snapToQuarterHour = (seconds: number): number =>
 // yyyy-MM (the month a day key belongs to).
 export const monthKeyOf = (dateKey: string): string => dateKey.slice(0, 7);
 
+/** An inclusive span of day keys — the shape every range-taking service reads. */
+export type DayKeyRange = { from: string; to: string };
+
+/** A half-open span of instants: `start` inclusive, `end` exclusive. */
+export type InstantRange = { start: Date; end: Date };
+
 // First and last day keys of a calendar month.
-export const monthBounds = (
-	year: number,
-	month: number,
-): { from: string; to: string } => {
+export const monthBounds = (year: number, month: number): DayKeyRange => {
 	const from = `${year}-${String(month).padStart(2, "0")}-01`;
 	return { from, to: endOfMonthKey(from) };
 };
@@ -238,10 +241,7 @@ const anchorDate = (dateStr: string, tz: string): Date => {
 };
 
 // Midnight-to-midnight bounds of a calendar day in the given timezone.
-export const dayBoundsInTz = (
-	dateStr: string,
-	tz: string,
-): { start: Date; end: Date } => {
+export const dayBoundsInTz = (dateStr: string, tz: string): InstantRange => {
 	const [year, month, day] = dateStr.split("-").map(Number);
 	return {
 		start: new TZDate(year ?? 1970, (month ?? 1) - 1, day ?? 1, 0, 0, 0, tz),

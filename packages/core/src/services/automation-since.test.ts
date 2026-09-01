@@ -28,14 +28,16 @@ import {
 	expect,
 	test,
 } from "bun:test";
+
 import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { client, project, task, timeEntry } from "../db/schema/domain";
 import { projectGithubRepo } from "../db/schema/github";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import { integrationSettings, orgSettings } from "../db/schema/settings";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { integrationSettingsService } from "./integration-settings.service";
 import { setCalendarSourceForTests, setCommitSourceForTests } from "./ports";
 import { timeEntriesService } from "./time-entries.service";
@@ -231,9 +233,11 @@ describe("recording when a switch was flipped", () => {
 			googleAutoSyncMeetings: true,
 		});
 
-		expect(settings.googleAutoSyncMeetingsSince).not.toBeNull();
 		expect(
-			(settings.googleAutoSyncMeetingsSince as Date).getTime(),
+			present(
+				settings.googleAutoSyncMeetingsSince,
+				"the meeting-sync stamp",
+			).getTime(),
 		).toBeGreaterThanOrEqual(before.getTime() - 1000);
 		// The other switch was not touched, so it has no stamp.
 		expect(settings.githubSyncCommitsAsWorkTimeSince).toBeNull();
@@ -264,9 +268,15 @@ describe("recording when a switch was flipped", () => {
 		// Not reopening everything since the first time it was ever on — which is
 		// the whole point of clearing the stamp on the way down.
 		expect(
-			(second.githubSyncCommitsAsWorkTimeSince as Date).getTime(),
+			present(
+				second.githubSyncCommitsAsWorkTimeSince,
+				"the second commit-sync stamp",
+			).getTime(),
 		).toBeGreaterThanOrEqual(
-			(first.githubSyncCommitsAsWorkTimeSince as Date).getTime(),
+			present(
+				first.githubSyncCommitsAsWorkTimeSince,
+				"the first commit-sync stamp",
+			).getTime(),
 		);
 	});
 

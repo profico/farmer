@@ -16,14 +16,15 @@
  * --fg #1b1a17, --mut #79736a, --faint #a9a296, --line rgba(27,26,23,.11),
  * --line2 rgba(27,26,23,.055), --sel rgba(27,26,23,.045), --acc #6f4ebe.
  *
- * Two lint rules are turned off for this file in the root biome.json, and both
- * are wrong here rather than tolerated:
+ * Two things here would be flagged by a CSS linter, and both are wrong here
+ * rather than tolerated. The repo no longer runs one — oxlint lints JS/TS only
+ * and oxfmt just formats CSS — so this is the record of why:
  *
- *   * noImportantStyles — the layout below the fold is built from fixed-pixel
- *     INLINE styles, and an inline style cannot be overridden by a stylesheet
- *     any other way. The mobile block at the bottom is the whole responsive
- *     layout; without !important it is decoration.
- *   * noDescendingSpecificity — `.u-link::after` is written once and reused by
+ *   * `!important` — the layout below the fold is built from fixed-pixel INLINE
+ *     styles, and an inline style cannot be overridden by a stylesheet any
+ *     other way. The mobile block at the bottom is the whole responsive layout;
+ *     without !important it is decoration.
+ *   * Descending specificity — `.u-link::after` is written once and reused by
  *     `.self-host-card:hover .u-link::after`, which is more specific and comes
  *     first. Reordering to satisfy the rule would separate the underline from
  *     the link it belongs to.

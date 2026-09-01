@@ -18,7 +18,9 @@ import {
 	expect,
 	test,
 } from "bun:test";
+
 import { eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { orgSettings } from "../db/schema/settings";

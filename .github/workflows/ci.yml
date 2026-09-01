@@ -29,11 +29,12 @@ jobs:
       # and each half was a hole:
       #   * `lint` alone ignores formatting and import order, so both drifted
       #     without ever failing a build.
-      #   * running it in apps/web meant biome only ever saw that workspace;
-      #     packages/core — the services, the jobs, the schema, about half the
-      #     code — was never linted or formatted at all.
-      # The root biome.json covers both workspaces (each has a thin
-      # `extends: "//"` config so `bun run check` still works inside them).
+      #   * running it in apps/web meant the linter only ever saw that
+      #     workspace; packages/core — the services, the jobs, the schema, about
+      #     half the code — was never linted or formatted at all.
+      # The root `oxlint.config.ts` and `.oxfmtrc.json` cover both workspaces;
+      # each workspace's own `check` script points back at the root config so
+      # `bun run check` still works from inside either one.
       - name: Lint, format and import order
         run: bun run check
 

@@ -7,6 +7,7 @@ import {
 import { addDaysToKey } from "@farmer/core/lib/time";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Suspense } from "react";
+
 import { TableLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import {
 	returnLinkClass,
@@ -28,6 +29,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { formatMonthKey, formatWeekRange } from "#/lib/format-date.ts";
 import { cn } from "#/lib/utils.ts";
+
 import type { Search } from "./search.ts";
 
 // What every report tab on this screen shares: the in-panel loading state, the

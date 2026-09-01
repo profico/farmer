@@ -71,6 +71,9 @@ export const Route = createFileRoute("/api/login")({
 
 				const location =
 					response.headers.get("Location") ??
+					// SAFETY: better-auth answers this call either with a `Location` header or
+					// with a 200 body carrying `url`. `url` is optional and a missing one falls
+					// through to the error redirect below, so a changed shape costs the hop.
 					((await response.json()) as { url?: string }).url;
 				if (!location) {
 					console.error("[login] no authorize URL from better-auth");

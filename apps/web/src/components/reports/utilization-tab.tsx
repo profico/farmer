@@ -4,6 +4,7 @@ import {
 } from "@farmer/core/lib/report-format";
 import { rollUpUtilization } from "@farmer/core/lib/utilization";
 import { useSuspenseQuery } from "@tanstack/react-query";
+
 import {
 	Table,
 	TableBody,
@@ -18,6 +19,7 @@ import {
 	utilizationReportQuery,
 	utilizationTrendQuery,
 } from "#/queries/reports.ts";
+
 import { ReportTable, TREND_MONTHS } from "./shared.tsx";
 
 export function UtilizationTab({

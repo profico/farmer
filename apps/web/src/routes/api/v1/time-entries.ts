@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+
 import { resolveApiOrgContext } from "#/server/api-auth.ts";
 
 export const Route = createFileRoute("/api/v1/time-entries")({
@@ -20,9 +21,8 @@ export const Route = createFileRoute("/api/v1/time-entries")({
 				}
 
 				const { timeEntriesService } = await import("@farmer/core/services");
-				const { listTimeEntriesRangeInput } = await import(
-					"@farmer/core/schema"
-				);
+				const { listTimeEntriesRangeInput } =
+					await import("@farmer/core/schema");
 				const { orgTimezone } = await import("@farmer/core/lib/org-time");
 				const { dayKeyInTz } = await import("@farmer/core/lib/time");
 

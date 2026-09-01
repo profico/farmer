@@ -1,5 +1,6 @@
 import { monthReportInput } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
+
 import { resolveApiOrgContext } from "#/server/api-auth.ts";
 
 // Session-cookie authed (not api/v1): this exists for the "Download PDF"
@@ -12,9 +13,8 @@ export const Route = createFileRoute("/api/reports/pdf")({
 				if (!ctx) {
 					return Response.json({ error: "Unauthorized" }, { status: 401 });
 				}
-				const { accessService, AccessError, reportPdfService } = await import(
-					"@farmer/core/services"
-				);
+				const { accessService, AccessError, reportPdfService } =
+					await import("@farmer/core/services");
 				// The same gate every report service call makes, rather than this
 				// route's own reading of the role — "owner or admin" was spelled out
 				// here by hand, so a change to what Admin means would have missed it.

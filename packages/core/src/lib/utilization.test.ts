@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+
 import { isMeasured, rollUpUtilization, utilizationPctOf } from "./utilization";
 
 const H = 3600;

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+
 import { db } from "./index";
 import { member, organization } from "./schema/auth";
 import {

@@ -178,9 +178,8 @@ export const sessionMiddleware = createMiddleware({ type: "function" }).server(
 export const orgMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const ctx = await requireOrgContext();
-		const { AccessError, ctxAccess, NotAMemberError } = await import(
-			"@farmer/core/services"
-		);
+		const { AccessError, ctxAccess, NotAMemberError } =
+			await import("@farmer/core/services");
 		try {
 			// Also warms the memo: this Ctx object is the one the handler receives.
 			await ctxAccess(ctx);
@@ -213,9 +212,8 @@ export const orgMiddleware = createMiddleware({ type: "function" }).server(
 export const orgAdminMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const ctx = await requireOrgContext();
-		const { AccessError, ctxAccess, NotAMemberError } = await import(
-			"@farmer/core/services"
-		);
+		const { AccessError, ctxAccess, NotAMemberError } =
+			await import("@farmer/core/services");
 		let access: Awaited<ReturnType<typeof ctxAccess>>;
 		try {
 			access = await ctxAccess(ctx);

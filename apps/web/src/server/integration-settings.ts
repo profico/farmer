@@ -1,5 +1,6 @@
 import { updateIntegrationSettingsInput } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
+
 import { orgMiddleware } from "./auth";
 
 // POST (not GET) so the response is never CDN/browser-cacheable — private,
@@ -9,9 +10,8 @@ export const getIntegrationSettings = createServerFn({
 })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
-		const { integrationSettingsService } = await import(
-			"@farmer/core/services"
-		);
+		const { integrationSettingsService } =
+			await import("@farmer/core/services");
 		return integrationSettingsService.get(context.ctx);
 	});
 
@@ -19,9 +19,8 @@ export const updateIntegrationSettings = createServerFn({ method: "POST" })
 	.middleware([orgMiddleware])
 	.validator(updateIntegrationSettingsInput)
 	.handler(async ({ data, context }) => {
-		const { integrationSettingsService } = await import(
-			"@farmer/core/services"
-		);
+		const { integrationSettingsService } =
+			await import("@farmer/core/services");
 		const before = await integrationSettingsService.get(context.ctx);
 		const after = await integrationSettingsService.update(context.ctx, data);
 

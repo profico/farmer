@@ -1,5 +1,6 @@
 import { listCalendarEventsInput } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
+
 import { orgMiddleware } from "./auth";
 
 // POST (not GET) so the response is never CDN/browser-cacheable — private,
@@ -37,9 +38,25 @@ export const listCalendarEventsForDay = createServerFn({ method: "POST" })
 // the honest report is "started, still going".
 const SYNC_NOW_TIMEOUT_MS = 25_000;
 
+/** What "Sync now" reports back.
+ *
+ *  `stillRunning` is the deadline case, not a failure: the pass keeps going in
+ *  this process, so the four lists are empty because nothing is KNOWN yet, not
+ *  because nothing happened. The engines are reported separately for the same
+ *  reason — an engine whose window came back null did nothing, and folding that
+ *  into success is what let this button claim it synced after touching nothing. */
+type SyncNowResult = {
+	ok: boolean;
+	stillRunning: boolean;
+	ran: string[];
+	skipped: string[];
+	failed: string[];
+	off: string[];
+};
+
 export const syncGoogleMeetings = createServerFn({ method: "POST" })
 	.middleware([orgMiddleware])
-	.handler(async ({ context }) => {
+	.handler(async ({ context }): Promise<SyncNowResult> => {
 		const { runAutomationSyncForCtx } = await import("@farmer/core/jobs");
 		const { withTimeout } = await import("@farmer/core/lib/http");
 
@@ -63,10 +80,10 @@ export const syncGoogleMeetings = createServerFn({ method: "POST" })
 			return {
 				ok: true,
 				stillRunning: true,
-				ran: [] as string[],
-				skipped: [] as string[],
-				failed: [] as string[],
-				off: [] as string[],
+				ran: [],
+				skipped: [],
+				failed: [],
+				off: [],
 			};
 		}
 		return {

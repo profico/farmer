@@ -7,6 +7,7 @@ import {
 	unique,
 	uuid,
 } from "drizzle-orm/pg-core";
+
 import { organization, user } from "./auth";
 import { project } from "./domain";
 

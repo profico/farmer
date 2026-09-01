@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -292,7 +293,7 @@ function FileEntriesDialog({
 						<Select
 							items={items}
 							value={projectId}
-							onValueChange={(value) => setProjectId(value as string)}
+							onValueChange={(value) => setProjectId(String(value))}
 						>
 							<SelectTrigger className="w-52 shrink-0">
 								<SelectValue placeholder="Pick a project" />

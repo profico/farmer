@@ -19,7 +19,9 @@
 //     live in the WHERE clause.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { client, project, projectMember } from "../db/schema/domain";
@@ -42,6 +44,8 @@ const accessWith = (
 		"u1",
 		"org1",
 		isAdmin,
+		// SAFETY: `Object.entries` widens the value type to `string`; `roles` is the
+		// test's own literal, declared one line up with exactly this union.
 		new Map(Object.entries(roles)) as ReadonlyMap<
 			string,
 			"member" | "team_lead" | "pm"
@@ -227,8 +231,8 @@ describe("Access assertions", () => {
 			accessWith({}).assertAdmin();
 			throw new Error("should have thrown");
 		} catch (error) {
-			expect(error).toBeInstanceOf(AccessError);
-			expect((error as AccessError).name).toBe("AccessError");
+			if (!(error instanceof AccessError)) throw error;
+			expect(error.name).toBe("AccessError");
 		}
 	});
 

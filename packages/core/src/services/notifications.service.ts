@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import webpush from "web-push";
+
 import { db } from "../db";
 import {
 	notificationSettings,
@@ -206,6 +207,9 @@ export const notificationsService = {
 						body,
 					);
 				} catch (error) {
+					// SAFETY: `web-push` rejects with a `WebPushError` carrying the upstream status
+					// code. The field is read as optional and compared to two literals, so an error
+					// from anywhere else simply fails both checks and is logged rather than acted on.
 					const status = (error as { statusCode?: number }).statusCode;
 					if (status === 404 || status === 410) {
 						// Subscription expired/unsubscribed — drop it.
