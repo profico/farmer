@@ -191,7 +191,7 @@ export function BookTimeOffDialog({
 				</DialogHeader>
 
 				{result ? (
-					<div className="grid gap-4">
+					<div className="grid grid-cols-[minmax(0,1fr)] gap-4">
 						<p className="text-base">
 							{result.booked.length === 0
 								? "Nothing was booked."
@@ -204,11 +204,11 @@ export function BookTimeOffDialog({
 								Skipped {result.skipped.length}{" "}
 								{result.skipped.length === 1 ? "day" : "days"}
 							</p>
-							<div className="-mx-5 mt-2 max-h-56 divide-y divide-line2 overflow-y-auto border-y">
+							<div className="-mx-6 mt-2 max-h-56 divide-y divide-line2 overflow-y-auto border-y">
 								{result.skipped.map((day) => (
 									<div
 										key={day.date}
-										className="flex items-baseline justify-between gap-3 px-5 py-2"
+										className="flex items-baseline justify-between gap-3 px-6 py-2"
 									>
 										<span className="text-sm">
 											{formatDateKeyLong(day.date)}

@@ -223,7 +223,7 @@ function RecurringBlockRuleDialog({
 				<Form {...form}>
 					<form
 						onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
-						className="grid gap-4"
+						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
 						<FormField
 							control={form.control}

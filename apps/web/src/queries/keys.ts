@@ -50,6 +50,7 @@ export const queryKeys = (org: string) =>
 		close: ["close", org],
 		compliance: ["compliance", org],
 		dayAssembly: ["day-assembly", org],
+		filingRules: ["filing-rules", org],
 		github: ["github", org],
 		googleCalendar: ["google-calendar", org],
 		holidays: ["holidays", org],

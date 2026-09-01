@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
+import { project, task } from "./domain";
 
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });
@@ -128,6 +129,57 @@ export const commitFillTombstone = pgTable(
 	},
 	(t) => [
 		unique("cft_org_user_date_unq").on(t.organizationId, t.userId, t.date),
+	],
+);
+
+// "Always file this meeting to that project." A per-(org, user) standing answer
+// to the question the File-your-time dialog asks, so the recurring one — the
+// weekly stand-up, the daily — is answered once instead of every month.
+//
+// Keyed on (task, normalized title), NOT on the calendar event or series: the
+// engines resolve tasks by systemKey and identify a meeting by what a person
+// sees (see meetingIdentityKeys), and a series that is cancelled and recreated
+// is a new event id but the same standing decision. Duration is deliberately
+// NOT part of the key even though the dialog groups by it — a stand-up that ran
+// long once is still the stand-up.
+//
+// An empty title cannot carry a rule: the group would fall back to the task
+// name, and a rule keyed on "" would claim every untitled meeting the sync ever
+// imports. The service refuses to create one.
+//
+// Per-user, not per-org: the calendar the meetings come from is the person's,
+// the entries are theirs, and two people in the same stand-up may well be
+// billing it to different projects.
+export const filingRule = pgTable(
+	"filing_rule",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		taskId: uuid("task_id")
+			.notNull()
+			.references(() => task.id, { onDelete: "cascade" }),
+		/** The match key: the entry description, trimmed and lower-cased. */
+		titleKey: text("title_key").notNull(),
+		/** The same title as the person actually saw it, for display only. */
+		title: text("title").notNull(),
+		// cascade, not set null: a rule pointing at a deleted project has no
+		// meaning and would silently stop applying anyway.
+		projectId: uuid("project_id")
+			.notNull()
+			.references(() => project.id, { onDelete: "cascade" }),
+		...stamps,
+	},
+	(t) => [
+		index("filing_rule_org_user_idx").on(t.organizationId, t.userId),
+		unique("filing_rule_unq").on(
+			t.organizationId,
+			t.userId,
+			t.taskId,
+			t.titleKey,
+		),
 	],
 );
 

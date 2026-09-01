@@ -237,7 +237,7 @@ export function CreateProjectDialog() {
 				<Form {...form}>
 					<form
 						onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
-						className="grid gap-4"
+						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
 						<div className="grid grid-cols-[1fr_auto] gap-4">
 							<FormField

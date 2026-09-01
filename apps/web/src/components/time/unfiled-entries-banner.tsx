@@ -191,6 +191,11 @@ function FileEntriesDialog({
 	const groups = groupUnfiled(entries ?? []);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [projectId, setProjectId] = useState<string | null>(null);
+	// "Always file this one here." Off by default: a standing rule about future
+	// time is a bigger statement than filing the rows in front of you, and it
+	// should be something you asked for rather than something you forgot to
+	// untick. Managed under Settings → Preferences afterwards.
+	const [remember, setRemember] = useState(false);
 
 	// Start clean on each open: the list behind it has changed, and a selection
 	// carried over from last time would be filing rows nobody just looked at.
@@ -200,6 +205,7 @@ function FileEntriesDialog({
 		if (open) {
 			setSelectedIds(new Set());
 			setProjectId(null);
+			setRemember(false);
 		}
 	}
 
@@ -222,12 +228,21 @@ function FileEntriesDialog({
 	const fileMutation = useMutation({
 		mutationFn: () =>
 			fileTimeEntries({
-				data: { timeEntryIds: [...selectedIds], projectId: projectId ?? "" },
+				data: {
+					timeEntryIds: [...selectedIds],
+					projectId: projectId ?? "",
+					remember,
+				},
 			}),
-		onSuccess: async ({ filed, failed, firstError }) => {
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timeEntries],
-			});
+		onSuccess: async ({ filed, failed, firstError, remembered }) => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).timeEntries],
+				}),
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).filingRules],
+				}),
+			]);
 			setSelectedIds(new Set());
 			if (failed > 0) {
 				// The one real failure here is a task the project hasn't picked, so
@@ -236,7 +251,14 @@ function FileEntriesDialog({
 					`Filed ${filed}, ${failed} could not be filed: ${firstError ?? "unknown reason"}`,
 				);
 			} else {
-				toast.success(`Filed ${filed} ${filed === 1 ? "entry" : "entries"}`);
+				// The rule count is named rather than assumed: an entry with no
+				// description carries nothing to key a rule on and is skipped, so
+				// "remembered 3" after ticking four groups is information, not a bug.
+				toast.success(
+					remembered > 0
+						? `Filed ${filed} ${filed === 1 ? "entry" : "entries"} · will file ${remembered} ${remembered === 1 ? "meeting" : "meetings"} here from now on`
+						: `Filed ${filed} ${filed === 1 ? "entry" : "entries"}`,
+				);
 			}
 		},
 		onError: (error: Error) => toast.error(error.message),
@@ -244,7 +266,7 @@ function FileEntriesDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-2xl">
+			<DialogContent className="sm:max-w-2xl">
 				<DialogHeader>
 					<DialogTitle>File your time</DialogTitle>
 					{/* Built-ins deliberately unnamed here: which tasks are universal is
@@ -259,7 +281,7 @@ function FileEntriesDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="flex flex-col divide-y">
+				<div className="-mx-6 flex flex-col divide-y divide-line2 border-y">
 					{groups.map((group) => (
 						<UnfiledGroupRow
 							key={group.key}
@@ -277,7 +299,7 @@ function FileEntriesDialog({
 						/>
 					))}
 					{entries?.length === 0 && (
-						<p className="py-8 text-center text-sm text-muted-foreground">
+						<p className="px-6 py-8 text-center text-sm text-muted-foreground">
 							Everything's filed.
 						</p>
 					)}
@@ -285,7 +307,16 @@ function FileEntriesDialog({
 
 				{groups.length > 0 && (
 					<DialogFooter className="items-center gap-3">
-						<span className="mr-auto text-xs text-muted-foreground">
+						<label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+							<input
+								type="checkbox"
+								className="accent-primary"
+								checked={remember}
+								onChange={(event) => setRemember(event.target.checked)}
+							/>
+							Always file these here
+						</label>
+						<span className="text-xs text-muted-foreground">
 							{selectedIds.size === 0
 								? "Nothing selected"
 								: `${selectedIds.size} selected · ${formatHoursShort(selectedSeconds)}`}
@@ -338,33 +369,42 @@ function UnfiledGroupRow({
 	const isRecurring = group.entries.length > 1;
 
 	return (
-		<div className="py-3">
-			<div className="flex items-center gap-3">
-				<input
-					type="checkbox"
-					className="accent-primary"
-					checked={allIn}
-					ref={(node) => {
-						// The only honest state for a partly-selected group. Set through a
-						// ref because `indeterminate` is a DOM property with no attribute.
-						if (node) node.indeterminate = someIn;
-					}}
-					onChange={onToggleGroup}
-					aria-label={`Select ${group.title}`}
-				/>
-				<div className="min-w-0 flex-1">
-					<p className="truncate text-sm font-medium">{group.title}</p>
-					<p className="text-xs text-muted-foreground">
-						{group.taskName} · {formatHoursShort(group.seconds)}
-						{isRecurring
-							? ` · ${group.entries.length} occurrences`
-							: ` · ${formatDateKeyLong(group.entries[0]?.date ?? "")}`}
-					</p>
-				</div>
+		<div className="py-1">
+			{/* The label is the whole row, not just the box: a 16px checkbox is a
+			    hard target, and everything to its right identifies the same group.
+			    "Show dates" has to stay OUTSIDE it — a button nested in a label
+			    toggles the checkbox on its way to its own handler. */}
+			<div className="flex items-center gap-3 pr-6">
+				<label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md py-2 pl-6 transition-colors duration-(--dur-fast) hover:bg-muted">
+					<input
+						type="checkbox"
+						className="shrink-0 accent-primary"
+						checked={allIn}
+						ref={(node) => {
+							// The only honest state for a partly-selected group. Set through a
+							// ref because `indeterminate` is a DOM property with no attribute.
+							if (node) node.indeterminate = someIn;
+						}}
+						onChange={onToggleGroup}
+						aria-label={`Select ${group.title}`}
+					/>
+					<span className="min-w-0 flex-1">
+						<span className="block truncate text-sm font-medium">
+							{group.title}
+						</span>
+						<span className="block text-xs text-muted-foreground">
+							{group.taskName} · {formatHoursShort(group.seconds)}
+							{isRecurring
+								? ` · ${group.entries.length} occurrences`
+								: ` · ${formatDateKeyLong(group.entries[0]?.date ?? "")}`}
+						</span>
+					</span>
+				</label>
 				{isRecurring && (
 					<Button
 						variant="ghost"
 						size="sm"
+						className="shrink-0"
 						onClick={() => setExpanded((current) => !current)}
 					>
 						{expanded ? "Hide dates" : "Show dates"}
@@ -373,11 +413,11 @@ function UnfiledGroupRow({
 			</div>
 
 			{expanded && (
-				<div className="mt-2 ml-7 flex flex-col gap-1.5">
+				<div className="mb-2 flex flex-col pl-6">
 					{group.entries.map((entry) => (
 						<label
 							key={entry.id}
-							className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+							className="flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-8 text-xs text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
 						>
 							<input
 								type="checkbox"

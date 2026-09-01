@@ -531,7 +531,7 @@ export function AddBlockDialog({
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger render={trigger} />
-			<DialogContent>
+			<DialogContent className="sm:max-w-xl">
 				<DialogHeader>
 					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
 					<p className="text-sm text-muted-foreground">{dialogDateLabel}</p>
@@ -539,7 +539,13 @@ export function AddBlockDialog({
 				<Form {...form}>
 					<form
 						onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
-						className="grid gap-4"
+						// `grid-cols-[minmax(0,1fr)]` for the same reason dialog-body
+						// carries it: an implicit grid column is `auto`-sized, so its
+						// items get `min-width: auto` and one long unbroken commit subject
+						// widens the column past the dialog, taking every sibling field
+						// with it. Pinning the column is what lets the `truncate` on the
+						// commit rows actually bite.
+						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
 						<FormField
 							control={form.control}
@@ -959,7 +965,7 @@ export function AddBlockDialog({
 													>
 														{commit.sha.slice(0, 7)}
 													</a>
-													<span className="truncate">
+													<span className="min-w-0 truncate">
 														{commit.message.split("\n")[0]}
 													</span>
 												</span>
@@ -967,6 +973,7 @@ export function AddBlockDialog({
 													type="button"
 													variant="ghost"
 													size="icon-xs"
+													className="shrink-0"
 													onClick={() => detachCommitMutation.mutate(commit.id)}
 													disabled={detachCommitMutation.isPending}
 												>
@@ -1001,7 +1008,7 @@ export function AddBlockDialog({
 														<span className="block truncate">
 															{commit.message.split("\n")[0]}
 														</span>
-														<span className="text-xs text-muted-foreground">
+														<span className="block truncate text-xs text-muted-foreground">
 															{commit.repoFullName} · {commit.sha.slice(0, 7)}
 														</span>
 													</span>

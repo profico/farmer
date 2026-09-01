@@ -131,7 +131,7 @@ function DialogContent({
 						// the close button (absolute against the popup) and the footer
 						// stay put while a tall form scrolls under them.
 						className={cn(
-							"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-base text-popover-foreground outline-none sm:max-w-md",
+							"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-base text-popover-foreground outline-none sm:max-w-lg",
 							className,
 						)}
 						render={
@@ -155,7 +155,7 @@ function DialogContent({
 							// copy, the rows and the sticky footer all ran off the right
 							// edge. Pinning the column to the container is what lets the
 							// `min-w-0 truncate` the rows already carry actually bite.
-							className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto p-5"
+							className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto p-6"
 						>
 							{children}
 						</div>
@@ -207,13 +207,13 @@ function DialogFooter({
 			// instead of scrolling off the bottom. `bg-popover` is what stops the
 			// scrolled content showing through it.
 			//
-			// `-bottom-5` (not `bottom-0`): the sticky inset resolves against the
-			// scroll container's CONTENT box, which the body's `p-5` sits 1.25rem
-			// inside of — the same 1.25rem the `-mb-5` bleed already spends. Pinning
+			// `-bottom-6` (not `bottom-0`): the sticky inset resolves against the
+			// scroll container's CONTENT box, which the body's `p-6` sits 1.5rem
+			// inside of — the same 1.5rem the `-mb-6` bleed already spends. Pinning
 			// at 0 parks the footer that far above the popup's edge and leaves a
 			// stripe of scrolled content showing underneath it.
 			className={cn(
-				"-mx-5 -mb-5 -bottom-5 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-5 sm:flex-row sm:justify-end",
+				"-mx-6 -mb-6 -bottom-6 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-6 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}

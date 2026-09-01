@@ -92,7 +92,7 @@ function CreateClientDialog() {
 				<Form {...form}>
 					<form
 						onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
-						className="grid gap-4"
+						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
 						<FormField
 							control={form.control}

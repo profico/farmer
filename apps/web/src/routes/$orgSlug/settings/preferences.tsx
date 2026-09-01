@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { FilingRulesSettings } from "#/components/filing-rules-settings.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
 import {
 	AlertDialog,
@@ -195,6 +196,7 @@ function PreferencesSettingsPage() {
 			{devAuth ? <SignInMethodsSection /> : null}
 
 			<NotificationSettings />
+			<FilingRulesSettings />
 		</Page>
 	);
 }

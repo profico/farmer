@@ -102,6 +102,11 @@ export type FileTimeEntryInput = z.infer<typeof fileTimeEntryInput>;
 export const fileTimeEntriesInput = z.object({
 	timeEntryIds: z.array(z.uuid()).min(1).max(200),
 	projectId: z.uuid(),
+	// "Always file this one here." Not a list of rules to create — the service
+	// derives those from the entries it actually filed, so the client cannot ask
+	// for a standing rule about time it did not just attribute. See
+	// filingRulesService.rememberFrom.
+	remember: z.boolean().default(false),
 });
 export type FileTimeEntriesInput = z.infer<typeof fileTimeEntriesInput>;
 

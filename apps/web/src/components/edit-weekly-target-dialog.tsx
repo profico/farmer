@@ -70,7 +70,7 @@ export function EditWeeklyTargetDialog({
 						e.preventDefault();
 						if (canSubmit) mutation.mutate(hours);
 					}}
-					className="grid gap-4"
+					className="grid grid-cols-[minmax(0,1fr)] gap-4"
 				>
 					<div className="grid gap-2">
 						<Label htmlFor="weekly-target-hours">Hours per week</Label>

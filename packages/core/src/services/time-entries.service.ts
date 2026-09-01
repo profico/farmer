@@ -62,6 +62,7 @@ import type {
 import { AccessError } from "./access.service";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import { computeDayFillSeconds, recomputeDayFill } from "./day-fill";
+import { filingRuleKey, filingRulesService } from "./filing-rules.service";
 import {
 	assertProjectInOrg,
 	assertTaskAvailable,
@@ -155,6 +156,15 @@ const syncMeetingsForRange = async (
 	const meetingTask = await tasksService.findBySystemKey(ctx, "meeting");
 	if (!meetingTask) return;
 
+	// Standing "always file this one to that project" answers, keyed on the
+	// normalized title. Resolved once for the whole range rather than per event,
+	// and already filtered to projects the person may still write to — see
+	// filingRulesService.resolveForTask.
+	const filingRules = await filingRulesService.resolveForTask(
+		ctx,
+		meetingTask.id,
+	);
+
 	const tombstones = await db.query.syncedMeetingTombstone.findMany({
 		where: and(
 			eq(syncedMeetingTombstone.organizationId, ctx.organizationId),
@@ -225,9 +235,18 @@ const syncMeetingsForRange = async (
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
 				taskId: meetingTask.id,
-				// A synced meeting has no project: it's the user's job to file it
-				// against one. It lands as a project-less draft they can complete.
-				projectId: null,
+				// A synced meeting has no project by default: it's the user's job to
+				// file it against one, and it lands as a project-less draft they can
+				// complete. A filing rule is the person having already answered that
+				// question for this meeting, so the occurrence arrives filed.
+				//
+				// The row stays syncLocked = false either way. The rule decides where
+				// the time goes, not who owns the row: Google is still the source of
+				// truth for its title, length and existence, so a cancelled meeting
+				// still disappears and a renamed one still updates. Taking ownership
+				// is what filing BY HAND means (see `file`), and that is a different
+				// act from having pre-answered where it goes.
+				projectId: filingRules.get(filingRuleKey(event.title)) ?? null,
 				description: event.title,
 				date: dayKeyInTz(startedAt, tz),
 				durationSeconds: snapToQuarterHour(rawSeconds),
@@ -1169,11 +1188,19 @@ export const timeEntriesService = {
 
 		let filed = 0;
 		const reasons: string[] = [];
+		// What was actually filed, for `remember` below — collected from the
+		// returned rows rather than from the request, so a rule can only ever be
+		// recorded for an entry that really moved.
+		const succeeded: { taskId: string; description: string }[] = [];
 		for (const timeEntryId of input.timeEntryIds) {
 			try {
-				await timeEntriesService.file(ctx, {
+				const entry = await timeEntriesService.file(ctx, {
 					timeEntryId,
 					projectId: input.projectId,
+				});
+				succeeded.push({
+					taskId: entry.taskId,
+					description: entry.description ?? "",
 				});
 				filed++;
 			} catch (error) {
@@ -1182,7 +1209,31 @@ export const timeEntriesService = {
 				);
 			}
 		}
-		return { filed, failed: reasons.length, firstError: reasons[0] };
+
+		// Best-effort, and deliberately after the filing rather than alongside it:
+		// the hours are the write that matters and they are already committed, so a
+		// preference that fails to save must not turn a successful filing into an
+		// error toast. `remembered` is reported instead, and it is 0 when nothing
+		// carried a title worth keying on.
+		let remembered = 0;
+		if (input.remember && succeeded.length > 0) {
+			try {
+				remembered = await filingRulesService.rememberFrom(
+					ctx,
+					input.projectId,
+					succeeded,
+				);
+			} catch (error) {
+				console.error("[time-entries] could not save filing rules", error);
+			}
+		}
+
+		return {
+			filed,
+			failed: reasons.length,
+			firstError: reasons[0],
+			remembered,
+		};
 	},
 
 	/** Inline note edit. No duration/day change, so no fill recompute. */
