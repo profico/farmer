@@ -4,6 +4,8 @@ import {
 	startOfWeekKey,
 } from "@farmer/core/lib/time";
 import {
+	ArrowLeftIcon,
+	ArrowRightIcon,
 	NoteIcon,
 	PlusIcon,
 	UmbrellaSimpleIcon,
@@ -297,7 +299,7 @@ export function WeekView({
 						className={stepperClass}
 						aria-label="Previous week"
 					>
-						←
+						<ArrowLeftIcon weight="regular" className="size-4" />
 					</Link>
 				}
 				label={formatWeekRange(dates[0] ?? "", dates[dates.length - 1] ?? "")}
@@ -309,7 +311,7 @@ export function WeekView({
 						className={stepperClass}
 						aria-label="Next week"
 					>
-						→
+						<ArrowRightIcon weight="regular" className="size-4" />
 					</Link>
 				}
 				jumpTo={{

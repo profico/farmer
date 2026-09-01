@@ -5,6 +5,7 @@ import {
 	shiftMonthKey,
 } from "@farmer/core/lib/report-period";
 import { addDaysToKey } from "@farmer/core/lib/time";
+import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Suspense } from "react";
 
@@ -87,7 +88,11 @@ export function MonthFramed({
 			className={stepperClass}
 			aria-label={delta < 0 ? "Previous month" : "Next month"}
 		>
-			{delta < 0 ? "←" : "→"}
+			{delta < 0 ? (
+				<ArrowLeftIcon weight="regular" className="size-4" />
+			) : (
+				<ArrowRightIcon weight="regular" className="size-4" />
+			)}
 		</Link>
 	);
 
@@ -176,7 +181,7 @@ export function PeriodPicker({
 							className={stepperClass}
 							aria-label="Previous period"
 						>
-							←
+							<ArrowLeftIcon weight="regular" className="size-4" />
 						</Link>
 					}
 					label={label}
@@ -188,7 +193,7 @@ export function PeriodPicker({
 							className={stepperClass}
 							aria-label="Next period"
 						>
-							→
+							<ArrowRightIcon weight="regular" className="size-4" />
 						</Link>
 					}
 					returnLink={

@@ -1,3 +1,4 @@
+import { ArrowRightIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
@@ -72,9 +73,10 @@ function MySchedulePage() {
 					<Link
 						to="/$orgSlug/settings/recurring-blocks"
 						params={{ orgSlug: organization.slug }}
-						className="underlined text-sm text-primary"
+						className="underlined inline-flex items-center gap-1 text-sm text-primary"
 					>
-						Manage repeating blocks →
+						Manage repeating blocks
+						<ArrowRightIcon weight="regular" className="size-3.5" />
 					</Link>
 				</div>
 			</div>

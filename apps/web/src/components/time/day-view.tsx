@@ -1,5 +1,7 @@
 import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
 import {
+	ArrowLeftIcon,
+	ArrowRightIcon,
 	PlusIcon,
 	SparkleIcon,
 	UmbrellaSimpleIcon,
@@ -126,7 +128,7 @@ export function DayView({
 						className={stepperClass}
 						aria-label="Previous day"
 					>
-						←
+						<ArrowLeftIcon weight="regular" className="size-4" />
 					</Link>
 				}
 				label={
@@ -147,7 +149,7 @@ export function DayView({
 						className={stepperClass}
 						aria-label="Next day"
 					>
-						→
+						<ArrowRightIcon weight="regular" className="size-4" />
 					</Link>
 				}
 				jumpTo={{

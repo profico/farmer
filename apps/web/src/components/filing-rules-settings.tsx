@@ -1,4 +1,4 @@
-import { TrayIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, TrayIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -52,7 +52,16 @@ export function FilingRulesSettings() {
 						key={rule.id}
 						icon={<TrayIcon className="size-5 text-muted-foreground" />}
 						title={rule.title}
-						description={`${rule.taskName} → ${rule.projectCode ? `[${rule.projectCode}] ` : ""}${rule.projectName}`}
+						description={
+							<span className="inline-flex items-center gap-1.5">
+								{rule.taskName}
+								<ArrowRightIcon
+									weight="regular"
+									className="size-3.5 shrink-0"
+								/>
+								{`${rule.projectCode ? `[${rule.projectCode}] ` : ""}${rule.projectName}`}
+							</span>
+						}
 						action={
 							<Button
 								variant="outline"

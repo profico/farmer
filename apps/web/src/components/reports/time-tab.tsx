@@ -4,6 +4,7 @@ import {
 } from "@farmer/core/lib/report-format";
 import { resolveReportPeriod } from "@farmer/core/lib/report-period";
 import type { TimeReportDetailInput } from "@farmer/core/schema";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
@@ -368,9 +369,10 @@ function TimeDetail({
 						to="/$orgSlug/reports"
 						params={{ orgSlug }}
 						search={{ ...search, detailId: undefined, detailKind: undefined }}
-						className={returnLinkClass}
+						className={`${returnLinkClass} inline-flex items-center gap-1`}
 					>
-						← Back
+						<ArrowLeftIcon weight="regular" className="size-3.5" />
+						Back
 					</Link>
 					<h2 className="h2">{title}</h2>
 				</div>

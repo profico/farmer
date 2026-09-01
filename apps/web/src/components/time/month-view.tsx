@@ -4,7 +4,11 @@ import {
 	endOfMonthKey,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
-import { UmbrellaSimpleIcon } from "@phosphor-icons/react";
+import {
+	ArrowLeftIcon,
+	ArrowRightIcon,
+	UmbrellaSimpleIcon,
+} from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import { BookTimeOffDialog } from "#/components/time/book-time-off-dialog.tsx";
@@ -70,7 +74,7 @@ export function MonthView({
 						className={stepperClass}
 						aria-label="Previous month"
 					>
-						←
+						<ArrowLeftIcon weight="regular" className="size-4" />
 					</Link>
 				}
 				label={formatMonthKey(month)}
@@ -82,7 +86,7 @@ export function MonthView({
 						className={stepperClass}
 						aria-label="Next month"
 					>
-						→
+						<ArrowRightIcon weight="regular" className="size-4" />
 					</Link>
 				}
 				jumpTo={{
