@@ -6,7 +6,10 @@ export const inviteMemberInput = z.object({
 });
 export type InviteMemberInput = z.infer<typeof inviteMemberInput>;
 
-export const cancelInvitationInput = z.uuid();
+// better-auth owns the invitation row and generates its id with its own
+// generator, not as a UUID — the column is `text`, so anything narrower than a
+// non-empty string rejects a valid id.
+export const cancelInvitationInput = z.string().min(1);
 export type CancelInvitationInput = z.infer<typeof cancelInvitationInput>;
 
 // better-auth's removeMember accepts either the member row id or the
@@ -15,7 +18,8 @@ export const removeMemberInput = z.string().min(1);
 export type RemoveMemberInput = z.infer<typeof removeMemberInput>;
 
 export const updateMemberRoleInput = z.object({
-	memberId: z.uuid(),
+	// Same as cancelInvitationInput: a better-auth id, not a UUID.
+	memberId: z.string().min(1),
 	role: z.enum(["admin", "member"]),
 });
 export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleInput>;
