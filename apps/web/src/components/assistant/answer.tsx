@@ -182,7 +182,18 @@ const parseBlocks = (source: string): Block[] => {
 			// A directive is only read once its fence has CLOSED. Half a JSON object
 			// parses as nothing, so an open chart fence would otherwise flicker
 			// between "malformed, show the code" and the chart on the last token.
-			if (lang === "farmer-chart" && closed) {
+			//
+			// The TAG is deliberately not required, for the same reason `fencedTable`
+			// below exists: `farmer-chart` is the contract, and a model that knows
+			// the shape but reaches for ```json — or for no tag at all — puts the one
+			// thing this file exists to prevent on screen, a wall of raw JSON with a
+			// horizontal scrollbar and the numbers locked inside it. What identifies
+			// a chart is that the body IS one: `parseChartSpec` validates the whole
+			// object against a schema whose `data` is a non-empty array of
+			// `{label, value}`, so any other JSON in any other fence is still code.
+			// Like the table recovery, this can only re-read a wrapper the model
+			// added — it cannot invent a chart from something that is not one.
+			if (closed) {
 				const spec = parseChartSpec(text);
 				// Malformed on purpose falls through to the code block below: the
 				// numbers are in there, and a chart that silently vanishes takes them

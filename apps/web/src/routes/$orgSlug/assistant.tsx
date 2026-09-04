@@ -136,7 +136,13 @@ function AssistantPage() {
 		// frame → thread. The swap below then happens ONCE, on content that is
 		// already there, which is also what makes landing at the bottom possible —
 		// you cannot scroll to the end of a transcript that has not loaded.
-		placeholderData: (previous) => previous,
+		//
+		// Only when another thread is actually on its way, though. "New chat" is
+		// the one navigation with nothing arriving to replace the placeholder —
+		// the query is `enabled: false` and never refetches — so holding it there
+		// left the previous conversation on screen for the whole of the new one,
+		// with `viewKey` still naming it so even the swap could not clear it.
+		placeholderData: conversationId ? (previous) => previous : undefined,
 	});
 
 	const scrollRef = useRef<HTMLDivElement>(null);

@@ -30,6 +30,7 @@ import { type ComponentType, useEffect, useRef, useState } from "react";
 import { ChatRail } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
+import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { useScrollFade } from "#/components/ui/scroll-fade.tsx";
 import {
 	SegmentedControl,
@@ -189,7 +190,14 @@ export const ADMIN_ITEMS: NavItem[] = [
  * focus ring off two of the fourteen nav rows. It comes off once the row has
  * settled, which is the only moment it was needed.
  */
-function EnteringMenuItem({ children }: { children: React.ReactNode }) {
+function EnteringMenuItem({
+	onSettled,
+	children,
+}: {
+	/** Called once the row has finished opening. See `lateRowsSettled`. */
+	onSettled?: () => void;
+	children: React.ReactNode;
+}) {
 	const [settled, setSettled] = useState(false);
 	return (
 		<motion.li
@@ -198,7 +206,10 @@ function EnteringMenuItem({ children }: { children: React.ReactNode }) {
 			initial={{ height: 0, opacity: 0 }}
 			animate={{ height: "auto", opacity: 1 }}
 			transition={springProductive}
-			onAnimationComplete={() => setSettled(true)}
+			onAnimationComplete={() => {
+				setSettled(true);
+				onSettled?.();
+			}}
 		>
 			{children}
 		</motion.li>
@@ -339,14 +350,30 @@ export function AppSidebar({
 	// `useQuery` (see below) — so unlike every other row they arrive a moment
 	// after the sidebar has already painted, popping in at the end of Workspace
 	// and knocking the whole Admin group down a notch. These two open instead.
+	//
+	// That is ONE moment, though, and the rows live inside the swapped panel:
+	// every return to the Browse tab remounts them, so without this latch three
+	// row heights spring open again underneath a crossfade that has already
+	// faded them in. The latch sits on the sidebar, which the swap never
+	// unmounts, and flips on the animation's own completion rather than on the
+	// query resolving — an unrelated re-render landing mid-flight would
+	// otherwise snap the rows to full height halfway through.
+	const lateRowsSettled = useRef(false);
 	const lateNavRow = (item: NavItem) => {
 		const isActive = isNavItemActive(pathname, item.to, orgSlug);
-		return (
-			<EnteringMenuItem key={item.to}>
-				<SidebarMenuButton
-					isActive={isActive}
-					render={navLink(item, isActive)}
-				/>
+		const button = (
+			<SidebarMenuButton isActive={isActive} render={navLink(item, isActive)} />
+		);
+		return lateRowsSettled.current ? (
+			<SidebarMenuItem key={item.to}>{button}</SidebarMenuItem>
+		) : (
+			<EnteringMenuItem
+				key={item.to}
+				onSettled={() => {
+					lateRowsSettled.current = true;
+				}}
+			>
+				{button}
 			</EnteringMenuItem>
 		);
 	};
@@ -419,33 +446,46 @@ export function AppSidebar({
 			    too, since fourteen rows plus an Admin group already overflows a
 			    laptop. */}
 			<SidebarContent ref={navScrollRef} className="scroll-fade px-2.5">
-				{tab === "chat" ? (
-					<ChatRail orgSlug={orgSlug} />
-				) : (
-					<>
-						<SidebarGroup>
-							<SidebarGroupLabel>Workspace</SidebarGroupLabel>
-							<SidebarGroupContent>
-								<SidebarMenu>
-									{WORKSPACE_ITEMS.map(navRow)}
-									{[
-										...(canManageClients ? [CLIENTS_ITEM] : []),
-										...(canClose ? [CLOSE_ITEM] : []),
-										...(canSeeReports ? [REPORTS_ITEM] : []),
-									].map(lateNavRow)}
-								</SidebarMenu>
-							</SidebarGroupContent>
-						</SidebarGroup>
-						{isAdmin && (
+				{/* The two lists are a swap, not a replacement — the same crossfade the
+				    rest of the app uses for a panel change, because that is what this
+				    is. It travels along the switch that caused it: the Chat segment
+				    sits to the RIGHT of Browse, so arriving at Chat sends the content
+				    left and going back sends it right. There are only two tabs, so the
+				    one being entered names the one being left and no previous-tab ref
+				    is needed. */}
+				<FadeSwap
+					activeKey={tab}
+					direction={tab === "chat" ? "left" : "right"}
+					className="flex flex-col"
+				>
+					{tab === "chat" ? (
+						<ChatRail orgSlug={orgSlug} />
+					) : (
+						<>
 							<SidebarGroup>
-								<SidebarGroupLabel>Admin</SidebarGroupLabel>
+								<SidebarGroupLabel>Workspace</SidebarGroupLabel>
 								<SidebarGroupContent>
-									<SidebarMenu>{ADMIN_ITEMS.map(navRow)}</SidebarMenu>
+									<SidebarMenu>
+										{WORKSPACE_ITEMS.map(navRow)}
+										{[
+											...(canManageClients ? [CLIENTS_ITEM] : []),
+											...(canClose ? [CLOSE_ITEM] : []),
+											...(canSeeReports ? [REPORTS_ITEM] : []),
+										].map(lateNavRow)}
+									</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
-						)}
-					</>
-				)}
+							{isAdmin && (
+								<SidebarGroup>
+									<SidebarGroupLabel>Admin</SidebarGroupLabel>
+									<SidebarGroupContent>
+										<SidebarMenu>{ADMIN_ITEMS.map(navRow)}</SidebarMenu>
+									</SidebarGroupContent>
+								</SidebarGroup>
+							)}
+						</>
+					)}
+				</FadeSwap>
 			</SidebarContent>
 			<SidebarFooter className="shrink-0 gap-0 p-0">
 				{/* Fixed height, not padding: the row is one line tall for an admin

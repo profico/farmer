@@ -54,12 +54,32 @@ export function useScrollFade(ref: React.RefObject<HTMLElement | null>) {
 		element.addEventListener("scroll", measure, { passive: true });
 		// Content changing height is as much a reason to re-measure as scrolling:
 		// a streamed answer growing, a table filtering down to three rows.
+		//
+		// The CHILDREN are what get observed, because a ResizeObserver reports a
+		// border box and the scroller's own never moves — it is `flex-1` in a
+		// fixed frame however long the list inside it is.
 		const observer = new ResizeObserver(measure);
-		observer.observe(element);
-		for (const child of element.children) observer.observe(child);
+		const observeAll = () => {
+			// Rebuilt rather than added to: a swapped panel leaves its predecessor
+			// detached, and a detached target is an observation that can never
+			// report again.
+			observer.disconnect();
+			observer.observe(element);
+			for (const child of element.children) observer.observe(child);
+		};
+		observeAll();
+		// A panel that is REPLACED rather than resized — the sidebar's Browse/Chat
+		// swap, which mounts a new element the original observation cannot follow —
+		// otherwise left the fade measuring the list that had already gone.
+		const children = new MutationObserver(() => {
+			observeAll();
+			measure();
+		});
+		children.observe(element, { childList: true });
 		return () => {
 			element.removeEventListener("scroll", measure);
 			observer.disconnect();
+			children.disconnect();
 		};
 	}, [measure, ref]);
 }
