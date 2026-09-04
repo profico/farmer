@@ -49,6 +49,9 @@ import {
 // recover from a wrapper the model ADDED, never from data it left out — a
 // directive the model didn't write is still a directive nobody gets.
 
+/** `null` is a delimiter that carried no colon — not "left", which is what a
+ *  bare `---` used to become. The distinction is what lets a column of numbers
+ *  be set right without overriding a model that asked for something else. */
 type Align = "left" | "right" | "center";
 
 type Block =
@@ -56,7 +59,7 @@ type Block =
 	| { kind: "h"; level: 1 | 2 | 3; text: string }
 	| { kind: "ul"; items: string[] }
 	| { kind: "ol"; items: string[] }
-	| { kind: "table"; head: string[]; rows: string[][]; align: Align[] }
+	| { kind: "table"; head: string[]; rows: string[][]; align: (Align | null)[] }
 	| { kind: "hr" }
 	| { kind: "chart"; spec: ChartSpec }
 	| { kind: "next"; prompts: string[] }
@@ -96,11 +99,12 @@ const splitRow = (line: string) =>
 		.split("|")
 		.map((cell) => cell.trim());
 
-const alignOf = (spec: string): Align => {
+const alignOf = (spec: string): Align | null => {
 	const trimmed = spec.trim();
 	if (trimmed.startsWith(":") && trimmed.endsWith(":")) return "center";
 	if (trimmed.endsWith(":")) return "right";
-	return "left";
+	if (trimmed.startsWith(":")) return "left";
+	return null;
 };
 
 /** The header row at `start`, its delimiter, and every row under it. */
@@ -417,6 +421,67 @@ const alignClass = {
 	center: "text-center",
 } satisfies Record<Align, string>;
 
+/** A cell that is a quantity and nothing else — `7.25`, `-3`, `82%`, `1,204`. */
+const isNumeric = (cell: string) =>
+	/^[-+]?[$€£]?\s?\d[\d\s,.]*\s?(%|h|hrs?|€|\$|£)?$/i.test(cell.trim());
+
+/** Over this many characters a column is prose. Under it, it is a label: a
+ *  date, an amount, a name, a status. */
+const PROSE_AT = 28;
+
+type Column = {
+	align: Align;
+	numeric: boolean;
+	wraps: boolean;
+	prose: boolean;
+};
+
+/**
+ * What each column is, which is more than its delimiter said.
+ *
+ * `table-layout: auto` under a width the table cannot have shrinks every column
+ * towards its MIN-content width, roughly in proportion to what each one asked
+ * for — and a browser will break `2026-08-28` at its hyphens to get there. So a
+ * date column folds onto two lines beside a free-text column that had room to
+ * spare, which is the one thing a data table must not do: the short column is
+ * the one a reader scans down. Pinning every short column with `nowrap` makes
+ * its min-content its max-content, so the whole shrink lands on the prose
+ * column that can absorb it. If NOTHING here is prose nothing is pinned — a
+ * table of fifteen short columns has no column to absorb anything, and wrapping
+ * them is a better answer there than an inner scrollbar.
+ */
+const measureColumns = (
+	head: string[],
+	rows: string[][],
+	align: (Align | null)[],
+): Column[] => {
+	const count = rows.reduce(
+		(widest, row) => Math.max(widest, row.length),
+		head.length,
+	);
+	const lengths: number[] = [];
+	const numerics: boolean[] = [];
+	for (let column = 0; column < count; column += 1) {
+		const cells = rows
+			.map((row) => row[column]?.trim() ?? "")
+			.filter((cell) => cell !== "");
+		lengths.push(
+			cells.reduce(
+				(widest, cell) => Math.max(widest, cell.length),
+				head[column]?.length ?? 0,
+			),
+		);
+		numerics.push(cells.length > 0 && cells.every(isNumeric));
+	}
+	const hasProse = lengths.some((length) => length > PROSE_AT);
+	return lengths.map((length, column) => ({
+		align: align[column] ?? (numerics[column] ? "right" : "left"),
+		numeric: numerics[column] === true,
+		prose: hasProse && length > PROSE_AT,
+		wraps: hasProse ? length > PROSE_AT : true,
+	}));
+};
+
 /** Compact, and deliberately NOT `components/ui/table.tsx`: that one bleeds to
  *  its island's edges and carries 32px gutters, which is right for a screen
  *  whose subject is the table and wrong for four rows inside a sentence. Same
@@ -428,25 +493,39 @@ function AnswerTable({
 }: {
 	head: string[];
 	rows: string[][];
-	align: Align[];
+	align: (Align | null)[];
 }) {
-	const columnClass = (column: number) =>
-		alignClass[align[column] ?? "left"] ?? "text-left";
+	const columns = measureColumns(head, rows, align);
+	const cellClass = (index: number) => {
+		const column = columns[index];
+		return [
+			alignClass[column?.align ?? "left"],
+			column?.numeric === true ? "tabular-nums" : "",
+			column?.wraps === false ? "whitespace-nowrap" : "",
+			// A floor under the PROSE column only, for the phone: five columns
+			// cannot all fit there, and prose is the only one allowed to shrink, so
+			// it collapses into a two-word ribbon forty lines deep while every short
+			// column keeps its full width. A scroll inside the card is the better
+			// trade at that width. A table with no prose column gets no floor — it
+			// is short enough to fit, and 22ch times six columns is not.
+			column?.prose === true ? "min-w-[22ch]" : "",
+		].join(" ");
+	};
 	return (
 		// `answer-wide` (styles.css) is what lets a table with a description
 		// column leave the reading column instead of being folded into a
 		// scrollbar inside it. The inner scroller is the last resort for the one
 		// that is wider than the screen even so.
 		<div className="answer-wide">
-			<div className="-mx-0.5 overflow-x-auto">
+			<div className="overflow-x-auto rounded-card border border-line bg-surface">
 				<table className="w-full border-collapse text-[13px]">
 					<thead>
-						<tr className="border-b border-line">
+						<tr className="border-b border-line bg-inset">
 							{head.map((cell, column) => (
 								<th
 									// oxlint-disable-next-line react/no-array-index-key -- re-derived from one string on every delta, so position IS the identity
 									key={column}
-									className={`eyebrow px-1.5 py-1.5 align-bottom ${columnClass(column)}`}
+									className={`eyebrow px-3 py-2 align-bottom ${cellClass(column)}`}
 								>
 									{renderInline(cell)}
 								</th>
@@ -464,9 +543,15 @@ function AnswerTable({
 									<td
 										// oxlint-disable-next-line react/no-array-index-key -- same as above
 										key={column}
-										className={`px-1.5 py-1.5 align-top ${columnClass(column)}`}
+										className={`px-3 py-2 align-top ${cellClass(column)}`}
 									>
-										{renderInline(cell)}
+										{cell.trim() === "" ? (
+											// A blank cell and a missing one look alike, and a column of
+											// them reads as a broken table rather than as "no project".
+											<span className="text-faint">—</span>
+										) : (
+											renderInline(cell)
+										)}
 									</td>
 								))}
 							</tr>
