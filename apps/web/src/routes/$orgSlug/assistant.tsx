@@ -1,7 +1,7 @@
 import { ChatCircleDotsIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -14,6 +14,7 @@ import {
 } from "#/components/assistant/primitives.tsx";
 import { PromptBar } from "#/components/assistant/prompt-bar.tsx";
 import { useAssistantStream } from "#/components/assistant/use-assistant-stream.ts";
+import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
 import { ScrollFade } from "#/components/ui/scroll-fade.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
@@ -45,7 +46,32 @@ export const Route = createFileRoute("/$orgSlug/assistant")({
 			throw redirect({ to: "/$orgSlug", params: { orgSlug: params.orgSlug } });
 		}
 	},
-	loader: async ({ context, params }) => {
+	// The open thread is a search param, so it has to be a loader dep or the
+	// router treats every conversation as the same navigation and preloads
+	// nothing for it.
+	loaderDeps: ({ search }) => ({ c: search.c }),
+	loader: async ({ context, params, deps }) => {
+		// Awaited on the server, warmed on the client, and the difference is
+		// whether there is already a screen to look at.
+		//
+		// Server: this is somebody opening a link to a thread, and nothing is
+		// rendered yet — so the document may as well contain the transcript. It
+		// then arrives whole and already scrolled to its newest message, instead
+		// of painting the empty "What can I help with?" screen for as long as one
+		// round trip takes and then replacing it.
+		//
+		// Client: `defaultPreload: "intent"` runs this while the pointer is still
+		// approaching a thread in the sidebar, so the transcript is usually cached
+		// before the click lands. When it is not — a touch, a keyboard, a fast
+		// click — the page keeps showing the thread you were reading and swaps
+		// when the new one lands (`placeholderData` below). Blocking the route
+		// instead would replace a readable screen with a pending one.
+		if (deps.c) {
+			const thread = conversationQuery(params.orgSlug, deps.c);
+			if (import.meta.env.SSR)
+				await context.queryClient.ensureQueryData(thread);
+			else void context.queryClient.prefetchQuery(thread);
+		}
 		await Promise.all([
 			context.queryClient.ensureQueryData(
 				assistantSettingsQuery(params.orgSlug),
@@ -61,6 +87,26 @@ const SUGGESTIONS = [
 	"What have I not filed to a project yet this month?",
 	"Which project took most of my time in March?",
 ];
+
+/**
+ * Lands the transcript at its end, once, as this thread's content mounts.
+ *
+ * It renders nothing and exists for its timing: it is keyed with the panel
+ * around it, so its layout effect runs on the frame the new transcript enters
+ * the DOM — the point at which `scrollHeight` first means the thread you
+ * clicked. The same effect written on the page would run on the frame the URL
+ * changed, which is a scroll to the end of the thread you just left.
+ *
+ * A layout effect, not an effect: the position is set before the browser paints,
+ * so a thread opens AT its newest message rather than opening at the top and
+ * being moved.
+ */
+function PinToEnd({ pin }: { pin: () => void }) {
+	useLayoutEffect(() => {
+		pin();
+	}, [pin]);
+	return null;
+}
 
 /** One thing the user said. Rendered from the transcript, and — for the turn in
  *  flight — from the text the composer just sent. */
@@ -84,9 +130,25 @@ function AssistantPage() {
 	const { data: thread } = useQuery({
 		...conversationQuery(orgSlug, conversationId ?? ""),
 		enabled: Boolean(conversationId),
+		// Hold the thread you were reading on screen until the one you clicked has
+		// arrived. Without it the transcript empties the moment the URL changes,
+		// so a switch read as: thread → the "What can I help with?" hero for a
+		// frame → thread. The swap below then happens ONCE, on content that is
+		// already there, which is also what makes landing at the bottom possible —
+		// you cannot scroll to the end of a transcript that has not loaded.
+		placeholderData: (previous) => previous,
 	});
 
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const pinToEnd = useCallback(() => {
+		const element = scrollRef.current;
+		if (element) element.scrollTop = element.scrollHeight;
+	}, []);
+	// Whether the transcript is following its own end. Reading up is a decision,
+	// and an answer that arrives while you are three screens back should not
+	// haul you down to it — so this stops being true the moment the reader
+	// scrolls away from the bottom, and starts again when they return.
+	const pinnedRef = useRef(true);
 
 	const invalidateThread = async () => {
 		await Promise.all([
@@ -170,13 +232,55 @@ function AssistantPage() {
 	})();
 	const pending = stream.pending ?? storedPending;
 
-	// Follow the answer down. Scrolling the container rather than the document:
-	// this screen owns the viewport height, so the document never scrolls.
-	// oxlint-disable-next-line react-hooks/exhaustive-deps -- the effect reacts to the transcript growing, and these four are what grows it
+	// Which transcript is on screen — the thread that has actually loaded, not
+	// the one the URL is pointing at. They differ for as long as a click takes to
+	// answer, and everything below keys off the former: the swap animates once,
+	// when there is something new to show, and the scroll lands at the end of the
+	// content that is really there.
+	const viewKey = thread?.conversation.id ?? "new";
+
+	// Follow the transcript's end. Scrolling the container rather than the
+	// document: this screen owns the viewport height, so the document never
+	// scrolls.
+	//
+	// A ResizeObserver rather than an effect on the things that grow it, because
+	// height arrives later than state does — a thread mounts, then its tables lay
+	// out, then a web font swaps in, and each of those moves the end of the
+	// transcript after the render that "finished" it. Watching the height itself
+	// covers all three, plus the streamed answer growing a line at a time.
 	useEffect(() => {
 		const element = scrollRef.current;
-		if (element) element.scrollTop = element.scrollHeight;
-	}, [messages.length, stream.sentMessage, stream.streamingText, pending]);
+		if (!element) return;
+		const stick = () => {
+			if (pinnedRef.current) pinToEnd();
+		};
+		const onScroll = () => {
+			// A screenful of slack: "near the end" is where the next answer would
+			// still be in view, not the last pixel, which momentum scrolling and
+			// sub-pixel layout both undershoot.
+			const distance =
+				element.scrollHeight - element.scrollTop - element.clientHeight;
+			pinnedRef.current = distance < 96;
+		};
+		element.addEventListener("scroll", onScroll, { passive: true });
+		const observer = new ResizeObserver(stick);
+		observer.observe(element);
+		// The column inside it is what actually grows; the viewport's own height
+		// only changes when the window does, which is the other reason to stick.
+		const column = element.firstElementChild;
+		if (column) observer.observe(column);
+		return () => {
+			element.removeEventListener("scroll", onScroll);
+			observer.disconnect();
+		};
+	}, [pinToEnd]);
+
+	// Opening a thread follows it again, whatever the last one was left at.
+	// The jump itself belongs to `PinToEnd` inside the panel, which mounts with
+	// the new transcript rather than with the decision to show it.
+	useLayoutEffect(() => {
+		pinnedRef.current = true;
+	}, [viewKey]);
 
 	const send = async (text: string) => {
 		let id = conversationId;
@@ -218,9 +322,14 @@ function AssistantPage() {
 					{/* The transcript scrolls; the composer below it does not. The
 					    ordering is the whole layout: history moves upward under the
 					    fade and the thing you type into never leaves the screen. */}
+					{/* `@container` is what a table or a chart inside an answer measures
+					    itself against when it needs to be wider than the reading column
+					    — see `.answer-wide` in styles.css. It belongs on the scroller
+					    rather than on the column outside it so the width a block may
+					    claim is the width actually available to it, scrollbar and all. */}
 					<ScrollFade
 						viewportRef={scrollRef}
-						className="min-h-0 flex-1 overflow-auto"
+						className="@container min-h-0 flex-1 overflow-auto"
 					>
 						{/* The bottom padding is the composer's height plus its margin —
 						    the transcript scrolls under a floating pill, so without it the
@@ -228,59 +337,71 @@ function AssistantPage() {
 						{/* Less top padding on a phone — the thread bar above already
 						    stands the transcript off the island's edge. */}
 						<div className="mx-auto flex w-full max-w-[46rem] flex-col gap-6 px-4 pt-4 pb-28 md:pt-8">
-							{messages.length === 0 && !stream.isStreaming && (
-								<div className="flex flex-col gap-4 pt-10">
-									<h1 className="h1">What can I help with?</h1>
-									<p className="lede">
-										I can read your tracked time and log more of it — anything
-										I'd write is shown to you first.
-									</p>
-									<div className="mt-2 flex flex-col items-start gap-1.5">
-										{SUGGESTIONS.map((suggestion) => (
-											<button
-												key={suggestion}
-												type="button"
-												onClick={() => void send(suggestion)}
-												className="rounded-control px-2.5 py-1.5 text-left text-[13px] text-ink-2 shadow-hairline transition-colors duration-100 hover:bg-hover hover:text-ink"
-											>
-												{suggestion}
-											</button>
-										))}
+							{/* Opening a thread is a swap, not a repaint: the one you were
+							    reading lifts and fades, the one you asked for rises into its
+							    place. Keyed on the LOADED thread, so it happens once, when
+							    there is something to show — and the same crossfade the rest
+							    of the app uses for a panel change, because that is what this
+							    is. The live turn below stays out of it: those rows belong to
+							    what is happening now rather than to the thread on screen, and
+							    fading them with it would take the answer being streamed off
+							    the screen mid-sentence. */}
+							<FadeSwap activeKey={viewKey} className="flex flex-col gap-6">
+								<PinToEnd pin={pinToEnd} />
+								{messages.length === 0 && !stream.isStreaming && (
+									<div className="flex flex-col gap-4 pt-10">
+										<h1 className="h1">What can I help with?</h1>
+										<p className="lede">
+											I can read your tracked time and log more of it — anything
+											I'd write is shown to you first.
+										</p>
+										<div className="mt-2 flex flex-col items-start gap-1.5">
+											{SUGGESTIONS.map((suggestion) => (
+												<button
+													key={suggestion}
+													type="button"
+													onClick={() => void send(suggestion)}
+													className="rounded-control px-2.5 py-1.5 text-left text-[13px] text-ink-2 shadow-hairline transition-colors duration-100 hover:bg-hover hover:text-ink"
+												>
+													{suggestion}
+												</button>
+											))}
+										</div>
 									</div>
-								</div>
-							)}
+								)}
 
-							{messages.map((message) => {
-								if (message.role === "user") {
+								{messages.map((message) => {
+									if (message.role === "user") {
+										return (
+											<UserMessage key={message.id} text={message.content} />
+										);
+									}
+									if (message.role === "tool") return null;
+									// An assistant row with no text is a pure tool turn; its trace
+									// is rendered live above and its persisted form has nothing to
+									// show, so it stays out of the transcript.
+									if (!message.content.trim()) return null;
 									return (
-										<UserMessage key={message.id} text={message.content} />
+										// The group is what reveals the actions on hover — on the
+										// whole answer, not on a strip under it, so the target is the
+										// thing you were already reading.
+										<div
+											key={message.id}
+											className="group/answer flex flex-col gap-2"
+										>
+											<Answer
+												text={message.content}
+												onFollowUp={
+													stream.isStreaming
+														? undefined
+														: (prompt) => void send(prompt)
+												}
+											/>
+											<AnswerActions text={message.content} />
+										</div>
 									);
-								}
-								if (message.role === "tool") return null;
-								// An assistant row with no text is a pure tool turn; its trace
-								// is rendered live above and its persisted form has nothing to
-								// show, so it stays out of the transcript.
-								if (!message.content.trim()) return null;
-								return (
-									// The group is what reveals the actions on hover — on the
-									// whole answer, not on a strip under it, so the target is the
-									// thing you were already reading.
-									<div
-										key={message.id}
-										className="group/answer flex flex-col gap-2"
-									>
-										<Answer
-											text={message.content}
-											onFollowUp={
-												stream.isStreaming
-													? undefined
-													: (prompt) => void send(prompt)
-											}
-										/>
-										<AnswerActions text={message.content} />
-									</div>
-								);
-							})}
+								})}
+							</FadeSwap>
 
 							{/* What was just typed, until the turn ends and the server's own
 							    copy of it arrives with everything else. Without it a question

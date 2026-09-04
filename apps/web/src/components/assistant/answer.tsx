@@ -433,38 +433,47 @@ function AnswerTable({
 	const columnClass = (column: number) =>
 		alignClass[align[column] ?? "left"] ?? "text-left";
 	return (
-		<div className="-mx-0.5 overflow-x-auto">
-			<table className="w-full border-collapse text-[13px]">
-				<thead>
-					<tr className="border-b border-line">
-						{head.map((cell, column) => (
-							<th
-								// oxlint-disable-next-line react/no-array-index-key -- re-derived from one string on every delta, so position IS the identity
-								key={column}
-								className={`eyebrow px-1.5 py-1.5 align-bottom ${columnClass(column)}`}
-							>
-								{renderInline(cell)}
-							</th>
-						))}
-					</tr>
-				</thead>
-				<tbody>
-					{rows.map((row, rowIndex) => (
-						// oxlint-disable-next-line react/no-array-index-key -- same as above — the last row is rewritten character by character while it streams
-						<tr key={rowIndex} className="border-b border-line2 last:border-0">
-							{row.map((cell, column) => (
-								<td
-									// oxlint-disable-next-line react/no-array-index-key -- same as above
+		// `answer-wide` (styles.css) is what lets a table with a description
+		// column leave the reading column instead of being folded into a
+		// scrollbar inside it. The inner scroller is the last resort for the one
+		// that is wider than the screen even so.
+		<div className="answer-wide">
+			<div className="-mx-0.5 overflow-x-auto">
+				<table className="w-full border-collapse text-[13px]">
+					<thead>
+						<tr className="border-b border-line">
+							{head.map((cell, column) => (
+								<th
+									// oxlint-disable-next-line react/no-array-index-key -- re-derived from one string on every delta, so position IS the identity
 									key={column}
-									className={`px-1.5 py-1.5 align-top ${columnClass(column)}`}
+									className={`eyebrow px-1.5 py-1.5 align-bottom ${columnClass(column)}`}
 								>
 									{renderInline(cell)}
-								</td>
+								</th>
 							))}
 						</tr>
-					))}
-				</tbody>
-			</table>
+					</thead>
+					<tbody>
+						{rows.map((row, rowIndex) => (
+							<tr
+								// oxlint-disable-next-line react/no-array-index-key -- same as above — the last row is rewritten character by character while it streams
+								key={rowIndex}
+								className="border-b border-line2 last:border-0"
+							>
+								{row.map((cell, column) => (
+									<td
+										// oxlint-disable-next-line react/no-array-index-key -- same as above
+										key={column}
+										className={`px-1.5 py-1.5 align-top ${columnClass(column)}`}
+									>
+										{renderInline(cell)}
+									</td>
+								))}
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
 		</div>
 	);
 }
@@ -555,7 +564,14 @@ export function Answer({
 					);
 				}
 				if (block.kind === "chart") {
-					return <AnswerChart key={key} spec={block.spec} />;
+					// Same escape as the table's, and the case it exists for is the
+					// forty-column trend: at the reading column's width its columns are
+					// 8px of bar under a label nobody can read.
+					return (
+						<div key={key} className="answer-wide">
+							<AnswerChart spec={block.spec} />
+						</div>
+					);
 				}
 				if (block.kind === "next") {
 					// No handler means the turn is still running: render them so the

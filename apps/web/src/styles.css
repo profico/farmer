@@ -918,6 +918,42 @@ html {
     min-height: 0;
   }
 
+  /* ------------------------------------------------- assistant answers --- */
+
+  /* A table or a chart inside an answer, allowed out of the reading column.
+   *
+   * An answer is set in a 46rem column because that is the measure prose is
+   * read at, and the same 46rem is a cage for the two things in an answer that
+   * are NOT prose: a table with a description column, and a trend chart of
+   * forty days. Both were being squeezed into a horizontal scrollbar inside a
+   * column that had a screen's worth of empty room either side of it.
+   *
+   * `max-content` is the whole idea — the block asks for the width its own
+   * content needs and nothing more, so a two-column table still lines up with
+   * the paragraph above it (`min-width: 100%`) and only a wide one spreads.
+   * `100cqw` is the transcript viewport, which is the container; the 2rem is
+   * that column's own gutter, so the widest block stops exactly where the
+   * padding does and nothing ever scrolls the transcript sideways. The 72rem
+   * ceiling is a reading limit rather than a layout one: past about that width
+   * a row's eye travel costs more than the extra column bought, and a table
+   * three times the width of the sentence introducing it reads as a different
+   * document.
+   *
+   * The block grows symmetrically out of the text rather than leaning off one
+   * side, and `align-self` is the only thing that does it. An answer is a flex
+   * column, so this is cross-axis alignment, and box alignment centers an item
+   * that is WIDER than its line. `margin-inline: auto` does not: auto margins
+   * take the free space BEFORE alignment is consulted, and once the free space
+   * is negative they resolve to zero — which reads as a wide table hanging off
+   * the right edge of the screen with the alignment property computing to
+   * `center` and doing nothing. Do not add them back as a "fallback". */
+  .answer-wide {
+    width: max-content;
+    min-width: 100%;
+    max-width: min(100cqw - 2rem, 72rem);
+    align-self: center;
+  }
+
   /* ------------------------------------------------------- scroll fade --- */
 
   /* `--fade-size` is how far the content dissolves at an edge that has more
