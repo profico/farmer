@@ -62,6 +62,18 @@ const SUGGESTIONS = [
 	"Which project took most of my time in March?",
 ];
 
+/** One thing the user said. Rendered from the transcript, and — for the turn in
+ *  flight — from the text the composer just sent. */
+function UserMessage({ text }: { text: string }) {
+	return (
+		<div className="flex justify-end">
+			<div className="max-w-[85%] rounded-card bg-inset px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap text-ink">
+				{text}
+			</div>
+		</div>
+	);
+}
+
 function AssistantPage() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -160,11 +172,11 @@ function AssistantPage() {
 
 	// Follow the answer down. Scrolling the container rather than the document:
 	// this screen owns the viewport height, so the document never scrolls.
-	// oxlint-disable-next-line react-hooks/exhaustive-deps -- the effect reacts to the transcript growing, and these three are what grows it
+	// oxlint-disable-next-line react-hooks/exhaustive-deps -- the effect reacts to the transcript growing, and these four are what grows it
 	useEffect(() => {
 		const element = scrollRef.current;
 		if (element) element.scrollTop = element.scrollHeight;
-	}, [messages.length, stream.streamingText, pending]);
+	}, [messages.length, stream.sentMessage, stream.streamingText, pending]);
 
 	const send = async (text: string) => {
 		let id = conversationId;
@@ -241,11 +253,7 @@ function AssistantPage() {
 							{messages.map((message) => {
 								if (message.role === "user") {
 									return (
-										<div key={message.id} className="flex justify-end">
-											<div className="max-w-[85%] rounded-card bg-inset px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap text-ink">
-												{message.content}
-											</div>
-										</div>
+										<UserMessage key={message.id} text={message.content} />
 									);
 								}
 								if (message.role === "tool") return null;
@@ -273,6 +281,15 @@ function AssistantPage() {
 									</div>
 								);
 							})}
+
+							{/* What was just typed, until the turn ends and the server's own
+							    copy of it arrives with everything else. Without it a question
+							    vanishes on send and the screen shows only the model working —
+							    on a turn that runs tools, for long enough to wonder whether
+							    the message was sent at all. */}
+							{stream.sentMessage !== null && (
+								<UserMessage text={stream.sentMessage} />
+							)}
 
 							{stream.traces.length > 0 && (
 								<ToolTraceList

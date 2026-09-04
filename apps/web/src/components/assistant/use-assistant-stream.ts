@@ -70,6 +70,12 @@ type Body =
 export type AssistantStream = {
 	/** Text of the answer currently arriving. Empty when idle. */
 	streamingText: string;
+	/** The message that started the turn in flight, so the transcript can show
+	 *  it while the model works. The server's own copy of it only lands with the
+	 *  refetch at the end of the turn, which is a whole answer's worth of waiting
+	 *  to see what you just typed. Null on an approval turn, which has no new
+	 *  message, and null when idle. */
+	sentMessage: string | null;
 	/** Tools this turn has touched, in the order the model asked for them. */
 	traces: ToolTrace[];
 	pending: PendingApproval | null;
@@ -101,6 +107,7 @@ export const useAssistantStream = (opts: {
 	onTitle?: (title: string) => void;
 }): AssistantStream => {
 	const [streamingText, setStreamingText] = useState("");
+	const [sentMessage, setSentMessage] = useState<string | null>(null);
 	const [traces, setTraces] = useState<ToolTrace[]>([]);
 	const [pending, setPending] = useState<PendingApproval | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -114,6 +121,7 @@ export const useAssistantStream = (opts: {
 
 	const reset = useCallback(() => {
 		setStreamingText("");
+		setSentMessage(null);
 		setTraces([]);
 	}, []);
 
@@ -127,6 +135,9 @@ export const useAssistantStream = (opts: {
 		setError(null);
 		setPending(null);
 		setStreamingText("");
+		// An approval turn carries no message, so this also clears the one the
+		// suspended turn was started with — by then the server's copy has landed.
+		setSentMessage("message" in body ? body.message : null);
 		setTraces([]);
 		setIsStreaming(true);
 
@@ -231,6 +242,7 @@ export const useAssistantStream = (opts: {
 
 	return {
 		streamingText,
+		sentMessage,
 		traces,
 		pending,
 		error,

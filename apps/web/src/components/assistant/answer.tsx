@@ -41,6 +41,13 @@ import {
 // visible code block rather than to invisible. Nothing here is a component the
 // model can compose: it picks from a fixed set and fills in data, which is the
 // difference between generative UI and letting a model write markup.
+//
+// Two rules below exist because the model on the other end is whatever the org
+// chose as its default, and a small one writes sloppier markdown than the
+// prompt asks for: a fence whose body is nothing but a pipe table is read as
+// that table, and the chip fence is read whether or not it was closed. Both
+// recover from a wrapper the model ADDED, never from data it left out — a
+// directive the model didn't write is still a directive nobody gets.
 
 type Align = "left" | "right" | "center";
 
@@ -55,11 +62,31 @@ type Block =
 	| { kind: "next"; prompts: string[] }
 	| { kind: "code"; text: string; lang: string | null };
 
+/** A pipe row with both of its outer pipes — strict, because this is also what
+ *  stops a paragraph, and a sentence is allowed to contain a pipe. */
 const isTableLine = (line: string) => /^\s*\|.*\|\s*$/.test(line);
 
-/** `|---|:--:|---:|` — the line that turns the row above it into a header. */
-const isTableDelimiter = (line: string) =>
-	/^\s*\|(\s*:?-{2,}:?\s*\|)+\s*$/.test(line);
+/** A pipe row once a table is already known to be here. Loose on purpose: GFM
+ *  makes the outer pipes optional and a small model drops the trailing one
+ *  often — the delimiter below has already established that these are rows, so
+ *  there is nothing left for strictness to protect. */
+const isTableRow = (line: string) => line.includes("|");
+
+/** `|---|:--:|---:|` — the line that turns the row above it into a header, and
+ *  the only thing that distinguishes a table from a sentence with a pipe in it.
+ *  The outer pipes are optional here too, but an inner one is not: without it
+ *  `---` is a horizontal rule. */
+const isTableDelimiter = (line: string) => {
+	const trimmed = line.trim();
+	if (/^\|(\s*:?-{2,}:?\s*\|)+$/.test(trimmed)) return true;
+	const inner = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+	if (!inner.includes("|")) return false;
+	return /^\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+$/.test(inner);
+};
+
+/** Where a table starts: any pipe row whose next line is a delimiter. */
+const startsTable = (line: string, next: string) =>
+	isTableRow(line) && isTableDelimiter(next);
 
 const splitRow = (line: string) =>
 	line
@@ -75,6 +102,54 @@ const alignOf = (spec: string): Align => {
 	if (trimmed.endsWith(":")) return "right";
 	return "left";
 };
+
+/** The header row at `start`, its delimiter, and every row under it. */
+const takeTable = (lines: string[], start: number) => {
+	const head = splitRow(lines[start] ?? "");
+	const align = splitRow(lines[start + 1] ?? "").map(alignOf);
+	let index = start + 2;
+	const rows: string[][] = [];
+	while (index < lines.length && isTableRow(lines[index] ?? "")) {
+		rows.push(splitRow(lines[index] ?? ""));
+		index += 1;
+	}
+	const block: Block = { kind: "table", head, rows, align };
+	return { block, next: index };
+};
+
+/**
+ * A table the model wrapped in a code fence, read as the table it is.
+ *
+ * Nobody asked for this shape: a fence is what a weaker model reaches for when
+ * a table's columns look ragged to it — a wide free-text column is the usual
+ * trigger — and the result on screen is the one failure this whole file exists
+ * to prevent, raw pipes and a horizontal scrollbar. Only a body that is
+ * ENTIRELY table lines is read this way, so a fence around real code, or around
+ * a table with a sentence under it, is still code.
+ */
+const fencedTable = (body: string[]): Block | null => {
+	const lines = body.filter((line) => line.trim() !== "");
+	if (lines.length < 2) return null;
+	if (!startsTable(lines[0] ?? "", lines[1] ?? "")) return null;
+	if (!lines.every(isTableRow)) return null;
+	return takeTable(lines, 0).block;
+};
+
+/** The lines of a `farmer-next` block, as the prompts they stand for.
+ *
+ *  Tolerant on purpose. A chip is a message the reader would have typed, so
+ *  anything that is plainly not one — the "Next steps:" label a model likes to
+ *  write above its own list, a heading, a leading bullet or number — is
+ *  furniture rather than a follow-up, and is dropped rather than offered as
+ *  something to send. */
+const parsePrompts = (text: string) =>
+	text
+		.split("\n")
+		.map((entry) => entry.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").trim())
+		.filter(
+			(entry) => entry !== "" && !entry.startsWith("#") && !entry.endsWith(":"),
+		)
+		.slice(0, 4);
 
 const parseBlocks = (source: string): Block[] => {
 	const blocks: Block[] = [];
@@ -113,15 +188,22 @@ const parseBlocks = (source: string): Block[] => {
 					continue;
 				}
 			}
-			if (lang === "farmer-next" && closed) {
-				const prompts = text
-					.split("\n")
-					.map((entry) => entry.replace(/^\s*[-*]\s*/, "").trim())
-					.filter(Boolean)
-					.slice(0, 4);
+			// Chips do NOT wait for the closing fence, and the asymmetry with the
+			// chart above is deliberate: every line here stands on its own, so half
+			// of one is a chip that grows rather than a parse that fails. It is also
+			// the last thing in the answer and so the first casualty of a turn that
+			// stops a token early — and a truncated fence rendering the follow-ups as
+			// a code block is exactly how they stop being clickable.
+			if (lang === "farmer-next") {
 				// Unlike a chart, an empty or broken chip list is decoration nobody
 				// loses anything by not seeing.
-				blocks.push({ kind: "next", prompts });
+				blocks.push({ kind: "next", prompts: parsePrompts(text) });
+				continue;
+			}
+
+			const table = fencedTable(body);
+			if (table) {
+				blocks.push(table);
 				continue;
 			}
 
@@ -132,16 +214,10 @@ const parseBlocks = (source: string): Block[] => {
 		// A table is a header row, a delimiter, then rows — the delimiter is what
 		// distinguishes it from a sentence that happens to contain a pipe, so both
 		// of the first two lines have to be here before anything is a table.
-		if (isTableLine(line) && isTableDelimiter(lines[index + 1] ?? "")) {
-			const head = splitRow(line);
-			const align = splitRow(lines[index + 1] ?? "").map(alignOf);
-			index += 2;
-			const rows: string[][] = [];
-			while (index < lines.length && isTableLine(lines[index] ?? "")) {
-				rows.push(splitRow(lines[index] ?? ""));
-				index += 1;
-			}
-			blocks.push({ kind: "table", head, rows, align });
+		if (startsTable(line, lines[index + 1] ?? "")) {
+			const table = takeTable(lines, index);
+			blocks.push(table.block);
+			index = table.next;
 			continue;
 		}
 
@@ -200,6 +276,7 @@ const parseBlocks = (source: string): Block[] => {
 			!/^\s*\d+[.)]\s+/.test(lines[index] ?? "") &&
 			!/^#{1,3}\s+/.test(lines[index] ?? "") &&
 			!isTableLine(lines[index] ?? "") &&
+			!startsTable(lines[index] ?? "", lines[index + 1] ?? "") &&
 			!/^```/.test(lines[index] ?? "")
 		) {
 			paragraph.push(lines[index] ?? "");

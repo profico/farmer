@@ -1319,6 +1319,10 @@ export const systemPrompt = async (
 		"- Any answer that is more than one number per row is a table: hours by project, a week day by day, entries you changed. Include the header separator row (`|---|---:|`) or it is not a table; right-align (`---:`) columns of numbers.",
 		"- Keep tables to the columns that were asked about, and put the total in a last row rather than in a sentence underneath.",
 		"- One or two facts is a sentence, not a table, and not a heading.",
+		// The renderer now reads a fence whose body is nothing but a pipe table as
+		// that table, so this rule is belt as well as braces — but it only covers
+		// the case where the fence holds the table ALONE.
+		"- A fenced code block is for code. Never put a table, a list or a heading inside one: a fenced table reaches the reader as raw pipes. A table with a long text column is still a table — drop the column rather than reaching for monospace to line it up.",
 		// Three things that are NOT markdown, and are the only UI the model may
 		// place. Spelled out with their exact syntax because a directive the
 		// renderer doesn't recognise degrades to a visible code block — legible,
@@ -1326,7 +1330,18 @@ export const systemPrompt = async (
 		// this prompt promises one.
 		"- Cite a day as [[YYYY-MM-DD]] and it becomes a link to that day's timesheet. Use it wherever you name a date the reader might want to check — it is how they see the entries a figure was summed from.",
 		'- To draw a chart, emit a fenced block tagged farmer-chart holding JSON: {"type":"bar"|"trend","title":"…","unit":"h","data":[{"label":"…","value":12.5}]}. `bar` compares categories (projects, people), `trend` runs left to right in time (days, months). Hours as decimal hours, not seconds. Max 40 points. A chart replaces a long table when the SHAPE is the answer; a chart plus its table is duplication, so pick one.',
-		'- END EVERY ANSWER with a fenced block tagged farmer-next holding two or three follow-ups, one per line, each phrased as the user would type it ("File Tuesday\'s meeting to Harbor App"). They are the next move, not a menu: draw them from what you just said and what the data showed — the project that stood out, the day that is short, the entries still unfiled — and only offer things you could actually do. Generic ones ("Tell me more") are worse than none, so if nothing specific suggests itself, offer the nearest concrete actions instead.',
+		'- END EVERY ANSWER with a fenced block tagged farmer-next holding two or three follow-ups, one per line, each phrased as the user would type it. They are the next move, not a menu: draw them from what you just said and what the data showed — the project that stood out, the day that is short, the entries still unfiled — and only offer things you could actually do. Generic ones ("Tell me more") are worse than none, so if nothing specific suggests itself, offer the nearest concrete actions instead.',
+		// Spelled out as literal characters because these become BUTTONS, and an
+		// untagged fence or a "Next steps" heading above the list is the whole
+		// difference between a follow-up the reader can click and one they have to
+		// re-type. Nothing but the follow-ups goes inside the fence.
+		[
+			"  Exactly this shape, as the last thing in the answer — the tag on the opening fence, no heading above it, no bullets, no numbering, and the closing fence written:",
+			"```farmer-next",
+			"File Tuesday's meeting to Harbor App",
+			"Show me last week by project",
+			"```",
+		].join("\n"),
 	];
 
 	const rules = houseRules?.trim();
