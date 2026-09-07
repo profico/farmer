@@ -6,11 +6,17 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import {
+	SegmentedControl,
+	SegmentedControlItem,
+} from "#/components/ui/segmented-control.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
@@ -60,6 +66,31 @@ const formatHolidayDate = (dateKey: string) =>
 		timeZone: "UTC",
 	});
 
+const relativeFormat = new Intl.RelativeTimeFormat("en-US", {
+	numeric: "auto",
+});
+
+// "in 3 days" / "2 weeks ago", with `numeric: "auto"` supplying "today",
+// "tomorrow" and "yesterday". Day keys compare as UTC midnights, so the
+// difference is always a whole number of days.
+const relativeLabel = (dateKey: string, todayKey: string): string => {
+	const days = Math.round(
+		(Date.parse(`${dateKey}T00:00:00Z`) - Date.parse(`${todayKey}T00:00:00Z`)) /
+			86_400_000,
+	);
+	if (Math.abs(days) < 7) return relativeFormat.format(days, "day");
+	if (Math.abs(days) < 30) {
+		return relativeFormat.format(Math.round(days / 7), "week");
+	}
+	return relativeFormat.format(Math.round(days / 30), "month");
+};
+
+// "relative" splits the year on today and badges each date; "single" is the
+// plain chronological table. A display preference, so it lives in
+// localStorage rather than on the org.
+type HolidaysView = "relative" | "single";
+const VIEW_STORAGE_KEY = "farmer:holidays-view";
+
 function HolidaysSettingsPage() {
 	const orgSlug = useOrgSlug();
 	const { organization, role } = Route.useRouteContext();
@@ -74,6 +105,43 @@ function HolidaysSettingsPage() {
 	const { data: holidays } = useSuspenseQuery(
 		holidaysForYearWithStatusQuery(orgSlug, year),
 	);
+
+	/* Start on "relative" and only apply the stored choice after mount, the
+	   same SSR-safe read auto-track-nag uses: the first client render must
+	   match the server's HTML. */
+	const [view, setView] = useState<HolidaysView>("relative");
+	useEffect(() => {
+		try {
+			if (window.localStorage.getItem(VIEW_STORAGE_KEY) === "single") {
+				setView("single");
+			}
+		} catch {
+			// Private-mode / disabled storage: keep the default.
+		}
+	}, []);
+
+	const switchView = (next: HolidaysView) => {
+		setView(next);
+		try {
+			window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+		} catch {
+			// Private-mode / disabled storage: the choice holds for this session.
+		}
+	};
+
+	/* Split on the org-timezone today. A past or future year lands whole in
+	   one section, so the other heading simply does not render. */
+	const todayKey = dayKeyInTz(new Date(), organization.timezone);
+	const sections: { heading: string | null; rows: typeof holidays }[] =
+		view === "single"
+			? [{ heading: null, rows: holidays }]
+			: [
+					{
+						heading: "Upcoming",
+						rows: holidays.filter((h) => h.date >= todayKey),
+					},
+					{ heading: "Past", rows: holidays.filter((h) => h.date < todayKey) },
+				].filter((section) => section.rows.length > 0);
 
 	/* Optimistic, and scoped to the one holiday: the whole table shares this
 	   mutation, so anything keyed off `isPending` (or a refetch-before-paint)
@@ -124,24 +192,40 @@ function HolidaysSettingsPage() {
 				/* The year is the page's subject, so it is set as a figure — mono,
 				   large, with the steppers reduced to quiet glyphs either side. */
 				action={
-					<div className="flex items-center gap-1">
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							onClick={() => goToYear(year - 1)}
-							aria-label="Previous year"
-						>
-							<CaretLeftIcon weight="regular" className="size-4" />
-						</Button>
-						<span className="mono w-20 text-center text-xl">{year}</span>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							onClick={() => goToYear(year + 1)}
-							aria-label="Next year"
-						>
-							<CaretRightIcon weight="regular" className="size-4" />
-						</Button>
+					<div className="flex items-center gap-4">
+						<SegmentedControl>
+							<SegmentedControlItem
+								active={view === "relative"}
+								onClick={() => switchView("relative")}
+							>
+								Relative
+							</SegmentedControlItem>
+							<SegmentedControlItem
+								active={view === "single"}
+								onClick={() => switchView("single")}
+							>
+								Single
+							</SegmentedControlItem>
+						</SegmentedControl>
+						<div className="flex items-center gap-1">
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => goToYear(year - 1)}
+								aria-label="Previous year"
+							>
+								<CaretLeftIcon weight="regular" className="size-4" />
+							</Button>
+							<span className="mono w-20 text-center text-xl">{year}</span>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								onClick={() => goToYear(year + 1)}
+								aria-label="Next year"
+							>
+								<CaretRightIcon weight="regular" className="size-4" />
+							</Button>
+						</div>
 					</div>
 				}
 				className="mb-0"
@@ -152,46 +236,72 @@ function HolidaysSettingsPage() {
 					No public holidays found for this country and year.
 				</p>
 			) : (
-				<Table containerClassName="mt-6">
-					<TableHeader>
-						<TableRow>
-							<TableHead>Date</TableHead>
-							<TableHead>Day</TableHead>
-							<TableHead>Holiday</TableHead>
-							<TableHead className="text-right">
-								{isAdmin ? "Observed" : "Status"}
-							</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{holidays.map((h) => (
-							<TableRow key={h.date} className={cn(h.disabled && "opacity-50")}>
-								<TableCell className="tnum">
-									{formatHolidayDate(h.date)}
-								</TableCell>
-								<TableCell>{weekdayFor(h.date)}</TableCell>
-								<TableCell className="font-medium">{h.name}</TableCell>
-								<TableCell className="text-right">
-									{isAdmin ? (
-										<Switch
-											checked={!h.disabled}
-											onCheckedChange={(checked) =>
-												toggleMutation.mutate({
-													name: h.name,
-													disabled: !checked,
-												})
-											}
-										/>
-									) : (
-										<span className="text-sm text-muted-foreground">
-											{h.disabled ? "Not observed" : "Observed"}
-										</span>
-									)}
-								</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
+				sections.map((section, index) => (
+					<div
+						key={section.heading ?? "all"}
+						className={index === 0 ? "mt-6" : "mt-8"}
+					>
+						{section.heading !== null && (
+							<h2 className="eyebrow">{section.heading}</h2>
+						)}
+						<Table containerClassName={cn(section.heading !== null && "mt-3")}>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Date</TableHead>
+									<TableHead>Day</TableHead>
+									<TableHead>Holiday</TableHead>
+									<TableHead className="text-right">
+										{isAdmin ? "Observed" : "Status"}
+									</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{section.rows.map((h) => (
+									<TableRow
+										key={h.date}
+										className={cn(h.disabled && "opacity-50")}
+									>
+										<TableCell className="tnum">
+											{view === "relative" ? (
+												<span className="flex items-center gap-2">
+													{formatHolidayDate(h.date)}
+													<Badge
+														variant={
+															h.date < todayKey ? "outline" : "secondary"
+														}
+													>
+														{relativeLabel(h.date, todayKey)}
+													</Badge>
+												</span>
+											) : (
+												formatHolidayDate(h.date)
+											)}
+										</TableCell>
+										<TableCell>{weekdayFor(h.date)}</TableCell>
+										<TableCell className="font-medium">{h.name}</TableCell>
+										<TableCell className="text-right">
+											{isAdmin ? (
+												<Switch
+													checked={!h.disabled}
+													onCheckedChange={(checked) =>
+														toggleMutation.mutate({
+															name: h.name,
+															disabled: !checked,
+														})
+													}
+												/>
+											) : (
+												<span className="text-sm text-muted-foreground">
+													{h.disabled ? "Not observed" : "Observed"}
+												</span>
+											)}
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
+				))
 			)}
 		</Page>
 	);

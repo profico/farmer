@@ -116,6 +116,10 @@
   --fs-base: 15px;
   --fs-md: 16px;
   --fs-lg: 17.5px;
+
+  /* The widescreen field. The dark block below says what both of these do. */
+  --field-ink: #3a3128;
+  --field-strength: 0.13;
 }
 
 :root[data-theme='dark'] {
@@ -145,6 +149,14 @@
      near-black one still reads as a gap. */
   --lift: 0 8px 22px rgba(0, 0, 0, 0.5);
   --shadow-pop: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+
+  /* The widescreen field (`@layer components`, section "field"). `--field-ink`
+     is what the crop tint is mixed towards, so the whole ornament sits in the
+     same family as the text; `--field-strength` is the ceiling on its opacity.
+     Lower here than in light: a pale mark on the dark ground carries further
+     than a dark one on paper. */
+  --field-ink: #cbb98f;
+  --field-strength: 0.085;
 }
 
 /* ------------------------------------------------- shadcn token bridge --- */
@@ -916,6 +928,244 @@ html {
     gap: var(--frame-gap);
     min-width: 0;
     min-height: 0;
+  }
+
+  /* ---------------------------------------------------------------- field --- */
+
+  /* Crop rows standing on the ground either side of the frame.
+   *
+   * Decoration and nothing else: it reads no data, holds no state a server
+   * could know about, and never takes a click. It exists because `--frame-max`
+   * caps the app at 108rem and centres it, so a 34-inch screen leaves about
+   * 856px of bare ground on each flank and a 27-inch one about 416px. Below
+   * 2200px there is not enough of it to put anything in, which is the media
+   * query this section ends on.
+   *
+   * The art is three tiling silhouettes used as masks, so one asset set serves
+   * both themes and all four seasons — the season decides `--field-tint` and
+   * the layer is painted with it. See `scripts/generate-field-art.ts` for the
+   * contract any replacement has to meet. */
+  .field {
+    position: fixed;
+    inset: 0;
+    /* Behind every island, and above the ground. <html> paints no background,
+       so body's `--ground` propagates to the canvas and is painted beneath the
+       whole stacking context — which is what makes a negative z-index visible
+       here rather than buried under it. Zero or higher would put a fixed
+       element above the in-flow islands and paint crop across the timesheet. */
+    z-index: -1;
+    overflow: hidden;
+    /* Never takes a click. `aria-hidden` on the element covers the other half. */
+    pointer-events: none;
+    /* The width gate, and the two fades, are split across two elements because
+       one element cannot do both: a transition on a property beats an
+       animation on it, so an entry animation and a resize transition on the
+       same opacity fight and the transition always wins.
+
+       This one is the gate. Off by default and switched on by the media query
+       at the end of this section, so the breakpoint is stated once and a window
+       dragged across it fades rather than snaps. `display` cannot do that —
+       there is nothing to interpolate between `none` and `block`. */
+    opacity: 0;
+    transition: opacity 1.6s var(--ease-out);
+
+    --field-tint: color-mix(in oklab, var(--field-hue) 60%, var(--field-ink));
+  }
+
+  /* Below the gate the crop is invisible, so there is no reason for the wind to
+     be running. Stated on the parent rather than as a `max-width` twin of the
+     media query, so the breakpoint stays a single number. */
+  .field .field-layer {
+    animation-play-state: paused;
+  }
+
+  /* The season sets how tall the crop stands and what colour it is: bare
+     stubble in winter, full height in summer, gold after it.
+
+     Northern hemisphere, taken from the month in the ORG timezone. The country
+     is not consulted, so a southern-hemisphere workspace gets the opposite
+     season. Reading `orgCountry` would fix it and would cost a query, which is
+     the one thing this ornament is not allowed to do. */
+  .field[data-season='winter'] {
+    --field-scale: 0.42;
+    --field-hue: #8a94a1;
+  }
+  .field[data-season='spring'] {
+    --field-scale: 0.7;
+    --field-hue: #6f9c52;
+  }
+  .field[data-season='summer'] {
+    --field-scale: 1;
+    --field-hue: #4f8a3a;
+  }
+  .field[data-season='autumn'] {
+    --field-scale: 0.95;
+    --field-hue: #b58230;
+  }
+
+  /* Daylight is a fixed clock, not a real sunrise: a solar time needs a
+     latitude the app has no reason to hold. It moves the light on the crop and
+     lays a low wash on the ground behind it. Noon deliberately gets no wash —
+     midday light on bare ground is just the ground. */
+  .field[data-daylight='dawn'] {
+    --field-light: 1.15;
+    --field-glow: #f0b072;
+    --field-glow-strength: 0.1;
+  }
+  .field[data-daylight='day'] {
+    --field-light: 1;
+    --field-glow: transparent;
+    --field-glow-strength: 0;
+  }
+  .field[data-daylight='dusk'] {
+    --field-light: 1.2;
+    --field-glow: #d98457;
+    --field-glow-strength: 0.12;
+  }
+  .field[data-daylight='night'] {
+    --field-light: 0.75;
+    --field-glow: #4a5f86;
+    --field-glow-strength: 0.1;
+  }
+
+  /* The ground the crop stands on: the whole viewport, not the two flanks the
+     frame leaves bare.
+
+     The islands are opaque and sit on top, so the crop shows exactly where they
+     are not and is one continuous field everywhere else. Cut to the flanks it
+     stopped at the frame's edge instead, and `--frame-pad` then drew a bare
+     grey band right around the islands — a seam between the app and the ground
+     it is meant to be standing on. */
+  .field-ground {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    /* The other half of the split above: the fade on load. An animation, not a
+       transition, because a transition needs an old computed value to run from
+       and this element is server-rendered — on load there is no earlier value,
+       so the field simply appeared at full opacity. */
+    animation: field-in 1.6s var(--ease-out) both;
+  }
+
+  /* The daylight wash, behind the crop.
+
+     Three stops rather than two, over most of the height: a straight ramp to
+     transparent puts half its travel in the top eighth of its opacity, and the
+     eye finds that as a horizontal line across the ground where the gradient
+     starts. The mid stop spends the height on the part that is actually
+     visible. */
+  .field-ground::before {
+    content: '';
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 72%;
+    background: linear-gradient(
+      to top,
+      var(--field-glow) 0%,
+      color-mix(in oklab, var(--field-glow) 40%, transparent) 38%,
+      transparent 100%
+    );
+    opacity: var(--field-glow-strength);
+  }
+
+  /* A depth of crop. Wider than the ground on both sides so the sway can never
+     drag an edge into view; the ground clips the overhang.
+
+     Both spellings of every mask property. Unprefixed `mask-image` is read as
+     `match-source`, which some WebKit versions resolve to luminance rather than
+     alpha — the art is filled white for that reason, so it survives either
+     reading — and Safari before 15.4 has only the prefixed properties. */
+  .field-layer {
+    position: absolute;
+    bottom: 0;
+    left: -2rem;
+    right: -2rem;
+    background-color: var(--field-tint);
+    -webkit-mask-repeat: repeat-x;
+    mask-repeat: repeat-x;
+    -webkit-mask-position: 0 bottom;
+    mask-position: 0 bottom;
+    -webkit-mask-size: auto 100%;
+    mask-size: auto 100%;
+    /* The crop is planted: it bends from the ground, it does not slide. */
+    transform-origin: 50% 100%;
+    animation: field-sway var(--field-period) ease-in-out infinite alternate;
+  }
+
+  /* The three tile widths do not divide into each other, so the layers never
+     line up into a visible column. The near layer is the tallest, the most
+     opaque and the one the wind moves most. */
+  .field-far {
+    height: calc(7rem * var(--field-scale));
+    opacity: calc(var(--field-strength) * 0.55 * var(--field-light));
+    -webkit-mask-image: url('/field/crop-far.svg');
+    mask-image: url('/field/crop-far.svg');
+    --field-sway: 3px;
+    --field-tilt: 0.2deg;
+    --field-period: 23s;
+    animation-delay: -9s;
+  }
+
+  .field-mid {
+    height: calc(12rem * var(--field-scale));
+    opacity: calc(var(--field-strength) * 0.8 * var(--field-light));
+    -webkit-mask-image: url('/field/crop-mid.svg');
+    mask-image: url('/field/crop-mid.svg');
+    --field-sway: 5px;
+    --field-tilt: 0.35deg;
+    --field-period: 19s;
+    animation-delay: -4s;
+  }
+
+  .field-near {
+    height: calc(17.5rem * var(--field-scale));
+    opacity: calc(var(--field-strength) * var(--field-light));
+    -webkit-mask-image: url('/field/crop-near.svg');
+    mask-image: url('/field/crop-near.svg');
+    --field-sway: 8px;
+    --field-tilt: 0.55deg;
+    --field-period: 15s;
+  }
+
+  @keyframes field-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes field-sway {
+    from {
+      transform: translateX(calc(var(--field-sway) * -1))
+        skewX(calc(var(--field-tilt) * -1));
+    }
+    to {
+      transform: translateX(var(--field-sway)) skewX(var(--field-tilt));
+    }
+  }
+
+  /* Wind is the whole point of the motion, so reduced motion keeps the field
+     and stops it moving rather than removing it. */
+  @media (prefers-reduced-motion: reduce) {
+    .field-ground,
+    .field-layer {
+      animation: none;
+    }
+  }
+
+  /* The gate. Under 2200px the ground the frame leaves is a strip too narrow to
+     hold a field, and a crop growing out of the edge of the frame reads as a
+     rendering fault. The one place the breakpoint is written down. */
+  @media (min-width: 2200px) {
+    .field {
+      opacity: 1;
+    }
+
+    .field .field-layer {
+      animation-play-state: running;
+    }
   }
 
   /* ------------------------------------------------- assistant answers --- */

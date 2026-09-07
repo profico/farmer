@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 import { AppSidebar } from "#/components/app-sidebar.tsx";
+import { Field } from "#/components/field.tsx";
 import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
 import { AppShellLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { SidebarInset, SidebarProvider } from "#/components/ui/sidebar.tsx";
@@ -106,27 +107,33 @@ function OrgLayout() {
 		Boolean(assistantSettings?.configured && assistantSettings.enabled);
 
 	return (
-		<SidebarProvider>
-			<AppSidebar
-				orgSlug={organization.slug}
-				organizationName={organization.name}
-				organizationLogo={organization.logo}
-				isAdmin={isAdmin}
-				userName={session.user.name}
-				userEmail={session.user.email}
-				singleOrg={singleOrg}
-				assistantAvailable={assistantAvailable}
-			/>
-			<SidebarInset>
-				<Outlet />
-			</SidebarInset>
-			<MobileTabBar
-				orgSlug={organization.slug}
-				isAdmin={isAdmin}
-				userName={session.user.name}
-				userEmail={session.user.email}
-				assistantAvailable={assistantAvailable}
-			/>
-		</SidebarProvider>
+		<>
+			{/* Outside the frame on purpose: SidebarProvider's element IS
+			    `.app-frame`, so anything inside it is a flex child of the two
+			    islands. The field is a fixed sibling painted behind them. */}
+			<Field timezone={organization.timezone} />
+			<SidebarProvider>
+				<AppSidebar
+					orgSlug={organization.slug}
+					organizationName={organization.name}
+					organizationLogo={organization.logo}
+					isAdmin={isAdmin}
+					userName={session.user.name}
+					userEmail={session.user.email}
+					singleOrg={singleOrg}
+					assistantAvailable={assistantAvailable}
+				/>
+				<SidebarInset>
+					<Outlet />
+				</SidebarInset>
+				<MobileTabBar
+					orgSlug={organization.slug}
+					isAdmin={isAdmin}
+					userName={session.user.name}
+					userEmail={session.user.email}
+					assistantAvailable={assistantAvailable}
+				/>
+			</SidebarProvider>
+		</>
 	);
 }
