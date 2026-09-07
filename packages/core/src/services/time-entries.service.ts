@@ -267,7 +267,30 @@ const syncMeetingsForRange = async (
 			return false;
 		});
 
+	// Days whose fill block may now be the wrong length. Collected rather than
+	// derived at the end, because by then the moves have already happened and the
+	// day a meeting LEFT is no longer nameable from anything in hand.
+	const touched = new Set<string>();
+
 	if (rows.length > 0) {
+		// Where these events sit BEFORE the upsert moves them. A meeting dragged
+		// from Monday to Tuesday gives Monday its quarter-hour back, and the block
+		// that has to absorb it is on the day the meeting is leaving — a date every
+		// other collection point below has already overwritten.
+		const previous = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				eq(timeEntry.syncLocked, false),
+				inArray(
+					timeEntry.calendarEventId,
+					rows.map((row) => row.calendarEventId),
+				),
+			),
+			columns: { date: true },
+		});
+		for (const row of previous) touched.add(row.date);
+
 		await db
 			.insert(timeEntry)
 			.values(rows)
@@ -286,6 +309,7 @@ const syncMeetingsForRange = async (
 				},
 				setWhere: eq(timeEntry.syncLocked, false),
 			});
+		for (const row of rows) touched.add(row.date);
 	}
 
 	// Delete-by-absence. An EMPTY live set is deliberately treated like `null`
@@ -293,20 +317,48 @@ const syncMeetingsForRange = async (
 	// a partial scope, and wiping every synced entry on a false empty is
 	// unrecoverable, whereas skipping just leaves a stale row until next sync.
 	const liveIds = events.map((event) => event.id);
-	if (liveIds.length === 0) return;
-	await db
-		.delete(timeEntry)
-		.where(
-			and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				eq(timeEntry.syncLocked, false),
-				isNotNull(timeEntry.calendarEventId),
-				gte(timeEntry.date, range.from),
-				lte(timeEntry.date, range.to),
-				notInArray(timeEntry.calendarEventId, liveIds),
-			),
-		);
+	if (liveIds.length > 0) {
+		const removed = await db
+			.delete(timeEntry)
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.syncLocked, false),
+					isNotNull(timeEntry.calendarEventId),
+					gte(timeEntry.date, range.from),
+					lte(timeEntry.date, range.to),
+					notInArray(timeEntry.calendarEventId, liveIds),
+				),
+			)
+			.returning({ date: timeEntry.date });
+		for (const row of removed) touched.add(row.date);
+	}
+
+	// A meeting is a claim on the day, so the day's fill block — which describes
+	// "the rest of the working day" — is one meeting shorter than it was. Nothing
+	// else was resizing it: the commit engine guards its own insert with
+	// `onConflictDoNothing` and so never revisits a block it already wrote, and
+	// `listRange`'s read-path recompute only reaches back AUTOMATION_GRACE_DAYS.
+	// A meeting that synced after the block existed therefore left the day
+	// over-allocated for good — an 8h block plus a 0:15 stand-up against an 8h
+	// day, which then went to the close sheet at 8:45. `materializeRange` in
+	// recurring-block-rules already ends this way, for exactly the same reason;
+	// this engine was the one write path that did not.
+	//
+	// Unwindowed, like every other `recomputeDayFill` call, and safe because every
+	// date here came out of `range` — which the caller has already narrowed to
+	// what this automation may write to.
+	//
+	// Best-effort and outside the writes above: failing to resize a fill block
+	// must not cost the person the meetings that were just imported.
+	for (const date of touched) {
+		try {
+			await recomputeDayFill(ctx, date, tz);
+		} catch (error) {
+			console.error("[meetings] fill recompute failed", { date, error });
+		}
+	}
 };
 
 // For every day the user pushed commits: attach those commits to the work entry

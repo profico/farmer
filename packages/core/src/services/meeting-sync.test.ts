@@ -10,6 +10,11 @@
 // What matters to a user is narrower and testable: running the sync twice over
 // an unchanged calendar leaves the day exactly as it was, and a meeting they
 // deleted stays deleted.
+//
+// The second group at the bottom is about the day's FILL BLOCK rather than the
+// meetings. A meeting claims part of the working day, so the block describing
+// "the rest of" that day has to give way to it — and this engine was the one
+// automation write path that never resized it.
 
 import {
 	afterAll,
@@ -26,7 +31,7 @@ import { db } from "../db";
 import { organization, user } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
 import { syncedMeetingTombstone } from "../db/schema/settings";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { setCalendarSourceForTests } from "./ports";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
@@ -34,7 +39,11 @@ import type { Ctx } from "./types";
 const ORG_ID = "org-meeting-sync";
 const USER_ID = "user-meeting-sync";
 const DATE = "2026-08-10"; // a Monday
+const NEXT_DATE = "2026-08-11"; // the Tuesday after it
 const RANGE = { from: DATE, to: DATE };
+const TWO_DAY_RANGE = { from: DATE, to: NEXT_DATE };
+/** The synthesized default working day: Mon-Fri 09:00-17:00. */
+const WORKDAY_SECONDS = 8 * 3600;
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
@@ -52,6 +61,23 @@ const event = (id: string, title: string, hours: number): Event => ({
 	title,
 	start: `${DATE}T09:00:00.000Z`,
 	end: `${DATE}T${String(9 + hours).padStart(2, "0")}:00:00.000Z`,
+	meetingUrl: null,
+	htmlLink: null,
+});
+
+/** A meeting of `minutes` on a chosen day, for the fill-block tests below —
+ *  where what matters is which day the meeting lands on and how much of it it
+ *  takes, not the hour it starts. */
+const shortEventOn = (
+	id: string,
+	title: string,
+	date: string,
+	minutes: number,
+): Event => ({
+	id,
+	title,
+	start: `${date}T09:00:00.000Z`,
+	end: `${date}T09:${String(minutes).padStart(2, "0")}:00.000Z`,
 	meetingUrl: null,
 	htmlLink: null,
 });
@@ -78,6 +104,7 @@ const calendarReturning = (events: Event[] | null) => ({
 });
 
 let harness: TestDb;
+let devTaskId: string;
 
 const meetingRows = () =>
 	db.query.timeEntry.findMany({
@@ -120,6 +147,21 @@ beforeAll(async () => {
 			isAbsence: false,
 		});
 	}
+
+	// What a fill block is filed against in production. Only its id is needed
+	// here — `computeDayFillSeconds` never looks at the task — but seeding the
+	// real one keeps the fixture readable as the row it stands in for.
+	const [dev] = await db
+		.insert(task)
+		.values({
+			scope: "organization" as const,
+			organizationId: ORG_ID,
+			name: "Development",
+			systemKey: "development" as const,
+			isAbsence: false,
+		})
+		.returning({ id: task.id });
+	devTaskId = present(dev, "development task").id;
 });
 
 afterAll(async () => {
@@ -309,5 +351,132 @@ describe("meeting sync", () => {
 		const rows = await meetingRows();
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.calendarEventId).toBe("e1");
+	});
+});
+
+// The fill block on a day is sized as "the working day minus everything else on
+// it", and it is stored, not derived — see lib/working-day and services/day-fill
+// for why. Storing it means every engine that adds to a day has to say so, and
+// this one did not: the commit engine writes its block once and guards the
+// insert with onConflictDoNothing, and listRange's read-path recompute only
+// reaches back AUTOMATION_GRACE_DAYS. So a meeting that arrived after the block
+// was written stayed on top of it — an 8h block plus a 0:15 stand-up on an 8h
+// day, reported and invoiced as 8:45.
+describe("a synced meeting resizes the day's fill block", () => {
+	const addFill = (date: string, durationSeconds: number) =>
+		db.insert(timeEntry).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: devTaskId,
+			projectId: null,
+			date,
+			durationSeconds,
+			description: "Rest of day",
+			fillsDay: true,
+		});
+
+	const fillOn = async (date: string) => {
+		const rows = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ORG_ID),
+				eq(timeEntry.userId, USER_ID),
+				eq(timeEntry.date, date),
+				eq(timeEntry.fillsDay, true),
+			),
+		});
+		return rows[0] ?? null;
+	};
+
+	test("importing a meeting shortens a block written before it", async () => {
+		await addFill(DATE, WORKDAY_SECONDS);
+		setCalendarSourceForTests(
+			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+		);
+
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		expect((await fillOn(DATE))?.durationSeconds).toBe(WORKDAY_SECONDS - 900);
+	});
+
+	test("deleting the meeting from the calendar gives the day its time back", async () => {
+		await addFill(DATE, WORKDAY_SECONDS);
+		// Two events, because delete-by-absence deliberately declines to act on an
+		// empty live set — an empty page from Google must not wipe the day.
+		setCalendarSourceForTests(
+			calendarReturning([
+				shortEventOn("e1", "Standup", DATE, 15),
+				shortEventOn("e2", "Review", DATE, 30),
+			]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+		expect((await fillOn(DATE))?.durationSeconds).toBe(WORKDAY_SECONDS - 2700);
+
+		setCalendarSourceForTests(
+			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		expect((await fillOn(DATE))?.durationSeconds).toBe(WORKDAY_SECONDS - 900);
+	});
+
+	// The case the day a meeting LEAVES is invisible to: after the upsert every
+	// date the engine still holds is the new one.
+	test("moving a meeting to another day resizes both days", async () => {
+		await addFill(DATE, WORKDAY_SECONDS);
+		await addFill(NEXT_DATE, WORKDAY_SECONDS);
+
+		setCalendarSourceForTests(
+			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, TWO_DAY_RANGE);
+		expect((await fillOn(DATE))?.durationSeconds).toBe(WORKDAY_SECONDS - 900);
+		expect((await fillOn(NEXT_DATE))?.durationSeconds).toBe(WORKDAY_SECONDS);
+
+		setCalendarSourceForTests(
+			calendarReturning([shortEventOn("e1", "Standup", NEXT_DATE, 15)]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, TWO_DAY_RANGE);
+
+		expect((await fillOn(DATE))?.durationSeconds).toBe(WORKDAY_SECONDS);
+		expect((await fillOn(NEXT_DATE))?.durationSeconds).toBe(
+			WORKDAY_SECONDS - 900,
+		);
+	});
+
+	test("a second sync over an unchanged calendar does not shorten it again", async () => {
+		await addFill(DATE, WORKDAY_SECONDS);
+		setCalendarSourceForTests(
+			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+		);
+
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		expect((await fillOn(DATE))?.durationSeconds).toBe(WORKDAY_SECONDS - 900);
+	});
+
+	// The rule day-fill states: a block squeezed to nothing describes nothing, so
+	// it is deleted rather than parked at 0:00 next to the entries that filled the
+	// day. Nothing about that changes because a meeting is what did the squeezing.
+	test("a day filled entirely by meetings loses its block", async () => {
+		await addFill(DATE, WORKDAY_SECONDS);
+		setCalendarSourceForTests(
+			calendarReturning([event("e1", "All-day workshop", 8)]),
+		);
+
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		expect(await fillOn(DATE)).toBeNull();
+	});
+
+	test("a day with no block is left alone", async () => {
+		setCalendarSourceForTests(
+			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+		);
+
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		expect(await fillOn(DATE)).toBeNull();
+		expect(await meetingRows()).toHaveLength(1);
 	});
 });
