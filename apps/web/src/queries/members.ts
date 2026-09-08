@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 
 import {
 	getMemberTypeHistory,
+	listDirectory,
 	listInvitations,
 	listMembers,
 	listMemberTypesForMonth,
@@ -23,6 +24,18 @@ export const pendingInvitationsQuery = (org: string) =>
 			const invitations = await listInvitations();
 			return invitations.filter((i) => i.status === "pending");
 		},
+	});
+
+// Names and faces for the whole org, read by every avatar on every screen (see
+// `components/person-avatar.tsx`). Warmed by the `/$orgSlug` layout so the
+// photos are there on the first paint rather than fading in a beat later; the
+// long staleTime is because a photo changes when somebody changes it at Google,
+// which is roughly never and is picked up at their next sign-in anyway.
+export const directoryQuery = (org: string) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).members, "directory"],
+		queryFn: () => listDirectory(),
+		staleTime: 30 * 60_000,
 	});
 
 // The People screen: everyone with their org role, person type and start date.

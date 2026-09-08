@@ -1,6 +1,7 @@
 import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
 
+import { PersonCell } from "#/components/person-avatar.tsx";
 import {
 	Table,
 	TableBody,
@@ -40,14 +41,17 @@ export function VarianceTab({ year, month }: { year: number; month: number }) {
 		<>
 			<ReportTable
 				headers={["Person", "Reported", "Final", "Difference"]}
-				rows={rows.map((r) => [
-					r.name,
-					formatHoursLabel(r.reportedSeconds),
-					formatHoursLabel(r.finalSeconds),
-					r.diffPct == null
-						? formatHoursLabel(r.diffSeconds)
-						: `${r.diffPct > 0 ? "+" : ""}${r.diffPct}%`,
-				])}
+				rows={rows.map((r) => ({
+					key: r.userId,
+					cells: [
+						<PersonCell key="person" userId={r.userId} name={r.name} />,
+						formatHoursLabel(r.reportedSeconds),
+						formatHoursLabel(r.finalSeconds),
+						r.diffPct == null
+							? formatHoursLabel(r.diffSeconds)
+							: `${r.diffPct > 0 ? "+" : ""}${r.diffPct}%`,
+					],
+				}))}
 				empty="No month has been finalized yet, so there's nothing to compare."
 			/>
 			<p className="mt-4 max-w-[68ch] text-sm text-muted-foreground">
@@ -79,7 +83,9 @@ export function VarianceTab({ year, month }: { year: number; month: number }) {
 								.sort((a, b) => a[1].localeCompare(b[1]))
 								.map(([userId, name]) => (
 									<TableRow key={userId}>
-										<TableCell className="font-medium">{name}</TableCell>
+										<TableCell>
+											<PersonCell userId={userId} name={name} />
+										</TableCell>
 										{byPeriod.map((p) => {
 											const row = p.byUser.get(userId);
 											return (

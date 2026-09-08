@@ -8,6 +8,7 @@ import { addDaysToKey } from "@farmer/core/lib/time";
 import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Suspense } from "react";
+import type * as React from "react";
 
 import { TableLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import {
@@ -309,6 +310,17 @@ export const TREND_MONTHS = 6;
 // One table shape for the tabs that are simply "a list of people or projects
 // with a few numbers" — giving each its own table would be six copies of the
 // same markup. The two that aren't (Time, Absence) build their own.
+export type ReportTableRow = {
+	/** The row's own identity — a userId, a projectId, an entry id.
+	 *
+	 *  Was derived by joining the cells, which stopped being possible once a
+	 *  cell could be a rendered face rather than a string. It is the better key
+	 *  anyway: two people with the same name and the same four numbers used to
+	 *  collide into one React key. */
+	key: string;
+	cells: React.ReactNode[];
+};
+
 export function ReportTable({
 	headers,
 	rows,
@@ -320,7 +332,7 @@ export function ReportTable({
 	columned = false,
 }: {
 	headers: string[];
-	rows: string[][];
+	rows: ReportTableRow[];
 	empty: string;
 	columned?: boolean;
 }) {
@@ -351,11 +363,11 @@ export function ReportTable({
 				</TableRow>
 			</TableHeader>
 			<TableBody>
-				{rows.map((cells) => (
-					<TableRow key={cells.join("|")}>
-						{cells.map((cell, i) => (
+				{rows.map((row) => (
+					<TableRow key={row.key}>
+						{row.cells.map((cell, i) => (
 							<TableCell
-								key={`${cells[0]}-${headers[i]}`}
+								key={`${row.key}-${headers[i]}`}
 								className={cn(i === 0 ? "font-medium" : "mono text-right")}
 							>
 								{cell}

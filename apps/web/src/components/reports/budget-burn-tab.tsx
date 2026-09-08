@@ -13,16 +13,19 @@ export function BudgetBurnTab() {
 		<>
 			<ReportTable
 				headers={["Project", "Client", "Logged", "Budget", "Remaining", "Burn"]}
-				rows={rows.map((r) => [
-					r.name,
-					r.clientName,
-					formatHoursLabel(r.consumedSeconds),
-					r.budgetSeconds == null ? "—" : formatHoursLabel(r.budgetSeconds),
-					r.remainingSeconds == null
-						? "—"
-						: formatHoursLabel(r.remainingSeconds),
-					r.burnPct == null ? "—" : `${r.burnPct}%`,
-				])}
+				rows={rows.map((r) => ({
+					key: r.projectId,
+					cells: [
+						r.name,
+						r.clientName,
+						formatHoursLabel(r.consumedSeconds),
+						r.budgetSeconds == null ? "—" : formatHoursLabel(r.budgetSeconds),
+						r.remainingSeconds == null
+							? "—"
+							: formatHoursLabel(r.remainingSeconds),
+						r.burnPct == null ? "—" : `${r.burnPct}%`,
+					],
+				}))}
 				empty="No active fixed-scope projects — those are the only ones with an hour budget."
 			/>
 			<p className="mt-4 max-w-[68ch] text-sm text-muted-foreground">

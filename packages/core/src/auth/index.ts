@@ -128,6 +128,23 @@ export const auth = betterAuth({
 			// visitor no way back — which matters most on an invite-only instance,
 			// where the invitation is tied to one specific address.
 			prompt: "select_account",
+			// Google is the profile of record: `user.name` and `user.image` come
+			// from it and this app has no screen that edits either one. The default
+			// (false) writes both once, when the user row is created, and never
+			// again — so a new photo or a changed surname stayed whatever it was on
+			// the day the person first signed in, for as long as the account lived.
+			// Sign-in is the only moment Google tells us anything about the person,
+			// so it is the only place this can be refreshed.
+			//
+			// It refreshes `email` too, not just the two display fields (see
+			// better-auth's `handleOAuthUserInfo`). That is the right way round
+			// here — this provider IS the identity, so the address on the account
+			// should be the address they sign in with — but it is worth knowing,
+			// because invitations are matched by email: a person whose Google
+			// address changes stops matching an invitation addressed to the old
+			// one, exactly as they would if they signed in with a different
+			// account.
+			overrideUserInfoOnSignIn: true,
 		},
 	},
 	databaseHooks: {

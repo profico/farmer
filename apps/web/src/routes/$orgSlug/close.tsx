@@ -124,9 +124,10 @@ function ClosePage() {
 	const waiting = projects.filter((p) => p.status === "submitted").length;
 
 	return (
-		// One island filling the frame. It used to set its own wide cap, which is
-		// how this screen ended up a different width from the timesheet next to it
-		// in the sidebar; the frame is the only thing that decides width now.
+		// One island filling the frame. It used to set its own cap, which is how
+		// this screen ended up a different width from the timesheet next to it in
+		// the sidebar; the frame is the only thing that decides width now, and it
+		// is sized for tables like this one.
 		<PageFull className="min-h-0 flex-1">
 			<PageHeader
 				eyebrow={

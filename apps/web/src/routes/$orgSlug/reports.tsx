@@ -81,6 +81,9 @@ function ReportsPage() {
 	}
 
 	return (
+		// Eight tables under one strip, all of them at the frame's width — which
+		// is sized for exactly this and shared with every other screen, so moving
+		// between them never resizes the shell.
 		<Page className="screen">
 			<PageHeader
 				eyebrow={formatMonthKey(month)}

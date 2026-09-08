@@ -12,6 +12,7 @@ import {
 	mobileWorkspaceItems,
 	REPORTS_ITEM,
 } from "#/components/app-sidebar.tsx";
+import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import {
 	Sheet,
@@ -23,7 +24,7 @@ import {
 import { useMediaQuery } from "#/hooks/use-media-query.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { springExpressive } from "#/lib/motion.ts";
-import { cn, getInitials } from "#/lib/utils.ts";
+import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 
 export function MobileTabBar({
@@ -31,12 +32,15 @@ export function MobileTabBar({
 	isAdmin,
 	userName,
 	userEmail,
+	userImage,
 	assistantAvailable,
 }: {
 	orgSlug: string;
 	isAdmin: boolean;
 	userName: string;
 	userEmail: string;
+	/** Off the session — see the same prop on `AppSidebar`. */
+	userImage: string | null;
 	/** Deployment flag AND connected AND not paused — resolved in the layout
 	 *  route. See the same prop on `AppSidebar`. */
 	assistantAvailable: boolean;
@@ -180,9 +184,7 @@ export function MobileTabBar({
 						})}
 					</div>
 					<div className="mt-1 flex shrink-0 items-center gap-2.5 border-t px-4 pt-3">
-						<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--fg)_8%,transparent)] text-xs font-medium">
-							{getInitials(userName)}
-						</span>
+						<PersonAvatar name={userName} image={userImage} />
 						<div className="min-w-0 flex-1">
 							<div className="truncate text-base font-medium">{userName}</div>
 							<div className="truncate text-xs text-faint">{userEmail}</div>

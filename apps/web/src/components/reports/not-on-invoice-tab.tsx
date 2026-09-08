@@ -6,6 +6,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { PersonCell } from "#/components/person-avatar.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import {
 	Select,
@@ -136,7 +137,9 @@ function NotOnInvoiceRow({
 
 	return (
 		<TableRow>
-			<TableCell className="font-medium">{row.name}</TableCell>
+			<TableCell>
+				<PersonCell userId={row.userId} name={row.name} />
+			</TableCell>
 			<TableCell>
 				<Select
 					items={items}

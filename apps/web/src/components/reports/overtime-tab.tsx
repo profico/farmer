@@ -3,6 +3,7 @@ import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
+import { PersonCell } from "#/components/person-avatar.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import {
 	Table,
@@ -66,7 +67,9 @@ export function OvertimeTab({
 			<TableBody>
 				{rows.map((row) => (
 					<TableRow key={row.userId}>
-						<TableCell className="font-medium">{row.name}</TableCell>
+						<TableCell>
+							<PersonCell userId={row.userId} name={row.name} />
+						</TableCell>
 						<TableCell className="text-right">
 							<Link
 								to="/$orgSlug/reports"
@@ -135,13 +138,16 @@ function OvertimeDetail({
 			</div>
 			<ReportTable
 				headers={["Date", "Project", "Task", "Description", "Hours"]}
-				rows={rows.map((r) => [
-					formatDateHeading(r.date),
-					r.projectName,
-					r.taskName,
-					r.description,
-					formatClock(r.durationSeconds),
-				])}
+				rows={rows.map((r) => ({
+					key: r.id,
+					cells: [
+						formatDateHeading(r.date),
+						r.projectName,
+						r.taskName,
+						r.description,
+						formatClock(r.durationSeconds),
+					],
+				}))}
 				empty="No overtime entries this month."
 			/>
 		</>

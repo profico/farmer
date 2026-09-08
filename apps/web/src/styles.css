@@ -243,15 +243,25 @@
      inch of screen away from the control it belongs to — so the frame is capped
      and centered, and the ground takes the leftover width on both sides.
 
-     One cap, not two. The previous layout had a normal cap and a wide cap and
-     let individual screens pick, which is exactly why Day, Week and Month ended
-     up three different widths on the same tab strip.
+     One cap, and every screen takes it. Twice now this layout has carried a
+     second, wider cap for the screens that are a table rather than a page, and
+     both times what it cost was not the width but the CHANGE: two caps mean the
+     frame re-centres on some navigations, which slides the sidebar — the one
+     part of the shell that is the same element before and after — and then
+     wants an animation to cover what it just did. So the dense screens set the
+     number and the pages of prose live inside it, which they can: the text on
+     them is capped in `ch` (see `SettingRow`, and the lede on every settings
+     screen) and was never as wide as the frame in the first place.
 
-     --frame-max   the whole frame: sidebar + gap + content.
+     --frame-max   the whole frame: sidebar + gap + content. Sized to leave the
+                   flanks something: at the 2200px the field starts at (section
+                   "field") it still keeps about 90px of ground on each side, so
+                   the densest screen narrows the ornament rather than closing
+                   it.
      --frame-pad   ground visible around the outside of the frame.
      --frame-gap   ground visible between islands, and between stacked panels.
      --island-radius  every island's corner, so they're cut the same way. */
-  --frame-max: 108rem;
+  --frame-max: 126rem;
   --frame-pad: 0.5rem;
   --frame-gap: 0.5rem;
   --island-radius: 14px;

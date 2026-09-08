@@ -24,6 +24,17 @@ export const listPeople = createServerFn({ method: "GET" })
 		return membersService.list(context.ctx);
 	});
 
+// Names and photos for everyone in the org — the one source every avatar in the
+// app draws from (see `membersService.directory`). Org-scoped, not admin-only:
+// a person's face is not a personnel record, and the screens that show one are
+// mostly screens a plain member can already open.
+export const listDirectory = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { membersService } = await import("@farmer/core/services");
+		return membersService.directory(context.ctx);
+	});
+
 // Person types resolved as of a given month, which is what every report and the
 // close sheet read — a type change is effective-dated, so "what is Ana" is only
 // answerable relative to a month.

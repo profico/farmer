@@ -19,6 +19,16 @@ export type ResolvedMemberType = {
 	expectedSecondsOverride: number | null;
 };
 
+/** One person, reduced to what it takes to draw them: a name and a face. */
+export type DirectoryEntry = {
+	userId: string;
+	name: string;
+	/** The Google profile photo, refreshed at every sign-in (see the
+	 *  `overrideUserInfoOnSignIn` note in `auth/index.ts`). Null for anyone who
+	 *  has only ever signed in with a password, i.e. every dev account. */
+	image: string | null;
+};
+
 export type PersonRow = ResolvedMemberType & {
 	userId: string;
 	name: string;
@@ -49,6 +59,33 @@ export const membersService = {
 			),
 		});
 		return row?.role ?? null;
+	},
+
+	/** Everyone in the org, as names and faces only.
+	 *
+	 *  This is what every avatar in the app resolves against, and it is one read
+	 *  rather than an `image` column threaded through `PersonRow`, the close
+	 *  sheet's rows, each report's rows and the project contributor list — nine
+	 *  row types that would each have grown a field, and their tests with them,
+	 *  to answer the same question. Every one of those rows already carries a
+	 *  `userId`, so the join belongs on the client, once.
+	 *
+	 *  Readable by every member, unlike `list`: it is a directory, not a
+	 *  personnel record. No email, no type, no role, no start date — nothing an
+	 *  admin screen owns. Names are already visible to any member through
+	 *  better-auth's own membership list, so this adds a photo and nothing
+	 *  else. */
+	directory: async (ctx: Ctx): Promise<DirectoryEntry[]> => {
+		return db
+			.select({
+				userId: member.userId,
+				name: user.name,
+				image: user.image,
+			})
+			.from(member)
+			.innerJoin(user, eq(member.userId, user.id))
+			.where(eq(member.organizationId, ctx.organizationId))
+			.orderBy(asc(user.name));
 	},
 
 	/** Every person in the org with their CURRENT type. For historical reporting

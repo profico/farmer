@@ -1,6 +1,7 @@
 import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
 
+import { PersonCell } from "#/components/person-avatar.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { complianceDashboardQuery } from "#/queries/compliance.ts";
 
@@ -26,12 +27,15 @@ export function ComplianceTab() {
 				<ReportTable
 					columned
 					headers={["Person", "Type", "Last entry", "Working days missing"]}
-					rows={data.noEntries.map((r) => [
-						r.name,
-						r.memberType,
-						r.lastEntryDate ?? "Never",
-						String(r.workingDaysMissing),
-					])}
+					rows={data.noEntries.map((r) => ({
+						key: r.userId,
+						cells: [
+							<PersonCell key="person" userId={r.userId} name={r.name} />,
+							r.memberType,
+							r.lastEntryDate ?? "Never",
+							String(r.workingDaysMissing),
+						],
+					}))}
 					empty="Everyone is up to date."
 				/>
 			</section>
@@ -46,13 +50,16 @@ export function ComplianceTab() {
 				<ReportTable
 					columned
 					headers={["Person", "Logged", "Expected so far", "Pace", "Short by"]}
-					rows={data.behindPace.map((r) => [
-						r.name,
-						formatHoursLabel(r.loggedSeconds),
-						formatHoursLabel(r.proratedExpectedSeconds),
-						`${r.pacePct}%`,
-						formatHoursLabel(r.shortfallSeconds),
-					])}
+					rows={data.behindPace.map((r) => ({
+						key: r.userId,
+						cells: [
+							<PersonCell key="person" userId={r.userId} name={r.name} />,
+							formatHoursLabel(r.loggedSeconds),
+							formatHoursLabel(r.proratedExpectedSeconds),
+							`${r.pacePct}%`,
+							formatHoursLabel(r.shortfallSeconds),
+						],
+					}))}
 					empty="Nobody is behind pace."
 				/>
 			</section>

@@ -7,6 +7,7 @@ import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
 import { AppShellLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { SidebarInset, SidebarProvider } from "#/components/ui/sidebar.tsx";
 import { assistantSettingsQuery } from "#/queries/assistant.ts";
+import { directoryQuery } from "#/queries/members.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
 import { enterOrganization } from "#/server/organization.ts";
 
@@ -71,11 +72,18 @@ export const Route = createFileRoute("/$orgSlug")({
 	// live in OrgLayout below, so the default left a bare island floating on the
 	// page. This one draws the shell it is standing in for.
 	pendingComponent: AppShellLoadingSkeleton,
-	// Warmed here, not fetched in the sidebar, and only when the deployment has
-	// the feature at all. Whether this org has actually connected OpenRouter
-	// decides whether the nav shows a Chat tab, so arriving a moment late means
-	// the tab appears and then vanishes — the one thing worse than not having it.
 	loader: async ({ context }) => {
+		// Not awaited: every avatar in the app reads this (see
+		// `components/person-avatar.tsx`) and every one of them degrades to
+		// initials while it is in flight, so blocking the whole workspace on a
+		// list of faces would trade a readable screen for a pending one.
+		void context.queryClient.prefetchQuery(
+			directoryQuery(context.organization.slug),
+		);
+		// The assistant settings ARE awaited, and only fetched when the deployment
+		// has the feature at all. Whether this org has connected OpenRouter decides
+		// whether the nav shows a Chat tab, so arriving a moment late means the tab
+		// appears and then vanishes — the one thing worse than not having it.
 		if (!context.assistantEnabled) return;
 		await context.queryClient.ensureQueryData(
 			assistantSettingsQuery(context.organization.slug),
@@ -120,6 +128,7 @@ function OrgLayout() {
 					isAdmin={isAdmin}
 					userName={session.user.name}
 					userEmail={session.user.email}
+					userImage={session.user.image ?? null}
 					singleOrg={singleOrg}
 					assistantAvailable={assistantAvailable}
 				/>
@@ -131,6 +140,7 @@ function OrgLayout() {
 					isAdmin={isAdmin}
 					userName={session.user.name}
 					userEmail={session.user.email}
+					userImage={session.user.image ?? null}
 					assistantAvailable={assistantAvailable}
 				/>
 			</SidebarProvider>

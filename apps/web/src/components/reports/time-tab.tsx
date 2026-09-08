@@ -9,6 +9,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
 
+import { PersonCell } from "#/components/person-avatar.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -264,7 +265,16 @@ function TimeSummaryRows({
 									: 0;
 							return (
 								<TableRow key={row.id}>
-									<TableCell className="font-medium">{row.name}</TableCell>
+									<TableCell className="font-medium">
+										{/* Only the teammates grouping lists people — under
+										    clients and projects the same `id` names something
+										    with no face. */}
+										{group === "teammates" ? (
+											<PersonCell userId={row.id} name={row.name} />
+										) : (
+											row.name
+										)}
+									</TableCell>
 									<TableCell className="text-right">
 										{/* Hours are the link, exactly as in Harvest: the number
 										    is the thing you want to see behind. */}

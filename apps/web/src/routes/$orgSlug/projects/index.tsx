@@ -4,18 +4,14 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
 import { CreateProjectDialog } from "#/components/create-project-dialog.tsx";
+import { PersonAvatar } from "#/components/person-avatar.tsx";
 import {
 	type ProjectCapabilities,
 	ProjectDetailPanel,
 } from "#/components/project-panel/project-detail-panel.tsx";
 import { EmptyState } from "#/components/states/empty-state.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
-import {
-	Avatar,
-	AvatarFallback,
-	AvatarGroup,
-	AvatarGroupCount,
-} from "#/components/ui/avatar.tsx";
+import { AvatarGroup, AvatarGroupCount } from "#/components/ui/avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
@@ -38,7 +34,7 @@ import { useMediaQuery } from "#/hooks/use-media-query.ts";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
-import { cn, getInitials } from "#/lib/utils.ts";
+import { cn } from "#/lib/utils.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 
@@ -251,11 +247,12 @@ function ProjectsPage() {
 											) : (
 												<AvatarGroup>
 													{shownContributors.map((c) => (
-														<Avatar key={c.id} size="sm">
-															<AvatarFallback>
-																{getInitials(c.name)}
-															</AvatarFallback>
-														</Avatar>
+														<PersonAvatar
+															key={c.id}
+															userId={c.id}
+															name={c.name}
+															size="sm"
+														/>
 													))}
 													{overflow > 0 && (
 														<AvatarGroupCount className="size-6 text-xs">
@@ -300,9 +297,9 @@ function ProjectsPage() {
 	);
 
 	return (
-		// Master/detail inside one island. Both panes used to pick their own cap
-		// (narrow here, wide there), so the same route rendered at two different
-		// widths depending on your role; the frame decides now, for both.
+		// Master/detail inside one island. Both panes used to pick their own cap,
+		// so the same route rendered at two different widths depending on your
+		// role; the frame decides now, for both.
 		//
 		// One panel, two containers: the rail from `lg` up, a sheet below it. The
 		// project's configuration used to be a row-actions menu of four modals,

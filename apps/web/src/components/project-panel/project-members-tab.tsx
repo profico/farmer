@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback } from "#/components/ui/avatar.tsx";
+import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Label } from "#/components/ui/label.tsx";
 import {
@@ -17,7 +17,6 @@ import {
 } from "#/components/ui/select.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { springProductive } from "#/lib/motion.ts";
-import { getInitials } from "#/lib/utils.ts";
 import {
 	assignableMembersQuery,
 	projectMembersQuery,
@@ -255,7 +254,10 @@ export function ProjectMembersTab({ projectId }: { projectId: string | null }) {
 							<SelectContent>
 								{unassigned.map((m) => (
 									<SelectItem key={m.userId} value={m.userId}>
-										{m.name}
+										<span className="flex items-center gap-2">
+											<PersonAvatar userId={m.userId} name={m.name} size="sm" />
+											{m.name}
+										</span>
 									</SelectItem>
 								))}
 							</SelectContent>
@@ -279,9 +281,7 @@ export function ProjectMembersTab({ projectId }: { projectId: string | null }) {
 									className="grid gap-3 border-t border-line2 py-4 first:border-t-0 first:pt-0"
 								>
 									<div className="flex items-center gap-2.5">
-										<Avatar size="sm">
-											<AvatarFallback>{getInitials(r.name)}</AvatarFallback>
-										</Avatar>
+										<PersonAvatar userId={r.userId} name={r.name} size="sm" />
 										<div className="min-w-0 flex-1">
 											<p className="truncate text-base font-medium">{r.name}</p>
 											<p className="truncate text-xs text-faint">{r.email}</p>

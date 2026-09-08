@@ -5,6 +5,7 @@ import {
 import { rollUpUtilization } from "@farmer/core/lib/utilization";
 import { useSuspenseQuery } from "@tanstack/react-query";
 
+import { PersonCell } from "#/components/person-avatar.tsx";
 import {
 	Table,
 	TableBody,
@@ -60,13 +61,18 @@ export function UtilizationTab({
 
 			<ReportTable
 				headers={["Person", "Type", "Final", "Expected", "Utilization"]}
-				rows={rows.map((r) => [
-					r.name,
-					r.memberType,
-					formatHoursLabel(r.finalSeconds),
-					r.expectedSeconds == null ? "—" : formatHoursLabel(r.expectedSeconds),
-					formatPctLabel(r.utilizationPct),
-				])}
+				rows={rows.map((r) => ({
+					key: r.userId,
+					cells: [
+						<PersonCell key="person" userId={r.userId} name={r.name} />,
+						r.memberType,
+						formatHoursLabel(r.finalSeconds),
+						r.expectedSeconds == null
+							? "—"
+							: formatHoursLabel(r.expectedSeconds),
+						formatPctLabel(r.utilizationPct),
+					],
+				}))}
 				empty="No finalized months yet."
 			/>
 

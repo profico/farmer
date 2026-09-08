@@ -29,6 +29,7 @@ import { type ComponentType, useEffect, useRef, useState } from "react";
 
 import { ChatRail } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
+import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { useScrollFade } from "#/components/ui/scroll-fade.tsx";
@@ -50,7 +51,7 @@ import {
 } from "#/components/ui/sidebar.tsx";
 import { authClient } from "#/lib/auth-client.ts";
 import { springLayout, springProductive } from "#/lib/motion.ts";
-import { cn, getInitials } from "#/lib/utils.ts";
+import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 
 export type OrgRoutePath =
@@ -229,6 +230,7 @@ export function AppSidebar({
 	isAdmin,
 	userName,
 	userEmail,
+	userImage,
 	singleOrg = false,
 	assistantAvailable,
 }: {
@@ -238,6 +240,10 @@ export function AppSidebar({
 	isAdmin: boolean;
 	userName: string;
 	userEmail: string;
+	/** Straight off the session rather than through the org directory: this is
+	 *  the one face on screen we already hold, and the sidebar paints before any
+	 *  query resolves. */
+	userImage: string | null;
 	singleOrg?: boolean;
 	/**
 	 * Whether the assistant exists for this reader at all — the deployment flag
@@ -492,9 +498,12 @@ export function AppSidebar({
 				    and two for everyone else, and the timesheet's footer aligns to
 				    this rule (see `--footer-h`). */}
 				<div className="flex h-(--footer-h) items-center gap-2.5 border-t px-3.5">
-					<span className="flex size-6.5 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--fg)_8%,transparent)] text-[11px] font-medium text-muted-foreground">
-						{getInitials(userName)}
-					</span>
+					<PersonAvatar
+						name={userName}
+						image={userImage}
+						size="sm"
+						className="size-6.5"
+					/>
 					<div className="min-w-0 flex-1">
 						<div className="truncate text-sm font-medium">{userName}</div>
 						{!isAdmin && (

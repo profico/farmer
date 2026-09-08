@@ -27,8 +27,10 @@ import { cn } from "#/lib/utils.ts";
 /**
  * A normal screen: one island, padded, scrolling with the document.
  *
- * Takes no width prop on purpose. Every page is exactly as wide as the frame,
- * which is what makes them line up with each other.
+ * Takes no width control of any kind, on purpose. The frame has exactly one
+ * cap, and a page is exactly as wide as the frame lets it be — which is what
+ * makes the pages line up with each other, and what stops the shell resizing
+ * itself as somebody walks between them.
  *
  * `flex-1` is what makes a short screen still fill the window. Without it the
  * island is only as tall as its content, so a two-setting page floated as a

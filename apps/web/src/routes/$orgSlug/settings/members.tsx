@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { InviteMemberDialog } from "#/components/invite-member-dialog.tsx";
+import { PersonCell } from "#/components/person-avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
@@ -187,13 +188,14 @@ function MembersSettingsPage() {
 							// you need to see who has left to restore them, and a hidden
 							// row is a row nobody can undo.
 							<TableRow key={m.id} className={cn(archived && "opacity-55")}>
-								<TableCell className="font-medium">
-									{m.user.name}
-									{archived && (
-										<span className="ml-2 text-2xs text-muted-foreground">
-											Archived
-										</span>
-									)}
+								<TableCell>
+									<PersonCell userId={m.userId} name={m.user.name}>
+										{archived && (
+											<span className="block text-2xs text-muted-foreground">
+												Archived
+											</span>
+										)}
+									</PersonCell>
 								</TableCell>
 								<TableCell>{m.user.email}</TableCell>
 								<TableCell>

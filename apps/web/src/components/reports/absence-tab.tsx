@@ -5,6 +5,7 @@ import {
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { PersonCell } from "#/components/person-avatar.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -94,7 +95,9 @@ export function AbsenceTab({ year, month }: { year: number; month: number }) {
 					<TableBody>
 						{data.rows.map((row) => (
 							<TableRow key={row.userId}>
-								<TableCell className="font-medium">{row.name}</TableCell>
+								<TableCell>
+									<PersonCell userId={row.userId} name={row.name} />
+								</TableCell>
 								{data.columns.map((c) => (
 									<TableCell key={`m-${c.key}`} className="mono text-right">
 										{cell(row.monthByTask, c.key)}
