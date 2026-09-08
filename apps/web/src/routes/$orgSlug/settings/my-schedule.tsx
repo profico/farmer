@@ -40,7 +40,7 @@ function MySchedulePage() {
 	const targetHours = targetSeconds / 3600;
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Your schedule"
 				title="My schedule"

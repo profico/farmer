@@ -1266,7 +1266,10 @@ html {
    * past that everything shares the fifth's delay, so this stays a short cascade
    * at the top of the page rather than a wave travelling down it. Reduced motion
    * drops the whole thing — a sequence of small movements is not gentler than one
-   * large one. */
+   * large one.
+   *
+   * `Page` and `PageFull` carry this class themselves; a screen never asks for
+   * it. See the note in `page-header.tsx` for what the opt-in cost. */
   .screen > * {
     animation: block-in var(--dur-slow) var(--ease-out) backwards;
   }

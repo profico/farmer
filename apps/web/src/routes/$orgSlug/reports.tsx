@@ -70,7 +70,7 @@ function ReportsPage() {
 
 	if (!canSeeAnything) {
 		return (
-			<Page className="screen">
+			<Page>
 				<PageHeader eyebrow="Reports" title="Nothing here for you" />
 				<p className="lede max-w-[62ch]">
 					Reports cover a whole project's time, so they're for the people who
@@ -84,7 +84,7 @@ function ReportsPage() {
 		// Eight tables under one strip, all of them at the frame's width — which
 		// is sized for exactly this and shared with every other screen, so moving
 		// between them never resizes the shell.
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow={formatMonthKey(month)}
 				title="Reports"

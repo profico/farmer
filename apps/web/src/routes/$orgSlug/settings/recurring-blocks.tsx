@@ -131,7 +131,7 @@ function RecurringBlocksPage() {
 	});
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Your schedule"
 				title="Recurring blocks"

@@ -179,7 +179,7 @@ function HolidaysSettingsPage() {
 		});
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Workspace"
 				title="Holidays"

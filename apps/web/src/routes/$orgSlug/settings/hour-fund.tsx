@@ -163,7 +163,7 @@ function HourFundPage() {
 	});
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Workspace"
 				title="Monthly hour fund"

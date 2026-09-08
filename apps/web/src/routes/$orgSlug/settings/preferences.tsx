@@ -185,7 +185,7 @@ function PreferencesSettingsPage() {
 	const { devAuth } = Route.useLoaderData();
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Your account"
 				title="Preferences"

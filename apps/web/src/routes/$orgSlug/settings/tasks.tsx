@@ -317,7 +317,7 @@ function TasksPage() {
 	});
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Workspace"
 				title="Tasks"

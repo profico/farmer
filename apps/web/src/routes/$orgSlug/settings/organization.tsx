@@ -102,7 +102,7 @@ function OrganizationSettingsPage() {
 	const logoChanged = trimmedLogo !== (settings.logo ?? "");
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Workspace"
 				title="Organization"

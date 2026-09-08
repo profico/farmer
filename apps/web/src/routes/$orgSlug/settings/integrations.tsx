@@ -240,7 +240,7 @@ function IntegrationsSettingsPage() {
 	});
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Your account"
 				title="Integrations"

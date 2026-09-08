@@ -126,7 +126,7 @@ function OrgHome() {
 	const firstName = session.user.name.split(" ")[0];
 
 	return (
-		<Page className="screen">
+		<Page>
 			<AutoTrackNag orgSlug={organization.slug} />
 			<PageHeader
 				eyebrow={`${formatDayKey(today)} · ${formatDurationLong(todayTotal)} logged`}

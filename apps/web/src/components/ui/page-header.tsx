@@ -22,6 +22,14 @@ import { cn } from "#/lib/utils.ts";
  * viewport height (the calendar views, the master/detail screens). Inside
  * either, `PageSection` is a stacked island and `SettingList`/`SettingRow` are
  * the one ruled-list idiom.
+ *
+ * Both carry the `.screen` entrance (styles.css), and neither lets a caller ask
+ * for it. It used to be a class each screen passed in, which is the kind of
+ * thing that is right thirteen times and then forgotten: every `Page` opted in
+ * and no `PageFull` did, so Monthly close, the timesheet, Projects and the
+ * assistant were the four screens in the app that arrived without the stagger
+ * their neighbours arrive with. The entrance says "a page landed", so it
+ * belongs to the thing that IS the page.
  */
 
 /**
@@ -53,7 +61,7 @@ export function Page({
 }) {
 	return (
 		<div className="island flex flex-1 flex-col">
-			<ScrollFade className={cn("island-pad", className)}>
+			<ScrollFade className={cn("island-pad screen", className)}>
 				{children}
 			</ScrollFade>
 		</div>
@@ -79,7 +87,7 @@ export function PageFull({
 	return (
 		<div
 			className={cn(
-				"island flex min-h-0 flex-1 flex-col",
+				"island screen flex min-h-0 flex-1 flex-col",
 				padded && "island-pad",
 				className,
 			)}

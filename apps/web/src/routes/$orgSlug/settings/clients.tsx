@@ -143,7 +143,7 @@ function ClientsPage() {
 	const busy = archive.isPending || unarchive.isPending;
 
 	return (
-		<Page className="screen">
+		<Page>
 			<PageHeader
 				eyebrow="Workspace"
 				title="Clients"
