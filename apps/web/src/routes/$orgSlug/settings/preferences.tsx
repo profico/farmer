@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { FilingRulesSettings } from "#/components/filing-rules-settings.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -187,7 +188,7 @@ function PreferencesSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Your account"
+				eyebrow={<SettingsEyebrow>Your account</SettingsEyebrow>}
 				title="Preferences"
 				lede="Your account and this device."
 			/>

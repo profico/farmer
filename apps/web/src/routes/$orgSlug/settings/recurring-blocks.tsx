@@ -13,6 +13,7 @@ import {
 	CreateRecurringBlockRuleDialog,
 	EditRecurringBlockRuleDialog,
 } from "#/components/recurring-block-rule-dialog.tsx";
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -133,7 +134,7 @@ function RecurringBlocksPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Your schedule"
+				eyebrow={<SettingsEyebrow>Your schedule</SettingsEyebrow>}
 				title="Recurring blocks"
 				lede="Blocks — a daily break, a standing meeting — that appear on your calendar without you logging them."
 				action={<CreateRecurringBlockRuleDialog />}

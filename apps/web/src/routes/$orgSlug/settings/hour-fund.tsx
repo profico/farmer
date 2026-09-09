@@ -8,6 +8,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
@@ -165,7 +166,7 @@ function HourFundPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Workspace"
+				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="Monthly hour fund"
 				lede="The official number of working hours in each month. It's the denominator of everyone's expected hours, so a month left blank simply shows no expected figure rather than guessing one."
 				action={

@@ -19,6 +19,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -242,7 +243,7 @@ function IntegrationsSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Your account"
+				eyebrow={<SettingsEyebrow>Your account</SettingsEyebrow>}
 				title="Integrations"
 				lede="Connect external accounts to enrich your time entries."
 			/>

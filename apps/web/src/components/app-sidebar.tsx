@@ -1,22 +1,4 @@
-import {
-	BriefcaseIcon,
-	BuildingsIcon,
-	CalendarCheckIcon,
-	CalendarDotsIcon,
-	CalendarHeartIcon,
-	ChartLineIcon,
-	ChatCircleDotsIcon,
-	ClockIcon,
-	FolderIcon,
-	GearSixIcon,
-	HashIcon,
-	PlugIcon,
-	RepeatIcon,
-	SignOutIcon,
-	SquaresFourIcon,
-	TagIcon,
-	UsersIcon,
-} from "@phosphor-icons/react";
+import { SignOutIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Link,
@@ -24,13 +6,15 @@ import {
 	useNavigate,
 	useRouter,
 } from "@tanstack/react-router";
-import { motion } from "motion/react";
-import { type ComponentType, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 
 import { ChatRail } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
+import { settingsSubNavItems } from "#/components/settings-nav.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
+import { Badge } from "#/components/ui/badge.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { useScrollFade } from "#/components/ui/scroll-fade.tsx";
 import {
@@ -48,137 +32,56 @@ import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
+	SidebarMenuSub,
+	SidebarMenuSubButton,
+	SidebarMenuSubItem,
 } from "#/components/ui/sidebar.tsx";
+import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { springLayout, springProductive } from "#/lib/motion.ts";
+import {
+	activeNavTo,
+	ASSISTANT_ITEM,
+	CLIENTS_ITEM,
+	CLOSE_ITEM,
+	isNavItemActive,
+	type NavItem,
+	PEOPLE_ITEM,
+	REPORTS_ITEM,
+	SETTINGS_ITEM,
+	WORK_ITEMS,
+	YOU_ITEMS,
+} from "#/lib/nav-items.ts";
 import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 
-export type OrgRoutePath =
-	| "/$orgSlug"
-	| "/$orgSlug/projects"
-	| "/$orgSlug/time"
-	| "/$orgSlug/assistant"
-	| "/$orgSlug/close"
-	| "/$orgSlug/reports"
-	| "/$orgSlug/settings/clients"
-	| "/$orgSlug/settings/my-schedule"
-	| "/$orgSlug/settings/recurring-blocks"
-	| "/$orgSlug/settings/holidays"
-	| "/$orgSlug/settings/integrations"
-	| "/$orgSlug/settings/tasks"
-	| "/$orgSlug/settings/hour-fund"
-	| "/$orgSlug/settings/organization"
-	| "/$orgSlug/settings/preferences"
-	| "/$orgSlug/settings/members";
-
 type SidebarTab = "browse" | "chat";
 
-export type NavItem = {
-	label: string;
-	to: OrgRoutePath;
-	icon: ComponentType<{ className?: string }>;
-};
-
-// Not a row in the desktop sidebar: there, the Chat tab IS the assistant, and a
-// nav entry beside it would be a second door to the same room. It survives as an
-// item for the MOBILE tab bar (below), which has no tabs and would otherwise
-// have no way in at all.
-//
-// Ungated by ROLE on purpose — the assistant answers through the caller's own
-// Access, so a Member's is simply a narrower assistant, not a forbidden one —
-// but gated on the feature being available at all: the deployment flag, a
-// connected key, and not paused for this org (see `assistantAvailable`).
-export const ASSISTANT_ITEM: NavItem = {
-	label: "Assistant",
-	to: "/$orgSlug/assistant",
-	icon: ChatCircleDotsIcon,
-};
-
-// First 3 are the primary mobile tab-bar destinations (mobile-tab-bar.tsx);
-// the rest surface in its "More" sheet, alongside ADMIN_ITEMS.
-export const WORKSPACE_ITEMS: NavItem[] = [
-	{ label: "Home", to: "/$orgSlug", icon: SquaresFourIcon },
-	{ label: "Projects", to: "/$orgSlug/projects", icon: FolderIcon },
-	{ label: "Time", to: "/$orgSlug/time", icon: ClockIcon },
-	{
-		label: "My schedule",
-		to: "/$orgSlug/settings/my-schedule",
-		icon: CalendarDotsIcon,
-	},
-	// Next to My schedule rather than buried in settings: a recurring block is
-	// the other half of "what my week looks like", and it writes entries onto
-	// days by itself — which is not something to hide behind two clicks.
-	{
-		label: "Recurring blocks",
-		to: "/$orgSlug/settings/recurring-blocks",
-		icon: RepeatIcon,
-	},
-	{
-		label: "Holidays",
-		to: "/$orgSlug/settings/holidays",
-		icon: CalendarHeartIcon,
-	},
-	{
-		label: "Integrations",
-		to: "/$orgSlug/settings/integrations",
-		icon: PlugIcon,
-	},
-	{
-		label: "Preferences",
-		to: "/$orgSlug/settings/preferences",
-		icon: GearSixIcon,
-	},
-];
-
 /**
- * The mobile tab bar's rows, which are the desktop sidebar's plus the assistant.
+ * The opening used by a row that arrives late and by the settings sub-menu:
+ * height and opacity together, or opacity alone for a reader who has asked for
+ * less motion.
  *
- * There is no Browse/Chat switch on a phone — the bar is three tabs and a "More"
- * sheet — so the assistant needs a row there or it is unreachable. It goes LAST:
- * the bar turns the first three (or four, on a wider phone) entries into its
- * primary tabs, and in a time-tracking app those slots belong to the screens the
- * work happens on. Appended rather than filtered because the bar slices by
- * POSITION, so a conditional row has to be placed before the slice.
+ * `MotionConfig reducedMotion="user"` (see `__root.tsx`) is the app's only
+ * reduced-motion mechanism, and it drops transform, scale and slide. A height
+ * animation is none of those, so it is the one piece of motion in the app that
+ * would keep unrolling for somebody who asked all of it to stop — hence the
+ * only per-component branch on the preference.
  */
-export const mobileWorkspaceItems = (assistantAvailable: boolean): NavItem[] =>
-	assistantAvailable ? [...WORKSPACE_ITEMS, ASSISTANT_ITEM] : WORKSPACE_ITEMS;
-
-// Gated on a PROJECT role rather than the org role, so neither list fits: the
-// close sheet belongs to whoever runs a project, and clients are creatable by
-// PMs and Team Leads (PRD 3.3), not just Admins.
-export const CLOSE_ITEM: NavItem = {
-	label: "Monthly close",
-	to: "/$orgSlug/close",
-	icon: CalendarCheckIcon,
-};
-
-export const CLIENTS_ITEM: NavItem = {
-	label: "Clients",
-	to: "/$orgSlug/settings/clients",
-	icon: BriefcaseIcon,
-};
-
-// Not an admin row: a Team Lead or PM gets the Time, Overtime and Budget burn
-// reports scoped to their own projects (PRD 6.1/6.5/6.6). The services have
-// always scoped them — the page was simply unreachable from the nav, so the
-// only way in was to type the URL.
-export const REPORTS_ITEM: NavItem = {
-	label: "Reports",
-	to: "/$orgSlug/reports",
-	icon: ChartLineIcon,
-};
-
-export const ADMIN_ITEMS: NavItem[] = [
-	{ label: "Tasks", to: "/$orgSlug/settings/tasks", icon: TagIcon },
-	{ label: "Hour fund", to: "/$orgSlug/settings/hour-fund", icon: HashIcon },
-	{
-		label: "Organization",
-		to: "/$orgSlug/settings/organization",
-		icon: BuildingsIcon,
-	},
-	{ label: "People", to: "/$orgSlug/settings/members", icon: UsersIcon },
-];
+function useUnroll(reduced: boolean | null) {
+	if (reduced) {
+		return {
+			initial: { opacity: 0 },
+			animate: { opacity: 1 },
+			exit: { opacity: 0 },
+		};
+	}
+	return {
+		initial: { height: 0, opacity: 0 },
+		animate: { height: "auto", opacity: 1 },
+		exit: { height: 0, opacity: 0 },
+	};
+}
 
 /**
  * A `SidebarMenuItem` that opens rather than appears, for the two rows whose
@@ -200,12 +103,13 @@ function EnteringMenuItem({
 	children: React.ReactNode;
 }) {
 	const [settled, setSettled] = useState(false);
+	const { initial, animate } = useUnroll(useReducedMotion());
 	return (
 		<motion.li
 			data-sidebar="menu-item"
 			className={cn("group/menu-item relative", !settled && "overflow-hidden")}
-			initial={{ height: 0, opacity: 0 }}
-			animate={{ height: "auto", opacity: 1 }}
+			initial={initial}
+			animate={animate}
 			transition={springProductive}
 			onAnimationComplete={() => {
 				setSettled(true);
@@ -217,10 +121,38 @@ function EnteringMenuItem({
 	);
 }
 
-export function isNavItemActive(pathname: string, to: string, orgSlug: string) {
-	const resolved = to.replace("$orgSlug", orgSlug);
-	if (resolved === `/${orgSlug}`) return pathname === resolved;
-	return pathname === resolved || pathname.startsWith(`${resolved}/`);
+/**
+ * The settings sub-menu's opening, and the reason it is not a plain `<div>`.
+ *
+ * The same shape as `EnteringMenuItem` above: `overflow-hidden` is what makes
+ * the list read as unrolling under the Settings row rather than six labels
+ * arriving at once, and it comes off the moment the animation ends, because a
+ * sub-row's `focus-visible:ring-2` sits outside its border and this box is
+ * exactly the list's size.
+ */
+function ExpandingSub({ children }: { children: React.ReactNode }) {
+	const [settled, setSettled] = useState(false);
+	const { initial, animate, exit } = useUnroll(useReducedMotion());
+	return (
+		<motion.div
+			className={cn(!settled && "overflow-hidden")}
+			initial={initial}
+			animate={animate}
+			// It leaves the way it arrived, rolling back up under the row it
+			// belongs to. Unmounting it on the frame the route changes made the
+			// list vanish where it had unrolled, which is the one thing a person
+			// reads as "that was not a place".
+			exit={exit}
+			transition={springProductive}
+			// The clip is only wanted while the box is moving: a sub-row's
+			// focus ring sits outside its border, and this box is exactly the
+			// list's size. It comes back for the exit.
+			onAnimationStart={() => setSettled(false)}
+			onAnimationComplete={() => setSettled(true)}
+		>
+			{children}
+		</motion.div>
+	);
 }
 
 export function AppSidebar({
@@ -233,6 +165,7 @@ export function AppSidebar({
 	userImage,
 	singleOrg = false,
 	assistantAvailable,
+	timezone,
 }: {
 	orgSlug: string;
 	organizationName: string;
@@ -253,6 +186,8 @@ export function AppSidebar({
 	 * there.
 	 */
 	assistantAvailable: boolean;
+	/** The organization's timezone, for the unfiled worklist's "today". */
+	timezone: string;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const router = useRouter();
@@ -287,7 +222,33 @@ export function AppSidebar({
 	// the trailing click — is enough to swallow that click's duplicate navigation.
 	const swallowClickRef = useRef(false);
 
-	const navLink = (item: NavItem, isActive: boolean) => (
+	// Navigation happens on the press, for every row and sub-row alike: a nav
+	// that waits for the release feels slower than the one beside it, and two
+	// lists that look the same must answer the same way.
+	const pressToNavigate = (item: NavItem, isActive: boolean) => ({
+		onMouseDown: (e: React.MouseEvent) => {
+			swallowClickRef.current = false;
+			// Only fast-path a plain primary-button press. Modifier / middle
+			// clicks fall through so the browser can open a new tab; keyboard
+			// activation has no mousedown and navigates on click below.
+			if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+				return;
+			// This press owns the interaction, so its click is a duplicate.
+			swallowClickRef.current = true;
+			// Re-pressing the tab you're on stays a no-op (matches onClick).
+			if (!isActive) navigate({ to: item.to, params: { orgSlug } });
+		},
+		onClick: (e: React.MouseEvent) => {
+			// A mouse press already navigated on mousedown — swallow its click
+			// so we don't navigate twice. Keyboard Enter reaches here with no
+			// preceding mousedown (flag false) and navigates normally, except
+			// on the active tab, which stays a no-op.
+			if (swallowClickRef.current || isActive) e.preventDefault();
+			swallowClickRef.current = false;
+		},
+	});
+
+	const navLink = (item: NavItem, isActive: boolean, badge?: number) => (
 		<Link
 			to={item.to}
 			params={{ orgSlug }}
@@ -297,26 +258,7 @@ export function AppSidebar({
 			// draw it instead and carry it between rows. This is the only consumer of
 			// SidebarMenuButton, so nothing else is affected.
 			className="data-active:bg-transparent data-active:shadow-none"
-			onMouseDown={(e) => {
-				swallowClickRef.current = false;
-				// Only fast-path a plain primary-button press. Modifier / middle
-				// clicks fall through so the browser can open a new tab; keyboard
-				// activation has no mousedown and navigates on click below.
-				if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
-					return;
-				// This press owns the interaction, so its click is a duplicate.
-				swallowClickRef.current = true;
-				// Re-pressing the tab you're on stays a no-op (matches onClick).
-				if (!isActive) navigate({ to: item.to, params: { orgSlug } });
-			}}
-			onClick={(e) => {
-				// A mouse press already navigated on mousedown — swallow its click
-				// so we don't navigate twice. Keyboard Enter reaches here with no
-				// preceding mousedown (flag false) and navigates normally, except
-				// on the active tab, which stays a no-op.
-				if (swallowClickRef.current || isActive) e.preventDefault();
-				swallowClickRef.current = false;
-			}}
+			{...pressToNavigate(item, isActive)}
 		>
 			{/* The active pill, as a shared element rather than a background on the
 			    row — so moving between destinations slides it down the nav instead
@@ -325,8 +267,9 @@ export function AppSidebar({
 			    <MotionConfig> makes it jump instead of glide.
 
 			    First child, with the icon and label made `relative` so they paint
-			    over it — cheaper than a wrapper, and it keeps the label the last
-			    `<span>` so the variant's `[&>span:last-child]:truncate` still bites. */}
+			    over it — cheaper than a wrapper. The label used to lean on the
+			    variant's `[&>span:last-child]:truncate`; a row with a badge has a
+			    later span than the label, so it carries `truncate` itself now. */}
 			{isActive && (
 				<motion.span
 					aria-hidden
@@ -336,17 +279,30 @@ export function AppSidebar({
 				/>
 			)}
 			<item.icon className="relative size-4" />
-			<span className="relative">{item.label}</span>
+			<span className="relative min-w-0 flex-1 truncate">{item.label}</span>
+			{/* A count, not a dot: how much unattributed time is waiting decides
+			    whether you deal with it now, and "some" does not. Quiet rather than
+			    the loud `default` badge — this is a standing worklist that is
+			    normally non-empty, so a red-adjacent fill on it would be permanent
+			    alarm rather than information. */}
+			{badge !== undefined && badge > 0 && (
+				<Badge
+					variant="secondary"
+					className="relative h-5 min-w-5 px-1.5 text-2xs tabular-nums"
+				>
+					{badge > 99 ? "99+" : badge}
+				</Badge>
+			)}
 		</Link>
 	);
 
 	const navRow = (item: NavItem) => {
-		const isActive = isNavItemActive(pathname, item.to, orgSlug);
+		const isActive = activeTo === item.to;
 		return (
 			<SidebarMenuItem key={item.to}>
 				<SidebarMenuButton
 					isActive={isActive}
-					render={navLink(item, isActive)}
+					render={navLink(item, isActive, badgeFor(item))}
 				/>
 			</SidebarMenuItem>
 		);
@@ -366,9 +322,12 @@ export function AppSidebar({
 	// otherwise snap the rows to full height halfway through.
 	const lateRowsSettled = useRef(false);
 	const lateNavRow = (item: NavItem) => {
-		const isActive = isNavItemActive(pathname, item.to, orgSlug);
+		const isActive = activeTo === item.to;
 		const button = (
-			<SidebarMenuButton isActive={isActive} render={navLink(item, isActive)} />
+			<SidebarMenuButton
+				isActive={isActive}
+				render={navLink(item, isActive, badgeFor(item))}
+			/>
 		);
 		return lateRowsSettled.current ? (
 			<SidebarMenuItem key={item.to}>{button}</SidebarMenuItem>
@@ -393,6 +352,112 @@ export function AppSidebar({
 	// Team Lead is the floor for any report at all — a plain Member sees strictly
 	// their own entries and nothing at project level.
 	const canSeeReports = isAdmin || !!access?.isLeadSomewhere;
+
+	// The gated rows, resolved once: the render needs them twice over (which
+	// group draws which row, and which row the path belongs to) and they must be
+	// the same answer both times.
+	const lateWorkItems = [
+		...(canClose ? [CLOSE_ITEM] : []),
+		...(canSeeReports ? [REPORTS_ITEM] : []),
+	];
+	const manageItems = [
+		...(canManageClients ? [CLIENTS_ITEM] : []),
+		...(isAdmin ? [PEOPLE_ITEM] : []),
+	];
+
+	// The settings sub-menu, open only while you are somewhere under it.
+	//
+	// A settings page used to be a leaf: you arrived from the hub, and the only
+	// way to the next one was back to the hub first. The sub-menu turns the six
+	// pages that have no row of their own into siblings you can walk between, and
+	// it is what makes the Settings row read as a place rather than a link.
+	//
+	// It is not a disclosure the reader opens and closes. There is no state to
+	// keep, nothing to remember across a navigation, and no way to be in settings
+	// while it is shut — the route IS the switch, which is also why it needs no
+	// aria-expanded: nothing here is a control.
+	const inSettings = isNavItemActive(pathname, SETTINGS_ITEM.to, orgSlug);
+	const settingsItems = settingsSubNavItems({ isAdmin, canManageClients });
+	const activeTo = activeNavTo(
+		pathname,
+		[
+			...WORK_ITEMS,
+			...lateWorkItems,
+			...YOU_ITEMS,
+			...(inSettings ? settingsItems : []),
+			...manageItems,
+		],
+		orgSlug,
+	);
+
+	// Unattributed time, on the row that leads to the screen that files it.
+	// Everything the sync engines write lands project-less, so this is the one
+	// number in the app that grows while nobody is looking at it.
+	const unfiledCount = useUnfiledCount(orgSlug, timezone);
+	const badgeFor = (item: NavItem) =>
+		item.to === "/$orgSlug/time" ? unfiledCount : undefined;
+
+	// A sub-row: the same shared pill as a top-level row, one indent in.
+	//
+	// `SidebarMenuSubButton` paints its own `data-active` background, which would
+	// blink the highlight off a nav row and on down here. Neutralised so the
+	// shared-layout span can draw it instead and carry it into the sub-menu, the
+	// same way it already travels between the groups above.
+	const settingsSubLink = (item: NavItem, isActive: boolean) => (
+		<Link
+			to={item.to}
+			params={{ orgSlug }}
+			className="relative data-active:bg-transparent"
+			{...pressToNavigate(item, isActive)}
+		>
+			{isActive && (
+				<motion.span
+					aria-hidden
+					layoutId="sidebar-active-nav"
+					transition={springLayout}
+					// `rounded-md`, matching the sub button's own corner — the pill and
+					// the hover background are the same shape at the same size, or the
+					// corner changes as you move onto the row you are already on.
+					className="absolute inset-0 rounded-md bg-sidebar-accent shadow-[0_1px_2px_color-mix(in_srgb,var(--fg)_5%,transparent)]"
+				/>
+			)}
+			{/* No icon, unlike the rows above and unlike the hub's list: the rail at
+			    the left already says these belong to the row over them, and a second
+			    column of glyphs at this indent leaves the labels nowhere to go. */}
+			<span className="relative min-w-0 flex-1 truncate">{item.label}</span>
+		</Link>
+	);
+
+	const settingsRow = (item: NavItem) => {
+		const isActive = activeTo === item.to;
+		return (
+			<SidebarMenuItem key={item.to}>
+				<SidebarMenuButton
+					isActive={isActive}
+					render={navLink(item, isActive)}
+				/>
+				{/* `initial={false}` so a cold load that lands inside settings paints
+				    the sub-menu already open. It is not an entrance there — it is
+				    what the sidebar looks like at that address. */}
+				<AnimatePresence initial={false}>
+					{inSettings && (
+						<ExpandingSub>
+							<SidebarMenuSub className="mt-1">
+								{settingsItems.map((subItem) => (
+									<SidebarMenuSubItem key={subItem.to}>
+										<SidebarMenuSubButton
+											isActive={activeTo === subItem.to}
+											render={settingsSubLink(subItem, activeTo === subItem.to)}
+										/>
+									</SidebarMenuSubItem>
+								))}
+							</SidebarMenuSub>
+						</ExpandingSub>
+					)}
+				</AnimatePresence>
+			</SidebarMenuItem>
+		);
+	};
 
 	const handleLogout = async () => {
 		await authClient.signOut();
@@ -469,23 +534,37 @@ export function AppSidebar({
 					) : (
 						<>
 							<SidebarGroup>
-								<SidebarGroupLabel>Workspace</SidebarGroupLabel>
+								<SidebarGroupLabel>Work</SidebarGroupLabel>
 								<SidebarGroupContent>
 									<SidebarMenu>
-										{WORKSPACE_ITEMS.map(navRow)}
-										{[
-											...(canManageClients ? [CLIENTS_ITEM] : []),
-											...(canClose ? [CLOSE_ITEM] : []),
-											...(canSeeReports ? [REPORTS_ITEM] : []),
-										].map(lateNavRow)}
+										{WORK_ITEMS.map(navRow)}
+										{lateWorkItems.map(lateNavRow)}
 									</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
-							{isAdmin && (
+							<SidebarGroup>
+								<SidebarGroupLabel>You</SidebarGroupLabel>
+								<SidebarGroupContent>
+									<SidebarMenu>
+										{YOU_ITEMS.map((item) =>
+											item.to === SETTINGS_ITEM.to
+												? settingsRow(item)
+												: navRow(item),
+										)}
+									</SidebarMenu>
+								</SidebarGroupContent>
+							</SidebarGroup>
+							{/* Admin is known before the first paint and a Team Lead's
+							    Clients row is not, so for a lead the whole group arrives
+							    late — the row opens (`lateNavRow`) and takes its label
+							    with it, rather than the label sitting alone over nothing. */}
+							{manageItems.length > 0 && (
 								<SidebarGroup>
-									<SidebarGroupLabel>Admin</SidebarGroupLabel>
+									<SidebarGroupLabel>Manage</SidebarGroupLabel>
 									<SidebarGroupContent>
-										<SidebarMenu>{ADMIN_ITEMS.map(navRow)}</SidebarMenu>
+										<SidebarMenu>
+											{manageItems.map(isAdmin ? navRow : lateNavRow)}
+										</SidebarMenu>
 									</SidebarGroupContent>
 								</SidebarGroup>
 							)}

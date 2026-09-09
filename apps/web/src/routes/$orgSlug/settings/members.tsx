@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { InviteMemberDialog } from "#/components/invite-member-dialog.tsx";
 import { PersonCell } from "#/components/person-avatar.tsx";
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
@@ -157,7 +158,7 @@ function MembersSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Workspace"
+				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="People"
 				lede="Who has access, and what kind of person they are. Overhead people are left out of compliance nudges and utilization; contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
 				action={<InviteMemberDialog />}

@@ -7,6 +7,7 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
@@ -104,7 +105,7 @@ function OrganizationSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Workspace"
+				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="Organization"
 				lede="General settings for this organization."
 			/>

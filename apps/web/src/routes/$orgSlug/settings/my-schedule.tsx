@@ -3,6 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { EditWeeklyTargetDialog } from "#/components/edit-weekly-target-dialog.tsx";
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Unit } from "#/components/ui/metric.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import { WorkingHoursRow } from "#/components/working-hours-row.tsx";
@@ -42,7 +43,7 @@ function MySchedulePage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Your schedule"
+				eyebrow={<SettingsEyebrow>Your schedule</SettingsEyebrow>}
 				title="My schedule"
 				lede={`Your working hours. These drive the "fill rest of day" block and the reminder that you're behind pace.`}
 				action={

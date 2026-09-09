@@ -1,4 +1,5 @@
 import { dayKeyInTz } from "@farmer/core/lib/time";
+import type { HolidayWithStatus } from "@farmer/core/services";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
@@ -10,9 +11,10 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -90,6 +92,79 @@ const relativeLabel = (dateKey: string, todayKey: string): string => {
 // localStorage rather than on the org.
 type HolidaysView = "relative" | "single";
 const VIEW_STORAGE_KEY = "farmer:holidays-view";
+
+/**
+ * The year's holidays as one ruled table.
+ *
+ * Extracted so the whole-year view can render the table as a DIRECT child of
+ * the screen. Both of the rules that flatten a page's first band select a child
+ * of `.screen` (see styles.css), so the wrapping <div> this used to sit in was
+ * enough to defeat them: holidays opened with a top rule under its header that
+ * no other settings page draws.
+ */
+function HolidayTable({
+	rows,
+	view,
+	todayKey,
+	isAdmin,
+	onToggle,
+}: {
+	rows: HolidayWithStatus[];
+	view: HolidaysView;
+	/** Today in the org timezone - see the caller. */
+	todayKey: string;
+	isAdmin: boolean;
+	onToggle: (vars: { name: string; disabled: boolean }) => void;
+}) {
+	return (
+		<Table>
+			<TableHeader>
+				<TableRow>
+					<TableHead>Date</TableHead>
+					<TableHead>Day</TableHead>
+					<TableHead>Holiday</TableHead>
+					<TableHead className="text-right">
+						{isAdmin ? "Observed" : "Status"}
+					</TableHead>
+				</TableRow>
+			</TableHeader>
+			<TableBody>
+				{rows.map((h) => (
+					<TableRow key={h.date} className={cn(h.disabled && "opacity-50")}>
+						<TableCell className="tnum">
+							{view === "relative" ? (
+								<span className="flex items-center gap-2">
+									{formatHolidayDate(h.date)}
+									<Badge variant={h.date < todayKey ? "outline" : "secondary"}>
+										{relativeLabel(h.date, todayKey)}
+									</Badge>
+								</span>
+							) : (
+								formatHolidayDate(h.date)
+							)}
+						</TableCell>
+						<TableCell>{weekdayFor(h.date)}</TableCell>
+						<TableCell className="font-medium">{h.name}</TableCell>
+						<TableCell className="text-right">
+							{isAdmin ? (
+								<Switch
+									checked={!h.disabled}
+									onCheckedChange={(checked) =>
+										onToggle({ name: h.name, disabled: !checked })
+									}
+								/>
+							) : (
+								<span className="text-sm text-muted-foreground">
+									{h.disabled ? "Not observed" : "Observed"}
+								</span>
+							)}
+						</TableCell>
+					</TableRow>
+				))}
+			</TableBody>
+		</Table>
+	);
+}
 
 function HolidaysSettingsPage() {
 	const orgSlug = useOrgSlug();
@@ -181,7 +256,7 @@ function HolidaysSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Workspace"
+				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="Holidays"
 				lede={
 					<>
@@ -235,72 +310,28 @@ function HolidaysSettingsPage() {
 					No public holidays found for this country and year.
 				</p>
 			) : (
-				sections.map((section, index) => (
-					<div
-						key={section.heading ?? "all"}
-						className={index === 0 ? undefined : "mt-8"}
-					>
-						{section.heading !== null && (
-							<h2 className="eyebrow">{section.heading}</h2>
-						)}
-						<Table containerClassName={cn(section.heading !== null && "mt-3")}>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Date</TableHead>
-									<TableHead>Day</TableHead>
-									<TableHead>Holiday</TableHead>
-									<TableHead className="text-right">
-										{isAdmin ? "Observed" : "Status"}
-									</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{section.rows.map((h) => (
-									<TableRow
-										key={h.date}
-										className={cn(h.disabled && "opacity-50")}
-									>
-										<TableCell className="tnum">
-											{view === "relative" ? (
-												<span className="flex items-center gap-2">
-													{formatHolidayDate(h.date)}
-													<Badge
-														variant={
-															h.date < todayKey ? "outline" : "secondary"
-														}
-													>
-														{relativeLabel(h.date, todayKey)}
-													</Badge>
-												</span>
-											) : (
-												formatHolidayDate(h.date)
-											)}
-										</TableCell>
-										<TableCell>{weekdayFor(h.date)}</TableCell>
-										<TableCell className="font-medium">{h.name}</TableCell>
-										<TableCell className="text-right">
-											{isAdmin ? (
-												<Switch
-													checked={!h.disabled}
-													onCheckedChange={(checked) =>
-														toggleMutation.mutate({
-															name: h.name,
-															disabled: !checked,
-														})
-													}
-												/>
-											) : (
-												<span className="text-sm text-muted-foreground">
-													{h.disabled ? "Not observed" : "Observed"}
-												</span>
-											)}
-										</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
-					</div>
-				))
+				sections.map((section) =>
+					section.heading === null ? (
+						<HolidayTable
+							key="all"
+							rows={section.rows}
+							view={view}
+							todayKey={todayKey}
+							isAdmin={isAdmin}
+							onToggle={toggleMutation.mutate}
+						/>
+					) : (
+						<PageSection key={section.heading} title={section.heading}>
+							<HolidayTable
+								rows={section.rows}
+								view={view}
+								todayKey={todayKey}
+								isAdmin={isAdmin}
+								onToggle={toggleMutation.mutate}
+							/>
+						</PageSection>
+					),
+				)
 			)}
 		</Page>
 	);

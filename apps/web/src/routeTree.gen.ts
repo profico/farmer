@@ -21,6 +21,7 @@ import { Route as OrgSlugCloseRouteImport } from './routes/$orgSlug/close'
 import { Route as OrgSlugAssistantRouteImport } from './routes/$orgSlug/assistant'
 import { Route as OrgSlugTimeRouteRouteImport } from './routes/$orgSlug/time/route'
 import { Route as OrgSlugTimeIndexRouteImport } from './routes/$orgSlug/time/index'
+import { Route as OrgSlugSettingsIndexRouteImport } from './routes/$orgSlug/settings/index'
 import { Route as OrgSlugProjectsIndexRouteImport } from './routes/$orgSlug/projects/index'
 import { Route as ApiV1TimeEntriesRouteImport } from './routes/api/v1/time-entries'
 import { Route as ApiV1ProjectsRouteImport } from './routes/api/v1/projects'
@@ -102,6 +103,11 @@ const OrgSlugTimeIndexRoute = OrgSlugTimeIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => OrgSlugTimeRouteRoute,
+} as any)
+const OrgSlugSettingsIndexRoute = OrgSlugSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => OrgSlugRouteRoute,
 } as any)
 const OrgSlugProjectsIndexRoute = OrgSlugProjectsIndexRouteImport.update({
   id: '/projects/',
@@ -241,6 +247,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
   '/$orgSlug/projects/': typeof OrgSlugProjectsIndexRoute
+  '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
   '/$orgSlug/time/': typeof OrgSlugTimeIndexRoute
 }
 export interface FileRoutesByTo {
@@ -273,6 +280,7 @@ export interface FileRoutesByTo {
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
   '/$orgSlug/projects': typeof OrgSlugProjectsIndexRoute
+  '/$orgSlug/settings': typeof OrgSlugSettingsIndexRoute
   '/$orgSlug/time': typeof OrgSlugTimeIndexRoute
 }
 export interface FileRoutesById {
@@ -308,6 +316,7 @@ export interface FileRoutesById {
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
   '/$orgSlug/projects/': typeof OrgSlugProjectsIndexRoute
+  '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
   '/$orgSlug/time/': typeof OrgSlugTimeIndexRoute
 }
 export interface FileRouteTypes {
@@ -344,6 +353,7 @@ export interface FileRouteTypes {
     | '/api/v1/projects'
     | '/api/v1/time-entries'
     | '/$orgSlug/projects/'
+    | '/$orgSlug/settings/'
     | '/$orgSlug/time/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -376,6 +386,7 @@ export interface FileRouteTypes {
     | '/api/v1/projects'
     | '/api/v1/time-entries'
     | '/$orgSlug/projects'
+    | '/$orgSlug/settings'
     | '/$orgSlug/time'
   id:
     | '__root__'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/api/v1/projects'
     | '/api/v1/time-entries'
     | '/$orgSlug/projects/'
+    | '/$orgSlug/settings/'
     | '/$orgSlug/time/'
   fileRoutesById: FileRoutesById
 }
@@ -514,6 +526,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/$orgSlug/time/'
       preLoaderRoute: typeof OrgSlugTimeIndexRouteImport
       parentRoute: typeof OrgSlugTimeRouteRoute
+    }
+    '/$orgSlug/settings/': {
+      id: '/$orgSlug/settings/'
+      path: '/settings'
+      fullPath: '/$orgSlug/settings/'
+      preLoaderRoute: typeof OrgSlugSettingsIndexRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/projects/': {
       id: '/$orgSlug/projects/'
@@ -690,6 +709,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugSettingsRecurringBlocksRoute: typeof OrgSlugSettingsRecurringBlocksRoute
   OrgSlugSettingsTasksRoute: typeof OrgSlugSettingsTasksRoute
   OrgSlugProjectsIndexRoute: typeof OrgSlugProjectsIndexRoute
+  OrgSlugSettingsIndexRoute: typeof OrgSlugSettingsIndexRoute
 }
 
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
@@ -709,6 +729,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugSettingsRecurringBlocksRoute: OrgSlugSettingsRecurringBlocksRoute,
   OrgSlugSettingsTasksRoute: OrgSlugSettingsTasksRoute,
   OrgSlugProjectsIndexRoute: OrgSlugProjectsIndexRoute,
+  OrgSlugSettingsIndexRoute: OrgSlugSettingsIndexRoute,
 }
 
 const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(

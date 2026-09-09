@@ -131,6 +131,7 @@ function OrgLayout() {
 					userImage={session.user.image ?? null}
 					singleOrg={singleOrg}
 					assistantAvailable={assistantAvailable}
+					timezone={organization.timezone}
 				/>
 				<SidebarInset>
 					<Outlet />
@@ -142,6 +143,7 @@ function OrgLayout() {
 					userEmail={session.user.email}
 					userImage={session.user.image ?? null}
 					assistantAvailable={assistantAvailable}
+					timezone={organization.timezone}
 				/>
 			</SidebarProvider>
 		</>

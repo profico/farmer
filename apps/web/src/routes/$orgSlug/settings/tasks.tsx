@@ -13,6 +13,7 @@ import type { z } from "zod";
 
 import { ColorPicker } from "#/components/color-picker.tsx";
 import { ManageTaskProjectsDialog } from "#/components/manage-task-projects-dialog.tsx";
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -319,7 +320,7 @@ function TasksPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Workspace"
+				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="Tasks"
 				lede={`One global list for the whole company.`}
 				// The archive toggle belongs beside New task, where every screen's

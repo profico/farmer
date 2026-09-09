@@ -26,7 +26,11 @@ import { formatHoursShort } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
-import { unfiledEntriesQuery } from "#/queries/time-entries.ts";
+import {
+	unfiledEntriesQuery,
+	unfiledWindow,
+	unfiledWindowQuery,
+} from "#/queries/time-entries.ts";
 import { fileTimeEntries } from "#/server/time-entries.ts";
 
 // Everything the engines write lands with no project: the calendar sync files
@@ -38,24 +42,15 @@ import { fileTimeEntries } from "#/server/time-entries.ts";
 // Deliberately NOT dismissible, unlike AutoTrackNag: that one nudges you toward
 // an optional feature, this one is a worklist of your own unattributed hours.
 
-// The window we nag about. Ends today: the sync pre-imports meetings up to two
-// weeks out, and nagging someone to file a meeting that hasn't happened yet is
-// noise. 62 days is the cap listTimeEntriesRangeInput enforces.
-const NAG_DAYS_BACK = 61;
-
-const shiftKey = (key: string, days: number) => {
-	const d = new Date(`${key}T00:00:00Z`);
-	d.setUTCDate(d.getUTCDate() + days);
-	return d.toISOString().slice(0, 10);
-};
-
+// The window this nags about now lives with the query (`unfiledWindow`), because
+// the Time nav row's badge counts the same list and the two must not drift.
 export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
-	const from = shiftKey(todayKey, -NAG_DAYS_BACK);
+	const { from } = unfiledWindow(todayKey);
 
 	const { data: entries } = useQuery({
-		...unfiledEntriesQuery(orgSlug, from, todayKey),
+		...unfiledWindowQuery(orgSlug, todayKey),
 		staleTime: 60_000,
 	});
 
