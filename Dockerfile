@@ -120,6 +120,10 @@ ARG TARGET_TYPST_TRIPLE=""
 # resolved it fresh on every build — two images built from the same commit could
 # ship different code. docker/bun.lock is generated from this manifest and has
 # to be regenerated when a version in it changes; runtime.package.json says how.
+# It has to be written by THIS Bun: a lockfile from bun 1.4 is lockfileVersion 2
+# and 1.3.14 answers it with "Unknown lockfile version", then fails the frozen
+# install. The root bun.lock is exempt only because bun keeps the version of a
+# lockfile it is updating; this one is created from nothing every time.
 COPY docker/runtime.package.json ./package.json
 COPY docker/bun.lock ./bun.lock
 RUN set -e; \
