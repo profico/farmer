@@ -145,21 +145,21 @@ const autoTracked = [
 
 const recentEntries = [
 	{
-		dot: "#6b7f6a",
+		dot: "var(--chart-2)",
 		title: "Design review",
 		sub: "Acme Rebrand · Meetings",
 		badge: { Icon: CalendarBlankIcon, text: "Synced" },
 		hours: "1.0h",
 	},
 	{
-		dot: "#8a6a1f",
+		dot: "var(--warn)",
 		title: "Auth refactor",
 		sub: "Harbor App · Development",
 		badge: { Icon: GitCommitIcon, text: "12" },
 		hours: "2.5h",
 	},
 	{
-		dot: "#55707d",
+		dot: "var(--chart-5)",
 		title: "Sprint planning",
 		sub: "Internal · Planning",
 		badge: null,
@@ -181,7 +181,7 @@ function Home() {
 						position: "sticky",
 						top: 0,
 						zIndex: 50,
-						background: "#faf9f6",
+						background: "var(--bg)",
 					}}
 				>
 					<div
@@ -215,7 +215,7 @@ function Home() {
 							<a
 								className="u-link fm-nav-section"
 								href="#opensource"
-								style={{ color: "rgba(38,35,43,.6)" }}
+								style={{ color: "var(--mut)" }}
 							>
 								Open source
 							</a>
@@ -249,7 +249,7 @@ function Home() {
 						Do less tracking,
 						<br />
 						do more{" "}
-						<span style={{ fontStyle: "italic", color: "#6f4ebe" }}>
+						<span style={{ fontStyle: "italic", color: "var(--acc)" }}>
 							doing.
 						</span>
 					</h1>
@@ -260,7 +260,7 @@ function Home() {
 							maxWidth: "540px",
 							fontSize: "17px",
 							lineHeight: 1.6,
-							color: "rgba(38,35,43,.62)",
+							color: "var(--mut)",
 						}}
 					>
 						Farmer is calendar-first time tracking that logs your meetings from
@@ -303,9 +303,9 @@ function Home() {
 						style={{
 							borderRadius: "16px",
 							overflow: "hidden",
-							border: "1px solid rgba(27,26,23,.11)",
-							background: "#efece5",
-							boxShadow: "0 1px 3px rgba(27,26,23,.05)",
+							border: "1px solid var(--line)",
+							background: "var(--ground)",
+							boxShadow: "var(--fm-shadow-window)",
 						}}
 					>
 						<div
@@ -314,7 +314,7 @@ function Home() {
 								alignItems: "center",
 								gap: "12px",
 								padding: "11px 16px",
-								borderBottom: "1px solid rgba(27,26,23,.055)",
+								borderBottom: "1px solid var(--line2)",
 							}}
 						>
 							<div style={{ display: "flex", gap: "6px" }}>
@@ -323,7 +323,7 @@ function Home() {
 										width: "10px",
 										height: "10px",
 										borderRadius: "50%",
-										background: "rgba(27,26,23,.11)",
+										background: "var(--line)",
 									}}
 								/>
 								<span
@@ -331,7 +331,7 @@ function Home() {
 										width: "10px",
 										height: "10px",
 										borderRadius: "50%",
-										background: "rgba(27,26,23,.11)",
+										background: "var(--line)",
 									}}
 								/>
 								<span
@@ -339,7 +339,7 @@ function Home() {
 										width: "10px",
 										height: "10px",
 										borderRadius: "50%",
-										background: "rgba(27,26,23,.11)",
+										background: "var(--line)",
 									}}
 								/>
 							</div>
@@ -349,7 +349,7 @@ function Home() {
 									flex: 1,
 									textAlign: "center",
 									fontSize: "12px",
-									color: "#79736a",
+									color: "var(--mut)",
 								}}
 							>
 								farmer.profi.co
@@ -373,7 +373,7 @@ function Home() {
 								style={{
 									width: "186px",
 									flex: "none",
-									background: "#faf9f6",
+									background: "var(--bg)",
 									borderRadius: "12px",
 									overflow: "hidden",
 									display: "flex",
@@ -395,8 +395,8 @@ function Home() {
 												width: "19px",
 												height: "19px",
 												borderRadius: "4px",
-												background: "#6f4ebe",
-												color: "#faf9f6",
+												background: "var(--acc)",
+												color: "var(--bg)",
 												display: "flex",
 												alignItems: "center",
 												justifyContent: "center",
@@ -415,7 +415,7 @@ function Home() {
 										<CaretUpDownIcon
 											weight="regular"
 											size={11}
-											color="#79736a"
+											color="var(--mut)"
 										/>
 									</div>
 								</div>
@@ -451,12 +451,10 @@ function Home() {
 														borderRadius: "8px",
 														fontSize: "12px",
 														fontWeight: active ? 500 : 400,
-														color: active ? "#1b1a17" : "#79736a",
-														background: active
-															? "rgba(27,26,23,.045)"
-															: undefined,
+														color: active ? "var(--fg)" : "var(--mut)",
+														background: active ? "var(--sel)" : undefined,
 														boxShadow: active
-															? "0 1px 2px rgba(27,26,23,.05)"
+															? "var(--fm-shadow-chip)"
 															: undefined,
 													}}
 												>
@@ -474,7 +472,7 @@ function Home() {
 										alignItems: "center",
 										gap: "8px",
 										padding: "10px 11px",
-										borderTop: "1px solid rgba(27,26,23,.11)",
+										borderTop: "1px solid var(--line)",
 									}}
 								>
 									<span
@@ -482,8 +480,9 @@ function Home() {
 											width: "20px",
 											height: "20px",
 											borderRadius: "50%",
-											background: "rgba(27,26,23,.08)",
-											color: "#79736a",
+											background:
+												"color-mix(in srgb, var(--fg) 8%, transparent)",
+											color: "var(--mut)",
 											display: "flex",
 											alignItems: "center",
 											justifyContent: "center",
@@ -497,7 +496,11 @@ function Home() {
 									<span style={{ flex: 1, fontSize: "11px", fontWeight: 500 }}>
 										Omar Zunic
 									</span>
-									<SignOutIcon weight="regular" size={12} color="#a9a296" />
+									<SignOutIcon
+										weight="regular"
+										size={12}
+										color="var(--faint)"
+									/>
 								</div>
 							</aside>
 							{/* The page island — a facsimile of $orgSlug/index.tsx. */}
@@ -505,7 +508,7 @@ function Home() {
 								style={{
 									flex: 1,
 									minWidth: 0,
-									background: "#faf9f6",
+									background: "var(--bg)",
 									borderRadius: "12px",
 									overflow: "hidden",
 									display: "flex",
@@ -535,8 +538,8 @@ function Home() {
 												height: "21px",
 												padding: "0 7px 0 8px",
 												borderRadius: "4px",
-												background: "#6f4ebe",
-												color: "#faf9f6",
+												background: "var(--acc)",
+												color: "var(--bg)",
 												fontSize: "10.5px",
 												fontWeight: 500,
 												flex: "none",
@@ -563,8 +566,8 @@ function Home() {
 										display: "flex",
 										flex: 1,
 										minHeight: 0,
-										borderTop: "1px solid rgba(27,26,23,.11)",
-										borderBottom: "1px solid rgba(27,26,23,.11)",
+										borderTop: "1px solid var(--line)",
+										borderBottom: "1px solid var(--line)",
 									}}
 								>
 									<div
@@ -572,7 +575,7 @@ function Home() {
 										style={{
 											width: "53%",
 											flex: "none",
-											borderRight: "1px solid rgba(27,26,23,.11)",
+											borderRight: "1px solid var(--line)",
 										}}
 									>
 										{/* The two figures, mono over an eyebrow — the app's Metric. */}
@@ -580,13 +583,13 @@ function Home() {
 											style={{
 												display: "grid",
 												gridTemplateColumns: "1fr 1fr",
-												borderBottom: "1px solid rgba(27,26,23,.11)",
+												borderBottom: "1px solid var(--line)",
 											}}
 										>
 											<div
 												style={{
 													padding: "12px 16px",
-													borderRight: "1px solid rgba(27,26,23,.11)",
+													borderRight: "1px solid var(--line)",
 												}}
 											>
 												<div
@@ -595,14 +598,14 @@ function Home() {
 														fontSize: "22px",
 														lineHeight: 1,
 														letterSpacing: "-.04em",
-														color: "#6f4ebe",
+														color: "var(--acc)",
 													}}
 												>
 													3.0h
 												</div>
 												<div
 													className="fm-eyebrow"
-													style={{ marginTop: "9px", color: "#79736a" }}
+													style={{ marginTop: "9px", color: "var(--mut)" }}
 												>
 													Logged today
 												</div>
@@ -620,7 +623,7 @@ function Home() {
 												</div>
 												<div
 													className="fm-eyebrow"
-													style={{ marginTop: "9px", color: "#79736a" }}
+													style={{ marginTop: "9px", color: "var(--mut)" }}
 												>
 													This week
 												</div>
@@ -630,7 +633,7 @@ function Home() {
 										<div
 											style={{
 												padding: "11px 16px",
-												borderBottom: "1px solid rgba(27,26,23,.11)",
+												borderBottom: "1px solid var(--line)",
 											}}
 										>
 											<div
@@ -646,10 +649,10 @@ function Home() {
 												</div>
 												<div
 													className="fm-mono"
-													style={{ fontSize: "10px", color: "#79736a" }}
+													style={{ fontSize: "10px", color: "var(--mut)" }}
 												>
 													37.5 / 40.0h{" "}
-													<span style={{ color: "#1b1a17" }}>94%</span>
+													<span style={{ color: "var(--fg)" }}>94%</span>
 												</div>
 											</div>
 											<div
@@ -657,7 +660,7 @@ function Home() {
 													position: "relative",
 													height: "2px",
 													marginTop: "10px",
-													background: "rgba(27,26,23,.055)",
+													background: "var(--line2)",
 													overflow: "hidden",
 												}}
 											>
@@ -666,7 +669,7 @@ function Home() {
 														position: "absolute",
 														inset: "0 auto 0 0",
 														width: "94%",
-														background: "#6f4ebe",
+														background: "var(--acc)",
 													}}
 												/>
 											</div>
@@ -674,7 +677,7 @@ function Home() {
 										<div
 											style={{
 												padding: "11px 16px",
-												borderBottom: "1px solid rgba(27,26,23,.11)",
+												borderBottom: "1px solid var(--line)",
 											}}
 										>
 											<div className="fm-eyebrow">This week by day</div>
@@ -713,17 +716,17 @@ function Home() {
 																	height: `${b.px}px`,
 																	borderRadius: "2px",
 																	background: b.today
-																		? "#6f4ebe"
+																		? "var(--acc)"
 																		: b.px > 2
-																			? "rgba(111,78,190,.4)"
-																			: "rgba(27,26,23,.11)",
+																			? "color-mix(in srgb, var(--acc) 40%, transparent)"
+																			: "var(--line)",
 																}}
 															/>
 														</div>
 														<span
 															className="fm-eyebrow"
 															style={{
-																color: b.today ? "#1b1a17" : undefined,
+																color: b.today ? "var(--fg)" : undefined,
 															}}
 														>
 															{b.d}
@@ -755,14 +758,14 @@ function Home() {
 														padding: "7px 16px",
 													}}
 												>
-													<Icon size={13} color="#79736a" />
+													<Icon size={13} color="var(--mut)" />
 													<div style={{ flex: 1, minWidth: 0 }}>
 														<div style={{ fontSize: "11.5px" }}>{title}</div>
 														<div
 															style={{
 																marginTop: "1px",
 																fontSize: "10px",
-																color: "#a9a296",
+																color: "var(--faint)",
 															}}
 														>
 															{sub}
@@ -794,9 +797,7 @@ function Home() {
 													gap: "9px",
 													padding: "9px 16px",
 													borderTop:
-														i === 0
-															? undefined
-															: "1px solid rgba(27,26,23,.055)",
+														i === 0 ? undefined : "1px solid var(--line2)",
 												}}
 											>
 												<span
@@ -831,8 +832,8 @@ function Home() {
 																	gap: "3px",
 																	padding: "2px 6px",
 																	borderRadius: "999px",
-																	background: "rgba(27,26,23,.045)",
-																	color: "#79736a",
+																	background: "var(--sel)",
+																	color: "var(--mut)",
 																}}
 															>
 																<e.badge.Icon weight="regular" size={10} />
@@ -844,7 +845,7 @@ function Home() {
 														style={{
 															marginTop: "2px",
 															fontSize: "10.5px",
-															color: "#79736a",
+															color: "var(--mut)",
 														}}
 													>
 														{e.sub}
@@ -869,7 +870,7 @@ function Home() {
 											alignItems: "center",
 											gap: "6px",
 											fontSize: "16px",
-											color: "#6f4ebe",
+											color: "var(--acc)",
 										}}
 									>
 										View full calendar
@@ -908,11 +909,12 @@ function Home() {
 									alignItems: "center",
 									gap: "8px",
 									padding: "6px 13px",
-									background: "rgba(111,78,190,.08)",
-									border: "1px solid rgba(111,78,190,.16)",
+									background: "color-mix(in srgb, var(--acc) 8%, transparent)",
+									border:
+										"1px solid color-mix(in srgb, var(--acc) 16%, transparent)",
 									borderRadius: "999px",
 									font: "500 12px 'Instrument Sans',sans-serif",
-									color: "#6f4ebe",
+									color: "var(--acc)",
 									marginBottom: "22px",
 								}}
 							>
@@ -931,7 +933,7 @@ function Home() {
 								}}
 							>
 								Built in the open.{" "}
-								<span style={{ fontStyle: "italic", color: "#6f4ebe" }}>
+								<span style={{ fontStyle: "italic", color: "var(--acc)" }}>
 									Yours to run.
 								</span>
 							</h2>
@@ -981,32 +983,32 @@ function Home() {
 							<a
 								className="u-link"
 								href="#features"
-								style={{ color: "rgba(38,35,43,.6)" }}
+								style={{ color: "var(--mut)" }}
 							>
 								Features
 							</a>
 							<a
 								className="u-link"
 								href="#integrations"
-								style={{ color: "rgba(38,35,43,.6)" }}
+								style={{ color: "var(--mut)" }}
 							>
 								Integrations
 							</a>
 							<a
 								className="u-link"
 								href="#opensource"
-								style={{ color: "rgba(38,35,43,.6)" }}
+								style={{ color: "var(--mut)" }}
 							>
 								Open source
 							</a>
 						</div>
 						<div style={{ flex: 1 }} />
-						<div style={{ fontSize: "13px", color: "rgba(38,35,43,.55)" }}>
+						<div style={{ fontSize: "13px", color: "var(--mut)" }}>
 							© 2026 · MIT · Maintained by{" "}
 							<a
 								className="u-link"
 								href={PROFICO_URL}
-								style={{ fontWeight: 600, color: "#1b1a17" }}
+								style={{ fontWeight: 600, color: "var(--fg)" }}
 							>
 								Profico ↗
 							</a>

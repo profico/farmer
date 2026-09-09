@@ -9,12 +9,18 @@
  * that job, and the string cost the file its formatter, its linter and its
  * minifier, and re-parsed the whole sheet on every mount.
  *
- * The colour literals are the product's own tokens from styles.css, spelled out
- * rather than read through var(--…) because this page deliberately does not
- * inherit the app theme — but they are the same values, so the landing and the
- * app read as one product: --bg #faf9f6, --ground #efece5, --bg2 #f4f2ed,
- * --fg #1b1a17, --mut #79736a, --faint #a9a296, --line rgba(27,26,23,.11),
- * --line2 rgba(27,26,23,.055), --sel rgba(27,26,23,.045), --acc #6f4ebe.
+ * Every colour here reads the product's own token from styles.css through
+ * var(--…). It used to spell the light values out as literals, on the grounds
+ * that the page should stay light whatever the reader's theme was — but the
+ * theme applies to <html>, and therefore to the app shell, the route pending
+ * state and the browser's own chrome, so a dark reader got a light sheet inside
+ * a dark frame and a white flash on every hop between the two. Reading the
+ * tokens costs nothing (they are the same values in light) and makes the
+ * landing what it should have been: the same product, in the reader's palette.
+ *
+ * Two shadows below cannot be a token read, because a shadow is ink and every
+ * other token here is a surface: `--fg` inverts between the palettes, so a
+ * shadow mixed from it would glow rather than seat. They get their own pair.
  *
  * Two things here would be flagged by a CSS linter, and both are wrong here
  * rather than tolerated. The repo no longer runs one — oxlint lints JS/TS only
@@ -30,14 +36,23 @@
  *     the link it belongs to.
  */
 .fm-landing {
-	background: #faf9f6;
-	color: #1b1a17;
+	/* The two contact shadows the route's inline styles reach for. Ink, not
+	   surface — see the header note. */
+	--fm-shadow-window: 0 1px 3px rgba(27, 26, 23, 0.05);
+	--fm-shadow-chip: 0 1px 2px rgba(27, 26, 23, 0.05);
+
+	background: var(--bg);
+	color: var(--fg);
 	font-family: "Instrument Sans", system-ui, sans-serif;
 	line-height: 1.5;
 	overflow-x: hidden;
 	min-height: 100vh;
 	user-select: none;
 	cursor: default;
+}
+:root[data-theme="dark"] .fm-landing {
+	--fm-shadow-window: 0 1px 3px rgba(0, 0, 0, 0.45);
+	--fm-shadow-chip: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .fm-landing * {
 	box-sizing: border-box;
@@ -56,7 +71,7 @@
 	transform: scaleX(1);
 }
 .fm-landing ::selection {
-	background: rgba(27, 26, 23, 0.045);
+	background: var(--sel);
 }
 .fm-landing .fm-serif {
 	font-family: "Instrument Serif", Georgia, serif;
@@ -66,21 +81,21 @@
 html:has(.fm-landing) {
 	scroll-behavior: smooth;
 }
-/* This page states its own colours rather than reading the app's tokens, so it
-   stays light whatever the reader's theme is — the browser has to be told the
-   same, or a dark-mode visitor gets dark scrollbars and the dark `--ground`
-   showing through around a light page. `!important` because the rule it has to
-   beat is `:root[data-theme='dark']` in styles.css, which is exactly as
-   specific as anything writable here and loads in an order this file doesn't
-   control. */
+/* The landing is one sheet of island paper rather than islands standing on the
+   ground, so <html> and <body> have to be repainted from `--ground` to `--bg`
+   or the ground shows through as a band around it on overscroll.
+   `color-scheme` is deliberately NOT set here any more: pinning it to `light`
+   was the whole of what kept this page out of dark mode. It now comes from
+   `:root[data-theme]` like everywhere else, so the scrollbars follow the sheet.
+   `!important` because the rule it has to beat is the base `body` in
+   styles.css, and this file loads in an order it does not control. */
 html:has(.fm-landing),
 html:has(.fm-landing) body {
-	color-scheme: light !important;
-	background: #faf9f6 !important;
+	background: var(--bg) !important;
 }
 .fm-landing .u-link {
 	position: relative;
-	color: #1b1a17;
+	color: var(--fg);
 	text-decoration: none;
 }
 .fm-landing .u-link::after {
@@ -112,8 +127,8 @@ html:has(.fm-landing) body {
 	padding: 0 10px 0 12px;
 	border: 1px solid transparent;
 	border-radius: 5px;
-	background: #6f4ebe;
-	color: #faf9f6;
+	background: var(--acc);
+	color: var(--bg);
 	font:
 		500 13px / 1 "Instrument Sans",
 		sans-serif;
@@ -129,19 +144,19 @@ html:has(.fm-landing) body {
 	padding: 0 12px 0 10px;
 }
 .fm-landing .fm-btn:hover {
-	background: color-mix(in srgb, #6f4ebe 86%, #1b1a17);
+	background: color-mix(in srgb, var(--acc) 86%, var(--fg));
 }
 .fm-landing .fm-btn:active {
 	transform: scale(0.985);
 }
 .fm-landing .fm-btn-outline {
 	background: transparent;
-	color: #1b1a17;
-	border-color: rgba(27, 26, 23, 0.11);
+	color: var(--fg);
+	border-color: var(--line);
 }
 .fm-landing .fm-btn-outline:hover {
-	background: rgba(27, 26, 23, 0.045);
-	border-color: rgba(121, 115, 106, 0.6);
+	background: var(--sel);
+	border-color: color-mix(in srgb, var(--mut) 60%, transparent);
 }
 
 /* The app's .eyebrow and .mono, at the reduced sizes the UI mock is drawn to. */
@@ -151,7 +166,7 @@ html:has(.fm-landing) body {
 		sans-serif;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
-	color: #a9a296;
+	color: var(--faint);
 }
 .fm-landing .fm-mono {
 	font-family: "Geist Mono", ui-monospace, monospace;
@@ -201,7 +216,7 @@ html:has(.fm-landing) body {
 	.fm-landing .fm-preview-col {
 		width: auto !important;
 		border-right: 0 !important;
-		border-bottom: 1px solid rgba(27, 26, 23, 0.11);
+		border-bottom: 1px solid var(--line);
 	}
 	.fm-landing .fm-features-section {
 		padding: 72px 20px 0 !important;

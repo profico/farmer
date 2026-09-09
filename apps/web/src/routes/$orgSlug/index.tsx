@@ -150,8 +150,17 @@ function OrgHome() {
 			    reading width and the entry list takes the rest, which is what turns
 			    a tall scroll into one screenful on a wide monitor. The day bars
 			    already drive the list's selection, so the split makes the existing
-			    interaction visible instead of scrolling between cause and effect. */}
-			<div className="-mx-4 grid border-b sm:-mx-8 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:divide-x">
+			    interaction visible instead of scrolling between cause and effect.
+
+			    This is the one band in the app that opens ON a rule rather than on
+			    air, and it is a `div` rather than a `PageSection` so the
+			    `.screen > section:first-of-type` rule cannot take it away. The rest
+			    of the app's first bands are plain stacks, where a rule under the
+			    header only repeats the boundary the header already drew. This one
+			    is a grid: its `divide-x` verticals start at the band's top edge, so
+			    with no top rule they hang off nothing and the whole panel reads as
+			    unclosed. The rule is what they terminate on. */}
+			<div className="-mx-4 grid border-t border-b sm:-mx-8 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:divide-x">
 				{/* Whichever summary section lands last keeps its rule when stacked
 				    (it separates summary from entries) but drops it side by side,
 				    where it would just be a stray line across the column. */}
