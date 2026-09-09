@@ -60,13 +60,14 @@ function MySchedulePage() {
 				}
 			/>
 
-			{/* The one section that bleeds to the island edge rather than sitting
-			    in the padding box, because its rows are a ruled list. Still a
-			    <section>, so the page drops its opening rule with everyone else. */}
-			<section className="-mx-4 mt-7 border-t sm:-mx-8">
-				<div className="flex h-11 items-center border-b border-line2 px-4 sm:px-8">
-					<h2 className="eyebrow">Working hours</h2>
-				</div>
+			{/* A standard band, with one deviation the vocabulary supports: the
+			    body un-pads itself back to the island edge, because its rows are a
+			    ruled list. That is the same `-mx-4 sm:-mx-8` a bleeding <Table>
+			    carries, so the two read as one construct. */}
+			<PageSection
+				title="Working hours"
+				contentClassName="-mx-4 border-t border-line2 sm:-mx-8"
+			>
 				<div className="divide-y divide-line2">
 					{orderedDays.map(
 						(day) => day && <WorkingHoursRow key={day.dayOfWeek} day={day} />,
@@ -82,7 +83,7 @@ function MySchedulePage() {
 						<ArrowRightIcon weight="regular" className="size-3.5" />
 					</Link>
 				</div>
-			</section>
+			</PageSection>
 
 			{/* Time off is no longer requested and approved here — Vacation and Sick
 			    Leave are logged as ordinary time entries against the built-in absence
