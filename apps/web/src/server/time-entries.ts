@@ -5,7 +5,6 @@ import {
 	createTimeEntryInput,
 	deleteTimeEntryInput,
 	fileTimeEntriesInput,
-	fileTimeEntryInput,
 	listAbsenceForUserInput,
 	listTimeEntriesRangeInput,
 	logAbsenceRangeInput,
@@ -60,14 +59,6 @@ export const listUnfiledEntries = createServerFn({ method: "GET" })
 	.handler(async ({ data, context }) => {
 		const { listUnfiledForUser } = await import("@farmer/core/services");
 		return listUnfiledForUser(context.ctx, data);
-	});
-
-export const fileTimeEntry = createServerFn({ method: "POST" })
-	.middleware([orgMiddleware])
-	.validator(fileTimeEntryInput)
-	.handler(async ({ data, context }) => {
-		const { timeEntriesService } = await import("@farmer/core/services");
-		return timeEntriesService.file(context.ctx, data);
 	});
 
 export const fileTimeEntries = createServerFn({ method: "POST" })

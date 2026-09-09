@@ -760,6 +760,53 @@ describe("finalize snapshots", () => {
 		expect(snapshot.expectedAtFinalizeSeconds).toBe(160 * H);
 	});
 
+	// The snapshot is only worth anything if it is written ONCE. Finalizing a
+	// month that is already finalized used to re-run the whole pass and overwrite
+	// all three columns with today's figures — so the baseline the variance report
+	// compares Final against became the numbers it was supposed to be measured
+	// away from, and every variance quietly read as zero. The sheet hides the
+	// Finalize button once finalized, so this covers the paths that are not the
+	// sheet: the assistant's `close_finalize` tool and any direct service caller.
+	test("refuses to finalize a month that is already finalized", async () => {
+		await logTime(WORKER, { day: 3, hours: 6 });
+		await closeService.finalize(ctxFor(ADMIN), {
+			...transition,
+			projectId: productProjectId,
+		});
+		await logTime(WORKER, { day: 20, hours: 10 });
+
+		await expect(
+			closeService.finalize(ctxFor(ADMIN), {
+				...transition,
+				projectId: productProjectId,
+			}),
+		).rejects.toThrow(/finalized/);
+
+		// The point: the original baseline survived the attempt.
+		expect((await storedRow(WORKER)).reportedAtFinalizeSeconds).toBe(6 * H);
+	});
+
+	// Re-open is how a close is legitimately redone, and it must still work.
+	test("re-opening allows a fresh finalize that re-snapshots", async () => {
+		await logTime(WORKER, { day: 3, hours: 6 });
+		await closeService.finalize(ctxFor(ADMIN), {
+			...transition,
+			projectId: productProjectId,
+		});
+		await logTime(WORKER, { day: 20, hours: 10 });
+
+		await closeService.reopen(ctxFor(ADMIN), {
+			...transition,
+			projectId: productProjectId,
+		});
+		await closeService.finalize(ctxFor(ADMIN), {
+			...transition,
+			projectId: productProjectId,
+		});
+
+		expect((await storedRow(WORKER)).reportedAtFinalizeSeconds).toBe(16 * H);
+	});
+
 	// The reason the snapshot exists at all: entries stay editable afterwards.
 	test("the snapshot does not move when entries change afterwards", async () => {
 		await logTime(WORKER, { day: 3, hours: 6 });

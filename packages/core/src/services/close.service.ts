@@ -479,7 +479,13 @@ export const closeService = {
 			});
 	},
 
-	/** Admin-only: the Final column, the number that gets invoiced. */
+	/** Admin-only: the Final column, the number that gets invoiced.
+	 *
+	 *  Deliberately NOT guarded by `assertNotFinalized`, unlike `saveRow`. An
+	 *  admin correcting the invoiced figure after freezing is a supported act —
+	 *  the sheet keeps the Final input enabled on a finalized month, and only
+	 *  hides the Finalize button — and it disturbs nothing, because the three
+	 *  snapshots the variance report reads are written by `finalize` alone. */
 	setFinal: async (ctx: Ctx, input: SetCloseRowFinalInput) => {
 		const access = await ctxAccess(ctx);
 		access.assertAdmin();
@@ -586,6 +592,24 @@ export const closeService = {
 		const access = await ctxAccess(ctx);
 		access.assertAdmin();
 		await assertProjectInOrg(ctx, input.projectId);
+
+		// Finalizing an already-finalized month re-snapshots it, which is the one
+		// thing the snapshot exists to prevent: Reported keeps moving after the
+		// freeze (entries stay editable on purpose), so a second pass silently
+		// replaces the baseline the variance report and the invoice were read
+		// against with today's numbers, and the variance collapses to nothing.
+		//
+		// Re-open then finalize is unaffected and remains the way to redo a close.
+		// The sheet already hides the Finalize button on a finalized month, so this
+		// closes the paths that are not the sheet — the assistant's `close_finalize`
+		// tool and anything else calling the service directly.
+		const existing = await loadCloseRecord(
+			ctx,
+			input.projectId,
+			input.year,
+			input.month,
+		);
+		if (existing) assertNotFinalized(existing.status);
 
 		const sheet = await closeService.getSheet(ctx, input);
 

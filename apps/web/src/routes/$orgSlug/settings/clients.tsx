@@ -1,4 +1,4 @@
-import { createClientInput } from "@farmer/core/schema";
+import { createClientInput, updateClientInput } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	useMutation,
@@ -48,6 +48,7 @@ import {
 	archiveClient,
 	createClient,
 	unarchiveClient,
+	updateClient,
 } from "#/server/clients.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/clients")({
@@ -120,6 +121,104 @@ function CreateClientDialog() {
 	);
 }
 
+/** Rename one client.
+ *
+ *  A client name reaches the invoice and the Time report's "by client" view, so
+ *  a typo in one is worth more than a cosmetic fix — and until now there was no
+ *  way to correct it. `clientsService.update` and its server function had both
+ *  existed since the aggregate was written with nothing calling them.
+ *
+ *  Offered for the internal client too: `isInternal` is a column, so nothing
+ *  identifies that client by its name and every org spells the idea
+ *  differently. Archiving it stays refused, which is the structural rule.
+ */
+function RenameClientDialog({
+	client,
+}: {
+	client: { id: string; name: string };
+}) {
+	const orgSlug = useOrgSlug();
+	const [open, setOpen] = useState(false);
+	const queryClient = useQueryClient();
+	const form = useForm<z.infer<typeof updateClientInput>>({
+		resolver: zodResolver(updateClientInput),
+		defaultValues: { clientId: client.id, name: client.name },
+	});
+
+	const mutation = useMutation({
+		mutationFn: (data: z.infer<typeof updateClientInput>) =>
+			updateClient({ data }),
+		onSuccess: async () => {
+			// Projects carry their client's name, and so do the report tabs grouped
+			// by it — invalidate both families rather than just the list behind this
+			// screen, or the old name survives everywhere it was already fetched.
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).clients],
+				}),
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).projects],
+				}),
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).reports],
+				}),
+			]);
+			setOpen(false);
+		},
+		onError: (error) => toast.error(error.message ?? "Could not rename client"),
+	});
+
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				setOpen(next);
+				// Re-seed from the row on every open: a cancelled edit must not be
+				// what the field shows the next time somebody opens it.
+				if (next) form.reset({ clientId: client.id, name: client.name });
+			}}
+		>
+			<DialogTrigger
+				render={
+					<Button variant="ghost" size="sm">
+						Rename
+					</Button>
+				}
+			/>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Rename client</DialogTitle>
+				</DialogHeader>
+				<Form {...form}>
+					<form
+						onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+						className="grid grid-cols-[minmax(0,1fr)] gap-4"
+					>
+						<FormField
+							control={form.control}
+							name="name"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel required>Name</FormLabel>
+									<FormControl>
+										<Input autoFocus {...field} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<DialogFooter>
+							<Button type="submit" disabled={mutation.isPending}>
+								Save
+							</Button>
+						</DialogFooter>
+					</form>
+				</Form>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 function ClientsPage() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -174,6 +273,9 @@ function ClientsPage() {
 								</StatusPill>
 							</TableCell>
 							<TableCell className="text-right">
+								{access.canCreateProjects && (
+									<RenameClientDialog client={client} />
+								)}
 								{/* The internal client is structural — archiving it would
 									    strand every non-invoiced project. */}
 								{access.canCreateProjects &&

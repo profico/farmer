@@ -9,20 +9,6 @@ import { and, eq, gt, sql } from "drizzle-orm";
 
 import { orgAdminMiddleware, sessionMiddleware } from "./auth";
 
-export const setActiveOrgBySlug = createServerFn({ method: "POST" })
-	.validator(setActiveOrgBySlugInput)
-	.handler(async ({ data: slug }) => {
-		const { auth } = await import("@farmer/core/auth");
-		try {
-			return await auth.api.setActiveOrganization({
-				body: { organizationSlug: slug },
-				headers: getRequestHeaders(),
-			});
-		} catch {
-			return null;
-		}
-	});
-
 /**
  * Everything `/$orgSlug`'s `beforeLoad` needs about the workspace being
  * entered, in one round trip: the session, the organization, and the caller's
@@ -79,6 +65,16 @@ export const enterOrganization = createServerFn({ method: "POST" })
 
 // No client input: userId and activeOrganizationId are both derived from the
 // authenticated session, never trusted from the caller.
+//
+// `activeOrganizationId` is a POINTER, not a permission. It is stamped onto the
+// session when a workspace is entered and never revisited, so it outlives the
+// membership that set it — which is the same thing `orgMiddleware` and
+// `resolveApiOrgContext` re-check membership at the boundary for. Resolving the
+// slug from it alone sent somebody who had been removed from the org straight
+// back at it, to be turned away by the layout's own guard: a redirect into a
+// dead end rather than to the workspace they do still belong to. So the active
+// org only answers while the membership behind it is still there, and a stale
+// pointer falls through to the oldest one that is.
 export const getDefaultOrgSlugForSession = createServerFn({
 	method: "GET",
 })
@@ -91,10 +87,19 @@ export const getDefaultOrgSlugForSession = createServerFn({
 		const { member, organization } = await import("@farmer/core/schema/auth");
 
 		if (activeOrganizationId) {
-			const org = await db.query.organization.findFirst({
-				where: eq(organization.id, activeOrganizationId),
-			});
-			if (org) return org.slug;
+			const [active] = await db
+				.select({ slug: organization.slug })
+				.from(organization)
+				.innerJoin(
+					member,
+					and(
+						eq(member.organizationId, organization.id),
+						eq(member.userId, userId),
+					),
+				)
+				.where(eq(organization.id, activeOrganizationId))
+				.limit(1);
+			if (active) return active.slug;
 		}
 		const membership = await db.query.member.findFirst({
 			where: eq(member.userId, userId),

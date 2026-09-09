@@ -115,9 +115,15 @@ COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh
 # base would need the -musl triple instead. Override explicitly if needed with
 # --build-arg TARGET_TYPST_TRIPLE=linux-x64-gnu.
 ARG TARGET_TYPST_TRIPLE=""
+# The lockfile matters as much as the manifest. The six versions below are
+# pinned exactly, but their transitive graph is not, so installing without one
+# resolved it fresh on every build — two images built from the same commit could
+# ship different code. docker/bun.lock is generated from this manifest and has
+# to be regenerated when a version in it changes; runtime.package.json says how.
 COPY docker/runtime.package.json ./package.json
+COPY docker/bun.lock ./bun.lock
 RUN set -e; \
-    attempts=0; until bun install --network-concurrency 6; do \
+    attempts=0; until bun install --frozen-lockfile --network-concurrency 6; do \
       attempts=$((attempts + 1)); \
       if [ "$attempts" -ge 5 ]; then echo "bun install failed after $attempts attempts" >&2; exit 1; fi; \
       echo "bun install failed (attempt $attempts) — retrying in 10s..." >&2; sleep 10; \

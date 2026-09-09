@@ -69,9 +69,14 @@ export const memberProfile = pgTable(
 // known real case is a contractor becoming an employee, and reports for past
 // months have to reflect the type the person held at that time (PRD 3.1).
 //
-// Invariant maintained by the service (see membersService.setType): at most one
-// open-ended row per (org, user) — closing the previous row's effectiveUntil is
-// part of the same transaction as inserting the new one.
+// Two invariants, and only one of them is visible in this file:
+//  - at most one open-ended row per (org, user), held by `mth_current_uidx`;
+//  - no two segments cover the same day, held by the `mth_no_overlap` TRIGGER
+//    added in migration 0035. Drizzle does not model triggers, so it exists in
+//    the migration and nowhere else in the schema — the migration header says
+//    why it is a trigger and not an `EXCLUDE USING gist` constraint.
+// `membersService.setType` is the only writer and maintains both in one
+// transaction; `typesAsOf` reads them as its guarantee of a single match.
 export const memberTypeHistory = pgTable(
 	"member_type_history",
 	{

@@ -1,11 +1,22 @@
-import { and, asc, eq, gt, isNotNull, isNull, lte, or } from "drizzle-orm";
+import {
+	and,
+	asc,
+	eq,
+	gt,
+	gte,
+	isNotNull,
+	isNull,
+	lt,
+	lte,
+	or,
+} from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { memberProfile, memberTypeHistory } from "../db/schema/people";
-import { endOfMonthKey } from "../lib/time";
+import { dayKeyInTz, endOfMonthKey } from "../lib/time";
 import type { SetMemberTypeInput } from "../schema/members";
-import { requireAdmin } from "./context";
+import { ctxTimezone, requireAdmin } from "./context";
 import { assertUserInOrg } from "./guards";
 import type { Ctx } from "./types";
 
@@ -90,8 +101,15 @@ export const membersService = {
 
 	/** Every person in the org with their CURRENT type. For historical reporting
 	 *  use `typesAsOf` instead — type changes are effective-dated precisely so a
-	 *  past month reflects the type the person held then. */
+	 *  past month reflects the type the person held then.
+	 *
+	 *  "Current" means the segment covering TODAY, not the open-ended one. Those
+	 *  differ whenever a change is dated ahead: `setType` opens the future segment
+	 *  immediately (it is the row `mth_current_uidx` allows), so joining on
+	 *  `effectiveUntil is null` reported next month's type as though it already
+	 *  applied — and this list is what the members screen draws. */
 	list: async (ctx: Ctx): Promise<PersonRow[]> => {
+		const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
 		const rows = await db
 			.select({
 				userId: member.userId,
@@ -117,7 +135,11 @@ export const membersService = {
 				and(
 					eq(memberTypeHistory.organizationId, member.organizationId),
 					eq(memberTypeHistory.userId, member.userId),
-					isNull(memberTypeHistory.effectiveUntil),
+					lte(memberTypeHistory.effectiveFrom, today),
+					or(
+						isNull(memberTypeHistory.effectiveUntil),
+						gt(memberTypeHistory.effectiveUntil, today),
+					),
 				),
 			)
 			.where(eq(member.organizationId, ctx.organizationId))
@@ -161,10 +183,16 @@ export const membersService = {
 						gt(memberTypeHistory.effectiveUntil, asOf),
 					),
 				),
-			);
+			)
+			// `mth_no_overlap` guarantees at most one match per user, so the order
+			// cannot change the answer on well-formed data. It is here for the data
+			// that predates the trigger: an org that backdated a type before it
+			// existed still holds overlapping rows, and without an ORDER BY the map
+			// build resolves to whichever row the plan happened to emit last — so
+			// Expected, utilization and the pace check answered differently for the
+			// same month on the same data. Newest-segment-wins is at least a rule.
+			.orderBy(asc(memberTypeHistory.effectiveFrom));
 
-		// The mth_current_uidx + closed-range invariant (see setType) guarantees at
-		// most one match per user, so a plain Map build is safe.
 		return new Map(
 			rows.map((r) => [
 				r.userId,
@@ -195,9 +223,18 @@ export const membersService = {
 	},
 
 	/** Change a person's type from `effectiveFrom` onward, preserving history.
-	 *  Closing the previous open row and opening the new one happen in one
-	 *  transaction — that pairing is what keeps `mth_current_uidx` (at most one
-	 *  open-ended row per person) satisfiable. */
+	 *  The new segment claims everything from that date on, so any existing
+	 *  segment at or after it is replaced and one straddling it is truncated —
+	 *  all in one transaction, which is what keeps both `mth_current_uidx` (at
+	 *  most one open-ended row per person) and `mth_no_overlap` satisfiable.
+	 *
+	 *  Backdating is the case worth spelling out. It used to share a branch with
+	 *  the no-op edit below, on `current.effectiveFrom >= input.effectiveFrom`,
+	 *  and so answered a backdate by rewriting the current row's `effectiveFrom`
+	 *  and nothing else. Moving "billable since June" back to March left the
+	 *  contractor segment it came from still ending in June, so March, April and
+	 *  May were covered twice and `typesAsOf` picked between them by plan order.
+	 *  The months a person converted in are exactly the months somebody checks. */
 	setType: async (ctx: Ctx, input: SetMemberTypeInput) => {
 		await requireAdmin(ctx);
 		await assertUserInOrg(ctx, input.userId);
@@ -211,28 +248,55 @@ export const membersService = {
 				),
 			});
 
-			if (current) {
-				// Re-stating the same type from the same date is a no-op edit of the
-				// current row, not a new historical segment — otherwise correcting a
-				// typo in the override would litter the history with zero-length rows
-				// (which the mth_range_valid CHECK rejects anyway).
-				if (current.effectiveFrom >= input.effectiveFrom) {
-					await tx
-						.update(memberTypeHistory)
-						.set({
-							type: input.type,
-							expectedSecondsOverride: input.expectedSecondsOverride ?? null,
-							effectiveFrom: input.effectiveFrom,
-							updatedAt: new Date(),
-						})
-						.where(eq(memberTypeHistory.id, current.id));
-					return;
-				}
+			// Re-stating the type from the SAME date is a no-op edit of the current
+			// row, not a new historical segment — otherwise correcting a typo in the
+			// override would litter the history with zero-length rows (which the
+			// mth_range_valid CHECK rejects anyway). Same date only: a different one
+			// is a real change of history and falls through.
+			if (current && current.effectiveFrom === input.effectiveFrom) {
 				await tx
 					.update(memberTypeHistory)
-					.set({ effectiveUntil: input.effectiveFrom, updatedAt: new Date() })
+					.set({
+						type: input.type,
+						expectedSecondsOverride: input.expectedSecondsOverride ?? null,
+						updatedAt: new Date(),
+					})
 					.where(eq(memberTypeHistory.id, current.id));
+				return;
 			}
+
+			// Everything from `effectiveFrom` on is now the new type, so any segment
+			// starting at or after it no longer describes anything. Deleting rather
+			// than closing: a segment inside the new one is not history, it is a
+			// statement that has been withdrawn.
+			await tx
+				.delete(memberTypeHistory)
+				.where(
+					and(
+						eq(memberTypeHistory.organizationId, ctx.organizationId),
+						eq(memberTypeHistory.userId, input.userId),
+						gte(memberTypeHistory.effectiveFrom, input.effectiveFrom),
+					),
+				);
+
+			// The one segment that can still straddle the new start ends there. This
+			// covers the ordinary forward change (close the open row) and the
+			// backdate (truncate whichever closed row the new date lands inside)
+			// with the same predicate.
+			await tx
+				.update(memberTypeHistory)
+				.set({ effectiveUntil: input.effectiveFrom, updatedAt: new Date() })
+				.where(
+					and(
+						eq(memberTypeHistory.organizationId, ctx.organizationId),
+						eq(memberTypeHistory.userId, input.userId),
+						lt(memberTypeHistory.effectiveFrom, input.effectiveFrom),
+						or(
+							isNull(memberTypeHistory.effectiveUntil),
+							gt(memberTypeHistory.effectiveUntil, input.effectiveFrom),
+						),
+					),
+				);
 
 			await tx.insert(memberTypeHistory).values({
 				organizationId: ctx.organizationId,

@@ -1,12 +1,13 @@
 import {
 	CaretDownIcon,
 	ChatsIcon,
+	PencilSimpleIcon,
 	PlusIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -24,7 +25,7 @@ import {
 import { cn } from "#/lib/utils.ts";
 import { conversationsQuery } from "#/queries/assistant.ts";
 import { queryKeys } from "#/queries/keys.ts";
-import { deleteConversation } from "#/server/assistant.ts";
+import { deleteConversation, renameConversation } from "#/server/assistant.ts";
 
 /**
  * The conversation list, and its two frames: the sidebar's Chat tab on desktop
@@ -71,6 +72,49 @@ export function ConversationList({
 	const { data: conversations = [], isPending } = useQuery(
 		conversationsQuery(orgSlug),
 	);
+
+	// Which row is being renamed, and the draft it holds. One row at a time, so
+	// this is an id rather than a flag per conversation.
+	const [editingId, setEditingId] = useState<string | null>(null);
+	const [draft, setDraft] = useState("");
+	// Escape has to cancel, and it blurs the input on the way out — without this
+	// the blur handler would then commit the very edit Escape just abandoned.
+	const cancelledRef = useRef(false);
+
+	const focusOnMount = useCallback((el: HTMLInputElement | null) => {
+		el?.focus();
+		el?.select();
+	}, []);
+
+	const rename = useMutation({
+		mutationFn: (input: { conversationId: string; title: string }) =>
+			renameConversation({ data: input }),
+		onSuccess: async (_result, input) => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).assistant, "conversations"],
+				}),
+				// The thread itself carries the title too, and the page reads it from
+				// there rather than from this list.
+				queryClient.invalidateQueries({
+					queryKey: [
+						...queryKeys(orgSlug).assistant,
+						"conversation",
+						input.conversationId,
+					],
+				}),
+			]);
+		},
+		onError: (error) => toast.error(error.message ?? "Could not rename"),
+	});
+
+	/** Commit the draft, unless it is empty or unchanged — neither is a rename. */
+	const commit = (conversation: { id: string; title: string }) => {
+		const title = draft.trim();
+		setEditingId(null);
+		if (!title || title === conversation.title) return;
+		rename.mutate({ conversationId: conversation.id, title });
+	};
 
 	const remove = useMutation({
 		mutationFn: (id: string) =>
@@ -131,29 +175,81 @@ export function ConversationList({
 							: "hover:bg-hover-2",
 					)}
 				>
-					<Link
-						to="/$orgSlug/assistant"
-						params={{ orgSlug }}
-						search={{ c: conversation.id }}
-						onClick={onNavigate}
-						className="min-w-0 flex-1 truncate py-2.5 pl-2.5 text-left text-base md:py-2 md:text-sm"
-						title={conversation.title}
-					>
-						{conversation.title}
-					</Link>
-					<button
-						type="button"
-						aria-label={`Delete ${conversation.title}`}
-						onClick={() => remove.mutate(conversation.id)}
-						disabled={remove.isPending}
-						// Revealed on hover from `md` up, but never on focus-within's
-						// behalf alone — keyboard users get it via focus-visible so it can
-						// be reached by tabbing without it being permanently visible for
-						// everyone. Below `md` it simply stays visible; see the note above.
-						className="quiet shrink-0 p-2.5 transition-opacity duration-100 focus-visible:opacity-100 md:p-0 md:opacity-0 md:group-hover:opacity-100"
-					>
-						<TrashIcon weight="regular" className="size-4 md:size-3.5" />
-					</button>
+					{/* Renaming happens in place rather than in a dialog. The rail is
+					    ~240px on desktop and a bottom sheet on a phone, so a modal to
+					    edit one short string is more chrome than the string. */}
+					{editingId === conversation.id ? (
+						<input
+							ref={focusOnMount}
+							value={draft}
+							onChange={(event) => setDraft(event.target.value)}
+							onBlur={() => {
+								if (cancelledRef.current) {
+									cancelledRef.current = false;
+									return;
+								}
+								commit(conversation);
+							}}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									event.preventDefault();
+									commit(conversation);
+								}
+								if (event.key === "Escape") {
+									event.preventDefault();
+									cancelledRef.current = true;
+									setEditingId(null);
+								}
+							}}
+							aria-label={`Rename ${conversation.title}`}
+							className="min-w-0 flex-1 rounded-2xl bg-transparent py-2.5 pl-2.5 text-base outline-none md:py-2 md:text-sm"
+						/>
+					) : (
+						<Link
+							to="/$orgSlug/assistant"
+							params={{ orgSlug }}
+							search={{ c: conversation.id }}
+							onClick={onNavigate}
+							className="min-w-0 flex-1 truncate py-2.5 pl-2.5 text-left text-base md:py-2 md:text-sm"
+							title={conversation.title}
+						>
+							{conversation.title}
+						</Link>
+					)}
+					{editingId !== conversation.id && (
+						<>
+							<button
+								type="button"
+								aria-label={`Rename ${conversation.title}`}
+								onClick={() => {
+									cancelledRef.current = false;
+									setDraft(conversation.title);
+									setEditingId(conversation.id);
+								}}
+								// Same reveal rule as the delete button beside it; the note
+								// on that one explains why it is not `group-focus-within`.
+								className="quiet shrink-0 p-2.5 transition-opacity duration-100 focus-visible:opacity-100 md:p-0 md:opacity-0 md:group-hover:opacity-100"
+							>
+								<PencilSimpleIcon
+									weight="regular"
+									className="size-4 md:size-3.5"
+								/>
+							</button>
+							<button
+								type="button"
+								aria-label={`Delete ${conversation.title}`}
+								onClick={() => remove.mutate(conversation.id)}
+								disabled={remove.isPending}
+								// Revealed on hover from `md` up, but never on focus-within's
+								// behalf alone — keyboard users get it via focus-visible so it can
+								// be reached by tabbing without it being permanently visible for
+								// everyone. Below `md` it simply stays visible; see the note above.
+								className="quiet shrink-0 p-2.5 transition-opacity duration-100 focus-visible:opacity-100 md:p-0 md:opacity-0 md:group-hover:opacity-100"
+							>
+								<TrashIcon weight="regular" className="size-4 md:size-3.5" />
+							</button>
+						</>
+					)}
 				</div>
 			))}
 		</div>

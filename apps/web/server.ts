@@ -234,25 +234,54 @@ function compressDataIfAppropriate(
 }
 
 /**
+ * Whether a route may be cached for a year without revalidation.
+ *
+ * Only a content-hashed filename may: its URL changes when its bytes change, so
+ * a stale copy is unreachable rather than merely old. `vite build` emits those
+ * into `assets/` as `[name]-[hash][extname]`, and nothing else in `dist/client`
+ * is hashed — `public/` is copied across verbatim.
+ *
+ * This used to be an unconditional `immutable: true` on every preloaded asset,
+ * which pinned `manifest.json`, `robots.txt`, the logos and `sw.js` in every
+ * browser cache for a year with no way to revalidate. `sw.js` is the one that
+ * turns a bad deploy into a permanent one: a service worker that cannot be
+ * re-fetched keeps serving the build it shipped with until the user clears site
+ * data, which is not something to ask of them.
+ *
+ * The hash test is deliberate rather than a bare `startsWith("/assets/")`. A
+ * file that fails it falls back to an hour, which is the harmless direction.
+ */
+const HASHED_ASSET = /-[A-Za-z0-9_-]{8,}\.[^./]+$/;
+
+function isImmutableRoute(route: string): boolean {
+	return route.startsWith("/assets/") && HASHED_ASSET.test(route);
+}
+
+/**
  * Create response handler function with ETag and Gzip support
  */
 function createResponseHandler(
 	asset: InMemoryAsset,
 ): (req: Request) => Response {
+	const cacheControl = asset.immutable
+		? "public, max-age=31536000, immutable"
+		: "public, max-age=3600";
+
 	return (req: Request) => {
 		const headers = new Headers({
 			"Content-Type": asset.type,
-			"Cache-Control": asset.immutable
-				? "public, max-age=31536000, immutable"
-				: "public, max-age=3600",
+			"Cache-Control": cacheControl,
 		});
 
 		if (ENABLE_ETAG && asset.etag) {
 			const ifNone = req.headers.get("if-none-match");
 			if (ifNone && ifNone === asset.etag) {
+				// A 304 has to repeat Cache-Control. It is what refreshes the stored
+				// freshness lifetime, so omitting it left the client revalidating a
+				// still-good asset on every single request.
 				return new Response(null, {
 					status: 304,
-					headers: { ETag: asset.etag },
+					headers: { ETag: asset.etag, "Cache-Control": cacheControl },
 				});
 			}
 			headers.set("ETag", asset.etag);
@@ -354,7 +383,7 @@ async function initializeStaticRoutes(
 						gz,
 						etag,
 						type: metadata.type,
-						immutable: true,
+						immutable: isImmutableRoute(route),
 						size: bytes.byteLength,
 					};
 					routes[route] = createResponseHandler(asset);
@@ -376,7 +405,13 @@ async function initializeStaticRoutes(
 					skipped.push(metadata);
 				}
 			} catch (error: unknown) {
-				if (error instanceof Error && error.name !== "EISDIR") {
+				// The glob yields directories too, and opening one throws EISDIR —
+				// expected, not worth a line in the log. The code is on `.code`;
+				// `.name` is plain "Error", so the old test never matched and every
+				// directory under `dist/client` was reported as a failed asset.
+				const code =
+					error instanceof Error && "code" in error ? error.code : undefined;
+				if (error instanceof Error && code !== "EISDIR") {
 					log.error(`Failed to load ${filepath}: ${error.message}`);
 				}
 			}
