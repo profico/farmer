@@ -228,18 +228,17 @@ function HolidaysSettingsPage() {
 						</div>
 					</div>
 				}
-				className="mb-0"
 			/>
 
 			{holidays.length === 0 ? (
-				<p className="mt-6 text-sm text-muted-foreground">
+				<p className="text-sm text-muted-foreground">
 					No public holidays found for this country and year.
 				</p>
 			) : (
 				sections.map((section, index) => (
 					<div
 						key={section.heading ?? "all"}
-						className={index === 0 ? "mt-6" : "mt-8"}
+						className={index === 0 ? undefined : "mt-8"}
 					>
 						{section.heading !== null && (
 							<h2 className="eyebrow">{section.heading}</h2>

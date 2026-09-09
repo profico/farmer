@@ -161,10 +161,9 @@ function MembersSettingsPage() {
 				title="People"
 				lede="Who has access, and what kind of person they are. Overhead people are left out of compliance nudges and utilization; contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
 				action={<InviteMemberDialog />}
-				className="mb-0"
 			/>
 
-			<Table containerClassName="mt-6">
+			<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Name</TableHead>

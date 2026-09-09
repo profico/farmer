@@ -322,23 +322,29 @@ function TasksPage() {
 				eyebrow="Workspace"
 				title="Tasks"
 				lede={`One global list for the whole company.`}
-				action={<CreateTaskDialog />}
-				className="mb-0"
+				// The archive toggle belongs beside New task, where every screen's
+				// controls are. As a row of its own between the header and the table
+				// it opened the page at one of two heights depending on whether
+				// anything happened to be archived.
+				action={
+					<div className="flex items-center gap-2">
+						{archivedCount > 0 && (
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => setShowArchived((shown) => !shown)}
+							>
+								{showArchived
+									? "Hide archived"
+									: `Show ${archivedCount} archived`}
+							</Button>
+						)}
+						<CreateTaskDialog />
+					</div>
+				}
 			/>
 
-			{archivedCount > 0 && (
-				<div className="mt-4 flex justify-end">
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => setShowArchived((shown) => !shown)}
-					>
-						{showArchived ? "Hide archived" : `Show ${archivedCount} archived`}
-					</Button>
-				</div>
-			)}
-
-			<Table containerClassName="mt-6">
+			<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Task</TableHead>

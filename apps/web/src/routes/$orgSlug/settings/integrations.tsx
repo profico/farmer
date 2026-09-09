@@ -245,7 +245,6 @@ function IntegrationsSettingsPage() {
 				eyebrow="Your account"
 				title="Integrations"
 				lede="Connect external accounts to enrich your time entries."
-				className="mb-0"
 			/>
 
 			{/* GitHub — personal identity, per-user toggles, and org installations */}

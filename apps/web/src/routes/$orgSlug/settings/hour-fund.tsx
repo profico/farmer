@@ -178,10 +178,9 @@ function HourFundPage() {
 						{prefill.isPending ? "Filling…" : "Prefill from calendar"}
 					</Button>
 				}
-				className="mb-0"
 			/>
 
-			<Table containerClassName="mt-6">
+			<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Month</TableHead>

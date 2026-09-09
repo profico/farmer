@@ -98,7 +98,10 @@ function ProjectsPage() {
 	const main = (
 		<div className="flex min-w-0 flex-1 flex-col p-4 sm:px-8 sm:py-8">
 			<PageHeader
-				eyebrow={``}
+				// Every other screen's eyebrow says which slice you are looking at;
+				// this one was an empty string, so Projects was the one page that
+				// opened without saying what it was showing.
+				eyebrow={`${counts.active} active · ${counts.archived} archived`}
 				title="Projects"
 				action={
 					<div className="flex items-center gap-2">
@@ -114,11 +117,11 @@ function ProjectsPage() {
 						{isAdmin && <CreateProjectDialog />}
 					</div>
 				}
-				className="mb-0 shrink-0"
+				className="shrink-0"
 			/>
 
 			{projects.length > 0 && (
-				<div className="mt-6 flex shrink-0 items-center gap-1.5">
+				<div className="flex shrink-0 items-center gap-1.5">
 					<FilterPill
 						label="All"
 						count={counts.all}

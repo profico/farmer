@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
-import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import {
 	Select,
 	SelectContent,
@@ -107,16 +107,14 @@ function OrganizationSettingsPage() {
 				eyebrow="Workspace"
 				title="Organization"
 				lede="General settings for this organization."
-				className="mb-0"
 			/>
 
-			<div className="-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-				<span className="eyebrow">Name</span>
-				<p className="mt-2 text-sm text-muted-foreground">
-					The organization's display name, shown in the sidebar and switcher.
-				</p>
+			<PageSection
+				title="Name"
+				description="The organization's display name, shown in the sidebar and switcher."
+			>
 				<form
-					className="mt-3 flex w-full max-w-sm gap-2"
+					className="flex w-full max-w-sm gap-2"
 					onSubmit={(e) => {
 						e.preventDefault();
 						if (nameChanged) mutation.mutate({ name: trimmedName });
@@ -137,13 +135,12 @@ function OrganizationSettingsPage() {
 						Save
 					</Button>
 				</form>
-			</div>
+			</PageSection>
 
-			<div className="-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-				<span className="eyebrow">Country</span>
-				<p className="mt-2 text-sm text-muted-foreground">
-					Used to determine public holidays across the organization.
-				</p>
+			<PageSection
+				title="Country"
+				description="Used to determine public holidays across the organization."
+			>
 				<Select
 					value={settings.country}
 					onValueChange={(value) =>
@@ -152,7 +149,7 @@ function OrganizationSettingsPage() {
 					disabled={mutation.isPending}
 					items={countries.map((c) => ({ value: c.code, label: c.name }))}
 				>
-					<SelectTrigger className="mt-3 w-full max-w-sm bg-card">
+					<SelectTrigger className="w-full max-w-sm bg-card">
 						<SelectValue placeholder="Select a country" />
 					</SelectTrigger>
 					<SelectContent>
@@ -163,17 +160,14 @@ function OrganizationSettingsPage() {
 						))}
 					</SelectContent>
 				</Select>
-			</div>
+			</PageSection>
 
-			<div className="-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-				<span className="eyebrow">Logo URL</span>
-				<p className="mt-2 text-sm text-muted-foreground">
-					A public image URL for the organization's logo, shown in the sidebar
-					(SVG or PNG work best). Leave empty to fall back to the organization
-					initials.
-				</p>
+			<PageSection
+				title="Logo URL"
+				description="A public image URL for the organization's logo, shown in the sidebar (SVG or PNG work best). Leave empty to fall back to the organization initials."
+			>
 				<form
-					className="mt-3 flex w-full max-w-sm flex-col gap-3"
+					className="flex w-full max-w-sm flex-col gap-3"
 					onSubmit={(e) => {
 						e.preventDefault();
 						if (logoChanged) mutation.mutate({ logo: trimmedLogo });
@@ -227,7 +221,7 @@ function OrganizationSettingsPage() {
 						)}
 					</div>
 				</form>
-			</div>
+			</PageSection>
 
 			<CompliancePolicySection />
 			<AutomationLockSection />
@@ -288,15 +282,11 @@ function NotOnInvoiceStatusSection() {
 	});
 
 	return (
-		<div className="-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-			<h2 className="eyebrow">Not on the invoice</h2>
-			<p className="mt-1 max-w-prose text-sm text-muted-foreground">
-				The reasons you can pick for someone who ended a month with no invoiced
-				hours. Keep the list short — it only stays comparable across months if
-				the same words come back.
-			</p>
-
-			<div className="mt-4 flex max-w-md flex-col">
+		<PageSection
+			title="Not on the invoice"
+			description="The reasons you can pick for someone who ended a month with no invoiced hours. Keep the list short — it only stays comparable across months if the same words come back."
+		>
+			<div className="flex max-w-md flex-col">
 				{options.map((option) => (
 					<div
 						key={option.id}
@@ -348,7 +338,7 @@ function NotOnInvoiceStatusSection() {
 					Add
 				</Button>
 			</form>
-		</div>
+		</PageSection>
 	);
 }
 
@@ -424,17 +414,12 @@ function CompliancePolicySection() {
 	const changed = valid && parsed !== policy.complianceMissingDays;
 
 	return (
-		// Same section chrome as the Name/Country/Logo blocks above — without it
-		// this one had no rule above it and butted straight up against the logo
-		// form's buttons.
-		<div className="-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-			<h2 className="eyebrow">Tracking compliance</h2>
-			<p className="mt-1 max-w-prose text-sm text-muted-foreground">
-				How many working days someone may go without logging anything before
-				they show up on the Tracking report and start getting Slack nudges.
-			</p>
+		<PageSection
+			title="Tracking compliance"
+			description="How many working days someone may go without logging anything before they show up on the Tracking report and start getting Slack nudges."
+		>
 			<form
-				className="mt-3 flex w-full max-w-sm items-center gap-2"
+				className="flex w-full max-w-sm items-center gap-2"
 				onSubmit={(e) => {
 					e.preventDefault();
 					if (changed) mutation.mutate(parsed);
@@ -456,7 +441,7 @@ function CompliancePolicySection() {
 					Save
 				</Button>
 			</form>
-		</div>
+		</PageSection>
 	);
 }
 
@@ -510,17 +495,12 @@ function AutomationLockSection() {
 	const changed = valid && next !== (policy.automationLockedThrough ?? null);
 
 	return (
-		<div className="-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8">
-			<h2 className="eyebrow">Automation lock</h2>
-			<p className="mt-1 max-w-prose text-sm text-muted-foreground">
-				The last day the sync engines may not touch. Recurring blocks, calendar
-				meetings and commit work-time blocks stop at this date, so a month
-				you've already closed can't quietly gain hours. People can still edit
-				their own entries in those months — this only holds back the
-				automations. Leave it empty for no lock.
-			</p>
+		<PageSection
+			title="Automation lock"
+			description="The last day the sync engines may not touch. Recurring blocks, calendar meetings and commit work-time blocks stop at this date, so a month you've already closed can't quietly gain hours. People can still edit their own entries in those months — this only holds back the automations. Leave it empty for no lock."
+		>
 			<form
-				className="mt-3 flex w-full max-w-sm items-center gap-2"
+				className="flex w-full max-w-sm items-center gap-2"
 				onSubmit={(e) => {
 					e.preventDefault();
 					if (changed) mutation.mutate(next);
@@ -541,6 +521,6 @@ function AutomationLockSection() {
 					Save
 				</Button>
 			</form>
-		</div>
+		</PageSection>
 	);
 }

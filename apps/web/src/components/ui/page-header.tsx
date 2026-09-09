@@ -123,6 +123,25 @@ export function PageColumn({
  * `eyebrow` is required for that reason. Every screen can say what slice of data
  * it is showing — a date, a window, a scope — and a screen that genuinely can't
  * is a screen that doesn't know what it is.
+ *
+ * **The header owns the gap under itself, and no caller may set it.** The gap is
+ * `mb-7` — the same 1.75rem that separates one `PageSection` from the next, so a
+ * screen's first block and its second sit at the identical distance from what
+ * precedes them. It used to be an overridable default, and every one of the
+ * thirteen screens overrode it: twelve to `mb-0` and one to `mb-6`, each then
+ * re-declaring its own gap on whatever came next. The result was three different
+ * openings — 16px on Tasks, 24px on People/Clients/Reports/Projects, 28px on
+ * Organization/Preferences — for what is the same relationship on every screen.
+ * `className` is still taken, for the flex-layout concerns of a `PageFull` child
+ * (`shrink-0`), but a margin passed here is a margin two screens will disagree
+ * about within the month.
+ *
+ * **Nothing may sit in that gap either** — see the `.screen` rules in styles.css,
+ * which drop the hairline off whichever of the two openings a page uses: the
+ * first `PageSection`, or a bleeding `<Table>` placed directly under the header.
+ * The header is already the boundary; a rule 28px under a title is a second one
+ * saying the same thing, and it was the visible difference between Organization
+ * (ruled) and People (not).
  */
 export function PageHeader({
 	eyebrow,
@@ -135,6 +154,7 @@ export function PageHeader({
 	title: ReactNode;
 	lede?: ReactNode;
 	action?: ReactNode;
+	/** Layout only — never a margin. See the note above. */
 	className?: string;
 }) {
 	return (
@@ -159,6 +179,13 @@ export function PageHeader({
  * pair), so it meets the island's own edge rather than stopping short of it —
  * the bug that made Day's and Week's footers look truncated. Because the island
  * clips to its radius, the rule terminates on the corner cleanly.
+ *
+ * A section always asks for its rule; the PAGE decides that the first one does
+ * not get it (`.screen > section:first-of-type`, styles.css). This used to be a
+ * `divided` prop with the note "off for the first section under a PageHeader",
+ * and in the whole tree no caller ever passed it — which is what a per-caller
+ * opt-out is worth against a rule that holds on every screen without exception.
+ * Stack the sections and the geometry is already right.
  */
 export function PageSection({
 	title,
@@ -168,17 +195,15 @@ export function PageSection({
 	className,
 	contentClassName,
 	standalone = false,
-	/** Off for the first section under a PageHeader, which needs no rule above it. */
-	divided = true,
 }: {
 	title?: ReactNode;
 	description?: ReactNode;
 	action?: ReactNode;
-	children: ReactNode;
+	/** Optional: a section that is only a title and a note is a real section. */
+	children?: ReactNode;
 	className?: string;
 	contentClassName?: string;
 	standalone?: boolean;
-	divided?: boolean;
 }) {
 	const head = (title || action) && (
 		<div className="section-head">
@@ -194,13 +219,19 @@ export function PageSection({
 		</div>
 	);
 
+	// An empty content div would still contribute its `mt-5`, so a prose-only
+	// section would sit 20px taller than its neighbours for nothing.
+	const body = children != null && (
+		<div className={cn(head ? "mt-5" : undefined, contentClassName)}>
+			{children}
+		</div>
+	);
+
 	if (standalone) {
 		return (
 			<section className={cn("island island-pad", className)}>
 				{head}
-				<div className={cn(head ? "mt-5" : undefined, contentClassName)}>
-					{children}
-				</div>
+				{body}
 			</section>
 		);
 	}
@@ -208,15 +239,12 @@ export function PageSection({
 	return (
 		<section
 			className={cn(
-				divided && "-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8",
-				!divided && "mt-7",
+				"-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8",
 				className,
 			)}
 		>
 			{head}
-			<div className={cn(head ? "mt-5" : undefined, contentClassName)}>
-				{children}
-			</div>
+			{body}
 		</section>
 	);
 }

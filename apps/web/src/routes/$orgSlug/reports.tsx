@@ -71,11 +71,11 @@ function ReportsPage() {
 	if (!canSeeAnything) {
 		return (
 			<Page>
-				<PageHeader eyebrow="Reports" title="Nothing here for you" />
-				<p className="lede max-w-[62ch]">
-					Reports cover a whole project's time, so they're for the people who
-					run one. Your own hours are on the timesheet.
-				</p>
+				<PageHeader
+					eyebrow="Reports"
+					title="Nothing here for you"
+					lede="Reports cover a whole project's time, so they're for the people who run one. Your own hours are on the timesheet."
+				/>
 			</Page>
 		);
 	}
@@ -85,13 +85,9 @@ function ReportsPage() {
 		// is sized for exactly this and shared with every other screen, so moving
 		// between them never resizes the shell.
 		<Page>
-			<PageHeader
-				eyebrow={formatMonthKey(month)}
-				title="Reports"
-				className="mb-0"
-			/>
+			<PageHeader eyebrow={formatMonthKey(month)} title="Reports" />
 
-			<div className="mt-6 overflow-x-auto">
+			<div className="overflow-x-auto">
 				<SegmentedControl>
 					{visibleTabs.map((t) => (
 						<SegmentedControlItem

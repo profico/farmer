@@ -137,9 +137,8 @@ function RecurringBlocksPage() {
 				title="Recurring blocks"
 				lede="Blocks — a daily break, a standing meeting — that appear on your calendar without you logging them."
 				action={<CreateRecurringBlockRuleDialog />}
-				className="mb-0"
 			/>
-			<Table containerClassName="mt-6">
+			<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Task</TableHead>

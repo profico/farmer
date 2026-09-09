@@ -179,10 +179,10 @@ function ClosePage() {
 						/>
 					</div>
 				}
-				className="mb-0 shrink-0"
+				className="shrink-0"
 			/>
 
-			<div className="-mx-4 mt-6 grid min-h-0 flex-1 grid-cols-1 border-t sm:-mx-8 lg:grid-cols-[minmax(0,440px)_1fr] lg:divide-x">
+			<div className="-mx-4 grid min-h-0 flex-1 grid-cols-1 sm:-mx-8 lg:grid-cols-[minmax(0,440px)_1fr] lg:divide-x">
 				<div className="scrollbar-stable min-h-0 overflow-y-auto">
 					{projects.length === 0 ? (
 						<div className="px-4 py-8 sm:px-8">

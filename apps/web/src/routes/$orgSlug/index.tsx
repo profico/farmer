@@ -143,7 +143,6 @@ function OrgHome() {
 						}
 					/>
 				}
-				className="mb-6"
 			/>
 
 			{/* Below xl this is one vertical stack: summary, then the selected day's
@@ -152,7 +151,7 @@ function OrgHome() {
 			    a tall scroll into one screenful on a wide monitor. The day bars
 			    already drive the list's selection, so the split makes the existing
 			    interaction visible instead of scrolling between cause and effect. */}
-			<div className="-mx-4 mt-6 grid border-t border-b sm:-mx-8 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:divide-x">
+			<div className="-mx-4 grid border-b sm:-mx-8 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:divide-x">
 				{/* Whichever summary section lands last keeps its rule when stacked
 				    (it separates summary from entries) but drops it side by side,
 				    where it would just be a stray line across the column. */}

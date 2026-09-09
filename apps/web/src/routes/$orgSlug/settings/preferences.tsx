@@ -190,7 +190,6 @@ function PreferencesSettingsPage() {
 				eyebrow="Your account"
 				title="Preferences"
 				lede="Your account and this device."
-				className="mb-0"
 			/>
 
 			{devAuth ? <SignInMethodsSection /> : null}

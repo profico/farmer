@@ -149,10 +149,9 @@ function ClientsPage() {
 				title="Clients"
 				lede={`Every project belongs to a client, which is what makes the Time report's "by client" view add up. The Internal client is created automatically and holds work that is never invoiced.`}
 				action={access.canCreateProjects && <CreateClientDialog />}
-				className="mb-0"
 			/>
 
-			<Table containerClassName="mt-6">
+			<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Client</TableHead>

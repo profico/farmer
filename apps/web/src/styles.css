@@ -1457,3 +1457,37 @@ html {
     --icon-duotone-opacity: 0.24;
   }
 }
+
+/* A page opens with air, never with a rule.
+ *
+ * `PageHeader` carries the one gap (`mb-7`) and the first band under it drops
+ * the hairline it would otherwise open with, because the header is already that
+ * boundary — a rule 28px below a title is a second one saying the same thing. It
+ * was also the visible difference between Organization and People: identical
+ * headers, one of them followed by a line and one not.
+ *
+ * A page has two ways of opening, not one: a `PageSection`, and a bleeding
+ * `<Table>` (People, Clients, Tasks, Hour fund, Recurring blocks). The table
+ * carries `border-y`, so covering only the section would leave those five
+ * screens opening on the rule the other eight had just lost — the same split,
+ * moved. The table needs no rule of its own there: its head row already draws
+ * one under itself, which is the boundary a section's eyebrow does without.
+ *
+ * Here rather than as a prop on `PageSection` because a per-caller opt-out is
+ * exactly the thing that is right twelve times and then forgotten on the
+ * thirteenth screen — which is what happened to the `divided` prop this
+ * replaces, never passed once in the whole tree. Both selectors are scoped to a
+ * direct child of `.screen`, so they can only ever mean "the page's own first
+ * band", never a <section> or a table some component nests inside one.
+ *
+ * **Unlayered, and that is the whole reason it works.** Written inside
+ * `@layer components` — where everything else in this file lives — it lost to
+ * `border-t`/`border-y` however specific it was, because the cascade consults
+ * the layer before it ever reaches specificity and `utilities` sorts after
+ * `components`. Unlayered rules outrank every layer, so this is the one place
+ * in the app that can overrule a utility class without `!important`. */
+.screen > section:first-of-type,
+.screen > header + [data-slot='table-container'] {
+  border-top-width: 0;
+  padding-top: 0;
+}
