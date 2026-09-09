@@ -17,6 +17,7 @@ import {
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
 
+import { FarmerLogo } from "#/components/farmer-logo.tsx";
 import { getSession } from "#/server/auth.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
@@ -195,12 +196,8 @@ function Home() {
 							justifyContent: "space-between",
 						}}
 					>
-						<a href="#top" style={{ display: "block" }}>
-							<img
-								src="/logo.svg"
-								alt="Farmer"
-								style={{ height: "30px", width: "auto", display: "block" }}
-							/>
+						<a href="#top" style={{ display: "block", color: "var(--fg)" }}>
+							<FarmerLogo height={30} />
 						</a>
 						<div
 							className="fm-nav"
@@ -965,12 +962,8 @@ function Home() {
 							flexWrap: "wrap",
 						}}
 					>
-						<a href="#top" style={{ display: "block" }}>
-							<img
-								src="/logo.svg"
-								alt="Farmer"
-								style={{ height: "26px", width: "auto", display: "block" }}
-							/>
+						<a href="#top" style={{ display: "block", color: "var(--fg)" }}>
+							<FarmerLogo height={26} />
 						</a>
 						<div
 							style={{
