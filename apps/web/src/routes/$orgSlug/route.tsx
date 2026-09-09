@@ -59,6 +59,12 @@ export const Route = createFileRoute("/$orgSlug")({
 			role: entered.role,
 			singleOrg: config.singleOrgMode,
 			assistantEnabled: config.assistantEnabled,
+			// The MCP server's own switch. Nothing in the nav reads it — an MCP
+			// client is not a screen — but Settings → Integrations shows the
+			// connection URL, and a URL for an endpoint that 404s is worse than no
+			// URL at all.
+			mcpEnabled: config.mcpEnabled,
+			appOrigin: config.appOrigin,
 			// Development-only email + password sign-in. Settings → Preferences
 			// hides its whole "Sign-in methods" section when this is off, since
 			// there is nothing there to change on a deployed instance.

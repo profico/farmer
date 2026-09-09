@@ -20,6 +20,31 @@ export type PublicAppConfig = {
 	 */
 	assistantEnabled: boolean;
 	/**
+	 * Whether the MCP server runs on this deployment (`MCP_ENABLED`).
+	 *
+	 * Its own flag, not `assistantEnabled`. The two features share a tool
+	 * registry and nothing else — see `packages/core/src/lib/mcp-flag.ts` — so
+	 * an operator who has switched the assistant off has said nothing about
+	 * this one. Used to decide whether Settings → Integrations shows the
+	 * connection URL, which is the only place anybody can find it.
+	 */
+	mcpEnabled: boolean;
+	/**
+	 * This deployment's own origin, from `BETTER_AUTH_URL`.
+	 *
+	 * Resolved on the server rather than read from `window.location` in the
+	 * browser, because it is not "wherever this tab happens to be". It is the
+	 * origin better-auth publishes in both OAuth discovery documents, so it is
+	 * the one an MCP client must be handed — an alternate hostname or a preview
+	 * URL that renders the same page would produce a connection string that
+	 * discovers a resource it is not allowed to be.
+	 *
+	 * Empty when `BETTER_AUTH_URL` is unset, which is a broken deployment for
+	 * other reasons already (invitation links and the OAuth callbacks need it).
+	 * Callers show nothing rather than a half-built URL.
+	 */
+	appOrigin: string;
+	/**
 	 * Whether `/login` should offer the email + password form alongside the
 	 * Google button (`packages/core/src/lib/dev-auth.ts`).
 	 *
@@ -46,21 +71,38 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 		const [
 			{ isSingleOrgMode, findSingleOrg },
 			{ isAssistantEnabled },
+			{ isMcpEnabled },
 			{ isDevAuthEnabled },
 		] = await Promise.all([
 			import("@farmer/core/lib/single-org"),
 			import("@farmer/core/lib/assistant-flag"),
+			import("@farmer/core/lib/mcp-flag"),
 			import("@farmer/core/lib/dev-auth"),
 		]);
 		const assistantEnabled = isAssistantEnabled();
+		const mcpEnabled = isMcpEnabled();
 		const devAuth = isDevAuthEnabled();
+		// Parsed rather than passed through, so a trailing path or slash in the
+		// environment cannot end up doubled in the middle of a URL somebody
+		// pastes. An unparseable value is the same answer as a missing one.
+		const appOrigin =
+			URL.parse(process.env.BETTER_AUTH_URL ?? "")?.origin ?? "";
 		if (!isSingleOrgMode()) {
-			return { singleOrgMode: false, assistantEnabled, devAuth, org: null };
+			return {
+				singleOrgMode: false,
+				assistantEnabled,
+				mcpEnabled,
+				appOrigin,
+				devAuth,
+				org: null,
+			};
 		}
 		const org = await findSingleOrg();
 		return {
 			singleOrgMode: true,
 			assistantEnabled,
+			mcpEnabled,
+			appOrigin,
 			devAuth,
 			org: org
 				? { slug: org.slug, name: org.name, logo: org.logo ?? null }

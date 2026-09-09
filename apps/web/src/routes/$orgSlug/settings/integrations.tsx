@@ -6,6 +6,7 @@ import {
 	BuildingsIcon,
 	CalendarBlankIcon,
 	GithubLogoIcon,
+	PlugsConnectedIcon,
 	SlackLogoIcon,
 	SparkleIcon,
 } from "@phosphor-icons/react";
@@ -139,7 +140,8 @@ function SettingToggleRow({
 
 function IntegrationsSettingsPage() {
 	const orgSlug = useOrgSlug();
-	const { role, assistantEnabled } = Route.useRouteContext();
+	const { role, assistantEnabled, mcpEnabled, appOrigin } =
+		Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
 	const { data: status } = useSuspenseQuery(
 		githubConnectionStatusQuery(orgSlug),
@@ -436,7 +438,80 @@ function IntegrationsSettingsPage() {
 			    so offering the form would be offering an action that cannot
 			    succeed. */}
 			{isAdmin && assistantEnabled && <OpenRouterSection />}
+
+			{/* MCP — everyone, not admins only. Unlike the three above it there is
+			    nothing here to connect on the workspace's behalf: the connection is
+			    a person's own, made in their own editor, and authorized as them.
+			    This section exists because the URL is otherwise unguessable, and a
+			    feature nobody can find is a feature nobody uses. */}
+			{mcpEnabled && appOrigin && <McpSection appOrigin={appOrigin} />}
 		</Page>
+	);
+}
+
+/**
+ * The MCP connection URL, and the one command that uses it.
+ *
+ * Read-only on purpose — there is no button here that connects anything. An
+ * MCP client authorizes itself: it registers with the authorization server,
+ * opens a browser at Google, and holds a token of its own. All this screen can
+ * do is say what to paste, which is why it is a copyable string rather than a
+ * status row with a "Connect" beside it.
+ *
+ * The org slug is in the URL because a token has no active workspace to read
+ * (see `routes/api/mcp/$orgSlug.ts`), so somebody in two workspaces adds two
+ * connectors — which is also why this row names the workspace it is showing
+ * rather than saying "your Farmer account".
+ */
+function McpSection({ appOrigin }: { appOrigin: string }) {
+	const orgSlug = useOrgSlug();
+	const url = `${appOrigin}/api/mcp/${orgSlug}`;
+	const command = `claude mcp add --transport http farmer ${url}`;
+
+	const copy = async (value: string, what: string) => {
+		try {
+			await navigator.clipboard.writeText(value);
+			toast.success(`${what} copied`);
+		} catch {
+			// Denied permission, or an insecure origin. Saying so beats a button
+			// that silently does nothing — the string is on screen to select.
+			toast.error("Could not copy — select the text instead");
+		}
+	};
+
+	return (
+		<PageSection>
+			<SettingRow
+				icon={<PlugsConnectedIcon className="size-5" />}
+				title="Model Context Protocol"
+				description="Connect Claude Code, or any MCP client, to this workspace. It gets the same tools the Assistant has and sees exactly what you are allowed to see — your own time entries, the projects you are on, the close sheets you run. Signing in happens in your browser, as you."
+			/>
+
+			<SettingList className="mt-1">
+				<SettingRow
+					title="Server URL"
+					description={
+						<code className="break-all font-mono text-xs">{url}</code>
+					}
+					action={
+						<Button variant="outline" onClick={() => copy(url, "URL")}>
+							Copy
+						</Button>
+					}
+				/>
+				<SettingRow
+					title="Add it to Claude Code"
+					description={
+						<code className="break-all font-mono text-xs">{command}</code>
+					}
+					action={
+						<Button variant="outline" onClick={() => copy(command, "Command")}>
+							Copy
+						</Button>
+					}
+				/>
+			</SettingList>
+		</PageSection>
 	);
 }
 

@@ -16,6 +16,8 @@ export * from "./google-calendar.service";
 export * from "./holidays.service";
 export * from "./hour-fund.service";
 export * from "./integration-settings.service";
+export * from "./mcp-tools";
+export * from "./mcp.service";
 export * from "./members.service";
 export * from "./not-on-invoice.service";
 export * from "./notifications.service";

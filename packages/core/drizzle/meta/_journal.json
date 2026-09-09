@@ -253,6 +253,13 @@
       "when": 1788959305601,
       "tag": "0035_member_type_no_overlap",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788975060923,
+      "tag": "0036_loving_bullseye",
+      "breakpoints": true
     }
   ]
 }

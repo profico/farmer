@@ -14,8 +14,11 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
+import { Route as ApiMcpLoginRouteImport } from './routes/api/mcp-login'
 import { Route as ApiLoginRouteImport } from './routes/api/login'
 import { Route as AcceptInviteInvitationIdRouteImport } from './routes/accept-invite/$invitationId'
+import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known/oauth-protected-resource'
+import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known/oauth-authorization-server'
 import { Route as OrgSlugReportsRouteImport } from './routes/$orgSlug/reports'
 import { Route as OrgSlugCloseRouteImport } from './routes/$orgSlug/close'
 import { Route as OrgSlugAssistantRouteImport } from './routes/$orgSlug/assistant'
@@ -27,6 +30,7 @@ import { Route as ApiV1TimeEntriesRouteImport } from './routes/api/v1/time-entri
 import { Route as ApiV1ProjectsRouteImport } from './routes/api/v1/projects'
 import { Route as ApiSlackCallbackRouteImport } from './routes/api/slack/callback'
 import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
+import { Route as ApiMcpOrgSlugRouteImport } from './routes/api/mcp/$orgSlug'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAssistantStreamRouteImport } from './routes/api/assistant/stream'
@@ -68,6 +72,11 @@ const OrgSlugIndexRoute = OrgSlugIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const ApiMcpLoginRoute = ApiMcpLoginRouteImport.update({
+  id: '/api/mcp-login',
+  path: '/api/mcp-login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiLoginRoute = ApiLoginRouteImport.update({
   id: '/api/login',
   path: '/api/login',
@@ -77,6 +86,18 @@ const AcceptInviteInvitationIdRoute =
   AcceptInviteInvitationIdRouteImport.update({
     id: '/accept-invite/$invitationId',
     path: '/accept-invite/$invitationId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DotwellKnownOauthProtectedResourceRoute =
+  DotwellKnownOauthProtectedResourceRouteImport.update({
+    id: '/.well-known/oauth-protected-resource',
+    path: '/.well-known/oauth-protected-resource',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DotwellKnownOauthAuthorizationServerRoute =
+  DotwellKnownOauthAuthorizationServerRouteImport.update({
+    id: '/.well-known/oauth-authorization-server',
+    path: '/.well-known/oauth-authorization-server',
     getParentRoute: () => rootRouteImport,
   } as any)
 const OrgSlugReportsRoute = OrgSlugReportsRouteImport.update({
@@ -132,6 +153,11 @@ const ApiSlackCallbackRoute = ApiSlackCallbackRouteImport.update({
 const ApiReportsPdfRoute = ApiReportsPdfRouteImport.update({
   id: '/api/reports/pdf',
   path: '/api/reports/pdf',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMcpOrgSlugRoute = ApiMcpOrgSlugRouteImport.update({
+  id: '/api/mcp/$orgSlug',
+  path: '/api/mcp/$orgSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
@@ -224,8 +250,11 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
   '/api/login': typeof ApiLoginRoute
+  '/api/mcp-login': typeof ApiMcpLoginRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
@@ -242,6 +271,7 @@ export interface FileRoutesByFullPath {
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -257,8 +287,11 @@ export interface FileRoutesByTo {
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
   '/api/login': typeof ApiLoginRoute
+  '/api/mcp-login': typeof ApiMcpLoginRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
@@ -275,6 +308,7 @@ export interface FileRoutesByTo {
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -293,8 +327,11 @@ export interface FileRoutesById {
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
   '/api/login': typeof ApiLoginRoute
+  '/api/mcp-login': typeof ApiMcpLoginRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
@@ -311,6 +348,7 @@ export interface FileRoutesById {
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -330,8 +368,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/assistant'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
     | '/api/login'
+    | '/api/mcp-login'
     | '/$orgSlug/'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
@@ -348,6 +389,7 @@ export interface FileRouteTypes {
     | '/api/assistant/stream'
     | '/api/auth/$'
     | '/api/github/setup'
+    | '/api/mcp/$orgSlug'
     | '/api/reports/pdf'
     | '/api/slack/callback'
     | '/api/v1/projects'
@@ -363,8 +405,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/assistant'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
     | '/api/login'
+    | '/api/mcp-login'
     | '/$orgSlug'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
@@ -381,6 +426,7 @@ export interface FileRouteTypes {
     | '/api/assistant/stream'
     | '/api/auth/$'
     | '/api/github/setup'
+    | '/api/mcp/$orgSlug'
     | '/api/reports/pdf'
     | '/api/slack/callback'
     | '/api/v1/projects'
@@ -398,8 +444,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/assistant'
     | '/$orgSlug/close'
     | '/$orgSlug/reports'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
     | '/api/login'
+    | '/api/mcp-login'
     | '/$orgSlug/'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
@@ -416,6 +465,7 @@ export interface FileRouteTypes {
     | '/api/assistant/stream'
     | '/api/auth/$'
     | '/api/github/setup'
+    | '/api/mcp/$orgSlug'
     | '/api/reports/pdf'
     | '/api/slack/callback'
     | '/api/v1/projects'
@@ -430,11 +480,15 @@ export interface RootRouteChildren {
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
   NoAccessRoute: typeof NoAccessRoute
+  DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute
+  DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRoute
   AcceptInviteInvitationIdRoute: typeof AcceptInviteInvitationIdRoute
   ApiLoginRoute: typeof ApiLoginRoute
+  ApiMcpLoginRoute: typeof ApiMcpLoginRoute
   ApiAssistantStreamRoute: typeof ApiAssistantStreamRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
+  ApiMcpOrgSlugRoute: typeof ApiMcpOrgSlugRoute
   ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
   ApiV1ProjectsRoute: typeof ApiV1ProjectsRoute
@@ -478,6 +532,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugIndexRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/api/mcp-login': {
+      id: '/api/mcp-login'
+      path: '/api/mcp-login'
+      fullPath: '/api/mcp-login'
+      preLoaderRoute: typeof ApiMcpLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/login': {
       id: '/api/login'
       path: '/api/login'
@@ -490,6 +551,20 @@ declare module '@tanstack/react-router' {
       path: '/accept-invite/$invitationId'
       fullPath: '/accept-invite/$invitationId'
       preLoaderRoute: typeof AcceptInviteInvitationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-protected-resource': {
+      id: '/.well-known/oauth-protected-resource'
+      path: '/.well-known/oauth-protected-resource'
+      fullPath: '/.well-known/oauth-protected-resource'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-authorization-server': {
+      id: '/.well-known/oauth-authorization-server'
+      path: '/.well-known/oauth-authorization-server'
+      fullPath: '/.well-known/oauth-authorization-server'
+      preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug/reports': {
@@ -567,6 +642,13 @@ declare module '@tanstack/react-router' {
       path: '/api/reports/pdf'
       fullPath: '/api/reports/pdf'
       preLoaderRoute: typeof ApiReportsPdfRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/mcp/$orgSlug': {
+      id: '/api/mcp/$orgSlug'
+      path: '/api/mcp/$orgSlug'
+      fullPath: '/api/mcp/$orgSlug'
+      preLoaderRoute: typeof ApiMcpOrgSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/github/setup': {
@@ -741,11 +823,17 @@ const rootRouteChildren: RootRouteChildren = {
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
   LoginRoute: LoginRoute,
   NoAccessRoute: NoAccessRoute,
+  DotwellKnownOauthAuthorizationServerRoute:
+    DotwellKnownOauthAuthorizationServerRoute,
+  DotwellKnownOauthProtectedResourceRoute:
+    DotwellKnownOauthProtectedResourceRoute,
   AcceptInviteInvitationIdRoute: AcceptInviteInvitationIdRoute,
   ApiLoginRoute: ApiLoginRoute,
+  ApiMcpLoginRoute: ApiMcpLoginRoute,
   ApiAssistantStreamRoute: ApiAssistantStreamRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
+  ApiMcpOrgSlugRoute: ApiMcpOrgSlugRoute,
   ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiSlackCallbackRoute: ApiSlackCallbackRoute,
   ApiV1ProjectsRoute: ApiV1ProjectsRoute,

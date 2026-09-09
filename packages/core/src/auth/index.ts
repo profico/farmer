@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
-import { genericOAuth, organization } from "better-auth/plugins";
+import { genericOAuth, mcp, organization } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, eq } from "drizzle-orm";
 
@@ -339,6 +339,31 @@ export const auth = betterAuth({
 				},
 			],
 		}),
+		// The OAuth authorization server behind `/api/mcp/<orgSlug>`, so an MCP
+		// client (Claude Code and friends) can sign a person in and hold a token
+		// of its own. It brings dynamic client registration (RFC 7591),
+		// `/mcp/authorize`, `/mcp/token`, `getMcpSession` and both discovery
+		// documents; the three tables it declares (oauthApplication,
+		// oauthAccessToken, oauthConsent) are why `auth.ts` was regenerated.
+		//
+		// `loginPage` is a dedicated server route, NOT `/login`. The plugin
+		// redirects an unauthenticated authorize request to
+		// `${loginPage}?${originalQuery}`, carrying eight OAuth parameters that
+		// `/login`'s search schema parses none of and Zod therefore strips — so
+		// the round trip would come back to `/mcp/authorize` with no client_id
+		// and bounce forever. `api/mcp-login.ts` rebuilds the authorize URL from
+		// whatever query it was handed and hands it to `/api/login` as a
+		// `redirect`, which is a parameter that path already carries safely.
+		//
+		// No consent screen, deliberately rather than by omission: better-auth
+		// only renders one when the client sends `prompt=consent` AND
+		// `oidcConfig.consentPage` is set. The person is already consenting twice
+		// — once in the Google flow, once in their MCP client's own connection
+		// prompt — and a third screen that says the same thing is a screen nobody
+		// reads.
+		//
+		// Mounted whatever `MCP_ENABLED` says; see lib/mcp-flag.ts.
+		mcp({ loginPage: "/api/mcp-login" }),
 		// tanstackStartCookies MUST stay last — see better-auth/better-auth#5639
 		tanstackStartCookies(),
 	],

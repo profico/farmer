@@ -1251,6 +1251,28 @@ export const findTool = (name: string): AssistantTool | undefined =>
 export const toolsFor = (access: Access): AssistantTool[] =>
 	ASSISTANT_TOOLS.filter((tool) => tool.available?.(access) ?? true);
 
+/**
+ * A tool's argument shape as JSON Schema — OpenAI's `parameters` and MCP's
+ * `inputSchema` are the same document under two names.
+ *
+ * One function rather than the conversion spelled out at each call site, so the
+ * two options below cannot come to differ between the assistant and the MCP
+ * server. A tool that emitted a ceiling to one caller and `{}` to the other
+ * would be the `api/v1/time-entries` mistake again, one layer up.
+ */
+export const toolInputSchema = (tool: AssistantTool): JsonRecord =>
+	// SAFETY: `z.toJSONSchema` returns Zod's own JSON Schema type; `JsonRecord` is
+	// the same value described as the JSON it is about to be serialized into.
+	z.toJSONSchema(tool.schema, {
+		// The schemas use `.refine()` for the range ceilings and the
+		// mandatory-description rule, which have no JSON Schema equivalent.
+		// Emitting them as `{}` (rather than throwing) keeps the shape the
+		// model sees honest about the fields while leaving enforcement where
+		// it actually happens — the `parse` inside each tool's `run`.
+		io: "input",
+		unrepresentable: "any",
+	}) as JsonRecord;
+
 /** The tool list in OpenAI's function-calling shape, scoped to the caller. */
 export const toolDefinitions = (access: Access) =>
 	toolsFor(access).map((tool) => ({
@@ -1258,17 +1280,7 @@ export const toolDefinitions = (access: Access) =>
 		function: {
 			name: tool.name,
 			description: tool.description,
-			// SAFETY: `z.toJSONSchema` returns Zod's own JSON Schema type; `JsonRecord` is
-			// the same value described as the JSON it is about to be serialized into.
-			parameters: z.toJSONSchema(tool.schema, {
-				// The schemas use `.refine()` for the range ceilings and the
-				// mandatory-description rule, which have no JSON Schema equivalent.
-				// Emitting them as `{}` (rather than throwing) keeps the shape the
-				// model sees honest about the fields while leaving enforcement where
-				// it actually happens — the `parse` inside each tool's `run`.
-				io: "input",
-				unrepresentable: "any",
-			}) as JsonRecord,
+			parameters: toolInputSchema(tool),
 		},
 	}));
 
