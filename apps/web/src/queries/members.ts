@@ -24,6 +24,14 @@ export const pendingInvitationsQuery = (org: string) =>
 			const invitations = await listInvitations();
 			return invitations.filter((i) => i.status === "pending");
 		},
+		// Polls only while an email is in flight. Its status changes a few
+		// seconds after the invitation is created, and nothing else would tell
+		// this list; the server turns a "sending" that never finished into
+		// "failed", so this cannot poll forever.
+		refetchInterval: (query) =>
+			query.state.data?.some((i) => i.emailDelivery?.status === "sending")
+				? 3_000
+				: false,
 	});
 
 // Names and faces for the whole org, read by every avatar on every screen (see

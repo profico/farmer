@@ -101,11 +101,22 @@ export const listMembers = createServerFn({ method: "GET" })
 export const listInvitations = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
-		const { auth } = await import("@farmer/core/auth");
-		return auth.api.listInvitations({
-			query: { organizationId: context.ctx.organizationId },
-			headers: getRequestHeaders(),
-		});
+		const [{ auth }, { membersService }] = await Promise.all([
+			import("@farmer/core/auth"),
+			import("@farmer/core/services"),
+		]);
+		const [invitations, emails] = await Promise.all([
+			auth.api.listInvitations({
+				query: { organizationId: context.ctx.organizationId },
+				headers: getRequestHeaders(),
+			}),
+			membersService.invitationEmails(context.ctx),
+		]);
+		// Null for an invitation made before delivery was tracked.
+		return invitations.map((i) => ({
+			...i,
+			emailDelivery: emails.get(i.id) ?? null,
+		}));
 	});
 
 export const inviteMember = createServerFn({ method: "POST" })

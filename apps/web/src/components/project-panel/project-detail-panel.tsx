@@ -110,7 +110,11 @@ export function ProjectDetailPanel({
 			) : (
 				<div className="min-h-0 flex-1 overflow-y-auto p-4">
 					{activeTab === "github" ? (
-						<ProjectGithubRepos projectId={project.id} orgSlug={orgSlug} />
+						<ProjectGithubRepos
+							projectId={project.id}
+							projectName={project.name}
+							orgSlug={orgSlug}
+						/>
 					) : activeTab === "edit" ? (
 						<ProjectEditTab
 							project={project}

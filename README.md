@@ -49,7 +49,7 @@ cd packages/core && bun run db:seed-tasks
 
 Then open http://localhost:3000 and sign in with Google — **Google is the only way in**, and signing in for the first time is what creates your account and your organization. There is no registration form and no password, so `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are required to get past the front page even locally.
 
-The required settings are `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the Google OAuth pair. SMTP and the other integration credentials can stay empty until you want email invites, GitHub, Slack or Calendar sync — `.env.example` documents each block and where the callback URLs go.
+The required settings are `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the Google OAuth pair. Email (Resend or SMTP) and the other integration credentials can stay empty until you want email invites, GitHub, Slack or Calendar sync — `.env.example` documents each block and where the callback URLs go.
 
 ### GitHub and Google credentials
 

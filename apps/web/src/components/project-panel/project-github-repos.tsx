@@ -19,8 +19,21 @@ import {
 } from "#/queries/github.ts";
 import {
 	linkProjectGithubRepo,
+	type listAvailableGithubRepos,
+	type listProjectGithubRepos,
 	unlinkProjectGithubRepo,
 } from "#/server/github.ts";
+
+type AvailableRepo = Awaited<
+	ReturnType<typeof listAvailableGithubRepos>
+>[number];
+type LinkedRepo = Awaited<ReturnType<typeof listProjectGithubRepos>>[number];
+
+/** A link the server has not answered yet — enough to draw its row. */
+type PendingLink = Pick<
+	AvailableRepo,
+	"githubRepoId" | "installationId" | "fullName" | "private"
+> & { projectId: string };
 
 /**
  * Linking repositories to one project. The body only — no dialog, no panel — so
@@ -35,11 +48,14 @@ import {
  */
 export function ProjectGithubRepos({
 	projectId,
+	projectName,
 	orgSlug,
 	enabled = true,
 	className,
 }: {
 	projectId: string | null;
+	/** Shown on the repo in other projects' lists until the next refetch. */
+	projectName: string;
 	orgSlug: string;
 	/** Off while the surface holding this is closed, so a mounted-but-hidden copy
 	 *  doesn't spend an installation's rate limit listing repos nobody asked for. */
@@ -71,39 +87,101 @@ export function ProjectGithubRepos({
 		enabled: active && !!status?.connected,
 	});
 
-	// Both lists move when one repo does — linking removes it from the org-wide
-	// available list's "unheld" set as well as adding it here — so every write
-	// invalidates the pair rather than just this project's.
-	const refresh = () =>
-		Promise.all([
-			queryClient.invalidateQueries({
-				queryKey: projectGithubReposQuery(orgSlug, projectId ?? "").queryKey,
-			}),
-			queryClient.invalidateQueries({
-				queryKey: availableGithubReposQuery(orgSlug).queryKey,
-			}),
-		]);
+	// Links in flight, drawn in the linked list until the server answers. Kept
+	// here rather than faked into the query cache because a linked row is a
+	// database row, and a made-up id there is one an Unlink click would send.
+	const [pendingLinks, setPendingLinks] = useState<PendingLink[]>([]);
+
+	// Both writes are optimistic, and neither refetches the available list on
+	// success. That list is a live call to GitHub per installation — it is what
+	// made every click wait seconds — and after a write the cache already holds
+	// the answer: the only field that moved is the repo's `linkedTo`, which is
+	// set by hand below. A failure is the one case that refetches, since a
+	// refused link usually means the list was stale about who holds the repo.
+	const setHolder = (
+		githubRepoId: number,
+		linkedTo: AvailableRepo["linkedTo"],
+	) =>
+		queryClient.setQueryData(
+			availableGithubReposQuery(orgSlug).queryKey,
+			(repos) =>
+				repos?.map((r) =>
+					r.githubRepoId === githubRepoId ? { ...r, linkedTo } : r,
+				),
+		);
+
+	const refetchAvailable = () =>
+		queryClient.invalidateQueries({
+			queryKey: availableGithubReposQuery(orgSlug).queryKey,
+		});
 
 	const linkMutation = useMutation({
-		mutationFn: (repo: { githubRepoId: number; installationId: number }) =>
+		mutationFn: (link: PendingLink) =>
 			linkProjectGithubRepo({
 				data: {
-					projectId: projectId ?? "",
-					githubRepoId: repo.githubRepoId,
-					installationId: repo.installationId,
+					projectId: link.projectId,
+					githubRepoId: link.githubRepoId,
+					installationId: link.installationId,
 				},
 			}),
-		onSuccess: refresh,
-		onError: (error) => {
+		onMutate: async (link) => {
+			// A refetch already in flight would land without this change on top.
+			await queryClient.cancelQueries({
+				queryKey: availableGithubReposQuery(orgSlug).queryKey,
+			});
+			setPendingLinks((prev) => [...prev, link]);
+			setHolder(link.githubRepoId, {
+				projectId: link.projectId,
+				projectName,
+			});
+		},
+		onSuccess: (created, link) => {
+			// Same tick as dropping the pending row, so React batches the two and
+			// the repo is never drawn twice or not at all.
+			setPendingLinks((prev) =>
+				prev.filter((p) => p.githubRepoId !== link.githubRepoId),
+			);
+			queryClient.setQueryData(
+				projectGithubReposQuery(orgSlug, link.projectId).queryKey,
+				(rows) => rows && [created, ...rows.filter((r) => r.id !== created.id)],
+			);
+		},
+		onError: (error, link) => {
+			setPendingLinks((prev) =>
+				prev.filter((p) => p.githubRepoId !== link.githubRepoId),
+			);
+			setHolder(link.githubRepoId, null);
+			void refetchAvailable();
 			toast.error(error.message ?? "Could not link repository");
 		},
 	});
 
 	const unlinkMutation = useMutation({
-		mutationFn: (projectGithubRepoId: string) =>
-			unlinkProjectGithubRepo({ data: projectGithubRepoId }),
-		onSuccess: refresh,
-		onError: (error) => {
+		mutationFn: (repo: LinkedRepo) =>
+			unlinkProjectGithubRepo({ data: repo.id }),
+		onMutate: async (repo) => {
+			const linkedKey = projectGithubReposQuery(
+				orgSlug,
+				repo.projectId,
+			).queryKey;
+			await Promise.all([
+				queryClient.cancelQueries({ queryKey: linkedKey }),
+				queryClient.cancelQueries({
+					queryKey: availableGithubReposQuery(orgSlug).queryKey,
+				}),
+			]);
+			queryClient.setQueryData(linkedKey, (rows) =>
+				rows?.filter((r) => r.id !== repo.id),
+			);
+			setHolder(repo.githubRepoId, null);
+		},
+		onError: (error, repo) => {
+			void Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: projectGithubReposQuery(orgSlug, repo.projectId).queryKey,
+				}),
+				refetchAvailable(),
+			]);
 			toast.error(error.message ?? "Could not unlink repository");
 		},
 	});
@@ -114,6 +192,9 @@ export function ProjectGithubRepos({
 
 	const visibleLinkedRepos = (linkedRepos ?? []).filter((r) =>
 		matches(r.fullName),
+	);
+	const visiblePendingLinks = pendingLinks.filter(
+		(p) => p.projectId === projectId && matches(p.fullName),
 	);
 	// Everything this project doesn't already hold, held-elsewhere rows included
 	// — they are the answer to "why can't I find it?", so hiding them turns a
@@ -165,8 +246,27 @@ export function ProjectGithubRepos({
 
 				<div className="min-w-0">
 					<p className="eyebrow mb-2">Linked repositories</p>
-					{visibleLinkedRepos.length > 0 ? (
+					{visibleLinkedRepos.length + visiblePendingLinks.length > 0 ? (
 						<div className="scrollbar-stable overflow-hidden rounded-md border">
+							{visiblePendingLinks.map((repo) => (
+								<div
+									key={`pending-${repo.githubRepoId}`}
+									className="flex items-center justify-between gap-2 border-b px-3 py-2 opacity-60 last:border-b-0"
+								>
+									<span className="flex min-w-0 items-center gap-1.5 text-sm">
+										<span className="truncate">{repo.fullName}</span>
+										{repo.private && (
+											<Badge variant="outline" className="shrink-0 gap-1">
+												<LockIcon className="size-3" />
+												Private
+											</Badge>
+										)}
+									</span>
+									<span className="shrink-0 text-xs text-muted-foreground">
+										Linking…
+									</span>
+								</div>
+							))}
 							{visibleLinkedRepos.map((repo) => (
 								<div
 									key={repo.id}
@@ -185,8 +285,7 @@ export function ProjectGithubRepos({
 										variant="ghost"
 										size="icon-xs"
 										className="shrink-0"
-										onClick={() => unlinkMutation.mutate(repo.id)}
-										disabled={unlinkMutation.isPending}
+										onClick={() => unlinkMutation.mutate(repo)}
 									>
 										<XIcon weight="regular" className="size-3" />
 										<span className="sr-only">Unlink</span>
@@ -234,11 +333,13 @@ export function ProjectGithubRepos({
 											className="shrink-0"
 											onClick={() =>
 												linkMutation.mutate({
+													projectId,
 													githubRepoId: repo.githubRepoId,
 													installationId: repo.installationId,
+													fullName: repo.fullName,
+													private: repo.private,
 												})
 											}
-											disabled={linkMutation.isPending}
 										>
 											Link
 										</Button>

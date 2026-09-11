@@ -27,11 +27,11 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { member, organization, user } from "../db/schema/auth";
+import { invitation, member, organization, user } from "../db/schema/auth";
 import { memberTypeHistory } from "../db/schema/people";
 import { createTestDb, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
-import { membersService } from "./members.service";
+import { INVITATION_EMAIL_STALE_MS, membersService } from "./members.service";
 import type { Ctx } from "./types";
 
 const ORG = "mt-org";
@@ -122,6 +122,59 @@ beforeEach(async () => {
 	await db
 		.delete(memberTypeHistory)
 		.where(eq(memberTypeHistory.organizationId, ORG));
+});
+
+// The invitation email is sent after `createInvitation` has returned, so this
+// row is the only place its outcome is kept. Two properties matter: sending an
+// invitation again replaces the old outcome, and a send that never reported
+// back cannot keep the members page polling for ever.
+describe("invitation email status", () => {
+	const INVITE = "inv-mt-1";
+
+	beforeAll(async () => {
+		await db.insert(invitation).values({
+			id: INVITE,
+			organizationId: ORG,
+			email: "new@example.com",
+			role: "member",
+			status: "pending",
+			expiresAt: new Date(Date.now() + 86_400_000),
+			createdAt: new Date(),
+			inviterId: ADMIN,
+		});
+	});
+
+	test("a second send replaces the earlier outcome", async () => {
+		await membersService.recordInvitationEmail(ORG, INVITE, "failed", "boom");
+		await membersService.recordInvitationEmail(ORG, INVITE, "sending");
+
+		const emails = await membersService.invitationEmails(adminCtx());
+		expect(emails.get(INVITE)).toEqual({ status: "sending", error: null });
+	});
+
+	test("a send that never reported back reads as failed", async () => {
+		await membersService.recordInvitationEmail(ORG, INVITE, "sending");
+		const later = new Date(Date.now() + INVITATION_EMAIL_STALE_MS + 1_000);
+
+		const emails = await membersService.invitationEmails(adminCtx(), {
+			now: later,
+		});
+		expect(emails.get(INVITE)?.status).toBe("failed");
+	});
+
+	test("a status that cannot be written does not throw", async () => {
+		// No such invitation, so the foreign key refuses the row. The hook
+		// calling this runs after the invitation exists, and must not undo it.
+		await expect(
+			membersService.recordInvitationEmail(ORG, "inv-missing", "sent"),
+		).resolves.toBeUndefined();
+	});
+
+	test("only an admin may read it", async () => {
+		await expect(
+			membersService.invitationEmails({ organizationId: ORG, userId: PLAIN }),
+		).rejects.toThrow(AccessError);
+	});
 });
 
 describe("setType", () => {

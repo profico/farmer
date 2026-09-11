@@ -13,12 +13,31 @@ import {
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
-import { memberProfile, memberTypeHistory } from "../db/schema/people";
+import {
+	invitationEmail,
+	type invitationEmailStatus,
+	memberProfile,
+	memberTypeHistory,
+} from "../db/schema/people";
 import { dayKeyInTz, endOfMonthKey } from "../lib/time";
 import type { SetMemberTypeInput } from "../schema/members";
 import { ctxTimezone, requireAdmin } from "./context";
 import { assertUserInOrg } from "./guards";
 import type { Ctx } from "./types";
+
+export type InvitationEmailStatus =
+	(typeof invitationEmailStatus.enumValues)[number];
+
+export type InvitationEmailState = {
+	status: InvitationEmailStatus;
+	/** The provider's message, when the send failed. */
+	error: string | null;
+};
+
+/** How long a send may read as in flight. Both mail transports give up well
+ *  inside it (see `lib/email.ts`), so a "sending" older than this is a process
+ *  that stopped mid-send and will never report how it went. */
+export const INVITATION_EMAIL_STALE_MS = 5 * 60_000;
 
 export type MemberType = "billable" | "overhead" | "contractor";
 
@@ -358,6 +377,67 @@ export const membersService = {
 
 	/** Type history for one person, newest first — the audit trail behind
 	 *  "why does last March say contractor?". */
+	/**
+	 * Record where an invitation's email stands. Called from better-auth's
+	 * `sendInvitationEmail` hook, which has no Ctx — hence the explicit org, the
+	 * same shape as `slackService.linkMember`. Never throws: the invitation
+	 * already exists when this runs, and a status row that failed to write must
+	 * not turn a real invitation into an error. Upserts, because sending an
+	 * invitation again reuses its id.
+	 */
+	recordInvitationEmail: async (
+		organizationId: string,
+		invitationId: string,
+		status: InvitationEmailStatus,
+		error: string | null = null,
+	): Promise<void> => {
+		try {
+			await db
+				.insert(invitationEmail)
+				.values({ invitationId, organizationId, status, error })
+				.onConflictDoUpdate({
+					target: invitationEmail.invitationId,
+					set: { status, error, updatedAt: new Date() },
+				});
+		} catch (writeError) {
+			console.error("[members] could not record invitation email", {
+				invitationId,
+				status,
+				error: writeError,
+			});
+		}
+	},
+
+	/**
+	 * Delivery state per invitation id, for the pending-invitations list. A
+	 * "sending" older than `INVITATION_EMAIL_STALE_MS` reads as failed — left as
+	 * it is, the list would poll for it forever. `now` is a seam for tests.
+	 */
+	invitationEmails: async (
+		ctx: Ctx,
+		{ now = new Date() }: { now?: Date } = {},
+	): Promise<Map<string, InvitationEmailState>> => {
+		await requireAdmin(ctx);
+		const rows = await db
+			.select({
+				invitationId: invitationEmail.invitationId,
+				status: invitationEmail.status,
+				error: invitationEmail.error,
+				updatedAt: invitationEmail.updatedAt,
+			})
+			.from(invitationEmail)
+			.where(eq(invitationEmail.organizationId, ctx.organizationId));
+		return new Map(
+			rows.map((r): [string, InvitationEmailState] => [
+				r.invitationId,
+				r.status === "sending" &&
+				now.getTime() - r.updatedAt.getTime() > INVITATION_EMAIL_STALE_MS
+					? { status: "failed", error: "The send did not finish." }
+					: { status: r.status, error: r.error },
+			]),
+		);
+	},
+
 	typeHistory: async (ctx: Ctx, userId: string) => {
 		await requireAdmin(ctx);
 		return db.query.memberTypeHistory.findMany({

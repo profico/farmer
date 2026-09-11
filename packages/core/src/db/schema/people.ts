@@ -12,7 +12,7 @@ import {
 	uuid,
 } from "drizzle-orm/pg-core";
 
-import { organization, user } from "./auth";
+import { invitation, organization, user } from "./auth";
 
 // The single most consequential field in the reporting layer (PRD 3.1):
 //  - billable    delivery people whose time we sell. Every report, reminder and
@@ -105,6 +105,34 @@ export const memberTypeHistory = pgTable(
 			sql`${t.effectiveUntil} is null or ${t.effectiveUntil} > ${t.effectiveFrom}`,
 		),
 	],
+);
+
+// Whether an invitation's email reached the mail provider. better-auth's
+// `invitation` row records that somebody was invited, not that they were told —
+// and the send runs after `createInvitation` has returned (see
+// `sendInvitationEmail` in auth/index.ts), so without this a failed send was a
+// log line and an invite nobody would ever see. Beside `invitation` rather than
+// on it because that table is CLI-owned. No row means the invitation predates
+// this table, not that its email failed.
+export const invitationEmailStatus = pgEnum("invitation_email_status", [
+	"sending",
+	"sent",
+	"failed",
+]);
+
+export const invitationEmail = pgTable(
+	"invitation_email",
+	{
+		invitationId: text("invitation_id")
+			.primaryKey()
+			.references(() => invitation.id, { onDelete: "cascade" }),
+		organizationId: org(),
+		status: invitationEmailStatus("status").notNull(),
+		// The provider's own words when a send failed, shown on the badge.
+		error: text("error"),
+		...stamps,
+	},
+	(t) => [index("invitation_email_org_idx").on(t.organizationId)],
 );
 
 export const memberProfileRelations = relations(memberProfile, ({ one }) => ({

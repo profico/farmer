@@ -17,6 +17,7 @@ import {
 	isSingleOrgMode,
 } from "../lib/single-org";
 import { slugify } from "../lib/slug";
+import { membersService } from "../services/members.service";
 import { slackService } from "../services/slack.service";
 
 const uniqueSlugFor = async (name: string) => {
@@ -299,12 +300,48 @@ export const auth = betterAuth({
 				url.searchParams.set("role", data.role);
 				const link = url.toString();
 
-				await sendMail({
+				const organizationId = data.organization.id;
+				const invitationId = data.invitation.id;
+
+				// "sending" is written before this returns, so the members list the
+				// dialog refetches already has a row to put a badge on.
+				await membersService.recordInvitationEmail(
+					organizationId,
+					invitationId,
+					"sending",
+				);
+
+				// The send itself is not awaited. better-auth awaits this hook before
+				// `createInvitation` returns, and the invitation row already exists
+				// by then — so a slow mail server held the admin's dialog open for as
+				// long as it took, over an invitation that had already happened. The
+				// outcome lands on `invitationEmail` instead, and the members page
+				// shows it; a failed invitation can be cancelled and sent again.
+				void sendMail({
 					to: data.email,
 					subject: `${data.inviter.user.name} invited you to join ${data.organization.name}`,
 					text: `${data.inviter.user.name} invited you to join ${data.organization.name} as ${data.role}.\n\nAccept the invitation: ${link}`,
 					html: `<p>${data.inviter.user.name} invited you to join <strong>${data.organization.name}</strong> as ${data.role}.</p><p><a href="${link}">Accept the invitation</a></p>`,
-				});
+				}).then(
+					() =>
+						membersService.recordInvitationEmail(
+							organizationId,
+							invitationId,
+							"sent",
+						),
+					(error) => {
+						console.error("[auth] invitation email failed", {
+							invitationId,
+							error,
+						});
+						return membersService.recordInvitationEmail(
+							organizationId,
+							invitationId,
+							"failed",
+							error instanceof Error ? error.message : String(error),
+						);
+					},
+				);
 			},
 		}),
 		// The calendar integration's OAuth grant. Same Google OAuth app as the

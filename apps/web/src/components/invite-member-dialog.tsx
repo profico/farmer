@@ -32,7 +32,7 @@ import {
 	SelectValue,
 } from "#/components/ui/select.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { membersQuery, pendingInvitationsQuery } from "#/queries/members.ts";
+import { pendingInvitationsQuery } from "#/queries/members.ts";
 import { inviteMember } from "#/server/members.ts";
 
 const ROLE_OPTIONS = [
@@ -52,21 +52,26 @@ export function InviteMemberDialog() {
 	const mutation = useMutation({
 		mutationFn: (data: z.infer<typeof inviteMemberInput>) =>
 			inviteMember({ data }),
-		onSuccess: async () => {
-			await Promise.all([
-				queryClient.invalidateQueries({
-					queryKey: membersQuery(orgSlug).queryKey,
-				}),
-				queryClient.invalidateQueries({
-					queryKey: pendingInvitationsQuery(orgSlug).queryKey,
-				}),
-			]);
-			toast.success("Invitation sent");
+		// Optimistic: the dialog closes on submit, not on the answer. A refusal
+		// (already a member, already invited) opens it again with what was typed,
+		// so nothing has to be entered twice.
+		onMutate: () => {
 			setOpen(false);
 			form.reset({ email: "", role: "member" });
 		},
-		onError: (error) => {
+		// Only the invitations list moves. `membersQuery`'s key is the root of
+		// every member query — people, directory, type history — and an
+		// invitation is not a membership until somebody accepts it.
+		onSuccess: () => {
+			toast.success("Invitation sent");
+			return queryClient.invalidateQueries({
+				queryKey: pendingInvitationsQuery(orgSlug).queryKey,
+			});
+		},
+		onError: (error, data) => {
 			toast.error(error.message ?? "Could not send invitation");
+			form.reset(data);
+			setOpen(true);
 		},
 	});
 
@@ -124,9 +129,7 @@ export function InviteMemberDialog() {
 							)}
 						/>
 						<DialogFooter>
-							<Button type="submit" disabled={mutation.isPending}>
-								Send invite
-							</Button>
+							<Button type="submit">Send invite</Button>
 						</DialogFooter>
 					</form>
 				</Form>

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { InviteMemberDialog } from "#/components/invite-member-dialog.tsx";
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
+import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
@@ -39,6 +40,7 @@ import {
 import { requireOrgAdmin } from "#/server/auth.ts";
 import {
 	cancelInvitation,
+	type listInvitations,
 	removeMember,
 	setMemberArchived,
 	setMemberStartDate,
@@ -344,7 +346,12 @@ function MembersSettingsPage() {
 						<TableBody>
 							{invitations.map((inv) => (
 								<TableRow key={inv.id}>
-									<TableCell className="font-medium">{inv.email}</TableCell>
+									<TableCell className="font-medium">
+										<span className="flex items-center gap-2">
+											{inv.email}
+											<InvitationEmailBadge delivery={inv.emailDelivery} />
+										</span>
+									</TableCell>
 									<TableCell className="capitalize">{inv.role}</TableCell>
 									<TableCell>
 										<Button
@@ -363,6 +370,30 @@ function MembersSettingsPage() {
 				</div>
 			)}
 		</Page>
+	);
+}
+
+type PendingInvitation = Awaited<ReturnType<typeof listInvitations>>[number];
+
+/**
+ * Whether the invitation email left. Nothing for an invitation made before
+ * delivery was tracked: there is nothing true to say about it. A failure's
+ * reason is the provider's own message, on hover.
+ */
+function InvitationEmailBadge({
+	delivery,
+}: {
+	delivery: PendingInvitation["emailDelivery"];
+}) {
+	if (!delivery) return null;
+	if (delivery.status === "sending")
+		return <Badge variant="outline">Sending…</Badge>;
+	if (delivery.status === "sent")
+		return <Badge variant="secondary">Email sent</Badge>;
+	return (
+		<Badge variant="destructive" title={delivery.error ?? undefined}>
+			Email failed
+		</Badge>
 	);
 }
 
