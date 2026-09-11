@@ -9,8 +9,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import type { z } from "zod";
+import { z } from "zod";
 
+import { ArchivedSection } from "#/components/archived-section.tsx";
 import { ColorPicker } from "#/components/color-picker.tsx";
 import { ManageTaskProjectsDialog } from "#/components/manage-task-projects-dialog.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
@@ -59,7 +60,14 @@ import {
 	updateTask,
 } from "#/server/tasks.ts";
 
+const searchSchema = z.object({
+	archived: z.literal("1").optional(),
+});
+
+const TASK_COLUMN_COUNT = 6;
+
 export const Route = createFileRoute("/$orgSlug/settings/tasks")({
+	validateSearch: searchSchema,
 	beforeLoad: async () => {
 		await requireOrgAdmin();
 	},
@@ -292,13 +300,15 @@ function TasksPage() {
 		string | null
 	>(null);
 	const [editTaskId, setEditTaskId] = useState<string | null>(null);
+	const search = Route.useSearch();
+	const navigate = Route.useNavigate();
 
-	// Archived tasks are hidden by default. Archiving means "stop showing me
-	// this", and interleaving the dead rows with the live ones is what made a
-	// screen with several same-named archived copies unreadable.
-	const [showArchived, setShowArchived] = useState(false);
-	const archivedCount = tasks.filter((t) => t.archivedAt).length;
-	const visible = showArchived ? tasks : tasks.filter((t) => !t.archivedAt);
+	// Archived tasks sit in the closed-by-default section below. Archiving
+	// means "stop showing me this", and interleaving the dead rows with the
+	// live ones is what made a screen with several same-named archived copies
+	// unreadable.
+	const activeTasks = tasks.filter((t) => !t.archivedAt);
+	const archivedTasks = tasks.filter((t) => t.archivedAt);
 
 	const invalidate = () =>
 		queryClient.invalidateQueries({
@@ -317,32 +327,102 @@ function TasksPage() {
 		onError: (error) => toast.error(error.message ?? "Could not restore task"),
 	});
 
+	const renderTaskRow = (task: (typeof tasks)[number]) => {
+		const category = resolveCategoryColor(task.color);
+		const builtIn = task.scope === "site";
+		return (
+			<TableRow key={task.id}>
+				<TableCell className="font-medium">
+					<span className="flex items-center gap-2">
+						<span
+							className="size-2 shrink-0 rounded-full"
+							style={{ backgroundColor: category.dot }}
+						/>
+						{task.name}
+					</span>
+				</TableCell>
+				<TableCell className="text-muted-foreground">
+					{task.isAbsence ? "Absence" : builtIn ? "Built-in" : "Org task"}
+				</TableCell>
+				{/* Absence tasks are never on a project, so a 0 there would read
+				    as "none yet" rather than "not applicable". Built-ins are on
+				    every project without being picked, so a count would read as
+				    a limit that isn't there. */}
+				<TableCell className="mono text-right">
+					{task.isAbsence ? (
+						<span className="text-faint">—</span>
+					) : task.universal ? (
+						<span className="text-muted-foreground">All</span>
+					) : (
+						task.projectCount
+					)}
+				</TableCell>
+				<TableCell className="mono text-right">{task.entryCount}</TableCell>
+				<TableCell>
+					<StatusPill tone={task.archivedAt ? "neutral" : "positive"}>
+						{task.archivedAt ? "Archived" : "Active"}
+					</StatusPill>
+					{/* Dated, because the name alone doesn't distinguish two
+					    archived copies of the same task from each other. */}
+					{task.archivedAt && (
+						<span className="mt-1 block text-xs text-muted-foreground">
+							{formatDateKeyLong(
+								new Date(task.archivedAt).toISOString().slice(0, 10),
+							)}
+						</span>
+					)}
+				</TableCell>
+				<TableCell className="text-right">
+					{/* Built-ins have no actions at all: they can't be archived,
+					    and they're on every project already so there's no project
+					    list to manage. Archiving, never deleting: entries keep
+					    pointing at the task, so the history stays readable. */}
+					<RowActions
+						actions={[
+							// Built-ins are the site's, not the org's — the service
+							// rejects editing them, so the action stays off menus
+							// where it would only ever fail.
+							!builtIn &&
+								!task.archivedAt && {
+									label: "Edit task",
+									onClick: () => setEditTaskId(task.id),
+								},
+							!task.isAbsence &&
+								!task.universal &&
+								!task.archivedAt && {
+									label: "Manage projects",
+									onClick: () => setManageProjectsTaskId(task.id),
+								},
+							!builtIn &&
+								!task.archivedAt && {
+									label: "Archive",
+									disabled: archiveMutation.isPending,
+									onClick: () => archiveMutation.mutate(task.id),
+								},
+							// Restoring keeps the id, so the entries counted in this
+							// row's Entries column come back attached to it. That's
+							// the alternative to creating a same-named replacement,
+							// which is how the archived pile grew in the first place.
+							!builtIn &&
+								task.archivedAt && {
+									label: "Restore",
+									disabled: unarchiveMutation.isPending,
+									onClick: () => unarchiveMutation.mutate(task.id),
+								},
+						]}
+					/>
+				</TableCell>
+			</TableRow>
+		);
+	};
+
 	return (
 		<Page>
 			<PageHeader
 				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="Tasks"
 				lede={`One global list for the whole company.`}
-				// The archive toggle belongs beside New task, where every screen's
-				// controls are. As a row of its own between the header and the table
-				// it opened the page at one of two heights depending on whether
-				// anything happened to be archived.
-				action={
-					<div className="flex items-center gap-2">
-						{archivedCount > 0 && (
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => setShowArchived((shown) => !shown)}
-							>
-								{showArchived
-									? "Hide archived"
-									: `Show ${archivedCount} archived`}
-							</Button>
-						)}
-						<CreateTaskDialog />
-					</div>
-				}
+				action={<CreateTaskDialog />}
 			/>
 
 			<Table>
@@ -357,100 +437,17 @@ function TasksPage() {
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{visible.map((task) => {
-						const category = resolveCategoryColor(task.color);
-						const builtIn = task.scope === "site";
-						return (
-							<TableRow key={task.id}>
-								<TableCell className="font-medium">
-									<span className="flex items-center gap-2">
-										<span
-											className="size-2 shrink-0 rounded-full"
-											style={{ backgroundColor: category.dot }}
-										/>
-										{task.name}
-									</span>
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{task.isAbsence
-										? "Absence"
-										: builtIn
-											? "Built-in"
-											: "Org task"}
-								</TableCell>
-								{/* Absence tasks are never on a project, so a 0 there would read
-								    as "none yet" rather than "not applicable". Built-ins are on
-								    every project without being picked, so a count would read as
-								    a limit that isn't there. */}
-								<TableCell className="mono text-right">
-									{task.isAbsence ? (
-										<span className="text-faint">—</span>
-									) : task.universal ? (
-										<span className="text-muted-foreground">All</span>
-									) : (
-										task.projectCount
-									)}
-								</TableCell>
-								<TableCell className="mono text-right">
-									{task.entryCount}
-								</TableCell>
-								<TableCell>
-									<StatusPill tone={task.archivedAt ? "neutral" : "positive"}>
-										{task.archivedAt ? "Archived" : "Active"}
-									</StatusPill>
-									{/* Dated, because the name alone doesn't distinguish two
-									    archived copies of the same task from each other. */}
-									{task.archivedAt && (
-										<span className="mt-1 block text-xs text-muted-foreground">
-											{formatDateKeyLong(
-												new Date(task.archivedAt).toISOString().slice(0, 10),
-											)}
-										</span>
-									)}
-								</TableCell>
-								<TableCell className="text-right">
-									{/* Built-ins have no actions at all: they can't be archived,
-									    and they're on every project already so there's no project
-									    list to manage. Archiving, never deleting: entries keep
-									    pointing at the task, so the history stays readable. */}
-									<RowActions
-										actions={[
-											// Built-ins are the site's, not the org's — the service
-											// rejects editing them, so the action stays off menus
-											// where it would only ever fail.
-											!builtIn &&
-												!task.archivedAt && {
-													label: "Edit task",
-													onClick: () => setEditTaskId(task.id),
-												},
-											!task.isAbsence &&
-												!task.universal &&
-												!task.archivedAt && {
-													label: "Manage projects",
-													onClick: () => setManageProjectsTaskId(task.id),
-												},
-											!builtIn &&
-												!task.archivedAt && {
-													label: "Archive",
-													disabled: archiveMutation.isPending,
-													onClick: () => archiveMutation.mutate(task.id),
-												},
-											// Restoring keeps the id, so the entries counted in this
-											// row's Entries column come back attached to it. That's
-											// the alternative to creating a same-named replacement,
-											// which is how the archived pile grew in the first place.
-											!builtIn &&
-												task.archivedAt && {
-													label: "Restore",
-													disabled: unarchiveMutation.isPending,
-													onClick: () => unarchiveMutation.mutate(task.id),
-												},
-										]}
-									/>
-								</TableCell>
-							</TableRow>
-						);
-					})}
+					{activeTasks.map(renderTaskRow)}
+					<ArchivedSection
+						count={archivedTasks.length}
+						colSpan={TASK_COLUMN_COUNT}
+						open={search.archived === "1"}
+						onOpenChange={(open) =>
+							navigate({ search: { archived: open ? "1" : undefined } })
+						}
+					>
+						{archivedTasks.map(renderTaskRow)}
+					</ArchivedSection>
 				</TableBody>
 			</Table>
 

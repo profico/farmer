@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
+import { importRun } from "./import";
 
 export const projectStatus = pgEnum("project_status", ["active", "archived"]);
 
@@ -57,6 +58,7 @@ export const taskSystemKey = pgEnum("task_system_key", [
 	"break",
 	"vacation",
 	"sick",
+	"paid_leave",
 ]);
 export type TaskSystemKey = (typeof taskSystemKey.enumValues)[number];
 
@@ -144,7 +146,7 @@ export const task = pgTable(
 		// locate (see `taskSystemKey`). Never exposed as an editable field — it is
 		// assigned by the seeders and only read.
 		systemKey: taskSystemKey("system_key"),
-		// Vacation and Sick Leave. Absence tasks are special-cased everywhere: they
+		// Vacation, Sick Leave and Paid Leave. Absence tasks are special-cased everywhere: they
 		// carry no project, are not cherry-pickable onto projects, cannot be
 		// archived, and feed the absence-day count on close sheets and report 6.3.
 		isAbsence: boolean("is_absence").notNull().default(false),
@@ -345,6 +347,14 @@ export const timeEntry = pgTable(
 			{ onDelete: "set null" },
 		),
 		generatedForDate: text("generated_for_date"), // yyyy-MM-dd, idempotency key
+		// Set together on a row an import wrote (see schema/import.ts). The key is
+		// a hash of the source row plus its position among identical rows of that
+		// person-day, so a second import of the same file finds every row again.
+		// Null on everything a person or an engine made here.
+		importRunId: uuid("import_run_id").references(() => importRun.id, {
+			onDelete: "set null",
+		}),
+		importKey: text("import_key"),
 		...stamps,
 	},
 	(t) => [
@@ -373,6 +383,12 @@ export const timeEntry = pgTable(
 		uniqueIndex("te_fill_day_uidx")
 			.on(t.organizationId, t.userId, t.date)
 			.where(sql`${t.fillsDay} = true`),
+		uniqueIndex("te_import_key_uidx")
+			.on(t.organizationId, t.importKey)
+			.where(sql`${t.importKey} is not null`),
+		index("te_import_run_idx")
+			.on(t.importRunId)
+			.where(sql`${t.importRunId} is not null`),
 	],
 );
 

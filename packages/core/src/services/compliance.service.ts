@@ -268,13 +268,18 @@ const views = {
 
 	/**
 	 * View 2 — people whose month-to-date hours are below the prorated
-	 * expectation, i.e. below ~90% of pace (the threshold is deliberately
-	 * hardcoded, not a setting).
+	 * expectation, i.e. below `threshold` of pace. The Admin report uses
+	 * `BEHIND_PACE_THRESHOLD`; the reminder jobs pass the org's own "behind
+	 * pace" % from its reminder settings.
 	 *
 	 * Contractors appear here ONLY when they have an explicit expected-hours
 	 * value: without a monthly fund there is no pace to be behind.
 	 */
-	behindPace: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
+	behindPace: async (
+		ctx: Ctx,
+		opts: ComplianceOpts = {},
+		threshold: number = BEHIND_PACE_THRESHOLD,
+	) => {
 		const tz = await ctxTimezone(ctx);
 		const today = dayKeyInTz(opts.now ?? new Date(), tz);
 		const year = Number(today.slice(0, 4));
@@ -325,7 +330,7 @@ const views = {
 
 			const loggedSeconds = loggedByUser.get(person.userId) ?? 0;
 			const pace = loggedSeconds / proratedExpectedSeconds;
-			if (pace >= BEHIND_PACE_THRESHOLD) continue;
+			if (pace >= threshold) continue;
 
 			rows.push({
 				userId: person.userId,
@@ -343,10 +348,14 @@ const views = {
 
 	/** Both views at once — the Admin dashboard, and the input the Slack job
 	 *  iterates to decide who gets a DM. */
-	dashboard: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
+	dashboard: async (
+		ctx: Ctx,
+		opts: ComplianceOpts = {},
+		threshold: number = BEHIND_PACE_THRESHOLD,
+	) => {
 		const [noEntries, behindPace] = await Promise.all([
 			views.noEntries(ctx, opts),
-			views.behindPace(ctx, opts),
+			views.behindPace(ctx, opts, threshold),
 		]);
 		return { noEntries, behindPace };
 	},
@@ -379,10 +388,16 @@ export const complianceService = {
 	 * the unchecked path needs a name of its own instead of a flag: being this
 	 * caller requires saying so at the call site.
 	 *
+	 * `paceThreshold` is the org's "behind pace" fraction from its reminder
+	 * settings (0.9 by default, the same as the Admin report).
+	 *
 	 * Do not wire this to a server function or a REST route.
 	 */
-	dashboardForReminderJob: (ctx: Ctx, opts: ComplianceOpts = {}) =>
-		views.dashboard(ctx, opts),
+	dashboardForReminderJob: (
+		ctx: Ctx,
+		opts: ComplianceOpts = {},
+		paceThreshold: number = BEHIND_PACE_THRESHOLD,
+	) => views.dashboard(ctx, opts, paceThreshold),
 
 	/**
 	 * The people the compliance machinery applies to — no overhead, no archived —

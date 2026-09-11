@@ -81,8 +81,8 @@ export const assertUserInOrg = async (ctx: Ctx, userId: string) => {
  *     that project;
  *   * a UNIVERSAL entry — a site-scoped non-absence built-in (Meeting, Break)
  *     plus any project in the org. These are not cherry-picked: see below;
- *   * an ABSENCE entry — one of the two built-in absence tasks and no project at
- *     all, because Vacation and Sick Leave carry no client and no project;
+ *   * an ABSENCE entry — one of the built-in absence tasks and no project at
+ *     all, because absence carries no client and no project;
  *   * an UNFILED entry — a non-absence task and no project yet. A draft: real
  *     time on the day, not yet attributed to a project.
  *
@@ -117,7 +117,7 @@ export const assertTaskAvailable = async (
 
 	if (row.isAbsence) {
 		if (projectId) {
-			throw new Error("Vacation and Sick Leave are logged without a project");
+			throw new Error("Absence is logged without a project");
 		}
 		return;
 	}

@@ -4,15 +4,17 @@ import {
 	eq,
 	gt,
 	gte,
+	inArray,
 	isNotNull,
 	isNull,
 	lt,
 	lte,
+	ne,
 	or,
 } from "drizzle-orm";
 
 import { db } from "../db";
-import { member, user } from "../db/schema/auth";
+import { account, member, user } from "../db/schema/auth";
 import {
 	invitationEmail,
 	type invitationEmailStatus,
@@ -68,6 +70,10 @@ export type PersonRow = ResolvedMemberType & {
 	/** Null = Active. Archived people keep every entry, close row and report they
 	 *  already appear in, and drop out of the forward-looking ones. */
 	archivedAt: Date | null;
+	/** Never signed in, and nobody has confirmed the address: a person an
+	 *  import made with a guessed email (docs/plans/harvest-import.md, 3.3).
+	 *  Restoring them is where an admin confirms it. */
+	emailUnconfirmed: boolean;
 };
 
 const DEFAULT_TYPE: ResolvedMemberType = {
@@ -134,6 +140,7 @@ export const membersService = {
 				userId: member.userId,
 				name: user.name,
 				email: user.email,
+				emailVerified: user.emailVerified,
 				orgRole: member.role,
 				startDate: memberProfile.startDate,
 				archivedAt: memberProfile.archivedAt,
@@ -164,6 +171,22 @@ export const membersService = {
 			.where(eq(member.organizationId, ctx.organizationId))
 			.orderBy(asc(user.name));
 
+		// Only the unverified few need the account check; everyone who signed in
+		// with Google is verified already.
+		const unverified = rows
+			.filter((r) => !r.emailVerified)
+			.map((r) => r.userId);
+		const signedIn = new Set(
+			unverified.length === 0
+				? []
+				: (
+						await db
+							.selectDistinct({ userId: account.userId })
+							.from(account)
+							.where(inArray(account.userId, unverified))
+					).map((a) => a.userId),
+		);
+
 		return rows.map((r) => ({
 			userId: r.userId,
 			name: r.name,
@@ -171,6 +194,7 @@ export const membersService = {
 			orgRole: r.orgRole,
 			startDate: r.startDate ?? null,
 			archivedAt: r.archivedAt ?? null,
+			emailUnconfirmed: !r.emailVerified && !signedIn.has(r.userId),
 			// A person with no history row yet is Billable — the default, and the
 			// right one: delivery people are the common case.
 			type: r.type ?? DEFAULT_TYPE.type,
@@ -343,6 +367,28 @@ export const membersService = {
 		return new Set(rows.map((r) => r.userId));
 	},
 
+	/** When each archived person was archived. For the reports that must still
+	 *  count a leaver in the months they worked: a set only says "archived", and
+	 *  a history import makes every former employee archived from day one of
+	 *  their own past. */
+	archivedAtByUserId: async (ctx: Ctx): Promise<Map<string, Date>> => {
+		const rows = await db
+			.select({
+				userId: memberProfile.userId,
+				archivedAt: memberProfile.archivedAt,
+			})
+			.from(memberProfile)
+			.where(
+				and(
+					eq(memberProfile.organizationId, ctx.organizationId),
+					isNotNull(memberProfile.archivedAt),
+				),
+			);
+		return new Map(
+			rows.flatMap((r) => (r.archivedAt ? [[r.userId, r.archivedAt]] : [])),
+		);
+	},
+
 	/** Archive or restore a person. Never a delete: their entries, close rows and
 	 *  finalized months have to survive them leaving. */
 	setArchived: async (ctx: Ctx, userId: string, archived: boolean) => {
@@ -361,6 +407,39 @@ export const membersService = {
 				target: [memberProfile.organizationId, memberProfile.userId],
 				set: { archivedAt, updatedAt: new Date() },
 			});
+		if (archived) return { emailConfirmed: false };
+
+		// Restoring a person who has never signed in is where an admin confirms
+		// an address an import guessed (docs/plans/harvest-import.md, 3.3): an
+		// unverified address is one a Google sign-in will not link to. Only for
+		// a user no other org holds, so one org's admin cannot vouch for an
+		// identity another org shares.
+		const target = await db.query.user.findFirst({
+			where: eq(user.id, userId),
+			columns: { emailVerified: true },
+		});
+		if (!target || target.emailVerified) return { emailConfirmed: false };
+		const [signedIn] = await db
+			.select({ id: account.id })
+			.from(account)
+			.where(eq(account.userId, userId))
+			.limit(1);
+		const [elsewhere] = await db
+			.select({ id: member.id })
+			.from(member)
+			.where(
+				and(
+					eq(member.userId, userId),
+					ne(member.organizationId, ctx.organizationId),
+				),
+			)
+			.limit(1);
+		if (signedIn || elsewhere) return { emailConfirmed: false };
+		await db
+			.update(user)
+			.set({ emailVerified: true, updatedAt: new Date() })
+			.where(eq(user.id, userId));
+		return { emailConfirmed: true };
 	},
 
 	setStartDate: async (ctx: Ctx, userId: string, startDate: string | null) => {

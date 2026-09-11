@@ -19,10 +19,13 @@
 // Which channels a kind uses, and which preference gates it, are a table — the
 // place to add a channel is that table plus one adapter, not four call sites.
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "../db";
-import { member } from "../db/schema/auth";
+import { account, member } from "../db/schema/auth";
+import { notificationSettings } from "../db/schema/notifications";
+import { memberProfile } from "../db/schema/people";
+import { reminderSettings } from "../db/schema/settings";
 import { notificationsService } from "./notifications.service";
 import { slackService } from "./slack.service";
 
@@ -66,20 +69,133 @@ export type NotifyKind =
 // `notificationSettings` that turns this kind off; null means the kind has no
 // opt-out yet, and adding one is a column here plus a column there rather than
 // a hunt through the jobs.
+//
+// `reminder` marks the four scheduled nags about a timesheet. They carry two
+// extra gates (see `deliveryBlocks`): nobody archived gets one, and nobody who
+// has never signed in unless the org's reminder settings say so. A budget alert
+// is not a reminder — it reports a fact about a project to the people who run
+// it — and keeps the membership rule alone.
 const KINDS = {
-	"log-reminder": { channels: ["push"], preference: "logReminders" },
-	"budget-alert": { channels: ["slack", "push"], preference: null },
-	"compliance-nudge": { channels: ["slack"], preference: null },
-	"month-end": { channels: ["slack"], preference: null },
-	"admin-digest": { channels: ["slack"], preference: null },
-	test: { channels: ["slack"], preference: null },
+	"log-reminder": {
+		channels: ["push"],
+		preference: "logReminders",
+		reminder: true,
+	},
+	"budget-alert": {
+		channels: ["slack", "push"],
+		preference: null,
+		reminder: false,
+	},
+	"compliance-nudge": { channels: ["slack"], preference: null, reminder: true },
+	"month-end": { channels: ["slack"], preference: null, reminder: true },
+	"admin-digest": { channels: ["slack"], preference: null, reminder: true },
+	test: { channels: ["slack"], preference: null, reminder: false },
 } satisfies Record<
 	NotifyKind,
 	{
 		channels: readonly NotifyChannel[];
 		preference: "logReminders" | null;
+		reminder: boolean;
 	}
 >;
+
+/** Why a person may not be told something. The first one that applies wins,
+ *  in this order. */
+export type DeliveryBlock =
+	| "not-a-member"
+	| "archived"
+	| "never-signed-in"
+	| "opted-out";
+
+/**
+ * Who, of `userIds`, may NOT be told a `kind` by this organization, and why. A
+ * person absent from the result may be told.
+ *
+ * `notify` asks this for one person on every send; the reminder preview
+ * (`reminderSettingsService.preview`) asks it for a whole list, so "who is held
+ * back" on the settings page is this function's answer and not a second copy
+ * of it. A fixed number of queries, whatever the length of the list.
+ */
+export const deliveryBlocks = async (
+	organizationId: string,
+	userIds: string[],
+	kind: NotifyKind,
+): Promise<Map<string, DeliveryBlock>> => {
+	const blocks = new Map<string, DeliveryBlock>();
+	if (userIds.length === 0) return blocks;
+	const policy = KINDS[kind];
+
+	const [members, archived, signedIn, settings, optedOut] = await Promise.all([
+		db
+			.select({ userId: member.userId })
+			.from(member)
+			.where(
+				and(
+					eq(member.organizationId, organizationId),
+					inArray(member.userId, userIds),
+				),
+			),
+		policy.reminder
+			? db
+					.select({ userId: memberProfile.userId })
+					.from(memberProfile)
+					.where(
+						and(
+							eq(memberProfile.organizationId, organizationId),
+							inArray(memberProfile.userId, userIds),
+							isNotNull(memberProfile.archivedAt),
+						),
+					)
+			: [],
+		// Signed in at least once = has an `account` row. better-auth writes one
+		// on the first Google sign-in (and on a dev password signup); a person an
+		// import created has a `user` and a `member` row and nothing else.
+		policy.reminder
+			? db
+					.selectDistinct({ userId: account.userId })
+					.from(account)
+					.where(inArray(account.userId, userIds))
+			: [],
+		policy.reminder
+			? db.query.reminderSettings.findFirst({
+					where: eq(reminderSettings.organizationId, organizationId),
+					columns: { includeNeverSignedIn: true },
+				})
+			: undefined,
+		policy.preference
+			? db
+					.select({ userId: notificationSettings.userId })
+					.from(notificationSettings)
+					.where(
+						and(
+							eq(notificationSettings.organizationId, organizationId),
+							inArray(notificationSettings.userId, userIds),
+							eq(notificationSettings[policy.preference], false),
+						),
+					)
+			: [],
+	]);
+
+	const memberIds = new Set(members.map((r) => r.userId));
+	const archivedIds = new Set(archived.map((r) => r.userId));
+	const signedInIds = new Set(signedIn.map((r) => r.userId));
+	const optedOutIds = new Set(optedOut.map((r) => r.userId));
+	// A missing row is the defaults, and the default is off.
+	const includeNeverSignedIn = settings?.includeNeverSignedIn ?? false;
+
+	for (const userId of userIds) {
+		if (!memberIds.has(userId)) blocks.set(userId, "not-a-member");
+		else if (archivedIds.has(userId)) blocks.set(userId, "archived");
+		else if (
+			policy.reminder &&
+			!includeNeverSignedIn &&
+			!signedInIds.has(userId)
+		) {
+			blocks.set(userId, "never-signed-in");
+		} else if (optedOutIds.has(userId)) blocks.set(userId, "opted-out");
+	}
+	return blocks;
+};
 
 /** A way of reaching someone. Returns whether it delivered; it never throws,
  *  because a dead push endpoint or an uninstalled Slack app must not fail the
@@ -137,24 +253,15 @@ export const notify = async (
 ): Promise<NotifyOutcome> => {
 	const kind = KINDS[event.kind];
 
-	// Membership, on every channel. This is the check the old push path could
-	// not make: it was handed a user id with no organization attached.
-	const membership = await db.query.member.findFirst({
-		where: and(
-			eq(member.organizationId, to.organizationId),
-			eq(member.userId, to.userId),
-		),
-		columns: { id: true },
-	});
-	if (!membership) return { ...NOTHING_SENT };
-
-	if (kind.preference) {
-		const settings = await notificationsService.settingsFor(
-			to.organizationId,
-			to.userId,
-		);
-		if (!settings[kind.preference]) return { ...NOTHING_SENT };
-	}
+	// Membership, on every channel — the check the old push path could not
+	// make, since it was handed a user id with no organization attached — then
+	// the reminder gates and the person's own preference.
+	const blocks = await deliveryBlocks(
+		to.organizationId,
+		[to.userId],
+		event.kind,
+	);
+	if (blocks.has(to.userId)) return { ...NOTHING_SENT };
 
 	const results = await Promise.all(
 		kind.channels.map(async (channel) => {

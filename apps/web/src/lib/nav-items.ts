@@ -38,6 +38,8 @@ export type OrgRoutePath =
 	| "/$orgSlug/settings/integrations"
 	| "/$orgSlug/settings/tasks"
 	| "/$orgSlug/settings/hour-fund"
+	| "/$orgSlug/settings/reminders"
+	| "/$orgSlug/settings/import"
 	| "/$orgSlug/settings/organization"
 	| "/$orgSlug/settings/preferences"
 	| "/$orgSlug/settings/members";

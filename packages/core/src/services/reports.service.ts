@@ -16,7 +16,7 @@ import { member, user } from "../db/schema/auth";
 import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
 import { client, project, task, timeEntry } from "../db/schema/domain";
 import { trailingMonths } from "../lib/report-period";
-import { monthBounds } from "../lib/time";
+import { dayKeyInTz, monthBounds } from "../lib/time";
 import { rollUpUtilization, utilizationPctOf } from "../lib/utilization";
 import type {
 	AbsenceReportInput,
@@ -30,7 +30,7 @@ import {
 	effectiveFinal,
 	expectedSecondsFor,
 } from "./close.service";
-import { ctxAccess, requireAdmin } from "./context";
+import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { membersService, type ResolvedMemberType } from "./members.service";
 import type { Ctx } from "./types";
@@ -652,11 +652,13 @@ type UtilizationTotals = { final: number; expected: number | null };
  *
  *  Split out from `computeUtilization` so a trend pays for each read once
  *  instead of once per point. Everything here is either genuinely span-wide
- *  (the member list, the archived set) or a single grouped query keyed by month
- *  (`yyyy-MM`), which `computeUtilization` then indexes into synchronously. */
+ *  (the member list, the archive dates) or a single grouped query keyed by
+ *  month (`yyyy-MM`), which `computeUtilization` then indexes into
+ *  synchronously. */
 type UtilizationSpan = {
 	members: { userId: string; name: string }[];
-	archived: Set<string>;
+	/** userId → the day (`yyyy-MM-dd`, org timezone) the person was archived. */
+	archivedOn: Map<string, string>;
 	typesByMonth: Map<string, Map<string, ResolvedMemberType>>;
 	fundByMonth: Map<string, number>;
 	absenceByMonth: Map<string, Map<string, number>>;
@@ -676,7 +678,7 @@ const utilizationSpan = async (
 	if (!first || !last) {
 		return {
 			members: [],
-			archived: new Set(),
+			archivedOn: new Map(),
 			typesByMonth: new Map(),
 			fundByMonth: new Map(),
 			absenceByMonth: new Map(),
@@ -686,66 +688,70 @@ const utilizationSpan = async (
 	const spanFrom = monthBounds(first.year, first.month).from;
 	const spanTo = monthBounds(last.year, last.month).to;
 
-	const [rows, members, archived, fundByMonth, absenceByMonth, typeEntries] =
-		await Promise.all([
-			db
-				.select({
-					year: monthlyClose.year,
-					month: monthlyClose.month,
-					userId: monthlyCloseRow.userId,
-					// Prefer the frozen Expected from finalization, so an admin editing a
-					// past month's hour fund can't retroactively move percentages that
-					// have already been reported.
-					expected: sql<
-						string | null
-					>`max(${monthlyCloseRow.expectedAtFinalizeSeconds})`,
-					final: sql<string>`coalesce(sum(case when ${project.type} <> 'internal' then ${monthlyCloseRow.finalSeconds} else 0 end), 0)`,
-				})
-				.from(monthlyCloseRow)
-				.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
-				.innerJoin(project, eq(monthlyClose.projectId, project.id))
-				.where(
-					and(
-						eq(monthlyClose.organizationId, ctx.organizationId),
-						eq(monthlyClose.status, "finalized"),
-						or(
-							...months.map((m) =>
-								and(
-									eq(monthlyClose.year, m.year),
-									eq(monthlyClose.month, m.month),
-								),
+	const [
+		rows,
+		members,
+		archivedAt,
+		timezone,
+		fundByMonth,
+		absenceByMonth,
+		typeEntries,
+	] = await Promise.all([
+		db
+			.select({
+				year: monthlyClose.year,
+				month: monthlyClose.month,
+				userId: monthlyCloseRow.userId,
+				// Prefer the frozen Expected from finalization, so an admin editing a
+				// past month's hour fund can't retroactively move percentages that
+				// have already been reported.
+				expected: sql<
+					string | null
+				>`max(${monthlyCloseRow.expectedAtFinalizeSeconds})`,
+				final: sql<string>`coalesce(sum(case when ${project.type} <> 'internal' then ${monthlyCloseRow.finalSeconds} else 0 end), 0)`,
+			})
+			.from(monthlyCloseRow)
+			.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
+			.innerJoin(project, eq(monthlyClose.projectId, project.id))
+			.where(
+				and(
+					eq(monthlyClose.organizationId, ctx.organizationId),
+					eq(monthlyClose.status, "finalized"),
+					or(
+						...months.map((m) =>
+							and(
+								eq(monthlyClose.year, m.year),
+								eq(monthlyClose.month, m.month),
 							),
 						),
 					),
-				)
-				.groupBy(monthlyClose.year, monthlyClose.month, monthlyCloseRow.userId),
-			db
-				.select({ userId: member.userId, name: user.name })
-				.from(member)
-				.innerJoin(user, eq(member.userId, user.id))
-				.where(
-					and(
-						eq(member.organizationId, ctx.organizationId),
-						onlyUserId ? eq(member.userId, onlyUserId) : undefined,
-					),
 				),
-			membersService.archivedUserIds(ctx),
-			hourFundService.getMany(ctx, months),
-			absenceDaysByUserPerMonth(ctx, spanFrom, spanTo),
-			// Member type is effective-dated, so it genuinely differs per month and
-			// stays one indexed read each — but they now run concurrently with
-			// everything else instead of serialized behind their own point.
-			Promise.all(
-				months.map(async (m) => {
-					const types = await membersService.typesForMonth(
-						ctx,
-						m.year,
-						m.month,
-					);
-					return [spanMonthKey(m), types] as const;
-				}),
+			)
+			.groupBy(monthlyClose.year, monthlyClose.month, monthlyCloseRow.userId),
+		db
+			.select({ userId: member.userId, name: user.name })
+			.from(member)
+			.innerJoin(user, eq(member.userId, user.id))
+			.where(
+				and(
+					eq(member.organizationId, ctx.organizationId),
+					onlyUserId ? eq(member.userId, onlyUserId) : undefined,
+				),
 			),
-		]);
+		membersService.archivedAtByUserId(ctx),
+		ctxTimezone(ctx),
+		hourFundService.getMany(ctx, months),
+		absenceDaysByUserPerMonth(ctx, spanFrom, spanTo),
+		// Member type is effective-dated, so it genuinely differs per month and
+		// stays one indexed read each — but they now run concurrently with
+		// everything else instead of serialized behind their own point.
+		Promise.all(
+			months.map(async (m) => {
+				const types = await membersService.typesForMonth(ctx, m.year, m.month);
+				return [spanMonthKey(m), types] as const;
+			}),
+		),
+	]);
 
 	const totalsByMonth = new Map<string, Map<string, UtilizationTotals>>();
 	for (const r of rows) {
@@ -761,9 +767,14 @@ const utilizationSpan = async (
 		});
 	}
 
+	const archivedOn = new Map<string, string>();
+	for (const [userId, at] of archivedAt) {
+		archivedOn.set(userId, dayKeyInTz(at, timezone));
+	}
+
 	return {
 		members,
-		archived,
+		archivedOn,
 		typesByMonth: new Map(typeEntries),
 		fundByMonth,
 		absenceByMonth,
@@ -788,21 +799,27 @@ const computeUtilization = (
 	const absence = span.absenceByMonth.get(key) ?? new Map<string, number>();
 	const finalByUser =
 		span.totalsByMonth.get(key) ?? new Map<string, UtilizationTotals>();
-	const { members, archived } = span;
+	const { members, archivedOn } = span;
+	const monthStart = `${key}-01`;
 
 	return (
 		members
 			// Overhead is excluded from the org-wide list: these people almost never
 			// work on client projects, and including them would drag every team
 			// average down. Archived people go for the same reason — a leaver with no
-			// hours is not an under-sold month. The single-person view keeps both — an
+			// hours is not an under-sold month — but only from the month they left:
+			// before it they were the team, and dropping them rewrote history (every
+			// imported former employee is archived). A month that started before the
+			// archive day still counts them. The single-person view keeps both — an
 			// overhead person asking about their own month should still get an answer.
-			.filter(
-				(m) =>
-					onlyUserId != null ||
-					((types.get(m.userId)?.type ?? "billable") !== "overhead" &&
-						!archived.has(m.userId)),
-			)
+			.filter((m) => {
+				if (onlyUserId != null) return true;
+				if ((types.get(m.userId)?.type ?? "billable") === "overhead") {
+					return false;
+				}
+				const archivedDay = archivedOn.get(m.userId);
+				return archivedDay == null || monthStart < archivedDay;
+			})
 			.map((m) => {
 				const memberType = types.get(m.userId) ?? {
 					type: "billable" as const,

@@ -49,10 +49,10 @@ export function AbsenceTab({ year, month }: { year: number; month: number }) {
 		<>
 			<div className="flex items-center justify-between gap-3">
 				<p className="max-w-[68ch] text-sm text-muted-foreground">
-					Vacation and Sick Leave, this month and year to date. Counted from
-					logged entries only — if this disagrees with a close sheet's absence
-					column, someone forgot to log their time off, and that gap is the
-					point.
+					Vacation, Sick Leave and Paid Leave, this month and year to date.
+					Counted from logged entries only — if this disagrees with a close
+					sheet's absence column, someone forgot to log their time off, and that
+					gap is the point.
 				</p>
 				<SegmentedControl>
 					{ABSENCE_UNITS.map((u) => (

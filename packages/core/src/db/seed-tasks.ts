@@ -7,7 +7,7 @@ import { task } from "./schema/domain";
 // unarchivable (tasksService.update/archive reject site scope). Two kinds live
 // here, for two different reasons:
 //
-//   * Vacation and Sick Leave are the absence tasks — the only ones that may be
+//   * Vacation, Sick Leave and Paid Leave are the absence tasks — the only ones that may be
 //     logged without a project (PRD 3.5).
 //   * Meeting and Break are engine plumbing. The calendar sync needs somewhere
 //     to file imported meetings and the day assembler needs something to carve a
@@ -28,6 +28,12 @@ const SITE_TASKS = [
 		color: "red",
 		isAbsence: true,
 		systemKey: "sick",
+	},
+	{
+		name: "Paid Leave",
+		color: "teal",
+		isAbsence: true,
+		systemKey: "paid_leave",
 	},
 	{ name: "Meeting", color: "purple", isAbsence: false, systemKey: "meeting" },
 	{ name: "Break", color: "orange", isAbsence: false, systemKey: "break" },

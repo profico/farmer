@@ -7,7 +7,8 @@ import type { Ctx } from "./types";
 
 export type OrgSettings = {
 	/** N working days without any entry before a person is flagged (PRD §8,
-	 *  default 3). The one compliance knob that IS configurable. */
+	 *  default 3). The compliance report and the Slack nudge read the same N;
+	 *  the reminder settings page edits it through `reminderSettingsService`. */
 	complianceMissingDays: number;
 	/** yyyy-MM-dd, or null for no lock. The automations may not write on or
 	 *  before this day — see the column comment in schema/settings.ts, and
@@ -20,12 +21,12 @@ const DEFAULTS: OrgSettings = {
 	automationLockedThrough: null,
 };
 
-// Deliberately hardcoded and NOT settings (PRD §8): the behind-pace threshold,
-// the reminder days, the 15-minute entry granularity and the close lifecycle.
-/** A person is "behind pace" below this fraction of their prorated expectation. */
+// Deliberately hardcoded and NOT settings (PRD §8): the 15-minute entry
+// granularity and the close lifecycle. The reminder days, times and the
+// reminders' behind-pace % are settings now — `reminderSettingsService`.
+/** A person is "behind pace" below this fraction of their prorated expectation
+ *  — on the Admin compliance report, and as the reminders' default. */
 export const BEHIND_PACE_THRESHOLD = 0.9;
-/** Reminder days, 0=Sun..6=Sat — Tuesday and Friday, max 2 nudges per week. */
-export const REMINDER_WEEKDAYS = [2, 5] as const;
 
 export const orgSettingsService = {
 	/** A missing row means defaults, so no backfill migration is needed. */

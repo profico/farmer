@@ -307,7 +307,8 @@ beforeAll(async () => {
 	await db.insert(memberProfile).values({
 		organizationId: ORG,
 		userId: ARCHIVED,
-		archivedAt: new Date(),
+		// Before the fixture month: gone from May, still on the team in March.
+		archivedAt: new Date("2026-03-15T12:00:00Z"),
 	});
 });
 
@@ -737,6 +738,47 @@ describe("utilization", () => {
 		expect(ids).not.toContain(OVERHEAD);
 		expect(ids).not.toContain(ARCHIVED);
 		expect(ids).toContain(WORKER);
+	});
+
+	test("an archived person counts in the months before they left", async () => {
+		// Archived 2026-03-15: February and March started while they were here,
+		// April did not.
+		for (const m of [2, 3, 4]) {
+			await finalize({
+				projectId: alphaId,
+				month: m,
+				rows: [
+					{
+						userId: ARCHIVED,
+						finalSeconds: 80 * H,
+						expectedAtFinalizeSeconds: 160 * H,
+					},
+				],
+			});
+		}
+
+		const idsIn = async (m: number) =>
+			(
+				await reportsService.utilization(ctxFor(ADMIN), {
+					year: YEAR,
+					month: m,
+				})
+			).map((r) => r.userId);
+
+		expect(await idsIn(2)).toContain(ARCHIVED);
+		expect(await idsIn(3)).toContain(ARCHIVED);
+		expect(await idsIn(4)).not.toContain(ARCHIVED);
+
+		// The trend reads the same span, so its points agree with the months.
+		const trend = await reportsService.utilizationTrend(ctxFor(ADMIN), {
+			year: YEAR,
+			month: 4,
+			months: 3,
+		});
+		const feb = trend.find((p) => p.month === 2);
+		const apr = trend.find((p) => p.month === 4);
+		expect(feb?.finalSeconds).toBeGreaterThanOrEqual(80 * H);
+		expect(apr?.finalSeconds).toBe(0);
 	});
 
 	test("a contractor with no override gets hours but no percentage", async () => {

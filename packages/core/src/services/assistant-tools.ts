@@ -373,7 +373,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_tasks",
 		kind: "read",
 		description:
-			"List the task types a time entry can be filed under (Development, Meeting, …), with their ids. Every time entry needs one. Absence tasks (Vacation, Sick Leave) are included and flagged with isAbsence — those carry no project and are what log_absence takes.",
+			"List the task types a time entry can be filed under (Development, Meeting, …), with their ids. Every time entry needs one. Absence tasks (Vacation, Sick Leave, Paid Leave) are included and flagged with isAbsence — those carry no project and are what log_absence takes.",
 		schema: z.object({}),
 		// Both lists. `listSelectable` excludes absence by design, since it feeds
 		// the worked-time picker — which left `log_absence` unable to learn the id
@@ -655,7 +655,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "absence_totals",
 		kind: "read",
 		description:
-			"Absence taken in a year, grouped by task (Vacation, Sick Leave), in days and hours. Defaults to the current user; naming somebody else needs PM rights over a project they are on. This is the tool for 'how much vacation have I taken'.",
+			"Absence taken in a year, grouped by task (Vacation, Sick Leave, Paid Leave), in days and hours. Defaults to the current user; naming somebody else needs PM rights over a project they are on. This is the tool for 'how much vacation have I taken'.",
 		schema: absenceTotalsInput,
 		run: async (ctx, args) =>
 			timeEntriesService.absenceTotals(ctx, absenceTotalsInput.parse(args)),
@@ -664,7 +664,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_absences",
 		kind: "read",
 		description:
-			"One person's Vacation and Sick Leave entries for a month, with their ids. Call whoami for the current user's own id.",
+			"One person's absence entries (Vacation, Sick Leave, Paid Leave) for a month, with their ids. Call whoami for the current user's own id.",
 		schema: listAbsenceForUserInput,
 		run: async (ctx, args) => {
 			const input = listAbsenceForUserInput.parse(args);

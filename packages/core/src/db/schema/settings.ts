@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
+	type AnyPgColumn,
 	boolean,
 	check,
 	index,
 	integer,
 	pgTable,
+	smallint,
 	text,
 	timestamp,
 	unique,
@@ -13,6 +15,7 @@ import {
 
 import { organization, user } from "./auth";
 import { project, task } from "./domain";
+import { memberType } from "./people";
 
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });
@@ -185,9 +188,9 @@ export const filingRule = pgTable(
 
 // Org-wide knobs (PRD §8). One row per org; a missing row implies the column
 // defaults (see orgSettingsService.get) so no backfill is needed.
-// Deliberately NOT configurable and therefore absent here: the behind-pace
-// threshold (~90%), the reminder days (Tue/Fri), the 15-minute entry
-// granularity and the close lifecycle.
+// Deliberately NOT configurable and therefore absent here: the 15-minute entry
+// granularity and the close lifecycle. The reminder days, times and the
+// behind-pace threshold the reminders use live in `reminderSettings` below.
 export const orgSettings = pgTable(
 	"org_settings",
 	{
@@ -220,6 +223,132 @@ export const orgSettings = pgTable(
 		check(
 			"org_settings_missing_days_valid",
 			sql`${t.complianceMissingDays} >= 1 and ${t.complianceMissingDays} <= 30`,
+		),
+	],
+);
+
+/** A send time the reminder settings accept: "HH:mm" on a quarter hour, from
+ *  07:00 to 20:00. The quarter hour is the Slack job's tick; the window is the
+ *  "nothing at night" limit. Mirrors `reminderTime` in schema/reminder-settings. */
+const sendTimeValid = (column: AnyPgColumn) =>
+	sql`${column} ~ '^([01][0-9]|2[0-3]):(00|15|30|45)$' and ${column} >= '07:00' and ${column} <= '20:00'`;
+
+// When each reminder goes out, and to whom. One row per org; a missing row is
+// the column defaults (see reminderSettingsService.get), and the defaults are
+// what the jobs did before this table existed — so deploying it changes
+// nothing. The one exception is `includeNeverSignedIn`, which is new and off.
+//
+// These were constants, and "deliberately NOT a setting", on the grounds that
+// a reminder sent too often gets muted and a muted reminder is worse than
+// none. The owner asked for the settings; the checks below keep that reason:
+// at most three nudge days a week, and no send time at night. The Zod input
+// says the same thing, and the form shows each limit beside its field.
+//
+// `complianceMissingDays` (the nudge's "no entries for N working days") is NOT
+// here: it stays on `orgSettings`, because the compliance report reads the
+// same N and two copies of one number would drift.
+export const reminderSettings = pgTable(
+	"reminder_settings",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+
+		// Log reminder (push). `end_of_day` sends once each person's own
+		// scheduled workday is over; `fixed` sends at `logTime` for everyone.
+		logEnabled: boolean("log_enabled").notNull().default(true),
+		logMode: text("log_mode", { enum: ["end_of_day", "fixed"] })
+			.notNull()
+			.default("end_of_day"),
+		logTime: text("log_time").notNull().default("17:00"),
+		// Remind when logged time is below this % of the day's target.
+		logBelowPct: smallint("log_below_pct").notNull().default(100),
+
+		// Slack nudge. 0 = Sunday, the same numbering as Date#getDay().
+		nudgeEnabled: boolean("nudge_enabled").notNull().default(true),
+		nudgeWeekdays: smallint("nudge_weekdays").array().notNull().default([2, 5]),
+		nudgeTime: text("nudge_time").notNull().default("09:00"),
+		nudgeNoEntries: boolean("nudge_no_entries").notNull().default(true),
+		nudgeBehindPace: boolean("nudge_behind_pace").notNull().default(true),
+		// "Behind pace" for every reminder: below this % of Expected so far. The
+		// month-end "only people behind pace" and the admin digest read it too,
+		// so the three never disagree about who is behind.
+		nudgeBehindPacePct: smallint("nudge_behind_pace_pct").notNull().default(90),
+		nudgeMemberTypes: memberType("nudge_member_types")
+			.array()
+			.notNull()
+			.default(["billable", "contractor"]),
+
+		// Month-end reminder (Slack). 0 = the last working day of the month; N =
+		// N working days before it.
+		monthEndEnabled: boolean("month_end_enabled").notNull().default(true),
+		monthEndDaysBefore: smallint("month_end_days_before").notNull().default(0),
+		monthEndTime: text("month_end_time").notNull().default("09:00"),
+		monthEndOnlyBehind: boolean("month_end_only_behind")
+			.notNull()
+			.default(false),
+		monthEndMemberTypes: memberType("month_end_member_types")
+			.array()
+			.notNull()
+			.default(["billable", "contractor"]),
+
+		// Admin digest (Slack).
+		digestEnabled: boolean("digest_enabled").notNull().default(true),
+		digestWeekday: smallint("digest_weekday").notNull().default(2),
+		digestTime: text("digest_time").notNull().default("09:00"),
+
+		// Whether a person with no `account` row — somebody an import created,
+		// who has never signed in — may get a reminder. Off: they cannot act on
+		// one, and most of them are not expecting mail from this app at all.
+		// services/notify.ts enforces it, for every reminder kind.
+		includeNeverSignedIn: boolean("include_never_signed_in")
+			.notNull()
+			.default(false),
+		...stamps,
+	},
+	(t) => [
+		unique("reminder_settings_org_unq").on(t.organizationId),
+		check(
+			"reminder_settings_log_mode_valid",
+			sql`${t.logMode} in ('end_of_day', 'fixed')`,
+		),
+		check("reminder_settings_log_time_valid", sendTimeValid(t.logTime)),
+		check("reminder_settings_nudge_time_valid", sendTimeValid(t.nudgeTime)),
+		check(
+			"reminder_settings_month_end_time_valid",
+			sendTimeValid(t.monthEndTime),
+		),
+		check("reminder_settings_digest_time_valid", sendTimeValid(t.digestTime)),
+		check(
+			"reminder_settings_log_below_pct_valid",
+			sql`${t.logBelowPct} >= 1 and ${t.logBelowPct} <= 100`,
+		),
+		check(
+			"reminder_settings_behind_pace_pct_valid",
+			sql`${t.nudgeBehindPacePct} >= 1 and ${t.nudgeBehindPacePct} <= 100`,
+		),
+		// At most three nudge days a week. Four entries fail even when two repeat;
+		// the service de-duplicates before it writes.
+		check(
+			"reminder_settings_nudge_weekdays_valid",
+			sql`cardinality(${t.nudgeWeekdays}) between 1 and 3 and ${t.nudgeWeekdays} <@ ARRAY[0,1,2,3,4,5,6]::smallint[]`,
+		),
+		// Overhead people are never nagged about timesheets (PRD 3.1), so they
+		// are not a choice here.
+		check(
+			"reminder_settings_nudge_member_types_valid",
+			sql`cardinality(${t.nudgeMemberTypes}) >= 1 and ${t.nudgeMemberTypes} <@ ARRAY['billable','contractor']::member_type[]`,
+		),
+		check(
+			"reminder_settings_month_end_member_types_valid",
+			sql`cardinality(${t.monthEndMemberTypes}) >= 1 and ${t.monthEndMemberTypes} <@ ARRAY['billable','contractor']::member_type[]`,
+		),
+		check(
+			"reminder_settings_month_end_days_before_valid",
+			sql`${t.monthEndDaysBefore} >= 0 and ${t.monthEndDaysBefore} <= 10`,
+		),
+		check(
+			"reminder_settings_digest_weekday_valid",
+			sql`${t.digestWeekday} >= 0 and ${t.digestWeekday} <= 6`,
 		),
 	],
 );

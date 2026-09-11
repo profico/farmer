@@ -14,20 +14,24 @@ import { ctxDb } from "./db-ctx";
 import { isUniversalTask } from "./guards";
 import type { Ctx } from "./types";
 
-// The two built-in absence tasks. Site-scoped, seeded once, never archivable and
-// never cherry-pickable onto a project: Vacation and Sick Leave carry no client
-// and no project, and are logged by the person themselves (PRD 3.5).
+// The built-in absence tasks. Site-scoped, seeded once, never archivable and
+// never cherry-pickable onto a project: absence carries no client and no
+// project, and is logged by the person themselves (PRD 3.5). Paid Leave is the
+// third kind (a wedding, a move, a funeral): time off that is neither the
+// annual allowance nor illness.
 export const VACATION_TASK_NAME = "Vacation";
 export const SICK_LEAVE_TASK_NAME = "Sick Leave";
+export const PAID_LEAVE_TASK_NAME = "Paid Leave";
 export const ABSENCE_TASK_NAMES = [
 	VACATION_TASK_NAME,
 	SICK_LEAVE_TASK_NAME,
+	PAID_LEAVE_TASK_NAME,
 ] as const;
 
-export type AbsenceKind = "vacation" | "sick";
+export type AbsenceKind = "vacation" | "sick" | "paid_leave";
 
 export const tasksService = {
-	/** The two built-in absence tasks, in a stable order. */
+	/** The built-in absence tasks, in a stable order. */
 	listAbsenceTasks: async () => {
 		const rows = await db.query.task.findMany({
 			where: and(eq(task.isAbsence, true), isNull(task.archivedAt)),
@@ -52,7 +56,7 @@ export const tasksService = {
 	 *
 	 *  With no project it is every SITE task: the two absence built-ins, and the
 	 *  universal built-ins (Break, Meeting). The universal ones used to be left
-	 *  out, so "No project" offered Vacation and Sick Leave and nothing else —
+	 *  out, so "No project" offered the absence tasks and nothing else —
 	 *  which made a break impossible to log, or to write a recurring rule for,
 	 *  without attributing it to a client's project. A break is time off the
 	 *  clock; nothing about it belongs to a project, and every other layer already

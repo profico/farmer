@@ -33,7 +33,7 @@
  *   LOG_REMINDERS_ENABLED             - "false" to disable log reminders (default: on)
  *   LOG_REMINDERS_INTERVAL_MINUTES    - minutes between reminder sweeps (default: 30)
  *   SLACK_REMINDERS_ENABLED           - "false" to disable Slack reminders (default: on)
- *   SLACK_REMINDERS_INTERVAL_MINUTES  - minutes between Slack sweeps (default: 60)
+ *   SLACK_REMINDERS_INTERVAL_MINUTES  - minutes between Slack sweeps (default: 15)
  *   BUDGET_ALERTS_ENABLED             - "false" to disable budget burn alerts (default: on)
  *   BUDGET_ALERTS_INTERVAL_MINUTES    - minutes between budget sweeps (default: 60)
  *   SCHEDULER_STARTUP_DELAY_MS        - delay before the first tick (default: 15000)
@@ -143,9 +143,11 @@ function schedulerJobs(): SchedulerConfig[] {
 			name: "Slack reminders",
 			enabledEnv: "SLACK_REMINDERS_ENABLED",
 			intervalEnv: "SLACK_REMINDERS_INTERVAL_MINUTES",
-			// Hourly is plenty: the job itself decides which day and hour it may send
-			// on, so a finer interval would only re-check the same answer.
-			defaultIntervalMinutes: 60,
+			// Every 15 minutes, because an org may set any quarter hour as a send
+			// time (Settings → Reminders). The job decides which day and time it
+			// may send on, and a tick with nothing due ends before the compliance
+			// queries, so the finer interval costs one settings read per org.
+			defaultIntervalMinutes: 15,
 			run: async () => {
 				const s = await runSlackRemindersOnce();
 				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;

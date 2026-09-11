@@ -19,9 +19,9 @@ export type UpdateOrganizationSettingsInput = z.infer<
 	typeof updateOrganizationSettingsInput
 >;
 
-// Everything else about compliance — the behind-pace threshold, the reminder
-// weekdays, the 15-minute granularity — is deliberately hardcoded, so this stays
-// a very short list on purpose.
+// The reminder days, times and thresholds are in schema/reminder-settings; the
+// 15-minute granularity is deliberately hardcoded. So this stays a very short
+// list on purpose.
 //
 // Both fields are optional so each form section can save its own field without
 // having to send (and therefore be able to clobber) the other.

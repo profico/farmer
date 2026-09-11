@@ -6,10 +6,22 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 
+import { ArchivedSection } from "#/components/archived-section.tsx";
 import { InviteMemberDialog } from "#/components/invite-member-dialog.tsx";
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "#/components/ui/alert-dialog.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
@@ -31,7 +43,6 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { cn } from "#/lib/utils.ts";
 import {
 	membersQuery,
 	pendingInvitationsQuery,
@@ -62,7 +73,14 @@ const TYPE_ITEMS = [
 	{ value: "contractor", label: "Contractor" },
 ] as const;
 
+const searchSchema = z.object({
+	archived: z.literal("1").optional(),
+});
+
+const MEMBER_COLUMN_COUNT = 7;
+
 export const Route = createFileRoute("/$orgSlug/settings/members")({
+	validateSearch: searchSchema,
 	beforeLoad: async () => {
 		await requireOrgAdmin();
 	},
@@ -87,6 +105,8 @@ function MembersSettingsPage() {
 		pendingInvitationsQuery(orgSlug),
 	);
 	const queryClient = useQueryClient();
+	const search = Route.useSearch();
+	const navigate = Route.useNavigate();
 
 	const owners = membersData.members.filter((m) => m.role === "owner");
 
@@ -137,9 +157,21 @@ function MembersSettingsPage() {
 	const archiveMutation = useMutation({
 		mutationFn: (vars: { userId: string; archived: boolean }) =>
 			setMemberArchived({ data: vars }),
-		onSuccess: invalidate,
+		onSuccess: (result) => {
+			if (result.emailConfirmed) toast.success("Restored, address confirmed");
+			return invalidate();
+		},
 		onError: (error) => toast.error(error.message ?? "Could not archive"),
 	});
+
+	// A person an import made with a guessed address, who has never signed in.
+	// Restoring them confirms the address, so whoever signs in with Google as
+	// it becomes this person — the admin looks at it first.
+	const [confirmRestore, setConfirmRestore] = useState<{
+		userId: string;
+		name: string;
+		email: string;
+	} | null>(null);
 
 	const startDateMutation = useMutation({
 		mutationFn: (vars: { userId: string; startDate: string | null }) =>
@@ -156,6 +188,168 @@ function MembersSettingsPage() {
 		onError: (error) =>
 			toast.error(error.message ?? "Could not cancel invitation"),
 	});
+
+	// Archived people move into the closed-by-default section below rather
+	// than disappearing — you need to see who has left to restore them, and
+	// the section keeps Restore one click away.
+	const activeMembers = membersData.members.filter(
+		(m) => personByUserId.get(m.userId)?.archivedAt == null,
+	);
+	const archivedMembers = membersData.members.filter(
+		(m) => personByUserId.get(m.userId)?.archivedAt != null,
+	);
+
+	const renderMemberRow = (m: (typeof membersData.members)[number]) => {
+		const isSelf = m.userId === session.user.id;
+		const isOnlyOwner = m.role === "owner" && owners.length <= 1;
+		const person = personByUserId.get(m.userId);
+		const type = person?.type ?? "billable";
+		const archived = person?.archivedAt != null;
+		return (
+			<TableRow key={m.id}>
+				<TableCell>
+					<PersonCell userId={m.userId} name={m.user.name}>
+						{archived && (
+							<span className="block text-2xs text-muted-foreground">
+								Archived
+							</span>
+						)}
+					</PersonCell>
+				</TableCell>
+				<TableCell>{m.user.email}</TableCell>
+				<TableCell>
+					<Select
+						value={type}
+						onValueChange={(next) => {
+							// Resolved against the list the Select was built from,
+							// so the union comes from the options rather than from
+							// an assertion about what the widget handed back.
+							const picked = TYPE_ITEMS.find((option) => option.value === next);
+							if (!picked) return;
+							typeMutation.mutate({
+								userId: m.userId,
+								type: picked.value,
+								// The override only applies to contractors, and the
+								// input rejects it for anyone else — so switching a
+								// contractor to billable drops it rather than failing
+								// validation on a field the row no longer shows.
+								expectedSecondsOverride:
+									picked.value === "contractor"
+										? (person?.expectedSecondsOverride ?? null)
+										: null,
+							});
+						}}
+						disabled={typeMutation.isPending}
+						items={TYPE_ITEMS}
+					>
+						<SelectTrigger className="h-7 w-32 text-xs">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{TYPE_ITEMS.map((opt) => (
+								<SelectItem key={opt.value} value={opt.value}>
+									{opt.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</TableCell>
+				<TableCell>
+					<ExpectedHoursCell
+						type={type}
+						expectedSecondsOverride={person?.expectedSecondsOverride ?? null}
+						onCommit={(expectedSecondsOverride) =>
+							typeMutation.mutate({
+								userId: m.userId,
+								type: "contractor",
+								expectedSecondsOverride,
+							})
+						}
+					/>
+				</TableCell>
+				<TableCell>
+					<StartDateCell
+						startDate={person?.startDate ?? null}
+						onCommit={(startDate) =>
+							startDateMutation.mutate({ userId: m.userId, startDate })
+						}
+					/>
+				</TableCell>
+				<TableCell>
+					{m.role === "owner" ? (
+						<span className="text-sm text-muted-foreground">Owner</span>
+					) : (
+						<Select
+							value={m.role}
+							onValueChange={(role) => {
+								const picked = ROLE_ITEMS.find(
+									(option) => option.value === role,
+								);
+								if (!picked) return;
+								roleMutation.mutate({
+									memberId: m.id,
+									role: picked.value,
+								});
+							}}
+							disabled={isSelf || roleMutation.isPending}
+							items={ROLE_ITEMS}
+						>
+							<SelectTrigger className="h-7 w-28 text-xs">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{ROLE_ITEMS.map((opt) => (
+									<SelectItem key={opt.value} value={opt.value}>
+										{opt.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					)}
+				</TableCell>
+				<TableCell>
+					{/* Archive, not delete: an archived person keeps every
+					    entry, close row and finalized month they appear in and
+					    drops out of the forward-looking surfaces. Remove is
+					    still here for the invited-the-wrong-address case, but
+					    it is no longer the obvious button. */}
+					{!isSelf && !isOnlyOwner && (
+						<div className="flex justify-end gap-2">
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={archiveMutation.isPending}
+								onClick={() => {
+									if (archived && person?.emailUnconfirmed) {
+										setConfirmRestore({
+											userId: m.userId,
+											name: m.user.name,
+											email: m.user.email,
+										});
+										return;
+									}
+									archiveMutation.mutate({
+										userId: m.userId,
+										archived: !archived,
+									});
+								}}
+							>
+								{archived ? "Restore" : "Archive"}
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={removeMutation.isPending}
+								onClick={() => removeMutation.mutate(m.id)}
+							>
+								Remove
+							</Button>
+						</div>
+					)}
+				</TableCell>
+			</TableRow>
+		);
+	};
 
 	return (
 		<Page>
@@ -179,158 +373,56 @@ function MembersSettingsPage() {
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{membersData.members.map((m) => {
-						const isSelf = m.userId === session.user.id;
-						const isOnlyOwner = m.role === "owner" && owners.length <= 1;
-						const person = personByUserId.get(m.userId);
-						const type = person?.type ?? "billable";
-						const archived = person?.archivedAt != null;
-						return (
-							// Archived people stay in the list rather than disappearing —
-							// you need to see who has left to restore them, and a hidden
-							// row is a row nobody can undo.
-							<TableRow key={m.id} className={cn(archived && "opacity-55")}>
-								<TableCell>
-									<PersonCell userId={m.userId} name={m.user.name}>
-										{archived && (
-											<span className="block text-2xs text-muted-foreground">
-												Archived
-											</span>
-										)}
-									</PersonCell>
-								</TableCell>
-								<TableCell>{m.user.email}</TableCell>
-								<TableCell>
-									<Select
-										value={type}
-										onValueChange={(next) => {
-											// Resolved against the list the Select was built from,
-											// so the union comes from the options rather than from
-											// an assertion about what the widget handed back.
-											const picked = TYPE_ITEMS.find(
-												(option) => option.value === next,
-											);
-											if (!picked) return;
-											typeMutation.mutate({
-												userId: m.userId,
-												type: picked.value,
-												// The override only applies to contractors, and the
-												// input rejects it for anyone else — so switching a
-												// contractor to billable drops it rather than failing
-												// validation on a field the row no longer shows.
-												expectedSecondsOverride:
-													picked.value === "contractor"
-														? (person?.expectedSecondsOverride ?? null)
-														: null,
-											});
-										}}
-										disabled={typeMutation.isPending}
-										items={TYPE_ITEMS}
-									>
-										<SelectTrigger className="h-7 w-32 text-xs">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{TYPE_ITEMS.map((opt) => (
-												<SelectItem key={opt.value} value={opt.value}>
-													{opt.label}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								</TableCell>
-								<TableCell>
-									<ExpectedHoursCell
-										type={type}
-										expectedSecondsOverride={
-											person?.expectedSecondsOverride ?? null
-										}
-										onCommit={(expectedSecondsOverride) =>
-											typeMutation.mutate({
-												userId: m.userId,
-												type: "contractor",
-												expectedSecondsOverride,
-											})
-										}
-									/>
-								</TableCell>
-								<TableCell>
-									<StartDateCell
-										startDate={person?.startDate ?? null}
-										onCommit={(startDate) =>
-											startDateMutation.mutate({ userId: m.userId, startDate })
-										}
-									/>
-								</TableCell>
-								<TableCell>
-									{m.role === "owner" ? (
-										<span className="text-sm text-muted-foreground">Owner</span>
-									) : (
-										<Select
-											value={m.role}
-											onValueChange={(role) => {
-												const picked = ROLE_ITEMS.find(
-													(option) => option.value === role,
-												);
-												if (!picked) return;
-												roleMutation.mutate({
-													memberId: m.id,
-													role: picked.value,
-												});
-											}}
-											disabled={isSelf || roleMutation.isPending}
-											items={ROLE_ITEMS}
-										>
-											<SelectTrigger className="h-7 w-28 text-xs">
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												{ROLE_ITEMS.map((opt) => (
-													<SelectItem key={opt.value} value={opt.value}>
-														{opt.label}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-									)}
-								</TableCell>
-								<TableCell>
-									{/* Archive, not delete: an archived person keeps every
-									    entry, close row and finalized month they appear in and
-									    drops out of the forward-looking surfaces. Remove is
-									    still here for the invited-the-wrong-address case, but
-									    it is no longer the obvious button. */}
-									{!isSelf && !isOnlyOwner && (
-										<div className="flex justify-end gap-2">
-											<Button
-												variant="outline"
-												size="sm"
-												disabled={archiveMutation.isPending}
-												onClick={() =>
-													archiveMutation.mutate({
-														userId: m.userId,
-														archived: !archived,
-													})
-												}
-											>
-												{archived ? "Restore" : "Archive"}
-											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												disabled={removeMutation.isPending}
-												onClick={() => removeMutation.mutate(m.id)}
-											>
-												Remove
-											</Button>
-										</div>
-									)}
-								</TableCell>
-							</TableRow>
-						);
-					})}
+					{activeMembers.map(renderMemberRow)}
+					<ArchivedSection
+						count={archivedMembers.length}
+						colSpan={MEMBER_COLUMN_COUNT}
+						open={search.archived === "1"}
+						onOpenChange={(open) =>
+							navigate({ search: { archived: open ? "1" : undefined } })
+						}
+					>
+						{archivedMembers.map(renderMemberRow)}
+					</ArchivedSection>
 				</TableBody>
 			</Table>
+
+			<AlertDialog
+				open={confirmRestore != null}
+				onOpenChange={(open) => {
+					if (!open) setConfirmRestore(null);
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Restore {confirmRestore?.name}?</AlertDialogTitle>
+						<AlertDialogDescription>
+							They have never signed in, and nobody has confirmed their address.
+							Restoring them confirms{" "}
+							<strong className="text-foreground">
+								{confirmRestore?.email}
+							</strong>
+							: whoever signs in with Google as that address becomes this
+							person. Check it first.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							disabled={archiveMutation.isPending}
+							onClick={() => {
+								if (!confirmRestore) return;
+								archiveMutation.mutate(
+									{ userId: confirmRestore.userId, archived: false },
+									{ onSettled: () => setConfirmRestore(null) },
+								);
+							}}
+						>
+							Restore and confirm
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 
 			{invitations.length > 0 && (
 				<div className="mt-8">

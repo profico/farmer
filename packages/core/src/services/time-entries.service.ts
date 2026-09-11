@@ -1821,7 +1821,7 @@ export const timeEntriesService = {
 	logAbsenceRange: async (ctx: Ctx, input: LogAbsenceRangeInput) => {
 		const absenceIds = await tasksService.absenceTaskIds();
 		if (!absenceIds.has(input.taskId)) {
-			throw new Error("Only Vacation and Sick Leave can be logged this way");
+			throw new Error("Only absence tasks can be logged this way");
 		}
 
 		const range = { from: input.from, to: input.to };
@@ -1895,7 +1895,7 @@ export const timeEntriesService = {
 		});
 		if (!existing) throw new Error("Time entry not found");
 		if (!existing.task.isAbsence) {
-			throw new Error("Only Vacation and Sick Leave entries can be corrected");
+			throw new Error("Only absence entries can be corrected");
 		}
 
 		const access = await ctxAccess(ctx);
@@ -1921,7 +1921,7 @@ export const timeEntriesService = {
 	createAbsenceForUser: async (ctx: Ctx, input: CreateAbsenceForUserInput) => {
 		const absenceIds = await tasksService.absenceTaskIds();
 		if (!absenceIds.has(input.taskId)) {
-			throw new Error("Only Vacation and Sick Leave can be logged this way");
+			throw new Error("Only absence tasks can be logged this way");
 		}
 
 		await assertUserInOrg(ctx, input.userId);
@@ -1957,9 +1957,7 @@ export const timeEntriesService = {
 		});
 		if (!existing) throw new Error("Time entry not found");
 		if (!existing.task.isAbsence) {
-			throw new Error(
-				"Only Vacation and Sick Leave entries can be removed here",
-			);
+			throw new Error("Only absence entries can be removed here");
 		}
 
 		const access = await ctxAccess(ctx);

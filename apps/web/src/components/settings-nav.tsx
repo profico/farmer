@@ -1,4 +1,5 @@
 import {
+	BellIcon,
 	BuildingsIcon,
 	CalendarHeartIcon,
 	CaretLeftIcon,
@@ -6,6 +7,7 @@ import {
 	HashIcon,
 	PlugIcon,
 	TagIcon,
+	UploadSimpleIcon,
 } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -142,6 +144,30 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "workspace",
 		description:
 			"The monthly hours each person is expected to deliver. The close sheet reads Expected off this.",
+		hasNavRow: false,
+		show: (audience) => audience.isAdmin,
+	},
+	{
+		item: {
+			label: "Reminders",
+			to: "/$orgSlug/settings/reminders",
+			icon: BellIcon,
+		},
+		group: "workspace",
+		description:
+			"When the log reminder, the Slack nudge, the month-end reminder and the admin digest go out, and to whom.",
+		hasNavRow: false,
+		show: (audience) => audience.isAdmin,
+	},
+	{
+		item: {
+			label: "Import",
+			to: "/$orgSlug/settings/import",
+			icon: UploadSimpleIcon,
+		},
+		group: "workspace",
+		description:
+			"Bring clients, projects, people and time in from Harvest's CSV exports.",
 		hasNavRow: false,
 		show: (audience) => audience.isAdmin,
 	},

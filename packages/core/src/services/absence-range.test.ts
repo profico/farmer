@@ -202,7 +202,7 @@ describe("logAbsenceRange", () => {
 				from: "2026-05-26",
 				to: "2026-05-27",
 			}),
-		).rejects.toThrow(/Vacation and Sick Leave/);
+		).rejects.toThrow(/Only absence tasks can be logged this way/);
 	});
 });
 

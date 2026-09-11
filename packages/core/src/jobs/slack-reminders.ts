@@ -1,22 +1,17 @@
-import { eq } from "drizzle-orm";
-
 import { db } from "../db";
-import { member, organization } from "../db/schema/auth";
+import { organization } from "../db/schema/auth";
 import { slackReminderLog } from "../db/schema/slack";
+import { dayKeyInTz, timeKeyInTz } from "../lib/time";
+import type { ReminderKind } from "../schema/reminder-settings";
+import { deliveryBlocks, notify, wasDelivered } from "../services/notify";
 import {
-	addDaysToKey,
-	dayKeyInTz,
-	endOfMonthKey,
-	formatDuration,
-	timeKeyInTz,
-} from "../lib/time";
-import { complianceService } from "../services/compliance.service";
-import { holidaysService } from "../services/holidays.service";
-import { notify, wasDelivered } from "../services/notify";
-import {
-	orgSettingsService,
-	REMINDER_WEEKDAYS,
-} from "../services/org-settings.service";
+	dashboardLoader,
+	isMonthEndDay,
+	reminderDayCheck,
+	reminderRecipients,
+	sendTimeReached,
+} from "../services/reminder-recipients";
+import { reminderSettingsService } from "../services/reminder-settings.service";
 import { slackService } from "../services/slack.service";
 import type { Ctx } from "../services/types";
 
@@ -28,24 +23,56 @@ export type SlackReminderSummary = {
 	failed: number;
 };
 
-// Slack reminders (PRD §7). Three sends, one job:
+// Slack reminders (PRD §7). Three sends, one job, each on the org's own
+// schedule from `reminder_settings` (Settings → Reminders):
 //
-//   nudge        — Tue and Fri, DM to anyone with no recent entries or behind pace
-//   month_end    — last working day of the month, DM to everyone in the cohort
-//   admin_digest — Tue, DM to each Admin with the org-wide compliance picture
+//   nudge        — on the nudge days (Tue and Fri by default), DM to anyone
+//                  with no recent entries or behind pace
+//   month_end    — on the last working day of the month (or N before it), DM
+//                  to everyone in the cohort
+//   admin_digest — on the digest day (Tue), DM to each Admin with the org-wide
+//                  compliance picture
 //
-// The cadence is deliberately capped at two nudges a week and is NOT a setting:
-// anything more frequent gets muted, and a muted reminder is worse than none.
+// The cadence used to be two fixed nudges a week and NOT a setting, because
+// anything more frequent gets muted and a muted reminder is worse than none.
+// It is a setting now, and that reason is kept as limits instead: at most three
+// nudge days a week and no send time at night, in the schema and in a database
+// check. Who gets what is `services/reminder-recipients.ts`, shared with the
+// settings page's preview.
 //
 // Idempotency lives in slack_reminder_log, claimed per (org, person, kind, day)
 // BEFORE the send. A crash mid-run therefore loses at most one DM rather than
 // re-sending the whole batch on the next tick — the safer direction for a
 // nag, where a duplicate is more damaging than a miss.
 
-// Nothing goes out before this local time. The scheduler ticks all night, and
-// the first tick after midnight is a technically-correct 00:05 DM that nobody
-// wants. Not a setting, for the same reason the cadence isn't one.
-const EARLIEST_SEND_LOCAL_TIME = "09:00";
+/** The three kinds this job sends, the claim key each has always used in
+ *  `slack_reminder_log`, and the summary counter it adds to. */
+const SLACK_KINDS = [
+	{ kind: "compliance-nudge", claim: "nudge", counter: "nudges" },
+	{ kind: "month-end", claim: "month_end", counter: "monthEnd" },
+	{ kind: "admin-digest", claim: "admin_digest", counter: "digests" },
+] as const satisfies readonly {
+	kind: ReminderKind;
+	claim: string;
+	counter: keyof SlackReminderSummary;
+}[];
+
+/** `${organizationId}:${kind}` → the day key this process last finished that
+ *  kind's pass for.
+ *
+ *  The job ticks every 15 minutes now, so a send time can be any quarter hour.
+ *  Without this, every tick after the send time on a reminder day would run the
+ *  compliance queries again only for the claims to refuse every DM they chose.
+ *  In memory rather than read off `slack_reminder_log`: a claim row says one
+ *  person was reached, not that the pass finished, and a pass that crashed
+ *  half-way must get its second half on the next tick. A restart costs one
+ *  more pass per org and kind, which the claims make harmless. */
+const finishedRuns = new Map<string, string>();
+
+/** Forget which passes already ran, so a test can run the same day twice. */
+export const forgetSlackReminderRunsForTests = (): void => {
+	finishedRuns.clear();
+};
 
 /** Claims the (org, user, kind, day) slot. Returns false if already claimed. */
 const claim = async (
@@ -62,188 +89,102 @@ const claim = async (
 	return rows.length > 0;
 };
 
-/** Is `dayKey` the last Mon–Fri non-holiday day of its month?
- *
- *  Both halves matter. It used to ask only whether any LATER day in the month
- *  was a working day, which is true of every trailing weekend day too — so a
- *  month ending on a Sunday sent the month-end DM on the Friday, again on the
- *  Saturday and again on the Sunday. The `slack_reminder_log` claim is keyed on
- *  the day, so three different days meant three different claims and the
- *  idempotency guard never saw them as duplicates. Everyone got the same nag
- *  three times, twice of it on a weekend.
- *
- *  Exported for tests: the job itself reads `new Date()`, so the only way to
- *  pin the day-of-month cases is to ask this directly. */
-export const isLastWorkingDayOfMonth = async (ctx: Ctx, dayKey: string) => {
-	const month = dayKey.slice(0, 7);
-	// To the end of the month rather than a fixed lookahead: the answer depends
-	// on every remaining day, not the next ten.
-	const holidays = await holidaysService.holidaySetForRange(
-		ctx,
-		dayKey,
-		endOfMonthKey(dayKey),
-	);
-	const isWorkingDay = (key: string) => {
-		if (holidays.has(key)) return false;
-		const weekday = new Date(`${key}T00:00:00Z`).getUTCDay();
-		return weekday !== 0 && weekday !== 6;
+/** Is `dayKey` the last Mon–Fri non-holiday day of its month? The month-end
+ *  reminder's default day; `isMonthEndDay` is the general form and carries the
+ *  history of why both halves of the question matter. */
+export const isLastWorkingDayOfMonth = (ctx: Ctx, dayKey: string) =>
+	isMonthEndDay(ctx, dayKey, 0);
+
+export const runSlackRemindersOnce = async (
+	opts: { now?: Date } = {},
+): Promise<SlackReminderSummary> => {
+	const now = opts.now ?? new Date();
+	const orgs = await db
+		.select({
+			id: organization.id,
+			slug: organization.slug,
+			timezone: organization.timezone,
+		})
+		.from(organization);
+
+	const summary: SlackReminderSummary = {
+		organizations: 0,
+		nudges: 0,
+		monthEnd: 0,
+		digests: 0,
+		failed: 0,
 	};
 
-	// The day itself has to be one. "The last working day" is a working day.
-	if (!isWorkingDay(dayKey)) return false;
+	for (const org of orgs) {
+		// No Slack workspace connected = nothing this job can do, and no reason to
+		// run the (fairly expensive) compliance queries for that org at all.
+		const installation = await slackService.installationFor(org.id);
+		if (!installation) continue;
+		summary.organizations++;
 
-	for (
-		let cursor = addDaysToKey(dayKey, 1);
-		cursor.slice(0, 7) === month;
-		cursor = addDaysToKey(cursor, 1)
-	) {
-		if (isWorkingDay(cursor)) return false;
-	}
-	return true;
-};
+		const tz = org.timezone ?? "UTC";
+		const today = dayKeyInTz(now, tz);
+		const timeKey = timeKeyInTz(now, tz);
 
-export const runSlackRemindersOnce =
-	async (): Promise<SlackReminderSummary> => {
-		const now = new Date();
-		const orgs = await db
-			.select({ id: organization.id, timezone: organization.timezone })
-			.from(organization);
+		// The job runs unattended, so it needs a ctx to satisfy the service
+		// signatures; nothing below checks a caller, because there is none.
+		const ctx: Ctx = { organizationId: org.id, userId: "" };
 
-		const summary: SlackReminderSummary = {
-			organizations: 0,
-			nudges: 0,
-			monthEnd: 0,
-			digests: 0,
-			failed: 0,
-		};
+		try {
+			const settings = await reminderSettingsService.get(ctx);
 
-		for (const org of orgs) {
-			// No Slack workspace connected = nothing this job can do, and no reason to
-			// run the (fairly expensive) compliance queries for that org at all.
-			const installation = await slackService.installationFor(org.id);
-			if (!installation) continue;
-			summary.organizations++;
-
-			const tz = org.timezone ?? "UTC";
-			const today = dayKeyInTz(now, tz);
-			const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
-			const isReminderDay = REMINDER_WEEKDAYS.some((day) => day === weekday);
-
-			// The job runs unattended, so it needs a ctx to satisfy the service
-			// signatures; every call below is explicitly told to skip the admin check
-			// because there is no caller to check.
-			const ctx: Ctx = { organizationId: org.id, userId: "" };
-
-			if (timeKeyInTz(now, tz) < EARLIEST_SEND_LOCAL_TIME) continue;
-
-			try {
-				const isMonthEnd = await isLastWorkingDayOfMonth(ctx, today);
-				if (!isReminderDay && !isMonthEnd) continue;
-
-				const [{ noEntries, behindPace }, settings] = await Promise.all([
-					complianceService.dashboardForReminderJob(ctx),
-					orgSettingsService.get(ctx),
-				]);
-
-				if (isReminderDay) {
-					// One DM per person even when they're on both lists — the message
-					// leads with whichever problem is worse.
-					const messageByUser = new Map<string, string>();
-					for (const row of behindPace) {
-						messageByUser.set(
-							row.userId,
-							`You're at ${row.pacePct}% of your expected hours for the month so far — ${formatDuration(
-								row.shortfallSeconds,
-							)} short. A few minutes now beats reconstructing the month later.`,
-						);
-					}
-					for (const row of noEntries) {
-						messageByUser.set(
-							row.userId,
-							row.lastEntryDate
-								? `You haven't logged anything since ${row.lastEntryDate} — that's ${row.workingDaysMissing} working ${
-										row.workingDaysMissing === 1 ? "day" : "days"
-									}. Worth filling in while you still remember it.`
-								: "You haven't logged any time yet. Worth starting today — reconstructing a month from memory is the part everyone hates.",
-						);
-					}
-
-					for (const [userId, text] of messageByUser) {
-						if (!(await claim(org.id, userId, "nudge", today))) continue;
-						const outcome = await notify(
-							{ organizationId: org.id, userId },
-							{ kind: "compliance-nudge", body: text },
-						);
-						if (wasDelivered(outcome)) summary.nudges++;
-					}
-				}
-
-				if (isMonthEnd) {
-					// The month-end push goes to EVERYONE in the compliance cohort, not
-					// just the laggards: the close starts tomorrow, and "I thought I was
-					// fine" is exactly the failure this prevents.
-					//
-					// The COHORT, though — which is what this said and did not do. It
-					// selected every member of the org, so the two groups
-					// `complianceCohort` exists to exclude got it anyway: archived
-					// people, who cannot act on it, and overhead people, whom the system
-					// deliberately never nags about timesheets.
-					const people = await complianceService.cohortForReminderJob(ctx, {
-						year: Number(today.slice(0, 4)),
-						month: Number(today.slice(5, 7)),
-					});
-					const text =
-						"Today is the last working day of the month. Anything still unlogged needs to go in before the monthly close starts tomorrow.";
-					for (const person of people) {
-						if (!(await claim(org.id, person.userId, "month_end", today)))
-							continue;
-						const outcome = await notify(
-							{ organizationId: org.id, userId: person.userId },
-							{ kind: "month-end", body: text },
-						);
-						if (wasDelivered(outcome)) summary.monthEnd++;
-					}
-				}
-
-				// Weekly digest to Admins — Tuesday only, so it doesn't arrive twice.
-				if (weekday === REMINDER_WEEKDAYS[0]) {
-					const admins = await db
-						.select({ userId: member.userId, role: member.role })
-						.from(member)
-						.where(eq(member.organizationId, org.id));
-					const digest = [
-						"*Time tracking this week*",
-						`• ${noEntries.length} ${noEntries.length === 1 ? "person has" : "people have"} logged nothing in the last ${settings.complianceMissingDays} working days`,
-						`• ${behindPace.length} ${behindPace.length === 1 ? "person is" : "people are"} behind pace for the month`,
-						...noEntries
-							.slice(0, 10)
-							.map(
-								(r) =>
-									`    ${r.name} — ${r.workingDaysMissing} working ${
-										r.workingDaysMissing === 1 ? "day" : "days"
-									} missing`,
-							),
-					].join("\n");
-
-					for (const admin of admins) {
-						if (admin.role !== "owner" && admin.role !== "admin") continue;
-						if (!(await claim(org.id, admin.userId, "admin_digest", today)))
-							continue;
-						const outcome = await notify(
-							{ organizationId: org.id, userId: admin.userId },
-							{ kind: "admin-digest", body: digest },
-						);
-						if (wasDelivered(outcome)) summary.digests++;
-					}
-				}
-			} catch (error) {
-				summary.failed++;
-				console.error("[slack-reminders] org run failed", {
-					organizationId: org.id,
-					error,
-				});
+			// The fast check, before any compliance query: what this process
+			// already finished today, then the send time, then the day. Only the
+			// month-end day costs a query (the holiday calendar), and it runs
+			// last. Most ticks end here.
+			const due: (typeof SLACK_KINDS)[number][] = [];
+			for (const entry of SLACK_KINDS) {
+				if (finishedRuns.get(`${org.id}:${entry.kind}`) === today) continue;
+				if (!sendTimeReached(settings, entry.kind, timeKey)) continue;
+				if (await reminderDayCheck(ctx, settings, entry.kind, today)) continue;
+				due.push(entry);
 			}
-		}
+			if (due.length === 0) continue;
 
-		return summary;
-	};
+			const dashboard = dashboardLoader(ctx, settings, now);
+			const moment = { dayKey: today, timeKey, tz, now, slug: org.slug };
+			for (const entry of due) {
+				const recipients = await reminderRecipients(
+					ctx,
+					settings,
+					entry.kind,
+					moment,
+					dashboard,
+				);
+				// `notify` applies these gates anyway. Asking first keeps a held-back
+				// person from spending the day's claim, so turning "include people
+				// who never signed in" on still reaches them the same day.
+				const blocks = await deliveryBlocks(
+					org.id,
+					recipients.map((r) => r.userId),
+					entry.kind,
+				);
+				for (const recipient of recipients) {
+					if (blocks.has(recipient.userId)) continue;
+					if (!(await claim(org.id, recipient.userId, entry.claim, today))) {
+						continue;
+					}
+					const outcome = await notify(
+						{ organizationId: org.id, userId: recipient.userId },
+						recipient.event,
+					);
+					if (wasDelivered(outcome)) summary[entry.counter]++;
+				}
+				finishedRuns.set(`${org.id}:${entry.kind}`, today);
+			}
+		} catch (error) {
+			summary.failed++;
+			console.error("[slack-reminders] org run failed", {
+				organizationId: org.id,
+				error,
+			});
+		}
+	}
+
+	return summary;
+};

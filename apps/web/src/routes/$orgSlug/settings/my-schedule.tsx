@@ -92,7 +92,7 @@ function MySchedulePage() {
 				title="Time off"
 				description={
 					<>
-						Log Vacation and Sick Leave on the{" "}
+						Log Vacation, Sick Leave and Paid Leave on the{" "}
 						<Link
 							to="/$orgSlug/time"
 							params={{ orgSlug: organization.slug }}

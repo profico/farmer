@@ -17,7 +17,7 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { member, organization, user } from "../db/schema/auth";
+import { account, member, organization, user } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
 import { createTestDb, type TestDb } from "../test/harness";
 import {
@@ -94,6 +94,17 @@ beforeAll(async () => {
 			createdAt: new Date(),
 		},
 	]);
+	// Somebody who has signed in. The reminder kinds skip a person with no
+	// `account` row by default (see "the reminder gates" below), and every
+	// other test here is about something else.
+	await db.insert(account).values({
+		id: "acc-member",
+		accountId: MEMBER,
+		providerId: "credential",
+		userId: MEMBER,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	});
 });
 
 afterEach(async () => {

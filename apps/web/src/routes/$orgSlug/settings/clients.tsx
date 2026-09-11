@@ -9,8 +9,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import type { z } from "zod";
+import { z } from "zod";
 
+import { ArchivedSection } from "#/components/archived-section.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { Button } from "#/components/ui/button.tsx";
@@ -51,7 +52,14 @@ import {
 	updateClient,
 } from "#/server/clients.ts";
 
+const searchSchema = z.object({
+	archived: z.literal("1").optional(),
+});
+
+const CLIENT_COLUMN_COUNT = 4;
+
 export const Route = createFileRoute("/$orgSlug/settings/clients")({
+	validateSearch: searchSchema,
 	loader: async ({ context, params }) => {
 		const orgSlug = params.orgSlug;
 		await Promise.all([
@@ -224,6 +232,8 @@ function ClientsPage() {
 	const queryClient = useQueryClient();
 	const { data: clients } = useSuspenseQuery(allClientsQuery(orgSlug));
 	const { data: access } = useSuspenseQuery(myAccessQuery(orgSlug));
+	const search = Route.useSearch();
+	const navigate = Route.useNavigate();
 
 	const invalidate = () =>
 		queryClient.invalidateQueries({
@@ -241,6 +251,49 @@ function ClientsPage() {
 		onError: (error) => toast.error(error.message ?? "Could not restore"),
 	});
 	const busy = archive.isPending || unarchive.isPending;
+
+	const activeClients = clients.filter((c) => !c.archivedAt);
+	const archivedClients = clients.filter((c) => c.archivedAt);
+
+	const renderClientRow = (client: (typeof clients)[number]) => (
+		<TableRow key={client.id}>
+			<TableCell className="font-medium">{client.name}</TableCell>
+			<TableCell className="text-muted-foreground">
+				{client.isInternal ? "Internal" : "External"}
+			</TableCell>
+			<TableCell>
+				<StatusPill tone={client.archivedAt ? "neutral" : "positive"}>
+					{client.archivedAt ? "Archived" : "Active"}
+				</StatusPill>
+			</TableCell>
+			<TableCell className="text-right">
+				{access.canCreateProjects && <RenameClientDialog client={client} />}
+				{/* The internal client is structural — archiving it would
+					    strand every non-invoiced project. */}
+				{access.canCreateProjects &&
+					!client.isInternal &&
+					(client.archivedAt ? (
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={busy}
+							onClick={() => unarchive.mutate(client.id)}
+						>
+							Restore
+						</Button>
+					) : (
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={busy}
+							onClick={() => archive.mutate(client.id)}
+						>
+							Archive
+						</Button>
+					))}
+			</TableCell>
+		</TableRow>
+	);
 
 	return (
 		<Page>
@@ -261,47 +314,17 @@ function ClientsPage() {
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{clients.map((client) => (
-						<TableRow key={client.id}>
-							<TableCell className="font-medium">{client.name}</TableCell>
-							<TableCell className="text-muted-foreground">
-								{client.isInternal ? "Internal" : "External"}
-							</TableCell>
-							<TableCell>
-								<StatusPill tone={client.archivedAt ? "neutral" : "positive"}>
-									{client.archivedAt ? "Archived" : "Active"}
-								</StatusPill>
-							</TableCell>
-							<TableCell className="text-right">
-								{access.canCreateProjects && (
-									<RenameClientDialog client={client} />
-								)}
-								{/* The internal client is structural — archiving it would
-									    strand every non-invoiced project. */}
-								{access.canCreateProjects &&
-									!client.isInternal &&
-									(client.archivedAt ? (
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={busy}
-											onClick={() => unarchive.mutate(client.id)}
-										>
-											Restore
-										</Button>
-									) : (
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={busy}
-											onClick={() => archive.mutate(client.id)}
-										>
-											Archive
-										</Button>
-									))}
-							</TableCell>
-						</TableRow>
-					))}
+					{activeClients.map(renderClientRow)}
+					<ArchivedSection
+						count={archivedClients.length}
+						colSpan={CLIENT_COLUMN_COUNT}
+						open={search.archived === "1"}
+						onOpenChange={(open) =>
+							navigate({ search: { archived: open ? "1" : undefined } })
+						}
+					>
+						{archivedClients.map(renderClientRow)}
+					</ArchivedSection>
 				</TableBody>
 			</Table>
 		</Page>

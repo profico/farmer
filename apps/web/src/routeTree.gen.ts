@@ -37,12 +37,14 @@ import { Route as ApiAssistantStreamRouteImport } from './routes/api/assistant/s
 import { Route as OrgSlugTimeWeekRouteImport } from './routes/$orgSlug/time/week'
 import { Route as OrgSlugTimeMonthRouteImport } from './routes/$orgSlug/time/month'
 import { Route as OrgSlugSettingsTasksRouteImport } from './routes/$orgSlug/settings/tasks'
+import { Route as OrgSlugSettingsRemindersRouteImport } from './routes/$orgSlug/settings/reminders'
 import { Route as OrgSlugSettingsRecurringBlocksRouteImport } from './routes/$orgSlug/settings/recurring-blocks'
 import { Route as OrgSlugSettingsPreferencesRouteImport } from './routes/$orgSlug/settings/preferences'
 import { Route as OrgSlugSettingsOrganizationRouteImport } from './routes/$orgSlug/settings/organization'
 import { Route as OrgSlugSettingsMyScheduleRouteImport } from './routes/$orgSlug/settings/my-schedule'
 import { Route as OrgSlugSettingsMembersRouteImport } from './routes/$orgSlug/settings/members'
 import { Route as OrgSlugSettingsIntegrationsRouteImport } from './routes/$orgSlug/settings/integrations'
+import { Route as OrgSlugSettingsImportRouteImport } from './routes/$orgSlug/settings/import'
 import { Route as OrgSlugSettingsHourFundRouteImport } from './routes/$orgSlug/settings/hour-fund'
 import { Route as OrgSlugSettingsHolidaysRouteImport } from './routes/$orgSlug/settings/holidays'
 import { Route as OrgSlugSettingsClientsRouteImport } from './routes/$orgSlug/settings/clients'
@@ -190,6 +192,12 @@ const OrgSlugSettingsTasksRoute = OrgSlugSettingsTasksRouteImport.update({
   path: '/settings/tasks',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugSettingsRemindersRoute =
+  OrgSlugSettingsRemindersRouteImport.update({
+    id: '/settings/reminders',
+    path: '/settings/reminders',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 const OrgSlugSettingsRecurringBlocksRoute =
   OrgSlugSettingsRecurringBlocksRouteImport.update({
     id: '/settings/recurring-blocks',
@@ -225,6 +233,11 @@ const OrgSlugSettingsIntegrationsRoute =
     path: '/settings/integrations',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const OrgSlugSettingsImportRoute = OrgSlugSettingsImportRouteImport.update({
+  id: '/settings/import',
+  path: '/settings/import',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugSettingsHourFundRoute = OrgSlugSettingsHourFundRouteImport.update({
   id: '/settings/hour-fund',
   path: '/settings/hour-fund',
@@ -259,12 +272,14 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
+  '/$orgSlug/settings/import': typeof OrgSlugSettingsImportRoute
   '/$orgSlug/settings/integrations': typeof OrgSlugSettingsIntegrationsRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
+  '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
@@ -296,12 +311,14 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
+  '/$orgSlug/settings/import': typeof OrgSlugSettingsImportRoute
   '/$orgSlug/settings/integrations': typeof OrgSlugSettingsIntegrationsRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
+  '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
@@ -336,12 +353,14 @@ export interface FileRoutesById {
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
+  '/$orgSlug/settings/import': typeof OrgSlugSettingsImportRoute
   '/$orgSlug/settings/integrations': typeof OrgSlugSettingsIntegrationsRoute
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
+  '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
@@ -377,12 +396,14 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
+    | '/$orgSlug/settings/import'
     | '/$orgSlug/settings/integrations'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
+    | '/$orgSlug/settings/reminders'
     | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
@@ -414,12 +435,14 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
+    | '/$orgSlug/settings/import'
     | '/$orgSlug/settings/integrations'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
+    | '/$orgSlug/settings/reminders'
     | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
@@ -453,12 +476,14 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
+    | '/$orgSlug/settings/import'
     | '/$orgSlug/settings/integrations'
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
+    | '/$orgSlug/settings/reminders'
     | '/$orgSlug/settings/tasks'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
@@ -693,6 +718,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsTasksRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/settings/reminders': {
+      id: '/$orgSlug/settings/reminders'
+      path: '/settings/reminders'
+      fullPath: '/$orgSlug/settings/reminders'
+      preLoaderRoute: typeof OrgSlugSettingsRemindersRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/settings/recurring-blocks': {
       id: '/$orgSlug/settings/recurring-blocks'
       path: '/settings/recurring-blocks'
@@ -733,6 +765,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/integrations'
       fullPath: '/$orgSlug/settings/integrations'
       preLoaderRoute: typeof OrgSlugSettingsIntegrationsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/settings/import': {
+      id: '/$orgSlug/settings/import'
+      path: '/settings/import'
+      fullPath: '/$orgSlug/settings/import'
+      preLoaderRoute: typeof OrgSlugSettingsImportRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/settings/hour-fund': {
@@ -783,12 +822,14 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugSettingsClientsRoute: typeof OrgSlugSettingsClientsRoute
   OrgSlugSettingsHolidaysRoute: typeof OrgSlugSettingsHolidaysRoute
   OrgSlugSettingsHourFundRoute: typeof OrgSlugSettingsHourFundRoute
+  OrgSlugSettingsImportRoute: typeof OrgSlugSettingsImportRoute
   OrgSlugSettingsIntegrationsRoute: typeof OrgSlugSettingsIntegrationsRoute
   OrgSlugSettingsMembersRoute: typeof OrgSlugSettingsMembersRoute
   OrgSlugSettingsMyScheduleRoute: typeof OrgSlugSettingsMyScheduleRoute
   OrgSlugSettingsOrganizationRoute: typeof OrgSlugSettingsOrganizationRoute
   OrgSlugSettingsPreferencesRoute: typeof OrgSlugSettingsPreferencesRoute
   OrgSlugSettingsRecurringBlocksRoute: typeof OrgSlugSettingsRecurringBlocksRoute
+  OrgSlugSettingsRemindersRoute: typeof OrgSlugSettingsRemindersRoute
   OrgSlugSettingsTasksRoute: typeof OrgSlugSettingsTasksRoute
   OrgSlugProjectsIndexRoute: typeof OrgSlugProjectsIndexRoute
   OrgSlugSettingsIndexRoute: typeof OrgSlugSettingsIndexRoute
@@ -803,12 +844,14 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugSettingsClientsRoute: OrgSlugSettingsClientsRoute,
   OrgSlugSettingsHolidaysRoute: OrgSlugSettingsHolidaysRoute,
   OrgSlugSettingsHourFundRoute: OrgSlugSettingsHourFundRoute,
+  OrgSlugSettingsImportRoute: OrgSlugSettingsImportRoute,
   OrgSlugSettingsIntegrationsRoute: OrgSlugSettingsIntegrationsRoute,
   OrgSlugSettingsMembersRoute: OrgSlugSettingsMembersRoute,
   OrgSlugSettingsMyScheduleRoute: OrgSlugSettingsMyScheduleRoute,
   OrgSlugSettingsOrganizationRoute: OrgSlugSettingsOrganizationRoute,
   OrgSlugSettingsPreferencesRoute: OrgSlugSettingsPreferencesRoute,
   OrgSlugSettingsRecurringBlocksRoute: OrgSlugSettingsRecurringBlocksRoute,
+  OrgSlugSettingsRemindersRoute: OrgSlugSettingsRemindersRoute,
   OrgSlugSettingsTasksRoute: OrgSlugSettingsTasksRoute,
   OrgSlugProjectsIndexRoute: OrgSlugProjectsIndexRoute,
   OrgSlugSettingsIndexRoute: OrgSlugSettingsIndexRoute,
