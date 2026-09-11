@@ -15,8 +15,8 @@ import { getRequestHeaders } from "@tanstack/react-start/server";
 import { orgAdminMiddleware, orgMiddleware } from "./auth";
 
 // The People screen (PRD 3.1): everyone with their org role, person type and
-// start date. Distinct from `listMembers` below, which is better-auth's raw
-// membership list and carries no product data.
+// start date. Distinct from `listMembers` below, which is the bare membership
+// list (id, role, name, email) and carries no product data.
 export const listPeople = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
@@ -91,17 +91,10 @@ export const setMemberArchived = createServerFn({ method: "POST" })
 export const listMembers = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
-		const { auth } = await import("@farmer/core/auth");
-		return auth.api.listMembers({
-			// A fixed order: unsorted, Postgres returns rows in storage order,
-			// and an update moves a row to the end of it.
-			query: {
-				organizationId: context.ctx.organizationId,
-				sortBy: "createdAt",
-				sortDirection: "asc",
-			},
-			headers: getRequestHeaders(),
-		});
+		// Not `auth.api.listMembers`: it throws in an org over 100 people (see
+		// `membersService.roster`).
+		const { membersService } = await import("@farmer/core/services");
+		return membersService.roster(context.ctx);
 	});
 
 export const listInvitations = createServerFn({ method: "GET" })

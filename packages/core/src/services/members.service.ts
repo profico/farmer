@@ -76,6 +76,16 @@ export type PersonRow = ResolvedMemberType & {
 	emailUnconfirmed: boolean;
 };
 
+/** A membership row as the People screen draws it: the shape better-auth's
+ *  `listMembers` answered with, so the screen did not change with the source. */
+export type RosterMember = {
+	id: string;
+	userId: string;
+	role: string;
+	createdAt: Date;
+	user: { id: string; name: string; email: string; image: string | null };
+};
+
 const DEFAULT_TYPE: ResolvedMemberType = {
 	type: "billable",
 	expectedSecondsOverride: null,
@@ -122,6 +132,38 @@ export const membersService = {
 			.innerJoin(user, eq(member.userId, user.id))
 			.where(eq(member.organizationId, ctx.organizationId))
 			.orderBy(asc(user.name));
+	},
+
+	/** Every membership row, oldest first.
+	 *
+	 *  Not better-auth's `listMembers`: that reads the members with a limit and
+	 *  then their users with none, so the adapter's default of 100 cuts the
+	 *  users and it throws "User not found for member" in any org over 100
+	 *  people. A Harvest import makes such an org in one go. */
+	roster: async (ctx: Ctx): Promise<{ members: RosterMember[] }> => {
+		const rows = await db
+			.select({
+				id: member.id,
+				userId: member.userId,
+				role: member.role,
+				createdAt: member.createdAt,
+				name: user.name,
+				email: user.email,
+				image: user.image,
+			})
+			.from(member)
+			.innerJoin(user, eq(member.userId, user.id))
+			.where(eq(member.organizationId, ctx.organizationId))
+			.orderBy(asc(member.createdAt), asc(member.id));
+		return {
+			members: rows.map((r) => ({
+				id: r.id,
+				userId: r.userId,
+				role: r.role,
+				createdAt: r.createdAt,
+				user: { id: r.userId, name: r.name, email: r.email, image: r.image },
+			})),
+		};
 	},
 
 	/** Every person in the org with their CURRENT type. For historical reporting

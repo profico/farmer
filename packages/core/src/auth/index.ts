@@ -248,12 +248,11 @@ export const auth = betterAuth({
 			// the endpoint is reached.
 			allowUserToCreateOrganization: !isSingleOrgMode(),
 			disableOrganizationDeletion: isSingleOrgMode(),
-			// better-auth's default is 100, and it is two limits in one: accepting
-			// an invitation or adding a member is refused at 100 members, and
-			// `listMembers` returns only the first 100, in no fixed order. A
-			// Harvest import brings every former employee in as an archived
-			// member, so a real org passes 100 at once — and then a person whose
-			// row was just updated drops off the People page.
+			// better-auth's default is 100: accepting an invitation or adding a
+			// member is refused at 100 members. A Harvest import brings every
+			// former employee in as an archived member, so a real org passes 100
+			// at once. (Its `listMembers` breaks there too, whatever this says —
+			// see `membersService.roster`.)
 			membershipLimit: 10_000,
 			// Becoming a member of an organization is the moment to match somebody to
 			// Slack, and it was previously nobody's job: the only path was an admin
