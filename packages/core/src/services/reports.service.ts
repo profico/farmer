@@ -1,15 +1,4 @@
-import {
-	and,
-	asc,
-	desc,
-	eq,
-	gte,
-	inArray,
-	isNotNull,
-	lte,
-	or,
-	sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
@@ -32,6 +21,7 @@ import {
 } from "./close.service";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
+import { ledgerWhere } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
 import type { Ctx } from "./types";
 import { unfiledTotals } from "./unfiled";
@@ -64,6 +54,9 @@ const reportScope = async (
 // not dropped silently any more, though: `timeSummary` returns `unfiledSeconds`
 // alongside the rows so the screen can say how much time is missing from the
 // total instead of the number just being quietly short.
+//
+// The `project` scope is exactly that `isNotNull`. A client filter reads
+// `project.clientId`, which every caller below already has joined.
 const projectTimeWhere = (
 	ctx: Ctx,
 	input: {
@@ -76,17 +69,13 @@ const projectTimeWhere = (
 	},
 	scope: string[] | null,
 ) =>
-	and(
-		eq(timeEntry.organizationId, ctx.organizationId),
-		isNotNull(timeEntry.projectId),
-		gte(timeEntry.date, input.from),
-		lte(timeEntry.date, input.to),
-		scope ? inArray(timeEntry.projectId, scope) : undefined,
-		input.projectId ? eq(timeEntry.projectId, input.projectId) : undefined,
-		input.clientId ? eq(project.clientId, input.clientId) : undefined,
-		input.taskId ? eq(timeEntry.taskId, input.taskId) : undefined,
-		input.userId ? eq(timeEntry.userId, input.userId) : undefined,
-	);
+	ledgerWhere(ctx, { from: input.from, to: input.to }, "project", {
+		visibleProjectIds: scope,
+		projectId: input.projectId,
+		clientId: input.clientId,
+		taskId: input.taskId,
+		userId: input.userId,
+	});
 
 export type TimeReportRow = {
 	id: string;
@@ -330,14 +319,10 @@ export const reportsService = {
 		const yearEnd = `${input.year}-12-31`;
 
 		const scopeWhere = (rangeFrom: string, rangeTo: string) =>
-			and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.overtime, true),
-				isNotNull(timeEntry.projectId),
-				gte(timeEntry.date, rangeFrom),
-				lte(timeEntry.date, rangeTo),
-				projectIds ? inArray(timeEntry.projectId, projectIds) : undefined,
-			);
+			ledgerWhere(ctx, { from: rangeFrom, to: rangeTo }, "project", {
+				overtimeOnly: true,
+				visibleProjectIds: projectIds,
+			});
 
 		const [monthRows, yearRows] = await Promise.all([
 			db
@@ -381,29 +366,30 @@ export const reportsService = {
 		const { projectIds } = await reportScope(ctx);
 		const { from, to } = monthBounds(input.year, input.month);
 
-		return db
-			.select({
-				id: timeEntry.id,
-				date: timeEntry.date,
-				projectName: project.name,
-				taskName: task.name,
-				description: timeEntry.description,
-				durationSeconds: timeEntry.durationSeconds,
-			})
-			.from(timeEntry)
-			.innerJoin(project, eq(timeEntry.projectId, project.id))
-			.innerJoin(task, eq(timeEntry.taskId, task.id))
-			.where(
-				and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					eq(timeEntry.userId, input.userId),
-					eq(timeEntry.overtime, true),
-					gte(timeEntry.date, from),
-					lte(timeEntry.date, to),
-					projectIds ? inArray(timeEntry.projectId, projectIds) : undefined,
-				),
-			)
-			.orderBy(asc(timeEntry.date));
+		return (
+			db
+				.select({
+					id: timeEntry.id,
+					date: timeEntry.date,
+					projectName: project.name,
+					taskName: task.name,
+					description: timeEntry.description,
+					durationSeconds: timeEntry.durationSeconds,
+				})
+				.from(timeEntry)
+				.innerJoin(project, eq(timeEntry.projectId, project.id))
+				.innerJoin(task, eq(timeEntry.taskId, task.id))
+				// `project` scope: the inner join on `project` above already dropped
+				// project-less rows, so stating it changes nothing but where it is said.
+				.where(
+					ledgerWhere(ctx, { from, to }, "project", {
+						userId: input.userId,
+						overtimeOnly: true,
+						visibleProjectIds: projectIds,
+					}),
+				)
+				.orderBy(asc(timeEntry.date))
+		);
 	},
 
 	/**
@@ -433,14 +419,7 @@ export const reportsService = {
 				.from(timeEntry)
 				.innerJoin(task, eq(timeEntry.taskId, task.id))
 				.innerJoin(user, eq(timeEntry.userId, user.id))
-				.where(
-					and(
-						eq(timeEntry.organizationId, ctx.organizationId),
-						eq(task.isAbsence, true),
-						gte(timeEntry.date, from),
-						lte(timeEntry.date, to),
-					),
-				)
+				.where(ledgerWhere(ctx, { from, to }, "absence"))
 				.groupBy(
 					timeEntry.userId,
 					user.name,
@@ -668,7 +647,6 @@ type UtilizationSpan = {
 const utilizationSpan = async (
 	ctx: Ctx,
 	months: { year: number; month: number }[],
-	onlyUserId?: string,
 ): Promise<UtilizationSpan> => {
 	// trailingMonths always returns a contiguous, oldest-first run, so the span
 	// is just its ends. Guarded anyway: `months` is never empty in practice, and
@@ -732,12 +710,7 @@ const utilizationSpan = async (
 			.select({ userId: member.userId, name: user.name })
 			.from(member)
 			.innerJoin(user, eq(member.userId, user.id))
-			.where(
-				and(
-					eq(member.organizationId, ctx.organizationId),
-					onlyUserId ? eq(member.userId, onlyUserId) : undefined,
-				),
-			),
+			.where(eq(member.organizationId, ctx.organizationId)),
 		membersService.archivedAtByUserId(ctx),
 		ctxTimezone(ctx),
 		hourFundService.getMany(ctx, months),
@@ -785,11 +758,7 @@ const utilizationSpan = async (
 /** One month's rows, read entirely out of an already-resolved span. Synchronous
  *  on purpose: every query it needs has been made, so a trend can map over its
  *  points without fanning out again. */
-const computeUtilization = (
-	input: MonthReportInput,
-	span: UtilizationSpan,
-	onlyUserId?: string,
-) => {
+const computeUtilization = (input: MonthReportInput, span: UtilizationSpan) => {
 	const key = spanMonthKey(input);
 	const types =
 		span.typesByMonth.get(key) ?? new Map<string, ResolvedMemberType>();
@@ -810,10 +779,8 @@ const computeUtilization = (
 			// hours is not an under-sold month — but only from the month they left:
 			// before it they were the team, and dropping them rewrote history (every
 			// imported former employee is archived). A month that started before the
-			// archive day still counts them. The single-person view keeps both — an
-			// overhead person asking about their own month should still get an answer.
+			// archive day still counts them.
 			.filter((m) => {
-				if (onlyUserId != null) return true;
 				if ((types.get(m.userId)?.type ?? "billable") === "overhead") {
 					return false;
 				}

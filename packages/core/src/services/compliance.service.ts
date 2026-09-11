@@ -15,7 +15,7 @@ import { dayDurationSeconds } from "../lib/working-day";
 import { absenceDaysByUser, expectedSecondsFor } from "./close.service";
 import { ctxTimezone, requireAdmin } from "./context";
 import { holidaysService } from "./holidays.service";
-import { hourFundService } from "./hour-fund.service";
+import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerByUser } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
 import {
@@ -46,7 +46,8 @@ export type BehindPaceRow = {
 	email: string;
 	memberType: ResolvedMemberType["type"];
 	loggedSeconds: number;
-	/** Expected-so-far: the month's Expected scaled by working days elapsed. */
+	/** Expected-so-far: the month's fund scaled by working days elapsed, less
+	 *  the absence already taken this month. Never below zero. */
 	proratedExpectedSeconds: number;
 	pacePct: number;
 	shortfallSeconds: number;
@@ -317,15 +318,25 @@ const views = {
 
 		const rows: BehindPaceRow[] = [];
 		for (const person of cohort) {
-			const expected = expectedSecondsFor(
-				person.memberType,
-				fundSeconds,
-				absence.get(person.userId) ?? 0,
-			);
+			// The month's whole target, before any absence: zero absence days.
+			const monthTarget = expectedSecondsFor(person.memberType, fundSeconds, 0);
 			// No fund (or a contractor with no override) => no pace to be behind.
-			if (expected == null || expected <= 0) continue;
+			if (monthTarget == null || monthTarget <= 0) continue;
 
-			const proratedExpectedSeconds = Math.round(expected * elapsedFraction);
+			// Prorate the TARGET, then take the absence off whole. `absence` is
+			// already month-to-date (from the 1st to today), so it is not a share
+			// of the month to scale — scaling it too was subtracting only half of
+			// a vacation taken in the first half of the month. Five days off by
+			// mid-month against a 160h fund left a 60h expectation for ten
+			// working days instead of 40h, and flagged someone who had logged
+			// every hour of the days they were in.
+			const elapsedAbsenceSeconds = Math.round(
+				(absence.get(person.userId) ?? 0) * WORKING_DAY_SECONDS,
+			);
+			const proratedExpectedSeconds = Math.max(
+				0,
+				Math.round(monthTarget * elapsedFraction) - elapsedAbsenceSeconds,
+			);
 			if (proratedExpectedSeconds <= 0) continue;
 
 			const loggedSeconds = loggedByUser.get(person.userId) ?? 0;

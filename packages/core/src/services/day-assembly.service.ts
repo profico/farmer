@@ -29,7 +29,11 @@ import { githubService } from "./github.service";
 import { holidaysService } from "./holidays.service";
 import { calendarSource, commitSource } from "./ports";
 import { tasksService } from "./tasks.service";
-import { timeEntriesService } from "./time-entries.service";
+import {
+	assertDayHasRoom,
+	DayCapacityError,
+	timeEntriesService,
+} from "./time-entries.service";
 import type { Ctx } from "./types";
 import { workingHoursService } from "./working-hours.service";
 
@@ -471,6 +475,39 @@ export const dayAssemblyService = {
 	 *  calendar-linked rows) holds exactly as if entered by hand.
 	 *  Best-effort per entry: one failure doesn't abort the rest. */
 	apply: async (ctx: Ctx, input: ApplyDayAssemblyInput) => {
+		// The 24-hour ceiling for the whole proposal, before any of it is written.
+		// `create` checks each entry as well, but this loop is best-effort per
+		// entry, so on its own a proposal that did not fit wrote its first few
+		// entries and refused the rest — half of what the person accepted, which
+		// is a day nobody asked for. Reported like any other failure here rather
+		// than thrown, so the caller's shape stays the same.
+		//
+		// A fill block is exempt, as it is in `create`: it is sized from what is
+		// left, whatever duration the client sent. An entry that attaches a
+		// calendar event takes the place of that event's synced row (see
+		// `create`), so that row does not count against it.
+		const worked = input.entries.filter((entry) => !entry.fillsDay);
+		const replacedEvents = new Set(
+			worked.flatMap((entry) =>
+				entry.calendarEventId ? [entry.calendarEventId] : [],
+			),
+		);
+		try {
+			await assertDayHasRoom(
+				ctx,
+				input.date,
+				worked.reduce((sum, entry) => sum + (entry.durationSeconds ?? 0), 0),
+				{
+					replacing: (row) =>
+						row.calendarEventId != null &&
+						replacedEvents.has(row.calendarEventId),
+				},
+			);
+		} catch (error) {
+			if (!(error instanceof DayCapacityError)) throw error;
+			return { created: 0, errors: [error.message] };
+		}
+
 		// Fill blocks last — their derived duration must see the siblings first.
 		const ordered = [...input.entries].sort(
 			(a, b) => Number(a.fillsDay ?? false) - Number(b.fillsDay ?? false),

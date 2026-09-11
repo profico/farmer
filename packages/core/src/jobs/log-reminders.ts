@@ -6,7 +6,7 @@ import { notificationSettings } from "../db/schema/notifications";
 import { withTimeout } from "../lib/http";
 import { dayKeyInTz, timeKeyInTz } from "../lib/time";
 import { notificationsService } from "../services/notifications.service";
-import { notify, wasDelivered } from "../services/notify";
+import { deliveryBlocks, notify, wasDelivered } from "../services/notify";
 import {
 	dashboardLoader,
 	type ReminderRecipient,
@@ -37,8 +37,10 @@ export type LogReminderSummary = {
 //   - the send time hasn't come yet in the org timezone,
 //   - today is an org holiday,
 //   - they've already logged the configured share of their expected hours,
-//   - `notify` holds them back: they left, are archived, have never signed in
-//     (unless the org includes them), or turned log reminders off.
+//   - `notify` would hold them back: they left, are archived, have never
+//     signed in (unless the org includes them), or turned log reminders off.
+//     The job asks `deliveryBlocks` for the whole org first and drops them,
+//     so they cost nothing per person.
 //
 // Who is reminded is `services/reminder-recipients.ts`, the same function the
 // settings page previews with — one query for each fact for a whole org, where
@@ -54,6 +56,10 @@ const SWEEP_CONCURRENCY = Number(process.env.LOG_REMINDERS_CONCURRENCY ?? 4);
 const PER_USER_TIMEOUT_MS = Number(
 	process.env.LOG_REMINDERS_USER_TIMEOUT_MS ?? 30_000,
 );
+
+/** People per delivery-gate read. Each read is one `in` list, and PGLite (the
+ *  tests) fails a statement with a few thousand parameters. */
+const GATE_BATCH = 500;
 
 type OrgRun = {
 	organizationId: string;
@@ -154,7 +160,24 @@ export const runLogRemindersOnce = async (
 					),
 				);
 			const remindedIds = new Set(reminded.map((r) => r.userId));
-			const pending = run.userIds.filter((id) => !remindedIds.has(id));
+			const unreminded = run.userIds.filter((id) => !remindedIds.has(id));
+
+			// Drop everyone `notify` would hold back — archived, never signed in,
+			// opted out — with one batched read for the org, as the Slack job
+			// does. Left to `notify`, each of them cost its five gate queries on
+			// every tick of the day, for a send that could never happen: after a
+			// history import that is dozens of archived people. The preview drops
+			// the same people with the same function, so the two still agree.
+			const blocked = new Set<string>();
+			for (let i = 0; i < unreminded.length; i += GATE_BATCH) {
+				const blocks = await deliveryBlocks(
+					run.organizationId,
+					unreminded.slice(i, i + GATE_BATCH),
+					"log-reminder",
+				);
+				for (const userId of blocks.keys()) blocked.add(userId);
+			}
+			const pending = unreminded.filter((id) => !blocked.has(id));
 			if (pending.length === 0) {
 				skipped += run.userIds.length;
 				continue;

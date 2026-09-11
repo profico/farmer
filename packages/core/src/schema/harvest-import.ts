@@ -14,13 +14,34 @@ const monthKey = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use yyyy-MM");
 const sourceKey = z.string().min(1).max(500);
 const email = z.email().max(320);
 
-export const harvestSnapshotInput = z.object({
-	from: dateKey,
-	to: dateKey,
-	// The addresses the plan wants to use: the people list and the guesses.
-	// The answer says which of them already belong to a user outside this org.
-	emails: z.array(email).max(2000),
-});
+/** The widest range a snapshot may read. Far above the 62-day entry cap and
+ *  the 366-day report cap on purpose: the snapshot is the whole history an
+ *  export spans (the real one runs 2014-12 to 2026-09, twelve years), read once
+ *  per import by an admin. It still has a ceiling, so a hand-made request
+ *  cannot ask for every entry since year 1. */
+export const HARVEST_SNAPSHOT_MAX_YEARS = 20;
+
+export const harvestSnapshotInput = z
+	.object({
+		from: dateKey,
+		to: dateKey,
+		// The addresses the plan wants to use: the people list and the guesses.
+		// The answer says which of them already belong to a user outside this org.
+		emails: z.array(email).max(2000),
+	})
+	.refine((v) => v.from <= v.to, {
+		message: "The range ends before it starts",
+		path: ["to"],
+	})
+	.refine(
+		(v) =>
+			(Date.parse(v.to) - Date.parse(v.from)) / 86_400_000 <=
+			HARVEST_SNAPSHOT_MAX_YEARS * 366,
+		{
+			message: `Range too large (max ${HARVEST_SNAPSHOT_MAX_YEARS} years)`,
+			path: ["to"],
+		},
+	);
 export type HarvestSnapshotInput = z.infer<typeof harvestSnapshotInput>;
 
 export const harvestEmailsInput = z.object({
@@ -76,10 +97,14 @@ const personPlan = z.discriminatedUnion("action", [
 		sourceKey,
 		name: z.string().trim().min(1).max(200),
 		email,
-		// True for an address from the people list, false for a guess. A
-		// guessed address stays unverified, so better-auth refuses to link a
-		// Google sign-in to it (plan section 3.3).
+		// True for an address from the people list. Only such an address may
+		// attach a user that exists already (see `start`).
 		emailListed: z.boolean(),
+		// True when somebody vouches for the address: the people list, or an
+		// admin who typed it on the review screen. Only a guess stays false,
+		// and an unverified address is one better-auth refuses to link a
+		// Google sign-in to (plan section 3.3).
+		emailConfirmed: z.boolean(),
 		role: z.enum(["admin", "member"]),
 		type: memberTypeEnum,
 		startDate: dateKey,
@@ -97,6 +122,11 @@ const personPlan = z.discriminatedUnion("action", [
 ]);
 
 export const harvestStartInput = z.object({
+	// Made by the browser, once per import attempt, and used as the run's id.
+	// It is what makes `start` safe to repeat: when the first call committed
+	// but its answer was lost, "Retry" sends the same id and gets that run
+	// back, instead of a second run that the first one's mappings refuse.
+	runId: z.uuid(),
 	source: z.literal("harvest"),
 	cutoffDate: dateKey,
 	clients: z.array(clientPlan).max(5000),
@@ -175,8 +205,11 @@ export const harvestFinishInput = z.object({
 	runId: z.uuid(),
 	// The last month that gets a finalized history close. Null skips them.
 	historyThrough: monthKey.nullable(),
-	// Harvest's billable hours, rounded, for each project, person and month.
-	// They become the closes' Final (plan section 6). A missing one is zero.
+	// Harvest's billable hours, rounded, for each project, person and month
+	// the file has rows for — zero when every one of them is non-billable.
+	// They become the closes' Final (plan section 6). So an entry here also
+	// says "this file covers that project-month", and a missing one says
+	// nothing: `finish` never turns an absent figure into Final = 0.
 	billable: z
 		.array(
 			z.object({

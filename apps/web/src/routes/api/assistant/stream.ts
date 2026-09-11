@@ -5,6 +5,7 @@ import type { AssistantEvent } from "@farmer/core/services";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { resolveApiOrgContext } from "#/server/api-auth.ts";
+import { admitAssistantTurn } from "#/server/assistant-rate-limit.ts";
 
 // One turn of the assistant, streamed.
 //
@@ -52,7 +53,25 @@ export const Route = createFileRoute("/api/assistant/stream")({
 					);
 				}
 
-				const { assistantService } = await import("@farmer/core/services");
+				// After auth, because the limit is per person: a turn is a paid
+				// completion against the org's key, and a runaway script or a stuck
+				// retry loop in a tab would otherwise spend it as fast as the model
+				// answers. The client shows `error` as it is.
+				const admitted = admitAssistantTurn(ctx.userId);
+				if (!admitted.ok) {
+					return Response.json(
+						{
+							error: `Too many messages in a minute. Try again in ${admitted.retryAfterSeconds} seconds.`,
+						},
+						{
+							status: 429,
+							headers: { "Retry-After": String(admitted.retryAfterSeconds) },
+						},
+					);
+				}
+
+				const { assistantService, userFacingAssistantError } =
+					await import("@farmer/core/services");
 
 				const stream = new ReadableStream({
 					async start(controller) {
@@ -77,16 +96,19 @@ export const Route = createFileRoute("/api/assistant/stream")({
 						try {
 							await assistantService.run(ctx, parsed.data, send, abort.signal);
 						} catch (error) {
-							// Every error the loop can name (not configured, conversation
-							// not found, a service refusing a tool) arrives here as a
-							// message the user can act on. The stream has already returned
-							// 200 by this point, so this is the only channel left.
+							// The stream has already returned 200 by this point, so an
+							// event is the only channel left. Errors the loop throws on
+							// purpose (not configured, conversation not found, a refusal)
+							// are worded for the person and go through as they are; any
+							// other message can carry SQL or a hostname, so it is logged
+							// here and the person gets a generic line.
+							const message =
+								error instanceof Error ? userFacingAssistantError(error) : null;
+							if (!message) console.error("[assistant] turn failed", error);
 							send({
 								type: "error",
 								message:
-									error instanceof Error
-										? error.message
-										: "The assistant failed",
+									message ?? "The assistant failed. Try again in a moment.",
 							});
 						} finally {
 							closed = true;

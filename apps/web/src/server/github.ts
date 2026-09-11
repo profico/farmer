@@ -41,7 +41,10 @@ export const getGithubInstallUrl = createServerFn({ method: "GET" })
 		if (!slug) throw new Error("GITHUB_APP_SLUG not configured");
 		const { signOrgState } = await import("@farmer/core/lib/oauth-state");
 		const url = new URL(`https://github.com/apps/${slug}/installations/new`);
-		url.searchParams.set("state", signOrgState(context.ctx.organizationId));
+		url.searchParams.set(
+			"state",
+			signOrgState(context.ctx.organizationId, context.ctx.userId),
+		);
 		return { url: url.toString() };
 	});
 
@@ -53,10 +56,14 @@ export const disconnectGithubInstallation = createServerFn({ method: "POST" })
 		return githubService.disconnectInstallation(context.ctx, installationRowId);
 	});
 
+// Admin-only, like linking: the list is every repo every connected installation
+// can reach, private ones included, and the only UI that reads it (the
+// project panel's GitHub tab) is shown to admins alone. The service asserts it
+// too, so the assistant and MCP paths cannot reach it either.
 export const listAvailableGithubRepos = createServerFn({
 	method: "GET",
 })
-	.middleware([orgMiddleware])
+	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { githubService } = await import("@farmer/core/services");
 		return githubService.listAvailableRepos(context.ctx);

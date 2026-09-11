@@ -216,14 +216,22 @@ function AssistantPage() {
 	// it — and the next question then 400s, because the model's tool_call has no
 	// result.
 	const storedPending = (() => {
-		const row = messages.find((message) => message.pendingApproval);
+		const index = messages.findIndex((message) => message.pendingApproval);
+		const row = messages[index];
+		if (!row) return null;
+		// Only the tool rows of THIS turn answer its calls — up to the next
+		// assistant row. A provider may reuse call ids across turns, and an older
+		// turn's answer to the same id would hide a card that is really waiting.
+		// Mirrors `turnRows` in assistant.service.ts.
+		const after = messages.slice(index + 1);
+		const end = after.findIndex((message) => message.role === "assistant");
 		const answered = new Set(
-			messages
+			(end === -1 ? after : after.slice(0, end))
 				.filter((message) => message.role === "tool")
 				.map((message) => message.toolCallId),
 		);
-		const call = row?.toolCalls?.find((entry) => !answered.has(entry.id));
-		if (!row || !call) return null;
+		const call = row.toolCalls?.find((entry) => !answered.has(entry.id));
+		if (!call) return null;
 		return {
 			toolCallId: call.id,
 			name: call.name,
@@ -398,7 +406,7 @@ function AssistantPage() {
 											<Answer
 												text={message.content}
 												onFollowUp={
-													stream.isStreaming
+													stream.isStreaming || pending
 														? undefined
 														: (prompt) => void send(prompt)
 												}
@@ -461,11 +469,20 @@ function AssistantPage() {
 					    ending underneath it. */}
 					<div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-4">
 						<div className="pointer-events-auto mx-auto w-full max-w-[46rem]">
+							{/* Locked while a card waits. The server reads a message typed
+							    past a card as "no" to it (see `abandonPendingCalls`), which
+							    keeps the thread well-formed — but that is a fallback for a
+							    stale tab, not a way anybody should answer. The card is. */}
 							<PromptBar
 								onSend={(text) => void send(text)}
 								onStop={stream.stop}
 								busy={stream.isStreaming}
-								disabled={startChat.isPending}
+								disabled={startChat.isPending || Boolean(pending)}
+								placeholder={
+									pending
+										? "Approve or decline the card above to continue"
+										: undefined
+								}
 								autoFocus
 							/>
 						</div>

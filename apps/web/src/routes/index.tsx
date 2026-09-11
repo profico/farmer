@@ -71,7 +71,7 @@ function DashButton({
 	signedIn: boolean;
 	className?: string;
 }) {
-	const label = orgSlug || signedIn ? "Open dashboard" : "Log in";
+	const label = orgSlug ? "Open dashboard" : signedIn ? "Continue" : "Log in";
 	const content = (
 		<>
 			{label}
@@ -100,18 +100,23 @@ type PreviewNavItem = {
 	active?: boolean;
 };
 
+// Mirrors the real sidebar's three groups (lib/nav-items.ts): Work, You and
+// Manage. It used to show the old Workspace/Admin split, which no longer exists.
 const previewNavGroups: { label: string; items: PreviewNavItem[] }[] = [
 	{
-		label: "Workspace",
+		label: "Work",
 		items: [
 			{ Icon: SquaresFourIcon, label: "Home", active: true },
-			{ Icon: FolderIcon, label: "Projects" },
 			{ Icon: ClockIcon, label: "Time" },
-			{ Icon: CalendarDotsIcon, label: "My schedule" },
+			{ Icon: FolderIcon, label: "Projects" },
 		],
 	},
 	{
-		label: "Admin",
+		label: "You",
+		items: [{ Icon: CalendarDotsIcon, label: "My schedule" }],
+	},
+	{
+		label: "Manage",
 		items: [
 			{ Icon: ChartLineIcon, label: "Reports" },
 			{ Icon: UsersIcon, label: "People" },
@@ -289,6 +294,7 @@ function Home() {
 				    faint uppercase eyebrow, and every figure in the mono face. The app
 				    names things in the serif and measures them in mono; so does this. */}
 				<section
+					id="features"
 					className="fm-appwindow-section"
 					style={{
 						maxWidth: "1140px",
@@ -488,10 +494,10 @@ function Home() {
 											flex: "none",
 										}}
 									>
-										OZ
+										AH
 									</span>
 									<span style={{ flex: 1, fontSize: "11px", fontWeight: 500 }}>
-										Omar Zunic
+										Ana Horvat
 									</span>
 									<SignOutIcon
 										weight="regular"
@@ -554,7 +560,7 @@ function Home() {
 											lineHeight: 1.1,
 										}}
 									>
-										Good morning, Omar
+										Good morning, Ana
 									</div>
 								</div>
 								<div
@@ -979,13 +985,6 @@ function Home() {
 								style={{ color: "var(--mut)" }}
 							>
 								Features
-							</a>
-							<a
-								className="u-link"
-								href="#integrations"
-								style={{ color: "var(--mut)" }}
-							>
-								Integrations
 							</a>
 							<a
 								className="u-link"

@@ -48,13 +48,15 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import type { ChatMessage, ChatTurn } from "../lib/openrouter-client";
-import { at, createTestDb, type TestDb } from "../test/harness";
-import { type Access, accessService } from "./access.service";
+import { at, createTestDb, present, type TestDb } from "../test/harness";
+import { type Access, AccessError, accessService } from "./access.service";
 import { findTool, toolDefinitions, toolsFor } from "./assistant-tools";
 import {
 	type AssistantEvent,
+	AssistantNotConfiguredError,
 	assistantService,
 	setChatModelForTests,
+	userFacingAssistantError,
 } from "./assistant.service";
 import { clientsService } from "./clients.service";
 import { projectsService } from "./projects.service";
@@ -1278,5 +1280,462 @@ describe("the loop's ceiling", () => {
 		expect(error).toBeDefined();
 		// Eight steps, not twelve.
 		expect(script).toHaveLength(4);
+	});
+});
+
+// ── regressions in the approval loop ────────────────────────────────────────
+
+const seedOwn = async (description: string, date = "2026-03-03") => {
+	const [row] = await db
+		.insert(timeEntry)
+		.values({
+			organizationId: ORG,
+			userId: WORKER,
+			projectId,
+			taskId: devTaskId,
+			date,
+			durationSeconds: 2 * 3600,
+			description,
+		})
+		.returning();
+	return present(row, "seeded entry");
+};
+
+const del = (id: string, timeEntryId: string) => ({
+	id,
+	name: "delete_time_entry",
+	arguments: JSON.stringify({ timeEntryId }),
+});
+
+/** Every assistant turn carrying tool_calls is followed, immediately and in
+ *  order, by one tool result per call id — property 4, asserted on the whole
+ *  request rather than on one turn of it. */
+const expectPaired = (messages: ChatMessage[]) => {
+	messages.forEach((message, index) => {
+		if (message.role !== "assistant" || !message.tool_calls) return;
+		const ids = message.tool_calls.map((call) => call.id);
+		const following = messages
+			.slice(index + 1, index + 1 + ids.length)
+			.map((next) => (next.role === "tool" ? next.tool_call_id : null));
+		expect(following).toEqual(ids);
+	});
+};
+
+const toolRowsFor = async (conversationId: string, toolCallId: string) =>
+	(
+		await db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, conversationId),
+		})
+	).filter((row) => row.role === "tool" && row.toolCallId === toolCallId);
+
+describe("a message typed past an approval card", () => {
+	test("is read as declining it, and the thread stays paired", async () => {
+		// The old order was assistant(tool_calls) → user → tool, which 400s on
+		// every later turn of the thread, forever.
+		const entry = await seedOwn("code review");
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ toolCalls: [del("call-del", entry.id)] })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "delete my code review entry",
+		});
+
+		script = [turn({ content: "OK, leaving it." })];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "actually, never mind",
+		});
+		expect(events.some((e) => e.type === "approval_required")).toBe(false);
+
+		// Nothing was deleted, and nothing is still waiting.
+		expect(await db.select().from(timeEntry)).toHaveLength(1);
+		const rows = await db
+			.select()
+			.from(assistantMessage)
+			.where(eq(assistantMessage.conversationId, chat.id));
+		expect(rows.some((row) => row.pendingApproval)).toBe(false);
+		const [answer] = await toolRowsFor(chat.id, "call-del");
+		expect(answer?.content).toMatch(/new message/i);
+
+		// The call's result sits between the call and the new message.
+		const wire = seen.at(-1) ?? [];
+		expectPaired(wire);
+		const resultAt = wire.findIndex(
+			(m) => m.role === "tool" && m.tool_call_id === "call-del",
+		);
+		const messageAt = wire.findIndex(
+			(m) => m.role === "user" && m.content === "actually, never mind",
+		);
+		expect(resultAt).toBeGreaterThan(-1);
+		expect(resultAt).toBeLessThan(messageAt);
+	});
+
+	test("a thread already broken in the database is repaired on the way out", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		const base = Date.now() - 60_000;
+		const stamp = (second: number) => new Date(base + second * 1000);
+		const row = { organizationId: ORG, conversationId: chat.id };
+		await db.insert(assistantMessage).values([
+			{
+				...row,
+				role: "user",
+				content: "list my projects",
+				createdAt: stamp(0),
+			},
+			{
+				...row,
+				role: "assistant",
+				toolCalls: [{ id: "call-a", name: "list_projects", arguments: "{}" }],
+				createdAt: stamp(1),
+			},
+			// The shape the old code wrote: a message that landed before the result.
+			{ ...row, role: "user", content: "wait, also this", createdAt: stamp(2) },
+			{
+				...row,
+				role: "tool",
+				content: "[]",
+				toolCallId: "call-a",
+				toolName: "list_projects",
+				createdAt: stamp(3),
+			},
+			// And a call that never got a result at all.
+			{
+				...row,
+				role: "assistant",
+				toolCalls: [{ id: "call-b", name: "list_projects", arguments: "{}" }],
+				createdAt: stamp(4),
+			},
+			{
+				...row,
+				role: "assistant",
+				content: "Anything else?",
+				createdAt: stamp(5),
+			},
+		]);
+
+		script = [turn({ content: "Hello again." })];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "hello",
+		});
+		expect(events.at(-1)).toEqual({ type: "done" });
+
+		const wire = (seen.at(-1) ?? []).slice(1);
+		expectPaired(wire);
+		const missing = wire.find(
+			(m) => m.role === "tool" && m.tool_call_id === "call-b",
+		);
+		expect(missing?.content).toMatch(/no result was recorded/i);
+		// The stray message keeps its place in the conversation, after the result.
+		const resultAt = wire.findIndex(
+			(m) => m.role === "tool" && m.tool_call_id === "call-a",
+		);
+		const strayAt = wire.findIndex(
+			(m) => m.role === "user" && m.content === "wait, also this",
+		);
+		expect(strayAt).toBeGreaterThan(resultAt);
+	});
+});
+
+describe("a turn that asks for more than one thing", () => {
+	test("the second card describes the second call, not the first", async () => {
+		const first = await seedOwn("code review");
+		const second = await seedOwn("standup notes");
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [del("call-a", first.id), del("call-b", second.id)],
+			}),
+		];
+		const opening = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "delete both",
+		});
+		expect(
+			opening.find((e) => e.type === "approval_required")?.summary,
+		).toContain("code review");
+
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			resolve: { toolCallId: "call-a", decision: "approved" },
+		});
+		const card = events.find((e) => e.type === "approval_required");
+		expect(card?.toolCallId).toBe("call-b");
+		expect(card?.summary).toContain("standup notes");
+		expect(card?.summary).not.toContain("code review");
+
+		// And what a reload would show is the same wording.
+		const [pending] = await db
+			.select()
+			.from(assistantMessage)
+			.where(eq(assistantMessage.pendingApproval, true));
+		expect(pending?.approvalSummary).toContain("standup notes");
+		expect(pending?.approvalDecision).toBeNull();
+
+		const left = await db.select().from(timeEntry);
+		expect(left.map((entry) => entry.id)).toEqual([second.id]);
+	});
+
+	test("a batch behind a delete gets its own rows, and its ticks apply to it", async () => {
+		const doomed = await seedOwn("code review");
+		const unfiled = await db
+			.insert(timeEntry)
+			.values(
+				[1, 2, 3].map((day) => ({
+					organizationId: ORG,
+					userId: WORKER,
+					projectId: null,
+					taskId: devTaskId,
+					date: `2026-04-0${day}`,
+					durationSeconds: 3600,
+					description: `unfiled ${day}`,
+				})),
+			)
+			.returning();
+		const ids = unfiled.map((entry) => entry.id);
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					del("call-del", doomed.id),
+					{
+						id: "call-file",
+						name: "file_time_entries",
+						arguments: JSON.stringify({ timeEntryIds: ids, projectId }),
+					},
+				],
+			}),
+		];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "delete that and file the rest",
+		});
+
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			resolve: { toolCallId: "call-del", decision: "approved" },
+		});
+		const card = events.find((e) => e.type === "approval_required");
+		expect(card?.toolCallId).toBe("call-file");
+		expect(card?.preview?.rows.map((row) => row.id)).toEqual(ids);
+
+		script = [turn({ content: "Filed two." })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			resolve: {
+				toolCallId: "call-file",
+				decision: "approved",
+				selectedRowIds: [at(ids, 0), at(ids, 2)],
+			},
+		});
+		const byId = new Map(
+			(await db.select().from(timeEntry)).map((entry) => [entry.id, entry]),
+		);
+		expect(byId.get(at(ids, 0))?.projectId).toBe(projectId);
+		expect(byId.get(at(ids, 1))?.projectId).toBeNull();
+		expect(byId.get(at(ids, 2))?.projectId).toBe(projectId);
+	});
+
+	test("a read queued behind a delete runs once the delete is answered", async () => {
+		const entry = await seedOwn("code review");
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					del("call-del", entry.id),
+					{ id: "call-read", name: "list_projects", arguments: "{}" },
+				],
+			}),
+		];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "delete it and show my projects",
+		});
+
+		script = [turn({ content: "Deleted. Here are your projects." })];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			resolve: { toolCallId: "call-del", decision: "approved" },
+		});
+		expect(events.some((e) => e.type === "approval_required")).toBe(false);
+		expect(events).toContainEqual({
+			type: "tool_result",
+			toolCallId: "call-read",
+			name: "list_projects",
+			ok: true,
+		});
+		expect(events.at(-1)).toEqual({ type: "done" });
+		expect(script).toHaveLength(0);
+	});
+});
+
+describe("a batch larger than its card", () => {
+	test("rows past the preview cap are filed with the approval", async () => {
+		const entries = await db
+			.insert(timeEntry)
+			.values(
+				Array.from({ length: 40 }, (_, index) => ({
+					organizationId: ORG,
+					userId: WORKER,
+					projectId: null,
+					taskId: devTaskId,
+					date: new Date(Date.UTC(2026, 4, 1 + index))
+						.toISOString()
+						.slice(0, 10),
+					durationSeconds: 3600,
+					description: `unfiled ${index + 1}`,
+				})),
+			)
+			.returning();
+		const ids = entries.map((entry) => entry.id);
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{
+						id: "call-file",
+						name: "file_time_entries",
+						arguments: JSON.stringify({ timeEntryIds: ids, projectId }),
+					},
+				],
+			}),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "file all of it",
+		});
+		const card = events.find((e) => e.type === "approval_required");
+		const shown = (card?.preview?.rows ?? []).map((row) => row.id);
+		expect(shown).toHaveLength(25);
+		// The card says the hidden rows are part of the approval.
+		expect(card?.preview?.note).toMatch(/15 more/);
+		expect(card?.preview?.note).toMatch(/includes them/i);
+
+		// One shown row unticked; the fifteen nobody could see go through.
+		script = [turn({ content: "Filed 39." })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			resolve: {
+				toolCallId: "call-file",
+				decision: "approved",
+				selectedRowIds: shown.slice(1),
+			},
+		});
+		const rows = await db
+			.select()
+			.from(timeEntry)
+			.where(eq(timeEntry.userId, WORKER));
+		const filed = rows.filter((row) => row.projectId === projectId);
+		expect(filed).toHaveLength(39);
+		expect(rows.find((row) => row.id === at(ids, 0))?.projectId).toBeNull();
+	});
+});
+
+describe("two answers to one card at once", () => {
+	test("run the tool exactly once", async () => {
+		const entry = await seedOwn("code review");
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ toolCalls: [del("call-del", entry.id)] })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "delete it",
+		});
+
+		// Two turns queued, so a second execution would find one to continue with.
+		script = [
+			turn({ content: "Deleted." }),
+			turn({ content: "Deleted again." }),
+		];
+		const resolve = {
+			conversationId: chat.id,
+			resolve: { toolCallId: "call-del", decision: "approved" as const },
+		};
+		await Promise.all([
+			collect(ctxFor(WORKER), resolve),
+			collect(ctxFor(WORKER), resolve),
+		]);
+
+		const answers = await toolRowsFor(chat.id, "call-del");
+		expect(answers).toHaveLength(1);
+		// The one that ran deleted the entry; a second run would have written
+		// "nothing was deleted" as an error.
+		expect(answers[0]?.content).not.toMatch(/error/i);
+		expect(await db.select().from(timeEntry)).toHaveLength(0);
+		expect(script).toHaveLength(1);
+	});
+});
+
+describe("call ids reused across turns", () => {
+	test("an earlier turn's answer does not count for a later call", async () => {
+		// Some providers number calls per turn, so "call-0" arrives every time.
+		const entry = await seedOwn("code review");
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [{ id: "call-0", name: "list_projects", arguments: "{}" }],
+			}),
+			turn({ content: "You are on Product." }),
+		];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what am I on?",
+		});
+
+		script = [turn({ toolCalls: [del("call-0", entry.id)] })];
+		const asked = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "delete my code review entry",
+		});
+		expect(asked.some((e) => e.type === "approval_required")).toBe(true);
+
+		script = [turn({ content: "Deleted." })];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			resolve: { toolCallId: "call-0", decision: "approved" },
+		});
+		expect(events.some((e) => e.type === "tool_result" && e.ok)).toBe(true);
+		expect(await db.select().from(timeEntry)).toHaveLength(0);
+	});
+});
+
+describe("naming a thread after a turn that did not work", () => {
+	test("a turn that throws is not followed by a title call", async () => {
+		const chat = await assistantService.conversations.create(ctxFor(WORKER));
+		// An empty queue makes the model call throw.
+		script = [];
+		await expect(
+			collect(ctxFor(WORKER), { conversationId: chat.id, message: "hi" }),
+		).rejects.toThrow(/ran out of turns/);
+		expect(seen).toHaveLength(1);
+	});
+
+	test("an abandoned turn is not followed by a title call", async () => {
+		const chat = await assistantService.conversations.create(ctxFor(WORKER));
+		script = [turn({ content: "ok" }), turn({ content: "A title" })];
+		const controller = new AbortController();
+		controller.abort();
+		await assistantService.run(
+			ctxFor(WORKER),
+			{ conversationId: chat.id, message: "hi" },
+			() => {},
+			controller.signal,
+		);
+		expect(seen).toHaveLength(1);
+		expect(script).toHaveLength(1);
+	});
+});
+
+describe("what an error that ends a turn may say", () => {
+	test("deliberate errors are passed on, anything else is withheld", () => {
+		expect(userFacingAssistantError(new AssistantNotConfiguredError())).toMatch(
+			/not connected/i,
+		);
+		expect(
+			userFacingAssistantError(new AccessError("Admin access required")),
+		).toBe("Admin access required");
+		// A driver error is exactly what must not reach a chat window.
+		expect(
+			userFacingAssistantError(new Error("connect ECONNREFUSED 10.0.0.5:5432")),
+		).toBeNull();
 	});
 });

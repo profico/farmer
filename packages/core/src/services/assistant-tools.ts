@@ -129,8 +129,20 @@ export type ApprovalPreview = {
 };
 
 /** How many rows a preview will render. A batch of 200 is a scroll, not a
- *  review; past this the card says so and approval covers the whole batch. */
+ *  review; past this the card says so and approval covers the whole batch.
+ *
+ *  "Covers the whole batch" is what `withSelection` has to honour: the rows
+ *  past the cap were never on screen, so nobody could untick them, and they go
+ *  through with the approval. Reading the card's answer as "only the ticked
+ *  rows" instead silently dropped everything after row 25 of a 40-row batch. */
 const MAX_PREVIEW_ROWS = 25;
+
+/** The note under a capped preview. It has to say the hidden rows are part of
+ *  the approval, because that is the one thing about them the card cannot show. */
+const hiddenRowsNote = (hidden: number) =>
+	hidden > 0
+		? `+ ${hidden} more not shown. Approving includes them.`
+		: undefined;
 
 export type AssistantTool = {
 	name: string;
@@ -182,14 +194,21 @@ export type AssistantTool = {
 	 */
 	preview?: (ctx: Ctx, args: JsonRecord) => Promise<ApprovalPreview | null>;
 	/**
-	 * Rebuild the arguments from the rows the person actually ticked.
+	 * Rebuild the arguments without the rows the person unticked.
 	 *
 	 * Only called when the card came back with a selection, and only for tools
 	 * that offer it — a tool with a `preview` but no `withSelection` is all-or-
 	 * nothing, which is right for a batch whose rows aren't separable. The ids
 	 * are the `preview` row ids, so the two are written together or not at all.
+	 *
+	 * Expressed as what to DROP, not what to keep, because a preview is capped
+	 * at `MAX_PREVIEW_ROWS`: a row past the cap was never shown, so it can never
+	 * be ticked, and a keep-list would file only the rows that fit on the card.
 	 */
-	withSelection?: (args: JsonRecord, selectedRowIds: string[]) => JsonRecord;
+	withSelection?: (
+		args: JsonRecord,
+		unticked: ReadonlySet<string>,
+	) => JsonRecord;
 	/** Runs the tool. The result is stringified for the model and never
 	 *  inspected by the loop, so `Serializable | void` is the whole contract:
 	 *  domain rows with their Dates intact, or nothing at all. */
@@ -837,17 +856,14 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			return {
 				columns: ["Date", "Hours", "What"],
 				rows,
-				note:
-					ids.length > shown.length
-						? `+ ${ids.length - shown.length} more, not shown`
-						: undefined,
+				note: hiddenRowsNote(ids.length - shown.length),
 			};
 		},
-		withSelection: (args, selected) => ({
+		withSelection: (args, unticked) => ({
 			...args,
 			timeEntryIds: entryIdList
 				.parse(args.timeEntryIds)
-				.filter((id) => selected.includes(id)),
+				.filter((id) => !unticked.has(id)),
 		}),
 		run: async (ctx, args) =>
 			timeEntriesService.fileMany(ctx, fileTimeEntriesInput.parse(args)),
@@ -926,21 +942,15 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 						],
 					};
 				}),
-				note:
-					entries.length > shown.length
-						? `+ ${entries.length - shown.length} more, not shown`
-						: undefined,
+				note: hiddenRowsNote(entries.length - shown.length),
 			};
 		},
-		withSelection: (args, selected) => {
-			const picked = new Set(selected);
-			return {
-				...args,
-				entries: Array.isArray(args.entries)
-					? args.entries.filter((_entry, index) => picked.has(String(index)))
-					: [],
-			};
-		},
+		withSelection: (args, unticked) => ({
+			...args,
+			entries: Array.isArray(args.entries)
+				? args.entries.filter((_entry, index) => !unticked.has(String(index)))
+				: [],
+		}),
 		run: async (ctx, args) =>
 			dayAssemblyService.apply(ctx, applyDayAssemblyInput.parse(args)),
 	},

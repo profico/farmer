@@ -1,7 +1,7 @@
-import { and, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "../db";
-import { user } from "../db/schema/auth";
+import { member, user } from "../db/schema/auth";
 import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
 import { project, projectMember, task, timeEntry } from "../db/schema/domain";
 import { monthBounds } from "../lib/time";
@@ -11,10 +11,11 @@ import type {
 	SaveCloseRowInput,
 	SetCloseRowFinalInput,
 } from "../schema/close";
-import { ctxAccess, type DbClient } from "./context";
-import { assertProjectInOrg } from "./guards";
+import type { Access } from "./access.service";
+import { ctxAccess, ctxDb, type DbClient, withCtxTx } from "./context";
+import { assertProjectInOrg, assertUserInOrg } from "./guards";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
-import { ledgerByProject } from "./ledger";
+import { ledgerByProject, ledgerWhere } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
 import type { Ctx } from "./types";
 import { unfiledByUser } from "./unfiled";
@@ -109,21 +110,17 @@ const reportedByUser = async (
 	from: string,
 	to: string,
 ) => {
-	const rows = await db
+	const rows = await ctxDb(ctx)
 		.select({
 			userId: timeEntry.userId,
 			total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
 			overtime: sql<string>`coalesce(sum(case when ${timeEntry.overtime} then ${timeEntry.durationSeconds} else 0 end), 0)`,
 		})
 		.from(timeEntry)
-		.where(
-			and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.projectId, projectId),
-				gte(timeEntry.date, from),
-				lte(timeEntry.date, to),
-			),
-		)
+		// The `project` scope with a project filter: pinning one project already
+		// implies "has a project", so this is the same row set as before, stated
+		// through the ledger's one predicate instead of beside it.
+		.where(ledgerWhere(ctx, { from, to }, "project", { projectId }))
 		.groupBy(timeEntry.userId);
 
 	return new Map(
@@ -145,21 +142,14 @@ export const absenceDaysByUser = async (
 	from: string,
 	to: string,
 ): Promise<Map<string, number>> => {
-	const rows = await db
+	const rows = await ctxDb(ctx)
 		.select({
 			userId: timeEntry.userId,
 			total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
 		})
 		.from(timeEntry)
 		.innerJoin(task, eq(timeEntry.taskId, task.id))
-		.where(
-			and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(task.isAbsence, true),
-				gte(timeEntry.date, from),
-				lte(timeEntry.date, to),
-			),
-		)
+		.where(ledgerWhere(ctx, { from, to }, "absence"))
 		.groupBy(timeEntry.userId);
 
 	return new Map(
@@ -194,14 +184,7 @@ export const absenceDaysByUserPerMonth = async (
 		})
 		.from(timeEntry)
 		.innerJoin(task, eq(timeEntry.taskId, task.id))
-		.where(
-			and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(task.isAbsence, true),
-				gte(timeEntry.date, from),
-				lte(timeEntry.date, to),
-			),
-		)
+		.where(ledgerWhere(ctx, { from, to }, "absence"))
 		.groupBy(monthKey, timeEntry.userId);
 
 	const byMonth = new Map<string, Map<string, number>>();
@@ -245,7 +228,7 @@ const loadCloseRecord = async (
 	projectId: string,
 	year: number,
 	month: number,
-	client: DbClient = db,
+	client: DbClient = ctxDb(ctx),
 ) =>
 	client.query.monthlyClose.findFirst({
 		where: and(
@@ -260,8 +243,8 @@ const loadCloseRecord = async (
 /** Get-or-create the close record. Reads never call this — a read must not
  *  create state — so a month nobody has touched simply reports as Open.
  *
- *  Takes a client so `finalize` can run it inside the transaction that writes
- *  the rows and flips the status: creating the record on the pool and then
+ *  Runs on the Ctx's handle so `finalize` and `saveRow` can run it inside the
+ *  transaction that writes the rows: creating the record on the pool and then
  *  filling it in a separate transaction leaves an empty Open close behind if
  *  the transaction rolls back, which reads as "somebody started this month"
  *  when nobody did. */
@@ -270,7 +253,7 @@ const ensureClose = async (
 	projectId: string,
 	year: number,
 	month: number,
-	client: DbClient = db,
+	client: DbClient = ctxDb(ctx),
 ): Promise<string> => {
 	const [created] = await client
 		.insert(monthlyClose)
@@ -302,6 +285,186 @@ const assertNotFinalized = (status: CloseStatus) => {
 	}
 };
 
+/** Get-or-create the close, LOCK it, and refuse if it is finalized. Call with a
+ *  Ctx from `withCtxTx`: the lock lasts until that transaction ends.
+ *
+ *  A status read on the pool followed by a write was a window, not a check. A
+ *  PM's `saveRow` could read "open", the admin's `finalize` could freeze the
+ *  month, and the PM's Adjusted then landed on a finalized sheet after its
+ *  snapshot was taken; two finalizes could both read "open" and snapshot twice.
+ *  `FOR UPDATE` on the close row makes the second caller wait for the first to
+ *  commit and then read the status the first one wrote. */
+const lockOpenClose = async (
+	ctx: Ctx,
+	projectId: string,
+	year: number,
+	month: number,
+): Promise<string> => {
+	const closeId = await ensureClose(ctx, projectId, year, month);
+	const [locked] = await ctxDb(ctx)
+		.select({ status: monthlyClose.status })
+		.from(monthlyClose)
+		.where(eq(monthlyClose.id, closeId))
+		.for("update");
+	if (!locked) throw new Error("Failed to open the close sheet");
+	assertNotFinalized(locked.status);
+	return closeId;
+};
+
+/**
+ * The sheet itself, with no authorization of its own — callers check first.
+ *
+ * `extraUserIds` puts people on the sheet who are on none of its three sources
+ * yet. `setFinal` needs that for a person being added to a finalized month: it
+ * snapshots their figures from the very row this computes, so the snapshot and
+ * the sheet cannot disagree about what Reported or Expected was.
+ */
+const buildSheet = async (
+	ctx: Ctx,
+	access: Access,
+	input: CloseSheetInput,
+	extraUserIds: string[] = [],
+): Promise<CloseSheet> => {
+	const { from, to } = monthBounds(input.year, input.month);
+
+	// Every read below goes through `ctxDb(ctx)` — here and in each helper — so
+	// that `finalize` can build the sheet from inside its transaction.
+	const client = ctxDb(ctx);
+	const [proj, record, reported, absence, fundSeconds, types, unfiled] =
+		await Promise.all([
+			client.query.project.findFirst({
+				where: eq(project.id, input.projectId),
+				with: { client: true },
+			}),
+			loadCloseRecord(ctx, input.projectId, input.year, input.month),
+			reportedByUser(ctx, input.projectId, from, to),
+			absenceDaysByUser(ctx, from, to),
+			hourFundService.get(ctx, input.year, input.month),
+			membersService.typesForMonth(ctx, input.year, input.month),
+			unfiledByUser(ctx, { from, to }),
+		]);
+	if (!proj) throw new Error("Project not found");
+
+	const assignments = await client
+		.select({ userId: projectMember.userId })
+		.from(projectMember)
+		.where(
+			and(
+				eq(projectMember.organizationId, ctx.organizationId),
+				eq(projectMember.projectId, input.projectId),
+				eq(projectMember.active, true),
+			),
+		);
+
+	const candidates = [
+		...new Set([
+			...assignments.map((a) => a.userId),
+			...reported.keys(),
+			...(record?.rows ?? []).map((r) => r.userId),
+			...extraUserIds,
+		]),
+	];
+
+	// `user` is global, not per org, so a name and an email are only this
+	// org's to show for somebody who belongs here. An assignment or a stored
+	// row could name anybody — `assignMember`, `saveRow` and `setFinal` took
+	// any userId until they checked — and read straight off `user` that row
+	// put a stranger's name and address on the sheet. So those sources count
+	// only for members. Reported time is exempt: it is this org's own entries,
+	// and somebody who has since left still did the work being invoiced, so
+	// dropping them is the billing error "nobody falls off the sheet" forbids.
+	const people =
+		candidates.length > 0
+			? await client
+					.select({
+						id: user.id,
+						name: user.name,
+						email: user.email,
+						memberId: member.id,
+					})
+					.from(user)
+					.leftJoin(
+						member,
+						and(
+							eq(member.userId, user.id),
+							eq(member.organizationId, ctx.organizationId),
+						),
+					)
+					.where(inArray(user.id, candidates))
+			: [];
+	const visible = people.filter(
+		(p) => p.memberId != null || reported.has(p.id),
+	);
+	const userIds = visible.map((p) => p.id);
+	const peopleById = new Map(visible.map((p) => [p.id, p]));
+	const storedByUser = new Map((record?.rows ?? []).map((r) => [r.userId, r]));
+
+	const status: CloseStatus = record?.status ?? "open";
+	// Only Product Team projects carry Expected/absence columns; every other
+	// type gets the lean sheet, which keeps the PM's job small.
+	const showsExpected = proj.type === "product_team";
+
+	const rows: CloseSheetRow[] = userIds
+		.map((userId) => {
+			const person = peopleById.get(userId);
+			const stored = storedByUser.get(userId);
+			const totals = reported.get(userId) ?? { reported: 0, overtime: 0 };
+			const memberType = types.get(userId) ?? {
+				type: "billable" as const,
+				expectedSecondsOverride: null,
+			};
+
+			const absenceDaysComputed =
+				Math.round((absence.get(userId) ?? 0) * 100) / 100;
+			const absenceDays = stored?.absenceDaysOverride ?? absenceDaysComputed;
+
+			const adjusted = stored?.adjustedSeconds ?? null;
+			const final = stored?.finalSeconds ?? null;
+			const effAdjusted = adjusted ?? totals.reported;
+			const effFinal = final ?? effAdjusted;
+
+			return {
+				userId,
+				name: person?.name ?? "Unknown",
+				email: person?.email ?? "",
+				memberType: memberType.type,
+				reportedSeconds: totals.reported,
+				adjustedSeconds: adjusted,
+				finalSeconds: final,
+				// Contractor rows never show Expected/absence math regardless of
+				// project type, unless an explicit expected value is set on them.
+				expectedSeconds: showsExpected
+					? expectedSecondsFor(memberType, fundSeconds, absenceDays)
+					: null,
+				overtimeSeconds: totals.overtime,
+				unfiledSeconds: unfiled.get(userId)?.seconds ?? 0,
+				absenceDaysComputed,
+				absenceDaysOverride: stored?.absenceDaysOverride ?? null,
+				comment: stored?.comment ?? null,
+				adjustedVsReportedPct: pctChange(totals.reported, effAdjusted),
+				finalVsAdjustedPct: pctChange(effAdjusted, effFinal),
+			};
+		})
+		.sort((a, b) => a.name.localeCompare(b.name));
+
+	return {
+		projectId: proj.id,
+		projectName: proj.name,
+		projectType: proj.type,
+		clientName: proj.client.name,
+		year: input.year,
+		month: input.month,
+		status,
+		showsExpected,
+		fundSeconds,
+		submittedAt: record?.submittedAt ?? null,
+		finalizedAt: record?.finalizedAt ?? null,
+		canEditAdjusted: status !== "finalized",
+		canEditFinal: access.isAdmin,
+		rows,
+	};
+};
+
 export const closeService = {
 	/**
 	 * The close sheet for one project/month. Rows come from the project's active
@@ -313,119 +476,7 @@ export const closeService = {
 		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
-
-		const { from, to } = monthBounds(input.year, input.month);
-
-		const [proj, record, reported, absence, fundSeconds, types, unfiled] =
-			await Promise.all([
-				db.query.project.findFirst({
-					where: eq(project.id, input.projectId),
-					with: { client: true },
-				}),
-				loadCloseRecord(ctx, input.projectId, input.year, input.month),
-				reportedByUser(ctx, input.projectId, from, to),
-				absenceDaysByUser(ctx, from, to),
-				hourFundService.get(ctx, input.year, input.month),
-				membersService.typesForMonth(ctx, input.year, input.month),
-				unfiledByUser(ctx, { from, to }),
-			]);
-		if (!proj) throw new Error("Project not found");
-
-		const assignments = await db
-			.select({ userId: projectMember.userId })
-			.from(projectMember)
-			.where(
-				and(
-					eq(projectMember.organizationId, ctx.organizationId),
-					eq(projectMember.projectId, input.projectId),
-					eq(projectMember.active, true),
-				),
-			);
-
-		const userIds = [
-			...new Set([
-				...assignments.map((a) => a.userId),
-				...reported.keys(),
-				...(record?.rows ?? []).map((r) => r.userId),
-			]),
-		];
-
-		const people =
-			userIds.length > 0
-				? await db
-						.select({ id: user.id, name: user.name, email: user.email })
-						.from(user)
-						.where(inArray(user.id, userIds))
-				: [];
-		const peopleById = new Map(people.map((p) => [p.id, p]));
-		const storedByUser = new Map(
-			(record?.rows ?? []).map((r) => [r.userId, r]),
-		);
-
-		const status: CloseStatus = record?.status ?? "open";
-		// Only Product Team projects carry Expected/absence columns; every other
-		// type gets the lean sheet, which keeps the PM's job small.
-		const showsExpected = proj.type === "product_team";
-
-		const rows: CloseSheetRow[] = userIds
-			.map((userId) => {
-				const person = peopleById.get(userId);
-				const stored = storedByUser.get(userId);
-				const totals = reported.get(userId) ?? { reported: 0, overtime: 0 };
-				const memberType = types.get(userId) ?? {
-					type: "billable" as const,
-					expectedSecondsOverride: null,
-				};
-
-				const absenceDaysComputed =
-					Math.round((absence.get(userId) ?? 0) * 100) / 100;
-				const absenceDays = stored?.absenceDaysOverride ?? absenceDaysComputed;
-
-				const adjusted = stored?.adjustedSeconds ?? null;
-				const final = stored?.finalSeconds ?? null;
-				const effAdjusted = adjusted ?? totals.reported;
-				const effFinal = final ?? effAdjusted;
-
-				return {
-					userId,
-					name: person?.name ?? "Unknown",
-					email: person?.email ?? "",
-					memberType: memberType.type,
-					reportedSeconds: totals.reported,
-					adjustedSeconds: adjusted,
-					finalSeconds: final,
-					// Contractor rows never show Expected/absence math regardless of
-					// project type, unless an explicit expected value is set on them.
-					expectedSeconds: showsExpected
-						? expectedSecondsFor(memberType, fundSeconds, absenceDays)
-						: null,
-					overtimeSeconds: totals.overtime,
-					unfiledSeconds: unfiled.get(userId)?.seconds ?? 0,
-					absenceDaysComputed,
-					absenceDaysOverride: stored?.absenceDaysOverride ?? null,
-					comment: stored?.comment ?? null,
-					adjustedVsReportedPct: pctChange(totals.reported, effAdjusted),
-					finalVsAdjustedPct: pctChange(effAdjusted, effFinal),
-				};
-			})
-			.sort((a, b) => a.name.localeCompare(b.name));
-
-		return {
-			projectId: proj.id,
-			projectName: proj.name,
-			projectType: proj.type,
-			clientName: proj.client.name,
-			year: input.year,
-			month: input.month,
-			status,
-			showsExpected,
-			fundSeconds,
-			submittedAt: record?.submittedAt ?? null,
-			finalizedAt: record?.finalizedAt ?? null,
-			canEditAdjusted: status !== "finalized",
-			canEditFinal: access.isAdmin,
-			rows,
-		};
+		return buildSheet(ctx, access, input);
 	},
 
 	/** PM edits: Adjusted, the absence-day override, and the comment. */
@@ -433,21 +484,9 @@ export const closeService = {
 		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
-
-		const record = await loadCloseRecord(
-			ctx,
-			input.projectId,
-			input.year,
-			input.month,
-		);
-		if (record) assertNotFinalized(record.status);
-
-		const closeId = await ensureClose(
-			ctx,
-			input.projectId,
-			input.year,
-			input.month,
-		);
+		// The capability check above is about the PROJECT; nothing asked whether
+		// the person the row is about is in this org at all.
+		await assertUserInOrg(ctx, input.userId);
 
 		// `undefined` means "leave alone", `null` means "clear the override and
 		// fall back to the computed default". Drizzle's `.set()` skips `undefined`
@@ -463,20 +502,30 @@ export const closeService = {
 		}
 		if (input.comment !== undefined) conflictSet.comment = input.comment;
 
-		await db
-			.insert(monthlyCloseRow)
-			.values({
-				organizationId: ctx.organizationId,
-				closeId,
-				userId: input.userId,
-				adjustedSeconds: input.adjustedSeconds ?? null,
-				absenceDaysOverride: input.absenceDaysOverride ?? null,
-				comment: input.comment ?? null,
-			})
-			.onConflictDoUpdate({
-				target: [monthlyCloseRow.closeId, monthlyCloseRow.userId],
-				set: conflictSet,
-			});
+		// The status check and the write are one transaction on a locked close
+		// row, so a finalize in between cannot slip under the check.
+		await withCtxTx(ctx, async (txCtx) => {
+			const closeId = await lockOpenClose(
+				txCtx,
+				input.projectId,
+				input.year,
+				input.month,
+			);
+			await ctxDb(txCtx)
+				.insert(monthlyCloseRow)
+				.values({
+					organizationId: ctx.organizationId,
+					closeId,
+					userId: input.userId,
+					adjustedSeconds: input.adjustedSeconds ?? null,
+					absenceDaysOverride: input.absenceDaysOverride ?? null,
+					comment: input.comment ?? null,
+				})
+				.onConflictDoUpdate({
+					target: [monthlyCloseRow.closeId, monthlyCloseRow.userId],
+					set: conflictSet,
+				});
+		});
 	},
 
 	/** Admin-only: the Final column, the number that gets invoiced.
@@ -484,12 +533,44 @@ export const closeService = {
 	 *  Deliberately NOT guarded by `assertNotFinalized`, unlike `saveRow`. An
 	 *  admin correcting the invoiced figure after freezing is a supported act —
 	 *  the sheet keeps the Final input enabled on a finalized month, and only
-	 *  hides the Finalize button — and it disturbs nothing, because the three
-	 *  snapshots the variance report reads are written by `finalize` alone. */
+	 *  hides the Finalize button — and it leaves the snapshots of anybody already
+	 *  on the sheet alone, since those are what the variance report reads.
+	 *
+	 *  The one snapshot it does write is for a person the finalize pass never
+	 *  saw. Their new row used to carry a null Reported-at-finalize, which the
+	 *  variance report sums as zero, so the whole Final read as variance. Their
+	 *  figures are frozen as they stand now instead: the moment the admin put
+	 *  them on a frozen sheet is the moment their Final was decided against. */
 	setFinal: async (ctx: Ctx, input: SetCloseRowFinalInput) => {
 		const access = await ctxAccess(ctx);
 		access.assertAdmin();
 		await assertProjectInOrg(ctx, input.projectId);
+		await assertUserInOrg(ctx, input.userId);
+
+		const record = await loadCloseRecord(
+			ctx,
+			input.projectId,
+			input.year,
+			input.month,
+		);
+		const stored = record?.rows.find((r) => r.userId === input.userId);
+
+		// Keyed on the Reported snapshot being null, not on the row being absent:
+		// finalize writes a number there for every row it touches, so a null on a
+		// finalized close can only be a row added afterwards — including the ones
+		// this method wrote before it knew to snapshot them.
+		const snapshot: Partial<typeof monthlyCloseRow.$inferInsert> = {};
+		if (
+			record?.status === "finalized" &&
+			stored?.reportedAtFinalizeSeconds == null
+		) {
+			const sheet = await buildSheet(ctx, access, input, [input.userId]);
+			const row = sheet.rows.find((r) => r.userId === input.userId);
+			if (!row) throw new Error("Could not compute this person's close row");
+			snapshot.reportedAtFinalizeSeconds = row.reportedSeconds;
+			snapshot.expectedAtFinalizeSeconds = row.expectedSeconds;
+			snapshot.overtimeAtFinalizeSeconds = row.overtimeSeconds;
+		}
 
 		const closeId = await ensureClose(
 			ctx,
@@ -505,10 +586,18 @@ export const closeService = {
 				closeId,
 				userId: input.userId,
 				finalSeconds: input.finalSeconds,
+				// Typed by an admin, so it is theirs to keep across a re-open.
+				finalDerived: false,
+				...snapshot,
 			})
 			.onConflictDoUpdate({
 				target: [monthlyCloseRow.closeId, monthlyCloseRow.userId],
-				set: { finalSeconds: input.finalSeconds, updatedAt: new Date() },
+				set: {
+					finalSeconds: input.finalSeconds,
+					finalDerived: false,
+					updatedAt: new Date(),
+					...snapshot,
+				},
 			});
 	},
 
@@ -563,17 +652,35 @@ export const closeService = {
 		// submission freely.
 		if (record.status === "finalized") access.assertAdmin();
 
-		await db
-			.update(monthlyClose)
-			.set({
-				status: "open",
-				submittedAt: null,
-				submittedByUserId: null,
-				finalizedAt: null,
-				finalizedByUserId: null,
-				updatedAt: new Date(),
-			})
-			.where(eq(monthlyClose.id, record.id));
+		await db.transaction(async (tx) => {
+			await tx
+				.update(monthlyClose)
+				.set({
+					status: "open",
+					submittedAt: null,
+					submittedByUserId: null,
+					finalizedAt: null,
+					finalizedByUserId: null,
+					updatedAt: new Date(),
+				})
+				.where(eq(monthlyClose.id, record.id));
+
+			// Return every Final that finalize DERIVED to the fallback chain, so it
+			// follows Adjusted again. Left in place, the second finalize read it as
+			// if an admin had typed it and ignored every Adjusted correction made
+			// after the re-open — the correction the re-open was for. Finals an
+			// admin did type (`finalDerived = false`) stay: they are a decision,
+			// not a cached copy of one.
+			await tx
+				.update(monthlyCloseRow)
+				.set({ finalSeconds: null, finalDerived: false, updatedAt: new Date() })
+				.where(
+					and(
+						eq(monthlyCloseRow.closeId, record.id),
+						eq(monthlyCloseRow.finalDerived, true),
+					),
+				);
+		});
 		// The finalize snapshots are deliberately LEFT IN PLACE: re-opening must not
 		// erase what was reported at the moment the month was frozen, or the
 		// variance report loses the only record of it.
@@ -600,52 +707,59 @@ export const closeService = {
 		// against with today's numbers, and the variance collapses to nothing.
 		//
 		// Re-open then finalize is unaffected and remains the way to redo a close.
+		// What it redoes: the three snapshots are taken again from today's
+		// entries, and every Final an admin did not type is derived again from
+		// Adjusted as it stands at the second finalize (re-open cleared the
+		// derived ones). A Final an admin typed is kept as typed.
+		//
 		// The sheet already hides the Finalize button on a finalized month, so this
 		// closes the paths that are not the sheet — the assistant's `close_finalize`
 		// tool and anything else calling the service directly.
-		const existing = await loadCloseRecord(
-			ctx,
-			input.projectId,
-			input.year,
-			input.month,
-		);
-		if (existing) assertNotFinalized(existing.status);
-
-		const sheet = await closeService.getSheet(ctx, input);
-
-		// Refuse to freeze a month that still has unattributed time. Finalization is
-		// the irreversible step and it snapshots Reported — if someone files their
-		// meetings next week, that time lands on a project whose month is already
-		// closed against a number that predates it, and report 6.4's variance
-		// silently compares against the wrong baseline.
 		//
-		// Deliberately NOT enforced on `submit`: submitting is a PM action, unfiled
-		// entries belong to individuals, and only the person themselves can file
-		// their own time — blocking the PM would leave them stuck on something they
-		// have no way to fix. They get the per-row warning on the sheet to chase
-		// with, and the hard stop lands on the admin, who has org-wide reach.
-		const holdouts = sheet.rows.filter((r) => r.unfiledSeconds > 0);
-		if (holdouts.length > 0) {
-			const names = holdouts.map((r) => r.name).join(", ");
-			throw new Error(
-				`Cannot finalize: ${names} ${holdouts.length === 1 ? "has" : "have"} time this month not filed against any project. It must be filed or deleted first.`,
-			);
-		}
-
-		await db.transaction(async (tx) => {
-			// Inside the transaction, not before it: the record, its rows and the
-			// status flip are one write. Created on the pool and then filled
-			// separately, a rollback anywhere below left an empty Open close record
-			// behind — a month that reads as "somebody started this" when nobody did.
-			const closeId = await ensureClose(
-				ctx,
+		// Everything from the status check to the status flip is one transaction:
+		// the check (on a locked close row, see `lockOpenClose`), the sheet read,
+		// the unfiled gate, the rows and the flip. Read on the pool first, the
+		// snapshot and the gate described the month as it was before the lock,
+		// and a PM's save or an entry filed in between was frozen out of a
+		// snapshot that claimed to be the month at finalization. Creating the
+		// record inside it also means a refused finalize leaves no empty Open
+		// close behind — a month that reads as "somebody started this" when
+		// nobody did.
+		await withCtxTx(ctx, async (txCtx) => {
+			const closeId = await lockOpenClose(
+				txCtx,
 				input.projectId,
 				input.year,
 				input.month,
-				tx,
 			);
 
+			const sheet = await buildSheet(txCtx, access, input);
+
+			// Refuse to freeze a month that still has unattributed time. Finalization is
+			// the irreversible step and it snapshots Reported — if someone files their
+			// meetings next week, that time lands on a project whose month is already
+			// closed against a number that predates it, and report 6.4's variance
+			// silently compares against the wrong baseline.
+			//
+			// Deliberately NOT enforced on `submit`: submitting is a PM action, unfiled
+			// entries belong to individuals, and only the person themselves can file
+			// their own time — blocking the PM would leave them stuck on something they
+			// have no way to fix. They get the per-row warning on the sheet to chase
+			// with, and the hard stop lands on the admin, who has org-wide reach.
+			const holdouts = sheet.rows.filter((r) => r.unfiledSeconds > 0);
+			if (holdouts.length > 0) {
+				const names = holdouts.map((r) => r.name).join(", ");
+				throw new Error(
+					`Cannot finalize: ${names} ${holdouts.length === 1 ? "has" : "have"} time this month not filed against any project. It must be filed or deleted first.`,
+				);
+			}
+
+			const tx = ctxDb(txCtx);
 			for (const row of sheet.rows) {
+				// The sheet's `finalSeconds` is the stored value, null when no admin
+				// typed one. Null here means the materialized figure comes from the
+				// fallback chain, which is what `reopen` must know to undo it.
+				const finalDerived = row.finalSeconds == null;
 				await tx
 					.insert(monthlyCloseRow)
 					.values({
@@ -656,6 +770,7 @@ export const closeService = {
 						// Materialize the effective Final so the invoiced number is a
 						// stored fact, not something re-derived from a chain of fallbacks.
 						finalSeconds: effectiveFinal(row),
+						finalDerived,
 						absenceDaysOverride: row.absenceDaysOverride,
 						comment: row.comment,
 						reportedAtFinalizeSeconds: row.reportedSeconds,
@@ -666,6 +781,7 @@ export const closeService = {
 						target: [monthlyCloseRow.closeId, monthlyCloseRow.userId],
 						set: {
 							finalSeconds: effectiveFinal(row),
+							finalDerived,
 							reportedAtFinalizeSeconds: row.reportedSeconds,
 							expectedAtFinalizeSeconds: row.expectedSeconds,
 							overtimeAtFinalizeSeconds: row.overtimeSeconds,
@@ -731,6 +847,12 @@ export const closeService = {
 						eq(monthlyClose.year, year),
 						eq(monthlyClose.month, month),
 						inArray(monthlyClose.projectId, projectIds),
+						// Finalized closes only. Before finalize, a stored Final exists
+						// only on the rows an admin typed, so a sum over them is a
+						// fraction of the sheet that read as the project's invoiced
+						// total — to the assistant's `close_overview` above all, which
+						// reports it as "final hours". Null until the month is frozen.
+						eq(monthlyClose.status, "finalized"),
 						isNotNull(monthlyCloseRow.finalSeconds),
 					),
 				)

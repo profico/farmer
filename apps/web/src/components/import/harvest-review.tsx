@@ -510,10 +510,10 @@ export function HarvestReview({
 				{tab === "people" && (
 					<>
 						<p className="mb-4 max-w-[68ch] text-sm text-muted-foreground">
-							A new person with an address from the Harvest people list can sign
-							in with Google at once. A guessed address stays unconfirmed: that
-							person can sign in only after an admin restores them on the People
-							page.
+							A new person with an address from the Harvest people list, or an
+							address you type here, can sign in with Google at once. A guessed
+							address stays unconfirmed: that person can sign in only after an
+							admin confirms it on the People page.
 						</p>
 						<Table>
 							<TableHeader>

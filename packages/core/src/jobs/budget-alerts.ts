@@ -4,7 +4,7 @@ import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { client, project, projectMember, timeEntry } from "../db/schema/domain";
 import { projectBudgetAlert } from "../db/schema/notifications";
-import { formatDuration } from "../lib/time";
+import { formatDurationShort } from "../lib/time";
 import { notify } from "../services/notify";
 
 export type BudgetAlertSummary = {
@@ -111,10 +111,11 @@ export const runBudgetAlertsOnce = async (): Promise<BudgetAlertSummary> => {
 			announced >= 100
 				? `${row.name} (${row.clientName}) is over its hour budget`
 				: `${row.name} (${row.clientName}) has burned ${burnPct}% of its hour budget`;
+		const used = `${formatDurationShort(consumedSeconds)} of ${formatDurationShort(budgetSeconds)} used`;
 		const detail =
 			remaining >= 0
-				? `${formatDuration(consumedSeconds)} of ${formatDuration(budgetSeconds)} — ${formatDuration(remaining)} left.`
-				: `${formatDuration(consumedSeconds)} of ${formatDuration(budgetSeconds)} — ${formatDuration(-remaining)} over.`;
+				? `${used}, ${formatDurationShort(remaining)} left.`
+				: `${used}, ${formatDurationShort(-remaining)} over (${String(burnPct)}%).`;
 
 		for (const userId of audience) {
 			recipients++;
@@ -125,6 +126,7 @@ export const runBudgetAlertsOnce = async (): Promise<BudgetAlertSummary> => {
 					title: headline,
 					body: detail,
 					url: `/${row.orgSlug}/reports?tab=budget`,
+					linkLabel: "Open Budget burn",
 				},
 			);
 		}

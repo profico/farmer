@@ -9,26 +9,47 @@ import {
 	projectGithubRepo,
 	timeEntryGithubCommit,
 } from "../db/schema/github";
-import {
-	GithubRateLimitError,
-	getAuthenticatedUser,
-	getCommit,
-	getInstallationToken,
-	getRepoById,
-	listCommits,
-	listInstallationRepos,
-	listUserInstallations,
-} from "../lib/github-client";
+import * as githubClient from "../lib/github-client";
+import { GithubRateLimitError } from "../lib/github-client";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
-import type {
-	AttachCommitsInput,
-	ConnectInstallationInput,
-	LinkProjectRepoInput,
-	SuggestCommitsInput,
+import {
+	type AttachCommitsInput,
+	type ConnectInstallationInput,
+	commitSha,
+	type LinkProjectRepoInput,
+	type SuggestCommitsInput,
 } from "../schema/github";
 import { AccessError } from "./access.service";
-import { ctxTimezone } from "./context";
+import { ctxTimezone, requireAdmin } from "./context";
 import type { Ctx } from "./types";
+
+/** The GitHub HTTP calls this service makes. */
+export type GithubClient = Pick<
+	typeof githubClient,
+	| "getAuthenticatedUser"
+	| "getCommit"
+	| "getInstallationToken"
+	| "getRepoById"
+	| "listCommits"
+	| "listInstallationRepos"
+	| "listUserInstallations"
+>;
+
+let clientOverride: Partial<GithubClient> | null = null;
+
+// Every call to GitHub goes through here, so a test can answer it in memory.
+// The engines already have a seam one level up (`ports.ts`), but that replaces
+// this service wholesale — it cannot test the service's OWN checks, which sit
+// between the caller and the HTTP call and are the part that matters.
+const gh = (): GithubClient =>
+	clientOverride ? { ...githubClient, ...clientOverride } : githubClient;
+
+/** Test-only: answer some GitHub calls in memory. Pass null to restore. */
+export const setGithubClientForTests = (
+	client: Partial<GithubClient> | null,
+): void => {
+	clientOverride = client;
+};
 
 // A commit as it comes back from a repo scan, already carrying every field
 // `timeEntryGithubCommit` stores — so a caller can attach it without a second
@@ -93,8 +114,14 @@ const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
  *
  * `suggestCommits` deliberately does NOT go through here: it is scoped to one
  * project the caller named and already gated by `assertProjectInOrg`.
+ *
+ * There is no admin bypass, here or in `attachCommits`, which reads through
+ * this too: the argument above is about attribution, and being an admin does
+ * not make a commit on a project you are not on your work on it.
+ *
+ * `ids` narrows it to those repos, for a caller that was handed repo ids.
  */
-const reposForUser = async (ctx: Ctx) =>
+const reposForUser = async (ctx: Ctx, ids?: string[]) =>
 	db
 		.select({
 			id: projectGithubRepo.id,
@@ -114,7 +141,12 @@ const reposForUser = async (ctx: Ctx) =>
 				eq(projectMember.active, true),
 			),
 		)
-		.where(eq(projectGithubRepo.organizationId, ctx.organizationId));
+		.where(
+			and(
+				eq(projectGithubRepo.organizationId, ctx.organizationId),
+				ids ? inArray(projectGithubRepo.id, ids) : undefined,
+			),
+		);
 
 /** How many repos one person's scan may have in flight at once.
  *
@@ -203,7 +235,7 @@ export const githubService = {
 		// down with it, neither of which had anything wrong. An integration being
 		// unreachable is a state to render, not an exception to propagate.
 		try {
-			const githubUser = await getAuthenticatedUser(token);
+			const githubUser = await gh().getAuthenticatedUser(token);
 			return {
 				connected: true,
 				login: githubUser?.login ?? null,
@@ -233,7 +265,7 @@ export const githubService = {
 		const token = await getAccessToken(ctx);
 		if (!token) throw new Error("Connect your GitHub account first");
 
-		const installs = await listUserInstallations(token);
+		const installs = await gh().listUserInstallations(token);
 		const match = installs.find((i) => i.id === input.installationId);
 		if (!match) {
 			throw new AccessError(
@@ -278,7 +310,13 @@ export const githubService = {
 	},
 
 	// ── Repos (read via installation tokens) ─────────────────────────────────
+	// Admin-only. This is every repo every connected installation can reach —
+	// private names included, far beyond the repos linked to projects — and its
+	// only purpose is choosing one to link, which is itself admin-only. Asserted
+	// here rather than only in the server function so the assistant and MCP
+	// paths, which call services directly, are held to it too.
 	listAvailableRepos: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
 		const installations = await db.query.orgGithubInstallation.findMany({
 			where: eq(orgGithubInstallation.organizationId, ctx.organizationId),
 		});
@@ -287,8 +325,8 @@ export const githubService = {
 		const perInstall = await Promise.all(
 			installations.map(async (inst) => {
 				try {
-					const token = await getInstallationToken(inst.installationId);
-					const repos = await listInstallationRepos(token);
+					const token = await gh().getInstallationToken(inst.installationId);
+					const repos = await gh().listInstallationRepos(token);
 					return repos.map((r) => ({
 						githubRepoId: r.id,
 						installationId: inst.installationId,
@@ -350,8 +388,8 @@ export const githubService = {
 		if (!inst)
 			throw new Error("Installation not connected to this organization");
 
-		const token = await getInstallationToken(inst.installationId);
-		const repo = await getRepoById(token, input.githubRepoId);
+		const token = await gh().getInstallationToken(inst.installationId);
+		const repo = await gh().getRepoById(token, input.githubRepoId);
 		if (!repo) throw new Error("Repository not found or inaccessible");
 
 		// A repo is linked to exactly one project org-wide (pgr_org_repo_unq), so
@@ -419,7 +457,7 @@ export const githubService = {
 		const token = await getAccessToken(ctx);
 		if (!token) throw new Error("GitHub not connected");
 
-		const githubUser = await getAuthenticatedUser(token);
+		const githubUser = await gh().getAuthenticatedUser(token);
 		if (!githubUser) throw new Error("Failed to resolve GitHub user");
 
 		const repos = await db.query.projectGithubRepo.findMany({
@@ -439,12 +477,19 @@ export const githubService = {
 			async (repo) => {
 				if (!repo.installationId) return [];
 				try {
-					const instToken = await getInstallationToken(repo.installationId);
-					const commits = await listCommits(instToken, repo.owner, repo.name, {
-						author: githubUser.login,
-						since: start,
-						until: end,
-					});
+					const instToken = await gh().getInstallationToken(
+						repo.installationId,
+					);
+					const commits = await gh().listCommits(
+						instToken,
+						repo.owner,
+						repo.name,
+						{
+							author: githubUser.login,
+							since: start,
+							until: end,
+						},
+					);
 					return commits.map((commit) => ({
 						projectGithubRepoId: repo.id,
 						repoFullName: repo.fullName,
@@ -492,7 +537,7 @@ export const githubService = {
 	): Promise<{ dayKey: string; commits: ScannedCommit[] }[]> => {
 		const token = await getAccessToken(ctx);
 		if (!token) return [];
-		const githubUser = await getAuthenticatedUser(token);
+		const githubUser = await gh().getAuthenticatedUser(token);
 		if (!githubUser) return [];
 
 		const repos = await reposForUser(ctx);
@@ -508,12 +553,19 @@ export const githubService = {
 			async (repo): Promise<ScannedCommit[]> => {
 				if (!repo.installationId) return [];
 				try {
-					const instToken = await getInstallationToken(repo.installationId);
-					const commits = await listCommits(instToken, repo.owner, repo.name, {
-						author: githubUser.login,
-						since: start,
-						until: end,
-					});
+					const instToken = await gh().getInstallationToken(
+						repo.installationId,
+					);
+					const commits = await gh().listCommits(
+						instToken,
+						repo.owner,
+						repo.name,
+						{
+							author: githubUser.login,
+							since: start,
+							until: end,
+						},
+					);
 					return commits.map((commit) => ({
 						projectGithubRepoId: repo.id,
 						projectId: repo.projectId,
@@ -564,7 +616,7 @@ export const githubService = {
 	listUserCommitsForDay: async (ctx: Ctx, date: string) => {
 		const token = await getAccessToken(ctx);
 		if (!token) return [];
-		const githubUser = await getAuthenticatedUser(token);
+		const githubUser = await gh().getAuthenticatedUser(token);
 		if (!githubUser) return [];
 
 		const repos = await reposForUser(ctx);
@@ -579,12 +631,19 @@ export const githubService = {
 			async (repo) => {
 				if (!repo.installationId) return [];
 				try {
-					const instToken = await getInstallationToken(repo.installationId);
-					const commits = await listCommits(instToken, repo.owner, repo.name, {
-						author: githubUser.login,
-						since: start,
-						until: end,
-					});
+					const instToken = await gh().getInstallationToken(
+						repo.installationId,
+					);
+					const commits = await gh().listCommits(
+						instToken,
+						repo.owner,
+						repo.name,
+						{
+							author: githubUser.login,
+							since: start,
+							until: end,
+						},
+					);
 					return commits.map((commit) => ({
 						projectId: repo.projectId,
 						projectGithubRepoId: repo.id,
@@ -617,15 +676,30 @@ export const githubService = {
 	attachCommits: async (ctx: Ctx, input: AttachCommitsInput) => {
 		await assertTimeEntryOwnedByUser(ctx, input.timeEntryId);
 
+		// Re-checked here, not only in `attachCommitsInput`: day assembly hands
+		// its accepted suggestions' commits straight in, through a schema of its
+		// own. The sha goes into a GitHub API path, where a branch name resolves
+		// just as well as a commit id does.
+		if (input.commits.some((c) => !commitSha.safeParse(c.sha).success)) {
+			throw new Error("Expected a commit SHA");
+		}
+
+		// Owning the ENTRY is not enough — the repo is the other half. Loaded with
+		// an org-only predicate, any repo in the organization would do, and
+		// `getCommit` runs with the installation token, so a Member could read
+		// commits (message, author) from a private repo on a project they were
+		// never on, just by naming it. Same scope as every commit scan here.
 		const repoIds = [
 			...new Set(input.commits.map((c) => c.projectGithubRepoId)),
 		];
-		const repos = await db.query.projectGithubRepo.findMany({
-			where: and(
-				inArray(projectGithubRepo.id, repoIds),
-				eq(projectGithubRepo.organizationId, ctx.organizationId),
-			),
-		});
+		const repos = await reposForUser(ctx, repoIds);
+		if (repos.length !== repoIds.length) {
+			// One answer for "no such repo" and "not yours", so a refusal is not
+			// a way to learn which repo ids exist.
+			throw new AccessError(
+				"You are not assigned to the project that repository belongs to",
+			);
+		}
 		const repoById = new Map(repos.map((r) => [r.id, r]));
 
 		// Mint one installation token per distinct installation instead of once
@@ -636,7 +710,7 @@ export const githubService = {
 		const tokenByInstallation = new Map(
 			await Promise.all(
 				installationIds.map(
-					async (id) => [id, await getInstallationToken(id)] as const,
+					async (id) => [id, await gh().getInstallationToken(id)] as const,
 				),
 			),
 		);
@@ -647,7 +721,7 @@ export const githubService = {
 				if (!repo || !repo.installationId) return null;
 				const instToken = tokenByInstallation.get(repo.installationId);
 				if (!instToken) return null;
-				const fresh = await getCommit(
+				const fresh = await gh().getCommit(
 					instToken,
 					repo.owner,
 					repo.name,

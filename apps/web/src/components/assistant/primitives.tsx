@@ -370,6 +370,12 @@ export function ApprovalCard({
 		});
 
 	const approve = () => onDecide("approved", selectable ? selected : undefined);
+	// A capped preview: rows past the cap are not on the card, cannot be
+	// unticked, and go through with the approval (the note says so). The count
+	// and the button therefore speak about what is SHOWN and what is left out,
+	// because "Do these 24" over a 40-row batch would promise 24 and write 39.
+	const hasHiddenRows = Boolean(pending.preview?.note);
+	const unticked = rows.length - selected.length;
 
 	return (
 		<div
@@ -479,7 +485,8 @@ export function ApprovalCard({
 					// The count is the answer to "what am I actually agreeing to" once
 					// boxes have been unticked, so it sits beside the button that does it.
 					<span className="mr-auto text-[12px] text-ink-3">
-						{selected.length} of {rows.length} selected
+						{selected.length} of {rows.length}
+						{hasHiddenRows ? " shown" : ""} selected
 					</span>
 				)}
 				<button
@@ -502,9 +509,11 @@ export function ApprovalCard({
 						"enabled:active:scale-[0.97] disabled:opacity-40",
 					)}
 				>
-					{selectable && selected.length < rows.length
-						? `Do these ${selected.length}`
-						: "Do it"}
+					{!selectable || unticked === 0
+						? "Do it"
+						: hasHiddenRows
+							? `Do all but ${unticked}`
+							: `Do these ${selected.length}`}
 				</button>
 			</div>
 		</div>

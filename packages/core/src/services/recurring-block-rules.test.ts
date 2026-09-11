@@ -450,3 +450,137 @@ describe("the assignment gate on a rule that names a project", () => {
 		expect(rule.projectId).toBeNull();
 	});
 });
+
+// The gate above runs when a rule is SAVED, and a rule then outlives everything
+// that made it valid. Taking somebody off a project, archiving the project or
+// archiving the task touches none of their rules, so the materializer kept
+// writing hours the person could no longer log by hand. It now asks again on
+// every pass, the way filing rules do, and a rule that fails is skipped rather
+// than deleted.
+describe("a rule is re-checked on every pass", () => {
+	const ASSIGNED = "user-recurring-assigned";
+	const assignedCtx = (): Ctx => ({
+		organizationId: ORG_ID,
+		userId: ASSIGNED,
+	});
+
+	const weekEntriesFor = (userId: string) =>
+		db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ORG_ID),
+				eq(timeEntry.userId, userId),
+				gte(timeEntry.date, MONDAY),
+				lte(timeEntry.date, FRIDAY),
+			),
+		});
+
+	/** A project rule that has been running since the fixture Monday. */
+	const runningProjectRule = async (who: Ctx) => {
+		const rule = await recurringBlockRulesService.create(who, {
+			taskId: devTaskId,
+			projectId,
+			daysOfWeek: WEEKDAYS,
+			duration: "1h",
+			description: "Retainer",
+		});
+		await switchedOnAt(rule.id, MONDAY);
+		return rule;
+	};
+
+	beforeAll(async () => {
+		await db.insert(user).values({
+			id: ASSIGNED,
+			name: "Assigned",
+			email: "assigned@example.com",
+			emailVerified: true,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await db.insert(member).values({
+			id: "member-recurring-assigned",
+			organizationId: ORG_ID,
+			userId: ASSIGNED,
+			role: "member",
+			createdAt: new Date(),
+		});
+	});
+
+	beforeEach(async () => {
+		await db.delete(projectMember).where(eq(projectMember.userId, ASSIGNED));
+		await db.insert(projectMember).values({
+			organizationId: ORG_ID,
+			projectId,
+			userId: ASSIGNED,
+			role: "member",
+		});
+	});
+
+	// The control for the three below: the same rule, still valid, fills the week.
+	test("a rule that still applies fills the week", async () => {
+		await runningProjectRule(assignedCtx());
+
+		await recurringBlockRulesService.materializeRange(
+			assignedCtx(),
+			MONDAY,
+			FRIDAY,
+		);
+
+		expect(await weekEntriesFor(ASSIGNED)).toHaveLength(5);
+	});
+
+	test("taken off the project, the person gets no new blocks", async () => {
+		const rule = await runningProjectRule(assignedCtx());
+		await db.delete(projectMember).where(eq(projectMember.userId, ASSIGNED));
+
+		// A fresh Ctx: Access is memoized on the object, and this pass is the one
+		// that has to see the assignment gone.
+		await recurringBlockRulesService.materializeRange(
+			assignedCtx(),
+			MONDAY,
+			FRIDAY,
+		);
+
+		expect(await weekEntriesFor(ASSIGNED)).toHaveLength(0);
+		// Skipped, not deleted: re-assigning the person brings the rule back.
+		const kept = await db.query.recurringBlockRule.findFirst({
+			where: eq(recurringBlockRule.id, rule.id),
+		});
+		expect(kept).toBeDefined();
+	});
+
+	test("an archived project gets no new blocks", async () => {
+		await runningProjectRule(ctx);
+		await db
+			.update(project)
+			.set({ status: "archived" })
+			.where(eq(project.id, projectId));
+		try {
+			await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+			expect(await allEntries()).toHaveLength(0);
+		} finally {
+			await db
+				.update(project)
+				.set({ status: "active" })
+				.where(eq(project.id, projectId));
+		}
+	});
+
+	test("an archived task gets no new blocks", async () => {
+		await runningProjectRule(ctx);
+		await db
+			.update(task)
+			.set({ archivedAt: new Date() })
+			.where(eq(task.id, devTaskId));
+		try {
+			await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+			expect(await allEntries()).toHaveLength(0);
+		} finally {
+			await db
+				.update(task)
+				.set({ archivedAt: null })
+				.where(eq(task.id, devTaskId));
+		}
+	});
+});

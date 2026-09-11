@@ -1,0 +1,1 @@
+ALTER TABLE "monthly_close_row" ADD COLUMN "final_derived" boolean DEFAULT false NOT NULL;

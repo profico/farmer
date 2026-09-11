@@ -23,7 +23,7 @@ import {
 } from "../db/schema/people";
 import { dayKeyInTz, endOfMonthKey } from "../lib/time";
 import type { SetMemberTypeInput } from "../schema/members";
-import { ctxTimezone, requireAdmin } from "./context";
+import { ctxDb, ctxTimezone, requireAdmin } from "./context";
 import { assertUserInOrg } from "./guards";
 import type { Ctx } from "./types";
 
@@ -95,6 +95,46 @@ const DEFAULT_TYPE: ResolvedMemberType = {
  *  "not on the invoice" and utilization apply to. Overhead is excluded from all
  *  of them; contractors from some. */
 export const isNaggable = (type: MemberType) => type !== "overhead";
+
+/** Why an admin of `ctx`'s org may not vouch for `userId`'s address, or null
+ *  when they may (docs/plans/harvest-import.md, 3.3). An unverified address is
+ *  one a Google sign-in will not link to, and confirming it hands the account
+ *  to whoever signs in as that address. So only for a user who has never
+ *  signed in and whom no other org holds: one org's admin cannot vouch for an
+ *  identity another org shares. */
+const whyEmailNotConfirmable = async (
+	ctx: Ctx,
+	userId: string,
+): Promise<"confirmed" | "signed-in" | "elsewhere" | null> => {
+	const target = await db.query.user.findFirst({
+		where: eq(user.id, userId),
+		columns: { emailVerified: true },
+	});
+	if (!target || target.emailVerified) return "confirmed";
+	const [signedIn] = await db
+		.select({ id: account.id })
+		.from(account)
+		.where(eq(account.userId, userId))
+		.limit(1);
+	if (signedIn) return "signed-in";
+	const [elsewhere] = await db
+		.select({ id: member.id })
+		.from(member)
+		.where(
+			and(
+				eq(member.userId, userId),
+				ne(member.organizationId, ctx.organizationId),
+			),
+		)
+		.limit(1);
+	return elsewhere ? "elsewhere" : null;
+};
+
+const markEmailVerified = (userId: string) =>
+	db
+		.update(user)
+		.set({ emailVerified: true, updatedAt: new Date() })
+		.where(eq(user.id, userId));
 
 export const membersService = {
 	getRole: async (ctx: Ctx): Promise<string | null> => {
@@ -252,7 +292,9 @@ export const membersService = {
 		ctx: Ctx,
 		asOf: string,
 	): Promise<Map<string, ResolvedMemberType>> => {
-		const rows = await db
+		// `ctxDb`, not the ambient handle: `closeService.finalize` builds its
+		// sheet — and so reads this — from inside its transaction.
+		const rows = await ctxDb(ctx)
 			.select({
 				userId: memberTypeHistory.userId,
 				type: memberTypeHistory.type,
@@ -452,36 +494,47 @@ export const membersService = {
 		if (archived) return { emailConfirmed: false };
 
 		// Restoring a person who has never signed in is where an admin confirms
-		// an address an import guessed (docs/plans/harvest-import.md, 3.3): an
-		// unverified address is one a Google sign-in will not link to. Only for
-		// a user no other org holds, so one org's admin cannot vouch for an
-		// identity another org shares.
-		const target = await db.query.user.findFirst({
-			where: eq(user.id, userId),
-			columns: { emailVerified: true },
-		});
-		if (!target || target.emailVerified) return { emailConfirmed: false };
-		const [signedIn] = await db
-			.select({ id: account.id })
-			.from(account)
-			.where(eq(account.userId, userId))
-			.limit(1);
-		const [elsewhere] = await db
-			.select({ id: member.id })
-			.from(member)
-			.where(
-				and(
-					eq(member.userId, userId),
-					ne(member.organizationId, ctx.organizationId),
-				),
-			)
-			.limit(1);
-		if (signedIn || elsewhere) return { emailConfirmed: false };
-		await db
-			.update(user)
-			.set({ emailVerified: true, updatedAt: new Date() })
-			.where(eq(user.id, userId));
+		// an address an import guessed. Silent when that is not allowed: the
+		// restore itself is what was asked for.
+		if (await whyEmailNotConfirmable(ctx, userId)) {
+			return { emailConfirmed: false };
+		}
+		await markEmailVerified(userId);
 		return { emailConfirmed: true };
+	},
+
+	/** Confirm the address of an ACTIVE person who has never signed in. The
+	 *  same act as Restore on an archived one, for the person Restore never
+	 *  reaches: an import made them active with an unconfirmed address, and
+	 *  archiving them only to restore them was the one way to fix it. */
+	confirmEmail: async (ctx: Ctx, userId: string) => {
+		await requireAdmin(ctx);
+		await assertUserInOrg(ctx, userId);
+		const profile = await db.query.memberProfile.findFirst({
+			where: and(
+				eq(memberProfile.organizationId, ctx.organizationId),
+				eq(memberProfile.userId, userId),
+			),
+			columns: { archivedAt: true },
+		});
+		if (profile?.archivedAt) {
+			throw new Error("Restore this person instead: that confirms the address");
+		}
+		switch (await whyEmailNotConfirmable(ctx, userId)) {
+			case "confirmed":
+				throw new Error("This address is confirmed already");
+			case "signed-in":
+				throw new Error(
+					"This person has signed in, so nothing is left to confirm",
+				);
+			case "elsewhere":
+				throw new Error(
+					"This person is in another organization too, so only they can confirm the address, by signing in",
+				);
+			case null:
+				await markEmailVerified(userId);
+				return { emailConfirmed: true };
+		}
 	},
 
 	setStartDate: async (ctx: Ctx, userId: string, startDate: string | null) => {

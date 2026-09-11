@@ -22,16 +22,20 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { timeEntry } from "../db/schema/domain";
+import { slackEscape } from "../lib/slack-client";
 import {
 	addDaysToKey,
 	endOfMonthKey,
-	formatDuration,
+	formatDayKey,
+	formatDurationShort,
 	weekdayInTz,
 } from "../lib/time";
 import { dayDurationSeconds, dayForWeekday } from "../lib/working-day";
-import type {
-	ReminderKind,
-	ReminderSettings,
+import {
+	REMINDER_EARLIEST_TIME,
+	REMINDER_LATEST_TIME,
+	type ReminderKind,
+	type ReminderSettings,
 } from "../schema/reminder-settings";
 import {
 	type BehindPaceRow,
@@ -40,6 +44,7 @@ import {
 } from "./compliance.service";
 import { holidaysService } from "./holidays.service";
 import type { NotifyEvent } from "./notify";
+import { slackService } from "./slack.service";
 import type { Ctx } from "./types";
 import { workingHoursService } from "./working-hours.service";
 
@@ -98,6 +103,24 @@ const weekdayOf = (dayKey: string) =>
 
 const plural = (count: number, one: string, many: string) =>
 	`${String(count)} ${count === 1 ? one : many}`;
+
+/** A day key the way a person says it — "Aug 12" — with the year only when it
+ *  is not the current one. */
+const sayDay = (dayKey: string, today: string) =>
+	formatDayKey(dayKey, { year: dayKey.slice(0, 4) !== today.slice(0, 4) });
+
+/** How long somebody has logged nothing, from their last entry.
+ *
+ *  The date and never `workingDaysMissing`: that count stops at the edge of the
+ *  compliance view's look-back window, so a person who had never logged read as
+ *  "19 working days missing" one week and "29" the next — the window's size,
+ *  not a fact about them. */
+const nothingSince = (lastEntryDate: string | null, today: string) =>
+	lastEntryDate
+		? `nothing since ${sayDay(lastEntryDate, today)}`
+		: "never logged";
+
+const short = formatDurationShort;
 
 /** Is `dayKey` exactly `daysBefore` ORG working days (Mon–Fri minus holidays)
  *  before the last working day of its month? 0 asks for the last working day
@@ -197,15 +220,26 @@ export const sendTimeOf = (
 	}
 };
 
-/** Has the org-local `timeKey` reached the send time of `kind`? Always true for
- *  an end-of-workday log reminder, whose time is per person and is checked in
- *  the selection. Both sides are "HH:mm", so the string order is the time
- *  order. */
+/** Is the org-local `timeKey` inside the hours a reminder may go out in?
+ *  Nothing goes out between 20:00 and 07:00 (docs/plans/reminder-settings.md
+ *  §3). The settings schema keeps every configured time inside these bounds,
+ *  but a configured time is only a floor: a tick at 23:30 is still "after
+ *  09:00", and a person first due late (a reminder switched on, a claim not yet
+ *  made) would be sent to then. The same bounds as the schema, so 20:00 itself
+ *  may send. */
+export const withinSendHours = (timeKey: string): boolean =>
+	timeKey >= REMINDER_EARLIEST_TIME && timeKey <= REMINDER_LATEST_TIME;
+
+/** Has the org-local `timeKey` reached the send time of `kind`, inside the
+ *  send hours? For an end-of-workday log reminder the time is per person and
+ *  is checked in the selection. Both sides are "HH:mm", so the string order is
+ *  the time order. */
 export const sendTimeReached = (
 	settings: ReminderSettings,
 	kind: ReminderKind,
 	timeKey: string,
 ): boolean => {
+	if (!withinSendHours(timeKey)) return false;
 	const time = sendTimeOf(settings, kind);
 	return time === null || timeKey >= time;
 };
@@ -275,10 +309,18 @@ const logReminders = async (
 		if (expectedSeconds <= 0 || !day?.endTime) continue;
 
 		// Only once the send time has come: the end of THEIR workday, or the
-		// org's fixed time.
+		// org's fixed time — and never in the quiet hours. A workday that ends
+		// after 20:00 is reminded at 20:00, the last moment one may go out:
+		// waiting for its end sent the push at 22:00, and skipping it would
+		// leave a late shift with no reminder at all.
 		if (timeKey !== null) {
+			if (!withinSendHours(timeKey)) continue;
 			const sendAt =
-				settings.logMode === "fixed" ? settings.logTime : day.endTime;
+				settings.logMode === "fixed"
+					? settings.logTime
+					: day.endTime > REMINDER_LATEST_TIME
+						? REMINDER_LATEST_TIME
+						: day.endTime;
 			if (timeKey < sendAt) continue;
 		}
 
@@ -291,13 +333,11 @@ const logReminders = async (
 			userId: person.userId,
 			name: person.name,
 			email: person.email,
-			reason: `Logged ${formatDuration(loggedSeconds)} of ${formatDuration(expectedSeconds)}`,
+			reason: `Logged ${short(loggedSeconds)} of ${short(expectedSeconds)}`,
 			event: {
 				kind: "log-reminder",
 				title: "Don't forget to log your hours",
-				body: `You've logged ${formatDuration(loggedSeconds)} of ${formatDuration(
-					expectedSeconds,
-				)} expected today.`,
+				body: `You've logged ${short(loggedSeconds)} of ${short(expectedSeconds)} expected today.`,
 				url: `/${moment.slug}/time`,
 				tag: `log-reminder-${dayKey}`,
 			},
@@ -308,11 +348,16 @@ const logReminders = async (
 
 const nudges = (
 	settings: ReminderSettings,
+	moment: ReminderMoment,
 	{ noEntries, behindPace }: ComplianceDashboard,
 ): ReminderRecipient[] => {
 	const types = new Set<string>(settings.nudgeMemberTypes);
 	// One DM per person even when they're on both lists — the message leads with
 	// whichever problem is worse, so "no entries" overwrites "behind pace".
+	//
+	// The numbers are the message. It used to be a percentage, a clock-format
+	// shortfall and the same closing line every time, which is the shape of a
+	// DM people learn to skim past.
 	const byUser = new Map<string, ReminderRecipient>();
 	if (settings.nudgeBehindPace) {
 		for (const row of behindPace) {
@@ -324,9 +369,12 @@ const nudges = (
 				reason: `At ${String(row.pacePct)}% of pace`,
 				event: {
 					kind: "compliance-nudge",
-					body: `You're at ${row.pacePct}% of your expected hours for the month so far — ${formatDuration(
-						row.shortfallSeconds,
-					)} short. A few minutes now beats reconstructing the month later.`,
+					title: `You're at ${String(row.pacePct)}% of your expected hours so far`,
+					body: `You've logged ${short(row.loggedSeconds)} of the ${short(
+						row.proratedExpectedSeconds,
+					)} expected by today, ${short(row.shortfallSeconds)} short.`,
+					url: `/${moment.slug}/time/month`,
+					linkLabel: "Open this month",
 				},
 			});
 		}
@@ -338,14 +386,22 @@ const nudges = (
 				userId: row.userId,
 				name: row.name,
 				email: row.email,
-				reason: `No entries for ${plural(row.workingDaysMissing, "working day", "working days")}`,
+				reason: row.lastEntryDate
+					? `Nothing since ${sayDay(row.lastEntryDate, moment.dayKey)}`
+					: "Never logged",
 				event: {
 					kind: "compliance-nudge",
-					body: row.lastEntryDate
-						? `You haven't logged anything since ${row.lastEntryDate} — that's ${row.workingDaysMissing} working ${
-								row.workingDaysMissing === 1 ? "day" : "days"
-							}. Worth filling in while you still remember it.`
-						: "You haven't logged any time yet. Worth starting today — reconstructing a month from memory is the part everyone hates.",
+					...(row.lastEntryDate
+						? {
+								title: `Nothing logged since ${sayDay(row.lastEntryDate, moment.dayKey)}`,
+								body: "Worth filling in while you still remember the days.",
+							}
+						: {
+								title: "No time logged yet",
+								body: "Worth starting today. Rebuilding a month from memory is the part everyone hates.",
+							}),
+					url: `/${moment.slug}/time`,
+					linkLabel: "Open your timesheet",
 				},
 			});
 		}
@@ -353,14 +409,17 @@ const nudges = (
 	return [...byUser.values()];
 };
 
-const monthEndText = (daysBefore: number) =>
+const monthEndTitle = (daysBefore: number) =>
 	daysBefore === 0
-		? "Today is the last working day of the month. Anything still unlogged needs to go in before the monthly close starts tomorrow."
-		: `The last working day of the month is ${
-				daysBefore === 1
-					? "tomorrow"
-					: `${String(daysBefore)} working days away`
-			}. Anything still unlogged needs to go in before the monthly close starts.`;
+		? "Today is the last working day of the month"
+		: daysBefore === 1
+			? "Tomorrow is the last working day of the month"
+			: `The last working day of the month is ${String(daysBefore)} working days away`;
+
+const monthEndAsk = (daysBefore: number) =>
+	`Anything still unlogged needs to go in before the monthly close starts${
+		daysBefore === 0 ? " tomorrow" : ""
+	}.`;
 
 const monthEnd = async (
 	ctx: Ctx,
@@ -373,38 +432,136 @@ const monthEnd = async (
 	// laggards: the close is coming, and "I thought I was fine" is exactly the
 	// failure this prevents. `monthEndOnlyBehind` narrows it for an org that
 	// finds that too loud.
-	const cohort = await complianceService.cohortForReminderJob(ctx, {
-		year: Number(moment.dayKey.slice(0, 4)),
-		month: Number(moment.dayKey.slice(5, 7)),
-	});
+	const [cohort, { noEntries, behindPace }] = await Promise.all([
+		complianceService.cohortForReminderJob(ctx, {
+			year: Number(moment.dayKey.slice(0, 4)),
+			month: Number(moment.dayKey.slice(5, 7)),
+		}),
+		dashboard(),
+	]);
 	const types = new Set<string>(settings.monthEndMemberTypes);
-	const behind = settings.monthEndOnlyBehind
-		? new Map((await dashboard()).behindPace.map((r) => [r.userId, r]))
-		: null;
+	const behind = new Map(behindPace.map((r) => [r.userId, r]));
+	const empty = new Map(noEntries.map((r) => [r.userId, r]));
 
-	const body = monthEndText(settings.monthEndDaysBefore);
+	const title = monthEndTitle(settings.monthEndDaysBefore);
+	const ask = monthEndAsk(settings.monthEndDaysBefore);
 	const recipients: ReminderRecipient[] = [];
 	for (const person of cohort) {
 		if (!types.has(person.memberType.type)) continue;
-		const pace = behind?.get(person.userId);
-		if (behind && !pace) continue;
+		const pace = behind.get(person.userId);
+		if (settings.monthEndOnlyBehind && !pace) continue;
+		// The person's own numbers when something is missing. On this day the
+		// nudge stands down for everyone this message reaches (see
+		// `reminderRecipients`), so this is the one that has to say it.
+		const nothing = empty.get(person.userId);
+		const own = nothing
+			? nothing.lastEntryDate
+				? `You haven't logged any time since ${sayDay(nothing.lastEntryDate, moment.dayKey)}.`
+				: "You haven't logged any time yet."
+			: pace
+				? `You've logged ${short(pace.loggedSeconds)} of the ${short(
+						pace.proratedExpectedSeconds,
+					)} expected so far.`
+				: null;
 		recipients.push({
 			userId: person.userId,
 			name: person.name,
 			email: person.email,
 			reason: pace ? `At ${String(pace.pacePct)}% of pace` : "In the cohort",
-			event: { kind: "month-end", body },
+			event: {
+				kind: "month-end",
+				title,
+				body: own ? `${own} ${ask}` : ask,
+				url: `/${moment.slug}/time/month`,
+				linkLabel: "Open this month",
+			},
 		});
 	}
 	return recipients;
 };
 
+/** How many names each list in the digest shows before "and N more". */
+const DIGEST_LIST_LIMIT = 10;
+
+type DigestPerson = { userId: string; name: string };
+
+/** The digest's lines, spelled by `name` and `bold` — plain for the preview,
+ *  mrkdwn with mentions for Slack. One function, so the two cannot drift. */
+const digestLines = (
+	settings: ReminderSettings,
+	today: string,
+	{ noEntries, behindPace }: ComplianceDashboard,
+	name: (person: DigestPerson) => string,
+	bold: (text: string) => string,
+): string[] => {
+	if (noEntries.length === 0 && behindPace.length === 0) {
+		return ["Everyone is up to date."];
+	}
+	const more = (total: number) =>
+		total > DIGEST_LIST_LIMIT
+			? [`• and ${String(total - DIGEST_LIST_LIMIT)} more`]
+			: [];
+	const lines: string[] = [];
+
+	if (noEntries.length > 0) {
+		lines.push(
+			`${bold(plural(noEntries.length, "person", "people"))} ${
+				noEntries.length === 1 ? "has" : "have"
+			} logged nothing in the last ${plural(
+				settings.complianceMissingDays,
+				"working day",
+				"working days",
+			)}:`,
+			...noEntries
+				.slice(0, DIGEST_LIST_LIMIT)
+				.map((r) => `• ${name(r)} — ${nothingSince(r.lastEntryDate, today)}`),
+			...more(noEntries.length),
+		);
+	}
+
+	if (behindPace.length > 0) {
+		// Somebody who logged nothing is usually behind pace too. They are named
+		// once, above, and counted here — the old digest put the no-entry names
+		// under this heading and never named the people who were only behind.
+		const empty = new Set(noEntries.map((r) => r.userId));
+		const onlyBehind = behindPace.filter((r) => !empty.has(r.userId));
+		const heading = `${bold(plural(behindPace.length, "person", "people"))} ${
+			behindPace.length === 1 ? "is" : "are"
+		} behind pace for the month`;
+		if (lines.length > 0) lines.push("");
+		if (onlyBehind.length === 0) {
+			lines.push(
+				`${heading}, all of them among the people with nothing logged.`,
+			);
+		} else {
+			lines.push(
+				onlyBehind.length < behindPace.length
+					? `${heading}. Besides the people with nothing logged:`
+					: `${heading}:`,
+				...onlyBehind
+					.slice(0, DIGEST_LIST_LIMIT)
+					.map(
+						(r) =>
+							`• ${name(r)} — ${String(r.pacePct)}% (${short(r.loggedSeconds)} of ${short(
+								r.proratedExpectedSeconds,
+							)})`,
+					),
+				...more(onlyBehind.length),
+			);
+		}
+	}
+	return lines;
+};
+
+const DIGEST_TITLE = "Time tracking this week";
+
 const digest = async (
 	ctx: Ctx,
 	settings: ReminderSettings,
+	moment: ReminderMoment,
 	dashboard: () => Promise<ComplianceDashboard>,
 ): Promise<ReminderRecipient[]> => {
-	const [{ noEntries, behindPace }, admins] = await Promise.all([
+	const [compliance, admins] = await Promise.all([
 		dashboard(),
 		db
 			.select({
@@ -417,18 +574,37 @@ const digest = async (
 			.innerJoin(user, eq(user.id, member.userId))
 			.where(eq(member.organizationId, ctx.organizationId)),
 	]);
-	const body = [
-		"*Time tracking this week*",
-		`• ${noEntries.length} ${noEntries.length === 1 ? "person has" : "people have"} logged nothing in the last ${settings.complianceMissingDays} working days`,
-		`• ${behindPace.length} ${behindPace.length === 1 ? "person is" : "people are"} behind pace for the month`,
-		...noEntries
-			.slice(0, 10)
-			.map(
-				(r) =>
-					`    ${r.name} — ${r.workingDaysMissing} working ${
-						r.workingDaysMissing === 1 ? "day" : "days"
-					} missing`,
-			),
+
+	// People are mentioned rather than only named, so an admin can click through
+	// to the person. It does not ping them: the digest is a DM to the admin, and
+	// Slack only notifies a mentioned person who is in the conversation. Anybody
+	// the bot never matched to Slack keeps their plain name.
+	const slackIds = await slackService.slackIdsFor(ctx.organizationId, [
+		...new Set(
+			[...compliance.noEntries, ...compliance.behindPace].map((r) => r.userId),
+		),
+	]);
+	const mention = (person: DigestPerson) => {
+		const id = slackIds.get(person.userId);
+		return id ? `<@${id}>` : slackEscape(person.name);
+	};
+
+	const body = digestLines(
+		settings,
+		moment.dayKey,
+		compliance,
+		(p) => p.name,
+		(t) => t,
+	).join("\n");
+	const slack = [
+		`*${DIGEST_TITLE}*`,
+		...digestLines(
+			settings,
+			moment.dayKey,
+			compliance,
+			mention,
+			(t) => `*${t}*`,
+		),
 	].join("\n");
 
 	return admins
@@ -438,7 +614,14 @@ const digest = async (
 			name: a.name,
 			email: a.email,
 			reason: a.role === "owner" ? "Owner" : "Admin",
-			event: { kind: "admin-digest", body },
+			event: {
+				kind: "admin-digest",
+				title: DIGEST_TITLE,
+				body,
+				slack,
+				url: `/${moment.slug}/reports?tab=compliance`,
+				linkLabel: "Open the Tracking report",
+			},
 		}));
 };
 
@@ -461,11 +644,27 @@ export const reminderRecipients = async (
 	switch (kind) {
 		case "log-reminder":
 			return logReminders(ctx, settings, moment, onlyUserIds);
-		case "compliance-nudge":
-			return nudges(settings, await dashboard());
+		case "compliance-nudge": {
+			const picked = nudges(settings, moment, await dashboard());
+			// On a day the month-end reminder goes out, it carries the same
+			// numbers, so the nudge stands down for everyone it reaches. Two DMs
+			// about one timesheet within the hour is the nag this avoids. Asked
+			// per person, not per day: a person the month-end reminder skips
+			// (its own member types, "only behind") still gets the nudge.
+			if (
+				(await reminderDayCheck(ctx, settings, "month-end", moment.dayKey)) !==
+				null
+			) {
+				return picked;
+			}
+			const monthEndIds = new Set(
+				(await monthEnd(ctx, settings, moment, dashboard)).map((r) => r.userId),
+			);
+			return picked.filter((r) => !monthEndIds.has(r.userId));
+		}
 		case "month-end":
 			return monthEnd(ctx, settings, moment, dashboard);
 		case "admin-digest":
-			return digest(ctx, settings, dashboard);
+			return digest(ctx, settings, moment, dashboard);
 	}
 };

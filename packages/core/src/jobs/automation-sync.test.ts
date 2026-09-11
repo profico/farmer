@@ -16,10 +16,12 @@
 
 import {
 	afterAll,
+	afterEach,
 	beforeAll,
 	beforeEach,
 	describe,
 	expect,
+	spyOn,
 	test,
 } from "bun:test";
 
@@ -28,10 +30,17 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { recurringBlockRule, task, timeEntry } from "../db/schema/domain";
+import { memberProfile } from "../db/schema/people";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import { dayKeyInTz } from "../lib/time";
+import { timeEntriesService } from "../services/time-entries.service";
+import type { Ctx } from "../services/types";
 import { createTestDb, type TestDb } from "../test/harness";
-import { runAutomationSyncOnce } from "./automation-sync";
+import {
+	runAutomationSyncForCtx,
+	runAutomationSyncOnce,
+	setAutomationPassTimeoutForTests,
+} from "./automation-sync";
 
 const ORG_ID = "org-sweep";
 const TZ = "Europe/Zagreb";
@@ -39,6 +48,12 @@ const TZ = "Europe/Zagreb";
 const BLOCKS_ONLY = "user-blocks-only";
 /** Someone with the same rule who has since been removed from the org. */
 const EX_MEMBER = "user-ex-member";
+/** Someone with the same rule who is still a member, but archived. */
+const ARCHIVED = "user-archived";
+
+type PassResult = Awaited<
+	ReturnType<typeof timeEntriesService.runAutomationsForUser>
+>;
 
 let harness: TestDb;
 let breakTaskId: string;
@@ -74,7 +89,7 @@ beforeAll(async () => {
 		createdAt: new Date(),
 		timezone: TZ,
 	});
-	for (const id of [BLOCKS_ONLY, EX_MEMBER]) {
+	for (const id of [BLOCKS_ONLY, EX_MEMBER, ARCHIVED]) {
 		await db.insert(user).values({
 			id,
 			name: id,
@@ -93,6 +108,20 @@ beforeAll(async () => {
 		role: "member",
 		createdAt: new Date(),
 	});
+	// Archiving keeps the membership row — that is the whole point of it — so the
+	// `member` join alone cannot tell this person apart from an active one.
+	await db.insert(member).values({
+		id: "member-archived",
+		organizationId: ORG_ID,
+		userId: ARCHIVED,
+		role: "member",
+		createdAt: new Date(),
+	});
+	await db.insert(memberProfile).values({
+		organizationId: ORG_ID,
+		userId: ARCHIVED,
+		archivedAt: new Date("2026-06-30T00:00:00.000Z"),
+	});
 
 	// Break is a site-wide built-in the migrations already seed — inserting a
 	// second one trips task_site_name_uidx.
@@ -103,7 +132,7 @@ beforeAll(async () => {
 	breakTaskId = breakTask?.id ?? "";
 	expect(breakTaskId).not.toBe("");
 
-	for (const userId of [BLOCKS_ONLY, EX_MEMBER]) {
+	for (const userId of [BLOCKS_ONLY, EX_MEMBER, ARCHIVED]) {
 		for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
 			await db.insert(memberWorkingHoursDay).values({
 				organizationId: ORG_ID,
@@ -167,5 +196,80 @@ describe("the automation sweep", () => {
 			synced: 0,
 			failed: 0,
 		});
+	});
+
+	test("leaves an archived person's rule alone", async () => {
+		await dailyBlockFor(ARCHIVED);
+
+		const summary = await runAutomationSyncOnce();
+
+		// The report: an archived person's daily break went on filing itself onto
+		// every working day after they had left.
+		expect(summary.eligible).toBe(0);
+		expect(await entriesFor(ARCHIVED)).toHaveLength(0);
+	});
+});
+
+// "Sync now" and the sweep used to guard against themselves only, so a person
+// who pressed the button while the sweep was on them got two passes at once.
+// And the button's pass had no deadline at all.
+describe("one pass per person at a time", () => {
+	const personCtx = (): Ctx => ({
+		organizationId: ORG_ID,
+		userId: BLOCKS_ONLY,
+	});
+	const noop: PassResult = { ran: [], skipped: [], failed: [], off: [] };
+
+	afterEach(() => {
+		setAutomationPassTimeoutForTests(null);
+	});
+
+	test("Sync now joins the sweep's pass for the same person", async () => {
+		await dailyBlockFor(BLOCKS_ONLY);
+		let release: ((result: PassResult) => void) | undefined;
+		const pass = spyOn(
+			timeEntriesService,
+			"runAutomationsForUser",
+		).mockImplementation(
+			() =>
+				new Promise<PassResult>((resolve) => {
+					release = resolve;
+				}),
+		);
+		try {
+			const sweep = runAutomationSyncOnce();
+			// Wait for the sweep to reach this person, so the button below lands
+			// while the pass is certainly in flight rather than racing it.
+			while (pass.mock.calls.length === 0) await Bun.sleep(1);
+
+			const button = runAutomationSyncForCtx(personCtx());
+			release?.(noop);
+
+			expect(await button).toEqual(noop);
+			expect((await sweep).synced).toBe(1);
+			expect(pass).toHaveBeenCalledTimes(1);
+		} finally {
+			pass.mockRestore();
+		}
+	});
+
+	test("a wedged pass is abandoned at the deadline and frees the person", async () => {
+		const pass = spyOn(
+			timeEntriesService,
+			"runAutomationsForUser",
+		).mockImplementation(() => new Promise<PassResult>(() => {}));
+		setAutomationPassTimeoutForTests(20);
+		try {
+			await expect(runAutomationSyncForCtx(personCtx())).rejects.toThrow(
+				/exceeded 20ms/,
+			);
+			// A second press starts a new pass rather than joining the stuck one.
+			await expect(runAutomationSyncForCtx(personCtx())).rejects.toThrow(
+				/exceeded 20ms/,
+			);
+			expect(pass).toHaveBeenCalledTimes(2);
+		} finally {
+			pass.mockRestore();
+		}
 	});
 });

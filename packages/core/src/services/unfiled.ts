@@ -2,6 +2,7 @@ import { count, eq, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { task, timeEntry } from "../db/schema/domain";
+import { ctxDb } from "./db-ctx";
 import { ledgerWhere } from "./ledger";
 import type { Ctx } from "./types";
 
@@ -52,7 +53,10 @@ export const unfiledByUser = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
 ): Promise<Map<string, { count: number; seconds: number }>> => {
-	const rows = await db
+	// `ctxDb`: this is `closeService.finalize`'s unfiled gate, and it runs inside
+	// the transaction that writes the close, so the refusal and the write see
+	// the same connection.
+	const rows = await ctxDb(ctx)
 		.select({
 			userId: timeEntry.userId,
 			count: count(),

@@ -1,7 +1,9 @@
 import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import postgres from "postgres";
 
 import { db } from "../db";
 import {
+	project,
 	recurringBlockRule,
 	recurringBlockRuleSkip,
 	timeEntry,
@@ -88,6 +90,87 @@ const assertMayScheduleOn = async (ctx: Ctx, projectId: string | null) => {
 	await assertProjectInOrg(ctx, projectId);
 	const access = await ctxAccess(ctx);
 	access.assertCanTrackOn(projectId);
+};
+
+/**
+ * Which of these rules may still write, asked again on every pass.
+ *
+ * `create` and `update` check a rule once, when it is saved, and a rule then
+ * outlives everything that made it valid: the person is taken off the project,
+ * the project is archived, the task is archived or un-picked. None of those
+ * touch the rule, so the materializer went on writing real hours onto a project
+ * the person could no longer log to by hand. Same answer as
+ * `filingRulesService.resolveForTask`, for the same reason: a rule is a
+ * standing write, and it is re-checked rather than trusted.
+ *
+ * A rule that fails is skipped, not deleted and not reported. Its day simply
+ * gets no block — the same day it would have had with no rule — and the rule
+ * comes back to life by itself if the assignment or the project does.
+ *
+ * Checked per distinct (project, task) pair, since the answer cannot differ
+ * within one, and Access is only resolved when a rule names a project: a break
+ * rule has nothing to be assigned to.
+ */
+const rulesStillWritable = async (
+	ctx: Ctx,
+	rules: { id: string; taskId: string; projectId: string | null }[],
+): Promise<Set<string>> => {
+	const projectIds = [
+		...new Set(rules.flatMap((r) => (r.projectId ? [r.projectId] : []))),
+	];
+	// Archived projects are dormant: every picker excludes them, and a rule must
+	// not keep writing to one behind the person's back. The org predicate is the
+	// tenancy half of `assertProjectInOrg`, in the WHERE.
+	const liveProjectIds = new Set(
+		projectIds.length > 0
+			? (
+					await db
+						.select({ id: project.id })
+						.from(project)
+						.where(
+							and(
+								eq(project.organizationId, ctx.organizationId),
+								eq(project.status, "active"),
+								inArray(project.id, projectIds),
+							),
+						)
+				).map((p) => p.id)
+			: [],
+	);
+	const access = projectIds.length > 0 ? await ctxAccess(ctx) : null;
+
+	const verdicts = new Map<string, boolean>();
+	const mayWrite = async (rule: {
+		taskId: string;
+		projectId: string | null;
+	}): Promise<boolean> => {
+		if (rule.projectId) {
+			if (!liveProjectIds.has(rule.projectId)) return false;
+			if (!access?.canTrackOn(rule.projectId)) return false;
+		}
+		try {
+			// Also what catches an archived task: the guard refuses one outright.
+			await assertTaskAvailable(ctx, rule.taskId, rule.projectId ?? undefined);
+		} catch (error) {
+			// The guard says no by throwing. A database failure is not a "no" and
+			// must fail the pass rather than quietly skip every rule.
+			if (error instanceof postgres.PostgresError) throw error;
+			return false;
+		}
+		return true;
+	};
+
+	const usable = new Set<string>();
+	for (const rule of rules) {
+		const key = `${rule.projectId ?? ""}|${rule.taskId}`;
+		let allowed = verdicts.get(key);
+		if (allowed === undefined) {
+			allowed = await mayWrite(rule);
+			verdicts.set(key, allowed);
+		}
+		if (allowed) usable.add(rule.id);
+	}
+	return usable;
 };
 
 export const recurringBlockRulesService = {
@@ -290,6 +373,7 @@ export const recurringBlockRulesService = {
 			),
 		});
 		if (rules.length === 0) return;
+		const writable = await rulesStillWritable(ctx, rules);
 
 		const skips = await db.query.recurringBlockRuleSkip.findMany({
 			where: inArray(
@@ -355,6 +439,7 @@ export const recurringBlockRulesService = {
 
 		const rows: (typeof timeEntry.$inferInsert)[] = [];
 		for (const rule of rules) {
+			if (!writable.has(rule.id)) continue;
 			// A rule never writes to a day before it was switched on. Without this
 			// floor, turning the daily break on wrote one onto every past day the
 			// time page was scrolled back to — silently editing months of

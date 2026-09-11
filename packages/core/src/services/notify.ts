@@ -26,6 +26,7 @@ import { account, member } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
 import { memberProfile } from "../db/schema/people";
 import { reminderSettings } from "../db/schema/settings";
+import { slackEscape, slackLink } from "../lib/slack-client";
 import { notificationsService } from "./notifications.service";
 import { slackService } from "./slack.service";
 
@@ -51,6 +52,14 @@ export type NotifyEvent = {
 	/** Push coalescing tag — a second push with the same tag replaces the first
 	 *  rather than stacking. */
 	tag?: string;
+	/** The words of the link under a Slack message. A push opens `url` on
+	 *  click and has no use for them. */
+	linkLabel?: string;
+	/** Slack mrkdwn that replaces `title` and `body` on the Slack channel, for
+	 *  a message that needs markup no other channel can show — a mention, say.
+	 *  `title` and `body` stay the plain form, which is also what the reminder
+	 *  preview shows. Whoever builds it escapes what it interpolates. */
+	slack?: string;
 };
 
 /** Which channels actually delivered. Callers count sends; nobody has to guess
@@ -218,12 +227,24 @@ const pushAdapter: NotifyAdapter = async (to, event) => {
 	return true;
 };
 
+/** The Slack text of an event: the title in bold on its own line, the body
+ *  under it, and the deep link last. The link is the point — the push channel
+ *  always had it, and a DM that says "a few minutes now" with no way to get
+ *  there asked the reader to go and find the page. */
+export const slackText = (event: NotifyEvent): string => {
+	const text =
+		event.slack ??
+		(event.title
+			? `*${slackEscape(event.title)}*\n${slackEscape(event.body)}`
+			: slackEscape(event.body));
+	const link = event.url
+		? slackLink(event.url, event.linkLabel ?? "Open Farmer")
+		: null;
+	return link ? `${text}\n${link}` : text;
+};
+
 const slackAdapter: NotifyAdapter = (to, event) =>
-	slackService.sendDm(
-		to.organizationId,
-		to.userId,
-		event.title ? `${event.title}. ${event.body}` : event.body,
-	);
+	slackService.sendDm(to.organizationId, to.userId, slackText(event));
 
 let adapters = {
 	push: pushAdapter,

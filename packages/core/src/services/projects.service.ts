@@ -1,4 +1,13 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	inArray,
+	isNotNull,
+	isNull,
+	sql,
+} from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
@@ -10,6 +19,7 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
+import { memberProfile } from "../db/schema/people";
 import { orgTimezone } from "../lib/org-time";
 import { dayKeyInTz, endOfMonthKey, startOfMonthKey } from "../lib/time";
 import type {
@@ -20,7 +30,7 @@ import type {
 } from "../schema/projects";
 import type { Access } from "./access.service";
 import { ctxAccess, invalidateCtxAccess } from "./context";
-import { assertProjectInOrg } from "./guards";
+import { assertProjectInOrg, assertUserInOrg } from "./guards";
 import { membersService } from "./members.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
@@ -256,6 +266,26 @@ export const projectsService = {
 		const access = await ctxAccess(ctx);
 		access.assertCanManageProjectMembers(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
+		// The capability check is about the PROJECT. Without this, any userId
+		// made an assignment — and an assignment is one of the sources the close
+		// sheet builds its rows from.
+		await assertUserInOrg(ctx, input.userId);
+
+		// The promise `listAssignable` makes, kept where it can be enforced: an
+		// archived person keeps the assignments they had, and gets no new one or
+		// re-activated old one. Only hiding them from the picker left the API,
+		// the assistant and the MCP server free to staff a leaver.
+		const archived = await db.query.memberProfile.findFirst({
+			where: and(
+				eq(memberProfile.organizationId, ctx.organizationId),
+				eq(memberProfile.userId, input.userId),
+				isNotNull(memberProfile.archivedAt),
+			),
+			columns: { id: true },
+		});
+		if (archived) {
+			throw new Error("That person is archived. Restore them to assign them.");
+		}
 
 		await db
 			.insert(projectMember)

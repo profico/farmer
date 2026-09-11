@@ -52,7 +52,7 @@ const bucketFor = (userId: string, now: number): Bucket => {
 };
 
 /** Seconds until this user's window rolls over — the `Retry-After` value. */
-const retryAfter = (bucket: Bucket, now: number) =>
+const retryAfter = (bucket: { windowStartedAt: number }, now: number) =>
 	Math.max(1, Math.ceil((bucket.windowStartedAt + WINDOW_MS - now) / 1000));
 
 /**
@@ -90,5 +90,104 @@ export const admitMcpWrite = (
 		: { ok: true };
 };
 
+// ── Per caller address, BEFORE the credential is resolved ────────────────────
+//
+// The per-user ceilings above need a user id, and a user id costs a session
+// lookup and a token lookup — database reads. So they only ever limited people
+// who had already authenticated: a caller with no credential, or a garbage
+// one, cost two queries per request with nothing counting them. These two run
+// first, keyed on the address the request came from, and need no I/O at all.
+//
+// Two counters, because the two things they catch look different:
+//  * a flood — any request at all, with a ceiling well above one user's 300 so
+//    an office of agents behind one NAT address is not what it bites;
+//  * guessing — requests whose credential resolved to nobody. A real client
+//    fails exactly once (the 401 that starts its OAuth flow), so a small
+//    budget here costs a legitimate caller nothing.
+//
+// The address comes from the proxy's headers, as nothing else reaches a server
+// route. A deployment whose proxy does not overwrite them lets a caller choose
+// its own key; that weakens this to a per-claimed-address limit, and the hard
+// cap on the map below is what keeps it from also becoming a memory leak.
+
+/** Requests per caller address per minute, authenticated or not. */
+const MAX_REQUESTS_PER_ADDRESS = 1_200;
+
+/** Requests per caller address per minute whose credential resolved to no one. */
+const MAX_AUTH_FAILURES_PER_ADDRESS = 30;
+
+/** The most addresses tracked at once. Past it the oldest bucket is dropped,
+ *  which at worst forgives one address early — the alternative is a map an
+ *  attacker grows by varying a header. */
+const MAX_TRACKED_ADDRESSES = 10_000;
+
+type AddressBucket = {
+	windowStartedAt: number;
+	requests: number;
+	authFailures: number;
+};
+
+const addressBuckets = new Map<string, AddressBucket>();
+
+const addressBucketFor = (address: string, now: number): AddressBucket => {
+	const existing = addressBuckets.get(address);
+	if (existing && now - existing.windowStartedAt < WINDOW_MS) return existing;
+	if (addressBuckets.size >= SWEEP_AT) {
+		for (const [key, bucket] of addressBuckets) {
+			if (now - bucket.windowStartedAt >= WINDOW_MS) addressBuckets.delete(key);
+		}
+	}
+	// Map iteration is insertion order, so the first key is the oldest window.
+	while (addressBuckets.size >= MAX_TRACKED_ADDRESSES) {
+		const oldest = addressBuckets.keys().next();
+		if (oldest.done) break;
+		addressBuckets.delete(oldest.value);
+	}
+	const fresh = { windowStartedAt: now, requests: 0, authFailures: 0 };
+	// Delete first so a renewed window moves to the back of the eviction order.
+	addressBuckets.delete(address);
+	addressBuckets.set(address, fresh);
+	return fresh;
+};
+
+/** The address a request came from, as the proxy in front of us reports it.
+ *  `cf-connecting-ip` first because Cloudflare fronts this deployment and
+ *  sets it itself; the first `x-forwarded-for` hop is the client's. Requests
+ *  that carry none share one bucket, which is the conservative answer. */
+export const mcpCallerAddress = (request: Request): string => {
+	const headers = request.headers;
+	const direct =
+		headers.get("cf-connecting-ip") ?? headers.get("x-real-ip") ?? null;
+	if (direct?.trim()) return direct.trim();
+	const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+	return forwarded || "unknown";
+};
+
+/**
+ * Count one request against its address, before anything is resolved, and say
+ * whether it may proceed. Refuses once the address has spent either budget.
+ */
+export const admitMcpCaller = (
+	address: string,
+): { ok: true } | { ok: false; retryAfterSeconds: number } => {
+	const now = Date.now();
+	const bucket = addressBucketFor(address, now);
+	bucket.requests += 1;
+	const over =
+		bucket.requests > MAX_REQUESTS_PER_ADDRESS ||
+		bucket.authFailures >= MAX_AUTH_FAILURES_PER_ADDRESS;
+	return over
+		? { ok: false, retryAfterSeconds: retryAfter(bucket, now) }
+		: { ok: true };
+};
+
+/** Record that a request from this address presented no usable credential. */
+export const recordMcpAuthFailure = (address: string): void => {
+	addressBucketFor(address, Date.now()).authFailures += 1;
+};
+
 /** Drop every counter. Tests only — nothing in the app resets a window. */
-export const resetMcpRateLimits = () => buckets.clear();
+export const resetMcpRateLimits = () => {
+	buckets.clear();
+	addressBuckets.clear();
+};

@@ -30,7 +30,11 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { organization, user } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
-import { syncedMeetingTombstone } from "../db/schema/settings";
+import {
+	integrationSettings,
+	orgSettings,
+	syncedMeetingTombstone,
+} from "../db/schema/settings";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { setCalendarSourceForTests } from "./ports";
 import { timeEntriesService } from "./time-entries.service";
@@ -478,5 +482,127 @@ describe("a synced meeting resizes the day's fill block", () => {
 
 		expect(await fillOn(DATE)).toBeNull();
 		expect(await meetingRows()).toHaveLength(1);
+	});
+});
+
+// The window bounds what this engine may MOVE, not only what it may add. The
+// upsert rewrote `date` on any sync-owned row whose event had moved, wherever
+// that row sat — so a stand-up synced onto the 28th and then moved to the 2nd
+// left a month already locked, and the fill recompute on the day it left grew
+// that month's rest-of-day block back by its length.
+describe("the meeting engine and the automation window", () => {
+	const AUG_28 = "2026-08-28"; // a Friday, in a month locked through the 31st
+	const SEP_02 = "2026-09-02"; // a Wednesday, and "today" for the pass below
+	let meetingTaskId = "";
+
+	const rowsOn = (date: string) =>
+		db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ORG_ID),
+				eq(timeEntry.userId, USER_ID),
+				eq(timeEntry.date, date),
+			),
+		});
+
+	beforeAll(async () => {
+		const meeting = await db.query.task.findFirst({
+			where: and(eq(task.scope, "site"), eq(task.systemKey, "meeting")),
+			columns: { id: true },
+		});
+		meetingTaskId = present(meeting, "meeting task").id;
+		// Switched on well before the lock, so the lock is the bound under test.
+		await db.insert(integrationSettings).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			googleAutoSyncMeetings: true,
+			googleAutoSyncMeetingsSince: new Date("2026-08-01T00:00:00.000Z"),
+		});
+		await db.insert(orgSettings).values({
+			organizationId: ORG_ID,
+			automationLockedThrough: "2026-08-31",
+		});
+	});
+
+	afterAll(async () => {
+		await db.delete(integrationSettings);
+		await db.delete(orgSettings);
+	});
+
+	test("a meeting moved out of a locked month leaves that month alone", async () => {
+		await db.insert(timeEntry).values([
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				taskId: meetingTaskId,
+				projectId: null,
+				date: AUG_28,
+				description: "Standup",
+				durationSeconds: 900,
+				calendarEventId: "standup-0828",
+			},
+			{
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				taskId: devTaskId,
+				projectId: null,
+				date: AUG_28,
+				description: "Rest of day",
+				durationSeconds: WORKDAY_SECONDS - 900,
+				fillsDay: true,
+			},
+		]);
+		setCalendarSourceForTests(
+			calendarReturning([shortEventOn("standup-0828", "Standup", SEP_02, 15)]),
+		);
+
+		await timeEntriesService.runAutomationsForUser(ctx, {
+			now: new Date(`${SEP_02}T10:00:00.000Z`),
+		});
+
+		const august = await rowsOn(AUG_28);
+		expect(
+			august.find((row) => row.calendarEventId === "standup-0828"),
+		).toBeDefined();
+		expect(august.find((row) => row.fillsDay)?.durationSeconds).toBe(
+			WORKDAY_SECONDS - 900,
+		);
+	});
+
+	// Google's `timeMin` matches on overlap, so an event that began the evening
+	// before the window comes back too, dated by its start.
+	test("an event dated before the window is not written", async () => {
+		setCalendarSourceForTests(
+			calendarReturning([shortEventOn("eve", "Late call", DATE, 30)]),
+		);
+
+		await timeEntriesService.syncMeetingsForUser(ctx, {
+			from: NEXT_DATE,
+			to: NEXT_DATE,
+		});
+
+		expect(await meetingRows()).toHaveLength(0);
+	});
+});
+
+// `update`, `file` and `updateDescription` all lock a calendar row when a person
+// edits it. The week grid matched synced rows too and locked nothing, so the
+// next sync set the cell straight back to the calendar's length.
+describe("typing into a synced meeting's week cell", () => {
+	test("takes the row out of the sync's hands", async () => {
+		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+		const [synced] = await meetingRows();
+
+		await timeEntriesService.setWeekCell(ctx, {
+			date: DATE,
+			taskId: present(synced, "synced meeting").taskId,
+			durationSeconds: 2 * 3600,
+		});
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		const rows = await meetingRows();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.durationSeconds).toBe(2 * 3600);
+		expect(rows[0]?.syncLocked).toBe(true);
 	});
 });

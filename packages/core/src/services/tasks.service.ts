@@ -70,6 +70,9 @@ export const tasksService = {
 			color: task.color,
 			description: task.description,
 			isAbsence: task.isAbsence,
+			// Callers that must recognise a built-in (the add-block dialog's
+			// calendar picker for Meeting) need this, not the editable name.
+			systemKey: task.systemKey,
 		};
 
 		if (!projectId) {

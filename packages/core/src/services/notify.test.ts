@@ -25,6 +25,7 @@ import {
 	type NotifyChannel,
 	notify,
 	setNotifyAdaptersForTests,
+	slackText,
 	wasDelivered,
 } from "./notify";
 
@@ -300,6 +301,53 @@ describe("what the channels are handed", () => {
 			{ kind: "compliance-nudge", body: "You haven't logged anything since." },
 		);
 		expect(r.calls[0]?.text).toBe("|You haven't logged anything since.");
+	});
+});
+
+describe("the Slack text", () => {
+	const origin = process.env.BETTER_AUTH_URL;
+	afterAll(() => {
+		if (origin === undefined) delete process.env.BETTER_AUTH_URL;
+		else process.env.BETTER_AUTH_URL = origin;
+	});
+
+	test("puts the title in bold on its own line and escapes both", () => {
+		expect(
+			slackText({ kind: "budget-alert", title: "A & B", body: "<b> over" }),
+		).toBe("*A &amp; B*\n&lt;b&gt; over");
+	});
+
+	test("ends with the deep link on the app's own origin", () => {
+		process.env.BETTER_AUTH_URL = "https://farmer.example";
+		expect(
+			slackText({
+				kind: "compliance-nudge",
+				body: "x",
+				url: "/acme/reports?tab=budget",
+				linkLabel: "Open Budget burn",
+			}),
+		).toBe(
+			"x\n<https://farmer.example/acme/reports?tab=budget|Open Budget burn>",
+		);
+	});
+
+	test("leaves the link out when the origin is not configured", () => {
+		delete process.env.BETTER_AUTH_URL;
+		expect(slackText({ kind: "compliance-nudge", body: "x", url: "/a" })).toBe(
+			"x",
+		);
+	});
+
+	test("sends a mrkdwn form as it is, instead of the title and body", () => {
+		delete process.env.BETTER_AUTH_URL;
+		expect(
+			slackText({
+				kind: "admin-digest",
+				title: "Plain",
+				body: "plain",
+				slack: "*Rich* <@U1>",
+			}),
+		).toBe("*Rich* <@U1>");
 	});
 });
 

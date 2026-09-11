@@ -31,8 +31,12 @@ import {
 	orgSettings,
 	reminderSettings,
 } from "../db/schema/settings";
-import { slackInstallation, slackReminderLog } from "../db/schema/slack";
-import { datesBetween, formatDuration } from "../lib/time";
+import {
+	memberSlackIdentity,
+	slackInstallation,
+	slackReminderLog,
+} from "../db/schema/slack";
+import { datesBetween, formatDurationShort } from "../lib/time";
 import {
 	REMINDER_SETTINGS_DEFAULTS,
 	type ReminderKind,
@@ -92,6 +96,7 @@ type Sent = {
 	kind: string;
 	title: string | undefined;
 	body: string;
+	slack: string | undefined;
 };
 
 let harness: TestDb;
@@ -106,6 +111,7 @@ const recorder =
 			kind: event.kind,
 			title: event.title,
 			body: event.body,
+			slack: event.slack,
 		});
 		return true;
 	};
@@ -114,8 +120,14 @@ const recorder =
 const reached = (kind: ReminderKind) =>
 	[...new Set(sent.filter((s) => s.kind === kind).map((s) => s.userId))].sort();
 
+const sentTo = (kind: ReminderKind, userId: string) =>
+	sent.find((s) => s.kind === kind && s.userId === userId);
+
 const bodyFor = (kind: ReminderKind, userId: string) =>
-	sent.find((s) => s.kind === kind && s.userId === userId)?.body;
+	sentTo(kind, userId)?.body;
+
+const titleFor = (kind: ReminderKind, userId: string) =>
+	sentTo(kind, userId)?.title;
 
 const configure = (patch: UpdateReminderSettingsInput) =>
 	reminderSettingsService.update(adminCtx(), patch);
@@ -242,6 +254,7 @@ beforeEach(async () => {
 	});
 	forgetSlackReminderRunsForTests();
 	await db.delete(slackReminderLog);
+	await db.delete(memberSlackIdentity);
 	await db.delete(notificationSettings);
 	await db.delete(reminderSettings);
 	await db.delete(orgSettings);
@@ -258,7 +271,7 @@ describe("the defaults reproduce the jobs as they were", () => {
 		const slow = sent.find((s) => s.userId === SLOW);
 		expect(slow?.title).toBe("Don't forget to log your hours");
 		expect(slow?.body).toBe(
-			`You've logged ${formatDuration(4 * H)} of ${formatDuration(8 * H)} expected today.`,
+			`You've logged ${formatDurationShort(4 * H)} of ${formatDurationShort(8 * H)} expected today.`,
 		);
 
 		// Once a day.
@@ -276,12 +289,15 @@ describe("the defaults reproduce the jobs as they were", () => {
 			sorted([SILENT, SLOW, CONTRACTOR]),
 		);
 		// SILENT is on both lists; the no-entries message wins.
-		expect(bodyFor("compliance-nudge", SILENT)).toStartWith(
-			"You haven't logged any time yet.",
+		expect(titleFor("compliance-nudge", SILENT)).toBe("No time logged yet");
+		expect(titleFor("compliance-nudge", SLOW)).toBe(
+			"You're at 50% of your expected hours so far",
 		);
-		expect(bodyFor("compliance-nudge", SLOW)).toStartWith(
-			"You're at 50% of your expected hours",
+		// The numbers behind the percentage, in hours a person reads.
+		expect(bodyFor("compliance-nudge", SLOW)).toMatch(
+			/^You've logged \d+h of the \d+h expected by today, \d+h short\.$/,
 		);
+		expect(sentTo("compliance-nudge", SLOW)?.slack).toBeUndefined();
 
 		sent = [];
 		await slackAt(TUESDAY, "09:15");
@@ -299,13 +315,22 @@ describe("the defaults reproduce the jobs as they were", () => {
 	test("the digest: Tuesday only, to the admins", async () => {
 		await slackAt(TUESDAY, "09:00");
 		expect(reached("admin-digest")).toEqual([ADMIN]);
+		expect(titleFor("admin-digest", ADMIN)).toBe("Time tracking this week");
 		const digest = bodyFor("admin-digest", ADMIN) ?? "";
-		expect(digest).toStartWith("*Time tracking this week*");
-		// SILENT, CONTRACTOR, NEVER: the cohort, not only who gets a DM.
+		// SILENT, CONTRACTOR, NEVER: the cohort, not only who gets a DM. Named by
+		// when they last logged — never — and not by a count of working days.
 		expect(digest).toContain(
-			"3 people have logged nothing in the last 3 working days",
+			"3 people have logged nothing in the last 3 working days:",
 		);
-		expect(digest).toContain("3 people are behind pace for the month");
+		expect(digest).toContain("• silent — never logged");
+		expect(digest).toContain("• never — never logged");
+		// SILENT and NEVER are behind too, and already named above; SLOW is only
+		// behind, and is the one this list names.
+		expect(digest).toContain(
+			"3 people are behind pace for the month. Besides the people with nothing logged:",
+		);
+		expect(digest).toMatch(/• slow — 50% \(\d+h of \d+h\)/);
+		expect(digest.match(/• silent/g)).toHaveLength(1);
 
 		sent = [];
 		await slackAt(FRIDAY, "09:00");
@@ -320,9 +345,58 @@ describe("the defaults reproduce the jobs as they were", () => {
 		expect(reached("month-end")).toEqual(
 			sorted([ADMIN, SILENT, SLOW, CONTRACTOR]),
 		);
-		expect(bodyFor("month-end", ADMIN)).toBe(
-			"Today is the last working day of the month. Anything still unlogged needs to go in before the monthly close starts tomorrow.",
+		expect(titleFor("month-end", ADMIN)).toBe(
+			"Today is the last working day of the month",
 		);
+		// Somebody on pace gets the ask alone; the others get their own numbers.
+		expect(bodyFor("month-end", ADMIN)).toBe(
+			"Anything still unlogged needs to go in before the monthly close starts tomorrow.",
+		);
+		expect(bodyFor("month-end", SILENT)).toBe(
+			"You haven't logged any time yet. Anything still unlogged needs to go in before the monthly close starts tomorrow.",
+		);
+		expect(bodyFor("month-end", SLOW)).toMatch(
+			/^You've logged \d+h of the \d+h expected so far\. Anything still unlogged/,
+		);
+	});
+});
+
+describe("the digest mentions people", () => {
+	test("in Slack, by their Slack id, and keeps plain names elsewhere", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		await slackAt(TUESDAY, "09:00");
+		const got = sentTo("admin-digest", ADMIN);
+		expect(got?.slack).toStartWith(
+			"*Time tracking this week*\n*3 people* have logged nothing",
+		);
+		expect(got?.slack).toContain("• <@U0SILENT> — never logged");
+		// Nobody matched CONTRACTOR to Slack, so the name stays.
+		expect(got?.slack).toContain("• contractor — never logged");
+		// The plain form, which the preview shows, never carries the markup.
+		expect(got?.body).toContain("• silent — never logged");
+		expect(got?.body).not.toContain("<@");
+	});
+});
+
+describe("the month-end reminder replaces the nudge on its day", () => {
+	test("for everyone it reaches, and only them", async () => {
+		// April 30 is a Thursday, so the nudge and month-end fall on one day.
+		await configure({ nudgeWeekdays: [4] });
+		await slackAt(MONTH_END, "09:00");
+		expect(reached("month-end")).toEqual(
+			sorted([ADMIN, SILENT, SLOW, CONTRACTOR]),
+		);
+		expect(reached("compliance-nudge")).toEqual([]);
+
+		// A contractor the month-end reminder skips still gets the nudge.
+		await configure({ monthEndMemberTypes: ["billable"] });
+		forgetSlackReminderRunsForTests();
+		await db.delete(slackReminderLog);
+		sent = [];
+		await slackAt(MONTH_END, "09:00");
+		expect(reached("compliance-nudge")).toEqual([CONTRACTOR]);
 	});
 });
 
@@ -344,8 +418,8 @@ describe("days, time and conditions must all apply", () => {
 		await configure({ nudgeNoEntries: false });
 		await slackAt(TUESDAY, "09:00");
 		expect(reached("compliance-nudge")).toEqual(sorted([SILENT, SLOW]));
-		expect(bodyFor("compliance-nudge", SILENT)).toStartWith(
-			"You're at 0% of your expected hours",
+		expect(titleFor("compliance-nudge", SILENT)).toBe(
+			"You're at 0% of your expected hours so far",
 		);
 	});
 
@@ -397,8 +471,11 @@ describe("days, time and conditions must all apply", () => {
 		expect(reached("month-end")).toEqual(
 			sorted([ADMIN, SILENT, SLOW, CONTRACTOR]),
 		);
-		expect(bodyFor("month-end", ADMIN)).toStartWith(
-			"The last working day of the month is tomorrow.",
+		expect(titleFor("month-end", ADMIN)).toBe(
+			"Tomorrow is the last working day of the month",
+		);
+		expect(bodyFor("month-end", ADMIN)).toBe(
+			"Anything still unlogged needs to go in before the monthly close starts.",
 		);
 	});
 

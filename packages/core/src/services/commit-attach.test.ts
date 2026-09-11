@@ -44,6 +44,7 @@ import {
 	integrationSettings,
 	orgSettings,
 } from "../db/schema/settings";
+import { dayKeyInTz } from "../lib/time";
 import { createTestDb, type TestDb } from "../test/harness";
 import { integrationSettingsService } from "./integration-settings.service";
 import { setCommitSourceForTests } from "./ports";
@@ -529,5 +530,107 @@ describe("a deleted rest-of-day block", () => {
 
 		expect(await commitsAttachedTo(own.id)).toHaveLength(1);
 		expect(await entriesOn(YESTERDAY)).toHaveLength(1);
+	});
+});
+
+// GitHub filters `since`/`until` on the COMMITTER date, and the source buckets
+// by AUTHOR date. A rebase rewrites the first and keeps the second, so a branch
+// rebased inside the window hands back commits written weeks before it — and
+// the engine filed a rest-of-day block on each of those days.
+describe("a commit from before the window", () => {
+	test("is dropped, however GitHub came to return it", async () => {
+		// A Monday, and before the window opens on the 9th (TODAY minus grace).
+		const AUTHORED_ON = "2026-08-03";
+		setCommitSourceForTests({
+			listUserCommitsForDay: async () => [],
+			// Ignores the range on purpose: that is what the real source does in
+			// effect, since the range it is asked for is not the date it buckets on.
+			listUserCommitsByDay: async () => [
+				{
+					dayKey: AUTHORED_ON,
+					commits: [
+						{
+							projectGithubRepoId: repoId,
+							projectId,
+							sha: "sha-rebased",
+							message: "Rebased work",
+							authorLogin: "tester",
+							committedAt: new Date(`${TODAY}T08:00:00.000Z`),
+							url: "https://example.com/rebased",
+						},
+					],
+				},
+			],
+		});
+
+		await runAutomations();
+
+		expect(await entriesOn(AUTHORED_ON)).toHaveLength(0);
+	});
+});
+
+// `listRange` drops a fill block the day has squeezed to nothing, and the
+// block's commits cascade with it. Nothing brings them back: the engine only
+// files a block when the day has room, which is exactly what this day lacks.
+describe("a fill block the day squeezes out", () => {
+	test("hands its commits to the day's own work entry", async () => {
+		// Today, because the read path only rewrites what an automation may, and
+		// `listRange` has no clock of its own to pin.
+		const today = dayKeyInTz(new Date(), "Europe/Zagreb");
+		const fill = await addEntry({
+			date: today,
+			fillsDay: true,
+			durationSeconds: 8 * 60 * 60,
+			description: "Rest of day",
+		});
+		await db.insert(timeEntryGithubCommit).values({
+			timeEntryId: fill.id,
+			projectGithubRepoId: repoId,
+			sha: "sha-squeezed",
+			message: "Fix the importer",
+			authorLogin: "tester",
+			committedAt: new Date(),
+			url: "https://example.com/squeezed",
+		});
+		// The person then logs the whole day against the project by hand.
+		const own = await addEntry({
+			date: today,
+			projectId,
+			durationSeconds: 8 * 60 * 60,
+			description: "Importer",
+		});
+
+		await timeEntriesService.listRange(ctx, { from: today, to: today });
+
+		expect((await entriesOn(today)).map((entry) => entry.id)).toEqual([own.id]);
+		const moved = await commitsAttachedTo(own.id);
+		expect(moved.map((commit) => commit.sha)).toEqual(["sha-squeezed"]);
+	});
+
+	// The write path drops an emptied block too (`recomputeDayFill`), and it is
+	// the commoner one: logging the day by hand is what fills it.
+	test("does the same when a hand-made entry fills the day", async () => {
+		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
+		await runAutomations();
+		const [fill] = await entriesOn(YESTERDAY);
+		expect(fill?.fillsDay).toBe(true);
+
+		const own = await timeEntriesService.create(ctx, {
+			taskId: devTaskId,
+			projectId,
+			description: "Importer",
+			date: YESTERDAY,
+			durationSeconds: 8 * 60 * 60,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		expect((await entriesOn(YESTERDAY)).map((entry) => entry.id)).toEqual([
+			own.id,
+		]);
+		const moved = await commitsAttachedTo(own.id);
+		expect(moved.map((commit) => commit.sha)).toEqual([
+			`sha-${YESTERDAY}-main`,
+		]);
 	});
 });

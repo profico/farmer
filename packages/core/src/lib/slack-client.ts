@@ -28,6 +28,22 @@ export const slackRedirectUri = (): string => {
 	return new URL("/api/slack/callback", base).toString();
 };
 
+/** Escape text for Slack's mrkdwn. `&`, `<` and `>` are the three characters
+ *  Slack reads as markup, so a client called "Smith & <Co>" otherwise breaks
+ *  the message or turns into a link. */
+export const slackEscape = (text: string): string =>
+	text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+
+/** A mrkdwn link to an app-relative path, or null when the app's own origin
+ *  is not configured. `BETTER_AUTH_URL` is that origin: it is what
+ *  `slackRedirectUri` builds on too. A missing link costs the reader a click;
+ *  it is not worth failing a send over. */
+export const slackLink = (path: string, label: string): string | null => {
+	const base = process.env.BETTER_AUTH_URL;
+	if (!base) return null;
+	return `<${new URL(path, base).toString()}|${slackEscape(label)}>`;
+};
+
 type SlackResponse<T> = { ok: true } & T;
 type SlackError = { ok: false; error: string };
 

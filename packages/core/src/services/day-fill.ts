@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
-import { timeEntry } from "../db/schema/domain";
+import { task, timeEntry } from "../db/schema/domain";
+import { projectGithubRepo, timeEntryGithubCommit } from "../db/schema/github";
 import {
 	type HolidayLookup,
 	remainingSeconds,
@@ -67,6 +68,100 @@ export const computeDayFillSeconds = async (
 };
 
 /**
+ * Before a squeezed-out fill block is dropped, move its commits to the entry
+ * the commit engine would have chosen had the block never existed: that
+ * project's own Development entry on the day, else a project-less one.
+ *
+ * The attachments cascade with the row, and the engine does not bring them
+ * back on its own — it only revisits days inside its window, and even there it
+ * files a block only when the day has room, which is exactly what this day no
+ * longer has. So dropping the block silently dropped the day's evidence.
+ *
+ * Both places that drop an emptied block call this — `recomputeDayFill` below,
+ * on every write path, and `listRange`'s read-path recompute — so the two
+ * cannot disagree about where the evidence goes.
+ *
+ * Deliberately no tombstone. A tombstone records a person saying no; here the
+ * block went because the day filled up, and a tombstone would stop the engine
+ * filing one on this day even after the day empties again.
+ *
+ * A commit with no such entry is still lost with the block. The day was filled
+ * by something that is not development work (meetings, absence), and attaching
+ * a commit to a meeting would be a claim the commit does not make.
+ *
+ * Reads and writes through `ctxDb(ctx)`: `recomputeDayFill` runs inside the
+ * caller's transaction, and an ambient query from there deadlocks.
+ */
+export const rehomeDroppedFillCommits = async (
+	ctx: Ctx,
+	dropped: { id: string; date: string }[],
+) => {
+	if (dropped.length === 0) return;
+	const client = ctxDb(ctx);
+	const attached = await client
+		.select({
+			timeEntryId: timeEntryGithubCommit.timeEntryId,
+			projectGithubRepoId: timeEntryGithubCommit.projectGithubRepoId,
+			sha: timeEntryGithubCommit.sha,
+			message: timeEntryGithubCommit.message,
+			authorLogin: timeEntryGithubCommit.authorLogin,
+			committedAt: timeEntryGithubCommit.committedAt,
+			url: timeEntryGithubCommit.url,
+			projectId: projectGithubRepo.projectId,
+		})
+		.from(timeEntryGithubCommit)
+		.leftJoin(
+			projectGithubRepo,
+			eq(projectGithubRepo.id, timeEntryGithubCommit.projectGithubRepoId),
+		)
+		.where(
+			inArray(
+				timeEntryGithubCommit.timeEntryId,
+				dropped.map((fill) => fill.id),
+			),
+		);
+	if (attached.length === 0) return;
+
+	// The same candidates the commit engine considers: Development entries that
+	// are not themselves a fill block, found by system key rather than by name.
+	const work = await client
+		.select({
+			id: timeEntry.id,
+			date: timeEntry.date,
+			projectId: timeEntry.projectId,
+		})
+		.from(timeEntry)
+		.innerJoin(task, eq(task.id, timeEntry.taskId))
+		.where(
+			and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				inArray(timeEntry.date, [...new Set(dropped.map((f) => f.date))]),
+				eq(timeEntry.fillsDay, false),
+				eq(task.systemKey, "development"),
+			),
+		)
+		.orderBy(asc(timeEntry.createdAt));
+
+	const dateOf = new Map(dropped.map((fill) => [fill.id, fill.date]));
+	const moved: (typeof timeEntryGithubCommit.$inferInsert)[] = [];
+	for (const { timeEntryId, projectId, ...commit } of attached) {
+		const onDay = work.filter((row) => row.date === dateOf.get(timeEntryId));
+		const target =
+			(projectId ? onDay.find((row) => row.projectId === projectId) : null) ??
+			onDay.find((row) => row.projectId === null);
+		if (!target) continue;
+		moved.push({ ...commit, timeEntryId: target.id });
+	}
+	if (moved.length === 0) return;
+	// tegc_entry_sha_unq: the target may already hold the same commit.
+	await client
+		.insert(timeEntryGithubCommit)
+		.values(moved)
+		.onConflictDoNothing();
+};
+
+/**
  * Re-derive the duration of the day's fill block (if any) after a sibling entry
  * changed. No-op when the day has no fill block.
  *
@@ -102,6 +197,8 @@ export const recomputeDayFill = async (
 	if (!fill) return;
 	const next = await computeDayFillSeconds(ctx, dateKey, tz);
 	if (next === 0) {
+		// Its commits would cascade with it. See `rehomeDroppedFillCommits`.
+		await rehomeDroppedFillCommits(ctx, [{ id: fill.id, date: dateKey }]);
 		await client.delete(timeEntry).where(eq(timeEntry.id, fill.id));
 		return;
 	}

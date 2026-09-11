@@ -11,16 +11,25 @@
 // `report-pdf.ts` pulls in the native Typst compiler and therefore cannot be
 // imported from a route at all.
 
-/** A duration as hours and minutes: 23400 -> "6h 30m", 3600 -> "1h", 0 -> "0h".
- *  Thousands are grouped, because an org-wide monthly total is four digits. */
+/** A duration as hours and minutes: 23400 -> "6h 30m", 3600 -> "1h", 0 -> "0h",
+ *  -5400 -> "-1h 30m". Thousands are grouped, because an org-wide monthly total
+ *  is four digits.
+ *
+ *  Rounds to the minute FIRST and splits that into hours and minutes second.
+ *  Splitting first rounded the remainder alone, so 3599s came out as "60m",
+ *  and floored a negative figure away from zero before taking its remainder,
+ *  so the variance tab wrote -5400s as "-2h -30m". The sign is written once,
+ *  in front, and a figure that rounds to nothing is "0h" rather than "-0h". */
 export const formatHoursLabel = (totalSeconds: number): string => {
-	const hours = Math.floor(totalSeconds / 3600);
-	const minutes = Math.round((totalSeconds % 3600) / 60);
+	const totalMinutes = Math.round(Math.abs(totalSeconds) / 60);
+	if (totalMinutes === 0) return "0h";
+	const sign = totalSeconds < 0 ? "-" : "";
+	const hours = Math.floor(totalMinutes / 60);
+	const minutes = totalMinutes % 60;
 	const h = hours.toLocaleString("en-US");
-	if (hours === 0 && minutes === 0) return "0h";
-	if (minutes === 0) return `${h}h`;
-	if (hours === 0) return `${minutes}m`;
-	return `${h}h ${minutes}m`;
+	if (minutes === 0) return `${sign}${h}h`;
+	if (hours === 0) return `${sign}${minutes}m`;
+	return `${sign}${h}h ${minutes}m`;
 };
 
 /** Whole-hour figure for a headline stat, where the unit is rendered

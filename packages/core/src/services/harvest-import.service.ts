@@ -23,6 +23,7 @@ import {
 	isNotNull,
 	isNull,
 	lte,
+	max,
 	ne,
 	or,
 	sql,
@@ -272,6 +273,37 @@ const importedRowsFor = async (
 	return out;
 };
 
+type StartCounts = {
+	clients: number;
+	tasks: number;
+	people: number;
+	projects: number;
+};
+
+/** What `start` created for a run, read back from its mappings — the answer a
+ *  repeated `start` gives, since the first one's answer was lost. */
+const createdCounts = async (runId: string): Promise<StartCounts> => {
+	const rows = await db
+		.select({
+			kind: importMapping.kind,
+			count: sql<number>`count(*)`.mapWith(Number),
+		})
+		.from(importMapping)
+		.where(and(eq(importMapping.runId, runId), eq(importMapping.created, true)))
+		.groupBy(importMapping.kind);
+	const of = (kind: HarvestMappingKind) =>
+		rows.find((r) => r.kind === kind)?.count ?? 0;
+	return {
+		clients: of("client"),
+		tasks: of("task"),
+		people: of("person"),
+		projects: of("project"),
+	};
+};
+
+const monthLabel = (year: number, month: number) =>
+	`${String(year)}-${String(month).padStart(2, "0")}`;
+
 const sameKeys = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
 	a.size === b.size && [...a].every((k) => b.has(k));
 
@@ -495,10 +527,34 @@ export const harvestImportService = {
 	 * A `match` is checked against the org before its mapping is written; that
 	 * check is what makes every later source key safe to resolve. A person is
 	 * never changed by a match, except an empty start date.
+	 *
+	 * Safe to repeat: the run id comes from the browser, so a second call with
+	 * the same id gets the run the first one made. Without that, a `start`
+	 * that committed but lost its answer sent "Retry" into `assertNotMapped`,
+	 * and the first run stayed `started` for ever, in the way of every undo.
 	 */
-	start: async (ctx: Ctx, input: HarvestStartInput) => {
+	start: async (
+		ctx: Ctx,
+		input: HarvestStartInput,
+	): Promise<{ runId: string; created: StartCounts }> => {
 		await requireAdmin(ctx);
 		const org = ctx.organizationId;
+
+		const earlier = await db.query.importRun.findFirst({
+			where: and(
+				eq(importRun.id, input.runId),
+				eq(importRun.organizationId, org),
+			),
+			columns: { id: true, status: true },
+		});
+		if (earlier) {
+			if (earlier.status !== "started") {
+				throw new Error(
+					`This import is ${earlier.status}. Reload the files to import again.`,
+				);
+			}
+			return { runId: earlier.id, created: await createdCounts(earlier.id) };
+		}
 
 		assertUniqueKeys("client", input.clients);
 		assertUniqueKeys("task", input.tasks);
@@ -520,19 +576,30 @@ export const harvestImportService = {
 		});
 
 		return db.transaction(async (tx) => {
+			// A conflict is a first call with this id that committed while this
+			// one was on its way; the next retry finds it above.
 			const [run] = await tx
 				.insert(importRun)
 				.values({
+					id: input.runId,
 					organizationId: org,
 					source: input.source,
 					createdByUserId: ctx.userId,
 					cutoffDate: input.cutoffDate,
 				})
+				.onConflictDoNothing()
 				.returning({ id: importRun.id });
-			if (!run) throw new Error("Failed to open the import run");
+			if (!run) {
+				throw new Error("This import has started already. Retry to continue.");
+			}
 			const runId = run.id;
 
-			const counts = { clients: 0, tasks: 0, people: 0, projects: 0 };
+			const counts: StartCounts = {
+				clients: 0,
+				tasks: 0,
+				people: 0,
+				projects: 0,
+			};
 
 			const remember = async (
 				kind: HarvestMappingKind,
@@ -753,9 +820,12 @@ export const harvestImportService = {
 					}
 					// A guessed address that happens to be somebody's real one must
 					// not hand that person an old account (plan section 3.3).
+					// The same holds for an address the admin typed: it was checked
+					// against `takenEmails` on the review screen, so reaching here
+					// means the snapshot was old, not that they meant this user.
 					if (!p.emailListed) {
 						throw new Error(
-							`The guessed address ${email} belongs to another user. Change it.`,
+							`The ${p.emailConfirmed ? "typed" : "guessed"} address ${email} belongs to another user. Change it.`,
 						);
 					}
 					// A listed address of a user with no membership here: attach
@@ -768,7 +838,7 @@ export const harvestImportService = {
 						id: userId,
 						name: p.name,
 						email,
-						emailVerified: p.emailListed,
+						emailVerified: p.emailConfirmed,
 					});
 				}
 
@@ -1165,6 +1235,16 @@ export const harvestImportService = {
 	 *    alone. A close an earlier run made is written again, but only while
 	 *    nobody has changed it since.
 	 *
+	 *    Only the project-months THIS run covered are written: the ones its
+	 *    file has rows for (`billable`, which names every project-month of the
+	 *    file, a non-billable one at zero), the ones holding a day this run
+	 *    imported or replaced, and an import close whose Reported snapshot no
+	 *    longer matches its entries (a day this run removed). The totals read
+	 *    every imported entry, so without that gate a re-export of only the
+	 *    last year rewrote every older close with Final = 0 — the file simply
+	 *    had no figure for them. Inside a covered month, a person the file does
+	 *    not have keeps the Final an earlier file gave them.
+	 *
 	 * Safe to retry.
 	 */
 	finish: async (
@@ -1277,14 +1357,34 @@ export const harvestImportService = {
 
 				const projectBySource = await mappingsFor(db, ctx, "project");
 				const personBySource = await mappingsFor(db, ctx, "person");
+				// `project:month|user` → this file's billable seconds, and the
+				// `project:month` keys this run covered.
 				const billable = new Map<string, number>();
+				const covered = new Set<string>();
 				for (const b of input.billable) {
 					const projectId = projectBySource.get(b.projectSourceKey);
 					const userId = personBySource.get(b.personSourceKey);
 					if (!projectId || !userId) continue;
+					covered.add(`${projectId}:${b.month}`);
 					const key = `${projectId}:${b.month}|${userId}`;
 					billable.set(key, (billable.get(key) ?? 0) + b.seconds);
 				}
+				// A day this run imported or replaced carries its run id.
+				const touched = await db
+					.selectDistinct({
+						projectId: sql<string>`${timeEntry.projectId}`,
+						month,
+					})
+					.from(timeEntry)
+					.where(
+						and(
+							eq(timeEntry.organizationId, org),
+							eq(timeEntry.importRunId, run.id),
+							isNotNull(timeEntry.projectId),
+							lte(timeEntry.date, lastDay),
+						),
+					);
+				for (const t of touched) covered.add(`${t.projectId}:${t.month}`);
 
 				await db.transaction(async (tx) => {
 					const closeMappings = await tx
@@ -1328,13 +1428,60 @@ export const harvestImportService = {
 							);
 						for (const r of rows) {
 							existingCloses.set(
-								`${r.projectId}:${r.year}-${String(r.month).padStart(2, "0")}`,
-								{ id: r.id, updatedAt: r.updatedAt },
+								`${r.projectId}:${monthLabel(r.year, r.month)}`,
+								{
+									id: r.id,
+									updatedAt: r.updatedAt,
+								},
 							);
 						}
 					}
 
+					// The rows of every close an import made, for the drift test
+					// and the Final a person keeps when this file lacks them.
+					const ourCloseIds = [...groups.keys()].flatMap((key) => {
+						const close = existingCloses.get(key);
+						return close && importedClose.get(key)?.localId === close.id
+							? [close.id]
+							: [];
+					});
+					const priorRows = new Map<
+						string,
+						Map<string, { final: number | null; reported: number | null }>
+					>();
+					for (const batch of inBatches(ourCloseIds)) {
+						const rows = await tx
+							.select({
+								closeId: monthlyCloseRow.closeId,
+								userId: monthlyCloseRow.userId,
+								final: monthlyCloseRow.finalSeconds,
+								reported: monthlyCloseRow.reportedAtFinalizeSeconds,
+							})
+							.from(monthlyCloseRow)
+							.where(inArray(monthlyCloseRow.closeId, batch));
+						for (const r of rows) {
+							let byUser = priorRows.get(r.closeId);
+							if (!byUser) {
+								byUser = new Map();
+								priorRows.set(r.closeId, byUser);
+							}
+							byUser.set(r.userId, { final: r.final, reported: r.reported });
+						}
+					}
+
 					for (const g of groups.values()) {
+						const closeId = existingCloses.get(g.key)?.id;
+						const prior = closeId ? priorRows.get(closeId) : undefined;
+						// A day this run removed names no month, but it leaves the
+						// stored Reported behind the entries.
+						const drifted =
+							prior !== undefined &&
+							(prior.size !== g.rows.length ||
+								g.rows.some(
+									(r) => prior.get(r.userId)?.reported !== r.reported,
+								));
+						if (!covered.has(g.key) && !drifted) continue;
+
 						const monthKey = g.key.slice(-7);
 						const types = typesByMonth.get(monthKey);
 						const fund = funds.get(monthKey) ?? null;
@@ -1342,7 +1489,13 @@ export const harvestImportService = {
 						const rows = g.rows.map((r) => ({
 							organizationId: org,
 							userId: r.userId,
-							finalSeconds: billable.get(`${g.key}|${r.userId}`) ?? 0,
+							// This file's figure; else the one an earlier file gave;
+							// else zero — a person no file ever had billable hours
+							// for, which is what Harvest says about them.
+							finalSeconds:
+								billable.get(`${g.key}|${r.userId}`) ??
+								prior?.get(r.userId)?.final ??
+								0,
 							reportedAtFinalizeSeconds: r.reported,
 							overtimeAtFinalizeSeconds: r.overtime,
 							expectedAtFinalizeSeconds:
@@ -1485,8 +1638,8 @@ export const harvestImportService = {
 	 * Takes back the latest run: its entries, its closes, then the rows it
 	 * created, in reverse order. Refuses while anything made here depends on
 	 * them — an entry on a created project or task or by a created person, a
-	 * close made here on a created project — or when a created user has
-	 * signed in.
+	 * close made here on a created project, a close this run made that
+	 * somebody changed since — or when a created user has signed in.
 	 *
 	 * Not undone: days that this run REPLACED keep the new rows (the old ones
 	 * are gone), closes an earlier run made and this run wrote again keep the
@@ -1512,7 +1665,11 @@ export const harvestImportService = {
 
 		return db.transaction(async (tx) => {
 			const created = await tx
-				.select({ kind: importMapping.kind, localId: importMapping.localId })
+				.select({
+					kind: importMapping.kind,
+					localId: importMapping.localId,
+					updatedAt: importMapping.updatedAt,
+				})
 				.from(importMapping)
 				.where(
 					and(eq(importMapping.runId, run.id), eq(importMapping.created, true)),
@@ -1578,26 +1735,62 @@ export const harvestImportService = {
 					);
 				}
 			}
-			if (projectIds.length > 0) {
-				const closed = await tx
+			// The closes on the created projects, a batch of projects at a time,
+			// checked against this run's own closes in memory: a `not in` list
+			// of every close id is one statement with thousands of parameters.
+			const ownCloses = new Set(closeIds);
+			for (const batch of inBatches(projectIds)) {
+				const closes = await tx
 					.select({ id: monthlyClose.id })
 					.from(monthlyClose)
-					.where(
-						and(
-							inArray(monthlyClose.projectId, projectIds),
-							closeIds.length > 0
-								? sql`${monthlyClose.id} not in (${sql.join(
-										closeIds.map((id) => sql`${id}`),
-										sql`, `,
-									)})`
-								: undefined,
-						),
-					)
-					.limit(1);
-				if (closed[0]) {
+					.where(inArray(monthlyClose.projectId, batch));
+				if (closes.some((c) => !ownCloses.has(c.id))) {
 					throw new Error(
 						"A month on a project this import created was closed here",
 					);
+				}
+			}
+
+			// A close this run made that somebody changed here since: the same
+			// "changed since" test `finish` uses before it writes one again.
+			// Deleting it would take a PM's reconciliation with it.
+			const importedAt = new Map(
+				created.flatMap((m) =>
+					m.kind === "close" ? [[m.localId, m.updatedAt] as const] : [],
+				),
+			);
+			for (const batch of inBatches(closeIds)) {
+				const closes = await tx
+					.select({
+						id: monthlyClose.id,
+						year: monthlyClose.year,
+						month: monthlyClose.month,
+						updatedAt: monthlyClose.updatedAt,
+						projectName: project.name,
+					})
+					.from(monthlyClose)
+					.innerJoin(project, eq(project.id, monthlyClose.projectId))
+					.where(inArray(monthlyClose.id, batch));
+				const newestRows = await tx
+					.select({
+						closeId: monthlyCloseRow.closeId,
+						updatedAt: max(monthlyCloseRow.updatedAt),
+					})
+					.from(monthlyCloseRow)
+					.where(inArray(monthlyCloseRow.closeId, batch))
+					.groupBy(monthlyCloseRow.closeId);
+				const newestRow = new Map(
+					newestRows.map((r) => [r.closeId, r.updatedAt]),
+				);
+				for (const c of closes) {
+					const stamp = importedAt.get(c.id);
+					if (!stamp) continue;
+					const row = newestRow.get(c.id);
+					if (c.updatedAt > stamp || (row != null && row > stamp)) {
+						throw new Error(
+							`The ${c.projectName} close for ${monthLabel(c.year, c.month)} was changed here after the import. Undo would delete that change.`,
+						);
+					}
 				}
 			}
 

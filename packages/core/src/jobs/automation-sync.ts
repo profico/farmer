@@ -1,8 +1,9 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
 import { recurringBlockRule } from "../db/schema/domain";
+import { memberProfile } from "../db/schema/people";
 import { integrationSettings } from "../db/schema/settings";
 import { withTimeout } from "../lib/http";
 import { timeEntriesService } from "../services/time-entries.service";
@@ -51,6 +52,14 @@ type Target = { organizationId: string; userId: string; timezone: string };
  *
  * Both are joined through `member`, so an ex-member's leftover settings row or
  * recurring rule cannot keep writing entries into an org they have left.
+ *
+ * And both leave out archived people (`memberProfile.archivedAt`). Archiving is
+ * how somebody leaves while their history stays — they keep the `member` row, so
+ * the join above does not catch them, and their daily break went on filing
+ * itself onto every working day after they had gone. Same rule as reminders
+ * (`deliveryBlocks` in services/notify.ts): an archived person drops out of
+ * everything forward-looking. A missing profile row is an active person, hence
+ * the left join.
  */
 const collectTargets = async (): Promise<Target[]> => {
 	const [integrationRows, ruleRows] = await Promise.all([
@@ -72,10 +81,20 @@ const collectTargets = async (): Promise<Target[]> => {
 				organization,
 				eq(organization.id, integrationSettings.organizationId),
 			)
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, integrationSettings.organizationId),
+					eq(memberProfile.userId, integrationSettings.userId),
+				),
+			)
 			.where(
-				or(
-					eq(integrationSettings.googleAutoSyncMeetings, true),
-					eq(integrationSettings.githubSyncCommitsAsWorkTime, true),
+				and(
+					isNull(memberProfile.archivedAt),
+					or(
+						eq(integrationSettings.googleAutoSyncMeetings, true),
+						eq(integrationSettings.githubSyncCommitsAsWorkTime, true),
+					),
 				),
 			),
 		db
@@ -96,7 +115,19 @@ const collectTargets = async (): Promise<Target[]> => {
 				organization,
 				eq(organization.id, recurringBlockRule.organizationId),
 			)
-			.where(eq(recurringBlockRule.active, true)),
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, recurringBlockRule.organizationId),
+					eq(memberProfile.userId, recurringBlockRule.userId),
+				),
+			)
+			.where(
+				and(
+					eq(recurringBlockRule.active, true),
+					isNull(memberProfile.archivedAt),
+				),
+			),
 	]);
 
 	// A user may hold several qualifying rows (both switches on, or several
@@ -138,9 +169,58 @@ const SWEEP_CONCURRENCY = Number(process.env.AUTOMATION_SYNC_CONCURRENCY ?? 4);
  * bounded by targets x this, whatever happens underneath. Abandoned work keeps
  * running and is harmless — every engine is idempotent.
  */
-const PER_USER_TIMEOUT_MS = Number(
+const DEFAULT_PER_USER_TIMEOUT_MS = Number(
 	process.env.AUTOMATION_SYNC_USER_TIMEOUT_MS ?? 120_000,
 );
+let perUserTimeoutMs = DEFAULT_PER_USER_TIMEOUT_MS;
+
+/** Test-only: shorten the per-person deadline. Pass null to restore. */
+export const setAutomationPassTimeoutForTests = (ms: number | null): void => {
+	perUserTimeoutMs = ms ?? DEFAULT_PER_USER_TIMEOUT_MS;
+};
+
+type AutomationRunResult = Awaited<
+	ReturnType<typeof timeEntriesService.runAutomationsForUser>
+>;
+
+/**
+ * One pass per person at a time, whoever asked for it.
+ *
+ * Two callers start a pass: the sweep, and "Sync now" (plus flipping a sync
+ * switch on). Each used to have its own story — the button deduplicated
+ * against itself, the sweep against nothing — so a person who pressed the
+ * button while the sweep was on them got two passes over the same days at
+ * once, racing each other's reads for the fill block and paying the API quota
+ * twice. Now a second request JOINS the pass in flight, from either side.
+ *
+ * The deadline wraps the pass for both callers, and the guard is keyed on the
+ * DEADLINED promise, not the pass behind it. A pass that wedges is abandoned
+ * when its deadline fires, and the person can sync again; keyed on the pass
+ * itself, one stuck socket would lock them out until the process restarted.
+ * The abandoned work may still finish in the background, which is harmless:
+ * every engine is idempotent.
+ */
+const inFlight = new Map<string, Promise<AutomationRunResult>>();
+
+const runExclusive = (
+	ctx: Ctx,
+	opts: { now?: Date; tz?: string } = {},
+): Promise<AutomationRunResult> => {
+	const key = `${ctx.organizationId}:${ctx.userId}`;
+	const existing = inFlight.get(key);
+	if (existing) return existing;
+
+	const timeoutMs = perUserTimeoutMs;
+	const pass = withTimeout(
+		timeEntriesService.runAutomationsForUser(ctx, opts),
+		timeoutMs,
+		() => new Error(`automation pass exceeded ${String(timeoutMs)}ms`),
+	).finally(() => {
+		if (inFlight.get(key) === pass) inFlight.delete(key);
+	});
+	inFlight.set(key, pass);
+	return pass;
+};
 
 /** One tick: run every enabled automation for everyone who has one. */
 export const runAutomationSyncOnce = async (
@@ -162,17 +242,7 @@ export const runAutomationSyncOnce = async (
 			userId: target.userId,
 		};
 		try {
-			const result = await withTimeout(
-				timeEntriesService.runAutomationsForUser(ctx, {
-					now,
-					tz: target.timezone,
-				}),
-				PER_USER_TIMEOUT_MS,
-				() =>
-					new Error(
-						`automation pass exceeded ${String(PER_USER_TIMEOUT_MS)}ms`,
-					),
-			);
+			const result = await runExclusive(ctx, { now, tz: target.timezone });
 			if (result.failed.length > 0) failed++;
 			else synced++;
 		} catch (error) {
@@ -214,27 +284,11 @@ export const runAutomationSyncOnce = async (
  * only difference is who asked.
  *
  * Requests for a pass already in flight JOIN it rather than starting a second
- * one. Both callers are reachable from a button any member can hold down, and
- * the cost of a pass is somebody else's API quota — so the guard is about not
- * multiplying that, and as a bonus makes a double-click do the obviously right
- * thing instead of racing itself.
+ * one — including the sweep's pass for the same person. Both callers are
+ * reachable from a button any member can hold down, and the cost of a pass is
+ * somebody else's API quota, so the guard is about not multiplying that. It
+ * runs under the sweep's deadline too; see `runExclusive`.
  */
-const inFlight = new Map<string, Promise<AutomationRunResult>>();
-
-type AutomationRunResult = Awaited<
-	ReturnType<typeof timeEntriesService.runAutomationsForUser>
->;
-
 export const runAutomationSyncForCtx = (
 	ctx: Ctx,
-): Promise<AutomationRunResult> => {
-	const key = `${ctx.organizationId}:${ctx.userId}`;
-	const existing = inFlight.get(key);
-	if (existing) return existing;
-
-	const pass = timeEntriesService
-		.runAutomationsForUser(ctx)
-		.finally(() => inFlight.delete(key));
-	inFlight.set(key, pass);
-	return pass;
-};
+): Promise<AutomationRunResult> => runExclusive(ctx);

@@ -338,6 +338,68 @@ describe("assemble my day", () => {
 	});
 });
 
+// `apply` goes through `create`, which refuses an entry past 24 hours — but it
+// does so one entry at a time, best-effort, so a proposal that did not fit wrote
+// its first entries and refused the rest. The whole proposal is checked first.
+describe("the 24-hour ceiling on an accepted proposal", () => {
+	const mondayRows = () =>
+		db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ORG_ID),
+				eq(timeEntry.userId, USER_ID),
+				eq(timeEntry.date, MONDAY),
+			),
+		});
+
+	test("a proposal that would overfill the day writes nothing", async () => {
+		await db.insert(timeEntry).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: devTaskId,
+			projectId,
+			date: MONDAY,
+			description: "Long day",
+			durationSeconds: 20 * 3600,
+		});
+
+		const { created, errors } = await dayAssemblyService.apply(ctx, {
+			date: MONDAY,
+			entries: [
+				// Fits on its own, and used to be written before the next was refused.
+				{ taskId: breakTaskId, description: "Break", durationSeconds: 1800 },
+				{
+					taskId: devTaskId,
+					projectId,
+					description: "More work",
+					durationSeconds: 4 * 3600,
+				},
+			],
+		});
+
+		expect(created).toBe(0);
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toMatch(/more than 24 hours/);
+		expect(await mondayRows()).toHaveLength(1);
+	});
+
+	test("an accepted rest-of-day block does not count against it", async () => {
+		const { created, errors } = await dayAssemblyService.apply(ctx, {
+			date: MONDAY,
+			entries: [
+				{ taskId: breakTaskId, description: "Break", durationSeconds: 1800 },
+				// Whatever a client claims for the fill, `create` sizes it from what
+				// the day leaves — so the claim must not trip the ceiling either.
+				{ taskId: devTaskId, fillsDay: true, durationSeconds: 23 * 3600 },
+			],
+		});
+
+		expect(errors).toEqual([]);
+		expect(created).toBe(2);
+		const fill = (await mondayRows()).find((row) => row.fillsDay);
+		expect(fill?.durationSeconds).toBe(EIGHT_HOURS - 1800);
+	});
+});
+
 // Deleting a synced block records a tombstone, which is what stops the engines
 // putting it straight back. Right by default, and a dead end when the deletion
 // was a mistake: the block is gone, the engine has been told never to rebuild

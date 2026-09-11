@@ -88,6 +88,16 @@ export const setMemberArchived = createServerFn({ method: "POST" })
 		return membersService.setArchived(context.ctx, data.userId, data.archived);
 	});
 
+// An active person an import made with an address nobody has confirmed. The
+// archived ones are confirmed by `setMemberArchived` on restore.
+export const confirmMemberEmail = createServerFn({ method: "POST" })
+	.middleware([orgAdminMiddleware])
+	.validator(memberUserIdInput)
+	.handler(async ({ data: userId, context }) => {
+		const { membersService } = await import("@farmer/core/services");
+		return membersService.confirmEmail(context.ctx, userId);
+	});
+
 export const listMembers = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {

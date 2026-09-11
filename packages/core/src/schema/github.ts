@@ -72,13 +72,22 @@ export const userCommitsRangeInput = z
 	);
 export type UserCommitsRangeInput = z.infer<typeof userCommitsRangeInput>;
 
+// A commit id, abbreviated or full. Constrained because `attachCommits` puts it
+// into a GitHub API PATH (`/repos/{owner}/{repo}/commits/{sha}`), and that
+// endpoint also resolves branch and tag names — so a free string attached
+// "evidence" that was whatever a branch pointed at, and a `../` in it walked
+// the installation token onto another endpoint entirely.
+export const commitSha = z
+	.string()
+	.regex(/^[0-9a-f]{7,40}$/i, "Expected a commit SHA");
+
 export const attachCommitsInput = z.object({
 	timeEntryId: z.uuid(),
 	commits: z
 		.array(
 			z.object({
 				projectGithubRepoId: z.uuid(),
-				sha: z.string(),
+				sha: commitSha,
 			}),
 		)
 		.min(1),

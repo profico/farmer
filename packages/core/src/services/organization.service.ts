@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import type { UpdateOrganizationSettingsInput } from "../schema/organization";
+import { invalidateCtxTimezone, requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
 export const organizationService = {
@@ -20,6 +21,10 @@ export const organizationService = {
 	},
 
 	updateSettings: async (ctx: Ctx, input: UpdateOrganizationSettingsInput) => {
+		// Asserted here and not only by `orgAdminMiddleware`: every service
+		// re-resolves Access itself, so a caller that is not a server function
+		// (a job, an assistant tool, a future REST route) cannot rename the org.
+		await requireAdmin(ctx);
 		const patch: Partial<typeof organization.$inferInsert> = {};
 		if (input.name !== undefined) patch.name = input.name;
 		if (input.country !== undefined) patch.country = input.country;
@@ -47,6 +52,9 @@ export const organizationService = {
 			.where(eq(organization.id, ctx.organizationId))
 			.returning();
 		if (!updated) throw new Error("Organization not found");
+		// The Ctx memoizes the org timezone; a stale one would keep computing
+		// day keys in the old zone for the rest of this request.
+		if (input.timezone !== undefined) invalidateCtxTimezone(ctx);
 		return {
 			name: updated.name,
 			country: updated.country,

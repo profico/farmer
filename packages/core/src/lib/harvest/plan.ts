@@ -907,8 +907,8 @@ export interface HarvestPersonReview {
 	matchedBy: HarvestMatchSource | null;
 	localId: string | null;
 	email: string;
-	/** True when the address is not the people list's: a guess, or an
-	 *  address the admin typed. */
+	/** True for a guess only. An address from the people list, or one the
+	 *  admin typed, is vouched for and is created confirmed. */
 	emailGuessed: boolean;
 	role: "admin" | "member" | null;
 	type: MemberTypeValue | null;
@@ -1043,7 +1043,8 @@ export interface HarvestPlanSummary {
 export interface HarvestPlan {
 	ready: boolean;
 	blocked: HarvestBlocked[];
-	start: HarvestStartInput;
+	/** Without the run id: the runner makes one per import attempt. */
+	start: Omit<HarvestStartInput, "runId">;
 	/** Sorted by date, then person source key. */
 	days: HarvestImportDay[];
 	/** Empty unless `choices.confirmFullExport`. */
@@ -1608,6 +1609,11 @@ export function planHarvestImport(
 		const email =
 			override ?? listedEmail ?? guessEmail(p.firstName, p.lastName);
 		const emailListed = listedEmail !== null && email === listedEmail;
+		// An address the admin typed is not a guess: they vouch for it, as the
+		// people list does (plan section 3.3 keeps only a GUESS unverified).
+		// Leaving it unverified made the person active but unable to sign in,
+		// with Restore on an archived row as the only way to confirm it.
+		const emailConfirmed = emailListed || override !== null;
 		const employee = p.listed
 			? p.listed.employee
 			: (p.employeeInReport ?? true);
@@ -1630,6 +1636,7 @@ export function planHarvestImport(
 			name,
 			email,
 			emailListed,
+			emailConfirmed,
 			role,
 			type,
 			startDate: p.firstDate ?? cutoff,
@@ -1637,7 +1644,7 @@ export function planHarvestImport(
 			weeklyTargetSeconds,
 		};
 		review.email = email;
-		review.emailGuessed = !emailListed;
+		review.emailGuessed = !emailConfirmed;
 		review.role = role;
 		review.type = type;
 		review.archived = archivedOn !== null;
@@ -1917,16 +1924,22 @@ export function planHarvestImport(
 				else review.nonBillableSeconds += seconds;
 			}
 			const month = row.date.slice(0, 7);
-			if (row.billable && historyThrough !== null && month <= historyThrough) {
+			// Every row counts, a non-billable one as zero: the entry is how
+			// `finish` learns that this file covers the project-month. Without
+			// it, a person with only non-billable hours and a person the file
+			// does not have at all looked the same, and a partial re-export
+			// zeroed the Final of every month it did not reach.
+			if (historyThrough !== null && month <= historyThrough) {
+				const add = row.billable ? seconds : 0;
 				const bk = JSON.stringify([row.projectSourceKey, owner, month]);
 				const b = billable.get(bk);
-				if (b) b.seconds += seconds;
+				if (b) b.seconds += add;
 				else
 					billable.set(bk, {
 						project: row.projectSourceKey,
 						person: owner,
 						month,
-						seconds,
+						seconds: add,
 					});
 			}
 		}

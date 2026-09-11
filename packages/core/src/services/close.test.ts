@@ -57,6 +57,7 @@ import {
 	effectiveFinal,
 	expectedSecondsFor,
 } from "./close.service";
+import { reportsService } from "./reports.service";
 import type { Ctx } from "./types";
 
 const H = 3600;
@@ -74,6 +75,8 @@ const ADMIN = "u-admin";
 const WORKER = "u-worker";
 const DRIFTER = "u-drifter";
 const CONTRACTOR = "u-contractor";
+/** A real user row with NO membership in this org — somebody else's person. */
+const OUTSIDER = "u-outsider";
 
 let harness: TestDb;
 let productProjectId: string;
@@ -95,7 +98,7 @@ beforeAll(async () => {
 	});
 
 	await db.insert(user).values(
-		[PM, ADMIN, WORKER, DRIFTER, CONTRACTOR].map((id) => ({
+		[PM, ADMIN, WORKER, DRIFTER, CONTRACTOR, OUTSIDER].map((id) => ({
 			id,
 			// Names drive the sheet's sort order, so they are deliberately not in
 			// alphabetical agreement with the ids.
@@ -304,6 +307,24 @@ const rowFor = (sheet: CloseSheet, userId: string): CloseSheetRow => {
 	const row = sheet.rows.find((r) => r.userId === userId);
 	if (!row) throw new Error(`No sheet row for ${userId}`);
 	return row;
+};
+
+/** The stored close row for a person on the product project, read straight off
+ *  the table — the snapshots and `finalDerived` are not on the sheet. */
+const storedRow = async (userId: string) => {
+	const row = await db
+		.select()
+		.from(monthlyCloseRow)
+		.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
+		.where(
+			and(
+				eq(monthlyClose.projectId, productProjectId),
+				eq(monthlyCloseRow.userId, userId),
+			),
+		);
+	const first = row[0];
+	if (!first) throw new Error(`No stored close row for ${userId}`);
+	return first.monthly_close_row;
 };
 
 // ── The pure formulas ───────────────────────────────────────────────────────
@@ -683,6 +704,21 @@ describe("finalize", () => {
 		await expect(finalize(ADMIN)).rejects.toThrow(/worker/);
 	});
 
+	// The close record is created and locked BEFORE the unfiled gate now, in the
+	// same transaction, so the gate reads the month under the lock it is about
+	// to write through. Refusing must therefore roll that record back: an empty
+	// Open close on an untouched month reads as "somebody started this".
+	test("a refused finalize leaves no close record behind", async () => {
+		await logTime(WORKER, { day: 3, hours: 2, projectId: null });
+		await expect(finalize(ADMIN)).rejects.toThrow(/not filed/);
+
+		const records = await db
+			.select()
+			.from(monthlyClose)
+			.where(eq(monthlyClose.organizationId, ORG));
+		expect(records).toHaveLength(0);
+	});
+
 	// A Break has no project and never will — nobody bills a client for lunch —
 	// so counting it as unfiled would block the close on something unfileable.
 	test("a project-less Break does not count as unfiled", async () => {
@@ -730,22 +766,6 @@ describe("finalize", () => {
 // ── Property 2: finalize snapshots ──────────────────────────────────────────
 
 describe("finalize snapshots", () => {
-	const storedRow = async (userId: string) => {
-		const row = await db
-			.select()
-			.from(monthlyCloseRow)
-			.innerJoin(monthlyClose, eq(monthlyCloseRow.closeId, monthlyClose.id))
-			.where(
-				and(
-					eq(monthlyClose.projectId, productProjectId),
-					eq(monthlyCloseRow.userId, userId),
-				),
-			);
-		const first = row[0];
-		if (!first) throw new Error(`No stored close row for ${userId}`);
-		return first.monthly_close_row;
-	};
-
 	test("freezes Reported, Expected and Overtime as they stood", async () => {
 		await logTime(WORKER, { day: 3, hours: 6 });
 		await logTime(WORKER, { day: 4, hours: 2, overtime: true });
@@ -1005,5 +1025,212 @@ describe("overview", () => {
 		const rows = await closeService.overview(ctxFor(ADMIN), YEAR, MONTH);
 		const product = rows.find((r) => r.projectId === productProjectId);
 		expect(product?.reportedSeconds).toBe(4 * H);
+	});
+
+	// Before finalize, only the rows an admin typed carry a stored Final, so a
+	// sum over them is a fraction of the sheet dressed as its invoiced total.
+	test("reports Final only once the month is finalized", async () => {
+		await logTime(WORKER, { day: 3, hours: 10 });
+		await closeService.setFinal(ctxFor(ADMIN), {
+			projectId: productProjectId,
+			year: YEAR,
+			month: MONTH,
+			userId: WORKER,
+			finalSeconds: 7 * H,
+		});
+
+		const productOf = async () =>
+			(await closeService.overview(ctxFor(ADMIN), YEAR, MONTH)).find(
+				(r) => r.projectId === productProjectId,
+			);
+		expect((await productOf())?.finalSeconds).toBeNull();
+
+		await closeService.finalize(ctxFor(ADMIN), {
+			...transition,
+			projectId: productProjectId,
+		});
+		// WORKER's typed 7h; PM and CONTRACTOR materialize to their zero Reported.
+		expect((await productOf())?.finalSeconds).toBe(7 * H);
+	});
+});
+
+// ── Re-open then finalize ───────────────────────────────────────────────────
+
+describe("re-open then finalize", () => {
+	const at = { projectId: "", year: YEAR, month: MONTH };
+	const finalize = () =>
+		closeService.finalize(ctxFor(ADMIN), {
+			...at,
+			projectId: productProjectId,
+		});
+	const reopen = () =>
+		closeService.reopen(ctxFor(ADMIN), { ...at, projectId: productProjectId });
+	const adjust = (seconds: number) =>
+		closeService.saveRow(ctxFor(PM), {
+			...at,
+			projectId: productProjectId,
+			userId: WORKER,
+			adjustedSeconds: seconds,
+		});
+
+	// The regression: finalize materialized Adjusted into the Final column, and
+	// re-open left it there — so the second finalize read it back as if an admin
+	// had typed it, and the correction the month was re-opened for never reached
+	// the invoice.
+	test("re-derives a Final that finalize filled in, from the Adjusted saved after re-open", async () => {
+		await logTime(WORKER, { day: 3, hours: 10 });
+		await finalize();
+		expect((await storedRow(WORKER)).finalSeconds).toBe(10 * H);
+
+		await reopen();
+		// Back on the fallback chain: the sheet shows Adjusted again, not a Final.
+		expect(rowFor(await sheetFor(PM), WORKER).finalSeconds).toBeNull();
+
+		await adjust(16 * H);
+		await finalize();
+		expect((await storedRow(WORKER)).finalSeconds).toBe(16 * H);
+	});
+
+	test("keeps a Final an admin typed across re-open and re-finalize", async () => {
+		await logTime(WORKER, { day: 3, hours: 10 });
+		await closeService.setFinal(ctxFor(ADMIN), {
+			...at,
+			projectId: productProjectId,
+			userId: WORKER,
+			finalSeconds: 7 * H,
+		});
+		await finalize();
+		await reopen();
+		await adjust(16 * H);
+		await finalize();
+
+		const stored = await storedRow(WORKER);
+		expect(stored.finalSeconds).toBe(7 * H);
+		expect(stored.finalDerived).toBe(false);
+	});
+
+	// A Final corrected by hand on a finalized month is a decision too, even
+	// though the row it lands on was first filled in by finalize.
+	test("a Final typed after finalize survives the next re-open", async () => {
+		await logTime(WORKER, { day: 3, hours: 10 });
+		await finalize();
+		await closeService.setFinal(ctxFor(ADMIN), {
+			...at,
+			projectId: productProjectId,
+			userId: WORKER,
+			finalSeconds: 9 * H,
+		});
+		await reopen();
+		expect((await storedRow(WORKER)).finalSeconds).toBe(9 * H);
+	});
+});
+
+// ── Membership ──────────────────────────────────────────────────────────────
+
+describe("the person a row is about must be in the org", () => {
+	const at = { projectId: "", year: YEAR, month: MONTH };
+
+	test("saveRow refuses a non-member", async () => {
+		await expect(
+			closeService.saveRow(ctxFor(PM), {
+				...at,
+				projectId: productProjectId,
+				userId: OUTSIDER,
+				adjustedSeconds: 1 * H,
+			}),
+		).rejects.toThrow(/not a member/);
+	});
+
+	test("setFinal refuses a non-member", async () => {
+		await expect(
+			closeService.setFinal(ctxFor(ADMIN), {
+				...at,
+				projectId: productProjectId,
+				userId: OUTSIDER,
+				finalSeconds: 1 * H,
+			}),
+		).rejects.toThrow(/not a member/);
+	});
+
+	// A stored row the old write paths let through must not put a stranger's
+	// name and email on the sheet.
+	test("the sheet does not surface a non-member's stored row", async () => {
+		const [close] = await db
+			.insert(monthlyClose)
+			.values({
+				organizationId: ORG,
+				projectId: productProjectId,
+				year: YEAR,
+				month: MONTH,
+			})
+			.returning();
+		if (!close) throw new Error("Failed to seed a close");
+		await db.insert(monthlyCloseRow).values({
+			organizationId: ORG,
+			closeId: close.id,
+			userId: OUTSIDER,
+			adjustedSeconds: 3 * H,
+		});
+
+		const ids = (await sheetFor(ADMIN)).rows.map((r) => r.userId);
+		expect(ids).not.toContain(OUTSIDER);
+	});
+
+	// ...while time actually logged on the project stays on it, member or not:
+	// somebody who has since left still did the work being invoiced.
+	test("the sheet keeps reported time from somebody no longer a member", async () => {
+		await logTime(OUTSIDER, { day: 3, hours: 2 });
+		expect(rowFor(await sheetFor(ADMIN), OUTSIDER).reportedSeconds).toBe(2 * H);
+	});
+});
+
+// ── A Final set on a finalized month ────────────────────────────────────────
+
+describe("setFinal on a finalized month", () => {
+	const at = { projectId: "", year: YEAR, month: MONTH };
+
+	// DRIFTER is on nothing when the month is frozen, so finalize writes no row
+	// for them. Their row used to arrive with a null Reported-at-finalize, which
+	// the variance report sums as zero — the whole Final read as variance.
+	test("snapshots a person new to the sheet as they stand now", async () => {
+		await closeService.finalize(ctxFor(ADMIN), {
+			...at,
+			projectId: productProjectId,
+		});
+		await logTime(DRIFTER, { day: 20, hours: 5 });
+		await closeService.setFinal(ctxFor(ADMIN), {
+			...at,
+			projectId: productProjectId,
+			userId: DRIFTER,
+			finalSeconds: 5 * H,
+		});
+
+		const stored = await storedRow(DRIFTER);
+		expect(stored.reportedAtFinalizeSeconds).toBe(5 * H);
+		expect(stored.overtimeAtFinalizeSeconds).toBe(0);
+		expect(stored.expectedAtFinalizeSeconds).toBe(160 * H);
+
+		const variance = await reportsService.variance(ctxFor(ADMIN), {
+			year: YEAR,
+			month: MONTH,
+		});
+		expect(variance.find((r) => r.userId === DRIFTER)?.diffSeconds).toBe(0);
+	});
+
+	test("does not move the snapshot of somebody finalize already froze", async () => {
+		await logTime(WORKER, { day: 3, hours: 6 });
+		await closeService.finalize(ctxFor(ADMIN), {
+			...at,
+			projectId: productProjectId,
+		});
+		await logTime(WORKER, { day: 20, hours: 10 });
+		await closeService.setFinal(ctxFor(ADMIN), {
+			...at,
+			projectId: productProjectId,
+			userId: WORKER,
+			finalSeconds: 20 * H,
+		});
+
+		expect((await storedRow(WORKER)).reportedAtFinalizeSeconds).toBe(6 * H);
 	});
 });

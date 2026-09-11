@@ -27,8 +27,14 @@ import {
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { invitation, member, organization, user } from "../db/schema/auth";
-import { memberTypeHistory } from "../db/schema/people";
+import {
+	account,
+	invitation,
+	member,
+	organization,
+	user,
+} from "../db/schema/auth";
+import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import { createTestDb, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
 import { INVITATION_EMAIL_STALE_MS, membersService } from "./members.service";
@@ -174,6 +180,124 @@ describe("invitation email status", () => {
 		await expect(
 			membersService.invitationEmails({ organizationId: ORG, userId: PLAIN }),
 		).rejects.toThrow(AccessError);
+	});
+});
+
+// An import can make a person ACTIVE with an address nobody confirmed. The only
+// way to confirm it used to be Restore, which an active person never reaches:
+// the admin had to archive them first. `confirmEmail` is the same act with the
+// same guards, for them.
+describe("confirmEmail", () => {
+	const UNCONFIRMED = "u-mt-unconfirmed";
+	const SIGNED_IN = "u-mt-signed-in";
+	const SHARED = "u-mt-shared";
+	const LEFT = "u-mt-left";
+	const OTHER_ORG = "mt-other-org";
+
+	beforeAll(async () => {
+		await db.insert(organization).values({
+			id: OTHER_ORG,
+			name: "Other",
+			slug: OTHER_ORG,
+			createdAt: new Date(),
+		});
+		const ids = [UNCONFIRMED, SIGNED_IN, SHARED, LEFT];
+		await db.insert(user).values(
+			ids.map((id) => ({
+				id,
+				name: id,
+				email: `${id}@example.com`,
+				emailVerified: false,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})),
+		);
+		await db.insert(member).values([
+			...ids.map((id) => ({
+				id: `m-${id}`,
+				organizationId: ORG,
+				userId: id,
+				role: "member",
+				createdAt: new Date(),
+			})),
+			{
+				id: `m-${SHARED}-other`,
+				organizationId: OTHER_ORG,
+				userId: SHARED,
+				role: "member",
+				createdAt: new Date(),
+			},
+		]);
+		await db.insert(account).values({
+			id: `acc-${SIGNED_IN}`,
+			accountId: SIGNED_IN,
+			providerId: "credential",
+			userId: SIGNED_IN,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await db.insert(memberProfile).values({
+			organizationId: ORG,
+			userId: LEFT,
+			archivedAt: new Date("2026-01-01T00:00:00Z"),
+		});
+	});
+
+	const verified = async (userId: string) =>
+		(
+			await db.query.user.findFirst({
+				where: eq(user.id, userId),
+				columns: { emailVerified: true },
+			})
+		)?.emailVerified;
+
+	test("confirms an active person who never signed in, once", async () => {
+		const before = await membersService.list(adminCtx());
+		expect(before.find((p) => p.userId === UNCONFIRMED)?.emailUnconfirmed).toBe(
+			true,
+		);
+
+		expect(await membersService.confirmEmail(adminCtx(), UNCONFIRMED)).toEqual({
+			emailConfirmed: true,
+		});
+		expect(await verified(UNCONFIRMED)).toBe(true);
+		const after = await membersService.list(adminCtx());
+		expect(after.find((p) => p.userId === UNCONFIRMED)?.emailUnconfirmed).toBe(
+			false,
+		);
+
+		await expect(
+			membersService.confirmEmail(adminCtx(), UNCONFIRMED),
+		).rejects.toThrow("confirmed already");
+	});
+
+	test("refuses the cases Restore stays silent about", async () => {
+		await expect(
+			membersService.confirmEmail(adminCtx(), SIGNED_IN),
+		).rejects.toThrow("has signed in");
+		// Another org holds the same identity: this org cannot vouch for it.
+		await expect(
+			membersService.confirmEmail(adminCtx(), SHARED),
+		).rejects.toThrow("another organization");
+		// An archived person is confirmed by restoring them.
+		await expect(membersService.confirmEmail(adminCtx(), LEFT)).rejects.toThrow(
+			"Restore this person instead",
+		);
+		expect(await verified(SIGNED_IN)).toBe(false);
+		expect(await verified(SHARED)).toBe(false);
+		expect(await verified(LEFT)).toBe(false);
+	});
+
+	test("is for admins only, and only for people in the org", async () => {
+		await expect(
+			membersService.confirmEmail(
+				{ organizationId: ORG, userId: PLAIN },
+				SHARED,
+			),
+		).rejects.toThrow(AccessError);
+		await expect(
+			membersService.confirmEmail(adminCtx(), "u-mt-nobody"),
+		).rejects.toThrow("not a member");
 	});
 });
 

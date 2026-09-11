@@ -1,4 +1,5 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import type { PgInsertValue } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import { db } from "../db";
@@ -27,6 +28,7 @@ import type {
 	SetAssistantSettingsInput,
 	UpdateAssistantSettingsInput,
 } from "../schema";
+import { AccessError } from "./access.service";
 import {
 	type ApprovalPreview,
 	findTool,
@@ -62,6 +64,25 @@ export class AssistantDisabledError extends AssistantError {
 		this.name = "AssistantDisabledError";
 	}
 }
+
+/**
+ * The text a person may read for an error that ended a turn, or null when the
+ * error is not theirs to read.
+ *
+ * Only the errors this layer and the services throw ON PURPOSE qualify: the
+ * assistant's own (not connected, switched off, conversation not found), an
+ * `AccessError` refusal, and OpenRouter's account-level answers (no credit, a
+ * revoked key). Everything else — a database error, a bug, a failed import —
+ * can carry SQL, a hostname or a file path, and belongs in the server log
+ * rather than in somebody's chat. The stream route streamed every message
+ * through before this existed.
+ */
+export const userFacingAssistantError = (error: Error): string | null =>
+	error instanceof AssistantError ||
+	error instanceof AccessError ||
+	error instanceof OpenRouterError
+		? error.message
+		: null;
 
 // ── the substitutable model port ─────────────────────────────────────────────
 //
@@ -392,6 +413,31 @@ const conversations = {
 
 type StoredMessage = typeof assistantMessage.$inferSelect;
 
+/** The database, or a transaction on it — whichever the caller holds. */
+type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * The rows that belong to the assistant turn at `history[index]`: everything
+ * after it, up to the next assistant row.
+ *
+ * Bounded on both sides, and that is the point of it. A provider may reuse a
+ * call id across turns ("call_0" on every turn is common), so a tool row from
+ * an EARLIER turn answering the same id used to make a fresh call look
+ * answered — and an approved delete was skipped without a word. Position in
+ * `history` rather than a timestamp comparison, because `history` is already
+ * in the database's order and a JS `Date` keeps only milliseconds.
+ */
+const turnRows = (history: StoredMessage[], index: number) => {
+	const rest = history.slice(index + 1);
+	const next = rest.findIndex((row) => row.role === "assistant");
+	return next === -1 ? rest : rest.slice(0, next);
+};
+
+/** What the model is told about a call whose result is not in the thread.
+ *  Never stored — it exists only to keep a damaged history sendable. */
+const MISSING_RESULT =
+	"No result was recorded for this call. Do not assume that it ran.";
+
 /**
  * The DB history in OpenAI's wire shape.
  *
@@ -400,54 +446,79 @@ type StoredMessage = typeof assistantMessage.$inferSelect;
  * request 400s. That invariant is why a suspended write is resumed by
  * completing its call (approved or rejected — a rejection still writes a tool
  * result saying so) rather than by dropping it.
+ *
+ * So the pairing is BUILT here rather than trusted from the row order. Each
+ * tool row is emitted directly after the call it answers, wherever it sits in
+ * the table, and a call with no row gets a synthesized one. A message sent
+ * while a card was pending used to land between a call and its result —
+ * `assistant(tool_calls) → user → tool` — and every later turn in that thread
+ * 400ed. `run` no longer writes that shape, but threads that already hold it
+ * are in the database, and this is what makes them answerable again. A tool
+ * row that answers no call in its turn is dropped: sent on its own, it is the
+ * same 400.
  */
-const toWireMessages = (rows: StoredMessage[]): ChatMessage[] =>
-	rows.map((row) => {
-		if (row.role === "tool") {
-			return {
-				role: "tool" as const,
-				content: row.content,
-				tool_call_id: row.toolCallId ?? "",
-			};
+const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
+	const wire: ChatMessage[] = [];
+	rows.forEach((row, index) => {
+		// Emitted beside its call, below — never where it happens to sit.
+		if (row.role === "tool") return;
+		if (row.role === "user") {
+			wire.push({ role: "user", content: row.content });
+			return;
 		}
-		if (row.role === "assistant") {
-			const message: ChatMessage = {
-				role: "assistant",
-				content: row.content,
-			};
-			// Only when there are calls: an assistant message carrying an EMPTY
-			// `tool_calls` array is not the same request as one carrying none, and
-			// the API rejects the former.
-			if (row.toolCalls?.length) {
-				message.tool_calls = row.toolCalls.map((call) => ({
-					id: call.id,
-					type: "function" as const,
-					function: { name: call.name, arguments: call.arguments },
-				}));
-			}
-			return message;
+		const message: ChatMessage = { role: "assistant", content: row.content };
+		// Only when there are calls: an assistant message carrying an EMPTY
+		// `tool_calls` array is not the same request as one carrying none, and
+		// the API rejects the former.
+		if (!row.toolCalls?.length) {
+			wire.push(message);
+			return;
 		}
-		return { role: "user" as const, content: row.content };
+		message.tool_calls = row.toolCalls.map((call) => ({
+			id: call.id,
+			type: "function" as const,
+			function: { name: call.name, arguments: call.arguments },
+		}));
+		wire.push(message);
+		const answers = turnRows(rows, index).filter((r) => r.role === "tool");
+		for (const call of row.toolCalls) {
+			const answer = answers.find((r) => r.toolCallId === call.id);
+			wire.push({
+				role: "tool",
+				content: answer?.content ?? MISSING_RESULT,
+				tool_call_id: call.id,
+			});
+		}
 	});
+	return wire;
+};
 
-const loadHistory = async (conversationId: string) =>
-	db.query.assistantMessage.findMany({
+const loadHistory = async (conversationId: string, client: DbClient = db) =>
+	client.query.assistantMessage.findMany({
 		where: eq(assistantMessage.conversationId, conversationId),
 		orderBy: asc(assistantMessage.createdAt),
 	});
 
-/** The first tool call in `assistant` with no `tool` result yet. */
+/** The tool calls in `assistant` with no `tool` result in its own turn yet, in
+ *  the order the model asked for them. */
+const unresolvedCalls = (
+	assistant: StoredMessage,
+	history: StoredMessage[],
+): AssistantToolCall[] => {
+	const index = history.findIndex((row) => row.id === assistant.id);
+	if (index === -1) return [];
+	const answered = new Set(
+		turnRows(history, index)
+			.filter((row) => row.role === "tool")
+			.map((row) => row.toolCallId),
+	);
+	return (assistant.toolCalls ?? []).filter((call) => !answered.has(call.id));
+};
+
 const firstUnresolvedCall = (
 	assistant: StoredMessage,
 	history: StoredMessage[],
-): AssistantToolCall | null => {
-	const answered = new Set(
-		history.filter((row) => row.role === "tool").map((row) => row.toolCallId),
-	);
-	return (
-		(assistant.toolCalls ?? []).find((call) => !answered.has(call.id)) ?? null
-	);
-};
+): AssistantToolCall | null => unresolvedCalls(assistant, history)[0] ?? null;
 
 const insertMessage = async (
 	ctx: Ctx,
@@ -455,19 +526,85 @@ const insertMessage = async (
 	values: Partial<typeof assistantMessage.$inferInsert> & {
 		role: "user" | "assistant" | "tool";
 	},
+	opts: { client?: DbClient; sequenced?: boolean } = {},
 ) => {
-	const [row] = await db
+	const insert: PgInsertValue<typeof assistantMessage> = {
+		organizationId: ctx.organizationId,
+		conversationId,
+		content: "",
+		...values,
+	};
+	// Inside a transaction the column default, `now()`, is the transaction's
+	// START — every row it writes shares one timestamp, and the history's order
+	// among them is then whatever the planner returns. `clock_timestamp()` keeps
+	// rows written together in the order written.
+	if (opts.sequenced) insert.createdAt = sql`clock_timestamp()`;
+	const [row] = await (opts.client ?? db)
 		.insert(assistantMessage)
-		.values({
-			organizationId: ctx.organizationId,
-			conversationId,
-			content: "",
-			...values,
-		})
+		.values(insert)
 		.returning();
 	if (!row) throw new AssistantError("Could not save the message");
 	return row;
 };
+
+/**
+ * Take the right to answer one tool call, by writing its answer.
+ *
+ * The tool row IS the claim. It is inserted under a row lock on the assistant
+ * turn, after re-reading the thread inside that lock, so two answers racing
+ * for the same call (two tabs, or a double click faster than the button's own
+ * disabled state) serialize here and the second finds the call answered and
+ * gets null. The check used to be a read outside any lock, and both requests
+ * passed it and both ran the delete.
+ *
+ * Only the turn's FIRST unanswered call may be claimed, which is what keeps a
+ * turn's calls running in the order the model asked for them.
+ */
+const claimCall = async (
+	ctx: Ctx,
+	conversationId: string,
+	assistantId: string,
+	call: AssistantToolCall,
+	content: string,
+): Promise<string | null> =>
+	db.transaction(async (tx) => {
+		await tx
+			.select({ id: assistantMessage.id })
+			.from(assistantMessage)
+			.where(eq(assistantMessage.id, assistantId))
+			.for("update");
+		const history = await loadHistory(conversationId, tx);
+		const assistant = history.find((row) => row.id === assistantId);
+		if (!assistant || firstUnresolvedCall(assistant, history)?.id !== call.id) {
+			return null;
+		}
+		const row = await insertMessage(
+			ctx,
+			conversationId,
+			{ role: "tool", content, toolCallId: call.id, toolName: call.name },
+			{ client: tx, sequenced: true },
+		);
+		return row.id;
+	});
+
+/** What a claimed call's row says until the real result replaces it. Worded
+ *  to be true if it is never replaced: a process that dies mid-tool leaves a
+ *  call that is answered, so the thread is not stuck, with a statement that
+ *  nobody knows how it went. */
+const RESULT_PENDING =
+	"This call was started, but its result was not recorded. Check before assuming whether it happened.";
+
+const DECLINED =
+	"The user declined this action. Do not retry it; acknowledge and ask what they would prefer.";
+
+const NONE_SELECTED =
+	"The user reviewed the rows and selected none of them. Nothing was written. Do not retry; ask which ones they meant.";
+
+const MOVED_ON =
+	"The user sent a new message instead of answering the approval card, so this was not done. Do not retry it unless they ask again.";
+
+const NOT_REACHED =
+	"Not run: it was queued behind an action the user did not approve.";
 
 /** Every tool call's arguments, before the tool's own schema narrows them. */
 const argumentsPayload = z.record(z.string(), z.json());
@@ -564,22 +701,34 @@ const needsApproval = (name: string) => {
 	return tool?.kind === "destructive" || Boolean(tool?.preview);
 };
 
-/** Narrows a call to the rows the person ticked. Returns the call unchanged
+/** Narrows a call to what the person agreed to. Returns the call unchanged
  *  when there is no selection to apply, and null when the selection is empty —
- *  "none of these" is a refusal, not a write of nothing. */
+ *  "none of these" is a refusal, not a write of nothing.
+ *
+ *  The card answers with the rows it left ticked, but those are only the rows
+ *  it SHOWED (`shown`, the preview stored with the approval). What is dropped
+ *  is the shown rows that are not ticked; a row past the preview's cap was
+ *  never on the card and so goes through with the approval, as its note says.
+ *  Treating the ticked list as the whole batch filed 25 rows of a 40-row one. */
 const applySelection = (
 	call: AssistantToolCall,
 	selectedRowIds: string[] | undefined,
+	shown: { rows: { id: string }[] } | null,
 ): AssistantToolCall | null => {
 	if (!selectedRowIds) return call;
 	if (selectedRowIds.length === 0) return null;
 	const tool = findTool(call.name);
-	if (!tool?.withSelection) return call;
+	if (!tool?.withSelection || !shown) return call;
+	const ticked = new Set(selectedRowIds);
+	const unticked = new Set(
+		shown.rows.map((row) => row.id).filter((id) => !ticked.has(id)),
+	);
+	if (unticked.size === 0) return call;
 	try {
 		const args = JSON.parse(call.arguments || "{}");
 		return {
 			...call,
-			arguments: JSON.stringify(tool.withSelection(args, selectedRowIds)),
+			arguments: JSON.stringify(tool.withSelection(args, unticked)),
 		};
 	} catch {
 		// Unparseable arguments are the tool's problem to report, not this
@@ -618,11 +767,15 @@ const generateTitle = async (
 	apiKey: string,
 	model: string,
 	message: string,
+	signal?: AbortSignal,
 ): Promise<string | null> => {
 	try {
 		const turn = await chatModel().streamChatCompletion({
 			apiKey,
 			model,
+			// The turn's own signal: a reader who has left does not need their
+			// thread named, and this is billed like any other completion.
+			signal,
 			messages: [
 				{
 					role: "system",
@@ -655,6 +808,12 @@ const generateTitle = async (
  * It must not delay the first token of the answer — that pause is the whole
  * felt latency of the feature. And by then the turn has had its say, so a
  * failure to name the thread cannot cost the user their answer.
+ *
+ * And only after a turn that WORKED. It used to run in a `finally`, so a turn
+ * that threw, reported an error or was abandoned by its reader still paid for
+ * a second completion — on the same key that had perhaps just been refused,
+ * for a reader who was perhaps already gone. The placeholder stands until a
+ * later turn succeeds, which is when the thread has earned a name.
  */
 const run = async (
 	ctx: Ctx,
@@ -670,28 +829,230 @@ const run = async (
 	const needsTitle =
 		Boolean(input.message) && conversation?.title === "New chat";
 
-	try {
-		await runTurn(ctx, input, onEvent, signal);
-	} finally {
-		if (needsTitle && conversation && input.message) {
-			const settings = await loadSettings(ctx);
-			const title = settings
-				? await generateTitle(
-						settings.apiKey,
-						conversation.model,
-						input.message,
-					)
-				: null;
-			if (title) {
-				await db
-					.update(assistantConversation)
-					.set({ title, updatedAt: new Date() })
-					.where(eq(assistantConversation.id, conversation.id));
-				onEvent({ type: "title", title });
-			}
-		}
+	// A turn reports most failures as an event rather than a throw (the stream
+	// has already answered 200), so success is "no error event" as well as "no
+	// exception".
+	let failed = false;
+	await runTurn(
+		ctx,
+		input,
+		(event) => {
+			if (event.type === "error") failed = true;
+			onEvent(event);
+		},
+		signal,
+	);
+	if (failed || signal?.aborted) return;
+	if (!needsTitle || !conversation || !input.message) return;
+
+	const settings = await loadSettings(ctx);
+	const title = settings
+		? await generateTitle(
+				settings.apiKey,
+				conversation.model,
+				input.message,
+				signal,
+			)
+		: null;
+	if (title) {
+		await db
+			.update(assistantConversation)
+			.set({ title, updatedAt: new Date() })
+			.where(eq(assistantConversation.id, conversation.id));
+		onEvent({ type: "title", title });
 	}
 };
+
+/**
+ * Suspend the turn on `call`: store what the card shows, and show it.
+ *
+ * The summary and the rows are written for THIS call, every time a call
+ * suspends — including the second write of a turn that asked for two. They
+ * used to be stored once, for the first, and never replaced, so the second
+ * card read out the first call's wording and table, and a batch's ticked ids
+ * were matched against the wrong call's rows. There is one summary column per
+ * message, so what it holds is always the call now waiting; an answered call's
+ * wording lives on in the stream event and the tool row, not here.
+ */
+const suspendOn = async (
+	ctx: Ctx,
+	assistantId: string,
+	call: AssistantToolCall,
+	onEvent: (event: AssistantEvent) => void,
+) => {
+	const summary = await describeCall(ctx, call);
+	const preview = await previewCall(ctx, call);
+	const selectable = Boolean(findTool(call.name)?.withSelection);
+	await db
+		.update(assistantMessage)
+		.set({
+			pendingApproval: true,
+			// "Null while pending" (see the column): a decision recorded for an
+			// earlier call in this turn is not an answer to this one.
+			approvalDecision: null,
+			approvalSummary: summary,
+			approvalPreview: preview ? { ...preview, selectable } : null,
+		})
+		.where(eq(assistantMessage.id, assistantId));
+	onEvent({
+		type: "approval_required",
+		messageId: assistantId,
+		toolCallId: call.id,
+		name: call.name,
+		summary,
+		arguments: call.arguments,
+		preview,
+		selectable,
+	});
+	onEvent({ type: "done" });
+};
+
+/** Claim a call, run it, and record what it returned. False when somebody
+ *  else answered the call first. */
+const runClaimed = async (
+	ctx: Ctx,
+	conversationId: string,
+	assistantId: string,
+	call: AssistantToolCall,
+	toRun: AssistantToolCall,
+	onEvent: (event: AssistantEvent) => void,
+): Promise<boolean> => {
+	const claim = await claimCall(
+		ctx,
+		conversationId,
+		assistantId,
+		call,
+		RESULT_PENDING,
+	);
+	if (!claim) return false;
+	onEvent({ type: "tool_start", toolCallId: call.id, name: call.name });
+	const result = await executeTool(ctx, toRun);
+	await db
+		.update(assistantMessage)
+		.set({ content: result.content })
+		.where(eq(assistantMessage.id, claim));
+	onEvent({
+		type: "tool_result",
+		toolCallId: call.id,
+		name: call.name,
+		ok: result.ok,
+	});
+	return true;
+};
+
+/**
+ * Work through one assistant turn's unanswered calls, in the order the model
+ * asked for them, until one needs consent.
+ *
+ * Shared by a fresh turn and by the resume after an approval, and the sharing
+ * is the fix: the resume used to hand every remaining call back to the
+ * approval branch, so a read queued behind a delete got a card of its own once
+ * the delete was answered. A read is not something anybody consents to.
+ *
+ * True when the turn is now suspended on a card; false when every call has an
+ * answer.
+ */
+const runPendingCalls = async (
+	ctx: Ctx,
+	conversationId: string,
+	assistant: StoredMessage,
+	onEvent: (event: AssistantEvent) => void,
+): Promise<boolean> => {
+	const history = await loadHistory(conversationId);
+	for (const call of unresolvedCalls(assistant, history)) {
+		// Destructive tools stop the turn, and so does a batch write that can
+		// show its rows. Single creates and corrections still run inline: asking
+		// before each one turns "reconstruct my week from my commits" into
+		// fifteen dialogs, which is the interaction this feature exists to
+		// replace — whereas the batch that would HAVE been those fifteen writes
+		// is one card with fifteen rows. See ToolKind and ApprovalPreview in
+		// assistant-tools.ts for where the line sits and why.
+		if (needsApproval(call.name)) {
+			await suspendOn(ctx, assistant.id, call, onEvent);
+			return true;
+		}
+		// Lost the claim: a new message answered this turn's calls while the
+		// approved one ran (`abandonPendingCalls`), and cleared the flag itself.
+		if (
+			!(await runClaimed(
+				ctx,
+				conversationId,
+				assistant.id,
+				call,
+				call,
+				onEvent,
+			))
+		) {
+			return false;
+		}
+	}
+	if (assistant.pendingApproval) {
+		await db
+			.update(assistantMessage)
+			.set({ pendingApproval: false })
+			.where(eq(assistantMessage.id, assistant.id));
+	}
+	return false;
+};
+
+/**
+ * Answer, as declined, every call a suspended turn is still waiting on — so a
+ * new message can join the thread after them rather than between a call and
+ * its result.
+ *
+ * A message typed past an approval card is what a person does when they have
+ * moved on, so it is read as "no". The alternative readings are both worse:
+ * refusing the message leaves them stuck behind a card they chose to ignore,
+ * and writing it anyway (what this used to do) put a user row between the
+ * card's call and its eventual result, which 400s every later turn.
+ *
+ * Under the same row lock `claimCall` takes, so an approval racing the
+ * message either claims the call first (and this finds it answered) or finds
+ * it answered here.
+ */
+const abandonPendingCalls = async (ctx: Ctx, conversationId: string) =>
+	db.transaction(async (tx) => {
+		const locked = await tx
+			.select({ id: assistantMessage.id })
+			.from(assistantMessage)
+			.where(
+				and(
+					eq(assistantMessage.conversationId, conversationId),
+					eq(assistantMessage.pendingApproval, true),
+				),
+			)
+			.for("update");
+		if (locked.length === 0) return;
+		const history = await loadHistory(conversationId, tx);
+		for (const { id } of locked) {
+			const assistant = history.find((row) => row.id === id);
+			if (!assistant) continue;
+			const calls = unresolvedCalls(assistant, history);
+			for (const [index, call] of calls.entries()) {
+				await insertMessage(
+					ctx,
+					conversationId,
+					{
+						role: "tool",
+						// The first is the one the card asked about; the rest were
+						// queued behind it and never reached.
+						content: index === 0 ? MOVED_ON : NOT_REACHED,
+						toolCallId: call.id,
+						toolName: call.name,
+					},
+					{ client: tx, sequenced: true },
+				);
+			}
+			await tx
+				.update(assistantMessage)
+				.set({
+					pendingApproval: false,
+					approvalDecision:
+						calls.length > 0 ? "rejected" : assistant.approvalDecision,
+				})
+				.where(eq(assistantMessage.id, id));
+		}
+	});
 
 const runTurn = async (
 	ctx: Ctx,
@@ -703,6 +1064,8 @@ const runTurn = async (
 	const conversation = await requireConversation(ctx, input.conversationId);
 
 	if (input.message) {
+		// Before the message, never after: see `abandonPendingCalls`.
+		await abandonPendingCalls(ctx, conversation.id);
 		const row = await insertMessage(ctx, conversation.id, {
 			role: "user",
 			content: input.message,
@@ -734,50 +1097,49 @@ const runTurn = async (
 		const call = pending?.toolCalls?.find(
 			(candidate) => candidate.id === input.resolve?.toolCallId,
 		);
-		if (!pending || !call) {
-			// Already resolved, or never pending. Not an error worth a red toast:
-			// the usual cause is the same card being approved twice (two tabs, or a
-			// double click), and the second one has nothing left to do.
-			onEvent({ type: "done" });
-			return;
-		}
-		if (firstUnresolvedCall(pending, history)?.id !== call.id) {
+		// Already resolved, never pending, or not the call the turn is waiting
+		// on. Not an error worth a red toast: the usual cause is the same card
+		// being approved twice (two tabs, or a double click), and the second one
+		// has nothing left to do. A cheap early exit only — the claim below is
+		// what actually makes the second one a no-op when both get this far.
+		if (
+			!pending ||
+			!call ||
+			firstUnresolvedCall(pending, history)?.id !== call.id
+		) {
 			onEvent({ type: "done" });
 			return;
 		}
 
 		// A batch approved with some rows unticked runs as the narrowed call; one
 		// with none ticked is a refusal, whatever the button said.
+		const { decision, selectedRowIds } = input.resolve;
 		const narrowed =
-			input.resolve.decision === "approved"
-				? applySelection(call, input.resolve.selectedRowIds)
+			decision === "approved"
+				? applySelection(call, selectedRowIds, pending.approvalPreview)
 				: null;
 
-		if (narrowed) {
-			onEvent({ type: "tool_start", toolCallId: call.id, name: call.name });
-			const result = await executeTool(ctx, narrowed);
-			await insertMessage(ctx, conversation.id, {
-				role: "tool",
-				content: result.content,
-				toolCallId: call.id,
-				toolName: call.name,
-			});
-			onEvent({
-				type: "tool_result",
-				toolCallId: call.id,
-				name: call.name,
-				ok: result.ok,
-			});
-		} else {
-			await insertMessage(ctx, conversation.id, {
-				role: "tool",
-				content:
-					input.resolve.decision === "approved"
-						? "The user reviewed the rows and selected none of them. Nothing was written. Do not retry; ask which ones they meant."
-						: "The user declined this action. Do not retry it; acknowledge and ask what they would prefer.",
-				toolCallId: call.id,
-				toolName: call.name,
-			});
+		const answered = narrowed
+			? await runClaimed(
+					ctx,
+					conversation.id,
+					pending.id,
+					call,
+					narrowed,
+					onEvent,
+				)
+			: (await claimCall(
+					ctx,
+					conversation.id,
+					pending.id,
+					call,
+					decision === "approved" ? NONE_SELECTED : DECLINED,
+				)) !== null;
+		if (!answered) {
+			onEvent({ type: "done" });
+			return;
+		}
+		if (!narrowed) {
 			onEvent({
 				type: "tool_result",
 				toolCallId: call.id,
@@ -788,19 +1150,12 @@ const runTurn = async (
 
 		await db
 			.update(assistantMessage)
-			.set({ approvalDecision: input.resolve.decision })
+			.set({ approvalDecision: decision })
 			.where(eq(assistantMessage.id, pending.id));
 
-		// Another write in the same turn keeps the message pending; the loop below
-		// re-enters, finds it, and asks again.
-		const after = await loadHistory(conversation.id);
-		const stillPending = Boolean(firstUnresolvedCall(pending, after));
-		if (!stillPending) {
-			await db
-				.update(assistantMessage)
-				.set({ pendingApproval: false })
-				.where(eq(assistantMessage.id, pending.id));
-		}
+		// The rest of the turn: reads and writes run now, and a second
+		// destructive call stops it again with a card of its own.
+		if (await runPendingCalls(ctx, conversation.id, pending, onEvent)) return;
 	}
 
 	const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
@@ -814,7 +1169,9 @@ const runTurn = async (
 		const history = await loadHistory(conversation.id);
 
 		// Re-ask rather than re-enter the model: a turn suspended on a write is
-		// resumed by the client's next call, not by this loop.
+		// resumed by the client's next call, not by this loop. Neither a new
+		// message nor a resolve reaches here with a card still up, so this is the
+		// net under everything else — a row left pending by a process that died.
 		const suspended = history.find((row) => row.pendingApproval);
 		if (suspended) {
 			const call = firstUnresolvedCall(suspended, history);
@@ -824,14 +1181,11 @@ const runTurn = async (
 					messageId: suspended.id,
 					toolCallId: call.id,
 					name: call.name,
-					// The stored wording where there is one — a turn that asked for two
-					// writes has one row and two summaries, so the second falls through
-					// to being described now.
+					// The stored wording, because it is what was shown — and since
+					// `suspendOn` rewrites it for every call that suspends, it is this
+					// call's. Rebuilt only for a row that never stored any.
 					summary: suspended.approvalSummary ?? (await describeCall(ctx, call)),
 					arguments: call.arguments,
-					// Same fallback for the rows, and for the same reason. Rebuilt only
-					// when this row never stored any (the second write of a two-write
-					// turn), because a stored preview is what was consented to.
 					preview: suspended.approvalPreview ?? (await previewCall(ctx, call)),
 					selectable: Boolean(findTool(call.name)?.withSelection),
 				});
@@ -888,58 +1242,7 @@ const runTurn = async (
 		}
 
 		// In order, so a read the model wanted done first still happens first.
-		let suspendedOn: AssistantToolCall | null = null;
-		for (const call of turn.toolCalls) {
-			// Destructive tools stop the turn, and so does a batch write that can
-			// show its rows. Single creates and corrections still run inline:
-			// asking before each one turns "reconstruct my week from my commits"
-			// into fifteen dialogs, which is the interaction this feature exists to
-			// replace — whereas the batch that would HAVE been those fifteen writes
-			// is one card with fifteen rows. See ToolKind and ApprovalPreview in
-			// assistant-tools.ts for where the line sits and why.
-			if (needsApproval(call.name)) {
-				suspendedOn = call;
-				break;
-			}
-			onEvent({ type: "tool_start", toolCallId: call.id, name: call.name });
-			const result = await executeTool(ctx, call);
-			await insertMessage(ctx, conversation.id, {
-				role: "tool",
-				content: result.content,
-				toolCallId: call.id,
-				toolName: call.name,
-			});
-			onEvent({
-				type: "tool_result",
-				toolCallId: call.id,
-				name: call.name,
-				ok: result.ok,
-			});
-		}
-
-		if (suspendedOn) {
-			const summary = await describeCall(ctx, suspendedOn);
-			const preview = await previewCall(ctx, suspendedOn);
-			const selectable = Boolean(findTool(suspendedOn.name)?.withSelection);
-			await db
-				.update(assistantMessage)
-				.set({
-					pendingApproval: true,
-					approvalSummary: summary,
-					approvalPreview: preview ? { ...preview, selectable } : null,
-				})
-				.where(eq(assistantMessage.id, assistantRow.id));
-			onEvent({
-				type: "approval_required",
-				messageId: assistantRow.id,
-				toolCallId: suspendedOn.id,
-				name: suspendedOn.name,
-				summary,
-				arguments: suspendedOn.arguments,
-				preview,
-				selectable,
-			});
-			onEvent({ type: "done" });
+		if (await runPendingCalls(ctx, conversation.id, assistantRow, onEvent)) {
 			return;
 		}
 	}

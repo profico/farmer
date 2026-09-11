@@ -394,7 +394,9 @@ export function AddBlockDialog({
 		setCalendarEventId(null);
 	}, [open]);
 
-	const isMeetingTask = selectedTask?.name?.trim().toLowerCase() === "meeting";
+	// By systemKey, never by name: an org may rename the built-in Meeting task,
+	// and a name match would then hide the calendar picker without a word.
+	const isMeetingTask = selectedTask?.systemKey === "meeting";
 	const showCalendarPicker =
 		!repeatEnabled && !fillsDay && isMeetingTask && !!googleStatus?.connected;
 

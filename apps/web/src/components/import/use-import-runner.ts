@@ -47,6 +47,9 @@ const IDLE: ImportRunnerState = {
 
 type Job = {
 	planId: number;
+	/** The run's id, made here once per attempt and sent with every `start`:
+	 *  a retried `start` whose first answer was lost gets that run back. */
+	runToken: string;
 	plan: HarvestPlanView;
 	chunkCount: number;
 	removeChunks: HarvestDayRef[][];
@@ -59,7 +62,8 @@ type Job = {
  * Sends a plan to the server: start, then the day chunks, then the removed
  * days, then finish. The cursor lives in a ref, so "Retry" continues from the
  * step that failed instead of starting a second run. Every step is safe to
- * repeat: `importDays` skips the keys it already holds.
+ * repeat: `start` answers a run id it has seen with that run, and
+ * `importDays` skips the keys it already holds.
  */
 export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 	const job = useRef<Job | null>(null);
@@ -81,7 +85,9 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 		try {
 			if (!j.runId) {
 				progress("Writing the clients, tasks, people and projects");
-				const started = await startHarvestImport({ data: j.plan.start });
+				const started = await startHarvestImport({
+					data: { ...j.plan.start, runId: j.runToken },
+				});
 				j.runId = started.runId;
 				setState((s) => ({ ...s, created: started.created }));
 			}
@@ -151,6 +157,7 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 			}
 			job.current = {
 				planId,
+				runToken: crypto.randomUUID(),
 				plan,
 				chunkCount,
 				removeChunks,

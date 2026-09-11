@@ -2,7 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import { resolveMcpOrgContext } from "#/server/api-auth.ts";
-import { admitMcpRequest, admitMcpWrite } from "#/server/mcp-rate-limit.ts";
+import {
+	admitMcpCaller,
+	admitMcpRequest,
+	admitMcpWrite,
+	mcpCallerAddress,
+	recordMcpAuthFailure,
+} from "#/server/mcp-rate-limit.ts";
 
 /**
  * The MCP server — the assistant's tool layer over Streamable HTTP, for Claude
@@ -105,11 +111,21 @@ const handle = async (request: Request, orgSlug: string) => {
 		return Response.json({ error: "Not found" }, { status: 404 });
 	}
 
+	// Counted by address BEFORE the credential is resolved: resolving it is a
+	// session read and a token read, and the per-user limit below cannot apply
+	// to a caller that never became a user. See mcp-rate-limit.ts.
+	const address = mcpCallerAddress(request);
+	const caller = admitMcpCaller(address);
+	if (!caller.ok) return tooManyRequests(caller.retryAfterSeconds);
+
 	const origin = new URL(request.url).origin;
 	const ctx = await resolveMcpOrgContext(request, orgSlug);
 	// A slug that does not exist, a caller with no credential and an ex-member
 	// are one answer on purpose — see `resolveMcpOrgContext`.
-	if (!ctx) return unauthorized(origin);
+	if (!ctx) {
+		recordMcpAuthFailure(address);
+		return unauthorized(origin);
+	}
 
 	const admitted = admitMcpRequest(ctx.userId);
 	if (!admitted.ok) return tooManyRequests(admitted.retryAfterSeconds);

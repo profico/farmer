@@ -30,6 +30,7 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
+import { memberProfile } from "../db/schema/people";
 import { createTestDb, type TestDb } from "../test/harness";
 import { NotAMemberError } from "./access.service";
 import { projectsService } from "./projects.service";
@@ -274,5 +275,62 @@ describe("listMine", () => {
 	test("an admin may track on every project", async () => {
 		const rows = await projectsService.listMine(ctx(ADMIN));
 		expect(names(rows)).toEqual(["Assigned", "Unassigned"]);
+	});
+});
+
+// Last on purpose: the positive case writes an assignment, and every block
+// above reads the fixture's assignments as they were seeded.
+describe("assignMember", () => {
+	/** A member of the org with no assignment, archived or not. */
+	const seedMember = async (id: string, archived: boolean) => {
+		await db.insert(user).values({
+			id,
+			name: id,
+			email: `${id}@example.com`,
+			emailVerified: true,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await db.insert(member).values({
+			id: `m-${id}`,
+			organizationId: ORG,
+			userId: id,
+			role: "member",
+			createdAt: new Date(),
+		});
+		if (archived) {
+			await db.insert(memberProfile).values({
+				organizationId: ORG,
+				userId: id,
+				archivedAt: new Date(),
+			});
+		}
+	};
+
+	const assign = (userId: string) =>
+		projectsService.assignMember(ctx(ADMIN), {
+			projectId: unassignedId,
+			userId,
+			role: "member",
+		});
+
+	// The capability check asks whether the ADMIN may staff the project; it
+	// never asked whether the person named is in the org at all.
+	test("refuses somebody who is not a member of the org", async () => {
+		await expect(assign(OUTSIDER)).rejects.toThrow(/not a member/);
+	});
+
+	// `listAssignable` hides archived people; the service used to take them
+	// anyway from any caller that was not the picker.
+	test("refuses an archived member", async () => {
+		await seedMember("u-projects-archived", true);
+		await expect(assign("u-projects-archived")).rejects.toThrow(/archived/);
+	});
+
+	test("assigns an active member", async () => {
+		await seedMember("u-projects-fresh", false);
+		await assign("u-projects-fresh");
+		const team = await projectsService.listMembers(ctx(ADMIN), unassignedId);
+		expect(team.map((m) => m.userId)).toContain("u-projects-fresh");
 	});
 });

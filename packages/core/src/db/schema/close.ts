@@ -1,5 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import {
+	boolean,
 	check,
 	index,
 	integer,
@@ -96,6 +97,14 @@ export const monthlyCloseRow = pgTable(
 		adjustedSeconds: integer("adjusted_seconds"),
 		// Admin-only. Null means "defaults to Adjusted".
 		finalSeconds: integer("final_seconds"),
+		// Whether `finalSeconds` was written by `finalize` materializing the
+		// fallback chain (true) rather than typed by an admin (false). Re-open
+		// clears the derived ones and only those: otherwise a re-opened month
+		// kept the first finalize's Final, and the PM's corrections to Adjusted
+		// after re-open never reached the invoice. Defaults to false so every row
+		// written before this column existed — Harvest's imported Finals among
+		// them — reads as explicit and survives a re-open unchanged.
+		finalDerived: boolean("final_derived").notNull().default(false),
 		// The PM's override of the computed absence-day count. Lives on the sheet
 		// ONLY and never writes back to the person's Vacation/Sick entries: if the
 		// two diverge that is a signal the person forgot to log absence, not a data

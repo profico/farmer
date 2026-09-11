@@ -267,10 +267,14 @@ function ClientsPage() {
 				</StatusPill>
 			</TableCell>
 			<TableCell className="text-right">
-				{access.canCreateProjects && <RenameClientDialog client={client} />}
+				{/* Admin, not canCreateProjects: a PM may create a client to put a
+					    new project under, but rename/archive/restore are admin-only
+					    in clientsService, and a button that can only fail is worse
+					    than no button. */}
+				{access.isAdmin && <RenameClientDialog client={client} />}
 				{/* The internal client is structural — archiving it would
 					    strand every non-invoiced project. */}
-				{access.canCreateProjects &&
+				{access.isAdmin &&
 					!client.isInternal &&
 					(client.archivedAt ? (
 						<Button

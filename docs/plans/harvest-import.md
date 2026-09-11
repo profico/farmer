@@ -220,9 +220,15 @@ So:
   (`requireLocalEmailVerified`), and the person cannot sign in.
 - An imported user with an address **from the people list** gets
   `emailVerified = true`, so the first Google sign-in works.
+- An address that the admin **types** on the review screen is not a guess.
+  The admin vouches for it, so it also gets `emailVerified = true`
+  (`emailConfirmed` on the person plan).
 - Members → Restore on an imported person who has never signed in shows the
   address and asks the admin to confirm it. Then it sets
   `emailVerified = true`.
+- Members → "Confirm email" does the same for an active member whose address
+  is not confirmed, with the same checks as Restore. Before this, the only
+  path was to archive the person and then restore them.
 
 ### 3.4 Reminders (D9)
 

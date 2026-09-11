@@ -51,6 +51,7 @@ import {
 import { requireOrgAdmin } from "#/server/auth.ts";
 import {
 	cancelInvitation,
+	confirmMemberEmail,
 	type listInvitations,
 	removeMember,
 	setMemberArchived,
@@ -164,13 +165,28 @@ function MembersSettingsPage() {
 		onError: (error) => toast.error(error.message ?? "Could not archive"),
 	});
 
+	// Confirming the address of an active person who has never signed in. Not
+	// only Restore: an import can make a person active with an address nobody
+	// confirmed, and archiving them just to restore them was the only way out.
+	const confirmMutation = useMutation({
+		mutationFn: (userId: string) => confirmMemberEmail({ data: userId }),
+		onSuccess: () => {
+			toast.success("Address confirmed");
+			return invalidate();
+		},
+		onError: (error) =>
+			toast.error(error.message ?? "Could not confirm the address"),
+	});
+
 	// A person an import made with a guessed address, who has never signed in.
-	// Restoring them confirms the address, so whoever signs in with Google as
-	// it becomes this person — the admin looks at it first.
-	const [confirmRestore, setConfirmRestore] = useState<{
+	// Restoring them, or confirming them while active, confirms the address, so
+	// whoever signs in with Google as it becomes this person — the admin looks
+	// at it first.
+	const [confirmEmail, setConfirmEmail] = useState<{
 		userId: string;
 		name: string;
 		email: string;
+		restore: boolean;
 	} | null>(null);
 
 	const startDateMutation = useMutation({
@@ -315,16 +331,34 @@ function MembersSettingsPage() {
 					    it is no longer the obvious button. */}
 					{!isSelf && !isOnlyOwner && (
 						<div className="flex justify-end gap-2">
+							{!archived && person?.emailUnconfirmed && (
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={confirmMutation.isPending}
+									onClick={() =>
+										setConfirmEmail({
+											userId: m.userId,
+											name: m.user.name,
+											email: m.user.email,
+											restore: false,
+										})
+									}
+								>
+									Confirm email
+								</Button>
+							)}
 							<Button
 								variant="outline"
 								size="sm"
 								disabled={archiveMutation.isPending}
 								onClick={() => {
 									if (archived && person?.emailUnconfirmed) {
-										setConfirmRestore({
+										setConfirmEmail({
 											userId: m.userId,
 											name: m.user.name,
 											email: m.user.email,
+											restore: true,
 										});
 										return;
 									}
@@ -388,20 +422,24 @@ function MembersSettingsPage() {
 			</Table>
 
 			<AlertDialog
-				open={confirmRestore != null}
+				open={confirmEmail != null}
 				onOpenChange={(open) => {
-					if (!open) setConfirmRestore(null);
+					if (!open) setConfirmEmail(null);
 				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Restore {confirmRestore?.name}?</AlertDialogTitle>
+						<AlertDialogTitle>
+							{confirmEmail?.restore
+								? `Restore ${confirmEmail.name}?`
+								: `Confirm the address of ${confirmEmail?.name ?? ""}?`}
+						</AlertDialogTitle>
 						<AlertDialogDescription>
 							They have never signed in, and nobody has confirmed their address.
-							Restoring them confirms{" "}
-							<strong className="text-foreground">
-								{confirmRestore?.email}
-							</strong>
+							{confirmEmail?.restore
+								? " Restoring them confirms "
+								: " This confirms "}
+							<strong className="text-foreground">{confirmEmail?.email}</strong>
 							: whoever signs in with Google as that address becomes this
 							person. Check it first.
 						</AlertDialogDescription>
@@ -409,16 +447,21 @@ function MembersSettingsPage() {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							disabled={archiveMutation.isPending}
+							disabled={archiveMutation.isPending || confirmMutation.isPending}
 							onClick={() => {
-								if (!confirmRestore) return;
-								archiveMutation.mutate(
-									{ userId: confirmRestore.userId, archived: false },
-									{ onSettled: () => setConfirmRestore(null) },
-								);
+								if (!confirmEmail) return;
+								const done = { onSettled: () => setConfirmEmail(null) };
+								if (confirmEmail.restore) {
+									archiveMutation.mutate(
+										{ userId: confirmEmail.userId, archived: false },
+										done,
+									);
+								} else {
+									confirmMutation.mutate(confirmEmail.userId, done);
+								}
 							}}
 						>
-							Restore and confirm
+							{confirmEmail?.restore ? "Restore and confirm" : "Confirm"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

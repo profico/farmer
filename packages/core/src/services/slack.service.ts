@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
@@ -52,7 +52,7 @@ export const slackService = {
 		url.searchParams.set("client_id", clientId);
 		url.searchParams.set("scope", SLACK_BOT_SCOPES.join(","));
 		url.searchParams.set("redirect_uri", slackRedirectUri());
-		url.searchParams.set("state", signOrgState(ctx.organizationId));
+		url.searchParams.set("state", signOrgState(ctx.organizationId, ctx.userId));
 		return { url: url.toString() };
 	},
 
@@ -225,6 +225,29 @@ export const slackService = {
 			columns: { slackUserId: true },
 		});
 		return row?.slackUserId ?? null;
+	},
+
+	/** `slackIdFor`, for a whole list in one query: user id to Slack user id,
+	 *  for the people who have one. What a message needs to mention people
+	 *  rather than only name them. */
+	slackIdsFor: async (
+		organizationId: string,
+		userIds: string[],
+	): Promise<Map<string, string>> => {
+		if (userIds.length === 0) return new Map();
+		const rows = await db
+			.select({
+				userId: memberSlackIdentity.userId,
+				slackUserId: memberSlackIdentity.slackUserId,
+			})
+			.from(memberSlackIdentity)
+			.where(
+				and(
+					eq(memberSlackIdentity.organizationId, organizationId),
+					inArray(memberSlackIdentity.userId, userIds),
+				),
+			);
+		return new Map(rows.map((r) => [r.userId, r.slackUserId]));
 	},
 
 	/** Send a DM to a person. Returns false (never throws) when the org has no

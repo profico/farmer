@@ -61,7 +61,11 @@ import type {
 } from "../schema/time-entries";
 import { AccessError } from "./access.service";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
-import { computeDayFillSeconds, recomputeDayFill } from "./day-fill";
+import {
+	computeDayFillSeconds,
+	recomputeDayFill,
+	rehomeDroppedFillCommits,
+} from "./day-fill";
 import { filingRuleKey, filingRulesService } from "./filing-rules.service";
 import {
 	assertProjectInOrg,
@@ -76,21 +80,25 @@ import { orgSettingsService } from "./org-settings.service";
 import { calendarSource, commitSource } from "./ports";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
-import type { Ctx } from "./types";
+import { CTX_MEMO, type Ctx, type CtxMemo } from "./types";
 import { workingHoursService } from "./working-hours.service";
 
 /**
- * `copyDay` refusing a day because it would push past 24 hours.
+ * A hand-made write refused because it would push a day past 24 hours.
  *
  * A type rather than a bare `Error` so `copyWeek` can catch THIS and nothing
  * else. Its loop used to swallow everything and report the day as "blocked",
  * which is the right answer for a day that is genuinely too full and a wrong,
  * silent one for a database failure — reported to the person as though their
  * data were the problem.
+ *
+ * The message goes to a toast as it stands, so it is written for the person and
+ * names no particular action: copying, typing into a cell and saving the entry
+ * dialog all end up here.
  */
 export class DayCapacityError extends Error {
 	constructor(readonly dateKey: string) {
-		super(`Copying this would put more than 24 hours on ${dateKey}`);
+		super(`This would put more than 24 hours on ${dateKey}`);
 		this.name = "DayCapacityError";
 	}
 }
@@ -254,6 +262,11 @@ const syncMeetingsForRange = async (
 				calendarEventId: event.id,
 			};
 		})
+		// Only days this engine may write to. `range` is the automation window, and
+		// Google's `timeMin` matches on overlap, not on start: an event that began
+		// the evening before `range.from` comes back too, dated by its start — a
+		// day the lock or the grace window has already closed.
+		.filter((row) => row.date >= range.from && row.date <= range.to)
 		.filter((row) => {
 			const holder = meetingIdentityKeys(row)
 				.map((key) => lockedBy.get(key))
@@ -286,12 +299,16 @@ const syncMeetingsForRange = async (
 					timeEntry.calendarEventId,
 					rows.map((row) => row.calendarEventId),
 				),
+				// Only rows the upsert below may move. One sitting on a closed day stays
+				// where it is, so its day loses nothing and must not be recomputed.
+				gte(timeEntry.date, range.from),
+				lte(timeEntry.date, range.to),
 			),
 			columns: { date: true },
 		});
 		for (const row of previous) touched.add(row.date);
 
-		await db
+		const written = await db
 			.insert(timeEntry)
 			.values(rows)
 			.onConflictDoUpdate({
@@ -307,9 +324,22 @@ const syncMeetingsForRange = async (
 					durationSeconds: sql`excluded.duration_seconds`,
 					meetingUrl: sql`excluded.meeting_url`,
 				},
-				setWhere: eq(timeEntry.syncLocked, false),
-			});
-		for (const row of rows) touched.add(row.date);
+				// The existing row's date, not the incoming one: a meeting already
+				// synced onto a locked or out-of-window day is history, and moving it
+				// out is a write to that day as surely as adding to it. Without this, a
+				// stand-up on the 28th that was moved to the 2nd left August, and the
+				// fill recompute then grew August's rest-of-day block back by its
+				// length — hours added to a month already closed.
+				setWhere: and(
+					eq(timeEntry.syncLocked, false),
+					gte(timeEntry.date, range.from),
+					lte(timeEntry.date, range.to),
+				),
+			})
+			// What actually landed. A conflict the `setWhere` declined returns
+			// nothing, so its day is not touched either.
+			.returning({ date: timeEntry.date });
+		for (const row of written) touched.add(row.date);
 	}
 
 	// Delete-by-absence. An EMPTY live set is deliberately treated like `null`
@@ -458,6 +488,13 @@ const syncCommitWorkTimeForRange = async (
 		holidaysService.holidaySetForRange(ctx, range.from, range.to),
 	]);
 	for (const { dayKey, commits } of days) {
+		// GitHub filters `since`/`until` on the COMMITTER date, and the source
+		// buckets by AUTHOR date. A rebase rewrites the one and keeps the other, so
+		// a branch rebased today returns commits written weeks ago, bucketed on the
+		// day they were written — a day the window, the lock, or both have closed.
+		// The window is this engine's whole licence to write; a day outside it is
+		// dropped, not filed.
+		if (dayKey < range.from || dayKey > range.to) continue;
 		// Every work entry already on the day, so the loop below can hand each
 		// project's commits to the entry that describes that project's work.
 		const dayEntries = await db.query.timeEntry.findMany({
@@ -640,6 +677,82 @@ const hasCommitFillTombstone = async (ctx: Ctx, dateKey: string) => {
 	return !!row;
 };
 
+/**
+ * Refuse a hand-made write that would put more than `MAX_DAY_SECONDS` on a day.
+ *
+ * `copyDay` had this check and nothing else did, so the ceiling it enforced was
+ * one door among several: the entry dialog, a week-grid cell and a PM's absence
+ * correction could each stack a day past 24 hours one save at a time.
+ *
+ * `replacing` names the rows this write takes the place of — the entry being
+ * edited, the duplicates a grid cell collapses — so they are not counted
+ * against themselves. And only GROWTH is refused: a day that is already over
+ * (imported, or written before this check existed) must still accept an edit
+ * that leaves it no fuller, or it could never be corrected downwards in steps.
+ *
+ * Not for the engines. A fill block is sized from what is left and so cannot
+ * overrun, and a synced meeting mirrors the calendar; refusing either would
+ * only make the day disagree with its source.
+ *
+ * Exported for `dayAssemblyService.apply`, which checks a whole accepted
+ * proposal with it before writing any of it.
+ */
+export const assertDayHasRoom = async (
+	ctx: Ctx,
+	dateKey: string,
+	durationSeconds: number,
+	opts: {
+		replacing?: (row: {
+			id: string;
+			calendarEventId: string | null;
+		}) => boolean;
+	} = {},
+) => {
+	const dayRows = await ctxDb(ctx).query.timeEntry.findMany({
+		where: and(
+			eq(timeEntry.organizationId, ctx.organizationId),
+			eq(timeEntry.userId, ctx.userId),
+			eq(timeEntry.date, dateKey),
+		),
+		columns: {
+			id: true,
+			durationSeconds: true,
+			fillsDay: true,
+			calendarEventId: true,
+		},
+	});
+	const current = spokenForSeconds(dayRows);
+	const next =
+		spokenForSeconds(dayRows.filter((row) => !opts.replacing?.(row))) +
+		durationSeconds;
+	if (next > MAX_DAY_SECONDS && next > current) {
+		throw new DayCapacityError(dateKey);
+	}
+};
+
+/**
+ * A Ctx for another person in the caller's organization, for the one write
+ * that touches somebody else's day: a PM correcting their absence.
+ *
+ * It carries the caller's transaction, so the absence write and the fill block
+ * it resizes land together, and the org timezone, which is the same for both.
+ * It deliberately does NOT carry the caller's Access: that picture is the PM's,
+ * and nothing done on the person's behalf may answer a question with it.
+ */
+const personCtx = (ctx: Ctx, userId: string): Ctx => {
+	const person: Ctx = { organizationId: ctx.organizationId, userId };
+	const memo = ctx[CTX_MEMO];
+	if (memo) {
+		Object.defineProperty(person, CTX_MEMO, {
+			value: { timezone: memo.timezone, tx: memo.tx } satisfies CtxMemo,
+			enumerable: false,
+			writable: true,
+			configurable: true,
+		});
+	}
+	return person;
+};
+
 /** Project ids the given person is assigned to — used to decide whether a PM may
  *  correct that person's absence entries. */
 const projectIdsForUser = async (ctx: Ctx, userId: string) => {
@@ -772,8 +885,12 @@ export const timeEntriesService = {
 				fill.durationSeconds = next;
 			}
 			if (emptied.length > 0) {
-				await db.delete(timeEntry).where(inArray(timeEntry.id, emptied));
 				const dropped = new Set(emptied);
+				await rehomeDroppedFillCommits(
+					ctx,
+					stale.filter((fill) => dropped.has(fill.id)),
+				);
+				await db.delete(timeEntry).where(inArray(timeEntry.id, emptied));
 				visible = rows.filter((r) => !dropped.has(r.id));
 			}
 		}
@@ -1012,6 +1129,16 @@ export const timeEntriesService = {
 
 		return withCtxTx(ctx, async (txCtx) => {
 			const tx = ctxDb(txCtx);
+			// A fill block is sized from what is left, so it can never overrun. An
+			// entry that attaches a calendar event replaces that event's synced row
+			// (the upsert below), so that row does not count against it.
+			if (!input.fillsDay) {
+				await assertDayHasRoom(txCtx, input.date, durationSeconds, {
+					replacing: (existing) =>
+						input.calendarEventId != null &&
+						existing.calendarEventId === input.calendarEventId,
+				});
+			}
 			let row: typeof timeEntry.$inferSelect | undefined;
 			if (input.fillsDay) {
 				[row] = await tx
@@ -1133,6 +1260,13 @@ export const timeEntriesService = {
 		}
 
 		const updated = await withCtxTx(ctx, async (txCtx) => {
+			// Against the day the entry is moving TO, with the entry itself left
+			// out: an edit that keeps its length on its own day changes nothing.
+			if (!input.fillsDay) {
+				await assertDayHasRoom(txCtx, input.date, durationSeconds, {
+					replacing: (row) => row.id === input.timeEntryId,
+				});
+			}
 			let row: typeof timeEntry.$inferSelect | undefined;
 			try {
 				[row] = await ctxDb(txCtx)
@@ -1451,6 +1585,12 @@ export const timeEntriesService = {
 			}
 
 			if (primary) {
+				// The cell's new total replaces every row it collapses, so all of
+				// them come off the day before the new figure is added back on.
+				const collapsed = new Set(matches.map((row) => row.id));
+				await assertDayHasRoom(txCtx, input.date, input.durationSeconds, {
+					replacing: (row) => collapsed.has(row.id),
+				});
 				const patch: Partial<typeof timeEntry.$inferInsert> = {
 					durationSeconds: input.durationSeconds,
 					updatedAt: new Date(),
@@ -1458,6 +1598,11 @@ export const timeEntriesService = {
 				if (input.description !== undefined) {
 					patch.description = input.description.trim();
 				}
+				// Typing into a synced meeting's cell is the person overriding the
+				// calendar, the same act as `update`, `file` and `updateDescription`,
+				// which all take the row out of the sync engine's hands. Without this
+				// the next sync set the duration straight back to the calendar's.
+				if (primary.calendarEventId != null) patch.syncLocked = true;
 				await tx
 					.update(timeEntry)
 					.set(patch)
@@ -1910,12 +2055,25 @@ export const timeEntriesService = {
 		};
 		if (input.description !== undefined) patch.description = input.description;
 
-		const [updated] = await db
-			.update(timeEntry)
-			.set(patch)
-			.where(eq(timeEntry.id, input.timeEntryId))
-			.returning();
-		return updated;
+		const tz = await ctxTimezone(ctx);
+		return withCtxTx(ctx, async (txCtx) => {
+			const person = personCtx(txCtx, existing.userId);
+			await assertDayHasRoom(person, existing.date, input.durationSeconds, {
+				replacing: (row) => row.id === existing.id,
+			});
+			const [updated] = await ctxDb(txCtx)
+				.update(timeEntry)
+				.set(patch)
+				.where(eq(timeEntry.id, input.timeEntryId))
+				.returning();
+			// Absence is a claim on the day like any other entry, so the person's
+			// rest-of-day block has to give way to it (or take back what a shorter
+			// correction frees). Every self-service write already recomputes; the
+			// PM's three did not, so a day corrected from the close sheet stayed
+			// over-allocated — an 8h block plus 8h of sick leave on an 8h day.
+			await recomputeDayFill(person, existing.date, tz);
+			return updated;
+		});
 	},
 
 	createAbsenceForUser: async (ctx: Ctx, input: CreateAbsenceForUserInput) => {
@@ -1931,20 +2089,27 @@ export const timeEntriesService = {
 			throw new AccessError("You cannot log absence for this person");
 		}
 
-		const [created] = await db
-			.insert(timeEntry)
-			.values({
-				organizationId: ctx.organizationId,
-				userId: input.userId,
-				projectId: null,
-				taskId: input.taskId,
-				date: input.date,
-				description: input.description ?? "",
-				durationSeconds: input.durationSeconds,
-			})
-			.returning();
-		if (!created) throw new Error("Failed to log absence");
-		return created;
+		const tz = await ctxTimezone(ctx);
+		return withCtxTx(ctx, async (txCtx) => {
+			const person = personCtx(txCtx, input.userId);
+			await assertDayHasRoom(person, input.date, input.durationSeconds);
+			const [created] = await ctxDb(txCtx)
+				.insert(timeEntry)
+				.values({
+					organizationId: ctx.organizationId,
+					userId: input.userId,
+					projectId: null,
+					taskId: input.taskId,
+					date: input.date,
+					description: input.description ?? "",
+					durationSeconds: input.durationSeconds,
+				})
+				.returning();
+			if (!created) throw new Error("Failed to log absence");
+			// The person's day, not the caller's: see `overrideAbsence`.
+			await recomputeDayFill(person, input.date, tz);
+			return created;
+		});
 	},
 
 	removeAbsence: async (ctx: Ctx, timeEntryId: string) => {
@@ -1966,7 +2131,17 @@ export const timeEntriesService = {
 			throw new AccessError("You cannot correct this person's absence");
 		}
 
-		await db.delete(timeEntry).where(eq(timeEntry.id, timeEntryId));
+		const tz = await ctxTimezone(ctx);
+		await withCtxTx(ctx, async (txCtx) => {
+			await ctxDb(txCtx).delete(timeEntry).where(eq(timeEntry.id, timeEntryId));
+			// The freed hours go back to the person's rest-of-day block, if the day
+			// has one. See `overrideAbsence`.
+			await recomputeDayFill(
+				personCtx(txCtx, existing.userId),
+				existing.date,
+				tz,
+			);
+		});
 		return existing;
 	},
 };

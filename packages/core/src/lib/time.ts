@@ -48,6 +48,19 @@ export const formatDayKey = (
 	return year ? `${base}, ${y}` : base;
 };
 
+// Short form for a message someone reads, e.g. 75240 -> "20h 54m", 3600 ->
+// "1h", 2700 -> "45m", 0 -> "0h". Rounds to the nearest minute. The clock form
+// above put "20:54:00 short" in every reminder, with seconds that are always
+// zero and hours that read as a time of day.
+export const formatDurationShort = (totalSeconds: number): string => {
+	const totalMinutes = Math.round(totalSeconds / 60);
+	const hours = Math.floor(totalMinutes / 60);
+	const minutes = totalMinutes % 60;
+	if (hours && minutes) return `${hours}h ${minutes}m`;
+	if (minutes) return `${minutes}m`;
+	return `${hours}h`;
+};
+
 // Compact form for prefilling a duration input, e.g. 5400 -> "1h30m".
 export const formatDurationInput = (totalSeconds: number): string => {
 	const roundedMinutes = Math.round(totalSeconds / 60);

@@ -337,7 +337,7 @@ const RUN_ID = "00000000-0000-4000-8000-0000000000ff";
 
 /** The plan's outputs parse against the Zod inputs the server accepts. */
 function expectServerAccepts(plan: HarvestPlan) {
-	harvestStartInput.parse(plan.start);
+	harvestStartInput.parse({ ...plan.start, runId: RUN_ID });
 	for (const chunk of chunkDays(plan.days)) {
 		harvestImportDaysInput.parse({ runId: RUN_ID, days: chunk });
 	}
@@ -857,6 +857,7 @@ describe("people", () => {
 				name: "Iva Ext",
 				email: "iva@ext.com",
 				emailListed: true,
+				emailConfirmed: true,
 				role: "member",
 				type: "contractor",
 				startDate: "2026-09-14",
@@ -869,6 +870,7 @@ describe("people", () => {
 				name: "Mateo Perak",
 				email: "mateo@profico.hr",
 				emailListed: true,
+				emailConfirmed: true,
 				role: "admin",
 				type: "billable",
 				startDate: "2015-01-02",
@@ -892,6 +894,7 @@ describe("people", () => {
 				name: "Đuro Šimić",
 				email: "dsimic@profico.hr",
 				emailListed: false,
+				emailConfirmed: false,
 				role: "member",
 				type: "contractor",
 				startDate: "2018-01-02",
@@ -988,10 +991,46 @@ describe("people", () => {
 		).toMatchObject({
 			email: "ivan.h@profico.hr",
 			emailListed: false,
+			// The admin typed it, so it is theirs to vouch for, not a guess.
+			emailConfirmed: true,
 			role: "admin",
 			type: "overhead",
 		});
+		expect(
+			plan.review.people.find((p) => p.sourceKey === "ivan horvat")
+				?.emailGuessed,
+		).toBe(false);
 		expect(plan.emailsToCheck).toEqual(["ivan.h@profico.hr"]);
+	});
+
+	test("an address the admin typed is confirmed; the untouched guess is not", async () => {
+		const files = [
+			timeReport([
+				{ first: "Ivan", last: "Horvat" },
+				{ first: "Lana", last: "Ok" },
+			]),
+		];
+		const parsed = await parseHarvestFiles(files);
+		const plan = planHarvestImport(
+			parsed,
+			snapshot(),
+			choices(parsed, {
+				people: { "ivan horvat": { email: "ivan@elsewhere.com" } },
+			}),
+		);
+		const bySource = new Map(
+			plan.start.people.map((p) => [p.sourceKey, p] as const),
+		);
+		expect(bySource.get("ivan horvat")).toMatchObject({
+			emailListed: false,
+			emailConfirmed: true,
+		});
+		expect(bySource.get("lana ok")).toMatchObject({
+			email: "lok@profico.hr",
+			emailListed: false,
+			emailConfirmed: false,
+		});
+		expectServerAccepts(plan);
 	});
 });
 
@@ -1324,6 +1363,34 @@ describe("billable per month (6)", () => {
 		const review = present(plan.review.projects[0], "project review");
 		expect(review.billableSeconds).toBe(5 * 3600);
 		expect(review.nonBillableSeconds).toBe(5 * 3600);
+	});
+
+	test("a project-month with only non-billable rows sends a zero figure", async () => {
+		// The zero is what tells `finish` the file covers the month. With no
+		// entry, a non-billable month and a month the file lacks looked the
+		// same, and a partial re-export zeroed every month it did not reach.
+		const { plan } = await planFor([
+			timeReport([
+				{ date: "2026-07-03", hours: "5,0", billable: false },
+				{ date: "2026-08-03", hours: "1,0" },
+			]),
+		]);
+		const website = JSON.stringify(["acme", "website", "ACW"]);
+		expect(plan.finish.billable).toEqual([
+			{
+				projectSourceKey: website,
+				personSourceKey: "ana horvat",
+				month: "2026-07",
+				seconds: 0,
+			},
+			{
+				projectSourceKey: website,
+				personSourceKey: "ana horvat",
+				month: "2026-08",
+				seconds: 3600,
+			},
+		]);
+		expectServerAccepts(plan);
 	});
 
 	test("historyThrough null sends no billable figures", async () => {

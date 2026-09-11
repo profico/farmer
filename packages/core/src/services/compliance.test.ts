@@ -359,6 +359,39 @@ describe("behind pace", () => {
 		expect(after.shortfallSeconds).toBeLessThan(before.shortfallSeconds);
 	});
 
+	// The absence query is month-to-date already, so it is subtracted whole from
+	// the prorated target. It used to be subtracted from the MONTH's target and
+	// then scaled with it — here (160h - 40h) x 0.5 = 60h, which put somebody who
+	// had logged every hour of the days they were in at 67% and nagged them.
+	test("elapsed absence comes off the prorated target whole, not scaled", async () => {
+		await setFund(160 * H);
+		// Five vacation days, Monday 6 to Friday 10 April — all before today.
+		for (const day of ["06", "07", "08", "09", "10"]) {
+			await logEntry(
+				ON_LEAVE,
+				`2026-04-${day}`,
+				vacationTaskId,
+				WORKING_DAY_SECONDS,
+				false,
+			);
+		}
+		await logEntry(ON_LEAVE, "2026-04-13", devTaskId, 30 * H);
+
+		// Eleven of twenty-two working days elapsed: 160h x 0.5 = 80h, less the
+		// 40h already taken as vacation.
+		const row = (await complianceService.behindPace(adminCtx(), AT)).find(
+			(r) => r.userId === ON_LEAVE,
+		);
+		expect(row?.proratedExpectedSeconds).toBe(40 * H);
+
+		// And 40h worked meets it: not behind.
+		await logEntry(ON_LEAVE, "2026-04-14", devTaskId, 10 * H);
+		const ids = (await complianceService.behindPace(adminCtx(), AT)).map(
+			(r) => r.userId,
+		);
+		expect(ids).not.toContain(ON_LEAVE);
+	});
+
 	test("unfiled work still counts as work", async () => {
 		await setFund(160 * H);
 		// An imported meeting is work; it is just not attributed to a project yet.

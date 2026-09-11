@@ -26,10 +26,17 @@ export const Route = createFileRoute("/api/slack/callback")({
 				const session = await auth.api.getSession({ headers: request.headers });
 				if (!session) return redirectTo("/login");
 
+				// No valid state, no install — and in particular no falling back to the
+				// session's active org. That fallback was a login CSRF in reverse: any
+				// page could send a signed-in admin to this URL with the attacker's
+				// OWN Slack `code`, and the attacker's workspace would be installed
+				// into the admin's org, receiving every reminder and the name of
+				// everyone it matched by email. Unlike the GitHub setup redirect,
+				// nothing downstream re-checks that the code belongs to this person,
+				// so the signed, user-bound, expiring state is the only proof the
+				// admin started this round trip.
 				const { verifyOrgState } = await import("@farmer/core/lib/oauth-state");
-				const orgId =
-					(state ? verifyOrgState(state) : null) ??
-					session.session.activeOrganizationId;
+				const orgId = state ? verifyOrgState(state, session.user.id) : null;
 				if (!orgId) return redirectTo("/");
 
 				const { db } = await import("@farmer/core/db");

@@ -4,7 +4,7 @@ import { db } from "../db";
 import { monthlyHourFund } from "../db/schema/settings";
 import { datesBetween, endOfMonthKey } from "../lib/time";
 import type { SetMonthlyHourFundInput } from "../schema/hour-fund";
-import { requireAdmin } from "./context";
+import { ctxDb, requireAdmin } from "./context";
 import { holidaysService } from "./holidays.service";
 import type { Ctx } from "./types";
 
@@ -13,7 +13,11 @@ import type { Ctx } from "./types";
 //   Expected = monthly fund - (absence days x 8)
 export const WORKING_DAY_SECONDS = 8 * 3600;
 
-export const monthKeyOf = (year: number, month: number) =>
+// The first day of a month as a day key (`yyyy-MM-01`). Not `monthKeyOf`: that
+// name belongs to `lib/time`, where it means the month itself (`yyyy-MM`), and
+// two exports of one name that differ by a `-01` let either be imported for
+// the other with no error until the dates came out wrong.
+export const monthStartKeyOf = (year: number, month: number) =>
 	`${year}-${String(month).padStart(2, "0")}-01`;
 
 export const hourFundService = {
@@ -26,7 +30,10 @@ export const hourFundService = {
 		year: number,
 		month: number,
 	): Promise<number | null> => {
-		const row = await db.query.monthlyHourFund.findFirst({
+		// `ctxDb`: read from inside `closeService.finalize`'s transaction, where
+		// the ambient handle would need a second connection (and on PGLite, which
+		// has one, would wait on the transaction forever).
+		const row = await ctxDb(ctx).query.monthlyHourFund.findFirst({
 			where: and(
 				eq(monthlyHourFund.organizationId, ctx.organizationId),
 				eq(monthlyHourFund.year, year),
@@ -140,7 +147,7 @@ export const hourFundService = {
 		year: number,
 		month: number,
 	): Promise<{ workingDays: number; fundSeconds: number }> => {
-		const first = monthKeyOf(year, month);
+		const first = monthStartKeyOf(year, month);
 		const last = endOfMonthKey(first);
 		const holidays = await holidaysService.holidaySetForRange(ctx, first, last);
 
