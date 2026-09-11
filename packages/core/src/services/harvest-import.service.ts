@@ -17,6 +17,7 @@ import {
 	and,
 	desc,
 	eq,
+	gt,
 	gte,
 	inArray,
 	isNotNull,
@@ -1426,7 +1427,10 @@ export const harvestImportService = {
 							.where(
 								and(
 									eq(monthlyCloseRow.closeId, close.id),
-									sql`${monthlyCloseRow.updatedAt} > ${mapping.updatedAt}`,
+									// Not a raw `sql` template: that sends the Date
+									// unmapped, and postgres-js writes it with toString(),
+									// which Postgres cannot read (PGLite can).
+									gt(monthlyCloseRow.updatedAt, mapping.updatedAt),
 								),
 							)
 							.limit(1);

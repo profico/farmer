@@ -93,7 +93,13 @@ export const listMembers = createServerFn({ method: "GET" })
 	.handler(async ({ context }) => {
 		const { auth } = await import("@farmer/core/auth");
 		return auth.api.listMembers({
-			query: { organizationId: context.ctx.organizationId },
+			// A fixed order: unsorted, Postgres returns rows in storage order,
+			// and an update moves a row to the end of it.
+			query: {
+				organizationId: context.ctx.organizationId,
+				sortBy: "createdAt",
+				sortDirection: "asc",
+			},
 			headers: getRequestHeaders(),
 		});
 	});
