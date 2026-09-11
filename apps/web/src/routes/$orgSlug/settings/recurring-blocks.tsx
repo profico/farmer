@@ -28,6 +28,7 @@ import {
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
@@ -40,6 +41,7 @@ import {
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { projectsQuery } from "#/queries/projects.ts";
@@ -106,6 +108,12 @@ function RecurringBlocksPage() {
 	// their own — including a paused one, which is a decision they already made.
 	const hasBreakRule = rules.some((rule) => rule.task.systemKey === "break");
 
+	const [query, setQuery] = useState("");
+	const shownRules = rules.filter((rule) =>
+		matchesSearch(query, [rule.task.name, rule.project?.name]),
+	);
+	const showSuggestedBreak = !hasBreakRule && matchesSearch(query, ["Break"]);
+
 	const enableBreakMutation = useMutation({
 		mutationFn: () => enableDefaultBreakBlock(),
 		onSuccess: invalidate,
@@ -137,7 +145,17 @@ function RecurringBlocksPage() {
 				eyebrow={<SettingsEyebrow>Your schedule</SettingsEyebrow>}
 				title="Recurring blocks"
 				lede="Blocks — a daily break, a standing meeting — that appear on your calendar without you logging them."
-				action={<CreateRecurringBlockRuleDialog />}
+				action={
+					<div className="flex items-center gap-2">
+						<SearchInput
+							value={query}
+							onValueChange={setQuery}
+							placeholder="Search blocks…"
+							className="flex-1 sm:w-56 sm:flex-none"
+						/>
+						<CreateRecurringBlockRuleDialog />
+					</div>
+				}
 			/>
 			<Table>
 				<TableHeader>
@@ -154,7 +172,14 @@ function RecurringBlocksPage() {
 					{/* The one block that is true of everybody, filled in and switched
 					    off. Nothing is written until the switch is flipped — after that
 					    it is an ordinary rule, editable and deletable like any other. */}
-					{!hasBreakRule && (
+					{query.trim() !== "" &&
+						shownRules.length === 0 &&
+						!showSuggestedBreak && (
+							<NoMatchesRow colSpan={6}>
+								No blocks match your search.
+							</NoMatchesRow>
+						)}
+					{showSuggestedBreak && (
 						<TableRow className="opacity-70">
 							<TableCell className="font-medium">
 								<span className="flex items-center gap-2">
@@ -182,7 +207,7 @@ function RecurringBlocksPage() {
 							<TableCell />
 						</TableRow>
 					)}
-					{rules.map((rule) => {
+					{shownRules.map((rule) => {
 						const category = resolveCategoryColor(rule.task.color);
 						return (
 							<TableRow

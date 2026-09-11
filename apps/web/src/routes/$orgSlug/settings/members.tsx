@@ -27,6 +27,7 @@ import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Select,
 	SelectContent,
@@ -43,6 +44,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import {
 	membersQuery,
 	pendingInvitationsQuery,
@@ -208,11 +210,26 @@ function MembersSettingsPage() {
 	// Archived people move into the closed-by-default section below rather
 	// than disappearing — you need to see who has left to restore them, and
 	// the section keeps Restore one click away.
-	const activeMembers = membersData.members.filter(
+	const [query, setQuery] = useState("");
+	const searching = query.trim() !== "";
+	const matching = membersData.members.filter((m) =>
+		matchesSearch(query, [m.user.name, m.user.email]),
+	);
+	const activeMembers = matching.filter(
 		(m) => personByUserId.get(m.userId)?.archivedAt == null,
 	);
-	const archivedMembers = membersData.members.filter(
+	const archivedMembers = matching.filter(
 		(m) => personByUserId.get(m.userId)?.archivedAt != null,
+	);
+	// A search that only turns up archived people opens their section rather
+	// than reading as no result at all — the same rule as Projects.
+	const archivedOpen =
+		search.archived === "1" ||
+		(searching && activeMembers.length === 0 && archivedMembers.length > 0);
+	// One box for the page, so it narrows the invitations too: somebody looking
+	// for an address should find it whether or not the person has accepted yet.
+	const shownInvitations = invitations.filter((inv) =>
+		matchesSearch(query, [inv.email]),
 	);
 
 	const renderMemberRow = (m: (typeof membersData.members)[number]) => {
@@ -391,7 +408,17 @@ function MembersSettingsPage() {
 				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="People"
 				lede="Who has access, and what kind of person they are. Overhead people are left out of compliance nudges and utilization; contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
-				action={<InviteMemberDialog />}
+				action={
+					<div className="flex items-center gap-2">
+						<SearchInput
+							value={query}
+							onValueChange={setQuery}
+							placeholder="Search people…"
+							className="flex-1 sm:w-56 sm:flex-none"
+						/>
+						<InviteMemberDialog />
+					</div>
+				}
 			/>
 
 			<Table>
@@ -407,11 +434,18 @@ function MembersSettingsPage() {
 					</TableRow>
 				</TableHeader>
 				<TableBody>
+					{searching && activeMembers.length === 0 && (
+						<NoMatchesRow colSpan={MEMBER_COLUMN_COUNT}>
+							{archivedMembers.length > 0
+								? "Only archived people match your search."
+								: "Nobody matches your search."}
+						</NoMatchesRow>
+					)}
 					{activeMembers.map(renderMemberRow)}
 					<ArchivedSection
 						count={archivedMembers.length}
 						colSpan={MEMBER_COLUMN_COUNT}
-						open={search.archived === "1"}
+						open={archivedOpen}
 						onOpenChange={(open) =>
 							navigate({ search: { archived: open ? "1" : undefined } })
 						}
@@ -467,7 +501,7 @@ function MembersSettingsPage() {
 				</AlertDialogContent>
 			</AlertDialog>
 
-			{invitations.length > 0 && (
+			{shownInvitations.length > 0 && (
 				<div className="mt-8">
 					<h2 className="eyebrow">Pending invitations</h2>
 					<Table containerClassName="mt-3">
@@ -479,7 +513,7 @@ function MembersSettingsPage() {
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{invitations.map((inv) => (
+							{shownInvitations.map((inv) => (
 								<TableRow key={inv.id}>
 									<TableCell className="font-medium">
 										<span className="flex items-center gap-2">

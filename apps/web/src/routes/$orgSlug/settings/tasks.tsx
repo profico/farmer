@@ -36,6 +36,7 @@ import {
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { RowActions } from "#/components/ui/row-actions.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Table,
 	TableBody,
@@ -50,6 +51,7 @@ import {
 	resolveCategoryColor,
 } from "#/lib/category-colors.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { managedTasksQuery } from "#/queries/tasks.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";
@@ -307,8 +309,18 @@ function TasksPage() {
 	// means "stop showing me this", and interleaving the dead rows with the
 	// live ones is what made a screen with several same-named archived copies
 	// unreadable.
-	const activeTasks = tasks.filter((t) => !t.archivedAt);
-	const archivedTasks = tasks.filter((t) => t.archivedAt);
+	const [query, setQuery] = useState("");
+	const searching = query.trim() !== "";
+	const matching = tasks.filter((t) =>
+		matchesSearch(query, [t.name, t.description]),
+	);
+	const activeTasks = matching.filter((t) => !t.archivedAt);
+	const archivedTasks = matching.filter((t) => t.archivedAt);
+	// A search that only turns up archived rows opens their section rather than
+	// reading as no result at all — the same rule as Projects.
+	const archivedOpen =
+		search.archived === "1" ||
+		(searching && activeTasks.length === 0 && archivedTasks.length > 0);
 
 	const invalidate = () =>
 		queryClient.invalidateQueries({
@@ -422,7 +434,17 @@ function TasksPage() {
 				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="Tasks"
 				lede={`One global list for the whole company.`}
-				action={<CreateTaskDialog />}
+				action={
+					<div className="flex items-center gap-2">
+						<SearchInput
+							value={query}
+							onValueChange={setQuery}
+							placeholder="Search tasks…"
+							className="flex-1 sm:w-56 sm:flex-none"
+						/>
+						<CreateTaskDialog />
+					</div>
+				}
 			/>
 
 			<Table>
@@ -437,11 +459,18 @@ function TasksPage() {
 					</TableRow>
 				</TableHeader>
 				<TableBody>
+					{searching && activeTasks.length === 0 && (
+						<NoMatchesRow colSpan={TASK_COLUMN_COUNT}>
+							{archivedTasks.length > 0
+								? "Only archived tasks match your search."
+								: "No tasks match your search."}
+						</NoMatchesRow>
+					)}
 					{activeTasks.map(renderTaskRow)}
 					<ArchivedSection
 						count={archivedTasks.length}
 						colSpan={TASK_COLUMN_COUNT}
-						open={search.archived === "1"}
+						open={archivedOpen}
 						onOpenChange={(open) =>
 							navigate({ search: { archived: open ? "1" : undefined } })
 						}

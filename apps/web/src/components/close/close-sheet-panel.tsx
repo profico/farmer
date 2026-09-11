@@ -12,6 +12,7 @@ import { PersonCell } from "#/components/person-avatar.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Table,
 	TableBody,
@@ -22,6 +23,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { closeOverviewQuery, closeSheetQuery } from "#/queries/close.ts";
 import {
@@ -178,6 +180,10 @@ export function CloseSheetPanel({
 	const { data: sheet } = useSuspenseQuery(
 		closeSheetQuery(orgSlug, { projectId, year, month }),
 	);
+	const [query, setQuery] = useState("");
+	const rows = sheet.rows.filter((r) =>
+		matchesSearch(query, [r.name, r.memberType]),
+	);
 
 	const invalidate = () =>
 		Promise.all([
@@ -227,6 +233,8 @@ export function CloseSheetPanel({
 		onError: (error) => toast.error(error.message ?? "Could not update status"),
 	});
 
+	// Over the whole sheet, not the rows the search left: a search narrows what
+	// you look at, not what the month is invoiced at.
 	const totals = sheet.rows.reduce(
 		(acc, r) => ({
 			reported: acc.reported + r.reportedSeconds,
@@ -245,6 +253,14 @@ export function CloseSheetPanel({
 					<p className="truncate text-xs text-faint">{sheet.clientName}</p>
 				</div>
 				<div className="flex items-center gap-2">
+					{sheet.rows.length > 0 && (
+						<SearchInput
+							value={query}
+							onValueChange={setQuery}
+							placeholder="Search people…"
+							className="w-40 sm:w-48"
+						/>
+					)}
 					<StatusPill
 						tone={
 							sheet.status === "finalized"
@@ -313,7 +329,12 @@ export function CloseSheetPanel({
 						</TableRow>
 					</TableHeader>
 					<TableBody>
-						{sheet.rows.map((row) => (
+						{sheet.rows.length > 0 && rows.length === 0 && (
+							<NoMatchesRow colSpan={sheet.showsExpected ? 9 : 7}>
+								Nobody on this sheet matches your search.
+							</NoMatchesRow>
+						)}
+						{rows.map((row) => (
 							<TableRow key={row.userId}>
 								<TableCell>
 									<PersonCell userId={row.userId} name={row.name}>

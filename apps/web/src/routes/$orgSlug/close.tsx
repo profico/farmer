@@ -1,7 +1,7 @@
 import { monthKeyOf } from "@farmer/core/lib/time";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { z } from "zod";
 
 import { CloseSheetPanel } from "#/components/close/close-sheet-panel.tsx";
@@ -10,6 +10,7 @@ import { StatusPill } from "#/components/status-pill.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
 import {
 	Table,
@@ -21,6 +22,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { closeOverviewQuery } from "#/queries/close.ts";
 
@@ -114,6 +116,10 @@ function ClosePage() {
 	const { data: projects } = useSuspenseQuery(
 		closeOverviewQuery(orgSlug, period),
 	);
+	const [query, setQuery] = useState("");
+	const shown = projects.filter((p) =>
+		matchesSearch(query, [p.projectName, p.clientName]),
+	);
 
 	const monthLabel = new Intl.DateTimeFormat("en-US", {
 		month: "long",
@@ -144,6 +150,9 @@ function ClosePage() {
 				// The month the sheet belongs to is what the whole screen is about,
 				// so it sits where every screen's controls sit rather than being
 				// crushed against the title.
+				// The steppers keep the open project: stepping months is how a PM
+				// compares one project's sheet across them, and a link that only
+				// named the month closed the sheet on every click.
 				action={
 					<div className="flex items-center gap-2">
 						<Button
@@ -154,7 +163,10 @@ function ClosePage() {
 								<Link
 									to="/$orgSlug/close"
 									params={{ orgSlug: organization.slug }}
-									search={{ month: shiftMonthKey(monthKey, -1) }}
+									search={(prev) => ({
+										...prev,
+										month: shiftMonthKey(monthKey, -1),
+									})}
 								>
 									‹
 								</Link>
@@ -171,7 +183,10 @@ function ClosePage() {
 								<Link
 									to="/$orgSlug/close"
 									params={{ orgSlug: organization.slug }}
-									search={{ month: shiftMonthKey(monthKey, 1) }}
+									search={(prev) => ({
+										...prev,
+										month: shiftMonthKey(monthKey, 1),
+									})}
 								>
 									›
 								</Link>
@@ -183,61 +198,81 @@ function ClosePage() {
 			/>
 
 			<div className="-mx-4 grid min-h-0 flex-1 grid-cols-1 sm:-mx-8 lg:grid-cols-[minmax(0,440px)_1fr] lg:divide-x">
-				<div className="scrollbar-stable min-h-0 overflow-y-auto">
-					{projects.length === 0 ? (
-						<div className="px-4 py-8 sm:px-8">
-							<p className="h2">Nothing to close</p>
-							<p className="lede mt-2">
-								You aren't PM on any project, so no close sheet is yours to
-								finalize.
-							</p>
+				<div className="flex min-h-0 flex-col">
+					{projects.length > 0 && (
+						<div className="shrink-0 border-b px-4 py-3 sm:px-8">
+							<SearchInput
+								value={query}
+								onValueChange={setQuery}
+								placeholder="Search projects or clients…"
+							/>
 						</div>
-					) : (
-						<Table bleed={false}>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Project</TableHead>
-									<TableHead className="text-right">Reported</TableHead>
-									<TableHead>Status</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{projects.map((p) => {
-									const selected = search.projectId === p.projectId;
-									return (
-										<TableRow
-											key={p.projectId}
-											className={cn(selected && "bg-[var(--sel)]")}
-										>
-											<TableCell>
-												<Link
-													to="/$orgSlug/close"
-													params={{ orgSlug: organization.slug }}
-													search={{ month: monthKey, projectId: p.projectId }}
-													className="block"
-												>
-													<span className="block font-medium">
-														{p.projectName}
-													</span>
-													<span className="block text-xs text-faint">
-														{p.clientName}
-													</span>
-												</Link>
-											</TableCell>
-											<TableCell className="mono text-right">
-												{formatHoursShort(p.reportedSeconds)}
-											</TableCell>
-											<TableCell>
-												<StatusPill tone={STATUS_TONE[p.status]}>
-													{STATUS_LABEL[p.status]}
-												</StatusPill>
-											</TableCell>
-										</TableRow>
-									);
-								})}
-							</TableBody>
-						</Table>
 					)}
+					<div className="scrollbar-stable min-h-0 flex-1 overflow-y-auto">
+						{projects.length === 0 ? (
+							<div className="px-4 py-8 sm:px-8">
+								<p className="h2">Nothing to close</p>
+								<p className="lede mt-2">
+									You aren't PM on any project, so no close sheet is yours to
+									finalize.
+								</p>
+							</div>
+						) : (
+							<Table bleed={false}>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Project</TableHead>
+										<TableHead className="text-right">Reported</TableHead>
+										<TableHead>Status</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{shown.length === 0 && (
+										<NoMatchesRow colSpan={3}>
+											No projects match your search.
+										</NoMatchesRow>
+									)}
+									{shown.map((p) => {
+										const selected = search.projectId === p.projectId;
+										return (
+											<TableRow
+												key={p.projectId}
+												className={cn(selected && "bg-[var(--sel)]")}
+											>
+												{/* The one cell allowed to wrap. Every cell is nowrap by
+												    default, so a long project name widened the table
+												    past its 440px pane and pushed Reported and Status out
+												    of sight behind a horizontal scroll. */}
+												<TableCell className="w-full whitespace-normal">
+													<Link
+														to="/$orgSlug/close"
+														params={{ orgSlug: organization.slug }}
+														search={{ month: monthKey, projectId: p.projectId }}
+														className="block [overflow-wrap:anywhere]"
+													>
+														<span className="block font-medium">
+															{p.projectName}
+														</span>
+														<span className="block text-xs text-faint">
+															{p.clientName}
+														</span>
+													</Link>
+												</TableCell>
+												<TableCell className="mono text-right">
+													{formatHoursShort(p.reportedSeconds)}
+												</TableCell>
+												<TableCell>
+													<StatusPill tone={STATUS_TONE[p.status]}>
+														{STATUS_LABEL[p.status]}
+													</StatusPill>
+												</TableCell>
+											</TableRow>
+										);
+									})}
+								</TableBody>
+							</Table>
+						)}
+					</div>
 				</div>
 				<div className="scrollbar-stable min-h-0 overflow-y-auto border-t lg:border-t-0">
 					{/* `CloseSheetPanel` reads its sheet with `useSuspenseQuery` and the

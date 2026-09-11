@@ -1,7 +1,9 @@
 import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Table,
 	TableBody,
@@ -11,6 +13,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { varianceReportQuery, varianceTrendQuery } from "#/queries/reports.ts";
 
@@ -37,6 +40,16 @@ export function VarianceTab({ year, month }: { year: number; month: number }) {
 		byUser: new Map(p.rows.map((r) => [r.userId, r])),
 	}));
 
+	// The trend's rows are people, not the fixed run of months across the top —
+	// with enough people on the org this is exactly the list search exists for.
+	const [trendQuery, setTrendQuery] = useState("");
+	const sortedPeople = [...people.entries()].sort((a, b) =>
+		a[1].localeCompare(b[1]),
+	);
+	const filteredPeople = sortedPeople.filter(([, name]) =>
+		matchesSearch(trendQuery, [name]),
+	);
+
 	return (
 		<>
 			<ReportTable
@@ -51,6 +64,7 @@ export function VarianceTab({ year, month }: { year: number; month: number }) {
 							? formatHoursLabel(r.diffSeconds)
 							: `${r.diffPct > 0 ? "+" : ""}${r.diffPct}%`,
 					],
+					searchFields: [r.name],
 				}))}
 				empty="No month has been finalized yet, so there's nothing to compare."
 			/>
@@ -67,7 +81,12 @@ export function VarianceTab({ year, month }: { year: number; month: number }) {
 						means the PM adjusted them up — the signature of somebody who works
 						the month and forgets to write it down.
 					</p>
-					<Table containerClassName="mt-5">
+					<SearchInput
+						value={trendQuery}
+						onValueChange={setTrendQuery}
+						className="mt-5 w-full sm:w-56"
+					/>
+					<Table containerClassName="mt-3">
 						<TableHeader>
 							<TableRow>
 								<TableHead>Person</TableHead>
@@ -79,9 +98,10 @@ export function VarianceTab({ year, month }: { year: number; month: number }) {
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{[...people.entries()]
-								.sort((a, b) => a[1].localeCompare(b[1]))
-								.map(([userId, name]) => (
+							{filteredPeople.length === 0 ? (
+								<NoMatchesRow colSpan={byPeriod.length + 1} />
+							) : (
+								filteredPeople.map(([userId, name]) => (
 									<TableRow key={userId}>
 										<TableCell>
 											<PersonCell userId={userId} name={name} />
@@ -103,7 +123,8 @@ export function VarianceTab({ year, month }: { year: number; month: number }) {
 											);
 										})}
 									</TableRow>
-								))}
+								))
+							)}
 						</TableBody>
 					</Table>
 				</section>

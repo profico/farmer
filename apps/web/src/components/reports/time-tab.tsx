@@ -12,6 +12,7 @@ import { Fragment, Suspense, useState } from "react";
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -35,6 +36,7 @@ import {
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { downloadCsv } from "#/lib/csv.ts";
 import { formatClock } from "#/lib/format-hours.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
@@ -227,6 +229,10 @@ function TimeSummaryRows({
 	const { data } = useSuspenseQuery(
 		timeReportSummaryQuery(orgSlug, { from, to, tab: group }),
 	);
+	const [query, setQuery] = useState("");
+	const filteredRows = data.rows.filter((row) =>
+		matchesSearch(query, [row.name]),
+	);
 
 	return (
 		<>
@@ -249,69 +255,82 @@ function TimeSummaryRows({
 					Nothing logged in this period.
 				</p>
 			) : (
-				<Table containerClassName="mt-6">
-					<TableHeader>
-						<TableRow>
-							<TableHead>Name</TableHead>
-							<TableHead className="text-right">Hours</TableHead>
-							<TableHead className="w-1/3">Share</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{data.rows.map((row) => {
-							const share =
-								data.totalSeconds > 0
-									? (row.secondsTotal / data.totalSeconds) * 100
-									: 0;
-							return (
-								<TableRow key={row.id}>
-									<TableCell className="font-medium">
-										{/* Only the teammates grouping lists people — under
-										    clients and projects the same `id` names something
-										    with no face. */}
-										{group === "teammates" ? (
-											<PersonCell userId={row.id} name={row.name} />
-										) : (
-											row.name
-										)}
-									</TableCell>
-									<TableCell className="text-right">
-										{/* Hours are the link, exactly as in Harvest: the number
-										    is the thing you want to see behind. */}
-										<Link
-											to="/$orgSlug/reports"
-											params={{ orgSlug }}
-											search={{
-												...search,
-												detailKind: group,
-												detailId: row.id,
-											}}
-											className="mono underlined"
-										>
-											{formatHoursLabel(row.secondsTotal)}
-										</Link>
-									</TableCell>
-									<TableCell>
-										{/* The bar is the report's one piece of chrome, and it
-										    earns its place: it answers "who dominates this
-										    period" without reading a single number. */}
-										<span className="flex items-center gap-2">
-											<span className="h-1.5 min-w-px flex-1 overflow-hidden rounded-full bg-secondary">
-												<span
-													className="block h-full rounded-full bg-primary"
-													style={{ width: `${Math.max(share, 1)}%` }}
-												/>
-											</span>
-											<span className="mono w-10 text-right text-xs text-muted-foreground">
-												{Math.round(share)}%
-											</span>
-										</span>
-									</TableCell>
-								</TableRow>
-							);
-						})}
-					</TableBody>
-				</Table>
+				<>
+					<SearchInput
+						value={query}
+						onValueChange={setQuery}
+						className="mt-6 w-full sm:w-56"
+					/>
+					<Table containerClassName="mt-3">
+						<TableHeader>
+							<TableRow>
+								<TableHead>Name</TableHead>
+								<TableHead className="text-right">Hours</TableHead>
+								<TableHead className="w-1/3">Share</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{filteredRows.length === 0 ? (
+								<NoMatchesRow colSpan={3} />
+							) : (
+								filteredRows.map((row) => {
+									// Share is always against the period's whole total, not the
+									// rows the search box happens to leave on screen.
+									const share =
+										data.totalSeconds > 0
+											? (row.secondsTotal / data.totalSeconds) * 100
+											: 0;
+									return (
+										<TableRow key={row.id}>
+											<TableCell className="font-medium">
+												{/* Only the teammates grouping lists people — under
+												    clients and projects the same `id` names something
+												    with no face. */}
+												{group === "teammates" ? (
+													<PersonCell userId={row.id} name={row.name} />
+												) : (
+													row.name
+												)}
+											</TableCell>
+											<TableCell className="text-right">
+												{/* Hours are the link, exactly as in Harvest: the number
+												    is the thing you want to see behind. */}
+												<Link
+													to="/$orgSlug/reports"
+													params={{ orgSlug }}
+													search={{
+														...search,
+														detailKind: group,
+														detailId: row.id,
+													}}
+													className="mono underlined"
+												>
+													{formatHoursLabel(row.secondsTotal)}
+												</Link>
+											</TableCell>
+											<TableCell>
+												{/* The bar is the report's one piece of chrome, and it
+												    earns its place: it answers "who dominates this
+												    period" without reading a single number. */}
+												<span className="flex items-center gap-2">
+													<span className="h-1.5 min-w-px flex-1 overflow-hidden rounded-full bg-secondary">
+														<span
+															className="block h-full rounded-full bg-primary"
+															style={{ width: `${Math.max(share, 1)}%` }}
+														/>
+													</span>
+													<span className="mono w-10 text-right text-xs text-muted-foreground">
+														{Math.round(share)}%
+													</span>
+												</span>
+											</TableCell>
+										</TableRow>
+									);
+								})
+							)}
+						</TableBody>
+					</Table>
+				</>
 			)}
 		</>
 	);
@@ -530,11 +549,26 @@ function TimeDetailTable({
 		timeReportDetailQuery(orgSlug, input),
 	);
 	const rows = detail.rows;
+	const [query, setQuery] = useState("");
+	// The search box only ever narrows what's already loaded — when the server
+	// truncated the entries, a search finds nothing past that cutoff, same as
+	// the CSV export below.
+	const filteredRows = rows.filter((row) =>
+		matchesSearch(query, [
+			row.description,
+			row.userName,
+			row.clientName,
+			row.projectName,
+			row.taskName,
+		]),
+	);
 
 	// One pass, in the order the service already sorted them: it grouped by the
-	// same key, so a running group beats re-sorting the rows here.
+	// same key, so a running group beats re-sorting the rows here. Built from the
+	// filtered rows — the subtotals are a reading aid, not the report's Total,
+	// which stays keyed to `detail.totalSeconds` above regardless of the search.
 	const groups: { key: string; rows: typeof rows; seconds: number }[] = [];
-	for (const row of rows) {
+	for (const row of filteredRows) {
 		const key = groupBy === "person" ? row.userName : row.date;
 		const last = groups[groups.length - 1];
 		if (last && last.key === key) {
@@ -565,7 +599,12 @@ function TimeDetailTable({
 							Narrow the filters or the date range to see the rest.
 						</p>
 					)}
-					<Table containerClassName="mt-6">
+					<SearchInput
+						value={query}
+						onValueChange={setQuery}
+						className="mt-6 w-full sm:w-56"
+					/>
+					<Table containerClassName="mt-3">
 						<TableHeader>
 							<TableRow>
 								<TableHead>
@@ -579,43 +618,47 @@ function TimeDetailTable({
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{groups.map((group) => (
-								<Fragment key={group.key}>
-									<TableRow className="bg-secondary/60">
-										<TableCell colSpan={5} className="font-medium">
-											{groupBy === "person"
-												? group.key
-												: formatDateHeading(group.key)}
-										</TableCell>
-										<TableCell className="mono text-right font-medium">
-											{formatClock(group.seconds)}
-										</TableCell>
-									</TableRow>
-									{group.rows.map((row) => (
-										<TableRow key={row.id}>
-											<TableCell className="text-muted-foreground">
+							{groups.length === 0 ? (
+								<NoMatchesRow colSpan={6} />
+							) : (
+								groups.map((group) => (
+									<Fragment key={group.key}>
+										<TableRow className="bg-secondary/60">
+											<TableCell colSpan={5} className="font-medium">
 												{groupBy === "person"
-													? formatDateHeading(row.date)
-													: row.userName}
+													? group.key
+													: formatDateHeading(group.key)}
 											</TableCell>
-											<TableCell>{row.clientName}</TableCell>
-											<TableCell>{row.projectName}</TableCell>
-											<TableCell>{row.taskName}</TableCell>
-											<TableCell className="max-w-[42ch] truncate text-muted-foreground">
-												{row.description}
-												{row.overtime && (
-													<span className="ml-2 text-2xs text-warn">
-														overtime
-													</span>
-												)}
-											</TableCell>
-											<TableCell className="mono text-right">
-												{formatClock(row.durationSeconds)}
+											<TableCell className="mono text-right font-medium">
+												{formatClock(group.seconds)}
 											</TableCell>
 										</TableRow>
-									))}
-								</Fragment>
-							))}
+										{group.rows.map((row) => (
+											<TableRow key={row.id}>
+												<TableCell className="text-muted-foreground">
+													{groupBy === "person"
+														? formatDateHeading(row.date)
+														: row.userName}
+												</TableCell>
+												<TableCell>{row.clientName}</TableCell>
+												<TableCell>{row.projectName}</TableCell>
+												<TableCell>{row.taskName}</TableCell>
+												<TableCell className="max-w-[42ch] truncate text-muted-foreground">
+													{row.description}
+													{row.overtime && (
+														<span className="ml-2 text-2xs text-warn">
+															overtime
+														</span>
+													)}
+												</TableCell>
+												<TableCell className="mono text-right">
+													{formatClock(row.durationSeconds)}
+												</TableCell>
+											</TableRow>
+										))}
+									</Fragment>
+								))
+							)}
 						</TableBody>
 					</Table>
 				</>

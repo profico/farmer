@@ -1,9 +1,4 @@
-import {
-	LockIcon,
-	MagnifyingGlassIcon,
-	PlugIcon,
-	XIcon,
-} from "@phosphor-icons/react";
+import { LockIcon, PlugIcon, XIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -11,7 +6,8 @@ import { toast } from "sonner";
 
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { Input } from "#/components/ui/input.tsx";
+import { SearchInput } from "#/components/ui/search-input.tsx";
+import { matchesSearch } from "#/lib/search.ts";
 import {
 	availableGithubReposQuery,
 	githubConnectionStatusQuery,
@@ -186,9 +182,8 @@ export function ProjectGithubRepos({
 		},
 	});
 
-	const query = search.trim().toLowerCase();
-	const matches = (fullName: string) =>
-		!query || fullName.toLowerCase().includes(query);
+	const searching = search.trim() !== "";
+	const matches = (fullName: string) => matchesSearch(search, [fullName]);
 
 	const visibleLinkedRepos = (linkedRepos ?? []).filter((r) =>
 		matches(r.fullName),
@@ -234,15 +229,11 @@ export function ProjectGithubRepos({
 	return (
 		<div className={className}>
 			<div className="grid min-w-0 gap-4">
-				<div className="relative">
-					<MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
-					<Input
-						value={search}
-						onChange={(e) => setSearch(e.target.value)}
-						placeholder="Search repositories…"
-						className="w-full pl-8"
-					/>
-				</div>
+				<SearchInput
+					value={search}
+					onValueChange={setSearch}
+					placeholder="Search repositories…"
+				/>
 
 				<div className="min-w-0">
 					<p className="eyebrow mb-2">Linked repositories</p>
@@ -295,7 +286,7 @@ export function ProjectGithubRepos({
 						</div>
 					) : (
 						<p className="text-sm text-muted-foreground">
-							{query
+							{searching
 								? "No linked repositories match your search."
 								: "No repositories linked yet."}
 						</p>
@@ -351,7 +342,7 @@ export function ProjectGithubRepos({
 						<p className="text-sm text-muted-foreground">
 							{!availableRepos
 								? "Loading repositories…"
-								: query
+								: searching
 									? "No repositories match your search."
 									: "No more repositories to link."}
 						</p>

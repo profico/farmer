@@ -1,4 +1,3 @@
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -15,8 +14,8 @@ import { EmptyState } from "#/components/states/empty-state.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { AvatarGroup, AvatarGroupCount } from "#/components/ui/avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { Input } from "#/components/ui/input.tsx";
 import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Sheet,
 	SheetContent,
@@ -36,6 +35,7 @@ import { useMediaQuery } from "#/hooks/use-media-query.ts";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
@@ -82,17 +82,15 @@ function ProjectsPage() {
 		[projects],
 	);
 
-	const query = search.trim().toLowerCase();
+	const searching = search.trim() !== "";
 	const bothFiltered = useMemo(() => {
 		const matches = (p: (typeof projects)[number]) =>
-			query === "" ||
-			p.name.toLowerCase().includes(query) ||
-			(p.client?.name.toLowerCase().includes(query) ?? false);
+			matchesSearch(search, [p.name, p.client?.name]);
 		return {
 			active: projects.filter((p) => p.status === "active" && matches(p)),
 			archived: projects.filter((p) => p.status === "archived" && matches(p)),
 		};
-	}, [projects, query]);
+	}, [projects, search]);
 	const filteredActive = bothFiltered.active;
 	const filteredArchived = bothFiltered.archived;
 
@@ -100,9 +98,7 @@ function ProjectsPage() {
 	// results at all — force the section open rather than hide the match.
 	const archivedOpen =
 		routeSearch.archived === "1" ||
-		(query !== "" &&
-			filteredActive.length === 0 &&
-			filteredArchived.length > 0);
+		(searching && filteredActive.length === 0 && filteredArchived.length > 0);
 
 	// The panel defaults to the first project until the user picks another; a
 	// stale selectedId (e.g. after the project is archived away) also falls back.
@@ -198,15 +194,12 @@ function ProjectsPage() {
 				title="Projects"
 				action={
 					<div className="flex items-center gap-2">
-						<div className="relative flex-1 sm:flex-none">
-							<MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
-							<Input
-								value={search}
-								onChange={(e) => setSearch(e.target.value)}
-								placeholder="Search projects…"
-								className="w-full pl-8 sm:w-56"
-							/>
-						</div>
+						<SearchInput
+							value={search}
+							onValueChange={setSearch}
+							placeholder="Search projects…"
+							className="flex-1 sm:w-56 sm:flex-none"
+						/>
 						{isAdmin && <CreateProjectDialog />}
 					</div>
 				}
@@ -267,14 +260,9 @@ function ProjectsPage() {
 						</TableHeader>
 						<TableBody>
 							{filteredActive.length === 0 ? (
-								<TableRow className="hover:bg-transparent">
-									<TableCell
-										colSpan={PROJECT_COLUMN_COUNT}
-										className="text-muted-foreground"
-									>
-										No active projects match your search.
-									</TableCell>
-								</TableRow>
+								<NoMatchesRow colSpan={PROJECT_COLUMN_COUNT}>
+									No active projects match your search.
+								</NoMatchesRow>
 							) : (
 								filteredActive.map(renderProjectRow)
 							)}

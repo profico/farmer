@@ -33,6 +33,7 @@ import {
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Table,
 	TableBody,
@@ -42,6 +43,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { allClientsQuery } from "#/queries/clients.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -252,8 +254,16 @@ function ClientsPage() {
 	});
 	const busy = archive.isPending || unarchive.isPending;
 
-	const activeClients = clients.filter((c) => !c.archivedAt);
-	const archivedClients = clients.filter((c) => c.archivedAt);
+	const [query, setQuery] = useState("");
+	const searching = query.trim() !== "";
+	const matching = clients.filter((c) => matchesSearch(query, [c.name]));
+	const activeClients = matching.filter((c) => !c.archivedAt);
+	const archivedClients = matching.filter((c) => c.archivedAt);
+	// A search that only turns up archived rows opens their section rather than
+	// reading as no result at all — the same rule as Projects.
+	const archivedOpen =
+		search.archived === "1" ||
+		(searching && activeClients.length === 0 && archivedClients.length > 0);
 
 	const renderClientRow = (client: (typeof clients)[number]) => (
 		<TableRow key={client.id}>
@@ -305,7 +315,17 @@ function ClientsPage() {
 				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="Clients"
 				lede={`Every project belongs to a client, which is what makes the Time report's "by client" view add up. The Internal client is created automatically and holds work that is never invoiced.`}
-				action={access.canCreateProjects && <CreateClientDialog />}
+				action={
+					<div className="flex items-center gap-2">
+						<SearchInput
+							value={query}
+							onValueChange={setQuery}
+							placeholder="Search clients…"
+							className="flex-1 sm:w-56 sm:flex-none"
+						/>
+						{access.canCreateProjects && <CreateClientDialog />}
+					</div>
+				}
 			/>
 
 			<Table>
@@ -318,11 +338,18 @@ function ClientsPage() {
 					</TableRow>
 				</TableHeader>
 				<TableBody>
+					{searching && activeClients.length === 0 && (
+						<NoMatchesRow colSpan={CLIENT_COLUMN_COUNT}>
+							{archivedClients.length > 0
+								? "Only archived clients match your search."
+								: "No clients match your search."}
+						</NoMatchesRow>
+					)}
 					{activeClients.map(renderClientRow)}
 					<ArchivedSection
 						count={archivedClients.length}
 						colSpan={CLIENT_COLUMN_COUNT}
-						open={search.archived === "1"}
+						open={archivedOpen}
 						onOpenChange={(open) =>
 							navigate({ search: { archived: open ? "1" : undefined } })
 						}

@@ -72,6 +72,7 @@ export function UtilizationTab({
 							: formatHoursLabel(r.expectedSeconds),
 						formatPctLabel(r.utilizationPct),
 					],
+					searchFields: [r.name, r.memberType],
 				}))}
 				empty="No finalized months yet."
 			/>

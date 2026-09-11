@@ -35,6 +35,7 @@ export function ComplianceTab() {
 							r.lastEntryDate ?? "Never",
 							String(r.workingDaysMissing),
 						],
+						searchFields: [r.name, r.memberType],
 					}))}
 					empty="Everyone is up to date."
 				/>
@@ -59,6 +60,7 @@ export function ComplianceTab() {
 							`${r.pacePct}%`,
 							formatHoursLabel(r.shortfallSeconds),
 						],
+						searchFields: [r.name],
 					}))}
 					empty="Nobody is behind pace."
 				/>

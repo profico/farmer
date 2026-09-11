@@ -7,7 +7,7 @@ import {
 import { addDaysToKey } from "@farmer/core/lib/time";
 import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import type * as React from "react";
 
 import { TableLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
@@ -17,6 +17,7 @@ import {
 	TimeToolbar,
 } from "#/components/time/time-toolbar.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -30,6 +31,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { formatMonthKey, formatWeekRange } from "#/lib/format-date.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 
 import type { Search } from "./search.ts";
@@ -319,6 +321,12 @@ export type ReportTableRow = {
 	 *  collide into one React key. */
 	key: string;
 	cells: React.ReactNode[];
+	/** Plain text for the row, for the table's own search box. A cell can render
+	 *  a face (`<PersonCell>`) instead of text, so filtering needs its own copy;
+	 *  a row with no fields is simply unmatchable by search. Only worth supplying
+	 *  when the table lists people, projects or clients — not a fixed short
+	 *  series like a trend's months. */
+	searchFields?: readonly (string | null | undefined)[];
 };
 
 export function ReportTable({
@@ -336,6 +344,15 @@ export function ReportTable({
 	empty: string;
 	columned?: boolean;
 }) {
+	// The box only appears once some row actually carries searchable text — a
+	// table nobody wired up (e.g. a trend's fixed run of months) renders exactly
+	// as before.
+	const searchable = rows.some((r) => r.searchFields);
+	const [query, setQuery] = useState("");
+	const filteredRows = searchable
+		? rows.filter((r) => matchesSearch(query, r.searchFields ?? []))
+		: rows;
+
 	if (rows.length === 0) {
 		// An empty report is a sentence on the page, not a dashed box: a dashed
 		// rectangle is a drop target, and nothing here can be dropped into.
@@ -346,36 +363,52 @@ export function ReportTable({
 		);
 	}
 	return (
-		<Table
-			className={cn(
-				columned &&
-					"xl:[&_td:first-child]:pl-2 xl:[&_td:last-child]:pr-2 xl:[&_th:first-child]:pl-2 xl:[&_th:last-child]:pr-2",
+		<>
+			{searchable && (
+				<SearchInput
+					value={query}
+					onValueChange={setQuery}
+					className="mt-6 w-full sm:w-56"
+				/>
 			)}
-			containerClassName={cn("mt-6", columned && "xl:mx-0")}
-		>
-			<TableHeader>
-				<TableRow>
-					{headers.map((h, i) => (
-						<TableHead key={h} className={cn(i > 0 && "text-right")}>
-							{h}
-						</TableHead>
-					))}
-				</TableRow>
-			</TableHeader>
-			<TableBody>
-				{rows.map((row) => (
-					<TableRow key={row.key}>
-						{row.cells.map((cell, i) => (
-							<TableCell
-								key={`${row.key}-${headers[i]}`}
-								className={cn(i === 0 ? "font-medium" : "mono text-right")}
-							>
-								{cell}
-							</TableCell>
+			<Table
+				className={cn(
+					columned &&
+						"xl:[&_td:first-child]:pl-2 xl:[&_td:last-child]:pr-2 xl:[&_th:first-child]:pl-2 xl:[&_th:last-child]:pr-2",
+				)}
+				containerClassName={cn(
+					searchable ? "mt-3" : "mt-6",
+					columned && "xl:mx-0",
+				)}
+			>
+				<TableHeader>
+					<TableRow>
+						{headers.map((h, i) => (
+							<TableHead key={h} className={cn(i > 0 && "text-right")}>
+								{h}
+							</TableHead>
 						))}
 					</TableRow>
-				))}
-			</TableBody>
-		</Table>
+				</TableHeader>
+				<TableBody>
+					{filteredRows.length === 0 ? (
+						<NoMatchesRow colSpan={headers.length} />
+					) : (
+						filteredRows.map((row) => (
+							<TableRow key={row.key}>
+								{row.cells.map((cell, i) => (
+									<TableCell
+										key={`${row.key}-${headers[i]}`}
+										className={cn(i === 0 ? "font-medium" : "mono text-right")}
+									>
+										{cell}
+									</TableCell>
+								))}
+							</TableRow>
+						))
+					)}
+				</TableBody>
+			</Table>
+		</>
 	);
 }

@@ -25,6 +25,7 @@ export function BudgetBurnTab() {
 							: formatHoursLabel(r.remainingSeconds),
 						r.burnPct == null ? "—" : `${r.burnPct}%`,
 					],
+					searchFields: [r.name, r.clientName],
 				}))}
 				empty="No active fixed-scope projects — those are the only ones with an hour budget."
 			/>

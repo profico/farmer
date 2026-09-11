@@ -2,9 +2,11 @@ import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Table,
 	TableBody,
@@ -14,6 +16,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { formatClock } from "#/lib/format-hours.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { overtimeDetailQuery, overtimeReportQuery } from "#/queries/reports.ts";
 
 import type { Search } from "./search.ts";
@@ -33,6 +36,8 @@ export function OvertimeTab({
 	const { data: rows } = useSuspenseQuery(
 		overtimeReportQuery(orgSlug, { year, month }),
 	);
+	const [query, setQuery] = useState("");
+	const filteredRows = rows.filter((row) => matchesSearch(query, [row.name]));
 
 	if (search.detailKind === "overtime" && search.detailId) {
 		return (
@@ -56,41 +61,52 @@ export function OvertimeTab({
 	}
 
 	return (
-		<Table>
-			<TableHeader>
-				<TableRow>
-					<TableHead>Person</TableHead>
-					<TableHead className="text-right">This month</TableHead>
-					<TableHead className="text-right">This year</TableHead>
-				</TableRow>
-			</TableHeader>
-			<TableBody>
-				{rows.map((row) => (
-					<TableRow key={row.userId}>
-						<TableCell>
-							<PersonCell userId={row.userId} name={row.name} />
-						</TableCell>
-						<TableCell className="text-right">
-							<Link
-								to="/$orgSlug/reports"
-								params={{ orgSlug }}
-								search={{
-									...search,
-									detailKind: "overtime",
-									detailId: row.userId,
-								}}
-								className="mono underlined"
-							>
-								{formatHoursLabel(row.monthSeconds)}
-							</Link>
-						</TableCell>
-						<TableCell className="mono text-right">
-							{formatHoursLabel(row.yearSeconds)}
-						</TableCell>
+		<>
+			<SearchInput
+				value={query}
+				onValueChange={setQuery}
+				className="w-full sm:w-56"
+			/>
+			<Table containerClassName="mt-3">
+				<TableHeader>
+					<TableRow>
+						<TableHead>Person</TableHead>
+						<TableHead className="text-right">This month</TableHead>
+						<TableHead className="text-right">This year</TableHead>
 					</TableRow>
-				))}
-			</TableBody>
-		</Table>
+				</TableHeader>
+				<TableBody>
+					{filteredRows.length === 0 ? (
+						<NoMatchesRow colSpan={3} />
+					) : (
+						filteredRows.map((row) => (
+							<TableRow key={row.userId}>
+								<TableCell>
+									<PersonCell userId={row.userId} name={row.name} />
+								</TableCell>
+								<TableCell className="text-right">
+									<Link
+										to="/$orgSlug/reports"
+										params={{ orgSlug }}
+										search={{
+											...search,
+											detailKind: "overtime",
+											detailId: row.userId,
+										}}
+										className="mono underlined"
+									>
+										{formatHoursLabel(row.monthSeconds)}
+									</Link>
+								</TableCell>
+								<TableCell className="mono text-right">
+									{formatHoursLabel(row.yearSeconds)}
+								</TableCell>
+							</TableRow>
+						))
+					)}
+				</TableBody>
+			</Table>
+		</>
 	);
 }
 
@@ -114,6 +130,7 @@ function OvertimeDetail({
 	const { data: rows } = useSuspenseQuery(
 		overtimeDetailQuery(orgSlug, { year, month, userId }),
 	);
+	// Over every row, not whatever the table's own search box narrows to.
 	const total = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
 
 	return (
@@ -147,6 +164,7 @@ function OvertimeDetail({
 						r.description,
 						formatClock(r.durationSeconds),
 					],
+					searchFields: [r.projectName, r.taskName, r.description],
 				}))}
 				empty="No overtime entries this month."
 			/>

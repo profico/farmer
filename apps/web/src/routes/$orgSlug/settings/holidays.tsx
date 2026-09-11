@@ -15,6 +15,7 @@ import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
+import { SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -29,6 +30,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { holidaysForYearWithStatusQuery } from "#/queries/holidays.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -206,16 +208,18 @@ function HolidaysSettingsPage() {
 
 	/* Split on the org-timezone today. A past or future year lands whole in
 	   one section, so the other heading simply does not render. */
+	const [query, setQuery] = useState("");
+	const matching = holidays.filter((h) => matchesSearch(query, [h.name]));
 	const todayKey = dayKeyInTz(new Date(), organization.timezone);
 	const sections: { heading: string | null; rows: typeof holidays }[] =
 		view === "single"
-			? [{ heading: null, rows: holidays }]
+			? [{ heading: null, rows: matching }]
 			: [
 					{
 						heading: "Upcoming",
-						rows: holidays.filter((h) => h.date >= todayKey),
+						rows: matching.filter((h) => h.date >= todayKey),
 					},
-					{ heading: "Past", rows: holidays.filter((h) => h.date < todayKey) },
+					{ heading: "Past", rows: matching.filter((h) => h.date < todayKey) },
 				].filter((section) => section.rows.length > 0);
 
 	/* Optimistic, and scoped to the one holiday: the whole table shares this
@@ -267,7 +271,13 @@ function HolidaysSettingsPage() {
 				/* The year is the page's subject, so it is set as a figure — mono,
 				   large, with the steppers reduced to quiet glyphs either side. */
 				action={
-					<div className="flex items-center gap-4">
+					<div className="flex flex-wrap items-center gap-4">
+						<SearchInput
+							value={query}
+							onValueChange={setQuery}
+							placeholder="Search holidays…"
+							className="w-44"
+						/>
 						<SegmentedControl>
 							<SegmentedControlItem
 								active={view === "relative"}
@@ -308,6 +318,10 @@ function HolidaysSettingsPage() {
 			{holidays.length === 0 ? (
 				<p className="text-sm text-muted-foreground">
 					No public holidays found for this country and year.
+				</p>
+			) : matching.length === 0 ? (
+				<p className="text-sm text-muted-foreground">
+					No holidays match your search.
 				</p>
 			) : (
 				sections.map((section) =>

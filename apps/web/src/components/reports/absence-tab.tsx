@@ -6,6 +6,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -19,6 +20,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { absenceReportQuery } from "#/queries/reports.ts";
 
 const ABSENCE_UNITS = [
@@ -32,6 +34,10 @@ export function AbsenceTab({ year, month }: { year: number; month: number }) {
 		absenceReportQuery(orgSlug, { year, month }),
 	);
 	const [unit, setUnit] = useState<"hours" | "days">("hours");
+	const [query, setQuery] = useState("");
+	const filteredRows = data.rows.filter((row) =>
+		matchesSearch(query, [row.name]),
+	);
 
 	const format = (seconds: number) =>
 		unit === "hours"
@@ -74,50 +80,61 @@ export function AbsenceTab({ year, month }: { year: number; month: number }) {
 					No absence logged this year.
 				</p>
 			) : (
-				<Table containerClassName="mt-6">
-					<TableHeader>
-						<TableRow>
-							<TableHead>Person</TableHead>
-							{data.columns.map((c) => (
-								<TableHead key={`m-${c.key}`} className="text-right">
-									{c.label} (month)
-								</TableHead>
-							))}
-							<TableHead className="text-right">Month</TableHead>
-							{data.columns.map((c) => (
-								<TableHead key={`y-${c.key}`} className="text-right">
-									{c.label} (YTD)
-								</TableHead>
-							))}
-							<TableHead className="text-right">Year to date</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{data.rows.map((row) => (
-							<TableRow key={row.userId}>
-								<TableCell>
-									<PersonCell userId={row.userId} name={row.name} />
-								</TableCell>
+				<>
+					<SearchInput
+						value={query}
+						onValueChange={setQuery}
+						className="mt-6 w-full sm:w-56"
+					/>
+					<Table containerClassName="mt-3">
+						<TableHeader>
+							<TableRow>
+								<TableHead>Person</TableHead>
 								{data.columns.map((c) => (
-									<TableCell key={`m-${c.key}`} className="mono text-right">
-										{cell(row.monthByTask, c.key)}
-									</TableCell>
+									<TableHead key={`m-${c.key}`} className="text-right">
+										{c.label} (month)
+									</TableHead>
 								))}
-								<TableCell className="mono text-right font-medium">
-									{format(row.monthSeconds)}
-								</TableCell>
+								<TableHead className="text-right">Month</TableHead>
 								{data.columns.map((c) => (
-									<TableCell key={`y-${c.key}`} className="mono text-right">
-										{cell(row.ytdByTask, c.key)}
-									</TableCell>
+									<TableHead key={`y-${c.key}`} className="text-right">
+										{c.label} (YTD)
+									</TableHead>
 								))}
-								<TableCell className="mono text-right font-medium">
-									{format(row.ytdSeconds)}
-								</TableCell>
+								<TableHead className="text-right">Year to date</TableHead>
 							</TableRow>
-						))}
-					</TableBody>
-				</Table>
+						</TableHeader>
+						<TableBody>
+							{filteredRows.length === 0 ? (
+								<NoMatchesRow colSpan={data.columns.length * 2 + 3} />
+							) : (
+								filteredRows.map((row) => (
+									<TableRow key={row.userId}>
+										<TableCell>
+											<PersonCell userId={row.userId} name={row.name} />
+										</TableCell>
+										{data.columns.map((c) => (
+											<TableCell key={`m-${c.key}`} className="mono text-right">
+												{cell(row.monthByTask, c.key)}
+											</TableCell>
+										))}
+										<TableCell className="mono text-right font-medium">
+											{format(row.monthSeconds)}
+										</TableCell>
+										{data.columns.map((c) => (
+											<TableCell key={`y-${c.key}`} className="mono text-right">
+												{cell(row.ytdByTask, c.key)}
+											</TableCell>
+										))}
+										<TableCell className="mono text-right font-medium">
+											{format(row.ytdSeconds)}
+										</TableCell>
+									</TableRow>
+								))
+							)}
+						</TableBody>
+					</Table>
+				</>
 			)}
 		</>
 	);

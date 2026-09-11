@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { Input } from "#/components/ui/input.tsx";
+import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Select,
 	SelectContent,
@@ -24,6 +25,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { matchesSearch } from "#/lib/search.ts";
 import { notOnInvoiceReportQuery } from "#/queries/not-on-invoice.ts";
 import { setNotOnInvoiceStatus } from "#/server/not-on-invoice.ts";
 
@@ -39,6 +41,10 @@ export function NotOnInvoiceTab({
 	const orgSlug = useOrgSlug();
 	const { data } = useSuspenseQuery(
 		notOnInvoiceReportQuery(orgSlug, { year, month }),
+	);
+	const [query, setQuery] = useState("");
+	const filteredRows = data.rows.filter((row) =>
+		matchesSearch(query, [row.name]),
 	);
 
 	if (data.finalizedCloseCount === 0) {
@@ -64,26 +70,37 @@ export function NotOnInvoiceTab({
 					Everyone billable landed on an invoice this month.
 				</p>
 			) : (
-				<Table containerClassName="mt-6">
-					<TableHeader>
-						<TableRow>
-							<TableHead>Person</TableHead>
-							<TableHead className="w-56">Reason</TableHead>
-							<TableHead>Comment</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{data.rows.map((row) => (
-							<NotOnInvoiceRow
-								key={row.userId}
-								year={year}
-								month={month}
-								row={row}
-								statusOptions={data.statusOptions}
-							/>
-						))}
-					</TableBody>
-				</Table>
+				<>
+					<SearchInput
+						value={query}
+						onValueChange={setQuery}
+						className="mt-6 w-full sm:w-56"
+					/>
+					<Table containerClassName="mt-3">
+						<TableHeader>
+							<TableRow>
+								<TableHead>Person</TableHead>
+								<TableHead className="w-56">Reason</TableHead>
+								<TableHead>Comment</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{filteredRows.length === 0 ? (
+								<NoMatchesRow colSpan={3} />
+							) : (
+								filteredRows.map((row) => (
+									<NotOnInvoiceRow
+										key={row.userId}
+										year={year}
+										month={month}
+										row={row}
+										statusOptions={data.statusOptions}
+									/>
+								))
+							)}
+						</TableBody>
+					</Table>
+				</>
 			)}
 		</>
 	);
