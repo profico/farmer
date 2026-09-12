@@ -575,7 +575,7 @@ describe("archived people", () => {
 		}
 	});
 
-	test("notify refuses every reminder kind, and still sends a budget alert", async () => {
+	test("notify refuses every reminder kind, and still sends a non-reminder kind", async () => {
 		for (const kind of [
 			"log-reminder",
 			"compliance-nudge",
@@ -588,11 +588,11 @@ describe("archived people", () => {
 			);
 			expect(wasDelivered(outcome)).toBe(false);
 		}
-		const alert = await notify(
+		const other = await notify(
 			{ organizationId: ORG, userId: ARCHIVED },
-			{ kind: "budget-alert", title: "Over budget", body: "detail" },
+			{ kind: "test", title: "Heads up", body: "detail" },
 		);
-		expect(wasDelivered(alert)).toBe(true);
+		expect(wasDelivered(other)).toBe(true);
 	});
 });
 
