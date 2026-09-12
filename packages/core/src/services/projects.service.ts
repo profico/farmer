@@ -404,7 +404,7 @@ export const projectsService = {
 	update: async (ctx: Ctx, input: UpdateProjectInput) => {
 		const access = await ctxAccess(ctx);
 		// Editing budgets/prices is PM territory; TLs manage people, not config.
-		access.assertCanCloseProject(input.projectId);
+		access.assertCanManageProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
 
 		// A patch: only the keys the caller sent are written, so a rename doesn't
@@ -459,7 +459,7 @@ export const projectsService = {
 	 *  survive (close sheets and reports all read backwards). */
 	archive: async (ctx: Ctx, projectId: string) => {
 		const access = await ctxAccess(ctx);
-		access.assertCanCloseProject(projectId);
+		access.assertCanManageProject(projectId);
 		await db
 			.update(project)
 			.set({ status: "archived", updatedAt: new Date() })
@@ -473,7 +473,7 @@ export const projectsService = {
 
 	unarchive: async (ctx: Ctx, projectId: string) => {
 		const access = await ctxAccess(ctx);
-		access.assertCanCloseProject(projectId);
+		access.assertCanManageProject(projectId);
 		await db
 			.update(project)
 			.set({ status: "active", updatedAt: new Date() })

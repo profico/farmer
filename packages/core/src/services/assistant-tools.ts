@@ -18,7 +18,7 @@
 // ids no read returns cannot be called at all, which is how `file_time_entries`
 // spent its first months uncallable: it takes entry ids, and the only tool that
 // could have produced one reported a null project for absence too, so the one
-// action that clears what blocks the close could only be aimed by guessing.
+// action that clears unfiled time could only be aimed by guessing.
 
 import { z } from "zod";
 
@@ -30,8 +30,6 @@ import {
 	assignProjectMemberInput,
 	attachCommitsInput,
 	clientIdInput,
-	closeSheetInput,
-	closeTransitionInput,
 	copyTimeEntriesInput,
 	copyWeekEntriesInput,
 	createClientInput,
@@ -47,8 +45,6 @@ import {
 	logAbsenceRangeInput,
 	monthReportInput,
 	projectIdInput,
-	saveCloseRowInput,
-	setCloseRowFinalInput,
 	setTimeEntryOvertimeInput,
 	suggestDayAssemblyInput,
 	taskIdInput,
@@ -64,7 +60,6 @@ import {
 } from "../schema";
 import type { Access } from "./access.service";
 import { clientsService } from "./clients.service";
-import { closeService } from "./close.service";
 import { ctxAccess, ctxTimezone } from "./context";
 import { dayAssemblyService } from "./day-assembly.service";
 import { githubService } from "./github.service";
@@ -95,14 +90,6 @@ import { workingHoursService } from "./working-hours.service";
  * for by someone who never saw it happen. Moving a tool between tiers is one
  * word here, deliberately, because where the line sits is a judgement that will
  * be revisited.
- *
- * The two close transitions sit on that line in a way worth naming, because
- * they look like one decision and are two. `close_submit` is a write: a PM may
- * re-open and re-submit freely right up until an Admin finalizes. `close_finalize`
- * is destructive even though it deletes nothing — it FREEZES the Reported,
- * Expected and Overtime snapshots that the variance report and the invoice are
- * read off, and re-opening deliberately leaves those snapshots in place. What it
- * captured cannot be re-captured by asking for the opposite, which is the test.
  */
 export type ToolKind = "read" | "write" | "destructive";
 
@@ -156,7 +143,7 @@ export type AssistantTool = {
 	 * asserts, which is what actually protects the data, and this file must never
 	 * hold a second copy of the matrix. This is about what the model is TOLD it
 	 * can do: every definition is re-sent on every step of every turn, so offering
-	 * a Member the close sheet and the admin reports costs tokens on each one and
+	 * a Member the admin reports costs tokens on each one and
 	 * buys a tool call that can only come back refused — and a model that has
 	 * spent two of its eight steps being refused is a model that answers worse.
 	 * A capability the caller does not have is better expressed by the tool being
@@ -225,8 +212,8 @@ const hours = (seconds: JsonValue | undefined) => {
 	return parsed.success ? `${(parsed.data / 3600).toFixed(2)}h` : "?";
 };
 
-/** Seconds → hours, preserving null. Null is a real answer in the close sheet
- *  (nobody has overridden the column) and is not the same as zero. */
+/** Seconds → hours, preserving null. Null is a real answer (nobody set a
+ *  figure) and is not the same as zero. */
 /** The `timeEntryIds` argument, as it arrives from the model.
  *
  *  `.catch([])` rather than a throw: this runs on the way to an approval card,
@@ -237,9 +224,6 @@ const entryIdList = z.array(z.string()).catch([]);
  *  row that is not an object renders as dashes instead of taking the card down
  *  and leaving a pending write nobody can answer either way. */
 const assemblyRow = z.record(z.string(), z.json()).catch({});
-
-const optionalHours = (seconds: number | null | undefined) =>
-	seconds == null ? null : seconds / 3600;
 
 /** A display name for an approval card, or a phrase that at least reads as
  *  English. Never throws — see `summarize`. */
@@ -267,12 +251,6 @@ const adminOnly = (access: Access) => access.isAdmin;
  *  tools whose only possible answer is an access error. */
 const leadsSomething = (access: Access) =>
 	access.isAdmin || access.assignments().some(([, role]) => role !== "member");
-
-/** The close is PM-and-up. `closeService.overview` returns [] rather than
- *  throwing for everyone else, and a tool whose honest answer is always an
- *  empty list is worse than no tool: the model reports "nothing is open". */
-const pmSomewhere = (access: Access) =>
-	access.isAdmin || access.assignments().some(([, role]) => role === "pm");
 
 const canCreateProjects = (access: Access) => access.canCreateProjects();
 
@@ -357,7 +335,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_unfiled_entries",
 		kind: "read",
 		description:
-			"The current user's unfiled entries between two dates, with their ids — real worked time (synced meetings, commit blocks) that carries no project yet. These are what file_time_entries attributes, and unfiled time is what blocks the monthly close.",
+			"The current user's unfiled entries between two dates, with their ids — real worked time (synced meetings, commit blocks) that carries no project yet. These are what file_time_entries attributes, and unfiled time is invisible to every project report.",
 		schema: listTimeEntriesRangeInput,
 		run: async (ctx, args) => {
 			const input = listTimeEntriesRangeInput.parse(args);
@@ -444,7 +422,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				email: row.email,
 				orgRole: row.orgRole,
 				archived: row.archivedAt !== null,
-				// Billable/overhead/contractor decides Expected on the close sheet, so
+				// Billable/overhead/contractor decides Expected, so
 				// it travels with the money picture rather than with the directory: a
 				// roster is not sensitive within an org, and who is a contractor is.
 				// Null rather than absent, so the field's meaning does not depend on
@@ -570,7 +548,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		},
 	},
 
-	// ── reads: aggregates, absence, the close ───────────────────────────────
+	// ── reads: aggregates, absence ──────────────────────────────────────────
 	{
 		name: "time_report_summary",
 		kind: "read",
@@ -642,7 +620,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "unfiled_summary",
 		kind: "read",
 		description:
-			"How much of the current user's logged time has no project attached yet, over a date range. Unfiled time blocks the monthly close.",
+			"How much of the current user's logged time has no project attached yet, over a date range. Unfiled time is invisible to every project report.",
 		schema: listTimeEntriesRangeInput,
 		run: async (ctx, args) => {
 			const input = listTimeEntriesRangeInput.parse(args);
@@ -687,66 +665,6 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) =>
 			reportsService.absence(ctx, absenceReportInput.parse(args)),
 	},
-	{
-		name: "close_overview",
-		kind: "read",
-		description:
-			"Every project the caller can close for one month, with its status (open, submitted, finalized), reported hours and final hours. Answers what is still open, and whether a month has been closed.",
-		schema: monthReportInput,
-		available: pmSomewhere,
-		run: async (ctx, args) => {
-			const { year, month } = monthReportInput.parse(args);
-			const rows = await closeService.overview(ctx, year, month);
-			return rows.map((row) => ({
-				projectId: row.projectId,
-				project: row.projectName,
-				client: row.clientName,
-				status: row.status,
-				reportedHours: row.reportedSeconds / 3600,
-				finalHours: optionalHours(row.finalSeconds),
-				submittedAt: row.submittedAt?.toISOString() ?? null,
-				finalizedAt: row.finalizedAt?.toISOString() ?? null,
-			}));
-		},
-	},
-	{
-		name: "close_sheet",
-		kind: "read",
-		description:
-			"The close sheet for one project and month: each person's Reported, Adjusted and Final hours, plus expected hours, overtime, unfiled time and absence days. Adjusted and Final are null when nobody has overridden them, which means they display as the column to their left. PM or Admin.",
-		schema: closeSheetInput,
-		available: pmSomewhere,
-		run: async (ctx, args) => {
-			const sheet = await closeService.getSheet(
-				ctx,
-				closeSheetInput.parse(args),
-			);
-			return {
-				project: sheet.projectName,
-				client: sheet.clientName,
-				status: sheet.status,
-				canEditAdjusted: sheet.canEditAdjusted,
-				canEditFinal: sheet.canEditFinal,
-				rows: sheet.rows.map((row) => ({
-					userId: row.userId,
-					name: row.name,
-					reportedHours: row.reportedSeconds / 3600,
-					// Nulls preserved rather than flattened to zero: an untouched row is
-					// not a PM who reconciled to nothing, and the difference is the
-					// whole reason the three columns exist.
-					adjustedHours: optionalHours(row.adjustedSeconds),
-					finalHours: optionalHours(row.finalSeconds),
-					expectedHours: optionalHours(row.expectedSeconds),
-					overtimeHours: row.overtimeSeconds / 3600,
-					unfiledHours: row.unfiledSeconds / 3600,
-					absenceDays: row.absenceDaysOverride ?? row.absenceDaysComputed,
-					comment: row.comment,
-				})),
-			};
-		},
-	},
-
-	// ── writes: create and correct, inline ──────────────────────────────────
 	{
 		name: "create_time_entry",
 		kind: "write",
@@ -1047,38 +965,6 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		},
 	},
 	{
-		name: "close_save_row",
-		kind: "write",
-		description:
-			"Set the Adjusted hours, absence-day override or comment on one person's row of a close sheet. Adjusted is the PM's reconciliation of what Reported says; null clears it back to Reported. PM or Admin.",
-		schema: saveCloseRowInput,
-		available: pmSomewhere,
-		run: async (ctx, args) =>
-			closeService.saveRow(ctx, saveCloseRowInput.parse(args)),
-	},
-	{
-		name: "close_set_final",
-		kind: "write",
-		description:
-			"Set the Final hours on one person's row — the number that gets invoiced. Null clears it back to Adjusted. Admin only.",
-		schema: setCloseRowFinalInput,
-		available: adminOnly,
-		run: async (ctx, args) =>
-			closeService.setFinal(ctx, setCloseRowFinalInput.parse(args)),
-	},
-	{
-		name: "close_submit",
-		kind: "write",
-		description:
-			"Submit a project's month for an Admin to finalize. Reversible: a PM may re-open and re-submit freely until it is finalized. PM or Admin.",
-		schema: closeTransitionInput,
-		available: pmSomewhere,
-		run: async (ctx, args) =>
-			closeService.submit(ctx, closeTransitionInput.parse(args)),
-	},
-
-	// ── destructive: suspends the turn for approval ─────────────────────────
-	{
 		name: "delete_time_entry",
 		kind: "destructive",
 		description: "Delete one of the current user's time entries by id.",
@@ -1200,36 +1086,6 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			return tasksService.archive(ctx, taskId);
 		},
 	},
-	{
-		name: "close_finalize",
-		kind: "destructive",
-		description:
-			"Finalize a project's month. Freezes the reported, expected and overtime figures the variance report is read against, and refuses while anybody still has unfiled time. Admin only.",
-		schema: closeTransitionInput,
-		available: adminOnly,
-		summarize: async (ctx, args) =>
-			`Finalize ${await nameOr(
-				() => projectsService.get(ctx, String(args.projectId)),
-				"a project",
-			)} for ${args.month}/${args.year} — this freezes the invoiced figures`,
-		run: async (ctx, args) =>
-			closeService.finalize(ctx, closeTransitionInput.parse(args)),
-	},
-	{
-		name: "close_reopen",
-		kind: "destructive",
-		description:
-			"Re-open a project's month. A PM may re-open their own submission; only an Admin may re-open a month that was finalized. The finalize snapshots are deliberately kept.",
-		schema: closeTransitionInput,
-		available: pmSomewhere,
-		summarize: async (ctx, args) =>
-			`Re-open ${await nameOr(
-				() => projectsService.get(ctx, String(args.projectId)),
-				"a project",
-			)} for ${args.month}/${args.year}`,
-		run: async (ctx, args) =>
-			closeService.reopen(ctx, closeTransitionInput.parse(args)),
-	},
 ];
 
 const BY_NAME = new Map(ASSISTANT_TOOLS.map((tool) => [tool.name, tool]));
@@ -1280,12 +1136,12 @@ export const toolDefinitions = (access: Access) =>
  * Dated and zoned explicitly because every question this assistant gets is
  * relative ("last week", "yesterday") and a model with no date silently anchors
  * on its training cutoff — which produces entries filed months into the past,
- * quietly, onto months that may already be closed.
+ * quietly, onto months that may already be reconciled.
  *
  * `houseRules` is the org's own addition (assistantSettings.systemPrompt),
  * APPENDED rather than substituted, fenced, and explicitly ranked below the
- * rules above it. An admin is trusted — they already hold the API key and the
- * close sheet — so this is not a security boundary. It is a precedence one: the
+ * rules above it. An admin is trusted — they already hold the API key — so
+ * this is not a security boundary. It is a precedence one: the
  * base rules encode facts about the DOMAIN (quarter-hour granularity, ids are
  * looked up not invented, deletes need consent) that stay true no matter what
  * conventions an org layers on top, and a pasted paragraph that happens to
@@ -1301,12 +1157,12 @@ export const systemPrompt = async (
 		"You are the assistant inside Farmer, a time-tracking app for a software agency.",
 		`Today is ${today} in the organization's timezone (${tz}). Resolve every relative date against that.`,
 		"",
-		"You answer questions about the user's tracked time and act on their behalf: logging and correcting time, booking absence, working the month-end close, and creating clients, projects and task types. Everything you do runs as them and with their permissions, so a tool that refuses is a real answer about what they are allowed to do — report it, don't work around it. You are only offered the tools their role allows, so there is nothing to try around the edges.",
+		"You answer questions about the user's tracked time and act on their behalf: logging and correcting time, booking absence, and creating clients, projects and task types. Everything you do runs as them and with their permissions, so a tool that refuses is a real answer about what they are allowed to do — report it, don't work around it. You are only offered the tools their role allows, so there is nothing to try around the edges.",
 		"Rules:",
 		"- Durations are seconds, always a multiple of 900 (15 minutes). Round to the nearest quarter hour and say that you did.",
 		"- Never invent an id. Call list_projects / list_tasks / list_clients / list_members first and use what comes back. whoami gives the current user's own id.",
-		"- Prefer an aggregate over a list: time_report_summary for hours by client, project or teammate; absence_totals for vacation taken; close_overview for what is still open.",
-		"- Creating and correcting things happens immediately, so just do what was asked rather than checking first. Deleting, archiving, finalizing and re-opening are shown to the user for approval — still call the tool, they will be asked.",
+		"- Prefer an aggregate over a list: time_report_summary for hours by client, project or teammate; absence_totals for vacation taken.",
+		"- Creating and correcting things happens immediately, so just do what was asked rather than checking first. Deleting and archiving are shown to the user for approval — still call the tool, they will be asked.",
 		"- Batch writes (apply_day_assembly, file_time_entries) are shown as a checklist of their rows and the user may approve only some. Send the whole batch you believe in and let them un-tick; the tool result says what was actually written, so read it before reporting what you did.",
 		"- Reconstructing a day: suggest_day already assembles it from meetings, commits and recurring blocks, so prefer it and then apply_day_assembly. Use list_commits and list_time_entries when you need the raw evidence. Do not log the same work twice.",
 		"- Absence spanning several days goes through log_absence once, not one entry per day. It skips holidays and non-working days itself, so report which days it actually booked.",

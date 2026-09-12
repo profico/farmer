@@ -12,8 +12,8 @@ import {
 	weekdayInTz,
 } from "../lib/time";
 import { dayDurationSeconds } from "../lib/working-day";
-import { absenceDaysByUser, expectedSecondsFor } from "./close.service";
 import { ctxTimezone, requireAdmin } from "./context";
+import { absenceDaysByUser, expectedSecondsFor } from "./expected";
 import { holidaysService } from "./holidays.service";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerByUser } from "./ledger";

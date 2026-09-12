@@ -43,7 +43,6 @@ import {
 	activeNavTo,
 	ASSISTANT_ITEM,
 	CLIENTS_ITEM,
-	CLOSE_ITEM,
 	isNavItemActive,
 	type NavItem,
 	PEOPLE_ITEM,
@@ -308,7 +307,7 @@ export function AppSidebar({
 		);
 	};
 
-	// Clients and Monthly close are gated on `myAccess`, which is a plain
+	// Clients and Reports are gated on `myAccess`, which is a plain
 	// `useQuery` (see below) — so unlike every other row they arrive a moment
 	// after the sidebar has already painted, popping in at the end of Workspace
 	// and knocking the whole Admin group down a notch. These two open instead.
@@ -344,10 +343,9 @@ export function AppSidebar({
 	};
 
 	// Not a suspense query: the sidebar is always mounted and shouldn't block or
-	// suspend on this. A PM on any project reaches the close sheet, so it can't
-	// be inferred from the org role alone.
+	// suspend on this. A Team Lead on any project reaches the reports, so it
+	// can't be inferred from the org role alone.
 	const { data: access } = useQuery(myAccessQuery(orgSlug));
-	const canClose = isAdmin || !!access?.isPmSomewhere;
 	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
 	// Team Lead is the floor for any report at all — a plain Member sees strictly
 	// their own entries and nothing at project level.
@@ -356,10 +354,7 @@ export function AppSidebar({
 	// The gated rows, resolved once: the render needs them twice over (which
 	// group draws which row, and which row the path belongs to) and they must be
 	// the same answer both times.
-	const lateWorkItems = [
-		...(canClose ? [CLOSE_ITEM] : []),
-		...(canSeeReports ? [REPORTS_ITEM] : []),
-	];
+	const lateWorkItems = [...(canSeeReports ? [REPORTS_ITEM] : [])];
 	const manageItems = [
 		...(canManageClients ? [CLIENTS_ITEM] : []),
 		...(isAdmin ? [PEOPLE_ITEM] : []),

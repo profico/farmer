@@ -1,6 +1,5 @@
 export * from "./assistant";
 export * from "./clients";
-export * from "./close";
 export * from "./day-assembly";
 export * from "./filing-rules";
 export * from "./github";

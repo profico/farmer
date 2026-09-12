@@ -354,7 +354,7 @@ function capabilitiesFor(
 ): ProjectCapabilities {
 	const leadOrAbove = isAdmin || myRole === "team_lead" || myRole === "pm";
 	return {
-		// projectsService.update / archive both assert canCloseProject.
+		// projectsService.update / archive both assert canManageProject.
 		canEdit: isAdmin || myRole === "pm",
 		canManageTasks: leadOrAbove,
 		canManageMembers: leadOrAbove,

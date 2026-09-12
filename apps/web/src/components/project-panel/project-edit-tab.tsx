@@ -24,7 +24,7 @@ export type PanelProject = {
  * every item opens a modal is a menu doing the job of a panel badly.
  *
  * The two capabilities differ and the server enforces both: editing the record
- * and archiving it are PM-and-up (`assertCanCloseProject`), while the task
+ * and archiving it are PM-and-up (`assertCanManageProject`), while the task
  * subset is Team-Lead-and-up. So a Team Lead sees this tab with only the task
  * picker on it. Hiding what you cannot do beats rendering a control whose only
  * outcome is the service's refusal.

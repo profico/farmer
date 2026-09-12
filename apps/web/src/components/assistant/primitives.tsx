@@ -126,8 +126,6 @@ const TOOL_LABELS = new Map(
 		absence_totals: "Checked absence taken",
 		list_absences: "Read absence entries",
 		absence_report: "Ran the absence report",
-		close_overview: "Checked the month's close",
-		close_sheet: "Read a close sheet",
 		// writes
 		create_time_entry: "Log time",
 		update_time_entry: "Change an entry",
@@ -148,9 +146,6 @@ const TOOL_LABELS = new Map(
 		create_recurring_block_rule: "Create a recurring block",
 		update_recurring_block_rule: "Change a recurring block",
 		unarchive: "Restore from the archive",
-		close_save_row: "Adjust a close row",
-		close_set_final: "Set final hours",
-		close_submit: "Submit the month",
 		// destructive
 		delete_time_entry: "Delete an entry",
 		remove_absence: "Delete an absence entry",
@@ -158,8 +153,6 @@ const TOOL_LABELS = new Map(
 		archive_project: "Archive a project",
 		archive_client: "Archive a client",
 		archive_task: "Archive a task type",
-		close_finalize: "Finalize the month",
-		close_reopen: "Re-open the month",
 	}),
 );
 
