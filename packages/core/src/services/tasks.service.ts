@@ -1,21 +1,14 @@
-import { and, asc, count, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, count, eq, isNull, or } from "drizzle-orm";
 
 import { db } from "../db";
-import {
-	project,
-	projectTask,
-	type TaskSystemKey,
-	task,
-	timeEntry,
-} from "../db/schema/domain";
+import { type TaskSystemKey, task, timeEntry } from "../db/schema/domain";
 import type { CreateTaskInput, UpdateTaskInput } from "../schema/tasks";
-import { ctxAccess, requireAdmin } from "./context";
+import { requireAdmin } from "./context";
 import { ctxDb } from "./db-ctx";
-import { isUniversalTask } from "./guards";
 import type { Ctx } from "./types";
 
 // The built-in absence tasks. Site-scoped, seeded once, never archivable and
-// never cherry-pickable onto a project: absence carries no client and no
+// never logged against a project: absence carries no client and no
 // project, and is logged by the person themselves (PRD 3.5). Paid Leave is the
 // third kind (a wedding, a move, a funeral): time off that is neither the
 // annual allowance nor illness.
@@ -50,9 +43,10 @@ export const tasksService = {
 		return new Set(rows.map((r) => r.id));
 	},
 
-	/** Tasks selectable when logging against a given project: strictly the
-	 *  project's cherry-picked subset (PRD 3.5 — a project shows only its picked
-	 *  tasks).
+	/** Tasks selectable when logging against a given project: the whole global
+	 *  list — every live non-absence task of the org plus the site built-ins. The
+	 *  taxonomy is one shared vocabulary (PRD 3.5, revised Sept 2026); projects no
+	 *  longer pick a subset of it.
 	 *
 	 *  With no project it is every SITE task: the two absence built-ins, and the
 	 *  universal built-ins (Break, Meeting). The universal ones used to be left
@@ -97,39 +91,25 @@ export const tasksService = {
 			return rows.sort((a, b) => a.name.localeCompare(b.name));
 		}
 
-		// Two sources, because a project's options are its cherry-picked subset
-		// PLUS the universal built-ins it never had to pick (see isUniversalTask).
-		const [picked, universal] = await Promise.all([
-			db
-				.select(columns)
-				.from(projectTask)
-				.innerJoin(task, eq(projectTask.taskId, task.id))
-				.where(
-					and(
-						eq(projectTask.organizationId, ctx.organizationId),
-						eq(projectTask.projectId, projectId),
-						isNull(task.archivedAt),
-					),
-				),
-			db
-				.select(columns)
-				.from(task)
-				.where(
-					and(
+		// With a project: the whole global list — every live non-absence task of
+		// this org plus the site built-ins. Projects no longer pick a subset.
+		const rows = await db
+			.select(columns)
+			.from(task)
+			.where(
+				and(
+					isNull(task.archivedAt),
+					eq(task.isAbsence, false),
+					or(
 						eq(task.scope, "site"),
-						eq(task.isAbsence, false),
-						isNull(task.archivedAt),
+						and(
+							eq(task.scope, "organization"),
+							eq(task.organizationId, ctx.organizationId),
+						),
 					),
 				),
-		]);
-
-		// Dedupe: a project may still carry a projectTask row pointing at a built-in
-		// — either picked by hand before they were universal, or inherited from the
-		// org copy that migration 0024 folded into the shared row. Those rows are
-		// now redundant rather than wrong, so they're tolerated here instead of
-		// being migrated away.
-		const byId = new Map([...picked, ...universal].map((t) => [t.id, t]));
-		return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+			);
+		return rows.sort((a, b) => a.name.localeCompare(b.name));
 	},
 
 	/**
@@ -168,8 +148,8 @@ export const tasksService = {
 		return rows.find((r) => r.scope === "site") ?? rows[0] ?? null;
 	},
 
-	/** The whole global list this org may cherry-pick from: site built-ins that
-	 *  aren't absence tasks, plus the org's own tasks. */
+	/** The whole global list: site built-ins that aren't absence tasks, plus the
+	 *  org's own tasks. */
 	listSelectable: async (ctx: Ctx) => {
 		return db.query.task.findMany({
 			where: and(
@@ -210,27 +190,9 @@ export const tasksService = {
 			.groupBy(timeEntry.taskId);
 		const countByTask = new Map(counts.map((c) => [c.taskId, c.count]));
 
-		// How many of this org's projects offer each task. Org-scoped for the same
-		// reason as the entry counts: a shared site task may be picked by a hundred
-		// projects platform-wide and that number means nothing here.
-		const projectCounts = await db
-			.select({ taskId: projectTask.taskId, count: count() })
-			.from(projectTask)
-			.where(eq(projectTask.organizationId, ctx.organizationId))
-			.groupBy(projectTask.taskId);
-		const projectCountByTask = new Map(
-			projectCounts.map((c) => [c.taskId, c.count]),
-		);
-
-		// Universal built-ins have no meaningful project count — they are on every
-		// project by definition, and any projectTask rows they still carry are
-		// leftovers. The flag lets the screen say "All" instead of a number that
-		// would read as "only these 3 projects offer Meeting".
 		return tasks.map((t) => ({
 			...t,
-			universal: isUniversalTask(t),
 			entryCount: countByTask.get(t.id) ?? 0,
-			projectCount: projectCountByTask.get(t.id) ?? 0,
 		}));
 	},
 
@@ -380,174 +342,5 @@ export const tasksService = {
 			.update(task)
 			.set({ archivedAt: new Date(), updatedAt: new Date() })
 			.where(eq(task.id, taskId));
-	},
-
-	// ── Per-project cherry-picking ────────────────────────────────────────────
-	//
-	// One join table, two directions. `setProjectTasks` edits a row of it from the
-	// project's side (Team Lead and up, per project); `setTaskProjects` edits a
-	// column of it from the task's side, which spans projects the caller may not
-	// individually lead and so is Admin-only. Both replace wholesale rather than
-	// diffing, so neither can half-apply.
-
-	/** Which of this org's projects currently offer a given task. Admin only —
-	 *  it is the read half of `setTaskProjects`. */
-	listProjectsForTask: async (ctx: Ctx, taskId: string) => {
-		await requireAdmin(ctx);
-
-		const rows = await db
-			.select({ projectId: projectTask.projectId })
-			.from(projectTask)
-			.where(
-				and(
-					eq(projectTask.organizationId, ctx.organizationId),
-					eq(projectTask.taskId, taskId),
-				),
-			);
-		return rows.map((r) => r.projectId);
-	},
-
-	/** Replace the set of projects offering a task, wholesale. Admin only: this
-	 *  reaches across every project in the org at once, which no per-project role
-	 *  grants. */
-	setTaskProjects: async (ctx: Ctx, taskId: string, projectIds: string[]) => {
-		await requireAdmin(ctx);
-
-		// The task must be one this org may actually put on a project: live, not an
-		// absence task, and either a site built-in or its own. Checked in the query
-		// so another org's task id can't be smuggled in.
-		const usable = await db.query.task.findFirst({
-			where: and(
-				eq(task.id, taskId),
-				isNull(task.archivedAt),
-				eq(task.isAbsence, false),
-				or(
-					eq(task.scope, "site"),
-					and(
-						eq(task.scope, "organization"),
-						eq(task.organizationId, ctx.organizationId),
-					),
-				),
-			),
-			columns: { id: true, scope: true, isAbsence: true },
-		});
-		if (!usable) throw new Error("Task is not available to this organization");
-
-		// Rejected rather than ignored: unlike setProjectTasks this names one task
-		// explicitly, so a caller reaching here for Meeting has the wrong model of
-		// it — and honouring the call would let an admin produce a project list that
-		// the entry form then contradicts.
-		if (isUniversalTask(usable)) {
-			throw new Error(
-				"Built-in tasks are available on every project and can't be limited to some of them",
-			);
-		}
-
-		const unique = [...new Set(projectIds)];
-		if (unique.length > 0) {
-			const valid = await db.query.project.findMany({
-				where: and(
-					inArray(project.id, unique),
-					eq(project.organizationId, ctx.organizationId),
-				),
-				columns: { id: true },
-			});
-			if (valid.length !== unique.length) {
-				throw new Error("One or more projects are not in this organization");
-			}
-		}
-
-		await db.transaction(async (tx) => {
-			// Org-scoped delete, so unlinking a shared site task here leaves every
-			// other org's links to it untouched.
-			await tx
-				.delete(projectTask)
-				.where(
-					and(
-						eq(projectTask.organizationId, ctx.organizationId),
-						eq(projectTask.taskId, taskId),
-					),
-				);
-			if (unique.length > 0) {
-				await tx.insert(projectTask).values(
-					unique.map((projectId) => ({
-						organizationId: ctx.organizationId,
-						projectId,
-						taskId,
-					})),
-				);
-			}
-		});
-	},
-
-	/** Replace a project's picked task subset wholesale. Absence tasks are
-	 *  rejected: they carry no project by definition. */
-	setProjectTasks: async (ctx: Ctx, projectId: string, taskIds: string[]) => {
-		const access = await ctxAccess(ctx);
-		access.assertCanManageProjectMembers(projectId);
-
-		const owned = await db.query.project.findFirst({
-			where: and(
-				eq(project.id, projectId),
-				eq(project.organizationId, ctx.organizationId),
-			),
-			columns: { id: true },
-		});
-		if (!owned) throw new Error("Project not found");
-
-		const unique = [...new Set(taskIds)];
-		let toLink = unique;
-		if (unique.length > 0) {
-			// Every id must be a live, non-absence task this org may use. Checked in
-			// the query (not by comparing in JS after the fact) so a caller can't
-			// smuggle in another org's task id.
-			const valid = await db.query.task.findMany({
-				where: and(
-					inArray(task.id, unique),
-					isNull(task.archivedAt),
-					eq(task.isAbsence, false),
-					or(
-						eq(task.scope, "site"),
-						and(
-							eq(task.scope, "organization"),
-							eq(task.organizationId, ctx.organizationId),
-						),
-					),
-				),
-				columns: { id: true, scope: true, isAbsence: true },
-			});
-			if (valid.length !== unique.length) {
-				throw new Error("One or more tasks are not available to this project");
-			}
-
-			// Universal built-ins are dropped rather than rejected. This endpoint
-			// replaces a project's whole set, so a client that includes Meeting is
-			// asking for something already true, not something wrong — erroring would
-			// fail the entire save over a no-op. Storing the row instead would be
-			// worse: it implies the link is what grants access, and deleting it later
-			// would look like it should revoke access when it can't.
-			const universal = new Set(valid.filter(isUniversalTask).map((t) => t.id));
-			toLink = unique.filter((id) => !universal.has(id));
-		}
-
-		await db.transaction(async (tx) => {
-			await tx
-				.delete(projectTask)
-				.where(
-					and(
-						eq(projectTask.organizationId, ctx.organizationId),
-						eq(projectTask.projectId, projectId),
-					),
-				);
-			if (toLink.length > 0) {
-				await tx.insert(projectTask).values(
-					toLink.map((taskId) => ({
-						organizationId: ctx.organizationId,
-						projectId,
-						taskId,
-					})),
-				);
-			}
-		});
 	},
 };

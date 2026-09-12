@@ -2,12 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "../db";
 import { account } from "../db/schema/auth";
-import {
-	project,
-	projectTask,
-	type TaskSystemKey,
-	timeEntry,
-} from "../db/schema/domain";
+import { project, type TaskSystemKey, timeEntry } from "../db/schema/domain";
 import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
@@ -330,7 +325,7 @@ export const dayAssemblyService = {
 			remaining >= QUARTER_HOUR_SECONDS
 		) {
 			const projectIds = [...commitsByProject.keys()];
-			const [access, projects, picked] = await Promise.all([
+			const [access, projects] = await Promise.all([
 				// `listUserCommitsForDay` scans EVERY repo linked anywhere in the org,
 				// so a commit to a repo whose project you are not on is routine rather
 				// than exotic. Without this the assembler proposed work on it, arriving
@@ -346,27 +341,11 @@ export const dayAssemblyService = {
 					),
 					columns: { id: true, name: true },
 				}),
-				// Only propose the work task on projects that have actually picked it —
-				// the same taxonomy gate a hand-made entry passes.
-				db
-					.select({ projectId: projectTask.projectId })
-					.from(projectTask)
-					.where(
-						and(
-							eq(projectTask.organizationId, ctx.organizationId),
-							eq(projectTask.taskId, workTask.id),
-							inArray(projectTask.projectId, projectIds),
-						),
-					),
 			]);
 			const nameById = new Map(projects.map((p) => [p.id, p.name]));
-			const pickedIds = new Set(picked.map((p) => p.projectId));
 
 			const groups = projectIds
-				.filter(
-					(id) =>
-						nameById.has(id) && pickedIds.has(id) && access.canTrackOn(id),
-				)
+				.filter((id) => nameById.has(id) && access.canTrackOn(id))
 				.map((id) => ({
 					projectId: id,
 					commits: commitsByProject.get(id) ?? [],

@@ -29,7 +29,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
@@ -127,8 +126,7 @@ afterAll(async () => {
 beforeEach(async () => {
 	await db.delete(timeEntry);
 	await db.delete(projectMember);
-	await db.delete(projectTask);
-	// The assigned, picked baseline — each test takes something away from it.
+	// The assigned baseline — each test takes something away from it.
 	await db.insert(projectMember).values({
 		organizationId: ORG_ID,
 		projectId,
@@ -136,9 +134,6 @@ beforeEach(async () => {
 		role: "member",
 		active: true,
 	});
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
 });
 
 /** Write a source row directly, so the fixture can be torn down underneath it —
@@ -193,19 +188,6 @@ describe("copyDay write guards", () => {
 				fillsDay: false,
 			}),
 		).rejects.toThrow(/not assigned to this project/);
-
-		const result = await timeEntriesService.copyDay(ctx(), {
-			fromDate: MON,
-			toDate: TUE,
-		});
-
-		expect(result).toEqual({ copied: 0, skipped: 1 });
-		expect(await entriesOn(TUE)).toHaveLength(0);
-	});
-
-	test("does not copy a task the project has since un-picked", async () => {
-		await seedEntry(MON);
-		await db.delete(projectTask);
 
 		const result = await timeEntriesService.copyDay(ctx(), {
 			fromDate: MON,

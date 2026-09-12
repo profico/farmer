@@ -463,7 +463,6 @@ describe("absence mapping", () => {
 			{ action: "match", sourceKey: "sick leave", localId: ID.sick },
 			{ action: "match", sourceKey: "vacation", localId: ID.vacation },
 		]);
-		expect(plan.start.projectTasks).toEqual([]);
 		expect(plan.ready).toBe(true);
 		expectServerAccepts(plan);
 	});
@@ -513,7 +512,7 @@ describe("tasks", () => {
 		]);
 	});
 
-	test("daily break maps to the site Break, which gets no projectTask", async () => {
+	test("daily break and meeting map to the site built-ins", async () => {
 		const { plan } = await planFor([
 			timeReport([
 				{ task: "Daily Break" },
@@ -531,9 +530,9 @@ describe("tasks", () => {
 			sourceKey: "meeting",
 			localId: ID.meeting,
 		});
-		expect(plan.start.projectTasks.map((p) => p.taskSourceKey)).toEqual([
-			"frontend",
-		]);
+		expect(plan.start.tasks).toContainEqual(
+			expect.objectContaining({ action: "create", sourceKey: "frontend" }),
+		);
 	});
 
 	test("an unused task is created only when it is active in the task list", async () => {

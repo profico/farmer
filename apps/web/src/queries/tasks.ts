@@ -2,15 +2,14 @@ import { queryOptions } from "@tanstack/react-query";
 
 import {
 	listManagedTasks,
-	listProjectsForTask,
 	listSelectableTasks,
 	listTasksForProject,
 } from "#/server/tasks.ts";
 
 import { queryKeys } from "./keys.ts";
 
-// The picker for one entry form: the project's cherry-picked tasks plus the two
-// absence tasks. `undefined` means "no project yet", which legitimately returns
+// The picker for one entry form: with a project, the whole global list; without
+// one, the absence tasks and built-ins. `undefined` means "no project yet", which legitimately returns
 // only the absence tasks rather than nothing.
 export const tasksForProjectQuery = (
 	org: string,
@@ -32,12 +31,4 @@ export const managedTasksQuery = (org: string) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).tasks, "managed"],
 		queryFn: () => listManagedTasks(),
-	});
-
-// The mirror of `projectTasksQuery`: which projects offer a given task. Ids
-// only — the names come from the projects list the dialog already has.
-export const projectsForTaskQuery = (org: string, taskId: string) =>
-	queryOptions({
-		queryKey: [...queryKeys(org).tasks, "projects-for-task", taskId],
-		queryFn: () => listProjectsForTask({ data: taskId }),
 	});

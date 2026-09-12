@@ -32,8 +32,6 @@ import {
 export type ProjectCapabilities = {
 	/** Rename, recolour, archive — `assertCanManageProject`, so PM and up. */
 	canEdit: boolean;
-	/** The project's task subset — Team Lead and up. */
-	canManageTasks: boolean;
 	/** Assign people and set their project role — Team Lead and up. */
 	canManageMembers: boolean;
 	/** Link repositories — `orgAdminMiddleware`, so Admin only. */
@@ -51,13 +49,12 @@ export function ProjectDetailPanel({
 	orgSlug: string;
 	capabilities: ProjectCapabilities;
 }) {
-	const { canEdit, canManageTasks, canManageMembers, canManageRepos } =
-		capabilities;
+	const { canEdit, canManageMembers, canManageRepos } = capabilities;
 
 	// A tab that would render nothing but a refusal is not offered. The services
-	// re-check all four regardless — this only decides what is worth showing.
+	// re-check all three regardless — this only decides what is worth showing.
 	const tabs = [
-		(canEdit || canManageTasks) && { value: "edit" as const, label: "Edit" },
+		canEdit && { value: "edit" as const, label: "Edit" },
 		canManageMembers && { value: "members" as const, label: "Members" },
 		canManageRepos && { value: "github" as const, label: "GitHub" },
 	].filter((t) => t !== false);
@@ -116,11 +113,7 @@ export function ProjectDetailPanel({
 							orgSlug={orgSlug}
 						/>
 					) : activeTab === "edit" ? (
-						<ProjectEditTab
-							project={project}
-							canEdit={canEdit}
-							canManageTasks={canManageTasks}
-						/>
+						<ProjectEditTab project={project} canEdit={canEdit} />
 					) : (
 						<p className="text-base text-muted-foreground">
 							You don't have permission to configure this project.

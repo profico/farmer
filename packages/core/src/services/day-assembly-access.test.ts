@@ -1,6 +1,6 @@
 // The assembler must only propose what it could actually apply.
 //
-// `suggest` filtered candidate projects by the `projectTask` pick but never by
+// `suggest` filtered candidate projects by existence but never by
 // `access.canTrackOn`. `apply` routes through `timeEntriesService.create`, which
 // does assert it — so the dialog offered a pre-ticked work entry and accepting
 // it returned `{ created: 0, errors: ["You are not assigned to this project"] }`.
@@ -25,7 +25,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
@@ -47,7 +46,6 @@ const MONDAY = "2026-08-10";
 const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 
 let harness: TestDb;
-let devTaskId = "";
 /** Assigned to the user. */
 let minePId = "";
 /** Linked to a repo in the same org, but the user is not on it. */
@@ -131,16 +129,11 @@ beforeAll(async () => {
 	minePId = mine?.id ?? "";
 	theirsPId = theirs?.id ?? "";
 
-	devTaskId = await siteTask("development");
+	// The work task exists for both projects — every task is on every project —
+	// so only access can be what separates them.
+	await siteTask("development");
 	await siteTask("break");
 	await siteTask("meeting");
-
-	// BOTH projects pick the work task — the taxonomy gate is satisfied for each,
-	// so only access can be what separates them.
-	await db.insert(projectTask).values([
-		{ organizationId: ORG_ID, projectId: minePId, taskId: devTaskId },
-		{ organizationId: ORG_ID, projectId: theirsPId, taskId: devTaskId },
-	]);
 
 	await db.insert(projectMember).values({
 		organizationId: ORG_ID,

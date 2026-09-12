@@ -42,7 +42,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
@@ -125,9 +124,6 @@ beforeAll(async () => {
 		})
 		.returning({ id: task.id });
 	devTaskId = dev?.id ?? "";
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
 		const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;

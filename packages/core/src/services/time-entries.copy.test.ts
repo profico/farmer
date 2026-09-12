@@ -25,13 +25,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
-import {
-	client,
-	project,
-	projectTask,
-	task,
-	timeEntry,
-} from "../db/schema/domain";
+import { client, project, task, timeEntry } from "../db/schema/domain";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import { createTestDb, type TestDb } from "../test/harness";
 import { timeEntriesService } from "./time-entries.service";
@@ -134,10 +128,6 @@ beforeAll(async () => {
 				.values({ scope: "site" as const, name: "Vacation", isAbsence: true })
 				.returning({ id: task.id })
 		)[0]!.id;
-
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
 		const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;

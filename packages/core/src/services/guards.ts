@@ -1,7 +1,7 @@
 import { and, eq, or } from "drizzle-orm";
 
 import { member } from "../db/schema/auth";
-import { project, projectTask, task } from "../db/schema/domain";
+import { project, task } from "../db/schema/domain";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
@@ -9,22 +9,6 @@ import type { Ctx } from "./types";
 // caller-supplied project or task id. They live in their own module rather than
 // on a service because both time-entries and recurring-block-rules need them,
 // and importing one service from the other would make the pair circular.
-
-/**
- * A task every project offers without anyone picking it: site-scoped and not an
- * absence. Today that is Meeting and Break — platform plumbing the engines write
- * to, which no single org curates and none can opt out of.
- *
- * Deliberately keyed on `scope`/`isAbsence` rather than on the `systemKey` list,
- * so any future site built-in is universal by construction. Org-scoped tasks are
- * never universal however common they are: "Development" is vocabulary one org
- * renames, and a project that doesn't do development shouldn't offer it.
- *
- * The SQL form of this predicate is inlined in `tasksService.listForProject`;
- * keep the two in step.
- */
-export const isUniversalTask = (t: { scope: string; isAbsence: boolean }) =>
-	t.scope === "site" && !t.isAbsence;
 
 /**
  * Cross-tenant guard: a projectId supplied by the client must belong to the
@@ -95,8 +79,8 @@ export const assertUserInOrg = async (ctx: Ctx, userId: string) => {
  * what makes those entries editable; `timeEntriesService.countUnfiled` and the
  * close guard are what stop them from being forgotten.
  *
- * Anything else (an absence task pinned to a project, a task some other project
- * picked, another org's task) is still rejected. This is the service-layer half
+ * Anything else (an absence task pinned to a project, another org's task, an
+ * archived task) is still rejected. This is the service-layer half
  * of the invariant; the database can't express it because the checks need joins.
  */
 export const assertTaskAvailable = async (
@@ -122,26 +106,8 @@ export const assertTaskAvailable = async (
 		return;
 	}
 
-	// Unfiled: legal, and left for the user to complete. Nothing to check against
-	// — there is no project whose picked subset the task would have to be in.
-	if (!projectId) return;
-
-	// Universal built-ins bypass the cherry-pick. A site-scoped non-absence task
-	// is engine plumbing every org needs — you meet about a project and you take
-	// breaks on one — so making an admin add Meeting to each project separately is
-	// busywork whose only real effect is failure: forget it on one project and the
-	// calendar sync's own entries can't be filed there, which is the bug this
-	// whole built-in mechanism exists to fix. Absence tasks are the other
-	// universal shape, handled above; they differ in taking no project at all.
-	if (isUniversalTask(row)) return;
-
-	const picked = await ctxDb(ctx).query.projectTask.findFirst({
-		where: and(
-			eq(projectTask.organizationId, ctx.organizationId),
-			eq(projectTask.projectId, projectId),
-			eq(projectTask.taskId, taskId),
-		),
-		columns: { id: true },
-	});
-	if (!picked) throw new Error("That task is not available on this project");
+	// Unfiled — no project yet — is legal and left for the user to complete.
+	// With a project, any live non-absence task of the org (or a site built-in)
+	// may be used: the taxonomy is one global list, and there is no per-project
+	// subset to check against any more.
 };

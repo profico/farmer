@@ -18,7 +18,6 @@ import { z } from "zod";
 
 import { ArchivedSection } from "#/components/archived-section.tsx";
 import { ColorPicker } from "#/components/color-picker.tsx";
-import { ManageTaskProjectsDialog } from "#/components/manage-task-projects-dialog.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { Button } from "#/components/ui/button.tsx";
@@ -78,7 +77,7 @@ const searchSchema = z.object({
 	archived: z.literal("1").optional(),
 });
 
-const TASK_COLUMN_COUNT = 6;
+const TASK_COLUMN_COUNT = 5;
 
 // Absence tasks are the fifth group and are built in, so the dialogs offer the
 // four an admin can put an org task under.
@@ -396,9 +395,6 @@ function TasksPage() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const { data: tasks } = useSuspenseQuery(managedTasksQuery(orgSlug));
-	const [manageProjectsTaskId, setManageProjectsTaskId] = useState<
-		string | null
-	>(null);
 	const [editTaskId, setEditTaskId] = useState<string | null>(null);
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
@@ -454,19 +450,6 @@ function TasksPage() {
 				<TableCell className="text-muted-foreground">
 					{task.isAbsence ? "Absence" : builtIn ? "Built-in" : "Org task"}
 				</TableCell>
-				{/* Absence tasks are never on a project, so a 0 there would read
-				    as "none yet" rather than "not applicable". Built-ins are on
-				    every project without being picked, so a count would read as
-				    a limit that isn't there. */}
-				<TableCell className="mono text-right">
-					{task.isAbsence ? (
-						<span className="text-faint">—</span>
-					) : task.universal ? (
-						<span className="text-muted-foreground">All</span>
-					) : (
-						task.projectCount
-					)}
-				</TableCell>
 				<TableCell className="mono text-right">{task.entryCount}</TableCell>
 				<TableCell>
 					<StatusPill tone={task.archivedAt ? "neutral" : "positive"}>
@@ -496,12 +479,6 @@ function TasksPage() {
 								!task.archivedAt && {
 									label: "Edit task",
 									onClick: () => setEditTaskId(task.id),
-								},
-							!task.isAbsence &&
-								!task.universal &&
-								!task.archivedAt && {
-									label: "Manage projects",
-									onClick: () => setManageProjectsTaskId(task.id),
 								},
 							!builtIn &&
 								!task.archivedAt && {
@@ -550,7 +527,6 @@ function TasksPage() {
 					<TableRow>
 						<TableHead>Task</TableHead>
 						<TableHead>Kind</TableHead>
-						<TableHead className="text-right">Projects</TableHead>
 						<TableHead className="text-right">Entries</TableHead>
 						<TableHead>Status</TableHead>
 						<TableHead />
@@ -598,14 +574,6 @@ function TasksPage() {
 			<EditTaskDialog
 				task={tasks.find((t) => t.id === editTaskId) ?? null}
 				onOpenChange={(open) => !open && setEditTaskId(null)}
-			/>
-
-			<ManageTaskProjectsDialog
-				taskId={manageProjectsTaskId}
-				taskName={
-					tasks.find((t) => t.id === manageProjectsTaskId)?.name ?? null
-				}
-				onOpenChange={(open) => !open && setManageProjectsTaskId(null)}
 			/>
 		</Page>
 	);

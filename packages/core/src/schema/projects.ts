@@ -33,8 +33,6 @@ const baseProject = {
 	budgetAmount: money,
 	// Hourly only, display-only, visible to that project's PMs and Admins.
 	hourlyPrice: money,
-	// The project's cherry-picked subset of the global task list.
-	taskIds: z.array(z.uuid()).default([]),
 };
 
 // Type-specific config is enforced here rather than in the UI so the REST route
@@ -102,10 +100,9 @@ export const createProjectInput = z
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
 // A partial patch, matching updateTaskInput: an edit form that only owns the
-// name and the colour must not have to round-trip the client, budgets and task
-// subset just to avoid nulling them. Every key is optional and an omitted one
-// is left untouched by the service — note that means `taskIds` drops its
-// create-side `.default([])`, since "[]" and "don't touch" are different edits.
+// name and the colour must not have to round-trip the client and budgets just
+// to avoid nulling them. Every key is optional and an omitted one is left
+// untouched by the service.
 export const updateProjectInput = z
 	.object({
 		projectId: z.uuid(),
@@ -117,7 +114,6 @@ export const updateProjectInput = z
 		budgetHours: baseProject.budgetHours,
 		budgetAmount: baseProject.budgetAmount,
 		hourlyPrice: baseProject.hourlyPrice,
-		taskIds: z.array(z.uuid()).optional(),
 	})
 	.superRefine(typeConfigRefinement);
 export type UpdateProjectInput = z.infer<typeof updateProjectInput>;

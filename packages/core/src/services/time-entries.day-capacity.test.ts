@@ -22,13 +22,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
-import {
-	client,
-	project,
-	projectTask,
-	task,
-	timeEntry,
-} from "../db/schema/domain";
+import { client, project, task, timeEntry } from "../db/schema/domain";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { DayCapacityError, timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
@@ -155,10 +149,6 @@ beforeAll(async () => {
 		tasks.find((t) => t.name === "Review"),
 		"review task",
 	).id;
-	await db.insert(projectTask).values([
-		{ organizationId: ORG_ID, projectId, taskId: devTaskId },
-		{ organizationId: ORG_ID, projectId, taskId: reviewTaskId },
-	]);
 });
 
 afterAll(async () => {

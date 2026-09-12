@@ -29,18 +29,3 @@ export type ArchiveTaskInput = z.infer<typeof archiveTaskInput>;
 
 export const taskIdInput = z.uuid();
 export type TaskIdInput = z.infer<typeof taskIdInput>;
-
-// A project's cherry-picked subset of the global list, replaced wholesale.
-export const setProjectTasksInput = z.object({
-	projectId: z.uuid(),
-	taskIds: z.array(z.uuid()),
-});
-export type SetProjectTasksInput = z.infer<typeof setProjectTasksInput>;
-
-// The same join, edited from the task's side: which projects offer this task.
-// Also replaced wholesale, so the two directions stay symmetric.
-export const setTaskProjectsInput = z.object({
-	taskId: z.uuid(),
-	projectIds: z.array(z.uuid()),
-});
-export type SetTaskProjectsInput = z.infer<typeof setTaskProjectsInput>;

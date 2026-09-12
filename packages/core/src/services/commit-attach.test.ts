@@ -30,13 +30,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
-import {
-	client,
-	project,
-	projectTask,
-	task,
-	timeEntry,
-} from "../db/schema/domain";
+import { client, project, task, timeEntry } from "../db/schema/domain";
 import { projectGithubRepo, timeEntryGithubCommit } from "../db/schema/github";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import {
@@ -208,11 +202,6 @@ beforeAll(async () => {
 		})
 		.returning({ id: task.id });
 	devTaskId = dev?.id ?? "";
-	for (const pid of [projectId, otherProjectId]) {
-		await db
-			.insert(projectTask)
-			.values({ organizationId: ORG_ID, projectId: pid, taskId: devTaskId });
-	}
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
 		const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
@@ -417,31 +406,6 @@ describe("which project the rest-of-day block is filed against", () => {
 		expect(fill?.projectId).toBeNull();
 		// Both projects' commits still land on it — unfiled, but not lost.
 		expect(await commitsAttachedTo(fill?.id ?? "")).toHaveLength(2);
-	});
-
-	test("nothing, when that project hasn't picked the Development task", async () => {
-		// assertTaskAvailable is not decoration here: filing the block would write
-		// an entry the person could not have created by hand. The engine falls back
-		// to the project-less block rather than failing the day.
-		await db
-			.delete(projectTask)
-			.where(
-				and(
-					eq(projectTask.organizationId, ORG_ID),
-					eq(projectTask.projectId, projectId),
-					eq(projectTask.taskId, devTaskId),
-				),
-			);
-		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
-
-		await runAutomations();
-
-		const [fill] = await entriesOn(YESTERDAY);
-		expect(fill?.projectId).toBeNull();
-
-		await db
-			.insert(projectTask)
-			.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
 	});
 
 	test("nothing, when the commits already found a home", async () => {

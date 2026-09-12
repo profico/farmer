@@ -41,8 +41,8 @@ export const projectRole = pgEnum("project_role", [
 
 // Site-scoped tasks are platform built-ins (Vacation / Sick Leave), seeded and
 // not creatable through the app. Organization-scoped are admin-created. There is
-// deliberately NO project scope: the taxonomy is strictly global and projects
-// cherry-pick from it via `projectTask` (PRD 3.5).
+// deliberately NO project scope: the taxonomy is strictly global and every
+// project offers every live task (PRD 3.5, revised Sept 2026).
 export const taskScope = pgEnum("task_scope", ["site", "organization"]);
 
 // The stable identity of a task the engines bind to, independent of its display
@@ -199,27 +199,6 @@ export const task = pgTable(
 			.where(
 				sql`${t.scope} = 'site' and ${t.systemKey} is not null and ${t.archivedAt} is null`,
 			),
-	],
-);
-
-// A project's cherry-picked subset of the global task list (PRD 3.5). The entry
-// form shows only these; absence tasks are never picked (they carry no project).
-export const projectTask = pgTable(
-	"project_task",
-	{
-		id: uuid("id").primaryKey().defaultRandom(),
-		organizationId: org(),
-		projectId: uuid("project_id")
-			.notNull()
-			.references(() => project.id, { onDelete: "cascade" }),
-		taskId: uuid("task_id")
-			.notNull()
-			.references(() => task.id, { onDelete: "cascade" }),
-		createdAt: ts("created_at").notNull().defaultNow(),
-	},
-	(t) => [
-		unique("project_task_unq").on(t.projectId, t.taskId),
-		index("project_task_org_idx").on(t.organizationId),
 	],
 );
 
@@ -412,26 +391,13 @@ export const projectRelations = relations(project, ({ one, many }) => ({
 		fields: [project.clientId],
 		references: [client.id],
 	}),
-	projectTasks: many(projectTask),
 	projectMembers: many(projectMember),
 	timeEntries: many(timeEntry),
 }));
 
 export const taskRelations = relations(task, ({ many }) => ({
-	projectTasks: many(projectTask),
 	timeEntries: many(timeEntry),
 	recurringBlockRules: many(recurringBlockRule),
-}));
-
-export const projectTaskRelations = relations(projectTask, ({ one }) => ({
-	project: one(project, {
-		fields: [projectTask.projectId],
-		references: [project.id],
-	}),
-	task: one(task, {
-		fields: [projectTask.taskId],
-		references: [task.id],
-	}),
 }));
 
 export const projectMemberRelations = relations(projectMember, ({ one }) => ({

@@ -30,7 +30,6 @@ import {
 	FormMessage,
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
-import { PillToggleGroup } from "#/components/ui/pill-toggle-group.tsx";
 import {
 	Select,
 	SelectContent,
@@ -47,7 +46,6 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
-import { selectableTasksQuery } from "#/queries/tasks.ts";
 import { createProject } from "#/server/projects.ts";
 
 const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
@@ -119,7 +117,6 @@ const formSchema = z.object({
 	]),
 	budgetAmount: optionalMoney,
 	hourlyPrice: optionalMoney,
-	taskIds: z.array(z.string()),
 });
 
 const EMPTY: z.infer<typeof formSchema> = {
@@ -131,7 +128,6 @@ const EMPTY: z.infer<typeof formSchema> = {
 	budgetHours: "",
 	budgetAmount: "",
 	hourlyPrice: "",
-	taskIds: [],
 };
 
 export function CreateProjectDialog() {
@@ -139,35 +135,12 @@ export function CreateProjectDialog() {
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const { data: clients } = useSuspenseQuery(clientsQuery(orgSlug));
-	const { data: allTasks } = useSuspenseQuery(selectableTasksQuery(orgSlug));
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
 		defaultValues: EMPTY,
 	});
 
 	const type = form.watch("type");
-	const taskIds = form.watch("taskIds");
-	// Neither universal shape is cherry-picked here. Absence tasks belong to
-	// nobody's project — Vacation and Sick Leave are logged without one — and the
-	// site built-ins (Meeting, Break) come with every project already, so offering
-	// them as pills would imply you could create a project without them.
-	const pickableTasks = allTasks.filter(
-		(t) => !t.isAbsence && t.scope !== "site",
-	);
-	const builtInTasks = allTasks.filter(
-		(t) => !t.isAbsence && t.scope === "site",
-	);
-
-	const toggleTask = (taskId: string) => {
-		const current = form.getValues("taskIds");
-		form.setValue(
-			"taskIds",
-			current.includes(taskId)
-				? current.filter((id) => id !== taskId)
-				: [...current, taskId],
-		);
-	};
-
 	const noClients = clients.length === 0;
 
 	const mutation = useMutation({
@@ -179,7 +152,6 @@ export function CreateProjectDialog() {
 					color: data.color,
 					clientId: data.clientId,
 					type: data.type,
-					taskIds: data.taskIds,
 					// Type-specific config: the server rejects a budget on a non-Fixed
 					// Scope project, so clear the fields the current type doesn't own
 					// rather than sending stale values from a type the user switched off.
@@ -419,28 +391,6 @@ export function CreateProjectDialog() {
 								)}
 							/>
 						)}
-						{/* Tasks are a single global list; a project opts into the subset
-						    that applies to it, which is what keeps cross-project reporting
-						    comparable. */}
-						<FormItem className="border-t pt-3.5">
-							<FormLabel>Tasks on this project</FormLabel>
-							<PillToggleGroup
-								items={pickableTasks.map((t) => ({ id: t.id, label: t.name }))}
-								selectedIds={taskIds}
-								onToggle={toggleTask}
-							/>
-							<p className="text-sm text-muted-foreground">
-								People can only log time against the tasks you pick here
-								{builtInTasks.length > 0 && (
-									<>
-										, plus {builtInTasks.map((t) => t.name).join(" and ")},
-										which every project gets
-									</>
-								)}
-								. You can change the picks later from the project's Manage tasks
-								action.
-							</p>
-						</FormItem>
 						<DialogFooter>
 							<Button type="submit" disabled={mutation.isPending}>
 								Create
