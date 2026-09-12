@@ -119,7 +119,7 @@ beforeAll(async () => {
 	await db.insert(memberTypeHistory).values({
 		organizationId: ORG_ID,
 		userId: OVERHEAD,
-		type: "overhead" as const,
+		type: "employee_overhead" as const,
 		effectiveFrom: "2020-01-01",
 	});
 	// Archived: gone from every forward-looking surface, kept in every historical

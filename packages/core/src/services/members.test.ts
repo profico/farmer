@@ -53,7 +53,7 @@ const adminCtx = (): Ctx => ({ organizationId: ORG, userId: ADMIN });
 
 const setType = (
 	userId: string,
-	type: "billable" | "overhead" | "contractor",
+	type: "employee_billable" | "employee_overhead" | "contractor_hourly",
 	effectiveFrom: string,
 	expectedSecondsOverride: number | null = null,
 ) =>
@@ -303,30 +303,30 @@ describe("confirmEmail", () => {
 
 describe("setType", () => {
 	test("the first change opens one open-ended segment", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
 		expect(await segments(PERSON)).toEqual([
-			["2025-01-01", null, "contractor"],
+			["2025-01-01", null, "contractor_hourly"],
 		]);
 	});
 
 	test("a later change closes the previous segment at the new start", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "billable", "2025-06-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-06-01");
 
 		expect(await segments(PERSON)).toEqual([
-			["2025-01-01", "2025-06-01", "contractor"],
-			["2025-06-01", null, "billable"],
+			["2025-01-01", "2025-06-01", "contractor_hourly"],
+			["2025-06-01", null, "employee_billable"],
 		]);
 	});
 
 	test("re-stating from the SAME date edits in place, adding no segment", async () => {
-		await setType(PERSON, "contractor", "2025-01-01", 100 * 3600);
+		await setType(PERSON, "contractor_hourly", "2025-01-01", 100 * 3600);
 		const [before] = await db
 			.select({ id: memberTypeHistory.id })
 			.from(memberTypeHistory)
 			.where(eq(memberTypeHistory.userId, PERSON));
 
-		await setType(PERSON, "contractor", "2025-01-01", 120 * 3600);
+		await setType(PERSON, "contractor_hourly", "2025-01-01", 120 * 3600);
 
 		const rows = await db
 			.select({
@@ -346,48 +346,52 @@ describe("setType", () => {
 	// The regression. Every assertion below failed before `setType` stopped
 	// folding a backdate into the no-op branch.
 	test("backdating truncates the segment it reaches into", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "billable", "2025-06-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-06-01");
 
 		// "They have actually been billable since March."
-		await setType(PERSON, "billable", "2025-03-01");
+		await setType(PERSON, "employee_billable", "2025-03-01");
 
 		expect(await segments(PERSON)).toEqual([
-			["2025-01-01", "2025-03-01", "contractor"],
-			["2025-03-01", null, "billable"],
+			["2025-01-01", "2025-03-01", "contractor_hourly"],
+			["2025-03-01", null, "employee_billable"],
 		]);
 	});
 
 	test("backdating past a whole segment withdraws it", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "overhead", "2025-04-01");
-		await setType(PERSON, "billable", "2025-06-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_overhead", "2025-04-01");
+		await setType(PERSON, "employee_billable", "2025-06-01");
 
-		await setType(PERSON, "billable", "2025-02-01");
+		await setType(PERSON, "employee_billable", "2025-02-01");
 
 		// The overhead segment described a period that is now billable. It is not
 		// history any more, it is a withdrawn statement.
 		expect(await segments(PERSON)).toEqual([
-			["2025-01-01", "2025-02-01", "contractor"],
-			["2025-02-01", null, "billable"],
+			["2025-01-01", "2025-02-01", "contractor_hourly"],
+			["2025-02-01", null, "employee_billable"],
 		]);
 	});
 
 	test("backdating before every segment replaces the whole history", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "billable", "2025-06-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-06-01");
 
-		await setType(PERSON, "overhead", "2024-01-01");
+		await setType(PERSON, "employee_overhead", "2024-01-01");
 
-		expect(await segments(PERSON)).toEqual([["2024-01-01", null, "overhead"]]);
+		expect(await segments(PERSON)).toEqual([
+			["2024-01-01", null, "employee_overhead"],
+		]);
 	});
 
 	test("one person's history does not touch another's", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(OTHER, "overhead", "2025-01-01");
-		await setType(PERSON, "billable", "2025-03-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(OTHER, "employee_overhead", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-03-01");
 
-		expect(await segments(OTHER)).toEqual([["2025-01-01", null, "overhead"]]);
+		expect(await segments(OTHER)).toEqual([
+			["2025-01-01", null, "employee_overhead"],
+		]);
 	});
 
 	test("a non-admin cannot change a type", async () => {
@@ -396,7 +400,7 @@ describe("setType", () => {
 				{ organizationId: ORG, userId: PLAIN },
 				{
 					userId: PERSON,
-					type: "overhead",
+					type: "employee_overhead",
 					effectiveFrom: "2025-01-01",
 					expectedSecondsOverride: null,
 				},
@@ -409,8 +413,8 @@ describe("the mth_no_overlap trigger", () => {
 	// `setType` is the only writer, so this asserts on the database directly:
 	// the guarantee `typesAsOf` reads has to hold whatever writes the row.
 	test("rejects a segment that covers a day another already covers", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "billable", "2025-06-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-06-01");
 
 		// Exactly the shape the old backdating branch produced. Wrapped in a
 		// real promise: a drizzle builder is only a thenable, and `.rejects`
@@ -446,8 +450,8 @@ describe("the mth_no_overlap trigger", () => {
 	});
 
 	test("allows two segments that meet without overlapping", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "billable", "2025-06-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-06-01");
 
 		// `effective_until` is exclusive, so ending and starting on the same day is
 		// the ordinary adjacent case and must stay legal.
@@ -457,18 +461,18 @@ describe("the mth_no_overlap trigger", () => {
 
 describe("typesAsOf", () => {
 	test("answers with the type held on the day asked about", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "billable", "2025-06-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-06-01");
 
-		expect(await typeOn(PERSON, "2025-03-15")).toBe("contractor");
+		expect(await typeOn(PERSON, "2025-03-15")).toBe("contractor_hourly");
 		// `effective_until` is exclusive: the change lands ON its own date.
-		expect(await typeOn(PERSON, "2025-05-31")).toBe("contractor");
-		expect(await typeOn(PERSON, "2025-06-01")).toBe("billable");
-		expect(await typeOn(PERSON, "2026-01-01")).toBe("billable");
+		expect(await typeOn(PERSON, "2025-05-31")).toBe("contractor_hourly");
+		expect(await typeOn(PERSON, "2025-06-01")).toBe("employee_billable");
+		expect(await typeOn(PERSON, "2026-01-01")).toBe("employee_billable");
 	});
 
 	test("a day before any segment has no entry, and typeFor defaults it", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
 
 		expect(await typeOn(PERSON, "2024-12-31")).toBeNull();
 		// Billable is the default and the right one — delivery is the common case.
@@ -477,45 +481,49 @@ describe("typesAsOf", () => {
 			PERSON,
 			"2024-12-31",
 		);
-		expect(resolved.type).toBe("billable");
+		expect(resolved.type).toBe("employee_billable");
 	});
 
 	test("stays single-valued after a backdate", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "billable", "2025-06-01");
-		await setType(PERSON, "billable", "2025-03-01");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-06-01");
+		await setType(PERSON, "employee_billable", "2025-03-01");
 
 		// The point of the whole fix: March resolves, and resolves to one thing.
-		expect(await typeOn(PERSON, "2025-03-15")).toBe("billable");
-		expect(await typeOn(PERSON, "2025-02-15")).toBe("contractor");
+		expect(await typeOn(PERSON, "2025-03-15")).toBe("employee_billable");
+		expect(await typeOn(PERSON, "2025-02-15")).toBe("contractor_hourly");
 	});
 
 	test("typesForMonth resolves as of the last day of the month", async () => {
-		await setType(PERSON, "contractor", "2025-01-01");
-		await setType(PERSON, "billable", "2025-06-15");
+		await setType(PERSON, "contractor_hourly", "2025-01-01");
+		await setType(PERSON, "employee_billable", "2025-06-15");
 
 		// Mid-month conversion: the person is reported under the type they
 		// finished June under, which is how the close sheet is read.
 		const june = await membersService.typesForMonth(adminCtx(), 2025, 6);
-		expect(june.get(PERSON)?.type).toBe("billable");
+		expect(june.get(PERSON)?.type).toBe("employee_billable");
 		const may = await membersService.typesForMonth(adminCtx(), 2025, 5);
-		expect(may.get(PERSON)?.type).toBe("contractor");
+		expect(may.get(PERSON)?.type).toBe("contractor_hourly");
 	});
 });
 
 describe("list", () => {
 	test("reports the type covering today, not a future-dated one", async () => {
-		await setType(PERSON, "contractor", "2020-01-01");
+		await setType(PERSON, "contractor_hourly", "2020-01-01");
 		// Dated ahead. This is the open-ended row, so joining on
 		// `effective_until is null` announced the change as already in force.
-		await setType(PERSON, "billable", "2999-01-01");
+		await setType(PERSON, "employee_billable", "2999-01-01");
 
 		const rows = await membersService.list(adminCtx());
-		expect(rows.find((r) => r.userId === PERSON)?.type).toBe("contractor");
+		expect(rows.find((r) => r.userId === PERSON)?.type).toBe(
+			"contractor_hourly",
+		);
 	});
 
-	test("a person with no history at all is billable", async () => {
+	test("a person with no history at all is a billable employee", async () => {
 		const rows = await membersService.list(adminCtx());
-		expect(rows.find((r) => r.userId === PERSON)?.type).toBe("billable");
+		expect(rows.find((r) => r.userId === PERSON)?.type).toBe(
+			"employee_billable",
+		);
 	});
 });

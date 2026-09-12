@@ -117,11 +117,14 @@ const complianceCohort = async (
 		.map((p) => ({
 			...p,
 			memberType: types.get(p.userId) ?? {
-				type: "billable" as const,
+				type: "employee_billable" as const,
 				expectedSecondsOverride: null,
 			},
 		}))
-		.filter((p) => p.memberType.type !== "overhead" && !archived.has(p.userId));
+		.filter(
+			(p) =>
+				p.memberType.type !== "employee_overhead" && !archived.has(p.userId),
+		);
 };
 
 /** Both views answer "as of today", and `now` is how a caller says which today.
@@ -149,7 +152,7 @@ export type ComplianceOpts = { now?: Date };
 const views = {
 	/**
 	 * View 1 — people with no entries in the last N working days (N configurable,
-	 * default 3). Both Billable people and Contractors appear here: a contractor
+	 * default 3). Full-time and hourly people both appear here: an hourly person
 	 * still has to tell us what they did, even though no hour fund applies to them.
 	 */
 	noEntries: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
@@ -320,7 +323,7 @@ const views = {
 		for (const person of cohort) {
 			// The month's whole target, before any absence: zero absence days.
 			const monthTarget = expectedSecondsFor(person.memberType, fundSeconds, 0);
-			// No fund (or a contractor with no override) => no pace to be behind.
+			// No fund (or an hourly person with no override) => no pace to be behind.
 			if (monthTarget == null || monthTarget <= 0) continue;
 
 			// Prorate the TARGET, then take the absence off whole. `absence` is
@@ -417,7 +420,7 @@ export const complianceService = {
 	 * It exists because the month-end Slack push addresses this exact set and was
 	 * selecting every member of the org instead, so the message went to precisely
 	 * the two groups the cohort exists to exclude: archived people, who cannot act
-	 * on it, and overhead people, whom the system deliberately never nags about
+	 * on it, and overhead employees, whom the system deliberately never nags about
 	 * timesheets.
 	 *
 	 * Do not wire this to a server function or a REST route.

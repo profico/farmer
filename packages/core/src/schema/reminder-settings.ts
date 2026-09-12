@@ -38,9 +38,18 @@ export const reminderTime = z
 const weekday = z.number().int().min(0).max(6);
 const percent = z.number().int().min(1).max(100);
 
-// Overhead people are never nagged about timesheets, so they are not a choice.
+// Overhead employees are never nagged about timesheets, so they are not a
+// choice.
+export const naggableMemberTypeEnum = z.enum([
+	"employee_billable",
+	"student_full_time",
+	"student_hourly",
+	"contractor_full_time",
+	"contractor_hourly",
+]);
+export type NaggableMemberType = z.infer<typeof naggableMemberTypeEnum>;
 const memberTypes = z
-	.array(z.enum(["billable", "contractor"]))
+	.array(naggableMemberTypeEnum)
 	.min(1, "Pick at least one person type")
 	.refine((types) => new Set(types).size === types.length, "Pick each once");
 
@@ -95,12 +104,12 @@ export const REMINDER_SETTINGS_DEFAULTS: ReminderSettings = {
 	complianceMissingDays: 3,
 	nudgeBehindPace: true,
 	nudgeBehindPacePct: 90,
-	nudgeMemberTypes: ["billable", "contractor"],
+	nudgeMemberTypes: naggableMemberTypeEnum.options,
 	monthEndEnabled: true,
 	monthEndDaysBefore: 0,
 	monthEndTime: "09:00",
 	monthEndOnlyBehind: false,
-	monthEndMemberTypes: ["billable", "contractor"],
+	monthEndMemberTypes: naggableMemberTypeEnum.options,
 	digestEnabled: true,
 	digestWeekday: 2,
 	digestTime: "09:00",

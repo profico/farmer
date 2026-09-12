@@ -184,7 +184,7 @@ beforeAll(async () => {
 	await db.insert(memberTypeHistory).values({
 		organizationId: ORG,
 		userId: CONTRACTOR,
-		type: "contractor" as const,
+		type: "contractor_hourly" as const,
 		effectiveFrom: "2020-01-01",
 	});
 	await db.insert(memberProfile).values({
@@ -391,7 +391,7 @@ describe("the month-end reminder replaces the nudge on its day", () => {
 		expect(reached("compliance-nudge")).toEqual([]);
 
 		// A contractor the month-end reminder skips still gets the nudge.
-		await configure({ monthEndMemberTypes: ["billable"] });
+		await configure({ monthEndMemberTypes: ["employee_billable"] });
 		forgetSlackReminderRunsForTests();
 		await db.delete(slackReminderLog);
 		sent = [];
@@ -443,7 +443,7 @@ describe("days, time and conditions must all apply", () => {
 	});
 
 	test("the nudge goes only to the chosen person types", async () => {
-		await configure({ nudgeMemberTypes: ["contractor"] });
+		await configure({ nudgeMemberTypes: ["contractor_hourly"] });
 		await slackAt(TUESDAY, "09:00");
 		expect(reached("compliance-nudge")).toEqual([CONTRACTOR]);
 	});
@@ -486,7 +486,7 @@ describe("days, time and conditions must all apply", () => {
 
 		await configure({
 			monthEndOnlyBehind: false,
-			monthEndMemberTypes: ["billable"],
+			monthEndMemberTypes: ["employee_billable"],
 		});
 		forgetSlackReminderRunsForTests();
 		await db.delete(slackReminderLog);

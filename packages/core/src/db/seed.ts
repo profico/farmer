@@ -148,7 +148,7 @@ if (members.length > 0) {
 			members.map((m) => ({
 				organizationId: org.id,
 				userId: m.userId,
-				type: "billable" as const,
+				type: "employee_billable" as const,
 				effectiveFrom: `${thisYear}-01-01`,
 			})),
 		)

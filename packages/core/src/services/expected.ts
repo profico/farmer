@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 
 import { task, timeEntry } from "../db/schema/domain";
+import { isHourlyMemberType } from "../schema/members";
 import { ctxDb } from "./context";
 import { WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerWhere } from "./ledger";
@@ -42,9 +43,9 @@ export const absenceDaysByUser = async (
  *
  *     Expected = monthly fund - (absence days x 8)
  *
- * Null — meaning "no Expected math applies" — when the person is a contractor
- * without an explicit override, or the admin hasn't entered the month's fund
- * yet. Never silently defaults: without a fund there is no number to reconcile
+ * Null — meaning "no Expected math applies" — for an overhead employee, for an
+ * hourly student or contractor without an explicit override, or when the admin
+ * hasn't entered the month's fund yet. Never silently defaults: without a fund there is no number to reconcile
  * against, and inventing one would be worse than showing a blank.
  */
 export const expectedSecondsFor = (
@@ -52,10 +53,10 @@ export const expectedSecondsFor = (
 	fundSeconds: number | null,
 	absenceDays: number,
 ): number | null => {
-	const base =
-		memberType.type === "contractor"
-			? memberType.expectedSecondsOverride
-			: (memberType.expectedSecondsOverride ?? fundSeconds);
+	if (memberType.type === "employee_overhead") return null;
+	const base = isHourlyMemberType(memberType.type)
+		? memberType.expectedSecondsOverride
+		: (memberType.expectedSecondsOverride ?? fundSeconds);
 	if (base == null) return null;
 	return Math.max(0, base - Math.round(absenceDays * WORKING_DAY_SECONDS));
 };

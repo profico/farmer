@@ -1593,7 +1593,7 @@ export function planHarvestImport(
 			: (p.employeeInReport ?? true);
 		const role = choice?.role ?? (p.listed?.admin ? "admin" : "member");
 		const type: MemberTypeValue =
-			choice?.type ?? (employee ? "billable" : "contractor");
+			choice?.type ?? (employee ? "employee_billable" : "contractor_hourly");
 		const capacity = p.listed?.capacityHours ?? null;
 		const weeklyTargetSeconds =
 			capacity !== null && capacity >= 0

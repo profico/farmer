@@ -22,7 +22,7 @@ import {
 	memberTypeHistory,
 } from "../db/schema/people";
 import { dayKeyInTz, endOfMonthKey } from "../lib/time";
-import type { SetMemberTypeInput } from "../schema/members";
+import type { SetMemberTypeInput, MemberTypeValue } from "../schema/members";
 import { ctxDb, ctxTimezone, requireAdmin } from "./context";
 import { assertUserInOrg } from "./guards";
 import type { Ctx } from "./types";
@@ -41,13 +41,13 @@ export type InvitationEmailState = {
  *  that stopped mid-send and will never report how it went. */
 export const INVITATION_EMAIL_STALE_MS = 5 * 60_000;
 
-export type MemberType = "billable" | "overhead" | "contractor";
+export type MemberType = MemberTypeValue;
 
 export type ResolvedMemberType = {
 	type: MemberType;
-	/** Contractors have no Croatian monthly hour fund and therefore no Expected
-	 *  value — the "/" rows of the old sheet — unless one is set here, in which
-	 *  case the pace check treats them like a billable person. */
+	/** Hourly people have no Croatian monthly hour fund and therefore no
+	 *  Expected value, unless one is set here, in which case the pace check
+	 *  treats them like a full-time person. */
 	expectedSecondsOverride: number | null;
 };
 
@@ -87,13 +87,14 @@ export type RosterMember = {
 };
 
 const DEFAULT_TYPE: ResolvedMemberType = {
-	type: "billable",
+	type: "employee_billable",
 	expectedSecondsOverride: null,
 };
 
-/** People whose time we sell, i.e. who the compliance report and Slack
- *  reminders apply to. Overhead is excluded from both; contractors from some. */
-export const isNaggable = (type: MemberType) => type !== "overhead";
+/** People the compliance report and the reminders apply to: everyone but an
+ *  overhead employee. Hourly people are chased for entries even without a
+ *  fund to be behind. */
+export const isNaggable = (type: MemberType) => type !== "employee_overhead";
 
 /** Why an admin of `ctx`'s org may not vouch for `userId`'s address, or null
  *  when they may (docs/plans/harvest-import.md, 3.3). An unverified address is
