@@ -4,7 +4,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
@@ -22,17 +22,11 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { getInitials } from "#/lib/utils.ts";
 import { supportedCountriesQuery } from "#/queries/holidays.ts";
 import { queryKeys } from "#/queries/keys.ts";
-import { notOnInvoiceStatusOptionsQuery } from "#/queries/not-on-invoice.ts";
 import {
 	orgPolicySettingsQuery,
 	orgSettingsQuery,
 } from "#/queries/organization.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";
-import {
-	archiveNotOnInvoiceStatusOption,
-	createNotOnInvoiceStatusOption,
-	updateNotOnInvoiceStatusOption,
-} from "#/server/not-on-invoice.ts";
 import {
 	updateOrgPolicySettings,
 	updateOrgSettings,
@@ -48,9 +42,6 @@ export const Route = createFileRoute("/$orgSlug/settings/organization")({
 			context.queryClient.ensureQueryData(orgSettingsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(supportedCountriesQuery(orgSlug)),
 			context.queryClient.ensureQueryData(orgPolicySettingsQuery(orgSlug)),
-			context.queryClient.ensureQueryData(
-				notOnInvoiceStatusOptionsQuery(orgSlug),
-			),
 		]);
 	},
 	component: OrganizationSettingsPage,
@@ -226,154 +217,12 @@ function OrganizationSettingsPage() {
 
 			<CompliancePolicySection />
 			<AutomationLockSection />
-			<NotOnInvoiceStatusSection />
 		</Page>
-	);
-}
-
-/**
- * The "not on the invoice" status set (PRD §8). A managed list rather than free
- * text on purpose: the same five words month after month are what turn the
- * report into a trend instrument (bench hours per month, time-to-billable per
- * person) instead of five separately-worded emails.
- *
- * Retiring a status archives it — every month already annotated with it keeps
- * reading correctly, which a delete would break.
- */
-function NotOnInvoiceStatusSection() {
-	const orgSlug = useOrgSlug();
-	const queryClient = useQueryClient();
-	const { data: options } = useSuspenseQuery(
-		notOnInvoiceStatusOptionsQuery(orgSlug),
-	);
-	const [label, setLabel] = useState("");
-
-	const invalidate = () =>
-		Promise.all([
-			queryClient.invalidateQueries({
-				queryKey: notOnInvoiceStatusOptionsQuery(orgSlug).queryKey,
-			}),
-			queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).notOnInvoice],
-			}),
-		]);
-
-	const create = useMutation({
-		mutationFn: (value: string) =>
-			createNotOnInvoiceStatusOption({ data: { label: value } }),
-		onSuccess: async () => {
-			setLabel("");
-			await invalidate();
-		},
-		onError: (error) => toast.error(error.message ?? "Could not add status"),
-	});
-
-	const rename = useMutation({
-		mutationFn: (vars: { statusOptionId: string; label: string }) =>
-			updateNotOnInvoiceStatusOption({ data: vars }),
-		onSuccess: invalidate,
-		onError: (error) => toast.error(error.message ?? "Could not rename"),
-	});
-
-	const archive = useMutation({
-		mutationFn: (statusOptionId: string) =>
-			archiveNotOnInvoiceStatusOption({ data: statusOptionId }),
-		onSuccess: invalidate,
-		onError: (error) => toast.error(error.message ?? "Could not remove"),
-	});
-
-	return (
-		<PageSection
-			title="Not on the invoice"
-			description="The reasons you can pick for someone who ended a month with no invoiced hours. Keep the list short — it only stays comparable across months if the same words come back."
-		>
-			<div className="flex max-w-md flex-col">
-				{options.map((option) => (
-					<div
-						key={option.id}
-						className="flex items-center gap-2 border-t border-line2 py-2 first:border-t-0 first:pt-0"
-					>
-						<StatusLabelInput
-							label={option.label}
-							onCommit={(next) =>
-								rename.mutate({ statusOptionId: option.id, label: next })
-							}
-						/>
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={archive.isPending}
-							onClick={() => archive.mutate(option.id)}
-						>
-							Remove
-						</Button>
-					</div>
-				))}
-				{options.length === 0 && (
-					<p className="text-sm text-muted-foreground">
-						No statuses left — the report will only take free-text comments.
-					</p>
-				)}
-			</div>
-
-			<form
-				className="mt-4 flex w-full max-w-md items-center gap-2"
-				onSubmit={(e) => {
-					e.preventDefault();
-					const trimmed = label.trim();
-					if (trimmed) create.mutate(trimmed);
-				}}
-			>
-				<Input
-					className="flex-1"
-					placeholder="Add a status, e.g. Parental leave"
-					value={label}
-					maxLength={60}
-					onChange={(e) => setLabel(e.target.value)}
-				/>
-				<Button
-					type="submit"
-					size="sm"
-					disabled={label.trim() === "" || create.isPending}
-				>
-					Add
-				</Button>
-			</form>
-		</PageSection>
 	);
 }
 
 // Commits on blur, like every other inline edit in Settings: a rename is a
 // correction, not a decision that needs a Save button next to it.
-function StatusLabelInput({
-	label,
-	onCommit,
-}: {
-	label: string;
-	onCommit: (label: string) => void;
-}) {
-	const [value, setValue] = useState(label);
-	useEffect(() => {
-		setValue(label);
-	}, [label]);
-
-	return (
-		<Input
-			className="h-8 flex-1"
-			value={value}
-			maxLength={60}
-			onChange={(e) => setValue(e.target.value)}
-			onBlur={() => {
-				const trimmed = value.trim();
-				if (trimmed === "") {
-					setValue(label);
-					return;
-				}
-				if (trimmed !== label) onCommit(trimmed);
-			}}
-		/>
-	);
-}
 
 // The one compliance number that's a setting. Everything else in that machinery
 // — the 90% behind-pace threshold, the Tue/Fri reminder days, the 15-minute

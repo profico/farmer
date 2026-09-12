@@ -456,7 +456,7 @@ export const projectsService = {
 	},
 
 	/** Archive, never hard delete — agencies churn projects and history must
-	 *  survive (close sheets, reports and variance all read backwards). */
+	 *  survive (close sheets and reports all read backwards). */
 	archive: async (ctx: Ctx, projectId: string) => {
 		const access = await ctxAccess(ctx);
 		access.assertCanCloseProject(projectId);

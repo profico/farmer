@@ -9,7 +9,7 @@
 // "billable since June" back to March rewrote the June row's start and left the
 // contractor segment it came from still ending in June. March, April and May
 // were then covered twice, and `typesAsOf` chose between them by whichever row
-// the query plan emitted last — so Expected, utilization and the pace check
+// the query plan emitted last — so Expected and the pace check
 // disagreed about a closed month on data nobody had touched.
 //
 // The months a person converts in are exactly the months somebody checks, which

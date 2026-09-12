@@ -162,9 +162,9 @@ export const holidaysService = {
 	},
 
 	// Handles ranges spanning a year boundary (e.g. a week straddling Dec/Jan).
-	// Excludes holidays the org has disabled, so weekend/holiday shading,
-	// utilization and the day's working-hours target all treat a disabled holiday
-	// as an ordinary working day.
+	// Excludes holidays the org has disabled, so weekend/holiday shading and the
+	// day's working-hours target both treat a disabled holiday as an ordinary
+	// working day.
 	//
 	// The returned Map satisfies `HolidayLookup` (lib/working-day), which is what
 	// `targetSecondsFor` takes — no conversion at the call sites.

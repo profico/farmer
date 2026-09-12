@@ -1,5 +1,5 @@
 // The monthly hour fund — the denominator of Expected, and therefore of every
-// utilization percentage and every "behind pace" nudge.
+// "behind pace" nudge.
 //
 // The property this file exists to pin is the one the service's own docblock
 // insists on and nothing enforced: NULL IS NOT ZERO. No row means "there is no

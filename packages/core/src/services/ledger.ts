@@ -2,8 +2,7 @@
 // place the org + range + access predicate is written.
 //
 // Fifteen hand-rolled `sum(durationSeconds) ... groupBy` queries used to spell
-// this out separately across reports, close, compliance, unfiled, not-on-invoice
-// and projects. Three of them disagreed, and the disagreement was visible to
+// this out separately across reports, close, compliance, unfiled and projects. Three of them disagreed, and the disagreement was visible to
 // users: the Tracking tab and the Time tab answered "hours logged this month"
 // differently for the same person in the same month.
 //
@@ -15,9 +14,9 @@
 // with a bespoke projection compose `ledgerWhere` rather than being forced
 // through a grouped API that would need every join as a parameter.
 //
-// Scope only over `timeEntry`. The close-sheet aggregates (variance,
-// utilization) sum `monthlyCloseRow`, which is a different aggregate with its
-// own snapshot semantics, and are deliberately not folded in here.
+// Scope only over `timeEntry`. The close sheet sums `monthlyCloseRow`, which is
+// a different aggregate with its own snapshot semantics, and is deliberately
+// not folded in here.
 
 import {
 	and,

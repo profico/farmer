@@ -57,7 +57,6 @@ import {
 	effectiveFinal,
 	expectedSecondsFor,
 } from "./close.service";
-import { reportsService } from "./reports.service";
 import type { Ctx } from "./types";
 
 const H = 3600;
@@ -1209,12 +1208,6 @@ describe("setFinal on a finalized month", () => {
 		expect(stored.reportedAtFinalizeSeconds).toBe(5 * H);
 		expect(stored.overtimeAtFinalizeSeconds).toBe(0);
 		expect(stored.expectedAtFinalizeSeconds).toBe(160 * H);
-
-		const variance = await reportsService.variance(ctxFor(ADMIN), {
-			year: YEAR,
-			month: MONTH,
-		});
-		expect(variance.find((r) => r.userId === DRIFTER)?.diffSeconds).toBe(0);
 	});
 
 	test("does not move the snapshot of somebody finalize already froze", async () => {

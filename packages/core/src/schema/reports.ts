@@ -87,14 +87,3 @@ export const absenceReportInput = z.object({
 	month: month.optional(),
 });
 export type AbsenceReportInput = z.infer<typeof absenceReportInput>;
-
-export const varianceTrendInput = z.object({
-	year,
-	// How many months back from (year, month) to include in the trend.
-	months: z.number().int().min(1).max(24).default(6),
-	month,
-});
-export type VarianceTrendInput = z.infer<typeof varianceTrendInput>;
-
-export const utilizationTrendInput = varianceTrendInput;
-export type UtilizationTrendInput = z.infer<typeof utilizationTrendInput>;

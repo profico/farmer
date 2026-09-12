@@ -7,13 +7,10 @@ import { Suspense } from "react";
 import { AbsenceTab } from "#/components/reports/absence-tab.tsx";
 import { BudgetBurnTab } from "#/components/reports/budget-burn-tab.tsx";
 import { ComplianceTab } from "#/components/reports/compliance-tab.tsx";
-import { NotOnInvoiceTab } from "#/components/reports/not-on-invoice-tab.tsx";
 import { OvertimeTab } from "#/components/reports/overtime-tab.tsx";
 import { searchSchema, TABS, type TabId } from "#/components/reports/search.ts";
 import { MonthFramed, TabPending } from "#/components/reports/shared.tsx";
 import { TimeTab } from "#/components/reports/time-tab.tsx";
-import { UtilizationTab } from "#/components/reports/utilization-tab.tsx";
-import { VarianceTab } from "#/components/reports/variance-tab.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import {
@@ -171,36 +168,6 @@ function ReportsPage() {
 							thisMonth={thisMonth}
 						>
 							<AbsenceTab {...period} />
-						</MonthFramed>
-					)}
-					{tab === "variance" && (
-						<MonthFramed
-							orgSlug={organization.slug}
-							search={search}
-							month={month}
-							thisMonth={thisMonth}
-						>
-							<VarianceTab {...period} />
-						</MonthFramed>
-					)}
-					{tab === "utilization" && (
-						<MonthFramed
-							orgSlug={organization.slug}
-							search={search}
-							month={month}
-							thisMonth={thisMonth}
-						>
-							<UtilizationTab {...period} />
-						</MonthFramed>
-					)}
-					{tab === "not-on-invoice" && (
-						<MonthFramed
-							orgSlug={organization.slug}
-							search={search}
-							month={month}
-							thisMonth={thisMonth}
-						>
-							<NotOnInvoiceTab {...period} />
 						</MonthFramed>
 					)}
 				</Suspense>

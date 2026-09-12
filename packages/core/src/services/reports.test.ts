@@ -1,25 +1,11 @@
-// The reports layer — everything that turns close data into a number somebody
-// acts on. `close` and `ledger` are well covered; the four services that READ
-// them were not, which is the wrong way round: a close sheet that is right and
-// a utilization figure that is wrong still produces a wrong decision.
+// The reports layer — everything that turns logged time into a number somebody
+// acts on. `ledger` is well covered; the services that READ it were not, which
+// is the wrong way round: a ledger that is right and a report that is wrong
+// still produces a wrong decision.
 //
 // What this file is built around:
 //
-//   1. UTILIZATION PREFERS THE FROZEN EXPECTED. `expectedAtFinalizeSeconds` is
-//      snapshotted at finalization precisely so an admin editing a past month's
-//      hour fund cannot retroactively move percentages that have already been
-//      reported. The fallback to a live computation exists for months that were
-//      never finalized, and must not shadow the snapshot when there is one.
-//   2. THE TREND AND THE HEADLINE CANNOT DISAGREE. Each trend point is the same
-//      roll-up as the single-month figure. They used to diverge — the trend
-//      averaged percentages while the PDF divided the totals — and the trend now
-//      reads from a span resolved once rather than recomputing per point, which
-//      is a second way for them to drift apart if it is ever wrong.
-//   3. VARIANCE READS THE SNAPSHOT, NOT A LIVE RECOMPUTE. Entries stay editable
-//      in finalized months on purpose, so a live Reported would drift away from
-//      the Final it was compared against and the variance would quietly stop
-//      meaning anything.
-//   4. THE DETAIL'S TOTAL IS WHOLE EVEN WHEN ITS ROWS ARE NOT. The row cap is
+//   1. THE DETAIL'S TOTAL IS WHOLE EVEN WHEN ITS ROWS ARE NOT. The row cap is
 //      the safety valve; a total summed from the surviving rows would make the
 //      table disagree with the figure above it and give no sign of it.
 //
@@ -35,11 +21,10 @@ import {
 	test,
 } from "bun:test";
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
-import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
 import {
 	client,
 	project,
@@ -49,7 +34,6 @@ import {
 } from "../db/schema/domain";
 import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import { monthlyHourFund } from "../db/schema/settings";
-import { rollUpUtilization } from "../lib/utilization";
 import { createTestDb, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
 import { reportsService } from "./reports.service";
@@ -71,11 +55,11 @@ const LEAD = "u-rep-lead";
 const WORKER = "u-rep-worker";
 /** Works on Beta, so a Lead scoped to Alpha must not see their hours. */
 const OUTSIDER = "u-rep-outsider";
-/** Overhead: excluded from the org-wide utilization list. */
+/** Overhead: excluded from org-wide lists. */
 const OVERHEAD = "u-rep-overhead";
-/** Contractor with no override: Final hours, no percentage. */
+/** Contractor with no override. */
 const CONTRACTOR = "u-rep-contractor";
-/** Left: excluded from utilization for the same reason as overhead. */
+/** Left: archived before the fixture month. */
 const ARCHIVED = "u-rep-archived";
 
 const EVERYONE = [
@@ -92,7 +76,6 @@ const EVERYONE = [
 let harness: TestDb;
 let alphaId: string;
 let betaId: string;
-let internalId: string;
 let devTaskId: string;
 let vacationTaskId: string;
 
@@ -116,48 +99,6 @@ const logEntry = async (opts: {
 		durationSeconds: opts.seconds ?? 4 * H,
 		overtime: opts.overtime ?? false,
 	});
-};
-
-/** A finalized close for a project/month, with per-person snapshots. Written
- *  directly: this file is about how the reports READ close data. */
-const finalize = async (opts: {
-	projectId: string;
-	year?: number;
-	month?: number;
-	rows: {
-		userId: string;
-		finalSeconds?: number | null;
-		reportedAtFinalizeSeconds?: number | null;
-		expectedAtFinalizeSeconds?: number | null;
-	}[];
-	status?: "open" | "submitted" | "finalized";
-}) => {
-	const [close] = await db
-		.insert(monthlyClose)
-		.values({
-			organizationId: ORG,
-			projectId: opts.projectId,
-			year: opts.year ?? YEAR,
-			month: opts.month ?? MONTH,
-			status: opts.status ?? "finalized",
-			finalizedAt: new Date(),
-		})
-		.returning();
-	if (!close) throw new Error("Failed to seed close");
-
-	if (opts.rows.length > 0) {
-		await db.insert(monthlyCloseRow).values(
-			opts.rows.map((r) => ({
-				organizationId: ORG,
-				closeId: close.id,
-				userId: r.userId,
-				finalSeconds: r.finalSeconds ?? null,
-				reportedAtFinalizeSeconds: r.reportedAtFinalizeSeconds ?? null,
-				expectedAtFinalizeSeconds: r.expectedAtFinalizeSeconds ?? null,
-			})),
-		);
-	}
-	return close.id;
 };
 
 beforeAll(async () => {
@@ -201,7 +142,7 @@ beforeAll(async () => {
 		.returning();
 	if (!acme || !globex) throw new Error("Failed to seed clients");
 
-	const [alpha, beta, internal] = await db
+	const [alpha, beta] = await db
 		.insert(project)
 		.values([
 			{
@@ -228,10 +169,9 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
-	if (!alpha || !beta || !internal) throw new Error("Failed to seed projects");
+	if (!alpha || !beta) throw new Error("Failed to seed projects");
 	alphaId = alpha.id;
 	betaId = beta.id;
-	internalId = internal.id;
 
 	await db.insert(projectMember).values([
 		{
@@ -318,7 +258,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
 	await db.delete(timeEntry).where(eq(timeEntry.organizationId, ORG));
-	await db.delete(monthlyClose).where(eq(monthlyClose.organizationId, ORG));
 	await db
 		.delete(monthlyHourFund)
 		.where(eq(monthlyHourFund.organizationId, ORG));
@@ -379,12 +318,6 @@ describe("who may read a report", () => {
 		const month = { year: YEAR, month: MONTH };
 		await expect(
 			reportsService.absence(ctxFor(PM), month),
-		).rejects.toBeInstanceOf(AccessError);
-		await expect(
-			reportsService.variance(ctxFor(PM), month),
-		).rejects.toBeInstanceOf(AccessError);
-		await expect(
-			reportsService.utilization(ctxFor(PM), month),
 		).rejects.toBeInstanceOf(AccessError);
 	});
 });
@@ -499,491 +432,6 @@ describe("time detail", () => {
 });
 
 // ── Variance ───────────────────────────────────────────────────────────────
-
-describe("variance", () => {
-	test("compares Final against Reported as it stood at finalization", async () => {
-		await finalize({
-			projectId: alphaId,
-			rows: [
-				{
-					userId: WORKER,
-					reportedAtFinalizeSeconds: 100 * H,
-					finalSeconds: 120 * H,
-				},
-			],
-		});
-
-		// Entries edited AFTER finalization must not move the figure — that is the
-		// entire reason the snapshot exists.
-		await logEntry({ userId: WORKER, seconds: 900 * H });
-
-		const rows = await reportsService.variance(ctxFor(ADMIN), {
-			year: YEAR,
-			month: MONTH,
-		});
-		const row = rows.find((r) => r.userId === WORKER);
-		expect(row?.reportedSeconds).toBe(100 * H);
-		expect(row?.finalSeconds).toBe(120 * H);
-		expect(row?.diffSeconds).toBe(20 * H);
-		expect(row?.diffPct).toBe(20);
-	});
-
-	test("an unfinalized month contributes nothing", async () => {
-		await finalize({
-			projectId: alphaId,
-			status: "submitted",
-			rows: [
-				{
-					userId: WORKER,
-					reportedAtFinalizeSeconds: 100 * H,
-					finalSeconds: 120 * H,
-				},
-			],
-		});
-
-		expect(
-			await reportsService.variance(ctxFor(ADMIN), {
-				year: YEAR,
-				month: MONTH,
-			}),
-		).toEqual([]);
-	});
-
-	test("a person's rows sum across projects", async () => {
-		await finalize({
-			projectId: alphaId,
-			rows: [
-				{
-					userId: WORKER,
-					reportedAtFinalizeSeconds: 60 * H,
-					finalSeconds: 60 * H,
-				},
-			],
-		});
-		await finalize({
-			projectId: betaId,
-			rows: [
-				{
-					userId: WORKER,
-					reportedAtFinalizeSeconds: 40 * H,
-					finalSeconds: 50 * H,
-				},
-			],
-		});
-
-		const row = (
-			await reportsService.variance(ctxFor(ADMIN), {
-				year: YEAR,
-				month: MONTH,
-			})
-		).find((r) => r.userId === WORKER);
-		expect(row?.reportedSeconds).toBe(100 * H);
-		expect(row?.finalSeconds).toBe(110 * H);
-	});
-
-	test("a zero Reported yields no percentage rather than a division by zero", async () => {
-		await finalize({
-			projectId: alphaId,
-			rows: [
-				{
-					userId: WORKER,
-					reportedAtFinalizeSeconds: 0,
-					finalSeconds: 8 * H,
-				},
-			],
-		});
-
-		const row = (
-			await reportsService.variance(ctxFor(ADMIN), {
-				year: YEAR,
-				month: MONTH,
-			})
-		).find((r) => r.userId === WORKER);
-		expect(row?.diffPct).toBeNull();
-	});
-});
-
-// ── Utilization ────────────────────────────────────────────────────────────
-
-describe("utilization", () => {
-	const month = { year: YEAR, month: MONTH };
-
-	test("is Final on non-Internal projects over Expected", async () => {
-		await finalize({
-			projectId: alphaId,
-			rows: [
-				{
-					userId: WORKER,
-					finalSeconds: 80 * H,
-					expectedAtFinalizeSeconds: 160 * H,
-				},
-			],
-		});
-
-		const row = (await reportsService.utilization(ctxFor(ADMIN), month)).find(
-			(r) => r.userId === WORKER,
-		);
-		expect(row?.finalSeconds).toBe(80 * H);
-		expect(row?.expectedSeconds).toBe(160 * H);
-		expect(row?.utilizationPct).toBe(50);
-	});
-
-	test("hours on an Internal project are not in the numerator", async () => {
-		await finalize({
-			projectId: alphaId,
-			rows: [
-				{
-					userId: WORKER,
-					finalSeconds: 40 * H,
-					expectedAtFinalizeSeconds: 160 * H,
-				},
-			],
-		});
-		await finalize({
-			projectId: internalId,
-			rows: [{ userId: WORKER, finalSeconds: 120 * H }],
-		});
-
-		const row = (await reportsService.utilization(ctxFor(ADMIN), month)).find(
-			(r) => r.userId === WORKER,
-		);
-		// 160h of Final, only 40 of it sold.
-		expect(row?.finalSeconds).toBe(40 * H);
-		expect(row?.utilizationPct).toBe(25);
-	});
-
-	test("the frozen Expected wins over a later edit to the hour fund", async () => {
-		await finalize({
-			projectId: alphaId,
-			rows: [
-				{
-					userId: WORKER,
-					finalSeconds: 80 * H,
-					expectedAtFinalizeSeconds: 160 * H,
-				},
-			],
-		});
-		// An admin revising the month's fund afterwards must not move a percentage
-		// that has already been reported.
-		await db.insert(monthlyHourFund).values({
-			organizationId: ORG,
-			year: YEAR,
-			month: MONTH,
-			fundSeconds: 80 * H,
-		});
-
-		const row = (await reportsService.utilization(ctxFor(ADMIN), month)).find(
-			(r) => r.userId === WORKER,
-		);
-		expect(row?.expectedSeconds).toBe(160 * H);
-		expect(row?.utilizationPct).toBe(50);
-	});
-
-	test("without a snapshot it falls back to fund minus absence", async () => {
-		// No finalized close for this person at all, so nothing was frozen.
-		await db.insert(monthlyHourFund).values({
-			organizationId: ORG,
-			year: YEAR,
-			month: MONTH,
-			fundSeconds: 160 * H,
-		});
-
-		const row = (await reportsService.utilization(ctxFor(ADMIN), month)).find(
-			(r) => r.userId === WORKER,
-		);
-		expect(row?.expectedSeconds).toBe(160 * H);
-		expect(row?.finalSeconds).toBe(0);
-		expect(row?.utilizationPct).toBe(0);
-	});
-
-	test("absence lowers the fallback Expected", async () => {
-		await db.insert(monthlyHourFund).values({
-			organizationId: ORG,
-			year: YEAR,
-			month: MONTH,
-			fundSeconds: 160 * H,
-		});
-		// Two 8h vacation days in the month.
-		await db.insert(timeEntry).values([
-			{
-				organizationId: ORG,
-				userId: WORKER,
-				projectId: null,
-				taskId: vacationTaskId,
-				date: "2026-05-04",
-				description: "",
-				durationSeconds: 8 * H,
-			},
-			{
-				organizationId: ORG,
-				userId: WORKER,
-				projectId: null,
-				taskId: vacationTaskId,
-				date: "2026-05-05",
-				description: "",
-				durationSeconds: 8 * H,
-			},
-		]);
-
-		const row = (await reportsService.utilization(ctxFor(ADMIN), month)).find(
-			(r) => r.userId === WORKER,
-		);
-		expect(row?.expectedSeconds).toBe(160 * H - 16 * H);
-	});
-
-	test("overhead and archived people are not in the org-wide list", async () => {
-		const ids = (await reportsService.utilization(ctxFor(ADMIN), month)).map(
-			(r) => r.userId,
-		);
-		expect(ids).not.toContain(OVERHEAD);
-		expect(ids).not.toContain(ARCHIVED);
-		expect(ids).toContain(WORKER);
-	});
-
-	test("an archived person counts in the months before they left", async () => {
-		// Archived 2026-03-15: February and March started while they were here,
-		// April did not.
-		for (const m of [2, 3, 4]) {
-			await finalize({
-				projectId: alphaId,
-				month: m,
-				rows: [
-					{
-						userId: ARCHIVED,
-						finalSeconds: 80 * H,
-						expectedAtFinalizeSeconds: 160 * H,
-					},
-				],
-			});
-		}
-
-		const idsIn = async (m: number) =>
-			(
-				await reportsService.utilization(ctxFor(ADMIN), {
-					year: YEAR,
-					month: m,
-				})
-			).map((r) => r.userId);
-
-		expect(await idsIn(2)).toContain(ARCHIVED);
-		expect(await idsIn(3)).toContain(ARCHIVED);
-		expect(await idsIn(4)).not.toContain(ARCHIVED);
-
-		// The trend reads the same span, so its points agree with the months.
-		const trend = await reportsService.utilizationTrend(ctxFor(ADMIN), {
-			year: YEAR,
-			month: 4,
-			months: 3,
-		});
-		const feb = trend.find((p) => p.month === 2);
-		const apr = trend.find((p) => p.month === 4);
-		expect(feb?.finalSeconds).toBeGreaterThanOrEqual(80 * H);
-		expect(apr?.finalSeconds).toBe(0);
-	});
-
-	test("a contractor with no override gets hours but no percentage", async () => {
-		await finalize({
-			projectId: alphaId,
-			rows: [{ userId: CONTRACTOR, finalSeconds: 90 * H }],
-		});
-		await db.insert(monthlyHourFund).values({
-			organizationId: ORG,
-			year: YEAR,
-			month: MONTH,
-			fundSeconds: 160 * H,
-		});
-
-		const row = (await reportsService.utilization(ctxFor(ADMIN), month)).find(
-			(r) => r.userId === CONTRACTOR,
-		);
-		// The "/" rows of the old sheet: a real Final, and deliberately no number
-		// beside it, because no Croatian hour fund applies to them.
-		expect(row?.finalSeconds).toBe(90 * H);
-		expect(row?.expectedSeconds).toBeNull();
-		expect(row?.utilizationPct).toBeNull();
-	});
-
-	test("an explicit override gives a contractor a percentage", async () => {
-		await db
-			.update(memberTypeHistory)
-			.set({ expectedSecondsOverride: 100 * H })
-			.where(
-				and(
-					eq(memberTypeHistory.organizationId, ORG),
-					eq(memberTypeHistory.userId, CONTRACTOR),
-				),
-			);
-		await finalize({
-			projectId: alphaId,
-			rows: [{ userId: CONTRACTOR, finalSeconds: 50 * H }],
-		});
-
-		const row = (await reportsService.utilization(ctxFor(ADMIN), month)).find(
-			(r) => r.userId === CONTRACTOR,
-		);
-		expect(row?.expectedSeconds).toBe(100 * H);
-		expect(row?.utilizationPct).toBe(50);
-
-		await db
-			.update(memberTypeHistory)
-			.set({ expectedSecondsOverride: null })
-			.where(
-				and(
-					eq(memberTypeHistory.organizationId, ORG),
-					eq(memberTypeHistory.userId, CONTRACTOR),
-				),
-			);
-	});
-
-	test("an unfinalized month contributes no Final", async () => {
-		await finalize({
-			projectId: alphaId,
-			status: "submitted",
-			rows: [{ userId: WORKER, finalSeconds: 999 * H }],
-		});
-
-		const row = (await reportsService.utilization(ctxFor(ADMIN), month)).find(
-			(r) => r.userId === WORKER,
-		);
-		expect(row?.finalSeconds).toBe(0);
-	});
-});
-
-describe("utilization trend", () => {
-	test("each point equals the single-month figure for that month", async () => {
-		// Three months with different shapes, so a trend that mixed months up — or
-		// leaked one month's fund into another's point — could not pass.
-		await finalize({
-			projectId: alphaId,
-			year: YEAR,
-			month: 3,
-			rows: [
-				{
-					userId: WORKER,
-					finalSeconds: 40 * H,
-					expectedAtFinalizeSeconds: 160 * H,
-				},
-			],
-		});
-		await finalize({
-			projectId: alphaId,
-			year: YEAR,
-			month: 4,
-			rows: [
-				{
-					userId: WORKER,
-					finalSeconds: 120 * H,
-					expectedAtFinalizeSeconds: 160 * H,
-				},
-			],
-		});
-		await finalize({
-			projectId: alphaId,
-			year: YEAR,
-			month: 5,
-			rows: [
-				{
-					userId: WORKER,
-					finalSeconds: 80 * H,
-					expectedAtFinalizeSeconds: 160 * H,
-				},
-			],
-		});
-
-		const trend = await reportsService.utilizationTrend(ctxFor(ADMIN), {
-			year: YEAR,
-			month: 5,
-			months: 3,
-		});
-
-		expect(trend.map((p) => p.month)).toEqual([3, 4, 5]);
-		for (const point of trend) {
-			const single = await reportsService.utilization(ctxFor(ADMIN), {
-				year: point.year,
-				month: point.month,
-			});
-			expect(point).toMatchObject(rollUpUtilization(single));
-		}
-		// And the shapes really did differ, so the loop above compared something.
-		expect(trend.map((p) => p.utilizationPct)).toEqual([25, 75, 50]);
-	});
-
-	test("spans a year boundary without borrowing the wrong month's data", async () => {
-		await finalize({
-			projectId: alphaId,
-			year: 2025,
-			month: 12,
-			rows: [
-				{
-					userId: WORKER,
-					finalSeconds: 160 * H,
-					expectedAtFinalizeSeconds: 160 * H,
-				},
-			],
-		});
-		await finalize({
-			projectId: alphaId,
-			year: 2026,
-			month: 1,
-			rows: [
-				{
-					userId: WORKER,
-					finalSeconds: 0,
-					expectedAtFinalizeSeconds: 160 * H,
-				},
-			],
-		});
-
-		const trend = await reportsService.utilizationTrend(ctxFor(ADMIN), {
-			year: 2026,
-			month: 1,
-			months: 2,
-		});
-
-		expect(trend.map((p) => `${p.year}-${p.month}`)).toEqual([
-			"2025-12",
-			"2026-1",
-		]);
-		expect(trend[0]?.utilizationPct).toBe(100);
-		expect(trend[1]?.utilizationPct).toBe(0);
-	});
-
-	test("a month with nothing finalized is a real point, not a gap", async () => {
-		const trend = await reportsService.utilizationTrend(ctxFor(ADMIN), {
-			year: YEAR,
-			month: MONTH,
-			months: 3,
-		});
-		expect(trend).toHaveLength(3);
-		for (const point of trend) expect(point.finalSeconds).toBe(0);
-	});
-
-	test("variance trend lines up month for month too", async () => {
-		await finalize({
-			projectId: alphaId,
-			year: YEAR,
-			month: 4,
-			rows: [
-				{
-					userId: WORKER,
-					reportedAtFinalizeSeconds: 100 * H,
-					finalSeconds: 90 * H,
-				},
-			],
-		});
-
-		const trend = await reportsService.varianceTrend(ctxFor(ADMIN), {
-			year: YEAR,
-			month: MONTH,
-			months: 2,
-		});
-		expect(trend.map((p) => p.month)).toEqual([4, 5]);
-		expect(trend[0]?.rows[0]?.diffSeconds).toBe(-10 * H);
-		expect(trend[1]?.rows).toEqual([]);
-	});
-});
-
-// ── Absence ────────────────────────────────────────────────────────────────
 
 describe("absence report", () => {
 	test("groups by system key, so renaming the task does not empty a column", async () => {

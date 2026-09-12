@@ -47,7 +47,7 @@ export type ResolvedMemberType = {
 	type: MemberType;
 	/** Contractors have no Croatian monthly hour fund and therefore no Expected
 	 *  value — the "/" rows of the old sheet — unless one is set here, in which
-	 *  case pace and utilization treat them like a billable person. */
+	 *  case the pace check treats them like a billable person. */
 	expectedSecondsOverride: number | null;
 };
 
@@ -91,9 +91,8 @@ const DEFAULT_TYPE: ResolvedMemberType = {
 	expectedSecondsOverride: null,
 };
 
-/** People whose time we sell, i.e. who the compliance report, Slack reminders,
- *  "not on the invoice" and utilization apply to. Overhead is excluded from all
- *  of them; contractors from some. */
+/** People whose time we sell, i.e. who the compliance report and Slack
+ *  reminders apply to. Overhead is excluded from both; contractors from some. */
 export const isNaggable = (type: MemberType) => type !== "overhead";
 
 /** Why an admin of `ctx`'s org may not vouch for `userId`'s address, or null
@@ -316,7 +315,7 @@ export const membersService = {
 			// that predates the trigger: an org that backdated a type before it
 			// existed still holds overlapping rows, and without an ORDER BY the map
 			// build resolves to whichever row the plan happened to emit last — so
-			// Expected, utilization and the pace check answered differently for the
+			// Expected and the pace check answered differently for the
 			// same month on the same data. Newest-segment-wins is at least a rule.
 			.orderBy(asc(memberTypeHistory.effectiveFrom));
 
@@ -436,8 +435,8 @@ export const membersService = {
 	},
 
 	/** The people who have left. Every forward-looking surface — compliance, the
-	 *  Slack nudges behind it, utilization, "not on the invoice", the assignment
-	 *  picker — subtracts this set; nothing historical does. */
+	 *  Slack nudges behind it, the assignment picker — subtracts this set;
+	 *  nothing historical does. */
 	archivedUserIds: async (ctx: Ctx): Promise<Set<string>> => {
 		const rows = await db
 			.select({ userId: memberProfile.userId })
