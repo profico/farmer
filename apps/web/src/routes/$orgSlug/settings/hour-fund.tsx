@@ -1,14 +1,20 @@
+import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
+import {
+	returnLinkClass,
+	stepperClass,
+	TimeToolbar,
+} from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
@@ -144,7 +150,8 @@ function HourFundPage() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const search = Route.useSearch();
-	const year = search.year ?? new Date().getUTCFullYear();
+	const thisYear = new Date().getUTCFullYear();
+	const year = search.year ?? thisYear;
 	const { data: funds } = useSuspenseQuery(hourFundYearQuery(orgSlug, year));
 	const byMonth = new Map(funds.map((f) => [f.month, f.fundSeconds]));
 
@@ -180,6 +187,49 @@ function HourFundPage() {
 					</Button>
 				}
 			/>
+
+			{/* The same stepper the timesheet and the reports use, one year at a
+			    time. The year is a search param so a link to next year's fund can
+			    be shared, and the loader already prefetches whichever year it names. */}
+			<div className="mb-4">
+				<TimeToolbar
+					prev={
+						<Link
+							to="/$orgSlug/settings/hour-fund"
+							params={{ orgSlug }}
+							search={{ year: year - 1 }}
+							className={stepperClass}
+							aria-label="Previous year"
+						>
+							<ArrowLeftIcon weight="regular" className="size-4" />
+						</Link>
+					}
+					label={String(year)}
+					next={
+						<Link
+							to="/$orgSlug/settings/hour-fund"
+							params={{ orgSlug }}
+							search={{ year: year + 1 }}
+							className={stepperClass}
+							aria-label="Next year"
+						>
+							<ArrowRightIcon weight="regular" className="size-4" />
+						</Link>
+					}
+					returnLink={
+						year !== thisYear && (
+							<Link
+								to="/$orgSlug/settings/hour-fund"
+								params={{ orgSlug }}
+								search={{}}
+								className={returnLinkClass}
+							>
+								This year
+							</Link>
+						)
+					}
+				/>
+			</div>
 
 			<Table>
 				<TableHeader>
