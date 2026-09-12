@@ -4,8 +4,6 @@ import {
 	overtimeDetailInput,
 	timeReportDetailInput,
 	timeReportSummaryInput,
-	utilizationTrendInput,
-	varianceTrendInput,
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 
@@ -16,7 +14,7 @@ import { orgAdminMiddleware, orgMiddleware } from "./auth";
 //   * Project-scoped (Time, Budget burn) — everyone may call them; the service
 //     narrows the rows to the caller's Team Lead/PM projects, and a plain
 //     Member sees only their own entries. Hence `orgMiddleware`.
-//   * Org-wide (Overtime, Absence, Variance, Utilization) — these are
+//   * Org-wide (Overtime, Absence) — these are
 //     statements about the whole company, so they're Admin-only at the
 //     middleware AND asserted again in the service.
 
@@ -68,36 +66,4 @@ export const getAbsenceReport = createServerFn({ method: "GET" })
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
 		return reportsService.absence(context.ctx, data);
-	});
-
-export const getVarianceReport = createServerFn({ method: "GET" })
-	.middleware([orgAdminMiddleware])
-	.validator(monthReportInput)
-	.handler(async ({ data, context }) => {
-		const { reportsService } = await import("@farmer/core/services");
-		return reportsService.variance(context.ctx, data);
-	});
-
-export const getVarianceTrend = createServerFn({ method: "GET" })
-	.middleware([orgAdminMiddleware])
-	.validator(varianceTrendInput)
-	.handler(async ({ data, context }) => {
-		const { reportsService } = await import("@farmer/core/services");
-		return reportsService.varianceTrend(context.ctx, data);
-	});
-
-export const getUtilizationReport = createServerFn({ method: "GET" })
-	.middleware([orgAdminMiddleware])
-	.validator(monthReportInput)
-	.handler(async ({ data, context }) => {
-		const { reportsService } = await import("@farmer/core/services");
-		return reportsService.utilization(context.ctx, data);
-	});
-
-export const getUtilizationTrend = createServerFn({ method: "GET" })
-	.middleware([orgAdminMiddleware])
-	.validator(utilizationTrendInput)
-	.handler(async ({ data, context }) => {
-		const { reportsService } = await import("@farmer/core/services");
-		return reportsService.utilizationTrend(context.ctx, data);
 	});

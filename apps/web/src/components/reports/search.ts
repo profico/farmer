@@ -15,9 +15,6 @@ export const TABS = [
 	{ id: "overtime", label: "Overtime", adminOnly: false },
 	{ id: "compliance", label: "Tracking", adminOnly: true },
 	{ id: "absence", label: "Absence", adminOnly: true },
-	{ id: "variance", label: "Variance", adminOnly: true },
-	{ id: "utilization", label: "Utilization", adminOnly: true },
-	{ id: "not-on-invoice", label: "Not on invoice", adminOnly: true },
 ] as const;
 
 export type TabId = (typeof TABS)[number]["id"];
@@ -28,16 +25,7 @@ const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 export const searchSchema = z.object({
 	tab: z
-		.enum([
-			"time",
-			"budget",
-			"overtime",
-			"compliance",
-			"absence",
-			"variance",
-			"utilization",
-			"not-on-invoice",
-		])
+		.enum(["time", "budget", "overtime", "compliance", "absence"])
 		.optional(),
 	// The Time tab's own sub-grouping, mirroring Harvest's three tabs.
 	group: z.enum(["clients", "projects", "teammates"]).optional(),

@@ -3,8 +3,6 @@ import type {
 	MonthReportInput,
 	TimeReportDetailInput,
 	TimeReportSummaryInput,
-	UtilizationTrendInput,
-	VarianceTrendInput,
 } from "@farmer/core/schema";
 import { queryOptions } from "@tanstack/react-query";
 
@@ -15,10 +13,6 @@ import {
 	getOvertimeReport,
 	getTimeReportDetail,
 	getTimeReportSummary,
-	getUtilizationReport,
-	getUtilizationTrend,
-	getVarianceReport,
-	getVarianceTrend,
 } from "#/server/reports.ts";
 
 import { queryKeys } from "./keys.ts";
@@ -69,31 +63,4 @@ export const absenceReportQuery = (org: string, input: AbsenceReportInput) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).reports, "absence", input],
 		queryFn: () => getAbsenceReport({ data: input }),
-	});
-
-export const varianceReportQuery = (org: string, input: MonthReportInput) =>
-	queryOptions({
-		queryKey: [...queryKeys(org).reports, "variance", input],
-		queryFn: () => getVarianceReport({ data: input }),
-	});
-
-export const varianceTrendQuery = (org: string, input: VarianceTrendInput) =>
-	queryOptions({
-		queryKey: [...queryKeys(org).reports, "variance-trend", input],
-		queryFn: () => getVarianceTrend({ data: input }),
-	});
-
-export const utilizationReportQuery = (org: string, input: MonthReportInput) =>
-	queryOptions({
-		queryKey: [...queryKeys(org).reports, "utilization", input],
-		queryFn: () => getUtilizationReport({ data: input }),
-	});
-
-export const utilizationTrendQuery = (
-	org: string,
-	input: UtilizationTrendInput,
-) =>
-	queryOptions({
-		queryKey: [...queryKeys(org).reports, "utilization-trend", input],
-		queryFn: () => getUtilizationTrend({ data: input }),
 	});

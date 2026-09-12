@@ -1,6 +1,5 @@
-// `formatHoursLabel` is how every report tab, the CSV header and the PDF write
-// a duration, and the variance tab hands it negative figures directly — a Final
-// below Reported is the whole reason that report exists. Two shapes came out
+// `formatHoursLabel` is how every report tab and the CSV header write a
+// duration, and callers hand it negative figures directly. Two shapes came out
 // wrong: a negative split into two negative parts ("-2h -30m" for -1.5h), and a
 // remainder that rounded up to a full hour without carrying ("60m").
 

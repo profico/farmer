@@ -16,7 +16,7 @@
  *  Rounds to the minute FIRST and splits that into hours and minutes second.
  *  Splitting first rounded the remainder alone, so 3599s came out as "60m",
  *  and floored a negative figure away from zero before taking its remainder,
- *  so the variance tab wrote -5400s as "-2h -30m". The sign is written once,
+ *  so -5400s came out as "-2h -30m". The sign is written once,
  *  in front, and a figure that rounds to nothing is "0h" rather than "-0h". */
 export const formatHoursLabel = (totalSeconds: number): string => {
 	const totalMinutes = Math.round(Math.abs(totalSeconds) / 60);
