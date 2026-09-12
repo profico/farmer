@@ -123,8 +123,8 @@ export const requireOrgAdmin = async () => {
  * The `AccessError` class is a PARAMETER, not something this function imports.
  * A top-level function body in this module ships to the browser, so a deferred
  * `import("@farmer/core/services")` in here would become a real client chunk of
- * the services barrel and break the build on the native typst binding — the
- * same trap documented on `requireOrgAdmin` and `orgMiddleware`. The callers
+ * the services barrel — the same trap documented on `requireOrgAdmin` and
+ * `orgMiddleware`. The callers
  * below are `.server()` callbacks, which are stripped from the client bundle,
  * so they can import it and hand it in.
  */
@@ -171,10 +171,9 @@ export const sessionMiddleware = createMiddleware({ type: "function" }).server(
 // still typechecks, still runs, and breaks the client build: `.server()`
 // callbacks are stripped from the browser bundle, a top-level function body is
 // not, so the deferred import becomes a real client chunk of the whole services
-// barrel — which reaches `report-pdf.service` and its native typst binding, a
-// `.node` file rolldown cannot load at all. (The barrel's other client-side
-// leftovers are merely dead weight, and `scripts/prune-client-assets.ts` deletes
-// them; this one is a hard build failure, which is at least loud.)
+// barrel — `postgres` touches `Buffer` at module scope and crashes hydration
+// silently, and every other server-only module in it is dead weight that
+// `scripts/prune-client-assets.ts` then has to delete.
 export const orgMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const ctx = await requireOrgContext();

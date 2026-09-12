@@ -29,7 +29,6 @@ import { Route as OrgSlugProjectsIndexRouteImport } from './routes/$orgSlug/proj
 import { Route as ApiV1TimeEntriesRouteImport } from './routes/api/v1/time-entries'
 import { Route as ApiV1ProjectsRouteImport } from './routes/api/v1/projects'
 import { Route as ApiSlackCallbackRouteImport } from './routes/api/slack/callback'
-import { Route as ApiReportsPdfRouteImport } from './routes/api/reports/pdf'
 import { Route as ApiMcpOrgSlugRouteImport } from './routes/api/mcp/$orgSlug'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -150,11 +149,6 @@ const ApiV1ProjectsRoute = ApiV1ProjectsRouteImport.update({
 const ApiSlackCallbackRoute = ApiSlackCallbackRouteImport.update({
   id: '/api/slack/callback',
   path: '/api/slack/callback',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiReportsPdfRoute = ApiReportsPdfRouteImport.update({
-  id: '/api/reports/pdf',
-  path: '/api/reports/pdf',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMcpOrgSlugRoute = ApiMcpOrgSlugRouteImport.update({
@@ -287,7 +281,6 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
-  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
@@ -326,7 +319,6 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
-  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
@@ -368,7 +360,6 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
-  '/api/reports/pdf': typeof ApiReportsPdfRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
@@ -411,7 +402,6 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/mcp/$orgSlug'
-    | '/api/reports/pdf'
     | '/api/slack/callback'
     | '/api/v1/projects'
     | '/api/v1/time-entries'
@@ -450,7 +440,6 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/mcp/$orgSlug'
-    | '/api/reports/pdf'
     | '/api/slack/callback'
     | '/api/v1/projects'
     | '/api/v1/time-entries'
@@ -491,7 +480,6 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/github/setup'
     | '/api/mcp/$orgSlug'
-    | '/api/reports/pdf'
     | '/api/slack/callback'
     | '/api/v1/projects'
     | '/api/v1/time-entries'
@@ -514,7 +502,6 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
   ApiMcpOrgSlugRoute: typeof ApiMcpOrgSlugRoute
-  ApiReportsPdfRoute: typeof ApiReportsPdfRoute
   ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
   ApiV1ProjectsRoute: typeof ApiV1ProjectsRoute
   ApiV1TimeEntriesRoute: typeof ApiV1TimeEntriesRoute
@@ -660,13 +647,6 @@ declare module '@tanstack/react-router' {
       path: '/api/slack/callback'
       fullPath: '/api/slack/callback'
       preLoaderRoute: typeof ApiSlackCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/reports/pdf': {
-      id: '/api/reports/pdf'
-      path: '/api/reports/pdf'
-      fullPath: '/api/reports/pdf'
-      preLoaderRoute: typeof ApiReportsPdfRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/mcp/$orgSlug': {
@@ -877,7 +857,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
   ApiMcpOrgSlugRoute: ApiMcpOrgSlugRoute,
-  ApiReportsPdfRoute: ApiReportsPdfRoute,
   ApiSlackCallbackRoute: ApiSlackCallbackRoute,
   ApiV1ProjectsRoute: ApiV1ProjectsRoute,
   ApiV1TimeEntriesRoute: ApiV1TimeEntriesRoute,

@@ -5,8 +5,8 @@ import { useCallback, useRef, useState } from "react";
  *
  * Deliberately re-declared here rather than imported from
  * `@farmer/core/services`: that barrel must never appear in a client-reachable
- * module (CLAUDE.md — it reaches `report-pdf.service` and its native typst
- * binding, which fails the client build outright). A type-only import is erased
+ * module (CLAUDE.md — it reaches `postgres`, which crashes hydration silently).
+ * A type-only import is erased
  * at build time and would work, right up until somebody deletes the `type`
  * keyword while refactoring. Source of truth is `AssistantEvent` in
  * `packages/core/src/services/assistant.service.ts`; these two must be changed

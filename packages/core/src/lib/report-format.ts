@@ -7,9 +7,7 @@
 // existed as an inline `.toFixed(2)` with the reason in a comment beside it.
 //
 // This module holds no layout and no dependencies, which is the point: the
-// browser can import it, and so can the PDF pipeline, whose neighbouring
-// `report-pdf.ts` pulls in the native Typst compiler and therefore cannot be
-// imported from a route at all.
+// browser imports it directly, alongside the service layer.
 
 /** A duration as hours and minutes: 23400 -> "6h 30m", 3600 -> "1h", 0 -> "0h",
  *  -5400 -> "-1h 30m". Thousands are grouped, because an org-wide monthly total

@@ -11,7 +11,7 @@ import { admitAssistantTurn } from "#/server/assistant-rate-limit.ts";
 //
 // A server ROUTE rather than a `createServerFn`, because a server function
 // resolves to one value and the whole point here is that the answer arrives
-// token by token. Session-cookie authed like `api/reports/pdf`, not `api/v1`:
+// token by token. Session-cookie authed like the server functions, not `api/v1`:
 // this is the chat page's own transport, not a public endpoint.
 //
 // `resolveApiOrgContext` (server/api-auth.ts) rather than the middleware in
