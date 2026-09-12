@@ -11,7 +11,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -78,7 +78,7 @@ const searchSchema = z.object({
 	archived: z.literal("1").optional(),
 });
 
-const TASK_COLUMN_COUNT = 7;
+const TASK_COLUMN_COUNT = 6;
 
 // Absence tasks are the fifth group and are built in, so the dialogs offer the
 // four an admin can put an org task under.
@@ -108,7 +108,10 @@ function GroupField({
 			<SelectTrigger className="w-full">
 				<SelectValue />
 			</SelectTrigger>
-			<SelectContent>
+			{/* Opens below the field like a plain dropdown: aligning the chosen
+			    item with the field (the default) sends a four-item list upward
+			    over the Name field whenever the last item is chosen. */}
+			<SelectContent alignItemWithTrigger={false}>
 				{GROUP_ITEMS.map((g) => (
 					<SelectItem key={g.value} value={g.value}>
 						{g.label}
@@ -449,9 +452,6 @@ function TasksPage() {
 					</span>
 				</TableCell>
 				<TableCell className="text-muted-foreground">
-					{TASK_GROUP_LABELS[task.group]}
-				</TableCell>
-				<TableCell className="text-muted-foreground">
 					{task.isAbsence ? "Absence" : builtIn ? "Built-in" : "Org task"}
 				</TableCell>
 				{/* Absence tasks are never on a project, so a 0 there would read
@@ -549,7 +549,6 @@ function TasksPage() {
 				<TableHeader>
 					<TableRow>
 						<TableHead>Task</TableHead>
-						<TableHead>Group</TableHead>
 						<TableHead>Kind</TableHead>
 						<TableHead className="text-right">Projects</TableHead>
 						<TableHead className="text-right">Entries</TableHead>
@@ -565,7 +564,24 @@ function TasksPage() {
 								: "No tasks match your search."}
 						</NoMatchesRow>
 					)}
-					{activeTasks.map(renderTaskRow)}
+					{TASK_GROUPS.map((group) => {
+						const rows = activeTasks.filter((t) => t.group === group);
+						if (rows.length === 0) return null;
+						return (
+							<Fragment key={group}>
+								<TableRow className="hover:bg-transparent">
+									<TableCell
+										colSpan={TASK_COLUMN_COUNT}
+										className="bg-muted py-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+									>
+										{TASK_GROUP_LABELS[group]}
+										<span className="mono ml-2 text-faint">{rows.length}</span>
+									</TableCell>
+								</TableRow>
+								{rows.map(renderTaskRow)}
+							</Fragment>
+						);
+					})}
 					<ArchivedSection
 						count={archivedTasks.length}
 						colSpan={TASK_COLUMN_COUNT}
