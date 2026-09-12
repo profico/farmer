@@ -5,7 +5,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Suspense } from "react";
 
 import { AbsenceTab } from "#/components/reports/absence-tab.tsx";
-import { BudgetBurnTab } from "#/components/reports/budget-burn-tab.tsx";
 import { ComplianceTab } from "#/components/reports/compliance-tab.tsx";
 import { OvertimeTab } from "#/components/reports/overtime-tab.tsx";
 import { searchSchema, TABS, type TabId } from "#/components/reports/search.ts";
@@ -144,7 +143,6 @@ function ReportsPage() {
 							thisMonth={thisMonth}
 						/>
 					)}
-					{tab === "budget" && <BudgetBurnTab />}
 					{tab === "overtime" && (
 						<MonthFramed
 							orgSlug={organization.slug}

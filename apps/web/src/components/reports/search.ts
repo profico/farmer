@@ -5,13 +5,12 @@ import { z } from "zod";
 // It lives beside the tabs rather than in the route file because the tabs are
 // what read it — `Search` is a prop on half of them — and a component module
 // importing its own route's schema from the route would be a cycle.
-// Time, Budget burn and Overtime are project-scoped: Admin sees everything, a
+// Time and Overtime are project-scoped: Admin sees everything, a
 // PM or Team Lead sees their own projects (the service narrows the rows). The
 // rest are org-wide statements and Admin-only. A plain Member has no report at
 // all — they see strictly their own entries, on the timesheet.
 export const TABS = [
 	{ id: "time", label: "Time", adminOnly: false },
-	{ id: "budget", label: "Budget burn", adminOnly: false },
 	{ id: "overtime", label: "Overtime", adminOnly: false },
 	{ id: "compliance", label: "Tracking", adminOnly: true },
 	{ id: "absence", label: "Absence", adminOnly: true },
@@ -28,7 +27,7 @@ export const searchSchema = z.object({
 	// treated as no tab at all and lands on Time, rather than failing the whole
 	// route's search validation and showing the error page.
 	tab: z
-		.enum(["time", "budget", "overtime", "compliance", "absence"])
+		.enum(["time", "overtime", "compliance", "absence"])
 		.optional()
 		.catch(undefined),
 	// The Time tab's own sub-grouping, mirroring Harvest's three tabs.
