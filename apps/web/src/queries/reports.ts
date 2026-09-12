@@ -8,7 +8,6 @@ import { queryOptions } from "@tanstack/react-query";
 
 import {
 	getAbsenceReport,
-	getBudgetBurnReport,
 	getOvertimeDetail,
 	getOvertimeReport,
 	getTimeReportDetail,
@@ -36,12 +35,6 @@ export const timeReportDetailQuery = (
 	queryOptions({
 		queryKey: [...queryKeys(org).reports, "time-detail", input],
 		queryFn: () => getTimeReportDetail({ data: input }),
-	});
-
-export const budgetBurnReportQuery = (org: string) =>
-	queryOptions({
-		queryKey: [...queryKeys(org).reports, "budget-burn"],
-		queryFn: () => getBudgetBurnReport(),
 	});
 
 export const overtimeReportQuery = (org: string, input: MonthReportInput) =>

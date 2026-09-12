@@ -621,26 +621,6 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		},
 	},
 	{
-		name: "budget_burn",
-		kind: "read",
-		description:
-			"Fixed Scope projects with their hour budget, hours consumed and burn percentage. Answers how much of a budget is left.",
-		schema: z.object({}),
-		available: leadsSomething,
-		run: async (ctx) => {
-			const rows = await reportsService.budgetBurn(ctx);
-			return rows.map((row) => ({
-				projectId: row.projectId,
-				name: row.name,
-				client: row.clientName,
-				budgetHours: optionalHours(row.budgetSeconds),
-				consumedHours: row.consumedSeconds / 3600,
-				remainingHours: optionalHours(row.remainingSeconds),
-				burnPct: row.burnPct,
-			}));
-		},
-	},
-	{
 		name: "overtime_report",
 		kind: "read",
 		description:

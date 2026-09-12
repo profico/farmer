@@ -34,8 +34,6 @@
  *   LOG_REMINDERS_INTERVAL_MINUTES    - minutes between reminder sweeps (default: 30)
  *   SLACK_REMINDERS_ENABLED           - "false" to disable Slack reminders (default: on)
  *   SLACK_REMINDERS_INTERVAL_MINUTES  - minutes between Slack sweeps (default: 15)
- *   BUDGET_ALERTS_ENABLED             - "false" to disable budget burn alerts (default: on)
- *   BUDGET_ALERTS_INTERVAL_MINUTES    - minutes between budget sweeps (default: 60)
  *   SCHEDULER_STARTUP_DELAY_MS        - delay before the first tick (default: 15000)
  *
  * NOTE: assumes a single instance. If ever scaled to multiple replicas, each
@@ -44,7 +42,6 @@
  */
 
 import { runAutomationSyncOnce } from "./automation-sync";
-import { runBudgetAlertsOnce } from "./budget-alerts";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
 
@@ -151,18 +148,6 @@ function schedulerJobs(): SchedulerConfig[] {
 			run: async () => {
 				const s = await runSlackRemindersOnce();
 				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
-			},
-		},
-		{
-			name: "Budget alerts",
-			enabledEnv: "BUDGET_ALERTS_ENABLED",
-			intervalEnv: "BUDGET_ALERTS_INTERVAL_MINUTES",
-			// An hour budget moves at the speed of people logging time; hourly is far
-			// more resolution than a "you're at 80%" note needs.
-			defaultIntervalMinutes: 60,
-			run: async () => {
-				const s = await runBudgetAlertsOnce();
-				return `${String(s.alerts)} alerts to ${String(s.recipients)} recipients (${String(s.projects)} budgeted projects)`;
 			},
 		},
 	];

@@ -141,7 +141,7 @@ describe("the membership rule", () => {
 		});
 		const outcome = await notify(
 			{ organizationId: ORG, userId: OUTSIDER },
-			{ kind: "budget-alert", title: "Over budget", body: "detail" },
+			{ kind: "test", title: "Heads up", body: "detail" },
 		);
 		expect(outcome).toEqual({ push: false, slack: false });
 		expect(r.calls).toHaveLength(0);
@@ -214,27 +214,13 @@ describe("the preference gate", () => {
 		});
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
-			{ kind: "budget-alert", title: "Over budget", body: "detail" },
+			{ kind: "test", title: "Heads up", body: "detail" },
 		);
 		expect(wasDelivered(outcome)).toBe(true);
 	});
 });
 
 describe("the fan-out", () => {
-	test("a budget alert goes to both channels", async () => {
-		const r = recorder();
-		setNotifyAdaptersForTests({
-			push: r.adapter("push"),
-			slack: r.adapter("slack"),
-		});
-		const outcome = await notify(
-			{ organizationId: ORG, userId: MEMBER },
-			{ kind: "budget-alert", title: "Over budget", body: "detail" },
-		);
-		expect(outcome).toEqual({ push: true, slack: true });
-		expect(r.calls.map((c) => c.channel).sort()).toEqual(["push", "slack"]);
-	});
-
 	test("a log reminder is push only", async () => {
 		const r = recorder();
 		setNotifyAdaptersForTests({
@@ -259,7 +245,7 @@ describe("the fan-out", () => {
 		});
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
-			{ kind: "budget-alert", title: "Over budget", body: "detail" },
+			{ kind: "test", title: "Heads up", body: "detail" },
 		);
 		expect(outcome).toEqual({ push: false, slack: true });
 		expect(wasDelivered(outcome)).toBe(true);
@@ -273,7 +259,7 @@ describe("the fan-out", () => {
 		});
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
-			{ kind: "budget-alert", title: "Over budget", body: "detail" },
+			{ kind: "test", title: "Heads up", body: "detail" },
 		);
 		expect(outcome).toEqual({ push: false, slack: false });
 		expect(wasDelivered(outcome)).toBe(false);
@@ -286,9 +272,9 @@ describe("what the channels are handed", () => {
 		setNotifyAdaptersForTests({ slack: r.adapter("slack") });
 		await notify(
 			{ organizationId: ORG, userId: MEMBER },
-			{ kind: "budget-alert", title: "Over budget", body: "detail" },
+			{ kind: "test", title: "Heads up", body: "detail" },
 		);
-		expect(r.calls[0]?.text).toBe("Over budget|detail");
+		expect(r.calls[0]?.text).toBe("Heads up|detail");
 	});
 
 	// The Slack-only kinds are single sentences that never had a headline; the
@@ -312,9 +298,9 @@ describe("the Slack text", () => {
 	});
 
 	test("puts the title in bold on its own line and escapes both", () => {
-		expect(
-			slackText({ kind: "budget-alert", title: "A & B", body: "<b> over" }),
-		).toBe("*A &amp; B*\n&lt;b&gt; over");
+		expect(slackText({ kind: "test", title: "A & B", body: "<b> over" })).toBe(
+			"*A &amp; B*\n&lt;b&gt; over",
+		);
 	});
 
 	test("ends with the deep link on the app's own origin", () => {
@@ -323,11 +309,11 @@ describe("the Slack text", () => {
 			slackText({
 				kind: "compliance-nudge",
 				body: "x",
-				url: "/acme/reports?tab=budget",
-				linkLabel: "Open Budget burn",
+				url: "/acme/reports?tab=overtime",
+				linkLabel: "Open Overtime",
 			}),
 		).toBe(
-			"x\n<https://farmer.example/acme/reports?tab=budget|Open Budget burn>",
+			"x\n<https://farmer.example/acme/reports?tab=overtime|Open Overtime>",
 		);
 	});
 

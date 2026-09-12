@@ -151,7 +151,7 @@ function RemindersPage() {
 				<SettingList>
 					<SettingRow
 						title="People who have never signed in"
-						description="Off by default. Budget alerts are not reminders, and this does not change them."
+						description="Off by default."
 						action={
 							<Switch
 								aria-label="Remind people who have never signed in"

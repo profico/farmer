@@ -153,8 +153,8 @@ export const CLIENTS_ITEM: NavItem = {
 	icon: BriefcaseIcon,
 };
 
-// Not an admin row: a Team Lead or PM gets the Time, Overtime and Budget burn
-// reports scoped to their own projects (PRD 6.1/6.5/6.6). The services have
+// Not an admin row: a Team Lead or PM gets the Time and Overtime reports
+// scoped to their own projects (PRD 6.1/6.5). The services have
 // always scoped them — the page was simply unreachable from the nav, so the
 // only way in was to type the URL.
 export const REPORTS_ITEM: NavItem = {

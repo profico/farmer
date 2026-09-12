@@ -5,7 +5,7 @@
 //
 //   * the log reminder pushed, and was the only caller that checked a
 //     preference at all;
-//   * the budget alert wrote its own two-channel fan-out inline, Slack then
+//   * the (since removed) budget alert wrote its own two-channel fan-out inline, Slack then
 //     push, each with a bare `.catch(() => {})`, and consulted no preference;
 //   * the Slack reminders sent three different kinds of DM directly;
 //   * `notifyUser(userId, payload)` took a bare user id with no organization,
@@ -68,7 +68,6 @@ export type NotifyOutcome = Record<NotifyChannel, boolean>;
 
 export type NotifyKind =
 	| "log-reminder"
-	| "budget-alert"
 	| "compliance-nudge"
 	| "month-end"
 	| "admin-digest"
@@ -81,19 +80,13 @@ export type NotifyKind =
 //
 // `reminder` marks the four scheduled nags about a timesheet. They carry two
 // extra gates (see `deliveryBlocks`): nobody archived gets one, and nobody who
-// has never signed in unless the org's reminder settings say so. A budget alert
-// is not a reminder — it reports a fact about a project to the people who run
-// it — and keeps the membership rule alone.
+// has never signed in unless the org's reminder settings say so. A kind that is
+// not a reminder (the test notification) keeps the membership rule alone.
 const KINDS = {
 	"log-reminder": {
 		channels: ["push"],
 		preference: "logReminders",
 		reminder: true,
-	},
-	"budget-alert": {
-		channels: ["slack", "push"],
-		preference: null,
-		reminder: false,
 	},
 	"compliance-nudge": { channels: ["slack"], preference: null, reminder: true },
 	"month-end": { channels: ["slack"], preference: null, reminder: true },

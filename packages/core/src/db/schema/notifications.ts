@@ -1,6 +1,5 @@
 import {
 	boolean,
-	integer,
 	pgTable,
 	text,
 	timestamp,
@@ -9,7 +8,6 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
-import { project } from "./domain";
 
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });
@@ -70,25 +68,4 @@ export const notificationSettings = pgTable(
 	(t) => [
 		unique("notification_settings_org_user_unq").on(t.organizationId, t.userId),
 	],
-);
-
-// One row per (Fixed Scope project, threshold) that has already been announced,
-// so the 80%/100% budget alerts (PRD 6.6) fire once each rather than on every
-// tick of the scheduler. The row is deleted again if burn falls back under the
-// threshold — raising a budget mid-project should re-arm the alarm, not silence
-// it forever.
-export const projectBudgetAlert = pgTable(
-	"project_budget_alert",
-	{
-		id: uuid("id").primaryKey().defaultRandom(),
-		organizationId: org(),
-		projectId: uuid("project_id")
-			.notNull()
-			.references(() => project.id, { onDelete: "cascade" }),
-		/** 80 or 100. An integer rather than an enum so a third step is a one-line
-		 *  change if the product ever wants one. */
-		threshold: integer("threshold").notNull(),
-		notifiedAt: ts("notified_at").notNull().defaultNow(),
-	},
-	(t) => [unique("project_budget_alert_unq").on(t.projectId, t.threshold)],
 );

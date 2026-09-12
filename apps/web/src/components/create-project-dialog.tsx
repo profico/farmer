@@ -68,7 +68,7 @@ const PROJECT_TYPES: {
 	{
 		value: "fixed_scope",
 		label: "Fixed scope",
-		hint: "A bounded piece of work with an hour budget. The only type budget burn is computed for.",
+		hint: "A bounded piece of work with an hour budget.",
 	},
 	{ value: "hourly", label: "Hourly", hint: "Billed by the hour as it goes." },
 	{

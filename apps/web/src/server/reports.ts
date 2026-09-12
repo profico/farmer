@@ -11,7 +11,7 @@ import { orgAdminMiddleware, orgMiddleware } from "./auth";
 
 // Reports split cleanly in two:
 //
-//   * Project-scoped (Time, Budget burn) — everyone may call them; the service
+//   * Project-scoped (Time) — everyone may call it; the service
 //     narrows the rows to the caller's Team Lead/PM projects, and a plain
 //     Member sees only their own entries. Hence `orgMiddleware`.
 //   * Org-wide (Overtime, Absence) — these are
@@ -32,13 +32,6 @@ export const getTimeReportDetail = createServerFn({ method: "GET" })
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
 		return reportsService.timeDetail(context.ctx, data);
-	});
-
-export const getBudgetBurnReport = createServerFn({ method: "GET" })
-	.middleware([orgMiddleware])
-	.handler(async ({ context }) => {
-		const { reportsService } = await import("@farmer/core/services");
-		return reportsService.budgetBurn(context.ctx);
 	});
 
 // Overtime is project-scoped, not org-wide: Admin sees everyone, a PM or Team

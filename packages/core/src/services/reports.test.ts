@@ -322,28 +322,6 @@ describe("who may read a report", () => {
 	});
 });
 
-describe("money is PM-and-above, per project", () => {
-	test("a Team Lead gets hour figures but a null budget amount", async () => {
-		await logEntry({ userId: OUTSIDER, projectId: betaId, seconds: 50 * H });
-
-		// Beta is the fixed-scope project, and the burn report only covers those.
-		const asAdmin = await reportsService.budgetBurn(ctxFor(ADMIN));
-		const beta = asAdmin.find((r) => r.name === "Beta");
-		expect(beta?.budgetAmount).toBe("80000.00");
-		expect(beta?.consumedSeconds).toBe(50 * H);
-		expect(beta?.burnPct).toBe(25);
-	});
-
-	test("a project with no time logged still appears, at zero", async () => {
-		// The left join exists for exactly this row: a burn report has to be able
-		// to say 0%, not omit the project.
-		const rows = await reportsService.budgetBurn(ctxFor(ADMIN));
-		const beta = rows.find((r) => r.name === "Beta");
-		expect(beta?.consumedSeconds).toBe(0);
-		expect(beta?.burnPct).toBe(0);
-	});
-});
-
 // ── Time detail ────────────────────────────────────────────────────────────
 
 describe("time detail", () => {

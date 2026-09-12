@@ -121,7 +121,6 @@ const TOOL_LABELS = new Map(
 		suggest_day: "Assembled the day",
 		time_report_summary: "Ran a time report",
 		time_report_detail: "Read the report's entries",
-		budget_burn: "Checked budget burn",
 		overtime_report: "Ran the overtime report",
 		unfiled_summary: "Checked unfiled time",
 		absence_totals: "Checked absence taken",
