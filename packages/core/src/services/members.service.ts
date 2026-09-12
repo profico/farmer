@@ -291,8 +291,8 @@ export const membersService = {
 		ctx: Ctx,
 		asOf: string,
 	): Promise<Map<string, ResolvedMemberType>> => {
-		// `ctxDb`, not the ambient handle: `closeService.finalize` builds its
-		// sheet — and so reads this — from inside its transaction.
+		// `ctxDb`, not the ambient handle: callers may read this from inside a
+		// transaction.
 		const rows = await ctxDb(ctx)
 			.select({
 				userId: memberTypeHistory.userId,
@@ -332,7 +332,7 @@ export const membersService = {
 
 	/** Same, for a calendar month. Resolved as of the LAST day of the month: a
 	 *  person who converts mid-month is reported under the type they finished it
-	 *  under, which matches how the close sheet is read. */
+	 *  under, which matches how the month's reports are read. */
 	typesForMonth: async (ctx: Ctx, year: number, month: number) =>
 		membersService.typesAsOf(
 			ctx,

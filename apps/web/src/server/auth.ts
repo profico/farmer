@@ -43,14 +43,14 @@ export const getMyRole = createServerFn({ method: "GET" }).handler(async () => {
 // The caller's §4 capability picture, flattened into something that survives
 // JSON and can gate UI. Authorization itself is NOT enforced here — every
 // service re-resolves `Access` server-side and asserts. This exists so the app
-// can avoid rendering a Close tab that would only 403, not to be trusted.
+// can avoid rendering a nav item that would only 403, not to be trusted.
 export type MyAccess = {
 	isAdmin: boolean;
 	canCreateProjects: boolean;
 	/** projectId → the caller's role on it. Absent = unassigned. Admins get
 	 *  their real assignments here, not a synthesised PM on everything. */
 	projectRoles: Record<string, "member" | "team_lead" | "pm">;
-	/** Any PM assignment at all — the cheap "show the Close nav item" test. */
+	/** Any PM assignment at all. */
 	isPmSomewhere: boolean;
 	/** Any Team Lead or PM assignment — gates the project-level reports. */
 	isLeadSomewhere: boolean;

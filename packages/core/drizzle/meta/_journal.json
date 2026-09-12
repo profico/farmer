@@ -309,6 +309,13 @@
       "when": 1789249357281,
       "tag": "0043_cheerful_yellowjacket",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789250217862,
+      "tag": "0044_acoustic_vertigo",
+      "breakpoints": true
     }
   ]
 }

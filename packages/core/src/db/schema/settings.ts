@@ -207,8 +207,7 @@ export const orgSettings = pgTable(
 		// engine.
 		//
 		// It locks the ROBOTS, not the people: entries stay hand-editable in
-		// finalized months on purpose (see monthlyCloseRow's finalization
-		// snapshots), and this doesn't change that. The point is narrower — once a
+		// reconciled months on purpose, and this doesn't change that. The point is narrower — once a
 		// month has been reconciled and invoiced, nothing should quietly add hours
 		// to it while nobody is looking.
 		//

@@ -20,7 +20,6 @@ import { springExpressive } from "#/lib/motion.ts";
 import {
 	activeNavTo,
 	CLIENTS_ITEM,
-	CLOSE_ITEM,
 	mobileWorkItems,
 	type NavItem,
 	PEOPLE_ITEM,
@@ -65,10 +64,9 @@ export function MobileTabBar({
 	const primaryItems = items.slice(0, primaryCount);
 	const overflowWorkItems = items.slice(primaryCount);
 
-	// Same rationale as AppSidebar: not a suspense query. The close sheet is
-	// gated on a per-project PM role, which the org role can't tell us.
+	// Same rationale as AppSidebar: not a suspense query. Clients are gated on
+	// a per-project lead role, which the org role can't tell us.
 	const { data: access } = useQuery(myAccessQuery(orgSlug));
-	const canClose = isAdmin || !!access?.isPmSomewhere;
 	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
 
 	// The sheet carries the sidebar's three groups rather than one flat run of
@@ -80,7 +78,6 @@ export function MobileTabBar({
 			label: "Work",
 			items: [
 				...overflowWorkItems,
-				...(canClose ? [CLOSE_ITEM] : []),
 				// Reports are scoped for a PM/TL, not admin-only — same gate as
 				// Clients.
 				...(canManageClients ? [REPORTS_ITEM] : []),

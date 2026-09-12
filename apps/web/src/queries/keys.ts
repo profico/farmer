@@ -47,7 +47,6 @@ export const queryKeys = (org: string) =>
 		account: ["account", org],
 		assistant: ["assistant", org],
 		clients: ["clients", org],
-		close: ["close", org],
 		compliance: ["compliance", org],
 		dayAssembly: ["day-assembly", org],
 		filingRules: ["filing-rules", org],

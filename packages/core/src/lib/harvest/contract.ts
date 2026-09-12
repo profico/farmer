@@ -2,6 +2,8 @@
 // the Zod inputs in `schema/harvest-import.ts`. Types only, so this module is
 // safe in a Worker.
 
+// `close` is no longer written — history closes went with the month-end
+// close — but mapping rows from older runs may still carry it.
 export type HarvestMappingKind =
 	| "client"
 	| "project"
@@ -80,9 +82,5 @@ export interface HarvestImportDaysResult {
 }
 
 export interface HarvestFinishResult {
-	closesCreated: number;
-	closesUpdated: number;
-	/** Project-months skipped because a close made here already exists. */
-	closesSkipped: number;
 	automationLockedThrough: string;
 }

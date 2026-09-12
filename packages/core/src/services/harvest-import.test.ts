@@ -9,9 +9,7 @@
 //      exists already (plan section 3.3).
 //   4. A SECOND IMPORT OF THE SAME DATA ADDS NOTHING; a changed day is
 //      replaced, and a day somebody edited here is kept.
-//   5. THE HISTORY CLOSE is finalized with Harvest's billable hours as Final
-//      and the snapshots `finalize` would write.
-//   6. UNDO TAKES BACK ONLY WHAT THE RUN MADE, and refuses while something
+//   5. UNDO TAKES BACK ONLY WHAT THE RUN MADE, and refuses while something
 //      made here depends on it.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -20,7 +18,6 @@ import { and, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "../db";
 import { account, member, organization, user } from "../db/schema/auth";
-import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
 import {
 	client,
 	project,
@@ -35,7 +32,6 @@ import type { HarvestStartInput } from "../schema/harvest-import";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
 import { harvestImportService } from "./harvest-import.service";
-import { hourFundService } from "./hour-fund.service";
 import { membersService } from "./members.service";
 import { orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
@@ -641,75 +637,17 @@ describe("harvest import", () => {
 		});
 	});
 
-	test("finish locks automation and writes finalized history closes", async () => {
-		const result = await harvestImportService.finish(admin, {
-			runId,
-			historyThrough: "2025-03",
-			billable: [
-				{
-					projectSourceKey: K.gamma,
-					personSourceKey: K.ana,
-					month: "2025-03",
-					seconds: 7 * H,
-				},
-			],
-		});
-		// Gamma and Alpha; Ops is internal, and Paid Leave has no project.
-		expect(result.closesCreated).toBe(2);
+	test("finish locks automation", async () => {
+		const result = await harvestImportService.finish(admin, { runId });
 		expect(result.automationLockedThrough).toBe("2025-03-31");
 		const settings = await orgSettingsService.get(admin);
 		expect(settings.automationLockedThrough).toBe("2025-03-31");
-
-		const gamma = present(
-			await db.query.project.findFirst({ where: eq(project.name, "Gamma") }),
-			"gamma",
-		);
-		const close = present(
-			await db.query.monthlyClose.findFirst({
-				where: eq(monthlyClose.projectId, gamma.id),
-			}),
-			"gamma close",
-		);
-		expect(close.status).toBe("finalized");
-		expect([close.year, close.month]).toEqual([2025, 3]);
-
-		const ana = present(await userByEmail("ana@example.com"), "ana");
-		const rows = await db
-			.select()
-			.from(monthlyCloseRow)
-			.where(eq(monthlyCloseRow.closeId, close.id));
-		const anaRow = at(rows, 0);
-		expect(rows).toHaveLength(1);
-		expect(anaRow.userId).toBe(ana.id);
-		expect(anaRow.finalSeconds).toBe(7 * H);
-		expect(anaRow.reportedAtFinalizeSeconds).toBe(8 * H);
-		expect(anaRow.overtimeAtFinalizeSeconds).toBe(0);
-		const funds = await hourFundService.getMany(admin, [
-			{ year: 2025, month: 3 },
-		]);
-		expect(anaRow.expectedAtFinalizeSeconds).toBe(
-			present(funds.get("2025-03"), "March fund"),
-		);
-
-		// A billable figure Harvest does not have is zero, not Reported.
-		const alphaClose = present(
-			await db.query.monthlyClose.findFirst({
-				where: eq(monthlyClose.projectId, alphaId),
-			}),
-			"alpha close",
-		);
-		const alphaRows = await db
-			.select()
-			.from(monthlyCloseRow)
-			.where(eq(monthlyCloseRow.closeId, alphaClose.id));
-		expect(at(alphaRows, 0).finalSeconds).toBe(0);
 
 		const run = present(
 			await db.query.importRun.findFirst({ where: eq(importRun.id, runId) }),
 			"run",
 		);
 		expect(run.status).toBe("finished");
-		expect(run.closesCreated).toBe(2);
 	});
 
 	test("a finished run takes no more data", async () => {
@@ -745,55 +683,14 @@ describe("harvest import", () => {
 	describe("a second run", () => {
 		let secondRunId: string;
 
-		test("rewrites an untouched import close and skips an edited one", async () => {
-			const alphaClose = present(
-				await db.query.monthlyClose.findFirst({
-					where: eq(monthlyClose.projectId, alphaId),
-				}),
-				"alpha close",
-			);
-			await db
-				.update(monthlyCloseRow)
-				.set({
-					finalSeconds: 5 * H,
-					updatedAt: new Date(Date.now() + 60_000),
-				})
-				.where(eq(monthlyCloseRow.closeId, alphaClose.id));
-
+		test("starts and finishes with nothing new to import", async () => {
 			const { runId: id } = await harvestImportService.start(
 				admin,
 				emptyPlan(),
 			);
 			secondRunId = id;
-			const result = await harvestImportService.finish(admin, {
-				runId: id,
-				historyThrough: "2025-03",
-				billable: [
-					{
-						projectSourceKey: K.gamma,
-						personSourceKey: K.ana,
-						month: "2025-03",
-						seconds: 6 * H,
-					},
-					{
-						projectSourceKey: K.alpha,
-						personSourceKey: K.worker,
-						month: "2025-03",
-						seconds: 8 * H,
-					},
-				],
-			});
-			expect(result).toMatchObject({
-				closesCreated: 0,
-				closesUpdated: 1,
-				closesSkipped: 1,
-			});
-
-			const alphaRows = await db
-				.select()
-				.from(monthlyCloseRow)
-				.where(eq(monthlyCloseRow.closeId, alphaClose.id));
-			expect(at(alphaRows, 0).finalSeconds).toBe(5 * H);
+			const result = await harvestImportService.finish(admin, { runId: id });
+			expect(result.automationLockedThrough).toBe("2025-03-31");
 		});
 
 		test("only the latest run can be undone", async () => {
@@ -849,29 +746,9 @@ describe("harvest import", () => {
 			await db.delete(account).where(eq(account.id, "acc-hi-bo"));
 		});
 
-		test("refuses while a close it made was changed here, and names it", async () => {
-			// "A second run" gave Alpha's March close a PM's Final. Undo would
-			// delete that reconciliation with the close.
-			await expect(harvestImportService.undo(admin, { runId })).rejects.toThrow(
-				"The Alpha close for 2025-03 was changed here after the import",
-			);
-			const alphaClose = present(
-				await db.query.monthlyClose.findFirst({
-					where: eq(monthlyClose.projectId, alphaId),
-				}),
-				"alpha close",
-			);
-			// Back to the import's own stamp: nobody changed it since.
-			await db
-				.update(monthlyCloseRow)
-				.set({ updatedAt: alphaClose.updatedAt })
-				.where(eq(monthlyCloseRow.closeId, alphaClose.id));
-		});
-
 		test("takes back only what the run made", async () => {
 			const result = await harvestImportService.undo(admin, { runId });
 			expect(result).toMatchObject({
-				closesDeleted: 2,
 				projectsDeleted: 2,
 				clientsDeleted: 1,
 				tasksDeleted: 1,
@@ -990,167 +867,6 @@ describe("harvest import", () => {
 					where: and(eq(member.organizationId, ORG), eq(member.userId, WORKER)),
 				}),
 			).toBeDefined();
-		});
-	});
-
-	describe("a partial re-export", () => {
-		const DELTA = '["acme","delta",""]';
-		const TYPED = "cy typed";
-
-		const closeOf = async (projectId: string, month: number) => {
-			const close = present(
-				await db.query.monthlyClose.findFirst({
-					where: and(
-						eq(monthlyClose.projectId, projectId),
-						eq(monthlyClose.month, month),
-					),
-				}),
-				`close for month ${String(month)}`,
-			);
-			const rows = await db
-				.select()
-				.from(monthlyCloseRow)
-				.where(eq(monthlyCloseRow.closeId, close.id));
-			return { close, row: at(rows, 0) };
-		};
-
-		test("leaves the closes of months the file does not reach alone", async () => {
-			const first = await harvestImportService.start(admin, {
-				...emptyPlan(),
-				clients: [{ action: "match", sourceKey: K.acme, localId: acmeId }],
-				tasks: [{ action: "match", sourceKey: K.dev, localId: devTaskId }],
-				projects: [
-					{
-						action: "create",
-						sourceKey: DELTA,
-						clientSourceKey: K.acme,
-						name: "Delta",
-						code: null,
-						type: "product_team",
-						archived: false,
-						budgetSeconds: null,
-					},
-				],
-				people: [
-					{
-						action: "match",
-						sourceKey: K.worker,
-						localId: WORKER,
-						startDate: null,
-					},
-					{
-						action: "create",
-						sourceKey: TYPED,
-						name: "Cy Typed",
-						email: "cy@typed.example",
-						emailListed: false,
-						emailConfirmed: true,
-						role: "member",
-						type: "billable",
-						startDate: "2023-01-01",
-						archivedOn: null,
-						weeklyTargetSeconds: 40 * H,
-					},
-				],
-				projectTasks: [{ projectSourceKey: DELTA, taskSourceKey: K.dev }],
-			});
-
-			// An address the admin typed is vouched for, not guessed.
-			const cy = present(await userByEmail("cy@typed.example"), "cy");
-			expect(cy.emailVerified).toBe(true);
-
-			const days = [
-				{
-					personSourceKey: K.worker,
-					date: "2023-05-02",
-					rows: [row("d23", DELTA, K.dev, 8)],
-				},
-				{
-					personSourceKey: K.worker,
-					date: "2024-05-02",
-					rows: [row("d24", DELTA, K.dev, 8)],
-				},
-			];
-			await harvestImportService.importDays(admin, {
-				runId: first.runId,
-				days,
-			});
-			const created = await harvestImportService.finish(admin, {
-				runId: first.runId,
-				historyThrough: "2024-12",
-				billable: [
-					{
-						projectSourceKey: DELTA,
-						personSourceKey: K.worker,
-						month: "2023-05",
-						seconds: 5 * H,
-					},
-					{
-						projectSourceKey: DELTA,
-						personSourceKey: K.worker,
-						month: "2024-05",
-						seconds: 6 * H,
-					},
-				],
-			});
-			expect(created.closesCreated).toBe(2);
-
-			const delta = present(
-				await db.query.project.findFirst({ where: eq(project.name, "Delta") }),
-				"delta",
-			);
-			const before2023 = await closeOf(delta.id, 5);
-			expect(before2023.row.finalSeconds).toBe(5 * H);
-
-			// The second file holds 2024 only: the same day, a new figure.
-			const second = await harvestImportService.start(admin, emptyPlan());
-			const again = await harvestImportService.importDays(admin, {
-				runId: second.runId,
-				days: days.slice(1),
-			});
-			expect(again.unchangedDays).toBe(1);
-			const result = await harvestImportService.finish(admin, {
-				runId: second.runId,
-				historyThrough: "2024-12",
-				billable: [
-					{
-						projectSourceKey: DELTA,
-						personSourceKey: K.worker,
-						month: "2024-05",
-						seconds: 7 * H,
-					},
-				],
-			});
-			expect(result).toMatchObject({ closesCreated: 0, closesUpdated: 1 });
-
-			// 2023 is not in the file, so its Final is not zeroed from absence.
-			const closes = await db
-				.select({
-					year: monthlyClose.year,
-					id: monthlyClose.id,
-					updatedAt: monthlyClose.updatedAt,
-				})
-				.from(monthlyClose)
-				.where(eq(monthlyClose.projectId, delta.id));
-			const y2023 = present(
-				closes.find((c) => c.year === 2023),
-				"2023 close",
-			);
-			const y2024 = present(
-				closes.find((c) => c.year === 2024),
-				"2024 close",
-			);
-			expect(y2023.updatedAt).toEqual(before2023.close.updatedAt);
-			const [row2023] = await db
-				.select()
-				.from(monthlyCloseRow)
-				.where(eq(monthlyCloseRow.closeId, y2023.id));
-			expect(present(row2023, "2023 row").finalSeconds).toBe(5 * H);
-			const [row2024] = await db
-				.select()
-				.from(monthlyCloseRow)
-				.where(eq(monthlyCloseRow.closeId, y2024.id));
-			expect(present(row2024, "2024 row").finalSeconds).toBe(7 * H);
 		});
 	});
 });

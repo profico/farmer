@@ -11,7 +11,6 @@ import type {
 	TimeReportSummaryInput,
 } from "../schema/reports";
 import { type Access, AccessError } from "./access.service";
-import { effectiveFinal, expectedSecondsFor } from "./close.service";
 import { ctxAccess, requireAdmin } from "./context";
 import { WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerWhere } from "./ledger";
@@ -429,7 +428,3 @@ export const reportsService = {
 		};
 	},
 };
-
-// Re-exported so callers computing Expected outside the close sheet (Slack
-// nudges, the compliance report) share one definition of the formula.
-export { effectiveFinal, expectedSecondsFor };

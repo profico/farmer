@@ -7,9 +7,9 @@ import { unfiledWindowQuery } from "#/queries/time-entries.ts";
  * How many of the caller's own entries are still unattributed.
  *
  * Unfiled time is the one worklist that has to follow a person around: it is
- * real work that no project report can see, and it is the single hard stop on
- * finalizing a month. It used to live only on the timesheet, so the person
- * holding up the close could walk the whole app without meeting it.
+ * real work that no project report can see. It used to live only on the
+ * timesheet, so the person sitting on it could walk the whole app without
+ * meeting it.
  *
  * The same query the banner reads (`unfiledWindowQuery`), so the badge and the
  * banner are one fetch and cannot disagree. Not a suspense query, and never

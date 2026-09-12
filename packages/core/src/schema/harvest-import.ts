@@ -10,7 +10,6 @@ import { projectTypeEnum } from "./projects";
 // request cannot point an entry at a row of another organization.
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use yyyy-MM-dd");
-const monthKey = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use yyyy-MM");
 const sourceKey = z.string().min(1).max(500);
 const email = z.email().max(320);
 
@@ -203,23 +202,6 @@ export type HarvestRemoveDaysInput = z.infer<typeof harvestRemoveDaysInput>;
 
 export const harvestFinishInput = z.object({
 	runId: z.uuid(),
-	// The last month that gets a finalized history close. Null skips them.
-	historyThrough: monthKey.nullable(),
-	// Harvest's billable hours, rounded, for each project, person and month
-	// the file has rows for — zero when every one of them is non-billable.
-	// They become the closes' Final (plan section 6). So an entry here also
-	// says "this file covers that project-month", and a missing one says
-	// nothing: `finish` never turns an absent figure into Final = 0.
-	billable: z
-		.array(
-			z.object({
-				projectSourceKey: sourceKey,
-				personSourceKey: sourceKey,
-				month: monthKey,
-				seconds: z.number().int().min(0),
-			}),
-		)
-		.max(100_000),
 });
 export type HarvestFinishInput = z.infer<typeof harvestFinishInput>;
 

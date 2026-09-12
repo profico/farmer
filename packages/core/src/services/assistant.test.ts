@@ -706,8 +706,6 @@ describe("read tools", () => {
 		// ...and is offered nothing about anyone else's, the close, or the org.
 		for (const theirs of [
 			"time_report_summary",
-			"close_sheet",
-			"close_finalize",
 			"absence_report",
 			"create_task",
 			"assign_project_member",

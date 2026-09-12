@@ -13,7 +13,6 @@
 import { HARVEST_CHUNK_MAX_ROWS } from "../../schema/harvest-import";
 import type {
 	HarvestClientPlan,
-	HarvestFinishInput,
 	HarvestImportDay,
 	HarvestImportRow,
 	HarvestPersonPlan,
@@ -147,21 +146,11 @@ function looksLikeEmail(s: string): boolean {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function addDays(date: string, days: number): string {
 	const [y, m, d] = date.split("-").map(Number);
 	const t = Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1) + days * 86_400_000;
 	return new Date(t).toISOString().slice(0, 10);
-}
-
-function previousMonth(date: string): string {
-	const [y, m] = date.split("-").map(Number);
-	const year = y ?? 1970;
-	const month = m ?? 1;
-	return month === 1
-		? `${year - 1}-12`
-		: `${year}-${String(month - 1).padStart(2, "0")}`;
 }
 
 function projectSourceKeyOf(client: string, project: string, code: string) {
@@ -850,8 +839,6 @@ export type HarvestDuplicateDecision = string;
  *  except `overlap.days`, which is keyed by `ParsedTimeRow.dayKey`. */
 export interface HarvestChoices {
 	cutoffDate: string;
-	/** "yyyy-MM": the last month that gets a finalized history close. */
-	historyThrough: string | null;
 	clients: Record<string, HarvestClientChoice>;
 	projectTypes: Record<string, ProjectTypeValue>;
 	people: Record<string, HarvestPersonChoice>;
@@ -870,8 +857,7 @@ export interface HarvestChoices {
 	negativeRows: HarvestNegativeDecision | null;
 }
 
-/** The defaults: cutoff Monday 2026-09-14, history closes through the month
- *  before the cutoff month, no overrides, keep this app's entries on an
+/** The defaults: cutoff Monday 2026-09-14, no overrides, keep this app's entries on an
  *  overlap day, and no deletions. The two questions (duplicate names and
  *  negative rows) have no default: the admin answers them. The parsed files
  *  do not change a default today; the parameter keeps the call site stable
@@ -879,7 +865,6 @@ export interface HarvestChoices {
 export function defaultHarvestChoices(_parsed: ParsedHarvest): HarvestChoices {
 	return {
 		cutoffDate: HARVEST_DEFAULT_CUTOFF,
-		historyThrough: previousMonth(HARVEST_DEFAULT_CUTOFF),
 		clients: {},
 		projectTypes: {},
 		people: {},
@@ -1049,7 +1034,6 @@ export interface HarvestPlan {
 	days: HarvestImportDay[];
 	/** Empty unless `choices.confirmFullExport`. */
 	removedDays: HarvestDayRef[];
-	finish: Omit<HarvestFinishInput, "runId">;
 	/** Addresses in `start` that the snapshot call did not check: the admin
 	 *  typed them. Check them (`harvestEmailsInput`) and merge the answer into
 	 *  `snapshot.takenEmails` before the import. */
@@ -1106,16 +1090,6 @@ export function planHarvestImport(
 			kind: "choices",
 			sourceKey: "cutoffDate",
 			message: `The cutoff "${cutoff}" is not a yyyy-MM-dd date`,
-		});
-	}
-	if (
-		choices.historyThrough !== null &&
-		!MONTH_RE.test(choices.historyThrough)
-	) {
-		blocked.push({
-			kind: "choices",
-			sourceKey: "historyThrough",
-			message: `"${choices.historyThrough}" is not a yyyy-MM month`,
 		});
 	}
 	const negativeCount = parsed.rows.reduce(
@@ -1740,7 +1714,6 @@ export function planHarvestImport(
 	const activeFrom = DATE_RE.test(cutoff)
 		? addDays(cutoff, -HARVEST_ACTIVE_WINDOW_DAYS)
 		: cutoff;
-	const historyThrough = choices.historyThrough;
 
 	const attention: HarvestAttentionRow[] = [...parsed.invalidRows];
 	const overlapDays: HarvestOverlapDay[] = [];
@@ -1753,10 +1726,6 @@ export function planHarvestImport(
 		{ project: string; person: string; last: string }
 	>();
 	const taskPairs = new Map<string, { project: string; task: string }>();
-	const billable = new Map<
-		string,
-		{ project: string; person: string; month: string; seconds: number }
-	>();
 	const secondsPerYear = new Map<string, number>();
 	let roundingDelta = 0;
 	let skippedDuplicate = 0;
@@ -1923,25 +1892,6 @@ export function planHarvestImport(
 				if (row.billable) review.billableSeconds += seconds;
 				else review.nonBillableSeconds += seconds;
 			}
-			const month = row.date.slice(0, 7);
-			// Every row counts, a non-billable one as zero: the entry is how
-			// `finish` learns that this file covers the project-month. Without
-			// it, a person with only non-billable hours and a person the file
-			// does not have at all looked the same, and a partial re-export
-			// zeroed the Final of every month it did not reach.
-			if (historyThrough !== null && month <= historyThrough) {
-				const add = row.billable ? seconds : 0;
-				const bk = JSON.stringify([row.projectSourceKey, owner, month]);
-				const b = billable.get(bk);
-				if (b) b.seconds += add;
-				else
-					billable.set(bk, {
-						project: row.projectSourceKey,
-						person: owner,
-						month,
-						seconds: add,
-					});
-			}
 		}
 
 		const stored =
@@ -2078,22 +2028,6 @@ export function planHarvestImport(
 		},
 		days,
 		removedDays: choices.confirmFullExport ? removed : [],
-		finish: {
-			historyThrough,
-			billable: [...billable.values()]
-				.map((b) => ({
-					projectSourceKey: b.project,
-					personSourceKey: b.person,
-					month: b.month,
-					seconds: b.seconds,
-				}))
-				.sort((a, b) =>
-					compareStrings(
-						JSON.stringify([a.projectSourceKey, a.personSourceKey, a.month]),
-						JSON.stringify([b.projectSourceKey, b.personSourceKey, b.month]),
-					),
-				),
-		},
 		emailsToCheck: [...new Set(emailsToCheck)].sort(compareStrings),
 		review: {
 			files: parsed.files,

@@ -1,6 +1,5 @@
 import {
 	BriefcaseIcon,
-	CalendarCheckIcon,
 	CalendarDotsIcon,
 	ChartLineIcon,
 	ChatCircleDotsIcon,
@@ -28,7 +27,6 @@ export type OrgRoutePath =
 	| "/$orgSlug/projects"
 	| "/$orgSlug/time"
 	| "/$orgSlug/assistant"
-	| "/$orgSlug/close"
 	| "/$orgSlug/reports"
 	| "/$orgSlug/settings"
 	| "/$orgSlug/settings/clients"
@@ -70,7 +68,7 @@ export const ASSISTANT_ITEM: NavItem = {
  *
  * It was one group of eleven called "Workspace" plus four called "Admin", and
  * the first label had stopped meaning anything: it held the timesheet, the
- * project list, the close sheet, your own working hours AND your theme. Every
+ * project list, the reports, your own working hours AND your theme. Every
  * page in the app already knew the right taxonomy and printed it as its own
  * eyebrow — "Your account" over Preferences, "Your schedule" over My schedule,
  * "Workspace" over Organization — so the screens agreed on a grouping the menu
@@ -138,15 +136,8 @@ export const YOU_ITEMS: NavItem[] = [
 export const mobileWorkItems = (assistantAvailable: boolean): NavItem[] =>
 	assistantAvailable ? [...WORK_ITEMS, ASSISTANT_ITEM] : WORK_ITEMS;
 
-// Gated on a PROJECT role rather than the org role, so neither list fits: the
-// close sheet belongs to whoever runs a project, and clients are creatable by
-// PMs and Team Leads (PRD 3.3), not just Admins.
-export const CLOSE_ITEM: NavItem = {
-	label: "Monthly close",
-	to: "/$orgSlug/close",
-	icon: CalendarCheckIcon,
-};
-
+// Gated on a PROJECT role rather than the org role, so neither list fits:
+// clients are creatable by PMs and Team Leads (PRD 3.3), not just Admins.
 export const CLIENTS_ITEM: NavItem = {
 	label: "Clients",
 	to: "/$orgSlug/settings/clients",

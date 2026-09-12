@@ -66,7 +66,7 @@ describe("Access — the §4.1 capability matrix", () => {
 			canViewProjectEntries: false,
 			canManageProjectMembers: false,
 			canViewProjectMoney: false,
-			canCloseProject: false,
+			canManageProject: false,
 		},
 		{
 			label: "member",
@@ -75,7 +75,7 @@ describe("Access — the §4.1 capability matrix", () => {
 			canViewProjectEntries: false,
 			canManageProjectMembers: false,
 			canViewProjectMoney: false,
-			canCloseProject: false,
+			canManageProject: false,
 		},
 		{
 			label: "team_lead",
@@ -86,7 +86,7 @@ describe("Access — the §4.1 capability matrix", () => {
 			// The line the whole class exists to hold: visibility and team
 			// management, but never money and never close.
 			canViewProjectMoney: false,
-			canCloseProject: false,
+			canManageProject: false,
 		},
 		{
 			label: "pm",
@@ -95,7 +95,7 @@ describe("Access — the §4.1 capability matrix", () => {
 			canViewProjectEntries: true,
 			canManageProjectMembers: true,
 			canViewProjectMoney: true,
-			canCloseProject: true,
+			canManageProject: true,
 		},
 		{
 			label: "admin with no assignment",
@@ -104,7 +104,7 @@ describe("Access — the §4.1 capability matrix", () => {
 			canViewProjectEntries: true,
 			canManageProjectMembers: true,
 			canViewProjectMoney: true,
-			canCloseProject: true,
+			canManageProject: true,
 		},
 	] as const;
 
@@ -116,14 +116,14 @@ describe("Access — the §4.1 capability matrix", () => {
 				c.canManageProjectMembers,
 			);
 			expect(c.access.canViewProjectMoney(P)).toBe(c.canViewProjectMoney);
-			expect(c.access.canCloseProject(P)).toBe(c.canCloseProject);
+			expect(c.access.canManageProject(P)).toBe(c.canManageProject);
 		});
 	}
 
 	test("a role on one project grants nothing on another", () => {
 		const access = accessWith({ [P]: "pm" });
-		expect(access.canCloseProject(P)).toBe(true);
-		expect(access.canCloseProject(OTHER)).toBe(false);
+		expect(access.canManageProject(P)).toBe(true);
+		expect(access.canManageProject(OTHER)).toBe(false);
 		expect(access.canTrackOn(OTHER)).toBe(false);
 	});
 });
@@ -143,7 +143,7 @@ describe("Access.roleOn", () => {
 	test("does not synthesise a role for an admin", () => {
 		const admin = accessWith({}, true);
 		expect(admin.roleOn(P)).toBeNull();
-		expect(admin.canCloseProject(P)).toBe(true);
+		expect(admin.canManageProject(P)).toBe(true);
 	});
 
 	test("assignments() excludes the admin override", () => {
@@ -244,7 +244,9 @@ describe("Access assertions", () => {
 		expect(() => nobody.assertCanManageProjectMembers(P)).toThrow(
 			"cannot manage",
 		);
-		expect(() => nobody.assertCanCloseProject(P)).toThrow("cannot close");
+		expect(() => nobody.assertCanManageProject(P)).toThrow(
+			"cannot manage this project",
+		);
 		expect(() => nobody.assertCanCreateProjects()).toThrow("cannot create");
 	});
 
@@ -253,7 +255,7 @@ describe("Access assertions", () => {
 		expect(() => pm.assertCanTrackOn(P)).not.toThrow();
 		expect(() => pm.assertCanViewProjectEntries(P)).not.toThrow();
 		expect(() => pm.assertCanManageProjectMembers(P)).not.toThrow();
-		expect(() => pm.assertCanCloseProject(P)).not.toThrow();
+		expect(() => pm.assertCanManageProject(P)).not.toThrow();
 		expect(() => pm.assertCanCreateProjects()).not.toThrow();
 		// ...but is still not an admin.
 		expect(() => pm.assertAdmin()).toThrow(AccessError);
@@ -474,7 +476,7 @@ describe("accessService.resolve", () => {
 		});
 		expect(access.roleOn(projectAId)).toBe("pm");
 		expect(access.roleOn(projectBId)).toBeNull();
-		expect(access.canCloseProject(projectBId)).toBe(false);
+		expect(access.canManageProject(projectBId)).toBe(false);
 	});
 
 	// The cross-tenant case: u-plain is a PM in OTHER_ORG. Resolving them under

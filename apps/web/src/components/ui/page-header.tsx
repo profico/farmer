@@ -26,8 +26,8 @@ import { cn } from "#/lib/utils.ts";
  * Both carry the `.screen` entrance (styles.css), and neither lets a caller ask
  * for it. It used to be a class each screen passed in, which is the kind of
  * thing that is right thirteen times and then forgotten: every `Page` opted in
- * and no `PageFull` did, so Monthly close, the timesheet, Projects and the
- * assistant were the four screens in the app that arrived without the stagger
+ * and no `PageFull` did, so the timesheet, Projects and the assistant were
+ * among the screens in the app that arrived without the stagger
  * their neighbours arrive with. The entrance says "a page landed", so it
  * belongs to the thing that IS the page.
  */

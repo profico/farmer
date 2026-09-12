@@ -17,8 +17,8 @@ import type { Ctx } from "./types";
 // Guiding principles from the PRD that this file exists to enforce:
 //   * Members see strictly their own time entries and nothing at project level —
 //     not even the project's total hours.
-//   * Team Lead = visibility + team management. No money, no close.
-//   * PM = Team Lead + close + money context, and still nothing about any other
+//   * Team Lead = visibility + team management. No money, no project config.
+//   * PM = Team Lead + project config + money context, and still nothing about any other
 //     project.
 //   * Admin sees everything.
 
@@ -66,7 +66,7 @@ export class Access {
 	// The caller's role on a project, or null when unassigned. Admins are NOT
 	// synthesised into a role here — `isAdmin` is checked separately by each
 	// capability, so an admin's actual assignment (or lack of one) stays visible
-	// to callers that care, e.g. the close sheet's "your projects" filter.
+	// to callers that care, e.g. a "your projects" filter.
 	roleOn(projectId: string): ProjectRole | null {
 		return this.roleByProject.get(projectId) ?? null;
 	}
@@ -121,18 +121,15 @@ export class Access {
 		return this.atLeast(projectId, "pm");
 	}
 
-	/** Close sheet: adjust, override absence days, submit. PM and Admin. The
-	 *  Final column and finalize/re-open are Admin-only and are checked with
-	 *  `isAdmin` directly, not through here. */
-	canCloseProject(projectId: string): boolean {
+	/** Manage a project — rename it, change its type or budget, archive it.
+	 *  PM and Admin. */
+	canManageProject(projectId: string): boolean {
 		return this.atLeast(projectId, "pm");
 	}
 
 	/** Override/correct another person's Vacation or Sick Leave entries. PM of a
 	 *  project the person is on, or Admin. (PMs never edit other people's regular
-	 *  worked-time entries — corrections to worked hours live in the close
-	 *  sheet's Adjusted column, which is what preserves the clean line between
-	 *  "what people said they worked" and "what we billed".) */
+	 *  worked-time entries.) */
 	canOverrideAbsenceFor(projectIds: string[]): boolean {
 		if (this.isAdmin) return true;
 		return projectIds.some((id) => this.atLeast(id, "pm"));
@@ -171,9 +168,9 @@ export class Access {
 		}
 	}
 
-	assertCanCloseProject(projectId: string): void {
-		if (!this.canCloseProject(projectId)) {
-			throw new AccessError("You cannot close this project");
+	assertCanManageProject(projectId: string): void {
+		if (!this.canManageProject(projectId)) {
+			throw new AccessError("You cannot manage this project");
 		}
 	}
 

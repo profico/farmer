@@ -5,7 +5,6 @@ import postgres from "postgres";
 
 import * as assistantSchema from "./schema/assistant";
 import * as authSchema from "./schema/auth";
-import * as closeSchema from "./schema/close";
 import * as domainSchema from "./schema/domain";
 import * as githubSchema from "./schema/github";
 import * as importSchema from "./schema/import";
@@ -20,7 +19,6 @@ export const schema = {
 	...domainSchema,
 	...peopleSchema,
 	...scheduleSchema,
-	...closeSchema,
 	...githubSchema,
 	...settingsSchema,
 	...notificationsSchema,

@@ -41,7 +41,7 @@ const ROLES: { value: ProjectRoleValue; label: string; hint: string }[] = [
 	{
 		value: "pm",
 		label: "PM",
-		hint: "Team lead, plus the monthly close and this project's money.",
+		hint: "Team lead, plus this project's settings and money.",
 	},
 ];
 

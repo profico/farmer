@@ -20,7 +20,6 @@ import { Route as AcceptInviteInvitationIdRouteImport } from './routes/accept-in
 import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known/oauth-protected-resource'
 import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known/oauth-authorization-server'
 import { Route as OrgSlugReportsRouteImport } from './routes/$orgSlug/reports'
-import { Route as OrgSlugCloseRouteImport } from './routes/$orgSlug/close'
 import { Route as OrgSlugAssistantRouteImport } from './routes/$orgSlug/assistant'
 import { Route as OrgSlugTimeRouteRouteImport } from './routes/$orgSlug/time/route'
 import { Route as OrgSlugTimeIndexRouteImport } from './routes/$orgSlug/time/index'
@@ -104,11 +103,6 @@ const DotwellKnownOauthAuthorizationServerRoute =
 const OrgSlugReportsRoute = OrgSlugReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
-  getParentRoute: () => OrgSlugRouteRoute,
-} as any)
-const OrgSlugCloseRoute = OrgSlugCloseRouteImport.update({
-  id: '/close',
-  path: '/close',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
 const OrgSlugAssistantRoute = OrgSlugAssistantRouteImport.update({
@@ -255,7 +249,6 @@ export interface FileRoutesByFullPath {
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
-  '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
@@ -293,7 +286,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
-  '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
@@ -334,7 +326,6 @@ export interface FileRoutesById {
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
-  '/$orgSlug/close': typeof OrgSlugCloseRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
@@ -376,7 +367,6 @@ export interface FileRouteTypes {
     | '/no-access'
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
-    | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
@@ -414,7 +404,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/no-access'
     | '/$orgSlug/assistant'
-    | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
@@ -454,7 +443,6 @@ export interface FileRouteTypes {
     | '/no-access'
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
-    | '/$orgSlug/close'
     | '/$orgSlug/reports'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
@@ -584,13 +572,6 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/$orgSlug/reports'
       preLoaderRoute: typeof OrgSlugReportsRouteImport
-      parentRoute: typeof OrgSlugRouteRoute
-    }
-    '/$orgSlug/close': {
-      id: '/$orgSlug/close'
-      path: '/close'
-      fullPath: '/$orgSlug/close'
-      preLoaderRoute: typeof OrgSlugCloseRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/assistant': {
@@ -796,7 +777,6 @@ const OrgSlugTimeRouteRouteWithChildren =
 interface OrgSlugRouteRouteChildren {
   OrgSlugTimeRouteRoute: typeof OrgSlugTimeRouteRouteWithChildren
   OrgSlugAssistantRoute: typeof OrgSlugAssistantRoute
-  OrgSlugCloseRoute: typeof OrgSlugCloseRoute
   OrgSlugReportsRoute: typeof OrgSlugReportsRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
   OrgSlugSettingsClientsRoute: typeof OrgSlugSettingsClientsRoute
@@ -818,7 +798,6 @@ interface OrgSlugRouteRouteChildren {
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugTimeRouteRoute: OrgSlugTimeRouteRouteWithChildren,
   OrgSlugAssistantRoute: OrgSlugAssistantRoute,
-  OrgSlugCloseRoute: OrgSlugCloseRoute,
   OrgSlugReportsRoute: OrgSlugReportsRoute,
   OrgSlugIndexRoute: OrgSlugIndexRoute,
   OrgSlugSettingsClientsRoute: OrgSlugSettingsClientsRoute,

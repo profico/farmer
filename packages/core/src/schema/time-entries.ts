@@ -187,7 +187,7 @@ export const copyWeekEntriesInput = z.object({
 export type CopyWeekEntriesInput = z.infer<typeof copyWeekEntriesInput>;
 
 // PMs may correct the Vacation/Sick entries of people on their projects, and
-// only those. Worked-time corrections live in the close sheet's Adjusted column.
+// only those. Worked-time corrections are never made on somebody's behalf.
 export const overrideAbsenceEntryInput = z.object({
 	timeEntryId: z.uuid(),
 	durationSeconds: duration,
@@ -207,7 +207,7 @@ export type OverrideAbsenceEntryInput = z.infer<
 // schedule (someone who does not work Wednesdays takes no Wednesday off) and the
 // org's holiday calendar. A client that guessed at either would book vacation on
 // days nobody was going to work anyway, which quietly inflates every absence
-// figure the close sheet subtracts from Expected.
+// figure subtracted from Expected.
 export const logAbsenceRangeInput = z
 	.object({
 		taskId: z.uuid(),

@@ -35,8 +35,8 @@ export const listDirectory = createServerFn({ method: "GET" })
 		return membersService.directory(context.ctx);
 	});
 
-// Person types resolved as of a given month, which is what every report and the
-// close sheet read — a type change is effective-dated, so "what is Ana" is only
+// Person types resolved as of a given month, which is what every report reads
+// — a type change is effective-dated, so "what is Ana" is only
 // answerable relative to a month.
 export const listMemberTypesForMonth = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])

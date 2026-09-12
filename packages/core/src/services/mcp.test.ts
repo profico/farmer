@@ -57,7 +57,7 @@ describe("mcpToolDefinitions", () => {
 	// The caller's own scoping, unchanged from the assistant's. Not the
 	// authorization — the service behind each tool re-resolves Access and
 	// asserts — but a stored connection outlives the role that made it, so a
-	// list that ignored `available` would offer an ex-admin the close sheet.
+	// list that ignored `available` would offer an ex-admin the admin reports.
 	test("scopes the list to the caller", () => {
 		const plain = mcpToolDefinitions(PLAIN).map((tool) => tool.name);
 		const admin = mcpToolDefinitions(ADMIN).map((tool) => tool.name);
@@ -68,8 +68,7 @@ describe("mcpToolDefinitions", () => {
 		// One anchor from each predicate, so a tool losing its `available` shows
 		// up here rather than only in the count above.
 		expect(plain).toContain("list_projects");
-		expect(plain).not.toContain("close_finalize"); // adminOnly
-		expect(plain).not.toContain("close_reopen"); // pmSomewhere
+		expect(plain).not.toContain("absence_report"); // adminOnly
 		expect(plain).not.toContain("list_project_members"); // leadsSomething
 	});
 

@@ -130,9 +130,7 @@ export const logAbsenceRange = createServerFn({ method: "POST" })
 
 // ── PM absence corrections (PRD 4.1) ────────────────────────────────────────
 // A PM may fix the Vacation/Sick entries of people on their projects, and only
-// those. Worked-time corrections deliberately do NOT live here — they belong in
-// the close sheet's Adjusted column, which is what keeps "what people said they
-// worked" separate from "what we billed".
+// those. Worked-time corrections deliberately do NOT live here.
 
 export const overrideAbsenceEntry = createServerFn({ method: "POST" })
 	.middleware([orgMiddleware])

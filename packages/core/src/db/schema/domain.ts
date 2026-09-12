@@ -20,8 +20,7 @@ import { importRun } from "./import";
 export const projectStatus = pgEnum("project_status", ["active", "archived"]);
 
 // Maps 1:1 to how the company invoices (PRD 3.3). Only `product_team` activates
-// Expected-hours logic on the monthly close sheet; every other type gets the
-// lean sheet. `internal` is the "never billed" type — it is also the ONLY thing
+// Expected-hours logic; every other type has none. `internal` is the "never billed" type — it is also the ONLY thing
 // that makes an hour non-billable, since no per-entry billable flag exists.
 export const projectType = pgEnum("project_type", [
 	"product_team",
@@ -148,7 +147,7 @@ export const task = pgTable(
 		systemKey: taskSystemKey("system_key"),
 		// Vacation, Sick Leave and Paid Leave. Absence tasks are special-cased everywhere: they
 		// carry no project, are not cherry-pickable onto projects, cannot be
-		// archived, and feed the absence-day count on close sheets and report 6.3.
+		// archived, and feed the absence-day count behind Expected and report 6.3.
 		isAbsence: boolean("is_absence").notNull().default(false),
 		archivedAt: ts("archived_at"),
 		...stamps,
@@ -213,8 +212,7 @@ export const projectTask = pgTable(
 
 // The join between Person and Project (PRD 3.4). Three things hang off it:
 // tracking scope (you can only log time on projects you're assigned to), the
-// per-project role, and the rows of the project's monthly close sheet.
-// No date ranges in v1 — a mid-month joiner is handled by the PM at close.
+// per-project role. No date ranges in v1.
 export const projectMember = pgTable(
 	"project_member",
 	{
@@ -302,7 +300,7 @@ export const recurringBlockRuleSkip = pgTable(
 
 // Duration-only by design (PRD 3.6): a date and an amount of time, no clock.
 // There is no timer, no start/stop, and no per-entry billable flag — billability
-// is derived from `project.type != 'internal'` and the close sheet's Final value.
+// is derived from `project.type != 'internal'`.
 export const timeEntry = pgTable(
 	"time_entry",
 	{

@@ -30,7 +30,7 @@ import {
  * make every project row click a navigation with a tab in it.
  */
 export type ProjectCapabilities = {
-	/** Rename, recolour, archive — `assertCanCloseProject`, so PM and up. */
+	/** Rename, recolour, archive — `assertCanManageProject`, so PM and up. */
 	canEdit: boolean;
 	/** The project's task subset — Team Lead and up. */
 	canManageTasks: boolean;

@@ -501,7 +501,7 @@ export const recurringBlockRulesService = {
 		// read path rewrote fill blocks for whatever range you happened to open.
 		// That is now bounded to the automation window, and reports read the ledger
 		// directly rather than through `listRange` — so a day nobody reopened
-		// simply stayed over-allocated on the close sheet.
+		// simply stayed over-allocated.
 		//
 		// Best-effort and outside the insert: failing to resize a fill block must
 		// not cost the person the blocks that were just materialized.

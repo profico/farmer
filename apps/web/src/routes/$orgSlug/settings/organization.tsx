@@ -305,7 +305,7 @@ function CompliancePolicySection() {
 // is how you say "that one's done."
 //
 // It locks the automations, not the people. Entries stay hand-editable in
-// finalized months on purpose (close decision 2) and this doesn't change that —
+// reconciled months on purpose and this doesn't change that —
 // hence the copy below, which has to be specific or it reads like a freeze on
 // everything.
 function AutomationLockSection() {
