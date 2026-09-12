@@ -51,6 +51,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { matchesSearch } from "#/lib/search.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import {
 	membersQuery,
 	pendingInvitationsQuery,
@@ -128,6 +129,12 @@ function MembersSettingsPage() {
 			queryClient.invalidateQueries({
 				queryKey: pendingInvitationsQuery(orgSlug).queryKey,
 			}),
+			// A person's type decides who Tracking and the reminders cover, so a
+			// change here would otherwise show on Reports only after a reload.
+			queryClient.invalidateQueries({
+				queryKey: queryKeys(orgSlug).compliance,
+			}),
+			queryClient.invalidateQueries({ queryKey: queryKeys(orgSlug).reports }),
 		]);
 
 	const roleMutation = useMutation({
