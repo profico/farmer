@@ -234,8 +234,11 @@ function HourFundPage() {
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Month</TableHead>
-						<TableHead>Hours</TableHead>
+						{/* Fixed widths: the note column's text differs by year ("21 working
+						    days" vs "No Expected hours can be computed"), and letting it size
+						    the table made the Hours column jump between years. */}
+						<TableHead className="w-40">Month</TableHead>
+						<TableHead className="w-36">Hours</TableHead>
 						<TableHead />
 					</TableRow>
 				</TableHeader>
