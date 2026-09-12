@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
+import { STANDARD_TASKS } from "../lib/task-taxonomy";
 import { db } from "./index";
 import { task } from "./schema/domain";
 
@@ -20,41 +21,52 @@ const SITE_TASKS = [
 	{
 		name: "Vacation",
 		color: "green",
+		group: "time_off" as const,
 		isAbsence: true,
 		systemKey: "vacation",
 	},
 	{
 		name: "Sick Leave",
 		color: "red",
+		group: "time_off" as const,
 		isAbsence: true,
 		systemKey: "sick",
 	},
 	{
 		name: "Paid Leave",
 		color: "teal",
+		group: "time_off" as const,
 		isAbsence: true,
 		systemKey: "paid_leave",
 	},
-	{ name: "Meeting", color: "purple", isAbsence: false, systemKey: "meeting" },
-	{ name: "Break", color: "orange", isAbsence: false, systemKey: "break" },
+	{
+		name: "Meeting",
+		color: "purple",
+		group: "general" as const,
+		isAbsence: false,
+		systemKey: "meeting",
+	},
+	{
+		name: "Break",
+		color: "orange",
+		group: "general" as const,
+		isAbsence: false,
+		systemKey: "break",
+	},
 ] as const;
 
-// Starter taxonomy for a new org. Deliberately small and generic — the point of
-// a strictly global task list is a shared vocabulary that keeps cross-project
-// reporting comparable, so orgs are expected to curate this, not extend it
-// per project (per-project tasks do not exist).
-//
-// Unlike the site built-ins above these are all renameable, including
-// "Development" — the day assembler resolves it by `systemKey`, so calling it
-// "Engineering" changes the label and nothing else.
-export const DEFAULT_ORG_TASKS = [
-	{ name: "Development", color: "blue", systemKey: "development" },
-	{ name: "Design", color: "violet", systemKey: null },
-	{ name: "Code review", color: "cyan", systemKey: null },
-	{ name: "QA & testing", color: "amber", systemKey: null },
-	{ name: "Project management", color: "slate", systemKey: null },
-	{ name: "Support & maintenance", color: "teal", systemKey: null },
-] as const;
+// Starter taxonomy for a new org: the standard list in `lib/task-taxonomy.ts`,
+// which is also what the Harvest import folds its task names into. Orgs are
+// expected to curate this, not extend it per project (per-project tasks do
+// not exist). All renameable, including "Development" — the day assembler
+// resolves it by `systemKey`, so calling it "Engineering" changes the label
+// and nothing else.
+export const DEFAULT_ORG_TASKS = STANDARD_TASKS.map((t) => ({
+	name: t.name,
+	color: t.color,
+	group: t.group,
+	systemKey: "systemKey" in t ? t.systemKey : null,
+}));
 
 /**
  * Ensure the site-wide absence tasks exist. Idempotent (onConflictDoNothing) and
@@ -70,6 +82,7 @@ export async function ensureSiteTasks() {
 				scope: "site" as const,
 				name: t.name,
 				color: t.color,
+				group: t.group,
 				isAbsence: t.isAbsence,
 				systemKey: t.systemKey,
 			})),
@@ -112,6 +125,7 @@ export async function ensureOrgTasks(organizationId: string) {
 				organizationId,
 				name: t.name,
 				color: t.color,
+				group: t.group,
 				systemKey: t.systemKey,
 			})),
 		)

@@ -7,6 +7,7 @@
 // `~/Downloads/harvest/*.csv`, 2026-09-11) to be mutually exclusive: each
 // name below appears in exactly one file's header, even though the files
 // share several column names (`Client`, `Project`, `First Name` ...).
+import { canonicalTaskName } from "../task-taxonomy";
 import { parseHarvestNumber } from "./number";
 
 export type HarvestFileKind =
@@ -154,7 +155,9 @@ export function toTimeReportRow(
 		client: col(record, "Client"),
 		project: col(record, "Project"),
 		projectCode: col(record, "Project Code"),
-		task: col(record, "Task"),
+		// Harvest's 50 task names fold into the taxonomy's 21 at the door, so the
+		// plan matches, creates and groups the task the org actually uses.
+		task: canonicalTaskName(col(record, "Task")),
 		notes: col(record, "Notes"),
 		hoursRaw,
 		hours: parseHarvestNumber(hoursRaw),
@@ -263,7 +266,7 @@ export interface TaskRow {
 
 export function toTaskRow(record: ReadonlyMap<string, string>): TaskRow {
 	return {
-		name: col(record, "Task name"),
+		name: canonicalTaskName(col(record, "Task name")),
 		billableRate: numCol(record, "Billable rate"),
 		billable: parseYesNo(col(record, "Billable")),
 		active: parseYesNo(col(record, "Active?")),

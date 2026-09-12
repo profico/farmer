@@ -127,6 +127,16 @@ export const project = pgTable(
 	],
 );
 
+// The groups the Tasks page and the task picker show the list under. The list
+// itself and the group of each standard task live in `lib/task-taxonomy.ts`.
+export const taskGroup = pgEnum("task_group", [
+	"engineering",
+	"product",
+	"learning",
+	"general",
+	"time_off",
+]);
+
 // The global task taxonomy (PRD 3.5). One list per org (plus site-wide built-ins),
 // managed by admins in Settings. Every time entry requires one, which is enforced
 // by `timeEntry.taskId` being NOT NULL rather than by application code.
@@ -139,6 +149,9 @@ export const task = pgTable(
 			onDelete: "cascade",
 		}),
 		name: text("name").notNull(),
+		// Which of the four picker groups the task sits in; absence tasks are the
+		// fifth, time_off. Set by the seeders and the admin, read by the picker.
+		group: taskGroup("group").notNull().default("general"),
 		color: text("color"),
 		description: text("description"),
 		// Null for ordinary admin-created tasks. Set on the ones an engine needs to

@@ -1,3 +1,8 @@
+import {
+	TASK_GROUP_LABELS,
+	TASK_GROUPS,
+	type TaskGroup,
+} from "@farmer/core/lib/task-taxonomy";
 import { createTaskInput } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -38,6 +43,13 @@ import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { RowActions } from "#/components/ui/row-actions.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "#/components/ui/select.tsx";
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -66,7 +78,46 @@ const searchSchema = z.object({
 	archived: z.literal("1").optional(),
 });
 
-const TASK_COLUMN_COUNT = 6;
+const TASK_COLUMN_COUNT = 7;
+
+// Absence tasks are the fifth group and are built in, so the dialogs offer the
+// four an admin can put an org task under.
+const GROUP_ITEMS = TASK_GROUPS.filter((g) => g !== "time_off").map(
+	(value) => ({
+		value,
+		label: TASK_GROUP_LABELS[value],
+	}),
+);
+
+function GroupField({
+	value,
+	onChange,
+}: {
+	value: TaskGroup;
+	onChange: (next: TaskGroup) => void;
+}) {
+	return (
+		<Select
+			value={value}
+			onValueChange={(next) => {
+				const picked = GROUP_ITEMS.find((g) => g.value === next);
+				if (picked) onChange(picked.value);
+			}}
+			items={GROUP_ITEMS}
+		>
+			<SelectTrigger className="w-full">
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				{GROUP_ITEMS.map((g) => (
+					<SelectItem key={g.value} value={g.value}>
+						{g.label}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	);
+}
 
 export const Route = createFileRoute("/$orgSlug/settings/tasks")({
 	validateSearch: searchSchema,
@@ -93,7 +144,12 @@ function CreateTaskDialog() {
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof createTaskInput>>({
 		resolver: zodResolver(createTaskInput),
-		defaultValues: { name: "", color: DEFAULT_COLOR, description: "" },
+		defaultValues: {
+			name: "",
+			group: "general",
+			color: DEFAULT_COLOR,
+			description: "",
+		},
 	});
 
 	const mutation = useMutation({
@@ -128,6 +184,22 @@ function CreateTaskDialog() {
 									<FormLabel required>Name</FormLabel>
 									<FormControl>
 										<Input autoFocus {...field} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name="group"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel required>Group</FormLabel>
+									<FormControl>
+										<GroupField
+											value={field.value ?? "general"}
+											onChange={field.onChange}
+										/>
 									</FormControl>
 									<FormMessage />
 								</FormItem>
@@ -177,6 +249,7 @@ function CreateTaskDialog() {
 type EditableTask = {
 	id: string;
 	name: string;
+	group: TaskGroup;
 	color: string | null;
 	description: string | null;
 };
@@ -193,7 +266,12 @@ function EditTaskDialog({
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof createTaskInput>>({
 		resolver: zodResolver(createTaskInput),
-		defaultValues: { name: "", color: DEFAULT_COLOR, description: "" },
+		defaultValues: {
+			name: "",
+			group: "general",
+			color: DEFAULT_COLOR,
+			description: "",
+		},
 	});
 
 	// One dialog serves every row, so the fields are re-seeded each time it opens
@@ -203,6 +281,7 @@ function EditTaskDialog({
 		if (task) {
 			reset({
 				name: task.name,
+				group: task.group,
 				color: task.color ?? DEFAULT_COLOR,
 				description: task.description ?? "",
 			});
@@ -240,6 +319,22 @@ function EditTaskDialog({
 									<FormLabel required>Name</FormLabel>
 									<FormControl>
 										<Input autoFocus {...field} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name="group"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel required>Group</FormLabel>
+									<FormControl>
+										<GroupField
+											value={field.value ?? "general"}
+											onChange={field.onChange}
+										/>
 									</FormControl>
 									<FormMessage />
 								</FormItem>
@@ -354,6 +449,9 @@ function TasksPage() {
 					</span>
 				</TableCell>
 				<TableCell className="text-muted-foreground">
+					{TASK_GROUP_LABELS[task.group]}
+				</TableCell>
+				<TableCell className="text-muted-foreground">
 					{task.isAbsence ? "Absence" : builtIn ? "Built-in" : "Org task"}
 				</TableCell>
 				{/* Absence tasks are never on a project, so a 0 there would read
@@ -451,6 +549,7 @@ function TasksPage() {
 				<TableHeader>
 					<TableRow>
 						<TableHead>Task</TableHead>
+						<TableHead>Group</TableHead>
 						<TableHead>Kind</TableHead>
 						<TableHead className="text-right">Projects</TableHead>
 						<TableHead className="text-right">Entries</TableHead>
