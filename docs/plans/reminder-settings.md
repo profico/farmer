@@ -1,9 +1,16 @@
 # Plan: reminder settings
 
-Status: built, not committed. Sections 2 to 5 are done: migration
-`0040_reminder_settings`, the service, the job changes, the `notify.ts` gates,
-the tests (`packages/core/src/jobs/reminders.test.ts`) and the page
-(Settings → Reminders).
+Status: implemented, in commit 17ded91 on 2026-09-11. Sections 2 to 5 are all
+in the tree: migration `0040_reminder_settings`, the service, the job changes,
+the `notify.ts` gates, the tests (`packages/core/src/jobs/reminders.test.ts`)
+and the page (Settings → Reminders).
+
+This file stays as the design record, not as a task list. It holds the reasons
+behind the rules, and the owner's decisions. Code comments cite it by section
+number (see `services/reminder-recipients.ts`, `services/reminder-settings.service.ts`,
+`schema/reminder-settings.ts`, `jobs/reminders.test.ts`,
+`jobs/log-reminders.test.ts` and `settings/reminders.tsx`), so keep the section
+numbers stable.
 
 Why: the Harvest import (`docs/plans/harvest-import.md`) creates people who
 have never signed in. The owner asked for:

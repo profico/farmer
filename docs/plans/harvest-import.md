@@ -1,7 +1,14 @@
 # Plan: import Harvest exports
 
-Status: built on 2026-09-11, not committed yet. The owner answered D1 to
+Status: implemented, in commit 17ded91 on 2026-09-11. The owner answered D1 to
 D9. The screen is at Settings → Import (`settings/import.tsx`).
+
+This file stays as the design record, not as a task list. It holds the reasons
+behind the import rules, the owner's answers, and the measurements of the real
+export that those rules come from. Code comments cite it by section number (see
+`services/harvest-import.service.ts`, `services/members.service.ts`,
+`lib/harvest/plan.ts` and `services/harvest-import.test.ts`), so keep the
+section numbers stable.
 
 An admin drops the Harvest export files on a Settings page. The app reads the
 files, shows what it will create, skip and drop, and then imports the data.
@@ -536,6 +543,9 @@ Every function starts with `requireAdmin(ctx)`.
 - Update the coverage list in `CLAUDE.md`.
 
 ## 10. Phases
+
+This was the build order. Phases 1 to 5 are in the tree. Phase 6 is an
+operational step, and this file does not record whether it happened.
 
 1. Paid Leave (3.1), the archived section (3.2) and the utilization change
    (3.5). All three are small and can be used without the import.
