@@ -6,7 +6,6 @@ export default defineConfig({
 		"tools/oxlint/**",
 		"**/routeTree.gen.ts",
 		"**/src/db/schema/auth.ts",
-		"**/src/lib/pdf-fonts.gen.ts",
 		"**/dist/**",
 	],
 	plugins: ["react", "react-hooks", "jsx-a11y", "typescript", "oxc", "import"],
