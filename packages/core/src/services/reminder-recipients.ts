@@ -417,7 +417,7 @@ const monthEndTitle = (daysBefore: number) =>
 			: `The last working day of the month is ${String(daysBefore)} working days away`;
 
 const monthEndAsk = (daysBefore: number) =>
-	`Anything still unlogged needs to go in before the monthly close starts${
+	`Anything still unlogged needs to go in before the month ends${
 		daysBefore === 0 ? " tomorrow" : ""
 	}.`;
 

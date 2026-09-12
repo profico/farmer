@@ -19,8 +19,8 @@ import { invitation, organization, user } from "./auth";
 //                applies to them fully.
 //  - overhead    COO / CEO / admin / marketing. Excluded from reminders, the
 //                compliance report — but
-//                when they DO log time it flows through close sheets and the
-//                Time Report exactly like anyone else's.
+//                when they DO log time it flows through the Time Report exactly
+//                like anyone else's.
 //  - contractor  externals. No Croatian monthly hour fund applies, so there is
 //                no Expected value by default (the "/" rows of the old sheet),
 //                unless an explicit override is set on the person.
@@ -54,7 +54,7 @@ export const memberProfile = pgTable(
 			.references(() => user.id, { onDelete: "cascade" }),
 		startDate: text("start_date"), // yyyy-MM-dd
 		// Person status (PRD 3.1): Active while null, Archived once set. Archiving
-		// rather than deleting, because agencies churn and every close sheet, report
+		// rather than deleting, because agencies churn and every report
 		// and time entry the person appears on has to survive them leaving. An
 		// archived person drops out of the forward-looking surfaces — reminders,
 		// compliance, the assignment picker — and

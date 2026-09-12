@@ -1160,8 +1160,7 @@ const runTurn = async (
 
 	const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
 	const system = await systemPrompt(ctx, today, config.systemPrompt);
-	// Scoped to the caller: a Member is never shown the close sheet or the admin
-	// reports, which are both a per-step token cost and a tool call that could
+	// Scoped to the caller: a Member is never shown the admin reports, which are both a per-step token cost and a tool call that could
 	// only come back refused. Resolved once here, off the Ctx memo.
 	const tools = toolDefinitions(await ctxAccess(ctx));
 

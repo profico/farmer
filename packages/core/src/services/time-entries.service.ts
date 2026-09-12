@@ -372,7 +372,7 @@ const syncMeetingsForRange = async (
 	// `listRange`'s read-path recompute only reaches back AUTOMATION_GRACE_DAYS.
 	// A meeting that synced after the block existed therefore left the day
 	// over-allocated for good — an 8h block plus a 0:15 stand-up against an 8h
-	// day, which then went to the close sheet at 8:45. `materializeRange` in
+	// day, which then reported as 8:45. `materializeRange` in
 	// recurring-block-rules already ends this way, for exactly the same reason;
 	// this engine was the one write path that did not.
 	//
@@ -1230,7 +1230,7 @@ export const timeEntriesService = {
 				eq(timeEntry.organizationId, ctx.organizationId),
 				// People edit their own entries — including in months that are already
 				// closed, deliberately (PRD decision 2). PMs never edit other people's
-				// worked time; corrections live in the close sheet's Adjusted column.
+				// worked time.
 				eq(timeEntry.userId, ctx.userId),
 			),
 		});
@@ -1864,12 +1864,11 @@ export const timeEntriesService = {
 	// ── Absence corrections (PM / Admin) ──────────────────────────────────────
 	// PMs can override or correct Vacation and Sick Leave entries for people on
 	// their projects (PRD 3.5). This is the ONE case where someone edits another
-	// person's entries — and it is deliberately limited to absence: worked-time
-	// corrections belong in the close sheet's Adjusted column, which is what keeps
-	// "what people said they worked" and "what we billed" separate.
+	// person's entries — and it is deliberately limited to absence: nobody edits
+	// another person's worked time.
 
-	/** One person's Vacation/Sick entries for a month, for the PM correcting them
-	 *  from the close sheet. Same permission as the writes below — a PM may read
+	/** One person's Vacation/Sick entries for a month, for the PM correcting them.
+	 *  Same permission as the writes below — a PM may read
 	 *  the absence of people on their own projects, nobody else's. */
 	listAbsenceForUser: async (ctx: Ctx, input: ListAbsenceForUserInput) => {
 		if (!(await canReadAbsenceOf(ctx, input.userId))) {
@@ -1903,8 +1902,8 @@ export const timeEntriesService = {
 	 *  taken", which the month-shaped read above answers only twelve calls at a
 	 *  time.
 	 *
-	 *  Days as well as seconds, converted with the same `WORKING_DAY_SECONDS` the
-	 *  close sheet uses to subtract absence from Expected. Two divisors would mean
+	 *  Days as well as seconds, converted with the same `WORKING_DAY_SECONDS`
+	 *  Expected subtracts absence with. Two divisors would mean
 	 *  a person and their PM reading different day counts off the same rows. */
 	absenceTotals: async (ctx: Ctx, input: AbsenceTotalsInput) => {
 		const userId = input.userId ?? ctx.userId;
@@ -2069,7 +2068,7 @@ export const timeEntriesService = {
 			// Absence is a claim on the day like any other entry, so the person's
 			// rest-of-day block has to give way to it (or take back what a shorter
 			// correction frees). Every self-service write already recomputes; the
-			// PM's three did not, so a day corrected from the close sheet stayed
+			// PM's three did not, so a day corrected by a PM stayed
 			// over-allocated — an 8h block plus 8h of sick leave on an 8h day.
 			await recomputeDayFill(person, existing.date, tz);
 			return updated;

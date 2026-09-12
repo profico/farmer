@@ -75,7 +75,7 @@ const annotationsFor = (tool: AssistantTool): McpToolAnnotations => ({
  *
  * Scoped by the same `available` predicate the assistant uses, and for the same
  * reason rather than for safety: every definition is re-sent on every request
- * of every session, so a Member carrying the close sheet and the admin reports
+ * of every session, so a Member carrying the admin reports
  * pays for them in context on each one and buys a call that can only come back
  * refused. The service behind each tool re-resolves `Access` and asserts — that
  * is the authorization, and it is not restated here.

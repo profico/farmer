@@ -303,7 +303,7 @@ function RemindersPage() {
 				key={draftKey(monthEndDraft(settings))}
 				kind="month-end"
 				title="Month-end reminder"
-				description="A Slack message before the monthly close, to log anything still missing."
+				description="A Slack message before the month ends, to log anything still missing."
 				enabled={settings.monthEndEnabled}
 				onEnabledChange={(monthEndEnabled) => save.mutate({ monthEndEnabled })}
 				saved={monthEndDraft(settings)}

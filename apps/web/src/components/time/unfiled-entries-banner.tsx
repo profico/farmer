@@ -36,8 +36,7 @@ import { fileTimeEntries } from "#/server/time-entries.ts";
 // Everything the engines write lands with no project: the calendar sync files
 // meetings this way, and so do commit fill blocks and accepted day-assembly
 // suggestions. That time is real and counts toward the day, but it is invisible
-// to every project report and it blocks the month's finalization, so it needs a
-// surface. This is it.
+// to every project report, so it needs a surface. This is it.
 //
 // Deliberately NOT dismissible, unlike AutoTrackNag: that one nudges you toward
 // an optional feature, this one is a worklist of your own unattributed hours.

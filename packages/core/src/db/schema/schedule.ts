@@ -18,8 +18,7 @@ import { organization, user } from "./auth";
 // (PRD 3.5): the person knows when they were sick, absence data accumulates in
 // one system with everything else, and the company-wide absence report (6.3)
 // falls out of the entry table for free. PMs can correct absence entries for
-// people on their projects, and can override the absence-day count directly on
-// the close sheet without touching entries.
+// people on their projects.
 
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });

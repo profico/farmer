@@ -9,8 +9,7 @@ import { orgAdminMiddleware } from "./auth";
 
 // The monthly hour fund is the denominator of Expected for every non-contractor,
 // so it's Admin-owned. Reads are admin-only too: it only ever appears on the
-// Settings screen that edits it (the close sheet gets its value from
-// closeService, already resolved per row).
+// Settings screen that edits it.
 
 export const listHourFundsForYear = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])

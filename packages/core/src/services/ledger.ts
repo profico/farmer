@@ -14,9 +14,7 @@
 // with a bespoke projection compose `ledgerWhere` rather than being forced
 // through a grouped API that would need every join as a parameter.
 //
-// Scope only over `timeEntry`. The close sheet sums `monthlyCloseRow`, which is
-// a different aggregate with its own snapshot semantics, and is deliberately
-// not folded in here.
+// Scope only over `timeEntry`.
 
 import {
 	and,

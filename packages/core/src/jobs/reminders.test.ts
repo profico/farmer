@@ -350,10 +350,10 @@ describe("the defaults reproduce the jobs as they were", () => {
 		);
 		// Somebody on pace gets the ask alone; the others get their own numbers.
 		expect(bodyFor("month-end", ADMIN)).toBe(
-			"Anything still unlogged needs to go in before the monthly close starts tomorrow.",
+			"Anything still unlogged needs to go in before the month ends tomorrow.",
 		);
 		expect(bodyFor("month-end", SILENT)).toBe(
-			"You haven't logged any time yet. Anything still unlogged needs to go in before the monthly close starts tomorrow.",
+			"You haven't logged any time yet. Anything still unlogged needs to go in before the month ends tomorrow.",
 		);
 		expect(bodyFor("month-end", SLOW)).toMatch(
 			/^You've logged \d+h of the \d+h expected so far\. Anything still unlogged/,
@@ -475,7 +475,7 @@ describe("days, time and conditions must all apply", () => {
 			"Tomorrow is the last working day of the month",
 		);
 		expect(bodyFor("month-end", ADMIN)).toBe(
-			"Anything still unlogged needs to go in before the monthly close starts.",
+			"Anything still unlogged needs to go in before the month ends.",
 		);
 	});
 

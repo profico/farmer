@@ -484,7 +484,7 @@ function McpSection({ appOrigin }: { appOrigin: string }) {
 			<SettingRow
 				icon={<PlugsConnectedIcon className="size-5" />}
 				title="Model Context Protocol"
-				description="Connect Claude Code, or any MCP client, to this workspace. It gets the same tools the Assistant has and sees exactly what you are allowed to see — your own time entries, the projects you are on, the close sheets you run. Signing in happens in your browser, as you."
+				description="Connect Claude Code, or any MCP client, to this workspace. It gets the same tools the Assistant has and sees exactly what you are allowed to see — your own time entries, the projects you are on, the reports your role allows. Signing in happens in your browser, as you."
 			/>
 
 			<SettingList className="mt-1">

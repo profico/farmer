@@ -30,7 +30,7 @@ const unfiledWhere = (
 ) => ledgerWhere(ctx, range, "unfiled", userId ? { userId } : {});
 
 /** Count and total duration of unfiled time in a range, optionally for one
- *  person. Used for the time page's nag and the close sheet's warning. */
+ *  person. Used for the time page's nag. */
 export const unfiledTotals = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
@@ -47,15 +47,14 @@ export const unfiledTotals = async (
 	return { count: row?.count ?? 0, seconds: Number(row?.seconds ?? 0) };
 };
 
-/** Per-person unfiled totals for a range, keyed by userId. The close sheet uses
- *  this to name who is holding the month up rather than just that someone is. */
+/** Per-person unfiled totals for a range, keyed by userId, to name who is
+ *  sitting on unfiled time rather than just that someone is. */
 export const unfiledByUser = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
 ): Promise<Map<string, { count: number; seconds: number }>> => {
-	// `ctxDb`: this is `closeService.finalize`'s unfiled gate, and it runs inside
-	// the transaction that writes the close, so the refusal and the write see
-	// the same connection.
+	// `ctxDb`: callers may run this inside a transaction, so the read and the
+	// write see the same connection.
 	const rows = await ctxDb(ctx)
 		.select({
 			userId: timeEntry.userId,

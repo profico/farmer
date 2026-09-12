@@ -23,14 +23,14 @@ export const monthStartKeyOf = (year: number, month: number) =>
 export const hourFundService = {
 	/** The fund for one month, or null when the admin hasn't entered it yet.
 	 *  Null is meaningful and must NOT be coerced to a default: without a fund
-	 *  there is no Expected value, so the close sheet shows blank rather than
-	 *  inventing a number to reconcile against. */
+	 *  there is no Expected value, so readers show blank rather than inventing
+	 *  a number to reconcile against. */
 	get: async (
 		ctx: Ctx,
 		year: number,
 		month: number,
 	): Promise<number | null> => {
-		// `ctxDb`: read from inside `closeService.finalize`'s transaction, where
+		// `ctxDb`: read from inside a caller's transaction, where
 		// the ambient handle would need a second connection (and on PGLite, which
 		// has one, would wait on the transaction forever).
 		const row = await ctxDb(ctx).query.monthlyHourFund.findFirst({
@@ -119,7 +119,7 @@ export const hourFundService = {
 	 *
 	 *  Distinct from setting it to zero, and the difference is the whole point of
 	 *  the column being nullable: a zero fund is a real claim (nobody is expected
-	 *  to work this month) that the close sheet reconciles against, while no row
+	 *  to work this month) that Expected is read against, while no row
 	 *  means there is no Expected figure to reconcile at all. It is also the only
 	 *  way to un-stick `prefillYear`, which skips any month that already has a
 	 *  row — without this, one wrong figure was permanent. */

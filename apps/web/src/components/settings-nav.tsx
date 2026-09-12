@@ -143,7 +143,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		},
 		group: "workspace",
 		description:
-			"The monthly hours each person is expected to deliver. The close sheet reads Expected off this.",
+			"The monthly hours each person is expected to deliver. Tracking reads Expected off this.",
 		hasNavRow: false,
 		show: (audience) => audience.isAdmin,
 	},

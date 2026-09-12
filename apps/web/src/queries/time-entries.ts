@@ -52,8 +52,8 @@ export const unfiledWindowQuery = (org: string, todayKey: string) => {
 	return unfiledEntriesQuery(org, from, to);
 };
 
-// Somebody else's Vacation/Sick for a month, for a PM correcting it from the
-// close sheet. Keyed by person and month because that is the whole scope of the
+// Somebody else's Vacation/Sick for a month, for a PM correcting it. Keyed by
+// person and month because that is the whole scope of the
 // permission behind it.
 export const absenceForUserQuery = (
 	org: string,

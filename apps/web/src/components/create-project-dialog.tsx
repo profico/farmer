@@ -53,8 +53,8 @@ import { createProject } from "#/server/projects.ts";
 const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 
 // The five project types, in the order the PRD lists them. Type is not
-// cosmetic: it decides which config fields exist, whether the close sheet shows
-// Expected hours, and whether the project counts as billable.
+// cosmetic: it decides which config fields exist, whether Expected hours
+// apply, and whether the project counts as billable.
 const PROJECT_TYPES: {
 	value: ProjectTypeValue;
 	label: string;
@@ -63,7 +63,7 @@ const PROJECT_TYPES: {
 	{
 		value: "product_team",
 		label: "Product team",
-		hint: "A standing team on a retainer. The only type whose close sheet shows Expected hours.",
+		hint: "A standing team on a retainer. The only type Expected hours apply to.",
 	},
 	{
 		value: "fixed_scope",

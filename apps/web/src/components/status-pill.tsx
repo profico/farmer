@@ -1,7 +1,7 @@
 import { cn } from "#/lib/utils.ts";
 
 // Shared status pill used across Projects, Tasks, Recurring blocks and the
-// close sheet: green for settled states, amber for "waiting on someone", and
+// import runs: green for settled states, amber for "waiting on someone", and
 // the plain hover tint for inactive/archived/open ones.
 //
 // Every tone is mixed from a palette token rather than written as a hex, so a

@@ -70,9 +70,9 @@ function OrgHome() {
 	const { data: weekEntries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 	);
-	// The week's yardstick is the person's own working-hours target, not the close
-	// sheet's Expected — Expected is a monthly figure that only settles once the
-	// month is finalized, so it says nothing about a week still in progress.
+	// The week's yardstick is the person's own working-hours target, not the
+	// monthly Expected — a monthly figure says nothing about a week still in
+	// progress.
 	const { data: weeklyTargetSeconds } = useSuspenseQuery(
 		weeklyTargetQuery(orgSlug),
 	);

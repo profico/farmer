@@ -341,7 +341,7 @@ function MembersSettingsPage() {
 				</TableCell>
 				<TableCell>
 					{/* Archive, not delete: an archived person keeps every
-					    entry, close row and finalized month they appear in and
+					    entry and month they appear in and
 					    drops out of the forward-looking surfaces. Remove is
 					    still here for the invited-the-wrong-address case, but
 					    it is no longer the obvious button. */}

@@ -17,7 +17,7 @@ import { myAccessQuery } from "#/queries/access.ts";
  * Before this, `/$orgSlug/settings` was a 404: ten pages shared the prefix and
  * nothing answered at it, so the only way to any of them was a sidebar row, and
  * the sidebar therefore had to carry all ten. That is what made "Workspace" a
- * group of eleven holding both the close sheet and your colour theme.
+ * group of eleven holding both the hour fund and your colour theme.
  *
  * The two sections here are the same split the pages' own eyebrows already
  * state — "Your account" over Preferences, "Workspace" over Organization. My

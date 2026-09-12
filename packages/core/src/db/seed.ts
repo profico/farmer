@@ -53,8 +53,8 @@ const [seedClient] = await db
 	.returning();
 if (!seedClient) throw new Error("Failed to insert seed client");
 
-// One project per type that behaves differently, so the close sheet's full vs
-// lean rendering is visible immediately after seeding.
+// One project per type that behaves differently, so each type's behaviour is
+// visible immediately after seeding.
 const [productTeam] = await db
 	.insert(project)
 	.values({
@@ -121,7 +121,7 @@ if (picks.length > 0) {
 }
 
 // Assign every org member to the product-team project, with the first member as
-// its PM so the close sheet is reachable straight after seeding.
+// its PM so a project-managing role exists straight after seeding.
 const members = await db.query.member.findMany({
 	where: eq(member.organizationId, org.id),
 	columns: { userId: true },
