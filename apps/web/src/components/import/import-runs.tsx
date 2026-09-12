@@ -34,7 +34,7 @@ import { undoHarvestImport } from "#/server/harvest-import.ts";
 
 /**
  * Stales every query of this org. An import or an undo writes clients,
- * projects, tasks, people, entries, closes and the automation lock at once, so
+ * projects, tasks, people, entries and the automation lock at once, so
  * naming the families one by one would be a list that goes out of date the
  * first time the import writes one more.
  */
@@ -89,7 +89,6 @@ export function ImportRuns({ busy }: { busy: boolean }) {
 						<TableHead>Cutoff</TableHead>
 						<TableHead>Status</TableHead>
 						<TableHead className="text-right">Entries</TableHead>
-						<TableHead className="text-right">Closes</TableHead>
 						<TableHead />
 					</TableRow>
 				</TableHeader>
@@ -108,9 +107,6 @@ export function ImportRuns({ busy }: { busy: boolean }) {
 							</TableCell>
 							<TableCell className="mono text-right">
 								{run.entriesCreated.toLocaleString("en-US")}
-							</TableCell>
-							<TableCell className="mono text-right">
-								{run.closesCreated.toLocaleString("en-US")}
 							</TableCell>
 							<TableCell className="text-right">
 								{run.id === latest?.id && (
@@ -139,11 +135,11 @@ export function ImportRuns({ busy }: { busy: boolean }) {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Undo this import?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Undo deletes the entries, history closes, projects, clients, tasks
-							and people that this import added. It does not bring back the days
-							that this import replaced, and it does not move the automation
-							lock back. If a person that the import added has signed in since,
-							undo stops: archive that person instead.
+							Undo deletes the entries, projects, clients, tasks and people that
+							this import added. It does not bring back the days that this
+							import replaced, and it does not move the automation lock back. If
+							a person that the import added has signed in since, undo stops:
+							archive that person instead.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

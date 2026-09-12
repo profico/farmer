@@ -9,21 +9,19 @@
 // project of another org, however it is built.
 //
 // A run is: `start` (the reference rows), `importDays` in chunks, optionally
-// `removeDays`, then `finish` (the automation lock, the hour fund and the
-// history closes). `undo` takes back the latest run.
+// `removeDays`, then `finish` (the automation lock and the hour fund). `undo`
+// takes back the latest run.
 
 import { generateId } from "better-auth";
 import {
 	and,
 	desc,
 	eq,
-	gt,
 	gte,
 	inArray,
 	isNotNull,
 	isNull,
 	lte,
-	max,
 	ne,
 	or,
 	sql,
@@ -31,7 +29,6 @@ import {
 
 import { db } from "../db";
 import { account, member, organization, user } from "../db/schema/auth";
-import { monthlyClose, monthlyCloseRow } from "../db/schema/close";
 import {
 	client,
 	project,
@@ -50,7 +47,7 @@ import type {
 	HarvestSnapshot,
 } from "../lib/harvest/contract";
 import { DAY_DIGEST_LENGTH } from "../lib/harvest/keys";
-import { addDaysToKey, endOfMonthKey } from "../lib/time";
+import { addDaysToKey } from "../lib/time";
 import type {
 	HarvestEmailsInput,
 	HarvestFinishInput,
@@ -61,10 +58,8 @@ import type {
 	HarvestStartInput,
 } from "../schema/harvest-import";
 import { clientsService } from "./clients.service";
-import { absenceDaysByUserPerMonth, expectedSecondsFor } from "./close.service";
 import { type DbClient, requireAdmin } from "./context";
 import { hourFundService } from "./hour-fund.service";
-import { membersService, type ResolvedMemberType } from "./members.service";
 import { orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
 
@@ -79,11 +74,6 @@ const inBatches = <T>(items: readonly T[], size = BATCH): T[][] => {
 		out.push(items.slice(i, i + size));
 	}
 	return out;
-};
-
-const DEFAULT_MEMBER_TYPE: ResolvedMemberType = {
-	type: "billable",
-	expectedSecondsOverride: null,
 };
 
 // An archived day is a date; `archivedAt` is a timestamp. Noon UTC lands on
@@ -301,9 +291,6 @@ const createdCounts = async (runId: string): Promise<StartCounts> => {
 	};
 };
 
-const monthLabel = (year: number, month: number) =>
-	`${String(year)}-${String(month).padStart(2, "0")}`;
-
 const sameKeys = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
 	a.size === b.size && [...a].every((k) => b.has(k));
 
@@ -506,7 +493,6 @@ export const harvestImportService = {
 				cutoffDate: importRun.cutoffDate,
 				entriesCreated: importRun.entriesCreated,
 				entriesDeleted: importRun.entriesDeleted,
-				closesCreated: importRun.closesCreated,
 				createdAt: importRun.createdAt,
 				finishedAt: importRun.finishedAt,
 				undoneAt: importRun.undoneAt,
@@ -1228,22 +1214,6 @@ export const harvestImportService = {
 	 *    engine writes into the imported history. It never moves back.
 	 * 2. The hour fund is prefilled for every year with history, because
 	 *    Expected needs it.
-	 * 3. Each billable project-month with imported rows, through
-	 *    `historyThrough`, gets a finalized close. Final is Harvest's billable
-	 *    hours; Reported and Overtime are the imported totals; Expected is what
-	 *    `finalize` would compute. A month that has a close made here is left
-	 *    alone. A close an earlier run made is written again, but only while
-	 *    nobody has changed it since.
-	 *
-	 *    Only the project-months THIS run covered are written: the ones its
-	 *    file has rows for (`billable`, which names every project-month of the
-	 *    file, a non-billable one at zero), the ones holding a day this run
-	 *    imported or replaced, and an import close whose Reported snapshot no
-	 *    longer matches its entries (a day this run removed). The totals read
-	 *    every imported entry, so without that gate a re-export of only the
-	 *    last year rewrote every older close with Final = 0 — the file simply
-	 *    had no figure for them. Inside a covered month, a person the file does
-	 *    not have keeps the Final an earlier file gave them.
 	 *
 	 * Safe to retry.
 	 */
@@ -1266,367 +1236,27 @@ export const harvestImportService = {
 			await orgSettingsService.update(ctx, { automationLockedThrough: locked });
 		}
 
-		const result: HarvestFinishResult = {
-			closesCreated: 0,
-			closesUpdated: 0,
-			closesSkipped: 0,
-			automationLockedThrough: locked,
-		};
-
-		if (input.historyThrough != null) {
-			const lastDay = endOfMonthKey(`${input.historyThrough}-01`);
-			const month = sql<string>`substring(${timeEntry.date} from 1 for 7)`;
-			const totals = await db
-				.select({
-					projectId: sql<string>`${timeEntry.projectId}`,
-					projectType: project.type,
-					userId: timeEntry.userId,
-					month,
-					reported: sql<string>`sum(${timeEntry.durationSeconds})`,
-					overtime: sql<string>`coalesce(sum(case when ${timeEntry.overtime} then ${timeEntry.durationSeconds} else 0 end), 0)`,
-				})
-				.from(timeEntry)
-				.innerJoin(project, eq(project.id, timeEntry.projectId))
-				.where(
-					and(
-						eq(timeEntry.organizationId, org),
-						isNotNull(timeEntry.importKey),
-						ne(project.type, "internal"),
-						lte(timeEntry.date, lastDay),
-					),
-				)
-				.groupBy(timeEntry.projectId, project.type, timeEntry.userId, month);
-
-			// project|month → the rows of that close.
-			type Group = {
-				projectId: string;
-				projectType: string;
-				year: number;
-				month: number;
-				key: string;
-				rows: { userId: string; reported: number; overtime: number }[];
-			};
-			const groups = new Map<string, Group>();
-			for (const t of totals) {
-				const key = `${t.projectId}:${t.month}`;
-				let g = groups.get(key);
-				if (!g) {
-					g = {
-						projectId: t.projectId,
-						projectType: t.projectType,
-						year: Number(t.month.slice(0, 4)),
-						month: Number(t.month.slice(5, 7)),
-						key,
-						rows: [],
-					};
-					groups.set(key, g);
-				}
-				g.rows.push({
-					userId: t.userId,
-					reported: Number(t.reported),
-					overtime: Number(t.overtime),
-				});
-			}
-
-			if (groups.size > 0) {
-				const monthKeys = [
-					...new Set([...groups.values()].map((g) => g.key.slice(-7))),
-				].sort();
-				const years = [...new Set(monthKeys.map((m) => Number(m.slice(0, 4))))];
-				for (const year of years) {
-					await hourFundService.prefillYear(ctx, year);
-				}
-				const months = monthKeys.map((m) => ({
-					year: Number(m.slice(0, 4)),
-					month: Number(m.slice(5, 7)),
-				}));
-				const funds = await hourFundService.getMany(ctx, months);
-				const firstMonth = monthKeys[0] ?? input.historyThrough;
-				const absence = await absenceDaysByUserPerMonth(
-					ctx,
-					`${firstMonth}-01`,
-					lastDay,
-				);
-				const typesByMonth = new Map<string, Map<string, ResolvedMemberType>>();
-				for (const m of months) {
-					typesByMonth.set(
-						`${m.year}-${String(m.month).padStart(2, "0")}`,
-						await membersService.typesForMonth(ctx, m.year, m.month),
-					);
-				}
-
-				const projectBySource = await mappingsFor(db, ctx, "project");
-				const personBySource = await mappingsFor(db, ctx, "person");
-				// `project:month|user` → this file's billable seconds, and the
-				// `project:month` keys this run covered.
-				const billable = new Map<string, number>();
-				const covered = new Set<string>();
-				for (const b of input.billable) {
-					const projectId = projectBySource.get(b.projectSourceKey);
-					const userId = personBySource.get(b.personSourceKey);
-					if (!projectId || !userId) continue;
-					covered.add(`${projectId}:${b.month}`);
-					const key = `${projectId}:${b.month}|${userId}`;
-					billable.set(key, (billable.get(key) ?? 0) + b.seconds);
-				}
-				// A day this run imported or replaced carries its run id.
-				const touched = await db
-					.selectDistinct({
-						projectId: sql<string>`${timeEntry.projectId}`,
-						month,
-					})
-					.from(timeEntry)
-					.where(
-						and(
-							eq(timeEntry.organizationId, org),
-							eq(timeEntry.importRunId, run.id),
-							isNotNull(timeEntry.projectId),
-							lte(timeEntry.date, lastDay),
-						),
-					);
-				for (const t of touched) covered.add(`${t.projectId}:${t.month}`);
-
-				await db.transaction(async (tx) => {
-					const closeMappings = await tx
-						.select({
-							sourceKey: importMapping.sourceKey,
-							localId: importMapping.localId,
-							updatedAt: importMapping.updatedAt,
-						})
-						.from(importMapping)
-						.where(
-							and(
-								eq(importMapping.organizationId, org),
-								eq(importMapping.kind, "close"),
-							),
-						);
-					const importedClose = new Map(
-						closeMappings.map((m) => [m.sourceKey, m]),
-					);
-					const projectIds = [
-						...new Set([...groups.values()].map((g) => g.projectId)),
-					];
-					const existingCloses = new Map<
-						string,
-						{ id: string; updatedAt: Date }
-					>();
-					for (const batch of inBatches(projectIds)) {
-						const rows = await tx
-							.select({
-								id: monthlyClose.id,
-								projectId: monthlyClose.projectId,
-								year: monthlyClose.year,
-								month: monthlyClose.month,
-								updatedAt: monthlyClose.updatedAt,
-							})
-							.from(monthlyClose)
-							.where(
-								and(
-									eq(monthlyClose.organizationId, org),
-									inArray(monthlyClose.projectId, batch),
-								),
-							);
-						for (const r of rows) {
-							existingCloses.set(
-								`${r.projectId}:${monthLabel(r.year, r.month)}`,
-								{
-									id: r.id,
-									updatedAt: r.updatedAt,
-								},
-							);
-						}
-					}
-
-					// The rows of every close an import made, for the drift test
-					// and the Final a person keeps when this file lacks them.
-					const ourCloseIds = [...groups.keys()].flatMap((key) => {
-						const close = existingCloses.get(key);
-						return close && importedClose.get(key)?.localId === close.id
-							? [close.id]
-							: [];
-					});
-					const priorRows = new Map<
-						string,
-						Map<string, { final: number | null; reported: number | null }>
-					>();
-					for (const batch of inBatches(ourCloseIds)) {
-						const rows = await tx
-							.select({
-								closeId: monthlyCloseRow.closeId,
-								userId: monthlyCloseRow.userId,
-								final: monthlyCloseRow.finalSeconds,
-								reported: monthlyCloseRow.reportedAtFinalizeSeconds,
-							})
-							.from(monthlyCloseRow)
-							.where(inArray(monthlyCloseRow.closeId, batch));
-						for (const r of rows) {
-							let byUser = priorRows.get(r.closeId);
-							if (!byUser) {
-								byUser = new Map();
-								priorRows.set(r.closeId, byUser);
-							}
-							byUser.set(r.userId, { final: r.final, reported: r.reported });
-						}
-					}
-
-					for (const g of groups.values()) {
-						const closeId = existingCloses.get(g.key)?.id;
-						const prior = closeId ? priorRows.get(closeId) : undefined;
-						// A day this run removed names no month, but it leaves the
-						// stored Reported behind the entries.
-						const drifted =
-							prior !== undefined &&
-							(prior.size !== g.rows.length ||
-								g.rows.some(
-									(r) => prior.get(r.userId)?.reported !== r.reported,
-								));
-						if (!covered.has(g.key) && !drifted) continue;
-
-						const monthKey = g.key.slice(-7);
-						const types = typesByMonth.get(monthKey);
-						const fund = funds.get(monthKey) ?? null;
-						const absenceDays = absence.get(monthKey);
-						const rows = g.rows.map((r) => ({
-							organizationId: org,
-							userId: r.userId,
-							// This file's figure; else the one an earlier file gave;
-							// else zero — a person no file ever had billable hours
-							// for, which is what Harvest says about them.
-							finalSeconds:
-								billable.get(`${g.key}|${r.userId}`) ??
-								prior?.get(r.userId)?.final ??
-								0,
-							reportedAtFinalizeSeconds: r.reported,
-							overtimeAtFinalizeSeconds: r.overtime,
-							expectedAtFinalizeSeconds:
-								g.projectType === "product_team"
-									? expectedSecondsFor(
-											types?.get(r.userId) ?? DEFAULT_MEMBER_TYPE,
-											fund,
-											absenceDays?.get(r.userId) ?? 0,
-										)
-									: null,
-						}));
-						const now = new Date();
-
-						const close = existingCloses.get(g.key);
-						if (!close) {
-							const [created] = await tx
-								.insert(monthlyClose)
-								.values({
-									organizationId: org,
-									projectId: g.projectId,
-									year: g.year,
-									month: g.month,
-									status: "finalized",
-									finalizedAt: now,
-									finalizedByUserId: ctx.userId,
-									createdAt: now,
-									updatedAt: now,
-								})
-								.returning({ id: monthlyClose.id });
-							if (!created) throw new Error("Failed to create a close");
-							// Every stamp is the same JS `now`, not the database's:
-							// the "changed since" test below compares them.
-							await tx.insert(monthlyCloseRow).values(
-								rows.map((r) => ({
-									...r,
-									closeId: created.id,
-									createdAt: now,
-									updatedAt: now,
-								})),
-							);
-							// A mapping left over from a close that is gone (its
-							// project was deleted and made again) points at nothing.
-							await tx
-								.insert(importMapping)
-								.values({
-									organizationId: org,
-									runId: input.runId,
-									kind: "close",
-									sourceKey: g.key,
-									localId: created.id,
-									created: true,
-									createdAt: now,
-									updatedAt: now,
-								})
-								.onConflictDoUpdate({
-									target: [
-										importMapping.organizationId,
-										importMapping.kind,
-										importMapping.sourceKey,
-									],
-									set: {
-										runId: input.runId,
-										localId: created.id,
-										created: true,
-										updatedAt: now,
-									},
-								});
-							result.closesCreated++;
-							continue;
-						}
-
-						const mapping = importedClose.get(g.key);
-						if (!mapping || mapping.localId !== close.id) {
-							result.closesSkipped++;
-							continue;
-						}
-						// "Nobody changed it since": the close and every row are no
-						// newer than the import's own last write.
-						const touched = await tx
-							.select({ id: monthlyCloseRow.id })
-							.from(monthlyCloseRow)
-							.where(
-								and(
-									eq(monthlyCloseRow.closeId, close.id),
-									// Not a raw `sql` template: that sends the Date
-									// unmapped, and postgres-js writes it with toString(),
-									// which Postgres cannot read (PGLite can).
-									gt(monthlyCloseRow.updatedAt, mapping.updatedAt),
-								),
-							)
-							.limit(1);
-						if (close.updatedAt > mapping.updatedAt || touched[0]) {
-							result.closesSkipped++;
-							continue;
-						}
-						await tx
-							.delete(monthlyCloseRow)
-							.where(eq(monthlyCloseRow.closeId, close.id));
-						await tx.insert(monthlyCloseRow).values(
-							rows.map((r) => ({
-								...r,
-								closeId: close.id,
-								createdAt: now,
-								updatedAt: now,
-							})),
-						);
-						await tx
-							.update(monthlyClose)
-							.set({ updatedAt: now })
-							.where(eq(monthlyClose.id, close.id));
-						await tx
-							.update(importMapping)
-							.set({ updatedAt: now })
-							.where(
-								and(
-									eq(importMapping.organizationId, org),
-									eq(importMapping.kind, "close"),
-									eq(importMapping.sourceKey, g.key),
-								),
-							);
-						result.closesUpdated++;
-					}
-				});
-			}
+		// Every year with imported history gets its hour fund prefilled, because
+		// Expected (the compliance report, the reminders) needs it and nobody has
+		// been through those years by hand.
+		const years = await db
+			.selectDistinct({
+				year: sql<string>`substring(${timeEntry.date} from 1 for 4)`,
+			})
+			.from(timeEntry)
+			.where(
+				and(eq(timeEntry.organizationId, org), isNotNull(timeEntry.importKey)),
+			);
+		for (const y of years) {
+			await hourFundService.prefillYear(ctx, Number(y.year));
 		}
+
+		const result: HarvestFinishResult = { automationLockedThrough: locked };
 
 		await db
 			.update(importRun)
 			.set({
 				status: "finished",
-				closesCreated: result.closesCreated,
 				finishedAt: new Date(),
 				updatedAt: new Date(),
 			})
@@ -1635,15 +1265,13 @@ export const harvestImportService = {
 	},
 
 	/**
-	 * Takes back the latest run: its entries, its closes, then the rows it
-	 * created, in reverse order. Refuses while anything made here depends on
-	 * them — an entry on a created project or task or by a created person, a
-	 * close made here on a created project, a close this run made that
-	 * somebody changed since — or when a created user has signed in.
+	 * Takes back the latest run: its entries, then the rows it created, in
+	 * reverse order. Refuses while anything made here depends on them — an
+	 * entry on a created project or task or by a created person — or when a
+	 * created user has signed in.
 	 *
 	 * Not undone: days that this run REPLACED keep the new rows (the old ones
-	 * are gone), closes an earlier run made and this run wrote again keep the
-	 * new values, and assignments on rows the run only matched stay. The
+	 * are gone), and assignments on rows the run only matched stay. The
 	 * automation lock stays where it is.
 	 */
 	undo: async (ctx: Ctx, input: HarvestRunIdInput) => {
@@ -1680,7 +1308,6 @@ export const harvestImportService = {
 			const projectIds = of("project");
 			const taskIds = of("task");
 			const clientIds = of("client");
-			const closeIds = of("close");
 
 			// Made by this run, or only attached to it? Both rows took `now()`
 			// from the one transaction in `start`, so an attached user is the
@@ -1735,72 +1362,10 @@ export const harvestImportService = {
 					);
 				}
 			}
-			// The closes on the created projects, a batch of projects at a time,
-			// checked against this run's own closes in memory: a `not in` list
-			// of every close id is one statement with thousands of parameters.
-			const ownCloses = new Set(closeIds);
-			for (const batch of inBatches(projectIds)) {
-				const closes = await tx
-					.select({ id: monthlyClose.id })
-					.from(monthlyClose)
-					.where(inArray(monthlyClose.projectId, batch));
-				if (closes.some((c) => !ownCloses.has(c.id))) {
-					throw new Error(
-						"A month on a project this import created was closed here",
-					);
-				}
-			}
-
-			// A close this run made that somebody changed here since: the same
-			// "changed since" test `finish` uses before it writes one again.
-			// Deleting it would take a PM's reconciliation with it.
-			const importedAt = new Map(
-				created.flatMap((m) =>
-					m.kind === "close" ? [[m.localId, m.updatedAt] as const] : [],
-				),
-			);
-			for (const batch of inBatches(closeIds)) {
-				const closes = await tx
-					.select({
-						id: monthlyClose.id,
-						year: monthlyClose.year,
-						month: monthlyClose.month,
-						updatedAt: monthlyClose.updatedAt,
-						projectName: project.name,
-					})
-					.from(monthlyClose)
-					.innerJoin(project, eq(project.id, monthlyClose.projectId))
-					.where(inArray(monthlyClose.id, batch));
-				const newestRows = await tx
-					.select({
-						closeId: monthlyCloseRow.closeId,
-						updatedAt: max(monthlyCloseRow.updatedAt),
-					})
-					.from(monthlyCloseRow)
-					.where(inArray(monthlyCloseRow.closeId, batch))
-					.groupBy(monthlyCloseRow.closeId);
-				const newestRow = new Map(
-					newestRows.map((r) => [r.closeId, r.updatedAt]),
-				);
-				for (const c of closes) {
-					const stamp = importedAt.get(c.id);
-					if (!stamp) continue;
-					const row = newestRow.get(c.id);
-					if (c.updatedAt > stamp || (row != null && row > stamp)) {
-						throw new Error(
-							`The ${c.projectName} close for ${monthLabel(c.year, c.month)} was changed here after the import. Undo would delete that change.`,
-						);
-					}
-				}
-			}
-
 			const deleted = await tx
 				.delete(timeEntry)
 				.where(eq(timeEntry.importRunId, run.id))
 				.returning({ id: timeEntry.id });
-			for (const batch of inBatches(closeIds)) {
-				await tx.delete(monthlyClose).where(inArray(monthlyClose.id, batch));
-			}
 			for (const batch of inBatches(projectIds)) {
 				await tx.delete(project).where(inArray(project.id, batch));
 			}
@@ -1862,7 +1427,6 @@ export const harvestImportService = {
 
 			return {
 				entriesDeleted: deleted.length,
-				closesDeleted: closeIds.length,
 				projectsDeleted: projectIds.length,
 				clientsDeleted: clientIds.length,
 				tasksDeleted: taskIds.length,

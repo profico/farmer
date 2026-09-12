@@ -99,12 +99,6 @@ const hours = (seconds: number) =>
 
 const count = (n: number) => n.toLocaleString("en-US");
 
-function monthBefore(date: string): string {
-	const d = new Date(`${date.slice(0, 7)}-01T00:00:00Z`);
-	d.setUTCMonth(d.getUTCMonth() - 1);
-	return d.toISOString().slice(0, 7);
-}
-
 function Choice<V extends string>({
 	value,
 	items,
@@ -383,40 +377,6 @@ export function HarvestReview({
 									}
 								}}
 							/>
-						}
-					/>
-					<SettingRow
-						title="History closes"
-						description="Makes a finalized close for each project and month through this month. Final is the billable hours in Harvest."
-						action={
-							<div className="flex items-center gap-3">
-								<Input
-									type="month"
-									className="w-40"
-									disabled={choices.historyThrough === null}
-									value={choices.historyThrough ?? ""}
-									onChange={(event) => {
-										if (event.target.value) {
-											onChoices({
-												...choices,
-												historyThrough: event.target.value,
-											});
-										}
-									}}
-								/>
-								<Switch
-									aria-label="Make history closes"
-									checked={choices.historyThrough !== null}
-									onCheckedChange={(on) =>
-										onChoices({
-											...choices,
-											historyThrough: on
-												? monthBefore(choices.cutoffDate)
-												: null,
-										})
-									}
-								/>
-							</div>
 						}
 					/>
 					<SettingRow

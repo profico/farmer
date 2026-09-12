@@ -3,7 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	HARVEST_CHUNK_MAX_ROWS,
 	type HarvestImportDay,
-	harvestFinishInput,
 	harvestImportDaysInput,
 	harvestStartInput,
 } from "../../schema/harvest-import";
@@ -341,7 +340,6 @@ function expectServerAccepts(plan: HarvestPlan) {
 	for (const chunk of chunkDays(plan.days)) {
 		harvestImportDaysInput.parse({ runId: RUN_ID, days: chunk });
 	}
-	harvestFinishInput.parse({ runId: RUN_ID, ...plan.finish });
 }
 
 // --- Helpers ----------------------------------------------------------------
@@ -1329,79 +1327,6 @@ describe("a second import (5.3)", () => {
 });
 
 // --- Section 6 ------------------------------------------------------------
-
-describe("billable per month (6)", () => {
-	test("sums rounded billable work rows per project, person and month through historyThrough", async () => {
-		const { plan } = await planFor([
-			timeReport([
-				{ date: "2026-07-01", hours: "1,1" }, // 3960 s -> 3600
-				{ date: "2026-07-02", hours: "2,0" },
-				{ date: "2026-07-03", hours: "5,0", billable: false },
-				{ date: "2026-08-03", hours: "1,0" },
-				{ date: "2026-09-01", hours: "1,0" }, // after historyThrough
-				{ date: "2026-07-04", code: "PVC", task: "Vacation", hours: "8,0" },
-			]),
-		]);
-		const website = JSON.stringify(["acme", "website", "ACW"]);
-		expect(plan.finish).toEqual({
-			historyThrough: "2026-08",
-			billable: [
-				{
-					projectSourceKey: website,
-					personSourceKey: "ana horvat",
-					month: "2026-07",
-					seconds: 3 * 3600,
-				},
-				{
-					projectSourceKey: website,
-					personSourceKey: "ana horvat",
-					month: "2026-08",
-					seconds: 3600,
-				},
-			],
-		});
-		const review = present(plan.review.projects[0], "project review");
-		expect(review.billableSeconds).toBe(5 * 3600);
-		expect(review.nonBillableSeconds).toBe(5 * 3600);
-	});
-
-	test("a project-month with only non-billable rows sends a zero figure", async () => {
-		// The zero is what tells `finish` the file covers the month. With no
-		// entry, a non-billable month and a month the file lacks looked the
-		// same, and a partial re-export zeroed every month it did not reach.
-		const { plan } = await planFor([
-			timeReport([
-				{ date: "2026-07-03", hours: "5,0", billable: false },
-				{ date: "2026-08-03", hours: "1,0" },
-			]),
-		]);
-		const website = JSON.stringify(["acme", "website", "ACW"]);
-		expect(plan.finish.billable).toEqual([
-			{
-				projectSourceKey: website,
-				personSourceKey: "ana horvat",
-				month: "2026-07",
-				seconds: 0,
-			},
-			{
-				projectSourceKey: website,
-				personSourceKey: "ana horvat",
-				month: "2026-08",
-				seconds: 3600,
-			},
-		]);
-		expectServerAccepts(plan);
-	});
-
-	test("historyThrough null sends no billable figures", async () => {
-		const { plan } = await planFor([timeReport([{}])], snapshot(), {
-			historyThrough: null,
-		});
-		expect(plan.finish).toEqual({ historyThrough: null, billable: [] });
-	});
-});
-
-// --- Questions for the admin -----------------------------------------------
 
 describe("two spellings of one name", () => {
 	// The real case: "Ive Vasiljević" until 2020, "Ive Vasiljevic" from 2021,

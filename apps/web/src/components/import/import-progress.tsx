@@ -70,20 +70,6 @@ export function ImportProgress({
 							/>
 						</>
 					)}
-					{finish && (
-						<>
-							<Metric
-								size={24}
-								value={count(finish.closesCreated + finish.closesUpdated)}
-								label="History closes written"
-							/>
-							<Metric
-								size={24}
-								value={count(finish.closesSkipped)}
-								label="Closes left alone because they were changed here"
-							/>
-						</>
-					)}
 				</div>
 				{finish && (
 					<p className="mt-8 max-w-[68ch] text-sm text-muted-foreground">

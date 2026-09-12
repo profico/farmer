@@ -119,7 +119,7 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 			}
 			progress("Closing the history months");
 			const finish = await finishHarvestImport({
-				data: { runId, ...j.plan.finish },
+				data: { runId },
 			});
 			job.current = null;
 			setState((s) => ({

@@ -21,8 +21,9 @@ export const importRunStatus = pgEnum("import_run_status", [
 	"undone",
 ]);
 
-// What an `import_mapping` row maps. `close` is a finalized history close the
-// import made (monthly_close has no note column to say so itself).
+// What an `import_mapping` row maps. `close` is no longer written (the history
+// closes went with the month-end close); the enum value stays because Postgres
+// cannot drop one, and old rows may still carry it.
 export const importMappingKind = pgEnum("import_mapping_kind", [
 	"client",
 	"project",
@@ -56,7 +57,6 @@ export const importRun = pgTable(
 		status: importRunStatus("status").notNull().default("started"),
 		entriesCreated: integer("entries_created").notNull().default(0),
 		entriesDeleted: integer("entries_deleted").notNull().default(0),
-		closesCreated: integer("closes_created").notNull().default(0),
 		finishedAt: ts("finished_at"),
 		undoneAt: ts("undone_at"),
 		...stamps,
