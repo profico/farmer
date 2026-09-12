@@ -67,8 +67,7 @@ const ROLE_ITEMS = [
 	{ value: "admin", label: "Admin" },
 ] as const;
 
-// Person type drives who the compliance report, Slack reminders and utilization
-// apply to. Changing it is effective-dated so a past month keeps reporting the
+// Person type drives who the compliance report and Slack reminders apply to. Changing it is effective-dated so a past month keeps reporting the
 // type the person actually held then.
 const TYPE_ITEMS = [
 	{ value: "billable", label: "Billable" },
@@ -407,7 +406,7 @@ function MembersSettingsPage() {
 			<PageHeader
 				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="People"
-				lede="Who has access, and what kind of person they are. Overhead people are left out of compliance nudges and utilization; contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
+				lede="Who has access, and what kind of person they are. Overhead people are left out of compliance nudges; contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
 				action={
 					<div className="flex items-center gap-2">
 						<SearchInput
@@ -574,8 +573,7 @@ function InvitationEmailBadge({
  * an empty box invites you to type a number that would be rejected.
  *
  * Blank means "no Expected at all": the "/" rows of the old PM sheet, where a
- * contractor shows Reported/Adjusted/Final and no pace or utilization
- * percentage.
+ * contractor shows Reported/Adjusted/Final and no pace percentage.
  */
 function ExpectedHoursCell({
 	type,

@@ -4,7 +4,7 @@
 // every write takes its user from the Ctx, never from the input — so the
 // property worth pinning is that a write lands on exactly one (org, person)
 // pair and nothing else reads it. The defaults matter just as much: a missing
-// row is Monday to Friday, and the utilization report reads everyone through
+// row is Monday to Friday, and reports read everyone through
 // `listForOrg`, which must synthesize the same defaults for people with none.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

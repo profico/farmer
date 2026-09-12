@@ -17,7 +17,7 @@ const SegmentedControlContext = createContext<{ layoutId: string }>({
 /**
  * A segmented control whose active-segment highlight slides fluidly between
  * segments via a shared-layout spring — the single source of truth for the
- * app's tab styling (Time day/week/month, Reports utilization/budgets, …).
+ * app's tab styling (Time day/week/month, the Reports tabs, …).
  *
  * Segments are `<SegmentedControlItem>`. Each item can render as a plain
  * button (state-driven) or wrap any element via `render` (e.g. a router

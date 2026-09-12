@@ -15,10 +15,10 @@ import {
 import { invitation, organization, user } from "./auth";
 
 // The single most consequential field in the reporting layer (PRD 3.1):
-//  - billable    delivery people whose time we sell. Every report, reminder and
-//                utilization calculation applies to them fully.
+//  - billable    delivery people whose time we sell. Every report and reminder
+//                applies to them fully.
 //  - overhead    COO / CEO / admin / marketing. Excluded from reminders, the
-//                compliance report, "not on the invoice" and utilization — but
+//                compliance report — but
 //                when they DO log time it flows through close sheets and the
 //                Time Report exactly like anyone else's.
 //  - contractor  externals. No Croatian monthly hour fund applies, so there is
@@ -57,7 +57,7 @@ export const memberProfile = pgTable(
 		// rather than deleting, because agencies churn and every close sheet, report
 		// and time entry the person appears on has to survive them leaving. An
 		// archived person drops out of the forward-looking surfaces — reminders,
-		// compliance, utilization, "not on the invoice", the assignment picker — and
+		// compliance, the assignment picker — and
 		// stays in every historical one.
 		archivedAt: ts("archived_at"),
 		...stamps,
@@ -87,7 +87,7 @@ export const memberTypeHistory = pgTable(
 			.references(() => user.id, { onDelete: "cascade" }),
 		type: memberType("type").notNull().default("billable"),
 		// Contractors have no monthly hour fund, so no Expected value — unless one
-		// is set here, in which case pace and utilization treat them like a billable
+		// is set here, in which case the pace check treats them like a billable
 		// person with that fund. Null for everyone else.
 		expectedSecondsOverride: integer("expected_seconds_override"),
 		effectiveFrom: text("effective_from").notNull(), // yyyy-MM-dd, inclusive

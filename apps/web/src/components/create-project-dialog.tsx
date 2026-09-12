@@ -54,7 +54,7 @@ const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 
 // The five project types, in the order the PRD lists them. Type is not
 // cosmetic: it decides which config fields exist, whether the close sheet shows
-// Expected hours, and whether the project counts as billable in Utilization.
+// Expected hours, and whether the project counts as billable.
 const PROJECT_TYPES: {
 	value: ProjectTypeValue;
 	label: string;
@@ -79,7 +79,7 @@ const PROJECT_TYPES: {
 	{
 		value: "internal",
 		label: "Internal",
-		hint: "Our own work. Never billed, and excluded from Utilization.",
+		hint: "Our own work. Never billed.",
 	},
 ];
 
