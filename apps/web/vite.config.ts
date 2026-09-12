@@ -7,11 +7,6 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
-// The typst compiler is a NAPI package (native .node binaries) reached through
-// @farmer/core's report-pdf. It can't be bundled or pre-optimized, so it always
-// stays a bare import — in dev and in the SSR build alike.
-const TYPST = "@myriaddreamin/typst-ts-node-compiler";
-
 // Dev-server startup hook: ensure the site-wide built-in tasks (Vacation, Sick
 // Leave) exist when
 // `vite dev` boots. Prod covers this via the Docker entrypoint (which runs the
@@ -116,18 +111,15 @@ function devWorker(): Plugin {
 
 export default defineConfig(({ command }) => ({
 	resolve: { tsconfigPaths: true },
-	optimizeDeps: { exclude: [TYPST] },
 	ssr: {
 		// Bundle every dependency into the SSR output (dist/server) at BUILD time
 		// so the production image ships almost no node_modules — react, tanstack,
 		// base-ui, lucide, drizzle, postgres, etc. get inlined; only a handful of
-		// packages that resist bundling (better-auth, framer-motion) plus the
-		// native typst compiler survive as bare imports (see Dockerfile). Scoped
+		// packages that resist bundling (better-auth, framer-motion) survive as
+		// bare imports (see Dockerfile). Scoped
 		// to `build` only: forcing every dep through Vite's SSR transform in dev
 		// slows startup and can break packages meant to stay external.
 		noExternal: command === "build" ? true : undefined,
-		external: [TYPST],
-		optimizeDeps: { exclude: [TYPST] },
 	},
 	plugins: [
 		seedSiteTasks(),

@@ -8,9 +8,9 @@
  * bundle; every top-level function body in it therefore ships to the client,
  * including the bodies of the deferred `import("@farmer/core/...")` calls, which
  * become real client chunks of the server graph. That is already why
- * `requireOrgAdmin` goes the long way round through a server function, and it is
- * a build error rather than dead weight once the graph reaches the native typst
- * binding behind `report-pdf.service`.
+ * `requireOrgAdmin` goes the long way round through a server function: the
+ * graph reaches `postgres`, which touches `Buffer` at module scope and crashes
+ * hydration silently.
  *
  * Nothing in the browser can reach this file: server routes are server-only, so
  * the import below stays where it belongs.

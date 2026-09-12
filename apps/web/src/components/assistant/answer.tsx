@@ -22,8 +22,8 @@ import {
 // Everything outside this set still falls through as text.
 //
 // The alternative was a markdown dependency — react-markdown plus remark-gfm
-// plus a sanitiser, all of it shipped to the browser — in an app whose only
-// other renderer is Typst on the server. Still not worth it, but the bar for
+// plus a sanitiser, all of it shipped to the browser — in an app with no
+// other renderer. Still not worth it, but the bar for
 // what has to be here has moved: see `systemPrompt` in assistant-tools.ts,
 // which is where the model is told what this renderer understands. Keep the two
 // in step — a construct promised there and missing here renders as syntax.

@@ -21,8 +21,7 @@
 #                       migrate.js    (the standalone Drizzle migrator)
 # The runtime image then installs only the packages that genuinely survive as
 # bare imports (docker/runtime.package.json) — better-auth, framer-motion/motion,
-# the drizzle-orm + postgres peers of better-auth's adapter, and the native typst
-# compiler (which can't be bundled) — pruned to the target arch. No workspace
+# and the drizzle-orm + postgres peers of better-auth's adapter. No workspace
 # node_modules, no source tree, no dev toolchain ship in the final image.
 
 # Pin Bun to the same version as `packageManager` in package.json so the image
@@ -62,22 +61,19 @@ RUN cd apps/web && bun run build
 #    - better-auth (its /tanstack-start subpath pulls @tanstack/start-server-core's
 #      unbundleable #tanstack-* imports; leaving it external stops the bundler at
 #      that boundary — the code path is never executed off the jobs/server graph)
-#    - the native typst compiler (NAPI .node binaries can't be bundled)
 RUN cd apps/web && bun build server.ts \
       --target=bun \
       --external "./dist/server/server.js" \
-      --external "@myriaddreamin/typst-ts-node-compiler" \
       --external "better-auth" --external "better-auth/*" \
       --external "framer-motion" \
       --external "#tanstack-router-entry" --external "#tanstack-start-entry" \
       --outfile /out/app.js
 
-# 3) bundle the startup migrator. drizzle-orm + postgres bundle in; only the
-#    typst dep (reached transitively) stays external. DRIZZLE_MIGRATIONS_DIR
-#    (set by the entrypoint) points it at the shipped drizzle/ SQL folder.
+# 3) bundle the startup migrator. drizzle-orm + postgres bundle in.
+#    DRIZZLE_MIGRATIONS_DIR (set by the entrypoint) points it at the shipped
+#    drizzle/ SQL folder.
 RUN cd apps/web && bun build ../../packages/core/src/db/migrate.ts \
       --target=bun \
-      --external "@myriaddreamin/typst-ts-node-compiler" \
       --outfile /out/migrate.js
 
 # 4) bundle the site-wide task seed (Vacation, Sick Leave). It's idempotent
@@ -86,7 +82,6 @@ RUN cd apps/web && bun build ../../packages/core/src/db/migrate.ts \
 #    NOT bundled — it inserts non-idempotent demo data.
 RUN cd apps/web && bun build ../../packages/core/src/db/seed-tasks.ts \
       --target=bun \
-      --external "@myriaddreamin/typst-ts-node-compiler" \
       --outfile /out/seed-tasks.js
 
 # ---- runtime: bundles + minimal node_modules, nothing else ----
@@ -106,15 +101,7 @@ COPY --from=build /app/apps/web/dist ./dist
 COPY --from=build /app/packages/core/drizzle ./drizzle
 COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh
 
-# Install only the packages that survive as bare imports at runtime, then drop
-# every typst platform binary except the one for THIS build's arch (~50MB each).
-# The triple is auto-detected from the build platform so the image just works on
-# arm64 or x64 without a build-arg — the runtime stage runs on the target arch
-# (true for a plain `docker build` and for buildx --platform under QEMU). libc is
-# always gnu because the -slim base is Debian (glibc); switching to an Alpine
-# base would need the -musl triple instead. Override explicitly if needed with
-# --build-arg TARGET_TYPST_TRIPLE=linux-x64-gnu.
-ARG TARGET_TYPST_TRIPLE=""
+# Install only the packages that survive as bare imports at runtime.
 # The lockfile matters as much as the manifest. The six versions below are
 # pinned exactly, but their transitive graph is not, so installing without one
 # resolved it fresh on every build — two images built from the same commit could
@@ -132,20 +119,6 @@ RUN set -e; \
       if [ "$attempts" -ge 5 ]; then echo "bun install failed after $attempts attempts" >&2; exit 1; fi; \
       echo "bun install failed (attempt $attempts) — retrying in 10s..." >&2; sleep 10; \
     done; \
-    triple="${TARGET_TYPST_TRIPLE}"; \
-    if [ -z "$triple" ]; then \
-      case "$(uname -m)" in \
-        aarch64|arm64) triple="linux-arm64-gnu" ;; \
-        x86_64|amd64)  triple="linux-x64-gnu" ;; \
-        *) echo "unsupported arch $(uname -m); set --build-arg TARGET_TYPST_TRIPLE" >&2; exit 1 ;; \
-      esac; \
-    fi; \
-    echo "[typst] keeping platform binary: $triple"; \
-    find node_modules/@myriaddreamin -maxdepth 1 \
-         -name 'typst-ts-node-compiler-*' ! -name "*-${triple}" \
-         -exec rm -rf {} + ; \
-    test -d "node_modules/@myriaddreamin/typst-ts-node-compiler-${triple}" \
-      || { echo "[typst] no binary for ${triple} after prune" >&2; exit 1; }; \
     rm -rf ~/.bun/install/cache
 
 # Drop privileges — the oven/bun image ships a non-root `bun` user.
