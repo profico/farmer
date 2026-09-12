@@ -10,7 +10,6 @@ export * from "./holidays";
 export * from "./hour-fund";
 export * from "./integration-settings";
 export * from "./members";
-export * from "./not-on-invoice";
 export * from "./notifications";
 export * from "./organization";
 export * from "./projects";
