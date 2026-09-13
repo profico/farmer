@@ -31,16 +31,16 @@ const STATUS_LABEL = {
 		live: "Behind",
 		done: "Short",
 		tone: "negative",
-		row: "bg-destructive/5 hover:bg-destructive/8",
+		row: "bg-bad/6 hover:bg-bad/10",
 	},
 } as const;
 
-// Ahead is green, short is the accent, exactly on target is just the number:
+// Ahead is green, short is red, exactly on target is just the number:
 // "+0h" said the person was ahead by nothing, which is not a thing.
 const Delta = ({ seconds }: { seconds: number }) => {
 	if (seconds === 0) return <span className="text-muted-foreground">0h</span>;
 	return (
-		<span className={seconds > 0 ? "text-ok" : "text-destructive"}>
+		<span className={seconds > 0 ? "text-ok" : "text-bad"}>
 			{seconds > 0 ? "+" : "−"}
 			{formatHoursLabel(Math.abs(seconds))}
 		</span>

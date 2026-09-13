@@ -82,6 +82,9 @@
   --acc: #6f4ebe;
   --warn: #8a6a1f;
   --ok: #4a7050;
+  /* The one red, for a verdict — "behind", "short" — and nothing else.
+     Added for the Tracking report; the accent stays the colour of actions. */
+  --bad: #b3423f;
   --sel: rgba(27, 26, 23, 0.045);
 
   /* The one elevation in the app: what something looks like while it is off the
@@ -144,6 +147,7 @@
   --acc: #9178de;
   --warn: #c0a15a;
   --ok: #7fa887;
+  --bad: #d98782;
   --sel: rgba(237, 232, 222, 0.05);
   /* The ground is dark enough that a tinted shadow disappears into it; only a
      near-black one still reads as a gap. */
@@ -393,6 +397,7 @@
   --color-faint: var(--faint);
   --color-warn: var(--warn);
   --color-ok: var(--ok);
+  --color-bad: var(--bad);
   --color-line: var(--line);
   --color-line2: var(--line2);
 
