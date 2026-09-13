@@ -21,9 +21,12 @@ import {
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
-	SegmentedControl,
-	SegmentedControlItem,
-} from "#/components/ui/segmented-control.tsx";
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "#/components/ui/select.tsx";
 import {
 	Table,
 	TableBody,
@@ -123,6 +126,26 @@ export function MonthFramed({
 	);
 }
 
+/** What the period reads as — "August 2026", "Q3 2026", "2026", or a range —
+ *  for the stepper and for the page's eyebrow, so the two never disagree. */
+export const periodLabel = (search: Search, today: string) => {
+	const { preset, from, to } = resolveReportPeriod(search, today);
+	const month = search.month ?? today.slice(0, 7);
+	return preset === "month"
+		? formatMonthKey(month)
+		: preset === "quarter"
+			? formatQuarterKey(month)
+			: preset === "year"
+				? month.slice(0, 4)
+				: formatWeekRange(from, to);
+};
+
+/**
+ * The period, as one control: ‹ August 2026 › with the preset — Week, Month,
+ * Quarter, Year, Custom — in a select beside it. It used to be the stepper
+ * AND a five-segment pill strip, which under the report tabs and over the
+ * Clients · Projects · Team tabs made four rows of tabs on one screen.
+ */
 export function PeriodPicker({
 	orgSlug,
 	search,
@@ -138,6 +161,7 @@ export function PeriodPicker({
 }) {
 	const { preset, from, to } = resolveReportPeriod(search, today);
 	const month = search.month ?? thisMonth;
+	const navigate = useNavigate({ from: "/$orgSlug/reports" });
 
 	// A Breakdown keeps its filters across a period change on purpose: "this
 	// client, last quarter" is a question, and the filters are the answer's
@@ -153,19 +177,44 @@ export function PeriodPicker({
 		});
 	};
 
-	const label =
-		preset === "month"
-			? formatMonthKey(month)
-			: preset === "quarter"
-				? formatQuarterKey(month)
-				: preset === "year"
-					? month.slice(0, 4)
-					: formatWeekRange(from, to);
+	const label = periodLabel(search, today);
 
 	const atNow = isCurrentPeriod(search, today);
 
 	return (
 		<div className="flex flex-wrap items-center gap-3">
+			<Select
+				items={PERIOD_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+				value={preset}
+				onValueChange={(next: string | null) => {
+					const picked = PERIOD_PRESETS.find((p) => p.id === next);
+					if (!picked) return;
+					navigate({
+						to: "/$orgSlug/reports",
+						params: { orgSlug },
+						search: withSearch({
+							preset: picked.id,
+							// Switching preset restarts from "now" in the new unit,
+							// which is the only period that means the same thing in
+							// all of them. Custom keeps the range it was opened from.
+							from: picked.id === "custom" ? from : undefined,
+							to: picked.id === "custom" ? to : undefined,
+						}),
+					});
+				}}
+			>
+				<SelectTrigger aria-label="Period" className="h-8 w-28 text-sm">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					{PERIOD_PRESETS.map((p) => (
+						<SelectItem key={p.id} value={p.id}>
+							{p.label}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+
 			{/* A custom range has no natural next, so it gets two date fields
 			    instead of arrows rather than arrows that guess a stride. */}
 			{preset === "custom" ? (
@@ -224,31 +273,6 @@ export function PeriodPicker({
 					}
 				/>
 			)}
-
-			<SegmentedControl>
-				{PERIOD_PRESETS.map((p) => (
-					<SegmentedControlItem
-						key={p.id}
-						active={preset === p.id}
-						render={
-							<Link
-								to="/$orgSlug/reports"
-								params={{ orgSlug }}
-								search={withSearch({
-									preset: p.id,
-									// Switching preset restarts from "now" in the new unit,
-									// which is the only period that means the same thing in
-									// all three.
-									from: p.id === "custom" ? from : undefined,
-									to: p.id === "custom" ? to : undefined,
-								})}
-							/>
-						}
-					>
-						{p.label}
-					</SegmentedControlItem>
-				))}
-			</SegmentedControl>
 
 			{children && (
 				<div className="ml-auto flex items-center gap-2">{children}</div>
