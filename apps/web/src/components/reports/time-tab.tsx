@@ -7,7 +7,7 @@ import type {
 	TimeReportDetailInput,
 	TimeReportSummaryInput,
 } from "@farmer/core/schema";
-import type { TimeReportDetailRow } from "@farmer/core/services";
+import type { TimeReportDetailRow, TimeReportRow } from "@farmer/core/services";
 import {
 	ArrowLeftIcon,
 	CaretDownIcon,
@@ -389,20 +389,45 @@ function SummaryExport({
 	);
 }
 
-type SortKey = "name" | "hours";
+/** A column sort: which column, and which way. Clicking the same column
+ *  again flips it; a fresh text column starts A→Z, a fresh number column
+ *  starts biggest first — "who has the most hours" is the question a Hours
+ *  column gets asked. */
+type Sort<K extends string> = { key: K; dir: 1 | -1 };
+const toggleSort = <K extends string>(
+	current: Sort<K>,
+	key: K,
+	numeric: boolean,
+): Sort<K> =>
+	current.key === key
+		? { key, dir: current.dir > 0 ? -1 : 1 }
+		: { key, dir: numeric ? -1 : 1 };
+const byText =
+	<R,>(pick: (row: R) => string | null) =>
+	(a: R, b: R) =>
+		(pick(a) ?? "").localeCompare(pick(b) ?? "", "hr");
+const byNumber =
+	<R,>(pick: (row: R) => number) =>
+	(a: R, b: R) =>
+		pick(a) - pick(b);
 
-/** A column header that sorts the table, with the arrow on the active one. */
-function SortHead({
+/** A column header that sorts the table, with the arrow on the active one.
+ *  Every column is one: a table you cannot sort by the column you are
+ *  reading is a table you read twice. */
+function SortHead<K extends string>({
 	label,
 	sortKey,
+	numeric = false,
 	sort,
 	onSort,
 	className,
 }: {
 	label: string;
-	sortKey: SortKey;
-	sort: { key: SortKey; dir: 1 | -1 };
-	onSort: (key: SortKey) => void;
+	sortKey: K;
+	/** Starts biggest first. */
+	numeric?: boolean;
+	sort: Sort<K>;
+	onSort: (key: K, numeric: boolean) => void;
 	className?: string;
 }) {
 	const active = sort.key === sortKey;
@@ -413,9 +438,9 @@ function SortHead({
 		>
 			<button
 				type="button"
-				onClick={() => onSort(sortKey)}
+				onClick={() => onSort(sortKey, numeric)}
 				className={cn(
-					"inline-flex items-center gap-1 rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
+					"inline-flex items-center gap-1 rounded-sm transition-colors duration-(--dur-fast) outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16",
 					active && "text-foreground",
 				)}
 			>
@@ -463,6 +488,14 @@ function HoursCell({
 	);
 }
 
+type SummarySortKey =
+	| "name"
+	| "client"
+	| "count"
+	| "work"
+	| "timeOff"
+	| "hours";
+
 function TimeSummaryRows({
 	orgSlug,
 	search,
@@ -475,23 +508,30 @@ function TimeSummaryRows({
 	const group = input.tab;
 	const { data } = useSuspenseQuery(timeReportSummaryQuery(orgSlug, input));
 	const [query, setQuery] = useState("");
-	const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({
+	const [sort, setSort] = useState<Sort<SummarySortKey>>({
 		key: "hours",
 		dir: -1,
 	});
-	const onSort = (key: SortKey) =>
-		setSort((current) =>
-			current.key === key
-				? { key, dir: current.dir > 0 ? -1 : 1 }
-				: { key, dir: key === "hours" ? -1 : 1 },
-		);
+	const onSort = (key: SummarySortKey, numeric: boolean) =>
+		setSort((current) => toggleSort(current, key, numeric));
+	const compare = {
+		name: byText((r: TimeReportRow) => r.name),
+		client: byText((r: TimeReportRow) => r.clientName),
+		count: byNumber((r: TimeReportRow) => r.count),
+		work: byNumber((r: TimeReportRow) => r.secondsTotal),
+		timeOff: byNumber((r: TimeReportRow) => r.timeOffSeconds),
+		hours: byNumber((r: TimeReportRow) => rowHours(r, group)),
+	} satisfies Record<
+		SummarySortKey,
+		(a: TimeReportRow, b: TimeReportRow) => number
+	>;
 
 	const rows = data.rows
 		.filter((row) => matchesSearch(query, [row.name, row.clientName, row.code]))
-		.sort((a, b) =>
-			sort.key === "hours"
-				? (rowHours(a, group) - rowHours(b, group)) * sort.dir
-				: a.name.localeCompare(b.name, "hr") * sort.dir,
+		.sort(
+			(a, b) =>
+				compare[sort.key](a, b) * sort.dir ||
+				a.name.localeCompare(b.name, "hr"),
 		);
 	const max = Math.max(...data.rows.map((r) => rowHours(r, group)), 1);
 	const total = data.rows.reduce((sum, r) => sum + rowHours(r, group), 0);
@@ -557,23 +597,57 @@ function TimeSummaryRows({
 									onSort={onSort}
 								/>
 								{group === "clients" && (
-									<TableHead className="text-right">Projects</TableHead>
+									<SortHead
+										label="Projects"
+										sortKey="count"
+										numeric
+										sort={sort}
+										onSort={onSort}
+										className="text-right"
+									/>
 								)}
 								{group === "projects" && (
 									<>
-										<TableHead>Client</TableHead>
-										<TableHead className="text-right">People</TableHead>
+										<SortHead
+											label="Client"
+											sortKey="client"
+											sort={sort}
+											onSort={onSort}
+										/>
+										<SortHead
+											label="People"
+											sortKey="count"
+											numeric
+											sort={sort}
+											onSort={onSort}
+											className="text-right"
+										/>
 									</>
 								)}
 								{group === "teammates" && (
 									<>
-										<TableHead className="text-right">Work</TableHead>
-										<TableHead className="text-right">Time-off</TableHead>
+										<SortHead
+											label="Work"
+											sortKey="work"
+											numeric
+											sort={sort}
+											onSort={onSort}
+											className="text-right"
+										/>
+										<SortHead
+											label="Time-off"
+											sortKey="timeOff"
+											numeric
+											sort={sort}
+											onSort={onSort}
+											className="text-right"
+										/>
 									</>
 								)}
 								<SortHead
 									label="Hours"
 									sortKey="hours"
+									numeric
 									sort={sort}
 									onSort={onSort}
 									className="text-right"
@@ -1214,6 +1288,7 @@ const BREAKDOWN_COLUMNS: {
 ];
 
 type DetailRow = TimeReportDetailRow;
+type EntrySortKey = BreakdownGroup | "hours";
 
 type DetailGroup = {
 	key: string;
@@ -1245,6 +1320,17 @@ function BreakdownTable({
 		timeReportDetailQuery(orgSlug, input),
 	);
 	const rows = detail.rows;
+	const [sort, setSort] = useState<Sort<EntrySortKey>>({ key: "date", dir: 1 });
+	const onSort = (key: EntrySortKey, numeric: boolean) =>
+		setSort((current) => toggleSort(current, key, numeric));
+	const compare = {
+		client: byText((r: DetailRow) => r.clientName),
+		project: byText((r: DetailRow) => r.projectName),
+		task: byText((r: DetailRow) => r.taskName),
+		teammate: byText((r: DetailRow) => r.userName),
+		date: byText((r: DetailRow) => r.date),
+		hours: byNumber((r: DetailRow) => r.durationSeconds),
+	} satisfies Record<EntrySortKey, (a: DetailRow, b: DetailRow) => number>;
 	// The search box only ever narrows what's already loaded — when the server
 	// truncated the entries, a search finds nothing past that cutoff, same as
 	// the CSV export.
@@ -1297,12 +1383,6 @@ function BreakdownTable({
 		group.people.add(row.userId);
 		groups.set(key, group);
 	}
-	// Dates read in order; everything else biggest first — the group's sum is
-	// the point of the header row, so the header rows sort by it.
-	const ordered = [...groups.values()].sort((a, b) =>
-		by === "date" ? a.key.localeCompare(b.key) : b.seconds - a.seconds,
-	);
-
 	// A column every row would repeat says nothing: the project you opened,
 	// its client, the person a chip narrowed to. The task column stays — it
 	// carries the note.
@@ -1313,6 +1393,23 @@ function BreakdownTable({
 	]);
 	const columns = BREAKDOWN_COLUMNS.filter(
 		(c) => c.id !== by && !fixed.has(c.id),
+	);
+	// A sort on a column no longer shown — it became the grouping, or a chip
+	// fixed it — falls back to the order the entries arrived in.
+	const active: Sort<EntrySortKey> =
+		sort.key === "hours" || columns.some((c) => c.id === sort.key)
+			? sort
+			: { key: "date", dir: 1 };
+
+	// Dates read in order; everything else biggest first — the group's sum is
+	// the point of the header row. Hours is the one column that also reorders
+	// the groups; every other column sorts the entries inside each group.
+	const ordered = [...groups.values()].sort((a, b) =>
+		active.key === "hours"
+			? (a.seconds - b.seconds) * active.dir
+			: by === "date"
+				? a.key.localeCompare(b.key)
+				: b.seconds - a.seconds,
 	);
 
 	const cellOf = (row: DetailRow, column: BreakdownGroup) =>
@@ -1351,9 +1448,22 @@ function BreakdownTable({
 				<TableHeader>
 					<TableRow>
 						{columns.map((c) => (
-							<TableHead key={c.id}>{c.label}</TableHead>
+							<SortHead
+								key={c.id}
+								label={c.label}
+								sortKey={c.id}
+								sort={active}
+								onSort={onSort}
+							/>
 						))}
-						<TableHead className="text-right">Hours</TableHead>
+						<SortHead
+							label="Hours"
+							sortKey="hours"
+							numeric
+							sort={active}
+							onSort={onSort}
+							className="text-right"
+						/>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -1409,45 +1519,47 @@ function BreakdownTable({
 										</TableCell>
 									</TableRow>
 									{open &&
-										group.rows.map((row) => (
-											<TableRow key={row.id}>
-												{columns.map((c, i) => (
-													<TableCell
-														key={c.id}
-														className={cn(
-															i === 0 && "pl-7",
-															c.muted && "text-muted-foreground",
-															c.id === "task" && "max-w-[36ch]",
-														)}
-													>
-														{cellOf(row, c.id)}
-														{c.id === "task" && (
-															// The description sits under the task: it is what the
-															// task meant that day, and a row without one says so
-															// rather than reading as a task with nothing to add.
-															<span
-																className={cn(
-																	"block truncate text-xs",
-																	row.description
-																		? "text-muted-foreground"
-																		: "text-faint italic",
-																)}
-															>
-																{row.description || "No description"}
+										[...group.rows]
+											.sort((a, b) => compare[active.key](a, b) * active.dir)
+											.map((row) => (
+												<TableRow key={row.id}>
+													{columns.map((c, i) => (
+														<TableCell
+															key={c.id}
+															className={cn(
+																i === 0 && "pl-7",
+																c.muted && "text-muted-foreground",
+																c.id === "task" && "max-w-[36ch]",
+															)}
+														>
+															{cellOf(row, c.id)}
+															{c.id === "task" && (
+																// The description sits under the task: it is what the
+																// task meant that day, and a row without one says so
+																// rather than reading as a task with nothing to add.
+																<span
+																	className={cn(
+																		"block truncate text-xs",
+																		row.description
+																			? "text-muted-foreground"
+																			: "text-faint italic",
+																	)}
+																>
+																	{row.description || "No description"}
+																</span>
+															)}
+														</TableCell>
+													))}
+													<TableCell className="mono text-right">
+														{formatReportHours(row.durationSeconds)}
+														{row.overtime && (
+															<span className="ml-2 rounded-full bg-warn/12 px-1.5 py-0.5 text-2xs font-medium text-warn">
+																OT
 															</span>
 														)}
 													</TableCell>
-												))}
-												<TableCell className="mono text-right">
-													{formatReportHours(row.durationSeconds)}
-													{row.overtime && (
-														<span className="ml-2 rounded-full bg-warn/12 px-1.5 py-0.5 text-2xs font-medium text-warn">
-															OT
-														</span>
-													)}
-												</TableCell>
-											</TableRow>
-										))}
+												</TableRow>
+											))}
 								</Fragment>
 							);
 						})
