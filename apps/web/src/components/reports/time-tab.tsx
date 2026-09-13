@@ -17,23 +17,11 @@ import {
 } from "@phosphor-icons/react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Fragment, Suspense, useMemo, useState } from "react";
+import { Fragment, Suspense, useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import {
-	Combobox,
-	ComboboxCollection,
-	ComboboxContent,
-	ComboboxEmpty,
-	ComboboxGroup,
-	ComboboxGroupLabel,
-	ComboboxItem,
-	ComboboxList,
-	ComboboxTrigger,
-	ComboboxValue,
-} from "#/components/ui/combobox.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Select,
@@ -75,8 +63,8 @@ import { formatDateHeading, PeriodPicker, TabPending } from "./shared.tsx";
 //          right, "Active projects only" and the CSV export;
 //   row 2  where you are — on the report, the Clients · Projects · Team tabs
 //          with the total at the right; in a drill-down, "← Projects", the
-//          thing you opened as the title, any extra narrowing as chips, and
-//          "+ Filter" — followed by the table.
+//          thing you opened as the title, and any extra narrowing a link
+//          still carries as chips — followed by the table.
 //
 // The drill-down reads the way Harvest's does: click a project and its people
 // appear as summary rows, closed; open one and their entries sit under it.
@@ -125,15 +113,11 @@ type BreakdownGroup = (typeof BREAKDOWN_GROUPS)[number]["id"];
  *  on the summary tab — and the rest are chips. */
 type FilterKind = "client" | "project" | "person" | "task";
 const FILTER_KINDS = [
-	{ kind: "client", label: "Client", group: "Clients" },
-	{ kind: "project", label: "Project", group: "Projects" },
-	{ kind: "person", label: "Person", group: "People" },
-	{ kind: "task", label: "Task", group: "Tasks" },
-] as const satisfies readonly {
-	kind: FilterKind;
-	label: string;
-	group: string;
-}[];
+	{ kind: "client", label: "Client" },
+	{ kind: "project", label: "Project" },
+	{ kind: "person", label: "Person" },
+	{ kind: "task", label: "Task" },
+] as const satisfies readonly { kind: FilterKind; label: string }[];
 
 /** Which filter a summary tab's rows open, and so what "back" returns to. The
  *  tab stays in the URL across the drill-down for exactly this reason. */
@@ -904,8 +888,8 @@ type EntityName = { label: string; code: string | null; hint: string | null };
 /**
  * The names behind the ids in the URL.
  *
- * The org's lists first — cached, and what the filter picker reads anyway —
- * then the entries themselves: a Team Lead's project list holds only their
+ * The org's lists first — cached, every screen reads them — then the
+ * entries themselves: a Team Lead's project list holds only their
  * own assignments, while the people they lead log time on projects the lead
  * is not on, and every entry row names its project. Reading the detail here
  * shares the table's query and never suspends, so a chip change swaps the
@@ -956,22 +940,17 @@ function useEntityNames(input: TimeReportDetailInput) {
 		}
 	};
 
-	return { clients, projects, people, tasks, nameOf };
+	return nameOf;
 }
 
-type FilterItem = {
-	/** Unique across the four kinds. */
-	value: string;
-	kind: FilterKind;
-	id: string;
-	label: string;
-	code: string | null;
-	hint: string | null;
-};
-type FilterGroup = { value: FilterKind; label: string; items: FilterItem[] };
-
-/** The subject as the title, the extra filters as chips, and the picker that
- *  adds one. The subject is not a chip: going back is how you drop it. */
+/** The subject as the title, and any extra filter as a chip with an ×. The
+ *  subject is not a chip: going back is how you drop it.
+ *
+ *  There is no control that ADDS a chip. A "+ Filter" picker was built and
+ *  taken out again: Group by answers the same questions from the group rows
+ *  ("meeting hours on Vinify" is Group by Task, read the Meeting row), and
+ *  the one question it doesn't — three dimensions at once — the CSV does.
+ *  The chips stay so a link that still carries a filter says so. */
 function DrillHeader({
 	input,
 	search,
@@ -983,107 +962,12 @@ function DrillHeader({
 	subject: FilterKind;
 	go: (patch: Partial<Search>) => void;
 }) {
-	const { clients, projects, people, tasks, nameOf } = useEntityNames(input);
+	const nameOf = useEntityNames(input);
 	const subjectId = search[subject];
 	const title = subjectId ? nameOf(subject, subjectId) : null;
 	const chips = FILTER_KINDS.filter(
 		(k) => k.kind !== subject && search[k.kind],
 	);
-
-	// What "+ Filter" may still add: every kind not yet in force. A project
-	// fixes its client, so a client is not offered beside one; under a client,
-	// only that client's projects are.
-	const groups = useMemo<FilterGroup[]>(() => {
-		const out: FilterGroup[] = [];
-		if (!search.client && !search.project) {
-			out.push({
-				value: "client",
-				label: "Clients",
-				items: clients.map((c) => ({
-					value: `client:${c.id}`,
-					kind: "client",
-					id: c.id,
-					label: c.name,
-					code: null,
-					hint: null,
-				})),
-			});
-		}
-		if (!search.project) {
-			out.push({
-				value: "project",
-				label: "Projects",
-				items: projects
-					.filter((p) => !search.client || p.client?.id === search.client)
-					.map((p): FilterItem => ({
-						value: `project:${p.id}`,
-						kind: "project",
-						id: p.id,
-						label: p.name,
-						code: p.code,
-						hint:
-							[
-								search.client ? null : (p.client?.name ?? null),
-								p.status === "active" ? null : "archived",
-							]
-								.filter((h) => h !== null)
-								.join(" · ") || null,
-					}))
-					.sort((a, b) => a.label.localeCompare(b.label)),
-			});
-		}
-		if (!search.person) {
-			out.push({
-				value: "person",
-				label: "People",
-				items: people.map((m) => ({
-					value: `person:${m.userId}`,
-					kind: "person",
-					id: m.userId,
-					label: m.name,
-					code: null,
-					hint: null,
-				})),
-			});
-		}
-		if (!search.task) {
-			out.push({
-				value: "task",
-				label: "Tasks",
-				items: tasks.map((t) => ({
-					value: `task:${t.id}`,
-					kind: "task",
-					id: t.id,
-					label: t.name,
-					code: null,
-					hint: null,
-				})),
-			});
-		}
-		return out;
-	}, [
-		clients,
-		projects,
-		people,
-		tasks,
-		search.client,
-		search.project,
-		search.person,
-		search.task,
-	]);
-
-	const [pickerQuery, setPickerQuery] = useState("");
-	const filtered = useMemo(() => {
-		if (pickerQuery.trim() === "") return groups;
-		return groups
-			.map((g) => ({
-				...g,
-				items: g.items.filter((i) =>
-					matchesSearch(pickerQuery, [i.label, i.code, i.hint]),
-				),
-			}))
-			.filter((g) => g.items.length > 0);
-	}, [groups, pickerQuery]);
 
 	return (
 		<>
@@ -1134,66 +1018,6 @@ function DrillHeader({
 					</span>
 				);
 			})}
-
-			{groups.length > 0 && (
-				<Combobox
-					items={groups}
-					filteredItems={filtered}
-					// Never holds a value: picking one is a navigation, and the chip
-					// it becomes is the thing that shows it.
-					value={null}
-					onValueChange={(item: FilterItem | null) => {
-						if (item) go(filterPatch(item.kind, item.id));
-					}}
-					isItemEqualToValue={(a: FilterItem, b: FilterItem) =>
-						a.value === b.value
-					}
-					itemToStringLabel={(item: FilterItem) => item.label}
-					inputValue={pickerQuery}
-					onInputValueChange={setPickerQuery}
-					onOpenChange={(open) => {
-						if (!open) setPickerQuery("");
-					}}
-					autoHighlight
-				>
-					<ComboboxTrigger
-						aria-label="Add a filter"
-						className="h-8 rounded-full border-dashed text-sm text-muted-foreground"
-					>
-						<ComboboxValue>{() => "+ Filter"}</ComboboxValue>
-					</ComboboxTrigger>
-					<ComboboxContent
-						className="w-80"
-						searchPlaceholder="Search clients, projects, people, tasks…"
-					>
-						<ComboboxEmpty>Nothing matches.</ComboboxEmpty>
-						<ComboboxList>
-							{(group: FilterGroup) => (
-								<ComboboxGroup key={group.value} items={group.items}>
-									<ComboboxGroupLabel>{group.label}</ComboboxGroupLabel>
-									<ComboboxCollection>
-										{(item: FilterItem) => (
-											<ComboboxItem key={item.value} value={item}>
-												<span className="truncate">{item.label}</span>
-												{item.code && (
-													<span className="mono shrink-0 text-xs text-muted-foreground">
-														{item.code}
-													</span>
-												)}
-												{item.hint && (
-													<span className="shrink-0 text-xs text-faint">
-														{item.hint}
-													</span>
-												)}
-											</ComboboxItem>
-										)}
-									</ComboboxCollection>
-								</ComboboxGroup>
-							)}
-						</ComboboxList>
-					</ComboboxContent>
-				</Combobox>
-			)}
 		</>
 	);
 }
