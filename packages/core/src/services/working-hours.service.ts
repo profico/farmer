@@ -1,22 +1,16 @@
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { memberSchedule, memberWorkingHoursDay } from "../db/schema/schedule";
-import { parseDuration } from "../lib/time";
+import { memberWorkingHoursDay } from "../db/schema/schedule";
 // The schedule arithmetic lives in lib/working-day (pure); this service owns
 // the reads and writes. Re-exported here because callers that already depend on
 // this service for the rows shouldn't need a second import for the maths.
 import { defaultDayRow, type WorkingHoursDay } from "../lib/working-day";
-import type {
-	SetWeeklyTargetInput,
-	UpsertWorkingHoursDayInput,
-} from "../schema/working-hours";
+import type { UpsertWorkingHoursDayInput } from "../schema/working-hours";
 import { ctxDb } from "./context";
 import type { Ctx } from "./types";
 
 export { dayDurationSeconds, type WorkingHoursDay } from "../lib/working-day";
-
-const DEFAULT_WEEKLY_TARGET_SECONDS = 144000; // 40h
 
 export const workingHoursService = {
 	// Always returns all 7 days (0=Sun..6=Sat) for the requesting user.
@@ -104,41 +98,6 @@ export const workingHoursService = {
 			})
 			.returning();
 		if (!row) throw new Error("Failed to save working hours");
-		return row;
-	},
-
-	getWeeklyTarget: async (ctx: Ctx): Promise<number> => {
-		const row = await db.query.memberSchedule.findFirst({
-			where: and(
-				eq(memberSchedule.organizationId, ctx.organizationId),
-				eq(memberSchedule.userId, ctx.userId),
-			),
-		});
-		return row?.weeklyTargetSeconds ?? DEFAULT_WEEKLY_TARGET_SECONDS;
-	},
-
-	setWeeklyTarget: async (ctx: Ctx, input: SetWeeklyTargetInput) => {
-		const weeklyTargetSeconds = parseDuration(input.weeklyTarget);
-		if (weeklyTargetSeconds === null) {
-			throw new Error("Could not understand that duration");
-		}
-		if (weeklyTargetSeconds <= 0) {
-			throw new Error("Weekly target must be greater than zero");
-		}
-
-		const [row] = await db
-			.insert(memberSchedule)
-			.values({
-				organizationId: ctx.organizationId,
-				userId: ctx.userId,
-				weeklyTargetSeconds,
-			})
-			.onConflictDoUpdate({
-				target: [memberSchedule.organizationId, memberSchedule.userId],
-				set: { weeklyTargetSeconds, updatedAt: new Date() },
-			})
-			.returning();
-		if (!row) throw new Error("Failed to save weekly target");
 		return row;
 	},
 };

@@ -403,3 +403,74 @@ describe("authorization", () => {
 		expect(report.rows.map((r) => r.userId)).toContain(DILIGENT);
 	});
 });
+
+// ── My targets ─────────────────────────────────────────────────────────────
+
+describe("my targets", () => {
+	const ctxOf = (userId: string): Ctx => ({ organizationId: ORG, userId });
+	// Wednesday 15 April 2026: the third working day of its week, the 11th of
+	// the month's 22.
+
+	test("the week and the month, each with where you should be by today", async () => {
+		await setFund(176 * H);
+		await logEntry(DILIGENT, "2026-04-13", devTaskId, 8 * H);
+		await logEntry(DILIGENT, "2026-04-14", devTaskId, 8 * H);
+		await logEntry(DILIGENT, "2026-04-15", devTaskId, 3 * H);
+		// Time off booked for Friday counts already: it is hours the week has.
+		await logEntry(DILIGENT, "2026-04-17", vacationTaskId, 8 * H, false);
+
+		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
+		expect(mine.today).toBe(today);
+		expect(mine.daySeconds).toBe(8 * H);
+		expect(mine.week).toMatchObject({
+			from: "2026-04-13",
+			to: "2026-04-19",
+			workingDays: 5,
+			workingDaysElapsed: 3,
+			targetSeconds: 40 * H,
+			targetSoFarSeconds: 24 * H,
+			workSeconds: 19 * H,
+			timeOffSeconds: 8 * H,
+			totalSeconds: 27 * H,
+			status: "on_track",
+		});
+		expect(mine.month).toMatchObject({
+			from: "2026-04-01",
+			to: "2026-04-30",
+			workingDays: 22,
+			workingDaysElapsed: 11,
+			targetSeconds: 176 * H,
+			targetSoFarSeconds: 88 * H,
+			totalSeconds: 27 * H,
+			status: "behind",
+		});
+	});
+
+	test("without a fund the month has no target but the week still has its 8h days", async () => {
+		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
+		expect(mine.daySeconds).toBe(8 * H);
+		expect(mine.week.targetSeconds).toBe(40 * H);
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+		expect(mine.month.targetSeconds).toBeNull();
+		expect(mine.month.targetSoFarSeconds).toBeNull();
+		expect(mine.month.status).toBeNull();
+	});
+
+	test("an hourly person without an override has hours and no target, in either period", async () => {
+		await setFund(176 * H);
+		await logEntry(CONTRACTOR, "2026-04-14", devTaskId, 5 * H);
+		const mine = await complianceService.myTargets(ctxOf(CONTRACTOR), AT);
+		expect(mine.week.totalSeconds).toBe(5 * H);
+		expect(mine.week.targetSeconds).toBeNull();
+		expect(mine.week.status).toBeNull();
+		expect(mine.month.targetSeconds).toBeNull();
+		expect(mine.month.status).toBeNull();
+	});
+
+	test("a day's worth follows the fund: an unofficial fund makes a shorter day", async () => {
+		await setFund(154 * H);
+		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
+		expect(mine.daySeconds).toBe(7 * H);
+		expect(mine.week.targetSeconds).toBe(35 * H);
+	});
+});

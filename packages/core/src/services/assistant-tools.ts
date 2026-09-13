@@ -266,7 +266,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "whoami",
 		kind: "read",
 		description:
-			"The current user: their name and user id, org role, member type, timezone, working-hours schedule and weekly target, and the projects they are on with their role on each. Call this when a question depends on who is asking, on what counts as a full day for them, or when another tool needs their user id.",
+			"The current user: their name and user id, org role, member type, timezone, working-hours schedule, and the projects they are on with their role on each. Call this when a question depends on who is asking, on what counts as a full day for them, or when another tool needs their user id.",
 		schema: z.object({}),
 		// One call rather than four, because these are asked together or not at
 		// all. Without it the model knew the date and nothing else about the person
@@ -274,14 +274,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		// and `time_report_summary` grouped by teammate handed back names it had no
 		// way to turn back into the ids every other tool takes.
 		run: async (ctx) => {
-			const [access, people, workingHours, weeklyTargetSeconds, timezone] =
-				await Promise.all([
-					ctxAccess(ctx),
-					membersService.list(ctx),
-					workingHoursService.list(ctx),
-					workingHoursService.getWeeklyTarget(ctx),
-					ctxTimezone(ctx),
-				]);
+			const [access, people, workingHours, timezone] = await Promise.all([
+				ctxAccess(ctx),
+				membersService.list(ctx),
+				workingHoursService.list(ctx),
+				ctxTimezone(ctx),
+			]);
 			const me = people.find((person) => person.userId === ctx.userId);
 			const myProjects = await projectsService.listMine(ctx);
 
@@ -294,7 +292,6 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				memberType: me?.type ?? null,
 				startDate: me?.startDate ?? null,
 				timezone,
-				weeklyTargetSeconds,
 				// 0 = Sunday. Enabled days only: a list of five IS the schedule, where
 				// seven rows with two disabled is the same thing spelled longer.
 				workingDays: workingHours

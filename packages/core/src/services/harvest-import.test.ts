@@ -125,7 +125,6 @@ const plan = (): HarvestStartInput => ({
 			type: "employee_billable",
 			startDate: "2024-01-01",
 			archivedOn: null,
-			weeklyTargetSeconds: 40 * H,
 		},
 		{
 			action: "create",
@@ -138,7 +137,6 @@ const plan = (): HarvestStartInput => ({
 			type: "employee_billable",
 			startDate: "2024-01-01",
 			archivedOn: "2025-06-30",
-			weeklyTargetSeconds: 40 * H,
 		},
 		{
 			action: "create",
@@ -151,7 +149,6 @@ const plan = (): HarvestStartInput => ({
 			type: "employee_billable",
 			startDate: "2024-01-01",
 			archivedOn: null,
-			weeklyTargetSeconds: 40 * H,
 		},
 	],
 	projectMembers: [
@@ -360,7 +357,6 @@ describe("harvest import", () => {
 			type: "employee_billable",
 			startDate: "2024-01-01",
 			archivedOn: null,
-			weeklyTargetSeconds: 40 * H,
 		};
 		// The listed copy of the same address is dropped, so only the guess
 		// can reach the user.

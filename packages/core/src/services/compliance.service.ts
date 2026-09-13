@@ -3,17 +3,19 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import {
+	addDaysToKey,
 	datesBetween,
 	dayKeyInTz,
 	monthBounds,
 	QUARTER_HOUR_SECONDS,
+	startOfWeekKey,
 } from "../lib/time";
 import { isHourlyMemberType } from "../schema/members";
 import type { MonthReportInput } from "../schema/reports";
 import { accessService } from "./access.service";
 import { ctxAccess, ctxTimezone } from "./context";
 import { holidaysService } from "./holidays.service";
-import { hourFundService } from "./hour-fund.service";
+import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerByUser } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
 import { orgSettingsService } from "./org-settings.service";
@@ -54,6 +56,9 @@ export type TrackingRow = {
 	totalSeconds: number;
 	/** This person's target so far, or null when no target applies to them. */
 	targetSeconds: number | null;
+	/** The whole month's figure for this person — their override, or the fund
+	 *  — or null when no target applies to them. */
+	monthTargetSeconds: number | null;
 	/** total − target; null with no target. Negative is short. */
 	deltaSeconds: number | null;
 	status: TrackingStatus | null;
@@ -239,6 +244,7 @@ const computeTracking = async (
 			timeOffSeconds,
 			totalSeconds,
 			targetSeconds: target,
+			monthTargetSeconds: fund ?? null,
 			deltaSeconds: target == null ? null : totalSeconds - target,
 			status:
 				target == null
@@ -273,7 +279,148 @@ const computeTracking = async (
 	};
 };
 
+/** One period of a person's own targets — the week or the month — as the home
+ *  page and the timesheet show it. */
+export type PeriodTarget = {
+	from: string;
+	to: string;
+	workingDays: number;
+	workingDaysElapsed: number;
+	/** The whole period's target, or null when no target applies. */
+	targetSeconds: number | null;
+	/** Where they should be by today. */
+	targetSoFarSeconds: number | null;
+	workSeconds: number;
+	timeOffSeconds: number;
+	/** work + time off — everything in the period, booked days ahead included. */
+	totalSeconds: number;
+	status: TrackingStatus | null;
+};
+
+export type MyTargets = {
+	today: string;
+	/** What one working day is worth this month: the person's month target ÷
+	 *  the month's working days — 8h with the official fund — or 8h flat when
+	 *  no fund is set, so the week still has a yardstick. */
+	daySeconds: number;
+	tolerancePct: number;
+	week: PeriodTarget;
+	month: PeriodTarget;
+};
+
+const sumOf = (map: Map<string, number>, userId: string) =>
+	map.get(userId) ?? 0;
+
 export const complianceService = {
+	/**
+	 * The caller's own week and month against the rule — for the home page and
+	 * the strip on the timesheet, so how much is missing is never more than one
+	 * look away. The month is the Tracking row for this one person; the week is
+	 * the same rule on Monday-to-Sunday: working days × a day's worth, where
+	 * you should be by today = the working days elapsed × the same.
+	 *
+	 * Nobody outside the rule gets a target — an hourly person without an
+	 * override, an overhead person, someone archived — but everybody gets
+	 * their hours.
+	 */
+	myTargets: async (
+		ctx: Ctx,
+		opts: Pick<ComplianceOpts, "now"> = {},
+	): Promise<MyTargets> => {
+		const tz = await ctxTimezone(ctx);
+		const today = dayKeyInTz(opts.now ?? new Date(), tz);
+		const year = Number(today.slice(0, 4));
+		const month = Number(today.slice(5, 7));
+		const report = await computeTracking(
+			ctx,
+			{ year, month },
+			{ now: opts.now, onlyUserIds: new Set([ctx.userId]) },
+		);
+		const me = report.rows[0] ?? null;
+		const daySeconds =
+			me?.monthTargetSeconds != null && report.workingDaysInMonth > 0
+				? Math.round(
+						me.monthTargetSeconds /
+							report.workingDaysInMonth /
+							QUARTER_HOUR_SECONDS,
+					) * QUARTER_HOUR_SECONDS
+				: WORKING_DAY_SECONDS;
+
+		const weekFrom = startOfWeekKey(today);
+		const weekTo = addDaysToKey(weekFrom, 6);
+		const monthRange = monthBounds(year, month);
+		const userIds = [ctx.userId];
+		const [holidays, weekWork, weekOff, monthWork, monthOff] =
+			await Promise.all([
+				holidaysService.holidaySetForRange(ctx, weekFrom, weekTo),
+				ledgerByUser(ctx, { from: weekFrom, to: weekTo }, "worked", {
+					userIds,
+				}),
+				ledgerByUser(ctx, { from: weekFrom, to: weekTo }, "absence", {
+					userIds,
+				}),
+				// The whole month, booked days ahead included — the Tracking row
+				// stops at today, and a week of vacation booked for next week is
+				// hours the month already has.
+				ledgerByUser(ctx, monthRange, "worked", { userIds }),
+				ledgerByUser(ctx, monthRange, "absence", { userIds }),
+			]);
+
+		// The week has a yardstick whenever the rule applies to the person —
+		// even without a fund set, at 8h a day; an hourly person without an
+		// override has none.
+		const weekApplies =
+			me != null &&
+			(!isHourlyMemberType(me.memberType) || me.monthTargetSeconds != null);
+		const weekDays = workingDaysIn(weekFrom, weekTo, holidays);
+		const weekElapsed = workingDaysIn(weekFrom, today, holidays);
+		const weekTarget = weekApplies ? weekDays * daySeconds : null;
+		const weekSoFar = weekApplies ? weekElapsed * daySeconds : null;
+		const weekTotal = sumOf(weekWork, ctx.userId) + sumOf(weekOff, ctx.userId);
+		const monthTotal =
+			sumOf(monthWork, ctx.userId) + sumOf(monthOff, ctx.userId);
+
+		return {
+			today,
+			daySeconds,
+			tolerancePct: report.tolerancePct,
+			week: {
+				from: weekFrom,
+				to: weekTo,
+				workingDays: weekDays,
+				workingDaysElapsed: weekElapsed,
+				targetSeconds: weekTarget,
+				targetSoFarSeconds: weekSoFar,
+				workSeconds: sumOf(weekWork, ctx.userId),
+				timeOffSeconds: sumOf(weekOff, ctx.userId),
+				totalSeconds: weekTotal,
+				status:
+					weekSoFar == null
+						? null
+						: trackingStatusFor(weekTotal, weekSoFar, report.tolerancePct),
+			},
+			month: {
+				from: monthRange.from,
+				to: monthRange.to,
+				workingDays: report.workingDaysInMonth,
+				workingDaysElapsed: report.workingDaysElapsed,
+				targetSeconds: me?.monthTargetSeconds ?? null,
+				targetSoFarSeconds: me?.targetSeconds ?? null,
+				workSeconds: sumOf(monthWork, ctx.userId),
+				timeOffSeconds: sumOf(monthOff, ctx.userId),
+				totalSeconds: monthTotal,
+				status:
+					me?.targetSeconds == null
+						? null
+						: trackingStatusFor(
+								monthTotal,
+								me.targetSeconds,
+								report.tolerancePct,
+							),
+			},
+		};
+	},
+
 	/** The Tracking report for a month, scoped by people (§4 matrix): everyone
 	 *  for Admin; for anyone else themselves, the people on their list and
 	 *  everyone on the projects they manage. A Member sees one row — their own. */

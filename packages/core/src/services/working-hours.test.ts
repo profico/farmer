@@ -158,41 +158,6 @@ describe("upsertDay", () => {
 	});
 });
 
-describe("weekly target", () => {
-	test("defaults to 40 hours", async () => {
-		expect(await workingHoursService.getWeeklyTarget(ctx(FRESH))).toBe(144000);
-	});
-
-	test("is stored per person and per org", async () => {
-		const row = await workingHoursService.setWeeklyTarget(ctx(ME), {
-			weeklyTarget: "32h",
-		});
-		expect(row.weeklyTargetSeconds).toBe(32 * 3600);
-		expect(await workingHoursService.getWeeklyTarget(ctx(ME))).toBe(32 * 3600);
-		expect(await workingHoursService.getWeeklyTarget(ctx(COLLEAGUE))).toBe(
-			144000,
-		);
-		expect(await workingHoursService.getWeeklyTarget(ctx(ME, ORG_B))).toBe(
-			144000,
-		);
-
-		await workingHoursService.setWeeklyTarget(ctx(ME), {
-			weeklyTarget: "30h",
-		});
-		expect(await workingHoursService.getWeeklyTarget(ctx(ME))).toBe(30 * 3600);
-	});
-
-	test("zero and unparseable targets are refused and the stored one kept", async () => {
-		await expect(
-			workingHoursService.setWeeklyTarget(ctx(ME), { weeklyTarget: "0h" }),
-		).rejects.toThrow("Weekly target must be greater than zero");
-		await expect(
-			workingHoursService.setWeeklyTarget(ctx(ME), { weeklyTarget: "banana" }),
-		).rejects.toThrow("Could not understand that duration");
-		expect(await workingHoursService.getWeeklyTarget(ctx(ME))).toBe(30 * 3600);
-	});
-});
-
 describe("listForOrg", () => {
 	test("every requested person, defaults filled in, from this org's rows only", async () => {
 		// ME turns Tuesday off in org B only; org A's report must not see it.

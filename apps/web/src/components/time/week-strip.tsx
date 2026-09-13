@@ -6,6 +6,10 @@ import { springLayout } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const isWeekday = (date: string) => {
+	const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+	return day !== 0 && day !== 6;
+};
 
 // The seven-day context bar above the Day view. It exists so a person filling in
 // Tuesday can see, without navigating, that Thursday is still empty — which is
@@ -17,12 +21,18 @@ export function WeekStrip({
 	activeDate,
 	secondsByDay,
 	holidays,
+	today,
+	dayTargetSeconds,
 }: {
 	orgSlug: string;
 	dates: string[];
 	activeDate: string;
 	secondsByDay: Map<string, number>;
 	holidays: Map<string, string>;
+	/** With a day's worth, a past or present working day says how far it is
+	 *  from it. Omitted for people the rule does not apply to. */
+	today?: string;
+	dayTargetSeconds?: number | null;
 }) {
 	const weekTotal = dates.reduce(
 		(sum, date) => sum + (secondsByDay.get(date) ?? 0),
@@ -89,6 +99,18 @@ export function WeekStrip({
 								{holidayName}
 							</span>
 						)}
+						{!holidayName &&
+							today != null &&
+							dayTargetSeconds != null &&
+							date <= today &&
+							isWeekday(date) &&
+							(seconds >= dayTargetSeconds ? (
+								<span className="mt-1 block text-2xs text-ok">done</span>
+							) : (
+								<span className="mt-1 block text-2xs text-bad">
+									{formatClock(dayTargetSeconds - seconds)} short
+								</span>
+							))}
 					</Link>
 				);
 			})}

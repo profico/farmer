@@ -53,7 +53,6 @@ import { hoursToSeconds, roundToQuarterHour } from "./number";
 export const HARVEST_DEFAULT_CUTOFF = "2026-09-01";
 export const HARVEST_GUESS_DOMAIN = "profico.hr";
 /** 40 hours: the weekly target when the people list names no capacity. */
-export const HARVEST_DEFAULT_WEEKLY_TARGET_SECONDS = 40 * 3600;
 /** A project-person pair with a row this many days before the cutoff (or
  *  later) is an active assignment. */
 export const HARVEST_ACTIVE_WINDOW_DAYS = 90;
@@ -63,7 +62,6 @@ export const HARVEST_ACTIVE_WINDOW_DAYS = 90;
 export const HARVEST_ACTIVE_PROJECT_WINDOW_DAYS = 31;
 
 const DAY_SECONDS = 24 * 3600;
-const MAX_WEEKLY_TARGET_SECONDS = 7 * DAY_SECONDS;
 const MAX_ROWS_PER_DAY = 500;
 const MAX_DESCRIPTION = 10_000;
 const MAX_CODE = 16;
@@ -1616,11 +1614,6 @@ export function planHarvestImport(
 		const role = choice?.role ?? (p.listed?.admin ? "admin" : "member");
 		const type: MemberTypeValue =
 			choice?.type ?? (employee ? "employee_billable" : "contractor_hourly");
-		const capacity = p.listed?.capacityHours ?? null;
-		const weeklyTargetSeconds =
-			capacity !== null && capacity >= 0
-				? Math.min(Math.round(capacity * 3600), MAX_WEEKLY_TARGET_SECONDS)
-				: HARVEST_DEFAULT_WEEKLY_TARGET_SECONDS;
 		const archivedOn = p.listed
 			? null
 			: p.lastDate
@@ -1637,7 +1630,6 @@ export function planHarvestImport(
 			type,
 			startDate: p.firstDate ?? cutoff,
 			archivedOn,
-			weeklyTargetSeconds,
 		};
 		review.email = email;
 		review.emailGuessed = !emailConfirmed;

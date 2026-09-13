@@ -309,7 +309,6 @@ A person is keyed by email when the people list has one, else by full name.
     `overhead` on the review screen. The type starts on the date of the first
     entry.
   - `startDate` = the date of the first entry.
-  - `weeklyTargetSeconds` = `Capacity` x 3600.
 - `user.id` and `member.id` are text columns with no default. The import makes
   them with better-auth's `generateId`, so they have the same form as the
   rows that a sign-in makes.

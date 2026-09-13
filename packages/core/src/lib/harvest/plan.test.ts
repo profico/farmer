@@ -909,7 +909,6 @@ describe("people", () => {
 				type: "contractor_hourly",
 				startDate: "2026-09-01",
 				archivedOn: null,
-				weeklyTargetSeconds: 25 * 3600,
 			},
 			{
 				action: "create",
@@ -922,7 +921,6 @@ describe("people", () => {
 				type: "employee_billable",
 				startDate: "2015-01-02",
 				archivedOn: null,
-				weeklyTargetSeconds: 40 * 3600,
 			},
 		]);
 	});
@@ -946,7 +944,6 @@ describe("people", () => {
 				type: "contractor_hourly",
 				startDate: "2018-01-02",
 				archivedOn: "2020-01-01",
-				weeklyTargetSeconds: 144000,
 			},
 		]);
 		expect(plan.review.people[0]?.emailGuessed).toBe(true);

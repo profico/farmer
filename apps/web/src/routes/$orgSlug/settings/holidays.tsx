@@ -1,5 +1,4 @@
 import { dayKeyInTz } from "@farmer/core/lib/time";
-import type { HolidayWithStatus } from "@farmer/core/services";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
@@ -7,19 +6,14 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
-import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
+import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { SearchInput } from "#/components/ui/search-input.tsx";
-import {
-	SegmentedControl,
-	SegmentedControlItem,
-} from "#/components/ui/segmented-control.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
@@ -35,6 +29,14 @@ import { cn } from "#/lib/utils.ts";
 import { holidaysForYearWithStatusQuery } from "#/queries/holidays.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { setHolidayDisabled } from "#/server/holidays.ts";
+
+// The year's public holidays as one list, with a switch to turn a day off.
+// That is the whole page (Sept 2026): the calendar is data — it feeds the
+// hour fund's prefill, time-off spans, the reminders and every target's
+// working-day count — and the one decision an admin makes about it is which
+// days the company does not observe. The Relative/Single views and the
+// upcoming/past split it used to have were two ways of reading a list of
+// fourteen dates.
 
 const searchSchema = z.object({
 	year: z.number().int().optional(),
@@ -70,104 +72,6 @@ const formatHolidayDate = (dateKey: string) =>
 		timeZone: "UTC",
 	});
 
-const relativeFormat = new Intl.RelativeTimeFormat("en-US", {
-	numeric: "auto",
-});
-
-// "in 3 days" / "2 weeks ago", with `numeric: "auto"` supplying "today",
-// "tomorrow" and "yesterday". Day keys compare as UTC midnights, so the
-// difference is always a whole number of days.
-const relativeLabel = (dateKey: string, todayKey: string): string => {
-	const days = Math.round(
-		(Date.parse(`${dateKey}T00:00:00Z`) - Date.parse(`${todayKey}T00:00:00Z`)) /
-			86_400_000,
-	);
-	if (Math.abs(days) < 7) return relativeFormat.format(days, "day");
-	if (Math.abs(days) < 30) {
-		return relativeFormat.format(Math.round(days / 7), "week");
-	}
-	return relativeFormat.format(Math.round(days / 30), "month");
-};
-
-// "relative" splits the year on today and badges each date; "single" is the
-// plain chronological table. A display preference, so it lives in
-// localStorage rather than on the org.
-type HolidaysView = "relative" | "single";
-const VIEW_STORAGE_KEY = "farmer:holidays-view";
-
-/**
- * The year's holidays as one ruled table.
- *
- * Extracted so the whole-year view can render the table as a DIRECT child of
- * the screen. Both of the rules that flatten a page's first band select a child
- * of `.screen` (see styles.css), so the wrapping <div> this used to sit in was
- * enough to defeat them: holidays opened with a top rule under its header that
- * no other settings page draws.
- */
-function HolidayTable({
-	rows,
-	view,
-	todayKey,
-	isAdmin,
-	onToggle,
-}: {
-	rows: HolidayWithStatus[];
-	view: HolidaysView;
-	/** Today in the org timezone - see the caller. */
-	todayKey: string;
-	isAdmin: boolean;
-	onToggle: (vars: { name: string; disabled: boolean }) => void;
-}) {
-	return (
-		<Table>
-			<TableHeader>
-				<TableRow>
-					<TableHead>Date</TableHead>
-					<TableHead>Day</TableHead>
-					<TableHead>Holiday</TableHead>
-					<TableHead className="text-right">
-						{isAdmin ? "Observed" : "Status"}
-					</TableHead>
-				</TableRow>
-			</TableHeader>
-			<TableBody>
-				{rows.map((h) => (
-					<TableRow key={h.date} className={cn(h.disabled && "opacity-50")}>
-						<TableCell className="tnum">
-							{view === "relative" ? (
-								<span className="flex items-center gap-2">
-									{formatHolidayDate(h.date)}
-									<Badge variant={h.date < todayKey ? "outline" : "secondary"}>
-										{relativeLabel(h.date, todayKey)}
-									</Badge>
-								</span>
-							) : (
-								formatHolidayDate(h.date)
-							)}
-						</TableCell>
-						<TableCell>{weekdayFor(h.date)}</TableCell>
-						<TableCell className="font-medium">{h.name}</TableCell>
-						<TableCell className="text-right">
-							{isAdmin ? (
-								<Switch
-									checked={!h.disabled}
-									onCheckedChange={(checked) =>
-										onToggle({ name: h.name, disabled: !checked })
-									}
-								/>
-							) : (
-								<span className="text-sm text-muted-foreground">
-									{h.disabled ? "Not observed" : "Observed"}
-								</span>
-							)}
-						</TableCell>
-					</TableRow>
-				))}
-			</TableBody>
-		</Table>
-	);
-}
-
 function HolidaysSettingsPage() {
 	const orgSlug = useOrgSlug();
 	const { organization, role } = Route.useRouteContext();
@@ -175,52 +79,15 @@ function HolidaysSettingsPage() {
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
 	const queryClient = useQueryClient();
-	const currentYear = Number(
-		dayKeyInTz(new Date(), organization.timezone).slice(0, 4),
-	);
+	const todayKey = dayKeyInTz(new Date(), organization.timezone);
+	const currentYear = Number(todayKey.slice(0, 4));
 	const year = search.year ?? currentYear;
 	const { data: holidays } = useSuspenseQuery(
 		holidaysForYearWithStatusQuery(orgSlug, year),
 	);
 
-	/* Start on "relative" and only apply the stored choice after mount, the
-	   same SSR-safe read auto-track-nag uses: the first client render must
-	   match the server's HTML. */
-	const [view, setView] = useState<HolidaysView>("relative");
-	useEffect(() => {
-		try {
-			if (window.localStorage.getItem(VIEW_STORAGE_KEY) === "single") {
-				setView("single");
-			}
-		} catch {
-			// Private-mode / disabled storage: keep the default.
-		}
-	}, []);
-
-	const switchView = (next: HolidaysView) => {
-		setView(next);
-		try {
-			window.localStorage.setItem(VIEW_STORAGE_KEY, next);
-		} catch {
-			// Private-mode / disabled storage: the choice holds for this session.
-		}
-	};
-
-	/* Split on the org-timezone today. A past or future year lands whole in
-	   one section, so the other heading simply does not render. */
 	const [query, setQuery] = useState("");
 	const matching = holidays.filter((h) => matchesSearch(query, [h.name]));
-	const todayKey = dayKeyInTz(new Date(), organization.timezone);
-	const sections: { heading: string | null; rows: typeof holidays }[] =
-		view === "single"
-			? [{ heading: null, rows: matching }]
-			: [
-					{
-						heading: "Upcoming",
-						rows: matching.filter((h) => h.date >= todayKey),
-					},
-					{ heading: "Past", rows: matching.filter((h) => h.date < todayKey) },
-				].filter((section) => section.rows.length > 0);
 
 	/* Optimistic, and scoped to the one holiday: the whole table shares this
 	   mutation, so anything keyed off `isPending` (or a refetch-before-paint)
@@ -245,7 +112,8 @@ function HolidaysSettingsPage() {
 			}
 			toast.error(error.message ?? "Could not update holiday");
 		},
-		// Other holiday views (calendar ranges) still need the server's answer.
+		// Every other reader of the calendar — the timesheet's week strip, the
+		// targets, the fund's prefill — needs the server's answer.
 		onSettled: () =>
 			queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).holidays],
@@ -264,7 +132,8 @@ function HolidaysSettingsPage() {
 				title="Holidays"
 				lede={
 					<>
-						Public holidays for this organization's country.
+						Public holidays for this organization's country. They are left out
+						of every target: a working day is Monday to Friday minus these.
 						{isAdmin && " Turn off any your company doesn't observe."}
 					</>
 				}
@@ -278,20 +147,6 @@ function HolidaysSettingsPage() {
 							placeholder="Search holidays…"
 							className="w-44"
 						/>
-						<SegmentedControl>
-							<SegmentedControlItem
-								active={view === "relative"}
-								onClick={() => switchView("relative")}
-							>
-								Relative
-							</SegmentedControlItem>
-							<SegmentedControlItem
-								active={view === "single"}
-								onClick={() => switchView("single")}
-							>
-								Single
-							</SegmentedControlItem>
-						</SegmentedControl>
 						<div className="flex items-center gap-1">
 							<Button
 								variant="ghost"
@@ -324,28 +179,53 @@ function HolidaysSettingsPage() {
 					No holidays match your search.
 				</p>
 			) : (
-				sections.map((section) =>
-					section.heading === null ? (
-						<HolidayTable
-							key="all"
-							rows={section.rows}
-							view={view}
-							todayKey={todayKey}
-							isAdmin={isAdmin}
-							onToggle={toggleMutation.mutate}
-						/>
-					) : (
-						<PageSection key={section.heading} title={section.heading}>
-							<HolidayTable
-								rows={section.rows}
-								view={view}
-								todayKey={todayKey}
-								isAdmin={isAdmin}
-								onToggle={toggleMutation.mutate}
-							/>
-						</PageSection>
-					),
-				)
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead>Date</TableHead>
+							<TableHead>Day</TableHead>
+							<TableHead>Holiday</TableHead>
+							<TableHead className="text-right">
+								{isAdmin ? "Observed" : "Status"}
+							</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{matching.map((h) => (
+							<TableRow
+								key={h.date}
+								className={cn(
+									h.disabled && "opacity-50",
+									h.date < todayKey && "text-muted-foreground",
+								)}
+							>
+								<TableCell className="tnum">
+									{formatHolidayDate(h.date)}
+								</TableCell>
+								<TableCell>{weekdayFor(h.date)}</TableCell>
+								<TableCell className="font-medium">{h.name}</TableCell>
+								<TableCell className="text-right">
+									{isAdmin ? (
+										<Switch
+											checked={!h.disabled}
+											aria-label={`${h.name} observed`}
+											onCheckedChange={(checked) =>
+												toggleMutation.mutate({
+													name: h.name,
+													disabled: !checked,
+												})
+											}
+										/>
+									) : (
+										<span className="text-sm text-muted-foreground">
+											{h.disabled ? "Not observed" : "Observed"}
+										</span>
+									)}
+								</TableCell>
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
 			)}
 		</Page>
 	);

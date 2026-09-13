@@ -16,3 +16,12 @@ export const getTrackingReport = createServerFn({ method: "GET" })
 		const { complianceService } = await import("@farmer/core/services");
 		return complianceService.tracking(context.ctx, data);
 	});
+
+// The caller's own week and month against the rule, for the home page and the
+// timesheet. Their own figures only, so there is nothing to scope.
+export const getMyTargets = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { complianceService } = await import("@farmer/core/services");
+		return complianceService.myTargets(context.ctx);
+	});
