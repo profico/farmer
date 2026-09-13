@@ -1,4 +1,15 @@
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	countDistinct,
+	desc,
+	eq,
+	gte,
+	inArray,
+	isNotNull,
+	lte,
+	sql,
+} from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
@@ -25,19 +36,40 @@ export type ProjectMemberRow = {
 	email: string;
 	role: "member" | "team_lead" | "pm";
 	active: boolean;
+	/** Everything they ever logged on the project, and when they last did. */
+	allTimeSeconds: number;
+	lastEntry: string | null;
 };
 
 export type ProjectStats = {
 	monthlyTotalSeconds: number;
+	allTimeSeconds: number;
 	contributors: { id: string; name: string }[];
 	contributorCount: number;
 };
 
+/** The strip at the top of a project's page: the whole of its history in five
+ *  numbers, whatever period the table below is set to. */
+export type ProjectOverview = {
+	allTimeSeconds: number;
+	entryCount: number;
+	/** Distinct people who ever logged on it — not the roster. */
+	peopleCount: number;
+	firstEntry: string | null;
+	lastEntry: string | null;
+	overtimeSeconds: number;
+	monthSeconds: number;
+	monthPeople: number;
+};
+
 const emptyStats = (): ProjectStats => ({
 	monthlyTotalSeconds: 0,
+	allTimeSeconds: 0,
 	contributors: [],
 	contributorCount: 0,
 });
+
+const SUM_SECONDS = sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`;
 
 const MAX_CONTRIBUTORS_SHOWN = 5;
 
@@ -57,11 +89,11 @@ const loadProjectStats = async (
 
 	const { from, to } = await currentMonthKeysForOrg(ctx.organizationId);
 
-	const [totals, memberRows] = await Promise.all([
+	const [totals, allTime, memberRows] = await Promise.all([
 		db
 			.select({
 				projectId: timeEntry.projectId,
-				totalSeconds: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+				totalSeconds: SUM_SECONDS,
 			})
 			.from(timeEntry)
 			.where(
@@ -70,6 +102,19 @@ const loadProjectStats = async (
 					inArray(timeEntry.projectId, projectIds),
 					sql`${timeEntry.date} >= ${from}`,
 					sql`${timeEntry.date} <= ${to}`,
+				),
+			)
+			.groupBy(timeEntry.projectId),
+		db
+			.select({
+				projectId: timeEntry.projectId,
+				totalSeconds: SUM_SECONDS,
+			})
+			.from(timeEntry)
+			.where(
+				and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					inArray(timeEntry.projectId, projectIds),
 				),
 			)
 			.groupBy(timeEntry.projectId),
@@ -95,6 +140,11 @@ const loadProjectStats = async (
 		if (!row.projectId) continue;
 		const entry = stats.get(row.projectId);
 		if (entry) entry.monthlyTotalSeconds = Number(row.totalSeconds);
+	}
+	for (const row of allTime) {
+		if (!row.projectId) continue;
+		const entry = stats.get(row.projectId);
+		if (entry) entry.allTimeSeconds = Number(row.totalSeconds);
 	}
 
 	const byProject = new Map<string, { id: string; name: string }[]>();
@@ -222,23 +272,92 @@ export const projectsService = {
 		// A plain Member sees nothing at project level, not even the team.
 		access.assertCanViewProjectEntries(projectId);
 
-		return db
-			.select({
-				userId: projectMember.userId,
-				name: user.name,
-				email: user.email,
-				role: projectMember.role,
-				active: projectMember.active,
-			})
-			.from(projectMember)
-			.innerJoin(user, eq(projectMember.userId, user.id))
-			.where(
-				and(
-					eq(projectMember.organizationId, ctx.organizationId),
-					eq(projectMember.projectId, projectId),
+		const [rows, logged] = await Promise.all([
+			db
+				.select({
+					userId: projectMember.userId,
+					name: user.name,
+					email: user.email,
+					role: projectMember.role,
+					active: projectMember.active,
+				})
+				.from(projectMember)
+				.innerJoin(user, eq(projectMember.userId, user.id))
+				.where(
+					and(
+						eq(projectMember.organizationId, ctx.organizationId),
+						eq(projectMember.projectId, projectId),
+					),
+				)
+				.orderBy(user.name),
+			// What each of them ever logged here — the Team page reads it beside
+			// the role, so "who is this and do they still work here" is one look.
+			db
+				.select({
+					userId: timeEntry.userId,
+					seconds: SUM_SECONDS,
+					last: sql<string | null>`max(${timeEntry.date})`,
+				})
+				.from(timeEntry)
+				.where(
+					and(
+						eq(timeEntry.organizationId, ctx.organizationId),
+						eq(timeEntry.projectId, projectId),
+					),
+				)
+				.groupBy(timeEntry.userId),
+		]);
+		const byUser = new Map(logged.map((r) => [r.userId, r]));
+		return rows.map((r) => ({
+			...r,
+			allTimeSeconds: Number(byUser.get(r.userId)?.seconds ?? 0),
+			lastEntry: byUser.get(r.userId)?.last ?? null,
+		}));
+	},
+
+	/** The five all-time numbers at the top of a project's page. Team Lead and
+	 *  up, like everything else at project level. */
+	overview: async (ctx: Ctx, projectId: string): Promise<ProjectOverview> => {
+		const access = await ctxAccess(ctx);
+		access.assertCanViewProjectEntries(projectId);
+		await assertProjectInOrg(ctx, projectId);
+		const { from, to } = await currentMonthKeysForOrg(ctx.organizationId);
+		const onProject = and(
+			eq(timeEntry.organizationId, ctx.organizationId),
+			eq(timeEntry.projectId, projectId),
+		);
+		const [[all], [month]] = await Promise.all([
+			db
+				.select({
+					seconds: SUM_SECONDS,
+					entries: sql<string>`count(*)`,
+					people: countDistinct(timeEntry.userId),
+					first: sql<string | null>`min(${timeEntry.date})`,
+					last: sql<string | null>`max(${timeEntry.date})`,
+					overtime: sql<string>`coalesce(sum(case when ${timeEntry.overtime} then ${timeEntry.durationSeconds} else 0 end), 0)`,
+				})
+				.from(timeEntry)
+				.where(onProject),
+			db
+				.select({
+					seconds: SUM_SECONDS,
+					people: countDistinct(timeEntry.userId),
+				})
+				.from(timeEntry)
+				.where(
+					and(onProject, gte(timeEntry.date, from), lte(timeEntry.date, to)),
 				),
-			)
-			.orderBy(user.name);
+		]);
+		return {
+			allTimeSeconds: Number(all?.seconds ?? 0),
+			entryCount: Number(all?.entries ?? 0),
+			peopleCount: Number(all?.people ?? 0),
+			firstEntry: all?.first ?? null,
+			lastEntry: all?.last ?? null,
+			overtimeSeconds: Number(all?.overtime ?? 0),
+			monthSeconds: Number(month?.seconds ?? 0),
+			monthPeople: Number(month?.people ?? 0),
+		};
 	},
 
 	assignMember: async (ctx: Ctx, input: AssignProjectMemberInput) => {
@@ -327,7 +446,7 @@ export const projectsService = {
 					clientId: input.clientId,
 					code: input.code || null,
 					type: input.type,
-					color: input.color,
+					icon: input.icon ?? null,
 					budgetSeconds: input.budgetHours
 						? Math.round(input.budgetHours * 3600)
 						: null,
@@ -384,7 +503,7 @@ export const projectsService = {
 			if (input.name !== undefined) patch.name = input.name;
 			if (input.clientId !== undefined) patch.clientId = input.clientId;
 			if (input.code !== undefined) patch.code = input.code || null;
-			if (input.color !== undefined) patch.color = input.color;
+			if (input.icon !== undefined) patch.icon = input.icon;
 			// Project type is changeable after creation without history (e.g. a
 			// Fixed Scope engagement rolling into Maintenance). Close sheets render
 			// according to the type at the time of viewing. The type-specific config

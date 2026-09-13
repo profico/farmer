@@ -46,6 +46,9 @@ import { Route as OrgSlugSettingsImportRouteImport } from './routes/$orgSlug/set
 import { Route as OrgSlugSettingsHourFundRouteImport } from './routes/$orgSlug/settings/hour-fund'
 import { Route as OrgSlugSettingsHolidaysRouteImport } from './routes/$orgSlug/settings/holidays'
 import { Route as OrgSlugSettingsClientsRouteImport } from './routes/$orgSlug/settings/clients'
+import { Route as OrgSlugProjectsProjectIdIndexRouteImport } from './routes/$orgSlug/projects/$projectId/index'
+import { Route as OrgSlugProjectsProjectIdTeamRouteImport } from './routes/$orgSlug/projects/$projectId/team'
+import { Route as OrgSlugProjectsProjectIdSettingsRouteImport } from './routes/$orgSlug/projects/$projectId/settings'
 
 const NoAccessRoute = NoAccessRouteImport.update({
   id: '/no-access',
@@ -241,6 +244,24 @@ const OrgSlugSettingsClientsRoute = OrgSlugSettingsClientsRouteImport.update({
   path: '/settings/clients',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugProjectsProjectIdIndexRoute =
+  OrgSlugProjectsProjectIdIndexRouteImport.update({
+    id: '/projects/$projectId/',
+    path: '/projects/$projectId/',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
+const OrgSlugProjectsProjectIdTeamRoute =
+  OrgSlugProjectsProjectIdTeamRouteImport.update({
+    id: '/projects/$projectId/team',
+    path: '/projects/$projectId/team',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
+const OrgSlugProjectsProjectIdSettingsRoute =
+  OrgSlugProjectsProjectIdSettingsRouteImport.update({
+    id: '/projects/$projectId/settings',
+    path: '/projects/$projectId/settings',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -280,6 +301,9 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/projects/': typeof OrgSlugProjectsIndexRoute
   '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
   '/$orgSlug/time/': typeof OrgSlugTimeIndexRoute
+  '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
+  '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -317,6 +341,9 @@ export interface FileRoutesByTo {
   '/$orgSlug/projects': typeof OrgSlugProjectsIndexRoute
   '/$orgSlug/settings': typeof OrgSlugSettingsIndexRoute
   '/$orgSlug/time': typeof OrgSlugTimeIndexRoute
+  '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
+  '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -357,6 +384,9 @@ export interface FileRoutesById {
   '/$orgSlug/projects/': typeof OrgSlugProjectsIndexRoute
   '/$orgSlug/settings/': typeof OrgSlugSettingsIndexRoute
   '/$orgSlug/time/': typeof OrgSlugTimeIndexRoute
+  '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
+  '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -398,6 +428,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/'
     | '/$orgSlug/settings/'
     | '/$orgSlug/time/'
+    | '/$orgSlug/projects/$projectId/settings'
+    | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/projects/$projectId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -435,6 +468,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects'
     | '/$orgSlug/settings'
     | '/$orgSlug/time'
+    | '/$orgSlug/projects/$projectId/settings'
+    | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/projects/$projectId'
   id:
     | '__root__'
     | '/'
@@ -474,6 +510,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/'
     | '/$orgSlug/settings/'
     | '/$orgSlug/time/'
+    | '/$orgSlug/projects/$projectId/settings'
+    | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/projects/$projectId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -756,6 +795,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsClientsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/projects/$projectId/': {
+      id: '/$orgSlug/projects/$projectId/'
+      path: '/projects/$projectId'
+      fullPath: '/$orgSlug/projects/$projectId/'
+      preLoaderRoute: typeof OrgSlugProjectsProjectIdIndexRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/projects/$projectId/team': {
+      id: '/$orgSlug/projects/$projectId/team'
+      path: '/projects/$projectId/team'
+      fullPath: '/$orgSlug/projects/$projectId/team'
+      preLoaderRoute: typeof OrgSlugProjectsProjectIdTeamRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/projects/$projectId/settings': {
+      id: '/$orgSlug/projects/$projectId/settings'
+      path: '/projects/$projectId/settings'
+      fullPath: '/$orgSlug/projects/$projectId/settings'
+      preLoaderRoute: typeof OrgSlugProjectsProjectIdSettingsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
   }
 }
 
@@ -793,6 +853,9 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugSettingsTasksRoute: typeof OrgSlugSettingsTasksRoute
   OrgSlugProjectsIndexRoute: typeof OrgSlugProjectsIndexRoute
   OrgSlugSettingsIndexRoute: typeof OrgSlugSettingsIndexRoute
+  OrgSlugProjectsProjectIdSettingsRoute: typeof OrgSlugProjectsProjectIdSettingsRoute
+  OrgSlugProjectsProjectIdTeamRoute: typeof OrgSlugProjectsProjectIdTeamRoute
+  OrgSlugProjectsProjectIdIndexRoute: typeof OrgSlugProjectsProjectIdIndexRoute
 }
 
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
@@ -814,6 +877,9 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugSettingsTasksRoute: OrgSlugSettingsTasksRoute,
   OrgSlugProjectsIndexRoute: OrgSlugProjectsIndexRoute,
   OrgSlugSettingsIndexRoute: OrgSlugSettingsIndexRoute,
+  OrgSlugProjectsProjectIdSettingsRoute: OrgSlugProjectsProjectIdSettingsRoute,
+  OrgSlugProjectsProjectIdTeamRoute: OrgSlugProjectsProjectIdTeamRoute,
+  OrgSlugProjectsProjectIdIndexRoute: OrgSlugProjectsProjectIdIndexRoute,
 }
 
 const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(

@@ -32,7 +32,7 @@ import {
 } from "../db/schema/domain";
 import { memberProfile } from "../db/schema/people";
 import { createTestDb, type TestDb } from "../test/harness";
-import { NotAMemberError } from "./access.service";
+import { AccessError, NotAMemberError } from "./access.service";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
 
@@ -332,5 +332,85 @@ describe("assignMember", () => {
 		await assign("u-projects-fresh");
 		const team = await projectsService.listMembers(ctx(ADMIN), unassignedId);
 		expect(team.map((m) => m.userId)).toContain("u-projects-fresh");
+	});
+});
+
+// ── The project page ───────────────────────────────────────────────────────
+
+describe("the project overview", () => {
+	const today = new Date().toISOString().slice(0, 10);
+
+	test("an admin gets the whole history in five numbers", async () => {
+		const overview = await projectsService.overview(ctx(ADMIN), assignedId);
+		expect(overview).toMatchObject({
+			allTimeSeconds: 4 * HOUR,
+			entryCount: 1,
+			peopleCount: 1,
+			firstEntry: today,
+			lastEntry: today,
+			overtimeSeconds: 0,
+			monthSeconds: 4 * HOUR,
+			monthPeople: 1,
+		});
+	});
+
+	test("a team lead gets it for their project", async () => {
+		const overview = await projectsService.overview(ctx(LEAD), assignedId);
+		expect(overview.allTimeSeconds).toBe(4 * HOUR);
+	});
+
+	test("a plain member is refused — nothing at project level, not even totals", async () => {
+		await expect(
+			projectsService.overview(ctx(PLAIN), assignedId),
+		).rejects.toThrow(AccessError);
+	});
+
+	test("a project nobody logged on reads as empty, not as an error", async () => {
+		const overview = await projectsService.overview(ctx(ADMIN), unassignedId);
+		expect(overview).toMatchObject({
+			allTimeSeconds: 0,
+			entryCount: 0,
+			peopleCount: 0,
+			firstEntry: null,
+			lastEntry: null,
+		});
+	});
+});
+
+describe("the team roster", () => {
+	test("carries what each person ever logged here, and when they last did", async () => {
+		const today = new Date().toISOString().slice(0, 10);
+		const rows = await projectsService.listMembers(ctx(LEAD), assignedId);
+		const plain = rows.find((r) => r.userId === PLAIN);
+		expect(plain?.allTimeSeconds).toBe(4 * HOUR);
+		expect(plain?.lastEntry).toBe(today);
+		const lead = rows.find((r) => r.userId === LEAD);
+		expect(lead?.allTimeSeconds).toBe(0);
+		expect(lead?.lastEntry).toBeNull();
+	});
+});
+
+describe("the icon", () => {
+	test("a PM sets it, everyone reads it, null clears it", async () => {
+		const updated = await projectsService.update(ctx(PM), {
+			projectId: assignedId,
+			icon: "🍷",
+		});
+		expect(updated.icon).toBe("🍷");
+		const seen = await projectsService.get(ctx(LEAD), assignedId);
+		expect(seen.icon).toBe("🍷");
+
+		const cleared = await projectsService.update(ctx(PM), {
+			projectId: assignedId,
+			icon: null,
+		});
+		expect(cleared.icon).toBeNull();
+	});
+
+	test("the list carries each project's all-time hours beside the month's", async () => {
+		const rows = await listFor(ADMIN);
+		const assigned = rows.find((r) => r.id === assignedId);
+		expect(assigned?.allTimeSeconds).toBe(4 * HOUR);
+		expect(assigned?.monthlyTotalSeconds).toBe(4 * HOUR);
 	});
 });

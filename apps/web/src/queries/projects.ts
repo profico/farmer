@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 
 import {
 	getProject,
+	getProjectOverview,
 	listAssignableMembers,
 	listMyProjects,
 	listProjectMembers,
@@ -27,6 +28,12 @@ export const projectQuery = (org: string, projectId: string) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).projects, "detail", projectId],
 		queryFn: () => getProject({ data: projectId }),
+	});
+
+export const projectOverviewQuery = (org: string, projectId: string) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).projects, "overview", projectId],
+		queryFn: () => getProjectOverview({ data: projectId }),
 	});
 
 export const projectMembersQuery = (org: string, projectId: string) =>

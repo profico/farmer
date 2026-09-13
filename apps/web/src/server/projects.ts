@@ -39,6 +39,15 @@ export const getProject = createServerFn({ method: "GET" })
 		return projectsService.get(context.ctx, projectId);
 	});
 
+// The strip at the top of a project's page. Team Lead and up, in the service.
+export const getProjectOverview = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(projectIdInput)
+	.handler(async ({ data: projectId, context }) => {
+		const { projectsService } = await import("@farmer/core/services");
+		return projectsService.overview(context.ctx, projectId);
+	});
+
 export const listProjectMembers = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.validator(listProjectMembersInput)

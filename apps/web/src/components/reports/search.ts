@@ -21,6 +21,18 @@ const monthKey = z.string().regex(/^\d{4}-\d{2}$/);
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+// The period, shared with the project page: `month` anchors every preset but
+// Week and Custom; `preset` widens or narrows it, and `from`/`to` carry a week
+// or a custom range.
+export const periodSearch = {
+	month: monthKey.optional(),
+	preset: z.enum(["week", "month", "quarter", "year", "custom"]).optional(),
+	from: dateKey.optional(),
+	to: dateKey.optional(),
+};
+const periodSearchSchema = z.object(periodSearch);
+export type PeriodSearch = z.infer<typeof periodSearchSchema>;
+
 export const searchSchema = z.object({
 	// A tab that no longer exists (a bookmark to a removed report, a typo) is
 	// treated as no tab at all and lands on Time, rather than failing the whole
@@ -31,12 +43,7 @@ export const searchSchema = z.object({
 		.catch(undefined),
 	// The Time tab's own sub-grouping, mirroring Harvest's three tabs.
 	group: z.enum(["clients", "projects", "teammates"]).optional(),
-	// The period. `month` anchors every preset but Week and Custom; `preset`
-	// widens or narrows it, and `from`/`to` carry a week or a custom range.
-	month: monthKey.optional(),
-	preset: z.enum(["week", "month", "quarter", "year", "custom"]).optional(),
-	from: dateKey.optional(),
-	to: dateKey.optional(),
+	...periodSearch,
 	// "Active projects only".
 	active: z.literal("1").optional(),
 	// The Breakdown: the entries behind a number, under up to four filters, in

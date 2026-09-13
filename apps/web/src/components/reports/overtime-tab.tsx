@@ -6,6 +6,7 @@ import { resolveReportPeriod } from "@farmer/core/lib/report-period";
 import type { OvertimeReportInput } from "@farmer/core/schema";
 import type { OvertimeRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
@@ -56,6 +57,7 @@ export function OvertimeTab({
 	today: string;
 	thisMonth: string;
 }) {
+	const navigate = useNavigate({ from: "/$orgSlug/reports" });
 	const { from, to } = resolveReportPeriod(search, today);
 	const input: OvertimeReportInput = {
 		from,
@@ -66,10 +68,15 @@ export function OvertimeTab({
 	return (
 		<>
 			<PeriodPicker
-				orgSlug={orgSlug}
 				search={search}
 				today={today}
 				thisMonth={thisMonth}
+				link={(s) => (
+					<Link to="/$orgSlug/reports" params={{ orgSlug }} search={s} />
+				)}
+				navigateTo={(s) =>
+					navigate({ to: "/$orgSlug/reports", params: { orgSlug }, search: s })
+				}
 			>
 				<ActiveOnlyToggle orgSlug={orgSlug} search={search} />
 				<Suspense
