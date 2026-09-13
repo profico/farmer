@@ -1,25 +1,33 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { member } from "../db/schema/auth";
 import { projectMember } from "../db/schema/domain";
+import { teamLeadPerson } from "../db/schema/people";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
 // The section-4 capability matrix, in one place.
 //
-// Two independent axes:
+// Three independent axes (revised Sept 2026):
 //   * ONE global role — org Admin (better-auth's member.role owner|admin). There
 //     is deliberately no super-admin tier: Admin is a small trusted group.
 //   * A PER-ASSIGNMENT project role — Member / Team Lead / PM. The same person is
 //     PM on one project and a plain member on another, so a project role is never
 //     a property of the person.
+//   * A PEOPLE LIST — the Team Lead of the org chart. Somebody with people on
+//     their list (`team_lead_person`, edited by an Admin) sees everything about
+//     those people: their time on every project, their Tracking status, their
+//     time off. And on any project they are assigned to, they see and manage it
+//     as a PM does, whatever the assignment says.
 //
-// Guiding principles from the PRD that this file exists to enforce:
+// Guiding principles this file exists to enforce:
 //   * Members see strictly their own time entries and nothing at project level —
-//     not even the project's total hours.
-//   * Team Lead = visibility + team management. No money, no project config.
-//   * PM = Team Lead + project config + money context, and still nothing about any other
+//     not even the project's total hours. They do get every report, scoped to
+//     themselves: a report about yourself is still a report.
+//   * PM = project config + money context on their own projects, and the people
+//     on those projects in the people-shaped reports — nothing about any other
 //     project.
+//   * Team Lead = their people everywhere, their projects as a PM.
 //   * Admin sees everything.
 
 export type ProjectRole = "member" | "team_lead" | "pm";
@@ -61,7 +69,33 @@ export class Access {
 		readonly organizationId: string,
 		readonly isAdmin: boolean,
 		private readonly roleByProject: ReadonlyMap<string, ProjectRole>,
+		/** The people on the caller's list — empty for everyone who leads nobody. */
+		private readonly leadOf: ReadonlySet<string> = new Set(),
 	) {}
+
+	/** Whether the caller has a people list. There is no flag: a Team Lead is
+	 *  somebody with at least one person on their list. */
+	get isTeamLead(): boolean {
+		return this.leadOf.size > 0;
+	}
+
+	/** The people on the caller's list. */
+	peopleLed(): string[] {
+		return [...this.leadOf];
+	}
+
+	/** Everything about one person — their time on every project, their
+	 *  Tracking status, their time off. Themselves, the people on their list,
+	 *  or Admin. */
+	canViewPerson(userId: string): boolean {
+		return this.isAdmin || userId === this.userId || this.leadOf.has(userId);
+	}
+
+	/** The rank an assignment grants. A Team Lead assigned to a project — in
+	 *  any role — holds it as a PM does. */
+	private rankOf(role: ProjectRole): number {
+		return this.isTeamLead ? RANK.pm : RANK[role];
+	}
 
 	// The caller's role on a project, or null when unassigned. Admins are NOT
 	// synthesised into a role here — `isAdmin` is checked separately by each
@@ -81,7 +115,7 @@ export class Access {
 	private atLeast(projectId: string, role: ProjectRole): boolean {
 		if (this.isAdmin) return true;
 		const mine = this.roleByProject.get(projectId);
-		return mine != null && RANK[mine] >= RANK[role];
+		return mine != null && this.rankOf(mine) >= RANK[role];
 	}
 
 	/** Every project id the caller holds at least `role` on. Admins get null,
@@ -90,7 +124,7 @@ export class Access {
 	scopeFor(role: ProjectRole): string[] | null {
 		if (this.isAdmin) return null;
 		return [...this.roleByProject.entries()]
-			.filter(([, mine]) => RANK[mine] >= RANK[role])
+			.filter(([, mine]) => this.rankOf(mine) >= RANK[role])
 			.map(([projectId]) => projectId);
 	}
 
@@ -140,7 +174,7 @@ export class Access {
 	canCreateProjects(): boolean {
 		if (this.isAdmin) return true;
 		return [...this.roleByProject.values()].some(
-			(role) => RANK[role] >= RANK.team_lead,
+			(role) => this.rankOf(role) >= RANK.team_lead,
 		);
 	}
 
@@ -200,7 +234,7 @@ export const accessService = {
 	 *  `setWeekCell` reaches this via `create(txCtx, …)`. See ./db-ctx. */
 	resolve: async (ctx: Ctx): Promise<Access> => {
 		const client = ctxDb(ctx);
-		const [membership, assignments] = await Promise.all([
+		const [membership, assignments, led] = await Promise.all([
 			client.query.member.findFirst({
 				where: and(
 					eq(member.organizationId, ctx.organizationId),
@@ -223,6 +257,15 @@ export const accessService = {
 						eq(projectMember.active, true),
 					),
 				),
+			client
+				.select({ userId: teamLeadPerson.personUserId })
+				.from(teamLeadPerson)
+				.where(
+					and(
+						eq(teamLeadPerson.organizationId, ctx.organizationId),
+						eq(teamLeadPerson.leadUserId, ctx.userId),
+					),
+				),
 		]);
 
 		if (!membership) throw new NotAMemberError(ctx.organizationId);
@@ -236,7 +279,37 @@ export const accessService = {
 			ctx.organizationId,
 			isAdmin,
 			new Map(assignments.map((a) => [a.projectId, a.role])),
+			new Set(led.map((l) => l.userId)),
 		);
+	},
+
+	/** The people whose time the caller may read in the reports that are about
+	 *  PEOPLE rather than projects — Tracking, Absence, a person's total across
+	 *  every project. Null for Admin (everyone). Otherwise themselves, the
+	 *  people on their list, and everyone on the projects they hold as PM (a
+	 *  Team Lead's assignments count, since they hold them as a PM). One query
+	 *  at most, and only for somebody who manages a project. */
+	peopleScope: async (
+		ctx: Ctx,
+		access: Access,
+	): Promise<Set<string> | null> => {
+		if (access.isAdmin) return null;
+		const people = new Set<string>([access.userId, ...access.peopleLed()]);
+		const managed = access.scopeFor("pm") ?? [];
+		if (managed.length > 0) {
+			const rows = await ctxDb(ctx)
+				.select({ userId: projectMember.userId })
+				.from(projectMember)
+				.where(
+					and(
+						eq(projectMember.organizationId, ctx.organizationId),
+						inArray(projectMember.projectId, managed),
+						eq(projectMember.active, true),
+					),
+				);
+			for (const r of rows) people.add(r.userId);
+		}
+		return people;
 	},
 
 	/** Convenience for the many call sites that only need the global tier. */

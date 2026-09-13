@@ -10,28 +10,36 @@ import type {
 	TimeReportDetailInput,
 	TimeReportSummaryInput,
 } from "../schema/reports";
-import { type Access, AccessError } from "./access.service";
-import { ctxAccess, requireAdmin } from "./context";
+import { type Access, accessService } from "./access.service";
+import { ctxAccess } from "./context";
 import { WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerWhere } from "./ledger";
 import type { Ctx } from "./types";
 import { unfiledTotals } from "./unfiled";
 
 // ── Scoping ────────────────────────────────────────────────────────────────
-// Admin sees everything. PM and Team Lead see the report scoped to THEIR
-// projects, and on the Teammates tab only people's hours within those shared
-// projects — never a person's company-wide total, or a TL on one project could
-// learn what people do for other clients. Members have no access at all.
+// Admin sees everything. Everyone else sees the union of two things — the
+// projects they run (PM, or a Team Lead assigned there) and the people they
+// lead — plus, always, themselves. That is the §4 matrix for Time and Overtime:
+// a PM their projects, a Team Lead their people and their projects, a Member
+// their own entries only. Nobody is refused: a report about yourself is still a
+// report, and the Teammates tab of a Member is one row.
 
-const reportScope = async (
-	ctx: Ctx,
-): Promise<{ access: Access; projectIds: string[] | null }> => {
+type ReportScope = {
+	access: Access;
+	/** Projects whose every entry the caller may see; null = all. */
+	projectIds: string[] | null;
+	/** People whose every entry the caller may see; null = all. */
+	userIds: string[] | null;
+};
+
+const reportScope = async (ctx: Ctx): Promise<ReportScope> => {
 	const access = await ctxAccess(ctx);
-	const projectIds = access.scopeFor("team_lead");
-	if (projectIds !== null && projectIds.length === 0) {
-		throw new AccessError("You do not have access to reports");
-	}
-	return { access, projectIds };
+	return {
+		access,
+		projectIds: access.scopeFor("team_lead"),
+		userIds: access.isAdmin ? null : [access.userId, ...access.peopleLed()],
+	};
 };
 
 // The Time Report covers PROJECT time. Absence entries carry no project and no
@@ -58,10 +66,11 @@ const projectTimeWhere = (
 		taskId?: string;
 		userId?: string;
 	},
-	scope: string[] | null,
+	scope: ReportScope,
 ) =>
 	ledgerWhere(ctx, { from: input.from, to: input.to }, "project", {
-		visibleProjectIds: scope,
+		visibleProjectIds: scope.projectIds,
+		visibleUserIds: scope.userIds,
 		projectId: input.projectId,
 		clientId: input.clientId,
 		taskId: input.taskId,
@@ -118,8 +127,9 @@ export const reportsService = {
 		totalSeconds: number;
 		unfiledSeconds: number;
 	}> => {
-		const { projectIds } = await reportScope(ctx);
-		const where = projectTimeWhere(ctx, input, projectIds);
+		const scope = await reportScope(ctx);
+		const { projectIds } = scope;
+		const where = projectTimeWhere(ctx, input, scope);
 
 		const grouping =
 			input.tab === "clients"
@@ -186,8 +196,8 @@ export const reportsService = {
 		ctx: Ctx,
 		input: TimeReportDetailInput,
 	): Promise<TimeReportDetail> => {
-		const { projectIds } = await reportScope(ctx);
-		const where = projectTimeWhere(ctx, input, projectIds);
+		const scope = await reportScope(ctx);
+		const where = projectTimeWhere(ctx, input, scope);
 
 		const [rows, totals] = await Promise.all([
 			db
@@ -233,9 +243,10 @@ export const reportsService = {
 		};
 	},
 
-	/** Overtime report (6.5). Admin sees everyone; PM/TL scoped to their projects. */
+	/** Overtime report (6.5). Admin sees everyone; everyone else their projects
+	 *  and their people, themselves included. */
 	overtime: async (ctx: Ctx, input: MonthReportInput) => {
-		const { projectIds } = await reportScope(ctx);
+		const { projectIds, userIds } = await reportScope(ctx);
 		const { from, to } = monthBounds(input.year, input.month);
 		const yearStart = `${input.year}-01-01`;
 		const yearEnd = `${input.year}-12-31`;
@@ -244,6 +255,7 @@ export const reportsService = {
 			ledgerWhere(ctx, { from: rangeFrom, to: rangeTo }, "project", {
 				overtimeOnly: true,
 				visibleProjectIds: projectIds,
+				visibleUserIds: userIds,
 			});
 
 		const [monthRows, yearRows] = await Promise.all([
@@ -285,7 +297,7 @@ export const reportsService = {
 		ctx: Ctx,
 		input: MonthReportInput & { userId: string },
 	) => {
-		const { projectIds } = await reportScope(ctx);
+		const { projectIds, userIds } = await reportScope(ctx);
 		const { from, to } = monthBounds(input.year, input.month);
 
 		return (
@@ -308,6 +320,7 @@ export const reportsService = {
 						userId: input.userId,
 						overtimeOnly: true,
 						visibleProjectIds: projectIds,
+						visibleUserIds: userIds,
 					}),
 				)
 				.orderBy(asc(timeEntry.date))
@@ -320,7 +333,11 @@ export const reportsService = {
 	 * means someone forgot to log absence (PRD decision 3).
 	 */
 	absence: async (ctx: Ctx, input: AbsenceReportInput) => {
-		await requireAdmin(ctx);
+		// People-shaped, so scoped by people: everyone for Admin, otherwise the
+		// caller, their list, and everyone on the projects they manage.
+		const access = await ctxAccess(ctx);
+		const people = await accessService.peopleScope(ctx, access);
+		const visibleUserIds = people ? [...people] : undefined;
 
 		const yearStart = `${input.year}-01-01`;
 		const yearEnd = `${input.year}-12-31`;
@@ -341,7 +358,11 @@ export const reportsService = {
 				.from(timeEntry)
 				.innerJoin(task, eq(timeEntry.taskId, task.id))
 				.innerJoin(user, eq(timeEntry.userId, user.id))
-				.where(ledgerWhere(ctx, { from, to }, "absence"))
+				.where(
+					ledgerWhere(ctx, { from, to }, "absence", {
+						userIds: visibleUserIds,
+					}),
+				)
 				.groupBy(
 					timeEntry.userId,
 					user.name,

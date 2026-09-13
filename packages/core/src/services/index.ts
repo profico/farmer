@@ -30,6 +30,7 @@ export * from "./reminder-settings.service";
 export * from "./reports.service";
 export * from "./slack.service";
 export * from "./tasks.service";
+export * from "./team-leads.service";
 export * from "./time-entries.service";
 export * from "./types";
 export * from "./unfiled";

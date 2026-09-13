@@ -343,18 +343,17 @@ export function AppSidebar({
 	};
 
 	// Not a suspense query: the sidebar is always mounted and shouldn't block or
-	// suspend on this. A Team Lead on any project reaches the reports, so it
-	// can't be inferred from the org role alone.
+	// suspend on this. Clients are gated on a per-project lead role (or a people
+	// list), which the org role alone can't tell us.
 	const { data: access } = useQuery(myAccessQuery(orgSlug));
 	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
-	// Team Lead is the floor for any report at all — a plain Member sees strictly
-	// their own entries and nothing at project level.
-	const canSeeReports = isAdmin || !!access?.isLeadSomewhere;
 
 	// The gated rows, resolved once: the render needs them twice over (which
 	// group draws which row, and which row the path belongs to) and they must be
 	// the same answer both times.
-	const lateWorkItems = [...(canSeeReports ? [REPORTS_ITEM] : [])];
+	// Reports are for everyone — the services scope them, a Member sees their
+	// own row — so the item is not gated.
+	const lateWorkItems = [REPORTS_ITEM];
 	const manageItems = [
 		...(canManageClients ? [CLIENTS_ITEM] : []),
 		...(isAdmin ? [PEOPLE_ITEM] : []),

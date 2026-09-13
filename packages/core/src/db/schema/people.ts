@@ -157,3 +157,35 @@ export const memberTypeHistoryRelations = relations(
 		}),
 	}),
 );
+
+// A Team Lead's people (revised Sept 2026). A lead sees everything about the
+// people on their list — their time on every project, their Tracking status,
+// their time off — and, once assigned to a project, sees that project as a PM
+// does. Edited by an Admin on the Members page; a person may be on several
+// leads' lists. Being a Team Lead IS having a non-empty list: there is no flag.
+export const teamLeadPerson = pgTable(
+	"team_lead_person",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		leadUserId: text("lead_user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		personUserId: text("person_user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [
+		unique("team_lead_person_unq").on(
+			t.organizationId,
+			t.leadUserId,
+			t.personUserId,
+		),
+		index("team_lead_person_lead_idx").on(t.organizationId, t.leadUserId),
+		check(
+			"team_lead_person_not_self",
+			sql`${t.leadUserId} <> ${t.personUserId}`,
+		),
+	],
+);

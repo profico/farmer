@@ -5,15 +5,14 @@ import { z } from "zod";
 // It lives beside the tabs rather than in the route file because the tabs are
 // what read it — `Search` is a prop on half of them — and a component module
 // importing its own route's schema from the route would be a cycle.
-// Time and Overtime are project-scoped: Admin sees everything, a
-// PM or Team Lead sees their own projects (the service narrows the rows). The
-// rest are org-wide statements and Admin-only. A plain Member has no report at
-// all — they see strictly their own entries, on the timesheet.
+// Every tab is for everyone, scoped by the services (§4 matrix): an Admin sees
+// all of it, a PM their projects and the people on them, a Team Lead their
+// people and their projects, a Member themselves.
 export const TABS = [
-	{ id: "time", label: "Time", adminOnly: false },
-	{ id: "overtime", label: "Overtime", adminOnly: false },
-	{ id: "compliance", label: "Tracking", adminOnly: true },
-	{ id: "absence", label: "Absence", adminOnly: true },
+	{ id: "time", label: "Time" },
+	{ id: "overtime", label: "Overtime" },
+	{ id: "compliance", label: "Tracking" },
+	{ id: "absence", label: "Absence" },
 ] as const;
 
 export type TabId = (typeof TABS)[number]["id"];

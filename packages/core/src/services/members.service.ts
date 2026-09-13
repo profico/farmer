@@ -1,6 +1,7 @@
 import {
 	and,
 	asc,
+	count,
 	eq,
 	gt,
 	gte,
@@ -20,6 +21,7 @@ import {
 	type invitationEmailStatus,
 	memberProfile,
 	memberTypeHistory,
+	teamLeadPerson,
 } from "../db/schema/people";
 import { dayKeyInTz, endOfMonthKey } from "../lib/time";
 import type { SetMemberTypeInput, MemberTypeValue } from "../schema/members";
@@ -74,6 +76,8 @@ export type PersonRow = ResolvedMemberType & {
 	 *  import made with a guessed email (docs/plans/harvest-import.md, 3.3).
 	 *  Restoring them is where an admin confirms it. */
 	emailUnconfirmed: boolean;
+	/** People on their Team Lead list — zero for everyone who leads nobody. */
+	leadsPeople: number;
 };
 
 /** A membership row as the People screen draws it: the shape better-auth's
@@ -269,6 +273,16 @@ export const membersService = {
 					).map((a) => a.userId),
 		);
 
+		// One number per lead for the Members page; nobody else has a row.
+		const leadRows = await db
+			.select({ leadUserId: teamLeadPerson.leadUserId, people: count() })
+			.from(teamLeadPerson)
+			.where(eq(teamLeadPerson.organizationId, ctx.organizationId))
+			.groupBy(teamLeadPerson.leadUserId);
+		const leadsPeople = new Map(
+			leadRows.map((r) => [r.leadUserId, Number(r.people)]),
+		);
+
 		return rows.map((r) => ({
 			userId: r.userId,
 			name: r.name,
@@ -281,6 +295,7 @@ export const membersService = {
 			// right one: delivery people are the common case.
 			type: r.type ?? DEFAULT_TYPE.type,
 			expectedSecondsOverride: r.expectedSecondsOverride ?? null,
+			leadsPeople: leadsPeople.get(r.userId) ?? 0,
 		}));
 	},
 

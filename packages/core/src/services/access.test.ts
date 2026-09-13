@@ -39,6 +39,7 @@ import {
 const accessWith = (
 	roles: Record<string, "member" | "team_lead" | "pm">,
 	isAdmin = false,
+	leadOf: string[] = [],
 ) =>
 	new Access(
 		"u1",
@@ -50,6 +51,7 @@ const accessWith = (
 			string,
 			"member" | "team_lead" | "pm"
 		>,
+		new Set(leadOf),
 	);
 
 const P = "project-1";
@@ -514,5 +516,34 @@ describe("accessService.requireAdmin", () => {
 		await expect(
 			accessService.requireAdmin({ organizationId: ORG, userId: "u-plain" }),
 		).rejects.toThrow(AccessError);
+	});
+});
+
+describe("Access — Team Lead people lists", () => {
+	const lead = accessWith({ [P]: "member" }, false, ["u2", "u3"]);
+
+	test("having people on the list is what makes a Team Lead", () => {
+		expect(lead.isTeamLead).toBe(true);
+		expect(lead.peopleLed().sort()).toEqual(["u2", "u3"]);
+		// A project-level team_lead assignment alone is not the org-chart role.
+		expect(accessWith({ [P]: "team_lead" }).isTeamLead).toBe(false);
+	});
+
+	test("assigned to a project in any role, a Team Lead holds it as a PM", () => {
+		expect(lead.canViewProjectEntries(P)).toBe(true);
+		expect(lead.canManageProject(P)).toBe(true);
+		expect(lead.canViewProjectMoney(P)).toBe(true);
+		expect(lead.scopeFor("pm")).toEqual([P]);
+		// …but only where they are assigned at all.
+		expect(lead.canViewProjectEntries(OTHER)).toBe(false);
+		expect(lead.canManageProject(OTHER)).toBe(false);
+	});
+
+	test("canViewPerson: themselves, the people on their list, or Admin", () => {
+		expect(lead.canViewPerson("u1")).toBe(true);
+		expect(lead.canViewPerson("u2")).toBe(true);
+		expect(lead.canViewPerson("u9")).toBe(false);
+		expect(accessWith({}).canViewPerson("u2")).toBe(false);
+		expect(accessWith({}, true).canViewPerson("u2")).toBe(true);
 	});
 });

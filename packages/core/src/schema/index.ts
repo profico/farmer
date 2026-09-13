@@ -17,5 +17,6 @@ export * from "./reminder-settings";
 export * from "./reports";
 export * from "./slack";
 export * from "./tasks";
+export * from "./team-leads";
 export * from "./time-entries";
 export * from "./working-hours";
