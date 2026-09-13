@@ -2,6 +2,8 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { type ReactElement, useState } from "react";
 import { toast } from "sonner";
 
+import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
+import { TaskPicker } from "#/components/pickers/task-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -12,16 +14,9 @@ import {
 	DialogTrigger,
 } from "#/components/ui/dialog.tsx";
 import { Label } from "#/components/ui/label.tsx";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
-import { tasksForProjectQuery } from "#/queries/tasks.ts";
+import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
 
 const NO_PROJECT = "__none__";
 
@@ -66,15 +61,10 @@ export function AddRowDialog({
 		),
 		enabled: open,
 	});
-
-	const projectItems = [
-		{ value: NO_PROJECT, label: "No project (absence)" },
-		...projects.map((p) => ({
-			value: p.id,
-			label: p.code ? `[${p.code}] ${p.name}` : p.name,
-		})),
-	];
-	const taskItems = tasks.map((t) => ({ value: t.id, label: t.name }));
+	const { data: recentIds = [] } = useQuery({
+		...recentTasksQuery(orgSlug, projectId),
+		enabled: open && projectId !== NO_PROJECT,
+	});
 
 	const selectedProject = projects.find((p) => p.id === projectId) ?? null;
 	const selectedTask = tasks.find((t) => t.id === taskId) ?? null;
@@ -128,55 +118,34 @@ export function AddRowDialog({
 				</DialogHeader>
 				<div className="grid grid-cols-[minmax(0,1fr)] gap-4">
 					<div className="grid gap-1.5">
-						<Label>Project</Label>
-						<Select
-							items={projectItems}
-							value={projectId}
-							onValueChange={(value: string | null) => {
-								setProjectId(value ?? NO_PROJECT);
-								// The task list is project-scoped, so a project change can
+						<Label htmlFor="add-row-project">Project</Label>
+						<ProjectPicker
+							id="add-row-project"
+							projects={projects}
+							noProject="No project (absence)"
+							value={projectId === NO_PROJECT ? null : projectId}
+							onValueChange={(next) => {
+								setProjectId(next ?? NO_PROJECT);
+								// The task list follows the project, so a project change can
 								// leave a task selected that no longer applies.
 								setTaskId("");
 							}}
-						>
-							<SelectTrigger className="w-full">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{projectItems.map((item) => (
-									<SelectItem key={item.value} value={item.value}>
-										{item.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+						/>
 					</div>
 
 					<div className="grid gap-1.5">
-						<Label>Task</Label>
-						<Select
-							items={taskItems}
+						<Label htmlFor="add-row-task">Task</Label>
+						<TaskPicker
+							id="add-row-task"
+							tasks={tasks}
+							recentIds={recentIds}
+							grouped={projectId !== NO_PROJECT}
 							value={taskId}
-							onValueChange={(value: string | null) => setTaskId(value ?? "")}
-							disabled={taskItems.length === 0}
-						>
-							<SelectTrigger className="w-full">
-								<SelectValue
-									placeholder={
-										taskItems.length === 0
-											? "No tasks available"
-											: "Pick a task"
-									}
-								/>
-							</SelectTrigger>
-							<SelectContent>
-								{taskItems.map((item) => (
-									<SelectItem key={item.value} value={item.value}>
-										{item.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							onValueChange={setTaskId}
+							placeholder={
+								tasks.length === 0 ? "Loading tasks…" : "Pick a task"
+							}
+						/>
 					</div>
 				</div>
 				<DialogFooter>

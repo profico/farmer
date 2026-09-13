@@ -22,7 +22,7 @@ const entryBody = {
 	// Absent for Vacation / Sick Leave, which carry no client and no project.
 	projectId: z.uuid().optional(),
 	// Required on every entry — the structural half of the answer to
-	// "descriptions vary wildly"; the mandatory description below is the other.
+	// "descriptions vary wildly"; the mandatory description is the other.
 	taskId: z.uuid(),
 	description: z.string().max(10_000).optional(),
 	durationSeconds: duration.optional(),
@@ -33,16 +33,12 @@ const entryBody = {
 	calendarEventId: z.string().optional(),
 };
 
-// A description is mandatory on worked time. It is NOT required for absence
-// entries (which carry no project — "Vacation" needs no elaboration) or for
-// auto-derived fill blocks, since neither is the free-text chaos the rule exists
-// to fix. The project/absence distinction is re-checked in the service against
-// the task's actual `isAbsence` flag; here we can only see whether a project was
-// supplied, which is the same thing from the client's side.
+// The mandatory description is not checked here: whether an entry needs one
+// depends on the TASK (time off and a Break do not, everything else does —
+// `lib/task-rules.ts`), and the schema only sees an id. The service asserts it
+// with the task row in hand (`assertDescribed`).
 const entryRefinement = <
 	T extends {
-		projectId?: string;
-		description?: string;
 		durationSeconds?: number;
 		fillsDay: boolean;
 	},
@@ -50,13 +46,6 @@ const entryRefinement = <
 	data: T,
 	ctx: z.RefinementCtx,
 ) => {
-	if (data.projectId && !data.fillsDay && !data.description?.trim()) {
-		ctx.addIssue({
-			code: "custom",
-			path: ["description"],
-			message: "Describe what you worked on",
-		});
-	}
 	if (!data.fillsDay && data.durationSeconds == null) {
 		ctx.addIssue({
 			code: "custom",

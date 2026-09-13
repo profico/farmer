@@ -153,7 +153,7 @@ describe("assertTaskAvailable", () => {
 	test("resolves for any live task of the caller's own org", async () => {
 		await expect(
 			assertTaskAvailable(ctxForOrgA, taskInAId, projectInAId),
-		).resolves.toBeUndefined();
+		).resolves.toMatchObject({ isAbsence: expect.any(Boolean) });
 	});
 
 	// Was a rejection ("Pick a project"), now the legal UNFILED shape. The guard
@@ -166,7 +166,7 @@ describe("assertTaskAvailable", () => {
 	test("resolves for a worked task with no project yet (unfiled)", async () => {
 		await expect(
 			assertTaskAvailable(ctxForOrgA, taskInAId, undefined),
-		).resolves.toBeUndefined();
+		).resolves.toMatchObject({ isAbsence: expect.any(Boolean) });
 	});
 
 	// The cherry-pick bypass. Requiring an admin to add Meeting to every project
@@ -176,13 +176,13 @@ describe("assertTaskAvailable", () => {
 	test("resolves for a universal built-in the project never picked", async () => {
 		await expect(
 			assertTaskAvailable(ctxForOrgA, universalTaskId, projectInAId),
-		).resolves.toBeUndefined();
+		).resolves.toMatchObject({ isAbsence: expect.any(Boolean) });
 	});
 
 	test("resolves for a site-wide absence task with no project", async () => {
 		await expect(
 			assertTaskAvailable(ctxForOrgA, absenceTaskId, undefined),
-		).resolves.toBeUndefined();
+		).resolves.toMatchObject({ isAbsence: expect.any(Boolean) });
 	});
 
 	test("throws when an absence task is pinned to a project", async () => {

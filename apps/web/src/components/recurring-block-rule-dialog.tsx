@@ -1,15 +1,19 @@
+import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import { formatDurationInput } from "@farmer/core/lib/time";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	useMutation,
+	useQuery,
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
+import { TaskPicker } from "#/components/pickers/task-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -28,18 +32,11 @@ import {
 	FormMessage,
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
-import { tasksForProjectQuery } from "#/queries/tasks.ts";
+import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
 import {
 	createRecurringBlockRule,
 	updateRecurringBlockRule,
@@ -55,15 +52,18 @@ const formSchema = z
 		taskId: z.uuid("Pick a task"),
 		projectId: z.string(),
 		description: z.string(),
+		// Whether the chosen task is worked time (`descriptionRequiredFor`), kept
+		// on the form so the rule can be checked at submit without the schema
+		// having to know the task list.
+		needsDescription: z.boolean(),
 		daysOfWeek: z.array(z.number()).min(1, "Pick at least one day"),
 		duration: z.string().min(1, "Duration is required"),
 	})
-	// Same rule the server enforces, restated against this form's shape (it uses
-	// a sentinel string for "no project" rather than omitting the field). The
-	// entries this rule generates are worked time and must carry a note; saying
-	// so here means the answer arrives under the box rather than as a toast.
+	// Same rule the server enforces, restated against this form's shape. The
+	// entries a worked-time rule generates must carry a note; saying so here
+	// means the answer arrives under the box rather than as a toast.
 	.superRefine((data, ctx) => {
-		if (data.projectId !== NO_PROJECT && !data.description.trim()) {
+		if (data.needsDescription && !data.description.trim()) {
 			ctx.addIssue({
 				code: "custom",
 				path: ["description"],
@@ -109,6 +109,7 @@ function RecurringBlockRuleDialog({
 				taskId: rule.taskId,
 				projectId: rule.projectId ?? NO_PROJECT,
 				description: rule.description,
+				needsDescription: true,
 				daysOfWeek: rule.daysOfWeek,
 				duration: formatDurationInput(rule.durationSeconds),
 			}
@@ -116,6 +117,7 @@ function RecurringBlockRuleDialog({
 				taskId: "",
 				projectId: NO_PROJECT,
 				description: "",
+				needsDescription: true,
 				daysOfWeek: [1, 2, 3, 4, 5],
 				duration: "30m",
 			};
@@ -127,30 +129,29 @@ function RecurringBlockRuleDialog({
 
 	const projectId = form.watch("projectId");
 	const daysOfWeek = form.watch("daysOfWeek");
-	// The task list follows the chosen project — tasks are a global taxonomy that
-	// each project cherry-picks from.
+	// The task list follows the chosen project: with one it is the whole grouped
+	// list, without one the short project-less list (time off and the built-ins).
 	const { data: taskOptions = [] } = useSuspenseQuery(
 		tasksForProjectQuery(
 			orgSlug,
 			projectId === NO_PROJECT ? undefined : projectId,
 		),
 	);
+	const { data: recentIds = [] } = useQuery({
+		...recentTasksQuery(orgSlug, projectId),
+		enabled: open && projectId !== NO_PROJECT,
+	});
 
-	// A rule's own task is pinned into its options while the project is unchanged,
-	// because the list is what you may PICK and that is a narrower set than what a
-	// rule may already hold — a task the project has since stopped offering, say.
-	// Without the pin, editing such a rule showed an empty Task select and lost
-	// the task on save.
-	const originalProjectId = rule?.projectId ?? NO_PROJECT;
-	const options =
-		rule && projectId === originalProjectId
-			? [
-					...taskOptions
-						.map((t) => ({ value: t.id, label: t.name }))
-						.filter((o) => o.value !== rule.task.id),
-					{ value: rule.task.id, label: rule.task.name },
-				].sort((a, b) => a.label.localeCompare(b.label))
-			: taskOptions.map((t) => ({ value: t.id, label: t.name }));
+	// Worked time must say what it is for; time off and a Break need not. The
+	// task decides, so the form learns the answer whenever the task changes.
+	const taskId = form.watch("taskId");
+	const selectedTask = taskOptions.find((t) => t.id === taskId);
+	const needsDescription = selectedTask
+		? descriptionRequiredFor(selectedTask)
+		: true;
+	useEffect(() => {
+		form.setValue("needsDescription", needsDescription);
+	}, [needsDescription, form]);
 
 	const toggleDay = (day: number) => {
 		const current = form.getValues("daysOfWeek");
@@ -227,63 +228,40 @@ function RecurringBlockRuleDialog({
 					>
 						<FormField
 							control={form.control}
-							name="taskId"
+							name="projectId"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel required>Task</FormLabel>
-									<Select
-										value={field.value}
-										onValueChange={field.onChange}
-										items={options}
-									>
-										<FormControl>
-											<SelectTrigger className="w-full">
-												<SelectValue placeholder="Select a task" />
-											</SelectTrigger>
-										</FormControl>
-										<SelectContent>
-											{options.map((t) => (
-												<SelectItem key={t.value} value={t.value}>
-													{t.label}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<FormLabel>Project</FormLabel>
+									<FormControl>
+										<ProjectPicker
+											projects={projects}
+											noProject="No project"
+											value={field.value === NO_PROJECT ? null : field.value}
+											onValueChange={(next) => {
+												field.onChange(next ?? NO_PROJECT);
+												form.setValue("taskId", "");
+											}}
+										/>
+									</FormControl>
 									<FormMessage />
 								</FormItem>
 							)}
 						/>
 						<FormField
 							control={form.control}
-							name="projectId"
+							name="taskId"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Project</FormLabel>
-									<Select
-										value={field.value}
-										onValueChange={(value) => {
-											field.onChange(value);
-											form.setValue("taskId", "");
-										}}
-										items={[
-											{ value: NO_PROJECT, label: "No project" },
-											...projects.map((p) => ({ value: p.id, label: p.name })),
-										]}
-									>
-										<FormControl>
-											<SelectTrigger className="w-full">
-												<SelectValue placeholder="No project" />
-											</SelectTrigger>
-										</FormControl>
-										<SelectContent>
-											<SelectItem value={NO_PROJECT}>No project</SelectItem>
-											{projects.map((p) => (
-												<SelectItem key={p.id} value={p.id}>
-													{p.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<FormLabel required>Task</FormLabel>
+									<FormControl>
+										<TaskPicker
+											tasks={taskOptions}
+											recentIds={recentIds}
+											grouped={projectId !== NO_PROJECT}
+											value={field.value}
+											onValueChange={field.onChange}
+										/>
+									</FormControl>
 									<FormMessage />
 								</FormItem>
 							)}
@@ -332,10 +310,11 @@ function RecurringBlockRuleDialog({
 							name="description"
 							render={({ field }) => (
 								<FormItem>
-									{/* Honest either way: a rule against a project generates
-								    worked time, which must say what the work was. */}
-									<FormLabel required={projectId !== NO_PROJECT}>
-										{projectId === NO_PROJECT ? "Note (optional)" : "Note"}
+									{/* Honest either way: a worked-time rule generates entries
+								    that must say what the work was; a Break or time off need
+								    not. */}
+									<FormLabel required={needsDescription}>
+										{needsDescription ? "Note" : "Note (optional)"}
 									</FormLabel>
 									<FormControl>
 										<Input {...field} />

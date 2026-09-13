@@ -20,6 +20,7 @@ import {
 	projectMember,
 	type TaskSystemKey,
 	task,
+	timeEntry,
 } from "../db/schema/domain";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError, NotAMemberError } from "./access.service";
@@ -40,6 +41,7 @@ const ADMIN_B = "u-tk-admin-b";
 let harness: TestDb;
 
 let projectA1: string;
+let projectA2: string;
 let projectB: string;
 let devA: string;
 let designA: string;
@@ -122,6 +124,7 @@ beforeAll(async () => {
 		])
 		.returning();
 	projectA1 = at(projects, 0).id;
+	projectA2 = at(projects, 1).id;
 	projectB = at(projects, 2).id;
 
 	await db.insert(projectMember).values([
@@ -427,6 +430,57 @@ describe("listForProject", () => {
 			(t) => t.id,
 		);
 		expect(ids).not.toContain(taskB);
+	});
+});
+
+describe("recentForProject", () => {
+	const entry = (
+		userId: string,
+		projectId: string | null,
+		taskId: string,
+		date: string,
+	) => ({
+		organizationId: ORG_A,
+		userId,
+		projectId,
+		taskId,
+		date,
+		description: "x",
+		durationSeconds: 3600,
+	});
+
+	beforeAll(async () => {
+		await db.insert(timeEntry).values([
+			entry(MEM, projectA1, designA, "2026-08-01"),
+			entry(MEM, projectA1, meetingId, "2026-08-03"),
+			entry(MEM, projectA1, devA, "2026-08-05"),
+			// Newer than everything above, but time off never counts as recent.
+			entry(MEM, null, vacationId, "2026-08-06"),
+			// Another person's entries are not this person's habits.
+			entry(TL, projectA1, breakId, "2026-08-07"),
+		]);
+	});
+
+	test("the caller's last three distinct tasks on the project, newest first", async () => {
+		expect(await tasksService.recentForProject(ctx(MEM), projectA1)).toEqual([
+			devA,
+			meetingId,
+			designA,
+		]);
+	});
+
+	test("on a project they have not logged on yet, their last three anywhere", async () => {
+		expect(await tasksService.recentForProject(ctx(MEM), projectA2)).toEqual([
+			devA,
+			meetingId,
+			designA,
+		]);
+	});
+
+	test("nothing for a person with no entries", async () => {
+		expect(await tasksService.recentForProject(ctx(ADMIN), projectA1)).toEqual(
+			[],
+		);
 	});
 });
 

@@ -1,3 +1,4 @@
+import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
 	formatDurationInput,
 	parseDuration,
@@ -24,6 +25,8 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
+import { TaskPicker } from "#/components/pickers/task-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import {
@@ -69,7 +72,7 @@ import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
-import { tasksForProjectQuery } from "#/queries/tasks.ts";
+import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
 import {
 	attachCommitsToEntry,
@@ -106,6 +109,10 @@ const formSchema = z
 		date: dateKey,
 		duration: z.string(),
 		description: z.string().max(10_000),
+		// Whether the chosen task is worked time (`descriptionRequiredFor`), kept
+		// on the form so the rule can be checked at submit without the schema
+		// having to know the task list.
+		needsDescription: z.boolean(),
 		overtime: z.boolean(),
 		fillsDay: z.boolean(),
 		repeatEnabled: z.boolean(),
@@ -143,11 +150,7 @@ const formSchema = z
 				}
 			}
 		}
-		if (
-			data.projectId !== NO_PROJECT &&
-			!data.fillsDay &&
-			!data.description?.trim()
-		) {
+		if (data.needsDescription && !data.fillsDay && !data.description?.trim()) {
 			ctx.addIssue({
 				code: "custom",
 				path: ["description"],
@@ -196,6 +199,7 @@ export function AddBlockDialog({
 		date: defaultDate,
 		duration: entry ? formatDurationInput(entry.durationSeconds) : "",
 		description: entry?.description ?? "",
+		needsDescription: true,
 		overtime: entry?.overtime ?? false,
 		fillsDay: entry?.fillsDay ?? false,
 		repeatEnabled: false,
@@ -222,15 +226,19 @@ export function AddBlockDialog({
 	const fillsDay = form.watch("fillsDay");
 	const daysOfWeek = form.watch("daysOfWeek");
 
-	// The task list is the project's cherry-picked subset plus the two absence
-	// tasks — so it can't be resolved until a project is chosen, and switching
-	// project may invalidate the current pick.
+	// The task list follows the project: with one it is the whole grouped list,
+	// without one the short project-less list (time off and the built-ins) — so
+	// switching project can leave a task chosen that no longer applies.
 	const { data: tasks = [] } = useQuery({
 		...tasksForProjectQuery(
 			orgSlug,
 			projectId === NO_PROJECT ? undefined : projectId,
 		),
 		enabled: open,
+	});
+	const { data: recentIds = [] } = useQuery({
+		...recentTasksQuery(orgSlug, projectId),
+		enabled: open && projectId !== NO_PROJECT,
 	});
 	const selectedTask = tasks.find((t) => t.id === taskId);
 	useEffect(() => {
@@ -239,6 +247,15 @@ export function AddBlockDialog({
 			form.setValue("taskId", "");
 		}
 	}, [tasks, taskId, form]);
+
+	// Worked time must say what was done; time off and a Break need not. The
+	// task decides, so the form learns the answer whenever the task changes.
+	const needsDescription = selectedTask
+		? descriptionRequiredFor(selectedTask)
+		: true;
+	useEffect(() => {
+		form.setValue("needsDescription", needsDescription);
+	}, [needsDescription, form]);
 
 	// An absence task (Vacation / Sick Leave) is logged against no project and
 	// needs no note; picking one clears any project already chosen.
@@ -516,6 +533,10 @@ export function AddBlockDialog({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
+			// The task just logged is the next "Recent".
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).tasks, "recent"],
+			});
 			if (!entry) {
 				await queryClient.invalidateQueries({
 					queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
@@ -555,33 +576,17 @@ export function AddBlockDialog({
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel>Project</FormLabel>
-									<Select
-										value={field.value}
-										onValueChange={(value) => {
-											field.onChange(value);
-											form.setValue("taskId", "");
-										}}
-										items={[
-											{ value: NO_PROJECT, label: "No project (absence)" },
-											...projects.map((p) => ({ value: p.id, label: p.name })),
-										]}
-									>
-										<FormControl>
-											<SelectTrigger className="w-full">
-												<SelectValue placeholder="Pick a project" />
-											</SelectTrigger>
-										</FormControl>
-										<SelectContent>
-											<SelectItem value={NO_PROJECT}>
-												No project (absence)
-											</SelectItem>
-											{projects.map((p) => (
-												<SelectItem key={p.id} value={p.id}>
-													{p.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<FormControl>
+										<ProjectPicker
+											projects={projects}
+											noProject="No project (absence)"
+											value={field.value === NO_PROJECT ? null : field.value}
+											onValueChange={(next) => {
+												field.onChange(next ?? NO_PROJECT);
+												form.setValue("taskId", "");
+											}}
+										/>
+									</FormControl>
 									<FormMessage />
 								</FormItem>
 							)}
@@ -593,32 +598,16 @@ export function AddBlockDialog({
 								<FormItem>
 									<FormLabel required>Task</FormLabel>
 									<FormControl>
-										<div className="flex flex-wrap gap-1.5">
-											{tasks.map((t) => {
-												const selected = field.value === t.id;
-												return (
-													<button
-														key={t.id}
-														type="button"
-														onClick={() => field.onChange(t.id)}
-														className={cn(
-															"rounded-full border px-3 py-1.5 text-xs transition-colors duration-(--dur-fast)",
-															selected
-																? "border-primary/40 bg-primary/8 font-medium text-primary"
-																: "border-border text-muted-foreground hover:bg-muted",
-														)}
-													>
-														{t.name}
-													</button>
-												);
-											})}
-											{tasks.length === 0 && (
-												<p className="text-sm text-muted-foreground">
-													This project has no tasks yet — ask its lead to add
-													some in project settings.
-												</p>
-											)}
-										</div>
+										<TaskPicker
+											tasks={tasks}
+											recentIds={recentIds}
+											grouped={projectId !== NO_PROJECT}
+											value={field.value}
+											onValueChange={field.onChange}
+											placeholder={
+												tasks.length === 0 ? "Loading tasks…" : "Pick a task"
+											}
+										/>
 									</FormControl>
 									<FormMessage />
 								</FormItem>
@@ -1035,12 +1024,10 @@ export function AddBlockDialog({
 							name="description"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel
-										required={
-											!isAbsence && !fillsDay && projectId !== NO_PROJECT
-										}
-									>
-										{isAbsence || fillsDay ? "Note (optional)" : "What you did"}
+									<FormLabel required={needsDescription && !fillsDay}>
+										{needsDescription && !fillsDay
+											? "What you did"
+											: "Note (optional)"}
 									</FormLabel>
 									<FormControl>
 										<Textarea rows={3} className="resize-y" {...field} />
