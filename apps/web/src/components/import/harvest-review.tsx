@@ -12,6 +12,7 @@ import { MEMBER_TYPE_LABELS, memberTypeEnum } from "@farmer/core/schema";
 import { useState } from "react";
 
 import { StatusPill } from "#/components/status-pill.tsx";
+import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Metric } from "#/components/ui/metric.tsx";
 import {
@@ -367,14 +368,12 @@ export function HarvestReview({
 						title="Cutoff date"
 						description="Work before this day comes from Harvest. From this day on, people log their work here. Absence comes from Harvest on every date."
 						action={
-							<Input
-								type="date"
-								className="w-40"
+							<DatePicker
+								aria-label="Cutoff date"
+								className="w-48"
 								value={choices.cutoffDate}
-								onChange={(event) => {
-									if (event.target.value) {
-										onChoices({ ...choices, cutoffDate: event.target.value });
-									}
+								onValueChange={(next) => {
+									if (next) onChoices({ ...choices, cutoffDate: next });
 								}}
 							/>
 						}

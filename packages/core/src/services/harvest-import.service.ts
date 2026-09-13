@@ -921,6 +921,16 @@ export const harvestImportService = {
 					if (!orgProjectIds.has(p.localId)) {
 						throw new Error(`Project "${p.sourceKey}" matches no project here`);
 					}
+					// The import is the source of truth for the active set (the
+					// projects worked on in the month before the cutoff), so a match
+					// sets the status the way a create does.
+					await tx
+						.update(project)
+						.set({
+							status: p.archived ? "archived" : "active",
+							updatedAt: new Date(),
+						})
+						.where(eq(project.id, p.localId));
 					projectIds.set(p.sourceKey, p.localId);
 					await remember("project", p.sourceKey, p.localId, false);
 					continue;

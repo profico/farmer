@@ -75,7 +75,7 @@ The files are from `~/Downloads/harvest` (exported on 2026-09-11).
 
 | # | Question | Answer | Effect |
 |---|---|---|---|
-| D1 | Cutoff | Monday 2026-09-14, with dedupe | Section 5 |
+| D1 | Cutoff | 2026-09-01 (the first day logged here), with dedupe | Section 5 |
 | D2 | Paid leave | A new built-in absence task | Section 3.1 |
 | D3 | Overtime tasks | Set the flag, use the base task (option A) | Section 4, "Tasks" |
 | D4 | Former employees | Real `@profico.hr` addresses, archived | Section 4, "People", and 3.3 |
@@ -264,13 +264,15 @@ March counts in February and not in April.
   list. Match an existing client by name (case and spaces ignored).
 - "Profico" and "Internal" map to the org's internal client
   (`clientsService.ensureInternal`). The review screen can change this.
-- A client with no active project is created archived.
+- A client with no active project is created archived (active as below).
 - The address is dropped.
 
 ### Projects
 
 - One project for each distinct (client, project, code) in the time report.
-- Status: `active` if the project is in the project list, else `archived`.
+- Status: `active` if the project has a work row in the 31 days before the
+  cutoff or is in the project list, else `archived`. A matched project gets the
+  same verdict on every run — the import owns the active set.
 - Suggested type (the admin can change it):
   - only non-billable rows: `internal`;
   - `Budget By = Hours`: `fixed_scope`, with `Budget` in `budgetSeconds`;

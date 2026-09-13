@@ -48,13 +48,19 @@ import { hoursToSeconds, roundToQuarterHour } from "./number";
 
 // --- Constants -------------------------------------------------------------
 
-export const HARVEST_DEFAULT_CUTOFF = "2026-09-14";
+/** The first day people log in this app: September 2026. Work rows on or
+ *  after it are skipped; everything before comes from Harvest. */
+export const HARVEST_DEFAULT_CUTOFF = "2026-09-01";
 export const HARVEST_GUESS_DOMAIN = "profico.hr";
 /** 40 hours: the weekly target when the people list names no capacity. */
 export const HARVEST_DEFAULT_WEEKLY_TARGET_SECONDS = 40 * 3600;
 /** A project-person pair with a row this many days before the cutoff (or
  *  later) is an active assignment. */
 export const HARVEST_ACTIVE_WINDOW_DAYS = 90;
+/** A project with a work row this many days before the cutoff is active,
+ *  whether or not the project list names it — the list can only add to that
+ *  set (and supplies codes). Everything else is created archived. */
+export const HARVEST_ACTIVE_PROJECT_WINDOW_DAYS = 31;
 
 const DAY_SECONDS = 24 * 3600;
 const MAX_WEEKLY_TARGET_SECONDS = 7 * DAY_SECONDS;
@@ -328,6 +334,8 @@ export interface ParsedProject {
 	listed: ProjectRow | null;
 	workRows: number;
 	billableRows: number;
+	/** Every date with a work row, ascending — what decides "active". */
+	workDates: string[];
 }
 
 export interface ParsedTask {
@@ -422,6 +430,7 @@ interface ProjectAcc {
 	code: string;
 	workRows: number;
 	billableRows: number;
+	workDates: Set<string>;
 }
 
 interface TaskAcc {
@@ -582,10 +591,12 @@ export async function parseHarvestFiles(
 						code: t.projectCode.trim(),
 						workRows: 0,
 						billableRows: 0,
+						workDates: new Set(),
 					};
 					projects.set(projectSourceKey, acc);
 				}
 				acc.workRows += 1;
+				acc.workDates.add(date);
 				if (t.billable) acc.billableRows += 1;
 			}
 			let taskAcc = tasks.get(task.key);
@@ -718,6 +729,7 @@ export async function parseHarvestFiles(
 				code: listed.code.trim(),
 				workRows: 0,
 				billableRows: 0,
+				workDates: new Set(),
 			});
 		}
 	}
@@ -725,6 +737,8 @@ export async function parseHarvestFiles(
 		.map(([sourceKey, acc]) => ({
 			sourceKey,
 			...acc,
+			// An array, not the Set: this crosses `postMessage` into the Worker.
+			workDates: [...acc.workDates].sort(compareStrings),
 			listed: listedProjects.get(sourceKey) ?? null,
 		}))
 		.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
@@ -857,7 +871,7 @@ export interface HarvestChoices {
 	negativeRows: HarvestNegativeDecision | null;
 }
 
-/** The defaults: cutoff Monday 2026-09-14, no overrides, keep this app's entries on an
+/** The defaults: cutoff 1 September 2026, no overrides, keep this app's entries on an
  *  overlap day, and no deletions. The two questions (duplicate names and
  *  negative rows) have no default: the admin answers them. The parsed files
  *  do not change a default today; the parameter keeps the call site stable
@@ -1118,10 +1132,19 @@ export function planHarvestImport(
 		const key = normName(c.name);
 		if (!clientByName.has(key)) clientByName.set(key, c.id);
 	}
+	// Active: a work row in the window before the cutoff, or named by the
+	// project list. The list adds to the set; it never archives a project that
+	// was worked on last month.
+	const projectActiveFrom = DATE_RE.test(cutoff)
+		? addDays(cutoff, -HARVEST_ACTIVE_PROJECT_WINDOW_DAYS)
+		: cutoff;
+	const isActiveProject = (p: ParsedProject) =>
+		p.listed !== null ||
+		p.workDates.some((d) => d >= projectActiveFrom && d < cutoff);
 	const activeClientKeys = new Set<string>();
 	const projectsPerClient = new Map<string, number>();
 	for (const p of parsed.projects) {
-		if (p.listed) activeClientKeys.add(p.clientSourceKey);
+		if (isActiveProject(p)) activeClientKeys.add(p.clientSourceKey);
 		projectsPerClient.set(
 			p.clientSourceKey,
 			(projectsPerClient.get(p.clientSourceKey) ?? 0) + 1,
@@ -1331,6 +1354,7 @@ export function planHarvestImport(
 			}
 		}
 		const code = p.code.slice(0, MAX_CODE).trim() || null;
+		const active = isActiveProject(p);
 		const review: HarvestProjectReview = {
 			sourceKey: p.sourceKey,
 			client: p.clientName,
@@ -1341,7 +1365,7 @@ export function planHarvestImport(
 			localId,
 			type: null,
 			suggestedType,
-			status: p.listed ? "active" : "archived",
+			status: active ? "active" : "archived",
 			budgetSeconds: null,
 			seconds: 0,
 			billableSeconds: 0,
@@ -1356,19 +1380,26 @@ export function planHarvestImport(
 					message: `An earlier import mapped "${p.clientName} :: ${p.name}" to a project that no longer exists`,
 				});
 			}
-			projectPlans.push({ action: "match", sourceKey: p.sourceKey, localId });
+			// The file decides the status on a re-import too: the project set
+			// that was worked on last month is the active set, however an earlier
+			// run or an admin left the row.
+			projectPlans.push({
+				action: "match",
+				sourceKey: p.sourceKey,
+				localId,
+				archived: !active,
+			});
 			review.action = "match";
 			review.code = local?.code ?? code;
-			review.status = local?.archived ? "archived" : "active";
 			review.type = isProjectType(local?.type) ? local.type : null;
-			projectActive.set(p.sourceKey, !(local?.archived ?? false));
+			projectActive.set(p.sourceKey, active);
 		} else {
 			const type = choices.projectTypes[p.sourceKey] ?? suggestedType;
 			const budgetSeconds =
 				type === "fixed_scope" && isHourBudget(p.listed) && p.listed?.budget
 					? Math.round(p.listed.budget * 3600)
 					: null;
-			const archived = !p.listed;
+			const archived = !active;
 			projectPlans.push({
 				action: "create",
 				sourceKey: p.sourceKey,
