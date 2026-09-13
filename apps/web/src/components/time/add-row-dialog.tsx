@@ -18,7 +18,9 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
 
-const NO_PROJECT = "__none__";
+// Time off is chosen where a project would be, and narrows the tasks to the
+// leave kinds — the same shape as the Log time dialog.
+const TIME_OFF = "__time_off__";
 
 export type DraftRow = {
 	key: string;
@@ -50,22 +52,24 @@ export function AddRowDialog({
 }) {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
-	const [projectId, setProjectId] = useState(NO_PROJECT);
+	const [projectId, setProjectId] = useState(TIME_OFF);
 	const [taskId, setTaskId] = useState("");
 
 	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
 	const { data: tasks = [] } = useQuery({
 		...tasksForProjectQuery(
 			orgSlug,
-			projectId === NO_PROJECT ? undefined : projectId,
+			projectId === TIME_OFF ? undefined : projectId,
 		),
 		enabled: open,
 	});
 	const { data: recentIds = [] } = useQuery({
 		...recentTasksQuery(orgSlug, projectId),
-		enabled: open && projectId !== NO_PROJECT,
+		enabled: open && projectId !== TIME_OFF,
 	});
 
+	const isTimeOff = projectId === TIME_OFF;
+	const pickableTasks = isTimeOff ? tasks.filter((t) => t.isAbsence) : tasks;
 	const selectedProject = projects.find((p) => p.id === projectId) ?? null;
 	const selectedTask = tasks.find((t) => t.id === taskId) ?? null;
 	// The work is the whole form now — a row with no hours in it is scaffolding,
@@ -73,13 +77,13 @@ export function AddRowDialog({
 	const canAdd = taskId !== "";
 
 	const reset = () => {
-		setProjectId(NO_PROJECT);
+		setProjectId(TIME_OFF);
 		setTaskId("");
 	};
 
 	const submit = () => {
 		if (!selectedTask) return;
-		const resolvedProjectId = projectId === NO_PROJECT ? null : projectId;
+		const resolvedProjectId = projectId === TIME_OFF ? null : projectId;
 		const key = `${resolvedProjectId ?? "none"}|${taskId}`;
 		if (existingKeys.has(key)) {
 			toast.error("That project and task is already a row this week");
@@ -122,10 +126,10 @@ export function AddRowDialog({
 						<ProjectPicker
 							id="add-row-project"
 							projects={projects}
-							noProject="No project (absence)"
-							value={projectId === NO_PROJECT ? null : projectId}
+							noProject="Time-off"
+							value={projectId === TIME_OFF ? null : projectId}
 							onValueChange={(next) => {
-								setProjectId(next ?? NO_PROJECT);
+								setProjectId(next ?? TIME_OFF);
 								// The task list follows the project, so a project change can
 								// leave a task selected that no longer applies.
 								setTaskId("");
@@ -137,9 +141,9 @@ export function AddRowDialog({
 						<Label htmlFor="add-row-task">Task</Label>
 						<TaskPicker
 							id="add-row-task"
-							tasks={tasks}
+							tasks={pickableTasks}
 							recentIds={recentIds}
-							grouped={projectId !== NO_PROJECT}
+							grouped={!isTimeOff}
 							value={taskId}
 							onValueChange={setTaskId}
 							placeholder={
