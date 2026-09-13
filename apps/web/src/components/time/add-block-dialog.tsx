@@ -20,7 +20,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -113,10 +113,6 @@ const formSchema = z
 		date: dateKey,
 		duration: z.string(),
 		description: z.string().max(10_000),
-		// Whether the chosen task is worked time (`descriptionRequiredFor`), kept
-		// on the form so the rule can be checked at submit without the schema
-		// having to know the task list.
-		needsDescription: z.boolean(),
 		overtime: z.boolean(),
 		fillsDay: z.boolean(),
 		repeatEnabled: z.boolean(),
@@ -153,13 +149,6 @@ const formSchema = z
 					});
 				}
 			}
-		}
-		if (data.needsDescription && !data.fillsDay && !data.description?.trim()) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["description"],
-				message: "Describe what you worked on",
-			});
 		}
 		if (data.repeatEnabled && data.daysOfWeek.length < 1) {
 			ctx.addIssue({
@@ -203,7 +192,6 @@ export function AddBlockDialog({
 		date: defaultDate,
 		duration: entry ? formatClock(entry.durationSeconds) : "",
 		description: entry?.description ?? "",
-		needsDescription: true,
 		overtime: entry?.overtime ?? false,
 		fillsDay: entry?.fillsDay ?? false,
 		repeatEnabled: false,
@@ -260,13 +248,12 @@ export function AddBlockDialog({
 	}, [pickableTasks, taskId, form]);
 
 	// Worked time must say what was done; time off and a Break need not. The
-	// task decides, so the form learns the answer whenever the task changes.
+	// task decides, and the rule is asked at submit against the task chosen
+	// then — not stored on the form, where a value set by an effect went stale
+	// across a reopen and demanded a note the label had just called optional.
 	const needsDescription = selectedTask
 		? descriptionRequiredFor(selectedTask)
 		: true;
-	useEffect(() => {
-		form.setValue("needsDescription", needsDescription);
-	}, [needsDescription, form]);
 
 	// An absence task (Vacation / Sick Leave) is logged against no project and
 	// needs no note; picking one clears any project already chosen.
@@ -579,21 +566,32 @@ export function AddBlockDialog({
 		form.watch("overtime") ? "Overtime" : null,
 	].flatMap((o) => (o ? [o] : []));
 
-	const submit = (values: FormValues) => mutation.mutate(values);
+	const { mutate } = mutation;
+	const submit = useCallback(
+		(values: FormValues) => {
+			if (needsDescription && !values.fillsDay && !values.description.trim()) {
+				form.setError("description", {
+					message: "Describe what you worked on",
+				});
+				return;
+			}
+			mutate(values);
+		},
+		[needsDescription, form, mutate],
+	);
 	// ⌘↩ / Ctrl+↩ saves from anywhere in the dialog — the textarea, where a
 	// plain Enter is a new line, and the pickers, whose popups are portaled
 	// outside the form and so never see a form-level key handler.
-	const { mutate } = mutation;
 	useEffect(() => {
 		if (!open) return;
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
 			event.preventDefault();
-			void form.handleSubmit((values) => mutate(values))();
+			void form.handleSubmit(submit)();
 		};
 		document.addEventListener("keydown", onKeyDown);
 		return () => document.removeEventListener("keydown", onKeyDown);
-	}, [open, form, mutate]);
+	}, [open, form, submit]);
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>

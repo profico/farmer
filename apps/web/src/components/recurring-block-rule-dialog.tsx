@@ -7,7 +7,7 @@ import {
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -47,30 +47,13 @@ const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
 // No start time: a recurring block reserves an AMOUNT of time on a weekday, not
 // a slot on a clock, which is the whole point of the duration-only model.
-const formSchema = z
-	.object({
-		taskId: z.uuid("Pick a task"),
-		projectId: z.string(),
-		description: z.string(),
-		// Whether the chosen task is worked time (`descriptionRequiredFor`), kept
-		// on the form so the rule can be checked at submit without the schema
-		// having to know the task list.
-		needsDescription: z.boolean(),
-		daysOfWeek: z.array(z.number()).min(1, "Pick at least one day"),
-		duration: z.string().min(1, "Duration is required"),
-	})
-	// Same rule the server enforces, restated against this form's shape. The
-	// entries a worked-time rule generates must carry a note; saying so here
-	// means the answer arrives under the box rather than as a toast.
-	.superRefine((data, ctx) => {
-		if (data.needsDescription && !data.description.trim()) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["description"],
-				message: "Describe what this block is for",
-			});
-		}
-	});
+const formSchema = z.object({
+	taskId: z.uuid("Pick a task"),
+	projectId: z.string(),
+	description: z.string(),
+	daysOfWeek: z.array(z.number()).min(1, "Pick at least one day"),
+	duration: z.string().min(1, "Duration is required"),
+});
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -109,7 +92,6 @@ function RecurringBlockRuleDialog({
 				taskId: rule.taskId,
 				projectId: rule.projectId ?? NO_PROJECT,
 				description: rule.description,
-				needsDescription: true,
 				daysOfWeek: rule.daysOfWeek,
 				duration: formatDurationInput(rule.durationSeconds),
 			}
@@ -117,7 +99,6 @@ function RecurringBlockRuleDialog({
 				taskId: "",
 				projectId: NO_PROJECT,
 				description: "",
-				needsDescription: true,
 				daysOfWeek: [1, 2, 3, 4, 5],
 				duration: "30m",
 			};
@@ -143,15 +124,14 @@ function RecurringBlockRuleDialog({
 	});
 
 	// Worked time must say what it is for; time off and a Break need not. The
-	// task decides, so the form learns the answer whenever the task changes.
+	// task decides, and the rule is asked at submit against the task chosen
+	// then — the same rule the server enforces, restated here so the answer
+	// arrives under the box rather than as a toast.
 	const taskId = form.watch("taskId");
 	const selectedTask = taskOptions.find((t) => t.id === taskId);
 	const needsDescription = selectedTask
 		? descriptionRequiredFor(selectedTask)
 		: true;
-	useEffect(() => {
-		form.setValue("needsDescription", needsDescription);
-	}, [needsDescription, form]);
 
 	const toggleDay = (day: number) => {
 		const current = form.getValues("daysOfWeek");
@@ -223,7 +203,15 @@ function RecurringBlockRuleDialog({
 				</DialogHeader>
 				<Form {...form}>
 					<form
-						onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
+						onSubmit={form.handleSubmit((values) => {
+							if (needsDescription && !values.description.trim()) {
+								form.setError("description", {
+									message: "Describe what this block is for",
+								});
+								return;
+							}
+							mutation.mutate(values);
+						})}
 						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
 						<FormField
