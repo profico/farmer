@@ -31,19 +31,25 @@ export const searchSchema = z.object({
 		.catch(undefined),
 	// The Time tab's own sub-grouping, mirroring Harvest's three tabs.
 	group: z.enum(["clients", "projects", "teammates"]).optional(),
-	// The period. `month` drives every month-based report and is also the Time
-	// tab's default; `preset` lets Time widen to a week or an arbitrary range
-	// (PRD 6.1), in which case `from`/`to` carry it.
+	// The period. `month` anchors every preset but Week and Custom; `preset`
+	// widens or narrows it, and `from`/`to` carry a week or a custom range.
 	month: monthKey.optional(),
-	preset: z.enum(["month", "week", "custom"]).optional(),
+	preset: z.enum(["week", "month", "quarter", "year", "custom"]).optional(),
 	from: dateKey.optional(),
 	to: dateKey.optional(),
-	// Level 2: which row was clicked, and how to group what's behind it.
-	detailKind: z
-		.enum(["clients", "projects", "teammates", "overtime"])
-		.optional(),
+	// "Active projects only".
+	active: z.literal("1").optional(),
+	// The Breakdown: the entries behind a number, under up to four filters, in
+	// one of five groupings. Filters are ids so a link survives a rename.
+	view: z.literal("breakdown").optional(),
+	client: z.string().optional(),
+	project: z.string().optional(),
+	task: z.string().optional(),
+	person: z.string().optional(),
+	by: z.enum(["client", "project", "task", "teammate", "date"]).optional(),
+	// The Overtime tab's own drill-down: one person's flagged entries.
+	detailKind: z.literal("overtime").optional(),
 	detailId: z.string().optional(),
-	groupBy: z.enum(["date", "person"]).optional(),
 });
 
 export type Search = z.infer<typeof searchSchema>;

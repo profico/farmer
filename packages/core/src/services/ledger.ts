@@ -78,6 +78,9 @@ export type LedgerFilter = {
 	userIds?: string[];
 	/** Restrict to overtime rows. Absent means "both". */
 	overtimeOnly?: boolean;
+	/** Leave out time on archived projects ("Active projects only"). Needs the
+	 *  project join, like `clientId`. */
+	activeOnly?: boolean;
 	/** Access scope: the project ids the caller may see, or null for unscoped
 	 *  (admins). An empty array means "nothing", and is honoured as such. */
 	visibleProjectIds?: string[] | null;
@@ -112,7 +115,7 @@ export const scopeNeedsTaskJoin = (scope: LedgerScope): boolean =>
 
 /** Whether a scope needs the `project` table joined. Only client filtering does. */
 export const filterNeedsProjectJoin = (filter: LedgerFilter): boolean =>
-	filter.clientId != null;
+	filter.clientId != null || filter.activeOnly === true;
 
 const scopePredicate = (scope: LedgerScope): SQL | undefined => {
 	switch (scope) {
@@ -165,6 +168,7 @@ export const ledgerWhere = (
 		filter.userId ? eq(timeEntry.userId, filter.userId) : undefined,
 		filter.userIds ? inArray(timeEntry.userId, filter.userIds) : undefined,
 		filter.overtimeOnly ? eq(timeEntry.overtime, true) : undefined,
+		filter.activeOnly ? eq(project.status, "active") : undefined,
 	);
 
 const SECONDS = sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`;

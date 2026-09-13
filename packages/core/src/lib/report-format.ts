@@ -35,6 +35,17 @@ export const formatHoursLabel = (totalSeconds: number): string => {
 export const formatWholeHoursValue = (totalSeconds: number): string =>
 	Math.round(totalSeconds / 3600).toLocaleString("en-US");
 
+/** Hours the way the Croatian accounting book writes them: decimal, two
+ *  places, hr-HR separators — 6557.5 hours is "6.557,50". The Time report and
+ *  the Breakdown show this form (the COO signed it off against Harvest); the
+ *  CSV keeps the plain `formatDecimalHours` below, which a spreadsheet parses. */
+const HR_HOURS = new Intl.NumberFormat("hr-HR", {
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
+export const formatReportHours = (totalSeconds: number): string =>
+	HR_HOURS.format(totalSeconds / 3600);
+
 /** Decimal hours — the CSV form, and only the CSV form. The destination is a
  *  spreadsheet, where "7:30" is a time of day and would sum as one. */
 export const formatDecimalHours = (totalSeconds: number): string =>

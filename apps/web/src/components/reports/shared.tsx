@@ -1,5 +1,7 @@
 import {
+	formatQuarterKey,
 	isCurrentPeriod,
+	monthsPerStep,
 	PERIOD_PRESETS,
 	resolveReportPeriod,
 	shiftMonthKey,
@@ -83,11 +85,7 @@ export function MonthFramed({
 		<Link
 			to="/$orgSlug/reports"
 			params={{ orgSlug }}
-			search={{
-				...search,
-				month: shiftMonthKey(month, delta),
-				detailId: undefined,
-			}}
+			search={{ ...search, month: shiftMonthKey(month, delta) }}
 			className={stepperClass}
 			aria-label={delta < 0 ? "Previous month" : "Next month"}
 		>
@@ -141,25 +139,28 @@ export function PeriodPicker({
 	const { preset, from, to } = resolveReportPeriod(search, today);
 	const month = search.month ?? thisMonth;
 
-	const withSearch = (patch: Partial<Search>) => ({
-		...search,
-		...patch,
-		// A drill-down belongs to the period it was opened in; moving the period
-		// with a row still selected would show that row's entries for a range it
-		// was never counted over.
-		detailId: undefined,
-		detailKind: undefined,
-	});
+	// A Breakdown keeps its filters across a period change on purpose: "this
+	// client, last quarter" is a question, and the filters are the answer's
+	// subject, not something the period picker should forget.
+	const withSearch = (patch: Partial<Search>) => ({ ...search, ...patch });
 
 	const step = (delta: number) => {
 		if (preset === "week") {
 			return withSearch({ from: addDaysToKey(from, 7 * delta), to: undefined });
 		}
-		return withSearch({ month: shiftMonthKey(month, delta) });
+		return withSearch({
+			month: shiftMonthKey(month, delta * monthsPerStep(preset)),
+		});
 	};
 
 	const label =
-		preset === "month" ? formatMonthKey(month) : formatWeekRange(from, to);
+		preset === "month"
+			? formatMonthKey(month)
+			: preset === "quarter"
+				? formatQuarterKey(month)
+				: preset === "year"
+					? month.slice(0, 4)
+					: formatWeekRange(from, to);
 
 	const atNow = isCurrentPeriod(search, today);
 
@@ -213,7 +214,11 @@ export function PeriodPicker({
 							>
 								{preset === "week"
 									? "Return to this week"
-									: "Return to this month"}
+									: preset === "quarter"
+										? "Return to this quarter"
+										: preset === "year"
+											? "Return to this year"
+											: "Return to this month"}
 							</Link>
 						)
 					}
@@ -276,7 +281,7 @@ function CustomRangeFields({
 					navigate({
 						to: "/$orgSlug/reports",
 						params: { orgSlug },
-						search: { ...search, from: next, detailId: undefined },
+						search: { ...search, from: next },
 					})
 				}
 			/>
@@ -291,7 +296,7 @@ function CustomRangeFields({
 					navigate({
 						to: "/$orgSlug/reports",
 						params: { orgSlug },
-						search: { ...search, to: next, detailId: undefined },
+						search: { ...search, to: next },
 					})
 				}
 			/>

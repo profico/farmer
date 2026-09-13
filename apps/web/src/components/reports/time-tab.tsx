@@ -1,12 +1,19 @@
 import {
 	formatDecimalHours,
-	formatHoursLabel,
+	formatReportHours,
 } from "@farmer/core/lib/report-format";
 import { resolveReportPeriod } from "@farmer/core/lib/report-period";
-import type { TimeReportDetailInput } from "@farmer/core/schema";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import type {
+	TimeReportDetailInput,
+	TimeReportSummaryInput,
+} from "@farmer/core/schema";
+import {
+	ArrowLeftIcon,
+	CaretDownIcon,
+	CaretUpIcon,
+} from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
@@ -25,6 +32,7 @@ import {
 	SelectValue,
 } from "#/components/ui/select.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
+import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
 	TableBody,
@@ -35,10 +43,10 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { downloadCsv } from "#/lib/csv.ts";
-import { formatClock } from "#/lib/format-hours.ts";
 import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { clientsQuery } from "#/queries/clients.ts";
+import { directoryQuery } from "#/queries/members.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import {
 	timeReportDetailQuery,
@@ -48,6 +56,13 @@ import { selectableTasksQuery } from "#/queries/tasks.ts";
 
 import type { Search } from "./search.ts";
 import { formatDateHeading, PeriodPicker, TabPending } from "./shared.tsx";
+
+// The Time report (PRD 6.1), as the COO signed it off against Harvest: a total
+// for the period, then Clients · Projects · Team, each a sortable table with an
+// hours bar; a name opens the Breakdown pre-grouped, the hours open it by
+// date. The Breakdown is the entries behind a number under up to four filters,
+// grouped by any of five keys, with the group's sum on its header row. Hours
+// are written the way the accounting book writes them (1.821,50).
 
 /** The placeholder for a single figure — a total or a percentage — that sits in
  *  a row of controls. The label stays: only the number is unknown. */
@@ -68,16 +83,21 @@ function FigurePending({
 	);
 }
 
-// ── Period navigation ───────────────────────────────────────────────────────
-// Same geometry as the timesheet's stepper (TimeToolbar), for the same reason
-// it's shared across Day/Week/Month there: the eye should not have to re-find
-// the arrows when the screen changes.
-
 const GROUPS = [
 	{ id: "clients", label: "Clients" },
 	{ id: "projects", label: "Projects" },
-	{ id: "teammates", label: "Teammates" },
+	{ id: "teammates", label: "Team" },
 ] as const;
+type Group = (typeof GROUPS)[number]["id"];
+
+const BREAKDOWN_GROUPS = [
+	{ id: "client", label: "Client" },
+	{ id: "project", label: "Project" },
+	{ id: "task", label: "Task" },
+	{ id: "teammate", label: "Teammate" },
+	{ id: "date", label: "Date" },
+] as const;
+type BreakdownGroup = (typeof BREAKDOWN_GROUPS)[number]["id"];
 
 export function TimeTab({
 	orgSlug,
@@ -90,23 +110,29 @@ export function TimeTab({
 	today: string;
 	thisMonth: string;
 }) {
-	const group = search.group ?? "projects";
+	const group: Group = search.group ?? "projects";
 	const { from, to } = resolveReportPeriod(search, today);
+	const activeOnly = search.active === "1";
 
-	if (
-		search.detailId &&
-		search.detailKind &&
-		search.detailKind !== "overtime"
-	) {
+	if (search.view === "breakdown") {
 		return (
-			<TimeDetail
-				orgSlug={orgSlug}
-				search={search}
-				from={from}
-				to={to}
-				kind={search.detailKind}
-				id={search.detailId}
-			/>
+			<>
+				<PeriodPicker
+					orgSlug={orgSlug}
+					search={search}
+					today={today}
+					thisMonth={thisMonth}
+				>
+					<ActiveOnlyToggle orgSlug={orgSlug} search={search} />
+				</PeriodPicker>
+				<Breakdown
+					orgSlug={orgSlug}
+					search={search}
+					from={from}
+					to={to}
+					activeOnly={activeOnly}
+				/>
+			</>
 		);
 	}
 
@@ -117,21 +143,55 @@ export function TimeTab({
 				search={search}
 				today={today}
 				thisMonth={thisMonth}
-			/>
+			>
+				<ActiveOnlyToggle orgSlug={orgSlug} search={search} />
+			</PeriodPicker>
 			<TimeSummary
 				orgSlug={orgSlug}
 				search={search}
 				group={group}
 				from={from}
 				to={to}
+				activeOnly={activeOnly}
 			/>
 		</>
 	);
 }
 
+/** "Active projects only" — leaves archived projects' time out of every figure
+ *  on the screen. In the URL like every other report control, so a shared link
+ *  shows what its sender saw. */
+function ActiveOnlyToggle({
+	orgSlug,
+	search,
+}: {
+	orgSlug: string;
+	search: Search;
+}) {
+	const navigate = useNavigate({ from: "/$orgSlug/reports" });
+	const on = search.active === "1";
+	return (
+		<span className="flex items-center gap-2 text-sm text-muted-foreground">
+			<Switch
+				size="sm"
+				aria-label="Active projects only"
+				checked={on}
+				onCheckedChange={(checked) =>
+					navigate({
+						to: "/$orgSlug/reports",
+						params: { orgSlug },
+						search: { ...search, active: checked ? "1" : undefined },
+					})
+				}
+			/>
+			Active projects only
+		</span>
+	);
+}
+
+// ── Level 1: the three tables ──────────────────────────────────────────────
+
 /**
- * The Clients/Projects/Teammates grouping, and the figures behind it.
- *
  * The grouping control is deliberately *not* inside the boundary that its own
  * clicks trip: switching group changes the query key, and if the control were
  * part of the suspended subtree it would disappear along with the table for as
@@ -145,13 +205,16 @@ function TimeSummary({
 	group,
 	from,
 	to,
+	activeOnly,
 }: {
 	orgSlug: string;
 	search: Search;
-	group: "clients" | "projects" | "teammates";
+	group: Group;
 	from: string;
 	to: string;
+	activeOnly: boolean;
 }) {
+	const input: TimeReportSummaryInput = { from, to, tab: group, activeOnly };
 	return (
 		<>
 			<div className="mt-6 flex flex-wrap items-center justify-between gap-3">
@@ -164,7 +227,7 @@ function TimeSummary({
 								<Link
 									to="/$orgSlug/reports"
 									params={{ orgSlug }}
-									search={{ ...search, group: g.id, detailId: undefined }}
+									search={{ ...search, group: g.id }}
 								/>
 							}
 						>
@@ -172,42 +235,166 @@ function TimeSummary({
 						</SegmentedControlItem>
 					))}
 				</SegmentedControl>
-				<Suspense fallback={<FigurePending label="Total" />}>
-					<TimeSummaryTotal group={group} from={from} to={to} />
+				<Suspense fallback={<SummaryActionsPending />}>
+					<SummaryActions input={input} from={from} to={to} />
 				</Suspense>
 			</div>
 
 			<Suspense fallback={<TabPending className="mt-6" />}>
-				<TimeSummaryRows
-					orgSlug={orgSlug}
-					search={search}
-					group={group}
-					from={from}
-					to={to}
-				/>
+				<TimeSummaryRows orgSlug={orgSlug} search={search} input={input} />
 			</Suspense>
 		</>
 	);
 }
 
-function TimeSummaryTotal({
-	group,
+/** The Team tab's hours are work + time off; the other two tabs never see time
+ *  off, which belongs to nobody's client or project. */
+const rowHours = (
+	row: { secondsTotal: number; timeOffSeconds: number },
+	group: Group,
+) => row.secondsTotal + (group === "teammates" ? row.timeOffSeconds : 0);
+
+function SummaryActions({
+	input,
 	from,
 	to,
 }: {
-	group: "clients" | "projects" | "teammates";
+	input: TimeReportSummaryInput;
 	from: string;
 	to: string;
 }) {
 	const orgSlug = useOrgSlug();
-	const { data } = useSuspenseQuery(
-		timeReportSummaryQuery(orgSlug, { from, to, tab: group }),
-	);
+	const { data } = useSuspenseQuery(timeReportSummaryQuery(orgSlug, input));
+	const total = data.rows.reduce((sum, r) => sum + rowHours(r, input.tab), 0);
 	return (
-		<span className="flex items-baseline gap-2 whitespace-nowrap">
-			<span className="eyebrow">Total</span>
-			<span className="mono text-lg">
-				{formatHoursLabel(data.totalSeconds)}
+		<div className="flex items-center gap-3">
+			<span className="flex items-baseline gap-2 whitespace-nowrap">
+				<span className="eyebrow">Total hours</span>
+				<span className="mono text-lg">{formatReportHours(total)}</span>
+			</span>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={data.rows.length === 0}
+				onClick={() =>
+					downloadCsv(
+						`time-report_${input.tab}_${from}_${to}.csv`,
+						input.tab === "teammates"
+							? ["Person", "Work", "Time-off", "Hours"]
+							: input.tab === "projects"
+								? ["Project", "Code", "Client", "People", "Hours"]
+								: ["Client", "Projects", "Hours"],
+						data.rows.map((r) =>
+							input.tab === "teammates"
+								? [
+										r.name,
+										formatDecimalHours(r.secondsTotal),
+										formatDecimalHours(r.timeOffSeconds),
+										formatDecimalHours(rowHours(r, input.tab)),
+									]
+								: input.tab === "projects"
+									? [
+											r.name,
+											r.code ?? "",
+											r.clientName ?? "",
+											String(r.count),
+											formatDecimalHours(r.secondsTotal),
+										]
+									: [
+											r.name,
+											String(r.count),
+											formatDecimalHours(r.secondsTotal),
+										],
+						),
+					)
+				}
+			>
+				Export CSV
+			</Button>
+		</div>
+	);
+}
+
+function SummaryActionsPending() {
+	return (
+		<div className="flex items-center gap-3">
+			<FigurePending label="Total hours" />
+			<Button variant="outline" size="sm" disabled>
+				Export CSV
+			</Button>
+		</div>
+	);
+}
+
+type SortKey = "name" | "hours";
+
+/** A column header that sorts the table, with the arrow on the active one. */
+function SortHead({
+	label,
+	sortKey,
+	sort,
+	onSort,
+	className,
+}: {
+	label: string;
+	sortKey: SortKey;
+	sort: { key: SortKey; dir: 1 | -1 };
+	onSort: (key: SortKey) => void;
+	className?: string;
+}) {
+	const active = sort.key === sortKey;
+	return (
+		<TableHead
+			className={className}
+			aria-sort={active ? (sort.dir > 0 ? "ascending" : "descending") : "none"}
+		>
+			<button
+				type="button"
+				onClick={() => onSort(sortKey)}
+				className={cn(
+					"inline-flex items-center gap-1 rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
+					active && "text-foreground",
+				)}
+			>
+				{label}
+				{active &&
+					(sort.dir > 0 ? (
+						<CaretUpIcon weight="bold" className="size-3" />
+					) : (
+						<CaretDownIcon weight="bold" className="size-3" />
+					))}
+			</button>
+		</TableHead>
+	);
+}
+
+/** The hours, as a link into the Breakdown, with the bar that answers "who
+ *  dominates this period" without reading a number. */
+function HoursCell({
+	seconds,
+	max,
+	to,
+}: {
+	seconds: number;
+	max: number;
+	to: Search;
+}) {
+	const orgSlug = useOrgSlug();
+	return (
+		<span className="flex items-center justify-end gap-3">
+			<Link
+				to="/$orgSlug/reports"
+				params={{ orgSlug }}
+				search={to}
+				className="mono underlined"
+			>
+				{formatReportHours(seconds)}
+			</Link>
+			<span className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-secondary">
+				<span
+					className="block h-full rounded-full bg-primary"
+					style={{ width: `${Math.max((seconds / max) * 100, 2)}%` }}
+				/>
 			</span>
 		</span>
 	);
@@ -216,37 +403,63 @@ function TimeSummaryTotal({
 function TimeSummaryRows({
 	orgSlug,
 	search,
-	group,
-	from,
-	to,
+	input,
 }: {
 	orgSlug: string;
 	search: Search;
-	group: "clients" | "projects" | "teammates";
-	from: string;
-	to: string;
+	input: TimeReportSummaryInput;
 }) {
-	const { data } = useSuspenseQuery(
-		timeReportSummaryQuery(orgSlug, { from, to, tab: group }),
-	);
+	const group = input.tab;
+	const { data } = useSuspenseQuery(timeReportSummaryQuery(orgSlug, input));
 	const [query, setQuery] = useState("");
-	const filteredRows = data.rows.filter((row) =>
-		matchesSearch(query, [row.name]),
-	);
+	const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({
+		key: "hours",
+		dir: -1,
+	});
+	const onSort = (key: SortKey) =>
+		setSort((current) =>
+			current.key === key
+				? { key, dir: current.dir > 0 ? -1 : 1 }
+				: { key, dir: key === "hours" ? -1 : 1 },
+		);
+
+	const rows = data.rows
+		.filter((row) => matchesSearch(query, [row.name, row.clientName, row.code]))
+		.sort((a, b) =>
+			sort.key === "hours"
+				? (rowHours(a, group) - rowHours(b, group)) * sort.dir
+				: a.name.localeCompare(b.name, "hr") * sort.dir,
+		);
+	const max = Math.max(...data.rows.map((r) => rowHours(r, group)), 1);
+	const total = data.rows.reduce((sum, r) => sum + rowHours(r, group), 0);
+
+	// Where a click goes. A name opens the Breakdown pre-grouped the way that
+	// entity is usually read; the hours open it by date.
+	const breakdown = (
+		filter: Pick<Search, "client" | "project" | "person">,
+		by: BreakdownGroup,
+	): Search => ({
+		...search,
+		view: "breakdown",
+		client: undefined,
+		project: undefined,
+		person: undefined,
+		task: undefined,
+		...filter,
+		by,
+	});
 
 	return (
 		<>
 			{/* Time with no project — synced meetings and fill blocks nobody has
 			    filed yet. It cannot appear in the rows below (there is no client or
 			    project to group it under) and it is deliberately not added to the
-			    total, or the rows would stop summing to the figure above. Saying so
-			    is the point: the old behaviour was to drop it silently, which just
-			    made the total quietly wrong. */}
+			    total, or the rows would stop summing to the figure above. */}
 			{data.unfiledSeconds > 0 && (
 				<p className="mt-4 text-sm text-muted-foreground">
-					<span className="mono">{formatHoursLabel(data.unfiledSeconds)}</span>{" "}
-					in this period isn't filed against any project and is not included
-					above.
+					<span className="mono">{formatReportHours(data.unfiledSeconds)}</span>{" "}
+					hours in this period aren't filed against any project and are not
+					included above.
 				</p>
 			)}
 
@@ -264,206 +477,303 @@ function TimeSummaryRows({
 					<Table containerClassName="mt-3">
 						<TableHeader>
 							<TableRow>
-								<TableHead>Name</TableHead>
-								<TableHead className="text-right">Hours</TableHead>
-								<TableHead className="w-1/3">Share</TableHead>
+								<SortHead
+									label={
+										group === "clients"
+											? "Client"
+											: group === "projects"
+												? "Project"
+												: "Name"
+									}
+									sortKey="name"
+									sort={sort}
+									onSort={onSort}
+								/>
+								{group === "clients" && (
+									<TableHead className="text-right">Projects</TableHead>
+								)}
+								{group === "projects" && (
+									<>
+										<TableHead>Client</TableHead>
+										<TableHead className="text-right">People</TableHead>
+									</>
+								)}
+								{group === "teammates" && (
+									<>
+										<TableHead className="text-right">Work</TableHead>
+										<TableHead className="text-right">Time-off</TableHead>
+									</>
+								)}
+								<SortHead
+									label="Hours"
+									sortKey="hours"
+									sort={sort}
+									onSort={onSort}
+									className="text-right"
+								/>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{filteredRows.length === 0 ? (
-								<NoMatchesRow colSpan={3} />
+							{rows.length === 0 ? (
+								<NoMatchesRow colSpan={4} />
 							) : (
-								filteredRows.map((row) => {
-									// Share is always against the period's whole total, not the
-									// rows the search box happens to leave on screen.
-									const share =
-										data.totalSeconds > 0
-											? (row.secondsTotal / data.totalSeconds) * 100
-											: 0;
-									return (
-										<TableRow key={row.id}>
-											<TableCell className="font-medium">
-												{/* Only the teammates grouping lists people — under
-												    clients and projects the same `id` names something
-												    with no face. */}
-												{group === "teammates" ? (
-													<PersonCell userId={row.id} name={row.name} />
-												) : (
-													row.name
-												)}
-											</TableCell>
-											<TableCell className="text-right">
-												{/* Hours are the link, exactly as in Harvest: the number
-												    is the thing you want to see behind. */}
+								rows.map((row) => (
+									<TableRow key={row.id}>
+										<TableCell className="font-medium">
+											{group === "clients" && (
 												<Link
 													to="/$orgSlug/reports"
 													params={{ orgSlug }}
-													search={{
-														...search,
-														detailKind: group,
-														detailId: row.id,
-													}}
-													className="mono underlined"
+													search={breakdown({ client: row.id }, "project")}
+													className="underlined"
 												>
-													{formatHoursLabel(row.secondsTotal)}
+													{row.name}
 												</Link>
+											)}
+											{group === "projects" && (
+												// The project page (Team · Tasks · Entries · Manage)
+												// takes this link over once it exists; until then the
+												// name opens the entries by teammate, which is the
+												// question a project's row usually gets asked.
+												<Link
+													to="/$orgSlug/reports"
+													params={{ orgSlug }}
+													search={breakdown({ project: row.id }, "teammate")}
+													className="underlined"
+												>
+													{row.code && (
+														<span className="mono mr-1.5 text-xs text-muted-foreground">
+															[{row.code}]
+														</span>
+													)}
+													{row.name}
+													{row.archived && (
+														<span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-2xs text-muted-foreground no-underline">
+															archived
+														</span>
+													)}
+												</Link>
+											)}
+											{group === "teammates" && (
+												<Link
+													to="/$orgSlug/reports"
+													params={{ orgSlug }}
+													search={breakdown({ person: row.id }, "project")}
+													className="underlined"
+												>
+													<PersonCell userId={row.id} name={row.name} />
+												</Link>
+											)}
+										</TableCell>
+										{group === "clients" && (
+											<TableCell className="mono text-right text-muted-foreground">
+												{row.count}
 											</TableCell>
-											<TableCell>
-												{/* The bar is the report's one piece of chrome, and it
-												    earns its place: it answers "who dominates this
-												    period" without reading a single number. */}
-												<span className="flex items-center gap-2">
-													<span className="h-1.5 min-w-px flex-1 overflow-hidden rounded-full bg-secondary">
-														<span
-															className="block h-full rounded-full bg-primary"
-															style={{ width: `${Math.max(share, 1)}%` }}
-														/>
-													</span>
-													<span className="mono w-10 text-right text-xs text-muted-foreground">
-														{Math.round(share)}%
-													</span>
-												</span>
-											</TableCell>
-										</TableRow>
-									);
-								})
+										)}
+										{group === "projects" && (
+											<>
+												<TableCell className="text-muted-foreground">
+													{row.clientName}
+												</TableCell>
+												<TableCell className="mono text-right text-muted-foreground">
+													{row.count}
+												</TableCell>
+											</>
+										)}
+										{group === "teammates" && (
+											<>
+												<TableCell className="mono text-right text-muted-foreground">
+													{formatReportHours(row.secondsTotal)}
+												</TableCell>
+												<TableCell className="mono text-right text-muted-foreground">
+													{row.timeOffSeconds > 0
+														? formatReportHours(row.timeOffSeconds)
+														: "—"}
+												</TableCell>
+											</>
+										)}
+										<TableCell className="text-right">
+											<HoursCell
+												seconds={rowHours(row, group)}
+												max={max}
+												to={breakdown(
+													group === "clients"
+														? { client: row.id }
+														: group === "projects"
+															? { project: row.id }
+															: { person: row.id },
+													"date",
+												)}
+											/>
+										</TableCell>
+									</TableRow>
+								))
 							)}
+							<TableRow className="bg-secondary/60 hover:bg-secondary/60">
+								<TableCell className="font-medium">Total</TableCell>
+								<TableCell
+									colSpan={group === "clients" ? 1 : 2}
+									className="mono text-right font-medium"
+								>
+									{group === "teammates" &&
+										formatReportHours(
+											data.rows.reduce((sum, r) => sum + r.secondsTotal, 0),
+										)}
+								</TableCell>
+								{group === "teammates" && (
+									<TableCell className="mono text-right font-medium">
+										{formatReportHours(
+											data.rows.reduce((sum, r) => sum + r.timeOffSeconds, 0),
+										)}
+									</TableCell>
+								)}
+								<TableCell className="mono text-right font-medium">
+									{formatReportHours(total)}
+								</TableCell>
+							</TableRow>
 						</TableBody>
 					</Table>
+					<p className="mt-3 text-sm text-muted-foreground">
+						{group === "projects"
+							? "Click a project to see who worked on it; click the hours to see its entries by date."
+							: "Click a name to break it down by project; click the hours to see the entries by date."}{" "}
+						Time-off is counted in Team only — it belongs to nobody's client.
+					</p>
 				</>
 			)}
 		</>
 	);
 }
 
+// ── Level 2: the Breakdown ──────────────────────────────────────────────────
+
 /**
- * Time report level 2 (PRD 6.1): every entry behind the clicked number.
- *
- * Grouped by date with daily subtotals, because that is how the raw data is
- * read back to somebody — "what happened on the 14th" — and the project
- * drill-down can regroup by person instead.
- *
- * The header and the three filters are outside the boundary the filters trip,
- * for the same reason the grouping control is upstairs: narrowing to one task
- * shouldn't take the select you narrowed with off the screen. The title comes
- * from the summary rather than the entries, so it survives a filter that
- * matches nothing.
+ * Every entry behind a number, under the filters in force, grouped one of five
+ * ways. The header — breadcrumb, filters, group-by — sits outside the boundary
+ * its own controls trip, so narrowing to one task never takes the select you
+ * narrowed with off the screen.
  */
-function TimeDetail({
+function Breakdown({
 	orgSlug,
 	search,
 	from,
 	to,
-	kind,
-	id,
+	activeOnly,
 }: {
 	orgSlug: string;
 	search: Search;
 	from: string;
 	to: string;
-	kind: "clients" | "projects" | "teammates";
-	id: string;
+	activeOnly: boolean;
 }) {
-	const groupBy = search.groupBy ?? "date";
-	// The clicked entity is itself a filter, seeded into the matching select and
-	// locked there; the other two refine inside it.
-	const [clientFilter, setClientFilter] = useState<string | undefined>(
-		kind === "clients" ? id : undefined,
-	);
-	const [projectFilter, setProjectFilter] = useState<string | undefined>(
-		kind === "projects" ? id : undefined,
-	);
-	const [taskFilter, setTaskFilter] = useState<string | undefined>(undefined);
-
-	const input = {
+	const by: BreakdownGroup = search.by ?? "date";
+	const input: TimeReportDetailInput = {
 		from,
 		to,
-		groupBy,
-		clientId: clientFilter,
-		projectId: projectFilter,
-		userId: kind === "teammates" ? id : undefined,
-		taskId: taskFilter,
+		clientId: search.client,
+		projectId: search.project,
+		taskId: search.task,
+		userId: search.person,
+		activeOnly,
 	};
-
-	const { data: summary } = useSuspenseQuery(
-		timeReportSummaryQuery(orgSlug, { from, to, tab: kind }),
-	);
-	const title = summary.rows.find((r) => r.id === id)?.name ?? "Detail";
+	const navigate = useNavigate({ from: "/$orgSlug/reports" });
+	const go = (patch: Partial<Search>) =>
+		navigate({
+			to: "/$orgSlug/reports",
+			params: { orgSlug },
+			search: { ...search, ...patch },
+		});
 
 	return (
 		<>
-			<div className="flex flex-wrap items-center justify-between gap-3">
+			<div className="mt-6 flex flex-wrap items-center justify-between gap-3">
 				<div className="flex items-center gap-3">
 					<Link
 						to="/$orgSlug/reports"
 						params={{ orgSlug }}
-						search={{ ...search, detailId: undefined, detailKind: undefined }}
+						search={{
+							...search,
+							view: undefined,
+							client: undefined,
+							project: undefined,
+							task: undefined,
+							person: undefined,
+							by: undefined,
+						}}
 						className={`${returnLinkClass} inline-flex items-center gap-1`}
 					>
 						<ArrowLeftIcon weight="regular" className="size-3.5" />
-						Back
+						Time report
 					</Link>
-					<h2 className="h2">{title}</h2>
+					<h2 className="h2">Breakdown</h2>
 				</div>
-				<Suspense fallback={<TimeDetailActionsPending />}>
-					<TimeDetailActions input={input} from={from} to={to} />
+				<Suspense fallback={<BreakdownActionsPending />}>
+					<BreakdownActions input={input} from={from} to={to} />
 				</Suspense>
 			</div>
 
 			<div className="mt-4 flex flex-wrap items-center gap-2">
 				<FilterSelect
 					placeholder="All clients"
-					value={clientFilter}
-					onChange={setClientFilter}
-					disabled={kind === "clients"}
+					value={search.client}
+					onChange={(client) => go({ client })}
 					optionsQuery="clients"
 				/>
 				<FilterSelect
 					placeholder="All projects"
-					value={projectFilter}
-					onChange={setProjectFilter}
-					disabled={kind === "projects"}
+					value={search.project}
+					onChange={(project) => go({ project })}
 					optionsQuery="projects"
 				/>
 				<FilterSelect
 					placeholder="All tasks"
-					value={taskFilter}
-					onChange={setTaskFilter}
+					value={search.task}
+					onChange={(task) => go({ task })}
 					optionsQuery="tasks"
 				/>
-				{/* PRD 6.1: the project drill-down is the one that offers a group-by
-				    toggle — a client's entries read by date, a person's trivially so. */}
-				{kind === "projects" && (
-					<SegmentedControl className="ml-auto">
-						{(["date", "person"] as const).map((g) => (
-							<SegmentedControlItem
-								key={g}
-								active={groupBy === g}
-								render={
-									<Link
-										to="/$orgSlug/reports"
-										params={{ orgSlug }}
-										search={{ ...search, groupBy: g }}
-									/>
-								}
-							>
-								{g === "date" ? "By date" : "By person"}
-							</SegmentedControlItem>
-						))}
-					</SegmentedControl>
-				)}
+				<FilterSelect
+					placeholder="Everyone"
+					value={search.person}
+					onChange={(person) => go({ person })}
+					optionsQuery="people"
+				/>
+				<label className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+					Group by
+					<Select
+						items={BREAKDOWN_GROUPS.map((g) => ({
+							value: g.id,
+							label: g.label,
+						}))}
+						value={by}
+						onValueChange={(next: string | null) => {
+							const picked = BREAKDOWN_GROUPS.find((g) => g.id === next);
+							if (picked) go({ by: picked.id });
+						}}
+					>
+						<SelectTrigger className="h-8 w-36 text-xs">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{BREAKDOWN_GROUPS.map((g) => (
+								<SelectItem key={g.id} value={g.id}>
+									{g.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</label>
 			</div>
 
 			<Suspense fallback={<TabPending className="mt-6" />}>
-				<TimeDetailTable input={input} groupBy={groupBy} />
+				<BreakdownTable input={input} by={by} />
 			</Suspense>
 		</>
 	);
 }
 
-/** The total and the export, both of which are a function of the rows the
- *  filters selected — so they load with the table, not with the header. */
-function TimeDetailActions({
+/** The total, the counts and the export — all a function of the rows the
+ *  filters selected, so they load with the table, not with the header. */
+function BreakdownActions({
 	input,
 	from,
 	to,
@@ -477,16 +787,22 @@ function TimeDetailActions({
 		timeReportDetailQuery(orgSlug, input),
 	);
 	const rows = detail.rows;
-	// The service's figure, summed across every matching row — not `rows`, which
-	// the service caps. Summing what came back would quietly under-report the
-	// total on exactly the wide reports where the number matters most.
-	const total = detail.totalSeconds;
+	const people = new Set(rows.map((r) => r.userId)).size;
 
 	return (
 		<div className="flex items-center gap-3">
 			<span className="flex items-baseline gap-2 whitespace-nowrap">
-				<span className="eyebrow">Total</span>
-				<span className="mono text-lg">{formatHoursLabel(total)}</span>
+				<span className="eyebrow">Total hours</span>
+				{/* The service's figure, summed across every matching row — not
+				    `rows`, which the service caps. */}
+				<span className="mono text-lg">
+					{formatReportHours(detail.totalSeconds)}
+				</span>
+				<span className="text-xs text-muted-foreground">
+					{detail.totalRows.toLocaleString("hr-HR")}{" "}
+					{detail.totalRows === 1 ? "entry" : "entries"} · {people}{" "}
+					{people === 1 ? "person" : "people"}
+				</span>
 			</span>
 			<Button
 				variant="outline"
@@ -494,26 +810,28 @@ function TimeDetailActions({
 				disabled={rows.length === 0}
 				onClick={() =>
 					downloadCsv(
-						`time-report_${from}_${to}.csv`,
+						`time-breakdown_${from}_${to}.csv`,
 						[
 							"Date",
 							"Client",
 							"Project",
+							"Code",
 							"Task",
 							"Person",
-							"Description",
 							"Hours",
 							"Overtime",
+							"Description",
 						],
 						rows.map((r) => [
 							r.date,
 							r.clientName,
 							r.projectName,
+							r.projectCode ?? "",
 							r.taskName,
 							r.userName,
-							r.description,
 							formatDecimalHours(r.durationSeconds),
 							r.overtime ? "yes" : "",
+							r.description,
 						]),
 					)
 				}
@@ -524,12 +842,10 @@ function TimeDetailActions({
 	);
 }
 
-/** Holds the export button's place while the rows load, so the header doesn't
- *  reflow around a button that pops in a moment later. */
-function TimeDetailActionsPending() {
+function BreakdownActionsPending() {
 	return (
 		<div className="flex items-center gap-3">
-			<FigurePending label="Total" />
+			<FigurePending label="Total hours" />
 			<Button variant="outline" size="sm" disabled>
 				Export CSV
 			</Button>
@@ -537,12 +853,24 @@ function TimeDetailActionsPending() {
 	);
 }
 
-function TimeDetailTable({
+const BREAKDOWN_COLUMNS: {
+	id: BreakdownGroup;
+	label: string;
+	muted?: boolean;
+}[] = [
+	{ id: "client", label: "Client", muted: true },
+	{ id: "project", label: "Project" },
+	{ id: "task", label: "Task" },
+	{ id: "teammate", label: "Person" },
+	{ id: "date", label: "Date", muted: true },
+];
+
+function BreakdownTable({
 	input,
-	groupBy,
+	by,
 }: {
 	input: TimeReportDetailInput;
-	groupBy: "date" | "person";
+	by: BreakdownGroup;
 }) {
 	const orgSlug = useOrgSlug();
 	const { data: detail } = useSuspenseQuery(
@@ -552,32 +880,54 @@ function TimeDetailTable({
 	const [query, setQuery] = useState("");
 	// The search box only ever narrows what's already loaded — when the server
 	// truncated the entries, a search finds nothing past that cutoff, same as
-	// the CSV export below.
+	// the CSV export.
 	const filteredRows = rows.filter((row) =>
 		matchesSearch(query, [
 			row.description,
 			row.userName,
 			row.clientName,
 			row.projectName,
+			row.projectCode,
 			row.taskName,
 		]),
 	);
 
-	// One pass, in the order the service already sorted them: it grouped by the
-	// same key, so a running group beats re-sorting the rows here. Built from the
-	// filtered rows — the subtotals are a reading aid, not the report's Total,
-	// which stays keyed to `detail.totalSeconds` above regardless of the search.
-	const groups: { key: string; rows: typeof rows; seconds: number }[] = [];
+	const keyOf = (row: (typeof rows)[number]) =>
+		by === "client"
+			? row.clientName
+			: by === "project"
+				? row.projectName
+				: by === "task"
+					? row.taskName
+					: by === "teammate"
+						? row.userName
+						: row.date;
+	const groups = new Map<string, { rows: typeof rows; seconds: number }>();
 	for (const row of filteredRows) {
-		const key = groupBy === "person" ? row.userName : row.date;
-		const last = groups[groups.length - 1];
-		if (last && last.key === key) {
-			last.rows.push(row);
-			last.seconds += row.durationSeconds;
-		} else {
-			groups.push({ key, rows: [row], seconds: row.durationSeconds });
-		}
+		const key = keyOf(row);
+		const group = groups.get(key) ?? { rows: [], seconds: 0 };
+		group.rows.push(row);
+		group.seconds += row.durationSeconds;
+		groups.set(key, group);
 	}
+	// Dates read in order; everything else biggest first — the group's sum is
+	// the point of the header row, so the header rows sort by it.
+	const ordered = [...groups.entries()].sort(([ka, a], [kb, b]) =>
+		by === "date" ? ka.localeCompare(kb) : b.seconds - a.seconds,
+	);
+	const columns = BREAKDOWN_COLUMNS.filter((c) => c.id !== by);
+	const groupLabel = BREAKDOWN_GROUPS.find((g) => g.id === by)?.label ?? "";
+
+	const cellOf = (row: (typeof rows)[number], column: BreakdownGroup) =>
+		column === "client"
+			? row.clientName
+			: column === "project"
+				? `${row.projectCode ? `[${row.projectCode}] ` : ""}${row.projectName}`
+				: column === "task"
+					? row.taskName
+					: column === "teammate"
+						? row.userName
+						: formatDateHeading(row.date);
 
 	return (
 		<>
@@ -592,11 +942,11 @@ function TimeDetailTable({
 						// whole figure, so a quietly short table would read as a table that
 						// disagrees with its own total.
 						<p className="mt-5 border-t pt-5 text-base text-warn">
-							Showing the first {rows.length.toLocaleString()} of{" "}
-							{detail.totalRows.toLocaleString()} entries — the CSV export
-							covers the same {rows.length.toLocaleString()}. The Total above is
-							the full figure for all {detail.totalRows.toLocaleString()}.
-							Narrow the filters or the date range to see the rest.
+							Showing the first {rows.length.toLocaleString("hr-HR")} of{" "}
+							{detail.totalRows.toLocaleString("hr-HR")} entries — the CSV
+							export covers the same {rows.length.toLocaleString("hr-HR")}. The
+							Total above is the full figure. Narrow the filters or the period
+							to see the rest.
 						</p>
 					)}
 					<SearchInput
@@ -607,52 +957,65 @@ function TimeDetailTable({
 					<Table containerClassName="mt-3">
 						<TableHeader>
 							<TableRow>
-								<TableHead>
-									{groupBy === "person" ? "Date" : "Person"}
-								</TableHead>
-								<TableHead>Client</TableHead>
-								<TableHead>Project</TableHead>
-								<TableHead>Task</TableHead>
-								<TableHead>Description</TableHead>
+								{columns.map((c) => (
+									<TableHead key={c.id}>{c.label}</TableHead>
+								))}
 								<TableHead className="text-right">Hours</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{groups.length === 0 ? (
-								<NoMatchesRow colSpan={6} />
+							{ordered.length === 0 ? (
+								<NoMatchesRow colSpan={columns.length + 1} />
 							) : (
-								groups.map((group) => (
-									<Fragment key={group.key}>
-										<TableRow className="bg-secondary/60">
-											<TableCell colSpan={5} className="font-medium">
-												{groupBy === "person"
-													? group.key
-													: formatDateHeading(group.key)}
+								ordered.map(([key, group]) => (
+									<Fragment key={key}>
+										<TableRow className="bg-secondary/60 hover:bg-secondary/60">
+											<TableCell
+												colSpan={columns.length}
+												className="font-medium"
+											>
+												<span className="eyebrow mr-2">{groupLabel}</span>
+												{by === "date" ? formatDateHeading(key) : key}
 											</TableCell>
 											<TableCell className="mono text-right font-medium">
-												{formatClock(group.seconds)}
+												{formatReportHours(group.seconds)}
 											</TableCell>
 										</TableRow>
 										{group.rows.map((row) => (
 											<TableRow key={row.id}>
-												<TableCell className="text-muted-foreground">
-													{groupBy === "person"
-														? formatDateHeading(row.date)
-														: row.userName}
-												</TableCell>
-												<TableCell>{row.clientName}</TableCell>
-												<TableCell>{row.projectName}</TableCell>
-												<TableCell>{row.taskName}</TableCell>
-												<TableCell className="max-w-[42ch] truncate text-muted-foreground">
-													{row.description}
+												{columns.map((c) => (
+													<TableCell
+														key={c.id}
+														className={cn(
+															c.muted && "text-muted-foreground",
+															c.id === "task" && "max-w-[36ch]",
+														)}
+													>
+														{cellOf(row, c.id)}
+														{c.id === "task" && (
+															// The description sits under the task: it is what the
+															// task meant that day, and a row without one says so
+															// rather than reading as a task with nothing to add.
+															<span
+																className={cn(
+																	"block truncate text-xs",
+																	row.description
+																		? "text-muted-foreground"
+																		: "text-faint italic",
+																)}
+															>
+																{row.description || "No description"}
+															</span>
+														)}
+													</TableCell>
+												))}
+												<TableCell className="mono text-right">
+													{formatReportHours(row.durationSeconds)}
 													{row.overtime && (
-														<span className="ml-2 text-2xs text-warn">
-															overtime
+														<span className="ml-2 rounded-full bg-warn/12 px-1.5 py-0.5 text-2xs font-medium text-warn">
+															OT
 														</span>
 													)}
-												</TableCell>
-												<TableCell className="mono text-right">
-													{formatClock(row.durationSeconds)}
 												</TableCell>
 											</TableRow>
 										))}
@@ -667,32 +1030,36 @@ function TimeDetailTable({
 	);
 }
 
-/** The three level-2 filters. Each reads the list it filters on, and the one
- *  matching the drilled entity is locked — you got here by picking it. */
+/** One of the Breakdown's four filters. Each reads the list it filters on;
+ *  "All …" clears it. */
 function FilterSelect({
 	placeholder,
 	value,
 	onChange,
-	disabled,
 	optionsQuery,
 }: {
 	placeholder: string;
 	value: string | undefined;
 	onChange: (value: string | undefined) => void;
-	disabled?: boolean;
-	optionsQuery: "clients" | "projects" | "tasks";
+	optionsQuery: "clients" | "projects" | "tasks" | "people";
 }) {
 	const orgSlug = useOrgSlug();
 	const clients = useSuspenseQuery(clientsQuery(orgSlug));
 	const projects = useSuspenseQuery(projectsQuery(orgSlug));
 	const tasks = useSuspenseQuery(selectableTasksQuery(orgSlug));
+	const people = useSuspenseQuery(directoryQuery(orgSlug));
 
 	const source =
 		optionsQuery === "clients"
 			? clients.data.map((c) => ({ value: c.id, label: c.name }))
 			: optionsQuery === "projects"
-				? projects.data.map((p) => ({ value: p.id, label: p.name }))
-				: tasks.data.map((t) => ({ value: t.id, label: t.name }));
+				? projects.data.map((p) => ({
+						value: p.id,
+						label: p.code ? `[${p.code}] ${p.name}` : p.name,
+					}))
+				: optionsQuery === "tasks"
+					? tasks.data.map((t) => ({ value: t.id, label: t.name }))
+					: people.data.map((m) => ({ value: m.userId, label: m.name }));
 
 	const ALL = "__all__";
 	const items = [{ value: ALL, label: placeholder }, ...source];
@@ -701,12 +1068,16 @@ function FilterSelect({
 		<Select
 			items={items}
 			value={value ?? ALL}
-			disabled={disabled}
 			onValueChange={(next: string | null) =>
 				onChange(next == null || next === ALL ? undefined : next)
 			}
 		>
-			<SelectTrigger className="h-8 w-44 text-xs">
+			<SelectTrigger
+				className={cn(
+					"h-8 w-44 text-xs",
+					value && "border-ring text-foreground",
+				)}
+			>
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>

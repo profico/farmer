@@ -75,10 +75,4 @@ describe("report range limits", () => {
 			expect(summary(from, to).success).toBe(detail(from, to).success);
 		}
 	});
-
-	test("the detail schema still defaults groupBy to date", () => {
-		const result = detail("2026-03-01", "2026-03-31");
-		expect(result.success).toBe(true);
-		expect(result.data?.groupBy).toBe("date");
-	});
 });

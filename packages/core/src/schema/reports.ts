@@ -50,6 +50,8 @@ const filters = {
 	projectId: z.uuid().optional(),
 	taskId: z.uuid().optional(),
 	userId: z.string().min(1).optional(),
+	/** "Active projects only": leave out time on archived projects. */
+	activeOnly: z.boolean().optional(),
 };
 
 export const timeReportSummaryInput = withRangeLimits(
@@ -57,13 +59,11 @@ export const timeReportSummaryInput = withRangeLimits(
 );
 export type TimeReportSummaryInput = z.infer<typeof timeReportSummaryInput>;
 
+// No group-by here: the Breakdown groups the rows it has by any of five keys
+// on the client, so the service returns them in one fixed order (date, then
+// person) and never has to know which grouping is on screen.
 export const timeReportDetailInput = withRangeLimits(
-	z.object({
-		...range,
-		...filters,
-		// The project drill-down offers a group-by toggle: person or date.
-		groupBy: z.enum(["date", "person"]).default("date"),
-	}),
+	z.object({ ...range, ...filters }),
 );
 export type TimeReportDetailInput = z.infer<typeof timeReportDetailInput>;
 

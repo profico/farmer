@@ -273,7 +273,6 @@ describe("who may read a report", () => {
 		from: FROM,
 		to: TO,
 		tab: "projects" as const,
-		groupBy: "date" as const,
 	};
 
 	test("a plain member sees their own entries and nobody else's", async () => {
@@ -282,7 +281,7 @@ describe("who may read a report", () => {
 		await logEntry({ userId: OUTSIDER, projectId: betaId, seconds: 9 * H });
 
 		const mine = await reportsService.timeSummary(ctxFor(WORKER), summaryInput);
-		expect(mine.rows).toEqual([
+		expect(mine.rows).toMatchObject([
 			{ id: alphaId, name: "Alpha", secondsTotal: 5 * H },
 		]);
 		expect(mine.totalSeconds).toBe(5 * H);
@@ -399,11 +398,81 @@ describe("who may read a report", () => {
 
 // ── Time detail ────────────────────────────────────────────────────────────
 
+describe("the Time report's tabs", () => {
+	test("Projects carries the client, the code, the people count and archived; Active only drops an archived project", async () => {
+		await logEntry({ userId: WORKER, projectId: alphaId, seconds: 5 * H });
+		await logEntry({ userId: PM, projectId: alphaId, seconds: 2 * H });
+		await logEntry({ userId: OUTSIDER, projectId: betaId, seconds: 9 * H });
+		await db
+			.update(project)
+			.set({ status: "archived" })
+			.where(eq(project.id, betaId));
+		try {
+			const all = await reportsService.timeSummary(ctxFor(ADMIN), {
+				from: FROM,
+				to: TO,
+				tab: "projects",
+			});
+			expect(
+				all.rows.map((r) => [r.name, r.clientName, r.count, r.archived]),
+			).toEqual([
+				["Beta", "Globex", 1, true],
+				["Alpha", "Acme", 2, false],
+			]);
+			const active = await reportsService.timeSummary(ctxFor(ADMIN), {
+				from: FROM,
+				to: TO,
+				tab: "projects",
+				activeOnly: true,
+			});
+			expect(active.rows.map((r) => r.name)).toEqual(["Alpha"]);
+			expect(active.totalSeconds).toBe(7 * H);
+		} finally {
+			await db
+				.update(project)
+				.set({ status: "active" })
+				.where(eq(project.id, betaId));
+		}
+	});
+
+	test("Clients counts projects; Team shows time off beside work", async () => {
+		await logEntry({ userId: WORKER, projectId: alphaId, seconds: 5 * H });
+		await logEntry({ userId: WORKER, projectId: betaId, seconds: 1 * H });
+		await db.insert(timeEntry).values({
+			organizationId: ORG,
+			userId: WORKER,
+			projectId: null,
+			taskId: vacationTaskId,
+			date: "2026-05-12",
+			description: "",
+			durationSeconds: 8 * H,
+		});
+		const clients = await reportsService.timeSummary(ctxFor(ADMIN), {
+			from: FROM,
+			to: TO,
+			tab: "clients",
+		});
+		expect(clients.rows.map((r) => [r.name, r.count])).toEqual([
+			["Acme", 1],
+			["Globex", 1],
+		]);
+		const team = await reportsService.timeSummary(ctxFor(ADMIN), {
+			from: FROM,
+			to: TO,
+			tab: "teammates",
+		});
+		const worker = team.rows.find((r) => r.id === WORKER);
+		// Work only in the hours column: time off is beside it, never in it.
+		expect(worker?.secondsTotal).toBe(6 * H);
+		expect(worker?.timeOffSeconds).toBe(8 * H);
+		expect(worker?.count).toBe(2);
+	});
+});
+
 describe("time detail", () => {
 	const detailInput = {
 		from: FROM,
 		to: TO,
-		groupBy: "date" as const,
 	};
 
 	test("reports its own totals, and is not truncated in the ordinary case", async () => {
