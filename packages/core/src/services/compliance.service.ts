@@ -2,7 +2,12 @@ import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
-import { datesBetween, dayKeyInTz, monthBounds } from "../lib/time";
+import {
+	datesBetween,
+	dayKeyInTz,
+	monthBounds,
+	QUARTER_HOUR_SECONDS,
+} from "../lib/time";
 import { isHourlyMemberType } from "../schema/members";
 import type { MonthReportInput } from "../schema/reports";
 import { accessService } from "./access.service";
@@ -170,7 +175,11 @@ const computeTracking = async (
 	const workingDaysElapsed = today < from ? 0 : weekdaysIn(from, asOf);
 	const share =
 		workingDaysInMonth === 0 ? 0 : workingDaysElapsed / workingDaysInMonth;
-	const prorate = (fund: number) => Math.round(fund * share);
+	// To the nearest quarter hour, the unit every other figure in the app is
+	// in: 168h over 22 days is 7h38m a day, and a target of "68h 44m" reads as
+	// noise where "68h 45m" reads as a number.
+	const prorate = (fund: number) =>
+		Math.round((fund * share) / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS;
 
 	const [cohort, fundSeconds] = await Promise.all([
 		complianceCohort(ctx, { year, month }, opts.onlyUserIds ?? null),
