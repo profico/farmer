@@ -273,7 +273,7 @@ describe("the cohort", () => {
 });
 
 describe("the target", () => {
-	test("is the fund prorated by Mon–Fri days elapsed, holidays untouched", async () => {
+	test("is the fund prorated by working days elapsed — 8h a day", async () => {
 		await setFund(160 * H);
 		const report = await track();
 		expect(report.workingDaysInMonth).toBe(22);
@@ -281,6 +281,26 @@ describe("the target", () => {
 		expect(report.targetSeconds).toBe(80 * H);
 		expect(report.complete).toBe(false);
 		expect(report.asOf).toBe(today);
+	});
+
+	test("leaves public holidays out of the day count, so a working day stays 8h", async () => {
+		// This org is in the US: Memorial Day, Monday 25 May 2026, is off. May
+		// has 21 weekdays, 20 working days; through Wednesday the 27th, 19
+		// weekdays and 18 working days. 160h over 20 days is 8h a day → 144h.
+		await db.insert(monthlyHourFund).values({
+			organizationId: ORG,
+			year: 2026,
+			month: 5,
+			fundSeconds: 160 * H,
+		});
+		const report = await complianceService.tracking(
+			adminCtx(),
+			{ year: 2026, month: 5 },
+			{ now: new Date("2026-05-27T12:00:00Z") },
+		);
+		expect(report.workingDaysInMonth).toBe(20);
+		expect(report.workingDaysElapsed).toBe(18);
+		expect(report.targetSeconds).toBe(144 * H);
 	});
 
 	test("is the whole fund once the month is over", async () => {

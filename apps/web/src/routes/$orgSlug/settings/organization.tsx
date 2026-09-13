@@ -264,7 +264,7 @@ function TrackingToleranceSection() {
 	return (
 		<PageSection
 			title="Tracking tolerance"
-			description="How far below the target so far someone may be and still count as only slightly behind. Beyond it they are behind — on the Tracking report and in every reminder. The target is the month's hour fund prorated by the working days elapsed; a person's total is work plus time-off."
+			description="How far below the target so far someone may be and still count as only slightly behind. Beyond it they are behind — on the Tracking report and in every reminder. The target is the month's hour fund spread over its working days (8h each, public holidays excluded); a person's total is work plus time-off."
 		>
 			<form
 				className="flex w-full max-w-sm items-center gap-2"

@@ -12,6 +12,7 @@ import { isHourlyMemberType } from "../schema/members";
 import type { MonthReportInput } from "../schema/reports";
 import { accessService } from "./access.service";
 import { ctxAccess, ctxTimezone } from "./context";
+import { holidaysService } from "./holidays.service";
 import { hourFundService } from "./hour-fund.service";
 import { ledgerByUser } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
@@ -21,13 +22,16 @@ import type { Ctx } from "./types";
 // Tracking (PRD 6.2, revised Sept 2026) — one rule, two consumers: the Tracking
 // report and the reminders, so the two can never disagree about who is behind.
 //
-// The rule. For a month with hour fund F (Settings → Hour fund, already net of
-// public holidays): target so far = F × working days elapsed ÷ working days in
-// the month, where a working day is Monday to Friday. A person's total is work
-// PLUS time off — a day of vacation is a day accounted for, not a day short.
-// On track when total ≥ target; slightly behind when within the org's
-// tolerance (default 5%); behind otherwise. Once the month is over the target
-// is the whole fund.
+// The rule. For a month with hour fund F (Settings → Hour fund — the official
+// monthly figure, "radni sati": working days × 8h, holidays already out):
+// target so far = F × working days elapsed ÷ working days in the month, where
+// a working day is Monday to Friday that is not a public holiday. Dividing by
+// the same days the fund was built from is what keeps every working day worth
+// exactly 8h — dividing by all weekdays made a day worth 7h38m in any month
+// with a holiday. A person's total is work PLUS time off — a day of vacation is
+// a day accounted for, not a day short. On track when total ≥ target; slightly
+// behind when within the org's tolerance (default 5%); behind otherwise. Once
+// the month is over the target is the whole fund.
 //
 // Who has a target: employees, full-time students and full-time contractors —
 // the fund applies to them. Hourly people are listed with their hours and no
@@ -92,13 +96,19 @@ export type ComplianceOpts = {
 	onlyUserIds?: ReadonlySet<string> | null;
 };
 
-/** Monday-to-Friday days in the inclusive range — the denominator and the
- *  numerator of the proration. Holidays are deliberately not subtracted: the
- *  fund is already net of them, so taking them out again would count each one
- *  twice. */
-export const weekdaysIn = (from: string, to: string): number => {
+/** Working days in the inclusive range: Monday to Friday, minus the org's
+ *  public holidays — the same days the official monthly fund counts, so fund ÷
+ *  working days is a whole 8h. The numerator and the denominator of the
+ *  proration both come from here. */
+export const workingDaysIn = (
+	from: string,
+	to: string,
+	// The org calendar's date → name map, or any set-like of day keys.
+	holidays: { has(key: string): boolean },
+): number => {
 	if (from > to) return 0;
 	return datesBetween(from, to).filter((key) => {
+		if (holidays.has(key)) return false;
 		// UTC weekday of a bare calendar key — the key IS the calendar day.
 		const weekday = new Date(`${key}T00:00:00Z`).getUTCDay();
 		return weekday !== 0 && weekday !== 6;
@@ -171,13 +181,15 @@ const computeTracking = async (
 	const { from, to } = monthBounds(year, month);
 	const complete = today > to;
 	const asOf = complete ? to : today;
-	const workingDaysInMonth = weekdaysIn(from, to);
-	const workingDaysElapsed = today < from ? 0 : weekdaysIn(from, asOf);
+	const holidays = await holidaysService.holidaySetForRange(ctx, from, to);
+	const workingDaysInMonth = workingDaysIn(from, to, holidays);
+	const workingDaysElapsed =
+		today < from ? 0 : workingDaysIn(from, asOf, holidays);
 	const share =
 		workingDaysInMonth === 0 ? 0 : workingDaysElapsed / workingDaysInMonth;
 	// To the nearest quarter hour, the unit every other figure in the app is
-	// in: 168h over 22 days is 7h38m a day, and a target of "68h 44m" reads as
-	// noise where "68h 45m" reads as a number.
+	// in. With the official fund this is a whole number of 8h days; it only
+	// rounds when an admin entered a fund that is not a multiple of the days.
 	const prorate = (fund: number) =>
 		Math.round((fund * share) / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS;
 

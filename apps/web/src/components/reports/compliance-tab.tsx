@@ -124,13 +124,15 @@ export function ComplianceTab({
 				<span className="font-medium text-foreground">
 					How it's calculated.
 				</span>{" "}
-				The fund for the month comes from Settings → Hour fund, already net of
-				public holidays. Target so far = fund × working days elapsed ÷ working
-				days in the month (Monday to Friday). A person's total is work plus
-				time-off. On track when the total reaches the target; slightly behind
-				when it is within {data.tolerancePct}% of it (Settings → Organization);
-				behind otherwise. Hourly people are listed with their hours and no
-				target unless an expected-hours figure was set for them.
+				The fund for the month comes from Settings → Hour fund — the official
+				monthly figure, working days × 8h. Target so far = fund × working days
+				elapsed ÷ working days in the month, where a working day is Monday to
+				Friday and not a public holiday, so every working day is worth 8h. A
+				person's total is work plus time-off. On track when the total reaches
+				the target; slightly behind when it is within {data.tolerancePct}% of it
+				(Settings → Organization); behind otherwise. Hourly people are listed
+				with their hours and no target unless an expected-hours figure was set
+				for them.
 			</p>
 		</div>
 	);
