@@ -51,14 +51,15 @@ export const formatReportHours = (totalSeconds: number): string =>
 export const formatDecimalHours = (totalSeconds: number): string =>
 	(totalSeconds / 3600).toFixed(2);
 
-/** A duration as working days, to one decimal: the absence report's Days
- *  toggle. The divisor is the org's working day, not a hardcoded 8h. */
-export const formatDaysLabel = (
+/** Working days, written like the hours above (hr-HR, two places): the
+ *  Absence report's Days column, for reading only — hours are the unit. The
+ *  divisor is the org's working day, not a hardcoded 8h. */
+export const formatReportDays = (
 	totalSeconds: number,
 	workingDaySeconds: number,
 ): string =>
 	workingDaySeconds > 0
-		? `${Math.round((totalSeconds / workingDaySeconds) * 10) / 10}d`
+		? HR_HOURS.format(totalSeconds / workingDaySeconds)
 		: "—";
 
 /** A percentage, or the em dash that stands for "not measured". */

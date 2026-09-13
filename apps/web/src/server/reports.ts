@@ -1,7 +1,6 @@
 import {
 	absenceReportInput,
-	monthReportInput,
-	overtimeDetailInput,
+	overtimeReportInput,
 	timeReportDetailInput,
 	timeReportSummaryInput,
 } from "@farmer/core/schema";
@@ -36,18 +35,10 @@ export const getTimeReportDetail = createServerFn({ method: "GET" })
 // resolves that scope itself, so the middleware only has to establish the org.
 export const getOvertimeReport = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
-	.validator(monthReportInput)
+	.validator(overtimeReportInput)
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
 		return reportsService.overtime(context.ctx, data);
-	});
-
-export const getOvertimeDetail = createServerFn({ method: "GET" })
-	.middleware([orgMiddleware])
-	.validator(overtimeDetailInput)
-	.handler(async ({ data, context }) => {
-		const { reportsService } = await import("@farmer/core/services");
-		return reportsService.overtimeDetail(context.ctx, data);
 	});
 
 // People-shaped and scoped by people in the service, like Tracking: a Member

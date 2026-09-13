@@ -8,13 +8,24 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { timeReportDetailInput, timeReportSummaryInput } from "./reports";
+import {
+	absenceReportInput,
+	overtimeReportInput,
+	timeReportDetailInput,
+	timeReportSummaryInput,
+} from "./reports";
 
 const summary = (from: string, to: string) =>
 	timeReportSummaryInput.safeParse({ from, to, tab: "projects" });
 
 const detail = (from: string, to: string) =>
 	timeReportDetailInput.safeParse({ from, to });
+
+const overtime = (from: string, to: string) =>
+	overtimeReportInput.safeParse({ from, to });
+
+const absence = (from: string, to: string) =>
+	absenceReportInput.safeParse({ from, to });
 
 describe("report range limits", () => {
 	test("accepts an ordinary month", () => {
@@ -60,10 +71,11 @@ describe("report range limits", () => {
 		expect(summary("March 2026", "2026-03-31").success).toBe(false);
 	});
 
-	// Both schemas must carry the same rules — the whole point of the shared
-	// helper is that the summary and the drill-down cannot disagree about what a
-	// legal range is, since the drill-down is reached from the summary.
-	test("summary and detail agree on what is legal", () => {
+	// Every range report must carry the same rules — the whole point of the
+	// shared helper is that the summary and the drill-down cannot disagree about
+	// what a legal range is, since the drill-down is reached from the summary,
+	// and Overtime and Absence share the summary's period control.
+	test("every range report agrees on what is legal", () => {
 		const cases: [string, string][] = [
 			["2026-03-01", "2026-03-31"],
 			["2026-01-01", "2027-01-02"],
@@ -72,7 +84,10 @@ describe("report range limits", () => {
 			["2026-03-31", "2026-03-01"],
 		];
 		for (const [from, to] of cases) {
-			expect(summary(from, to).success).toBe(detail(from, to).success);
+			const legal = summary(from, to).success;
+			expect(detail(from, to).success).toBe(legal);
+			expect(overtime(from, to).success).toBe(legal);
+			expect(absence(from, to).success).toBe(legal);
 		}
 	});
 });

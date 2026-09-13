@@ -1,4 +1,4 @@
-import { formatHoursLabel } from "@farmer/core/lib/report-format";
+import { formatReportHours } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
@@ -36,13 +36,18 @@ const STATUS_LABEL = {
 } as const;
 
 // Ahead is green, short is red, exactly on target is just the number:
-// "+0h" said the person was ahead by nothing, which is not a thing.
+// "+0" said the person was ahead by nothing, which is not a thing. Hours the
+// way the accounting book writes them (1.821,50), like every report.
 const Delta = ({ seconds }: { seconds: number }) => {
-	if (seconds === 0) return <span className="text-muted-foreground">0h</span>;
+	if (seconds === 0) {
+		return (
+			<span className="text-muted-foreground">{formatReportHours(0)}</span>
+		);
+	}
 	return (
 		<span className={seconds > 0 ? "text-ok" : "text-bad"}>
 			{seconds > 0 ? "+" : "−"}
-			{formatHoursLabel(Math.abs(seconds))}
+			{formatReportHours(Math.abs(seconds))}
 		</span>
 	);
 };
@@ -71,7 +76,7 @@ export function ComplianceTab({
 					<div className="mono mt-1 text-lg">
 						{data.fundSeconds == null
 							? "—"
-							: formatHoursLabel(data.fundSeconds)}
+							: formatReportHours(data.fundSeconds)}
 					</div>
 					{data.fundSeconds == null && (
 						<div className="text-xs text-muted-foreground">
@@ -84,7 +89,7 @@ export function ComplianceTab({
 					<div className="mono mt-1 text-lg">
 						{data.targetSeconds == null
 							? "—"
-							: formatHoursLabel(data.targetSeconds)}
+							: formatReportHours(data.targetSeconds)}
 					</div>
 					<div className="text-xs text-muted-foreground">
 						{data.workingDaysElapsed} of {data.workingDaysInMonth} working days
@@ -120,10 +125,12 @@ export function ComplianceTab({
 						className: label?.row,
 						cells: [
 							<PersonCell key="person" userId={r.userId} name={r.name} />,
-							formatHoursLabel(r.workSeconds),
-							r.timeOffSeconds > 0 ? formatHoursLabel(r.timeOffSeconds) : "—",
-							formatHoursLabel(r.totalSeconds),
-							r.targetSeconds == null ? "—" : formatHoursLabel(r.targetSeconds),
+							formatReportHours(r.workSeconds),
+							r.timeOffSeconds > 0 ? formatReportHours(r.timeOffSeconds) : "—",
+							formatReportHours(r.totalSeconds),
+							r.targetSeconds == null
+								? "—"
+								: formatReportHours(r.targetSeconds),
 							r.deltaSeconds == null ? (
 								"—"
 							) : (

@@ -47,9 +47,9 @@ export const searchSchema = z.object({
 	task: z.string().optional(),
 	person: z.string().optional(),
 	by: z.enum(["client", "project", "task", "teammate", "date"]).optional(),
-	// The Overtime tab's own drill-down: one person's flagged entries.
-	detailKind: z.literal("overtime").optional(),
-	detailId: z.string().optional(),
+	// The Absence report's view: one kind of time-off, or "other" for
+	// everything that is not vacation. Absent = all of it.
+	type: z.enum(["vacation", "sick", "paid", "other"]).optional(),
 });
 
 export type Search = z.infer<typeof searchSchema>;

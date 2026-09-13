@@ -7,7 +7,13 @@ import {
 	shiftMonthKey,
 } from "@farmer/core/lib/report-period";
 import { addDaysToKey } from "@farmer/core/lib/time";
-import { ArrowLeftIcon, ArrowRightIcon } from "@phosphor-icons/react";
+import {
+	ArrowLeftIcon,
+	ArrowRightIcon,
+	CaretDownIcon,
+	CaretRightIcon,
+	CaretUpIcon,
+} from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Suspense, useState } from "react";
 import type * as React from "react";
@@ -27,6 +33,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { Skeleton } from "#/components/ui/skeleton.tsx";
+import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
 	TableBody,
@@ -111,7 +119,7 @@ export function MonthFramed({
 						<Link
 							to="/$orgSlug/reports"
 							params={{ orgSlug }}
-							search={{ ...search, month: undefined, detailId: undefined }}
+							search={{ ...search, month: undefined }}
 							className={returnLinkClass}
 						>
 							Return to this month
@@ -442,5 +450,200 @@ export function ReportTable({
 				</TableBody>
 			</Table>
 		</>
+	);
+}
+
+// ── The pieces the Time, Absence and Overtime tabs share ─────────────────
+
+/** The placeholder for a single figure — a total or a percentage — that sits in
+ *  a row of controls. The label stays: only the number is unknown. */
+export function FigurePending({
+	label,
+	className,
+}: {
+	label: string;
+	className?: string;
+}) {
+	return (
+		<span
+			className={cn("flex items-baseline gap-2 whitespace-nowrap", className)}
+		>
+			<span className="eyebrow">{label}</span>
+			<Skeleton className="h-4 w-16" />
+		</span>
+	);
+}
+
+/** "Active projects only" — leaves archived projects' time out of every figure
+ *  on the screen. In the URL like every other report control, so a shared link
+ *  shows what its sender saw. */
+export function ActiveOnlyToggle({
+	orgSlug,
+	search,
+}: {
+	orgSlug: string;
+	search: Search;
+}) {
+	const navigate = useNavigate({ from: "/$orgSlug/reports" });
+	const on = search.active === "1";
+	return (
+		<span className="flex items-center gap-2 text-sm text-muted-foreground">
+			<Switch
+				size="sm"
+				aria-label="Active projects only"
+				checked={on}
+				onCheckedChange={(checked) =>
+					navigate({
+						to: "/$orgSlug/reports",
+						params: { orgSlug },
+						search: { ...search, active: checked ? "1" : undefined },
+					})
+				}
+			/>
+			Active projects only
+		</span>
+	);
+}
+
+/**
+ * Quiet tabs under the period row — an underscore, not a second pill strip
+ * under the report tabs. The same 2px accent underscore the week strip uses
+ * for the active day. Navigation, so a link carries the view.
+ */
+export function QuietTabs<T extends string>({
+	label,
+	items,
+	active,
+	orgSlug,
+	search,
+}: {
+	label: string;
+	items: readonly { id: T; label: string }[];
+	active: T;
+	orgSlug: string;
+	/** The search for a tab — the caller decides which param it is. */
+	search: (id: T) => Search;
+}) {
+	return (
+		<nav aria-label={label} className="flex flex-wrap gap-x-5 gap-y-1">
+			{items.map((item) => {
+				const on = item.id === active;
+				return (
+					<Link
+						key={item.id}
+						to="/$orgSlug/reports"
+						params={{ orgSlug }}
+						search={search(item.id)}
+						aria-current={on ? "page" : undefined}
+						className={cn(
+							"border-b-2 py-1.5 text-sm whitespace-nowrap transition-colors duration-(--dur-fast)",
+							on
+								? "border-primary font-medium text-foreground"
+								: "border-transparent text-muted-foreground hover:text-foreground",
+						)}
+					>
+						{item.label}
+					</Link>
+				);
+			})}
+		</nav>
+	);
+}
+
+/** The button that opens a summary row into the rows beneath it — the same
+ *  disclosure the archived section under every list uses, with the caret
+ *  turning. Sits inside a `TableCell className="p-0"`. */
+export function RowDisclosure({
+	open,
+	onToggle,
+	children,
+}: {
+	open: boolean;
+	onToggle: () => void;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			aria-expanded={open}
+			onClick={onToggle}
+			className="flex w-full items-center gap-2 px-2 py-2.5 text-left font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/16 focus-visible:ring-inset"
+		>
+			<CaretRightIcon
+				weight="bold"
+				className={cn(
+					"size-3 shrink-0 text-muted-foreground transition-transform duration-(--dur-fast)",
+					open && "rotate-90",
+				)}
+			/>
+			{children}
+		</button>
+	);
+}
+
+/** A column sort: which column, and which way. Clicking the same column
+ *  again flips it; a fresh text column starts A→Z, a fresh number column
+ *  starts biggest first — "who has the most hours" is the question a Hours
+ *  column gets asked. */
+export type Sort<K extends string> = { key: K; dir: 1 | -1 };
+export const toggleSort = <K extends string>(
+	current: Sort<K>,
+	key: K,
+	numeric: boolean,
+): Sort<K> =>
+	current.key === key
+		? { key, dir: current.dir > 0 ? -1 : 1 }
+		: { key, dir: numeric ? -1 : 1 };
+export const byText =
+	<R,>(pick: (row: R) => string | null) =>
+	(a: R, b: R) =>
+		(pick(a) ?? "").localeCompare(pick(b) ?? "", "hr");
+export const byNumber =
+	<R,>(pick: (row: R) => number) =>
+	(a: R, b: R) =>
+		pick(a) - pick(b);
+
+/** A column header that sorts the table, with the arrow on the active one.
+ *  Every column is one: a table you cannot sort by the column you are
+ *  reading is a table you read twice. */
+export function SortHead<K extends string>({
+	label,
+	sortKey,
+	numeric = false,
+	sort,
+	onSort,
+	className,
+}: {
+	label: string;
+	sortKey: K;
+	/** Starts biggest first. */
+	numeric?: boolean;
+	sort: Sort<K>;
+	onSort: (key: K, numeric: boolean) => void;
+	className?: string;
+}) {
+	const active = sort.key === sortKey;
+	return (
+		<TableHead
+			className={className}
+			aria-sort={active ? (sort.dir > 0 ? "ascending" : "descending") : "none"}
+		>
+			<button
+				type="button"
+				onClick={() => onSort(sortKey, numeric)}
+				className={cn(
+					"inline-flex items-center gap-1 rounded-sm transition-colors duration-(--dur-fast) outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16",
+					active && "text-foreground",
+				)}
+			>
+				{label}
+				{active &&
+					(sort.dir > 0 ? (
+						<CaretUpIcon weight="bold" className="size-3" />
+					) : (
+						<CaretDownIcon weight="bold" className="size-3" />
+					))}
+			</button>
+		</TableHead>
 	);
 }

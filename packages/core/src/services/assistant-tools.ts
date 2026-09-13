@@ -26,6 +26,7 @@ import type { JsonRecord, JsonValue, Serializable } from "../lib/json";
 import {
 	absenceReportInput,
 	absenceTotalsInput,
+	overtimeReportInput,
 	applyDayAssemblyInput,
 	assignProjectMemberInput,
 	attachCommitsInput,
@@ -43,7 +44,6 @@ import {
 	listAbsenceForUserInput,
 	listTimeEntriesRangeInput,
 	logAbsenceRangeInput,
-	monthReportInput,
 	projectIdInput,
 	setTimeEntryOvertimeInput,
 	suggestDayAssemblyInput,
@@ -608,18 +608,21 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "overtime_report",
 		kind: "read",
 		description:
-			"Overtime hours per person for a month, with each person's running total for the year. Scoped to the caller's projects.",
-		schema: monthReportInput,
+			"Overtime per person over a date range — only entries the person flagged as overtime when logging them; nothing is inferred from the hour fund — with the flagged entries behind each figure. Scoped to the caller's projects and people.",
+		schema: overtimeReportInput,
 		available: anyone,
 		run: async (ctx, args) => {
-			const input = monthReportInput.parse(args);
-			const rows = await reportsService.overtime(ctx, input);
-			return rows.map((row) => ({
-				userId: row.userId,
-				name: row.name,
-				monthHours: row.monthSeconds / 3600,
-				yearHours: row.yearSeconds / 3600,
-			}));
+			const input = overtimeReportInput.parse(args);
+			const report = await reportsService.overtime(ctx, input);
+			return {
+				rows: report.rows.map((row) => ({
+					userId: row.userId,
+					name: row.name,
+					entries: row.count,
+					hours: row.seconds / 3600,
+				})),
+				totalHours: report.totalSeconds / 3600,
+			};
 		},
 	},
 	{
@@ -665,11 +668,34 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "absence_report",
 		kind: "read",
 		description:
-			"Organization-wide absence for a year, or for one month of it, per person and task. Admin only.",
+			"Time off per person over a date range — Vacation, Sick Leave, Paid Leave — in hours, split by task, with the entries behind each figure. Scoped to the caller's people: a Member sees themselves, a Team Lead their people, an Admin everyone.",
 		schema: absenceReportInput,
 		available: anyone,
-		run: async (ctx, args) =>
-			reportsService.absence(ctx, absenceReportInput.parse(args)),
+		run: async (ctx, args) => {
+			const report = await reportsService.absence(
+				ctx,
+				absenceReportInput.parse(args),
+			);
+			return {
+				rows: report.rows.map((row) => ({
+					userId: row.userId,
+					name: row.name,
+					hours: row.seconds / 3600,
+					byTask: Object.fromEntries(
+						Object.entries(row.byTask).map(([key, seconds]) => [
+							key,
+							seconds / 3600,
+						]),
+					),
+					entries: row.entries.map((e) => ({
+						date: e.date,
+						task: e.taskName,
+						hours: e.durationSeconds / 3600,
+						description: e.description,
+					})),
+				})),
+			};
+		},
 	},
 	{
 		name: "create_time_entry",
