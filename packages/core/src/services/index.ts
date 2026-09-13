@@ -9,7 +9,6 @@ export * from "./compliance.service";
 // `ctxAccess` so the memo it warms is the one the handler's services read.
 export * from "./context";
 export * from "./day-assembly.service";
-export * from "./expected";
 export * from "./filing-rules.service";
 export * from "./github.service";
 export * from "./google-calendar.service";

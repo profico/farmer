@@ -189,18 +189,18 @@ export const filingRule = pgTable(
 // Org-wide knobs (PRD §8). One row per org; a missing row implies the column
 // defaults (see orgSettingsService.get) so no backfill is needed.
 // Deliberately NOT configurable and therefore absent here: the 15-minute entry
-// granularity and the close lifecycle. The reminder days, times and the
-// behind-pace threshold the reminders use live in `reminderSettings` below.
+// granularity. The reminder days and times live in `reminderSettings` below.
 export const orgSettings = pgTable(
 	"org_settings",
 	{
 		id: uuid("id").primaryKey().defaultRandom(),
 		organizationId: org(),
-		// N working days without any entry before a person is flagged by the
-		// tracking-compliance report (6.2, View 1) and nudged on Slack.
-		complianceMissingDays: integer("compliance_missing_days")
+		// The Tracking rule's tolerance (Sept 2026): a person whose total is
+		// within this share below the target so far is "slightly behind", not
+		// "behind". One number for the report and every reminder.
+		trackingTolerancePct: smallint("tracking_tolerance_pct")
 			.notNull()
-			.default(3),
+			.default(5),
 		// The last day the automations may not write to — yyyy-MM-dd, null (the
 		// default) meaning no lock. Everything on or before it is off limits to the
 		// recurring block materializer, the calendar sync and the commit work-time
@@ -220,8 +220,8 @@ export const orgSettings = pgTable(
 	(t) => [
 		unique("org_settings_org_unq").on(t.organizationId),
 		check(
-			"org_settings_missing_days_valid",
-			sql`${t.complianceMissingDays} >= 1 and ${t.complianceMissingDays} <= 30`,
+			"org_settings_tolerance_valid",
+			sql`${t.trackingTolerancePct} >= 0 and ${t.trackingTolerancePct} <= 50`,
 		),
 	],
 );
@@ -243,7 +243,7 @@ const sendTimeValid = (column: AnyPgColumn) =>
 // at most three nudge days a week, and no send time at night. The Zod input
 // says the same thing, and the form shows each limit beside its field.
 //
-// `complianceMissingDays` (the nudge's "no entries for N working days") is NOT
+// The Tracking tolerance is NOT
 // here: it stays on `orgSettings`, because the compliance report reads the
 // same N and two copies of one number would drift.
 export const reminderSettings = pgTable(
@@ -266,12 +266,6 @@ export const reminderSettings = pgTable(
 		nudgeEnabled: boolean("nudge_enabled").notNull().default(true),
 		nudgeWeekdays: smallint("nudge_weekdays").array().notNull().default([2, 5]),
 		nudgeTime: text("nudge_time").notNull().default("09:00"),
-		nudgeNoEntries: boolean("nudge_no_entries").notNull().default(true),
-		nudgeBehindPace: boolean("nudge_behind_pace").notNull().default(true),
-		// "Behind pace" for every reminder: below this % of Expected so far. The
-		// month-end "only people behind pace" and the admin digest read it too,
-		// so the three never disagree about who is behind.
-		nudgeBehindPacePct: smallint("nudge_behind_pace_pct").notNull().default(90),
 		nudgeMemberTypes: memberType("nudge_member_types")
 			.array()
 			.notNull()
@@ -332,10 +326,6 @@ export const reminderSettings = pgTable(
 		check(
 			"reminder_settings_log_below_pct_valid",
 			sql`${t.logBelowPct} >= 1 and ${t.logBelowPct} <= 100`,
-		),
-		check(
-			"reminder_settings_behind_pace_pct_valid",
-			sql`${t.nudgeBehindPacePct} >= 1 and ${t.nudgeBehindPacePct} <= 100`,
 		),
 		// At most three nudge days a week. Four entries fail even when two repeat;
 		// the service de-duplicates before it writes.

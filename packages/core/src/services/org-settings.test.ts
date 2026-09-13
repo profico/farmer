@@ -72,31 +72,31 @@ beforeEach(async () => {
 describe("org settings", () => {
 	test("a missing row reads as defaults", async () => {
 		expect(await orgSettingsService.get(ctx)).toEqual({
-			complianceMissingDays: 3,
+			trackingTolerancePct: 5,
 			automationLockedThrough: null,
 		});
 	});
 
-	test("saving the compliance knob leaves the lock alone", async () => {
+	test("saving the tolerance leaves the lock alone", async () => {
 		await orgSettingsService.update(ctx, {
 			automationLockedThrough: "2026-07-31",
 		});
-		await orgSettingsService.update(ctx, { complianceMissingDays: 7 });
+		await orgSettingsService.update(ctx, { trackingTolerancePct: 7 });
 
 		expect(await orgSettingsService.get(ctx)).toEqual({
-			complianceMissingDays: 7,
+			trackingTolerancePct: 7,
 			automationLockedThrough: "2026-07-31",
 		});
 	});
 
-	test("saving the lock leaves the compliance knob alone", async () => {
-		await orgSettingsService.update(ctx, { complianceMissingDays: 9 });
+	test("saving the lock leaves the tolerance alone", async () => {
+		await orgSettingsService.update(ctx, { trackingTolerancePct: 9 });
 		await orgSettingsService.update(ctx, {
 			automationLockedThrough: "2026-07-31",
 		});
 
 		expect(await orgSettingsService.get(ctx)).toEqual({
-			complianceMissingDays: 9,
+			trackingTolerancePct: 9,
 			automationLockedThrough: "2026-07-31",
 		});
 	});
@@ -107,7 +107,7 @@ describe("org settings", () => {
 		});
 
 		// `undefined` = not in this patch.
-		await orgSettingsService.update(ctx, { complianceMissingDays: 4 });
+		await orgSettingsService.update(ctx, { trackingTolerancePct: 4 });
 		expect((await orgSettingsService.get(ctx)).automationLockedThrough).toBe(
 			"2026-07-31",
 		);
@@ -128,7 +128,7 @@ describe("org settings", () => {
 		// Insert path: the field that wasn't given lands on its default, which is
 		// what `get` was already reporting for the missing row.
 		expect(await orgSettingsService.get(ctx)).toEqual({
-			complianceMissingDays: 3,
+			trackingTolerancePct: 5,
 			automationLockedThrough: "2026-07-31",
 		});
 	});

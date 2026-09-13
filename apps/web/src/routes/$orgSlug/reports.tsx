@@ -136,7 +136,16 @@ function ReportsPage() {
 							/>
 						</MonthFramed>
 					)}
-					{tab === "compliance" && <ComplianceTab />}
+					{tab === "compliance" && (
+						<MonthFramed
+							orgSlug={organization.slug}
+							search={search}
+							month={month}
+							thisMonth={thisMonth}
+						>
+							<ComplianceTab {...period} />
+						</MonthFramed>
+					)}
 					{tab === "absence" && (
 						<MonthFramed
 							orgSlug={organization.slug}

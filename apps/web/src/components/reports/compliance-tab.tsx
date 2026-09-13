@@ -2,69 +2,136 @@ import { formatHoursLabel } from "@farmer/core/lib/report-format";
 import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
+import { StatusPill } from "#/components/status-pill.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { complianceDashboardQuery } from "#/queries/compliance.ts";
+import { formatDateKeyLong } from "#/lib/format-date.ts";
+import { trackingReportQuery } from "#/queries/compliance.ts";
 
 import { ReportTable } from "./shared.tsx";
 
-// PRD 6.2 — the forgetting-detector. Two lists, always shown together: "hasn't
-// logged at all lately" and "logging, but behind pace". They answer different
-// questions and someone can be in exactly one of them.
-export function ComplianceTab() {
+// Tracking (PRD 6.2, revised Sept 2026): one table, one rule. Each person's
+// work + time-off against the month's hour fund prorated by the working days
+// elapsed; on track, slightly behind (within the tolerance) or behind. The
+// same verdicts drive the reminders, so what an admin reads here is exactly
+// what a person was nudged about.
+const STATUS_LABEL = {
+	on_track: { live: "On track", done: "Met", tone: "positive" },
+	slightly_behind: {
+		live: "Slightly behind",
+		done: "Just short",
+		tone: "warning",
+	},
+	behind: { live: "Behind", done: "Short", tone: "neutral" },
+} as const;
+
+const signed = (seconds: number) =>
+	`${seconds >= 0 ? "+" : "−"}${formatHoursLabel(Math.abs(seconds))}`;
+
+export function ComplianceTab({
+	year,
+	month,
+}: {
+	year: number;
+	month: number;
+}) {
 	const orgSlug = useOrgSlug();
-	const { data } = useSuspenseQuery(complianceDashboardQuery(orgSlug));
+	const { data } = useSuspenseQuery(
+		trackingReportQuery(orgSlug, { year, month }),
+	);
+
+	const counts = { behind: 0, slightly_behind: 0, on_track: 0 };
+	for (const r of data.rows) if (r.status) counts[r.status] += 1;
+
 	return (
-		// Two independent lists that are always read together — stacked they cost a
-		// scroll to compare, side by side on a wide screen they don't.
-		<div className="grid gap-10 xl:grid-cols-2 xl:items-start xl:gap-8">
-			<section className="min-w-0">
-				<h2 className="eyebrow">No recent entries</h2>
-				<p className="mt-2 max-w-[68ch] text-sm text-muted-foreground">
-					Nothing logged in the last few working days. Overhead people are never
-					listed — the system doesn't nag anyone whose hours aren't tracked
-					against a fund.
-				</p>
-				<ReportTable
-					columned
-					headers={["Person", "Type", "Last entry", "Working days missing"]}
-					rows={data.noEntries.map((r) => ({
+		<div className="grid gap-6">
+			{/* The three numbers the table is read against, before the table. */}
+			<div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
+				<div>
+					<div className="eyebrow">Hour fund</div>
+					<div className="mono mt-1 text-lg">
+						{data.fundSeconds == null
+							? "—"
+							: formatHoursLabel(data.fundSeconds)}
+					</div>
+					{data.fundSeconds == null && (
+						<div className="text-xs text-muted-foreground">
+							Not set for this month — Settings → Hour fund.
+						</div>
+					)}
+				</div>
+				<div>
+					<div className="eyebrow">Target so far</div>
+					<div className="mono mt-1 text-lg">
+						{data.targetSeconds == null
+							? "—"
+							: formatHoursLabel(data.targetSeconds)}
+					</div>
+					<div className="text-xs text-muted-foreground">
+						{data.workingDaysElapsed} of {data.workingDaysInMonth} working days
+						{data.complete ? "" : ` · as of ${formatDateKeyLong(data.asOf)}`}
+					</div>
+				</div>
+				<div>
+					<div className="eyebrow">People</div>
+					<div className="mono mt-1 text-lg">{data.rows.length}</div>
+					<div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+						<span>{counts.behind} behind</span>
+						<span>{counts.slightly_behind} slightly</span>
+						<span>{counts.on_track} on track</span>
+					</div>
+				</div>
+			</div>
+
+			<ReportTable
+				columned
+				headers={[
+					"Person",
+					"Work",
+					"Time-off",
+					"Total",
+					"Target so far",
+					"Δ",
+					"Status",
+				]}
+				rows={data.rows.map((r) => {
+					const label = r.status ? STATUS_LABEL[r.status] : null;
+					return {
 						key: r.userId,
 						cells: [
 							<PersonCell key="person" userId={r.userId} name={r.name} />,
-							r.memberType,
-							r.lastEntryDate ?? "Never",
-							String(r.workingDaysMissing),
+							formatHoursLabel(r.workSeconds),
+							r.timeOffSeconds > 0 ? formatHoursLabel(r.timeOffSeconds) : "—",
+							formatHoursLabel(r.totalSeconds),
+							r.targetSeconds == null ? "—" : formatHoursLabel(r.targetSeconds),
+							r.deltaSeconds == null ? "—" : signed(r.deltaSeconds),
+							label ? (
+								<StatusPill key="status" tone={label.tone}>
+									{data.complete ? label.done : label.live}
+								</StatusPill>
+							) : (
+								<span key="status" className="text-xs text-muted-foreground">
+									No target
+								</span>
+							),
 						],
 						searchFields: [r.name, r.memberType],
-					}))}
-					empty="Everyone is up to date."
-				/>
-			</section>
+					};
+				})}
+				empty="Nobody to track this month."
+			/>
 
-			<section className="min-w-0">
-				<h2 className="eyebrow">Behind pace this month</h2>
-				<p className="mt-2 max-w-[68ch] text-sm text-muted-foreground">
-					Month-to-date hours against Expected prorated by the working days that
-					have actually elapsed. Contractors appear only when they have an
-					explicit expected-hours figure.
-				</p>
-				<ReportTable
-					columned
-					headers={["Person", "Logged", "Expected so far", "Pace", "Short by"]}
-					rows={data.behindPace.map((r) => ({
-						key: r.userId,
-						cells: [
-							<PersonCell key="person" userId={r.userId} name={r.name} />,
-							formatHoursLabel(r.loggedSeconds),
-							formatHoursLabel(r.proratedExpectedSeconds),
-							`${r.pacePct}%`,
-							formatHoursLabel(r.shortfallSeconds),
-						],
-						searchFields: [r.name],
-					}))}
-					empty="Nobody is behind pace."
-				/>
-			</section>
+			<p className="max-w-[72ch] text-sm text-muted-foreground">
+				<span className="font-medium text-foreground">
+					How it's calculated.
+				</span>{" "}
+				The fund for the month comes from Settings → Hour fund, already net of
+				public holidays. Target so far = fund × working days elapsed ÷ working
+				days in the month (Monday to Friday). A person's total is work plus
+				time-off. On track when the total reaches the target; slightly behind
+				when it is within {data.tolerancePct}% of it (Settings → Organization);
+				behind otherwise. Hourly people are listed with their hours and no
+				target unless an expected-hours figure was set for them.
+			</p>
 		</div>
 	);
 }

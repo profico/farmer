@@ -215,7 +215,7 @@ function OrganizationSettingsPage() {
 				</form>
 			</PageSection>
 
-			<CompliancePolicySection />
+			<TrackingToleranceSection />
 			<AutomationLockSection />
 		</Page>
 	);
@@ -224,20 +224,18 @@ function OrganizationSettingsPage() {
 // Commits on blur, like every other inline edit in Settings: a rename is a
 // correction, not a decision that needs a Save button next to it.
 
-// The one compliance number that's a setting. Everything else in that machinery
-// — the 90% behind-pace threshold, the Tue/Fri reminder days, the 15-minute
-// entry granularity — is deliberately hardcoded (PRD §8): they're product
-// decisions, and making them configurable invites every org to tune them until
-// the reports stop being comparable.
-function CompliancePolicySection() {
+// The Tracking rule's one knob. Everything else in that rule — Monday-to-Friday
+// proration, work + time-off as the total, the fund from Settings → Hour fund —
+// is fixed, so the reports stay comparable between orgs and months.
+function TrackingToleranceSection() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 	const { data: policy } = useSuspenseQuery(orgPolicySettingsQuery(orgSlug));
-	const [days, setDays] = useState(String(policy.complianceMissingDays));
+	const [pct, setPct] = useState(String(policy.trackingTolerancePct));
 
 	const mutation = useMutation({
-		mutationFn: (complianceMissingDays: number) =>
-			updateOrgPolicySettings({ data: { complianceMissingDays } }),
+		mutationFn: (trackingTolerancePct: number) =>
+			updateOrgPolicySettings({ data: { trackingTolerancePct } }),
 		onSuccess: async () => {
 			await Promise.all([
 				queryClient.invalidateQueries({
@@ -247,26 +245,26 @@ function CompliancePolicySection() {
 					queryKey: [...queryKeys(orgSlug).compliance],
 				}),
 			]);
-			toast.success("Compliance policy saved");
+			toast.success("Tracking tolerance saved");
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not save");
-			setDays(String(policy.complianceMissingDays));
+			setPct(String(policy.trackingTolerancePct));
 		},
 	});
 
-	const parsed = Number(days);
+	const parsed = Number(pct);
 	const valid =
 		Number.isInteger(parsed) &&
-		parsed >= 1 &&
-		parsed <= 30 &&
-		days.trim() !== "";
-	const changed = valid && parsed !== policy.complianceMissingDays;
+		parsed >= 0 &&
+		parsed <= 50 &&
+		pct.trim() !== "";
+	const changed = valid && parsed !== policy.trackingTolerancePct;
 
 	return (
 		<PageSection
-			title="Tracking compliance"
-			description="How many working days someone may go without logging anything before they show up on the Tracking report and start getting Slack nudges."
+			title="Tracking tolerance"
+			description="How far below the target so far someone may be and still count as only slightly behind. Beyond it they are behind — on the Tracking report and in every reminder. The target is the month's hour fund prorated by the working days elapsed; a person's total is work plus time-off."
 		>
 			<form
 				className="flex w-full max-w-sm items-center gap-2"
@@ -278,10 +276,10 @@ function CompliancePolicySection() {
 				<Input
 					className="w-20 mono text-right"
 					inputMode="numeric"
-					value={days}
-					onChange={(e) => setDays(e.target.value)}
+					value={pct}
+					onChange={(e) => setPct(e.target.value)}
 				/>
-				<span className="text-sm text-muted-foreground">working days</span>
+				<span className="text-sm text-muted-foreground">% (0–50)</span>
 				<Button
 					type="submit"
 					size="sm"

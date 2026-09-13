@@ -14,7 +14,6 @@ import {
 } from "../schema/reminder-settings";
 import { ctxTimezone, requireAdmin } from "./context";
 import { type DeliveryBlock, deliveryBlocks } from "./notify";
-import { orgSettingsService } from "./org-settings.service";
 import {
 	dashboardLoader,
 	reminderDayCheck,
@@ -71,14 +70,10 @@ const naggableTypes = (types: MemberTypeValue[]): NaggableMemberType[] =>
  *  No admin check: the jobs read this for every org on nobody's behalf, and
  *  the server function in front of it is admin-only. */
 const read = async (ctx: Ctx): Promise<ReminderSettings> => {
-	const [row, orgWide] = await Promise.all([
-		db.query.reminderSettings.findFirst({
-			where: eq(reminderSettings.organizationId, ctx.organizationId),
-		}),
-		orgSettingsService.get(ctx),
-	]);
-	const complianceMissingDays = orgWide.complianceMissingDays;
-	if (!row) return { ...REMINDER_SETTINGS_DEFAULTS, complianceMissingDays };
+	const row = await db.query.reminderSettings.findFirst({
+		where: eq(reminderSettings.organizationId, ctx.organizationId),
+	});
+	if (!row) return REMINDER_SETTINGS_DEFAULTS;
 	return {
 		logEnabled: row.logEnabled,
 		logMode: row.logMode,
@@ -87,10 +82,6 @@ const read = async (ctx: Ctx): Promise<ReminderSettings> => {
 		nudgeEnabled: row.nudgeEnabled,
 		nudgeWeekdays: row.nudgeWeekdays,
 		nudgeTime: row.nudgeTime,
-		nudgeNoEntries: row.nudgeNoEntries,
-		complianceMissingDays,
-		nudgeBehindPace: row.nudgeBehindPace,
-		nudgeBehindPacePct: row.nudgeBehindPacePct,
 		nudgeMemberTypes: naggableTypes(row.nudgeMemberTypes),
 		monthEndEnabled: row.monthEndEnabled,
 		monthEndDaysBefore: row.monthEndDaysBefore,
@@ -116,7 +107,7 @@ export const reminderSettingsService = {
 		patch: UpdateReminderSettingsInput,
 	): Promise<ReminderSettings> => {
 		await requireAdmin(ctx);
-		const { complianceMissingDays, ...own } = patch;
+		const own = { ...patch };
 
 		// The day and type lists are sets. The schema already refuses a repeat;
 		// this keeps a caller that skipped it from writing one, since the
@@ -129,10 +120,6 @@ export const reminderSettingsService = {
 			own.monthEndMemberTypes = uniqueSorted(own.monthEndMemberTypes);
 		}
 
-		// The N lives on `orgSettings`, where the compliance report reads it.
-		if (complianceMissingDays !== undefined) {
-			await orgSettingsService.update(ctx, { complianceMissingDays });
-		}
 		if (Object.keys(own).length > 0) {
 			await db
 				.insert(reminderSettings)

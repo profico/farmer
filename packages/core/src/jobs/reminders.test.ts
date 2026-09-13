@@ -280,22 +280,24 @@ describe("the defaults reproduce the jobs as they were", () => {
 		expect(sent).toHaveLength(0);
 	});
 
-	test("the nudge: Tuesday and Friday from 09:00, no-entries wording first", async () => {
+	test("the nudge: Tuesday and Friday from 09:00, to the people the rule calls behind", async () => {
 		await slackAt(TUESDAY, "08:45");
 		expect(sent).toHaveLength(0);
 
 		await slackAt(TUESDAY, "09:00");
-		expect(reached("compliance-nudge")).toEqual(
-			sorted([SILENT, SLOW, CONTRACTOR]),
+		// 10 of April's 22 working days have passed: the target so far is 80h of
+		// the 176h fund. SILENT has 0, SLOW 40 — both behind. CONTRACTOR is
+		// hourly with no override, so no target and no nudge.
+		expect(reached("compliance-nudge")).toEqual(sorted([SILENT, SLOW]));
+		expect(titleFor("compliance-nudge", SILENT)).toBe(
+			"No time logged yet this month",
 		);
-		// SILENT is on both lists; the no-entries message wins.
-		expect(titleFor("compliance-nudge", SILENT)).toBe("No time logged yet");
 		expect(titleFor("compliance-nudge", SLOW)).toBe(
-			"You're at 50% of your expected hours so far",
+			"You're behind on your hours this month",
 		);
-		// The numbers behind the percentage, in hours a person reads.
-		expect(bodyFor("compliance-nudge", SLOW)).toMatch(
-			/^You've logged \d+h of the \d+h expected by today, \d+h short\.$/,
+		// The numbers are the report's own, in hours a person reads.
+		expect(bodyFor("compliance-nudge", SLOW)).toBe(
+			"You've logged 40h of the 80h expected by today, 40h short.",
 		);
 		expect(sentTo("compliance-nudge", SLOW)?.slack).toBeUndefined();
 
@@ -307,9 +309,7 @@ describe("the defaults reproduce the jobs as they were", () => {
 		expect(reached("compliance-nudge")).toEqual([]);
 
 		await slackAt(FRIDAY, "09:00");
-		expect(reached("compliance-nudge")).toEqual(
-			sorted([SILENT, SLOW, CONTRACTOR]),
-		);
+		expect(reached("compliance-nudge")).toEqual(sorted([SILENT, SLOW]));
 	});
 
 	test("the digest: Tuesday only, to the admins", async () => {
@@ -317,20 +317,14 @@ describe("the defaults reproduce the jobs as they were", () => {
 		expect(reached("admin-digest")).toEqual([ADMIN]);
 		expect(titleFor("admin-digest", ADMIN)).toBe("Time tracking this week");
 		const digest = bodyFor("admin-digest", ADMIN) ?? "";
-		// SILENT, CONTRACTOR, NEVER: the cohort, not only who gets a DM. Named by
-		// when they last logged — never — and not by a count of working days.
-		expect(digest).toContain(
-			"3 people have logged nothing in the last 3 working days:",
-		);
-		expect(digest).toContain("• silent — never logged");
-		expect(digest).toContain("• never — never logged");
-		// SILENT and NEVER are behind too, and already named above; SLOW is only
-		// behind, and is the one this list names.
-		expect(digest).toContain(
-			"3 people are behind pace for the month. Besides the people with nothing logged:",
-		);
-		expect(digest).toMatch(/• slow — 50% \(\d+h of \d+h\)/);
-		expect(digest.match(/• silent/g)).toHaveLength(1);
+		// SILENT, SLOW and NEVER are behind: the cohort's verdicts, not only who
+		// gets a DM. CONTRACTOR has no target and is not in the digest at all.
+		expect(digest).toContain("3 people are behind for the month:");
+		expect(digest).toContain("• silent — 0h of 80h (80h short)");
+		expect(digest).toContain("• slow — 40h of 80h (40h short)");
+		expect(digest).toContain("• never — 0h of 80h (80h short)");
+		expect(digest).not.toContain("contractor");
+		expect(digest).not.toContain("slightly behind");
 
 		sent = [];
 		await slackAt(FRIDAY, "09:00");
@@ -353,10 +347,10 @@ describe("the defaults reproduce the jobs as they were", () => {
 			"Anything still unlogged needs to go in before the month ends tomorrow.",
 		);
 		expect(bodyFor("month-end", SILENT)).toBe(
-			"You haven't logged any time yet. Anything still unlogged needs to go in before the month ends tomorrow.",
+			"You haven't logged any time this month yet. Anything still unlogged needs to go in before the month ends tomorrow.",
 		);
-		expect(bodyFor("month-end", SLOW)).toMatch(
-			/^You've logged \d+h of the \d+h expected so far\. Anything still unlogged/,
+		expect(bodyFor("month-end", SLOW)).toBe(
+			"You've logged 88h of the 176h expected so far. Anything still unlogged needs to go in before the month ends tomorrow.",
 		);
 	});
 });
@@ -369,13 +363,13 @@ describe("the digest mentions people", () => {
 		await slackAt(TUESDAY, "09:00");
 		const got = sentTo("admin-digest", ADMIN);
 		expect(got?.slack).toStartWith(
-			"*Time tracking this week*\n*3 people* have logged nothing",
+			"*Time tracking this week*\n*3 people* are behind for the month:",
 		);
-		expect(got?.slack).toContain("• <@U0SILENT> — never logged");
-		// Nobody matched CONTRACTOR to Slack, so the name stays.
-		expect(got?.slack).toContain("• contractor — never logged");
+		expect(got?.slack).toContain("• <@U0SILENT> — 0h of 80h (80h short)");
+		// Nobody matched SLOW to Slack, so the name stays.
+		expect(got?.slack).toContain("• slow — 40h of 80h (40h short)");
 		// The plain form, which the preview shows, never carries the markup.
-		expect(got?.body).toContain("• silent — never logged");
+		expect(got?.body).toContain("• silent — 0h of 80h (80h short)");
 		expect(got?.body).not.toContain("<@");
 	});
 });
@@ -390,13 +384,14 @@ describe("the month-end reminder replaces the nudge on its day", () => {
 		);
 		expect(reached("compliance-nudge")).toEqual([]);
 
-		// A contractor the month-end reminder skips still gets the nudge.
-		await configure({ monthEndMemberTypes: ["employee_billable"] });
+		// The people the month-end reminder skips still get the nudge.
+		await configure({ monthEndMemberTypes: ["contractor_hourly"] });
 		forgetSlackReminderRunsForTests();
 		await db.delete(slackReminderLog);
 		sent = [];
 		await slackAt(MONTH_END, "09:00");
-		expect(reached("compliance-nudge")).toEqual([CONTRACTOR]);
+		expect(reached("month-end")).toEqual([CONTRACTOR]);
+		expect(reached("compliance-nudge")).toEqual(sorted([SILENT, SLOW]));
 	});
 });
 
@@ -409,43 +404,44 @@ describe("days, time and conditions must all apply", () => {
 		await slackAt(WEDNESDAY, "09:45");
 		expect(reached("compliance-nudge")).toEqual([]);
 		await slackAt(WEDNESDAY, "10:00");
-		expect(reached("compliance-nudge")).toEqual(
-			sorted([SILENT, SLOW, CONTRACTOR]),
-		);
-	});
-
-	test("with no-entries off, only people behind pace are nudged", async () => {
-		await configure({ nudgeNoEntries: false });
-		await slackAt(TUESDAY, "09:00");
 		expect(reached("compliance-nudge")).toEqual(sorted([SILENT, SLOW]));
-		expect(titleFor("compliance-nudge", SILENT)).toBe(
-			"You're at 0% of your expected hours so far",
-		);
 	});
 
-	test("with behind-pace off, only people with no entries are nudged", async () => {
-		await configure({ nudgeBehindPace: false });
+	test("the tolerance decides who is only slightly behind, and they are not nudged", async () => {
+		// SLOW has 40h of 80h. At the default 5% that is behind; at 50% it is
+		// within the tolerance — slightly behind — and the nudge leaves them be.
+		await orgSettingsService.update(adminCtx(), { trackingTolerancePct: 50 });
 		await slackAt(TUESDAY, "09:00");
-		expect(reached("compliance-nudge")).toEqual(sorted([SILENT, CONTRACTOR]));
-	});
-
-	test("with both conditions off, nobody is nudged", async () => {
-		await configure({ nudgeNoEntries: false, nudgeBehindPace: false });
-		await slackAt(TUESDAY, "09:00");
-		expect(reached("compliance-nudge")).toEqual([]);
-	});
-
-	test("the behind-pace % decides who is behind", async () => {
-		await configure({ nudgeNoEntries: false, nudgeBehindPacePct: 40 });
-		await slackAt(TUESDAY, "09:00");
-		// SLOW is at 50%: behind at 90, not at 40.
 		expect(reached("compliance-nudge")).toEqual([SILENT]);
 	});
 
-	test("the nudge goes only to the chosen person types", async () => {
+	test("the nudge never goes out on a weekend or a public holiday", async () => {
+		await configure({ nudgeWeekdays: [6] });
+		await slackAt("2026-04-18", "09:00"); // Saturday
+		expect(reached("compliance-nudge")).toEqual([]);
+
+		// Memorial Day 2026 (Monday 25 May) is a public holiday in this org's
+		// country. With a fund for May everyone who logged nothing is behind, so
+		// the day is the only thing standing between them and a DM.
+		await db.insert(monthlyHourFund).values({
+			organizationId: ORG,
+			year: 2026,
+			month: 5,
+			fundSeconds: 168 * H,
+		});
+		await configure({ nudgeWeekdays: [1, 2] });
+		await slackAt("2026-05-25", "09:00");
+		expect(reached("compliance-nudge")).toEqual([]);
+		// ADMIN logged April, not May, so in May they are behind too.
+		await slackAt("2026-05-26", "09:00");
+		expect(reached("compliance-nudge")).toEqual(sorted([ADMIN, SILENT, SLOW]));
+	});
+
+	test("the nudge goes only to the chosen person types — and never to somebody with no target", async () => {
 		await configure({ nudgeMemberTypes: ["contractor_hourly"] });
 		await slackAt(TUESDAY, "09:00");
-		expect(reached("compliance-nudge")).toEqual([CONTRACTOR]);
+		// CONTRACTOR is the only one of that type, and has no target.
+		expect(reached("compliance-nudge")).toEqual([]);
 	});
 
 	test("a fixed log-reminder time replaces the end of the workday", async () => {
@@ -676,16 +672,6 @@ describe("the settings", () => {
 		expect(saved.nudgeTime).toBe("10:30");
 		expect(saved.digestEnabled).toBe(false);
 		expect(saved.logMode).toBe("end_of_day");
-	});
-
-	test("the no-entries N is the compliance report's own", async () => {
-		await configure({ complianceMissingDays: 5 });
-		expect(
-			(await orgSettingsService.get(adminCtx())).complianceMissingDays,
-		).toBe(5);
-		expect(
-			(await reminderSettingsService.get(adminCtx())).complianceMissingDays,
-		).toBe(5);
 	});
 
 	test("the service stores a set of days, sorted", async () => {
