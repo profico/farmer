@@ -15,17 +15,37 @@ import { ReportTable } from "./shared.tsx";
 // same verdicts drive the reminders, so what an admin reads here is exactly
 // what a person was nudged about.
 const STATUS_LABEL = {
-	on_track: { live: "On track", done: "Met", tone: "positive" },
+	on_track: {
+		live: "On track",
+		done: "Met",
+		tone: "positive",
+		row: "",
+	},
 	slightly_behind: {
 		live: "Slightly behind",
 		done: "Just short",
 		tone: "warning",
+		row: "bg-warn/6 hover:bg-warn/10",
 	},
-	behind: { live: "Behind", done: "Short", tone: "neutral" },
+	behind: {
+		live: "Behind",
+		done: "Short",
+		tone: "negative",
+		row: "bg-destructive/5 hover:bg-destructive/8",
+	},
 } as const;
 
-const signed = (seconds: number) =>
-	`${seconds >= 0 ? "+" : "−"}${formatHoursLabel(Math.abs(seconds))}`;
+// Ahead is green, short is the accent, exactly on target is just the number:
+// "+0h" said the person was ahead by nothing, which is not a thing.
+const Delta = ({ seconds }: { seconds: number }) => {
+	if (seconds === 0) return <span className="text-muted-foreground">0h</span>;
+	return (
+		<span className={seconds > 0 ? "text-ok" : "text-destructive"}>
+			{seconds > 0 ? "+" : "−"}
+			{formatHoursLabel(Math.abs(seconds))}
+		</span>
+	);
+};
 
 export function ComplianceTab({
 	year,
@@ -97,13 +117,18 @@ export function ComplianceTab({
 					const label = r.status ? STATUS_LABEL[r.status] : null;
 					return {
 						key: r.userId,
+						className: label?.row,
 						cells: [
 							<PersonCell key="person" userId={r.userId} name={r.name} />,
 							formatHoursLabel(r.workSeconds),
 							r.timeOffSeconds > 0 ? formatHoursLabel(r.timeOffSeconds) : "—",
 							formatHoursLabel(r.totalSeconds),
 							r.targetSeconds == null ? "—" : formatHoursLabel(r.targetSeconds),
-							r.deltaSeconds == null ? "—" : signed(r.deltaSeconds),
+							r.deltaSeconds == null ? (
+								"—"
+							) : (
+								<Delta key="delta" seconds={r.deltaSeconds} />
+							),
 							label ? (
 								<StatusPill key="status" tone={label.tone}>
 									{data.complete ? label.done : label.live}
