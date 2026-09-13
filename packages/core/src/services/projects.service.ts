@@ -162,7 +162,9 @@ const enrichedProjects = async (
 
 	return projects.map((p) => ({
 		...redactMoney(p, access),
-		myRole: access.roleOn(p.id),
+		// Held-as, not the assignment row: a Team Lead on the project is a PM
+		// here, and the screen gates its tabs on this.
+		myRole: access.heldAs(p.id),
 		...(stats.get(p.id) ?? emptyStats()),
 	}));
 };

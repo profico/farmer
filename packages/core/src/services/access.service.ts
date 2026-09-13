@@ -97,6 +97,15 @@ export class Access {
 		return this.isTeamLead ? RANK.pm : RANK[role];
 	}
 
+	/** The role the caller HOLDS a project as — `roleOn` after the Team Lead
+	 *  rule, so a lead assigned as a plain member reads as PM here. What a
+	 *  screen should gate on; `roleOn` is what the assignment row says. */
+	heldAs(projectId: string): ProjectRole | null {
+		const mine = this.roleByProject.get(projectId);
+		if (mine == null) return null;
+		return this.isTeamLead ? "pm" : mine;
+	}
+
 	// The caller's role on a project, or null when unassigned. Admins are NOT
 	// synthesised into a role here — `isAdmin` is checked separately by each
 	// capability, so an admin's actual assignment (or lack of one) stays visible

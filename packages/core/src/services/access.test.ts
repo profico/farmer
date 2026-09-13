@@ -537,6 +537,11 @@ describe("Access — Team Lead people lists", () => {
 		// …but only where they are assigned at all.
 		expect(lead.canViewProjectEntries(OTHER)).toBe(false);
 		expect(lead.canManageProject(OTHER)).toBe(false);
+		// The screen gates on the held-as role; the assignment row is unchanged.
+		expect(lead.heldAs(P)).toBe("pm");
+		expect(lead.roleOn(P)).toBe("member");
+		expect(lead.heldAs(OTHER)).toBeNull();
+		expect(accessWith({ [P]: "team_lead" }).heldAs(P)).toBe("team_lead");
 	});
 
 	test("canViewPerson: themselves, the people on their list, or Admin", () => {
