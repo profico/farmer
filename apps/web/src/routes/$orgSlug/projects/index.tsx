@@ -8,6 +8,13 @@ import { ArchivedSection } from "#/components/archived-section.tsx";
 import { CreateProjectDialog } from "#/components/create-project-dialog.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
+import {
+	byNumber,
+	byText,
+	type Sort,
+	SortHead,
+	toggleSort,
+} from "#/components/reports/shared.tsx";
 import { EmptyState } from "#/components/states/empty-state.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { AvatarGroup, AvatarGroupCount } from "#/components/ui/avatar.tsx";
@@ -36,11 +43,23 @@ import { projectsQuery } from "#/queries/projects.ts";
 // is a link to the project's page for the people who have one (Team Lead and
 // up on that project, and Admins); for a plain Member it is a row.
 //
+// Sorted by this month's hours, biggest first — "what is the company working
+// on" is the question the list gets asked — with the Project header as the
+// alphabetical alternative. The client groups follow the same sort by their
+// total, so the busiest client sits on top and its projects sort inside it.
+//
 // It replaced a master/detail — a list with a configuration rail beside it —
 // which put a project's team and settings in a panel and its hours nowhere.
 
 const MAX_AVATARS_SHOWN = 4;
 const COLUMNS = 5;
+
+type SortKey = "name" | "month";
+type ProjectRow = { name: string; monthlyTotalSeconds: number };
+const COMPARE = {
+	name: byText((p: ProjectRow) => p.name),
+	month: byNumber((p: ProjectRow) => p.monthlyTotalSeconds),
+} satisfies Record<SortKey, (a: ProjectRow, b: ProjectRow) => number>;
 
 const searchSchema = z.object({
 	archived: z.literal("1").optional(),
@@ -66,6 +85,11 @@ function ProjectsPage() {
 	const { data: me } = useSuspenseQuery(myAccessQuery(orgSlug));
 	const noClients = clients.length === 0;
 	const [search, setSearch] = useState("");
+	const [sort, setSort] = useState<Sort<SortKey>>({ key: "month", dir: -1 });
+	const onSort = (key: SortKey, numeric: boolean) =>
+		setSort((current) => toggleSort(current, key, numeric));
+	const compare = (a: ProjectRow, b: ProjectRow) =>
+		COMPARE[sort.key](a, b) * sort.dir || a.name.localeCompare(b.name, "hr");
 	const routeSearch = Route.useSearch();
 	const navigate = useNavigate();
 
@@ -85,34 +109,40 @@ function ProjectsPage() {
 		(p) => p.status === "archived" && matches(p),
 	);
 
-	// Active projects under their client, the internal client last — the same
-	// order the clients list keeps — and alphabetical within.
+	// Active projects under their client. By name: the internal client last —
+	// the order the clients list keeps — and alphabetical within. By hours: the
+	// groups by their month's total, the projects by theirs.
 	const byClient = useMemo(() => {
 		const groups = new Map<
 			string,
-			{ name: string; internal: boolean; rows: typeof active }
+			{
+				name: string;
+				internal: boolean;
+				monthlyTotalSeconds: number;
+				rows: typeof active;
+			}
 		>();
 		for (const p of active) {
 			const key = p.clientId;
 			const g = groups.get(key) ?? {
 				name: p.client?.name ?? "—",
 				internal: p.client?.isInternal ?? false,
+				monthlyTotalSeconds: 0,
 				rows: [],
 			};
 			g.rows.push(p);
+			g.monthlyTotalSeconds += p.monthlyTotalSeconds;
 			groups.set(key, g);
 		}
 		return [...groups.values()]
-			.sort(
-				(a, b) =>
-					Number(a.internal) - Number(b.internal) ||
-					a.name.localeCompare(b.name, "hr"),
+			.sort((a, b) =>
+				sort.key === "name"
+					? Number(a.internal) - Number(b.internal) || compare(a, b)
+					: compare(a, b),
 			)
-			.map((g) => ({
-				...g,
-				rows: g.rows.sort((a, b) => a.name.localeCompare(b.name, "hr")),
-			}));
-	}, [active]);
+			.map((g) => ({ ...g, rows: g.rows.sort(compare) }));
+		// oxlint-disable-next-line react-hooks/exhaustive-deps -- `compare` is a pure function of `sort`, which is listed
+	}, [active, sort]);
 
 	// A search that only turns up archived rows would otherwise look like no
 	// results at all — force the section open rather than hide the match.
@@ -272,9 +302,21 @@ function ProjectsPage() {
 					<Table bleed={false} containerClassName="border-y">
 						<TableHeader>
 							<TableRow>
-								<TableHead>Project</TableHead>
+								<SortHead
+									label="Project"
+									sortKey="name"
+									sort={sort}
+									onSort={onSort}
+								/>
 								<TableHead>Team</TableHead>
-								<TableHead className="text-right">This month</TableHead>
+								<SortHead
+									label="This month"
+									sortKey="month"
+									numeric
+									sort={sort}
+									onSort={onSort}
+									className="text-right"
+								/>
 								<TableHead className="text-right">All-time</TableHead>
 								<TableHead>Status</TableHead>
 							</TableRow>
@@ -311,7 +353,7 @@ function ProjectsPage() {
 									})
 								}
 							>
-								{archived.map(row)}
+								{[...archived].sort(compare).map(row)}
 							</ArchivedSection>
 						</TableBody>
 					</Table>
