@@ -378,6 +378,21 @@ describe("the digest mentions people", () => {
 	});
 });
 
+describe("the digest with no fund", () => {
+	test("says so plainly instead of a false all-clear", async () => {
+		// March 2026 has no `monthly_hour_fund` row for this org, so nobody has a
+		// target and no verdict is possible — that is not the same thing as
+		// everyone being on track, and the digest must not say it is. March 3,
+		// 2026 is a Tuesday, the digest's default day.
+		await slackAt("2026-03-03", "09:00");
+		expect(reached("admin-digest")).toEqual([ADMIN]);
+		const digest = bodyFor("admin-digest", ADMIN) ?? "";
+		expect(digest).toContain("No hour fund is set for this month");
+		expect(digest).toContain("Settings → Hour fund");
+		expect(digest).not.toContain("on track");
+	});
+});
+
 describe("the month-end reminder replaces the nudge on its day", () => {
 	test("for everyone it reaches, and only them", async () => {
 		// April 30 is a Thursday, so the nudge and month-end fall on one day.
