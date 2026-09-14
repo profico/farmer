@@ -2,6 +2,7 @@ import {
 	CalendarDotIcon,
 	CoffeeIcon,
 	GitCommitIcon,
+	GitPullRequestIcon,
 	VideoCameraIcon,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +35,7 @@ type DaySuggestion = DayAssembly["suggestions"][number];
 function suggestionTitle(s: DaySuggestion): string {
 	if (s.kind === "meeting") return s.description || "Meeting";
 	if (s.kind === "work") return s.projectName ?? s.taskName;
+	if (s.kind === "review") return s.description;
 	if (s.kind === "break") return "Break";
 	return "Work — rest of day";
 }
@@ -76,6 +78,13 @@ function suggestionSource(s: DaySuggestion): string {
 		].filter((part): part is string => part !== null);
 		return `From ${parts.join(" and ")}${where}`;
 	}
+	if (s.kind === "review") {
+		const [pr] = s.pullRequests;
+		// A review has no length on GitHub, so the time is an estimate — say so.
+		return pr
+			? `From your review of #${pr.number} in ${pr.repoFullName}, estimated`
+			: "From your pull request reviews, estimated";
+	}
 	if (s.kind === "break") return "From your recurring blocks";
 	return "Assumed from your working hours";
 }
@@ -86,9 +95,11 @@ function SuggestionIcon({ kind }: { kind: DaySuggestion["kind"] }) {
 			? VideoCameraIcon
 			: kind === "work"
 				? GitCommitIcon
-				: kind === "break"
-					? CoffeeIcon
-					: CalendarDotIcon;
+				: kind === "review"
+					? GitPullRequestIcon
+					: kind === "break"
+						? CoffeeIcon
+						: CalendarDotIcon;
 	return <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />;
 }
 

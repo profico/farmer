@@ -20,6 +20,7 @@
 // the other.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
 import { eq } from "drizzle-orm";
 
 import { db } from "../db";

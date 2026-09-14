@@ -27,6 +27,7 @@ import {
 } from "../db/schema/github";
 import {
 	commitFillTombstone,
+	pullRequestReviewTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
 import {
@@ -40,10 +41,13 @@ import {
 	datesBetween,
 	dayKeyInTz,
 	monthBounds,
+	QUARTER_HOUR_SECONDS,
 	snapToQuarterHour,
 } from "../lib/time";
 import {
+	type HolidayLookup,
 	MAX_DAY_SECONDS,
+	type WorkingHoursDay,
 	remainingSeconds,
 	spokenForSeconds,
 	targetSecondsFor,
@@ -89,6 +93,13 @@ import { integrationSettingsService } from "./integration-settings.service";
 import { ledgerWhere } from "./ledger";
 import { orgSettingsService } from "./org-settings.service";
 import { calendarSource, commitSource, pullRequestSource } from "./ports";
+import {
+	deletedReviewsOnDay,
+	REVIEW_BLOCK_SECONDS,
+	reviewBlockDescription,
+	reviewHomesOnDay,
+	reviewsHeldBy,
+} from "./pr-reviews";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import { CTX_MEMO, type Ctx, type CtxMemo } from "./types";
@@ -498,6 +509,165 @@ const describeEvidence = (evidence: DayEvidence): string =>
 		...describePullRequestActivity(evidence.pullRequests),
 	]);
 
+/**
+ * File each pull request the person reviewed on the day as a Code Review block
+ * of its own, and attach its reviews there. Returns the review events it
+ * placed, so the rest of the pass leaves them out of the day's work evidence.
+ *
+ * A PR's reviews go, best home first, to:
+ *
+ *   1. the entry that already holds this PR's reviews on the day — the block a
+ *      previous run filed, or whatever a run before review blocks attached them
+ *      to, so a day already filed is not given a second half hour;
+ *   2. a Code Review entry on that project the person logged themselves, which
+ *      is their own answer to how long the reviewing took;
+ *   3. a new block of `REVIEW_BLOCK_SECONDS` — or down to a quarter hour when
+ *      the day has less free time than that — if the person may track on the
+ *      project and has not deleted this block before.
+ *
+ * A review that finds none of these is not placed. The engine then treats it
+ * as the evidence it always was, which is what a full day or a deleted block
+ * should get.
+ *
+ * No unique index guards against a second block for the same PR: the sweep and
+ * "Sync now" share one per-person guard, so this never runs twice at once for
+ * the same person, and step 1 finds the block on every later run.
+ */
+const fileReviewBlocks = async (
+	ctx: Ctx,
+	dayKey: string,
+	tz: string,
+	reviewTaskId: string,
+	reviews: ScannedPullRequestActivity[],
+	day: { workingHours: WorkingHoursDay[]; holidays: HolidayLookup },
+): Promise<{ placed: Set<string>; created: boolean }> => {
+	const placed = new Set<string>();
+	if (reviews.length === 0) return { placed, created: false };
+
+	const byPullRequest = new Map<string, ScannedPullRequestActivity[]>();
+	for (const review of reviews) {
+		byPullRequest.set(review.pullRequestUrl, [
+			...(byPullRequest.get(review.pullRequestUrl) ?? []),
+			review,
+		]);
+	}
+
+	const [homes, deleted, reviewEntries, access] = await Promise.all([
+		reviewHomesOnDay(ctx, dayKey),
+		deletedReviewsOnDay(ctx, dayKey),
+		db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				eq(timeEntry.date, dayKey),
+				eq(timeEntry.taskId, reviewTaskId),
+				eq(timeEntry.fillsDay, false),
+			),
+			columns: { id: true, projectId: true, description: true },
+			orderBy: [asc(timeEntry.createdAt)],
+		}),
+		ctxAccess(ctx),
+	]);
+
+	// Step 2's candidates. A Code Review entry that holds no PR's reviews yet is
+	// one the person logged by hand; every PR reviewed on its project goes on it.
+	const held = new Set(homes.values());
+	const handLogged = new Map<string, (typeof reviewEntries)[number]>();
+	for (const entry of reviewEntries) {
+		if (entry.projectId === null || held.has(entry.id)) continue;
+		if (!handLogged.has(entry.projectId)) {
+			handLogged.set(entry.projectId, entry);
+		}
+	}
+
+	// The same two gates as `resolveFillProject`: this writes project time.
+	const verdicts = new Map<string, boolean>();
+	const mayFileOn = async (projectId: string) => {
+		const cached = verdicts.get(projectId);
+		if (cached !== undefined) return cached;
+		let allowed = access.canTrackOn(projectId);
+		if (allowed) {
+			try {
+				await assertTaskAvailable(ctx, reviewTaskId, projectId);
+			} catch {
+				allowed = false;
+			}
+		}
+		verdicts.set(projectId, allowed);
+		return allowed;
+	};
+
+	let room = await computeDayFillSeconds(ctx, dayKey, tz, day);
+	let created = false;
+	const attachments = new Map<string, ScannedPullRequestActivity[]>();
+	for (const [pullRequestUrl, events] of byPullRequest) {
+		const [first] = events;
+		if (!first) continue;
+		let target =
+			homes.get(pullRequestUrl) ?? handLogged.get(first.projectId)?.id ?? null;
+		const size = Math.min(
+			REVIEW_BLOCK_SECONDS,
+			room - (room % QUARTER_HOUR_SECONDS),
+		);
+		if (
+			!target &&
+			size > 0 &&
+			!deleted.has(pullRequestUrl) &&
+			(await mayFileOn(first.projectId))
+		) {
+			const [row] = await db
+				.insert(timeEntry)
+				.values({
+					organizationId: ctx.organizationId,
+					userId: ctx.userId,
+					taskId: reviewTaskId,
+					projectId: first.projectId,
+					description: reviewBlockDescription(first.title),
+					date: dayKey,
+					durationSeconds: size,
+				})
+				.returning({ id: timeEntry.id });
+			if (row) {
+				target = row.id;
+				room -= size;
+				created = true;
+			}
+		}
+		if (!target) continue;
+		attachments.set(target, [...(attachments.get(target) ?? []), ...events]);
+		for (const event of events) placed.add(event.eventId);
+	}
+
+	// A hand-logged entry with no description gets one, as the work entries do.
+	for (const entry of handLogged.values()) {
+		const events = attachments.get(entry.id);
+		if (!events || entry.description.trim() !== "") continue;
+		await db
+			.update(timeEntry)
+			.set({
+				description: summarizeCommitMessages(
+					describePullRequestActivity(events),
+				),
+				updatedAt: new Date(),
+			})
+			.where(eq(timeEntry.id, entry.id));
+	}
+
+	const rows = [...attachments].flatMap(([timeEntryId, events]) =>
+		events.map((event) =>
+			pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
+		),
+	);
+	if (rows.length > 0) {
+		await db
+			.insert(timeEntryGithubPrActivity)
+			.values(rows)
+			// tegpa_entry_event_unq: a re-run attaches the same reviews again.
+			.onConflictDoNothing();
+	}
+	return { placed, created };
+};
+
 const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
@@ -527,6 +697,8 @@ const syncCommitWorkTimeForRange = async (
 	// off — no block, no error.
 	const workTask = await tasksService.findBySystemKey(ctx, "development");
 	if (!workTask) return;
+	// Optional. Without it, reviews stay evidence on the day's work.
+	const reviewTask = await tasksService.findBySystemKey(ctx, "code_review");
 
 	const [workingHours, holidays] = await Promise.all([
 		workingHoursService.list(ctx),
@@ -544,6 +716,23 @@ const syncCommitWorkTimeForRange = async (
 		// The window is this engine's whole licence to write; a day outside it is
 		// dropped, not filed.
 		if (dayKey < range.from || dayKey > range.to) continue;
+
+		// Review blocks first. Each takes its time from the day's free time, so it
+		// has to exist before the rest-of-day block is sized, or resized.
+		let placed = new Set<string>();
+		if (reviewTask) {
+			const filed = await fileReviewBlocks(
+				ctx,
+				dayKey,
+				tz,
+				reviewTask.id,
+				pullRequests.filter((event) => event.kind === "reviewed"),
+				{ workingHours, holidays },
+			);
+			placed = filed.placed;
+			if (filed.created) await recomputeDayFill(ctx, dayKey, tz);
+		}
+
 		// Every work entry already on the day, so the loop below can hand each
 		// project's commits to the entry that describes that project's work.
 		const dayEntries = await db.query.timeEntry.findMany({
@@ -588,14 +777,23 @@ const syncCommitWorkTimeForRange = async (
 		for (const commit of commits) {
 			evidenceFor(commit.projectId).commits.push(commit);
 		}
+		// A placed review sits on its own block, so it is not evidence for a work
+		// entry. It still says the day was worked, so its project still counts
+		// towards the rest-of-day block below.
+		const reviewedProjectIds = new Set<string>();
 		for (const event of pullRequests) {
-			evidenceFor(event.projectId).pullRequests.push(event);
+			if (placed.has(event.eventId)) reviewedProjectIds.add(event.projectId);
+			else evidenceFor(event.projectId).pullRequests.push(event);
 		}
 
-		const homelessProjectIds = [...evidenceByProject.keys()].filter(
-			(projectId) => !byProject.has(projectId),
+		const homelessProjectIds = [
+			...new Set([...evidenceByProject.keys(), ...reviewedProjectIds]),
+		].filter((projectId) => !byProject.has(projectId));
+		const homeless = mergeEvidence(
+			homelessProjectIds.flatMap(
+				(projectId) => evidenceByProject.get(projectId) ?? [],
+			),
 		);
-		const homeless = mergeEvidence(homelessProjectIds.map(evidenceFor));
 
 		// The fill block is created only for evidence that found no home — a day
 		// of reviews is a worked day as surely as a day of commits — and only if
@@ -619,7 +817,8 @@ const syncCommitWorkTimeForRange = async (
 						userId: ctx.userId,
 						taskId: workTask.id,
 						projectId: fillProjectId,
-						description: describeEvidence(homeless),
+						// Blank evidence: every review went to a block of its own.
+						description: describeEvidence(homeless) || "Rest of day",
 						date: dayKey,
 						durationSeconds,
 						fillsDay: true,
@@ -1569,6 +1768,8 @@ export const timeEntriesService = {
 	remove: async (ctx: Ctx, timeEntryId: string) => {
 		return withCtxTx(ctx, async (txCtx) => {
 			const tx = ctxDb(txCtx);
+			// Before the delete: the attachments cascade with the row.
+			const heldReviews = await reviewsHeldBy(txCtx, timeEntryId);
 			const [existing] = await tx
 				.delete(timeEntry)
 				.where(
@@ -1614,6 +1815,22 @@ export const timeEntriesService = {
 						userId: ctx.userId,
 						date: existing.date,
 					})
+					.onConflictDoNothing();
+			}
+
+			// And a review block. What told the engine this PR's block exists was
+			// its attached reviews, which just went with the row.
+			if (existing && heldReviews.length > 0) {
+				await tx
+					.insert(pullRequestReviewTombstone)
+					.values(
+						heldReviews.map((pullRequestUrl) => ({
+							organizationId: ctx.organizationId,
+							userId: ctx.userId,
+							date: existing.date,
+							pullRequestUrl,
+						})),
+					)
 					.onConflictDoNothing();
 			}
 			// Inside the transaction: the deletion and the fill block it resizes

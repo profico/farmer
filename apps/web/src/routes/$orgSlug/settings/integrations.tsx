@@ -326,7 +326,7 @@ function IntegrationsSettingsPage() {
 								/>
 								<SettingToggleRow
 									title="Sync commits as work time"
-									description="On days you push commits or work on pull requests (open, merge, close or review one), automatically log a work block that fills your working hours."
+									description="On days you push commits or work on pull requests (open, merge, close or review one), automatically log a work block that fills your working hours. Each pull request you review gets a 30-minute Code Review block of its own."
 									checked={settings.githubSyncCommitsAsWorkTime}
 									patch={(value) => ({ githubSyncCommitsAsWorkTime: value })}
 								/>

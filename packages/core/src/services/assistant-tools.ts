@@ -863,7 +863,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "apply_day_assembly",
 		kind: "write",
 		description:
-			"Create a day's entries from suggestions returned by suggest_day. Pass through the taskId, projectId, description, durationSeconds, fillsDay, meetingUrl, calendarEventId and commits of each suggestion being accepted. The user is shown the entries as a checklist and may log only some of them.",
+			"Create a day's entries from suggestions returned by suggest_day. Pass through the taskId, projectId, description, durationSeconds, fillsDay, meetingUrl, calendarEventId, commits and pullRequests of each suggestion being accepted. The user is shown the entries as a checklist and may log only some of them.",
 		schema: applyDayAssemblyInput,
 		summarize: (_ctx, args) =>
 			`Log ${Array.isArray(args.entries) ? args.entries.length : "several"} entries on ${args.date}`,

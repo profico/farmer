@@ -33,7 +33,11 @@ import {
 } from "../db/schema/settings";
 import { createTestDb, type TestDb } from "../test/harness";
 import { dayAssemblyService } from "./day-assembly.service";
-import { setCalendarSourceForTests, setCommitSourceForTests } from "./ports";
+import {
+	setCalendarSourceForTests,
+	setCommitSourceForTests,
+	setPullRequestSourceForTests,
+} from "./ports";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
@@ -48,6 +52,7 @@ const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 let harness: TestDb;
 let devTaskId: string;
 let breakTaskId: string;
+let reviewTaskId: string;
 let projectId: string;
 
 const noCalendar = {
@@ -59,7 +64,9 @@ const noCommits = {
 	listUserCommitsByDay: async () => [],
 };
 
-const siteTask = async (systemKey: "development" | "break" | "meeting") => {
+const siteTask = async (
+	systemKey: "development" | "break" | "meeting" | "code_review",
+) => {
 	const existing = await db.query.task.findFirst({
 		where: and(eq(task.scope, "site"), eq(task.systemKey, systemKey)),
 		columns: { id: true },
@@ -120,6 +127,7 @@ beforeAll(async () => {
 
 	devTaskId = await siteTask("development");
 	breakTaskId = await siteTask("break");
+	reviewTaskId = await siteTask("code_review");
 	await siteTask("meeting");
 
 	// An explicit Mon-Fri 9-17, so the target is stated rather than defaulted.
@@ -139,6 +147,7 @@ beforeAll(async () => {
 afterAll(async () => {
 	setCalendarSourceForTests(null);
 	setCommitSourceForTests(null);
+	setPullRequestSourceForTests(null);
 	await harness.close();
 });
 
@@ -151,6 +160,7 @@ beforeEach(async () => {
 	await db.delete(commitFillTombstone);
 	setCalendarSourceForTests(noCalendar);
 	setCommitSourceForTests(noCommits);
+	setPullRequestSourceForTests(null);
 });
 
 describe("assemble my day", () => {
@@ -211,6 +221,38 @@ describe("assemble my day", () => {
 		// The commit split already consumes the whole remainder in 15-minute units.
 		expect(assembly.suggestions.some((s) => s.kind === "work")).toBe(true);
 		expect(assembly.suggestions.some((s) => s.kind === "fill")).toBe(false);
+		expect(proposed(assembly.suggestions)).toBe(EIGHT_HOURS);
+	});
+
+	test("a reviewed pull request is proposed as a half hour of its own", async () => {
+		setPullRequestSourceForTests({
+			listUserPullRequestActivityByDay: async () => [],
+			listUserPullRequestActivityForDay: async () => [
+				{
+					eventId: "PRR_1",
+					kind: "reviewed",
+					reviewState: "approved",
+					number: 7,
+					title: "Fix login",
+					pullRequestUrl: "https://github.com/acme/farmer/pull/7",
+					url: "https://github.com/acme/farmer/pull/7#pullrequestreview-1",
+					occurredAt: new Date(`${MONDAY}T12:00:00.000Z`),
+					projectGithubRepoId: "00000000-0000-0000-0000-000000000001",
+					projectId,
+					repoFullName: "acme/farmer",
+				},
+			],
+		});
+
+		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
+		const review = assembly.suggestions.find((s) => s.kind === "review");
+		expect(review?.taskId).toBe(reviewTaskId);
+		expect(review?.projectId).toBe(projectId);
+		expect(review?.durationSeconds).toBe(30 * 60);
+		expect(review?.description).toBe("PR review: Fix login");
+		// On its own block, so it backs no work suggestion as well.
+		expect(assembly.suggestions.some((s) => s.kind === "work")).toBe(false);
 		expect(proposed(assembly.suggestions)).toBe(EIGHT_HOURS);
 	});
 

@@ -28,10 +28,17 @@ import {
 	timeEntryGithubPrActivity,
 } from "../db/schema/github";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
-import { integrationSettings, orgSettings } from "../db/schema/settings";
+import {
+	integrationSettings,
+	orgSettings,
+	pullRequestReviewTombstone,
+} from "../db/schema/settings";
 import type { PullRequestActivityKind } from "../lib/github-activity";
 import { createTestDb, present, type TestDb } from "../test/harness";
-import type { ScannedPullRequestActivity } from "./github.service";
+import {
+	pullRequestActivityRow,
+	type ScannedPullRequestActivity,
+} from "./github.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import {
 	type PullRequestSource,
@@ -51,6 +58,7 @@ const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;
 let devTaskId: string;
+let reviewTaskId: string;
 let projectId: string;
 let repoId: string;
 
@@ -73,14 +81,21 @@ const activityOn = (timeEntryId: string) =>
 		where: eq(timeEntryGithubPrActivity.timeEntryId, timeEntryId),
 	});
 
-type FakeEvent = { day: string; number: number; kind: PullRequestActivityKind };
+type FakeEvent = {
+	day: string;
+	number: number;
+	kind: PullRequestActivityKind;
+	/** Only needed for a second review round on the same PR and day. */
+	id?: string;
+};
 
 const event = ({
 	day,
 	number,
 	kind,
+	id,
 }: FakeEvent): ScannedPullRequestActivity => ({
-	eventId: `PR_${String(number)}:${kind}`,
+	eventId: id ?? `PR_${String(number)}:${kind}`,
 	kind,
 	reviewState: kind === "reviewed" ? "approved" : null,
 	number,
@@ -110,9 +125,17 @@ const noCommits = {
 	listUserCommitsByDay: async () => [],
 };
 
+/** Archiving the task is how an org without one looks to the engine. */
+const setReviewTaskLive = (live: boolean) =>
+	db
+		.update(task)
+		.set({ archivedAt: live ? null : new Date() })
+		.where(eq(task.id, reviewTaskId));
+
 const addEntry = async (values: {
 	date: string;
 	projectId?: string | null;
+	taskId?: string;
 	durationSeconds: number;
 	description?: string;
 }) => {
@@ -121,7 +144,7 @@ const addEntry = async (values: {
 		.values({
 			organizationId: ORG_ID,
 			userId: USER_ID,
-			taskId: devTaskId,
+			taskId: values.taskId ?? devTaskId,
 			projectId: values.projectId ?? null,
 			date: values.date,
 			durationSeconds: values.durationSeconds,
@@ -196,6 +219,18 @@ beforeAll(async () => {
 		.returning({ id: task.id });
 	devTaskId = present(dev, "the Development task").id;
 
+	const [review] = await db
+		.insert(task)
+		.values({
+			scope: "organization" as const,
+			organizationId: ORG_ID,
+			name: "Code Review",
+			systemKey: "code_review" as const,
+			isAbsence: false,
+		})
+		.returning({ id: task.id });
+	reviewTaskId = present(review, "the Code Review task").id;
+
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
 		const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
 		await db.insert(memberWorkingHoursDay).values({
@@ -217,6 +252,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
 	await db.delete(timeEntry);
+	await db.delete(pullRequestReviewTombstone);
 	await db.delete(integrationSettings);
 	await db.delete(orgSettings);
 	setCommitSourceForTests(noCommits);
@@ -239,7 +275,13 @@ beforeEach(async () => {
 		);
 });
 
+// With no Code Review task, as in an org that renamed it before the key
+// existed: every event, reviews included, is evidence on the day's work.
 describe("pull request events in the commit engine", () => {
+	beforeEach(async () => {
+		await setReviewTaskLive(false);
+	});
+
 	test("a day of reviews alone is a worked day: the rest of it is filed", async () => {
 		setPullRequestSourceForTests(
 			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
@@ -347,5 +389,153 @@ describe("pull request events in the commit engine", () => {
 		expect((await activityOn(own.id)).map((row) => row.eventId)).toEqual([
 			"PR_7:reviewed",
 		]);
+	});
+});
+
+// With a Code Review task: a reviewed pull request is a block of its own. The
+// target is 8 hours, so every figure below is that day minus the blocks.
+describe("review blocks", () => {
+	const HALF_HOUR = 30 * 60;
+
+	beforeEach(async () => {
+		await setReviewTaskLive(true);
+	});
+
+	const reviewBlocksOn = async (date: string) =>
+		(await entriesOn(date)).filter((entry) => entry.taskId === reviewTaskId);
+
+	test("a reviewed pull request gets a half hour, and the rest of the day is still filed", async () => {
+		setPullRequestSourceForTests(
+			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
+		);
+
+		await runAutomations();
+
+		const [block] = await reviewBlocksOn(YESTERDAY);
+		expect(block?.projectId).toBe(projectId);
+		expect(block?.durationSeconds).toBe(HALF_HOUR);
+		expect(block?.description).toBe("PR review: Change 7");
+		const reviewed = await activityOn(present(block, "the review block").id);
+		expect(reviewed.map((row) => row.eventId)).toEqual(["PR_7:reviewed"]);
+
+		const fill = (await entriesOn(YESTERDAY)).find((entry) => entry.fillsDay);
+		expect(fill?.durationSeconds).toBe(8 * 3600 - HALF_HOUR);
+		// The review is on its own block, so it is not evidence here as well.
+		expect(await activityOn(present(fill, "the fill block").id)).toEqual([]);
+	});
+
+	test("one block per pull request, however many rounds, and a re-run adds none", async () => {
+		setPullRequestSourceForTests(
+			pullRequestsFor([
+				{ day: YESTERDAY, number: 7, kind: "reviewed", id: "PRR_a" },
+				{ day: YESTERDAY, number: 7, kind: "reviewed", id: "PRR_b" },
+				{ day: YESTERDAY, number: 9, kind: "reviewed" },
+			]),
+		);
+
+		await runAutomations();
+		await runAutomations();
+
+		const blocks = await reviewBlocksOn(YESTERDAY);
+		expect(blocks.map((block) => block.description).sort()).toEqual([
+			"PR review: Change 7",
+			"PR review: Change 9",
+		]);
+		const seven = blocks.find((b) => b.description === "PR review: Change 7");
+		expect(
+			await activityOn(present(seven, "the block for #7").id),
+		).toHaveLength(2);
+		const fill = (await entriesOn(YESTERDAY)).find((entry) => entry.fillsDay);
+		expect(fill?.durationSeconds).toBe(8 * 3600 - 2 * HALF_HOUR);
+	});
+
+	test("a deleted review block stays deleted, and the review stays on the day", async () => {
+		setPullRequestSourceForTests(
+			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
+		);
+		await runAutomations();
+		const [block] = await reviewBlocksOn(YESTERDAY);
+
+		await timeEntriesService.remove(ctx, present(block, "the review block").id);
+		await runAutomations();
+
+		expect(await reviewBlocksOn(YESTERDAY)).toEqual([]);
+		const fill = (await entriesOn(YESTERDAY)).find((entry) => entry.fillsDay);
+		expect(fill?.durationSeconds).toBe(8 * 3600);
+		expect(
+			(await activityOn(present(fill, "the fill block").id)).map(
+				(row) => row.eventId,
+			),
+		).toEqual(["PR_7:reviewed"]);
+	});
+
+	test("a full day gets no block: the review goes on the work already logged", async () => {
+		const entry = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 8 * 3600,
+			description: "Importer",
+		});
+		setPullRequestSourceForTests(
+			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
+		);
+
+		await runAutomations();
+
+		expect((await entriesOn(YESTERDAY)).map((row) => row.id)).toEqual([
+			entry.id,
+		]);
+		expect((await activityOn(entry.id)).map((row) => row.eventId)).toEqual([
+			"PR_7:reviewed",
+		]);
+	});
+
+	test("a Code Review entry logged by hand takes the reviews on its project", async () => {
+		const own = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			taskId: reviewTaskId,
+			durationSeconds: 3600,
+		});
+		setPullRequestSourceForTests(
+			pullRequestsFor([
+				{ day: YESTERDAY, number: 7, kind: "reviewed" },
+				{ day: YESTERDAY, number: 9, kind: "reviewed" },
+			]),
+		);
+
+		await runAutomations();
+
+		const blocks = await reviewBlocksOn(YESTERDAY);
+		expect(blocks.map((block) => block.id)).toEqual([own.id]);
+		expect(await activityOn(own.id)).toHaveLength(2);
+		// Its blank description is written from the reviews, as a work entry's is.
+		expect(blocks[0]?.description).toContain("Reviewed #7: Change 7");
+	});
+
+	test("a review a run before review blocks already filed gets no second half hour", async () => {
+		const entry = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			durationSeconds: 4 * 3600,
+			description: "Importer",
+		});
+		await db
+			.insert(timeEntryGithubPrActivity)
+			.values(
+				pullRequestActivityRow(
+					entry.id,
+					repoId,
+					event({ day: YESTERDAY, number: 7, kind: "reviewed" }),
+				),
+			);
+		setPullRequestSourceForTests(
+			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
+		);
+
+		await runAutomations();
+
+		expect(await reviewBlocksOn(YESTERDAY)).toEqual([]);
+		expect(await activityOn(entry.id)).toHaveLength(1);
 	});
 });
