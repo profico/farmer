@@ -665,7 +665,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "absence_report",
 		kind: "read",
 		description:
-			"Organization-wide absence for a year, or for one month of it, per person and task. Admin only.",
+			"Absence for a year, or for one month of it, per person and task — scoped to the people the caller may see: everyone for an Admin, otherwise themselves, their Team Lead people, and everyone on the projects they manage.",
 		schema: absenceReportInput,
 		available: anyone,
 		run: async (ctx, args) =>
