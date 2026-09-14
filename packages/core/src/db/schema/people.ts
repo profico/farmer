@@ -14,20 +14,26 @@ import {
 
 import { invitation, organization, user } from "./auth";
 
-// The single most consequential field in the reporting layer (PRD 3.1):
-//  - billable    delivery people whose time we sell. Every report and reminder
-//                applies to them fully.
-//  - overhead    COO / CEO / admin / marketing. Excluded from reminders, the
-//                compliance report — but
-//                when they DO log time it flows through the Time Report exactly
-//                like anyone else's.
-//  - contractor  externals. No Croatian monthly hour fund applies, so there is
-//                no Expected value by default (the "/" rows of the old sheet),
-//                unless an explicit override is set on the person.
+// The single most consequential field in the reporting layer (PRD 3.1, revised
+// Sept 2026). Three kinds of person, each with one attribute:
+//  - employee_billable     delivery people whose time we sell. Every report and
+//                          reminder applies to them; Expected is the hour fund.
+//  - employee_overhead     COO / CEO / admin / marketing. Never reminded, no
+//                          Expected — but when they DO log time it flows through
+//                          the Time Report exactly like anyone else's.
+//  - student_full_time,    the hour fund applies to them like an employee.
+//    contractor_full_time
+//  - student_hourly,       no monthly hour fund, so no Expected value by
+//    contractor_hourly     default, unless an explicit override is set.
+// Values are mirrored in `schema/members.ts` (`memberTypeEnum`), which is what
+// the forms and the server functions validate against.
 export const memberType = pgEnum("member_type", [
-	"billable",
-	"overhead",
-	"contractor",
+	"employee_billable",
+	"employee_overhead",
+	"student_full_time",
+	"student_hourly",
+	"contractor_full_time",
+	"contractor_hourly",
 ]);
 
 const ts = (name: string) =>
@@ -85,10 +91,10 @@ export const memberTypeHistory = pgTable(
 		userId: text("user_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
-		type: memberType("type").notNull().default("billable"),
-		// Contractors have no monthly hour fund, so no Expected value — unless one
-		// is set here, in which case the pace check treats them like a billable
-		// person with that fund. Null for everyone else.
+		type: memberType("type").notNull().default("employee_billable"),
+		// Hourly people have no monthly hour fund, so no Expected value — unless
+		// one is set here, in which case the pace check treats them like a
+		// full-time person with that fund. Null for everyone else.
 		expectedSecondsOverride: integer("expected_seconds_override"),
 		effectiveFrom: text("effective_from").notNull(), // yyyy-MM-dd, inclusive
 		effectiveUntil: text("effective_until"), // yyyy-MM-dd exclusive, null = current

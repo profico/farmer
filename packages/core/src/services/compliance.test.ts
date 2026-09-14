@@ -219,13 +219,13 @@ beforeAll(async () => {
 		{
 			organizationId: ORG,
 			userId: OVERHEAD,
-			type: "overhead" as const,
+			type: "employee_overhead" as const,
 			effectiveFrom: "2020-01-01",
 		},
 		{
 			organizationId: ORG,
 			userId: CONTRACTOR,
-			type: "contractor" as const,
+			type: "contractor_hourly" as const,
 			effectiveFrom: "2020-01-01",
 		},
 	]);

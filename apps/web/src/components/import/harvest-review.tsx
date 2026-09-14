@@ -8,6 +8,7 @@ import type {
 	HarvestSnapshot,
 } from "@farmer/core/lib/harvest/index";
 import type { ProjectTypeValue } from "@farmer/core/schema";
+import { MEMBER_TYPE_LABELS, memberTypeEnum } from "@farmer/core/schema";
 import { useState } from "react";
 
 import { StatusPill } from "#/components/status-pill.tsx";
@@ -47,11 +48,10 @@ const ROLE_ITEMS = [
 	{ value: "admin", label: "Admin" },
 ] as const;
 
-const TYPE_ITEMS = [
-	{ value: "billable", label: "Billable" },
-	{ value: "overhead", label: "Overhead" },
-	{ value: "contractor", label: "Contractor" },
-] as const;
+const TYPE_ITEMS = memberTypeEnum.options.map((value) => ({
+	value,
+	label: MEMBER_TYPE_LABELS[value],
+}));
 
 const PROJECT_TYPE_ITEMS = [
 	{ value: "product_team", label: "Product team" },

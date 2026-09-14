@@ -117,20 +117,20 @@ beforeAll(async () => {
 		{
 			organizationId: ORG_A,
 			userId: FUTURE_CONTRACTOR,
-			type: "contractor" as const,
+			type: "contractor_hourly" as const,
 			effectiveFrom: "2999-01-01",
 		},
 		{
 			organizationId: ORG_A,
 			userId: PAST_CONTRACTOR,
-			type: "contractor" as const,
+			type: "contractor_hourly" as const,
 			effectiveFrom: "2020-01-01",
 		},
 		// Same person, other org: invisible to org A's history.
 		{
 			organizationId: ORG_B,
 			userId: ADMIN,
-			type: "overhead" as const,
+			type: "employee_overhead" as const,
 			effectiveFrom: "2020-01-01",
 		},
 	]);
@@ -195,7 +195,7 @@ describe("list", () => {
 			"plain member",
 		);
 		expect(plain).toMatchObject({
-			type: "billable",
+			type: "employee_billable",
 			expectedSecondsOverride: null,
 			orgRole: "member",
 			archivedAt: null,
@@ -218,9 +218,11 @@ describe("list", () => {
 		const rows = await membersService.list(ctx(ADMIN));
 		const byId = new Map(rows.map((r) => [r.userId, r]));
 		expect(present(byId.get(FUTURE_CONTRACTOR), "future").type).toBe(
-			"billable",
+			"employee_billable",
 		);
-		expect(present(byId.get(PAST_CONTRACTOR), "past").type).toBe("contractor");
+		expect(present(byId.get(PAST_CONTRACTOR), "past").type).toBe(
+			"contractor_hourly",
+		);
 	});
 
 	test("another org's type segment for the same person does not leak in", async () => {
@@ -230,7 +232,7 @@ describe("list", () => {
 				rows.find((r) => r.userId === ADMIN),
 				"admin",
 			).type,
-		).toBe("billable");
+		).toBe("employee_billable");
 	});
 });
 
@@ -256,7 +258,7 @@ describe("typeHistory", () => {
 	test("only the caller's org's segments", async () => {
 		expect(await membersService.typeHistory(ctx(ADMIN), ADMIN)).toEqual([]);
 		const past = await membersService.typeHistory(ctx(ADMIN), PAST_CONTRACTOR);
-		expect(past.map((r) => r.type)).toEqual(["contractor"]);
+		expect(past.map((r) => r.type)).toEqual(["contractor_hourly"]);
 	});
 });
 

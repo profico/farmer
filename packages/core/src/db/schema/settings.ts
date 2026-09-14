@@ -275,7 +275,13 @@ export const reminderSettings = pgTable(
 		nudgeMemberTypes: memberType("nudge_member_types")
 			.array()
 			.notNull()
-			.default(["billable", "contractor"]),
+			.default([
+				"employee_billable",
+				"student_full_time",
+				"student_hourly",
+				"contractor_full_time",
+				"contractor_hourly",
+			]),
 
 		// Month-end reminder (Slack). 0 = the last working day of the month; N =
 		// N working days before it.
@@ -288,7 +294,13 @@ export const reminderSettings = pgTable(
 		monthEndMemberTypes: memberType("month_end_member_types")
 			.array()
 			.notNull()
-			.default(["billable", "contractor"]),
+			.default([
+				"employee_billable",
+				"student_full_time",
+				"student_hourly",
+				"contractor_full_time",
+				"contractor_hourly",
+			]),
 
 		// Admin digest (Slack).
 		digestEnabled: boolean("digest_enabled").notNull().default(true),
@@ -335,11 +347,11 @@ export const reminderSettings = pgTable(
 		// are not a choice here.
 		check(
 			"reminder_settings_nudge_member_types_valid",
-			sql`cardinality(${t.nudgeMemberTypes}) >= 1 and ${t.nudgeMemberTypes} <@ ARRAY['billable','contractor']::member_type[]`,
+			sql`cardinality(${t.nudgeMemberTypes}) >= 1 and ${t.nudgeMemberTypes} <@ ARRAY['employee_billable','student_full_time','student_hourly','contractor_full_time','contractor_hourly']::member_type[]`,
 		),
 		check(
 			"reminder_settings_month_end_member_types_valid",
-			sql`cardinality(${t.monthEndMemberTypes}) >= 1 and ${t.monthEndMemberTypes} <@ ARRAY['billable','contractor']::member_type[]`,
+			sql`cardinality(${t.monthEndMemberTypes}) >= 1 and ${t.monthEndMemberTypes} <@ ARRAY['employee_billable','student_full_time','student_hourly','contractor_full_time','contractor_hourly']::member_type[]`,
 		),
 		check(
 			"reminder_settings_month_end_days_before_valid",

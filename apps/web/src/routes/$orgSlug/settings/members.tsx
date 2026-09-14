@@ -1,4 +1,10 @@
 import {
+	isHourlyMemberType,
+	MEMBER_TYPE_LABELS,
+	memberTypeEnum,
+	type MemberTypeValue,
+} from "@farmer/core/schema";
+import {
 	useMutation,
 	useQueryClient,
 	useSuspenseQuery,
@@ -45,6 +51,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { matchesSearch } from "#/lib/search.ts";
+import { queryKeys } from "#/queries/keys.ts";
 import {
 	membersQuery,
 	pendingInvitationsQuery,
@@ -69,11 +76,10 @@ const ROLE_ITEMS = [
 
 // Person type drives who the compliance report and Slack reminders apply to. Changing it is effective-dated so a past month keeps reporting the
 // type the person actually held then.
-const TYPE_ITEMS = [
-	{ value: "billable", label: "Billable" },
-	{ value: "overhead", label: "Overhead" },
-	{ value: "contractor", label: "Contractor" },
-] as const;
+const TYPE_ITEMS = memberTypeEnum.options.map((value) => ({
+	value,
+	label: MEMBER_TYPE_LABELS[value],
+}));
 
 const searchSchema = z.object({
 	archived: z.literal("1").optional(),
@@ -123,6 +129,12 @@ function MembersSettingsPage() {
 			queryClient.invalidateQueries({
 				queryKey: pendingInvitationsQuery(orgSlug).queryKey,
 			}),
+			// A person's type decides who Tracking and the reminders cover, so a
+			// change here would otherwise show on Reports only after a reload.
+			queryClient.invalidateQueries({
+				queryKey: queryKeys(orgSlug).compliance,
+			}),
+			queryClient.invalidateQueries({ queryKey: queryKeys(orgSlug).reports }),
 		]);
 
 	const roleMutation = useMutation({
@@ -138,12 +150,12 @@ function MembersSettingsPage() {
 		onError: (error) => toast.error(error.message ?? "Could not remove member"),
 	});
 
-	// Effective from today: the common real change is a contractor becoming an
-	// employee, and it takes effect now, not retroactively.
+	// Effective from today: the common real change is a student or contractor
+	// becoming an employee, and it takes effect now, not retroactively.
 	const typeMutation = useMutation({
 		mutationFn: (vars: {
 			userId: string;
-			type: "billable" | "overhead" | "contractor";
+			type: MemberTypeValue;
 			expectedSecondsOverride?: number | null;
 		}) =>
 			setMemberType({
@@ -235,7 +247,7 @@ function MembersSettingsPage() {
 		const isSelf = m.userId === session.user.id;
 		const isOnlyOwner = m.role === "owner" && owners.length <= 1;
 		const person = personByUserId.get(m.userId);
-		const type = person?.type ?? "billable";
+		const type = person?.type ?? "employee_billable";
 		const archived = person?.archivedAt != null;
 		return (
 			<TableRow key={m.id}>
@@ -261,14 +273,13 @@ function MembersSettingsPage() {
 							typeMutation.mutate({
 								userId: m.userId,
 								type: picked.value,
-								// The override only applies to contractors, and the
-								// input rejects it for anyone else — so switching a
-								// contractor to billable drops it rather than failing
+								// The override only applies to hourly people, and the
+								// input rejects it for anyone else — so switching an
+								// hourly person to full-time drops it rather than failing
 								// validation on a field the row no longer shows.
-								expectedSecondsOverride:
-									picked.value === "contractor"
-										? (person?.expectedSecondsOverride ?? null)
-										: null,
+								expectedSecondsOverride: isHourlyMemberType(picked.value)
+									? (person?.expectedSecondsOverride ?? null)
+									: null,
 							});
 						}}
 						disabled={typeMutation.isPending}
@@ -293,7 +304,7 @@ function MembersSettingsPage() {
 						onCommit={(expectedSecondsOverride) =>
 							typeMutation.mutate({
 								userId: m.userId,
-								type: "contractor",
+								type,
 								expectedSecondsOverride,
 							})
 						}
@@ -406,7 +417,7 @@ function MembersSettingsPage() {
 			<PageHeader
 				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
 				title="People"
-				lede="Who has access, and what kind of person they are. Overhead people are left out of compliance nudges; contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
+				lede="Who has access, and what kind of person they are. Overhead employees are left out of reminders; hourly students and contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
 				action={
 					<div className="flex items-center gap-2">
 						<SearchInput
@@ -566,21 +577,21 @@ function InvitationEmailBadge({
 }
 
 /**
- * A contractor's explicit monthly Expected figure (PRD 3.1), in hours.
+ * An hourly person's explicit monthly Expected figure (PRD 3.1), in hours.
  *
- * Only contractors have one. Everybody else derives Expected from the org's
+ * Only hourly students and contractors have one. Everybody else derives Expected from the org's
  * monthly hour fund, so the cell reads as a dash rather than an empty input —
  * an empty box invites you to type a number that would be rejected.
  *
  * Blank means "no Expected at all": the "/" rows of the old PM sheet, where a
- * contractor shows Reported/Adjusted/Final and no pace percentage.
+ * person shows hours and no pace percentage.
  */
 function ExpectedHoursCell({
 	type,
 	expectedSecondsOverride,
 	onCommit,
 }: {
-	type: string;
+	type: MemberTypeValue;
 	expectedSecondsOverride: number | null;
 	onCommit: (expectedSecondsOverride: number | null) => void;
 }) {
@@ -593,7 +604,7 @@ function ExpectedHoursCell({
 		setValue(asHours);
 	}, [asHours]);
 
-	if (type !== "contractor") {
+	if (!isHourlyMemberType(type)) {
 		return <span className="text-sm text-faint">—</span>;
 	}
 

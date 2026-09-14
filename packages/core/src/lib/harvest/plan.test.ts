@@ -857,7 +857,7 @@ describe("people", () => {
 				emailListed: true,
 				emailConfirmed: true,
 				role: "member",
-				type: "contractor",
+				type: "contractor_hourly",
 				startDate: "2026-09-14",
 				archivedOn: null,
 				weeklyTargetSeconds: 25 * 3600,
@@ -870,7 +870,7 @@ describe("people", () => {
 				emailListed: true,
 				emailConfirmed: true,
 				role: "admin",
-				type: "billable",
+				type: "employee_billable",
 				startDate: "2015-01-02",
 				archivedOn: null,
 				weeklyTargetSeconds: 40 * 3600,
@@ -894,7 +894,7 @@ describe("people", () => {
 				emailListed: false,
 				emailConfirmed: false,
 				role: "member",
-				type: "contractor",
+				type: "contractor_hourly",
 				startDate: "2018-01-02",
 				archivedOn: "2020-01-01",
 				weeklyTargetSeconds: 144000,
@@ -978,7 +978,7 @@ describe("people", () => {
 					"ivan horvat": {
 						email: "Ivan.H@Profico.hr",
 						role: "admin",
-						type: "overhead",
+						type: "employee_overhead",
 					},
 				},
 			}),
@@ -992,7 +992,7 @@ describe("people", () => {
 			// The admin typed it, so it is theirs to vouch for, not a guess.
 			emailConfirmed: true,
 			role: "admin",
-			type: "overhead",
+			type: "employee_overhead",
 		});
 		expect(
 			plan.review.people.find((p) => p.sourceKey === "ivan horvat")

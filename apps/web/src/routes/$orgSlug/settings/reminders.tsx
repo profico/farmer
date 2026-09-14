@@ -95,12 +95,21 @@ const WEEKDAYS = [
 	{ day: 0, label: "Sun" },
 ];
 
-// Overhead is not here on purpose: nobody is nagged about a timesheet that
-// nobody reads, so it is not a choice the page offers.
-const MEMBER_TYPES = ["billable", "contractor"] as const;
+// Overhead employees are not here on purpose: nobody is nagged about a
+// timesheet that nobody reads, so it is not a choice the page offers.
+const MEMBER_TYPES = [
+	"employee_billable",
+	"student_full_time",
+	"student_hourly",
+	"contractor_full_time",
+	"contractor_hourly",
+] as const;
 const MEMBER_TYPE_ITEMS = [
-	{ id: "billable", label: "Billable" },
-	{ id: "contractor", label: "Contractors" },
+	{ id: "employee_billable", label: "Employees" },
+	{ id: "student_full_time", label: "Students · full-time" },
+	{ id: "student_hourly", label: "Students · hourly" },
+	{ id: "contractor_full_time", label: "Contractors · full-time" },
+	{ id: "contractor_hourly", label: "Contractors · hourly" },
 ];
 
 const TIME_HINT = `${REMINDER_EARLIEST_TIME}–${REMINDER_LATEST_TIME}, on the quarter hour. Workspace time.`;
@@ -635,7 +644,7 @@ function MemberTypesField({
 	onChange: (types: ReminderSettings["nudgeMemberTypes"]) => void;
 }) {
 	return (
-		<FieldRow label="Who" hint="Overhead people never get it.">
+		<FieldRow label="Who" hint="Overhead employees never get it.">
 			<PillToggleGroup
 				items={MEMBER_TYPE_ITEMS}
 				selectedIds={value}

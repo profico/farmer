@@ -26,8 +26,34 @@ export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleInput>;
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
-export const memberTypeEnum = z.enum(["billable", "overhead", "contractor"]);
+// Three kinds of person, each with one attribute (PRD 3.1, revised Sept 2026):
+// an employee is billable or overhead; a student or a contractor is full-time
+// or hourly. Billable and full-time people carry the monthly hour fund as their
+// Expected; overhead people never do and are never reminded; hourly people have
+// no fund and only an explicit monthly figure, if one is set.
+export const memberTypeEnum = z.enum([
+	"employee_billable",
+	"employee_overhead",
+	"student_full_time",
+	"student_hourly",
+	"contractor_full_time",
+	"contractor_hourly",
+]);
 export type MemberTypeValue = z.infer<typeof memberTypeEnum>;
+
+/** Hourly people have no monthly fund; an explicit override is their only
+ *  Expected figure. */
+export const isHourlyMemberType = (type: MemberTypeValue): boolean =>
+	type === "student_hourly" || type === "contractor_hourly";
+
+export const MEMBER_TYPE_LABELS = {
+	employee_billable: "Employee · Billable",
+	employee_overhead: "Employee · Overhead",
+	student_full_time: "Student · Full-time",
+	student_hourly: "Student · Hourly",
+	contractor_full_time: "Contractor · Full-time",
+	contractor_hourly: "Contractor · Hourly",
+} satisfies Record<MemberTypeValue, string>;
 
 // Type changes are effective-dated so past months keep reporting the type the
 // person actually held then (PRD 3.1).
@@ -35,7 +61,7 @@ export const setMemberTypeInput = z
 	.object({
 		userId: z.string().min(1),
 		type: memberTypeEnum,
-		// Only meaningful for contractors: an explicit monthly expected value, in
+		// Only meaningful for hourly people: an explicit monthly expected value, in
 		// seconds. Everyone else derives Expected from the org's monthly hour fund.
 		expectedSecondsOverride: z
 			.number()
@@ -48,9 +74,10 @@ export const setMemberTypeInput = z
 	})
 	.refine(
 		(data) =>
-			data.type === "contractor" || data.expectedSecondsOverride == null,
+			isHourlyMemberType(data.type) || data.expectedSecondsOverride == null,
 		{
-			message: "An expected-hours override only applies to contractors",
+			message:
+				"An expected-hours override only applies to hourly students and contractors",
 			path: ["expectedSecondsOverride"],
 		},
 	);

@@ -4,6 +4,8 @@ import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { reminderSettings } from "../db/schema/settings";
 import { dayBoundsInTz } from "../lib/time";
+import type { MemberTypeValue } from "../schema/members";
+import type { NaggableMemberType } from "../schema/reminder-settings";
 import {
 	REMINDER_SETTINGS_DEFAULTS,
 	type ReminderKind,
@@ -56,14 +58,13 @@ const HELD_BACK_REASON = {
 	"opted-out": "Turned log reminders off",
 } satisfies Record<DeliveryBlock, string>;
 
-// The database says `member_type[]`, which includes overhead; the check on the
-// column does not, and neither does the schema. Filtering rather than asserting
-// keeps a hand-edited row from reaching the jobs as a type it cannot hold.
-const naggableTypes = (
-	types: ("billable" | "overhead" | "contractor")[],
-): ("billable" | "contractor")[] =>
+// The database says `member_type[]`, which includes the overhead employee; the
+// check on the column does not, and neither does the schema. Filtering rather
+// than asserting keeps a hand-edited row from reaching the jobs as a type it
+// cannot hold.
+const naggableTypes = (types: MemberTypeValue[]): NaggableMemberType[] =>
 	types.filter(
-		(type): type is "billable" | "contractor" => type !== "overhead",
+		(type): type is NaggableMemberType => type !== "employee_overhead",
 	);
 
 /** The settings, for any caller in the org. A missing row is the defaults.
