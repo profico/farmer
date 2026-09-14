@@ -31,9 +31,11 @@ type Candidate = {
  * Who a Team Lead leads — edited by an Admin, from the Members page.
  *
  * The list IS the role: someone with people on it sees everything about them
- * (their time on every project, Tracking, time off) and holds any project they
- * are assigned to as a PM. So this is the one place that decides who is a Team
- * Lead, and it is deliberately not on the lead's own screen.
+ * (their time on every project, Tracking, time off) and, on any project where
+ * their OWN assignment is Team Lead, holds it as a PM. A plain Member
+ * assignment stays a Member — the list does not widen that. So this is the
+ * one place that decides who is a Team Lead, and it is deliberately not on
+ * the lead's own screen.
  */
 export function TeamLeadPeopleDialog({
 	lead,
@@ -113,8 +115,9 @@ export function TeamLeadPeopleDialog({
 					<DialogDescription>
 						{lead.name} sees everything about the people ticked here — their
 						time on every project, their Tracking status, their time off — and
-						runs any project they are assigned to as a PM. A person can be on
-						several leads' lists.
+						runs any project where they hold a Team Lead assignment as a PM. A
+						plain Member assignment stays a Member. A person can be on several
+						leads' lists.
 					</DialogDescription>
 				</DialogHeader>
 				<SearchInput

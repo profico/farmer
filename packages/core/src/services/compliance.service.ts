@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import {
+	addDaysToKey,
 	datesBetween,
 	dayKeyInTz,
 	monthBounds,
@@ -32,6 +33,16 @@ import type { Ctx } from "./types";
 // a day accounted for, not a day short. On track when total ≥ target; slightly
 // behind when within the org's tolerance (default 5%); behind otherwise. Once
 // the month is over the target is the whole fund.
+//
+// "Working days elapsed" counts only days strictly BEFORE today — today's own
+// working day is still in progress, so it is not "elapsed" yet. The nudge runs
+// at 09:00; counting today made a person who had logged a full day on every
+// earlier working day show up short by a day's worth of hours until evening,
+// and made the 1st of every month open with "No time logged yet" for
+// everyone. The totals (work + time off) still cover up to and including
+// today, so logging early in the day can only help, never hurt, a verdict. A
+// finished month's elapsed figure is still every working day it had — the
+// month is over, so nothing in it is still "in progress".
 //
 // Who has a target: employees, full-time students and full-time contractors —
 // the fund applies to them. Hourly people are listed with their hours and no
@@ -68,6 +79,9 @@ export type TrackingReport = {
 	complete: boolean;
 	fundSeconds: number | null;
 	workingDaysInMonth: number;
+	/** Working days strictly BEFORE `asOf`'s day, or every working day in the
+	 *  month once it is over — today's own working day is still in progress
+	 *  and is never counted as elapsed. */
 	workingDaysElapsed: number;
 	/** The org-wide target so far (the fund prorated), or null with no fund. */
 	targetSeconds: number | null;
@@ -183,8 +197,12 @@ const computeTracking = async (
 	const asOf = complete ? to : today;
 	const holidays = await holidaysService.holidaySetForRange(ctx, from, to);
 	const workingDaysInMonth = workingDaysIn(from, to, holidays);
+	// A finished month has nothing left "in progress", so every one of its
+	// working days counts as elapsed; a month still running only counts the
+	// days strictly before today — today itself is not over yet.
+	const elapsedThrough = complete ? to : addDaysToKey(today, -1);
 	const workingDaysElapsed =
-		today < from ? 0 : workingDaysIn(from, asOf, holidays);
+		today < from ? 0 : workingDaysIn(from, elapsedThrough, holidays);
 	const share =
 		workingDaysInMonth === 0 ? 0 : workingDaysElapsed / workingDaysInMonth;
 	// To the nearest quarter hour, the unit every other figure in the app is

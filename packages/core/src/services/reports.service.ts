@@ -428,9 +428,11 @@ export const reportsService = {
 	},
 
 	/**
-	 * Absence report (6.3), Admin only. Computed from ENTRIES only, never from
-	 * close-sheet overrides — the two are allowed to diverge, and when they do it
-	 * means someone forgot to log absence (PRD decision 3).
+	 * Absence report (6.3), scoped by `accessService.peopleScope` like every
+	 * people-shaped report — everyone for Admin, otherwise the caller, their
+	 * list, and everyone on the projects they manage. Computed from ENTRIES
+	 * only, never from close-sheet overrides — the two are allowed to diverge,
+	 * and when they do it means someone forgot to log absence (PRD decision 3).
 	 */
 	absence: async (ctx: Ctx, input: AbsenceReportInput) => {
 		// People-shaped, so scoped by people: everyone for Admin, otherwise the
