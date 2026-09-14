@@ -1,4 +1,4 @@
-import { matchesSearch } from "#/lib/search.ts";
+import { matchesSearch } from "@farmer/core/lib/search";
 
 // The project icon picker's catalogue: every emoji Unicode has, from
 // `emojibase-data`, grouped the way the Mac's picker groups it, each with the

@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactElement, useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +16,6 @@ import {
 } from "#/components/ui/dialog.tsx";
 import { SearchInput } from "#/components/ui/search-input.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { teamLeadPeopleQuery } from "#/queries/team-leads.ts";
 import { setTeamLeadPeople } from "#/server/team-leads.ts";

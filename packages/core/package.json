@@ -11,6 +11,7 @@
 		"./jobs": "./src/jobs/index.ts",
 		"./schema": "./src/schema/index.ts",
 		"./lib/*": "./src/lib/*.ts",
+		"./api": "./src/api/index.ts",
 		"./db/seed-tasks": "./src/db/seed-tasks.ts"
 	},
 	"scripts": {

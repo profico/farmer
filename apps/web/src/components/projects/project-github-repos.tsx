@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import {
 	ArrowClockwiseIcon,
 	LockIcon,
@@ -12,7 +13,6 @@ import { toast } from "sonner";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { SearchInput } from "#/components/ui/search-input.tsx";
-import { matchesSearch } from "#/lib/search.ts";
 import {
 	availableGithubReposQuery,
 	githubConnectionStatusQuery,

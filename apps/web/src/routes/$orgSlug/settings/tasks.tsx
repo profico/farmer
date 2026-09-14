@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import {
 	TASK_GROUP_LABELS,
 	TASK_GROUPS,
@@ -62,7 +63,6 @@ import {
 	resolveCategoryColor,
 } from "#/lib/category-colors.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { managedTasksQuery } from "#/queries/tasks.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";

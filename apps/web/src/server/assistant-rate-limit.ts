@@ -7,7 +7,7 @@
  * or a tab stuck in a retry loop, spends that key as fast as the model can
  * answer — and unlike MCP, nothing here had a ceiling at all.
  *
- * Same shape as `mcp-rate-limit.ts`, and in memory for the same reason: this
+ * Same shape as `api-rate-limit.ts`, and in memory for the same reason: this
  * deployment is one process (see CLAUDE.md's Production table), so there is no
  * second counter to disagree with. A fixed window rather than a sliding one,
  * which admits a burst across a boundary; the job is to stop a runaway, not to

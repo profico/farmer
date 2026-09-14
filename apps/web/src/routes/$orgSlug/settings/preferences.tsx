@@ -1,5 +1,14 @@
-import { GoogleLogoIcon, KeyIcon } from "@phosphor-icons/react";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+	BrowserIcon,
+	GoogleLogoIcon,
+	KeyIcon,
+	TerminalWindowIcon,
+} from "@phosphor-icons/react";
+import {
+	useMutation,
+	useQueryClient,
+	useSuspenseQuery,
+} from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -31,7 +40,9 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
+import { mySessionsQuery } from "#/queries/sessions.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
+import { type listMySessions, revokeMySession } from "#/server/sessions.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 	loader: async ({ context, params }) => {
@@ -43,6 +54,7 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 				? context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug))
 				: null,
 			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(mySessionsQuery(orgSlug)),
 		]);
 		return { devAuth: context.devAuth };
 	},
@@ -182,6 +194,139 @@ function SignInMethodsSection() {
 	);
 }
 
+type MySession = Awaited<ReturnType<typeof listMySessions>>[number];
+
+/**
+ * A timestamp in the reader's own timezone and locale conventions.
+ *
+ * The server renders this page first, in the server's timezone, and the browser
+ * then renders it in the reader's — so the two texts can differ, and the
+ * browser's is the right one. `suppressHydrationWarning` says that mismatch is
+ * expected, for this one element only.
+ */
+function When({ date }: { date: Date }) {
+	const value = new Date(date);
+	return (
+		<time dateTime={value.toISOString()} suppressHydrationWarning>
+			{value.toLocaleString("en-US", {
+				dateStyle: "medium",
+				timeStyle: "short",
+			})}
+		</time>
+	);
+}
+
+function SessionRow({ session }: { session: MySession }) {
+	const orgSlug = useOrgSlug();
+	const queryClient = useQueryClient();
+	const [open, setOpen] = useState(false);
+
+	const revoke = useMutation({
+		mutationFn: () => revokeMySession({ data: session.id }),
+		onSuccess: async ({ revoked }) => {
+			await queryClient.invalidateQueries({
+				queryKey: mySessionsQuery(orgSlug).queryKey,
+			});
+			// `false` is a session that ended between loading this list and the
+			// click — expired, or signed out from the device itself. The list is
+			// refreshed either way, so the row goes.
+			toast.success(
+				revoked
+					? `Signed out ${session.label}`
+					: "That device was already signed out",
+			);
+		},
+		onError: (error) =>
+			toast.error(error.message ?? "Could not sign out that device"),
+	});
+
+	const Icon = session.kind === "cli" ? TerminalWindowIcon : BrowserIcon;
+
+	return (
+		<SettingRow
+			icon={<Icon className="size-5 text-muted-foreground" />}
+			title={session.label}
+			badge={
+				session.isCurrent ? (
+					<Badge variant="secondary">This device</Badge>
+				) : undefined
+			}
+			description={
+				<>
+					Signed in <When date={session.createdAt} />
+					{session.ipAddress ? ` from ${session.ipAddress}` : ""}. Expires{" "}
+					<When date={session.expiresAt} />.
+				</>
+			}
+			action={
+				// The current session has no Revoke: ending it is signing out, which
+				// has its own control. The service refuses it as well.
+				session.isCurrent ? undefined : (
+					<AlertDialog open={open} onOpenChange={setOpen}>
+						<AlertDialogTrigger
+							render={
+								<Button variant="outline" disabled={revoke.isPending}>
+									{revoke.isPending ? "Signing out…" : "Revoke"}
+								</Button>
+							}
+						/>
+						<AlertDialogContent>
+							<AlertDialogHeader>
+								<AlertDialogTitle>Sign out {session.label}?</AlertDialogTitle>
+								<AlertDialogDescription>
+									{session.kind === "cli"
+										? "The terminal is signed out at its next command, and it asks you to run farmer login again."
+										: "That browser is signed out the next time it loads a page."}
+								</AlertDialogDescription>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel>Cancel</AlertDialogCancel>
+								<AlertDialogAction
+									variant="destructive"
+									onClick={() => {
+										setOpen(false);
+										revoke.mutate();
+									}}
+								>
+									Revoke
+								</AlertDialogAction>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
+				)
+			}
+		/>
+	);
+}
+
+/**
+ * Every browser and terminal signed in to this account, with a way to end each.
+ *
+ * It exists for the CLI: `farmer login` stores a session token on a machine,
+ * and it stays valid for as long as the session does. A person who loses that
+ * laptop needs a way to end it that does not involve the laptop, and this is
+ * it. Sessions belong to the account, not the workspace, so the list is the
+ * same whichever workspace this page is opened from — which the description
+ * says, the same way Sign-in methods does.
+ */
+function SignedInDevicesSection() {
+	const orgSlug = useOrgSlug();
+	const { data: sessions } = useSuspenseQuery(mySessionsQuery(orgSlug));
+
+	return (
+		<PageSection
+			title="Signed-in devices"
+			description="Every browser and terminal signed in to your account, in every workspace. Revoke any you don't recognise, or one on a device you no longer have."
+		>
+			<SettingList>
+				{sessions.map((session) => (
+					<SessionRow key={session.id} session={session} />
+				))}
+			</SettingList>
+		</PageSection>
+	);
+}
+
 function PreferencesSettingsPage() {
 	const { devAuth } = Route.useLoaderData();
 
@@ -195,6 +340,7 @@ function PreferencesSettingsPage() {
 
 			{devAuth ? <SignInMethodsSection /> : null}
 
+			<SignedInDevicesSection />
 			<NotificationSettings />
 			<FilingRulesSettings />
 		</Page>

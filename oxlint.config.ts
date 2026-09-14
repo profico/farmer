@@ -61,4 +61,41 @@ export default defineConfig({
 		"stella/no-vacuous-throw-assertion": "error",
 		"stella/require-suppression-description": "error",
 	},
+	overrides: [
+		{
+			// The CLI compiles into a binary that people download, so a runtime
+			// import of the server graph would ship the database driver, the auth
+			// config and every service inside it. It may use the modules that are
+			// safe without a database: the request schemas, the time helpers, the
+			// shared search, and the API response types. `import type` from
+			// anywhere is erased at build time, so it stays allowed.
+			files: ["apps/cli/**"],
+			rules: {
+				"no-restricted-imports": [
+					"error",
+					{
+						patterns: [
+							{
+								group: [
+									"@farmer/core/**",
+									"!@farmer/core/api",
+									"!@farmer/core/schema",
+									"!@farmer/core/lib/time",
+									"!@farmer/core/lib/search",
+								],
+								allowTypeImports: true,
+								message:
+									"The CLI binary must not contain the server. At runtime it may import only @farmer/core/api, /schema, /lib/time and /lib/search; use `import type` for anything else.",
+							},
+							{
+								group: ["**/packages/core/**"],
+								allowTypeImports: true,
+								message: "Import @farmer/core through its package exports.",
+							},
+						],
+					},
+				],
+			},
+		},
+	],
 });

@@ -1,12 +1,20 @@
 /**
- * A per-user ceiling on the MCP endpoint, held in memory.
+ * Per-user and per-address ceilings on the token-authenticated surfaces, held
+ * in memory. One set of buckets per surface: the MCP server and the CLI's REST
+ * API.
  *
- * The thing on the other end of this connection is a loop, not a person. A UI
- * makes a request when somebody clicks; an agent makes one whenever it decides
- * to, and a badly-shaped prompt turns that into a poll. Two ceilings rather
- * than one, because the two failure modes cost different things: a thousand
- * reads a minute is load, and a thousand WRITES a minute is a timesheet nobody
- * can reconstruct — and reads are the ones a legitimate session makes many of.
+ * The thing on the other end of either connection may be a loop, not a person.
+ * A UI makes a request when somebody clicks; an agent makes one whenever it
+ * decides to, and a shell script around the CLI makes one every time `watch`
+ * ticks. Two ceilings rather than one, because the two failure modes cost
+ * different things: a thousand reads a minute is load, and a thousand WRITES a
+ * minute is a timesheet nobody can reconstruct — and reads are the ones a
+ * legitimate session makes many of.
+ *
+ * Separate buckets per surface, with the same numbers today. A person who has
+ * Claude Code and a terminal open at once is two clients, and one of them
+ * spending its budget must not refuse the other. The numbers can then drift
+ * apart per surface without a second module.
  *
  * In memory, and so per process, which is the right shape here rather than a
  * concession: `startSchedulers` already assumes a single instance (see
@@ -19,26 +27,41 @@
  * to stop a runaway loop rather than to shape traffic.
  */
 
+/** The surfaces that keep their own buckets. */
+export type RateLimitSurface = "mcp" | "cli";
+
+export type Admission = { ok: true } | { ok: false; retryAfterSeconds: number };
+
 const WINDOW_MS = 60_000;
 
 /** Requests per user per minute. Generous: one `tools/list` plus a step's worth
- *  of calls is a handful, so this bites a loop and not a session. */
+ *  of calls is a handful, and so is `farmer week`, so this bites a loop and not
+ *  a session. */
 const MAX_REQUESTS = 300;
 
-/** Tool calls that are not `read`, per user per minute. */
+/** Writes per user per minute: an MCP tool call that is not `read`, or a CLI
+ *  request with a method other than GET. */
 const MAX_WRITES = 30;
 
-/** Past this many tracked users, drop the expired buckets on the way in. The
- *  map is keyed by user id and a bucket is never removed when its window ends,
- *  so without this a long-lived process keeps a row per person who ever
+/** Past this many tracked keys, drop the expired buckets on the way in. A map
+ *  is keyed by user id or address and a bucket is never removed when its window
+ *  ends, so without this a long-lived process keeps a row per caller who ever
  *  connected. */
 const SWEEP_AT = 1_000;
 
 type Bucket = { windowStartedAt: number; requests: number; writes: number };
 
-const buckets = new Map<string, Bucket>();
+const userBuckets = {
+	mcp: new Map<string, Bucket>(),
+	cli: new Map<string, Bucket>(),
+} satisfies Record<RateLimitSurface, Map<string, Bucket>>;
 
-const bucketFor = (userId: string, now: number): Bucket => {
+const bucketFor = (
+	surface: RateLimitSurface,
+	userId: string,
+	now: number,
+): Bucket => {
+	const buckets = userBuckets[surface];
 	if (buckets.size >= SWEEP_AT) {
 		for (const [key, bucket] of buckets) {
 			if (now - bucket.windowStartedAt >= WINDOW_MS) buckets.delete(key);
@@ -51,7 +74,7 @@ const bucketFor = (userId: string, now: number): Bucket => {
 	return fresh;
 };
 
-/** Seconds until this user's window rolls over — the `Retry-After` value. */
+/** Seconds until this window rolls over — the `Retry-After` value. */
 const retryAfter = (bucket: { windowStartedAt: number }, now: number) =>
 	Math.max(1, Math.ceil((bucket.windowStartedAt + WINDOW_MS - now) / 1000));
 
@@ -62,11 +85,12 @@ const retryAfter = (bucket: { windowStartedAt: number }, now: number) =>
  * with a `Retry-After` a client can actually wait on instead of one it has to
  * guess.
  */
-export const admitMcpRequest = (
+export const admitRequest = (
+	surface: RateLimitSurface,
 	userId: string,
-): { ok: true } | { ok: false; retryAfterSeconds: number } => {
+): Admission => {
 	const now = Date.now();
-	const bucket = bucketFor(userId, now);
+	const bucket = bucketFor(surface, userId, now);
 	bucket.requests += 1;
 	return bucket.requests > MAX_REQUESTS
 		? { ok: false, retryAfterSeconds: retryAfter(bucket, now) }
@@ -74,16 +98,17 @@ export const admitMcpRequest = (
 };
 
 /**
- * Count one write-tier tool call against the user, and say whether it may run.
+ * Count one write against the user, and say whether it may run.
  *
- * Separate from `admitMcpRequest` because a single HTTP request may carry
- * several calls, and because the two ceilings are about different harms.
+ * Separate from `admitRequest` because a single MCP request may carry several
+ * tool calls, and because the two ceilings are about different harms.
  */
-export const admitMcpWrite = (
+export const admitWrite = (
+	surface: RateLimitSurface,
 	userId: string,
-): { ok: true } | { ok: false; retryAfterSeconds: number } => {
+): Admission => {
 	const now = Date.now();
-	const bucket = bucketFor(userId, now);
+	const bucket = bucketFor(surface, userId, now);
 	bucket.writes += 1;
 	return bucket.writes > MAX_WRITES
 		? { ok: false, retryAfterSeconds: retryAfter(bucket, now) }
@@ -93,17 +118,18 @@ export const admitMcpWrite = (
 // ── Per caller address, BEFORE the credential is resolved ────────────────────
 //
 // The per-user ceilings above need a user id, and a user id costs a session
-// lookup and a token lookup — database reads. So they only ever limited people
+// lookup or a token lookup — database reads. So they only ever limited people
 // who had already authenticated: a caller with no credential, or a garbage
-// one, cost two queries per request with nothing counting them. These two run
+// one, cost queries on every request with nothing counting them. These two run
 // first, keyed on the address the request came from, and need no I/O at all.
 //
 // Two counters, because the two things they catch look different:
 //  * a flood — any request at all, with a ceiling well above one user's 300 so
 //    an office of agents behind one NAT address is not what it bites;
 //  * guessing — requests whose credential resolved to nobody. A real client
-//    fails exactly once (the 401 that starts its OAuth flow), so a small
-//    budget here costs a legitimate caller nothing.
+//    fails exactly once (the 401 that starts its OAuth flow, or that tells the
+//    CLI to run `farmer login`), so a small budget here costs a legitimate
+//    caller nothing.
 //
 // The address comes from the proxy's headers, as nothing else reaches a server
 // route. A deployment whose proxy does not overwrite them lets a caller choose
@@ -116,9 +142,9 @@ const MAX_REQUESTS_PER_ADDRESS = 1_200;
 /** Requests per caller address per minute whose credential resolved to no one. */
 const MAX_AUTH_FAILURES_PER_ADDRESS = 30;
 
-/** The most addresses tracked at once. Past it the oldest bucket is dropped,
- *  which at worst forgives one address early — the alternative is a map an
- *  attacker grows by varying a header. */
+/** The most addresses tracked at once, per surface. Past it the oldest bucket
+ *  is dropped, which at worst forgives one address early — the alternative is
+ *  a map an attacker grows by varying a header. */
 const MAX_TRACKED_ADDRESSES = 10_000;
 
 type AddressBucket = {
@@ -127,26 +153,34 @@ type AddressBucket = {
 	authFailures: number;
 };
 
-const addressBuckets = new Map<string, AddressBucket>();
+const addressBuckets = {
+	mcp: new Map<string, AddressBucket>(),
+	cli: new Map<string, AddressBucket>(),
+} satisfies Record<RateLimitSurface, Map<string, AddressBucket>>;
 
-const addressBucketFor = (address: string, now: number): AddressBucket => {
-	const existing = addressBuckets.get(address);
+const addressBucketFor = (
+	surface: RateLimitSurface,
+	address: string,
+	now: number,
+): AddressBucket => {
+	const buckets = addressBuckets[surface];
+	const existing = buckets.get(address);
 	if (existing && now - existing.windowStartedAt < WINDOW_MS) return existing;
-	if (addressBuckets.size >= SWEEP_AT) {
-		for (const [key, bucket] of addressBuckets) {
-			if (now - bucket.windowStartedAt >= WINDOW_MS) addressBuckets.delete(key);
+	if (buckets.size >= SWEEP_AT) {
+		for (const [key, bucket] of buckets) {
+			if (now - bucket.windowStartedAt >= WINDOW_MS) buckets.delete(key);
 		}
 	}
 	// Map iteration is insertion order, so the first key is the oldest window.
-	while (addressBuckets.size >= MAX_TRACKED_ADDRESSES) {
-		const oldest = addressBuckets.keys().next();
+	while (buckets.size >= MAX_TRACKED_ADDRESSES) {
+		const oldest = buckets.keys().next();
 		if (oldest.done) break;
-		addressBuckets.delete(oldest.value);
+		buckets.delete(oldest.value);
 	}
 	const fresh = { windowStartedAt: now, requests: 0, authFailures: 0 };
 	// Delete first so a renewed window moves to the back of the eviction order.
-	addressBuckets.delete(address);
-	addressBuckets.set(address, fresh);
+	buckets.delete(address);
+	buckets.set(address, fresh);
 	return fresh;
 };
 
@@ -154,7 +188,7 @@ const addressBucketFor = (address: string, now: number): AddressBucket => {
  *  `cf-connecting-ip` first because Cloudflare fronts this deployment and
  *  sets it itself; the first `x-forwarded-for` hop is the client's. Requests
  *  that carry none share one bucket, which is the conservative answer. */
-export const mcpCallerAddress = (request: Request): string => {
+export const callerAddress = (request: Request): string => {
 	const headers = request.headers;
 	const direct =
 		headers.get("cf-connecting-ip") ?? headers.get("x-real-ip") ?? null;
@@ -167,11 +201,12 @@ export const mcpCallerAddress = (request: Request): string => {
  * Count one request against its address, before anything is resolved, and say
  * whether it may proceed. Refuses once the address has spent either budget.
  */
-export const admitMcpCaller = (
+export const admitCaller = (
+	surface: RateLimitSurface,
 	address: string,
-): { ok: true } | { ok: false; retryAfterSeconds: number } => {
+): Admission => {
 	const now = Date.now();
-	const bucket = addressBucketFor(address, now);
+	const bucket = addressBucketFor(surface, address, now);
 	bucket.requests += 1;
 	const over =
 		bucket.requests > MAX_REQUESTS_PER_ADDRESS ||
@@ -182,12 +217,18 @@ export const admitMcpCaller = (
 };
 
 /** Record that a request from this address presented no usable credential. */
-export const recordMcpAuthFailure = (address: string): void => {
-	addressBucketFor(address, Date.now()).authFailures += 1;
+export const recordAuthFailure = (
+	surface: RateLimitSurface,
+	address: string,
+): void => {
+	addressBucketFor(surface, address, Date.now()).authFailures += 1;
 };
 
-/** Drop every counter. Tests only — nothing in the app resets a window. */
-export const resetMcpRateLimits = () => {
-	buckets.clear();
-	addressBuckets.clear();
+/** Drop every counter on every surface. Tests only — nothing in the app resets
+ *  a window. */
+export const resetRateLimits = () => {
+	for (const surface of ["mcp", "cli"] as const) {
+		userBuckets[surface].clear();
+		addressBuckets[surface].clear();
+	}
 };

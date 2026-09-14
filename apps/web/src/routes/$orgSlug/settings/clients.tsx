@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import { createClientInput, updateClientInput } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -43,7 +44,6 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { allClientsQuery } from "#/queries/clients.ts";
 import { queryKeys } from "#/queries/keys.ts";
