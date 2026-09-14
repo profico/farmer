@@ -442,17 +442,17 @@ describe("authorization", () => {
 
 describe("my targets", () => {
 	const ctxOf = (userId: string): Ctx => ({ organizationId: ORG, userId });
-	// Wednesday 15 April 2026: the third working day of its week, the 11th of
-	// the month's 22.
+	// Thursday 16 April 2026 (`AT`): three working days of its week and 11 of
+	// the month's 22 are strictly before today.
 
 	test("the week and the month, each with where you should be by today", async () => {
 		await setFund(176 * H);
 		await logEntry(DILIGENT, "2026-04-13", devTaskId, 8 * H);
 		await logEntry(DILIGENT, "2026-04-14", devTaskId, 8 * H);
-		await logEntry(DILIGENT, "2026-04-15", devTaskId, 3 * H);
+		await logEntry(DILIGENT, "2026-04-15", devTaskId, 8 * H);
 		// Time off booked for Friday shows in the week's total and its "to go"
 		// line — it is hours the week has — but Friday is still ahead of today
-		// (Wednesday), so it does not count towards where they should be by
+		// (Thursday), so it does not count towards where they should be by
 		// today, nor towards the verdict.
 		await logEntry(DILIGENT, "2026-04-17", vacationTaskId, 8 * H, false);
 
@@ -463,17 +463,17 @@ describe("my targets", () => {
 			from: "2026-04-13",
 			to: "2026-04-19",
 			workingDays: 5,
-			// Working days strictly before Wednesday: Monday and Tuesday, 2 of
+			// Working days strictly before Thursday: Monday to Wednesday, 3 of
 			// the week's 5 — matching the Tracking report's own elapsed count.
-			workingDaysElapsed: 2,
+			workingDaysElapsed: 3,
 			targetSeconds: 40 * H,
-			targetSoFarSeconds: 16 * H,
-			workSeconds: 19 * H,
+			targetSoFarSeconds: 24 * H,
+			workSeconds: 24 * H,
 			timeOffSeconds: 8 * H,
-			totalSeconds: 27 * H,
-			// Through today: Monday, Tuesday and Wednesday's work, not Friday's
+			totalSeconds: 32 * H,
+			// Through today: Monday to Wednesday's work, not Friday's
 			// booked-ahead vacation.
-			totalSoFarSeconds: 19 * H,
+			totalSoFarSeconds: 24 * H,
 			status: "on_track",
 		});
 		expect(mine.month).toMatchObject({
@@ -483,10 +483,10 @@ describe("my targets", () => {
 			workingDaysElapsed: 11,
 			targetSeconds: 176 * H,
 			targetSoFarSeconds: 88 * H,
-			totalSeconds: 27 * H,
+			totalSeconds: 32 * H,
 			// The Tracking row's own total: work through today, Friday's
 			// booked-ahead vacation excluded.
-			totalSoFarSeconds: 19 * H,
+			totalSoFarSeconds: 24 * H,
 			status: "behind",
 		});
 	});
@@ -522,8 +522,8 @@ describe("my targets", () => {
 		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
 		expect(mine.daySeconds).toBe(8 * H);
 		expect(mine.week.targetSeconds).toBe(40 * H);
-		// Monday and Tuesday, the working days strictly before Wednesday.
-		expect(mine.week.targetSoFarSeconds).toBe(16 * H);
+		// Monday to Wednesday, the working days strictly before Thursday.
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
 		expect(mine.month.targetSeconds).toBeNull();
 		expect(mine.month.targetSoFarSeconds).toBeNull();
 		expect(mine.month.status).toBeNull();
