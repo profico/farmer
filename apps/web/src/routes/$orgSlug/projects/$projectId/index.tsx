@@ -2,6 +2,7 @@ import { formatReportHours } from "@farmer/core/lib/report-format";
 import { resolveReportPeriod } from "@farmer/core/lib/report-period";
 import { dayKeyInTz } from "@farmer/core/lib/time";
 import type { TimeReportDetailInput } from "@farmer/core/schema";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Suspense } from "react";
@@ -112,9 +113,10 @@ function ProjectPage() {
 					<Link
 						to="/$orgSlug/projects"
 						params={{ orgSlug }}
-						className={returnLinkClass}
+						className={`${returnLinkClass} inline-flex items-center gap-1`}
 					>
-						← Projects
+						<ArrowLeftIcon weight="regular" className="size-3.5" />
+						Projects
 					</Link>
 				}
 				title={

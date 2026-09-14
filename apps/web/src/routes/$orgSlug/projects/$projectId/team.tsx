@@ -1,6 +1,6 @@
 import { formatReportHours } from "@farmer/core/lib/report-format";
 import type { ProjectRoleValue } from "@farmer/core/schema";
-import { XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, XIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQueryClient,
@@ -94,9 +94,10 @@ function TeamPage() {
 		<Link
 			to="/$orgSlug/projects/$projectId"
 			params={{ orgSlug, projectId }}
-			className={returnLinkClass}
+			className={`${returnLinkClass} inline-flex items-center gap-1`}
 		>
-			← {project.name}
+			<ArrowLeftIcon weight="regular" className="size-3.5" />
+			{project.name}
 		</Link>
 	);
 	const title = (

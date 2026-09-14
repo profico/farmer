@@ -1,5 +1,6 @@
 import {
 	ArrowRightIcon,
+	ArrowUpRightIcon,
 	CalendarBlankIcon,
 	CalendarDotsIcon,
 	CaretUpDownIcon,
@@ -1000,9 +1001,16 @@ function Home() {
 							<a
 								className="u-link"
 								href={PROFICO_URL}
-								style={{ fontWeight: 600, color: "var(--fg)" }}
+								style={{
+									display: "inline-flex",
+									alignItems: "center",
+									gap: "3px",
+									fontWeight: 600,
+									color: "var(--fg)",
+								}}
 							>
-								Profico ↗
+								Profico
+								<ArrowUpRightIcon weight="regular" size={12} />
 							</a>
 						</div>
 					</div>

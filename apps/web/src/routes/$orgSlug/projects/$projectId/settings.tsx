@@ -5,6 +5,7 @@ import {
 	updateProjectInput,
 } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQueryClient,
@@ -246,9 +247,10 @@ function SettingsPage() {
 		<Link
 			to="/$orgSlug/projects/$projectId"
 			params={{ orgSlug, projectId }}
-			className={returnLinkClass}
+			className={`${returnLinkClass} inline-flex items-center gap-1`}
 		>
-			← {project.name}
+			<ArrowLeftIcon weight="regular" className="size-3.5" />
+			{project.name}
 		</Link>
 	);
 	const title = (
