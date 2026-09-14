@@ -15,7 +15,7 @@ import {
 	CaretUpIcon,
 } from "@phosphor-icons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Suspense, useState } from "react";
+import { cloneElement, type ReactElement, Suspense, useState } from "react";
 import type * as React from "react";
 
 import { TableLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
@@ -47,7 +47,7 @@ import { formatMonthKey, formatWeekRange } from "#/lib/format-date.ts";
 import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 
-import type { Search } from "./search.ts";
+import type { PeriodSearch, Search } from "./search.ts";
 
 // What every report tab on this screen shares: the in-panel loading state, the
 // month/period controls that frame the tabs which are month-scoped, and the one
@@ -136,7 +136,7 @@ export function MonthFramed({
 
 /** What the period reads as — "August 2026", "Q3 2026", "2026", or a range —
  *  for the stepper and for the page's eyebrow, so the two never disagree. */
-export const periodLabel = (search: Search, today: string) => {
+export const periodLabel = (search: PeriodSearch, today: string) => {
 	const { preset, from, to } = resolveReportPeriod(search, today);
 	const month = search.month ?? today.slice(0, 7);
 	return preset === "month"
@@ -148,33 +148,51 @@ export const periodLabel = (search: Search, today: string) => {
 				: formatWeekRange(from, to);
 };
 
+/** What a caller renders a period link as: an element the picker fills in —
+ *  class, label, arrow — the Base UI `render` idiom. */
+type PeriodLink = ReactElement<{
+	className?: string;
+	children?: React.ReactNode;
+	"aria-label"?: string;
+}>;
+
 /**
  * The period, as one control: ‹ August 2026 › with the preset — Week, Month,
  * Quarter, Year, Custom — in a select beside it. It used to be the stepper
  * AND a five-segment pill strip, which under the report tabs and over the
  * Clients · Projects · Team tabs made four rows of tabs on one screen.
+ *
+ * Route-agnostic: Reports and a project's page both use it, so the caller
+ * renders the links (`link`, given the search a step leads to) and does the
+ * moving for the select and the custom range fields (`navigateTo`). The
+ * search is generic so whatever else the caller's URL carries — a tab, a
+ * grouping, a filter — travels with the period.
  */
-export function PeriodPicker({
-	orgSlug,
+export function PeriodPicker<S extends PeriodSearch>({
 	search,
 	today,
 	thisMonth,
+	link,
+	navigateTo,
 	children,
 }: {
-	orgSlug: string;
-	search: Search;
+	search: S;
 	today: string;
 	thisMonth: string;
+	link: (search: S) => PeriodLink;
+	navigateTo: (search: S) => void;
 	children?: React.ReactNode;
 }) {
 	const { preset, from, to } = resolveReportPeriod(search, today);
 	const month = search.month ?? thisMonth;
-	const navigate = useNavigate({ from: "/$orgSlug/reports" });
 
-	// A Breakdown keeps its filters across a period change on purpose: "this
+	// A drill-down keeps its filters across a period change on purpose: "this
 	// client, last quarter" is a question, and the filters are the answer's
 	// subject, not something the period picker should forget.
-	const withSearch = (patch: Partial<Search>) => ({ ...search, ...patch });
+	const withSearch = (patch: Partial<PeriodSearch>): S => ({
+		...search,
+		...patch,
+	});
 
 	const step = (delta: number) => {
 		if (preset === "week") {
@@ -184,9 +202,19 @@ export function PeriodPicker({
 			month: shiftMonthKey(month, delta * monthsPerStep(preset)),
 		});
 	};
+	const stepLink = (delta: number) =>
+		cloneElement(link(step(delta)), {
+			className: stepperClass,
+			"aria-label": delta < 0 ? "Previous period" : "Next period",
+			children:
+				delta < 0 ? (
+					<ArrowLeftIcon weight="regular" className="size-4" />
+				) : (
+					<ArrowRightIcon weight="regular" className="size-4" />
+				),
+		});
 
 	const label = periodLabel(search, today);
-
 	const atNow = isCurrentPeriod(search, today);
 
 	return (
@@ -197,10 +225,8 @@ export function PeriodPicker({
 				onValueChange={(next: string | null) => {
 					const picked = PERIOD_PRESETS.find((p) => p.id === next);
 					if (!picked) return;
-					navigate({
-						to: "/$orgSlug/reports",
-						params: { orgSlug },
-						search: withSearch({
+					navigateTo(
+						withSearch({
 							preset: picked.id,
 							// Switching preset restarts from "now" in the new unit,
 							// which is the only period that means the same thing in
@@ -208,7 +234,7 @@ export function PeriodPicker({
 							from: picked.id === "custom" ? from : undefined,
 							to: picked.id === "custom" ? to : undefined,
 						}),
-					});
+					);
 				}}
 			>
 				<SelectTrigger aria-label="Period" className="h-8 w-28 text-sm">
@@ -227,56 +253,36 @@ export function PeriodPicker({
 			    instead of arrows rather than arrows that guess a stride. */}
 			{preset === "custom" ? (
 				<CustomRangeFields
-					orgSlug={orgSlug}
-					search={search}
 					from={from}
 					to={to}
+					onChange={(patch) => navigateTo(withSearch(patch))}
 				/>
 			) : (
 				<TimeToolbar
-					prev={
-						<Link
-							to="/$orgSlug/reports"
-							params={{ orgSlug }}
-							search={step(-1)}
-							className={stepperClass}
-							aria-label="Previous period"
-						>
-							<ArrowLeftIcon weight="regular" className="size-4" />
-						</Link>
-					}
+					prev={stepLink(-1)}
 					label={label}
-					next={
-						<Link
-							to="/$orgSlug/reports"
-							params={{ orgSlug }}
-							search={step(1)}
-							className={stepperClass}
-							aria-label="Next period"
-						>
-							<ArrowRightIcon weight="regular" className="size-4" />
-						</Link>
-					}
+					next={stepLink(1)}
 					returnLink={
-						!atNow && (
-							<Link
-								to="/$orgSlug/reports"
-								params={{ orgSlug }}
-								search={withSearch({
+						!atNow &&
+						cloneElement(
+							link(
+								withSearch({
 									month: undefined,
 									from: undefined,
 									to: undefined,
-								})}
-								className={returnLinkClass}
-							>
-								{preset === "week"
-									? "Return to this week"
-									: preset === "quarter"
-										? "Return to this quarter"
-										: preset === "year"
-											? "Return to this year"
-											: "Return to this month"}
-							</Link>
+								}),
+							),
+							{
+								className: returnLinkClass,
+								children:
+									preset === "week"
+										? "Return to this week"
+										: preset === "quarter"
+											? "Return to this quarter"
+											: preset === "year"
+												? "Return to this year"
+												: "Return to this month",
+							},
 						)
 					}
 				/>
@@ -290,17 +296,14 @@ export function PeriodPicker({
 }
 
 function CustomRangeFields({
-	orgSlug,
-	search,
 	from,
 	to,
+	onChange,
 }: {
-	orgSlug: string;
-	search: Search;
 	from: string;
 	to: string;
+	onChange: (patch: { from?: string; to?: string }) => void;
 }) {
-	const navigate = useNavigate({ from: "/$orgSlug/reports" });
 	return (
 		<div className="flex items-center gap-2">
 			<DatePicker
@@ -308,14 +311,7 @@ function CustomRangeFields({
 				className="w-40 text-xs"
 				value={from}
 				max={to}
-				onValueChange={(next) =>
-					next &&
-					navigate({
-						to: "/$orgSlug/reports",
-						params: { orgSlug },
-						search: { ...search, from: next },
-					})
-				}
+				onValueChange={(next) => next && onChange({ from: next })}
 			/>
 			<span className="text-sm text-muted-foreground">to</span>
 			<DatePicker
@@ -323,14 +319,7 @@ function CustomRangeFields({
 				className="w-40 text-xs"
 				value={to}
 				min={from}
-				onValueChange={(next) =>
-					next &&
-					navigate({
-						to: "/$orgSlug/reports",
-						params: { orgSlug },
-						search: { ...search, to: next },
-					})
-				}
+				onValueChange={(next) => next && onChange({ to: next })}
 			/>
 		</div>
 	);

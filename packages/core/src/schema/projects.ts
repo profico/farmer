@@ -26,7 +26,9 @@ const baseProject = {
 	clientId: z.uuid(),
 	code: z.string().trim().max(16).optional(),
 	type: projectTypeEnum,
-	color: z.string().optional(),
+	// An emoji. Loose on purpose — a flag or a family is several code points —
+	// and short enough that nothing but an emoji fits. Null clears it.
+	icon: z.string().trim().min(1).max(16).optional().nullable(),
 	// Fixed Scope only: the hour budget is the ONLY budget burn is computed on.
 	budgetHours: z.coerce.number().positive().max(100_000).optional().nullable(),
 	// Fixed Scope only, display-only context beside the hour figures.
@@ -100,7 +102,7 @@ export const createProjectInput = z
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
 // A partial patch, matching updateTaskInput: an edit form that only owns the
-// name and the colour must not have to round-trip the client and budgets just
+// name and the icon must not have to round-trip the client and budgets just
 // to avoid nulling them. Every key is optional and an omitted one is left
 // untouched by the service.
 export const updateProjectInput = z
@@ -110,7 +112,7 @@ export const updateProjectInput = z
 		clientId: baseProject.clientId.optional(),
 		code: baseProject.code,
 		type: baseProject.type.optional(),
-		color: baseProject.color,
+		icon: baseProject.icon,
 		budgetHours: baseProject.budgetHours,
 		budgetAmount: baseProject.budgetAmount,
 		hourlyPrice: baseProject.hourlyPrice,

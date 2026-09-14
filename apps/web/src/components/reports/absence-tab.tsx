@@ -7,6 +7,7 @@ import { resolveReportPeriod } from "@farmer/core/lib/report-period";
 import type { AbsenceReportInput } from "@farmer/core/schema";
 import type { AbsenceRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
@@ -84,6 +85,7 @@ export function AbsenceTab({
 	today: string;
 	thisMonth: string;
 }) {
+	const navigate = useNavigate({ from: "/$orgSlug/reports" });
 	const { from, to } = resolveReportPeriod(search, today);
 	const input: AbsenceReportInput = { from, to };
 	const view: View = search.type ?? "all";
@@ -91,10 +93,15 @@ export function AbsenceTab({
 	return (
 		<>
 			<PeriodPicker
-				orgSlug={orgSlug}
 				search={search}
 				today={today}
 				thisMonth={thisMonth}
+				link={(s) => (
+					<Link to="/$orgSlug/reports" params={{ orgSlug }} search={s} />
+				)}
+				navigateTo={(s) =>
+					navigate({ to: "/$orgSlug/reports", params: { orgSlug }, search: s })
+				}
 			>
 				<Suspense
 					fallback={

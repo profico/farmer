@@ -351,6 +351,13 @@
       "when": 1789307592425,
       "tag": "0049_tracking_tolerance",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789338071576,
+      "tag": "0050_project_icon",
+      "breakpoints": true
     }
   ]
 }

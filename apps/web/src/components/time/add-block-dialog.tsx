@@ -169,12 +169,15 @@ export function AddBlockDialog({
 	timezone,
 	dateOptions,
 	defaultDate: defaultDateProp,
+	defaultProjectId,
 	entry,
 	trigger,
 }: {
 	timezone: string;
 	dateOptions: { value: string; label: string }[];
 	defaultDate?: string;
+	/** Opened from a project's own page: that project, already chosen. */
+	defaultProjectId?: string;
 	entry?: ExistingTimeEntry;
 	trigger: React.ReactElement;
 }) {
@@ -187,7 +190,7 @@ export function AddBlockDialog({
 		entry?.date ?? defaultDateProp ?? dateOptions[0]?.value ?? "";
 
 	const buildDefaults = (): FormValues => ({
-		projectId: entry?.projectId ?? TIME_OFF,
+		projectId: entry?.projectId ?? defaultProjectId ?? TIME_OFF,
 		taskId: entry?.taskId ?? "",
 		date: defaultDate,
 		duration: entry ? formatClock(entry.durationSeconds) : "",

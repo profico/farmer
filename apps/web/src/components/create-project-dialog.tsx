@@ -6,12 +6,14 @@ import {
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { ColorPicker } from "#/components/color-picker.tsx";
+import { ProjectIconPicker } from "#/components/projects/project-icon-picker.tsx";
+import { ProjectIcon } from "#/components/projects/project-icon.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -43,12 +45,9 @@ import {
 	TooltipTrigger,
 } from "#/components/ui/tooltip.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { CATEGORY_COLORS } from "#/lib/category-colors.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { createProject } from "#/server/projects.ts";
-
-const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 
 // The five project types, in the order the PRD lists them. Type is not
 // cosmetic: it decides which config fields exist, whether Expected hours
@@ -101,7 +100,7 @@ const optionalMoney = z.union([
 const formSchema = z.object({
 	name: createProjectInput.shape.name,
 	code: createProjectInput.shape.code,
-	color: createProjectInput.shape.color,
+	icon: z.string().nullable(),
 	clientId: createProjectInput.shape.clientId,
 	type: createProjectInput.shape.type,
 	budgetHours: z.union([
@@ -122,7 +121,7 @@ const formSchema = z.object({
 const EMPTY: z.infer<typeof formSchema> = {
 	name: "",
 	code: "",
-	color: DEFAULT_COLOR,
+	icon: null,
 	clientId: "",
 	type: "product_team",
 	budgetHours: "",
@@ -134,7 +133,12 @@ export function CreateProjectDialog() {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 	const { data: clients } = useSuspenseQuery(clientsQuery(orgSlug));
+	const { data: projects } = useSuspenseQuery(projectsQuery(orgSlug));
+	const recentIcons = projects
+		.map((p) => p.icon)
+		.filter((i): i is string => i != null);
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
 		defaultValues: EMPTY,
@@ -149,7 +153,7 @@ export function CreateProjectDialog() {
 				data: {
 					name: data.name,
 					code: data.code || undefined,
-					color: data.color,
+					icon: data.icon,
 					clientId: data.clientId,
 					type: data.type,
 					// Type-specific config: the server rejects a budget on a non-Fixed
@@ -167,12 +171,18 @@ export function CreateProjectDialog() {
 						data.type === "hourly" ? data.hourlyPrice || undefined : undefined,
 				},
 			}),
-		onSuccess: async () => {
+		onSuccess: async (created) => {
 			await queryClient.invalidateQueries({
 				queryKey: projectsQuery(orgSlug).queryKey,
 			});
 			setOpen(false);
 			form.reset(EMPTY);
+			// Land on what was just made: the page is where the team and the rest
+			// of the setup live.
+			await navigate({
+				to: "/$orgSlug/projects/$projectId",
+				params: { orgSlug, projectId: created.id },
+			});
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not create project");
@@ -310,16 +320,30 @@ export function CreateProjectDialog() {
 						/>
 						<FormField
 							control={form.control}
-							name="color"
+							name="icon"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Color</FormLabel>
-									<FormControl>
-										<ColorPicker
+									<FormLabel>Icon</FormLabel>
+									<div className="flex items-center gap-3">
+										<ProjectIcon
+											icon={field.value}
+											name={form.watch("name") || "?"}
+											size="sm"
+										/>
+										<ProjectIconPicker
 											value={field.value}
 											onChange={field.onChange}
+											recent={recentIcons}
+											trigger={
+												<Button type="button" variant="outline" size="sm">
+													{field.value ? "Change icon…" : "Choose an icon…"}
+												</Button>
+											}
 										/>
-									</FormControl>
+										<span className="text-xs text-muted-foreground">
+											Optional — the first letter stands in.
+										</span>
+									</div>
 									<FormMessage />
 								</FormItem>
 							)}

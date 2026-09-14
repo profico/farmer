@@ -22,6 +22,7 @@ export type PickableProject = {
 	name: string;
 	code: string | null;
 	status: string;
+	icon?: string | null;
 	client: { name: string } | null;
 };
 
@@ -31,6 +32,7 @@ type Item = {
 	id: string | null;
 	label: string;
 	code: string | null;
+	icon: string | null;
 	clientName: string | null;
 };
 
@@ -86,6 +88,7 @@ export function ProjectPicker({
 				id: p.id,
 				label: p.name,
 				code: p.code,
+				icon: p.icon ?? null,
 				clientName: p.client?.name ?? null,
 			});
 			byClient.set(clientName, items);
@@ -108,6 +111,7 @@ export function ProjectPicker({
 						id: null,
 						label: noProject,
 						code: null,
+						icon: null,
 						clientName: null,
 					},
 				],
@@ -183,6 +187,11 @@ export function ProjectPicker({
 							<ComboboxCollection>
 								{(item: Item) => (
 									<ComboboxItem key={item.value} value={item}>
+										{item.icon && (
+											<span className="shrink-0 text-base leading-none">
+												{item.icon}
+											</span>
+										)}
 										<span className="truncate">{item.label}</span>
 										{item.code && (
 											<span className="mono shrink-0 text-xs text-muted-foreground">

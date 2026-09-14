@@ -109,7 +109,11 @@ export const project = pgTable(
 		code: text("code"),
 		type: projectType("type").notNull().default("product_team"),
 		status: projectStatus("status").notNull().default("active"),
-		color: text("color"),
+		// An emoji shown wherever the project appears — the list, its page, the
+		// picker, the timesheet. Replaced the colour swatch (Sept 2026), which
+		// five projects in a list made indistinguishable. Null: the first letter
+		// of the name stands in.
+		icon: text("icon"),
 		// Fixed Scope hour budget — the ONLY budget that is ever computed against
 		// (burn %, 80/100% alerts). Optional.
 		budgetSeconds: integer("budget_seconds"),

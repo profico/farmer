@@ -163,6 +163,20 @@ export class Access {
 		return this.atLeast(projectId, "team_lead");
 	}
 
+	/** Whether the caller may set a project role to `role`, or act on someone
+	 *  who currently holds it — assign, change or remove. Admin is
+	 *  unrestricted; everyone else is capped at their own held rank on the
+	 *  project, so a Team Lead can staff or drop a plain Member but can
+	 *  neither promote anyone (themselves included) to PM nor touch a PM or a
+	 *  Team Lead who outranks their own assignment. `canManageProjectMembers`
+	 *  only asks whether the caller may touch the roster at all; this is the
+	 *  ceiling on what they may do to it once they can. */
+	canActOnProjectRole(projectId: string, role: ProjectRole): boolean {
+		if (this.isAdmin) return true;
+		const held = this.heldAs(projectId);
+		return held != null && RANK[role] <= RANK[held];
+	}
+
 	/** See the project's budget and hourly price. PM and Admin only — the two
 	 *  money fields in the system are visible nowhere else. */
 	canViewProjectMoney(projectId: string): boolean {
