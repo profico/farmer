@@ -301,7 +301,7 @@ A person is keyed by email when the people list has one, else by full name.
 - **An existing member with the same email:** match. Change nothing, except a
   profile field that is empty.
 - **A person in the people list who is not a member:** create `user`,
-  `member`, `memberProfile`, `memberTypeHistory` and `memberSchedule`.
+  `member`, `memberProfile` and `memberTypeHistory`.
   - `emailVerified = true` (section 3.3).
   - Role: `admin` if Harvest `Admin = Yes`, else `member`. The Harvest Owner
     also becomes `admin`, because the org already has an owner.
@@ -309,7 +309,6 @@ A person is keyed by email when the people list has one, else by full name.
     `overhead` on the review screen. The type starts on the date of the first
     entry.
   - `startDate` = the date of the first entry.
-  - `weeklyTargetSeconds` = `Capacity` x 3600.
 - `user.id` and `member.id` are text columns with no default. The import makes
   them with better-auth's `generateId`, so they have the same form as the
   rows that a sign-in makes.

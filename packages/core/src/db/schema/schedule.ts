@@ -31,32 +31,12 @@ const stamps = {
 	updatedAt: ts("updated_at").notNull().defaultNow(),
 };
 
-// Per-member weekly target. Retained as UX plumbing only — it drives the
-// day-fill block and the "you forgot to log" reminder. It is NOT the authority
-// for Expected hours: that is the org-wide monthly hour fund (PRD 3.7).
-export const memberSchedule = pgTable(
-	"member_schedule",
-	{
-		id: uuid("id").primaryKey().defaultRandom(),
-		organizationId: org(),
-		userId: text("user_id")
-			.notNull()
-			.references(() => user.id, { onDelete: "cascade" }),
-		weeklyTargetSeconds: integer("weekly_target_seconds")
-			.notNull()
-			.default(144000), // 40h
-		...stamps,
-	},
-	(t) => [
-		unique("member_schedule_org_user_unq").on(t.organizationId, t.userId),
-	],
-);
-
 // Per-member, per-weekday working hours. dayOfWeek is 0=Sun..6=Sat, matching
 // Date#getDay(), recurringBlockRule.daysOfWeek and weekdayInTz. A missing row
 // implies a Mon-Fri 9-5 default (see workingHoursService.list) rather than
-// requiring a backfill migration. Like memberSchedule this is UX plumbing for
-// the fill block and reminders, not the Expected-hours authority.
+// requiring a backfill migration. UX plumbing for the fill block, time-off
+// spans and the reminders' timing — not a target: the weekly target that used
+// to sit beside it (member_schedule) went with the fund rule (Sept 2026).
 export const memberWorkingHoursDay = pgTable(
 	"member_working_hours_day",
 	{

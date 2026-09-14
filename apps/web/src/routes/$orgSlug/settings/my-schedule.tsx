@@ -2,24 +2,16 @@ import { ArrowRightIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { EditWeeklyTargetDialog } from "#/components/edit-weekly-target-dialog.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
-import { Unit } from "#/components/ui/metric.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import { WorkingHoursRow } from "#/components/working-hours-row.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import {
-	weeklyTargetQuery,
-	workingHoursQuery,
-} from "#/queries/working-hours.ts";
+import { workingHoursQuery } from "#/queries/working-hours.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/my-schedule")({
 	loader: async ({ context, params }) => {
 		const orgSlug = params.orgSlug;
-		await Promise.all([
-			context.queryClient.ensureQueryData(workingHoursQuery(orgSlug)),
-			context.queryClient.ensureQueryData(weeklyTargetQuery(orgSlug)),
-		]);
+		await context.queryClient.ensureQueryData(workingHoursQuery(orgSlug));
 	},
 	component: MySchedulePage,
 });
@@ -33,31 +25,16 @@ function MySchedulePage() {
 	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const { data: days } = useSuspenseQuery(workingHoursQuery(orgSlug));
-	const { data: targetSeconds } = useSuspenseQuery(weeklyTargetQuery(orgSlug));
 
 	const orderedDays = MON_FIRST_ORDER.map((dayOfWeek) =>
 		days.find((d) => d.dayOfWeek === dayOfWeek),
 	);
-	const targetHours = targetSeconds / 3600;
-
 	return (
 		<Page>
 			<PageHeader
 				eyebrow={<SettingsEyebrow>Your schedule</SettingsEyebrow>}
 				title="My schedule"
-				lede={`Your working hours. These drive the "fill rest of day" block and the reminder that you're behind pace.`}
-				action={
-					<div className="flex items-center gap-2.5">
-						{/* Label then figure, the same order as every other label/value
-						    pair in the app — reversed, the two ran together as one word. */}
-						<span className="eyebrow">Weekly target</span>
-						<span className="mono text-lg">
-							{targetHours}
-							<Unit>h</Unit>
-						</span>
-						<EditWeeklyTargetDialog currentHours={targetHours} />
-					</div>
-				}
+				lede={`Your working hours. These drive the "fill rest of day" block, a booked span of time off, and when a reminder reaches you. Your targets come from the month's hour fund, not from here.`}
 			/>
 
 			{/* A standard band, with one deviation the vocabulary supports: the

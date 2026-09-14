@@ -1,8 +1,8 @@
+import { formatReportHours } from "@farmer/core/lib/report-format";
 import {
 	addDaysToKey,
 	dayKeyInTz,
 	formatDayKey,
-	formatDurationLong,
 	startOfWeekKey,
 } from "@farmer/core/lib/time";
 import {
@@ -19,6 +19,7 @@ import { useState } from "react";
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { EmptyState } from "#/components/states/empty-state.tsx";
 import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
+import { TargetBlock } from "#/components/targets.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { EntryBlockRow } from "#/components/time/entry-block-row.tsx";
 import { Button } from "#/components/ui/button.tsx";
@@ -27,9 +28,10 @@ import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
+import { myTargetsQuery } from "#/queries/compliance.ts";
+import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
-import { weeklyTargetQuery } from "#/queries/working-hours.ts";
 
 export const Route = createFileRoute("/$orgSlug/")({
 	loader: async ({ context, params }) => {
@@ -42,7 +44,10 @@ export const Route = createFileRoute("/$orgSlug/")({
 				timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 			),
 			context.queryClient.ensureQueryData(myProjectsQuery(orgSlug)),
-			context.queryClient.ensureQueryData(weeklyTargetQuery(orgSlug)),
+			context.queryClient.ensureQueryData(myTargetsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(
+				holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
+			),
 		]);
 	},
 	// The generic page placeholder is a header over a ruled list, which is the
@@ -70,12 +75,13 @@ function OrgHome() {
 	const { data: weekEntries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 	);
-	// The week's yardstick is the person's own working-hours target, not the
-	// monthly Expected — a monthly figure says nothing about a week still in
-	// progress.
-	const { data: weeklyTargetSeconds } = useSuspenseQuery(
-		weeklyTargetQuery(orgSlug),
+	// The two yardsticks are the fund rule, read for this person: the week and
+	// the month, each with where they should be by today.
+	const { data: targets } = useSuspenseQuery(myTargetsQuery(orgSlug));
+	const { data: holidayEntries } = useSuspenseQuery(
+		holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 	);
+	const holidays = new Map(holidayEntries);
 
 	// The "by day" bars are clickable; the day the user picks drives the entry
 	// list at the bottom. Defaults to today.
@@ -99,9 +105,24 @@ function OrgHome() {
 		const seconds = weekEntries
 			.filter((e) => e.date === key)
 			.reduce((sum, e) => sum + e.durationSeconds, 0);
-		return { label, key, seconds, isToday: key === today };
+		const weekday = new Date(`${key}T12:00:00Z`).getUTCDay();
+		return {
+			label,
+			key,
+			seconds,
+			isToday: key === today,
+			holiday: holidays.get(key),
+			// A day with a line to reach: a past or present working day.
+			expected:
+				key <= today && weekday !== 0 && weekday !== 6 && !holidays.has(key),
+		};
 	});
-	const maxDaySeconds = Math.max(...perDay.map((d) => d.seconds), 1);
+	const maxDaySeconds = Math.max(
+		...perDay.map((d) => d.seconds),
+		targets.daySeconds,
+		1,
+	);
+	const dayTargetPx = Math.round((targets.daySeconds / maxDaySeconds) * 48);
 
 	// "Auto-tracked today": the blocks Farmer filled in for you rather than by
 	// hand — synced Google Calendar meetings (calendarEventId) and GitHub-linked
@@ -129,7 +150,7 @@ function OrgHome() {
 		<Page>
 			<AutoTrackNag orgSlug={organization.slug} />
 			<PageHeader
-				eyebrow={`${formatDayKey(today)} · ${formatDurationLong(todayTotal)} logged`}
+				eyebrow={`${formatDayKey(today)} · ${formatReportHours(todayTotal)} logged`}
 				title={`${greetingForHour(new Date().getHours())}, ${firstName}`}
 				action={
 					<AddBlockDialog
@@ -169,42 +190,31 @@ function OrgHome() {
 						<Metric
 							className="px-4 py-5 sm:px-8"
 							label="Logged today"
-							value={formatHoursShort(todayTotal)}
+							value={formatReportHours(todayTotal)}
 							accent={todayTotal > 0}
 						/>
 						<Metric
 							className="px-4 py-5 sm:px-8"
 							label="This week"
-							value={formatHoursShort(weekTotal)}
+							value={formatReportHours(weekTotal)}
 						/>
 					</div>
 
-					{weeklyTargetSeconds > 0 && (
-						<div className="border-b px-4 py-4 sm:px-8">
-							<div className="flex items-baseline justify-between gap-3">
-								<div className="eyebrow">This week vs. your target</div>
-								<div className="mono text-xs text-muted-foreground">
-									{formatHoursShort(weekTotal)} /{" "}
-									{formatHoursShort(weeklyTargetSeconds)}
-									<span className="ml-1.5 text-foreground">
-										{Math.round((weekTotal / weeklyTargetSeconds) * 100)}%
-									</span>
-								</div>
-							</div>
-							{/* A 2px rail, one hairline of ground and an accent fill — the
-							    app's only progress indicator. */}
-							<div className="bar mt-3">
-								<span
-									style={{
-										width: `${Math.min(
-											Math.round((weekTotal / weeklyTargetSeconds) * 100),
-											100,
-										)}%`,
-									}}
-								/>
-							</div>
-						</div>
-					)}
+					{/* This week and this month against the rule, each saying what is
+					    missing. They replaced the schedule's weekly target: the fund is
+					    the one yardstick, here and on Tracking. */}
+					<TargetBlock title="This week" period={targets.week} />
+					<TargetBlock
+						title="This month"
+						period={targets.month}
+						note={
+							<span className="text-muted-foreground">
+								{" "}
+								· {targets.month.workingDaysElapsed} of{" "}
+								{targets.month.workingDays} working days
+							</span>
+						}
+					/>
 
 					<div className="border-b px-4 py-4 sm:px-8">
 						<div className="eyebrow">This week by day</div>
@@ -232,18 +242,29 @@ function OrgHome() {
 										{/* The 48px track is always here, bottom-aligned — an empty
 										    day used to collapse to a 2px-tall button that was
 										    almost impossible to hit. */}
-										<div className="flex h-12 w-full items-end justify-center">
+										<div className="relative flex h-12 w-full items-end justify-center">
+											{/* The day's worth, drawn as a line to reach — so an
+											    under-filled day shows as a bar that stops short. */}
+											{d.expected && (
+												<span
+													aria-hidden
+													className="absolute left-1/2 w-8 -translate-x-1/2 border-t border-foreground/30"
+													style={{ bottom: `${dayTargetPx}px` }}
+												/>
+											)}
 											<div
 												className={cn(
 													// Capped width: a full-width fill turns a 48px-tall bar
 													// into a 40px-wide slab, which out-weighs everything
 													// else on the screen. A column reads as a measurement.
 													"w-full max-w-6 rounded-[2px]",
-													d.isToday
-														? "bg-primary"
-														: d.seconds > 0
-															? "bg-primary/40"
-															: "bg-line",
+													d.holiday
+														? "bg-warn/30"
+														: d.isToday
+															? "bg-primary"
+															: d.seconds > 0
+																? "bg-primary/40"
+																: "bg-line",
 													isSelected && !d.isToday && "bg-primary/70",
 												)}
 												style={{ height: `${px}px` }}
@@ -256,6 +277,18 @@ function OrgHome() {
 											)}
 										>
 											{d.label}
+										</span>
+										<span
+											className={cn(
+												"mono text-2xs",
+												d.holiday ? "text-warn" : "text-muted-foreground",
+											)}
+										>
+											{d.holiday
+												? "hol."
+												: d.key <= today
+													? formatReportHours(d.seconds)
+													: "\u00a0"}
 										</span>
 									</button>
 								);

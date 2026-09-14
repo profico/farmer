@@ -115,11 +115,6 @@ const personPlan = z.discriminatedUnion("action", [
 		type: memberTypeEnum,
 		startDate: dateKey,
 		archivedOn: dateKey.nullable(),
-		weeklyTargetSeconds: z
-			.number()
-			.int()
-			.min(0)
-			.max(7 * 24 * 3600),
 	}),
 	// A second Harvest spelling of a person in the plan ("Ive Vasiljević" and
 	// "Ive Vasiljevic"), that the admin said is the same person. It gets a

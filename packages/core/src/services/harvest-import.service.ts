@@ -38,7 +38,6 @@ import {
 } from "../db/schema/domain";
 import { importMapping, importRun } from "../db/schema/import";
 import { memberProfile, memberTypeHistory } from "../db/schema/people";
-import { memberSchedule } from "../db/schema/schedule";
 import type {
 	HarvestFinishResult,
 	HarvestImportDaysResult,
@@ -867,14 +866,6 @@ export const harvestImportService = {
 						effectiveFrom: p.startDate,
 					});
 				}
-				await tx
-					.insert(memberSchedule)
-					.values({
-						organizationId: org,
-						userId,
-						weeklyTargetSeconds: p.weeklyTargetSeconds,
-					})
-					.onConflictDoNothing();
 				personIds.set(p.sourceKey, userId);
 				await remember("person", p.sourceKey, userId, true);
 				counts.people++;
@@ -1372,14 +1363,6 @@ export const harvestImportService = {
 						and(
 							eq(projectMember.organizationId, org),
 							eq(projectMember.userId, userId),
-						),
-					);
-				await tx
-					.delete(memberSchedule)
-					.where(
-						and(
-							eq(memberSchedule.organizationId, org),
-							eq(memberSchedule.userId, userId),
 						),
 					);
 				await tx

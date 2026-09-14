@@ -11,9 +11,3 @@ export const upsertWorkingHoursDayInput = z.object({
 export type UpsertWorkingHoursDayInput = z.infer<
 	typeof upsertWorkingHoursDayInput
 >;
-
-export const setWeeklyTargetInput = z.object({
-	// e.g. "40h" — parsed to seconds by workingHoursService via parseDuration.
-	weeklyTarget: z.string().min(1, "Weekly target is required"),
-});
-export type SetWeeklyTargetInput = z.infer<typeof setWeeklyTargetInput>;

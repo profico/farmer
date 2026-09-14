@@ -74,7 +74,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		item: MY_SCHEDULE_ITEM,
 		group: "account",
 		description:
-			"Your working hours and weekly target. They size the fill-rest-of-day block and the behind-pace reminder.",
+			"Your working hours. They size the fill-rest-of-day block and the behind-pace reminder.",
 		hasNavRow: true,
 		show: always,
 	},

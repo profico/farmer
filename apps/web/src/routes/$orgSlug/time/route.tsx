@@ -6,6 +6,7 @@ import {
 	useLocation,
 } from "@tanstack/react-router";
 
+import { TargetsStrip } from "#/components/targets.tsx";
 import { UnfiledEntriesBanner } from "#/components/time/unfiled-entries-banner.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
 import {
@@ -59,6 +60,9 @@ function TimeLayout() {
 					})}
 				</SegmentedControl>
 			</div>
+			{/* This week and this month against the rule, on every view — the
+			    figure a person is filling the timesheet towards. */}
+			<TargetsStrip orgSlug={organization.slug} />
 			{/* Above the tabs' content rather than inside a view, because unfiled time
 			    isn't scoped to the day/week/month you happen to be looking at — it's
 			    a standing worklist that follows you across all three. */}

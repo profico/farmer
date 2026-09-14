@@ -6,7 +6,7 @@ import {
 	SparkleIcon,
 	UmbrellaSimpleIcon,
 } from "@phosphor-icons/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // `useNavigate` for the toolbar's jump-to-date; no AnimatePresence — the list
 // stopped using it (see the note over the rows below).
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -29,6 +29,7 @@ import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
+import { myTargetsQuery } from "#/queries/compliance.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { copyTimeEntriesDay } from "#/server/time-entries.ts";
 
@@ -54,6 +55,9 @@ export function DayView({
 }) {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
+	// Read without suspending: the strip's "short" marks are a courtesy, and the
+	// day must never wait on them.
+	const { data: targets } = useQuery(myTargetsQuery(orgSlug));
 	const total = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 	// A fill ("rest of day") block is a catch-all, so it always sorts last; the
 	// stable sort otherwise preserves the server's insertion ordering.
@@ -202,6 +206,10 @@ export function DayView({
 					dates={weekDates}
 					activeDate={date}
 					secondsByDay={secondsByDay}
+					today={dayKeyInTz(new Date(), timezone)}
+					dayTargetSeconds={
+						targets?.week.targetSeconds == null ? null : targets.daySeconds
+					}
 					holidays={holidays}
 				/>
 			</div>
