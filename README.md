@@ -1,4 +1,4 @@
-<p align="center">
+<p>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
     <img src="docs/assets/logo-light.svg" alt="Farmer" height="64">
