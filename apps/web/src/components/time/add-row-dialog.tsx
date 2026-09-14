@@ -15,6 +15,7 @@ import {
 } from "#/components/ui/dialog.tsx";
 import { Label } from "#/components/ui/label.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { readLastPick, rememberLastPick } from "#/lib/entry-options.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
 
@@ -73,12 +74,28 @@ export function AddRowDialog({
 	const selectedProject = projects.find((p) => p.id === projectId) ?? null;
 	const selectedTask = tasks.find((t) => t.id === taskId) ?? null;
 	// The work is the whole form now — a row with no hours in it is scaffolding,
-	// not an entry, so there is nothing yet for a note to describe.
-	const canAdd = taskId !== "";
+	// not an entry, so there is nothing yet for a note to describe. Checked
+	// against the offered list rather than for a non-empty id, because a
+	// remembered task may since have been archived.
+	const canAdd = pickableTasks.some((t) => t.id === taskId);
 
 	const reset = () => {
 		setProjectId(TIME_OFF);
 		setTaskId("");
+	};
+
+	// The dialog opens on the row last added, while its project can still take
+	// time and the row is not already on this week — prefilling a duplicate
+	// would only set up the "already a row" refusal.
+	const prefill = () => {
+		const last = readLastPick("week-row", orgSlug);
+		if (!last) return;
+		const live = projects.some(
+			(p) => p.id === last.projectId && p.status === "active",
+		);
+		if (!live || existingKeys.has(`${last.projectId}|${last.taskId}`)) return;
+		setProjectId(last.projectId);
+		setTaskId(last.taskId);
 	};
 
 	const submit = () => {
@@ -103,6 +120,13 @@ export function AddRowDialog({
 			taskName: selectedProject ? selectedTask.name : "",
 			color: selectedTask.color,
 		});
+		// Time off is never remembered: a week of leave is not the next row.
+		if (resolvedProjectId) {
+			rememberLastPick("week-row", orgSlug, {
+				projectId: resolvedProjectId,
+				taskId,
+			});
+		}
 		reset();
 		setOpen(false);
 	};
@@ -112,7 +136,8 @@ export function AddRowDialog({
 			open={open}
 			onOpenChange={(next) => {
 				setOpen(next);
-				if (!next) reset();
+				if (next) prefill();
+				else reset();
 			}}
 		>
 			<DialogTrigger render={trigger} />

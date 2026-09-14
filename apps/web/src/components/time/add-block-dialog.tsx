@@ -20,13 +20,14 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { TaskPicker } from "#/components/pickers/task-picker.tsx";
+import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import {
@@ -57,6 +58,12 @@ import {
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import {
+	readEntryOptions,
+	readLastPick,
+	rememberEntryOptions,
+	rememberLastPick,
+} from "#/lib/entry-options.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
@@ -207,10 +214,28 @@ export function AddBlockDialog({
 		defaultValues: buildDefaults(),
 	});
 
+	// A new entry opens on the project + task last logged, while that project can
+	// still take time. Opened from a project's own page, the page's project wins
+	// and the task comes along only if it was picked there. The task itself is
+	// not checked here: the effect below clears one the project no longer offers.
+	// Read on open rather than in `buildDefaults`, which also runs on the server.
+	const rememberedPick = (): Partial<FormValues> => {
+		if (entry) return {};
+		const last = readLastPick("entry", orgSlug);
+		if (!last) return {};
+		if (defaultProjectId) {
+			return last.projectId === defaultProjectId ? { taskId: last.taskId } : {};
+		}
+		const live = projects.some(
+			(p) => p.id === last.projectId && p.status === "active",
+		);
+		return live ? last : {};
+	};
+
 	/* oxlint-disable react-hooks/exhaustive-deps -- only reset when the dialog opens */
 	useEffect(() => {
 		if (!open) return;
-		form.reset(buildDefaults());
+		form.reset({ ...buildDefaults(), ...rememberedPick() });
 	}, [open]);
 	/* oxlint-enable react-hooks/exhaustive-deps */
 
@@ -300,6 +325,28 @@ export function AddBlockDialog({
 			form.setValue("fillsDay", false);
 		}
 	}, [dayHasFill, form]);
+
+	// A project + task opens with the options it was last saved with. Only a new
+	// entry is prefilled — an edit shows what the entry holds — and leaving the
+	// combination (another task, another project, Time-off, where the switches
+	// are hidden but still submitted) takes the prefill back out.
+	const prefilledRef = useRef(false);
+	useEffect(() => {
+		if (entry || !open) return;
+		const remembered =
+			!isTimeOff && taskId
+				? readEntryOptions(orgSlug, projectId, taskId)
+				: null;
+		if (remembered) {
+			form.setValue("fillsDay", remembered.fillsDay && !dayHasFill);
+			form.setValue("overtime", remembered.overtime);
+			prefilledRef.current = true;
+		} else if (prefilledRef.current) {
+			form.setValue("fillsDay", false);
+			form.setValue("overtime", false);
+			prefilledRef.current = false;
+		}
+	}, [entry, open, isTimeOff, orgSlug, projectId, taskId, dayHasFill, form]);
 
 	const { data: githubStatus } = useQuery({
 		...githubConnectionStatusQuery(orgSlug),
@@ -540,6 +587,23 @@ export function AddBlockDialog({
 				if (commits.length > 0) {
 					await attachCommitsToEntry({
 						data: { timeEntryId: savedEntry.id, commits },
+					});
+				}
+			}
+			// Time off is never remembered: a day of leave is not what the next
+			// entry is likely to be. An edit does not move the last pick either,
+			// since correcting an old entry says nothing about the next one.
+			if (values.projectId !== TIME_OFF) {
+				if (!entry) {
+					rememberLastPick("entry", orgSlug, {
+						projectId: values.projectId,
+						taskId: values.taskId,
+					});
+				}
+				if (!values.repeatEnabled) {
+					rememberEntryOptions(orgSlug, values.projectId, values.taskId, {
+						fillsDay: values.fillsDay,
+						overtime: values.overtime,
 					});
 				}
 			}
@@ -998,8 +1062,12 @@ export function AddBlockDialog({
 									/>
 									More options
 									{activeOptions.length > 0 && (
-										<span className="text-foreground">
-											· {activeOptions.join(", ")}
+										<span className="ml-1 flex flex-wrap gap-1">
+											{activeOptions.map((option) => (
+												<Badge key={option} variant="secondary">
+													{option}
+												</Badge>
+											))}
 										</span>
 									)}
 								</button>
