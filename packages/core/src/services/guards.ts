@@ -2,6 +2,7 @@ import { and, eq, or } from "drizzle-orm";
 
 import { member } from "../db/schema/auth";
 import { project, task } from "../db/schema/domain";
+import { descriptionRequiredFor } from "../lib/task-rules";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
@@ -80,7 +81,8 @@ export const assertUserInOrg = async (ctx: Ctx, userId: string) => {
  * close guard are what stop them from being forgotten.
  *
  * Anything else (an absence task pinned to a project, another org's task, an
- * archived task) is still rejected. This is the service-layer half
+ * archived task) is still rejected. Resolves to the task's flags, so a caller
+ * that also needs `isAbsence` or `systemKey` does not fetch the row twice. This is the service-layer half
  * of the invariant; the database can't express it because the checks need joins.
  */
 export const assertTaskAvailable = async (
@@ -95,7 +97,13 @@ export const assertTaskAvailable = async (
 			eq(task.id, taskId),
 			or(eq(task.scope, "site"), eq(task.organizationId, ctx.organizationId)),
 		),
-		columns: { id: true, scope: true, isAbsence: true, archivedAt: true },
+		columns: {
+			id: true,
+			scope: true,
+			isAbsence: true,
+			systemKey: true,
+			archivedAt: true,
+		},
 	});
 	if (!row || row.archivedAt) throw new Error("Task not available");
 
@@ -103,11 +111,34 @@ export const assertTaskAvailable = async (
 		if (projectId) {
 			throw new Error("Absence is logged without a project");
 		}
-		return;
+		return row;
 	}
 
 	// Unfiled — no project yet — is legal and left for the user to complete.
 	// With a project, any live non-absence task of the org (or a site built-in)
 	// may be used: the taxonomy is one global list, and there is no per-project
 	// subset to check against any more.
+	return row;
+};
+
+/**
+ * The mandatory-description rule, enforced where the task is known.
+ *
+ * Worked time must say what was done; time off and a Break need not
+ * (`descriptionRequiredFor`). It used to be a refinement on the entry input
+ * that keyed on "was a project supplied" — the only proxy the schema could see —
+ * which broke both ways once every task sat on every project: a Break on a
+ * project demanded a note, and a project-less Meeting got away without one.
+ *
+ * A fill block is exempt: its note is derived by the engines after the fact.
+ * The week grid is exempt by its caller (`setWeekCell`), because a spreadsheet
+ * cell cannot answer the question; the row's note button asks it later.
+ */
+export const assertDescribed = (
+	taskRow: { isAbsence: boolean; systemKey: string | null },
+	description: string | undefined,
+	{ fillsDay = false }: { fillsDay?: boolean } = {},
+) => {
+	if (fillsDay || !descriptionRequiredFor(taskRow)) return;
+	if (!description?.trim()) throw new Error("Describe what you worked on");
 };

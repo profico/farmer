@@ -1,5 +1,5 @@
+import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
-	formatDurationInput,
 	parseDuration,
 	snapToQuarterHour,
 	timeKeyInTz,
@@ -8,6 +8,7 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	CalendarDotIcon,
+	CaretRightIcon,
 	GitCommitIcon,
 	VideoCameraIcon,
 	XIcon,
@@ -19,15 +20,18 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
+import { TaskPicker } from "#/components/pickers/task-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import {
 	Dialog,
+	DialogClose,
 	DialogContent,
 	DialogFooter,
 	DialogHeader,
@@ -53,6 +57,7 @@ import {
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import {
@@ -69,7 +74,7 @@ import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
-import { tasksForProjectQuery } from "#/queries/tasks.ts";
+import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
 import {
 	attachCommitsToEntry,
@@ -80,7 +85,9 @@ import type { listCalendarEventsForDay } from "#/server/google-calendar.ts";
 import { createRecurringBlockRule } from "#/server/recurring-block-rules.ts";
 import { createTimeEntry, updateTimeEntry } from "#/server/time-entries.ts";
 
-const NO_PROJECT = "__none__";
+// Time off is chosen where a project would be: it sits first in the project
+// picker, and choosing it narrows the task list to the leave kinds.
+const TIME_OFF = "__time_off__";
 const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
 export type ExistingTimeEntry = {
@@ -143,17 +150,6 @@ const formSchema = z
 				}
 			}
 		}
-		if (
-			data.projectId !== NO_PROJECT &&
-			!data.fillsDay &&
-			!data.description?.trim()
-		) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["description"],
-				message: "Describe what you worked on",
-			});
-		}
 		if (data.repeatEnabled && data.daysOfWeek.length < 1) {
 			ctx.addIssue({
 				code: "custom",
@@ -191,10 +187,10 @@ export function AddBlockDialog({
 		entry?.date ?? defaultDateProp ?? dateOptions[0]?.value ?? "";
 
 	const buildDefaults = (): FormValues => ({
-		projectId: entry?.projectId ?? NO_PROJECT,
+		projectId: entry?.projectId ?? TIME_OFF,
 		taskId: entry?.taskId ?? "",
 		date: defaultDate,
-		duration: entry ? formatDurationInput(entry.durationSeconds) : "",
+		duration: entry ? formatClock(entry.durationSeconds) : "",
 		description: entry?.description ?? "",
 		overtime: entry?.overtime ?? false,
 		fillsDay: entry?.fillsDay ?? false,
@@ -222,30 +218,49 @@ export function AddBlockDialog({
 	const fillsDay = form.watch("fillsDay");
 	const daysOfWeek = form.watch("daysOfWeek");
 
-	// The task list is the project's cherry-picked subset plus the two absence
-	// tasks — so it can't be resolved until a project is chosen, and switching
-	// project may invalidate the current pick.
+	// The task list follows the project: with one it is the whole grouped list,
+	// without one the short project-less list (time off and the built-ins) — so
+	// switching project can leave a task chosen that no longer applies.
 	const { data: tasks = [] } = useQuery({
 		...tasksForProjectQuery(
 			orgSlug,
-			projectId === NO_PROJECT ? undefined : projectId,
+			projectId === TIME_OFF ? undefined : projectId,
 		),
 		enabled: open,
 	});
+	const { data: recentIds = [] } = useQuery({
+		...recentTasksQuery(orgSlug, projectId),
+		enabled: open && projectId !== TIME_OFF,
+	});
+	const isTimeOff = projectId === TIME_OFF;
+	// Under Time-off only the leave kinds are offered; Break and Meeting are
+	// logged on a project like everything else.
+	const pickableTasks = isTimeOff ? tasks.filter((t) => t.isAbsence) : tasks;
 	const selectedTask = tasks.find((t) => t.id === taskId);
 	useEffect(() => {
 		if (!taskId) return;
-		if (tasks.length > 0 && !tasks.some((t) => t.id === taskId)) {
+		if (
+			pickableTasks.length > 0 &&
+			!pickableTasks.some((t) => t.id === taskId)
+		) {
 			form.setValue("taskId", "");
 		}
-	}, [tasks, taskId, form]);
+	}, [pickableTasks, taskId, form]);
+
+	// Worked time must say what was done; time off and a Break need not. The
+	// task decides, and the rule is asked at submit against the task chosen
+	// then — not stored on the form, where a value set by an effect went stale
+	// across a reopen and demanded a note the label had just called optional.
+	const needsDescription = selectedTask
+		? descriptionRequiredFor(selectedTask)
+		: true;
 
 	// An absence task (Vacation / Sick Leave) is logged against no project and
 	// needs no note; picking one clears any project already chosen.
 	const isAbsence = !!selectedTask?.isAbsence;
 	useEffect(() => {
-		if (isAbsence && form.getValues("projectId") !== NO_PROJECT) {
-			form.setValue("projectId", NO_PROJECT);
+		if (isAbsence && form.getValues("projectId") !== TIME_OFF) {
+			form.setValue("projectId", TIME_OFF);
 		}
 	}, [isAbsence, form]);
 
@@ -293,7 +308,7 @@ export function AddBlockDialog({
 	});
 	const { data: linkedRepos } = useQuery({
 		...projectGithubReposQuery(orgSlug, projectId),
-		enabled: open && projectId !== NO_PROJECT,
+		enabled: open && projectId !== TIME_OFF,
 	});
 	const { data: attachedCommits } = useQuery({
 		...attachedCommitsQuery(orgSlug, entry?.id ?? ""),
@@ -326,7 +341,7 @@ export function AddBlockDialog({
 	const showCommitPicker =
 		!repeatEnabled &&
 		!fillsDay &&
-		projectId !== NO_PROJECT &&
+		projectId !== TIME_OFF &&
 		!!githubStatus?.connected &&
 		!!linkedRepos &&
 		linkedRepos.length > 0;
@@ -388,11 +403,24 @@ export function AddBlockDialog({
 	// ── Google Calendar meeting picker ───────────────────────────────────────
 	const [meetingUrl, setMeetingUrl] = useState<string | null>(null);
 	const [calendarEventId, setCalendarEventId] = useState<string | null>(null);
+	// The three switches live behind "More options", and the two pull-in lists
+	// behind their footer links: a fresh dialog shows the entry and nothing else.
+	const [moreOpen, setMoreOpen] = useState(false);
+	const [calendarOpen, setCalendarOpen] = useState(false);
+	const [commitsOpen, setCommitsOpen] = useState(false);
 	useEffect(() => {
 		if (!open) return;
 		setMeetingUrl(null);
 		setCalendarEventId(null);
+		setMoreOpen(false);
+		setCalendarOpen(false);
+		setCommitsOpen(false);
 	}, [open]);
+	// Only read on the client: the dialog body is never server-rendered, so the
+	// label cannot mismatch, and a wrong guess is a cosmetic one.
+	const [modKey] = useState(() =>
+		/Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? "") ? "⌘" : "Ctrl",
+	);
 
 	// By systemKey, never by name: an org may rename the built-in Meeting task,
 	// and a name match would then hide the calendar picker without a word.
@@ -419,7 +447,7 @@ export function AddBlockDialog({
 		// `snapToQuarterHour` is the whole rule in one call — nearest quarter hour,
 		// floored at one. Flooring alone (what this used to do) put "25m" in the box
 		// and then saved 30m, so the box disagreed with the entry it produced.
-		form.setValue("duration", formatDurationInput(snapToQuarterHour(seconds)), {
+		form.setValue("duration", formatClock(snapToQuarterHour(seconds)), {
 			shouldValidate: true,
 		});
 		if (!form.getValues("description")) {
@@ -468,7 +496,7 @@ export function AddBlockDialog({
 					data: {
 						taskId: values.taskId,
 						projectId:
-							values.projectId === NO_PROJECT ? undefined : values.projectId,
+							values.projectId === TIME_OFF ? undefined : values.projectId,
 						description: values.description || undefined,
 						daysOfWeek: values.daysOfWeek,
 						duration: values.duration,
@@ -479,8 +507,7 @@ export function AddBlockDialog({
 			}
 			const payload = {
 				taskId: values.taskId,
-				projectId:
-					values.projectId === NO_PROJECT ? undefined : values.projectId,
+				projectId: values.projectId === TIME_OFF ? undefined : values.projectId,
 				description: values.description || undefined,
 				date: values.date,
 				// A fill block's duration is derived server-side from the day's
@@ -516,6 +543,10 @@ export function AddBlockDialog({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
+			// The task just logged is the next "Recent".
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).tasks, "recent"],
+			});
 			if (!entry) {
 				await queryClient.invalidateQueries({
 					queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
@@ -529,6 +560,38 @@ export function AddBlockDialog({
 	});
 
 	const showRepeatSection = !entry && !fillsDay && !isAbsence;
+	const activeOptions = [
+		fillsDay ? "Fill rest of day" : null,
+		repeatEnabled ? "Repeat" : null,
+		form.watch("overtime") ? "Overtime" : null,
+	].flatMap((o) => (o ? [o] : []));
+
+	const { mutate } = mutation;
+	const submit = useCallback(
+		(values: FormValues) => {
+			if (needsDescription && !values.fillsDay && !values.description.trim()) {
+				form.setError("description", {
+					message: "Describe what you worked on",
+				});
+				return;
+			}
+			mutate(values);
+		},
+		[needsDescription, form, mutate],
+	);
+	// ⌘↩ / Ctrl+↩ saves from anywhere in the dialog — the textarea, where a
+	// plain Enter is a new line, and the pickers, whose popups are portaled
+	// outside the form and so never see a form-level key handler.
+	useEffect(() => {
+		if (!open) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+			event.preventDefault();
+			void form.handleSubmit(submit)();
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [open, form, submit]);
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
@@ -540,7 +603,7 @@ export function AddBlockDialog({
 				</DialogHeader>
 				<Form {...form}>
 					<form
-						onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
+						onSubmit={form.handleSubmit(submit)}
 						// `grid-cols-[minmax(0,1fr)]` for the same reason dialog-body
 						// carries it: an implicit grid column is `auto`-sized, so its
 						// items get `min-width: auto` and one long unbroken commit subject
@@ -549,81 +612,71 @@ export function AddBlockDialog({
 						// commit rows actually bite.
 						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
-						<FormField
-							control={form.control}
-							name="projectId"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel>Project</FormLabel>
-									<Select
-										value={field.value}
-										onValueChange={(value) => {
-											field.onChange(value);
-											form.setValue("taskId", "");
-										}}
-										items={[
-											{ value: NO_PROJECT, label: "No project (absence)" },
-											...projects.map((p) => ({ value: p.id, label: p.name })),
-										]}
-									>
-										<FormControl>
-											<SelectTrigger className="w-full">
-												<SelectValue placeholder="Pick a project" />
-											</SelectTrigger>
-										</FormControl>
-										<SelectContent>
-											<SelectItem value={NO_PROJECT}>
-												No project (absence)
-											</SelectItem>
-											{projects.map((p) => (
-												<SelectItem key={p.id} value={p.id}>
-													{p.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-						<FormField
-							control={form.control}
-							name="taskId"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel required>Task</FormLabel>
-									<FormControl>
-										<div className="flex flex-wrap gap-1.5">
-											{tasks.map((t) => {
-												const selected = field.value === t.id;
-												return (
-													<button
-														key={t.id}
-														type="button"
-														onClick={() => field.onChange(t.id)}
-														className={cn(
-															"rounded-full border px-3 py-1.5 text-xs transition-colors duration-(--dur-fast)",
-															selected
-																? "border-primary/40 bg-primary/8 font-medium text-primary"
-																: "border-border text-muted-foreground hover:bg-muted",
-														)}
-													>
-														{t.name}
-													</button>
-												);
-											})}
-											{tasks.length === 0 && (
-												<p className="text-sm text-muted-foreground">
-													This project has no tasks yet — ask its lead to add
-													some in project settings.
-												</p>
-											)}
-										</div>
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
+						{/* One label over the two pickers, the way Harvest stacks them:
+						    the project decides the task list, so they read as one choice. */}
+						<div className="grid gap-1.5">
+							<span className="text-sm leading-none font-medium text-muted-foreground">
+								Project / Task
+							</span>
+							<div className="grid gap-2">
+								<FormField
+									control={form.control}
+									name="projectId"
+									render={({ field }) => (
+										<FormItem className="gap-1">
+											<FormControl>
+												<ProjectPicker
+													aria-label="Project"
+													projects={projects}
+													noProject="Time-off"
+													value={field.value === TIME_OFF ? null : field.value}
+													onValueChange={(next) => {
+														const wasTimeOff = field.value === TIME_OFF;
+														field.onChange(next ?? TIME_OFF);
+														form.setValue("taskId", "");
+														// A day off is a whole day until told otherwise;
+														// leaving Time-off takes the prefill back out.
+														if (next === null) {
+															form.setValue("duration", "8:00");
+														} else if (
+															wasTimeOff &&
+															form.getValues("duration") === "8:00"
+														) {
+															form.setValue("duration", "");
+														}
+													}}
+												/>
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name="taskId"
+									render={({ field }) => (
+										<FormItem className="gap-1">
+											<FormControl>
+												<TaskPicker
+													aria-label="Task"
+													tasks={pickableTasks}
+													recentIds={recentIds}
+													grouped={!isTimeOff}
+													value={field.value}
+													onValueChange={field.onChange}
+													placeholder={
+														tasks.length === 0
+															? "Loading tasks…"
+															: "Pick a task"
+													}
+												/>
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+						</div>
 						{dateOptions.length > 1 && (
 							<FormField
 								control={form.control}
@@ -654,83 +707,90 @@ export function AddBlockDialog({
 								)}
 							/>
 						)}
-						{!repeatEnabled &&
-							!isAbsence && (
-								// Same hairline row as Repeat and Overtime below. It used to be a
-								// tinted box, which read as a different *kind* of control when it
-								// is the same kind: a toggle with a sentence under it.
-								<div className="flex items-center justify-between gap-3 border-t pt-3.5">
-									<div className="min-w-0">
-										<span className="text-base font-medium">
-											Fill rest of day
-										</span>
-										<p className="text-sm text-muted-foreground">
-											{dayHasFill
-												? "This day already has a fill block — edit or delete that one instead."
-												: "Auto-expands to your working hours minus everything else logged that day."}
-										</p>
-									</div>
-									<Switch
-										checked={fillsDay}
-										disabled={dayHasFill}
-										onCheckedChange={(checked) =>
-											form.setValue("fillsDay", checked)
-										}
-									/>
-								</div>
-							)}
-						{fillsDay ? (
-							<p className="text-sm text-muted-foreground">
-								This entry fills the rest of the day's working hours
-								automatically — no duration needed.
-							</p>
-						) : (
-							<FormField
-								control={form.control}
-								name="duration"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel required>Time</FormLabel>
-										<FormControl>
-											<Input
-												{...field}
-												className="w-32 text-base"
-												placeholder="1.5 or 1h30m"
-												// Normalise on blur, the way the week grid's cells
-												// already do — "1.5" becomes "1h30m", so what is on
-												// screen is what will be saved rather than a form the
-												// reader has to snap in their own head.
-												onBlur={(e) => {
-													field.onBlur();
-													const parsed = parseDuration(e.target.value);
-													if (parsed !== null && parsed > 0) {
-														field.onChange(
-															formatDurationInput(snapToQuarterHour(parsed)),
-														);
+						{/* What you did, and how long: side by side, the time box big
+						    enough to be the thing you read back. */}
+						<div className="grid gap-1.5">
+							<div className="grid grid-cols-[minmax(0,1fr)_9.5rem] gap-2.5 max-sm:grid-cols-[minmax(0,1fr)]">
+								<FormField
+									control={form.control}
+									name="description"
+									render={({ field }) => (
+										<FormItem className="gap-1">
+											<FormControl>
+												<Textarea
+													rows={3}
+													className="min-h-22 resize-y"
+													aria-label={
+														needsDescription && !fillsDay
+															? "What you did"
+															: "Note (optional)"
 													}
-												}}
-											/>
-										</FormControl>
-										{/* The rounding hint gives way to the error: two lines of
-										    small print under one box is one too many, and the
-										    error is the one that needs acting on. */}
-										{form.formState.errors.duration ? (
+													placeholder={
+														needsDescription && !fillsDay
+															? "What did you work on?"
+															: "Note (optional)"
+													}
+													{...field}
+												/>
+											</FormControl>
 											<FormMessage />
-										) : (
-											<p className="text-sm text-muted-foreground">
-												{willSnap && snappedSeconds != null
-													? `Rounds to ${formatDurationInput(snappedSeconds)} — time is tracked in 15-minute steps.`
-													: "In 15-minute steps."}
-											</p>
+										</FormItem>
+									)}
+								/>
+								{fillsDay ? (
+									<div className="flex min-h-22 items-center justify-center rounded-lg border border-dashed border-input px-3 text-center text-sm text-muted-foreground">
+										Rest of day
+									</div>
+								) : (
+									<FormField
+										control={form.control}
+										name="duration"
+										render={({ field }) => (
+											<FormItem className="gap-1">
+												<FormControl>
+													<Input
+														{...field}
+														aria-label="Time"
+														placeholder="0:00"
+														inputMode="decimal"
+														className="mono h-full min-h-22 text-right text-[30px] font-medium tabular-nums"
+														// Normalise on blur, the way the week grid's cells
+														// already do — "1.5" becomes "1:30", so what is on
+														// screen is what will be saved rather than a form the
+														// reader has to snap in their own head.
+														onBlur={(e) => {
+															field.onBlur();
+															const parsed = parseDuration(e.target.value);
+															if (parsed !== null && parsed > 0) {
+																field.onChange(
+																	formatClock(snapToQuarterHour(parsed)),
+																);
+															}
+														}}
+													/>
+												</FormControl>
+												<FormMessage />
+											</FormItem>
 										)}
-									</FormItem>
+									/>
 								)}
-							/>
-						)}
-						{showCalendarPicker && (
-							<div className="border-t pt-3.5">
-								<div className="flex items-center justify-between">
-									<span className="text-base font-medium">Google Calendar</span>
+							</div>
+							{/* The rounding hint gives way to the error above: two lines of
+							    small print under one box is one too many. */}
+							{!form.formState.errors.duration && (
+								<p className="text-sm text-muted-foreground">
+									{fillsDay
+										? "Fills the rest of your working hours, minus everything else logged that day."
+										: willSnap && snappedSeconds != null
+											? `Rounds to ${formatClock(snappedSeconds)} — time is tracked in 15-minute steps.`
+											: "Type 1.5, 1h30m or 1:30 — tracked in 15-minute steps."}
+								</p>
+							)}
+						</div>
+						{showCalendarPicker && calendarOpen && (
+							<div className="rounded-lg border border-line2">
+								<div className="flex items-center justify-between px-3 py-2">
+									<span className="text-sm font-medium">Google Calendar</span>
 									{calendarEventsQ.isFetching && (
 										<span className="flex items-center gap-1.5 text-xs text-muted-foreground">
 											<CalendarDotIcon className="size-3.5 animate-pulse" />
@@ -738,18 +798,20 @@ export function AddBlockDialog({
 										</span>
 									)}
 								</div>
-
 								{calendarEvents.length > 0 && (
-									<div className="scrollbar-stable -mx-1 mt-3 max-h-52 overflow-y-auto rounded-md border">
+									<div className="scrollbar-stable max-h-52 overflow-y-auto border-t border-line2">
 										{calendarEvents.map((event) => {
 											const selected = calendarEventId === event.id;
 											return (
 												<button
 													key={event.id}
 													type="button"
-													onClick={() => pickCalendarEvent(event)}
+													onClick={() => {
+														pickCalendarEvent(event);
+														setCalendarOpen(false);
+													}}
 													className={cn(
-														"flex w-full items-start gap-2 border-b px-3 py-2 text-left last:border-b-0",
+														"flex w-full items-start gap-2 border-b border-line2 px-3 py-2 text-left last:border-b-0 hover:bg-muted",
 														selected && "bg-muted",
 													)}
 												>
@@ -771,156 +833,39 @@ export function AddBlockDialog({
 										})}
 									</div>
 								)}
-
 								{calendarEventsQ.isError && (
-									<p className="mt-3 text-sm text-destructive">
+									<p className="border-t border-line2 px-3 py-2 text-sm text-destructive">
 										Could not load your calendar. Try reconnecting Google.
 									</p>
 								)}
-
 								{calendarEventsQ.isSuccess && calendarEvents.length === 0 && (
-									<p className="mt-3 text-sm text-muted-foreground">
+									<p className="border-t border-line2 px-3 py-2 text-sm text-muted-foreground">
 										No meetings found for this day.
 									</p>
 								)}
-
-								{meetingUrl && (
-									<p className="mt-2 truncate text-sm text-muted-foreground">
-										Meeting link:{" "}
-										<a
-											href={meetingUrl}
-											target="_blank"
-											rel="noreferrer"
-											className="underlined text-primary"
-										>
-											{meetingUrl}
-										</a>
-									</p>
-								)}
 							</div>
 						)}
-						{showRepeatSection && (
-							<div className="border-t pt-3.5">
-								<div className="flex items-center justify-between">
-									<span className="text-base font-medium">Repeat</span>
-									<Switch
-										checked={repeatEnabled}
-										onCheckedChange={(checked) =>
-											form.setValue("repeatEnabled", checked)
-										}
-									/>
-								</div>
-								{/* A disclosure, not a bare conditional render. Flipping the
-								    switch used to insert this block instantly, which jumped the
-								    dialog's height and shoved the footer buttons down under
-								    whatever the pointer was already over.
-
-								    Opened with motion rather than the CSS `0fr → 1fr` grid-row
-								    trick: the fields unmount when collapsed, exactly as they did
-								    before this was animated, so nothing here can be tabbed into
-								    or submitted while the switch is off. The grid version had to
-								    keep them mounted and hold them shut with `inert` instead.
-								    `springProductive` is the same spring the sidebar rows and the
-								    entry rows open with.
-
-								    `overflow-hidden` clips the content to the collapsing box; the
-								    controls sit behind `mt-3` + `p-3`, so it never reaches a
-								    focus ring. Reduced motion is handled globally by the root
-								    <MotionConfig reducedMotion="user">. */}
-								<AnimatePresence initial={false}>
-									{repeatEnabled && (
-										<motion.div
-											key="repeat-options"
-											initial={{ height: 0, opacity: 0 }}
-											animate={{ height: "auto", opacity: 1 }}
-											exit={{ height: 0, opacity: 0 }}
-											transition={springProductive}
-											className="overflow-hidden"
-										>
-											<div className="mt-3 flex flex-col gap-3 rounded-lg border bg-muted/40 p-3">
-												<div className="flex gap-1">
-													{DAY_LABELS.map((label, day) => (
-														<button
-															// oxlint-disable-next-line react/no-array-index-key -- day is the stable weekday number (0-6)
-															key={day}
-															type="button"
-															onClick={() => toggleDay(day)}
-															className={cn(
-																"mono size-7 rounded-full border text-xs transition-colors duration-(--dur-fast)",
-																daysOfWeek.includes(day)
-																	? "border-primary bg-primary text-primary-foreground"
-																	: "border-border bg-background text-muted-foreground",
-															)}
-														>
-															{label}
-														</button>
-													))}
-												</div>
-												{form.formState.errors.daysOfWeek && (
-													<p className="text-sm text-destructive">
-														{form.formState.errors.daysOfWeek.message}
-													</p>
-												)}
-												<FormField
-													control={form.control}
-													name="repeatEndDate"
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="text-xs">
-																Ends (optional)
-															</FormLabel>
-															<FormControl>
-																{/* Genuinely optional — a repeat with no end
-																    date runs until it is removed — so this is
-																    the second of the two clearable pickers. */}
-																<DatePicker
-																	aria-label="Repeat ends"
-																	placeholder="No end date"
-																	clearable
-																	value={field.value || null}
-																	onValueChange={(next) =>
-																		field.onChange(next ?? "")
-																	}
-																/>
-															</FormControl>
-														</FormItem>
-													)}
-												/>
-											</div>
-										</motion.div>
-									)}
-								</AnimatePresence>
-							</div>
+						{meetingUrl && (
+							<p className="-mt-2 truncate text-sm text-muted-foreground">
+								Meeting link:{" "}
+								<a
+									href={meetingUrl}
+									target="_blank"
+									rel="noreferrer"
+									className="underlined text-primary"
+								>
+									{meetingUrl}
+								</a>
+							</p>
 						)}
-						{!isAbsence && (
-							<div className="flex items-center justify-between border-t pt-3.5">
-								<div className="min-w-0">
-									<span className="text-base font-medium">Overtime</span>
-									<p className="text-sm text-muted-foreground">
-										Flag it yourself — nothing is counted as overtime
-										automatically.
-									</p>
-								</div>
-								<FormField
-									control={form.control}
-									name="overtime"
-									render={({ field }) => (
-										<Switch
-											checked={field.value}
-											onCheckedChange={field.onChange}
-										/>
-									)}
-								/>
-							</div>
-						)}
-						{showCommitSection && (
-							<div className="border-t pt-3.5">
-								<div className="flex min-h-8 items-center justify-between">
-									<span className="text-base font-medium">GitHub commits</span>
+						{showCommitSection && (commitsOpen || showAttachedCommits) && (
+							<div className="rounded-lg border border-line2">
+								<div className="flex min-h-10 items-center justify-between px-3 py-1">
+									<span className="text-sm font-medium">GitHub commits</span>
 									{!showCommitPicker ? null : autoLoadCommits ? (
 										<Button
 											type="button"
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => suggestedCommitsQ.refetch()}
 											disabled={suggestedCommitsQ.isFetching}
@@ -931,7 +876,7 @@ export function AddBlockDialog({
 									) : (
 										<Button
 											type="button"
-											variant="outline"
+											variant="ghost"
 											size="sm"
 											onClick={() => suggestCommitsMutation.mutate()}
 											disabled={suggestCommitsMutation.isPending}
@@ -945,11 +890,11 @@ export function AddBlockDialog({
 								</div>
 
 								{showAttachedCommits && (
-									<div className="scrollbar-stable -mx-1 mt-3 max-h-40 overflow-y-auto rounded-md border">
+									<div className="scrollbar-stable max-h-40 overflow-y-auto border-t border-line2">
 										{(attachedCommits ?? []).map((commit) => (
 											<div
 												key={commit.id}
-												className="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0"
+												className="flex items-center justify-between gap-2 border-b border-line2 px-3 py-2 last:border-b-0"
 											>
 												{/* The sha is the link, not the whole row: the row is
 												    also a click target for nothing else, and making the
@@ -988,7 +933,7 @@ export function AddBlockDialog({
 								)}
 
 								{pickableCommits.length > 0 && (
-									<div className="scrollbar-stable -mx-1 mt-3 max-h-52 overflow-y-auto rounded-md border">
+									<div className="scrollbar-stable max-h-52 overflow-y-auto border-t border-line2">
 										{pickableCommits.map((commit) => {
 											const key = commitKey(
 												commit.projectGithubRepoId,
@@ -998,7 +943,7 @@ export function AddBlockDialog({
 											return (
 												<label
 													key={key}
-													className="flex cursor-pointer items-start gap-2 border-b px-3 py-2 last:border-b-0"
+													className="flex cursor-pointer items-start gap-2 border-b border-line2 px-3 py-2 last:border-b-0"
 												>
 													<input
 														type="checkbox"
@@ -1024,39 +969,231 @@ export function AddBlockDialog({
 									? suggestedCommitsQ.isSuccess
 									: suggestCommitsMutation.isSuccess) &&
 									pickableCommits.length === 0 && (
-										<p className="mt-3 text-sm text-muted-foreground">
+										<p className="border-t border-line2 px-3 py-2 text-sm text-muted-foreground">
 											No commits found for this day.
 										</p>
 									)}
 							</div>
 						)}
-						<FormField
-							control={form.control}
-							name="description"
-							render={({ field }) => (
-								<FormItem>
-									<FormLabel
-										required={
-											!isAbsence && !fillsDay && projectId !== NO_PROJECT
-										}
-									>
-										{isAbsence || fillsDay ? "Note (optional)" : "What you did"}
-									</FormLabel>
-									<FormControl>
-										<Textarea rows={3} className="resize-y" {...field} />
-									</FormControl>
-									<FormMessage />
-								</FormItem>
-							)}
-						/>
-						<DialogFooter>
+						{!isTimeOff && (
+							<div className="border-t border-line2 pt-2">
+								{/* A disclosure, not a bare conditional render, for the same
+								    reason the Repeat block inside it is one: opening it must not
+								    jump the footer out from under the pointer. */}
+								<button
+									type="button"
+									onClick={() => setMoreOpen((current) => !current)}
+									aria-expanded={moreOpen}
+									className="flex items-center gap-1.5 rounded-md py-1 text-base text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16"
+								>
+									<CaretRightIcon
+										weight="regular"
+										className={cn(
+											"size-3.5 transition-transform duration-(--dur-base)",
+											moreOpen && "rotate-90",
+										)}
+									/>
+									More options
+									{activeOptions.length > 0 && (
+										<span className="text-foreground">
+											· {activeOptions.join(", ")}
+										</span>
+									)}
+								</button>
+								<AnimatePresence initial={false}>
+									{moreOpen && (
+										<motion.div
+											key="more-options"
+											initial={{ height: 0, opacity: 0 }}
+											animate={{ height: "auto", opacity: 1 }}
+											exit={{ height: 0, opacity: 0 }}
+											transition={springProductive}
+											className="overflow-hidden"
+										>
+											<div className="grid divide-y divide-line2 pt-1">
+												{!repeatEnabled && (
+													<div className="flex items-center justify-between gap-3 py-3">
+														<div className="min-w-0">
+															<span className="text-base font-medium">
+																Fill rest of day
+															</span>
+															<p className="text-sm text-muted-foreground">
+																{dayHasFill
+																	? "This day already has a fill block — edit or delete that one instead."
+																	: "Auto-expands to your working hours minus everything else logged that day."}
+															</p>
+														</div>
+														<Switch
+															checked={fillsDay}
+															disabled={dayHasFill}
+															onCheckedChange={(checked) =>
+																form.setValue("fillsDay", checked)
+															}
+														/>
+													</div>
+												)}
+												{showRepeatSection && (
+													<div className="py-3">
+														<div className="flex items-center justify-between gap-3">
+															<div className="min-w-0">
+																<span className="text-base font-medium">
+																	Repeat
+																</span>
+																<p className="text-sm text-muted-foreground">
+																	Log this every week on the days you pick.
+																</p>
+															</div>
+															<Switch
+																checked={repeatEnabled}
+																onCheckedChange={(checked) =>
+																	form.setValue("repeatEnabled", checked)
+																}
+															/>
+														</div>
+														<AnimatePresence initial={false}>
+															{repeatEnabled && (
+																<motion.div
+																	key="repeat-options"
+																	initial={{ height: 0, opacity: 0 }}
+																	animate={{ height: "auto", opacity: 1 }}
+																	exit={{ height: 0, opacity: 0 }}
+																	transition={springProductive}
+																	className="overflow-hidden"
+																>
+																	<div className="mt-3 flex flex-col gap-3">
+																		<div className="flex gap-1">
+																			{DAY_LABELS.map((label, day) => (
+																				<button
+																					// oxlint-disable-next-line react/no-array-index-key -- day is the stable weekday number (0-6)
+																					key={day}
+																					type="button"
+																					onClick={() => toggleDay(day)}
+																					className={cn(
+																						"mono size-7 rounded-full border text-xs transition-colors duration-(--dur-fast)",
+																						daysOfWeek.includes(day)
+																							? "border-primary bg-primary text-primary-foreground"
+																							: "border-border bg-background text-muted-foreground",
+																					)}
+																				>
+																					{label}
+																				</button>
+																			))}
+																		</div>
+																		{form.formState.errors.daysOfWeek && (
+																			<p className="text-sm text-destructive">
+																				{
+																					form.formState.errors.daysOfWeek
+																						.message
+																				}
+																			</p>
+																		)}
+																		<FormField
+																			control={form.control}
+																			name="repeatEndDate"
+																			render={({ field }) => (
+																				<FormItem>
+																					<FormLabel className="text-xs">
+																						Ends (optional)
+																					</FormLabel>
+																					<FormControl>
+																						{/* Genuinely optional — a repeat with no
+																						    end date runs until it is removed. */}
+																						<DatePicker
+																							aria-label="Repeat ends"
+																							placeholder="No end date"
+																							clearable
+																							value={field.value || null}
+																							onValueChange={(next) =>
+																								field.onChange(next ?? "")
+																							}
+																						/>
+																					</FormControl>
+																				</FormItem>
+																			)}
+																		/>
+																	</div>
+																</motion.div>
+															)}
+														</AnimatePresence>
+													</div>
+												)}
+												<div className="flex items-center justify-between gap-3 py-3">
+													<div className="min-w-0">
+														<span className="text-base font-medium">
+															Overtime
+														</span>
+														<p className="text-sm text-muted-foreground">
+															Flag it yourself — nothing is counted as overtime
+															automatically.
+														</p>
+													</div>
+													<FormField
+														control={form.control}
+														name="overtime"
+														render={({ field }) => (
+															<Switch
+																checked={field.value}
+																onCheckedChange={field.onChange}
+															/>
+														)}
+													/>
+												</div>
+											</div>
+										</motion.div>
+									)}
+								</AnimatePresence>
+							</div>
+						)}
+						<DialogFooter className="sm:justify-start">
 							<Button type="submit" disabled={mutation.isPending}>
 								{entry
 									? "Save entry"
 									: repeatEnabled
 										? "Create repeating entry"
-										: "Log time"}
+										: "Save entry"}
+								<kbd className="mono rounded-sm bg-primary-foreground/22 px-1 text-2xs">
+									{modKey}↩
+								</kbd>
 							</Button>
+							<DialogClose render={<Button type="button" variant="outline" />}>
+								Cancel
+							</DialogClose>
+							{(showCalendarPicker || showCommitPicker) && (
+								<div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:ml-auto">
+									{showCalendarPicker && (
+										<Button
+											type="button"
+											variant="link"
+											size="sm"
+											className="px-0"
+											onClick={() => setCalendarOpen((current) => !current)}
+										>
+											<CalendarDotIcon className="size-4" />
+											Pull in a calendar event
+										</Button>
+									)}
+									{showCommitPicker && (
+										<Button
+											type="button"
+											variant="link"
+											size="sm"
+											className="px-0"
+											onClick={() => {
+												setCommitsOpen((current) => !current);
+												if (
+													!autoLoadCommits &&
+													!suggestCommitsMutation.isSuccess
+												) {
+													suggestCommitsMutation.mutate();
+												}
+											}}
+										>
+											<GitCommitIcon className="size-4" />
+											Pull in commits
+										</Button>
+									)}
+								</div>
+							)}
 						</DialogFooter>
 					</form>
 				</Form>

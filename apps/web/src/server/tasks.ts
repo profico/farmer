@@ -10,15 +10,25 @@ import { createServerFn } from "@tanstack/react-start";
 import { orgAdminMiddleware, orgMiddleware } from "./auth";
 
 // The tasks one entry form may offer: with a project, every live task of the
-// org plus the built-ins; without one, the absence tasks and built-ins only. Passing no project id returns
-// only the absence tasks, which is the right answer for "logging without a
-// project".
+// org plus the built-ins; without one, the absence tasks and built-ins only —
+// which is the right answer for "logging without a project".
 export const listTasksForProject = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.validator(projectIdInput.optional())
 	.handler(async ({ data: projectId, context }) => {
 		const { tasksService } = await import("@farmer/core/services");
 		return tasksService.listForProject(context.ctx, projectId);
+	});
+
+// The caller's own last three tasks on a project, for the picker's "Recent"
+// group. Their entries, not the project's: what a colleague logs is no hint
+// about what you are about to.
+export const listRecentTasks = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(projectIdInput)
+	.handler(async ({ data: projectId, context }) => {
+		const { tasksService } = await import("@farmer/core/services");
+		return tasksService.recentForProject(context.ctx, projectId);
 	});
 
 // Every task the caller could pick anywhere, for report filters where the

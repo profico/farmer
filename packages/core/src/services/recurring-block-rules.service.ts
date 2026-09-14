@@ -23,7 +23,11 @@ import {
 } from "../schema/recurring-block-rules";
 import { ctxAccess, ctxTimezone } from "./context";
 import { recomputeDayFill } from "./day-fill";
-import { assertProjectInOrg, assertTaskAvailable } from "./guards";
+import {
+	assertDescribed,
+	assertProjectInOrg,
+	assertTaskAvailable,
+} from "./guards";
 import { orgSettingsService } from "./org-settings.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
@@ -189,7 +193,12 @@ export const recurringBlockRulesService = {
 		// produce entries the user could have created themselves, which takes
 		// both the assignment check and the taxonomy one.
 		await assertMayScheduleOn(ctx, input.projectId ?? null);
-		await assertTaskAvailable(ctx, input.taskId, input.projectId);
+		const taskRow = await assertTaskAvailable(
+			ctx,
+			input.taskId,
+			input.projectId,
+		);
+		assertDescribed(taskRow, input.description);
 		const durationSeconds = parseRuleDuration(input.duration);
 
 		const [created] = await db
@@ -274,19 +283,24 @@ export const recurringBlockRulesService = {
 		});
 		if (!existing) throw new Error("Recurring block rule not found");
 
-		if (input.taskId !== undefined || input.projectId !== undefined) {
+		const retargeted =
+			input.taskId !== undefined || input.projectId !== undefined;
+		if (retargeted || input.description !== undefined) {
 			const nextProjectId =
 				(input.projectId !== undefined
 					? input.projectId
 					: existing.projectId) ?? null;
 			// Re-checked on update, not just on create: repointing an existing rule
 			// at another project is the same write by a slower route.
-			await assertMayScheduleOn(ctx, nextProjectId);
-			await assertTaskAvailable(
+			if (retargeted) await assertMayScheduleOn(ctx, nextProjectId);
+			const taskRow = await assertTaskAvailable(
 				ctx,
 				input.taskId ?? existing.taskId,
 				nextProjectId ?? undefined,
 			);
+			// The note rule follows the task, so a task change and a note change
+			// are both occasions to re-ask it.
+			assertDescribed(taskRow, input.description ?? existing.description);
 		}
 
 		const patch: Partial<typeof recurringBlockRule.$inferInsert> = {

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -13,13 +14,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "#/components/ui/dialog.tsx";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
@@ -177,11 +171,6 @@ function FileEntriesDialog({
 		enabled: open,
 	});
 
-	// Archived projects are dormant: you don't file new time against one.
-	const items = (projects ?? [])
-		.filter((p) => p.status === "active")
-		.map((p) => ({ value: p.id, label: p.name }));
-
 	const groups = groupUnfiled(entries ?? []);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [projectId, setProjectId] = useState<string | null>(null);
@@ -310,22 +299,13 @@ function FileEntriesDialog({
 								? "Nothing selected"
 								: `${selectedIds.size} selected · ${formatHoursShort(selectedSeconds)}`}
 						</span>
-						<Select
-							items={items}
+						<ProjectPicker
+							projects={projects ?? []}
 							value={projectId}
-							onValueChange={(value) => setProjectId(String(value))}
-						>
-							<SelectTrigger className="w-52 shrink-0">
-								<SelectValue placeholder="Pick a project" />
-							</SelectTrigger>
-							<SelectContent>
-								{items.map((item) => (
-									<SelectItem key={item.value} value={item.value}>
-										{item.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							onValueChange={setProjectId}
+							className="w-60 shrink-0"
+							aria-label="File against project"
+						/>
 						<Button
 							disabled={
 								selectedIds.size === 0 || !projectId || fileMutation.isPending

@@ -1,4 +1,4 @@
-import { and, asc, count, eq, isNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, max, or } from "drizzle-orm";
 
 import { db } from "../db";
 import { type TaskSystemKey, task, timeEntry } from "../db/schema/domain";
@@ -67,6 +67,8 @@ export const tasksService = {
 			// Callers that must recognise a built-in (the add-block dialog's
 			// calendar picker for Meeting) need this, not the editable name.
 			systemKey: task.systemKey,
+			// The picker shows the list under its group headers.
+			group: task.group,
 		};
 
 		if (!projectId) {
@@ -110,6 +112,35 @@ export const tasksService = {
 				),
 			);
 		return rows.sort((a, b) => a.name.localeCompare(b.name));
+	},
+
+	/** The last three distinct tasks this person logged on a project, newest
+	 *  first — the picker's "Recent" group. On a project they have not logged on
+	 *  yet, their last three anywhere. Read from their own entries; nothing is
+	 *  stored. Absence never counts: it is not offered with a project. */
+	recentForProject: async (ctx: Ctx, projectId: string): Promise<string[]> => {
+		const recent = async (onProject: boolean) => {
+			const last = max(timeEntry.date);
+			const rows = await db
+				.select({ taskId: timeEntry.taskId, last })
+				.from(timeEntry)
+				.innerJoin(task, eq(task.id, timeEntry.taskId))
+				.where(
+					and(
+						eq(timeEntry.organizationId, ctx.organizationId),
+						eq(timeEntry.userId, ctx.userId),
+						onProject ? eq(timeEntry.projectId, projectId) : undefined,
+						eq(task.isAbsence, false),
+						isNull(task.archivedAt),
+					),
+				)
+				.groupBy(timeEntry.taskId)
+				.orderBy(desc(last))
+				.limit(3);
+			return rows.map((r) => r.taskId);
+		};
+		const onProject = await recent(true);
+		return onProject.length > 0 ? onProject : recent(false);
 	},
 
 	/**

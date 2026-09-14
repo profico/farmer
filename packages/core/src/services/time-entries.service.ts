@@ -69,6 +69,7 @@ import {
 import { filingRuleKey, filingRulesService } from "./filing-rules.service";
 import {
 	assertProjectInOrg,
+	assertDescribed,
 	assertTaskAvailable,
 	assertUserInOrg,
 } from "./guards";
@@ -1088,13 +1089,27 @@ export const timeEntriesService = {
 			with: { task: true },
 		}),
 
-	create: async (ctx: Ctx, input: CreateTimeEntryInput) => {
+	create: async (
+		ctx: Ctx,
+		input: CreateTimeEntryInput,
+		// `unasked`: the caller had no way to ask for a description (the week
+		// grid's cells). Every path where a person is filling in a form leaves it
+		// unset and gets the rule.
+		{ unasked = false }: { unasked?: boolean } = {},
+	) => {
 		if (input.projectId) {
 			await assertProjectInOrg(ctx, input.projectId);
 			const access = await ctxAccess(ctx);
 			access.assertCanTrackOn(input.projectId);
 		}
-		await assertTaskAvailable(ctx, input.taskId, input.projectId);
+		const taskRow = await assertTaskAvailable(
+			ctx,
+			input.taskId,
+			input.projectId,
+		);
+		if (!unasked) {
+			assertDescribed(taskRow, input.description, { fillsDay: input.fillsDay });
+		}
 
 		const tz = await ctxTimezone(ctx);
 		const durationSeconds = input.fillsDay
@@ -1241,7 +1256,12 @@ export const timeEntriesService = {
 			const access = await ctxAccess(ctx);
 			access.assertCanTrackOn(input.projectId);
 		}
-		await assertTaskAvailable(ctx, input.taskId, input.projectId);
+		const taskRow = await assertTaskAvailable(
+			ctx,
+			input.taskId,
+			input.projectId,
+		);
+		assertDescribed(taskRow, input.description, { fillsDay: input.fillsDay });
 
 		const tz = await ctxTimezone(ctx);
 		// The entry being edited is excluded from its own claim: converting a 2h
@@ -1616,19 +1636,23 @@ export const timeEntriesService = {
 
 			// Creating fresh. The grid sends no description, so this is normally an
 			// empty note, filled in afterwards through the row's note button — the
-			// mandatory-description rule is enforced at the createTimeEntry
-			// boundary, which is the path where a person is being asked the
-			// question. A spreadsheet cell cannot answer it.
+			// mandatory-description rule is enforced where a person is being asked
+			// the question (`create` without `unasked`). A spreadsheet cell cannot
+			// answer it.
 			const description = input.description?.trim() ?? "";
-			const created = await timeEntriesService.create(txCtx, {
-				date: input.date,
-				projectId: input.projectId,
-				taskId: input.taskId,
-				description: description || undefined,
-				durationSeconds: input.durationSeconds,
-				overtime: false,
-				fillsDay: false,
-			});
+			const created = await timeEntriesService.create(
+				txCtx,
+				{
+					date: input.date,
+					projectId: input.projectId,
+					taskId: input.taskId,
+					description: description || undefined,
+					durationSeconds: input.durationSeconds,
+					overtime: false,
+					fillsDay: false,
+				},
+				{ unasked: true },
+			);
 			return { entryId: created.id };
 		});
 	},

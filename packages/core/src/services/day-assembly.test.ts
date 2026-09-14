@@ -417,6 +417,7 @@ describe("offering back what was deleted", () => {
 		const created = await timeEntriesService.create(ctx, {
 			taskId: devTaskId,
 			date: MONDAY,
+			description: "Standup",
 			durationSeconds: 3600,
 			overtime: false,
 			fillsDay: false,
@@ -463,6 +464,7 @@ describe("offering back what was deleted", () => {
 		await timeEntriesService.create(ctx, {
 			taskId: devTaskId,
 			date: MONDAY,
+			description: "Standup",
 			durationSeconds: 3600,
 			overtime: false,
 			fillsDay: false,
