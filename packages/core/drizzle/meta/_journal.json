@@ -337,6 +337,13 @@
       "when": 1789254987739,
       "tag": "0047_friendly_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789299689593,
+      "tag": "0048_mature_prowler",
+      "breakpoints": true
     }
   ]
 }

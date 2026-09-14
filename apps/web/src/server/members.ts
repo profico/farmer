@@ -158,11 +158,27 @@ export const removeMember = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(removeMemberInput)
 	.handler(async ({ data: memberIdOrEmail, context }) => {
-		const { auth } = await import("@farmer/core/auth");
-		return auth.api.removeMember({
+		const [{ auth }, { membersService, teamLeadsService }] = await Promise.all([
+			import("@farmer/core/auth"),
+			import("@farmer/core/services"),
+		]);
+		// Resolved before the removal, since `team_lead_person` is keyed on user
+		// id and the membership row (the only thing that maps memberIdOrEmail to
+		// it) is gone once `removeMember` succeeds.
+		const userId = await membersService.resolveUserId(
+			context.ctx,
+			memberIdOrEmail,
+		);
+		const result = await auth.api.removeMember({
 			body: { memberIdOrEmail, organizationId: context.ctx.organizationId },
 			headers: getRequestHeaders(),
 		});
+		// A stale list row is what let a re-invited lead silently regain their
+		// old people, or a returning person silently reappear on one.
+		if (userId) {
+			await teamLeadsService.removeFromAllLists(context.ctx, userId);
+		}
+		return result;
 	});
 
 export const updateMemberRole = createServerFn({ method: "POST" })

@@ -1,6 +1,7 @@
 import {
 	and,
 	asc,
+	count,
 	eq,
 	gt,
 	gte,
@@ -20,11 +21,13 @@ import {
 	type invitationEmailStatus,
 	memberProfile,
 	memberTypeHistory,
+	teamLeadPerson,
 } from "../db/schema/people";
 import { dayKeyInTz, endOfMonthKey } from "../lib/time";
 import type { SetMemberTypeInput, MemberTypeValue } from "../schema/members";
 import { ctxDb, ctxTimezone, requireAdmin } from "./context";
 import { assertUserInOrg } from "./guards";
+import { teamLeadsService } from "./team-leads.service";
 import type { Ctx } from "./types";
 
 export type InvitationEmailStatus =
@@ -74,6 +77,8 @@ export type PersonRow = ResolvedMemberType & {
 	 *  import made with a guessed email (docs/plans/harvest-import.md, 3.3).
 	 *  Restoring them is where an admin confirms it. */
 	emailUnconfirmed: boolean;
+	/** People on their Team Lead list — zero for everyone who leads nobody. */
+	leadsPeople: number;
 };
 
 /** A membership row as the People screen draws it: the shape better-auth's
@@ -145,6 +150,38 @@ export const membersService = {
 			),
 		});
 		return row?.role ?? null;
+	},
+
+	/** Resolve better-auth's `memberIdOrEmail` (the removal endpoint accepts
+	 *  either) to the person's user id, before the membership row disappears.
+	 *  `team_lead_person` is keyed on user id, not member id, so the caller
+	 *  needs this to clean up the person's lists once the removal itself has
+	 *  gone through `auth.api.removeMember`. Null when neither matches — the
+	 *  removal call itself is what reports that failure. */
+	resolveUserId: async (
+		ctx: Ctx,
+		memberIdOrEmail: string,
+	): Promise<string | null> => {
+		const byId = await db.query.member.findFirst({
+			where: and(
+				eq(member.organizationId, ctx.organizationId),
+				eq(member.id, memberIdOrEmail),
+			),
+			columns: { userId: true },
+		});
+		if (byId) return byId.userId;
+		const byEmail = await db
+			.select({ userId: member.userId })
+			.from(member)
+			.innerJoin(user, eq(member.userId, user.id))
+			.where(
+				and(
+					eq(member.organizationId, ctx.organizationId),
+					eq(user.email, memberIdOrEmail),
+				),
+			)
+			.limit(1);
+		return byEmail[0]?.userId ?? null;
 	},
 
 	/** Everyone in the org, as names and faces only.
@@ -269,6 +306,16 @@ export const membersService = {
 					).map((a) => a.userId),
 		);
 
+		// One number per lead for the Members page; nobody else has a row.
+		const leadRows = await db
+			.select({ leadUserId: teamLeadPerson.leadUserId, people: count() })
+			.from(teamLeadPerson)
+			.where(eq(teamLeadPerson.organizationId, ctx.organizationId))
+			.groupBy(teamLeadPerson.leadUserId);
+		const leadsPeople = new Map(
+			leadRows.map((r) => [r.leadUserId, Number(r.people)]),
+		);
+
 		return rows.map((r) => ({
 			userId: r.userId,
 			name: r.name,
@@ -281,6 +328,7 @@ export const membersService = {
 			// right one: delivery people are the common case.
 			type: r.type ?? DEFAULT_TYPE.type,
 			expectedSecondsOverride: r.expectedSecondsOverride ?? null,
+			leadsPeople: leadsPeople.get(r.userId) ?? 0,
 		}));
 	},
 
@@ -491,7 +539,14 @@ export const membersService = {
 				target: [memberProfile.organizationId, memberProfile.userId],
 				set: { archivedAt, updatedAt: new Date() },
 			});
-		if (archived) return { emailConfirmed: false };
+		if (archived) {
+			// An archived person is gone from every forward-looking surface; a
+			// stale Team Lead list row is exactly the kind of thing that survives
+			// an archive and comes back to life when the same person is restored
+			// or a new person is invited into their old email.
+			await teamLeadsService.removeFromAllLists(ctx, userId);
+			return { emailConfirmed: false };
+		}
 
 		// Restoring a person who has never signed in is where an admin confirms
 		// an address an import guessed. Silent when that is not allowed: the

@@ -25,6 +25,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { client, project, projectMember } from "../db/schema/domain";
+import { teamLeadPerson } from "../db/schema/people";
 import { createTestDb, type TestDb } from "../test/harness";
 import {
 	Access,
@@ -39,6 +40,7 @@ import {
 const accessWith = (
 	roles: Record<string, "member" | "team_lead" | "pm">,
 	isAdmin = false,
+	leadOf: string[] = [],
 ) =>
 	new Access(
 		"u1",
@@ -50,6 +52,7 @@ const accessWith = (
 			string,
 			"member" | "team_lead" | "pm"
 		>,
+		new Set(leadOf),
 	);
 
 const P = "project-1";
@@ -514,5 +517,196 @@ describe("accessService.requireAdmin", () => {
 		await expect(
 			accessService.requireAdmin({ organizationId: ORG, userId: "u-plain" }),
 		).rejects.toThrow(AccessError);
+	});
+});
+
+describe("Access — Team Lead people lists", () => {
+	const lead = accessWith({ [P]: "member" }, false, ["u2", "u3"]);
+
+	test("having people on the list is what makes a Team Lead", () => {
+		expect(lead.isTeamLead).toBe(true);
+		expect(lead.peopleLed().sort()).toEqual(["u2", "u3"]);
+		// A project-level team_lead assignment alone is not the org-chart role.
+		expect(accessWith({ [P]: "team_lead" }).isTeamLead).toBe(false);
+	});
+
+	// The owner's decision: a people list only widens rank on a project where
+	// the lead's OWN assignment is `team_lead`. A plain `member` assignment
+	// stays `member` — the list makes someone a Team Lead, not a PM on every
+	// project they happen to be tracking time on.
+	test("a member assignment does NOT widen to PM, even with a people list", () => {
+		expect(lead.roleOn(P)).toBe("member");
+		expect(lead.heldAs(P)).toBe("member");
+		expect(lead.canViewProjectEntries(P)).toBe(false);
+		expect(lead.canManageProject(P)).toBe(false);
+		expect(lead.canViewProjectMoney(P)).toBe(false);
+		expect(lead.scopeFor("pm")).toEqual([]);
+	});
+
+	test("a team_lead assignment DOES widen to PM when the caller has a people list", () => {
+		const leadOnTeamLeadRow = accessWith({ [P]: "team_lead" }, false, [
+			"u2",
+			"u3",
+		]);
+		expect(leadOnTeamLeadRow.heldAs(P)).toBe("pm");
+		expect(leadOnTeamLeadRow.canViewProjectEntries(P)).toBe(true);
+		expect(leadOnTeamLeadRow.canManageProject(P)).toBe(true);
+		expect(leadOnTeamLeadRow.canViewProjectMoney(P)).toBe(true);
+		expect(leadOnTeamLeadRow.scopeFor("pm")).toEqual([P]);
+		// …but only where they are assigned at all.
+		expect(leadOnTeamLeadRow.canViewProjectEntries(OTHER)).toBe(false);
+		expect(leadOnTeamLeadRow.canManageProject(OTHER)).toBe(false);
+		expect(leadOnTeamLeadRow.heldAs(OTHER)).toBeNull();
+	});
+
+	// Without a people list, a `team_lead` assignment is exactly what it says —
+	// visibility and light team management, never money or manage — because
+	// having a list, not the project row, is what makes someone a Team Lead.
+	test("without a people list, a team_lead assignment stays team_lead", () => {
+		expect(accessWith({ [P]: "team_lead" }).heldAs(P)).toBe("team_lead");
+		expect(accessWith({ [P]: "team_lead" }).canViewProjectMoney(P)).toBe(false);
+	});
+
+	test("canViewPerson: themselves, the people on their list, or Admin", () => {
+		expect(lead.canViewPerson("u1")).toBe(true);
+		expect(lead.canViewPerson("u2")).toBe(true);
+		expect(lead.canViewPerson("u9")).toBe(false);
+		expect(accessWith({}).canViewPerson("u2")).toBe(false);
+		expect(accessWith({}, true).canViewPerson("u2")).toBe(true);
+	});
+});
+
+// ── The database half of the rank-widening fix ──────────────────────────────
+//
+// The bug: `rankOf`/`heldAs` used to widen ANY assignment to PM once the
+// caller had a people list, including a plain `member` row — exposing money,
+// manage/archive, and everyone else on that project through `peopleScope`.
+// This exercises the fix end to end, through `accessService.resolve` and
+// `accessService.peopleScope` against real assignment rows, not just the pure
+// `Access` matrix above.
+describe("Team Lead rank widening follows the assignment role (database)", () => {
+	const WIDEN_LEAD = "u-widen-lead";
+	const WIDEN_PERSON = "u-widen-person";
+	const WIDEN_COWORKER = "u-widen-coworker";
+	let teamLeadProjectId: string;
+	let memberProjectId: string;
+
+	beforeAll(async () => {
+		await db.insert(user).values(
+			[WIDEN_LEAD, WIDEN_PERSON, WIDEN_COWORKER].map((id) => ({
+				id,
+				name: id,
+				email: `${id}@example.com`,
+				emailVerified: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})),
+		);
+		await db.insert(member).values(
+			[WIDEN_LEAD, WIDEN_PERSON, WIDEN_COWORKER].map((id) => ({
+				id: `m-${id}`,
+				organizationId: ORG,
+				userId: id,
+				role: "member",
+				createdAt: new Date(),
+			})),
+		);
+		const [widenClient] = await db
+			.insert(client)
+			.values({ organizationId: ORG, name: "Widen Client" })
+			.returning();
+		if (!widenClient) throw new Error("Failed to seed client");
+
+		const [teamLeadProject, memberProject] = await db
+			.insert(project)
+			.values([
+				{
+					organizationId: ORG,
+					clientId: widenClient.id,
+					name: "Widen — Team Lead row",
+				},
+				{
+					organizationId: ORG,
+					clientId: widenClient.id,
+					name: "Widen — Member row",
+				},
+			])
+			.returning();
+		if (!teamLeadProject || !memberProject) {
+			throw new Error("Failed to seed projects");
+		}
+		teamLeadProjectId = teamLeadProject.id;
+		memberProjectId = memberProject.id;
+
+		await db.insert(projectMember).values([
+			// The lead's OWN assignment is team_lead on one project...
+			{
+				organizationId: ORG,
+				projectId: teamLeadProjectId,
+				userId: WIDEN_LEAD,
+				role: "team_lead",
+				active: true,
+			},
+			// ...and a plain member on another.
+			{
+				organizationId: ORG,
+				projectId: memberProjectId,
+				userId: WIDEN_LEAD,
+				role: "member",
+				active: true,
+			},
+			// A coworker on the member-rank project — must stay invisible to the
+			// lead's people scope, since that project is never held as PM.
+			{
+				organizationId: ORG,
+				projectId: memberProjectId,
+				userId: WIDEN_COWORKER,
+				role: "member",
+				active: true,
+			},
+		]);
+
+		// Having a person on the list is what makes WIDEN_LEAD a Team Lead.
+		await db.insert(teamLeadPerson).values({
+			organizationId: ORG,
+			leadUserId: WIDEN_LEAD,
+			personUserId: WIDEN_PERSON,
+		});
+	});
+
+	test("PM rank applies only on the team_lead assignment, never the member one", async () => {
+		const access = await accessService.resolve({
+			organizationId: ORG,
+			userId: WIDEN_LEAD,
+		});
+		expect(access.isTeamLead).toBe(true);
+
+		expect(access.heldAs(teamLeadProjectId)).toBe("pm");
+		expect(access.canViewProjectMoney(teamLeadProjectId)).toBe(true);
+		expect(access.canManageProject(teamLeadProjectId)).toBe(true);
+
+		expect(access.heldAs(memberProjectId)).toBe("member");
+		expect(access.roleOn(memberProjectId)).toBe("member");
+		expect(access.canViewProjectMoney(memberProjectId)).toBe(false);
+		expect(access.canManageProject(memberProjectId)).toBe(false);
+		expect(access.canViewProjectEntries(memberProjectId)).toBe(false);
+
+		// scopeFor("pm") — used by peopleScope's "everyone on a managed project"
+		// — must include the team_lead-rank project and exclude the member one.
+		const scope = access.scopeFor("pm");
+		expect(scope).not.toBeNull();
+		expect(scope).toEqual([teamLeadProjectId]);
+	});
+
+	test("peopleScope excludes the coworker on the member-rank project", async () => {
+		const ctx = { organizationId: ORG, userId: WIDEN_LEAD };
+		const access = await accessService.resolve(ctx);
+		const people = await accessService.peopleScope(ctx, access);
+		expect(people).not.toBeNull();
+		if (!people) throw new Error("expected a scoped, non-admin answer");
+
+		expect(people.has(WIDEN_LEAD)).toBe(true);
+		expect(people.has(WIDEN_PERSON)).toBe(true);
+		expect(people.has(WIDEN_COWORKER)).toBe(false);
 	});
 });

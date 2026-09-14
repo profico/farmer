@@ -78,9 +78,9 @@ export function MobileTabBar({
 			label: "Work",
 			items: [
 				...overflowWorkItems,
-				// Reports are scoped for a PM/TL, not admin-only — same gate as
-				// Clients.
-				...(canManageClients ? [REPORTS_ITEM] : []),
+				// Reports are for everyone: scoped by the services, a Member sees
+				// their own row.
+				REPORTS_ITEM,
 			],
 		},
 		{ label: "You", items: YOU_ITEMS },

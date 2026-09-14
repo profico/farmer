@@ -626,20 +626,14 @@ describe("read tools", () => {
 		expect(toolRow?.content).toMatch(/62 days/);
 	});
 
-	test("an org-wide-looking report is still gated on the caller's role", async () => {
+	test("an org-wide-looking report is still scoped to the caller", async () => {
 		// The one read whose SHAPE is organization-wide. WORKER is a plain member
-		// with no Team Lead or PM assignment, so `reportScope` refuses — exactly as
-		// it does for the Reports screen, which they cannot reach either. Worth
-		// pinning explicitly: every other read is obviously self-scoped by its own
-		// WHERE clause, and this is the one that would quietly answer for the whole
-		// organization if the gate ever moved into the route instead of the service.
-		//
-		// There are now two layers, and the test names both. The tool is not in
-		// WORKER's list at all, so an honest model never reaches for it; a model
-		// that names it anyway — from an earlier turn, or from a conversation
-		// started while its owner still held the role — is refused before the
-		// service is called. Neither layer is the authorization: the service's own
-		// `reportScope` still is, and it is what the ADMIN case below goes through.
+		// with no Team Lead or PM assignment and no people list, so `reportScope`
+		// narrows the answer to their own entries — exactly as the Reports screen
+		// does for them. Worth pinning explicitly: every other read is obviously
+		// self-scoped by its own WHERE clause, and this is the one that would
+		// quietly answer for the whole organization if the scope ever moved into
+		// the route instead of the service.
 		const chat = await startChat(ctxFor(WORKER));
 		script = [
 			turn({
@@ -668,8 +662,8 @@ describe("read tools", () => {
 				where: eq(assistantMessage.conversationId, chat.id),
 			})
 		).find((row) => row.role === "tool");
-		expect(toolRow?.content).toMatch(/not available to this user/i);
-		// And no colleague's hours reached the model.
+		// The tool answered — and no colleague's hours reached the model.
+		expect(toolRow?.content).not.toMatch(/not available to this user/i);
 		expect(toolRow?.content).not.toContain("somebody else's work");
 	});
 
@@ -687,7 +681,8 @@ describe("read tools", () => {
 		const worker = names(workerAccess);
 		const admin = names(adminAccess);
 
-		// A plain member keeps everything about their own time...
+		// A plain member keeps everything about their own time, the reports
+		// included — each is scoped by its service to the caller...
 		for (const own of [
 			"whoami",
 			"list_time_entries",
@@ -695,13 +690,14 @@ describe("read tools", () => {
 			"log_absence",
 			"copy_day",
 			"delete_time_entry",
+			"time_report_summary",
+			"absence_report",
 		]) {
 			expect(worker).toContain(own);
 		}
-		// ...and is offered nothing about anyone else's, the close, or the org.
+		// ...and is offered nothing that manages other people or the org.
 		for (const theirs of [
-			"time_report_summary",
-			"absence_report",
+			"list_project_members",
 			"create_task",
 			"assign_project_member",
 		]) {

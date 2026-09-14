@@ -246,11 +246,17 @@ const nameOr = async (
 
 const adminOnly = (access: Access) => access.isAdmin;
 
+/** Every report is scoped by the service to what the caller may see — a
+ *  Member gets themselves — so a report tool is offered to everyone. */
+const anyone = () => true;
+
 /** Reports refuse a caller who leads nothing — `reportScope` throws outright —
  *  so a plain Member is offered none of them rather than being handed four
  *  tools whose only possible answer is an access error. */
 const leadsSomething = (access: Access) =>
-	access.isAdmin || access.assignments().some(([, role]) => role !== "member");
+	access.isAdmin ||
+	access.isTeamLead ||
+	access.assignments().some(([, role]) => role !== "member");
 
 const canCreateProjects = (access: Access) => access.canCreateProjects();
 
@@ -555,7 +561,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		description:
 			"Total logged hours over a date range, grouped by client, project or teammate. Scoped to what the caller is allowed to see. Use this for aggregate questions instead of listing every entry.",
 		schema: timeReportSummaryInput,
-		available: leadsSomething,
+		available: anyone,
 		run: async (ctx, args) => {
 			const input = timeReportSummaryInput.parse(args);
 			const result = await reportsService.timeSummary(ctx, input);
@@ -575,7 +581,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		description:
 			"The individual entries behind a report range — date, person, client, project, task, description, hours — with optional client, project, task and user filters. Use time_report_summary first; reach for this only when the question is about specific entries.",
 		schema: timeReportDetailInput,
-		available: leadsSomething,
+		available: anyone,
 		run: async (ctx, args) => {
 			const input = timeReportDetailInput.parse(args);
 			const result = await reportsService.timeDetail(ctx, input);
@@ -604,7 +610,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		description:
 			"Overtime hours per person for a month, with each person's running total for the year. Scoped to the caller's projects.",
 		schema: monthReportInput,
-		available: leadsSomething,
+		available: anyone,
 		run: async (ctx, args) => {
 			const input = monthReportInput.parse(args);
 			const rows = await reportsService.overtime(ctx, input);
@@ -659,9 +665,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "absence_report",
 		kind: "read",
 		description:
-			"Organization-wide absence for a year, or for one month of it, per person and task. Admin only.",
+			"Absence for a year, or for one month of it, per person and task — scoped to the people the caller may see: everyone for an Admin, otherwise themselves, their Team Lead people, and everyone on the projects they manage.",
 		schema: absenceReportInput,
-		available: adminOnly,
+		available: anyone,
 		run: async (ctx, args) =>
 			reportsService.absence(ctx, absenceReportInput.parse(args)),
 	},

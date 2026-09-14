@@ -32,10 +32,13 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { memberProfile, memberTypeHistory } from "../db/schema/people";
+import {
+	memberProfile,
+	memberTypeHistory,
+	teamLeadPerson,
+} from "../db/schema/people";
 import { monthlyHourFund } from "../db/schema/settings";
 import { createTestDb, type TestDb } from "../test/harness";
-import { AccessError } from "./access.service";
 import { reportsService } from "./reports.service";
 import type { Ctx } from "./types";
 
@@ -273,18 +276,77 @@ describe("who may read a report", () => {
 		groupBy: "date" as const,
 	};
 
-	test("a plain member is refused, and with an AccessError", async () => {
-		await expect(
-			reportsService.timeSummary(ctxFor(WORKER), summaryInput),
-		).rejects.toBeInstanceOf(AccessError);
+	test("a plain member sees their own entries and nobody else's", async () => {
+		await logEntry({ userId: WORKER, projectId: alphaId, seconds: 5 * H });
+		await logEntry({ userId: PM, projectId: alphaId, seconds: 2 * H });
+		await logEntry({ userId: OUTSIDER, projectId: betaId, seconds: 9 * H });
+
+		const mine = await reportsService.timeSummary(ctxFor(WORKER), summaryInput);
+		expect(mine.rows).toEqual([
+			{ id: alphaId, name: "Alpha", secondsTotal: 5 * H },
+		]);
+		expect(mine.totalSeconds).toBe(5 * H);
 	});
 
-	test("someone with no assignments at all is refused", async () => {
-		await expect(
-			reportsService.timeSummary(ctxFor(OUTSIDER), {
-				...summaryInput,
-			}),
-		).rejects.toBeInstanceOf(AccessError);
+	test("somebody assigned nowhere gets an empty report, not an error", async () => {
+		await logEntry({ userId: WORKER, projectId: alphaId, seconds: 5 * H });
+		const nothing = await reportsService.timeSummary(
+			ctxFor(CONTRACTOR),
+			summaryInput,
+		);
+		expect(nothing.rows).toEqual([]);
+		expect(nothing.totalSeconds).toBe(0);
+	});
+
+	test("a Team Lead sees their people's time on every project, plus their own projects", async () => {
+		await db.insert(teamLeadPerson).values({
+			organizationId: ORG,
+			leadUserId: LEAD,
+			personUserId: OUTSIDER,
+		});
+		try {
+			await logEntry({ userId: OUTSIDER, projectId: betaId, seconds: 9 * H });
+			await logEntry({ userId: WORKER, projectId: alphaId, seconds: 5 * H });
+			// On Beta, but not one of the lead's people: invisible.
+			await logEntry({ userId: PM, projectId: betaId, seconds: 1 * H });
+
+			const lead = await reportsService.timeSummary(ctxFor(LEAD), summaryInput);
+			expect(lead.rows.map((r) => [r.name, r.secondsTotal]).sort()).toEqual([
+				["Alpha", 5 * H],
+				["Beta", 9 * H],
+			]);
+			expect(lead.totalSeconds).toBe(14 * H);
+		} finally {
+			await db
+				.delete(teamLeadPerson)
+				.where(eq(teamLeadPerson.leadUserId, LEAD));
+		}
+	});
+
+	test("the Absence report is scoped by people: a Member sees only themselves", async () => {
+		await db.insert(timeEntry).values(
+			[WORKER, OUTSIDER].map((userId) => ({
+				organizationId: ORG,
+				userId,
+				projectId: null,
+				taskId: vacationTaskId,
+				date: "2026-05-12",
+				description: "",
+				durationSeconds: 8 * H,
+			})),
+		);
+		const mine = await reportsService.absence(ctxFor(WORKER), {
+			year: YEAR,
+			month: MONTH,
+		});
+		expect(mine.rows.map((r) => r.userId)).toEqual([WORKER]);
+		const all = await reportsService.absence(ctxFor(ADMIN), {
+			year: YEAR,
+			month: MONTH,
+		});
+		expect(all.rows.map((r) => r.userId).sort()).toEqual(
+			[OUTSIDER, WORKER].sort(),
+		);
 	});
 
 	test("a Team Lead sees their own project and not another", async () => {
@@ -314,11 +376,24 @@ describe("who may read a report", () => {
 		expect(row?.secondsTotal).toBe(2 * H);
 	});
 
-	test("admin-only reports refuse a PM", async () => {
-		const month = { year: YEAR, month: MONTH };
-		await expect(
-			reportsService.absence(ctxFor(PM), month),
-		).rejects.toBeInstanceOf(AccessError);
+	test("a PM's Absence report covers the people on their projects, and no one else", async () => {
+		await db.insert(timeEntry).values(
+			[WORKER, OUTSIDER].map((userId) => ({
+				organizationId: ORG,
+				userId,
+				projectId: null,
+				taskId: vacationTaskId,
+				date: "2026-05-12",
+				description: "",
+				durationSeconds: 8 * H,
+			})),
+		);
+		const theirs = await reportsService.absence(ctxFor(PM), {
+			year: YEAR,
+			month: MONTH,
+		});
+		// WORKER is on Alpha, which PM runs; OUTSIDER is on Beta only.
+		expect(theirs.rows.map((r) => r.userId)).toEqual([WORKER]);
 	});
 });
 

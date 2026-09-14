@@ -1,6 +1,5 @@
 import { parseMonthKey } from "@farmer/core/lib/report-period";
 import { dayKeyInTz } from "@farmer/core/lib/time";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Suspense } from "react";
 
@@ -16,7 +15,6 @@ import {
 	SegmentedControl,
 	SegmentedControlItem,
 } from "#/components/ui/segmented-control.tsx";
-import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatMonthKey } from "#/lib/format-date.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 
@@ -41,40 +39,21 @@ export const Route = createFileRoute("/$orgSlug/reports")({
 });
 
 function ReportsPage() {
-	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
-	const { data: access } = useSuspenseQuery(myAccessQuery(orgSlug));
 
 	const today = dayKeyInTz(new Date(), organization.timezone);
 	const thisMonth = today.slice(0, 7);
 	const month = search.month ?? thisMonth;
 	const period = parseMonthKey(month);
 
-	const visibleTabs = TABS.filter((t) => !t.adminOnly || access.isAdmin);
-	// A tab this person can't see is treated as if it weren't asked for: the
-	// admin-only ids stay valid search params (an admin's shared link must keep
-	// working), so a Team Lead following one would otherwise render a body whose
-	// query the service refuses — a blank panel and a 403 in the console.
+	// Every tab for everyone: the services scope each report to what the
+	// caller may see (§4 matrix), and a Member's report is their own row.
+	const visibleTabs = TABS;
 	const requested = search.tab ?? "time";
 	const tab: TabId = visibleTabs.some((t) => t.id === requested)
 		? requested
 		: "time";
-	// Team Lead is the floor: below it there is nothing to show, and letting the
-	// page render would just fire a query the service refuses.
-	const canSeeAnything = access.isAdmin || access.isLeadSomewhere;
-
-	if (!canSeeAnything) {
-		return (
-			<Page>
-				<PageHeader
-					eyebrow="Reports"
-					title="Nothing here for you"
-					lede="Reports cover a whole project's time, so they're for the people who run one. Your own hours are on the timesheet."
-				/>
-			</Page>
-		);
-	}
 
 	return (
 		// Eight tables under one strip, all of them at the frame's width — which

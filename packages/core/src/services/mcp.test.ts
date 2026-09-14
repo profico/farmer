@@ -68,7 +68,7 @@ describe("mcpToolDefinitions", () => {
 		// One anchor from each predicate, so a tool losing its `available` shows
 		// up here rather than only in the count above.
 		expect(plain).toContain("list_projects");
-		expect(plain).not.toContain("absence_report"); // adminOnly
+		expect(plain).toContain("absence_report"); // anyone: scoped by the service
 		expect(plain).not.toContain("list_project_members"); // leadsSomething
 	});
 

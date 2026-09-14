@@ -48,7 +48,6 @@ import {
 import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import { monthlyHourFund, orgSettings } from "../db/schema/settings";
 import { createTestDb, type TestDb } from "../test/harness";
-import { AccessError } from "./access.service";
 import { complianceService } from "./compliance.service";
 import { WORKING_DAY_SECONDS } from "./hour-fund.service";
 import type { Ctx } from "./types";
@@ -497,18 +496,15 @@ describe("no entries", () => {
 });
 
 describe("authorization", () => {
-	test("a plain member cannot read either view", async () => {
+	test("a plain member sees only themselves in either view", async () => {
 		const plain = (): Ctx => ({ organizationId: ORG, userId: SILENT });
 
-		await expect(
-			complianceService.noEntries(plain(), AT),
-		).rejects.toBeInstanceOf(AccessError);
-		await expect(
-			complianceService.behindPace(plain(), AT),
-		).rejects.toBeInstanceOf(AccessError);
-		await expect(
-			complianceService.dashboard(plain(), AT),
-		).rejects.toBeInstanceOf(AccessError);
+		const noEntries = await complianceService.noEntries(plain(), AT);
+		expect(noEntries.map((r) => r.userId)).toEqual([SILENT]);
+		const behindPace = await complianceService.behindPace(plain(), AT);
+		for (const row of behindPace) expect(row.userId).toBe(SILENT);
+		const dashboard = await complianceService.dashboard(plain(), AT);
+		expect(dashboard.noEntries.map((r) => r.userId)).toEqual([SILENT]);
 	});
 
 	test("the reminder job's entry point answers without a caller", async () => {

@@ -18,6 +18,7 @@ import { ArchivedSection } from "#/components/archived-section.tsx";
 import { InviteMemberDialog } from "#/components/invite-member-dialog.tsx";
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
+import { TeamLeadPeopleDialog } from "#/components/team-lead-people-dialog.tsx";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -85,7 +86,7 @@ const searchSchema = z.object({
 	archived: z.literal("1").optional(),
 });
 
-const MEMBER_COLUMN_COUNT = 7;
+const MEMBER_COLUMN_COUNT = 8;
 
 export const Route = createFileRoute("/$orgSlug/settings/members")({
 	validateSearch: searchSchema,
@@ -319,6 +320,25 @@ function MembersSettingsPage() {
 					/>
 				</TableCell>
 				<TableCell>
+					{/* The Team Lead role lives here and nowhere else: people on the
+					    list, or nobody. Archived people lead nobody. */}
+					{archived ? (
+						<span className="text-sm text-muted-foreground">—</span>
+					) : (
+						<TeamLeadPeopleDialog
+							lead={{ userId: m.userId, name: m.user.name }}
+							people={people}
+							trigger={
+								<Button variant="ghost" size="sm" className="-ml-2">
+									{person?.leadsPeople
+										? `${person.leadsPeople} ${person.leadsPeople === 1 ? "person" : "people"}`
+										: "Nobody"}
+								</Button>
+							}
+						/>
+					)}
+				</TableCell>
+				<TableCell>
 					{m.role === "owner" ? (
 						<span className="text-sm text-muted-foreground">Owner</span>
 					) : (
@@ -439,6 +459,7 @@ function MembersSettingsPage() {
 						<TableHead>Type</TableHead>
 						<TableHead>Expected</TableHead>
 						<TableHead>Started</TableHead>
+						<TableHead>Leads</TableHead>
 						<TableHead>Access</TableHead>
 						<TableHead />
 					</TableRow>

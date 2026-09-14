@@ -12,7 +12,8 @@ import {
 	weekdayInTz,
 } from "../lib/time";
 import { dayDurationSeconds } from "../lib/working-day";
-import { ctxTimezone, requireAdmin } from "./context";
+import { accessService } from "./access.service";
+import { ctxAccess, ctxTimezone } from "./context";
 import { absenceDaysByUser, expectedSecondsFor } from "./expected";
 import { holidaysService } from "./holidays.service";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
@@ -102,6 +103,7 @@ export type CohortMember = {
 const complianceCohort = async (
 	ctx: Ctx,
 	asOfMonth: { year: number; month: number },
+	onlyUserIds: ReadonlySet<string> | null = null,
 ): Promise<CohortMember[]> => {
 	const [people, types, archived] = await Promise.all([
 		db
@@ -123,7 +125,9 @@ const complianceCohort = async (
 		}))
 		.filter(
 			(p) =>
-				p.memberType.type !== "employee_overhead" && !archived.has(p.userId),
+				p.memberType.type !== "employee_overhead" &&
+				!archived.has(p.userId) &&
+				(onlyUserIds === null || onlyUserIds.has(p.userId)),
 		);
 };
 
@@ -135,7 +139,13 @@ const complianceCohort = async (
  *  the day it runs — including on the 1st, when no working day has elapsed yet
  *  and `behindPace` is correctly empty. Production passes nothing and gets the
  *  real clock. Same seam as `runAutomationsForUser(ctx, { now })`. */
-export type ComplianceOpts = { now?: Date };
+export type ComplianceOpts = {
+	now?: Date;
+	/** The people the caller may see (`accessService.peopleScope`); null or
+	 *  absent means everyone. The public methods fill this in from the caller's
+	 *  access; the reminder job leaves it empty on purpose. */
+	onlyUserIds?: ReadonlySet<string> | null;
+};
 
 // The two views, computed without any authorization check.
 //
@@ -161,10 +171,11 @@ const views = {
 			orgSettingsService.get(ctx),
 		]);
 		const today = dayKeyInTz(opts.now ?? new Date(), tz);
-		const cohort = await complianceCohort(ctx, {
-			year: Number(today.slice(0, 4)),
-			month: Number(today.slice(5, 7)),
-		});
+		const cohort = await complianceCohort(
+			ctx,
+			{ year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) },
+			opts.onlyUserIds ?? null,
+		);
 		if (cohort.length === 0) return [];
 
 		// Look back far enough to always contain N working days even across a long
@@ -291,7 +302,7 @@ const views = {
 		const { from, to } = monthBounds(year, month);
 
 		const [cohort, fundSeconds, absence] = await Promise.all([
-			complianceCohort(ctx, { year, month }),
+			complianceCohort(ctx, { year, month }, opts.onlyUserIds ?? null),
 			hourFundService.get(ctx, year, month),
 			absenceDaysByUser(ctx, from, today),
 		]);
@@ -375,21 +386,26 @@ const views = {
 	},
 };
 
+// Tracking is people-shaped, so it is scoped by people (§4 matrix): everyone
+// for Admin; for anyone else themselves, the people on their list and everyone
+// on the projects they manage. A Member sees one row — their own.
+const scoped = async (
+	ctx: Ctx,
+	opts: ComplianceOpts,
+): Promise<ComplianceOpts> => {
+	const access = await ctxAccess(ctx);
+	return { ...opts, onlyUserIds: await accessService.peopleScope(ctx, access) };
+};
+
 export const complianceService = {
-	noEntries: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
-		await requireAdmin(ctx);
-		return views.noEntries(ctx, opts);
-	},
+	noEntries: async (ctx: Ctx, opts: ComplianceOpts = {}) =>
+		views.noEntries(ctx, await scoped(ctx, opts)),
 
-	behindPace: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
-		await requireAdmin(ctx);
-		return views.behindPace(ctx, opts);
-	},
+	behindPace: async (ctx: Ctx, opts: ComplianceOpts = {}) =>
+		views.behindPace(ctx, await scoped(ctx, opts)),
 
-	dashboard: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
-		await requireAdmin(ctx);
-		return views.dashboard(ctx, opts);
-	},
+	dashboard: async (ctx: Ctx, opts: ComplianceOpts = {}) =>
+		views.dashboard(ctx, await scoped(ctx, opts)),
 
 	/**
 	 * The dashboard for the scheduled Slack reminder job, which runs it for a

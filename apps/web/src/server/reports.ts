@@ -7,16 +7,13 @@ import {
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 
-import { orgAdminMiddleware, orgMiddleware } from "./auth";
+import { orgMiddleware } from "./auth";
 
-// Reports split cleanly in two:
-//
-//   * Project-scoped (Time) — everyone may call it; the service
-//     narrows the rows to the caller's Team Lead/PM projects, and a plain
-//     Member sees only their own entries. Hence `orgMiddleware`.
-//   * Org-wide (Overtime, Absence) — these are
-//     statements about the whole company, so they're Admin-only at the
-//     middleware AND asserted again in the service.
+// Every report is open to every member at the middleware and scoped in the
+// service (§4 matrix): an Admin sees everything, a PM their projects and the
+// people on them, a Team Lead their people and their projects, a Member
+// themselves. Hence `orgMiddleware` throughout — the narrowing is the
+// service's, never the wrapper's.
 
 export const getTimeReportSummary = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
@@ -53,8 +50,10 @@ export const getOvertimeDetail = createServerFn({ method: "GET" })
 		return reportsService.overtimeDetail(context.ctx, data);
 	});
 
+// People-shaped and scoped by people in the service, like Tracking: a Member
+// sees their own absence, a Team Lead their people's, an Admin everyone's.
 export const getAbsenceReport = createServerFn({ method: "GET" })
-	.middleware([orgAdminMiddleware])
+	.middleware([orgMiddleware])
 	.validator(absenceReportInput)
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");

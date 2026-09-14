@@ -52,8 +52,10 @@ export type MyAccess = {
 	projectRoles: Record<string, "member" | "team_lead" | "pm">;
 	/** Any PM assignment at all. */
 	isPmSomewhere: boolean;
-	/** Any Team Lead or PM assignment — gates the project-level reports. */
+	/** Any Team Lead or PM assignment, or a people list — gates Clients. */
 	isLeadSomewhere: boolean;
+	/** Has people on their Team Lead list. */
+	isTeamLead: boolean;
 };
 
 export const getMyAccess = createServerFn({ method: "GET" }).handler(
@@ -69,9 +71,12 @@ export const getMyAccess = createServerFn({ method: "GET" }).handler(
 			canCreateProjects: access.canCreateProjects(),
 			projectRoles,
 			isPmSomewhere: Object.values(projectRoles).includes("pm"),
-			isLeadSomewhere: Object.values(projectRoles).some(
-				(r) => r === "pm" || r === "team_lead",
-			),
+			isLeadSomewhere:
+				access.isTeamLead ||
+				Object.values(projectRoles).some(
+					(r) => r === "pm" || r === "team_lead",
+				),
+			isTeamLead: access.isTeamLead,
 		};
 	},
 );

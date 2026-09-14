@@ -24,6 +24,7 @@ import {
 	isNotNull,
 	isNull,
 	lte,
+	or,
 	type SQL,
 	sql,
 } from "drizzle-orm";
@@ -80,6 +81,28 @@ export type LedgerFilter = {
 	/** Access scope: the project ids the caller may see, or null for unscoped
 	 *  (admins). An empty array means "nothing", and is honoured as such. */
 	visibleProjectIds?: string[] | null;
+	/** The other half of the scope: the people whose entries the caller may
+	 *  see wherever they are (themselves, the people they lead). A row passes
+	 *  when it is on a visible project OR by a visible person; null is
+	 *  unscoped, and both empty is nothing. */
+	visibleUserIds?: string[] | null;
+};
+
+// The access arm of the predicate. `undefined` on either side means the caller
+// did not scope that axis; `null` means unscoped (Admin) and wins outright.
+const accessPredicate = (filter: LedgerFilter): SQL | undefined => {
+	const projects = filter.visibleProjectIds;
+	const people = filter.visibleUserIds;
+	if (projects === undefined && people === undefined) return undefined;
+	if (projects === null || people === null) return undefined;
+	const arms = [
+		projects && projects.length > 0
+			? inArray(timeEntry.projectId, projects)
+			: undefined,
+		people && people.length > 0 ? inArray(timeEntry.userId, people) : undefined,
+	].filter((arm): arm is SQL => arm !== undefined);
+	if (arms.length === 0) return sql`false`;
+	return arms.length === 1 ? arms[0] : or(...arms);
 };
 
 /** Whether a scope needs the `task` table joined to be evaluated. Callers
@@ -132,9 +155,7 @@ export const ledgerWhere = (
 		gte(timeEntry.date, range.from),
 		lte(timeEntry.date, range.to),
 		scopePredicate(scope),
-		filter.visibleProjectIds
-			? inArray(timeEntry.projectId, filter.visibleProjectIds)
-			: undefined,
+		accessPredicate(filter),
 		filter.projectId ? eq(timeEntry.projectId, filter.projectId) : undefined,
 		filter.projectIds
 			? inArray(timeEntry.projectId, filter.projectIds)
