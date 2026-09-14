@@ -285,6 +285,8 @@ Setting `SINGLE_ORG_SLUG=<slug>` turns a deployment into a one-workspace, invite
 
 Dev is `vite dev`. **Production is a Bun-native host, not Nitro/srvx**: `vite build` emits a web-standard `{ fetch }` handler with nothing to serve it, so `apps/web/server.ts` (TanStack's official start-bun reference) brings its own `Bun.serve` — static-asset preloading plus the in-process schedulers. `Dockerfile` builds and runs exactly this.
 
+**`Bun.serve` carries `idleTimeout: 255`, Bun's maximum, and it is load-bearing.** The default is 10 seconds, and Bun enforces it by closing the socket with an empty reply while the handler keeps running. A server function that works longer than that before it answers — "Re-match people" on Slack, a Harvest import step — then succeeded on the server while the browser got an unreadable reply, which TanStack Start reports in production as the bare "Invariant failed". `vite dev` does not run `server.ts`, so this never reproduces locally. Work that can outlast 255 seconds belongs in a job, not a request.
+
 **This backend is a long-lived process, not a serverless function — background work goes in a job, never in a request handler.** The scheduler lives in `@farmer/core/jobs/scheduler.ts` rather than in `server.ts` so it can run three ways off one implementation:
 
 | Where | How | Why |
@@ -311,7 +313,7 @@ Also covered, and worth knowing what each file is *for* — these are the servic
 
 `compliance.service` takes an optional `{ now }` so the report can be pinned to a date — every figure in it is a fraction of the month elapsed, and before the month starts the target is zero. Same seam as `runAutomationsForUser`.
 
-**Not covered at all:** the `slack` and `google-calendar` **services** (their `lib/` clients do have tests — `lib/google-calendar-client.test.ts`, `lib/github-client.test.ts`), the rest of `github` (the commit scan and installation flows), `notificationsService.sendPush` (it reads VAPID keys from the environment), and member role changes (better-auth's `updateMemberRole`, which has no service function). Changing any of those means the suite cannot tell you whether you broke them.
+**Not covered at all:** the `google-calendar` **service** and all of the `slack` service except `syncIdentities`, which `services/slack.test.ts` pins to active people only (their `lib/` clients do have tests — `lib/google-calendar-client.test.ts`, `lib/github-client.test.ts`), the rest of `github` (the commit scan and installation flows), `notificationsService.sendPush` (it reads VAPID keys from the environment), and member role changes (better-auth's `updateMemberRole`, which has no service function). Changing any of those means the suite cannot tell you whether you broke them.
 
 Two PGLite limits the fixtures have already hit: a single multi-row insert of a few thousand rows overruns its bind-parameter handling and kills the instance for the rest of the FILE (chunk at ~500), and site-scoped tasks are unique on both name and `systemKey`, so seed Vacation once in `beforeAll` rather than per test.
 

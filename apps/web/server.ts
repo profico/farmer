@@ -570,6 +570,13 @@ async function initializeServer() {
 	// Create Bun server
 	const server = Bun.serve({
 		port: SERVER_PORT,
+		// Bun closes a request that sends nothing for 10 seconds by default, with
+		// an empty reply and while the handler keeps running. Some server functions
+		// work longer than that before they answer: "Re-match people" makes one
+		// Slack call per person, and a Harvest import step writes thousands of rows.
+		// The browser then got an unreadable reply ("Invariant failed") for work
+		// that went on to succeed. 255 is Bun's maximum.
+		idleTimeout: 255,
 
 		routes: {
 			// Serve static assets (preloaded or on-demand)

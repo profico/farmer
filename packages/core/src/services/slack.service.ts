@@ -1,7 +1,8 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
+import { memberProfile } from "../db/schema/people";
 import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
 import { signOrgState } from "../lib/oauth-state";
 import {
@@ -170,7 +171,13 @@ export const slackService = {
 	 *  `linkMember`), so this is no longer the way somebody new gets matched. It
 	 *  stays for the case the hook cannot cover: a member who was already in the
 	 *  organization before they were in the Slack workspace. Nothing about joining
-	 *  Slack reaches this app, so that match can only be made by asking again. */
+	 *  Slack reaches this app, so that match can only be made by asking again.
+	 *
+	 *  Archived people are skipped. They never get a reminder, and after a Harvest
+	 *  import they are most of the roster: they made the majority of the lookups,
+	 *  one Slack call each, in a request that has to answer before the host's idle
+	 *  timeout. A match they already have is kept, so restoring one needs no
+	 *  re-match unless their Slack account changed. */
 	syncIdentities: async (ctx: Ctx): Promise<number> => {
 		const installation = await slackService.installationFor(ctx.organizationId);
 		if (!installation) return 0;
@@ -179,7 +186,19 @@ export const slackService = {
 			.select({ userId: member.userId, email: user.email })
 			.from(member)
 			.innerJoin(user, eq(member.userId, user.id))
-			.where(eq(member.organizationId, ctx.organizationId));
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, member.organizationId),
+					eq(memberProfile.userId, member.userId),
+				),
+			)
+			.where(
+				and(
+					eq(member.organizationId, ctx.organizationId),
+					isNull(memberProfile.archivedAt),
+				),
+			);
 
 		let mapped = 0;
 		for (const person of people) {
@@ -204,6 +223,9 @@ export const slackService = {
 				});
 			mapped++;
 		}
+		console.info(
+			`[slack] matched ${String(mapped)} of ${String(people.length)} active people by email`,
+		);
 		return mapped;
 	},
 

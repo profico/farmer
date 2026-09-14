@@ -157,7 +157,9 @@ export const slackClient = {
 	 *  not an error worth failing a whole reminder run over. Logs why, because
 	 *  the caller only counts matches: "matched 0 people" reads the same whether
 	 *  the token is missing a scope or nobody's address is in the workspace, and
-	 *  without this line the difference is only visible by hand-curling Slack. */
+	 *  without this line the difference is only visible by hand-curling Slack.
+	 *  `users_not_found` alone is not logged: it is the expected answer for
+	 *  everyone outside the workspace. */
 	lookupUserByEmail: async (
 		botToken: string,
 		email: string,
@@ -168,7 +170,13 @@ export const slackClient = {
 			{ email },
 		);
 		if (!result.ok) {
-			console.error(`[slack] lookupByEmail(${email}) failed: ${result.error}`);
+			// Not being in the workspace is an answer, not a failure: a re-match of
+			// a large organization used to log one error per such person.
+			if (result.error !== "users_not_found") {
+				console.error(
+					`[slack] lookupByEmail(${email}) failed: ${result.error}`,
+				);
+			}
 			return null;
 		}
 		return result.user.id;

@@ -165,6 +165,18 @@ export type ScannedCommit = {
 // login (to filter commits by author) and enumerating installations they may
 // connect. All repo/commit reads go through installation tokens instead.
 const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
+	// No linked account is the ordinary answer for most people, and better-auth
+	// throws "Account not found" for it — which logged a full stack trace as an
+	// error on every such call. Ask the table first; a throw below is then a real
+	// failure, such as a refresh that GitHub refused.
+	const linked = await db.query.account.findFirst({
+		where: and(
+			eq(account.userId, ctx.userId),
+			eq(account.providerId, "github"),
+		),
+		columns: { id: true },
+	});
+	if (!linked) return null;
 	try {
 		const result = await auth.api.getAccessToken({
 			body: { providerId: "github", userId: ctx.userId },

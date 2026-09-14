@@ -19,6 +19,17 @@ import type { Ctx } from "./types";
 // using the stored refresh token (obtained via accessType:"offline" +
 // prompt:"consent" in the auth config).
 const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
+	// Same as githubService's helper: no linked account is an ordinary answer,
+	// and better-auth throws "Account not found" for it, so ask the table first
+	// and keep the error log for real failures.
+	const linked = await db.query.account.findFirst({
+		where: and(
+			eq(account.userId, ctx.userId),
+			eq(account.providerId, "google-calendar"),
+		),
+		columns: { id: true },
+	});
+	if (!linked) return null;
 	try {
 		const result = await auth.api.getAccessToken({
 			body: { providerId: "google-calendar", userId: ctx.userId },
