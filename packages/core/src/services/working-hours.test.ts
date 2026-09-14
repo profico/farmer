@@ -1,4 +1,4 @@
-// Working hours: a person's own seven-day schedule and weekly target.
+// Working hours: a person's own seven-day schedule.
 //
 // There is deliberately no path here that writes somebody else's schedule —
 // every write takes its user from the Ctx, never from the input — so the

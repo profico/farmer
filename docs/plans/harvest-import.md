@@ -301,7 +301,7 @@ A person is keyed by email when the people list has one, else by full name.
 - **An existing member with the same email:** match. Change nothing, except a
   profile field that is empty.
 - **A person in the people list who is not a member:** create `user`,
-  `member`, `memberProfile`, `memberTypeHistory` and `memberSchedule`.
+  `member`, `memberProfile` and `memberTypeHistory`.
   - `emailVerified = true` (section 3.3).
   - Role: `admin` if Harvest `Admin = Yes`, else `member`. The Harvest Owner
     also becomes `admin`, because the org already has an owner.

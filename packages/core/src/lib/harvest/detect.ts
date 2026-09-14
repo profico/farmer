@@ -192,7 +192,6 @@ export interface PeopleRow {
 	admin: boolean;
 	permissions: string;
 	employee: boolean;
-	capacityHours: number | null;
 }
 
 export function toPeopleRow(record: ReadonlyMap<string, string>): PeopleRow {
@@ -207,7 +206,6 @@ export function toPeopleRow(record: ReadonlyMap<string, string>): PeopleRow {
 		admin: parseYesNo(col(record, "Admin")),
 		permissions: col(record, "Permissions"),
 		employee: parseYesNo(col(record, "Employee")),
-		capacityHours: numCol(record, "Capacity"),
 	};
 }
 

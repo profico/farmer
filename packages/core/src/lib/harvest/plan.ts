@@ -52,7 +52,6 @@ import { hoursToSeconds, roundToQuarterHour } from "./number";
  *  after it are skipped; everything before comes from Harvest. */
 export const HARVEST_DEFAULT_CUTOFF = "2026-09-01";
 export const HARVEST_GUESS_DOMAIN = "profico.hr";
-/** 40 hours: the weekly target when the people list names no capacity. */
 /** A project-person pair with a row this many days before the cutoff (or
  *  later) is an active assignment. */
 export const HARVEST_ACTIVE_WINDOW_DAYS = 90;

@@ -212,7 +212,6 @@ describe("typed row accessors", () => {
 		expect(row.email).toBe("mateo@profico.hr");
 		expect(row.admin).toBe(true);
 		expect(row.employee).toBe(true);
-		expect(row.capacityHours).toBe(40);
 	});
 
 	test("toProjectRow reads a real-shaped row", () => {

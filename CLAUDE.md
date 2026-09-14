@@ -83,7 +83,7 @@ Two workspaces today — `apps/web` (TanStack Start/React) and `packages/core` (
   - `schema/auth.ts` — better-auth-owned (user/session/account/verification/organization/member/invitation). CLI-generated, see `auth:generate`.
   - `schema/domain.ts` — client, project, **task**, projectMember, recurringBlockRule(+Skip), timeEntry.
   - `schema/people.ts` — memberProfile, memberTypeHistory (effective-dated person type).
-  - `schema/schedule.ts` — memberSchedule, memberWorkingHoursDay, disabledHoliday.
+  - `schema/schedule.ts` — memberWorkingHoursDay, disabledHoliday.
   - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, filingRule, orgSettings, reminderSettings, monthlyHourFund.
   - `schema/github.ts` — orgGithubInstallation, projectGithubRepo, timeEntryGithubCommit.
   - `schema/slack.ts` — slackInstallation, memberSlackIdentity, slackReminderLog.
