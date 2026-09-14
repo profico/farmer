@@ -9,7 +9,9 @@ import {
 } from "#/components/ui/popover.tsx";
 import {
 	type CatalogueEmoji,
-	EMOJI_CATEGORIES,
+	type EmojiCategory,
+	loadEmojiCatalogue,
+	loadedEmojiCatalogue,
 	searchEmoji,
 } from "#/lib/emoji-catalogue.ts";
 import { cn } from "#/lib/utils.ts";
@@ -21,6 +23,13 @@ import { cn } from "#/lib/utils.ts";
 //
 // Emoji only for now. A logo upload wants a file store the app does not yet
 // have; when it does, it becomes a second tab here, not a second control.
+//
+// The catalogue is every emoji there is, fetched on first hover or open (see
+// lib/emoji-catalogue.ts). The tone row applies to every emoji that has
+// variants, and outlives the popover for as long as the page does.
+
+/** A raised hand in each tone, default first — the tone row's swatches. */
+const TONE_SWATCHES = ["✋", "✋🏻", "✋🏼", "✋🏽", "✋🏾", "✋🏿"] as const;
 
 export function ProjectIconPicker({
 	value,
@@ -37,6 +46,18 @@ export function ProjectIconPicker({
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [category, setCategory] = useState<string | null>(null);
+	const [categories, setCategories] = useState<EmojiCategory[] | null>(
+		loadedEmojiCatalogue,
+	);
+	const [failed, setFailed] = useState(false);
+	// 0 is the default yellow; 1–5 index into an emoji's `skins`.
+	const [tone, setTone] = useState(0);
+
+	const load = () => {
+		if (categories) return;
+		setFailed(false);
+		loadEmojiCatalogue().then(setCategories, () => setFailed(true));
+	};
 
 	const pick = (icon: string | null) => {
 		onChange(icon);
@@ -44,32 +65,43 @@ export function ProjectIconPicker({
 	};
 
 	const searching = query.trim() !== "";
-	const hits = searching ? searchEmoji(query) : [];
+	const hits = searching && categories ? searchEmoji(categories, query) : [];
+	const names = new Map(
+		categories?.flatMap((c) => c.emoji.map((e) => [e.char, e.name] as const)),
+	);
 	const recentEmoji: CatalogueEmoji[] = recent
 		.filter((c, i, all) => c && all.indexOf(c) === i)
-		.map((char) => ({ char, name: "" }));
+		.map((char) => ({ char, name: names.get(char) ?? "", keywords: "" }));
 	const shown = category
-		? EMOJI_CATEGORIES.filter((c) => c.id === category)
-		: EMOJI_CATEGORIES;
+		? categories?.filter((c) => c.id === category)
+		: categories;
 
-	const grid = (items: CatalogueEmoji[]) => (
+	const grid = (items: CatalogueEmoji[], toned: boolean) => (
 		<div className="grid grid-cols-9 gap-0.5">
-			{items.map((e) => (
-				<button
-					key={e.char}
-					type="button"
-					title={e.name || undefined}
-					aria-pressed={value === e.char}
-					onClick={() => pick(e.char)}
-					className={cn(
-						"flex h-8 items-center justify-center rounded-md border border-transparent text-xl transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/16",
-						value === e.char && "border-ring bg-primary/8",
-					)}
-				>
-					{e.char}
-				</button>
-			))}
+			{items.map((e) => {
+				const char = (toned && tone > 0 && e.skins?.[tone - 1]) || e.char;
+				return (
+					<button
+						key={char}
+						type="button"
+						title={e.name || undefined}
+						aria-label={e.name || undefined}
+						aria-pressed={value === char}
+						onClick={() => pick(char)}
+						className={cn(
+							"flex h-8 items-center justify-center rounded-md border border-transparent text-xl transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/16",
+							value === char && "border-ring bg-primary/8",
+						)}
+					>
+						{char}
+					</button>
+				);
+			})}
 		</div>
+	);
+
+	const status = (message: string) => (
+		<p className="py-6 text-center text-sm text-muted-foreground">{message}</p>
 	);
 
 	return (
@@ -77,13 +109,14 @@ export function ProjectIconPicker({
 			open={open}
 			onOpenChange={(next) => {
 				setOpen(next);
-				if (!next) {
+				if (next) load();
+				else {
 					setQuery("");
 					setCategory(null);
 				}
 			}}
 		>
-			<PopoverTrigger render={trigger} />
+			<PopoverTrigger render={trigger} onPointerEnter={load} />
 			<PopoverContent className="w-[22.5rem] p-2.5" align="start">
 				<div className="relative">
 					<MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
@@ -98,7 +131,7 @@ export function ProjectIconPicker({
 					/>
 				</div>
 
-				{!searching && (
+				{!searching && categories && (
 					<div
 						role="tablist"
 						aria-label="Categories"
@@ -117,7 +150,7 @@ export function ProjectIconPicker({
 						>
 							🕘
 						</button>
-						{EMOJI_CATEGORIES.map((c) => (
+						{categories.map((c) => (
 							<button
 								key={c.id}
 								type="button"
@@ -137,26 +170,31 @@ export function ProjectIconPicker({
 				)}
 
 				<div className="mt-1 max-h-60 overflow-y-auto pr-0.5">
-					{searching ? (
+					{!categories ? (
+						status(failed ? "Could not load the emoji." : "Loading emoji…")
+					) : searching ? (
 						hits.length === 0 ? (
-							<p className="py-6 text-center text-sm text-muted-foreground">
-								No emoji matches “{query.trim()}”.
-							</p>
+							status(`No emoji matches “${query.trim()}”.`)
 						) : (
-							grid(hits)
+							grid(hits, true)
 						)
 					) : (
 						<>
 							{category === null && recentEmoji.length > 0 && (
 								<>
 									<p className="eyebrow px-1 pt-2 pb-1.5">Recently used</p>
-									{grid(recentEmoji)}
+									{grid(recentEmoji, false)}
 								</>
 							)}
-							{shown.map((c) => (
-								<div key={c.id}>
+							{shown?.map((c) => (
+								// Nearly two thousand buttons: a section scrolled out of
+								// view is skipped at layout and paint until it comes back.
+								<div
+									key={c.id}
+									className="[contain-intrinsic-size:auto_24rem] [content-visibility:auto]"
+								>
 									<p className="eyebrow px-1 pt-2 pb-1.5">{c.label}</p>
-									{grid(c.emoji)}
+									{grid(c.emoji, true)}
 								</div>
 							))}
 						</>
@@ -168,13 +206,28 @@ export function ProjectIconPicker({
 						type="button"
 						variant="outline"
 						size="sm"
+						title="Uses the first letter of the name."
 						onClick={() => pick(null)}
 					>
 						No icon
 					</Button>
-					<span className="text-xs text-muted-foreground">
-						Uses the first letter of the name.
-					</span>
+					<div className="ml-auto flex gap-0.5">
+						{TONE_SWATCHES.map((swatch, i) => (
+							<button
+								key={swatch}
+								type="button"
+								aria-pressed={tone === i}
+								aria-label={i === 0 ? "Default skin tone" : `Skin tone ${i}`}
+								onClick={() => setTone(i)}
+								className={cn(
+									"flex size-7 items-center justify-center rounded-md border border-transparent text-base transition-colors duration-(--dur-fast) hover:bg-muted",
+									tone === i && "border-ring bg-primary/8",
+								)}
+							>
+								{swatch}
+							</button>
+						))}
+					</div>
 				</div>
 			</PopoverContent>
 		</Popover>

@@ -26,9 +26,11 @@ const baseProject = {
 	clientId: z.uuid(),
 	code: z.string().trim().max(16).optional(),
 	type: projectTypeEnum,
-	// An emoji. Loose on purpose — a flag or a family is several code points —
-	// and short enough that nothing but an emoji fits. Null clears it.
-	icon: z.string().trim().min(1).max(16).optional().nullable(),
+	// An emoji. Loose on purpose — a flag or a family is several code points,
+	// and a skin-toned ZWJ sequence runs past 16 UTF-16 units (the picker's
+	// longest today is 15, a family with four tones is 19) — and short enough
+	// that nothing but an emoji fits. Null clears it.
+	icon: z.string().trim().min(1).max(32).optional().nullable(),
 	// Fixed Scope only: the hour budget is the ONLY budget burn is computed on.
 	budgetHours: z.coerce.number().positive().max(100_000).optional().nullable(),
 	// Fixed Scope only, display-only context beside the hour figures.
