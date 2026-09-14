@@ -201,7 +201,11 @@ function ProjectsPage() {
 					)}
 				</TableCell>
 				<TableCell>
-					{shown.length === 0 ? (
+					{project.statsScope === "own" ? (
+						<span className="text-xs text-muted-foreground">
+							Your time only
+						</span>
+					) : shown.length === 0 ? (
 						<span className="text-muted-foreground">—</span>
 					) : (
 						<AvatarGroup>

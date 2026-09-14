@@ -80,15 +80,24 @@ const currentMonthKeysForOrg = async (organizationId: string) => {
 	return { from: startOfMonthKey(todayKey), to: endOfMonthKey(todayKey) };
 };
 
+/** `ownOnly` narrows every figure to the caller's own entries and leaves the
+ *  contributors empty — what a plain Member may know about a project. */
 const loadProjectStats = async (
 	ctx: Ctx,
 	projectIds: string[],
+	{ ownOnly }: { ownOnly: boolean },
 ): Promise<Map<string, ProjectStats>> => {
 	const stats = new Map<string, ProjectStats>();
 	if (projectIds.length === 0) return stats;
 	for (const id of projectIds) stats.set(id, emptyStats());
 
 	const { from, to } = await currentMonthKeysForOrg(ctx.organizationId);
+
+	const onProjects = and(
+		eq(timeEntry.organizationId, ctx.organizationId),
+		inArray(timeEntry.projectId, projectIds),
+		ownOnly ? eq(timeEntry.userId, ctx.userId) : undefined,
+	);
 
 	const [totals, allTime, memberRows] = await Promise.all([
 		db
@@ -99,8 +108,7 @@ const loadProjectStats = async (
 			.from(timeEntry)
 			.where(
 				and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					inArray(timeEntry.projectId, projectIds),
+					onProjects,
 					sql`${timeEntry.date} >= ${from}`,
 					sql`${timeEntry.date} <= ${to}`,
 				),
@@ -112,29 +120,26 @@ const loadProjectStats = async (
 				totalSeconds: SUM_SECONDS,
 			})
 			.from(timeEntry)
-			.where(
-				and(
-					eq(timeEntry.organizationId, ctx.organizationId),
-					inArray(timeEntry.projectId, projectIds),
-				),
-			)
+			.where(onProjects)
 			.groupBy(timeEntry.projectId),
-		db
-			.select({
-				projectId: projectMember.projectId,
-				userId: projectMember.userId,
-				name: user.name,
-			})
-			.from(projectMember)
-			.innerJoin(user, eq(projectMember.userId, user.id))
-			.where(
-				and(
-					eq(projectMember.organizationId, ctx.organizationId),
-					inArray(projectMember.projectId, projectIds),
-					eq(projectMember.active, true),
-				),
-			)
-			.orderBy(user.name),
+		ownOnly
+			? []
+			: db
+					.select({
+						projectId: projectMember.projectId,
+						userId: projectMember.userId,
+						name: user.name,
+					})
+					.from(projectMember)
+					.innerJoin(user, eq(projectMember.userId, user.id))
+					.where(
+						and(
+							eq(projectMember.organizationId, ctx.organizationId),
+							inArray(projectMember.projectId, projectIds),
+							eq(projectMember.active, true),
+						),
+					)
+					.orderBy(user.name),
 	]);
 
 	for (const row of totals) {
@@ -202,21 +207,30 @@ const enrichedProjects = async (
 	// Project-level statistics are a Team Lead capability, so they are computed
 	// only for the projects that will be allowed to carry them. This is the same
 	// rule `redactMoney` applies one field-set over, and it is the §4 line "a
-	// Member sees nothing at project level — not even the project's total hours":
-	// a plain Member's row reports its own emptyStats() rather than the project's
-	// real hours blanked out afterwards, so the number is never read, never
+	// Member sees nothing at project level — not even the project's total hours".
+	// A plain Member's row is summed from their own entries alone, which they
+	// already see everywhere else, rather than from the project's real hours
+	// blanked out afterwards — so the project total is never read, never
 	// serialized and never one refactor away from being sent.
-	const visibleStatIds = projects
-		.map((p) => p.id)
-		.filter((id) => access.canViewProjectEntries(id));
-	const stats = await loadProjectStats(ctx, visibleStatIds);
+	const ids = projects.map((p) => p.id);
+	const visible = (id: string) => access.canViewProjectEntries(id);
+	const [projectStats, ownStats] = await Promise.all([
+		loadProjectStats(ctx, ids.filter(visible), { ownOnly: false }),
+		loadProjectStats(
+			ctx,
+			ids.filter((id) => !visible(id)),
+			{ ownOnly: true },
+		),
+	]);
 
 	return projects.map((p) => ({
 		...redactMoney(p, access),
 		// Held-as, not the assignment row: a Team Lead on the project is a PM
 		// here, and the screen gates its tabs on this.
 		myRole: access.heldAs(p.id),
-		...(stats.get(p.id) ?? emptyStats()),
+		/** Whose hours the figures sum: the whole project's, or the caller's own. */
+		statsScope: visible(p.id) ? ("project" as const) : ("own" as const),
+		...(projectStats.get(p.id) ?? ownStats.get(p.id) ?? emptyStats()),
 	}));
 };
 
