@@ -1,4 +1,8 @@
-import { SignOutIcon } from "@phosphor-icons/react";
+import {
+	ArrowUpRightIcon,
+	GithubLogoIcon,
+	SignOutIcon,
+} from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Link,
@@ -38,6 +42,7 @@ import {
 } from "#/components/ui/sidebar.tsx";
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
+import { GITHUB_NEW_ISSUE_URL } from "#/lib/links.ts";
 import { springLayout, springProductive } from "#/lib/motion.ts";
 import {
 	activeNavTo,
@@ -567,6 +572,26 @@ export function AppSidebar({
 				</FadeSwap>
 			</SidebarContent>
 			<SidebarFooter className="shrink-0 gap-0 p-0">
+				{/* Outside the swapped panel, so it stays put on both tabs. A new tab,
+				    since it leaves the app, and the arrow says so before the click. */}
+				<SidebarMenu className="px-2.5 pb-2.5">
+					<SidebarMenuItem>
+						<SidebarMenuButton
+							render={
+								<a href={GITHUB_NEW_ISSUE_URL} target="_blank" rel="noreferrer">
+									<GithubLogoIcon className="size-4" />
+									<span className="min-w-0 flex-1 truncate">
+										Report a problem
+									</span>
+									<ArrowUpRightIcon
+										weight="regular"
+										className="size-3.5 text-muted-foreground"
+									/>
+								</a>
+							}
+						/>
+					</SidebarMenuItem>
+				</SidebarMenu>
 				{/* Fixed height, not padding: the row is one line tall for an admin
 				    and two for everyone else, and the timesheet's footer aligns to
 				    this rule (see `--footer-h`). */}

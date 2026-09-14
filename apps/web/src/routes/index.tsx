@@ -19,6 +19,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
 
 import { FarmerLogo } from "#/components/farmer-logo.tsx";
+import { GITHUB_URL } from "#/lib/links.ts";
 import { getSession } from "#/server/auth.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
@@ -52,7 +53,6 @@ export const Route = createFileRoute("/")({
 	component: Home,
 });
 
-const GITHUB_URL = "https://github.com/profico/farmer";
 const PROFICO_URL = "https://profi.co";
 
 // The page's one CTA, in the product's own button: straight into the viewer's

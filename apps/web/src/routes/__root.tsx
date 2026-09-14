@@ -7,13 +7,16 @@ import {
 	Scripts,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { createIsomorphicFn } from "@tanstack/react-start";
 import { MotionConfig } from "motion/react";
+import { useEffect } from "react";
 
 import { RouteError } from "../components/route-error";
 import { RouteNotFound } from "../components/route-not-found";
 import { RoutePending } from "../components/route-pending";
 import { Toaster } from "../components/ui/sonner";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
+import { logConsoleGreeting } from "../lib/console-greeting";
 import { themeInitScript } from "../lib/theme";
 
 import appCss from "../styles.css?url";
@@ -21,6 +24,17 @@ import appCss from "../styles.css?url";
 interface MyRouterContext {
 	queryClient: QueryClient;
 }
+
+const DESCRIPTION = "Farmer — a simple, open-source time tracker.";
+
+// A link preview only follows an absolute image URL, and the crawlers that
+// fetch one never run JavaScript, so the server's answer is the one that
+// counts. It is `BETTER_AUTH_URL`, as in `getPublicAppConfig`; the browser
+// renders the same tags on hydration and answers with its own origin, which a
+// working deployment has made the same value for OAuth's sake.
+const appOrigin = createIsomorphicFn()
+	.server(() => URL.parse(process.env.BETTER_AUTH_URL ?? "")?.origin ?? "")
+	.client(() => window.location.origin);
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
 	head: () => ({
@@ -37,8 +51,19 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 			},
 			{
 				name: "description",
-				content: "Farmer — a simple, open-source time tracker.",
+				content: DESCRIPTION,
 			},
+			// `public/og.png`: the wordmark on a white gradient, "by Profico" under it.
+			{ property: "og:type", content: "website" },
+			{ property: "og:site_name", content: "Farmer" },
+			{ property: "og:title", content: "Farmer" },
+			{ property: "og:description", content: DESCRIPTION },
+			{ property: "og:image", content: `${appOrigin()}/og.png` },
+			{ property: "og:image:width", content: "1200" },
+			{ property: "og:image:height", content: "630" },
+			{ property: "og:image:alt", content: "Farmer, by Profico" },
+			{ name: "twitter:card", content: "summary_large_image" },
+			{ name: "twitter:image", content: `${appOrigin()}/og.png` },
 			{
 				name: "theme-color",
 				// The logo violet — the flat fill and top gradient stop of
@@ -76,6 +101,8 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+	useEffect(logConsoleGreeting, []);
+
 	// `suppressHydrationWarning`: the theme script below writes `data-theme` onto
 	// <html> before React ever sees it, and the server has no way to render the
 	// same value — that mismatch is the point of the script, not a bug, and React
