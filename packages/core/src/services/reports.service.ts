@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, countDistinct, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { user } from "../db/schema/auth";
@@ -65,6 +65,7 @@ const projectTimeWhere = (
 		projectId?: string;
 		taskId?: string;
 		userId?: string;
+		activeOnly?: boolean;
 	},
 	scope: ReportScope,
 ) =>
@@ -75,12 +76,23 @@ const projectTimeWhere = (
 		clientId: input.clientId,
 		taskId: input.taskId,
 		userId: input.userId,
+		activeOnly: input.activeOnly,
 	});
 
 export type TimeReportRow = {
 	id: string;
 	name: string;
 	secondsTotal: number;
+	/** Team tab: time off in the period, shown beside work. Zero elsewhere —
+	 *  time off belongs to nobody's client or project. */
+	timeOffSeconds: number;
+	/** Clients: projects with time in the period. Projects: people with time.
+	 *  Team: projects the person logged on. */
+	count: number;
+	/** Projects tab only; null on the other tabs. */
+	clientName: string | null;
+	code: string | null;
+	archived: boolean;
 };
 
 /** How many entry rows a single detail response may carry.
@@ -103,13 +115,43 @@ export type TimeReportDetail = {
 export type TimeReportDetailRow = {
 	id: string;
 	date: string;
+	clientId: string;
 	clientName: string;
+	projectId: string;
 	projectName: string;
+	projectCode: string | null;
+	taskId: string;
 	taskName: string;
 	description: string;
+	userId: string;
 	userName: string;
 	overtime: boolean;
 	durationSeconds: number;
+};
+
+/** Time off per person for the Team tab. People-shaped, so it follows the
+ *  people scope rather than the project scope: an admin sees everyone's, a
+ *  lead their people's, a PM the people on their projects, a member their own.
+ *  Anyone in the rows but outside that scope reads as no time off. */
+const teamTimeOff = async (
+	ctx: Ctx,
+	scope: ReportScope,
+	range: { from: string; to: string },
+	userIds: string[],
+): Promise<Map<string, number>> => {
+	const people = await accessService.peopleScope(ctx, scope.access);
+	const visible = people ? userIds.filter((id) => people.has(id)) : userIds;
+	if (visible.length === 0) return new Map();
+	const rows = await db
+		.select({
+			userId: timeEntry.userId,
+			total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+		})
+		.from(timeEntry)
+		.innerJoin(task, eq(timeEntry.taskId, task.id))
+		.where(ledgerWhere(ctx, range, "absence", { userIds: visible }))
+		.groupBy(timeEntry.userId);
+	return new Map(rows.map((r) => [r.userId, Number(r.total)]));
 };
 
 export const reportsService = {
@@ -137,12 +179,20 @@ export const reportsService = {
 				: input.tab === "projects"
 					? { id: project.id, name: project.name }
 					: { id: user.id, name: user.name };
+		// The second figure each tab shows beside the hours: how many projects a
+		// client had time on, how many people a project had, how many projects a
+		// person touched.
+		const counted =
+			input.tab === "projects"
+				? countDistinct(timeEntry.userId)
+				: countDistinct(timeEntry.projectId);
 
 		const rows = await db
 			.select({
 				id: grouping.id,
 				name: grouping.name,
 				secondsTotal: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
+				count: counted,
 			})
 			.from(timeEntry)
 			.innerJoin(project, eq(timeEntry.projectId, project.id))
@@ -152,11 +202,57 @@ export const reportsService = {
 			.groupBy(grouping.id, grouping.name)
 			.orderBy(desc(sql`sum(${timeEntry.durationSeconds})`));
 
-		const mapped = rows.map((r) => ({
-			id: r.id,
-			name: r.name,
-			secondsTotal: Number(r.secondsTotal),
-		}));
+		// The Projects tab reads the project itself — code, client, whether it is
+		// archived — and the Team tab reads time off: one lookup each, keyed by
+		// the rows that came back, rather than widening the grouped query.
+		const projectMeta =
+			input.tab === "projects" && rows.length > 0
+				? new Map(
+						(
+							await db
+								.select({
+									id: project.id,
+									code: project.code,
+									status: project.status,
+									clientName: client.name,
+								})
+								.from(project)
+								.innerJoin(client, eq(project.clientId, client.id))
+								.where(
+									inArray(
+										project.id,
+										rows.map((r) => r.id),
+									),
+								)
+						).map((p) => [p.id, p]),
+					)
+				: new Map<
+						string,
+						{ code: string | null; status: string; clientName: string }
+					>();
+		const timeOff =
+			input.tab === "teammates" && rows.length > 0
+				? await teamTimeOff(
+						ctx,
+						scope,
+						{ from: input.from, to: input.to },
+						rows.map((r) => r.id),
+					)
+				: new Map<string, number>();
+
+		const mapped: TimeReportRow[] = rows.map((r) => {
+			const meta = projectMeta.get(r.id);
+			return {
+				id: r.id,
+				name: r.name,
+				secondsTotal: Number(r.secondsTotal),
+				timeOffSeconds: timeOff.get(r.id) ?? 0,
+				count: Number(r.count),
+				clientName: meta?.clientName ?? null,
+				code: meta?.code ?? null,
+				archived: meta?.status === "archived",
+			};
+		});
 		// Reported separately from `totalSeconds`, not folded into it: this is time
 		// the report cannot attribute, and adding it to the total would make the
 		// per-client rows stop summing to the figure above them.
@@ -204,10 +300,15 @@ export const reportsService = {
 				.select({
 					id: timeEntry.id,
 					date: timeEntry.date,
+					clientId: client.id,
 					clientName: client.name,
+					projectId: project.id,
 					projectName: project.name,
+					projectCode: project.code,
+					taskId: task.id,
 					taskName: task.name,
 					description: timeEntry.description,
+					userId: user.id,
 					userName: user.name,
 					overtime: timeEntry.overtime,
 					durationSeconds: timeEntry.durationSeconds,
@@ -218,10 +319,9 @@ export const reportsService = {
 				.innerJoin(task, eq(timeEntry.taskId, task.id))
 				.innerJoin(user, eq(timeEntry.userId, user.id))
 				.where(where)
-				.orderBy(
-					input.groupBy === "person" ? asc(user.name) : desc(timeEntry.date),
-					input.groupBy === "person" ? desc(timeEntry.date) : asc(user.name),
-				)
+				// One fixed order — the Breakdown regroups on the client and keeps
+				// this order inside every group.
+				.orderBy(asc(timeEntry.date), asc(user.name), asc(timeEntry.id))
 				.limit(MAX_DETAIL_ROWS),
 			db
 				.select({

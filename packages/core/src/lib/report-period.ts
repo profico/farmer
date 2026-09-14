@@ -14,15 +14,30 @@ import {
 	startOfWeekKey,
 } from "./time";
 
-export type PeriodPreset = "month" | "week" | "custom";
+export type PeriodPreset = "week" | "month" | "quarter" | "year" | "custom";
 
-/** Month leads because a month is what the close, the invoice and every other
- *  report in the product are keyed on. */
+/** Harvest's order, which the COO signed off screen by screen: shortest to
+ *  longest, then the free range. */
 export const PERIOD_PRESETS = [
-	{ id: "month", label: "Month" },
 	{ id: "week", label: "Week" },
+	{ id: "month", label: "Month" },
+	{ id: "quarter", label: "Quarter" },
+	{ id: "year", label: "Year" },
 	{ id: "custom", label: "Custom" },
 ] as const satisfies readonly { id: PeriodPreset; label: string }[];
+
+/** The first month of the quarter a month key sits in: `2026-08` -> `2026-07`. */
+export const startOfQuarterKey = (monthKey: string): string => {
+	const { year, month } = parseMonthKey(monthKey);
+	const first = Math.floor((month - 1) / 3) * 3 + 1;
+	return `${year}-${String(first).padStart(2, "0")}`;
+};
+
+/** `2026-08` -> "Q3 2026". */
+export const formatQuarterKey = (monthKey: string): string => {
+	const { year, month } = parseMonthKey(monthKey);
+	return `Q${Math.floor((month - 1) / 3) + 1} ${year}`;
+};
 
 /** What the caller asked for — the reports route's search params, minus the
  *  parts that select a view rather than a period. Every field is optional
@@ -100,8 +115,21 @@ export const resolveReportPeriod = (
 	}
 
 	const month = selection.month ?? thisMonth;
+	if (preset === "quarter") {
+		const first = startOfQuarterKey(month);
+		const last = shiftMonthKey(first, 2);
+		return { preset, from: `${first}-01`, to: endOfMonthKey(`${last}-01`) };
+	}
+	if (preset === "year") {
+		const { year } = parseMonthKey(month);
+		return { preset, from: `${year}-01-01`, to: `${year}-12-31` };
+	}
 	return { preset, from: `${month}-01`, to: endOfMonthKey(`${month}-01`) };
 };
+
+/** How far one ‹ › step moves the anchor month for a preset. */
+export const monthsPerStep = (preset: PeriodPreset): number =>
+	preset === "quarter" ? 3 : preset === "year" ? 12 : 1;
 
 /** Whether a selection is sitting on the current period — what the "Today" /
  *  "This month" affordance greys itself out for. */
@@ -109,8 +137,11 @@ export const isCurrentPeriod = (
 	selection: PeriodSelection,
 	today: string,
 ): boolean => {
-	const { preset, from } = resolveReportPeriod(selection, today);
+	const { preset, from, to } = resolveReportPeriod(selection, today);
 	if (preset === "week") return from === startOfWeekKey(today);
+	if (preset === "quarter" || preset === "year") {
+		return from <= today && today <= to;
+	}
 	// Month and Custom both step by month, so the month key is what "current"
 	// means for either — a custom range is still anchored to the month picker.
 	return (selection.month ?? monthKeyOf(today)) === monthKeyOf(today);

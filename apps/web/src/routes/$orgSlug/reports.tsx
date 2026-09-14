@@ -7,7 +7,11 @@ import { AbsenceTab } from "#/components/reports/absence-tab.tsx";
 import { ComplianceTab } from "#/components/reports/compliance-tab.tsx";
 import { OvertimeTab } from "#/components/reports/overtime-tab.tsx";
 import { searchSchema, TABS, type TabId } from "#/components/reports/search.ts";
-import { MonthFramed, TabPending } from "#/components/reports/shared.tsx";
+import {
+	MonthFramed,
+	periodLabel,
+	TabPending,
+} from "#/components/reports/shared.tsx";
 import { TimeTab } from "#/components/reports/time-tab.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
@@ -60,32 +64,44 @@ function ReportsPage() {
 		// is sized for exactly this and shared with every other screen, so moving
 		// between them never resizes the shell.
 		<Page>
-			<PageHeader eyebrow={formatMonthKey(month)} title="Reports" />
-
-			<div className="overflow-x-auto">
-				<SegmentedControl>
-					{visibleTabs.map((t) => (
-						<SegmentedControlItem
-							key={t.id}
-							active={tab === t.id}
-							render={
-								<Link
-									to="/$orgSlug/reports"
-									params={{ orgSlug: organization.slug }}
-									// Deliberately drops every other search param: a period or
-									// drill-down belongs to the tab it was set on, and carrying
-									// a client filter into the Absence report would only ever
-									// confuse.
-									search={{ tab: t.id, month: search.month }}
-									aria-current={tab === t.id ? "page" : undefined}
-								/>
-							}
-						>
-							{t.label}
-						</SegmentedControlItem>
-					))}
-				</SegmentedControl>
-			</div>
+			<PageHeader
+				// The Time report can be a week, a quarter or a year; the others
+				// are a month. Either way the eyebrow says which.
+				eyebrow={
+					tab === "time" ? periodLabel(search, today) : formatMonthKey(month)
+				}
+				title="Reports"
+				// The report tabs sit on the eyebrow row, where every other screen
+				// keeps its one control, rather than as a strip of their own under
+				// the title — a screen that already has two rows of controls below
+				// the title had no room for a third.
+				action={
+					<div className="overflow-x-auto">
+						<SegmentedControl>
+							{visibleTabs.map((t) => (
+								<SegmentedControlItem
+									key={t.id}
+									active={tab === t.id}
+									render={
+										<Link
+											to="/$orgSlug/reports"
+											params={{ orgSlug: organization.slug }}
+											// Deliberately drops every other search param: a period
+											// or drill-down belongs to the tab it was set on, and
+											// carrying a client filter into the Absence report would
+											// only ever confuse.
+											search={{ tab: t.id, month: search.month }}
+											aria-current={tab === t.id ? "page" : undefined}
+										/>
+									}
+								>
+									{t.label}
+								</SegmentedControlItem>
+							))}
+						</SegmentedControl>
+					</div>
+				}
+			/>
 
 			{/* Every tab body reads its data with `useSuspenseQuery` and the route
 			    loader only prefetches `myAccess`, so the first visit to a tab always
