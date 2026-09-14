@@ -1,7 +1,9 @@
+import { isUploadedFile } from "@farmer/core/lib/uploads";
+
 import { cn } from "#/lib/utils.ts";
 
-// A project's mark, wherever the project appears: its emoji on the quiet
-// ground, or — with no emoji chosen — the first letter of its name. It
+// A project's mark, wherever the project appears: its emoji or uploaded image
+// on the quiet ground, or — with neither chosen — the first letter of its name. It
 // replaced a colour dot, which told five projects in a list apart from each
 // other about as well as five shades of the same purple do.
 const SIZES = {
@@ -36,7 +38,14 @@ export function ProjectIcon({
 				className,
 			)}
 		>
-			{icon ? (
+			{isUploadedFile(icon) ? (
+				<img
+					src={icon}
+					alt=""
+					draggable={false}
+					className="size-full object-contain"
+				/>
+			) : icon ? (
 				icon
 			) : (
 				<span className={cn("font-medium text-muted-foreground", LETTER[size])}>

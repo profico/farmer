@@ -49,6 +49,103 @@ export const setGithubClientForTests = (
 	client: Partial<GithubClient> | null,
 ): void => {
 	clientOverride = client;
+	// A list cached from the previous client is an answer nobody gave this one.
+	repoLists.clear();
+	repoListFetches.clear();
+};
+
+// ── The repo list cache ────────────────────────────────────────────────────
+// Listing an installation's repos pages through all of them — seconds of calls
+// for an installation that reaches hundreds, spent from the rate limit the
+// commit engine reads through too. The list changes rarely, and a stale one is
+// harmless: `linkRepo` re-reads the repo from GitHub before it writes. So each
+// installation's list is stale-while-revalidate — fresh for five minutes, then
+// served as it is while one refresh runs behind it, and waited on again only
+// past a day. Keyed on the installation, not the caller, since every admin gets
+// the same list; in process, like the token cache, because this deployment is
+// one instance.
+
+type InstallationRepo = {
+	githubRepoId: number;
+	installationId: number;
+	owner: string;
+	name: string;
+	fullName: string;
+	private: boolean;
+};
+type RepoList = { repos: InstallationRepo[]; fetchedAt: number };
+
+const REPO_LIST_FRESH_MS = 5 * 60_000;
+const REPO_LIST_MAX_STALE_MS = 24 * 60 * 60_000;
+// A forced refresh of a list younger than this is answered from the cache, so a
+// Refresh button clicked five times is one read of GitHub, not five.
+const REPO_LIST_REFRESH_FLOOR_MS = 10_000;
+
+const repoLists = new Map<number, RepoList>();
+const repoListFetches = new Map<number, Promise<RepoList>>();
+
+/** One read of GitHub per installation at a time, however many callers ask. */
+const fetchRepoList = (
+	installationId: number,
+	nowMs: number,
+): Promise<RepoList> => {
+	const inflight = repoListFetches.get(installationId);
+	if (inflight) return inflight;
+	const fetching = (async () => {
+		const token = await gh().getInstallationToken(installationId);
+		const repos = await gh().listInstallationRepos(token);
+		const list: RepoList = {
+			repos: repos.map((r) => ({
+				githubRepoId: r.id,
+				installationId,
+				owner: r.owner.login,
+				name: r.name,
+				fullName: r.full_name,
+				private: r.private,
+			})),
+			fetchedAt: nowMs,
+		};
+		repoLists.set(installationId, list);
+		return list;
+	})().finally(() => repoListFetches.delete(installationId));
+	repoListFetches.set(installationId, fetching);
+	return fetching;
+};
+
+const readRepoList = async (
+	installationId: number,
+	nowMs: number,
+	refresh: boolean,
+): Promise<RepoList | null> => {
+	const cached = repoLists.get(installationId);
+	const age = cached ? nowMs - cached.fetchedAt : Number.POSITIVE_INFINITY;
+	const freshFor = refresh ? REPO_LIST_REFRESH_FLOOR_MS : REPO_LIST_FRESH_MS;
+	if (cached && age < freshFor) return cached;
+	if (cached && !refresh && age < REPO_LIST_MAX_STALE_MS) {
+		fetchRepoList(installationId, nowMs).catch((error: unknown) =>
+			console.error("[github] background repo list refresh failed", {
+				installationId,
+				error,
+			}),
+		);
+		return cached;
+	}
+	try {
+		return await fetchRepoList(installationId, nowMs);
+	} catch (error) {
+		console.error("[github] listInstallationRepos failed", {
+			installationId,
+			error,
+		});
+		// The last good list, however old, rather than this installation's repos
+		// silently missing. `fetchedAt` still says how old it is.
+		return cached ?? null;
+	}
+};
+
+/** Test-only: wait for every refresh the cache started in the background. */
+export const settleRepoListRefreshesForTests = async (): Promise<void> => {
+	await Promise.allSettled(repoListFetches.values());
 };
 
 // A commit as it comes back from a repo scan, already carrying every field
@@ -295,18 +392,23 @@ export const githubService = {
 				},
 			})
 			.returning();
+		// GitHub sends an admin back through here after they change which repos
+		// the App may reach, so this is the moment the cached list went wrong.
+		repoLists.delete(input.installationId);
 		return row;
 	},
 
 	disconnectInstallation: async (ctx: Ctx, installationRowId: string) => {
-		await db
+		const removed = await db
 			.delete(orgGithubInstallation)
 			.where(
 				and(
 					eq(orgGithubInstallation.id, installationRowId),
 					eq(orgGithubInstallation.organizationId, ctx.organizationId),
 				),
-			);
+			)
+			.returning({ installationId: orgGithubInstallation.installationId });
+		for (const row of removed) repoLists.delete(row.installationId);
 	},
 
 	// ── Repos (read via installation tokens) ─────────────────────────────────
@@ -315,35 +417,32 @@ export const githubService = {
 	// only purpose is choosing one to link, which is itself admin-only. Asserted
 	// here rather than only in the server function so the assistant and MCP
 	// paths, which call services directly, are held to it too.
-	listAvailableRepos: async (ctx: Ctx) => {
+	//
+	// Served from the repo list cache above. `refresh` skips a fresh entry, for
+	// the repo somebody created a minute ago; `fetchedAt` is the oldest list the
+	// answer was built from, or null when there was none.
+	listAvailableRepos: async (
+		ctx: Ctx,
+		{
+			refresh = false,
+			now = new Date(),
+		}: { refresh?: boolean; now?: Date } = {},
+	) => {
 		await requireAdmin(ctx);
 		const installations = await db.query.orgGithubInstallation.findMany({
 			where: eq(orgGithubInstallation.organizationId, ctx.organizationId),
 		});
-		if (installations.length === 0) return [];
+		if (installations.length === 0) return { repos: [], fetchedAt: null };
 
-		const perInstall = await Promise.all(
-			installations.map(async (inst) => {
-				try {
-					const token = await gh().getInstallationToken(inst.installationId);
-					const repos = await gh().listInstallationRepos(token);
-					return repos.map((r) => ({
-						githubRepoId: r.id,
-						installationId: inst.installationId,
-						owner: r.owner.login,
-						name: r.name,
-						fullName: r.full_name,
-						private: r.private,
-					}));
-				} catch (error) {
-					console.error("[github] listInstallationRepos failed", {
-						installationId: inst.installationId,
-						error,
-					});
-					return [];
-				}
-			}),
+		const lists = await Promise.all(
+			installations.map((inst) =>
+				readRepoList(inst.installationId, now.getTime(), refresh),
+			),
 		);
+		const perInstall = lists.map((list) => list?.repos ?? []);
+		const fetchedAts = lists.flatMap((list) => (list ? [list.fetchedAt] : []));
+		const fetchedAt =
+			fetchedAts.length > 0 ? new Date(Math.min(...fetchedAts)) : null;
 
 		// Which project already holds each repo. A repo belongs to exactly one
 		// project org-wide, so the picker has to be able to say "linked to Farmer"
@@ -365,7 +464,7 @@ export const githubService = {
 		// A repo could be reachable through more than one installation; keep the
 		// first and de-dup on the immutable repo id.
 		const seen = new Set<number>();
-		return perInstall
+		const repos = perInstall
 			.flat()
 			.filter((r) => {
 				if (seen.has(r.githubRepoId)) return false;
@@ -374,6 +473,7 @@ export const githubService = {
 			})
 			.map((r) => ({ ...r, linkedTo: heldBy.get(r.githubRepoId) ?? null }))
 			.sort((a, b) => a.fullName.localeCompare(b.fullName));
+		return { repos, fetchedAt };
 	},
 
 	linkRepo: async (ctx: Ctx, input: LinkProjectRepoInput) => {

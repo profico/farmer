@@ -30,6 +30,7 @@ import { Route as ApiV1ProjectsRouteImport } from './routes/api/v1/projects'
 import { Route as ApiSlackCallbackRouteImport } from './routes/api/slack/callback'
 import { Route as ApiMcpOrgSlugRouteImport } from './routes/api/mcp/$orgSlug'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
+import { Route as ApiFilesSplatRouteImport } from './routes/api/files/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAssistantStreamRouteImport } from './routes/api/assistant/stream'
 import { Route as OrgSlugTimeWeekRouteImport } from './routes/$orgSlug/time/week'
@@ -156,6 +157,11 @@ const ApiMcpOrgSlugRoute = ApiMcpOrgSlugRouteImport.update({
 const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
   id: '/api/github/setup',
   path: '/api/github/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFilesSplatRoute = ApiFilesSplatRouteImport.update({
+  id: '/api/files/$',
+  path: '/api/files/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -293,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
@@ -333,6 +340,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
@@ -376,6 +384,7 @@ export interface FileRoutesById {
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
@@ -420,6 +429,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/time/week'
     | '/api/assistant/stream'
     | '/api/auth/$'
+    | '/api/files/$'
     | '/api/github/setup'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
@@ -460,6 +470,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/time/week'
     | '/api/assistant/stream'
     | '/api/auth/$'
+    | '/api/files/$'
     | '/api/github/setup'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
@@ -502,6 +513,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/time/week'
     | '/api/assistant/stream'
     | '/api/auth/$'
+    | '/api/files/$'
     | '/api/github/setup'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
@@ -527,6 +539,7 @@ export interface RootRouteChildren {
   ApiMcpLoginRoute: typeof ApiMcpLoginRoute
   ApiAssistantStreamRoute: typeof ApiAssistantStreamRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiFilesSplatRoute: typeof ApiFilesSplatRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
   ApiMcpOrgSlugRoute: typeof ApiMcpOrgSlugRoute
   ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
@@ -681,6 +694,13 @@ declare module '@tanstack/react-router' {
       path: '/api/github/setup'
       fullPath: '/api/github/setup'
       preLoaderRoute: typeof ApiGithubSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/files/$': {
+      id: '/api/files/$'
+      path: '/api/files/$'
+      fullPath: '/api/files/$'
+      preLoaderRoute: typeof ApiFilesSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -900,6 +920,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMcpLoginRoute: ApiMcpLoginRoute,
   ApiAssistantStreamRoute: ApiAssistantStreamRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiFilesSplatRoute: ApiFilesSplatRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
   ApiMcpOrgSlugRoute: ApiMcpOrgSlugRoute,
   ApiSlackCallbackRoute: ApiSlackCallbackRoute,

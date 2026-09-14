@@ -1,0 +1,22 @@
+# Garage, single node — the S3-compatible store for uploaded project icons and
+# organization logos (packages/core/src/lib/storage.ts).
+#
+# Used by docker-compose.yml in development, and fit to deploy as it is. It
+# holds no secret: the RPC secret comes from GARAGE_RPC_SECRET, and the access
+# key and bucket from GARAGE_DEFAULT_ACCESS_KEY / GARAGE_DEFAULT_SECRET_KEY /
+# GARAGE_DEFAULT_BUCKET, which `garage server --single-node --default-bucket`
+# creates on first boot (Garage 2.3 and later).
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"

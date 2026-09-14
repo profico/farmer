@@ -69,6 +69,16 @@ export const listAvailableGithubRepos = createServerFn({
 		return githubService.listAvailableRepos(context.ctx);
 	});
 
+// The same list, read past the server's cache — the Refresh button, for a repo
+// created since the list was fetched. POST because it is a request for work,
+// not a read a browser or a CDN may answer from a copy.
+export const refreshAvailableGithubRepos = createServerFn({ method: "POST" })
+	.middleware([orgAdminMiddleware])
+	.handler(async ({ context }) => {
+		const { githubService } = await import("@farmer/core/services");
+		return githubService.listAvailableRepos(context.ctx, { refresh: true });
+	});
+
 export const linkProjectGithubRepo = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(linkProjectRepoInput)

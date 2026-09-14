@@ -33,4 +33,5 @@ export * from "./team-leads.service";
 export * from "./time-entries.service";
 export * from "./types";
 export * from "./unfiled";
+export * from "./uploads.service";
 export * from "./working-hours.service";

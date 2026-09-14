@@ -55,6 +55,14 @@ export type PublicAppConfig = {
 	 */
 	devAuth: boolean;
 	/**
+	 * Whether this deployment has an object store for uploaded project icons
+	 * and organization logos (`S3_*`, `packages/core/src/lib/storage.ts`).
+	 *
+	 * Presentation again: it decides whether the upload controls render. With
+	 * no store the upload server function refuses on its own.
+	 */
+	uploadsEnabled: boolean;
+	/**
 	 * The one organization's public face — name, logo and slug, and nothing
 	 * else. This is an unauthenticated read (`/login`'s error screen needs it
 	 * before anyone has signed in), so it returns branding rather than the org
@@ -73,15 +81,18 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			{ isAssistantEnabled },
 			{ isMcpEnabled },
 			{ isDevAuthEnabled },
+			{ isStorageEnabled },
 		] = await Promise.all([
 			import("@farmer/core/lib/single-org"),
 			import("@farmer/core/lib/assistant-flag"),
 			import("@farmer/core/lib/mcp-flag"),
 			import("@farmer/core/lib/dev-auth"),
+			import("@farmer/core/lib/storage"),
 		]);
 		const assistantEnabled = isAssistantEnabled();
 		const mcpEnabled = isMcpEnabled();
 		const devAuth = isDevAuthEnabled();
+		const uploadsEnabled = isStorageEnabled();
 		// Parsed rather than passed through, so a trailing path or slash in the
 		// environment cannot end up doubled in the middle of a URL somebody
 		// pastes. An unparseable value is the same answer as a missing one.
@@ -94,6 +105,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 				mcpEnabled,
 				appOrigin,
 				devAuth,
+				uploadsEnabled,
 				org: null,
 			};
 		}
@@ -104,6 +116,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			mcpEnabled,
 			appOrigin,
 			devAuth,
+			uploadsEnabled,
 			org: org
 				? { slug: org.slug, name: org.name, logo: org.logo ?? null }
 				: null,

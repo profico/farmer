@@ -1,10 +1,19 @@
 import {
+	isUploadedFile,
+	MAX_UPLOAD_BYTES,
+	UPLOAD_ACCEPT,
+} from "@farmer/core/lib/uploads";
+import {
 	useMutation,
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import {
+	createFileRoute,
+	useRouteContext,
+	useRouter,
+} from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
@@ -31,6 +40,7 @@ import {
 	updateOrgPolicySettings,
 	updateOrgSettings,
 } from "#/server/organization.ts";
+import { uploadImage } from "#/server/uploads.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/organization")({
 	beforeLoad: async () => {
@@ -92,6 +102,31 @@ function OrganizationSettingsPage() {
 	const [logo, setLogo] = useState(settings.logo ?? "");
 	const trimmedLogo = logo.trim();
 	const logoChanged = trimmedLogo !== (settings.logo ?? "");
+	const uploadedLogo = isUploadedFile(logo);
+
+	const { uploadsEnabled } = useRouteContext({ from: "/$orgSlug" });
+	const fileInput = useRef<HTMLInputElement>(null);
+	const upload = useMutation({
+		mutationFn: async (file: File) => {
+			// The server refuses it too; checking here first saves sending it.
+			if (file.size > MAX_UPLOAD_BYTES) {
+				throw new Error("The image is larger than 1 MB.");
+			}
+			const form = new FormData();
+			form.set("purpose", "org-logo");
+			form.set("file", file);
+			return uploadImage({ data: form });
+		},
+		// Saved as soon as it lands. Choosing the file was the decision, and a
+		// second Save click would only be one more way to lose it.
+		onSuccess: ({ url }) => {
+			setLogo(url);
+			mutation.mutate({ logo: url });
+		},
+		onError: (error) => {
+			toast.error(error.message || "Could not upload the logo");
+		},
+	});
 
 	return (
 		<Page>
@@ -155,8 +190,12 @@ function OrganizationSettingsPage() {
 			</PageSection>
 
 			<PageSection
-				title="Logo URL"
-				description="A public image URL for the organization's logo, shown in the sidebar (SVG or PNG work best). Leave empty to fall back to the organization initials."
+				title={uploadsEnabled ? "Logo" : "Logo URL"}
+				description={
+					uploadsEnabled
+						? "The organization's logo, shown in the sidebar. Upload an image, or paste a public image URL (SVG or PNG work best). Leave it empty to fall back to the organization initials."
+						: "A public image URL for the organization's logo, shown in the sidebar (SVG or PNG work best). Leave empty to fall back to the organization initials."
+				}
 			>
 				<form
 					className="flex w-full max-w-sm flex-col gap-3"
@@ -179,24 +218,61 @@ function OrganizationSettingsPage() {
 								<span className="eyebrow">{getInitials(settings.name)}</span>
 							)}
 						</span>
-						<Input
-							value={logo}
-							onChange={(e) => setLogo(e.target.value)}
-							placeholder="https://example.com/logo.svg"
-							type="url"
-							inputMode="url"
-							maxLength={2048}
-							className="flex-1"
-						/>
+						{uploadedLogo ? (
+							// The path of an upload means nothing to anybody, and editing
+							// it by hand can only break it. Remove brings the field back.
+							<p className="flex-1 text-sm text-muted-foreground">
+								An uploaded image.
+							</p>
+						) : (
+							<Input
+								value={logo}
+								onChange={(e) => setLogo(e.target.value)}
+								placeholder="https://example.com/logo.svg"
+								type="url"
+								inputMode="url"
+								maxLength={2048}
+								className="flex-1"
+							/>
+						)}
 					</div>
 					<div className="flex gap-2">
-						<Button
-							type="submit"
-							size="sm"
-							disabled={!logoChanged || mutation.isPending}
-						>
-							Save logo
-						</Button>
+						{!uploadedLogo && (
+							<Button
+								type="submit"
+								size="sm"
+								disabled={!logoChanged || mutation.isPending}
+							>
+								Save logo
+							</Button>
+						)}
+						{uploadsEnabled && (
+							<>
+								<Button
+									type="button"
+									size="sm"
+									variant="outline"
+									disabled={upload.isPending || mutation.isPending}
+									onClick={() => fileInput.current?.click()}
+								>
+									{upload.isPending ? "Uploading…" : "Upload image…"}
+								</Button>
+								<input
+									ref={fileInput}
+									type="file"
+									accept={UPLOAD_ACCEPT}
+									tabIndex={-1}
+									aria-hidden
+									className="hidden"
+									onChange={(e) => {
+										const file = e.currentTarget.files?.[0];
+										// Cleared, so choosing the same file again still fires.
+										e.currentTarget.value = "";
+										if (file) upload.mutate(file);
+									}}
+								/>
+							</>
+						)}
 						{settings.logo && (
 							<Button
 								type="button"

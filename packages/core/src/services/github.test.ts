@@ -29,12 +29,20 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { projectGithubRepo, timeEntryGithubCommit } from "../db/schema/github";
+import {
+	orgGithubInstallation,
+	projectGithubRepo,
+	timeEntryGithubCommit,
+} from "../db/schema/github";
 import type { GithubCommit } from "../lib/github-client";
 import { attachCommitsInput } from "../schema/github";
-import { at, createTestDb, type TestDb } from "../test/harness";
+import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
-import { githubService, setGithubClientForTests } from "./github.service";
+import {
+	githubService,
+	setGithubClientForTests,
+	settleRepoListRefreshesForTests,
+} from "./github.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-github";
@@ -259,6 +267,136 @@ describe("listAvailableRepos", () => {
 
 	test("answers an admin", async () => {
 		// No installation is connected, so the answer is empty — but an answer.
-		expect(await githubService.listAvailableRepos(adminCtx())).toEqual([]);
+		expect(await githubService.listAvailableRepos(adminCtx())).toEqual({
+			repos: [],
+			fetchedAt: null,
+		});
+	});
+});
+
+// The list is stale-while-revalidate per installation. What is pinned here is
+// the trade it makes: how often GitHub is asked, and that nobody is shown less
+// than the last good answer while it is being asked again.
+describe("the repo list cache", () => {
+	const T0 = new Date("2026-09-14T09:00:00Z");
+	const minutesIn = (minutes: number) =>
+		new Date(T0.getTime() + minutes * 60_000);
+	const DAY = 24 * 60;
+
+	let reads = 0;
+	let names: string[] = [];
+	let failing = false;
+
+	const list = (minutes: number, refresh = false) =>
+		githubService.listAvailableRepos(adminCtx(), {
+			now: minutesIn(minutes),
+			refresh,
+		});
+	const namesAt = async (minutes: number, refresh = false) =>
+		(await list(minutes, refresh)).repos.map((r) => r.fullName);
+
+	beforeAll(async () => {
+		await db.insert(orgGithubInstallation).values({
+			organizationId: ORG_ID,
+			installationId: 100,
+			accountLogin: "profico",
+			accountType: "Organization",
+		});
+	});
+
+	afterAll(async () => {
+		await db.delete(orgGithubInstallation);
+	});
+
+	beforeEach(() => {
+		reads = 0;
+		names = ["profico/one"];
+		failing = false;
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			listInstallationRepos: async () => {
+				reads++;
+				if (failing) throw new Error("GitHub is down");
+				return names.map((fullName, i) => ({
+					id: 1000 + i,
+					name: fullName,
+					full_name: fullName,
+					owner: { login: "profico" },
+					private: false,
+				}));
+			},
+		});
+	});
+
+	test("serves a fresh list without asking GitHub again", async () => {
+		expect(await namesAt(0)).toEqual(["profico/one"]);
+		names = ["profico/one", "profico/two"];
+		expect(await namesAt(4)).toEqual(["profico/one"]);
+		expect(reads).toBe(1);
+	});
+
+	test("shares one read between callers who ask at once", async () => {
+		await Promise.all([list(0), list(0), list(0)]);
+		expect(reads).toBe(1);
+	});
+
+	test("serves a stale list at once and refreshes it behind the answer", async () => {
+		await namesAt(0);
+		names = ["profico/one", "profico/two"];
+
+		expect(await namesAt(6)).toEqual(["profico/one"]);
+		await settleRepoListRefreshesForTests();
+		expect(reads).toBe(2);
+
+		const next = await list(7);
+		expect(next.repos.map((r) => r.fullName)).toEqual([
+			"profico/one",
+			"profico/two",
+		]);
+		expect(next.fetchedAt).toEqual(minutesIn(6));
+		expect(reads).toBe(2);
+	});
+
+	test("waits for GitHub once the list is more than a day old", async () => {
+		await namesAt(0);
+		names = ["profico/two"];
+		expect(await namesAt(DAY + 1)).toEqual(["profico/two"]);
+		expect(reads).toBe(2);
+	});
+
+	test("refresh reads past a fresh list, but not one seconds old", async () => {
+		await namesAt(0);
+		names = ["profico/two"];
+		expect(await namesAt(0.1, true)).toEqual(["profico/one"]);
+		expect(reads).toBe(1);
+		expect(await namesAt(1, true)).toEqual(["profico/two"]);
+		expect(reads).toBe(2);
+	});
+
+	test("keeps the last good list, and says how old it is, when GitHub fails", async () => {
+		await namesAt(0);
+		failing = true;
+		const answer = await list(DAY + 1);
+		expect(answer.repos.map((r) => r.fullName)).toEqual(["profico/one"]);
+		expect(answer.fetchedAt).toEqual(T0);
+	});
+
+	test("forgets an installation's list when it is disconnected", async () => {
+		await namesAt(0);
+		names = ["profico/two"];
+		const row = present(
+			await db.query.orgGithubInstallation.findFirst({
+				where: eq(orgGithubInstallation.organizationId, ORG_ID),
+			}),
+			"the connected installation",
+		);
+		await githubService.disconnectInstallation(adminCtx(), row.id);
+		await db.insert(orgGithubInstallation).values({
+			organizationId: ORG_ID,
+			installationId: 100,
+			accountLogin: "profico",
+			accountType: "Organization",
+		});
+		expect(await namesAt(1)).toEqual(["profico/two"]);
 	});
 });

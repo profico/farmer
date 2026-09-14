@@ -5,6 +5,7 @@ import { organization } from "../db/schema/auth";
 import type { UpdateOrganizationSettingsInput } from "../schema/organization";
 import { invalidateCtxTimezone, requireAdmin } from "./context";
 import type { Ctx } from "./types";
+import { assertOwnUpload } from "./uploads.service";
 
 export const organizationService = {
 	getSettings: async (ctx: Ctx) => {
@@ -44,8 +45,11 @@ export const organizationService = {
 			}
 			patch.timezone = input.timezone;
 		}
-		// An empty string clears the logo; a URL sets it.
-		if (input.logo !== undefined) patch.logo = input.logo || null;
+		// An empty string clears the logo; a URL or an uploaded image sets it.
+		if (input.logo !== undefined) {
+			assertOwnUpload(ctx, input.logo);
+			patch.logo = input.logo || null;
+		}
 		const [updated] = await db
 			.update(organization)
 			.set(patch)

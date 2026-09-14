@@ -29,6 +29,7 @@ import { assertProjectInOrg, assertUserInOrg } from "./guards";
 import { membersService } from "./members.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
+import { assertOwnUpload } from "./uploads.service";
 
 export type ProjectMemberRow = {
 	userId: string;
@@ -472,6 +473,7 @@ export const projectsService = {
 	create: async (ctx: Ctx, input: CreateProjectInput) => {
 		const access = await ctxAccess(ctx);
 		access.assertCanCreateProjects();
+		assertOwnUpload(ctx, input.icon);
 
 		const created = await db.transaction(async (tx) => {
 			const ownedClient = await tx.query.client.findFirst({
@@ -526,6 +528,7 @@ export const projectsService = {
 		// Editing budgets/prices is PM territory; TLs manage people, not config.
 		access.assertCanManageProject(input.projectId);
 		await assertProjectInOrg(ctx, input.projectId);
+		assertOwnUpload(ctx, input.icon);
 
 		// A patch: only the keys the caller sent are written, so a rename doesn't
 		// have to carry the budget, the client and the task subset along with it

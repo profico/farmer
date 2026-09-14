@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { isValidDayKey } from "../lib/time";
+import { uploadedFilePath } from "./uploads";
 
 export const setActiveOrgBySlugInput = z.string().min(1);
 export type SetActiveOrgBySlugInput = z.infer<typeof setActiveOrgBySlugInput>;
@@ -11,9 +12,10 @@ export const updateOrganizationSettingsInput = z.object({
 	// A raw IANA zone identifier (e.g. "Europe/Sarajevo"); re-validated
 	// server-side in organization.service.ts before being written.
 	timezone: z.string().trim().min(1).max(100).optional(),
-	// A URL to the org's own logo, shown in the app chrome in place of the
-	// Profico fallback. An empty string clears it (→ null).
-	logo: z.url().max(2048).or(z.literal("")).nullish(),
+	// The org's own logo, shown in the app chrome in place of the Profico
+	// fallback: a URL somebody pasted, or the path of an uploaded image. An
+	// empty string clears it (→ null).
+	logo: z.url().max(2048).or(uploadedFilePath).or(z.literal("")).nullish(),
 });
 export type UpdateOrganizationSettingsInput = z.infer<
 	typeof updateOrganizationSettingsInput

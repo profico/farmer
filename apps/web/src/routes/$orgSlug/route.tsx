@@ -69,6 +69,9 @@ export const Route = createFileRoute("/$orgSlug")({
 			// hides its whole "Sign-in methods" section when this is off, since
 			// there is nothing there to change on a deployed instance.
 			devAuth: config.devAuth,
+			// Whether an object store is configured. The icon picker and Settings →
+			// Organization offer an upload only when it is.
+			uploadsEnabled: config.uploadsEnabled,
 		};
 	},
 	// The router-wide default renders a lone page skeleton, which is right for a

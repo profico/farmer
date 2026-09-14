@@ -1,3 +1,4 @@
+import { isUploadedFile } from "@farmer/core/lib/uploads";
 import {
 	projectTypeEnum,
 	type ProjectTypeValue,
@@ -308,9 +309,11 @@ function SettingsPage() {
 												}
 											/>
 											<p className="mt-1.5 text-xs text-muted-foreground">
-												{field.value
-													? "An emoji."
-													: "No icon — the first letter of the name."}
+												{isUploadedFile(field.value)
+													? "An uploaded image."
+													: field.value
+														? "An emoji."
+														: "No icon — the first letter of the name."}
 											</p>
 										</div>
 									</div>

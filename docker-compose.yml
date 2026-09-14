@@ -15,5 +15,24 @@ services:
       timeout: 3s
       retries: 10
 
+  # Uploaded project icons and organization logos. The credentials below are
+  # for this machine only and match the S3_* values in .env.example.
+  garage:
+    image: dxflrs/garage:v2.4.1
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    ports:
+      - "3900:3900"
+    environment:
+      GARAGE_RPC_SECRET: 5e1f9a3c7b2d4e6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e7b9d2f4a6c8e0b1d3f
+      GARAGE_DEFAULT_ACCESS_KEY: GK0f4a1c2e3b5d6a7f8e9c0b1d
+      GARAGE_DEFAULT_SECRET_KEY: 9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c
+      GARAGE_DEFAULT_BUCKET: farmer
+    volumes:
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+
 volumes:
   postgres-data:
+  garage-meta:
+  garage-data:

@@ -1,3 +1,4 @@
+import { isUploadedFile } from "@farmer/core/lib/uploads";
 import { type ComponentPropsWithRef, useMemo, useState } from "react";
 
 import {
@@ -187,10 +188,18 @@ export function ProjectPicker({
 							<ComboboxCollection>
 								{(item: Item) => (
 									<ComboboxItem key={item.value} value={item}>
-										{item.icon && (
-											<span className="shrink-0 text-base leading-none">
-												{item.icon}
-											</span>
+										{isUploadedFile(item.icon) ? (
+											<img
+												src={item.icon}
+												alt=""
+												className="size-4 shrink-0 rounded-[3px] object-contain"
+											/>
+										) : (
+											item.icon && (
+												<span className="shrink-0 text-base leading-none">
+													{item.icon}
+												</span>
+											)
 										)}
 										<span className="truncate">{item.label}</span>
 										{item.code && (

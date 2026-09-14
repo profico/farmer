@@ -1,4 +1,9 @@
-import { LockIcon, PlugIcon, XIcon } from "@phosphor-icons/react";
+import {
+	ArrowClockwiseIcon,
+	LockIcon,
+	PlugIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -17,19 +22,20 @@ import {
 	linkProjectGithubRepo,
 	type listAvailableGithubRepos,
 	type listProjectGithubRepos,
+	refreshAvailableGithubRepos,
 	unlinkProjectGithubRepo,
 } from "#/server/github.ts";
 
 type AvailableRepo = Awaited<
 	ReturnType<typeof listAvailableGithubRepos>
->[number];
+>["repos"][number];
 type LinkedRepo = Awaited<ReturnType<typeof listProjectGithubRepos>>[number];
 
 /** A link the server has not answered yet — enough to draw its row. */
 type PendingLink = Pick<
 	AvailableRepo,
 	"githubRepoId" | "installationId" | "fullName" | "private"
-> & { projectId: string };
+> & { projectId: string; projectName: string };
 
 /** Above this many linkable repos, the list stays empty until a search. */
 const SEARCH_FIRST_THRESHOLD = 10;
@@ -37,6 +43,16 @@ const SEARCH_FIRST_THRESHOLD = 10;
 /** A list that scrolls inside its own border rather than growing the page. */
 const LIST_CLASS =
 	"scrollbar-stable max-h-80 overflow-y-auto overscroll-contain rounded-md border";
+
+/** How old the repo list is: "just now", "12 min ago", "3 h ago", "2 d ago". */
+const formatAge = (fetchedAt: Date, now: number) => {
+	const minutes = Math.floor((now - fetchedAt.getTime()) / 60_000);
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes} min ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours} h ago`;
+	return `${Math.floor(hours / 24)} d ago`;
+};
 
 /**
  * Linking repositories to one project. The body only — no dialog, no panel — so
@@ -85,10 +101,18 @@ export function ProjectGithubRepos({
 		...projectGithubReposQuery(orgSlug, projectId ?? ""),
 		enabled: active,
 	});
-	const { data: availableRepos } = useQuery({
+	const { data: available } = useQuery({
 		...availableGithubReposQuery(orgSlug),
 		enabled: active && !!status?.connected,
 	});
+	const availableRepos = available?.repos;
+
+	// Re-render once a minute, so "Updated 3 min ago" keeps counting.
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		const timer = setInterval(() => setNow(Date.now()), 60_000);
+		return () => clearInterval(timer);
+	}, []);
 
 	// Links in flight, drawn in the linked list until the server answers. Kept
 	// here rather than faked into the query cache because a linked row is a
@@ -107,10 +131,13 @@ export function ProjectGithubRepos({
 	) =>
 		queryClient.setQueryData(
 			availableGithubReposQuery(orgSlug).queryKey,
-			(repos) =>
-				repos?.map((r) =>
-					r.githubRepoId === githubRepoId ? { ...r, linkedTo } : r,
-				),
+			(list) =>
+				list && {
+					...list,
+					repos: list.repos.map((r) =>
+						r.githubRepoId === githubRepoId ? { ...r, linkedTo } : r,
+					),
+				},
 		);
 
 	const refetchAvailable = () =>
@@ -187,6 +214,37 @@ export function ProjectGithubRepos({
 			]);
 			toast.error(error.message ?? "Could not unlink repository");
 		},
+	});
+
+	// Past the server's cache, for a repo created since the list was fetched.
+	// The server read `linkedTo` before any link still in flight landed, so those
+	// are laid back over its answer rather than offered as linkable again.
+	const refreshMutation = useMutation({
+		mutationFn: () => refreshAvailableGithubRepos(),
+		onMutate: () =>
+			queryClient.cancelQueries({
+				queryKey: availableGithubReposQuery(orgSlug).queryKey,
+			}),
+		onSuccess: (fresh) => {
+			queryClient.setQueryData(availableGithubReposQuery(orgSlug).queryKey, {
+				...fresh,
+				repos: fresh.repos.map((r) => {
+					const pending = pendingLinks.find(
+						(p) => p.githubRepoId === r.githubRepoId,
+					);
+					if (!pending) return r;
+					return {
+						...r,
+						linkedTo: {
+							projectId: pending.projectId,
+							projectName: pending.projectName,
+						},
+					};
+				}),
+			});
+		},
+		onError: (error) =>
+			toast.error(error.message ?? "Could not refresh repositories"),
 	});
 
 	const searching = search.trim() !== "";
@@ -306,7 +364,29 @@ export function ProjectGithubRepos({
 				</div>
 
 				<div className="min-w-0">
-					<p className="eyebrow mb-2">Link a repository</p>
+					<div className="mb-2 flex items-center justify-between gap-2">
+						<p className="eyebrow">Link a repository</p>
+						{available && (
+							<span className="flex items-center gap-1 text-xs text-muted-foreground">
+								{available.fetchedAt &&
+									`Updated ${formatAge(available.fetchedAt, now)}`}
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									disabled={refreshMutation.isPending}
+									onClick={() => refreshMutation.mutate()}
+								>
+									<ArrowClockwiseIcon
+										weight="regular"
+										className={
+											refreshMutation.isPending ? "animate-spin" : undefined
+										}
+									/>
+									<span className="sr-only">Refresh repositories</span>
+								</Button>
+							</span>
+						)}
+					</div>
 					{awaitingSearch ? (
 						<p className="text-sm text-muted-foreground">
 							Search to find one of {linkableRepos.length} repositories.
@@ -341,6 +421,7 @@ export function ProjectGithubRepos({
 											onClick={() =>
 												linkMutation.mutate({
 													projectId,
+													projectName,
 													githubRepoId: repo.githubRepoId,
 													installationId: repo.installationId,
 													fullName: repo.fullName,

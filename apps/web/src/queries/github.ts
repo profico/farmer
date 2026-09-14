@@ -33,6 +33,12 @@ export const availableGithubReposQuery = (org: string) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).github, "available-repos"],
 		queryFn: () => listAvailableGithubRepos(),
+		// The server keeps this list fresh on its own terms (see the repo list
+		// cache in github.service.ts), and the component writes each link and
+		// unlink into this cache by hand. Refetching on every focus bought nothing
+		// but a round trip; the Refresh button is the way to ask for a newer one.
+		staleTime: 5 * 60_000,
+		refetchOnWindowFocus: false,
 	});
 
 export const attachedCommitsQuery = (org: string, timeEntryId: string) =>

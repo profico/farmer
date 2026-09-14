@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { uploadedFilePath } from "./uploads";
+
 export const projectTypeEnum = z.enum([
 	"product_team",
 	"fixed_scope",
@@ -26,11 +28,20 @@ const baseProject = {
 	clientId: z.uuid(),
 	code: z.string().trim().max(16).optional(),
 	type: projectTypeEnum,
-	// An emoji. Loose on purpose — a flag or a family is several code points,
-	// and a skin-toned ZWJ sequence runs past 16 UTF-16 units (the picker's
-	// longest today is 15, a family with four tones is 19) — and short enough
-	// that nothing but an emoji fits. Null clears it.
-	icon: z.string().trim().min(1).max(32).optional().nullable(),
+	// An emoji, or the path of an uploaded image. The emoji is loose on purpose
+	// — a flag or a family is several code points, and a skin-toned ZWJ
+	// sequence runs past 16 UTF-16 units (the picker's longest today is 15, a
+	// family with four tones is 19) — and short enough that nothing but an
+	// emoji fits. An upload path is far longer, so it only ever matches the
+	// second branch. Null clears it.
+	icon: z
+		.string()
+		.trim()
+		.min(1)
+		.max(32)
+		.or(uploadedFilePath)
+		.optional()
+		.nullable(),
 	// Fixed Scope only: the hour budget is the ONLY budget burn is computed on.
 	budgetHours: z.coerce.number().positive().max(100_000).optional().nullable(),
 	// Fixed Scope only, display-only context beside the hour figures.

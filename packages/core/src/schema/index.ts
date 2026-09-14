@@ -19,4 +19,5 @@ export * from "./slack";
 export * from "./tasks";
 export * from "./team-leads";
 export * from "./time-entries";
+export * from "./uploads";
 export * from "./working-hours";
