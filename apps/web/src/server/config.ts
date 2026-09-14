@@ -30,6 +30,17 @@ export type PublicAppConfig = {
 	 */
 	mcpEnabled: boolean;
 	/**
+	 * Whether the command-line tool runs on this deployment (`CLI_ENABLED`).
+	 *
+	 * Its own flag again, independent of the other two — see
+	 * `packages/core/src/lib/cli-flag.ts`. The client reads it for presentation
+	 * only: Settings → Integrations shows the install commands, and `/device`
+	 * renders not-found. What actually closes the CLI is server-side — the
+	 * device endpoints, `/api/v1/orgs/*` and the install script all answer 404
+	 * — so a page typed in by hand has nothing behind it to approve.
+	 */
+	cliEnabled: boolean;
+	/**
 	 * This deployment's own origin, from `BETTER_AUTH_URL`.
 	 *
 	 * Resolved on the server rather than read from `window.location` in the
@@ -80,17 +91,20 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			{ isSingleOrgMode, findSingleOrg },
 			{ isAssistantEnabled },
 			{ isMcpEnabled },
+			{ isCliEnabled },
 			{ isDevAuthEnabled },
 			{ isStorageEnabled },
 		] = await Promise.all([
 			import("@farmer/core/lib/single-org"),
 			import("@farmer/core/lib/assistant-flag"),
 			import("@farmer/core/lib/mcp-flag"),
+			import("@farmer/core/lib/cli-flag"),
 			import("@farmer/core/lib/dev-auth"),
 			import("@farmer/core/lib/storage"),
 		]);
 		const assistantEnabled = isAssistantEnabled();
 		const mcpEnabled = isMcpEnabled();
+		const cliEnabled = isCliEnabled();
 		const devAuth = isDevAuthEnabled();
 		const uploadsEnabled = isStorageEnabled();
 		// Parsed rather than passed through, so a trailing path or slash in the
@@ -103,6 +117,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 				singleOrgMode: false,
 				assistantEnabled,
 				mcpEnabled,
+				cliEnabled,
 				appOrigin,
 				devAuth,
 				uploadsEnabled,
@@ -114,6 +129,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			singleOrgMode: true,
 			assistantEnabled,
 			mcpEnabled,
+			cliEnabled,
 			appOrigin,
 			devAuth,
 			uploadsEnabled,

@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import { dayKeyInTz } from "@farmer/core/lib/time";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import {
@@ -24,7 +25,6 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { holidaysForYearWithStatusQuery } from "#/queries/holidays.ts";
 import { queryKeys } from "#/queries/keys.ts";

@@ -64,6 +64,9 @@ export const Route = createFileRoute("/$orgSlug")({
 			// connection URL, and a URL for an endpoint that 404s is worse than no
 			// URL at all.
 			mcpEnabled: config.mcpEnabled,
+			// The CLI's own switch, for the same reason: Settings → Integrations
+			// shows the install commands only when the script behind them answers.
+			cliEnabled: config.cliEnabled,
 			appOrigin: config.appOrigin,
 			// Development-only email + password sign-in. Settings → Preferences
 			// hides its whole "Sign-in methods" section when this is off, since

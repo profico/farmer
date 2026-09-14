@@ -93,3 +93,37 @@ export const attachCommitsInput = z.object({
 		.min(1),
 });
 export type AttachCommitsInput = z.infer<typeof attachCommitsInput>;
+
+// ── Pull requests ──────────────────────────────────────────────────────────
+// Same shapes as the commit reads: one project on one day for the entry
+// dialog, a span of days for the assistant.
+export const suggestPullRequestsInput = suggestCommitsInput;
+export type SuggestPullRequestsInput = SuggestCommitsInput;
+
+export const userPullRequestsRangeInput = userCommitsRangeInput;
+export type UserPullRequestsRangeInput = UserCommitsRangeInput;
+
+export const listAttachedPullRequestsInput = z.uuid();
+export type ListAttachedPullRequestsInput = z.infer<
+	typeof listAttachedPullRequestsInput
+>;
+
+export const detachPullRequestActivityInput = z.uuid();
+export type DetachPullRequestActivityInput = z.infer<
+	typeof detachPullRequestActivityInput
+>;
+
+// A pull request is named by its repo row and number, and nothing the caller
+// says about it is stored: the service reads the PR again and keeps only the
+// caller's own events on the entry's day. Capped, because each one is a call to
+// GitHub.
+export const pullRequestRef = z.object({
+	projectGithubRepoId: z.uuid(),
+	number: z.coerce.number().int().positive(),
+});
+
+export const attachPullRequestsInput = z.object({
+	timeEntryId: z.uuid(),
+	pullRequests: z.array(pullRequestRef).min(1).max(50),
+});
+export type AttachPullRequestsInput = z.infer<typeof attachPullRequestsInput>;

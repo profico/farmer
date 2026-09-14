@@ -10,6 +10,7 @@ import {
 	CalendarDotIcon,
 	CaretRightIcon,
 	GitCommitIcon,
+	GitPullRequestIcon,
 	VideoCameraIcon,
 	XIcon,
 } from "@phosphor-icons/react";
@@ -69,9 +70,11 @@ import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import {
 	attachedCommitsQuery,
+	attachedPullRequestsQuery,
 	githubConnectionStatusQuery,
 	projectGithubReposQuery,
 	suggestedCommitsQuery,
+	suggestedPullRequestsQuery,
 } from "#/queries/github.ts";
 import {
 	calendarEventsForDayQuery,
@@ -85,8 +88,11 @@ import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
 import {
 	attachCommitsToEntry,
+	attachPullRequestsToEntry,
 	detachCommitFromEntry,
+	detachPullRequestFromEntry,
 	suggestCommitsForEntry,
+	suggestPullRequestsForEntry,
 } from "#/server/github.ts";
 import type { listCalendarEventsForDay } from "#/server/google-calendar.ts";
 import { createRecurringBlockRule } from "#/server/recurring-block-rules.ts";
@@ -170,6 +176,48 @@ type FormValues = z.infer<typeof formSchema>;
 
 function commitKey(projectGithubRepoId: string, sha: string): string {
 	return `${projectGithubRepoId}:${sha}`;
+}
+
+function pullRequestKey(projectGithubRepoId: string, number: number): string {
+	return `${projectGithubRepoId}:${number}`;
+}
+
+type ActivityKind = "opened" | "merged" | "closed" | "reviewed";
+type ReviewState = "approved" | "changes_requested" | "commented" | "dismissed";
+
+function activityLabel(
+	kind: ActivityKind,
+	reviewState: ReviewState | null,
+): string {
+	if (kind === "opened") return "Opened";
+	if (kind === "merged") return "Merged";
+	if (kind === "closed") return "Closed";
+	switch (reviewState) {
+		case "approved":
+			return "Reviewed (approved)";
+		case "changes_requested":
+			return "Reviewed (changes requested)";
+		case "commented":
+			return "Reviewed (commented)";
+		case "dismissed":
+			return "Reviewed (dismissed)";
+		default:
+			return "Reviewed";
+	}
+}
+
+// Distinct activity labels in first-seen order, joined into one line — a PR
+// opened and then reviewed twice reads as "Opened · Reviewed (approved)", not
+// three repeated words.
+function activitySummary(
+	events: Array<{ kind: ActivityKind; reviewState: ReviewState | null }>,
+): string {
+	const labels: string[] = [];
+	for (const event of events) {
+		const label = activityLabel(event.kind, event.reviewState);
+		if (!labels.includes(label)) labels.push(label);
+	}
+	return labels.join(" · ");
 }
 
 export function AddBlockDialog({
@@ -364,10 +412,16 @@ export function AddBlockDialog({
 		...attachedCommitsQuery(orgSlug, entry?.id ?? ""),
 		enabled: open && !!entry,
 	});
+	const { data: attachedPullRequests } = useQuery({
+		...attachedPullRequestsQuery(orgSlug, entry?.id ?? ""),
+		enabled: open && !!entry,
+	});
 	const { data: integrationSettings } = useQuery({
 		...integrationSettingsQuery(orgSlug),
 		enabled: open,
 	});
+	// One toggle covers both: it auto-loads the day's commits and its pull
+	// request activity into the picker below, no "Find activity" click.
 	const autoLoadCommits = !!integrationSettings?.githubAutoLoadCommits;
 
 	const [suggestedCommits, setSuggestedCommits] = useState<
@@ -376,18 +430,27 @@ export function AddBlockDialog({
 	const [selectedCommitKeys, setSelectedCommitKeys] = useState<Set<string>>(
 		new Set(),
 	);
+	const [suggestedPullRequests, setSuggestedPullRequests] = useState<
+		Awaited<ReturnType<typeof suggestPullRequestsForEntry>>
+	>([]);
+	const [selectedPullRequestKeys, setSelectedPullRequestKeys] = useState<
+		Set<string>
+	>(new Set());
 	useEffect(() => {
 		if (!open) return;
 		setSuggestedCommits([]);
 		setSelectedCommitKeys(new Set());
+		setSuggestedPullRequests([]);
+		setSelectedPullRequestKeys(new Set());
 	}, [open]);
 
 	// Two different questions, and conflating them hid the commits on exactly the
-	// entries that always have some. FINDING new commits needs a project and a
-	// date to look them up by, and makes no sense on a rest-of-day fill block
-	// whose commits the engine already attached. SHOWING what is attached needs
-	// nothing but the attachments — a project-less fill block is the commit
-	// engine's own output, so it is the one entry guaranteed to have them.
+	// entries that always have some. FINDING new activity needs a project and a
+	// date to look it up by, and makes no sense on a rest-of-day fill block whose
+	// commits the engine already attached. SHOWING what is attached needs nothing
+	// but the attachments — a project-less fill block is the commit engine's own
+	// output, so it is the one entry guaranteed to have them. Pull requests share
+	// the same gate: a repo linked for commits is the same repo a PR lives in.
 	const showCommitPicker =
 		!repeatEnabled &&
 		!fillsDay &&
@@ -397,7 +460,6 @@ export function AddBlockDialog({
 		linkedRepos.length > 0;
 	const showAttachedCommits =
 		!repeatEnabled && !!attachedCommits && attachedCommits.length > 0;
-	const showCommitSection = showCommitPicker || showAttachedCommits;
 
 	// With auto-load on, the day's commits populate the picker as soon as it's
 	// relevant — no "Find commits" click. When off, the manual mutation below is
@@ -450,6 +512,97 @@ export function AddBlockDialog({
 		},
 	});
 
+	// Attached pull-request activity is one row per event (an entry attached to
+	// a PR that was both opened and reviewed here has two rows), so it is
+	// grouped by `pullRequestUrl` before it is shown — one line per PR, with
+	// every event that touched it summarised on that line.
+	const attachedPullRequestGroups = (() => {
+		const groups = new Map<
+			string,
+			{
+				pullRequestUrl: string;
+				number: number;
+				title: string;
+				ids: string[];
+				events: Array<{ kind: ActivityKind; reviewState: ReviewState | null }>;
+			}
+		>();
+		for (const row of attachedPullRequests ?? []) {
+			const existing = groups.get(row.pullRequestUrl);
+			if (existing) {
+				existing.ids.push(row.id);
+				existing.events.push({ kind: row.kind, reviewState: row.reviewState });
+			} else {
+				groups.set(row.pullRequestUrl, {
+					pullRequestUrl: row.pullRequestUrl,
+					number: row.number,
+					title: row.title,
+					ids: [row.id],
+					events: [{ kind: row.kind, reviewState: row.reviewState }],
+				});
+			}
+		}
+		return [...groups.values()];
+	})();
+	const showAttachedPullRequests =
+		!repeatEnabled && attachedPullRequestGroups.length > 0;
+
+	const showGithubSection =
+		showCommitPicker || showAttachedCommits || showAttachedPullRequests;
+
+	const suggestedPullRequestsQ = useQuery({
+		...suggestedPullRequestsQuery(orgSlug, projectId, targetDate),
+		enabled: open && showCommitPicker && autoLoadCommits,
+	});
+
+	const effectiveSuggestedPullRequests = autoLoadCommits
+		? (suggestedPullRequestsQ.data ?? [])
+		: suggestedPullRequests;
+
+	const attachedPullRequestUrls = new Set(
+		(attachedPullRequests ?? []).map((a) => a.pullRequestUrl),
+	);
+	const pickablePullRequests = effectiveSuggestedPullRequests.filter(
+		(pr) => !attachedPullRequestUrls.has(pr.url),
+	);
+
+	const togglePullRequestSelection = (key: string) => {
+		setSelectedPullRequestKeys((current) => {
+			const next = new Set(current);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			return next;
+		});
+	};
+
+	const suggestPullRequestsMutation = useMutation({
+		mutationFn: () =>
+			suggestPullRequestsForEntry({ data: { projectId, date: targetDate } }),
+		onSuccess: (pullRequests) => setSuggestedPullRequests(pullRequests),
+		onError: (error) => {
+			toast.error(error.message ?? "Could not fetch pull requests");
+		},
+	});
+
+	// Removes every event row for one PR at once — the picker shows one line per
+	// PR, so "remove" has to mean the whole PR, not whichever event happened to
+	// be first in the group.
+	const detachPullRequestMutation = useMutation({
+		mutationFn: (activityIds: string[]) =>
+			Promise.all(
+				activityIds.map((id) => detachPullRequestFromEntry({ data: id })),
+			),
+		onSuccess: async () => {
+			if (!entry) return;
+			await queryClient.invalidateQueries({
+				queryKey: attachedPullRequestsQuery(orgSlug, entry.id).queryKey,
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not remove pull request");
+		},
+	});
+
 	// ── Google Calendar meeting picker ───────────────────────────────────────
 	const [meetingUrl, setMeetingUrl] = useState<string | null>(null);
 	const [calendarEventId, setCalendarEventId] = useState<string | null>(null);
@@ -457,14 +610,14 @@ export function AddBlockDialog({
 	// behind their footer links: a fresh dialog shows the entry and nothing else.
 	const [moreOpen, setMoreOpen] = useState(false);
 	const [calendarOpen, setCalendarOpen] = useState(false);
-	const [commitsOpen, setCommitsOpen] = useState(false);
+	const [activityOpen, setActivityOpen] = useState(false);
 	useEffect(() => {
 		if (!open) return;
 		setMeetingUrl(null);
 		setCalendarEventId(null);
 		setMoreOpen(false);
 		setCalendarOpen(false);
-		setCommitsOpen(false);
+		setActivityOpen(false);
 	}, [open]);
 	// Only read on the client: the dialog body is never server-rendered, so the
 	// label cannot mismatch, and a wrong guess is a cosmetic one.
@@ -587,6 +740,23 @@ export function AddBlockDialog({
 				if (commits.length > 0) {
 					await attachCommitsToEntry({
 						data: { timeEntryId: savedEntry.id, commits },
+					});
+				}
+			}
+			if (!values.repeatEnabled && selectedPullRequestKeys.size > 0) {
+				const pullRequests = effectiveSuggestedPullRequests
+					.filter((pr) =>
+						selectedPullRequestKeys.has(
+							pullRequestKey(pr.projectGithubRepoId, pr.number),
+						),
+					)
+					.map((pr) => ({
+						projectGithubRepoId: pr.projectGithubRepoId,
+						number: pr.number,
+					}));
+				if (pullRequests.length > 0) {
+					await attachPullRequestsToEntry({
+						data: { timeEntryId: savedEntry.id, pullRequests },
 					});
 				}
 			}
@@ -925,123 +1095,248 @@ export function AddBlockDialog({
 								</a>
 							</p>
 						)}
-						{showCommitSection && (commitsOpen || showAttachedCommits) && (
-							<div className="rounded-lg border border-line2">
-								<div className="flex min-h-10 items-center justify-between px-3 py-1">
-									<span className="text-sm font-medium">GitHub commits</span>
-									{!showCommitPicker ? null : autoLoadCommits ? (
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											onClick={() => suggestedCommitsQ.refetch()}
-											disabled={suggestedCommitsQ.isFetching}
-										>
-											<GitCommitIcon className="size-3.5" />
-											{suggestedCommitsQ.isFetching ? "Loading…" : "Refresh"}
-										</Button>
-									) : (
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											onClick={() => suggestCommitsMutation.mutate()}
-											disabled={suggestCommitsMutation.isPending}
-										>
-											<GitCommitIcon className="size-3.5" />
-											{suggestCommitsMutation.isPending
-												? "Finding…"
-												: "Find commits"}
-										</Button>
+						{showGithubSection &&
+							(activityOpen ||
+								showAttachedCommits ||
+								showAttachedPullRequests) && (
+								<div className="rounded-lg border border-line2">
+									<div className="flex min-h-10 items-center justify-between px-3 py-1">
+										<span className="text-sm font-medium">GitHub activity</span>
+										{!showCommitPicker ? null : autoLoadCommits ? (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={() => {
+													suggestedCommitsQ.refetch();
+													suggestedPullRequestsQ.refetch();
+												}}
+												disabled={
+													suggestedCommitsQ.isFetching ||
+													suggestedPullRequestsQ.isFetching
+												}
+											>
+												<GitCommitIcon className="size-3.5" />
+												{suggestedCommitsQ.isFetching ||
+												suggestedPullRequestsQ.isFetching
+													? "Loading…"
+													: "Refresh"}
+											</Button>
+										) : (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={() => {
+													suggestCommitsMutation.mutate();
+													suggestPullRequestsMutation.mutate();
+												}}
+												disabled={
+													suggestCommitsMutation.isPending ||
+													suggestPullRequestsMutation.isPending
+												}
+											>
+												<GitCommitIcon className="size-3.5" />
+												{suggestCommitsMutation.isPending ||
+												suggestPullRequestsMutation.isPending
+													? "Finding…"
+													: "Find activity"}
+											</Button>
+										)}
+									</div>
+
+									{(showCommitPicker || showAttachedCommits) && (
+										<div>
+											<div className="border-t border-line2 px-3 py-1.5 text-2xs font-medium text-muted-foreground">
+												Commits
+											</div>
+
+											{showAttachedCommits && (
+												<div className="scrollbar-stable max-h-40 overflow-y-auto border-t border-line2">
+													{(attachedCommits ?? []).map((commit) => (
+														<div
+															key={commit.id}
+															className="flex items-center justify-between gap-2 border-b border-line2 px-3 py-2 last:border-b-0"
+														>
+															{/* The sha is the link, not the whole row: the row is
+															    also a click target for nothing else, and making the
+															    message a link would put an underline through a
+															    subject that is often the entry's own description.
+															    `url` has always been stored on the attachment; it
+															    simply had nothing rendering it. */}
+															<span className="flex min-w-0 items-baseline gap-1.5 text-sm">
+																<a
+																	href={commit.url}
+																	target="_blank"
+																	rel="noreferrer"
+																	className="mono shrink-0 text-xs text-muted-foreground underline underline-offset-3 hover:text-foreground"
+																	title={commit.repo?.fullName ?? undefined}
+																>
+																	{commit.sha.slice(0, 7)}
+																</a>
+																<span className="min-w-0 truncate">
+																	{commit.message.split("\n")[0]}
+																</span>
+															</span>
+															<Button
+																type="button"
+																variant="ghost"
+																size="icon-xs"
+																className="shrink-0"
+																onClick={() =>
+																	detachCommitMutation.mutate(commit.id)
+																}
+																disabled={detachCommitMutation.isPending}
+															>
+																<XIcon weight="regular" className="size-3" />
+																<span className="sr-only">Remove</span>
+															</Button>
+														</div>
+													))}
+												</div>
+											)}
+
+											{pickableCommits.length > 0 && (
+												<div className="scrollbar-stable max-h-52 overflow-y-auto border-t border-line2">
+													{pickableCommits.map((commit) => {
+														const key = commitKey(
+															commit.projectGithubRepoId,
+															commit.sha,
+														);
+														const selected = selectedCommitKeys.has(key);
+														return (
+															<label
+																key={key}
+																className="flex cursor-pointer items-start gap-2 border-b border-line2 px-3 py-2 last:border-b-0"
+															>
+																<input
+																	type="checkbox"
+																	className="mt-0.5 accent-primary"
+																	checked={selected}
+																	onChange={() => toggleCommitSelection(key)}
+																/>
+																<span className="min-w-0 flex-1 text-sm">
+																	<span className="block truncate">
+																		{commit.message.split("\n")[0]}
+																	</span>
+																	<span className="block truncate text-xs text-muted-foreground">
+																		{commit.repoFullName} ·{" "}
+																		{commit.sha.slice(0, 7)}
+																	</span>
+																</span>
+															</label>
+														);
+													})}
+												</div>
+											)}
+
+											{(autoLoadCommits
+												? suggestedCommitsQ.isSuccess
+												: suggestCommitsMutation.isSuccess) &&
+												pickableCommits.length === 0 && (
+													<p className="border-t border-line2 px-3 py-2 text-sm text-muted-foreground">
+														No commits found for this day.
+													</p>
+												)}
+										</div>
+									)}
+
+									{(showCommitPicker || showAttachedPullRequests) && (
+										<div>
+											<div className="border-t border-line2 px-3 py-1.5 text-2xs font-medium text-muted-foreground">
+												Pull requests
+											</div>
+
+											{showAttachedPullRequests && (
+												<div className="scrollbar-stable max-h-40 overflow-y-auto border-t border-line2">
+													{attachedPullRequestGroups.map((group) => (
+														<div
+															key={group.pullRequestUrl}
+															className="flex items-center justify-between gap-2 border-b border-line2 px-3 py-2 last:border-b-0"
+														>
+															<span className="flex min-w-0 items-baseline gap-1.5 text-sm">
+																<a
+																	href={group.pullRequestUrl}
+																	target="_blank"
+																	rel="noreferrer"
+																	className="mono shrink-0 text-xs text-muted-foreground underline underline-offset-3 hover:text-foreground"
+																>
+																	#{group.number}
+																</a>
+																<span className="min-w-0 truncate">
+																	{group.title}
+																</span>
+															</span>
+															<span className="flex shrink-0 items-center gap-2">
+																<span className="hidden text-xs text-muted-foreground sm:inline">
+																	{activitySummary(group.events)}
+																</span>
+																<Button
+																	type="button"
+																	variant="ghost"
+																	size="icon-xs"
+																	onClick={() =>
+																		detachPullRequestMutation.mutate(group.ids)
+																	}
+																	disabled={detachPullRequestMutation.isPending}
+																>
+																	<XIcon weight="regular" className="size-3" />
+																	<span className="sr-only">Remove</span>
+																</Button>
+															</span>
+														</div>
+													))}
+												</div>
+											)}
+
+											{pickablePullRequests.length > 0 && (
+												<div className="scrollbar-stable max-h-52 overflow-y-auto border-t border-line2">
+													{pickablePullRequests.map((pr) => {
+														const key = pullRequestKey(
+															pr.projectGithubRepoId,
+															pr.number,
+														);
+														const selected = selectedPullRequestKeys.has(key);
+														return (
+															<label
+																key={key}
+																className="flex cursor-pointer items-start gap-2 border-b border-line2 px-3 py-2 last:border-b-0"
+															>
+																<input
+																	type="checkbox"
+																	className="mt-0.5 accent-primary"
+																	checked={selected}
+																	onChange={() =>
+																		togglePullRequestSelection(key)
+																	}
+																/>
+																<span className="min-w-0 flex-1 text-sm">
+																	<span className="block truncate">
+																		{pr.title}
+																	</span>
+																	<span className="block truncate text-xs text-muted-foreground">
+																		{pr.repoFullName} #{pr.number} ·{" "}
+																		{activitySummary(pr.activity)}
+																	</span>
+																</span>
+															</label>
+														);
+													})}
+												</div>
+											)}
+
+											{(autoLoadCommits
+												? suggestedPullRequestsQ.isSuccess
+												: suggestPullRequestsMutation.isSuccess) &&
+												pickablePullRequests.length === 0 && (
+													<p className="border-t border-line2 px-3 py-2 text-sm text-muted-foreground">
+														No pull requests found for this day.
+													</p>
+												)}
+										</div>
 									)}
 								</div>
-
-								{showAttachedCommits && (
-									<div className="scrollbar-stable max-h-40 overflow-y-auto border-t border-line2">
-										{(attachedCommits ?? []).map((commit) => (
-											<div
-												key={commit.id}
-												className="flex items-center justify-between gap-2 border-b border-line2 px-3 py-2 last:border-b-0"
-											>
-												{/* The sha is the link, not the whole row: the row is
-												    also a click target for nothing else, and making the
-												    message a link would put an underline through a
-												    subject that is often the entry's own description.
-												    `url` has always been stored on the attachment; it
-												    simply had nothing rendering it. */}
-												<span className="flex min-w-0 items-baseline gap-1.5 text-sm">
-													<a
-														href={commit.url}
-														target="_blank"
-														rel="noreferrer"
-														className="mono shrink-0 text-xs text-muted-foreground underline underline-offset-3 hover:text-foreground"
-														title={commit.repo?.fullName ?? undefined}
-													>
-														{commit.sha.slice(0, 7)}
-													</a>
-													<span className="min-w-0 truncate">
-														{commit.message.split("\n")[0]}
-													</span>
-												</span>
-												<Button
-													type="button"
-													variant="ghost"
-													size="icon-xs"
-													className="shrink-0"
-													onClick={() => detachCommitMutation.mutate(commit.id)}
-													disabled={detachCommitMutation.isPending}
-												>
-													<XIcon weight="regular" className="size-3" />
-													<span className="sr-only">Remove</span>
-												</Button>
-											</div>
-										))}
-									</div>
-								)}
-
-								{pickableCommits.length > 0 && (
-									<div className="scrollbar-stable max-h-52 overflow-y-auto border-t border-line2">
-										{pickableCommits.map((commit) => {
-											const key = commitKey(
-												commit.projectGithubRepoId,
-												commit.sha,
-											);
-											const selected = selectedCommitKeys.has(key);
-											return (
-												<label
-													key={key}
-													className="flex cursor-pointer items-start gap-2 border-b border-line2 px-3 py-2 last:border-b-0"
-												>
-													<input
-														type="checkbox"
-														className="mt-0.5 accent-primary"
-														checked={selected}
-														onChange={() => toggleCommitSelection(key)}
-													/>
-													<span className="min-w-0 flex-1 text-sm">
-														<span className="block truncate">
-															{commit.message.split("\n")[0]}
-														</span>
-														<span className="block truncate text-xs text-muted-foreground">
-															{commit.repoFullName} · {commit.sha.slice(0, 7)}
-														</span>
-													</span>
-												</label>
-											);
-										})}
-									</div>
-								)}
-
-								{(autoLoadCommits
-									? suggestedCommitsQ.isSuccess
-									: suggestCommitsMutation.isSuccess) &&
-									pickableCommits.length === 0 && (
-										<p className="border-t border-line2 px-3 py-2 text-sm text-muted-foreground">
-											No commits found for this day.
-										</p>
-									)}
-							</div>
-						)}
+							)}
 						{!isTimeOff && (
 							<div className="border-t border-line2 pt-2">
 								{/* A disclosure, not a bare conditional render, for the same
@@ -1250,17 +1545,19 @@ export function AddBlockDialog({
 											size="sm"
 											className="px-0"
 											onClick={() => {
-												setCommitsOpen((current) => !current);
-												if (
-													!autoLoadCommits &&
-													!suggestCommitsMutation.isSuccess
-												) {
-													suggestCommitsMutation.mutate();
+												setActivityOpen((current) => !current);
+												if (!autoLoadCommits) {
+													if (!suggestCommitsMutation.isSuccess) {
+														suggestCommitsMutation.mutate();
+													}
+													if (!suggestPullRequestsMutation.isSuccess) {
+														suggestPullRequestsMutation.mutate();
+													}
 												}
 											}}
 										>
-											<GitCommitIcon className="size-4" />
-											Pull in commits
+											<GitPullRequestIcon className="size-4" />
+											Pull in GitHub activity
 										</Button>
 									)}
 								</div>

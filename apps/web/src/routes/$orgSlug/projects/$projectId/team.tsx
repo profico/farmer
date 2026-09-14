@@ -1,4 +1,5 @@
 import { formatReportHours } from "@farmer/core/lib/report-format";
+import { matchesSearch } from "@farmer/core/lib/search";
 import type { ProjectRoleValue } from "@farmer/core/schema";
 import { ArrowLeftIcon, XIcon } from "@phosphor-icons/react";
 import {
@@ -45,7 +46,6 @@ import {
 	canActOnProjectRole,
 	projectPageAccess,
 } from "#/lib/project-access.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import {
 	assignableMembersQuery,
 	projectMembersQuery,

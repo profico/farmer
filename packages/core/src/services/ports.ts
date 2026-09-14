@@ -29,8 +29,28 @@ export type CommitSource = Pick<
 	"listUserCommitsForDay" | "listUserCommitsByDay"
 >;
 
+// Its own port rather than two more methods on CommitSource: a test that fakes
+// commits then reads no pull requests unless it says so, because the real
+// service answers [] for a person with no linked GitHub account.
+export type PullRequestSource = Pick<
+	typeof githubService,
+	"listUserPullRequestActivityForDay" | "listUserPullRequestActivityByDay"
+>;
+
 let calendarOverride: CalendarSource | null = null;
 let commitOverride: CommitSource | null = null;
+let pullRequestOverride: PullRequestSource | null = null;
+
+/** The pull request activity the engines should read. */
+export const pullRequestSource = (): PullRequestSource =>
+	pullRequestOverride ?? githubService;
+
+/** Test-only: substitute an in-memory adapter. Pass null to restore. */
+export const setPullRequestSourceForTests = (
+	source: PullRequestSource | null,
+): void => {
+	pullRequestOverride = source;
+};
 
 /** The calendar the engines should read. */
 export const calendarSource = (): CalendarSource =>

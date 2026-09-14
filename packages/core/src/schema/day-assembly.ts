@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { pullRequestRef } from "./github";
+
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
 export const suggestDayAssemblyInput = z.object({
@@ -44,6 +46,7 @@ const assembledEntry = z.object({
 			}),
 		)
 		.optional(),
+	pullRequests: z.array(pullRequestRef).max(50).optional(),
 });
 
 export const applyDayAssemblyInput = z.object({

@@ -1,10 +1,16 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
-import { genericOAuth, mcp, organization } from "better-auth/plugins";
+import {
+	deviceAuthorization,
+	genericOAuth,
+	mcp,
+	organization,
+} from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, eq } from "drizzle-orm";
 
+import { CLI_CLIENT_ID } from "../api/errors";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
@@ -419,6 +425,36 @@ export const auth = betterAuth({
 		//
 		// Mounted whatever `MCP_ENABLED` says; see lib/mcp-flag.ts.
 		mcp({ loginPage: "/api/mcp-login" }),
+		// The command-line tool's sign-in: RFC 8628's device flow. `farmer login`
+		// asks `/device/code` for a pair of codes, the person approves the user
+		// code on `/device` in a browser where they are already signed in, and the
+		// CLI's poll of `/device/token` comes back with `access_token` =
+		// `session.token`. So the CLI holds an ordinary better-auth session row,
+		// which is what lets Preferences list it and revoke it like any other.
+		//
+		// The server reads that token itself, in `resolveCliUser`
+		// (`apps/web/src/server/api-auth.ts`), and deliberately NOT through the
+		// `bearer` plugin: that plugin makes an `Authorization` header a session
+		// for EVERY endpoint and server function, which is a far wider change than
+		// one API surface needs, and it would break the credential order that
+		// `resolveMcpOrgContext` relies on.
+		//
+		// `validateClient` accepts only the CLI's own id. Nothing else in this app
+		// runs the device flow, and an open client list is a code any third party
+		// can start and then phish somebody into approving.
+		//
+		// `expiresIn: "10m"`, down from the plugin's 30. The code lifetime is the
+		// phishing window: an attacker who starts a flow must get the person to
+		// approve that exact code before it dies, and ten minutes is still plenty
+		// for someone who is looking at their own terminal.
+		//
+		// Mounted whatever `CLI_ENABLED` says, like `mcp` above; the catch-all
+		// auth route answers 404 for these paths when the flag is off.
+		deviceAuthorization({
+			validateClient: (clientId) => clientId === CLI_CLIENT_ID,
+			expiresIn: "10m",
+			verificationUri: "/device",
+		}),
 		// tanstackStartCookies MUST stay last — see better-auth/better-auth#5639
 		tanstackStartCookies(),
 	],

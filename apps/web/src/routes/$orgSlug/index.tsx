@@ -126,22 +126,28 @@ function OrgHome() {
 
 	// "Auto-tracked today": the blocks Farmer filled in for you rather than by
 	// hand — synced Google Calendar meetings (calendarEventId) and GitHub-linked
-	// work (commitCount). Both read straight off today's entries.
+	// work (commitCount, pullRequestCount). Both read straight off today's entries.
 	const meetingEntries = todayEntries.filter((e) => e.calendarEventId);
 	const meetingSeconds = meetingEntries.reduce(
 		(s, e) => s + e.durationSeconds,
 		0,
 	);
-	const commitEntries = todayEntries.filter((e) => (e.commitCount ?? 0) > 0);
-	const commitTotal = commitEntries.reduce(
+	const githubEntries = todayEntries.filter(
+		(e) => (e.commitCount ?? 0) > 0 || (e.pullRequestCount ?? 0) > 0,
+	);
+	const commitTotal = githubEntries.reduce(
 		(s, e) => s + (e.commitCount ?? 0),
 		0,
 	);
-	const commitSeconds = commitEntries.reduce(
+	const pullRequestTotal = githubEntries.reduce(
+		(s, e) => s + (e.pullRequestCount ?? 0),
+		0,
+	);
+	const githubSeconds = githubEntries.reduce(
 		(s, e) => s + e.durationSeconds,
 		0,
 	);
-	const hasAutoTracked = meetingEntries.length > 0 || commitEntries.length > 0;
+	const hasAutoTracked = meetingEntries.length > 0 || githubEntries.length > 0;
 
 	const dateOptions = [{ value: today, label: today }];
 	const firstName = session.user.name.split(" ")[0];
@@ -320,20 +326,29 @@ function OrgHome() {
 										</span>
 									</div>
 								)}
-								{commitEntries.length > 0 && (
+								{githubEntries.length > 0 && (
 									<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
 										<GitCommitIcon className="size-4 shrink-0 text-muted-foreground" />
 										<div className="min-w-0 flex-1">
 											<p className="text-base">
-												{commitTotal} commit{commitTotal === 1 ? "" : "s"}
+												{[
+													commitTotal > 0
+														? `${commitTotal} commit${commitTotal === 1 ? "" : "s"}`
+														: null,
+													pullRequestTotal > 0
+														? `${pullRequestTotal} pull request${pullRequestTotal === 1 ? "" : "s"}`
+														: null,
+												]
+													.filter(Boolean)
+													.join(" and ")}
 											</p>
 											<p className="mt-0.5 text-xs text-faint">
-												across {commitEntries.length} block
-												{commitEntries.length === 1 ? "" : "s"}
+												across {githubEntries.length} block
+												{githubEntries.length === 1 ? "" : "s"}
 											</p>
 										</div>
 										<span className="mono shrink-0 text-sm">
-											{formatHoursShort(commitSeconds)}
+											{formatHoursShort(githubSeconds)}
 										</span>
 									</div>
 								)}

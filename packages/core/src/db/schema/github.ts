@@ -1,6 +1,7 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
 	boolean,
+	check,
 	index,
 	integer,
 	pgTable,
@@ -10,6 +11,10 @@ import {
 	uuid,
 } from "drizzle-orm/pg-core";
 
+import type {
+	PullRequestActivityKind,
+	PullRequestReviewState,
+} from "../../lib/github-activity";
 import { organization, user } from "./auth";
 import { project, timeEntry } from "./domain";
 
@@ -121,6 +126,48 @@ export const timeEntryGithubCommit = pgTable(
 	],
 );
 
+// A pull request event attached to a time entry as evidence — the PR-shaped
+// twin of `timeEntryGithubCommit`, and cached the same way, so a PR retitled
+// or deleted later does not change what the entry already says.
+//
+// One row per EVENT, not per pull request: opening a PR on Monday and merging
+// it on Thursday is evidence for two different days, and three reviews on one
+// PR are three sittings. `eventId` is what makes a re-run a no-op — a review's
+// own node id, or `<pr node id>:<kind>` for the events a PR has at most one of.
+export const timeEntryGithubPrActivity = pgTable(
+	"time_entry_github_pr_activity",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		timeEntryId: uuid("time_entry_id")
+			.notNull()
+			.references(() => timeEntry.id, { onDelete: "cascade" }),
+		// set null, as on commits: unlinking the repo keeps the history.
+		projectGithubRepoId: uuid("project_github_repo_id").references(
+			() => projectGithubRepo.id,
+			{ onDelete: "set null" },
+		),
+		eventId: text("event_id").notNull(),
+		kind: text("kind").$type<PullRequestActivityKind>().notNull(),
+		// Only on `reviewed`.
+		reviewState: text("review_state").$type<PullRequestReviewState>(),
+		number: integer("number").notNull(),
+		title: text("title").notNull(),
+		pullRequestUrl: text("pull_request_url").notNull(),
+		// The review's own link for `reviewed`, the PR's otherwise.
+		url: text("url").notNull(),
+		occurredAt: ts("occurred_at").notNull(),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [
+		index("tegpa_time_entry_idx").on(t.timeEntryId),
+		unique("tegpa_entry_event_unq").on(t.timeEntryId, t.eventId),
+		check(
+			"tegpa_kind_chk",
+			sql`${t.kind} in ('opened', 'merged', 'closed', 'reviewed')`,
+		),
+	],
+);
+
 export const orgGithubInstallationRelations = relations(
 	orgGithubInstallation,
 	({ one }) => ({
@@ -143,6 +190,21 @@ export const projectGithubRepoRelations = relations(
 			references: [user.id],
 		}),
 		commits: many(timeEntryGithubCommit),
+		pullRequestActivity: many(timeEntryGithubPrActivity),
+	}),
+);
+
+export const timeEntryGithubPrActivityRelations = relations(
+	timeEntryGithubPrActivity,
+	({ one }) => ({
+		timeEntry: one(timeEntry, {
+			fields: [timeEntryGithubPrActivity.timeEntryId],
+			references: [timeEntry.id],
+		}),
+		repo: one(projectGithubRepo, {
+			fields: [timeEntryGithubPrActivity.projectGithubRepoId],
+			references: [projectGithubRepo.id],
+		}),
 	}),
 );
 

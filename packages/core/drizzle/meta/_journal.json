@@ -365,6 +365,27 @@
       "when": 1789340189699,
       "tag": "0051_drop_member_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1789397531631,
+      "tag": "0052_pr_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1789398828921,
+      "tag": "0053_review_blocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789403784149,
+      "tag": "0054_cli_device_code",
+      "breakpoints": true
     }
   ]
 }

@@ -68,6 +68,11 @@ export const resolveApiOrgContext = async (request: Request) => {
  *     `apiKey` or `bearer` plugin is enabled here, so an `Authorization` header
  *     is inert for `getSession` and needs no special handling. If either plugin
  *     is ever added, this ordering stops being free and has to be revisited.
+ *     The CLI's device-flow token does not change that: it is a session token,
+ *     but `getSession` reads a session only from the signed cookie, and the
+ *     CLI's token is read by `resolveCliUser` below and nowhere else. An MCP
+ *     client that sends a CLI token here therefore gets `getMcpSession`'s
+ *     answer, which is no one.
  *  2. **The organization comes from the URL.** An access token resolves to a
  *     `userId` and scopes; there is no `session.activeOrganizationId` to read,
  *     and every Ctx needs an organization. `/api/mcp/$orgSlug` is where it comes
@@ -77,9 +82,10 @@ export const resolveApiOrgContext = async (request: Request) => {
  *
  * Which credential was presented is the only part of that this file can answer,
  * so it is the only part that stays here. Slug plus user id to a membership-
- * checked Ctx is `mcpService.resolveOrgContext`, in `packages/core` — a domain
- * question, testable under `bun test`, and asked in the same words by a future
- * `apps/mcp` process that has no TanStack route to put it in.
+ * checked Ctx is `orgContextService.resolveBySlug`, in `packages/core` — a
+ * domain question, testable under `bun test`, shared with the CLI, and asked in
+ * the same words by a future `apps/mcp` process that has no TanStack route to
+ * put it in.
  */
 export const resolveMcpOrgContext = async (
 	request: Request,
@@ -93,6 +99,108 @@ export const resolveMcpOrgContext = async (
 		(await auth.api.getMcpSession({ headers: request.headers }))?.userId;
 	if (!userId) return null;
 
-	const { mcpService } = await import("@farmer/core/services");
-	return mcpService.resolveOrgContext(userId, orgSlug);
+	const { orgContextService } = await import("@farmer/core/services");
+	return orgContextService.resolveBySlug(userId, orgSlug);
+};
+
+/** The person behind a CLI token, and the token itself — `DELETE
+ *  /api/v1/session` needs it to revoke exactly this session and no other. */
+export type CliUser = {
+	userId: string;
+	token: string;
+	user: { id: string; name: string; email: string };
+};
+
+/**
+ * The person a CLI request's `Authorization: Bearer <token>` belongs to, or
+ * null.
+ *
+ * The token is a better-auth session token: the device flow's `/device/token`
+ * answers `access_token: session.token` for a session it has just created. So
+ * the lookup is the session table, through better-auth's own internal adapter,
+ * and NOT the `bearer` plugin — see the note on `deviceAuthorization` in
+ * `packages/core/src/auth/index.ts` for why that plugin stays off.
+ *
+ * Null for no header, a header that is not a bearer credential, a token that
+ * matches no session, and a session that has expired. The route answers all of
+ * them with the same 401, which is what tells the CLI to run `farmer login`.
+ *
+ * **The session is refreshed here, by hand.** `getSession` slides a session's
+ * expiry forward when it is used after `updateAge` (a day by default), and a
+ * browser session lives on for as long as somebody keeps opening the app. It
+ * does that inside the `/get-session` endpoint, though, not inside
+ * `findSession` — so a session found this way never slides, and a CLI token
+ * used every day would still die seven days after `farmer login`. The rule
+ * below is the endpoint's own, copied rather than approximated: better-auth
+ * 1.6.23, `dist/api/routes/session.mjs`, the `shouldBeUpdated` /
+ * `internalAdapter.updateSession` branch of `getSession`. That branch also skips
+ * the refresh under `session.disableSessionRefresh`; this app does not set it,
+ * so the copy leaves it out, and must gain it if the option is ever turned on.
+ */
+export const resolveCliUser = async (
+	request: Request,
+): Promise<CliUser | null> => {
+	const header = request.headers.get("authorization");
+	const match = header ? /^Bearer\s+(\S+)\s*$/i.exec(header) : null;
+	const token = match?.[1];
+	if (!token) return null;
+
+	const { auth } = await import("@farmer/core/auth");
+	const context = await auth.$context;
+	const found = await context.internalAdapter.findSession(token);
+	const now = Date.now();
+	if (!found || found.session.expiresAt.getTime() <= now) return null;
+
+	const { expiresIn, updateAge } = context.sessionConfig;
+	const shouldBeUpdated =
+		found.session.expiresAt.getTime() - expiresIn * 1000 + updateAge * 1000 <=
+		now;
+	if (shouldBeUpdated) {
+		// A failed refresh is not a failed request: the session is still valid
+		// for as long as it was a moment ago, and `getSession` itself only gives
+		// up here when the row vanished underneath it — which the next request
+		// will find out on its own.
+		//
+		// Caught here rather than left to the route: this runs while the request
+		// is still being authenticated, outside the pipeline's error mapping, so a
+		// throw would surface as the framework's own 500 instead of an answer.
+		try {
+			await context.internalAdapter.updateSession(token, {
+				expiresAt: new Date(now + expiresIn * 1000),
+				updatedAt: new Date(now),
+			});
+		} catch (error) {
+			console.error("[api] could not refresh a CLI session", error);
+		}
+	}
+
+	return {
+		userId: found.user.id,
+		token,
+		user: {
+			id: found.user.id,
+			name: found.user.name,
+			email: found.user.email,
+		},
+	};
+};
+
+/**
+ * The caller's service Ctx for a CLI request, or null.
+ *
+ * `resolveCliUser`, then the same membership check MCP makes. The organization
+ * comes from the URL for MCP's reason: a device-flow session was never used to
+ * enter a workspace, so its `activeOrganizationId` says nothing. A slug nobody
+ * owns, a slug the caller is not in and a bad token are one null, and so one
+ * 401, on purpose — see `orgContextService.resolveBySlug`.
+ */
+export const resolveCliOrgContext = async (
+	request: Request,
+	orgSlug: string,
+) => {
+	const cliUser = await resolveCliUser(request);
+	if (!cliUser) return null;
+
+	const { orgContextService } = await import("@farmer/core/services");
+	return orgContextService.resolveBySlug(cliUser.userId, orgSlug);
 };

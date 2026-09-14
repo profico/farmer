@@ -1,11 +1,15 @@
 import {
 	attachCommitsInput,
+	attachPullRequestsInput,
 	detachCommitInput,
+	detachPullRequestActivityInput,
 	disconnectInstallationInput,
 	linkProjectRepoInput,
 	listAttachedCommitsInput,
+	listAttachedPullRequestsInput,
 	listProjectReposInput,
 	suggestCommitsInput,
+	suggestPullRequestsInput,
 	unlinkProjectRepoInput,
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
@@ -133,4 +137,39 @@ export const detachCommitFromEntry = createServerFn({ method: "POST" })
 	.handler(async ({ data: timeEntryGithubCommitId, context }) => {
 		const { githubService } = await import("@farmer/core/services");
 		return githubService.detachCommit(context.ctx, timeEntryGithubCommitId);
+	});
+
+export const suggestPullRequestsForEntry = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(suggestPullRequestsInput)
+	.handler(async ({ data, context }) => {
+		const { githubService } = await import("@farmer/core/services");
+		return githubService.suggestPullRequests(context.ctx, data);
+	});
+
+export const attachPullRequestsToEntry = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(attachPullRequestsInput)
+	.handler(async ({ data, context }) => {
+		const { githubService } = await import("@farmer/core/services");
+		return githubService.attachPullRequests(context.ctx, data);
+	});
+
+export const listAttachedPullRequests = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.validator(listAttachedPullRequestsInput)
+	.handler(async ({ data: timeEntryId, context }) => {
+		const { githubService } = await import("@farmer/core/services");
+		return githubService.listAttachedPullRequestActivity(
+			context.ctx,
+			timeEntryId,
+		);
+	});
+
+export const detachPullRequestFromEntry = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(detachPullRequestActivityInput)
+	.handler(async ({ data: activityId, context }) => {
+		const { githubService } = await import("@farmer/core/services");
+		return githubService.detachPullRequestActivity(context.ctx, activityId);
 	});

@@ -58,9 +58,9 @@ const SITE_TASKS = [
 // Starter taxonomy for a new org: the standard list in `lib/task-taxonomy.ts`,
 // which is also what the Harvest import folds its task names into. Orgs are
 // expected to curate this, not extend it per project (per-project tasks do
-// not exist). All renameable, including "Development" — the day assembler
-// resolves it by `systemKey`, so calling it "Engineering" changes the label
-// and nothing else.
+// not exist). All renameable, including "Development" and "Code Review" — the
+// engines resolve both by `systemKey`, so calling one "Engineering" changes
+// the label and nothing else.
 export const DEFAULT_ORG_TASKS = STANDARD_TASKS.map((t) => ({
 	name: t.name,
 	color: t.color,

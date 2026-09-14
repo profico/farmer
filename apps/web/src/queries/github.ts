@@ -3,10 +3,12 @@ import { queryOptions } from "@tanstack/react-query";
 import {
 	getGithubConnectionStatus,
 	listAttachedCommits,
+	listAttachedPullRequests,
 	listAvailableGithubRepos,
 	listGithubInstallations,
 	listProjectGithubRepos,
 	suggestCommitsForEntry,
+	suggestPullRequestsForEntry,
 } from "#/server/github.ts";
 
 import { queryKeys } from "./keys.ts";
@@ -58,4 +60,28 @@ export const suggestedCommitsQuery = (
 	queryOptions({
 		queryKey: [...queryKeys(org).github, "suggested-commits", projectId, date],
 		queryFn: () => suggestCommitsForEntry({ data: { projectId, date } }),
+	});
+
+export const attachedPullRequestsQuery = (org: string, timeEntryId: string) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).github, "attached-pull-requests", timeEntryId],
+		queryFn: () => listAttachedPullRequests({ data: timeEntryId }),
+	});
+
+// Pull requests the current user touched (opened/merged/closed/reviewed) on
+// `date` across a project's linked repos — same role as `suggestedCommitsQuery`,
+// for the add-block pull-request picker.
+export const suggestedPullRequestsQuery = (
+	org: string,
+	projectId: string,
+	date: string,
+) =>
+	queryOptions({
+		queryKey: [
+			...queryKeys(org).github,
+			"suggested-pull-requests",
+			projectId,
+			date,
+		],
+		queryFn: () => suggestPullRequestsForEntry({ data: { projectId, date } }),
 	});

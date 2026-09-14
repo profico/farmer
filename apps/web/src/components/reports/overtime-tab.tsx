@@ -3,6 +3,7 @@ import {
 	formatReportHours,
 } from "@farmer/core/lib/report-format";
 import { resolveReportPeriod } from "@farmer/core/lib/report-period";
+import { matchesSearch } from "@farmer/core/lib/search";
 import type { OvertimeReportInput } from "@farmer/core/schema";
 import type { OvertimeRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -21,7 +22,6 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { downloadCsv } from "#/lib/csv.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { overtimeReportQuery } from "#/queries/reports.ts";
 

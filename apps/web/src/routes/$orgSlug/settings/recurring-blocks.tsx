@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import { DEFAULT_BREAK_BLOCK } from "@farmer/core/schema";
 import type { UseMutationResult } from "@tanstack/react-query";
 import {
@@ -41,7 +42,6 @@ import {
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { projectsQuery } from "#/queries/projects.ts";

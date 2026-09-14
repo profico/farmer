@@ -33,6 +33,7 @@ import {
 	orgGithubInstallation,
 	projectGithubRepo,
 	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
 } from "../db/schema/github";
 import type { GithubCommit } from "../lib/github-client";
 import { attachCommitsInput } from "../schema/github";
@@ -255,6 +256,58 @@ describe("attachCommits", () => {
 			}),
 		).rejects.toThrow("Expected a commit SHA");
 		expect(fetched).toEqual([]);
+	});
+});
+
+// The same gate as attachCommits, for the same reason: `getPullRequest` reads
+// with the installation token, so naming a repo is reading it.
+describe("attachPullRequests", () => {
+	/** Every GitHub call the service made — a refused attach must make none. */
+	let asked: string[] = [];
+
+	beforeEach(() => {
+		asked = [];
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			getAuthenticatedUser: async () => {
+				asked.push("user");
+				return { login: "tester" };
+			},
+			getPullRequest: async (_token, _owner, _repo, number) => {
+				asked.push(`pr-${number}`);
+				return null;
+			},
+			listInstallationRepos: async () => [],
+		});
+	});
+
+	const attachedToEntry = () =>
+		db.query.timeEntryGithubPrActivity.findMany({
+			where: eq(timeEntryGithubPrActivity.timeEntryId, entryId),
+		});
+
+	test("refuses a repo on a project the caller is not on, and reads nothing", async () => {
+		await expect(
+			githubService.attachPullRequests(memberCtx(), {
+				timeEntryId: entryId,
+				pullRequests: [
+					{ projectGithubRepoId: ownRepoId, number: 7 },
+					{ projectGithubRepoId: otherRepoId, number: 8 },
+				],
+			}),
+		).rejects.toBeInstanceOf(AccessError);
+		expect(asked).toEqual([]);
+		expect(await attachedToEntry()).toEqual([]);
+	});
+
+	test("refuses an entry that is not the caller's", async () => {
+		await expect(
+			githubService.attachPullRequests(adminCtx(), {
+				timeEntryId: entryId,
+				pullRequests: [{ projectGithubRepoId: ownRepoId, number: 7 }],
+			}),
+		).rejects.toThrow("Time entry not found");
+		expect(asked).toEqual([]);
 	});
 });
 

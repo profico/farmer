@@ -8,7 +8,7 @@ import { cn } from "#/lib/utils.ts";
 /**
  * The filter box above a list. Every list screen spelled this out by hand —
  * icon, offset, padding — which is how two copies of it existed and every other
- * list had none. Filtering is the caller's (`matchesSearch`, `lib/search.ts`);
+ * list had none. Filtering is the caller's (`matchesSearch`, `@farmer/core/lib/search`);
  * this is only the box.
  *
  * Escape clears it, so a filter that emptied the list is one key away from

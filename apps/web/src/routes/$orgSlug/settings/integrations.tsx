@@ -9,6 +9,7 @@ import {
 	PlugsConnectedIcon,
 	SlackLogoIcon,
 	SparkleIcon,
+	TerminalWindowIcon,
 } from "@phosphor-icons/react";
 import {
 	useMutation,
@@ -140,7 +141,7 @@ function SettingToggleRow({
 
 function IntegrationsSettingsPage() {
 	const orgSlug = useOrgSlug();
-	const { role, assistantEnabled, mcpEnabled, appOrigin } =
+	const { role, assistantEnabled, mcpEnabled, cliEnabled, appOrigin } =
 		Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
 	const { data: status } = useSuspenseQuery(
@@ -272,8 +273,8 @@ function IntegrationsSettingsPage() {
 					}
 					description={
 						status.unreachable
-							? "Your account is still linked — GitHub itself isn't reachable right now, so your username and commit sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
-							: "Identifies you so commits you author can be matched to your time entries."
+							? "Your account is still linked — GitHub itself isn't reachable right now, so your username and commit/pull-request sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
+							: "Identifies you so commits and pull requests you author or review can be matched to your time entries."
 					}
 					action={
 						status.connected ? (
@@ -288,8 +289,8 @@ function IntegrationsSettingsPage() {
 									<AlertDialogHeader>
 										<AlertDialogTitle>Disconnect GitHub?</AlertDialogTitle>
 										<AlertDialogDescription>
-											Commits will no longer be matched to you when logging
-											time. You can reconnect at any time.
+											Commits and pull requests will no longer be matched to you
+											when logging time. You can reconnect at any time.
 										</AlertDialogDescription>
 									</AlertDialogHeader>
 									<AlertDialogFooter>
@@ -320,13 +321,13 @@ function IntegrationsSettingsPage() {
 							<>
 								<SettingToggleRow
 									title="Auto-load commits"
-									description="Show the day's commits automatically in the add-block dialog — no 'Find commits' click."
+									description="Show the day's commits and pull request activity automatically in the add-block dialog — no 'Find activity' click."
 									checked={settings.githubAutoLoadCommits}
 									patch={(value) => ({ githubAutoLoadCommits: value })}
 								/>
 								<SettingToggleRow
 									title="Sync commits as work time"
-									description="On days you push commits, automatically log a work block that fills your working hours."
+									description="On days you push commits or work on pull requests (open, merge, close or review one), automatically log a work block that fills your working hours. Each pull request you review gets a 30-minute Code Review block of its own."
 									checked={settings.githubSyncCommitsAsWorkTime}
 									patch={(value) => ({ githubSyncCommitsAsWorkTime: value })}
 								/>
@@ -445,9 +446,27 @@ function IntegrationsSettingsPage() {
 			    This section exists because the URL is otherwise unguessable, and a
 			    feature nobody can find is a feature nobody uses. */}
 			{mcpEnabled && appOrigin && <McpSection appOrigin={appOrigin} />}
+
+			{/* CLI — everyone, for the same reason as MCP above: the connection is
+			    a person's own, signed in from their own terminal as them. Hidden
+			    without `appOrigin` too, because every command here names it and a
+			    command with a blank where the server goes installs nothing. */}
+			{cliEnabled && appOrigin && <CliSection appOrigin={appOrigin} />}
 		</Page>
 	);
 }
+
+/** Copy a command or URL, and say whether it worked. */
+const copy = async (value: string, what: string) => {
+	try {
+		await navigator.clipboard.writeText(value);
+		toast.success(`${what} copied`);
+	} catch {
+		// Denied permission, or an insecure origin. Saying so beats a button
+		// that silently does nothing — the string is on screen to select.
+		toast.error("Could not copy — select the text instead");
+	}
+};
 
 /**
  * The MCP connection URL, and the one command that uses it.
@@ -467,17 +486,6 @@ function McpSection({ appOrigin }: { appOrigin: string }) {
 	const orgSlug = useOrgSlug();
 	const url = `${appOrigin}/api/mcp/${orgSlug}`;
 	const command = `claude mcp add --transport http farmer ${url}`;
-
-	const copy = async (value: string, what: string) => {
-		try {
-			await navigator.clipboard.writeText(value);
-			toast.success(`${what} copied`);
-		} catch {
-			// Denied permission, or an insecure origin. Saying so beats a button
-			// that silently does nothing — the string is on screen to select.
-			toast.error("Could not copy — select the text instead");
-		}
-	};
 
 	return (
 		<PageSection>
@@ -510,6 +518,69 @@ function McpSection({ appOrigin }: { appOrigin: string }) {
 						</Button>
 					}
 				/>
+			</SettingList>
+		</PageSection>
+	);
+}
+
+/**
+ * How to install the command-line tool, and the command that signs it in.
+ *
+ * Read-only for the same reason as `McpSection`: nothing here connects
+ * anything. `farmer login` signs the terminal in through the browser, as the
+ * person, on `/device`. This screen only says what to paste.
+ *
+ * Every command names `appOrigin` rather than the tab's own address. The
+ * install script downloads from that origin, and `farmer login` sends the
+ * person to approve on it, so a copy taken from a preview URL or an alternate
+ * hostname would install from, and sign in to, a server that is not the one
+ * the device flow publishes.
+ *
+ * No org slug, unlike MCP. A CLI login is the person's, not a workspace's: the
+ * CLI asks which workspace to use after it signs in, and `--org` switches.
+ */
+function CliSection({ appOrigin }: { appOrigin: string }) {
+	const commands = [
+		{
+			title: "Install on macOS or Linux",
+			command: `curl -fsSL ${appOrigin}/cli | sh`,
+		},
+		{
+			title: "Install on Windows (PowerShell)",
+			command: `irm ${appOrigin}/cli | iex`,
+		},
+		{
+			title: "Sign in",
+			command: `farmer login ${appOrigin}`,
+		},
+	];
+
+	return (
+		<PageSection>
+			<SettingRow
+				icon={<TerminalWindowIcon className="size-5" />}
+				title="Command-line tool"
+				description="Log and read your time from a terminal with the farmer command. The installer signs you in at the end: approve the code in your browser, as you. It sees exactly what you see here."
+			/>
+
+			<SettingList className="mt-1">
+				{commands.map(({ title, command }) => (
+					<SettingRow
+						key={title}
+						title={title}
+						description={
+							<code className="break-all font-mono text-xs">{command}</code>
+						}
+						action={
+							<Button
+								variant="outline"
+								onClick={() => copy(command, "Command")}
+							>
+								Copy
+							</Button>
+						}
+					/>
+				))}
 			</SettingList>
 		</PageSection>
 	);

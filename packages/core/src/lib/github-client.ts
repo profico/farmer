@@ -113,6 +113,83 @@ export const getInstallationToken = async (
 	return body.token;
 };
 
+/** Whether this deployment holds the App's credentials. `appJwt` throws
+ *  without them, so a caller that has a better answer than a thrown error
+ *  asks first. */
+export const isGithubAppConfigured = (): boolean =>
+	Boolean(process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY);
+
+const repoReadTokenCache = new Map<
+	string,
+	{ token: string; expiresAt: number }
+>();
+
+// A token that can read ONE repository's contents (and so its releases), or
+// null when the App is not installed on that repository.
+//
+// It is the App's installation token, narrowed when it is minted: `repositories`
+// and `permissions` in the request body limit it to this repository and to
+// Contents: read, whatever else the installation reaches. The CLI download
+// route is its only caller, and it has no reason to hold a token that also
+// reads pull requests on every repository in the organization.
+//
+// Not `getInstallationToken`, because that cache is keyed by installation id
+// and holds the full token the commit sync needs. A narrowed token stored
+// there would starve the sync, and the full one stored here would widen this.
+export const getRepoContentsReadToken = async (
+	owner: string,
+	repo: string,
+): Promise<string | null> => {
+	const key = `${owner}/${repo}`;
+	const cached = repoReadTokenCache.get(key);
+	if (cached && cached.expiresAt - 5 * 60_000 > Date.now()) {
+		return cached.token;
+	}
+
+	const installation = await externalFetch(
+		`${GITHUB_API}/repos/${key}/installation`,
+		{ headers: appHeaders() },
+	);
+	// 404 is GitHub's answer for "the App is not installed here", and also for a
+	// repository that does not exist — the same thing, from where this sits.
+	if (installation.status === 404) return null;
+	if (!installation.ok) {
+		throw new Error(
+			`GitHub API error ${installation.status}: /repos/${key}/installation`,
+		);
+	}
+	// SAFETY: guarded by the 404 return and the `!ok` throw above. This is the
+	// documented 200 body of GET /repos/:owner/:repo/installation; only `id` is
+	// read, and a missing one fails the mint below with a GitHub error.
+	const { id } = (await installation.json()) as { id: number };
+
+	const response = await externalFetch(
+		`${GITHUB_API}/app/installations/${id}/access_tokens`,
+		{
+			method: "POST",
+			headers: appHeaders(),
+			body: JSON.stringify({
+				repositories: [repo],
+				permissions: { contents: "read" },
+			}),
+		},
+	);
+	if (!response.ok) {
+		throw new Error(
+			`GitHub API error ${response.status}: mint a read token for ${key}`,
+		);
+	}
+	// SAFETY: guarded by the `!response.ok` throw above. The same documented 201
+	// body `getInstallationToken` reads; a malformed `expires_at` becomes NaN,
+	// which the cache treats as already expired.
+	const body = (await response.json()) as { token: string; expires_at: string };
+	repoReadTokenCache.set(key, {
+		token: body.token,
+		expiresAt: new Date(body.expires_at).getTime(),
+	});
+	return body.token;
+};
+
 // Lists every repo an installation can access, paging past the 100/page cap.
 export const listInstallationRepos = async (
 	token: string,
@@ -261,3 +338,199 @@ export const getCommit = (
 
 export const getAuthenticatedUser = (token: string) =>
 	githubGet<GithubUser>(`${GITHUB_API}/user`, token);
+
+// ── Pull requests (GraphQL) ────────────────────────────────────────────────
+// GraphQL rather than REST because REST has no way to ask "the PRs this person
+// authored or reviewed" per repo: `/pulls` has no author filter and reviews are
+// one more call per PR, and the REST search endpoint allows 30 requests a
+// minute, which one sweep spends in seconds. GraphQL search costs a point per
+// page against the installation's 5,000 an hour, and carries the person's
+// reviews in the same page.
+//
+// The App needs the "Pull requests: Read" permission for this. Without it
+// GitHub answers FORBIDDEN, which reads here as "nothing to see", exactly as a
+// 403 does on the commit path.
+
+export type GithubPullRequestReview = {
+	id: string;
+	state:
+		| "APPROVED"
+		| "CHANGES_REQUESTED"
+		| "COMMENTED"
+		| "DISMISSED"
+		| "PENDING";
+	submittedAt: string | null;
+	url: string;
+	author: { login: string } | null;
+};
+
+export type GithubPullRequest = {
+	id: string;
+	number: number;
+	title: string;
+	url: string;
+	createdAt: string;
+	closedAt: string | null;
+	mergedAt: string | null;
+	merged: boolean;
+	state: "OPEN" | "CLOSED" | "MERGED";
+	author: { login: string } | null;
+	reviews: { nodes: (GithubPullRequestReview | null)[] | null } | null;
+};
+
+type GraphqlError = { type?: string; message: string };
+
+const githubGraphql = async <T>(
+	token: string,
+	query: string,
+	variables: { [name: string]: string | number | null },
+): Promise<T | null> => {
+	const url = `${GITHUB_API}/graphql`;
+	const response = await externalFetch(url, {
+		method: "POST",
+		headers: { ...githubHeaders(token), "Content-Type": "application/json" },
+		body: JSON.stringify({ query, variables }),
+	});
+	if (response.status === 403 || response.status === 429) {
+		const body = await response.text().catch(() => "");
+		if (isThrottled(response, body)) throw new GithubRateLimitError(url);
+		return null;
+	}
+	if (!response.ok) {
+		throw new Error(`GitHub API error ${response.status}: ${url}`);
+	}
+	// SAFETY: a 2xx from the GraphQL endpoint is always this envelope; `T` is the
+	// shape of the query the caller wrote, and `data` is read only after the
+	// error list is checked below.
+	const body = (await response.json()) as {
+		data?: T | null;
+		errors?: GraphqlError[];
+	};
+	const errors = body.errors ?? [];
+	// GraphQL reports its primary limit inside a 200, not as a status code.
+	if (errors.some((e) => e.type === "RATE_LIMITED")) {
+		throw new GithubRateLimitError(url);
+	}
+	if (errors.length > 0) {
+		// The repo is gone, or the App cannot read its pull requests: the same
+		// answer the REST path gives a 403 or a 404.
+		if (errors.every((e) => e.type === "NOT_FOUND" || e.type === "FORBIDDEN")) {
+			return null;
+		}
+		throw new Error(
+			`GitHub GraphQL error: ${errors.map((e) => e.message).join("; ")}`,
+		);
+	}
+	return body.data ?? null;
+};
+
+// `$login` filters the reviews to the person's own, so a PR with forty reviews
+// from other people costs nothing extra.
+const PULL_REQUEST_FIELDS = `
+	id
+	number
+	title
+	url
+	createdAt
+	closedAt
+	mergedAt
+	merged
+	state
+	author { login }
+	reviews(first: 100, author: $login) {
+		nodes { id state submittedAt url author { login } }
+	}
+`;
+
+const SEARCH_PULL_REQUESTS = `
+	query SearchPullRequests($q: String!, $login: String!, $first: Int!, $after: String) {
+		search(type: ISSUE, query: $q, first: $first, after: $after) {
+			pageInfo { hasNextPage endCursor }
+			nodes { __typename ... on PullRequest { ${PULL_REQUEST_FIELDS} } }
+		}
+	}
+`;
+
+const GET_PULL_REQUEST = `
+	query GetPullRequest($owner: String!, $name: String!, $number: Int!, $login: String!) {
+		repository(owner: $owner, name: $name) {
+			pullRequest(number: $number) { ${PULL_REQUEST_FIELDS} }
+		}
+	}
+`;
+
+// The search query is one string of qualifiers, so a value with a space in it
+// would add a qualifier of its own. GitHub logins and repo names cannot carry
+// one; this is the check that they do not.
+const SEARCH_TERM = /^[A-Za-z0-9._-]+$/;
+
+const PULL_REQUEST_PAGE_SIZE = 50;
+const MAX_PULL_REQUEST_PAGES = 10;
+
+/**
+ * The pull requests in one repo that `login` authored, or reviewed, and that
+ * changed at or after `since`. Every event on a PR updates it, so a PR with no
+ * update since `since` has no event since then either.
+ */
+export const searchPullRequests = async (
+	token: string,
+	options: {
+		owner: string;
+		repo: string;
+		login: string;
+		role: "author" | "reviewed-by";
+		since: Date;
+	},
+): Promise<GithubPullRequest[]> => {
+	const { owner, repo, login, role, since } = options;
+	if (![owner, repo, login].every((term) => SEARCH_TERM.test(term))) {
+		throw new Error(`Unexpected characters in a search term: ${owner}/${repo}`);
+	}
+	// Second precision with an explicit offset — the form the search syntax
+	// documents. `toISOString`'s milliseconds and `Z` are not in it.
+	const updated = `${since.toISOString().slice(0, 19)}+00:00`;
+	const q = `repo:${owner}/${repo} is:pr ${role}:${login} updated:>=${updated}`;
+
+	const pullRequests: GithubPullRequest[] = [];
+	let after: string | null = null;
+	for (let page = 1; page <= MAX_PULL_REQUEST_PAGES; page++) {
+		const data: {
+			search: {
+				pageInfo: { hasNextPage: boolean; endCursor: string | null };
+				nodes: ((GithubPullRequest & { __typename: string }) | null)[];
+			};
+		} | null = await githubGraphql(token, SEARCH_PULL_REQUESTS, {
+			q,
+			login,
+			first: PULL_REQUEST_PAGE_SIZE,
+			after,
+		});
+		if (!data) break;
+		for (const node of data.search.nodes) {
+			if (node?.__typename === "PullRequest") pullRequests.push(node);
+		}
+		if (!data.search.pageInfo.hasNextPage) break;
+		after = data.search.pageInfo.endCursor;
+		if (page === MAX_PULL_REQUEST_PAGES) {
+			console.warn("[github] pull request search truncated at the page cap", {
+				repo: `${owner}/${repo}`,
+				role,
+				collected: pullRequests.length,
+			});
+		}
+	}
+	return pullRequests;
+};
+
+export const getPullRequest = async (
+	token: string,
+	owner: string,
+	repo: string,
+	number: number,
+	login: string,
+): Promise<GithubPullRequest | null> => {
+	const data = await githubGraphql<{
+		repository: { pullRequest: GithubPullRequest | null } | null;
+	}>(token, GET_PULL_REQUEST, { owner, name: repo, number, login });
+	return data?.repository?.pullRequest ?? null;
+};

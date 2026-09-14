@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import { TASK_GROUP_LABELS, TASK_GROUPS } from "@farmer/core/lib/task-taxonomy";
 import { type ComponentPropsWithRef, useMemo, useState } from "react";
 
@@ -13,7 +14,6 @@ import {
 	ComboboxTrigger,
 	ComboboxValue,
 } from "#/components/ui/combobox.tsx";
-import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 
 /** What the picker needs of a task — the shape `tasksForProjectQuery` returns. */

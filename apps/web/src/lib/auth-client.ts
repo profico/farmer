@@ -1,4 +1,5 @@
 import {
+	deviceAuthorizationClient,
 	genericOAuthClient,
 	organizationClient,
 } from "better-auth/client/plugins";
@@ -6,6 +7,10 @@ import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
 	plugins: [
+		// The approval half of `farmer login` (routes/device.tsx). The CLI itself
+		// does not use this client: it speaks the device endpoints over plain
+		// HTTP, and only the browser that approves the code needs the typed calls.
+		deviceAuthorizationClient(),
 		organizationClient({
 			schema: {
 				organization: {
