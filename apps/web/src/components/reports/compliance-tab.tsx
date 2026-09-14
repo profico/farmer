@@ -93,7 +93,9 @@ export function ComplianceTab({
 					</div>
 					<div className="text-xs text-muted-foreground">
 						{data.workingDaysElapsed} of {data.workingDaysInMonth} working days
-						{data.complete ? "" : ` · as of ${formatDateKeyLong(data.asOf)}`}
+						{data.complete
+							? ""
+							: ` before today · as of ${formatDateKeyLong(data.asOf)}`}
 					</div>
 				</div>
 				<div>
@@ -158,10 +160,12 @@ export function ComplianceTab({
 				</span>{" "}
 				The fund for the month comes from Settings → Hour fund — the official
 				monthly figure, working days × 8h. Target so far = fund × working days
-				elapsed ÷ working days in the month, where a working day is Monday to
-				Friday and not a public holiday, so every working day is worth 8h. A
-				person's total is work plus time-off. On track when the total reaches
-				the target; slightly behind when it is within {data.tolerancePct}% of it
+				before today ÷ working days in the month, where a working day is Monday
+				to Friday and not a public holiday, so every working day is worth 8h.
+				Today itself is not counted until it has passed, but a finished month
+				counts every one of its working days. A person's total is work plus
+				time-off, up to and including today. On track when the total reaches the
+				target; slightly behind when it is within {data.tolerancePct}% of it
 				(Settings → Organization); behind otherwise. Hourly people are listed
 				with their hours and no target unless an expected-hours figure was set
 				for them.

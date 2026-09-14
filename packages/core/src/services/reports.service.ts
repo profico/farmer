@@ -477,8 +477,9 @@ export const reportsService = {
 	 * overrides — the two are allowed to diverge, and when they do it means
 	 * someone forgot to log absence (PRD decision 3).
 	 *
-	 * People-shaped, so scoped by people: everyone for Admin, otherwise the
-	 * caller, their list, and everyone on the projects they manage.
+	 * Scoped by `accessService.peopleScope` like every people-shaped report:
+	 * everyone for Admin, otherwise the caller, their list, and everyone on
+	 * the projects they manage.
 	 */
 	absence: async (
 		ctx: Ctx,

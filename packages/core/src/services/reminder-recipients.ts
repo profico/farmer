@@ -486,7 +486,15 @@ const digestLines = (
 	const behind = behindRows(report);
 	const slightly = report.rows.filter((r) => r.status === "slightly_behind");
 	if (behind.length === 0 && slightly.length === 0) {
-		return ["Everyone is on track."];
+		// No fund means no target for anyone, which means no verdict for anyone —
+		// not that everyone met one. Saying "on track" here read as an all-clear
+		// for a month Tracking never actually judged.
+		return report.fundSeconds == null
+			? [
+					"No hour fund is set for this month, so Tracking cannot judge anyone yet.",
+					"Set one in Settings → Hour fund.",
+				]
+			: ["Everyone is on track."];
 	}
 	const more = (total: number) =>
 		total > DIGEST_LIST_LIMIT
