@@ -22,6 +22,12 @@ const entry = join(root, "src", "main.ts");
 // and dies with "Illegal instruction" on an older CPU, and a cross-compiled
 // binary cannot find out in advance which CPU it will meet. arm64 has no
 // baseline variant.
+//
+// The two darwin binaries built on Linux do not run on macOS as they come out:
+// their code signature does not match the file, and Apple silicon kills them.
+// The release workflow re-signs them on a Mac before anything ships (see the
+// note on that step in `.github/workflows/cli-release.yml`), which is also why
+// it writes SHA256SUMS again rather than using the one written here.
 const RELEASE_TARGETS = [
 	{ asset: "farmer-linux-x64", target: "bun-linux-x64-baseline" },
 	{ asset: "farmer-linux-arm64", target: "bun-linux-arm64" },

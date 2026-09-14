@@ -131,6 +131,18 @@ is_musl() {
 	return 1
 }
 
+# Bun's musl runtime links libstdc++ and libgcc dynamically, and Alpine leaves
+# both out of its base image. Without them the binary stops with "Error
+# relocating ... symbol not found" before it prints a word.
+musl_libraries_missing() {
+	for lib in libstdc++.so.6 libgcc_s.so.1; do
+		if [ ! -e "/usr/lib/$lib" ] && [ ! -e "/lib/$lib" ]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
 detect_asset() {
 	os=$(uname -s)
 	arch=$(uname -m)
@@ -160,7 +172,7 @@ detect_asset() {
 }
 
 # download URL FILE: a failed answer from the server is a sentence explaining
-# why (no release token, no release yet), so it is shown rather than dropped.
+# why (no GitHub App access, no release yet), so it is shown rather than dropped.
 download() {
 	if command -v curl >/dev/null 2>&1; then
 		status=$(curl -sSL --retry 2 -o "$2" -w '%{http_code}' "$1") || fail "could not download $1"
@@ -191,6 +203,13 @@ sha256_of() {
 
 main() {
 	asset=$(detect_asset)
+	case "$asset" in
+		*-musl)
+			if musl_libraries_missing; then
+				fail "this system needs libstdc++ and libgcc first. On Alpine, run: apk add libstdc++ libgcc"
+			fi
+			;;
+	esac
 	install_dir=\${FARMER_INSTALL_DIR:-$HOME/.local/bin}
 
 	tmp=$(mktemp -d "\${TMPDIR:-/tmp}/farmer.XXXXXX")

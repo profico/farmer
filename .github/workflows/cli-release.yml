@@ -9,24 +9,44 @@ name: CLI release
 # App (see CLI_RELEASES_REPO in .env.example), because the repository is private.
 # So a release published here is live for every deployment within about five
 # minutes, which is how long the server caches the release lookup.
+#
+# Three jobs, and nothing is published until every binary has run:
+#
+#   build    cross-compiles all seven targets on Linux.
+#   smoke    runs each binary on its own OS and CPU. The two macOS binaries are
+#            re-signed there first (see that step), so what it uploads is what
+#            ships.
+#   publish  writes SHA256SUMS over the binaries that ran, and creates the
+#            release. Tags only.
+#
+# A pull request that touches the CLI runs build and smoke too, without
+# publishing, so a broken target shows up before a tag does.
 
 on:
   push:
     tags: ["cli-v*"]
+  pull_request:
+    paths:
+      - "apps/cli/**"
+      - "bun.lock"
+      - ".github/workflows/cli-release.yml"
 
 # Never cancel a release half way: a cancelled run can leave a release with only
 # some of its assets, and the install script would then 404 on the missing ones.
+# A pull request's run is only a check, so a newer push replaces it.
 concurrency:
   group: cli-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
-  release:
-    name: Build and publish the CLI binaries
+  build:
+    name: Build the CLI binaries
     runs-on: ubuntu-latest
-    permissions:
-      # `gh release create` writes a release and uploads its assets.
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,27 +64,161 @@ jobs:
       # (and sends to the server, which refuses a binary older than
       # `minCliVersion`). A release where the two disagree is a binary that
       # lies about what it is, so it fails here rather than after it ships.
-      - name: Check the tag matches apps/cli/package.json
+      - name: Read the version, and check the tag matches it
+        id: version
         run: |
-          tag_version="${GITHUB_REF_NAME#cli-v}"
           package_version="$(bun -e 'console.log((await Bun.file("apps/cli/package.json").json()).version)')"
-          if [ "$tag_version" != "$package_version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME is version $tag_version, but apps/cli/package.json is $package_version"
-            exit 1
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag_version="${GITHUB_REF_NAME#cli-v}"
+            if [ "$tag_version" != "$package_version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME is version $tag_version, but apps/cli/package.json is $package_version"
+              exit 1
+            fi
           fi
-          echo "VERSION=$tag_version" >> "$GITHUB_ENV"
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
 
-      # One job cross-compiles every target: `bun build --compile --target`
-      # does not need a runner of each OS. It writes the seven binaries and
-      # SHA256SUMS to apps/cli/dist/release/.
+      # `bun build --compile --target` cross-compiles, so one Linux runner
+      # builds every target. It also writes a SHA256SUMS, which is left behind
+      # on purpose: the macOS binaries change when they are re-signed, and
+      # publish writes the sums again over the final files.
       - name: Build the binaries
         working-directory: apps/cli
         run: bun run build:release
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-binaries
+          path: apps/cli/dist/release/farmer-*
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: Run ${{ matrix.asset }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # Every target is reported, not just the first to fail.
+      fail-fast: false
+      matrix:
+        include:
+          - { asset: farmer-linux-x64, runner: ubuntu-latest }
+          - { asset: farmer-linux-arm64, runner: ubuntu-24.04-arm }
+          - { asset: farmer-linux-x64-musl, runner: ubuntu-latest, alpine: true }
+          - { asset: farmer-linux-arm64-musl, runner: ubuntu-24.04-arm, alpine: true }
+          - { asset: farmer-darwin-arm64, runner: macos-latest, sign: true }
+          - { asset: farmer-darwin-x64, runner: macos-15-intel, sign: true }
+          - { asset: farmer-windows-x64.exe, runner: windows-latest }
+    defaults:
+      run:
+        shell: bash
+    env:
+      ASSET: ${{ matrix.asset }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Download the binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-binaries
+          path: bin
+
+      # A Bun cross-compile does not leave a valid code signature on a macOS
+      # binary. Checked on Bun 1.3.14 and 1.4.0: darwin-x64 keeps Bun's own
+      # signature over bytes the embedded app has since changed, and darwin-arm64
+      # gets an ad-hoc signature whose last page hash is wrong. Apple silicon
+      # kills a binary whose signature does not match ("Killed: 9"), and newer
+      # macOS versions are stricter on Intel too. An ad-hoc signature made here
+      # matches the file. It is not a Developer ID signature, and it does not
+      # need to be: `curl` sets no quarantine attribute, so Gatekeeper does not
+      # check a binary the install script downloads.
+      - name: Re-sign for macOS
+        if: matrix.sign
+        run: |
+          codesign --force --sign - "bin/$ASSET"
+          codesign --verify --strict --verbose=2 "bin/$ASSET"
+
+      # Artifacts do not keep the executable bit, so it is set again here. The
+      # install script sets it too; release assets carry no mode at all.
+      - name: Run the binary
+        if: ${{ !matrix.alpine }}
+        run: |
+          chmod +x "bin/$ASSET"
+          output="$("./bin/$ASSET" --version | tr -d '\r')"
+          echo "$output"
+          if [ "$output" != "farmer $VERSION" ]; then
+            echo "::error::$ASSET printed \"$output\", expected \"farmer $VERSION\""
+            exit 1
+          fi
+
+      # Bun's musl runtime links libstdc++ and libgcc dynamically, and Alpine
+      # leaves both out of its base image. The install script checks for them
+      # before it downloads anything; this runs the binary the way that check
+      # expects a system to be.
+      - name: Run the binary on Alpine
+        if: matrix.alpine
+        run: |
+          chmod +x "bin/$ASSET"
+          output="$(docker run --rm -v "$PWD/bin:/farmer:ro" alpine:3.20 \
+            sh -c "apk add --no-cache -q libstdc++ libgcc >/dev/null && /farmer/$ASSET --version")"
+          echo "$output"
+          if [ "$output" != "farmer $VERSION" ]; then
+            echo "::error::$ASSET printed \"$output\", expected \"farmer $VERSION\""
+            exit 1
+          fi
+
+      - name: Upload the re-signed binary
+        if: matrix.sign
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-signed-${{ matrix.asset }}
+          path: bin/${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the release
+    needs: [build, smoke]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      # `gh release create` writes a release and uploads its assets.
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Download the binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-binaries
+          path: release
+
+      - name: Download the re-signed macOS binaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: cli-signed-*
+          path: signed
+          merge-multiple: true
+
+      - name: Replace the macOS binaries and write SHA256SUMS
+        run: |
+          cp -f signed/farmer-darwin-arm64 signed/farmer-darwin-x64 release/
+          cd release
+          set -- farmer-*
+          count=$#
+          if [ "$count" != 7 ]; then
+            echo "::error::Expected 7 binaries, found $count"
+            ls -la
+            exit 1
+          fi
+          sha256sum farmer-* > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" apps/cli/dist/release/* \
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
             --title "Farmer CLI $VERSION" \
             --generate-notes
