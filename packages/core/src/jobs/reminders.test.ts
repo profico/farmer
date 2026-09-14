@@ -285,9 +285,10 @@ describe("the defaults reproduce the jobs as they were", () => {
 		expect(sent).toHaveLength(0);
 
 		await slackAt(TUESDAY, "09:00");
-		// 10 of April's 22 working days have passed: the target so far is 80h of
-		// the 176h fund. SILENT has 0, SLOW 40 — both behind. CONTRACTOR is
-		// hourly with no override, so no target and no nudge.
+		// 9 of April's 22 working days have passed before Tuesday the 14th (today
+		// itself is still in progress): the target so far is 72h of the 176h
+		// fund. SILENT has 0, SLOW 40 — both behind. CONTRACTOR is hourly with no
+		// override, so no target and no nudge.
 		expect(reached("compliance-nudge")).toEqual(sorted([SILENT, SLOW]));
 		expect(titleFor("compliance-nudge", SILENT)).toBe(
 			"No time logged yet this month",
@@ -297,7 +298,7 @@ describe("the defaults reproduce the jobs as they were", () => {
 		);
 		// The numbers are the report's own, in hours a person reads.
 		expect(bodyFor("compliance-nudge", SLOW)).toBe(
-			"You've logged 40h of the 80h expected by today, 40h short.",
+			"You've logged 40h of the 72h expected by today, 32h short.",
 		);
 		expect(sentTo("compliance-nudge", SLOW)?.slack).toBeUndefined();
 
@@ -320,9 +321,9 @@ describe("the defaults reproduce the jobs as they were", () => {
 		// SILENT, SLOW and NEVER are behind: the cohort's verdicts, not only who
 		// gets a DM. CONTRACTOR has no target and is not in the digest at all.
 		expect(digest).toContain("3 people are behind for the month:");
-		expect(digest).toContain("• silent — 0h of 80h (80h short)");
-		expect(digest).toContain("• slow — 40h of 80h (40h short)");
-		expect(digest).toContain("• never — 0h of 80h (80h short)");
+		expect(digest).toContain("• silent — 0h of 72h (72h short)");
+		expect(digest).toContain("• slow — 40h of 72h (32h short)");
+		expect(digest).toContain("• never — 0h of 72h (72h short)");
 		expect(digest).not.toContain("contractor");
 		expect(digest).not.toContain("slightly behind");
 
@@ -349,8 +350,11 @@ describe("the defaults reproduce the jobs as they were", () => {
 		expect(bodyFor("month-end", SILENT)).toBe(
 			"You haven't logged any time this month yet. Anything still unlogged needs to go in before the month ends tomorrow.",
 		);
+		// The last working day of the month itself is still in progress, so the
+		// target so far is the 21 working days before it (168h), not the whole
+		// 176h fund.
 		expect(bodyFor("month-end", SLOW)).toBe(
-			"You've logged 88h of the 176h expected so far. Anything still unlogged needs to go in before the month ends tomorrow.",
+			"You've logged 88h of the 168h expected so far. Anything still unlogged needs to go in before the month ends tomorrow.",
 		);
 	});
 });
@@ -365,11 +369,11 @@ describe("the digest mentions people", () => {
 		expect(got?.slack).toStartWith(
 			"*Time tracking this week*\n*3 people* are behind for the month:",
 		);
-		expect(got?.slack).toContain("• <@U0SILENT> — 0h of 80h (80h short)");
+		expect(got?.slack).toContain("• <@U0SILENT> — 0h of 72h (72h short)");
 		// Nobody matched SLOW to Slack, so the name stays.
-		expect(got?.slack).toContain("• slow — 40h of 80h (40h short)");
+		expect(got?.slack).toContain("• slow — 40h of 72h (32h short)");
 		// The plain form, which the preview shows, never carries the markup.
-		expect(got?.body).toContain("• silent — 0h of 80h (80h short)");
+		expect(got?.body).toContain("• silent — 0h of 72h (72h short)");
 		expect(got?.body).not.toContain("<@");
 	});
 });
@@ -408,7 +412,7 @@ describe("days, time and conditions must all apply", () => {
 	});
 
 	test("the tolerance decides who is only slightly behind, and they are not nudged", async () => {
-		// SLOW has 40h of 80h. At the default 5% that is behind; at 50% it is
+		// SLOW has 40h of 72h. At the default 5% that is behind; at 50% it is
 		// within the tolerance — slightly behind — and the nudge leaves them be.
 		await orgSettingsService.update(adminCtx(), { trackingTolerancePct: 50 });
 		await slackAt(TUESDAY, "09:00");

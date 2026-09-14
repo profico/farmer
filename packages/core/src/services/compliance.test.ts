@@ -1,8 +1,10 @@
 // The Tracking rule (PRD 6.2, revised Sept 2026): every figure below is the
 // month's hour fund prorated by the Monday-to-Friday days elapsed, against a
-// person's work PLUS time-off. April 2026 has 22 working days; the clock is
-// pinned to Wednesday the 15th, the 11th of them, so the target so far is
-// exactly half the fund.
+// person's work PLUS time-off. "Elapsed" counts only working days strictly
+// BEFORE the pinned clock's day — today's own day is still in progress.
+// April 2026 has 22 working days; the clock is pinned to Thursday the 16th,
+// whose 11 working days before it (through Wednesday the 15th) are exactly
+// half the month, so the target so far is exactly half the fund.
 
 import {
 	afterAll,
@@ -66,9 +68,9 @@ let projectId: string;
 
 /** The clock every call below is made against. The org timezone is UTC, so this
  *  instant and the day key the service derives from it cannot disagree. */
-const NOW = new Date("2026-04-15T12:00:00Z");
+const NOW = new Date("2026-04-16T12:00:00Z");
 const AT = { now: NOW };
-const today = "2026-04-15";
+const today = "2026-04-16";
 const monthStart = "2026-04-01";
 
 const adminCtx = (): Ctx => ({ organizationId: ORG, userId: ADMIN });
@@ -285,8 +287,9 @@ describe("the target", () => {
 
 	test("leaves public holidays out of the day count, so a working day stays 8h", async () => {
 		// This org is in the US: Memorial Day, Monday 25 May 2026, is off. May
-		// has 21 weekdays, 20 working days; through Wednesday the 27th, 19
-		// weekdays and 18 working days. 160h over 20 days is 8h a day → 144h.
+		// has 21 weekdays, 20 working days; before Wednesday the 27th (through
+		// Tuesday the 26th), 18 weekdays and 17 working days. 160h over 20 days
+		// is 8h a day → 136h.
 		await db.insert(monthlyHourFund).values({
 			organizationId: ORG,
 			year: 2026,
@@ -299,8 +302,8 @@ describe("the target", () => {
 			{ now: new Date("2026-05-27T12:00:00Z") },
 		);
 		expect(report.workingDaysInMonth).toBe(20);
-		expect(report.workingDaysElapsed).toBe(18);
-		expect(report.targetSeconds).toBe(144 * H);
+		expect(report.workingDaysElapsed).toBe(17);
+		expect(report.targetSeconds).toBe(136 * H);
 	});
 
 	test("is the whole fund once the month is over", async () => {
@@ -378,6 +381,37 @@ describe("the verdict", () => {
 		expect(ids.indexOf(ON_LEAVE)).toBeLessThan(ids.indexOf(ADMIN));
 		expect(ids.indexOf(ADMIN)).toBeLessThan(ids.indexOf(DILIGENT));
 		expect(ids.at(-1)).toBe(CONTRACTOR);
+	});
+
+	test("a full day logged on every earlier working day is on track before today's own day ends", async () => {
+		// 176h over 22 working days is a clean 8h a day. Friday the 17th is the
+		// month's 13th working day, so 12 working days (through Thursday the
+		// 16th) are elapsed before it — even at 08:00, before anyone would have
+		// logged a minute of Friday itself.
+		await setFund(176 * H);
+		const workingDaysBeforeFriday = [
+			"2026-04-01",
+			"2026-04-02",
+			"2026-04-03",
+			"2026-04-06",
+			"2026-04-07",
+			"2026-04-08",
+			"2026-04-09",
+			"2026-04-10",
+			"2026-04-13",
+			"2026-04-14",
+			"2026-04-15",
+			"2026-04-16",
+		];
+		for (const date of workingDaysBeforeFriday) {
+			await logEntry(DILIGENT, date, devTaskId, 8 * H);
+		}
+		const report = await track({ now: new Date("2026-04-17T08:00:00Z") });
+		expect(report.workingDaysElapsed).toBe(12);
+		expect(report.targetSeconds).toBe(96 * H);
+		const row = report.rows.find((r) => r.userId === DILIGENT);
+		expect(row?.totalSeconds).toBe(96 * H);
+		expect(row?.status).toBe("on_track");
 	});
 });
 
