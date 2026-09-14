@@ -20,6 +20,7 @@
 // the other.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
@@ -232,10 +233,14 @@ describe("the money fields", () => {
 
 describe("the project-level statistics", () => {
 	// The §4 line in full: "not even the project's total hours". A Member is on
-	// this project and still learns nothing about it beyond its existence.
-	test("a plain member gets no hours and no contributors", async () => {
+	// this project and learns nothing about it beyond its existence and their
+	// own time on it — the end of the file pins that the figure stays their own
+	// once somebody else logs there too.
+	test("a plain member gets their own hours and no contributors", async () => {
 		const [row] = await listFor(PLAIN);
-		expect(row?.monthlyTotalSeconds).toBe(0);
+		expect(row?.statsScope).toBe("own");
+		expect(row?.monthlyTotalSeconds).toBe(4 * HOUR);
+		expect(row?.allTimeSeconds).toBe(4 * HOUR);
 		expect(row?.contributors).toEqual([]);
 		expect(row?.contributorCount).toBe(0);
 	});
@@ -540,5 +545,39 @@ describe("the icon", () => {
 		const assigned = rows.find((r) => r.id === assignedId);
 		expect(assigned?.allTimeSeconds).toBe(4 * HOUR);
 		expect(assigned?.monthlyTotalSeconds).toBe(4 * HOUR);
+	});
+});
+
+// Last in the file: the entry below changes the project's totals, which every
+// case above reads as 4 hours.
+describe("a plain member's figures with somebody else on the project", () => {
+	beforeAll(async () => {
+		const [row] = await db
+			.select({ taskId: timeEntry.taskId })
+			.from(timeEntry)
+			.where(eq(timeEntry.projectId, assignedId))
+			.limit(1);
+		if (!row) throw new Error("fixture entry");
+		await db.insert(timeEntry).values({
+			organizationId: ORG,
+			userId: LEAD,
+			projectId: assignedId,
+			taskId: row.taskId,
+			date: new Date().toISOString().slice(0, 10),
+			durationSeconds: 2 * HOUR,
+			description: "lead work",
+		});
+	});
+
+	test("they stay their own, never the project's total", async () => {
+		const [row] = await listFor(PLAIN);
+		expect(row?.monthlyTotalSeconds).toBe(4 * HOUR);
+		expect(row?.allTimeSeconds).toBe(4 * HOUR);
+	});
+
+	test("a team lead reads the whole project", async () => {
+		const [row] = await listFor(LEAD);
+		expect(row?.statsScope).toBe("project");
+		expect(row?.monthlyTotalSeconds).toBe(6 * HOUR);
 	});
 });
