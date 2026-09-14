@@ -240,7 +240,7 @@ function RemindersPage() {
 				key={draftKey(nudgeDraft(settings))}
 				kind="compliance-nudge"
 				title="Slack nudge"
-				description="A Slack message to people who have logged nothing for a while, or who are behind for the month."
+				description="A Slack message to people the Tracking rule calls behind — below the month's target so far by more than the tolerance set under Organization. Never on a weekend or a public holiday."
 				enabled={settings.nudgeEnabled}
 				onEnabledChange={(nudgeEnabled) => save.mutate({ nudgeEnabled })}
 				saved={nudgeDraft(settings)}
@@ -269,37 +269,6 @@ function RemindersPage() {
 							value={draft.nudgeTime}
 							onChange={(nudgeTime) => set({ nudgeTime })}
 						/>
-						<ConditionRow
-							label="No entries for"
-							checked={draft.nudgeNoEntries}
-							onCheckedChange={(nudgeNoEntries) => set({ nudgeNoEntries })}
-						>
-							<NumberInput
-								label="Working days with no entries"
-								value={draft.complianceMissingDays}
-								onChange={(complianceMissingDays) =>
-									set({ complianceMissingDays })
-								}
-							/>
-							<span className="text-sm text-muted-foreground">
-								working days (1–30). The Tracking report uses the same number.
-							</span>
-						</ConditionRow>
-						<ConditionRow
-							label="Behind pace, below"
-							checked={draft.nudgeBehindPace}
-							onCheckedChange={(nudgeBehindPace) => set({ nudgeBehindPace })}
-						>
-							<NumberInput
-								label="Behind pace percentage"
-								value={draft.nudgeBehindPacePct}
-								onChange={(nudgeBehindPacePct) => set({ nudgeBehindPacePct })}
-							/>
-							<span className="text-sm text-muted-foreground">
-								% of the hours expected so far this month. The admin digest uses
-								the same line.
-							</span>
-						</ConditionRow>
 						<MemberTypesField
 							value={draft.nudgeMemberTypes}
 							onChange={(nudgeMemberTypes) => set({ nudgeMemberTypes })}
@@ -396,10 +365,6 @@ const logDraft = (s: ReminderSettings) => ({
 const nudgeDraft = (s: ReminderSettings) => ({
 	nudgeWeekdays: s.nudgeWeekdays,
 	nudgeTime: s.nudgeTime,
-	nudgeNoEntries: s.nudgeNoEntries,
-	complianceMissingDays: s.complianceMissingDays,
-	nudgeBehindPace: s.nudgeBehindPace,
-	nudgeBehindPacePct: s.nudgeBehindPacePct,
 	nudgeMemberTypes: s.nudgeMemberTypes,
 });
 const monthEndDraft = (s: ReminderSettings) => ({

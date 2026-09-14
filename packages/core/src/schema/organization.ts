@@ -19,14 +19,15 @@ export type UpdateOrganizationSettingsInput = z.infer<
 	typeof updateOrganizationSettingsInput
 >;
 
-// The reminder days, times and thresholds are in schema/reminder-settings; the
-// 15-minute granularity is deliberately hardcoded. So this stays a very short
-// list on purpose.
+// The reminder days and times are in schema/reminder-settings; the 15-minute
+// granularity is deliberately hardcoded. So this stays a very short list on
+// purpose.
 //
 // Both fields are optional so each form section can save its own field without
 // having to send (and therefore be able to clobber) the other.
 export const updateOrgSettingsInput = z.object({
-	complianceMissingDays: z.number().int().min(1).max(30).optional(),
+	// The Tracking rule's tolerance, in percent of the target so far.
+	trackingTolerancePct: z.number().int().min(0).max(50).optional(),
 	// yyyy-MM-dd; null clears the lock. Explicitly nullable rather than
 	// "" -> null, so "clear it" is something the caller has to actually say.
 	//

@@ -321,6 +321,9 @@ export type ReportTableRow = {
 	 *  collide into one React key. */
 	key: string;
 	cells: React.ReactNode[];
+	/** A tint for the whole row — the Tracking table colours a row by its
+	 *  verdict so a list of forty people can be read at a glance. */
+	className?: string;
 	/** Plain text for the row, for the table's own search box. A cell can render
 	 *  a face (`<PersonCell>`) instead of text, so filtering needs its own copy;
 	 *  a row with no fields is simply unmatchable by search. Only worth supplying
@@ -395,7 +398,7 @@ export function ReportTable({
 						<NoMatchesRow colSpan={headers.length} />
 					) : (
 						filteredRows.map((row) => (
-							<TableRow key={row.key}>
+							<TableRow key={row.key} className={row.className}>
 								{row.cells.map((cell, i) => (
 									<TableCell
 										key={`${row.key}-${headers[i]}`}

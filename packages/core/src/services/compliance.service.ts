@@ -1,96 +1,95 @@
-import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
-import { timeEntry } from "../db/schema/domain";
 import {
 	addDaysToKey,
 	datesBetween,
 	dayKeyInTz,
 	monthBounds,
-	startOfMonthKey,
-	weekdayInTz,
+	QUARTER_HOUR_SECONDS,
 } from "../lib/time";
-import { dayDurationSeconds } from "../lib/working-day";
+import { isHourlyMemberType } from "../schema/members";
+import type { MonthReportInput } from "../schema/reports";
 import { accessService } from "./access.service";
 import { ctxAccess, ctxTimezone } from "./context";
-import { absenceDaysByUser, expectedSecondsFor } from "./expected";
 import { holidaysService } from "./holidays.service";
-import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
+import { hourFundService } from "./hour-fund.service";
 import { ledgerByUser } from "./ledger";
 import { membersService, type ResolvedMemberType } from "./members.service";
-import {
-	BEHIND_PACE_THRESHOLD,
-	orgSettingsService,
-} from "./org-settings.service";
+import { orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
-import { workingHoursService } from "./working-hours.service";
 
-// Tracking compliance (PRD 6.2) — the forgetting-detector, and the engine behind
-// the Slack reminders. One mechanism, two outputs: a dashboard for Admin and DMs
-// for the person, so the two can never disagree about who is lagging.
+// Tracking (PRD 6.2, revised Sept 2026) — one rule, two consumers: the Tracking
+// report and the reminders, so the two can never disagree about who is behind.
+//
+// The rule. For a month with hour fund F (Settings → Hour fund — the official
+// monthly figure, "radni sati": working days × 8h, holidays already out):
+// target so far = F × working days elapsed ÷ working days in the month, where
+// a working day is Monday to Friday that is not a public holiday. Dividing by
+// the same days the fund was built from is what keeps every working day worth
+// exactly 8h — dividing by all weekdays made a day worth 7h38m in any month
+// with a holiday. A person's total is work PLUS time off — a day of vacation is
+// a day accounted for, not a day short. On track when total ≥ target; slightly
+// behind when within the org's tolerance (default 5%); behind otherwise. Once
+// the month is over the target is the whole fund.
+//
+// "Working days elapsed" counts only days strictly BEFORE today — today's own
+// working day is still in progress, so it is not "elapsed" yet. The nudge runs
+// at 09:00; counting today made a person who had logged a full day on every
+// earlier working day show up short by a day's worth of hours until evening,
+// and made the 1st of every month open with "No time logged yet" for
+// everyone. The totals (work + time off) still cover up to and including
+// today, so logging early in the day can only help, never hurt, a verdict. A
+// finished month's elapsed figure is still every working day it had — the
+// month is over, so nothing in it is still "in progress".
+//
+// Who has a target: employees, full-time students and full-time contractors —
+// the fund applies to them. Hourly people are listed with their hours and no
+// status unless an explicit expected-hours override was set for them. Overhead
+// people and archived people are not listed at all.
+//
+// Nothing about a person's own schedule enters this: the fund is an org-wide
+// figure, and the rule is the same for everyone it applies to.
 
-export type NoEntriesRow = {
+export type TrackingStatus = "on_track" | "slightly_behind" | "behind";
+
+export type TrackingRow = {
 	userId: string;
 	name: string;
 	email: string;
 	memberType: ResolvedMemberType["type"];
-	/** The last day this person logged anything, or null if never. */
-	lastEntryDate: string | null;
-	/** How many working days they have gone without logging. */
-	workingDaysMissing: number;
+	workSeconds: number;
+	timeOffSeconds: number;
+	/** work + time off. */
+	totalSeconds: number;
+	/** This person's target so far, or null when no target applies to them. */
+	targetSeconds: number | null;
+	/** total − target; null with no target. Negative is short. */
+	deltaSeconds: number | null;
+	status: TrackingStatus | null;
 };
 
-export type BehindPaceRow = {
-	userId: string;
-	name: string;
-	email: string;
-	memberType: ResolvedMemberType["type"];
-	loggedSeconds: number;
-	/** Expected-so-far: the month's fund scaled by working days elapsed, less
-	 *  the absence already taken this month. Never below zero. */
-	proratedExpectedSeconds: number;
-	pacePct: number;
-	shortfallSeconds: number;
+export type TrackingReport = {
+	year: number;
+	month: number;
+	/** The last day the figures cover: today, or the month's last day once it
+	 *  has passed. */
+	asOf: string;
+	complete: boolean;
+	fundSeconds: number | null;
+	workingDaysInMonth: number;
+	/** Working days strictly BEFORE `asOf`'s day, or every working day in the
+	 *  month once it is over — today's own working day is still in progress
+	 *  and is never counted as elapsed. */
+	workingDaysElapsed: number;
+	/** The org-wide target so far (the fund prorated), or null with no fund. */
+	targetSeconds: number | null;
+	tolerancePct: number;
+	rows: TrackingRow[];
 };
 
-/** Working days in [from, to] for the ORG: Mon-Fri minus org holidays.
- *
- *  The right denominator for prorating a month's hour fund, which is an
- *  org-wide figure and knows nothing about any individual's schedule. It is the
- *  WRONG answer to "has this person missed a working day" — see
- *  `workingDaysForMember` below. */
-const workingDaysIn = async (
-	ctx: Ctx,
-	from: string,
-	to: string,
-): Promise<string[]> => {
-	if (from > to) return [];
-	const holidays = await holidaysService.holidaySetForRange(ctx, from, to);
-	return datesBetween(from, to).filter((key) => {
-		if (holidays.has(key)) return false;
-		const weekday = new Date(`${key}T00:00:00Z`).getUTCDay();
-		return weekday !== 0 && weekday !== 6;
-	});
-};
-
-/** Working days in [from, to] for ONE PERSON: the days their own schedule says
- *  they work, minus org holidays.
- *
- *  `noEntries` is a per-person judgement — "you have logged nothing for three
- *  working days" — and it was answering it from a hardcoded Mon-Fri. Somebody
- *  contracted for Monday to Wednesday was therefore reported as three working
- *  days behind every Thursday, appeared on the Admin compliance dashboard, and
- *  got a Slack DM about it. The app has had per-member working hours all along;
- *  `jobs/log-reminders` reads them for exactly this question and gets it right. */
-const workingDaysForMember = (
-	orgWorkingDays: string[],
-	enabledWeekdays: ReadonlySet<number>,
-	tz: string,
-): string[] =>
-	orgWorkingDays.filter((key) => enabledWeekdays.has(weekdayInTz(key, tz)));
-
-/** People the compliance machinery applies to at all. Overhead people never
+/** People the tracking machinery applies to at all. Overhead people never
  *  appear anywhere in it — the system never nags the CEO about timesheets — and
  *  neither do archived people, who cannot act on a nudge at all. */
 export type CohortMember = {
@@ -99,6 +98,55 @@ export type CohortMember = {
 	email: string;
 	memberType: ResolvedMemberType;
 };
+
+/** Both the report and the reminders answer "as of now", and `now` is how a
+ *  caller says which now — every figure is a fraction of the month elapsed,
+ *  and a suite that cannot choose the date can only assert what happens to be
+ *  true on the day it runs. Production passes nothing and gets the real
+ *  clock. `onlyUserIds` is the caller's people scope; the public methods fill
+ *  it in, the reminder job leaves it empty on purpose. */
+export type ComplianceOpts = {
+	now?: Date;
+	onlyUserIds?: ReadonlySet<string> | null;
+};
+
+/** Working days in the inclusive range: Monday to Friday, minus the org's
+ *  public holidays — the same days the official monthly fund counts, so fund ÷
+ *  working days is a whole 8h. The numerator and the denominator of the
+ *  proration both come from here. */
+export const workingDaysIn = (
+	from: string,
+	to: string,
+	// The org calendar's date → name map, or any set-like of day keys.
+	holidays: { has(key: string): boolean },
+): number => {
+	if (from > to) return 0;
+	return datesBetween(from, to).filter((key) => {
+		if (holidays.has(key)) return false;
+		// UTC weekday of a bare calendar key — the key IS the calendar day.
+		const weekday = new Date(`${key}T00:00:00Z`).getUTCDay();
+		return weekday !== 0 && weekday !== 6;
+	}).length;
+};
+
+/** The three-way verdict. Pure, so the report and the reminders share it. */
+export const trackingStatusFor = (
+	totalSeconds: number,
+	targetSeconds: number,
+	tolerancePct: number,
+): TrackingStatus => {
+	if (totalSeconds >= targetSeconds) return "on_track";
+	if (totalSeconds >= targetSeconds * (1 - tolerancePct / 100)) {
+		return "slightly_behind";
+	}
+	return "behind";
+};
+
+const STATUS_RANK = {
+	behind: 0,
+	slightly_behind: 1,
+	on_track: 2,
+} satisfies Record<TrackingStatus, number>;
 
 const complianceCohort = async (
 	ctx: Ctx,
@@ -131,307 +179,154 @@ const complianceCohort = async (
 		);
 };
 
-/** Both views answer "as of today", and `now` is how a caller says which today.
- *
- *  Passed in rather than read from the clock so the behaviour can be pinned:
- *  every figure below is relative to how much of the month has elapsed, and a
- *  suite that cannot choose the date can only assert what happens to be true on
- *  the day it runs — including on the 1st, when no working day has elapsed yet
- *  and `behindPace` is correctly empty. Production passes nothing and gets the
- *  real clock. Same seam as `runAutomationsForUser(ctx, { now })`. */
-export type ComplianceOpts = {
-	now?: Date;
-	/** The people the caller may see (`accessService.peopleScope`); null or
-	 *  absent means everyone. The public methods fill this in from the caller's
-	 *  access; the reminder job leaves it empty on purpose. */
-	onlyUserIds?: ReadonlySet<string> | null;
-};
-
-// The two views, computed without any authorization check.
-//
-// Deliberately module-private and deliberately not reachable through
-// `complianceService`. These used to be the public methods, each taking a
-// `{ skipAdminCheck?: boolean }` — an argument that switched authorization off,
-// sitting in the public signature of the one service whose whole subject is
-// org-wide data about people. One caller (the Slack reminder job) needed it and
-// every other caller needed it never to be set; a flag cannot express that, and
-// an options bag is exactly the shape that eventually gets spread from
-// somewhere validated. The escape hatch is now a named export below that says
-// out loud who it is for, and the flag no longer exists to be passed by
-// accident.
-const views = {
-	/**
-	 * View 1 — people with no entries in the last N working days (N configurable,
-	 * default 3). Full-time and hourly people both appear here: an hourly person
-	 * still has to tell us what they did, even though no hour fund applies to them.
-	 */
-	noEntries: async (ctx: Ctx, opts: ComplianceOpts = {}) => {
-		const [tz, settings] = await Promise.all([
-			ctxTimezone(ctx),
-			orgSettingsService.get(ctx),
-		]);
-		const today = dayKeyInTz(opts.now ?? new Date(), tz);
-		const cohort = await complianceCohort(
-			ctx,
-			{ year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) },
-			opts.onlyUserIds ?? null,
-		);
-		if (cohort.length === 0) return [];
-
-		// Look back far enough to always contain N working days even across a long
-		// holiday stretch — and, now that the count is per person, far enough for
-		// somebody who only works two days a week.
-		const windowStart = addDaysToKey(
-			today,
-			-(settings.complianceMissingDays * 9 + 14),
-		);
-		const orgWorkingDays = await workingDaysIn(ctx, windowStart, today);
-
-		const userIds = cohort.map((c) => c.userId);
-		const schedules = await workingHoursService.listForOrg(ctx, userIds);
-
-		// Each person's own working days inside the window, and therefore each
-		// person's own cutoff. A part-timer's "three working days ago" is further
-		// back than a full-timer's, which is the entire point.
-		const workingDaysByUser = new Map<string, string[]>();
-		const cutoffByUser = new Map<string, string>();
-		let earliestCutoff = today;
-		for (const person of cohort) {
-			const enabledWeekdays = new Set(
-				(schedules.get(person.userId) ?? [])
-					.filter((day) => dayDurationSeconds(day) > 0)
-					.map((day) => day.dayOfWeek),
-			);
-			const mine = workingDaysForMember(orgWorkingDays, enabledWeekdays, tz);
-			workingDaysByUser.set(person.userId, mine);
-			const recent = mine.slice(-settings.complianceMissingDays);
-			// Nobody with no working days in the window is ever "behind" — there was
-			// nothing they were supposed to log.
-			const [cutoff] = recent;
-			if (
-				recent.length < settings.complianceMissingDays ||
-				cutoff === undefined
-			) {
-				continue;
-			}
-			cutoffByUser.set(person.userId, cutoff);
-			if (cutoff < earliestCutoff) earliestCutoff = cutoff;
-		}
-		if (cutoffByUser.size === 0) return [];
-
-		// One query over the widest cutoff in the cohort; each person is then judged
-		// against their own. `max(date)` answers both questions at once — whether
-		// anything landed since their cutoff, and when they last logged at all.
-		const [recentRows, lastEntries] = await Promise.all([
-			db
-				.select({
-					userId: timeEntry.userId,
-					lastDate: sql<string>`max(${timeEntry.date})`,
-				})
-				.from(timeEntry)
-				.where(
-					and(
-						eq(timeEntry.organizationId, ctx.organizationId),
-						inArray(timeEntry.userId, userIds),
-						gte(timeEntry.date, earliestCutoff),
-						lte(timeEntry.date, today),
-					),
-				)
-				.groupBy(timeEntry.userId),
-			db
-				.select({
-					userId: timeEntry.userId,
-					lastDate: sql<string>`max(${timeEntry.date})`,
-				})
-				.from(timeEntry)
-				.where(
-					and(
-						eq(timeEntry.organizationId, ctx.organizationId),
-						inArray(timeEntry.userId, userIds),
-					),
-				)
-				.groupBy(timeEntry.userId),
-		]);
-
-		const latestInWindow = new Map(
-			recentRows.map((r) => [r.userId, r.lastDate]),
-		);
-		const lastByUser = new Map(lastEntries.map((r) => [r.userId, r.lastDate]));
-
-		const rows: NoEntriesRow[] = [];
-		for (const person of cohort) {
-			const cutoff = cutoffByUser.get(person.userId);
-			if (!cutoff) continue;
-			const latest = latestInWindow.get(person.userId);
-			if (latest != null && latest >= cutoff) continue;
-			const lastEntryDate = lastByUser.get(person.userId) ?? null;
-			const working = workingDaysByUser.get(person.userId) ?? [];
-			const missing = lastEntryDate
-				? working.filter((d) => d > lastEntryDate).length
-				: working.length;
-			rows.push({
-				userId: person.userId,
-				name: person.name,
-				email: person.email,
-				memberType: person.memberType.type,
-				lastEntryDate,
-				workingDaysMissing: missing,
-			});
-		}
-		return rows.sort((a, b) => b.workingDaysMissing - a.workingDaysMissing);
-	},
-
-	/**
-	 * View 2 — people whose month-to-date hours are below the prorated
-	 * expectation, i.e. below `threshold` of pace. The Admin report uses
-	 * `BEHIND_PACE_THRESHOLD`; the reminder jobs pass the org's own "behind
-	 * pace" % from its reminder settings.
-	 *
-	 * Contractors appear here ONLY when they have an explicit expected-hours
-	 * value: without a monthly fund there is no pace to be behind.
-	 */
-	behindPace: async (
-		ctx: Ctx,
-		opts: ComplianceOpts = {},
-		threshold: number = BEHIND_PACE_THRESHOLD,
-	) => {
-		const tz = await ctxTimezone(ctx);
-		const today = dayKeyInTz(opts.now ?? new Date(), tz);
-		const year = Number(today.slice(0, 4));
-		const month = Number(today.slice(5, 7));
-		const { from, to } = monthBounds(year, month);
-
-		const [cohort, fundSeconds, absence] = await Promise.all([
-			complianceCohort(ctx, { year, month }, opts.onlyUserIds ?? null),
-			hourFundService.get(ctx, year, month),
-			absenceDaysByUser(ctx, from, today),
-		]);
-		if (cohort.length === 0) return [];
-
-		// Prorate by working days elapsed (inclusive of today) over the month's
-		// total working days.
-		const [elapsed, total] = await Promise.all([
-			workingDaysIn(ctx, startOfMonthKey(today), today),
-			workingDaysIn(ctx, from, to),
-		]);
-		if (total.length === 0 || elapsed.length === 0) return [];
-		const elapsedFraction = elapsed.length / total.length;
-
-		// Scope "worked", NOT "all". This query used to sum every entry in the
-		// range with no absence exclusion, while `expectedSecondsFor` below
-		// SUBTRACTS absence days from the target — so a person on vacation had
-		// their expectation lowered AND their vacation counted as hours worked,
-		// crediting it twice and hiding them from the pace check. Unfiled time
-		// stays in: an imported meeting is work, it is just not attributed yet.
-		const loggedByUser = await ledgerByUser(
-			ctx,
-			{ from, to: today },
-			"worked",
-			{ userIds: cohort.map((c) => c.userId) },
-		);
-
-		const rows: BehindPaceRow[] = [];
-		for (const person of cohort) {
-			// The month's whole target, before any absence: zero absence days.
-			const monthTarget = expectedSecondsFor(person.memberType, fundSeconds, 0);
-			// No fund (or an hourly person with no override) => no pace to be behind.
-			if (monthTarget == null || monthTarget <= 0) continue;
-
-			// Prorate the TARGET, then take the absence off whole. `absence` is
-			// already month-to-date (from the 1st to today), so it is not a share
-			// of the month to scale — scaling it too was subtracting only half of
-			// a vacation taken in the first half of the month. Five days off by
-			// mid-month against a 160h fund left a 60h expectation for ten
-			// working days instead of 40h, and flagged someone who had logged
-			// every hour of the days they were in.
-			const elapsedAbsenceSeconds = Math.round(
-				(absence.get(person.userId) ?? 0) * WORKING_DAY_SECONDS,
-			);
-			const proratedExpectedSeconds = Math.max(
-				0,
-				Math.round(monthTarget * elapsedFraction) - elapsedAbsenceSeconds,
-			);
-			if (proratedExpectedSeconds <= 0) continue;
-
-			const loggedSeconds = loggedByUser.get(person.userId) ?? 0;
-			const pace = loggedSeconds / proratedExpectedSeconds;
-			if (pace >= threshold) continue;
-
-			rows.push({
-				userId: person.userId,
-				name: person.name,
-				email: person.email,
-				memberType: person.memberType.type,
-				loggedSeconds,
-				proratedExpectedSeconds,
-				pacePct: Math.round(pace * 100),
-				shortfallSeconds: proratedExpectedSeconds - loggedSeconds,
-			});
-		}
-		return rows.sort((a, b) => a.pacePct - b.pacePct);
-	},
-
-	/** Both views at once — the Admin dashboard, and the input the Slack job
-	 *  iterates to decide who gets a DM. */
-	dashboard: async (
-		ctx: Ctx,
-		opts: ComplianceOpts = {},
-		threshold: number = BEHIND_PACE_THRESHOLD,
-	) => {
-		const [noEntries, behindPace] = await Promise.all([
-			views.noEntries(ctx, opts),
-			views.behindPace(ctx, opts, threshold),
-		]);
-		return { noEntries, behindPace };
-	},
-};
-
-// Tracking is people-shaped, so it is scoped by people (§4 matrix): everyone
-// for Admin; for anyone else themselves, the people on their list and everyone
-// on the projects they manage. A Member sees one row — their own.
-const scoped = async (
+// The rule, computed without any authorization check. Module-private: the
+// public method scopes it by the caller's people, and the reminder job's entry
+// point below says out loud that it runs on nobody's behalf.
+const computeTracking = async (
 	ctx: Ctx,
+	{ year, month }: MonthReportInput,
 	opts: ComplianceOpts,
-): Promise<ComplianceOpts> => {
-	const access = await ctxAccess(ctx);
-	return { ...opts, onlyUserIds: await accessService.peopleScope(ctx, access) };
+): Promise<TrackingReport> => {
+	const [tz, settings] = await Promise.all([
+		ctxTimezone(ctx),
+		orgSettingsService.get(ctx),
+	]);
+	const today = dayKeyInTz(opts.now ?? new Date(), tz);
+	const { from, to } = monthBounds(year, month);
+	const complete = today > to;
+	const asOf = complete ? to : today;
+	const holidays = await holidaysService.holidaySetForRange(ctx, from, to);
+	const workingDaysInMonth = workingDaysIn(from, to, holidays);
+	// A finished month has nothing left "in progress", so every one of its
+	// working days counts as elapsed; a month still running only counts the
+	// days strictly before today — today itself is not over yet.
+	const elapsedThrough = complete ? to : addDaysToKey(today, -1);
+	const workingDaysElapsed =
+		today < from ? 0 : workingDaysIn(from, elapsedThrough, holidays);
+	const share =
+		workingDaysInMonth === 0 ? 0 : workingDaysElapsed / workingDaysInMonth;
+	// To the nearest quarter hour, the unit every other figure in the app is
+	// in. With the official fund this is a whole number of 8h days; it only
+	// rounds when an admin entered a fund that is not a multiple of the days.
+	const prorate = (fund: number) =>
+		Math.round((fund * share) / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS;
+
+	const [cohort, fundSeconds] = await Promise.all([
+		complianceCohort(ctx, { year, month }, opts.onlyUserIds ?? null),
+		hourFundService.get(ctx, year, month),
+	]);
+	const tolerancePct = settings.trackingTolerancePct;
+	const targetSeconds = fundSeconds == null ? null : prorate(fundSeconds);
+	if (cohort.length === 0 || today < from) {
+		return {
+			year,
+			month,
+			asOf,
+			complete,
+			fundSeconds,
+			workingDaysInMonth,
+			workingDaysElapsed,
+			targetSeconds,
+			tolerancePct,
+			rows: [],
+		};
+	}
+
+	const userIds = cohort.map((c) => c.userId);
+	const [worked, timeOff] = await Promise.all([
+		ledgerByUser(ctx, { from, to: asOf }, "worked", { userIds }),
+		ledgerByUser(ctx, { from, to: asOf }, "absence", { userIds }),
+	]);
+
+	const rows: TrackingRow[] = cohort.map((person) => {
+		const workSeconds = worked.get(person.userId) ?? 0;
+		const timeOffSeconds = timeOff.get(person.userId) ?? 0;
+		const totalSeconds = workSeconds + timeOffSeconds;
+		// An explicit override replaces the fund for this person; an hourly
+		// person has a target only through one.
+		const fund = isHourlyMemberType(person.memberType.type)
+			? person.memberType.expectedSecondsOverride
+			: (person.memberType.expectedSecondsOverride ?? fundSeconds);
+		const target = fund == null ? null : prorate(fund);
+		return {
+			userId: person.userId,
+			name: person.name,
+			email: person.email,
+			memberType: person.memberType.type,
+			workSeconds,
+			timeOffSeconds,
+			totalSeconds,
+			targetSeconds: target,
+			deltaSeconds: target == null ? null : totalSeconds - target,
+			status:
+				target == null
+					? null
+					: trackingStatusFor(totalSeconds, target, tolerancePct),
+		};
+	});
+
+	// Worst first: behind, then slightly behind, then on track, then the people
+	// with no target — and the biggest shortfall at the top of each group.
+	rows.sort((a, b) => {
+		const ra = a.status == null ? 3 : STATUS_RANK[a.status];
+		const rb = b.status == null ? 3 : STATUS_RANK[b.status];
+		if (ra !== rb) return ra - rb;
+		return (
+			(a.deltaSeconds ?? 0) - (b.deltaSeconds ?? 0) ||
+			a.name.localeCompare(b.name)
+		);
+	});
+
+	return {
+		year,
+		month,
+		asOf,
+		complete,
+		fundSeconds,
+		workingDaysInMonth,
+		workingDaysElapsed,
+		targetSeconds,
+		tolerancePct,
+		rows,
+	};
 };
 
 export const complianceService = {
-	noEntries: async (ctx: Ctx, opts: ComplianceOpts = {}) =>
-		views.noEntries(ctx, await scoped(ctx, opts)),
-
-	behindPace: async (ctx: Ctx, opts: ComplianceOpts = {}) =>
-		views.behindPace(ctx, await scoped(ctx, opts)),
-
-	dashboard: async (ctx: Ctx, opts: ComplianceOpts = {}) =>
-		views.dashboard(ctx, await scoped(ctx, opts)),
+	/** The Tracking report for a month, scoped by people (§4 matrix): everyone
+	 *  for Admin; for anyone else themselves, the people on their list and
+	 *  everyone on the projects they manage. A Member sees one row — their own. */
+	tracking: async (
+		ctx: Ctx,
+		input: MonthReportInput,
+		opts: ComplianceOpts = {},
+	): Promise<TrackingReport> => {
+		const access = await ctxAccess(ctx);
+		const onlyUserIds = await accessService.peopleScope(ctx, access);
+		return computeTracking(ctx, input, { ...opts, onlyUserIds });
+	},
 
 	/**
-	 * The dashboard for the scheduled Slack reminder job, which runs it for a
-	 * whole organization on nobody's behalf.
+	 * The same report for the scheduled reminder jobs, which run it for a whole
+	 * organization on nobody's behalf.
 	 *
 	 * There is no caller to check: the job builds an org-only Ctx with an empty
 	 * `userId` (`jobs/slack-reminders.ts`), because the question it is asking is
 	 * about the whole organization and nobody in particular asked it. That Ctx
-	 * cannot satisfy an Admin check, or any other check, which is precisely why
-	 * the unchecked path needs a name of its own instead of a flag: being this
-	 * caller requires saying so at the call site.
-	 *
-	 * `paceThreshold` is the org's "behind pace" fraction from its reminder
-	 * settings (0.9 by default, the same as the Admin report).
+	 * cannot satisfy any access check, which is precisely why the unchecked
+	 * path needs a name of its own instead of a flag: being this caller
+	 * requires saying so at the call site.
 	 *
 	 * Do not wire this to a server function or a REST route.
 	 */
-	dashboardForReminderJob: (
+	trackingForReminderJob: (
 		ctx: Ctx,
+		input: MonthReportInput,
 		opts: ComplianceOpts = {},
-		paceThreshold: number = BEHIND_PACE_THRESHOLD,
-	) => views.dashboard(ctx, opts, paceThreshold),
+	): Promise<TrackingReport> => computeTracking(ctx, input, opts),
 
 	/**
-	 * The people the compliance machinery applies to — no overhead, no archived —
-	 * for the same job, on the same terms as `dashboardForReminderJob` above.
+	 * The people the tracking machinery applies to — no overhead, no archived —
+	 * for the same job, on the same terms as `trackingForReminderJob` above.
 	 *
 	 * It exists because the month-end Slack push addresses this exact set and was
 	 * selecting every member of the org instead, so the message went to precisely

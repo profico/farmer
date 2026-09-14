@@ -66,12 +66,9 @@ export const reminderSettingsInput = z.object({
 		.max(MAX_NUDGE_DAYS, `At most ${MAX_NUDGE_DAYS} days a week`)
 		.refine((days) => new Set(days).size === days.length, "Pick each once"),
 	nudgeTime: reminderTime,
-	nudgeNoEntries: z.boolean(),
-	// The N of "no entries for N working days". Stored on `orgSettings`, not on
-	// `reminder_settings`: the compliance report reads the same number.
-	complianceMissingDays: z.number().int().min(1).max(30),
-	nudgeBehindPace: z.boolean(),
-	nudgeBehindPacePct: percent,
+	// Who the nudge reaches is the Tracking rule's verdict — "behind", beyond
+	// the org's tolerance — so there are no conditions to set here; the
+	// tolerance is on `orgSettings`, where the report reads it too.
 	nudgeMemberTypes: memberTypes,
 
 	monthEndEnabled: z.boolean(),
@@ -90,8 +87,7 @@ export type ReminderSettings = z.infer<typeof reminderSettingsInput>;
 
 /** What a missing row means — the behaviour the jobs had before these were
  *  settings, except `includeNeverSignedIn`, which is new and off. The column
- *  defaults in `reminder_settings` (and `orgSettings.complianceMissingDays`)
- *  say the same thing. */
+ *  defaults in `reminder_settings` say the same thing. */
 export const REMINDER_SETTINGS_DEFAULTS: ReminderSettings = {
 	logEnabled: true,
 	logMode: "end_of_day",
@@ -100,10 +96,6 @@ export const REMINDER_SETTINGS_DEFAULTS: ReminderSettings = {
 	nudgeEnabled: true,
 	nudgeWeekdays: [2, 5],
 	nudgeTime: "09:00",
-	nudgeNoEntries: true,
-	complianceMissingDays: 3,
-	nudgeBehindPace: true,
-	nudgeBehindPacePct: 90,
 	nudgeMemberTypes: naggableMemberTypeEnum.options,
 	monthEndEnabled: true,
 	monthEndDaysBefore: 0,

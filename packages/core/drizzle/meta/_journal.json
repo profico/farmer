@@ -344,6 +344,13 @@
       "when": 1789299689593,
       "tag": "0048_mature_prowler",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789307592425,
+      "tag": "0049_tracking_tolerance",
+      "breakpoints": true
     }
   ]
 }
