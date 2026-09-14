@@ -9,6 +9,7 @@ import {
 	isNotNull,
 	isNull,
 	lte,
+	ne,
 	notInArray,
 	sql,
 } from "drizzle-orm";
@@ -1371,6 +1372,31 @@ export const timeEntriesService = {
 			with: { task: true },
 		}),
 
+	/** One of the caller's OWN entries with the joins a REST answer names — its
+	 *  task, its project and that project's client — plus its commit count, or
+	 *  undefined.
+	 *
+	 *  For `POST` and `PATCH /api/v1/orgs/$slug/time-entries`, which answer with
+	 *  the entry as `listRange` shows it. `create` and `update` return the bare
+	 *  row, and re-reading the day through `listRange` instead would answer a
+	 *  write with another write, since that read recomputes fill blocks. */
+	getOwnDetailed: async (ctx: Ctx, timeEntryId: string) => {
+		const row = await db.query.timeEntry.findFirst({
+			where: and(
+				eq(timeEntry.id, timeEntryId),
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+			),
+			with: { project: { with: { client: true } }, task: true },
+		});
+		if (!row) return undefined;
+		const [commits] = await db
+			.select({ count: count() })
+			.from(timeEntryGithubCommit)
+			.where(eq(timeEntryGithubCommit.timeEntryId, row.id));
+		return { ...row, commitCount: commits?.count ?? 0 };
+	},
+
 	create: async (
 		ctx: Ctx,
 		input: CreateTimeEntryInput,
@@ -1545,6 +1571,25 @@ export const timeEntriesService = {
 		);
 		assertDescribed(taskRow, input.description, { fillsDay: input.fillsDay });
 
+		// A day holds one fill block (`te_fill_day_uidx`). Asked before the write,
+		// as `create` asks it, because the index answers with a driver error that
+		// the web app and the REST API can only report as a server failure.
+		if (input.fillsDay) {
+			const otherFill = await db.query.timeEntry.findFirst({
+				where: and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.date, input.date),
+					eq(timeEntry.fillsDay, true),
+					ne(timeEntry.id, input.timeEntryId),
+				),
+				columns: { id: true },
+			});
+			if (otherFill) {
+				throw new Error("A work-time block already exists for this day");
+			}
+		}
+
 		const tz = await ctxTimezone(ctx);
 		// The entry being edited is excluded from its own claim: converting a 2h
 		// block into the day's fill block must not count that 2h as competing with
@@ -1598,10 +1643,15 @@ export const timeEntriesService = {
 					.where(eq(timeEntry.id, input.timeEntryId))
 					.returning();
 			} catch (error) {
+				// The check above covers the ordinary case; this covers a fill block
+				// written between that check and this update. drizzle-orm wraps a
+				// failed query in `DrizzleQueryError` and keeps the driver's error in
+				// `cause`, so the constraint is read there, not on `error`.
+				const cause = error instanceof Error ? error.cause : undefined;
 				if (
-					error instanceof postgres.PostgresError &&
-					error.code === "23505" &&
-					error.constraint_name === "te_fill_day_uidx"
+					cause instanceof postgres.PostgresError &&
+					cause.code === "23505" &&
+					cause.constraint_name === "te_fill_day_uidx"
 				) {
 					throw new Error("A work-time block already exists for this day");
 				}

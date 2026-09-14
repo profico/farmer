@@ -6,6 +6,7 @@ import {
 	resolveReportPeriod,
 	shiftMonthKey,
 } from "@farmer/core/lib/report-period";
+import { matchesSearch } from "@farmer/core/lib/search";
 import { addDaysToKey } from "@farmer/core/lib/time";
 import {
 	ArrowLeftIcon,
@@ -44,7 +45,6 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { formatMonthKey, formatWeekRange } from "#/lib/format-date.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 
 import type { PeriodSearch, Search } from "./search.ts";

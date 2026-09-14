@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import {
 	isHourlyMemberType,
 	MEMBER_TYPE_LABELS,
@@ -51,7 +52,6 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
 	membersQuery,

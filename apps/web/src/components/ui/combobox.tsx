@@ -18,7 +18,7 @@ import { cn } from "#/lib/utils.ts";
 //
 // Filtering is the caller's: pass `items` (flat, or groups of `{ value, label,
 // items }`) and `filteredItems` computed with `matchesSearch` from
-// `lib/search.ts`, so a picker folds accents the way every other list in the
+// `@farmer/core/lib/search`, so a picker folds accents the way every other list in the
 // app does. `autoHighlight` keeps the first match ready for Enter.
 
 const Combobox = ComboboxPrimitive.Root;

@@ -1,4 +1,5 @@
 import { formatReportHours } from "@farmer/core/lib/report-format";
+import { matchesSearch } from "@farmer/core/lib/search";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, useMemo, useState } from "react";
@@ -31,7 +32,6 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { projectPageAccess } from "#/lib/project-access.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { clientsQuery } from "#/queries/clients.ts";

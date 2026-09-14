@@ -4,6 +4,7 @@ import {
 	formatReportHours,
 } from "@farmer/core/lib/report-format";
 import { resolveReportPeriod } from "@farmer/core/lib/report-period";
+import { matchesSearch } from "@farmer/core/lib/search";
 import type { AbsenceReportInput } from "@farmer/core/schema";
 import type { AbsenceRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -22,7 +23,6 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { downloadCsv } from "#/lib/csv.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { absenceReportQuery } from "#/queries/reports.ts";
 

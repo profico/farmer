@@ -325,6 +325,37 @@ describe("a read may only rewrite what an automation may rewrite", () => {
 		const fill = (await entriesOn(LONG_CLOSED_DAY)).find((r) => r.fillsDay);
 		expect(fill?.durationSeconds).toBe(5 * 3600);
 	});
+
+	test("turning an entry into a second fill block for its day is refused with a sentence", async () => {
+		// `te_fill_day_uidx` allows one fill block a day. Left to the index, the
+		// update failed as a driver error, which `PATCH /api/v1/…/time-entries/$id`
+		// (`farmer edit --duration fill`) answered as a 500.
+		await addFill(LONG_CLOSED_DAY, 5 * 3600);
+		const entry = await timeEntriesService.create(ctx(), {
+			taskId: devTaskId,
+			projectId,
+			description: "about to become a second fill block",
+			date: LONG_CLOSED_DAY,
+			durationSeconds: 3 * 3600,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		await expect(
+			timeEntriesService.update(ctx(), {
+				timeEntryId: entry.id,
+				taskId: devTaskId,
+				projectId,
+				description: "about to become a second fill block",
+				date: LONG_CLOSED_DAY,
+				overtime: false,
+				fillsDay: true,
+			}),
+		).rejects.toThrow("A work-time block already exists for this day");
+		expect(
+			(await entriesOn(LONG_CLOSED_DAY)).filter((r) => r.fillsDay),
+		).toHaveLength(1);
+	});
 });
 
 describe("a public holiday is a non-working day", () => {

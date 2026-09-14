@@ -2,24 +2,18 @@
 //
 // Everything the MCP endpoint can DO is `assistant-tools.ts`, and that is
 // exercised through `assistant.test.ts` — an adapter onto a service that has
-// its own file. What is new here is the two translations either side of it, and
-// both fail silently:
+// its own file. What is new here is the translation on the way out, and it fails
+// silently: `mcpToolDefinitions` maps the tool registry into what a client is
+// told. A wrong annotation is not an error anywhere; it is a delete that a
+// client stopped asking about, which nobody notices until it has happened.
 //
-//   * `mcpToolDefinitions` maps the tool registry into what a client is told.
-//     A wrong annotation is not an error anywhere; it is a delete that a client
-//     stopped asking about, which nobody notices until it has happened.
-//   * `mcpService.resolveOrgContext` decides whether a stored connection still
-//     answers. It is the only membership check in front of the whole surface,
-//     and its inputs are a slug and a user id — the two things an MCP access
-//     token cannot tell apart from a revoked one.
+// The other half — whether a stored connection still answers at all — is
+// `orgContextService.resolveBySlug`, which the CLI shares, and is tested in
+// `org-context.test.ts`.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-import { eq } from "drizzle-orm";
-
-import { db } from "../db";
-import { member, organization, user } from "../db/schema/auth";
-import { createTestDb, present, type TestDb } from "../test/harness";
+import { present } from "../test/harness";
 import { Access } from "./access.service";
 import {
 	ASSISTANT_TOOLS,
@@ -28,7 +22,6 @@ import {
 	toolsFor,
 } from "./assistant-tools";
 import { mcpToolDefinitions } from "./mcp-tools";
-import { mcpService } from "./mcp.service";
 
 // ── The mapping: a fixed Access in, a stable tool list out ──────────────────
 
@@ -125,112 +118,5 @@ describe("mcpToolDefinitions", () => {
 				present(assistant.get(tool.name), `assistant schema for ${tool.name}`),
 			);
 		}
-	});
-});
-
-// ── The tenancy decision, against a real database ───────────────────────────
-
-let harness: TestDb;
-
-const ORG = "mcp-org";
-const OTHER_ORG = "mcp-org-other";
-
-beforeAll(async () => {
-	harness = await createTestDb();
-
-	await db.insert(organization).values([
-		{ id: ORG, name: "Mcp Org", slug: "mcp-org", createdAt: new Date() },
-		{
-			id: OTHER_ORG,
-			name: "Other Org",
-			slug: "mcp-org-other",
-			createdAt: new Date(),
-		},
-	]);
-
-	await db.insert(user).values(
-		["member", "former", "outsider"].map((id) => ({
-			id: `u-${id}`,
-			name: id,
-			email: `${id}@example.com`,
-			emailVerified: true,
-			createdAt: new Date(),
-			updatedAt: new Date(),
-		})),
-	);
-
-	await db.insert(member).values([
-		{
-			id: "m-member",
-			organizationId: ORG,
-			userId: "u-member",
-			role: "member",
-			createdAt: new Date(),
-		},
-		// A member of the OTHER org only — the cross-org case below.
-		{
-			id: "m-outsider",
-			organizationId: OTHER_ORG,
-			userId: "u-outsider",
-			role: "admin",
-			createdAt: new Date(),
-		},
-	]);
-});
-
-afterAll(async () => {
-	await harness.close();
-});
-
-describe("mcpService.resolveOrgContext", () => {
-	test("resolves the slug to a Ctx for a member", async () => {
-		expect(await mcpService.resolveOrgContext("u-member", "mcp-org")).toEqual({
-			organizationId: ORG,
-			userId: "u-member",
-		});
-	});
-
-	// The case this function exists for. An MCP access token is a credential a
-	// client keeps in a config file until somebody revokes it, so it outlives a
-	// membership by far more than a session does — and nothing in the request
-	// after this point re-asks.
-	test("refuses a member who has since been removed", async () => {
-		await db.insert(member).values({
-			id: "m-former",
-			organizationId: ORG,
-			userId: "u-former",
-			role: "member",
-			createdAt: new Date(),
-		});
-		expect(await mcpService.resolveOrgContext("u-former", "mcp-org")).not.toBe(
-			null,
-		);
-
-		await db.delete(member).where(eq(member.id, "m-former"));
-
-		expect(await mcpService.resolveOrgContext("u-former", "mcp-org")).toBe(
-			null,
-		);
-	});
-
-	test("refuses a member of another organization", async () => {
-		expect(await mcpService.resolveOrgContext("u-outsider", "mcp-org")).toBe(
-			null,
-		);
-	});
-
-	// Both null, deliberately: a valid token must not be usable to find out
-	// which workspaces exist on the deployment.
-	test("answers a slug nobody owns the same way as a non-membership", async () => {
-		const missing = await mcpService.resolveOrgContext(
-			"u-member",
-			"no-such-org",
-		);
-		const forbidden = await mcpService.resolveOrgContext(
-			"u-member",
-			"mcp-org-other",
-		);
-		expect(missing).toBe(null);
-		expect(forbidden).toBe(null);
 	});
 });

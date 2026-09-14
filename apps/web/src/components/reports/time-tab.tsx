@@ -3,6 +3,7 @@ import {
 	formatReportHours,
 } from "@farmer/core/lib/report-format";
 import { resolveReportPeriod } from "@farmer/core/lib/report-period";
+import { matchesSearch } from "@farmer/core/lib/search";
 import type {
 	TimeReportDetailInput,
 	TimeReportSummaryInput,
@@ -28,7 +29,6 @@ import {
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { downloadCsv } from "#/lib/csv.ts";
 import { heldRoleFrom, projectPageAccess } from "#/lib/project-access.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { directoryQuery } from "#/queries/members.ts";

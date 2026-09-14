@@ -1,0 +1,70 @@
+name: CLI release
+
+# Publishes the command-line tool's binaries. Push a tag to run it:
+#
+#   git tag cli-v0.1.0 && git push origin cli-v0.1.0
+#
+# The web app's install script (`curl -fsSL <origin>/cli | sh`) downloads from
+# the newest release whose tag starts with `cli-v`, through a server-side token
+# (see CLI_RELEASES_TOKEN in .env.example), because the repository is private.
+# So a release published here is live for every deployment within about five
+# minutes, which is how long the server caches the release lookup.
+
+on:
+  push:
+    tags: ["cli-v*"]
+
+# Never cancel a release half way: a cancelled run can leave a release with only
+# some of its assets, and the install script would then 404 on the missing ones.
+concurrency:
+  group: cli-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish the CLI binaries
+    runs-on: ubuntu-latest
+    permissions:
+      # `gh release create` writes a release and uploads its assets.
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The tag is what the install script and the release title show, and
+      # `apps/cli/package.json` is what the binary reports as its own version
+      # (and sends to the server, which refuses a binary older than
+      # `minCliVersion`). A release where the two disagree is a binary that
+      # lies about what it is, so it fails here rather than after it ships.
+      - name: Check the tag matches apps/cli/package.json
+        run: |
+          tag_version="${GITHUB_REF_NAME#cli-v}"
+          package_version="$(bun -e 'console.log((await Bun.file("apps/cli/package.json").json()).version)')"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME is version $tag_version, but apps/cli/package.json is $package_version"
+            exit 1
+          fi
+          echo "VERSION=$tag_version" >> "$GITHUB_ENV"
+
+      # One job cross-compiles every target: `bun build --compile --target`
+      # does not need a runner of each OS. It writes the seven binaries and
+      # SHA256SUMS to apps/cli/dist/release/.
+      - name: Build the binaries
+        working-directory: apps/cli
+        run: bun run build:release
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" apps/cli/dist/release/* \
+            --title "Farmer CLI $VERSION" \
+            --generate-notes

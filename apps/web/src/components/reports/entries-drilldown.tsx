@@ -2,6 +2,7 @@ import {
 	formatDecimalHours,
 	formatReportHours,
 } from "@farmer/core/lib/report-format";
+import { matchesSearch } from "@farmer/core/lib/search";
 import type { TimeReportDetailInput } from "@farmer/core/schema";
 import type { TimeReportDetailRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -27,7 +28,6 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { downloadCsv } from "#/lib/csv.ts";
-import { matchesSearch } from "#/lib/search.ts";
 import { cn } from "#/lib/utils.ts";
 import { timeReportDetailQuery } from "#/queries/reports.ts";
 

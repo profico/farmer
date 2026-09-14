@@ -36,6 +36,12 @@ WORKDIR /app
 COPY package.json bun.lock turbo.json ./
 COPY apps/web/package.json apps/web/
 COPY packages/core/package.json packages/core/
+# The CLI is a workspace too, so the lockfile names it, and a frozen install
+# refuses a lockfile whose workspaces are missing from the tree. Only the
+# manifest is needed here: nothing from apps/cli is built into this image or
+# shipped in the runtime stage below. Its binaries come from GitHub Releases
+# (.github/workflows/cli-release.yml).
+COPY apps/cli/package.json apps/cli/
 # Cap network concurrency and retry: the default 48 parallel requests saturate
 # a shared/constrained builder (the Coolify arm64 host runs many containers and
 # builds --no-cache, re-downloading everything each time), which has corrupted a
