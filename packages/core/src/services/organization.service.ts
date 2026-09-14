@@ -2,8 +2,9 @@ import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
+import { toWeekStartsOn } from "../lib/time";
 import type { UpdateOrganizationSettingsInput } from "../schema/organization";
-import { invalidateCtxTimezone, requireAdmin } from "./context";
+import { invalidateCtxOrgCalendar, requireAdmin } from "./context";
 import type { Ctx } from "./types";
 import { assertOwnUpload } from "./uploads.service";
 
@@ -17,6 +18,7 @@ export const organizationService = {
 			name: org.name,
 			country: org.country,
 			timezone: org.timezone,
+			weekStartsOn: toWeekStartsOn(org.weekStartsOn),
 			logo: org.logo,
 		};
 	},
@@ -45,6 +47,9 @@ export const organizationService = {
 			}
 			patch.timezone = input.timezone;
 		}
+		if (input.weekStartsOn !== undefined) {
+			patch.weekStartsOn = input.weekStartsOn;
+		}
 		// An empty string clears the logo; a URL or an uploaded image sets it.
 		if (input.logo !== undefined) {
 			assertOwnUpload(ctx, input.logo);
@@ -56,13 +61,16 @@ export const organizationService = {
 			.where(eq(organization.id, ctx.organizationId))
 			.returning();
 		if (!updated) throw new Error("Organization not found");
-		// The Ctx memoizes the org timezone; a stale one would keep computing
-		// day keys in the old zone for the rest of this request.
-		if (input.timezone !== undefined) invalidateCtxTimezone(ctx);
+		// The Ctx memoizes the org timezone and week start; a stale one would keep
+		// computing day keys and weeks the old way for the rest of this request.
+		if (input.timezone !== undefined || input.weekStartsOn !== undefined) {
+			invalidateCtxOrgCalendar(ctx);
+		}
 		return {
 			name: updated.name,
 			country: updated.country,
 			timezone: updated.timezone,
+			weekStartsOn: toWeekStartsOn(updated.weekStartsOn),
 			logo: updated.logo,
 		};
 	},

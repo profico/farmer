@@ -45,7 +45,7 @@ import {
 } from "#/components/ui/segmented-control.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { WEEKDAYS } from "#/lib/weekdays.ts";
+import { useWeekdays } from "#/hooks/use-week-starts-on.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { orgPolicySettingsQuery } from "#/queries/organization.ts";
 import {
@@ -130,6 +130,7 @@ function useSaveReminders() {
 }
 
 function RemindersPage() {
+	const weekdays = useWeekdays();
 	const orgSlug = useOrgSlug();
 	const { data: settings } = useSuspenseQuery(reminderSettingsQuery(orgSlug));
 	const save = useSaveReminders();
@@ -241,7 +242,7 @@ function RemindersPage() {
 							hint={`At most ${MAX_NUDGE_DAYS} days a week.`}
 						>
 							<PillToggleGroup
-								items={WEEKDAYS.map((w) => ({
+								items={weekdays.map((w) => ({
 									id: String(w.day),
 									label: w.label,
 								}))}
@@ -321,7 +322,7 @@ function RemindersPage() {
 					<>
 						<FieldRow label="Day">
 							<SegmentedControl>
-								{WEEKDAYS.map((w) => (
+								{weekdays.map((w) => (
 									<SegmentedControlItem
 										key={w.day}
 										active={draft.digestWeekday === w.day}

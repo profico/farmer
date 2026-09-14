@@ -6,9 +6,12 @@ import {
 	resolveReportPeriod,
 	shiftMonthKey,
 } from "./report-period";
+import type { WeekStartsOn } from "./time";
 
 // 2026-08-11 is a Tuesday.
 const TODAY = "2026-08-11";
+const MONDAY: WeekStartsOn = 1;
+const SUNDAY: WeekStartsOn = 0;
 
 describe("month keys", () => {
 	test("parse", () => {
@@ -38,7 +41,7 @@ describe("month keys", () => {
 
 describe("resolving a period", () => {
 	test("an empty selection is the current month", () => {
-		expect(resolveReportPeriod({}, TODAY)).toEqual({
+		expect(resolveReportPeriod({}, TODAY, MONDAY)).toEqual({
 			preset: "month",
 			from: "2026-08-01",
 			to: "2026-08-31",
@@ -46,27 +49,47 @@ describe("resolving a period", () => {
 	});
 
 	test("a named month ignores today", () => {
-		expect(resolveReportPeriod({ month: "2026-02" }, TODAY)).toEqual({
+		expect(resolveReportPeriod({ month: "2026-02" }, TODAY, MONDAY)).toEqual({
 			preset: "month",
 			from: "2026-02-01",
 			to: "2026-02-28",
 		});
 	});
 
-	// The timesheet starts weeks on Monday everywhere; a report that disagreed
+	// The timesheet starts weeks on the org's day; a report that disagreed
 	// would make the same seven days add up differently on two screens.
 	test("a week runs Monday to Sunday around today", () => {
-		expect(resolveReportPeriod({ preset: "week" }, TODAY)).toEqual({
+		expect(resolveReportPeriod({ preset: "week" }, TODAY, MONDAY)).toEqual({
 			preset: "week",
 			from: "2026-08-10",
 			to: "2026-08-16",
 		});
 	});
 
+	test("a Sunday org's week runs Sunday to Saturday around today", () => {
+		expect(resolveReportPeriod({ preset: "week" }, TODAY, SUNDAY)).toEqual({
+			preset: "week",
+			from: "2026-08-09",
+			to: "2026-08-15",
+		});
+	});
+
+	// A Sunday is the last day of a Monday week and the first of a Sunday one.
+	test("a Sunday belongs to a different week under each start", () => {
+		const sunday = "2026-08-16";
+		expect(resolveReportPeriod({ preset: "week" }, sunday, MONDAY).from).toBe(
+			"2026-08-10",
+		);
+		expect(resolveReportPeriod({ preset: "week" }, sunday, SUNDAY).from).toBe(
+			"2026-08-16",
+		);
+	});
+
 	test("a week honours an explicit start and is always seven days", () => {
 		const period = resolveReportPeriod(
 			{ preset: "week", from: "2026-07-06" },
 			TODAY,
+			MONDAY,
 		);
 		expect(period).toEqual({
 			preset: "week",
@@ -76,7 +99,7 @@ describe("resolving a period", () => {
 	});
 
 	test("a custom range defaults to the month start through today", () => {
-		expect(resolveReportPeriod({ preset: "custom" }, TODAY)).toEqual({
+		expect(resolveReportPeriod({ preset: "custom" }, TODAY, MONDAY)).toEqual({
 			preset: "custom",
 			from: "2026-08-01",
 			to: TODAY,
@@ -90,13 +113,14 @@ describe("resolving a period", () => {
 			resolveReportPeriod(
 				{ preset: "custom", from: "2026-08-20", to: "2026-08-01" },
 				TODAY,
+				MONDAY,
 			),
 		).toEqual({ preset: "custom", from: "2026-08-20", to: "2026-08-20" });
 	});
 
 	test("from never comes after to", () => {
 		for (const preset of ["month", "week", "custom"] as const) {
-			const { from, to } = resolveReportPeriod({ preset }, TODAY);
+			const { from, to } = resolveReportPeriod({ preset }, TODAY, MONDAY);
 			expect(from <= to).toBe(true);
 		}
 	});
@@ -104,17 +128,25 @@ describe("resolving a period", () => {
 
 describe("current period", () => {
 	test("the default selection is current", () => {
-		expect(isCurrentPeriod({}, TODAY)).toBe(true);
-		expect(isCurrentPeriod({ preset: "week" }, TODAY)).toBe(true);
+		expect(isCurrentPeriod({}, TODAY, MONDAY)).toBe(true);
+		expect(isCurrentPeriod({ preset: "week" }, TODAY, MONDAY)).toBe(true);
+		expect(isCurrentPeriod({ preset: "week" }, TODAY, SUNDAY)).toBe(true);
 	});
 
 	test("a past month is not", () => {
-		expect(isCurrentPeriod({ month: "2026-07" }, TODAY)).toBe(false);
+		expect(isCurrentPeriod({ month: "2026-07" }, TODAY, MONDAY)).toBe(false);
 	});
 
 	test("a past week is not", () => {
-		expect(isCurrentPeriod({ preset: "week", from: "2026-08-03" }, TODAY)).toBe(
-			false,
-		);
+		expect(
+			isCurrentPeriod({ preset: "week", from: "2026-08-03" }, TODAY, MONDAY),
+		).toBe(false);
+	});
+
+	// A Monday-started week is not the current week of a Sunday org.
+	test("a week from another start day is not current", () => {
+		expect(
+			isCurrentPeriod({ preset: "week", from: "2026-08-10" }, TODAY, SUNDAY),
+		).toBe(false);
 	});
 });

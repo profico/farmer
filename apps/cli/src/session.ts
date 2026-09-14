@@ -77,18 +77,21 @@ export const orgPath = (slug: string, suffix: string) =>
 	`/api/v1/orgs/${encodeURIComponent(slug)}${suffix}`;
 
 /** Replaces the cached organization list with `/me`'s, keeping the cached
- *  timezones of the organizations that are still there. */
+ *  timezones and week starts of the organizations that are still there. */
 export const refreshOrganizations = async (
 	session: Session,
 ): Promise<ApiMe> => {
 	const me = await session.api.get<ApiMe>("/api/v1/me");
 	const { server } = session;
-	server.orgs = me.organizations.map((org) => ({
-		slug: org.slug,
-		name: org.name,
-		timeZone:
-			server.orgs.find((cached) => cached.slug === org.slug)?.timeZone ?? null,
-	}));
+	server.orgs = me.organizations.map((org) => {
+		const cached = server.orgs.find((entry) => entry.slug === org.slug);
+		return {
+			slug: org.slug,
+			name: org.name,
+			timeZone: cached?.timeZone ?? null,
+			weekStartsOn: cached?.weekStartsOn ?? null,
+		};
+	});
 	if (server.org && !server.orgs.some((org) => org.slug === server.org)) {
 		server.org = null;
 	}
@@ -166,11 +169,15 @@ export const scopeOrg = async (
 		}
 	}
 
-	if (!entry.timeZone) {
+	let { timeZone, weekStartsOn } = entry;
+	if (!timeZone || weekStartsOn === null) {
 		const whoami = await session.api.get<ApiWhoami>(
 			orgPath(entry.slug, "/whoami"),
 		);
-		entry.timeZone = whoami.timezone;
+		timeZone = whoami.timezone;
+		weekStartsOn = whoami.weekStartsOn;
+		entry.timeZone = timeZone;
+		entry.weekStartsOn = weekStartsOn;
 		changed = true;
 	}
 	if (changed) await saveConfig(session);
@@ -179,7 +186,7 @@ export const scopeOrg = async (
 	return {
 		slug: resolved,
 		name: entry.name,
-		clock: { timeZone: entry.timeZone, now: session.runtime.now() },
+		clock: { timeZone, weekStartsOn, now: session.runtime.now() },
 		path: (suffix) => orgPath(resolved, suffix),
 	};
 };

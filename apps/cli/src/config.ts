@@ -37,6 +37,12 @@ const orgEntry = z.object({
 	name: z.string(),
 	/** Cached from `whoami`, so a relative date needs no request. */
 	timeZone: z.string().nullable(),
+	/** Cached from `whoami`, same as `timeZone`. An old config file has no such
+	 *  key, so a missing value reads as unset rather than failing to parse. */
+	weekStartsOn: z
+		.union([z.literal(0), z.literal(1)])
+		.nullable()
+		.default(null),
 });
 
 const serverEntry = z.object({

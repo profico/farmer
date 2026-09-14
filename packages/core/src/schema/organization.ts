@@ -12,6 +12,10 @@ export const updateOrganizationSettingsInput = z.object({
 	// A raw IANA zone identifier (e.g. "Europe/Sarajevo"); re-validated
 	// server-side in organization.service.ts before being written.
 	timezone: z.string().trim().min(1).max(100).optional(),
+	// The day weeks start on, as Date#getDay() numbers it: 1 = Monday, 0 =
+	// Sunday. Every week the app draws starts on it — the timesheet, the home
+	// page, the week report, the date pickers and the CLI's `--week`.
+	weekStartsOn: z.union([z.literal(0), z.literal(1)]).optional(),
 	// The org's own logo, shown in the app chrome in place of the Profico
 	// fallback: a URL somebody pasted, or the path of an uploaded image. An
 	// empty string clears it (→ null).

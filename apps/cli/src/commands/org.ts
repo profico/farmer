@@ -63,6 +63,7 @@ export const orgUse: Command = {
 		}
 		const who = await session.api.get<ApiWhoami>(orgPath(slug, "/whoami"));
 		entry.timeZone = who.timezone;
+		entry.weekStartsOn = who.weekStartsOn;
 		session.server.org = slug;
 		await saveConfig(session);
 

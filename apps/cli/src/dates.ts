@@ -3,6 +3,7 @@ import {
 	dayKeyInTz,
 	isValidDayKey,
 	startOfWeekKey,
+	type WeekStartsOn,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
 
@@ -12,9 +13,14 @@ import { UsageError } from "./errors";
  * "Now" as the organization sees it. Every relative date the CLI reads is
  * resolved in the ORG's timezone, not the laptop's: somebody working from a
  * timezone eight hours away logs against the organization's calendar, which is
- * the calendar every report reads.
+ * the calendar every report reads. `weekStartsOn` is the same idea for a week:
+ * the organization's own start day, not an assumed Monday.
  */
-export type OrgClock = { timeZone: string; now: Date };
+export type OrgClock = {
+	timeZone: string;
+	weekStartsOn: WeekStartsOn;
+	now: Date;
+};
 
 export type DaySpan = { from: string; to: string };
 
@@ -77,8 +83,11 @@ export const parseDaySpan = (input: string, clock: OrgClock): DaySpan => {
 	return { from, to };
 };
 
-/** Monday to Sunday around `day`. */
-export const weekAround = (day: string): DaySpan => {
-	const from = startOfWeekKey(day);
+/** The seven-day span around `day`, starting on `weekStartsOn`. */
+export const weekAround = (
+	day: string,
+	weekStartsOn: WeekStartsOn,
+): DaySpan => {
+	const from = startOfWeekKey(day, weekStartsOn);
 	return { from, to: addDaysToKey(from, 6) };
 };

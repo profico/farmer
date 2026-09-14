@@ -1,3 +1,4 @@
+import type { WeekStartsOn } from "../lib/time";
 import type { Access } from "./access.service";
 
 /** Per-request memo, reached only through the helpers in `./context`.
@@ -8,6 +9,7 @@ export const CTX_MEMO = Symbol.for("farmer.ctx.memo");
 
 export type CtxMemo = {
 	timezone?: Promise<string>;
+	weekStartsOn?: Promise<WeekStartsOn>;
 	access?: Promise<Access>;
 	/** The org's holiday-calendar inputs (country + opted-out names). Owned by
 	 *  `holidays.service`, which is the only thing that reads or clears it. */

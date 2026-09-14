@@ -12,8 +12,12 @@ import {
 // Sarajevo (UTC+2 in September). Every case below depends on the org's zone
 // winning over UTC, which is what the laptop of a remote worker may be on.
 const NOW = new Date("2026-09-14T23:30:00Z");
-const sarajevo: OrgClock = { timeZone: "Europe/Sarajevo", now: NOW };
-const utc: OrgClock = { timeZone: "UTC", now: NOW };
+const sarajevo: OrgClock = {
+	timeZone: "Europe/Sarajevo",
+	weekStartsOn: 1,
+	now: NOW,
+};
+const utc: OrgClock = { timeZone: "UTC", weekStartsOn: 1, now: NOW };
 
 describe("parseDay", () => {
 	test("today is computed in the org timezone", () => {
@@ -66,13 +70,23 @@ describe("parseDaySpan", () => {
 	});
 });
 
-test("weekAround is Monday to Sunday", () => {
-	expect(weekAround("2026-09-15")).toEqual({
+test("weekAround starts the week on weekStartsOn", () => {
+	// 2026-09-15 is a Tuesday: a Monday-start week runs 2026-09-14..2026-09-20.
+	expect(weekAround("2026-09-15", 1)).toEqual({
 		from: "2026-09-14",
 		to: "2026-09-20",
 	});
-	expect(weekAround("2026-09-20")).toEqual({
+	expect(weekAround("2026-09-20", 1)).toEqual({
 		from: "2026-09-14",
 		to: "2026-09-20",
+	});
+	// A Sunday-start week instead runs Sunday to Saturday.
+	expect(weekAround("2026-09-15", 0)).toEqual({
+		from: "2026-09-13",
+		to: "2026-09-19",
+	});
+	expect(weekAround("2026-09-20", 0)).toEqual({
+		from: "2026-09-20",
+		to: "2026-09-26",
 	});
 });

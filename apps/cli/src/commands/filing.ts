@@ -42,7 +42,7 @@ export const unfiled: Command = {
 	usage: UNFILED_USAGE,
 	summary: "List worked time that has no project yet. The default is today.",
 	help: [
-		"  --week        The whole week (Monday to Sunday).",
+		"  --week        The whole week, as the organization starts it.",
 		"  -d, --date    The day, or a day in the week. The default is today.",
 	],
 	run: async (args, runtime) => {
@@ -55,7 +55,9 @@ export const unfiled: Command = {
 		const out = createOutput(values.json === true, runtime.env);
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const day = parseDay(values.date ?? "today", scope.clock);
-		const span = values.week ? weekAround(day) : { from: day, to: day };
+		const span = values.week
+			? weekAround(day, scope.clock.weekStartsOn)
+			: { from: day, to: day };
 		const items = await listUnfiled(session, scope, span);
 
 		if (out.json) {
@@ -120,7 +122,10 @@ export const file: Command = {
 		);
 		const out = createOutput(values.json === true, runtime.env);
 		const { session, scope } = await openOrg(runtime, out, values.org);
-		const span = weekAround(parseDay(values.date ?? "today", scope.clock));
+		const span = weekAround(
+			parseDay(values.date ?? "today", scope.clock),
+			scope.clock.weekStartsOn,
+		);
 		const candidates = await listUnfiled(session, scope, span);
 
 		let ids: string[];
@@ -266,14 +271,18 @@ export const copyWeek: Command = {
 			throw new UsageError("Pass --last or the weeks, not both.");
 		}
 		const { session, scope } = await openOrg(runtime, out, values.org);
-		const thisWeek = startOfWeekKey(todayKey(scope.clock));
+		const weekStartsOn = scope.clock.weekStartsOn;
+		const thisWeek = startOfWeekKey(todayKey(scope.clock), weekStartsOn);
 
 		let toWeekStart = values.last ? addDaysToKey(thisWeek, -7) : thisWeek;
 		let fromWeekStart = addDaysToKey(toWeekStart, -7);
 		if (fromText !== undefined) {
-			fromWeekStart = startOfWeekKey(parseDay(fromText, scope.clock));
+			fromWeekStart = startOfWeekKey(
+				parseDay(fromText, scope.clock),
+				weekStartsOn,
+			);
 			toWeekStart = toText
-				? startOfWeekKey(parseDay(toText, scope.clock))
+				? startOfWeekKey(parseDay(toText, scope.clock), weekStartsOn)
 				: thisWeek;
 		}
 		if (fromWeekStart === toWeekStart) {

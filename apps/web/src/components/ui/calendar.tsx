@@ -8,8 +8,10 @@ import {
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import * as React from "react";
 
+import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { formatDateKeyLong, formatMonthKey } from "#/lib/format-date.ts";
 import { cn } from "#/lib/utils.ts";
+import { orderedWeekdays } from "#/lib/weekdays.ts";
 
 /**
  * A month grid over `yyyy-MM-dd` keys.
@@ -22,10 +24,8 @@ import { cn } from "#/lib/utils.ts";
  * the one bug class those helpers were written to remove. The grid arithmetic
  * that buys is six lines; the conversions would have been everywhere.
  *
- * The week starts Monday, matching `startOfWeekKey` and the week grid.
+ * The week starts on the organization's `weekStartsOn`, matching the week grid.
  */
-
-const WEEKDAY_INITIALS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 /** Six rows always, so the popover doesn't change height between months. */
 const WEEKS = 6;
@@ -76,9 +76,10 @@ export function Calendar({
 	const [focusedDay, setFocusedDay] = React.useState<string | null>(null);
 	const ownGridRef = React.useRef<HTMLDivElement>(null);
 	const gridRef = externalGridRef ?? ownGridRef;
+	const weekStartsOn = useWeekStartsOn();
 
 	const firstOfMonth = `${month}-01`;
-	const gridStart = startOfWeekKey(firstOfMonth);
+	const gridStart = startOfWeekKey(firstOfMonth, weekStartsOn);
 	const days = Array.from({ length: WEEKS * 7 }, (_, i) =>
 		addDaysToKey(gridStart, i),
 	);
@@ -133,12 +134,12 @@ export function Calendar({
 		}
 		if (event.key === "Home") {
 			event.preventDefault();
-			moveTo(startOfWeekKey(day));
+			moveTo(startOfWeekKey(day, weekStartsOn));
 			return;
 		}
 		if (event.key === "End") {
 			event.preventDefault();
-			moveTo(addDaysToKey(startOfWeekKey(day), 6));
+			moveTo(addDaysToKey(startOfWeekKey(day, weekStartsOn), 6));
 			return;
 		}
 		if (event.key === "PageUp" || event.key === "PageDown") {
@@ -191,13 +192,13 @@ export function Calendar({
 			</div>
 
 			<div className="grid grid-cols-7 gap-0.5 pb-1">
-				{WEEKDAY_INITIALS.map((label) => (
+				{orderedWeekdays(weekStartsOn).map(({ day, short }) => (
 					<div
-						key={label}
+						key={day}
 						aria-hidden
 						className="flex h-7 items-center justify-center text-xs font-medium text-faint"
 					>
-						{label}
+						{short}
 					</div>
 				))}
 			</div>

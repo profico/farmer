@@ -33,8 +33,8 @@ import {
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useWeekdays } from "#/hooks/use-week-starts-on.ts";
 import { cn } from "#/lib/utils.ts";
-import { WEEKDAYS } from "#/lib/weekdays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
 import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
@@ -110,6 +110,7 @@ function RecurringBlockRuleDialog({
 
 	const projectId = form.watch("projectId");
 	const daysOfWeek = form.watch("daysOfWeek");
+	const weekdays = useWeekdays();
 	// The task list follows the chosen project: with one it is the whole grouped
 	// list, without one the short project-less list (time off and the built-ins).
 	const { data: taskOptions = [] } = useSuspenseQuery(
@@ -257,7 +258,7 @@ function RecurringBlockRuleDialog({
 						<FormItem>
 							<FormLabel required>Days</FormLabel>
 							<div className="flex gap-1">
-								{WEEKDAYS.map(({ day, initial }) => (
+								{weekdays.map(({ day, initial }) => (
 									<button
 										key={day}
 										type="button"

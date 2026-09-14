@@ -70,7 +70,7 @@ function ReportsPage() {
 				eyebrow={
 					tab === "compliance"
 						? formatMonthKey(month)
-						: periodLabel(search, today)
+						: periodLabel(search, today, organization.weekStartsOn)
 				}
 				title="Reports"
 				// The report tabs sit on the eyebrow row, where every other screen

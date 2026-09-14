@@ -59,6 +59,7 @@ import {
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useWeekdays } from "#/hooks/use-week-starts-on.ts";
 import {
 	readEntryOptions,
 	readLastPick,
@@ -68,7 +69,6 @@ import {
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
-import { WEEKDAYS } from "#/lib/weekdays.ts";
 import {
 	attachedCommitsQuery,
 	attachedPullRequestsQuery,
@@ -293,6 +293,7 @@ export function AddBlockDialog({
 	const repeatEnabled = form.watch("repeatEnabled");
 	const fillsDay = form.watch("fillsDay");
 	const daysOfWeek = form.watch("daysOfWeek");
+	const weekdays = useWeekdays();
 
 	// The task list follows the project: with one it is the whole grouped list,
 	// without one the short project-less list (time off and the built-ins) — so
@@ -1428,7 +1429,7 @@ export function AddBlockDialog({
 																>
 																	<div className="mt-3 flex flex-col gap-3">
 																		<div className="flex gap-1">
-																			{WEEKDAYS.map(({ day, initial }) => (
+																			{weekdays.map(({ day, initial }) => (
 																				<button
 																					key={day}
 																					type="button"

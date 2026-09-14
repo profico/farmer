@@ -21,6 +21,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/whoami")({
 					const {
 						ctxAccess,
 						ctxTimezone,
+						ctxWeekStartsOn,
 						membersService,
 						orgContextService,
 						projectsService,
@@ -28,15 +29,23 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/whoami")({
 					} = await import("@farmer/core/services");
 					const { dayKeyInTz } = await import("@farmer/core/lib/time");
 
-					const [access, people, workingHours, timezone, org, projects] =
-						await Promise.all([
-							ctxAccess(ctx),
-							membersService.list(ctx),
-							workingHoursService.list(ctx),
-							ctxTimezone(ctx),
-							orgContextService.organizationOf(ctx),
-							projectsService.listMine(ctx),
-						]);
+					const [
+						access,
+						people,
+						workingHours,
+						timezone,
+						weekStartsOn,
+						org,
+						projects,
+					] = await Promise.all([
+						ctxAccess(ctx),
+						membersService.list(ctx),
+						workingHoursService.list(ctx),
+						ctxTimezone(ctx),
+						ctxWeekStartsOn(ctx),
+						orgContextService.organizationOf(ctx),
+						projectsService.listMine(ctx),
+					]);
 					const me = people.find((person) => person.userId === ctx.userId);
 
 					return {
@@ -48,6 +57,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/whoami")({
 						isAdmin: access.isAdmin,
 						timezone,
 						today: dayKeyInTz(new Date(), timezone),
+						weekStartsOn,
 						// Enabled days only, as the tool answers. A day with no times is
 						// not a schedule the CLI can print, so it is left out rather than
 						// sent as nulls a binary does not expect.

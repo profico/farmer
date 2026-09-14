@@ -6,7 +6,7 @@ import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import { WorkingHoursRow } from "#/components/working-hours-row.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { WEEKDAYS } from "#/lib/weekdays.ts";
+import { useWeekdays } from "#/hooks/use-week-starts-on.ts";
 import { workingHoursQuery } from "#/queries/working-hours.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/my-schedule")({
@@ -22,7 +22,9 @@ function MySchedulePage() {
 	const { organization } = Route.useRouteContext();
 	const { data: days } = useSuspenseQuery(workingHoursQuery(orgSlug));
 
-	const orderedDays = WEEKDAYS.map(({ day }) =>
+	const weekdays = useWeekdays();
+
+	const orderedDays = weekdays.map(({ day }) =>
 		days.find((d) => d.dayOfWeek === day),
 	);
 	return (

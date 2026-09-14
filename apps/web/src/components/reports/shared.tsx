@@ -7,7 +7,7 @@ import {
 	shiftMonthKey,
 } from "@farmer/core/lib/report-period";
 import { matchesSearch } from "@farmer/core/lib/search";
-import { addDaysToKey } from "@farmer/core/lib/time";
+import { addDaysToKey, type WeekStartsOn } from "@farmer/core/lib/time";
 import {
 	ArrowLeftIcon,
 	ArrowRightIcon,
@@ -44,6 +44,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
+import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { formatMonthKey, formatWeekRange } from "#/lib/format-date.ts";
 import { cn } from "#/lib/utils.ts";
 
@@ -136,8 +137,12 @@ export function MonthFramed({
 
 /** What the period reads as — "August 2026", "Q3 2026", "2026", or a range —
  *  for the stepper and for the page's eyebrow, so the two never disagree. */
-export const periodLabel = (search: PeriodSearch, today: string) => {
-	const { preset, from, to } = resolveReportPeriod(search, today);
+export const periodLabel = (
+	search: PeriodSearch,
+	today: string,
+	weekStartsOn: WeekStartsOn,
+) => {
+	const { preset, from, to } = resolveReportPeriod(search, today, weekStartsOn);
 	const month = search.month ?? today.slice(0, 7);
 	return preset === "month"
 		? formatMonthKey(month)
@@ -183,7 +188,8 @@ export function PeriodPicker<S extends PeriodSearch>({
 	navigateTo: (search: S) => void;
 	children?: React.ReactNode;
 }) {
-	const { preset, from, to } = resolveReportPeriod(search, today);
+	const weekStartsOn = useWeekStartsOn();
+	const { preset, from, to } = resolveReportPeriod(search, today, weekStartsOn);
 	const month = search.month ?? thisMonth;
 
 	// A drill-down keeps its filters across a period change on purpose: "this
@@ -214,8 +220,8 @@ export function PeriodPicker<S extends PeriodSearch>({
 				),
 		});
 
-	const label = periodLabel(search, today);
-	const atNow = isCurrentPeriod(search, today);
+	const label = periodLabel(search, today, weekStartsOn);
+	const atNow = isCurrentPeriod(search, today, weekStartsOn);
 
 	return (
 		<div className="flex flex-wrap items-center gap-3">

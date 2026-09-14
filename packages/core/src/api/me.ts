@@ -1,3 +1,4 @@
+import type { WeekStartsOn } from "../lib/time";
 import type { Access } from "../services/access.service";
 
 /** The role a person holds on a project, as `Access.heldAs` answers it. */
@@ -33,6 +34,9 @@ export type ApiWhoami = {
 	timezone: string;
 	/** yyyy-MM-dd in `timezone`, at the moment of the request. */
 	today: string;
+	/** The day the org's weeks start on: 1 = Monday, 0 = Sunday. The CLI's
+	 *  `--week` and `copy-week` use it. */
+	weekStartsOn: WeekStartsOn;
 	/** Enabled days only. 0 = Sunday. `HH:mm`. */
 	workingDays: { dayOfWeek: number; startTime: string; endTime: string }[];
 	projects: { id: string; name: string; role: ApiProjectRole | null }[];

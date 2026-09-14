@@ -12,6 +12,7 @@ import {
 	endOfMonthKey,
 	monthKeyOf,
 	startOfWeekKey,
+	type WeekStartsOn,
 } from "./time";
 
 export type PeriodPreset = "week" | "month" | "quarter" | "year" | "custom";
@@ -92,17 +93,19 @@ export const trailingMonths = (
  *
  * `today` is passed in rather than read from the clock: the answer depends on
  * the org's display timezone, which only the caller knows, and a function that
- * reads the clock cannot be pinned by a test.
+ * reads the clock cannot be pinned by a test. `weekStartsOn` is the org's, so
+ * a week report covers the same seven days the timesheet draws.
  */
 export const resolveReportPeriod = (
 	selection: PeriodSelection,
 	today: string,
+	weekStartsOn: WeekStartsOn,
 ): ResolvedPeriod => {
 	const thisMonth = monthKeyOf(today);
 	const preset = selection.preset ?? "month";
 
 	if (preset === "week") {
-		const from = selection.from ?? startOfWeekKey(today);
+		const from = selection.from ?? startOfWeekKey(today, weekStartsOn);
 		return { preset, from, to: addDaysToKey(from, 6) };
 	}
 
@@ -136,9 +139,14 @@ export const monthsPerStep = (preset: PeriodPreset): number =>
 export const isCurrentPeriod = (
 	selection: PeriodSelection,
 	today: string,
+	weekStartsOn: WeekStartsOn,
 ): boolean => {
-	const { preset, from, to } = resolveReportPeriod(selection, today);
-	if (preset === "week") return from === startOfWeekKey(today);
+	const { preset, from, to } = resolveReportPeriod(
+		selection,
+		today,
+		weekStartsOn,
+	);
+	if (preset === "week") return from === startOfWeekKey(today, weekStartsOn);
 	if (preset === "quarter" || preset === "year") {
 		return from <= today && today <= to;
 	}

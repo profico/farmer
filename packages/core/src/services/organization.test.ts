@@ -1,4 +1,4 @@
-// Organization settings: name, country, timezone and logo.
+// Organization settings: name, country, timezone, week start and logo.
 //
 // The timezone is the field with teeth. Every day key in the product is
 // computed in it, so an invalid zone must never reach the row, and a write to
@@ -12,7 +12,7 @@ import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
-import { ctxTimezone } from "./context";
+import { ctxTimezone, ctxWeekStartsOn } from "./context";
 import { organizationService } from "./organization.service";
 import type { Ctx } from "./types";
 
@@ -79,6 +79,7 @@ describe("getSettings", () => {
 			name: "Org A",
 			country: "US",
 			timezone: "UTC",
+			weekStartsOn: 1,
 			logo: null,
 		});
 	});
@@ -116,6 +117,18 @@ describe("updateSettings", () => {
 			timezone: "Europe/Sarajevo",
 		});
 		expect((await orgRow(ORG_A)).timezone).toBe("Europe/Sarajevo");
+	});
+
+	test("the week start is stored and answered as the org's", async () => {
+		const updated = await organizationService.updateSettings(ctx(ADMIN), {
+			weekStartsOn: 0,
+		});
+		expect(updated.weekStartsOn).toBe(0);
+		expect((await orgRow(ORG_A)).weekStartsOn).toBe(0);
+		expect((await orgRow(ORG_B)).weekStartsOn).toBe(1);
+
+		await organizationService.updateSettings(ctx(ADMIN), { weekStartsOn: 1 });
+		expect((await orgRow(ORG_A)).weekStartsOn).toBe(1);
 	});
 
 	test("a URL sets the logo and an empty string clears it", async () => {
@@ -158,5 +171,15 @@ describe("updateSettings", () => {
 		expect(await ctxTimezone(c)).toBe("UTC");
 		await organizationService.updateSettings(c, { timezone: "Asia/Tokyo" });
 		expect(await ctxTimezone(c)).toBe("Asia/Tokyo");
+	});
+
+	// The week start is memoized beside it; the week target reads it.
+	test("a week start write is visible to the same Ctx straight away", async () => {
+		const c = ctx(ADMIN);
+		await organizationService.updateSettings(c, { weekStartsOn: 1 });
+		expect(await ctxWeekStartsOn(c)).toBe(1);
+		await organizationService.updateSettings(c, { weekStartsOn: 0 });
+		expect(await ctxWeekStartsOn(c)).toBe(0);
+		await organizationService.updateSettings(c, { weekStartsOn: 1 });
 	});
 });

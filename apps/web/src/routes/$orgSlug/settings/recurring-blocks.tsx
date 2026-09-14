@@ -40,10 +40,10 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useWeekdays } from "#/hooks/use-week-starts-on.ts";
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
-import { WEEKDAYS } from "#/lib/weekdays.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
@@ -65,9 +65,10 @@ export const Route = createFileRoute("/$orgSlug/settings/recurring-blocks")({
 });
 
 function DayPills({ daysOfWeek }: { daysOfWeek: number[] }) {
+	const weekdays = useWeekdays();
 	return (
 		<div className="flex gap-1">
-			{WEEKDAYS.map(({ day, initial }) => (
+			{weekdays.map(({ day, initial }) => (
 				<span
 					key={day}
 					className={cn(

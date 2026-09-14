@@ -1,3 +1,4 @@
+import type { WeekStartsOn } from "@farmer/core/lib/time";
 import {
 	isUploadedFile,
 	MAX_UPLOAD_BYTES,
@@ -57,6 +58,12 @@ export const Route = createFileRoute("/$orgSlug/settings/organization")({
 	component: OrganizationSettingsPage,
 });
 
+// Date#getDay() numbers, as strings for the select.
+const WEEK_START_ITEMS = [
+	{ value: "1", label: "Monday" },
+	{ value: "0", label: "Sunday" },
+];
+
 function OrganizationSettingsPage() {
 	const orgSlug = useOrgSlug();
 	const { data: settings } = useSuspenseQuery(orgSettingsQuery(orgSlug));
@@ -70,6 +77,7 @@ function OrganizationSettingsPage() {
 		mutationFn: (data: {
 			name?: string;
 			country?: string;
+			weekStartsOn?: WeekStartsOn;
 			logo?: string | null;
 		}) => updateOrgSettings({ data }),
 		onSuccess: async () => {
@@ -80,10 +88,15 @@ function OrganizationSettingsPage() {
 				queryClient.invalidateQueries({
 					queryKey: [...queryKeys(orgSlug).holidays],
 				}),
+				// The home page's week target is read over the org's week.
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).compliance],
+				}),
 			]);
-			// The sidebar/switcher read the org (name + logo) from route context,
-			// resolved in the layout's beforeLoad — re-run it so a change shows
-			// immediately instead of on the next navigation.
+			// The sidebar/switcher read the org (name + logo) and every week reads
+			// its start day from route context, resolved in the layout's beforeLoad
+			// — re-run it so a change shows immediately instead of on the next
+			// navigation.
 			await router.invalidate();
 			toast.success("Organization settings saved");
 		},
@@ -183,6 +196,31 @@ function OrganizationSettingsPage() {
 						{countries.map((c) => (
 							<SelectItem key={c.code} value={c.code}>
 								{c.name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</PageSection>
+
+			<PageSection
+				title="Week starts on"
+				description="The first day of every week in this organization: the timesheet, the home page, week reports, date pickers and the CLI."
+			>
+				<Select
+					value={String(settings.weekStartsOn)}
+					onValueChange={(value) =>
+						value && mutation.mutate({ weekStartsOn: value === "0" ? 0 : 1 })
+					}
+					disabled={mutation.isPending}
+					items={WEEK_START_ITEMS}
+				>
+					<SelectTrigger className="w-full max-w-sm bg-card">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{WEEK_START_ITEMS.map((item) => (
+							<SelectItem key={item.value} value={item.value}>
+								{item.label}
 							</SelectItem>
 						))}
 					</SelectContent>

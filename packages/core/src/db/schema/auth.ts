@@ -93,6 +93,7 @@ export const organization = pgTable(
     metadata: text("metadata"),
     timezone: text("timezone").default("UTC").notNull(),
     country: text("country").default("US").notNull(),
+    weekStartsOn: integer("week_starts_on").default(1).notNull(),
   },
   (table) => [uniqueIndex("organization_slug_uidx").on(table.slug)],
 );

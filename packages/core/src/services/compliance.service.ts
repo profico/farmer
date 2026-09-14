@@ -13,7 +13,7 @@ import {
 import { isHourlyMemberType } from "../schema/members";
 import type { MonthReportInput } from "../schema/reports";
 import { accessService } from "./access.service";
-import { ctxAccess, ctxTimezone } from "./context";
+import { ctxAccess, ctxTimezone, ctxWeekStartsOn } from "./context";
 import { holidaysService } from "./holidays.service";
 import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { ledgerByUser } from "./ledger";
@@ -343,7 +343,7 @@ export const complianceService = {
 	 * the strip on the timesheet, so how much is missing is never more than one
 	 * look away, and never a different verdict than the one their lead reads on
 	 * Tracking. The month is the Tracking row for this one person; the week is
-	 * the same rule on Monday-to-Sunday: working days × a day's worth, where
+	 * the same rule on the org's week: working days × a day's worth, where
 	 * you should be by today = the working days elapsed × the same — elapsed
 	 * meaning working days strictly BEFORE today, the same count Tracking
 	 * uses, so a partly-worked today is never claimed early. The verdict and
@@ -359,7 +359,10 @@ export const complianceService = {
 		ctx: Ctx,
 		opts: Pick<ComplianceOpts, "now"> = {},
 	): Promise<MyTargets> => {
-		const tz = await ctxTimezone(ctx);
+		const [tz, weekStartsOn] = await Promise.all([
+			ctxTimezone(ctx),
+			ctxWeekStartsOn(ctx),
+		]);
 		const today = dayKeyInTz(opts.now ?? new Date(), tz);
 		const year = Number(today.slice(0, 4));
 		const month = Number(today.slice(5, 7));
@@ -378,7 +381,7 @@ export const complianceService = {
 					) * QUARTER_HOUR_SECONDS
 				: WORKING_DAY_SECONDS;
 
-		const weekFrom = startOfWeekKey(today);
+		const weekFrom = startOfWeekKey(today, weekStartsOn);
 		const weekTo = addDaysToKey(weekFrom, 6);
 		// Strictly before today — the day before, so "through yesterday" is a
 		// single range endpoint rather than a special case at either end.

@@ -87,7 +87,11 @@ function ProjectPage() {
 
 	const today = dayKeyInTz(new Date(), organization.timezone);
 	const thisMonth = today.slice(0, 7);
-	const { from, to } = resolveReportPeriod(search, today);
+	const { from, to } = resolveReportPeriod(
+		search,
+		today,
+		organization.weekStartsOn,
+	);
 	const by: EntryGroup = search.by ?? "teammate";
 	const input: TimeReportDetailInput = { from, to, projectId };
 	const archived = project.status === "archived";

@@ -14,7 +14,8 @@
 // share a single query instead of racing to issue two.
 
 import { db } from "../db";
-import { orgTimezone } from "../lib/org-time";
+import { orgTimezone, orgWeekStartsOn } from "../lib/org-time";
+import type { WeekStartsOn } from "../lib/time";
 import { type Access, accessService } from "./access.service";
 import { ctxDb, type DbClient } from "./db-ctx";
 import { CTX_MEMO, type Ctx, type CtxMemo } from "./types";
@@ -64,6 +65,14 @@ export const ctxTimezone = (ctx: Ctx): Promise<string> => {
 	return memo.timezone;
 };
 
+/** The day the organization's weeks start on, resolved once per Ctx, on
+ *  `ctxDb(ctx)` for the same reason as the timezone above. */
+export const ctxWeekStartsOn = (ctx: Ctx): Promise<WeekStartsOn> => {
+	const memo = memoOf(ctx);
+	memo.weekStartsOn ??= orgWeekStartsOn(ctx.organizationId, ctxDb(ctx));
+	return memo.weekStartsOn;
+};
+
 /** The caller's authorization picture, resolved once per Ctx. Resolved through
  *  `ctxDb` for the same reason as the timezone above. */
 export const ctxAccess = (ctx: Ctx): Promise<Access> => {
@@ -96,10 +105,13 @@ export const invalidateCtxAccess = (ctx: Ctx): void => {
 	if (memo) memo.access = undefined;
 };
 
-/** Drop the memoized timezone, after an org settings write changed it. */
-export const invalidateCtxTimezone = (ctx: Ctx): void => {
+/** Drop the memoized timezone and week start, after an org settings write
+ *  changed either. */
+export const invalidateCtxOrgCalendar = (ctx: Ctx): void => {
 	const memo = ctx[CTX_MEMO];
-	if (memo) memo.timezone = undefined;
+	if (!memo) return;
+	memo.timezone = undefined;
+	memo.weekStartsOn = undefined;
 };
 
 /** Run `fn` in a transaction, giving it a Ctx bound to that transaction.
@@ -124,6 +136,7 @@ export const withCtxTx = async <T>(
 		Object.defineProperty(txCtx, CTX_MEMO, {
 			value: {
 				timezone: parent.timezone,
+				weekStartsOn: parent.weekStartsOn,
 				access: parent.access,
 				tx,
 			} satisfies CtxMemo,

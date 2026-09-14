@@ -298,6 +298,13 @@ export const auth = betterAuth({
 							required: true,
 							defaultValue: "US",
 						},
+						// Date#getDay() numbering: 1 = Monday, 0 = Sunday. See
+						// `WeekStartsOn` in lib/time.ts.
+						weekStartsOn: {
+							type: "number",
+							required: true,
+							defaultValue: 1,
+						},
 					},
 				},
 			},

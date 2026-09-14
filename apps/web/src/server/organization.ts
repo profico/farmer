@@ -38,6 +38,7 @@ export const enterOrganization = createServerFn({ method: "POST" })
 		const { db } = await import("@farmer/core/db");
 		const { organization } = await import("@farmer/core/schema/auth");
 		const { membersService } = await import("@farmer/core/services");
+		const { toWeekStartsOn } = await import("@farmer/core/lib/time");
 
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.slug, slug),
@@ -60,7 +61,12 @@ export const enterOrganization = createServerFn({ method: "POST" })
 			});
 		}
 
-		return { session: context.session, organization: org, role };
+		return {
+			session: context.session,
+			// The column is a plain integer; every week on screen reads this one.
+			organization: { ...org, weekStartsOn: toWeekStartsOn(org.weekStartsOn) },
+			role,
+		};
 	});
 
 // No client input: userId and activeOrganizationId are both derived from the

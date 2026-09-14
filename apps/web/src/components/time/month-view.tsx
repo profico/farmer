@@ -19,18 +19,13 @@ import {
 	TimeToolbar,
 } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { formatMonthKey } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { groupByDay } from "#/lib/group-by-day.ts";
 import { cn } from "#/lib/utils.ts";
+import { orderedWeekdays } from "#/lib/weekdays.ts";
 
-// Monday-first, like the week strip and the week grid. The month was the one
-// screen in the app that started its week on Sunday, which shifted the weekend
-// pair from the right edge to both edges as you moved between the three views.
-const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-/** 0=Mon..6=Sun, from the DB/Date convention of 0=Sun..6=Sat. */
-const monFirstIndex = (sundayFirst: number) => (sundayFirst + 6) % 7;
 const MAX_CHIPS_PER_DAY = 3;
 
 function shiftMonthKey(monthKey: string, delta: number): string {
@@ -58,7 +53,11 @@ export function MonthView({
 	const monthStart = `${month}-01`;
 	const monthEnd = endOfMonthKey(monthStart);
 	const days = datesBetween(monthStart, monthEnd);
-	const leadingBlanks = monFirstIndex(weekdayInTz(monthStart, timezone));
+	// The org's week start, like the week strip and the week grid, so the weekend
+	// pair sits in the same columns as you move between the three views.
+	const weekStartsOn = useWeekStartsOn();
+	const leadingBlanks =
+		(weekdayInTz(monthStart, timezone) - weekStartsOn + 7) % 7;
 	const byDay = new Map(groupByDay(entries));
 	const today = dayKeyInTz(new Date(), timezone);
 	const weekRows = Math.ceil((leadingBlanks + days.length) / 7);
@@ -131,9 +130,9 @@ export function MonthView({
 				    division is a hairline, so the calendar reads as ruled paper rather
 				    than as a table of boxes. */}
 				<div className="grid shrink-0 grid-cols-7 border-b bg-secondary">
-					{WEEKDAY_LABELS.map((label) => (
+					{orderedWeekdays(weekStartsOn).map(({ day, label }) => (
 						<div
-							key={label}
+							key={day}
 							className="eyebrow border-r border-line2 py-2 text-center last:border-r-0"
 						>
 							{label}

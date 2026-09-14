@@ -179,7 +179,10 @@ export const login: Command = {
 		if (slug) {
 			whoami = await session.api.get<ApiWhoami>(orgPath(slug, "/whoami"));
 			const entry = server.orgs.find((org) => org.slug === slug);
-			if (entry) entry.timeZone = whoami.timezone;
+			if (entry) {
+				entry.timeZone = whoami.timezone;
+				entry.weekStartsOn = whoami.weekStartsOn;
+			}
 		}
 		await writeConfig(runtime.paths, config);
 
@@ -277,8 +280,13 @@ export const whoami: Command = {
 		const who = await session.api.get<ApiWhoami>(scope.path("/whoami"));
 
 		const entry = session.server.orgs.find((org) => org.slug === scope.slug);
-		if (entry && entry.timeZone !== who.timezone) {
+		if (
+			entry &&
+			(entry.timeZone !== who.timezone ||
+				entry.weekStartsOn !== who.weekStartsOn)
+		) {
 			entry.timeZone = who.timezone;
+			entry.weekStartsOn = who.weekStartsOn;
 			await writeConfig(runtime.paths, session.config);
 		}
 

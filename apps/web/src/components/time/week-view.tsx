@@ -42,6 +42,7 @@ import {
 } from "#/components/ui/dialog.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
+import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { formatWeekRange } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
@@ -109,6 +110,7 @@ export function WeekView({
 }) {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
+	const weekStartsOn = useWeekStartsOn();
 
 	// Rows the user added but hasn't typed hours into yet. They have no entries
 	// behind them, so they'd vanish on the next refetch without this.
@@ -317,12 +319,12 @@ export function WeekView({
 				jumpTo={{
 					value: weekStart,
 					// Any day in a week identifies that week, so the picker snaps to
-					// the Monday it belongs to rather than refusing a mid-week date.
+					// the day its week starts on rather than refusing a mid-week date.
 					onPick: (picked) =>
 						navigate({
 							to: "/$orgSlug/time/week",
 							params: { orgSlug },
-							search: { weekStart: startOfWeekKey(picked) },
+							search: { weekStart: startOfWeekKey(picked, weekStartsOn) },
 						}),
 				}}
 				returnLink={

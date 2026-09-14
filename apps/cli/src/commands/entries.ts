@@ -115,7 +115,7 @@ const WEEK_USAGE = "farmer week [--last]";
 export const week: Command = {
 	name: "week",
 	usage: WEEK_USAGE,
-	summary: "List this week's entries, Monday to Sunday.",
+	summary: "List this week's entries, as the organization starts the week.",
 	help: ["  --last        Last week instead."],
 	run: async (args, runtime) => {
 		const { values } = parseCommandArgs(
@@ -127,7 +127,10 @@ export const week: Command = {
 		const out = createOutput(values.json === true, runtime.env);
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const day = todayKey(scope.clock);
-		const span = weekAround(values.last ? addDaysToKey(day, -7) : day);
+		const span = weekAround(
+			values.last ? addDaysToKey(day, -7) : day,
+			scope.clock.weekStartsOn,
+		);
 		await showEntries(out, session, scope, span);
 	},
 };

@@ -28,6 +28,7 @@ import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
+import { orderedWeekdays } from "#/lib/weekdays.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
@@ -37,7 +38,7 @@ export const Route = createFileRoute("/$orgSlug/")({
 	loader: async ({ context, params }) => {
 		const orgSlug = params.orgSlug;
 		const today = dayKeyInTz(new Date(), context.organization.timezone);
-		const weekStart = startOfWeekKey(today);
+		const weekStart = startOfWeekKey(today, context.organization.weekStartsOn);
 		const weekEnd = addDaysToKey(weekStart, 6);
 		await Promise.all([
 			context.queryClient.ensureQueryData(
@@ -63,14 +64,11 @@ function greetingForHour(hour: number): string {
 	return "Good evening";
 }
 
-// Monday-based, matching startOfWeekKey.
-const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
 function OrgHome() {
 	const orgSlug = useOrgSlug();
 	const { organization, session } = Route.useRouteContext();
 	const today = dayKeyInTz(new Date(), organization.timezone);
-	const weekStart = startOfWeekKey(today);
+	const weekStart = startOfWeekKey(today, organization.weekStartsOn);
 	const weekEnd = addDaysToKey(weekStart, 6);
 	const { data: weekEntries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
@@ -98,25 +96,26 @@ function OrgHome() {
 	);
 	const weekTotal = weekEntries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
-	// Per-weekday totals (Mon..Sun) for the sparkline — derived from the same
-	// week query, so it costs no extra fetch.
-	const perDay = WEEKDAY_LABELS.map((label, i) => {
-		const key = addDaysToKey(weekStart, i);
-		const seconds = weekEntries
-			.filter((e) => e.date === key)
-			.reduce((sum, e) => sum + e.durationSeconds, 0);
-		const weekday = new Date(`${key}T12:00:00Z`).getUTCDay();
-		return {
-			label,
-			key,
-			seconds,
-			isToday: key === today,
-			holiday: holidays.get(key),
-			// A day with a line to reach: a past or present working day.
-			expected:
-				key <= today && weekday !== 0 && weekday !== 6 && !holidays.has(key),
-		};
-	});
+	// Per-weekday totals, in the org's week order, for the sparkline — derived
+	// from the same week query, so it costs no extra fetch.
+	const perDay = orderedWeekdays(organization.weekStartsOn).map(
+		({ day: weekday, label }, i) => {
+			const key = addDaysToKey(weekStart, i);
+			const seconds = weekEntries
+				.filter((e) => e.date === key)
+				.reduce((sum, e) => sum + e.durationSeconds, 0);
+			return {
+				label,
+				key,
+				seconds,
+				isToday: key === today,
+				holiday: holidays.get(key),
+				// A day with a line to reach: a past or present working day.
+				expected:
+					key <= today && weekday !== 0 && weekday !== 6 && !holidays.has(key),
+			};
+		},
+	);
 	const maxDaySeconds = Math.max(
 		...perDay.map((d) => d.seconds),
 		targets.daySeconds,

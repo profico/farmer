@@ -28,7 +28,10 @@ export const Route = createFileRoute("/$orgSlug/time/week")({
 		const orgSlug = params.orgSlug;
 		const weekStart =
 			deps.weekStart ??
-			startOfWeekKey(dayKeyInTz(new Date(), context.organization.timezone));
+			startOfWeekKey(
+				dayKeyInTz(new Date(), context.organization.timezone),
+				context.organization.weekStartsOn,
+			);
 		const weekEnd = addDaysToKey(weekStart, 6);
 		await Promise.all([
 			context.queryClient.ensureQueryData(
@@ -59,7 +62,10 @@ function WeekRoute() {
 	const search = Route.useSearch();
 	const weekStart =
 		search.weekStart ??
-		startOfWeekKey(dayKeyInTz(new Date(), organization.timezone));
+		startOfWeekKey(
+			dayKeyInTz(new Date(), organization.timezone),
+			organization.weekStartsOn,
+		);
 	const weekEnd = addDaysToKey(weekStart, 6);
 	const { data: entries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
@@ -70,6 +76,7 @@ function WeekRoute() {
 	const dates = datesBetween(weekStart, weekEnd);
 	const currentWeekStart = startOfWeekKey(
 		dayKeyInTz(new Date(), organization.timezone),
+		organization.weekStartsOn,
 	);
 
 	return (

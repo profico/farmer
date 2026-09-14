@@ -30,7 +30,7 @@ export const Route = createFileRoute("/$orgSlug/time/")({
 			deps.date ?? dayKeyInTz(new Date(), context.organization.timezone);
 		// The whole week, not just the day: the strip above the list shows every
 		// day's total, and fetching the week once is cheaper than seven day calls.
-		const weekStart = startOfWeekKey(date);
+		const weekStart = startOfWeekKey(date, context.organization.weekStartsOn);
 		const weekEnd = addDaysToKey(weekStart, 6);
 		await Promise.all([
 			context.queryClient.ensureQueryData(
@@ -62,7 +62,7 @@ function DayRoute() {
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
 	const date = search.date ?? dayKeyInTz(new Date(), organization.timezone);
-	const weekStart = startOfWeekKey(date);
+	const weekStart = startOfWeekKey(date, organization.weekStartsOn);
 	const weekEnd = addDaysToKey(weekStart, 6);
 	const { data: weekEntries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),

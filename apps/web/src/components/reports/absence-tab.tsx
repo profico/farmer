@@ -22,6 +22,7 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { downloadCsv } from "#/lib/csv.ts";
 import { cn } from "#/lib/utils.ts";
 import { absenceReportQuery } from "#/queries/reports.ts";
@@ -86,7 +87,8 @@ export function AbsenceTab({
 	thisMonth: string;
 }) {
 	const navigate = useNavigate({ from: "/$orgSlug/reports" });
-	const { from, to } = resolveReportPeriod(search, today);
+	const weekStartsOn = useWeekStartsOn();
+	const { from, to } = resolveReportPeriod(search, today, weekStartsOn);
 	const input: AbsenceReportInput = { from, to };
 	const view: View = search.type ?? "all";
 

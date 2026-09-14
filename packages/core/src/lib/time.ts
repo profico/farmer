@@ -331,12 +331,26 @@ export const countWorkingDays = (
 			!holidayKeys.has(key),
 	).length;
 
-// Monday-based start of the week containing this date.
-export const startOfWeekKey = (dateStr: string): string => {
+/** The day an organization's weeks start on, numbered as Date#getDay() numbers
+ *  it: 1 = Monday (the default), 0 = Sunday. `organization.weekStartsOn`. */
+export type WeekStartsOn = 0 | 1;
+
+export const DEFAULT_WEEK_STARTS_ON: WeekStartsOn = 1;
+
+/** The column is a plain integer; anything but Sunday reads as Monday. */
+export const toWeekStartsOn = (value: number): WeekStartsOn =>
+	value === 0 ? 0 : 1;
+
+// Start of the week containing this date. The week start is required rather
+// than defaulted: a caller that forgot it would draw a Sunday org's week from
+// Monday, and nothing would say so.
+export const startOfWeekKey = (
+	dateStr: string,
+	weekStartsOn: WeekStartsOn,
+): string => {
 	const date = keyToUtcDate(dateStr);
-	const day = date.getUTCDay(); // 0=Sun..6=Sat
-	const diff = day === 0 ? -6 : 1 - day;
-	date.setUTCDate(date.getUTCDate() + diff);
+	const back = (date.getUTCDay() - weekStartsOn + 7) % 7;
+	date.setUTCDate(date.getUTCDate() - back);
 	return utcDateToKey(date);
 };
 
