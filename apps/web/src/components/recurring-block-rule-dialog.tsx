@@ -34,6 +34,7 @@ import {
 import { Input } from "#/components/ui/input.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
+import { WEEKDAYS } from "#/lib/weekdays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
 import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
@@ -43,7 +44,6 @@ import {
 } from "#/server/recurring-block-rules.ts";
 
 const NO_PROJECT = "__none__";
-const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
 // No start time: a recurring block reserves an AMOUNT of time on a weekday, not
 // a slot on a clock, which is the whole point of the duration-only model.
@@ -257,9 +257,8 @@ function RecurringBlockRuleDialog({
 						<FormItem>
 							<FormLabel required>Days</FormLabel>
 							<div className="flex gap-1">
-								{DAY_LABELS.map((label, day) => (
+								{WEEKDAYS.map(({ day, initial }) => (
 									<button
-										// oxlint-disable-next-line react/no-array-index-key -- day is the stable weekday number (0-6), not an incidental index
 										key={day}
 										type="button"
 										onClick={() => toggleDay(day)}
@@ -270,7 +269,7 @@ function RecurringBlockRuleDialog({
 												: "border-input bg-background text-muted-foreground",
 										)}
 									>
-										{label}
+										{initial}
 									</button>
 								))}
 							</div>

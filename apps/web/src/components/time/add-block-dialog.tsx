@@ -68,6 +68,7 @@ import {
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
+import { WEEKDAYS } from "#/lib/weekdays.ts";
 import {
 	attachedCommitsQuery,
 	attachedPullRequestsQuery,
@@ -101,7 +102,6 @@ import { createTimeEntry, updateTimeEntry } from "#/server/time-entries.ts";
 // Time off is chosen where a project would be: it sits first in the project
 // picker, and choosing it narrows the task list to the leave kinds.
 const TIME_OFF = "__time_off__";
-const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
 export type ExistingTimeEntry = {
 	id: string;
@@ -1428,9 +1428,8 @@ export function AddBlockDialog({
 																>
 																	<div className="mt-3 flex flex-col gap-3">
 																		<div className="flex gap-1">
-																			{DAY_LABELS.map((label, day) => (
+																			{WEEKDAYS.map(({ day, initial }) => (
 																				<button
-																					// oxlint-disable-next-line react/no-array-index-key -- day is the stable weekday number (0-6)
 																					key={day}
 																					type="button"
 																					onClick={() => toggleDay(day)}
@@ -1441,7 +1440,7 @@ export function AddBlockDialog({
 																							: "border-border bg-background text-muted-foreground",
 																					)}
 																				>
-																					{label}
+																					{initial}
 																				</button>
 																			))}
 																		</div>

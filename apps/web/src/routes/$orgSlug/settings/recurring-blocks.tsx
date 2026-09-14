@@ -43,6 +43,7 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { resolveCategoryColor } from "#/lib/category-colors.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
+import { WEEKDAYS } from "#/lib/weekdays.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
@@ -51,8 +52,6 @@ import {
 	enableDefaultBreakBlock,
 	updateRecurringBlockRule,
 } from "#/server/recurring-block-rules.ts";
-
-const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"]; // index 0=Sun..6=Sat
 
 export const Route = createFileRoute("/$orgSlug/settings/recurring-blocks")({
 	loader: async ({ context, params }) => {
@@ -68,9 +67,8 @@ export const Route = createFileRoute("/$orgSlug/settings/recurring-blocks")({
 function DayPills({ daysOfWeek }: { daysOfWeek: number[] }) {
 	return (
 		<div className="flex gap-1">
-			{DAY_LABELS.map((label, day) => (
+			{WEEKDAYS.map(({ day, initial }) => (
 				<span
-					// oxlint-disable-next-line react/no-array-index-key -- day is the stable weekday number (0-6), not an incidental index
 					key={day}
 					className={cn(
 						"mono flex size-5 items-center justify-center rounded-full text-[10px]",
@@ -79,7 +77,7 @@ function DayPills({ daysOfWeek }: { daysOfWeek: number[] }) {
 							: "bg-muted text-muted-foreground",
 					)}
 				>
-					{label}
+					{initial}
 				</span>
 			))}
 		</div>

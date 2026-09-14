@@ -45,6 +45,7 @@ import {
 } from "#/components/ui/segmented-control.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { WEEKDAYS } from "#/lib/weekdays.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { orgPolicySettingsQuery } from "#/queries/organization.ts";
 import {
@@ -82,18 +83,6 @@ export const Route = createFileRoute("/$orgSlug/settings/reminders")({
 });
 
 type ReminderPreview = Awaited<ReturnType<typeof previewReminder>>;
-
-// Monday first, as every other week in the app is drawn; the stored numbers
-// are JavaScript's, Sunday = 0.
-const WEEKDAYS = [
-	{ day: 1, label: "Mon" },
-	{ day: 2, label: "Tue" },
-	{ day: 3, label: "Wed" },
-	{ day: 4, label: "Thu" },
-	{ day: 5, label: "Fri" },
-	{ day: 6, label: "Sat" },
-	{ day: 0, label: "Sun" },
-];
 
 // Overhead employees are not here on purpose: nobody is nagged about a
 // timesheet that nobody reads, so it is not a choice the page offers.

@@ -6,6 +6,7 @@ import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import { WorkingHoursRow } from "#/components/working-hours-row.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { WEEKDAYS } from "#/lib/weekdays.ts";
 import { workingHoursQuery } from "#/queries/working-hours.ts";
 
 export const Route = createFileRoute("/$orgSlug/settings/my-schedule")({
@@ -16,18 +17,13 @@ export const Route = createFileRoute("/$orgSlug/settings/my-schedule")({
 	component: MySchedulePage,
 });
 
-// DB dayOfWeek is 0=Sun..6=Sat (matches Date#getDay()/weekdayInTz), but the
-// rest of the app orders weeks Mon-first (see startOfWeekKey) — this just
-// reorders the display, the stored index is untouched.
-const MON_FIRST_ORDER = [1, 2, 3, 4, 5, 6, 0];
-
 function MySchedulePage() {
 	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const { data: days } = useSuspenseQuery(workingHoursQuery(orgSlug));
 
-	const orderedDays = MON_FIRST_ORDER.map((dayOfWeek) =>
-		days.find((d) => d.dayOfWeek === dayOfWeek),
+	const orderedDays = WEEKDAYS.map(({ day }) =>
+		days.find((d) => d.dayOfWeek === day),
 	);
 	return (
 		<Page>
