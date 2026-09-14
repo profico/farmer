@@ -40,8 +40,9 @@ export function DropZone({
 			</span>
 			{!compact && (
 				<span className="max-w-[52ch] text-sm text-muted-foreground">
-					Or click to choose them. Use the detailed time report and the people,
-					projects, clients and tasks lists. Only the time report is necessary.
+					Or click to choose them. Use the detailed time report, the people list
+					(real email addresses) and the projects list (codes); the clients and
+					tasks lists are optional. Only the time report is necessary.
 				</span>
 			)}
 			<input

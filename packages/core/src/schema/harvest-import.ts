@@ -70,7 +70,14 @@ const taskPlan = z.discriminatedUnion("action", [
 ]);
 
 const projectPlan = z.discriminatedUnion("action", [
-	z.object({ action: z.literal("match"), sourceKey, localId: z.uuid() }),
+	z.object({
+		action: z.literal("match"),
+		sourceKey,
+		localId: z.uuid(),
+		// The file's verdict on a project that already exists here: worked on
+		// in the window before the cutoff (or listed) means active.
+		archived: z.boolean(),
+	}),
 	z.object({
 		action: z.literal("create"),
 		sourceKey,

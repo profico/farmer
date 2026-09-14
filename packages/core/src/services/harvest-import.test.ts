@@ -85,7 +85,7 @@ const plan = (): HarvestStartInput => ({
 		{ action: "match", sourceKey: K.paid, localId: paidLeaveId },
 	],
 	projects: [
-		{ action: "match", sourceKey: K.alpha, localId: alphaId },
+		{ action: "match", sourceKey: K.alpha, localId: alphaId, archived: false },
 		{
 			action: "create",
 			sourceKey: K.gamma,
@@ -800,7 +800,14 @@ describe("harvest import", () => {
 		const aliasPlan = (of: string): HarvestStartInput => ({
 			...emptyPlan(),
 			tasks: [{ action: "match", sourceKey: K.dev, localId: devTaskId }],
-			projects: [{ action: "match", sourceKey: K.alpha, localId: alphaId }],
+			projects: [
+				{
+					action: "match",
+					sourceKey: K.alpha,
+					localId: alphaId,
+					archived: false,
+				},
+			],
 			people: [
 				{ action: "alias", sourceKey: ALIAS, of },
 				{

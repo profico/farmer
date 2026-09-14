@@ -189,6 +189,7 @@ const ID = {
 	acme: "00000000-0000-4000-8000-000000000011",
 	other: "00000000-0000-4000-8000-000000000012",
 	website: "00000000-0000-4000-8000-000000000020",
+	dormant: "00000000-0000-4000-8000-000000000021",
 };
 
 function snapshot(overrides: Partial<HarvestSnapshot> = {}): HarvestSnapshot {
@@ -631,13 +632,59 @@ describe("projects", () => {
 			code: null,
 			budgetSeconds: null,
 		});
+		// Worked on in the month before the cutoff, so active without a listing.
 		expect(byName.get("Shop")).toMatchObject({
 			type: "product_team",
-			archived: true,
+			archived: false,
 			code: "SHOP-2024-EXTEND",
 		});
 		// Under the internal client.
 		expect(byName.get("Internal")).toMatchObject({ type: "internal" });
+		expectServerAccepts(plan);
+	});
+
+	test("active is worked on in the 31 days before the cutoff, or listed; a match follows the same rule", async () => {
+		const { plan } = await planFor(
+			[
+				timeReport([
+					{ project: "Fresh", code: "FR", date: "2026-08-02" },
+					{ project: "Stale", code: "ST", date: "2026-07-31" },
+					{ project: "Website", code: "ACW", date: "2026-01-05" },
+					{ project: "Dormant", code: "DO", date: "2026-02-01" },
+				]),
+				projectList([{ client: "Acme", project: "Website", code: "ACW" }]),
+			],
+			// Acme exists here, so a project under it can match by name.
+			anaSnapshot({
+				projects: [
+					{
+						id: ID.dormant,
+						clientId: ID.acme,
+						name: "Dormant",
+						code: "DO",
+						type: "product_team",
+						archived: false,
+					},
+				],
+			}),
+		);
+		const byKey = new Map(plan.start.projects.map((p) => [p.sourceKey, p]));
+		const key = (name: string, code: string) =>
+			JSON.stringify(["acme", name.toLowerCase(), code]);
+		expect(byKey.get(key("Fresh", "FR"))).toMatchObject({ archived: false });
+		expect(byKey.get(key("Stale", "ST"))).toMatchObject({ archived: true });
+		expect(byKey.get(key("Website", "ACW"))).toMatchObject({ archived: false });
+		// Exists here as active, but nothing since February: the re-import
+		// archives it.
+		expect(byKey.get(key("Dormant", "DO"))).toEqual({
+			action: "match",
+			sourceKey: key("Dormant", "DO"),
+			localId: ID.dormant,
+			archived: true,
+		});
+		expect(plan.review.projects.find((p) => p.name === "Dormant")?.status).toBe(
+			"archived",
+		);
 		expectServerAccepts(plan);
 	});
 
@@ -704,12 +751,14 @@ describe("clients", () => {
 			snapshot(),
 			choices(parsed, { clients: { profico: { action: "create" } } }),
 		);
+		// Created rather than mapped to the internal client — and active, since
+		// its one project was worked on in the month before the cutoff.
 		expect(plan.start.clients).toEqual([
 			{
 				action: "create",
 				sourceKey: "profico",
 				name: "Profico",
-				archived: true,
+				archived: false,
 			},
 		]);
 		expect(plan.start.projects[0]).toMatchObject({ type: "product_team" });
@@ -754,6 +803,7 @@ describe("matching existing rows", () => {
 				action: "match",
 				sourceKey: JSON.stringify(["acme", "website", "ACW"]),
 				localId: ID.website,
+				archived: false,
 			},
 		]);
 		expect(plan.start.tasks).toEqual([
@@ -857,7 +907,7 @@ describe("people", () => {
 				emailConfirmed: true,
 				role: "member",
 				type: "contractor_hourly",
-				startDate: "2026-09-14",
+				startDate: "2026-09-01",
 				archivedOn: null,
 				weeklyTargetSeconds: 25 * 3600,
 			},
@@ -1069,14 +1119,14 @@ describe("cutoff (5.1)", () => {
 	test("work rows on or after the cutoff are skipped; absence is kept on every date", async () => {
 		const { plan } = await planFor([
 			timeReport([
-				{ date: "2026-09-13" },
-				{ date: "2026-09-14" },
+				{ date: "2026-08-31" },
+				{ date: "2026-09-01" },
 				{ date: "2026-10-01" },
 				{ date: "2026-12-24", code: "PVC", task: "Vacation", hours: "8,0" },
 			]),
 		]);
 		expect(allRows(plan).map((r) => r.date)).toEqual([
-			"2026-09-13",
+			"2026-08-31",
 			"2026-12-24",
 		]);
 		expect(plan.review.summary.skippedByCutoff).toBe(2);
