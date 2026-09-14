@@ -27,7 +27,8 @@ import {
 	type SuggestPullRequestsInput,
 } from "../schema/github";
 import { AccessError } from "./access.service";
-import { ctxTimezone, requireAdmin } from "./context";
+import { ctxDb, ctxTimezone, requireAdmin, withCtxTx } from "./context";
+import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import type { Ctx } from "./types";
 
 /** The GitHub HTTP calls this service makes. */
@@ -1185,7 +1186,11 @@ export const githubService = {
 
 	detachPullRequestActivity: async (ctx: Ctx, activityId: string) => {
 		const [row] = await db
-			.select({ id: timeEntryGithubPrActivity.id })
+			.select({
+				id: timeEntryGithubPrActivity.id,
+				timeEntryId: timeEntry.id,
+				date: timeEntry.date,
+			})
 			.from(timeEntryGithubPrActivity)
 			.innerJoin(
 				timeEntry,
@@ -1202,8 +1207,20 @@ export const githubService = {
 		if (!row) {
 			throw new Error("Pull request activity not found");
 		}
-		await db
-			.delete(timeEntryGithubPrActivity)
-			.where(eq(timeEntryGithubPrActivity.id, activityId));
+		await withCtxTx(ctx, async (txCtx) => {
+			const heldBefore = await reviewsHeldBy(txCtx, row.timeEntryId);
+			await ctxDb(txCtx)
+				.delete(timeEntryGithubPrActivity)
+				.where(eq(timeEntryGithubPrActivity.id, activityId));
+			// Taking a PR's last review off a Code Review entry says no to that PR's
+			// block, as deleting the entry does. Deleting it next would find no
+			// review left to say so, and the engine would file the block again.
+			const heldAfter = new Set(await reviewsHeldBy(txCtx, row.timeEntryId));
+			await refuseReviewBlocks(
+				txCtx,
+				row.date,
+				heldBefore.filter((pullRequestUrl) => !heldAfter.has(pullRequestUrl)),
+			);
+		});
 	},
 };

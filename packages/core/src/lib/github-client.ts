@@ -298,7 +298,6 @@ export type GithubPullRequest = {
 	merged: boolean;
 	state: "OPEN" | "CLOSED" | "MERGED";
 	author: { login: string } | null;
-	mergedBy: { login: string } | null;
 	reviews: { nodes: (GithubPullRequestReview | null)[] | null } | null;
 };
 
@@ -361,7 +360,6 @@ const PULL_REQUEST_FIELDS = `
 	merged
 	state
 	author { login }
-	mergedBy { login }
 	reviews(first: 100, author: $login) {
 		nodes { id state submittedAt url author { login } }
 	}

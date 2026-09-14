@@ -5,7 +5,9 @@
 // which day a piece of work belongs to:
 //
 //   - `opened`   the person authored it; dated by `createdAt`.
-//   - `merged`   the person authored it OR merged it; dated by `mergedAt`.
+//   - `merged`   the person authored it; dated by `mergedAt`. Whoever pressed
+//                the merge button did not do the work, so a merge of somebody
+//                else's PR is not an event for them.
 //   - `closed`   the person authored it and it closed without a merge; dated by
 //                `closedAt`. A merged PR is closed too, and saying so twice
 //                would be two events for one act.
@@ -89,10 +91,7 @@ export const pullRequestActivity = (
 		});
 	}
 
-	const mergedAt =
-		pr.merged && (authored || sameLogin(pr.mergedBy?.login, login))
-			? within(pr.mergedAt, window)
-			: null;
+	const mergedAt = authored && pr.merged ? within(pr.mergedAt, window) : null;
 	if (mergedAt) {
 		events.push({
 			...base,

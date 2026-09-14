@@ -27,7 +27,6 @@ import {
 } from "../db/schema/github";
 import {
 	commitFillTombstone,
-	pullRequestReviewTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
 import {
@@ -95,10 +94,12 @@ import { orgSettingsService } from "./org-settings.service";
 import { calendarSource, commitSource, pullRequestSource } from "./ports";
 import {
 	deletedReviewsOnDay,
+	isReviewBlock,
 	REVIEW_BLOCK_SECONDS,
+	refuseReviewBlocks,
 	reviewBlockDescription,
-	reviewHomesOnDay,
 	reviewsHeldBy,
+	reviewsOnDay,
 } from "./pr-reviews";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
@@ -552,29 +553,32 @@ const fileReviewBlocks = async (
 		]);
 	}
 
-	const [homes, deleted, reviewEntries, access] = await Promise.all([
-		reviewHomesOnDay(ctx, dayKey),
-		deletedReviewsOnDay(ctx, dayKey),
-		db.query.timeEntry.findMany({
-			where: and(
-				eq(timeEntry.organizationId, ctx.organizationId),
-				eq(timeEntry.userId, ctx.userId),
-				eq(timeEntry.date, dayKey),
-				eq(timeEntry.taskId, reviewTaskId),
-				eq(timeEntry.fillsDay, false),
-			),
-			columns: { id: true, projectId: true, description: true },
-			orderBy: [asc(timeEntry.createdAt)],
-		}),
-		ctxAccess(ctx),
-	]);
+	const [{ homes, heldBy }, deleted, reviewEntries, access] = await Promise.all(
+		[
+			reviewsOnDay(ctx, dayKey),
+			deletedReviewsOnDay(ctx, dayKey),
+			db.query.timeEntry.findMany({
+				where: and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.date, dayKey),
+					eq(timeEntry.taskId, reviewTaskId),
+					eq(timeEntry.fillsDay, false),
+				),
+				columns: { id: true, projectId: true, description: true },
+				orderBy: [asc(timeEntry.createdAt)],
+			}),
+			ctxAccess(ctx),
+		],
+	);
 
-	// Step 2's candidates. A Code Review entry that holds no PR's reviews yet is
-	// one the person logged by hand; every PR reviewed on its project goes on it.
-	const held = new Set(homes.values());
+	// Step 2's candidates: every Code Review entry that is not one PR's block.
+	// Every PR reviewed on its project goes on it, including after the first —
+	// a hand-logged entry that already holds #10 is still the home for #11.
 	const handLogged = new Map<string, (typeof reviewEntries)[number]>();
 	for (const entry of reviewEntries) {
-		if (entry.projectId === null || held.has(entry.id)) continue;
+		if (entry.projectId === null) continue;
+		if (isReviewBlock(entry.description, heldBy.get(entry.id) ?? [])) continue;
 		if (!handLogged.has(entry.projectId)) {
 			handLogged.set(entry.projectId, entry);
 		}
@@ -1819,19 +1823,11 @@ export const timeEntriesService = {
 			}
 
 			// And a review block. What told the engine this PR's block exists was
-			// its attached reviews, which just went with the row.
-			if (existing && heldReviews.length > 0) {
-				await tx
-					.insert(pullRequestReviewTombstone)
-					.values(
-						heldReviews.map((pullRequestUrl) => ({
-							organizationId: ctx.organizationId,
-							userId: ctx.userId,
-							date: existing.date,
-							pullRequestUrl,
-						})),
-					)
-					.onConflictDoNothing();
+			// its attached reviews, which just went with the row. A review taken
+			// off the block before the delete left its own tombstone then (see
+			// `githubService.detachPullRequestActivity`).
+			if (existing) {
+				await refuseReviewBlocks(txCtx, existing.date, heldReviews);
 			}
 			// Inside the transaction: the deletion and the fill block it resizes
 			// have to land together, or a reader between the two sees a day whose

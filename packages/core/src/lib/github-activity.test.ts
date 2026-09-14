@@ -48,7 +48,6 @@ const pullRequest = (
 	merged: false,
 	state: "OPEN",
 	author: { login: "someone" },
-	mergedBy: null,
 	reviews: { nodes: [] },
 	...fields,
 });
@@ -93,17 +92,16 @@ describe("pullRequestActivity", () => {
 		expect(kindsFor(pullRequest(closed))).toEqual([]);
 	});
 
-	test("merging somebody else's pull request counts for the one who merged it", () => {
+	test("a merge is the author's event, not the event of whoever merged it", () => {
 		expect(
 			kindsFor(
 				pullRequest({
 					merged: true,
 					state: "MERGED",
 					mergedAt: INSIDE,
-					mergedBy: { login: "me" },
 				}),
 			),
-		).toEqual(["merged"]);
+		).toEqual([]);
 	});
 
 	test("one event per submitted review, and a pending review was never submitted", () => {

@@ -36,6 +36,7 @@ import {
 import type { PullRequestActivityKind } from "../lib/github-activity";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import {
+	githubService,
 	pullRequestActivityRow,
 	type ScannedPullRequestActivity,
 } from "./github.service";
@@ -511,6 +512,85 @@ describe("review blocks", () => {
 		expect(await activityOn(own.id)).toHaveLength(2);
 		// Its blank description is written from the reviews, as a work entry's is.
 		expect(blocks[0]?.description).toContain("Reviewed #7: Change 7");
+	});
+
+	test("a Code Review entry logged by hand keeps taking reviews after its first", async () => {
+		const own = await addEntry({
+			date: YESTERDAY,
+			projectId,
+			taskId: reviewTaskId,
+			durationSeconds: 2 * 3600,
+			description: "Reviews",
+		});
+		await db
+			.insert(timeEntryGithubPrActivity)
+			.values(
+				pullRequestActivityRow(
+					own.id,
+					repoId,
+					event({ day: YESTERDAY, number: 7, kind: "reviewed" }),
+				),
+			);
+		setPullRequestSourceForTests(
+			pullRequestsFor([
+				{ day: YESTERDAY, number: 7, kind: "reviewed" },
+				{ day: YESTERDAY, number: 9, kind: "reviewed" },
+			]),
+		);
+
+		await runAutomations();
+
+		expect((await reviewBlocksOn(YESTERDAY)).map((block) => block.id)).toEqual([
+			own.id,
+		]);
+		expect((await activityOn(own.id)).map((row) => row.eventId).sort()).toEqual(
+			["PR_7:reviewed", "PR_9:reviewed"],
+		);
+	});
+
+	test("a pull request's block does not take a review a later run finds", async () => {
+		setPullRequestSourceForTests(
+			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
+		);
+		await runAutomations();
+		setPullRequestSourceForTests(
+			pullRequestsFor([
+				{ day: YESTERDAY, number: 7, kind: "reviewed" },
+				{ day: YESTERDAY, number: 9, kind: "reviewed" },
+			]),
+		);
+
+		await runAutomations();
+
+		const blocks = await reviewBlocksOn(YESTERDAY);
+		expect(blocks.map((block) => block.description).sort()).toEqual([
+			"PR review: Change 7",
+			"PR review: Change 9",
+		]);
+		for (const block of blocks) {
+			expect(await activityOn(block.id)).toHaveLength(1);
+		}
+	});
+
+	test("a review block stays deleted when its review was taken off first", async () => {
+		setPullRequestSourceForTests(
+			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
+		);
+		await runAutomations();
+		const block = present(
+			(await reviewBlocksOn(YESTERDAY))[0],
+			"the review block",
+		);
+		const [review] = await activityOn(block.id);
+
+		await githubService.detachPullRequestActivity(
+			ctx,
+			present(review, "the attached review").id,
+		);
+		await timeEntriesService.remove(ctx, block.id);
+		await runAutomations();
+
+		expect(await reviewBlocksOn(YESTERDAY)).toEqual([]);
 	});
 
 	test("a review a run before review blocks already filed gets no second half hour", async () => {

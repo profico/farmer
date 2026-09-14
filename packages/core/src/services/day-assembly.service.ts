@@ -32,9 +32,10 @@ import { holidaysService } from "./holidays.service";
 import { calendarSource, commitSource, pullRequestSource } from "./ports";
 import {
 	deletedReviewsOnDay,
+	isReviewBlock,
 	REVIEW_BLOCK_SECONDS,
 	reviewBlockDescription,
-	reviewHomesOnDay,
+	reviewsOnDay,
 } from "./pr-reviews";
 import { tasksService } from "./tasks.service";
 import {
@@ -195,6 +196,8 @@ export const dayAssemblyService = {
 					eq(timeEntry.date, date),
 				),
 				columns: {
+					id: true,
+					description: true,
 					durationSeconds: true,
 					fillsDay: true,
 					calendarEventId: true,
@@ -347,9 +350,10 @@ export const dayAssemblyService = {
 		//
 		// The block the commit engine files (see ./pr-reviews), proposed here so
 		// a day assembled by hand agrees with a day synced overnight. A review
-		// that is already on an entry, or on a project with a Code Review entry,
-		// is accounted for and proposes nothing. A review that gets no block
-		// stays evidence for the project's work suggestion below.
+		// that is already on an entry, or on a project with a Code Review entry
+		// that is not another PR's block, is accounted for and proposes nothing.
+		// A review that gets no block stays evidence for the project's work
+		// suggestion below.
 		let reviewSeconds = 0;
 		const accountedReviews = new Set<string>();
 		const reviews = reviewTask
@@ -363,8 +367,8 @@ export const dayAssemblyService = {
 					review,
 				]);
 			}
-			const [homes, deleted, access, projects] = await Promise.all([
-				reviewHomesOnDay(ctx, date),
+			const [{ homes, heldBy }, deleted, access, projects] = await Promise.all([
+				reviewsOnDay(ctx, date),
 				deletedReviewsOnDay(ctx, date),
 				ctxAccess(ctx),
 				db.query.project.findMany({
@@ -378,9 +382,15 @@ export const dayAssemblyService = {
 				}),
 			]);
 			const nameById = new Map(projects.map((p) => [p.id, p.name]));
+			// The engine's step 2 (see `fileReviewBlocks`): another PR's block does
+			// not account for this one.
 			const loggedOn = new Set(
 				existing.flatMap((e) =>
-					e.taskId === reviewTask.id && e.projectId ? [e.projectId] : [],
+					e.taskId === reviewTask.id &&
+					e.projectId &&
+					!isReviewBlock(e.description, heldBy.get(e.id) ?? [])
+						? [e.projectId]
+						: [],
 				),
 			);
 

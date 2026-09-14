@@ -26,13 +26,18 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { client, project, task, timeEntry } from "../db/schema/domain";
+import {
+	projectGithubRepo,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { dayAssemblyService } from "./day-assembly.service";
+import { pullRequestActivityRow } from "./github.service";
 import {
 	setCalendarSourceForTests,
 	setCommitSourceForTests,
@@ -54,6 +59,7 @@ let devTaskId: string;
 let breakTaskId: string;
 let reviewTaskId: string;
 let projectId: string;
+let repoId: string;
 
 const noCalendar = {
 	listEventsForRange: async () => [],
@@ -124,6 +130,18 @@ beforeAll(async () => {
 		.values({ organizationId: ORG_ID, clientId: c!.id, name: "Farmer" })
 		.returning();
 	projectId = p!.id;
+	const [repo] = await db
+		.insert(projectGithubRepo)
+		.values({
+			organizationId: ORG_ID,
+			projectId,
+			githubRepoId: 1,
+			owner: "acme",
+			name: "farmer",
+			fullName: "acme/farmer",
+		})
+		.returning({ id: projectGithubRepo.id });
+	repoId = present(repo, "the repo").id;
 
 	devTaskId = await siteTask("development");
 	breakTaskId = await siteTask("break");
@@ -254,6 +272,57 @@ describe("assemble my day", () => {
 		// On its own block, so it backs no work suggestion as well.
 		expect(assembly.suggestions.some((s) => s.kind === "work")).toBe(false);
 		expect(proposed(assembly.suggestions)).toBe(EIGHT_HOURS);
+	});
+
+	test("another pull request's block does not account for a review, and a hand-logged entry does", async () => {
+		const review = (number: number) => ({
+			eventId: `PRR_${String(number)}`,
+			kind: "reviewed" as const,
+			reviewState: "approved" as const,
+			number,
+			title: `Change ${String(number)}`,
+			pullRequestUrl: `https://github.com/acme/farmer/pull/${String(number)}`,
+			url: `https://github.com/acme/farmer/pull/${String(number)}#pullrequestreview-1`,
+			occurredAt: new Date(`${MONDAY}T12:00:00.000Z`),
+			projectGithubRepoId: repoId,
+			projectId,
+			repoFullName: "acme/farmer",
+		});
+		setPullRequestSourceForTests({
+			listUserPullRequestActivityByDay: async () => [],
+			listUserPullRequestActivityForDay: async () => [review(7), review(9)],
+		});
+		const [inserted] = await db
+			.insert(timeEntry)
+			.values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				taskId: reviewTaskId,
+				projectId,
+				date: MONDAY,
+				durationSeconds: 30 * 60,
+				description: "PR review: Change 7",
+			})
+			.returning({ id: timeEntry.id });
+		const block = present(inserted, "the review block");
+		await db
+			.insert(timeEntryGithubPrActivity)
+			.values(pullRequestActivityRow(block.id, repoId, review(7)));
+
+		const beside = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		expect(
+			beside.suggestions.flatMap((s) =>
+				s.kind === "review" ? [s.description] : [],
+			),
+		).toEqual(["PR review: Change 9"]);
+
+		// The same entry, renamed, is the person's own: #9 goes on it.
+		await db
+			.update(timeEntry)
+			.set({ description: "Reviews" })
+			.where(eq(timeEntry.id, block.id));
+		const onOwn = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+		expect(onOwn.suggestions.some((s) => s.kind === "review")).toBe(false);
 	});
 
 	test("a day that already has a fill block gets no second one", async () => {
