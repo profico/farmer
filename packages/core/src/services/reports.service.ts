@@ -3,10 +3,9 @@ import { and, asc, countDistinct, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { user } from "../db/schema/auth";
 import { client, project, task, timeEntry } from "../db/schema/domain";
-import { monthBounds } from "../lib/time";
 import type {
 	AbsenceReportInput,
-	MonthReportInput,
+	OvertimeReportInput,
 	TimeReportDetailInput,
 	TimeReportSummaryInput,
 } from "../schema/reports";
@@ -127,6 +126,59 @@ export type TimeReportDetailRow = {
 	userName: string;
 	overtime: boolean;
 	durationSeconds: number;
+};
+
+export type OvertimeEntry = {
+	id: string;
+	date: string;
+	projectName: string;
+	projectCode: string | null;
+	taskName: string;
+	description: string;
+	durationSeconds: number;
+};
+
+export type OvertimeRow = {
+	userId: string;
+	name: string;
+	/** Flagged entries in the period. */
+	count: number;
+	seconds: number;
+	/** The entries behind the figure, in date order. */
+	entries: OvertimeEntry[];
+};
+
+export type OvertimeReport = {
+	rows: OvertimeRow[];
+	totalSeconds: number;
+	totalEntries: number;
+};
+
+export type AbsenceEntry = {
+	id: string;
+	date: string;
+	/** The task's system key ("vacation", "sick", "paid_leave"), or its id for
+	 *  an absence task without one. Matches `AbsenceReport.columns[].key`. */
+	taskKey: string;
+	taskName: string;
+	description: string;
+	durationSeconds: number;
+};
+
+export type AbsenceRow = {
+	userId: string;
+	name: string;
+	seconds: number;
+	/** Seconds per absence task, keyed like `columns`. */
+	byTask: Record<string, number>;
+	/** The entries behind the figure, in date order. */
+	entries: AbsenceEntry[];
+};
+
+export type AbsenceReport = {
+	workingDaySeconds: number;
+	columns: { key: string; label: string }[];
+	rows: AbsenceRow[];
 };
 
 /** Time off per person for the Team tab. People-shaped, so it follows the
@@ -343,137 +395,101 @@ export const reportsService = {
 		};
 	},
 
-	/** Overtime report (6.5). Admin sees everyone; everyone else their projects
-	 *  and their people, themselves included. */
-	overtime: async (ctx: Ctx, input: MonthReportInput) => {
-		const { projectIds, userIds } = await reportScope(ctx);
-		const { from, to } = monthBounds(input.year, input.month);
-		const yearStart = `${input.year}-01-01`;
-		const yearEnd = `${input.year}-12-31`;
-
-		const scopeWhere = (rangeFrom: string, rangeTo: string) =>
-			ledgerWhere(ctx, { from: rangeFrom, to: rangeTo }, "project", {
-				overtimeOnly: true,
-				visibleProjectIds: projectIds,
-				visibleUserIds: userIds,
-			});
-
-		const [monthRows, yearRows] = await Promise.all([
-			db
-				.select({
-					userId: timeEntry.userId,
-					name: user.name,
-					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-				})
-				.from(timeEntry)
-				.innerJoin(user, eq(timeEntry.userId, user.id))
-				.where(scopeWhere(from, to))
-				.groupBy(timeEntry.userId, user.name),
-			db
-				.select({
-					userId: timeEntry.userId,
-					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-				})
-				.from(timeEntry)
-				.where(scopeWhere(yearStart, yearEnd))
-				.groupBy(timeEntry.userId),
-		]);
-
-		const yearByUser = new Map(
-			yearRows.map((r) => [r.userId, Number(r.total)]),
-		);
-		return monthRows
-			.map((r) => ({
-				userId: r.userId,
-				name: r.name,
-				monthSeconds: Number(r.total),
-				yearSeconds: yearByUser.get(r.userId) ?? 0,
-			}))
-			.sort((a, b) => b.monthSeconds - a.monthSeconds);
-	},
-
-	/** The entries behind an overtime number. */
-	overtimeDetail: async (
+	/**
+	 * Overtime report (6.5): only the entries a person flagged as overtime when
+	 * logging them — nothing is inferred from the fund — per person over the
+	 * period, each with the entries behind the figure. Admin sees everyone;
+	 * everyone else their projects and their people, themselves included.
+	 *
+	 * The entries ride along rather than being a second call: overtime is a
+	 * hand-set flag and rare, so a period's whole list is a few hundred rows
+	 * at most, and the range ceiling bounds it.
+	 */
+	overtime: async (
 		ctx: Ctx,
-		input: MonthReportInput & { userId: string },
-	) => {
+		input: OvertimeReportInput,
+	): Promise<OvertimeReport> => {
 		const { projectIds, userIds } = await reportScope(ctx);
-		const { from, to } = monthBounds(input.year, input.month);
+		const entries = await db
+			.select({
+				id: timeEntry.id,
+				date: timeEntry.date,
+				userId: timeEntry.userId,
+				userName: user.name,
+				projectName: project.name,
+				projectCode: project.code,
+				taskName: task.name,
+				description: timeEntry.description,
+				durationSeconds: timeEntry.durationSeconds,
+			})
+			.from(timeEntry)
+			.innerJoin(project, eq(timeEntry.projectId, project.id))
+			.innerJoin(task, eq(timeEntry.taskId, task.id))
+			.innerJoin(user, eq(timeEntry.userId, user.id))
+			// `project` scope: the inner join on `project` above already dropped
+			// project-less rows, so stating it changes nothing but where it is said.
+			.where(
+				ledgerWhere(ctx, { from: input.from, to: input.to }, "project", {
+					overtimeOnly: true,
+					activeOnly: input.activeOnly,
+					visibleProjectIds: projectIds,
+					visibleUserIds: userIds,
+				}),
+			)
+			.orderBy(asc(timeEntry.date), asc(timeEntry.id));
 
-		return (
-			db
-				.select({
-					id: timeEntry.id,
-					date: timeEntry.date,
-					projectName: project.name,
-					taskName: task.name,
-					description: timeEntry.description,
-					durationSeconds: timeEntry.durationSeconds,
-				})
-				.from(timeEntry)
-				.innerJoin(project, eq(timeEntry.projectId, project.id))
-				.innerJoin(task, eq(timeEntry.taskId, task.id))
-				// `project` scope: the inner join on `project` above already dropped
-				// project-less rows, so stating it changes nothing but where it is said.
-				.where(
-					ledgerWhere(ctx, { from, to }, "project", {
-						userId: input.userId,
-						overtimeOnly: true,
-						visibleProjectIds: projectIds,
-						visibleUserIds: userIds,
-					}),
-				)
-				.orderBy(asc(timeEntry.date))
+		const byUser = new Map<string, OvertimeRow>();
+		for (const e of entries) {
+			const row = byUser.get(e.userId) ?? {
+				userId: e.userId,
+				name: e.userName,
+				count: 0,
+				seconds: 0,
+				entries: [],
+			};
+			row.count += 1;
+			row.seconds += e.durationSeconds;
+			row.entries.push({
+				id: e.id,
+				date: e.date,
+				projectName: e.projectName,
+				projectCode: e.projectCode,
+				taskName: e.taskName,
+				description: e.description,
+				durationSeconds: e.durationSeconds,
+			});
+			byUser.set(e.userId, row);
+		}
+		const rows = [...byUser.values()].sort(
+			(a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name),
 		);
+		return {
+			rows,
+			totalSeconds: rows.reduce((sum, r) => sum + r.seconds, 0),
+			totalEntries: entries.length,
+		};
 	},
 
 	/**
-	 * Absence report (6.3), scoped by `accessService.peopleScope` like every
-	 * people-shaped report — everyone for Admin, otherwise the caller, their
-	 * list, and everyone on the projects they manage. Computed from ENTRIES
-	 * only, never from close-sheet overrides — the two are allowed to diverge,
-	 * and when they do it means someone forgot to log absence (PRD decision 3).
+	 * Absence report (6.3): time-off entries only — Vacation, Sick Leave, Paid
+	 * Leave — per person over the period, split by task and with the entries
+	 * behind the figure. Computed from ENTRIES only, never from close-sheet
+	 * overrides — the two are allowed to diverge, and when they do it means
+	 * someone forgot to log absence (PRD decision 3).
+	 *
+	 * Scoped by `accessService.peopleScope` like every people-shaped report:
+	 * everyone for Admin, otherwise the caller, their list, and everyone on
+	 * the projects they manage.
 	 */
-	absence: async (ctx: Ctx, input: AbsenceReportInput) => {
-		// People-shaped, so scoped by people: everyone for Admin, otherwise the
-		// caller, their list, and everyone on the projects they manage.
+	absence: async (
+		ctx: Ctx,
+		input: AbsenceReportInput,
+	): Promise<AbsenceReport> => {
 		const access = await ctxAccess(ctx);
 		const people = await accessService.peopleScope(ctx, access);
 		const visibleUserIds = people ? [...people] : undefined;
 
-		const yearStart = `${input.year}-01-01`;
-		const yearEnd = `${input.year}-12-31`;
-		const monthRange = input.month
-			? monthBounds(input.year, input.month)
-			: null;
-
-		const select = (from: string, to: string) =>
-			db
-				.select({
-					userId: timeEntry.userId,
-					name: user.name,
-					taskId: task.id,
-					taskKey: task.systemKey,
-					taskName: task.name,
-					total: sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`,
-				})
-				.from(timeEntry)
-				.innerJoin(task, eq(timeEntry.taskId, task.id))
-				.innerJoin(user, eq(timeEntry.userId, user.id))
-				.where(
-					ledgerWhere(ctx, { from, to }, "absence", {
-						userIds: visibleUserIds,
-					}),
-				)
-				.groupBy(
-					timeEntry.userId,
-					user.name,
-					task.id,
-					task.systemKey,
-					task.name,
-				);
-
-		const [absenceTasks, ytdRows, monthRows] = await Promise.all([
+		const [absenceTasks, entries] = await Promise.all([
 			// The columns the table draws, named by the caller-stable system key
 			// rather than by label. The route used to look its two columns up by the
 			// literal strings "Vacation" and "Sick Leave", which is a display name:
@@ -492,8 +508,27 @@ export const reportsService = {
 				// been; a third absence task would land after both rather than
 				// alphabetically between them.
 				.orderBy(asc(task.createdAt), asc(task.name)),
-			select(yearStart, yearEnd),
-			monthRange ? select(monthRange.from, monthRange.to) : Promise.resolve([]),
+			db
+				.select({
+					id: timeEntry.id,
+					date: timeEntry.date,
+					userId: timeEntry.userId,
+					userName: user.name,
+					taskId: task.id,
+					taskKey: task.systemKey,
+					taskName: task.name,
+					description: timeEntry.description,
+					durationSeconds: timeEntry.durationSeconds,
+				})
+				.from(timeEntry)
+				.innerJoin(task, eq(timeEntry.taskId, task.id))
+				.innerJoin(user, eq(timeEntry.userId, user.id))
+				.where(
+					ledgerWhere(ctx, { from: input.from, to: input.to }, "absence", {
+						userIds: visibleUserIds,
+					}),
+				)
+				.orderBy(asc(timeEntry.date), asc(timeEntry.id)),
 		]);
 
 		// Key on the system key where there is one, the task id otherwise, so a
@@ -501,53 +536,41 @@ export const reportsService = {
 		const columnKey = (row: { taskKey: string | null; taskId: string }) =>
 			row.taskKey ?? row.taskId;
 
-		const byUser = new Map<
-			string,
-			{
-				userId: string;
-				name: string;
-				monthByTask: Record<string, number>;
-				ytdByTask: Record<string, number>;
-				monthSeconds: number;
-				ytdSeconds: number;
-			}
-		>();
-		const ensure = (userId: string, name: string) => {
-			let row = byUser.get(userId);
-			if (!row) {
-				row = {
-					userId,
-					name,
-					monthByTask: {},
-					ytdByTask: {},
-					monthSeconds: 0,
-					ytdSeconds: 0,
-				};
-				byUser.set(userId, row);
-			}
-			return row;
-		};
-
-		for (const r of ytdRows) {
-			const row = ensure(r.userId, r.name);
-			row.ytdByTask[columnKey(r)] = Number(r.total);
-			row.ytdSeconds += Number(r.total);
-		}
-		for (const r of monthRows) {
-			const row = ensure(r.userId, r.name);
-			row.monthByTask[columnKey(r)] = Number(r.total);
-			row.monthSeconds += Number(r.total);
+		const byUser = new Map<string, AbsenceRow>();
+		for (const e of entries) {
+			const row = byUser.get(e.userId) ?? {
+				userId: e.userId,
+				name: e.userName,
+				seconds: 0,
+				byTask: {},
+				entries: [],
+			};
+			const key = columnKey(e);
+			row.seconds += e.durationSeconds;
+			row.byTask[key] = (row.byTask[key] ?? 0) + e.durationSeconds;
+			row.entries.push({
+				id: e.id,
+				date: e.date,
+				taskKey: key,
+				taskName: e.taskName,
+				description: e.description,
+				durationSeconds: e.durationSeconds,
+			});
+			byUser.set(e.userId, row);
 		}
 
-		// Unit is hours; the UI offers a toggle to display as days, which is why
-		// the divisor travels with the payload rather than being hardcoded there.
 		return {
+			// Unit is hours; the screen shows days = hours ÷ working day for reading
+			// only, which is why the divisor travels with the payload rather than
+			// being hardcoded there.
 			workingDaySeconds: WORKING_DAY_SECONDS,
 			columns: absenceTasks.map((t) => ({
 				key: t.key ?? t.id,
 				label: t.label,
 			})),
-			rows: [...byUser.values()].sort((a, b) => a.name.localeCompare(b.name)),
+			rows: [...byUser.values()].sort(
+				(a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name),
+			),
 		};
 	},
 };

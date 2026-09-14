@@ -65,10 +65,12 @@ function ReportsPage() {
 		// between them never resizes the shell.
 		<Page>
 			<PageHeader
-				// The Time report can be a week, a quarter or a year; the others
-				// are a month. Either way the eyebrow says which.
+				// Tracking is a month; every other report can be a week, a quarter
+				// or a year. Either way the eyebrow says which.
 				eyebrow={
-					tab === "time" ? periodLabel(search, today) : formatMonthKey(month)
+					tab === "compliance"
+						? formatMonthKey(month)
+						: periodLabel(search, today)
 				}
 				title="Reports"
 				// The report tabs sit on the eyebrow row, where every other screen
@@ -139,18 +141,12 @@ function ReportsPage() {
 						/>
 					)}
 					{tab === "overtime" && (
-						<MonthFramed
+						<OvertimeTab
 							orgSlug={organization.slug}
 							search={search}
-							month={month}
+							today={today}
 							thisMonth={thisMonth}
-						>
-							<OvertimeTab
-								orgSlug={organization.slug}
-								search={search}
-								{...period}
-							/>
-						</MonthFramed>
+						/>
 					)}
 					{tab === "compliance" && (
 						<MonthFramed
@@ -163,14 +159,12 @@ function ReportsPage() {
 						</MonthFramed>
 					)}
 					{tab === "absence" && (
-						<MonthFramed
+						<AbsenceTab
 							orgSlug={organization.slug}
 							search={search}
-							month={month}
+							today={today}
 							thisMonth={thisMonth}
-						>
-							<AbsenceTab {...period} />
-						</MonthFramed>
+						/>
 					)}
 				</Suspense>
 			</FadeSwap>

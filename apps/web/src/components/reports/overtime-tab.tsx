@@ -1,173 +1,294 @@
-import { formatHoursLabel } from "@farmer/core/lib/report-format";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import {
+	formatDecimalHours,
+	formatReportHours,
+} from "@farmer/core/lib/report-format";
+import { resolveReportPeriod } from "@farmer/core/lib/report-period";
+import type { OvertimeReportInput } from "@farmer/core/schema";
+import type { OvertimeRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { Fragment, Suspense, useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
-import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Table,
 	TableBody,
 	TableCell,
-	TableHead,
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
-import { formatClock } from "#/lib/format-hours.ts";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { downloadCsv } from "#/lib/csv.ts";
 import { matchesSearch } from "#/lib/search.ts";
-import { overtimeDetailQuery, overtimeReportQuery } from "#/queries/reports.ts";
+import { cn } from "#/lib/utils.ts";
+import { overtimeReportQuery } from "#/queries/reports.ts";
 
 import type { Search } from "./search.ts";
-import { formatDateHeading, ReportTable } from "./shared.tsx";
+import {
+	ActiveOnlyToggle,
+	byNumber,
+	byText,
+	FigurePending,
+	formatDateHeading,
+	PeriodPicker,
+	RowDisclosure,
+	type Sort,
+	SortHead,
+	TabPending,
+	toggleSort,
+} from "./shared.tsx";
+
+// The Overtime report (PRD 6.5), as the COO signed it off: the same period
+// control as the Time report, one table of people with their flagged entries
+// and hours, and a row that opens into the entries — date, project, task,
+// note. Only what a person flagged as overtime when logging it; nothing is
+// inferred from the fund.
 
 export function OvertimeTab({
 	orgSlug,
 	search,
-	year,
-	month,
+	today,
+	thisMonth,
 }: {
 	orgSlug: string;
 	search: Search;
-	year: number;
-	month: number;
+	today: string;
+	thisMonth: string;
 }) {
-	const { data: rows } = useSuspenseQuery(
-		overtimeReportQuery(orgSlug, { year, month }),
-	);
-	const [query, setQuery] = useState("");
-	const filteredRows = rows.filter((row) => matchesSearch(query, [row.name]));
-
-	if (search.detailKind === "overtime" && search.detailId) {
-		return (
-			<OvertimeDetail
-				orgSlug={orgSlug}
-				search={search}
-				year={year}
-				month={month}
-				userId={search.detailId}
-				name={rows.find((r) => r.userId === search.detailId)?.name ?? "Person"}
-			/>
-		);
-	}
-
-	if (rows.length === 0) {
-		return (
-			<p className="mt-1 text-base text-muted-foreground">
-				Nobody flagged any overtime this month.
-			</p>
-		);
-	}
+	const { from, to } = resolveReportPeriod(search, today);
+	const input: OvertimeReportInput = {
+		from,
+		to,
+		activeOnly: search.active === "1",
+	};
 
 	return (
 		<>
-			<SearchInput
-				value={query}
-				onValueChange={setQuery}
-				className="w-full sm:w-56"
-			/>
-			<Table containerClassName="mt-3">
-				<TableHeader>
-					<TableRow>
-						<TableHead>Person</TableHead>
-						<TableHead className="text-right">This month</TableHead>
-						<TableHead className="text-right">This year</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{filteredRows.length === 0 ? (
-						<NoMatchesRow colSpan={3} />
-					) : (
-						filteredRows.map((row) => (
-							<TableRow key={row.userId}>
-								<TableCell>
-									<PersonCell userId={row.userId} name={row.name} />
-								</TableCell>
-								<TableCell className="text-right">
-									<Link
-										to="/$orgSlug/reports"
-										params={{ orgSlug }}
-										search={{
-											...search,
-											detailKind: "overtime",
-											detailId: row.userId,
-										}}
-										className="mono underlined"
-									>
-										{formatHoursLabel(row.monthSeconds)}
-									</Link>
-								</TableCell>
-								<TableCell className="mono text-right">
-									{formatHoursLabel(row.yearSeconds)}
-								</TableCell>
-							</TableRow>
-						))
-					)}
-				</TableBody>
-			</Table>
+			<PeriodPicker
+				orgSlug={orgSlug}
+				search={search}
+				today={today}
+				thisMonth={thisMonth}
+			>
+				<ActiveOnlyToggle orgSlug={orgSlug} search={search} />
+				<Suspense
+					fallback={
+						<Button variant="outline" size="sm" disabled>
+							Export CSV
+						</Button>
+					}
+				>
+					<OvertimeExport input={input} />
+				</Suspense>
+			</PeriodPicker>
+
+			<Suspense
+				fallback={
+					<>
+						<div className="mt-6 flex justify-end">
+							<FigurePending label="Total hours" />
+						</div>
+						<TabPending className="mt-6" />
+					</>
+				}
+			>
+				<OvertimeRows input={input} />
+			</Suspense>
 		</>
 	);
 }
 
-/** The entries behind one person's overtime figure (PRD 6.5) — overtime is a
- *  manual flag, so the only way to judge it is to read what was flagged. */
-function OvertimeDetail({
-	orgSlug,
-	search,
-	year,
-	month,
-	userId,
-	name,
-}: {
-	orgSlug: string;
-	search: Search;
-	year: number;
-	month: number;
-	userId: string;
-	name: string;
-}) {
-	const { data: rows } = useSuspenseQuery(
-		overtimeDetailQuery(orgSlug, { year, month, userId }),
+function OvertimeExport({ input }: { input: OvertimeReportInput }) {
+	const orgSlug = useOrgSlug();
+	const { data } = useSuspenseQuery(overtimeReportQuery(orgSlug, input));
+	return (
+		<Button
+			variant="outline"
+			size="sm"
+			disabled={data.rows.length === 0}
+			onClick={() =>
+				downloadCsv(
+					`overtime_${input.from}_${input.to}.csv`,
+					["Person", "Entries", "Hours"],
+					data.rows.map((r) => [
+						r.name,
+						String(r.count),
+						formatDecimalHours(r.seconds),
+					]),
+				)
+			}
+		>
+			Export CSV
+		</Button>
 	);
-	// Over every row, not whatever the table's own search box narrows to.
-	const total = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
+}
+
+type SortKey = "name" | "count" | "hours";
+
+function OvertimeRows({ input }: { input: OvertimeReportInput }) {
+	const orgSlug = useOrgSlug();
+	const { data } = useSuspenseQuery(overtimeReportQuery(orgSlug, input));
+	const [query, setQuery] = useState("");
+	const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+	const [sort, setSort] = useState<Sort<SortKey>>({ key: "hours", dir: -1 });
+	const onSort = (key: SortKey, numeric: boolean) =>
+		setSort((current) => toggleSort(current, key, numeric));
+	const compare = {
+		name: byText((r: OvertimeRow) => r.name),
+		count: byNumber((r: OvertimeRow) => r.count),
+		hours: byNumber((r: OvertimeRow) => r.seconds),
+	} satisfies Record<SortKey, (a: OvertimeRow, b: OvertimeRow) => number>;
+	const toggle = (userId: string) =>
+		setOpen((current) => {
+			const next = new Set(current);
+			if (next.has(userId)) next.delete(userId);
+			else next.add(userId);
+			return next;
+		});
+
+	const shown = data.rows
+		.filter((row) => matchesSearch(query, [row.name]))
+		.sort(
+			(a, b) =>
+				compare[sort.key](a, b) * sort.dir ||
+				a.name.localeCompare(b.name, "hr"),
+		);
 
 	return (
 		<>
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="flex items-center gap-3">
-					<Link
-						to="/$orgSlug/reports"
-						params={{ orgSlug }}
-						search={{ ...search, detailId: undefined, detailKind: undefined }}
-						className={`${returnLinkClass} inline-flex items-center gap-1`}
-					>
-						<ArrowLeftIcon weight="regular" className="size-3.5" />
-						Back
-					</Link>
-					<h2 className="h2">{name}</h2>
-				</div>
-				<span className="flex items-baseline gap-2">
-					<span className="eyebrow">Overtime</span>
-					<span className="mono text-lg">{formatHoursLabel(total)}</span>
+			<div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+				<SearchInput
+					value={query}
+					onValueChange={setQuery}
+					className="w-full sm:w-56"
+				/>
+				<span className="flex items-baseline gap-2 whitespace-nowrap">
+					<span className="eyebrow">Total hours</span>
+					<span className="mono text-lg">
+						{formatReportHours(data.totalSeconds)}
+					</span>
+					<span className="text-xs text-muted-foreground">
+						{data.totalEntries.toLocaleString("hr-HR")} flagged{" "}
+						{data.totalEntries === 1 ? "entry" : "entries"} · {data.rows.length}{" "}
+						{data.rows.length === 1 ? "person" : "people"}
+					</span>
 				</span>
 			</div>
-			<ReportTable
-				headers={["Date", "Project", "Task", "Description", "Hours"]}
-				rows={rows.map((r) => ({
-					key: r.id,
-					cells: [
-						formatDateHeading(r.date),
-						r.projectName,
-						r.taskName,
-						r.description,
-						formatClock(r.durationSeconds),
-					],
-					searchFields: [r.projectName, r.taskName, r.description],
-				}))}
-				empty="No overtime entries this month."
-			/>
+
+			{data.rows.length === 0 ? (
+				<p className="mt-5 border-t pt-5 text-base text-muted-foreground">
+					No overtime flagged in this period.
+				</p>
+			) : (
+				<Table containerClassName="mt-3">
+					<TableHeader>
+						<TableRow>
+							<SortHead
+								label="Name"
+								sortKey="name"
+								sort={sort}
+								onSort={onSort}
+							/>
+							<SortHead
+								label="Entries"
+								sortKey="count"
+								numeric
+								sort={sort}
+								onSort={onSort}
+								className="text-right"
+							/>
+							<SortHead
+								label="Overtime hours"
+								sortKey="hours"
+								numeric
+								sort={sort}
+								onSort={onSort}
+								className="text-right"
+							/>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{shown.length === 0 ? (
+							<NoMatchesRow colSpan={3} />
+						) : (
+							shown.map((row) => {
+								const isOpen = open.has(row.userId);
+								return (
+									<Fragment key={row.userId}>
+										<TableRow>
+											<TableCell className="p-0">
+												<RowDisclosure
+													open={isOpen}
+													onToggle={() => toggle(row.userId)}
+												>
+													<PersonCell userId={row.userId} name={row.name} />
+												</RowDisclosure>
+											</TableCell>
+											<TableCell className="mono text-right text-muted-foreground">
+												{row.count}
+											</TableCell>
+											<TableCell className="mono text-right">
+												{formatReportHours(row.seconds)}
+											</TableCell>
+										</TableRow>
+										{isOpen &&
+											row.entries.map((e) => (
+												<TableRow key={e.id}>
+													<TableCell className="pl-7 whitespace-normal">
+														{formatDateHeading(e.date)}
+														<span className="text-muted-foreground">
+															{" "}
+															·{" "}
+															{e.projectCode && (
+																<span className="mono text-xs">
+																	[{e.projectCode}]{" "}
+																</span>
+															)}
+															{e.projectName} · {e.taskName}
+														</span>
+														<span
+															className={cn(
+																"block text-xs",
+																e.description
+																	? "text-muted-foreground"
+																	: "text-faint italic",
+															)}
+														>
+															{e.description || "No description"}
+														</span>
+													</TableCell>
+													<TableCell />
+													<TableCell className="mono text-right">
+														{formatReportHours(e.durationSeconds)}
+													</TableCell>
+												</TableRow>
+											))}
+									</Fragment>
+								);
+							})
+						)}
+						<TableRow className="bg-secondary/60 hover:bg-secondary/60">
+							<TableCell className="font-medium">Total</TableCell>
+							<TableCell className="mono text-right font-medium text-muted-foreground">
+								{data.totalEntries}
+							</TableCell>
+							<TableCell className="mono text-right font-medium">
+								{formatReportHours(data.totalSeconds)}
+							</TableCell>
+						</TableRow>
+					</TableBody>
+				</Table>
+			)}
+
+			<p className="mt-3 max-w-[72ch] text-sm text-muted-foreground">
+				<span className="font-medium text-foreground">
+					How it's calculated.
+				</span>{" "}
+				Only entries the person flagged as overtime when logging them, in the
+				selected period. Nothing is inferred from the hour fund. Open a name for
+				the entries.
+			</p>
 		</>
 	);
 }

@@ -67,23 +67,20 @@ export const timeReportDetailInput = withRangeLimits(
 );
 export type TimeReportDetailInput = z.infer<typeof timeReportDetailInput>;
 
+// Tracking is the one month-shaped report: its rule is a fraction of the month
+// elapsed against the month's fund, and no other period has a fund.
 export const monthReportInput = z.object({ year, month });
 export type MonthReportInput = z.infer<typeof monthReportInput>;
-
-// The drill-down behind one person's overtime figure.
-export const overtimeDetailInput = z.object({
-	year,
-	month,
-	userId: z.string().min(1),
-});
-export type OvertimeDetailInput = z.infer<typeof overtimeDetailInput>;
 
 export const yearReportInput = z.object({ year });
 export type YearReportInput = z.infer<typeof yearReportInput>;
 
-export const absenceReportInput = z.object({
-	year,
-	// Absent = the whole year to date, which is how the report is read.
-	month: month.optional(),
-});
+// Overtime and Absence take the same period as the Time report — every report
+// shares the one period control — under the same ceiling.
+export const overtimeReportInput = withRangeLimits(
+	z.object({ ...range, activeOnly: z.boolean().optional() }),
+);
+export type OvertimeReportInput = z.infer<typeof overtimeReportInput>;
+
+export const absenceReportInput = withRangeLimits(z.object({ ...range }));
 export type AbsenceReportInput = z.infer<typeof absenceReportInput>;

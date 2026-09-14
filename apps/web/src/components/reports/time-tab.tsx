@@ -8,13 +8,7 @@ import type {
 	TimeReportSummaryInput,
 } from "@farmer/core/schema";
 import type { TimeReportDetailRow, TimeReportRow } from "@farmer/core/services";
-import {
-	ArrowLeftIcon,
-	CaretDownIcon,
-	CaretRightIcon,
-	CaretUpIcon,
-	XIcon,
-} from "@phosphor-icons/react";
+import { ArrowLeftIcon, XIcon } from "@phosphor-icons/react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
@@ -31,12 +25,10 @@ import {
 	SelectValue,
 } from "#/components/ui/select.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
-import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
 	TableBody,
 	TableCell,
-	TableHead,
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
@@ -54,7 +46,20 @@ import {
 import { selectableTasksQuery } from "#/queries/tasks.ts";
 
 import type { Search } from "./search.ts";
-import { formatDateHeading, PeriodPicker, TabPending } from "./shared.tsx";
+import {
+	ActiveOnlyToggle,
+	byNumber,
+	byText,
+	FigurePending,
+	formatDateHeading,
+	PeriodPicker,
+	QuietTabs,
+	RowDisclosure,
+	type Sort,
+	SortHead,
+	TabPending,
+	toggleSort,
+} from "./shared.tsx";
 
 // The Time report (PRD 6.1), laid out the way the COO signed it off against
 // Harvest, in two control rows and no more:
@@ -72,25 +77,6 @@ import { formatDateHeading, PeriodPicker, TabPending } from "./shared.tsx";
 // thing you opened is the title — going back is how you drop it — so the
 // crumb never repeats a chip. Hours are written the way the accounting book
 // writes them (1.821,50).
-
-/** The placeholder for a single figure — a total or a percentage — that sits in
- *  a row of controls. The label stays: only the number is unknown. */
-function FigurePending({
-	label,
-	className,
-}: {
-	label: string;
-	className?: string;
-}) {
-	return (
-		<span
-			className={cn("flex items-baseline gap-2 whitespace-nowrap", className)}
-		>
-			<span className="eyebrow">{label}</span>
-			<Skeleton className="h-4 w-16" />
-		</span>
-	);
-}
 
 const GROUPS = [
 	{ id: "clients", label: "Clients", noun: "clients" },
@@ -210,37 +196,6 @@ export function TimeTab({
 	);
 }
 
-/** "Active projects only" — leaves archived projects' time out of every figure
- *  on the screen. In the URL like every other report control, so a shared link
- *  shows what its sender saw. */
-function ActiveOnlyToggle({
-	orgSlug,
-	search,
-}: {
-	orgSlug: string;
-	search: Search;
-}) {
-	const navigate = useNavigate({ from: "/$orgSlug/reports" });
-	const on = search.active === "1";
-	return (
-		<span className="flex items-center gap-2 text-sm text-muted-foreground">
-			<Switch
-				size="sm"
-				aria-label="Active projects only"
-				checked={on}
-				onCheckedChange={(checked) =>
-					navigate({
-						to: "/$orgSlug/reports",
-						params: { orgSlug },
-						search: { ...search, active: checked ? "1" : undefined },
-					})
-				}
-			/>
-			Active projects only
-		</span>
-	);
-}
-
 // ── Level 1: the three tables ──────────────────────────────────────────────
 
 /**
@@ -263,31 +218,13 @@ function TimeSummary({
 	return (
 		<>
 			<div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-				{/* Quiet tabs — an underscore, not a second pill strip under the
-				    report tabs. The same 2px accent underscore the week strip uses
-				    for the active day. */}
-				<nav aria-label="Group by" className="flex gap-5">
-					{GROUPS.map((g) => {
-						const active = input.tab === g.id;
-						return (
-							<Link
-								key={g.id}
-								to="/$orgSlug/reports"
-								params={{ orgSlug }}
-								search={{ ...search, group: g.id }}
-								aria-current={active ? "page" : undefined}
-								className={cn(
-									"border-b-2 py-1.5 text-sm transition-colors duration-(--dur-fast)",
-									active
-										? "border-primary font-medium text-foreground"
-										: "border-transparent text-muted-foreground hover:text-foreground",
-								)}
-							>
-								{g.label}
-							</Link>
-						);
-					})}
-				</nav>
+				<QuietTabs
+					label="Group by"
+					items={GROUPS}
+					active={input.tab}
+					orgSlug={orgSlug}
+					search={(id) => ({ ...search, group: id })}
+				/>
 				<Suspense fallback={<FigurePending label="Total hours" />}>
 					<SummaryFigure input={input} />
 				</Suspense>
@@ -370,73 +307,6 @@ function SummaryExport({
 		>
 			Export CSV
 		</Button>
-	);
-}
-
-/** A column sort: which column, and which way. Clicking the same column
- *  again flips it; a fresh text column starts A→Z, a fresh number column
- *  starts biggest first — "who has the most hours" is the question a Hours
- *  column gets asked. */
-type Sort<K extends string> = { key: K; dir: 1 | -1 };
-const toggleSort = <K extends string>(
-	current: Sort<K>,
-	key: K,
-	numeric: boolean,
-): Sort<K> =>
-	current.key === key
-		? { key, dir: current.dir > 0 ? -1 : 1 }
-		: { key, dir: numeric ? -1 : 1 };
-const byText =
-	<R,>(pick: (row: R) => string | null) =>
-	(a: R, b: R) =>
-		(pick(a) ?? "").localeCompare(pick(b) ?? "", "hr");
-const byNumber =
-	<R,>(pick: (row: R) => number) =>
-	(a: R, b: R) =>
-		pick(a) - pick(b);
-
-/** A column header that sorts the table, with the arrow on the active one.
- *  Every column is one: a table you cannot sort by the column you are
- *  reading is a table you read twice. */
-function SortHead<K extends string>({
-	label,
-	sortKey,
-	numeric = false,
-	sort,
-	onSort,
-	className,
-}: {
-	label: string;
-	sortKey: K;
-	/** Starts biggest first. */
-	numeric?: boolean;
-	sort: Sort<K>;
-	onSort: (key: K, numeric: boolean) => void;
-	className?: string;
-}) {
-	const active = sort.key === sortKey;
-	return (
-		<TableHead
-			className={className}
-			aria-sort={active ? (sort.dir > 0 ? "ascending" : "descending") : "none"}
-		>
-			<button
-				type="button"
-				onClick={() => onSort(sortKey, numeric)}
-				className={cn(
-					"inline-flex items-center gap-1 rounded-sm transition-colors duration-(--dur-fast) outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16",
-					active && "text-foreground",
-				)}
-			>
-				{label}
-				{active &&
-					(sort.dir > 0 ? (
-						<CaretUpIcon weight="bold" className="size-3" />
-					) : (
-						<CaretDownIcon weight="bold" className="size-3" />
-					))}
-			</button>
-		</TableHead>
 	);
 }
 
@@ -1302,19 +1172,10 @@ function BreakdownTable({
 									    archived section under every list uses. */}
 									<TableRow className="bg-secondary/60 hover:bg-secondary">
 										<TableCell colSpan={columns.length} className="p-0">
-											<button
-												type="button"
-												aria-expanded={open}
-												onClick={() => onToggle(group.key)}
-												className="flex w-full items-center gap-2 px-2 py-2.5 text-left font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/16 focus-visible:ring-inset"
+											<RowDisclosure
+												open={open}
+												onToggle={() => onToggle(group.key)}
 											>
-												<CaretRightIcon
-													weight="bold"
-													className={cn(
-														"size-3 shrink-0 text-muted-foreground transition-transform duration-(--dur-fast)",
-														open && "rotate-90",
-													)}
-												/>
 												{by === "teammate" ? (
 													<PersonCell
 														userId={group.userId}
@@ -1336,7 +1197,7 @@ function BreakdownTable({
 													{by !== "teammate" &&
 														` · ${group.people.size} ${group.people.size === 1 ? "person" : "people"}`}
 												</span>
-											</button>
+											</RowDisclosure>
 										</TableCell>
 										<TableCell className="mono text-right font-medium">
 											{formatReportHours(group.seconds)}

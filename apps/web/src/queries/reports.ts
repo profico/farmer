@@ -1,6 +1,6 @@
 import type {
 	AbsenceReportInput,
-	MonthReportInput,
+	OvertimeReportInput,
 	TimeReportDetailInput,
 	TimeReportSummaryInput,
 } from "@farmer/core/schema";
@@ -8,7 +8,6 @@ import { queryOptions } from "@tanstack/react-query";
 
 import {
 	getAbsenceReport,
-	getOvertimeDetail,
 	getOvertimeReport,
 	getTimeReportDetail,
 	getTimeReportSummary,
@@ -37,19 +36,10 @@ export const timeReportDetailQuery = (
 		queryFn: () => getTimeReportDetail({ data: input }),
 	});
 
-export const overtimeReportQuery = (org: string, input: MonthReportInput) =>
+export const overtimeReportQuery = (org: string, input: OvertimeReportInput) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).reports, "overtime", input],
 		queryFn: () => getOvertimeReport({ data: input }),
-	});
-
-export const overtimeDetailQuery = (
-	org: string,
-	input: MonthReportInput & { userId: string },
-) =>
-	queryOptions({
-		queryKey: [...queryKeys(org).reports, "overtime-detail", input],
-		queryFn: () => getOvertimeDetail({ data: input }),
 	});
 
 export const absenceReportQuery = (org: string, input: AbsenceReportInput) =>

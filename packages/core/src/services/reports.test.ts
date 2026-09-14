@@ -44,8 +44,6 @@ import type { Ctx } from "./types";
 
 const H = 3600;
 const ORG = "rep-org";
-const YEAR = 2026;
-const MONTH = 5;
 const FROM = "2026-05-01";
 const TO = "2026-05-31";
 
@@ -335,13 +333,13 @@ describe("who may read a report", () => {
 			})),
 		);
 		const mine = await reportsService.absence(ctxFor(WORKER), {
-			year: YEAR,
-			month: MONTH,
+			from: FROM,
+			to: TO,
 		});
 		expect(mine.rows.map((r) => r.userId)).toEqual([WORKER]);
 		const all = await reportsService.absence(ctxFor(ADMIN), {
-			year: YEAR,
-			month: MONTH,
+			from: FROM,
+			to: TO,
 		});
 		expect(all.rows.map((r) => r.userId).sort()).toEqual(
 			[OUTSIDER, WORKER].sort(),
@@ -388,8 +386,8 @@ describe("who may read a report", () => {
 			})),
 		);
 		const theirs = await reportsService.absence(ctxFor(PM), {
-			year: YEAR,
-			month: MONTH,
+			from: FROM,
+			to: TO,
 		});
 		// WORKER is on Alpha, which PM runs; OUTSIDER is on Beta only.
 		expect(theirs.rows.map((r) => r.userId)).toEqual([WORKER]);
@@ -556,6 +554,8 @@ describe("time detail", () => {
 // ── Variance ───────────────────────────────────────────────────────────────
 
 describe("absence report", () => {
+	const may = { from: FROM, to: TO };
+
 	test("groups by system key, so renaming the task does not empty a column", async () => {
 		// The org renames the built-in. Nothing about the report may depend on the
 		// label: the old lookup matched the literal string "Vacation" and emptied
@@ -571,14 +571,11 @@ describe("absence report", () => {
 			projectId: null,
 			taskId: vacationTaskId,
 			date: "2026-05-04",
-			description: "",
+			description: "seaside",
 			durationSeconds: 8 * H,
 		});
 
-		const report = await reportsService.absence(ctxFor(ADMIN), {
-			year: YEAR,
-			month: MONTH,
-		});
+		const report = await reportsService.absence(ctxFor(ADMIN), may);
 
 		// The column is keyed on "vacation" whatever the org calls it, and the
 		// label follows the rename.
@@ -586,8 +583,17 @@ describe("absence report", () => {
 		expect(column?.label).toBe("Godišnji");
 
 		const row = report.rows.find((r) => r.userId === WORKER);
-		expect(row?.monthByTask.vacation).toBe(8 * H);
-		expect(row?.ytdByTask.vacation).toBe(8 * H);
+		expect(row?.seconds).toBe(8 * H);
+		expect(row?.byTask.vacation).toBe(8 * H);
+		expect(row?.entries).toMatchObject([
+			{
+				date: "2026-05-04",
+				taskKey: "vacation",
+				taskName: "Godišnji",
+				description: "seaside",
+				durationSeconds: 8 * H,
+			},
+		]);
 
 		await db
 			.update(task)
@@ -595,58 +601,113 @@ describe("absence report", () => {
 			.where(eq(task.id, vacationTaskId));
 	});
 
-	test("without a month it reports the year to date", async () => {
-		await db.insert(timeEntry).values([
-			{
+	test("covers exactly the period, with the entries behind the figure in date order", async () => {
+		await db.insert(timeEntry).values(
+			// Out of order on purpose; one of them outside May.
+			["2026-05-06", "2026-02-10", "2026-05-04"].map((date) => ({
 				organizationId: ORG,
 				userId: WORKER,
 				projectId: null,
 				taskId: vacationTaskId,
-				date: "2026-02-10",
+				date,
 				description: "",
 				durationSeconds: 8 * H,
-			},
-			{
-				organizationId: ORG,
-				userId: WORKER,
-				projectId: null,
-				taskId: vacationTaskId,
-				date: "2026-05-04",
-				description: "",
-				durationSeconds: 8 * H,
-			},
+			})),
+		);
+
+		const month = await reportsService.absence(ctxFor(ADMIN), may);
+		const row = month.rows.find((r) => r.userId === WORKER);
+		expect(row?.seconds).toBe(16 * H);
+		expect(row?.entries.map((e) => e.date)).toEqual([
+			"2026-05-04",
+			"2026-05-06",
 		]);
 
-		const report = await reportsService.absence(ctxFor(ADMIN), { year: YEAR });
-		const row = report.rows.find((r) => r.userId === WORKER);
-		expect(row?.ytdSeconds).toBe(16 * H);
-		// No month asked for, so there is no month column to fill.
-		expect(row?.monthSeconds).toBe(0);
+		const year = await reportsService.absence(ctxFor(ADMIN), {
+			from: "2026-01-01",
+			to: "2026-12-31",
+		});
+		expect(year.rows.find((r) => r.userId === WORKER)?.seconds).toBe(24 * H);
+	});
+
+	test("says nothing about somebody with no time off in the period", async () => {
+		await logEntry({ userId: WORKER, seconds: 8 * H });
+		const report = await reportsService.absence(ctxFor(ADMIN), may);
+		expect(report.rows).toEqual([]);
 	});
 });
 
 // ── Overtime ───────────────────────────────────────────────────────────────
 
 describe("overtime", () => {
-	test("reports the month and the year to date side by side", async () => {
+	const may = { from: FROM, to: TO };
+
+	test("lists only the flagged entries in the period, per person, with the entries behind the figure", async () => {
+		// Outside May, so not in the month's figure.
 		await logEntry({
 			userId: WORKER,
 			date: "2026-02-03",
 			seconds: 2 * H,
 			overtime: true,
 		});
-		await logEntry({ userId: WORKER, seconds: 3 * H, overtime: true });
+		await logEntry({
+			userId: WORKER,
+			seconds: 3 * H,
+			overtime: true,
+			description: "release night",
+		});
 		// Not overtime, so in neither figure.
 		await logEntry({ userId: WORKER, seconds: 40 * H });
 
-		const row = (
-			await reportsService.overtime(ctxFor(ADMIN), {
-				year: YEAR,
-				month: MONTH,
-			})
-		).find((r) => r.userId === WORKER);
-		expect(row?.monthSeconds).toBe(3 * H);
-		expect(row?.yearSeconds).toBe(5 * H);
+		const month = await reportsService.overtime(ctxFor(ADMIN), may);
+		expect(month.totalSeconds).toBe(3 * H);
+		expect(month.totalEntries).toBe(1);
+		const row = month.rows.find((r) => r.userId === WORKER);
+		expect(row?.count).toBe(1);
+		expect(row?.seconds).toBe(3 * H);
+		expect(row?.entries).toMatchObject([
+			{
+				date: "2026-05-11",
+				projectName: "Alpha",
+				taskName: "Development",
+				description: "release night",
+				durationSeconds: 3 * H,
+			},
+		]);
+
+		const year = await reportsService.overtime(ctxFor(ADMIN), {
+			from: "2026-01-01",
+			to: "2026-12-31",
+		});
+		expect(year.rows.find((r) => r.userId === WORKER)?.seconds).toBe(5 * H);
+	});
+
+	test("Active only leaves out overtime on an archived project", async () => {
+		await logEntry({
+			userId: OUTSIDER,
+			projectId: betaId,
+			seconds: 6 * H,
+			overtime: true,
+		});
+		await db
+			.update(project)
+			.set({ status: "archived" })
+			.where(eq(project.id, betaId));
+		try {
+			const all = await reportsService.overtime(ctxFor(ADMIN), may);
+			expect(all.rows.map((r) => r.userId)).toEqual([OUTSIDER]);
+			const active = await reportsService.overtime(ctxFor(ADMIN), {
+				...may,
+				activeOnly: true,
+			});
+			expect(active.rows).toEqual([]);
+			expect(active.totalSeconds).toBe(0);
+		} finally {
+			await db
+				.update(project)
+				.set({ status: "active" })
+				.where(eq(project.id, betaId));
+		}
 	});
 
 	test("is scoped for a Team Lead", async () => {
@@ -657,11 +718,8 @@ describe("overtime", () => {
 			overtime: true,
 		});
 
-		expect(
-			await reportsService.overtime(ctxFor(LEAD), {
-				year: YEAR,
-				month: MONTH,
-			}),
-		).toEqual([]);
+		const lead = await reportsService.overtime(ctxFor(LEAD), may);
+		expect(lead.rows).toEqual([]);
+		expect(lead.totalSeconds).toBe(0);
 	});
 });
