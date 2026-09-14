@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm";
 
 import { db } from "../db";
-import { account, member, user } from "../db/schema/auth";
+import { account, invitation, member, user } from "../db/schema/auth";
 import {
 	invitationEmail,
 	type invitationEmailStatus,
@@ -24,7 +24,11 @@ import {
 	teamLeadPerson,
 } from "../db/schema/people";
 import { dayKeyInTz, endOfMonthKey } from "../lib/time";
-import type { SetMemberTypeInput, MemberTypeValue } from "../schema/members";
+import type {
+	InviteMemberInput,
+	SetMemberTypeInput,
+	MemberTypeValue,
+} from "../schema/members";
 import { ctxDb, ctxTimezone, requireAdmin } from "./context";
 import { assertUserInOrg } from "./guards";
 import { teamLeadsService } from "./team-leads.service";
@@ -635,6 +639,37 @@ export const membersService = {
 				error: writeError,
 			});
 		}
+	},
+
+	/**
+	 * The address and role of one of this org's pending invitations, for a
+	 * resend. better-auth resends by address, not by id, so the id the list
+	 * holds is turned back into what created the invitation. Null for an id that
+	 * is not a pending invitation of this org — which is also what keeps another
+	 * org's invitation out of reach.
+	 */
+	pendingInvitation: async (
+		ctx: Ctx,
+		invitationId: string,
+	): Promise<{ email: string; role: InviteMemberInput["role"] } | null> => {
+		await requireAdmin(ctx);
+		const row = await db.query.invitation.findFirst({
+			where: and(
+				eq(invitation.id, invitationId),
+				eq(invitation.organizationId, ctx.organizationId),
+				eq(invitation.status, "pending"),
+			),
+			columns: { email: true, role: true },
+		});
+		if (!row) return null;
+		// Narrowed to the roles an invitation can be made with here, because a
+		// resend is a second `createInvitation` and better-auth types its role.
+		// The column is plain text; anything but "admin" resends as a member,
+		// which is also what an invitation with no role was made as.
+		return {
+			email: row.email,
+			role: row.role === "admin" ? "admin" : "member",
+		};
 	},
 
 	/**

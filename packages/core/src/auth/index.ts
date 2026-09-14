@@ -348,6 +348,18 @@ export const auth = betterAuth({
 						);
 					},
 				);
+
+				// And on Slack, when the address is somebody in the org's workspace.
+				// Not awaited, for the same reason as the email; `sendInvitation`
+				// never throws. It records nothing on `invitationEmail`, since that
+				// row is the email's delivery state and a DM is not a fallback for it.
+				void slackService.sendInvitation(organizationId, {
+					email: data.email,
+					inviterName: data.inviter.user.name,
+					organizationName: data.organization.name,
+					role: data.role,
+					path: `${url.pathname}${url.search}`,
+				});
 			},
 		}),
 		// The calendar integration's OAuth grant. Same Google OAuth app as the

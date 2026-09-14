@@ -4,6 +4,7 @@ import {
 	memberUserIdInput,
 	monthPeriodInput,
 	removeMemberInput,
+	resendInvitationInput,
 	setMemberArchivedInput,
 	setMemberStartDateInput,
 	setMemberTypeInput,
@@ -150,6 +151,34 @@ export const cancelInvitation = createServerFn({ method: "POST" })
 		const { auth } = await import("@farmer/core/auth");
 		return auth.api.cancelInvitation({
 			body: { invitationId },
+			headers: getRequestHeaders(),
+		});
+	});
+
+// better-auth's own resend: `createInvitation` with `resend: true` moves the
+// expiry forward and runs `sendInvitationEmail` again, which sends both the
+// email and the Slack DM. It takes the address rather than the id, so the id is
+// resolved first, inside this org.
+export const resendInvitation = createServerFn({ method: "POST" })
+	.middleware([orgAdminMiddleware])
+	.validator(resendInvitationInput)
+	.handler(async ({ data: invitationId, context }) => {
+		const [{ auth }, { membersService }] = await Promise.all([
+			import("@farmer/core/auth"),
+			import("@farmer/core/services"),
+		]);
+		const pending = await membersService.pendingInvitation(
+			context.ctx,
+			invitationId,
+		);
+		if (!pending) throw new Error("This invitation is no longer pending.");
+		return auth.api.createInvitation({
+			body: {
+				email: pending.email,
+				role: pending.role,
+				organizationId: context.ctx.organizationId,
+				resend: true,
+			},
 			headers: getRequestHeaders(),
 		});
 	});

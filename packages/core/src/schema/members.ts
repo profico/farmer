@@ -12,6 +12,10 @@ export type InviteMemberInput = z.infer<typeof inviteMemberInput>;
 export const cancelInvitationInput = z.string().min(1);
 export type CancelInvitationInput = z.infer<typeof cancelInvitationInput>;
 
+// The same better-auth invitation id.
+export const resendInvitationInput = z.string().min(1);
+export type ResendInvitationInput = z.infer<typeof resendInvitationInput>;
+
 // better-auth's removeMember accepts either the member row id or the
 // member's email — can't narrow further than "non-empty string".
 export const removeMemberInput = z.string().min(1);

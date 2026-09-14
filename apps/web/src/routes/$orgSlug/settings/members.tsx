@@ -64,6 +64,7 @@ import {
 	confirmMemberEmail,
 	type listInvitations,
 	removeMember,
+	resendInvitation,
 	setMemberArchived,
 	setMemberStartDate,
 	setMemberType,
@@ -217,6 +218,19 @@ function MembersSettingsPage() {
 		onSuccess: invalidate,
 		onError: (error) =>
 			toast.error(error.message ?? "Could not cancel invitation"),
+	});
+
+	// Sends the email and the Slack DM again, and moves the expiry forward. The
+	// email badge goes back to "Sending…" on the refetch.
+	const resendMutation = useMutation({
+		mutationFn: (invitationId: string) =>
+			resendInvitation({ data: invitationId }),
+		onSuccess: () => {
+			toast.success("Invitation sent again");
+			return invalidate();
+		},
+		onError: (error) =>
+			toast.error(error.message ?? "Could not resend invitation"),
 	});
 
 	// Archived people move into the closed-by-default section below rather
@@ -554,14 +568,24 @@ function MembersSettingsPage() {
 									</TableCell>
 									<TableCell className="capitalize">{inv.role}</TableCell>
 									<TableCell>
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={cancelMutation.isPending}
-											onClick={() => cancelMutation.mutate(inv.id)}
-										>
-											Cancel
-										</Button>
+										<div className="flex gap-1">
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={resendMutation.isPending}
+												onClick={() => resendMutation.mutate(inv.id)}
+											>
+												Resend
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={cancelMutation.isPending}
+												onClick={() => cancelMutation.mutate(inv.id)}
+											>
+												Cancel
+											</Button>
+										</div>
 									</TableCell>
 								</TableRow>
 							))}

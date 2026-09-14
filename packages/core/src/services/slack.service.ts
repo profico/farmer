@@ -7,6 +7,8 @@ import { signOrgState } from "../lib/oauth-state";
 import {
 	SLACK_BOT_SCOPES,
 	slackClient,
+	slackEscape,
+	slackLink,
 	slackRedirectUri,
 } from "../lib/slack-client";
 import { requireAdmin } from "./context";
@@ -263,6 +265,50 @@ export const slackService = {
 		const slackUserId = await slackService.slackIdFor(organizationId, userId);
 		if (!slackUserId) return false;
 		return slackClient.postMessage(installation.botToken, slackUserId, text);
+	},
+
+	/** DM an invitation to the address it was sent to, when that address belongs
+	 *  to somebody in the org's Slack workspace — beside the email, not instead
+	 *  of it.
+	 *
+	 *  Not `sendDm` and not `notify`: both address a user, and an invitee is not
+	 *  one yet. The address is the only handle, and it is the one the admin typed,
+	 *  so the bot looks it up the way `linkMember` will once they have joined.
+	 *  Returns whether the DM went out. Never throws: an invitation must not fail
+	 *  because Slack is down, uninstalled, or the person is not in the workspace. */
+	sendInvitation: async (
+		organizationId: string,
+		invite: {
+			email: string;
+			inviterName: string;
+			organizationName: string;
+			role: string;
+			/** App-relative, query included: `/accept-invite/<id>?…`. */
+			path: string;
+		},
+	): Promise<boolean> => {
+		try {
+			const installation = await slackService.installationFor(organizationId);
+			if (!installation) return false;
+			const slackUserId = await slackClient.lookupUserByEmail(
+				installation.botToken,
+				invite.email,
+			);
+			if (!slackUserId) return false;
+			const link = slackLink(invite.path, "Accept the invitation");
+			const text = `*${slackEscape(invite.inviterName)} invited you to join ${slackEscape(invite.organizationName)}* as ${slackEscape(invite.role)}.${link ? `\n${link}` : ""}`;
+			return await slackClient.postMessage(
+				installation.botToken,
+				slackUserId,
+				text,
+			);
+		} catch (error) {
+			console.error("[slack] could not send invitation", {
+				organizationId,
+				error,
+			});
+			return false;
+		}
 	},
 
 	sendTest: async (ctx: Ctx, userId: string) => {
