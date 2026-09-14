@@ -31,6 +31,13 @@ type PendingLink = Pick<
 	"githubRepoId" | "installationId" | "fullName" | "private"
 > & { projectId: string };
 
+/** Above this many linkable repos, the list stays empty until a search. */
+const SEARCH_FIRST_THRESHOLD = 10;
+
+/** A list that scrolls inside its own border rather than growing the page. */
+const LIST_CLASS =
+	"scrollbar-stable max-h-80 overflow-y-auto overscroll-contain rounded-md border";
+
 /**
  * Linking repositories to one project. The body only — no dialog, no panel — so
  * the same thing renders in the row-action dialog (the small-screen path, where
@@ -197,6 +204,11 @@ export function ProjectGithubRepos({
 	const linkableRepos = (availableRepos ?? []).filter(
 		(r) => r.linkedTo?.projectId !== projectId && matches(r.fullName),
 	);
+	// An installation that reaches a whole organization lists hundreds of repos,
+	// and nobody scrolls those for the one they know the name of — so past a
+	// handful the list waits for a search instead of drawing all of them.
+	const awaitingSearch =
+		!searching && linkableRepos.length > SEARCH_FIRST_THRESHOLD;
 
 	if (!projectId) {
 		return (
@@ -238,7 +250,7 @@ export function ProjectGithubRepos({
 				<div className="min-w-0">
 					<p className="eyebrow mb-2">Linked repositories</p>
 					{visibleLinkedRepos.length + visiblePendingLinks.length > 0 ? (
-						<div className="scrollbar-stable overflow-hidden rounded-md border">
+						<div className={LIST_CLASS}>
 							{visiblePendingLinks.map((repo) => (
 								<div
 									key={`pending-${repo.githubRepoId}`}
@@ -295,8 +307,12 @@ export function ProjectGithubRepos({
 
 				<div className="min-w-0">
 					<p className="eyebrow mb-2">Link a repository</p>
-					{linkableRepos.length > 0 ? (
-						<div className="scrollbar-stable overflow-hidden rounded-md border">
+					{awaitingSearch ? (
+						<p className="text-sm text-muted-foreground">
+							Search to find one of {linkableRepos.length} repositories.
+						</p>
+					) : linkableRepos.length > 0 ? (
+						<div className={LIST_CLASS}>
 							{linkableRepos.map((repo) => (
 								<div
 									key={repo.githubRepoId}
