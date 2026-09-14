@@ -24,8 +24,9 @@ export const TASK_GROUP_LABELS = {
 	time_off: "Time-off",
 } satisfies Record<TaskGroup, string>;
 
-/** The org-scoped starter list, in picker order. `systemKey` marks the one the
- *  day assembler resolves by key rather than by name. */
+/** The org-scoped starter list, in picker order. `systemKey` marks the ones the
+ *  engines resolve by key rather than by name: Development for work and the
+ *  rest-of-day block, Code Review for a reviewed pull request. */
 export const STANDARD_TASKS = [
 	{ name: "Frontend", group: "engineering", color: "blue" },
 	{ name: "Backend", group: "engineering", color: "indigo" },
@@ -40,7 +41,12 @@ export const STANDARD_TASKS = [
 	},
 	{ name: "WordPress", group: "engineering", color: "slate" },
 	{ name: "Bugfixing", group: "engineering", color: "red" },
-	{ name: "Code Review", group: "engineering", color: "teal" },
+	{
+		name: "Code Review",
+		group: "engineering",
+		color: "teal",
+		systemKey: "code_review",
+	},
 	{ name: "Support", group: "engineering", color: "amber" },
 	{ name: "Maintenance", group: "engineering", color: "orange" },
 	{ name: "Research", group: "engineering", color: "violet" },
@@ -58,7 +64,7 @@ export const STANDARD_TASKS = [
 	name: string;
 	group: TaskGroup;
 	color: string;
-	systemKey?: "development";
+	systemKey?: "development" | "code_review";
 }[];
 
 export type StandardTaskName = (typeof STANDARD_TASKS)[number]["name"];

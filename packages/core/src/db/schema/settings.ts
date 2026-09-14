@@ -135,6 +135,38 @@ export const commitFillTombstone = pgTable(
 	],
 );
 
+// The same idea again, for the block the commit engine files per reviewed pull
+// request: "I deleted the review block for this PR on this day".
+//
+// Keyed by (day, pull request) rather than by entry, for the reason the fill
+// tombstone is keyed by day: the row is gone, and what the person rejected is
+// a review block for that PR on that day. A review of the same PR on another
+// day is a separate block and a separate decision. The engine still attaches
+// the review to the day's work as evidence — a tombstone says no to the block,
+// not to the fact that the review happened.
+export const pullRequestReviewTombstone = pgTable(
+	"pull_request_review_tombstone",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		/** yyyy-MM-dd, in the org timezone — the same key `timeEntry.date` uses. */
+		date: text("date").notNull(),
+		pullRequestUrl: text("pull_request_url").notNull(),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [
+		unique("prrt_org_user_date_pr_unq").on(
+			t.organizationId,
+			t.userId,
+			t.date,
+			t.pullRequestUrl,
+		),
+	],
+);
+
 // "Always file this meeting to that project." A per-(org, user) standing answer
 // to the question the File-your-time dialog asks, so the recurring one — the
 // weekly stand-up, the daily — is answered once instead of every month.

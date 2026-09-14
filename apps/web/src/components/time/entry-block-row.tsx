@@ -1,4 +1,4 @@
-import { GitCommitIcon } from "@phosphor-icons/react";
+import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -30,6 +30,7 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 	} | null;
 	task: { name: string; color: string | null; isAbsence: boolean };
 	commitCount?: number;
+	pullRequestCount?: number;
 };
 
 /** Harvest's row heading: "[CODE] Project (Client)". The code is what people
@@ -246,6 +247,15 @@ export function EntryBlockRow({
 						>
 							<GitCommitIcon className="size-3" />
 							{entry.commitCount}
+						</span>
+					)}
+					{!!entry.pullRequestCount && entry.pullRequestCount > 0 && (
+						<span
+							className="mono flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
+							title={`${entry.pullRequestCount} linked pull request${entry.pullRequestCount === 1 ? "" : "s"}`}
+						>
+							<GitPullRequestIcon className="size-3" />
+							{entry.pullRequestCount}
 						</span>
 					)}
 				</div>

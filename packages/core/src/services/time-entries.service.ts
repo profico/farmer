@@ -2,6 +2,7 @@ import {
 	and,
 	asc,
 	count,
+	countDistinct,
 	eq,
 	gte,
 	inArray,
@@ -20,7 +21,10 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { timeEntryGithubCommit } from "../db/schema/github";
+import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
@@ -30,15 +34,19 @@ import {
 	enabledSinceKey,
 } from "../lib/automation-window";
 import { summarizeCommitMessages } from "../lib/day-plan";
+import { describePullRequestActivity } from "../lib/github-activity";
 import {
 	addDaysToKey,
 	datesBetween,
 	dayKeyInTz,
 	monthBounds,
+	QUARTER_HOUR_SECONDS,
 	snapToQuarterHour,
 } from "../lib/time";
 import {
+	type HolidayLookup,
 	MAX_DAY_SECONDS,
+	type WorkingHoursDay,
 	remainingSeconds,
 	spokenForSeconds,
 	targetSecondsFor,
@@ -64,9 +72,14 @@ import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import {
 	computeDayFillSeconds,
 	recomputeDayFill,
-	rehomeDroppedFillCommits,
+	rehomeDroppedFillEvidence,
 } from "./day-fill";
 import { filingRuleKey, filingRulesService } from "./filing-rules.service";
+import {
+	pullRequestActivityRow,
+	type ScannedCommit,
+	type ScannedPullRequestActivity,
+} from "./github.service";
 import {
 	assertProjectInOrg,
 	assertDescribed,
@@ -78,7 +91,16 @@ import { WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import { ledgerWhere } from "./ledger";
 import { orgSettingsService } from "./org-settings.service";
-import { calendarSource, commitSource } from "./ports";
+import { calendarSource, commitSource, pullRequestSource } from "./ports";
+import {
+	deletedReviewsOnDay,
+	isReviewBlock,
+	REVIEW_BLOCK_SECONDS,
+	refuseReviewBlocks,
+	reviewBlockDescription,
+	reviewsHeldBy,
+	reviewsOnDay,
+} from "./pr-reviews";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import { CTX_MEMO, type Ctx, type CtxMemo } from "./types";
@@ -465,13 +487,213 @@ const resolveFillProject = async (
 	return projectId;
 };
 
+/** What GitHub says happened on one day, or on one project that day: what was
+ *  pushed, and what happened on pull requests. The engine treats both the same
+ *  way — evidence to attach, and a reason to file the rest of the day. */
+type DayEvidence = {
+	commits: ScannedCommit[];
+	pullRequests: ScannedPullRequestActivity[];
+};
+
+const emptyEvidence = (): DayEvidence => ({ commits: [], pullRequests: [] });
+
+const mergeEvidence = (groups: DayEvidence[]): DayEvidence => ({
+	commits: groups.flatMap((g) => g.commits),
+	pullRequests: groups.flatMap((g) => g.pullRequests),
+});
+
+/** A description written from the evidence: commit subjects first, since they
+ *  say what changed, then the pull request events. */
+const describeEvidence = (evidence: DayEvidence): string =>
+	summarizeCommitMessages([
+		...evidence.commits.map((c) => c.message),
+		...describePullRequestActivity(evidence.pullRequests),
+	]);
+
+/**
+ * File each pull request the person reviewed on the day as a Code Review block
+ * of its own, and attach its reviews there. Returns the review events it
+ * placed, so the rest of the pass leaves them out of the day's work evidence.
+ *
+ * A PR's reviews go, best home first, to:
+ *
+ *   1. the entry that already holds this PR's reviews on the day — the block a
+ *      previous run filed, or whatever a run before review blocks attached them
+ *      to, so a day already filed is not given a second half hour;
+ *   2. a Code Review entry on that project the person logged themselves, which
+ *      is their own answer to how long the reviewing took;
+ *   3. a new block of `REVIEW_BLOCK_SECONDS` — or down to a quarter hour when
+ *      the day has less free time than that — if the person may track on the
+ *      project and has not deleted this block before.
+ *
+ * A review that finds none of these is not placed. The engine then treats it
+ * as the evidence it always was, which is what a full day or a deleted block
+ * should get.
+ *
+ * No unique index guards against a second block for the same PR: the sweep and
+ * "Sync now" share one per-person guard, so this never runs twice at once for
+ * the same person, and step 1 finds the block on every later run.
+ */
+const fileReviewBlocks = async (
+	ctx: Ctx,
+	dayKey: string,
+	tz: string,
+	reviewTaskId: string,
+	reviews: ScannedPullRequestActivity[],
+	day: { workingHours: WorkingHoursDay[]; holidays: HolidayLookup },
+): Promise<{ placed: Set<string>; created: boolean }> => {
+	const placed = new Set<string>();
+	if (reviews.length === 0) return { placed, created: false };
+
+	const byPullRequest = new Map<string, ScannedPullRequestActivity[]>();
+	for (const review of reviews) {
+		byPullRequest.set(review.pullRequestUrl, [
+			...(byPullRequest.get(review.pullRequestUrl) ?? []),
+			review,
+		]);
+	}
+
+	const [{ homes, heldBy }, deleted, reviewEntries, access] = await Promise.all(
+		[
+			reviewsOnDay(ctx, dayKey),
+			deletedReviewsOnDay(ctx, dayKey),
+			db.query.timeEntry.findMany({
+				where: and(
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+					eq(timeEntry.date, dayKey),
+					eq(timeEntry.taskId, reviewTaskId),
+					eq(timeEntry.fillsDay, false),
+				),
+				columns: { id: true, projectId: true, description: true },
+				orderBy: [asc(timeEntry.createdAt)],
+			}),
+			ctxAccess(ctx),
+		],
+	);
+
+	// Step 2's candidates: every Code Review entry that is not one PR's block.
+	// Every PR reviewed on its project goes on it, including after the first —
+	// a hand-logged entry that already holds #10 is still the home for #11.
+	const handLogged = new Map<string, (typeof reviewEntries)[number]>();
+	for (const entry of reviewEntries) {
+		if (entry.projectId === null) continue;
+		if (isReviewBlock(entry.description, heldBy.get(entry.id) ?? [])) continue;
+		if (!handLogged.has(entry.projectId)) {
+			handLogged.set(entry.projectId, entry);
+		}
+	}
+
+	// The same two gates as `resolveFillProject`: this writes project time.
+	const verdicts = new Map<string, boolean>();
+	const mayFileOn = async (projectId: string) => {
+		const cached = verdicts.get(projectId);
+		if (cached !== undefined) return cached;
+		let allowed = access.canTrackOn(projectId);
+		if (allowed) {
+			try {
+				await assertTaskAvailable(ctx, reviewTaskId, projectId);
+			} catch {
+				allowed = false;
+			}
+		}
+		verdicts.set(projectId, allowed);
+		return allowed;
+	};
+
+	let room = await computeDayFillSeconds(ctx, dayKey, tz, day);
+	let created = false;
+	const attachments = new Map<string, ScannedPullRequestActivity[]>();
+	for (const [pullRequestUrl, events] of byPullRequest) {
+		const [first] = events;
+		if (!first) continue;
+		let target =
+			homes.get(pullRequestUrl) ?? handLogged.get(first.projectId)?.id ?? null;
+		const size = Math.min(
+			REVIEW_BLOCK_SECONDS,
+			room - (room % QUARTER_HOUR_SECONDS),
+		);
+		if (
+			!target &&
+			size > 0 &&
+			!deleted.has(pullRequestUrl) &&
+			(await mayFileOn(first.projectId))
+		) {
+			const [row] = await db
+				.insert(timeEntry)
+				.values({
+					organizationId: ctx.organizationId,
+					userId: ctx.userId,
+					taskId: reviewTaskId,
+					projectId: first.projectId,
+					description: reviewBlockDescription(first.title),
+					date: dayKey,
+					durationSeconds: size,
+				})
+				.returning({ id: timeEntry.id });
+			if (row) {
+				target = row.id;
+				room -= size;
+				created = true;
+			}
+		}
+		if (!target) continue;
+		attachments.set(target, [...(attachments.get(target) ?? []), ...events]);
+		for (const event of events) placed.add(event.eventId);
+	}
+
+	// A hand-logged entry with no description gets one, as the work entries do.
+	for (const entry of handLogged.values()) {
+		const events = attachments.get(entry.id);
+		if (!events || entry.description.trim() !== "") continue;
+		await db
+			.update(timeEntry)
+			.set({
+				description: summarizeCommitMessages(
+					describePullRequestActivity(events),
+				),
+				updatedAt: new Date(),
+			})
+			.where(eq(timeEntry.id, entry.id));
+	}
+
+	const rows = [...attachments].flatMap(([timeEntryId, events]) =>
+		events.map((event) =>
+			pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
+		),
+	);
+	if (rows.length > 0) {
+		await db
+			.insert(timeEntryGithubPrActivity)
+			.values(rows)
+			// tegpa_entry_event_unq: a re-run attaches the same reviews again.
+			.onConflictDoNothing();
+	}
+	return { placed, created };
+};
+
 const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
 	tz: string,
 ) => {
-	const days = await commitSource().listUserCommitsByDay(ctx, range);
-	if (days.length === 0) return;
+	// Commits and pull request events are one body of evidence, read together:
+	// a rate limit on either fails the pass, because half the evidence read as
+	// all of it would file a day on what was missing.
+	const [commitDays, pullRequestDays] = await Promise.all([
+		commitSource().listUserCommitsByDay(ctx, range),
+		pullRequestSource().listUserPullRequestActivityByDay(ctx, range),
+	]);
+	const days = new Map<string, DayEvidence>();
+	for (const { dayKey, commits } of commitDays) {
+		days.set(dayKey, { commits, pullRequests: [] });
+	}
+	for (const { dayKey, activity } of pullRequestDays) {
+		const day = days.get(dayKey) ?? emptyEvidence();
+		day.pullRequests.push(...activity);
+		days.set(dayKey, day);
+	}
+	if (days.size === 0) return;
 
 	// Resolved by system key, not by display name. The old lookup matched
 	// `name = 'Development'` scoped to the org, so an org that renamed the task
@@ -479,6 +701,8 @@ const syncCommitWorkTimeForRange = async (
 	// off — no block, no error.
 	const workTask = await tasksService.findBySystemKey(ctx, "development");
 	if (!workTask) return;
+	// Optional. Without it, reviews stay evidence on the day's work.
+	const reviewTask = await tasksService.findBySystemKey(ctx, "code_review");
 
 	const [workingHours, holidays] = await Promise.all([
 		workingHoursService.list(ctx),
@@ -488,7 +712,7 @@ const syncCommitWorkTimeForRange = async (
 		// none, via that day being disabled in the person's working hours.
 		holidaysService.holidaySetForRange(ctx, range.from, range.to),
 	]);
-	for (const { dayKey, commits } of days) {
+	for (const [dayKey, { commits, pullRequests }] of days) {
 		// GitHub filters `since`/`until` on the COMMITTER date, and the source
 		// buckets by AUTHOR date. A rebase rewrites the one and keeps the other, so
 		// a branch rebased today returns commits written weeks ago, bucketed on the
@@ -496,6 +720,23 @@ const syncCommitWorkTimeForRange = async (
 		// The window is this engine's whole licence to write; a day outside it is
 		// dropped, not filed.
 		if (dayKey < range.from || dayKey > range.to) continue;
+
+		// Review blocks first. Each takes its time from the day's free time, so it
+		// has to exist before the rest-of-day block is sized, or resized.
+		let placed = new Set<string>();
+		if (reviewTask) {
+			const filed = await fileReviewBlocks(
+				ctx,
+				dayKey,
+				tz,
+				reviewTask.id,
+				pullRequests.filter((event) => event.kind === "reviewed"),
+				{ workingHours, holidays },
+			);
+			placed = filed.placed;
+			if (filed.created) await recomputeDayFill(ctx, dayKey, tz);
+		}
+
 		// Every work entry already on the day, so the loop below can hand each
 		// project's commits to the entry that describes that project's work.
 		const dayEntries = await db.query.timeEntry.findMany({
@@ -527,25 +768,41 @@ const syncCommitWorkTimeForRange = async (
 		const generalEntry =
 			dayEntries.find((e) => e.projectId === null && !e.fillsDay) ?? null;
 
-		// Group by project so a commit lands on the entry for the project it was
-		// pushed to. Commits whose project has no entry fall through to the fill.
-		const commitsByProject = new Map<string, typeof commits>();
+		// Group by project so evidence lands on the entry for the project it
+		// belongs to. A project with no entry falls through to the fill.
+		const evidenceByProject = new Map<string, DayEvidence>();
+		const evidenceFor = (projectId: string): DayEvidence => {
+			const existing = evidenceByProject.get(projectId);
+			if (existing) return existing;
+			const created = emptyEvidence();
+			evidenceByProject.set(projectId, created);
+			return created;
+		};
 		for (const commit of commits) {
-			const list = commitsByProject.get(commit.projectId) ?? [];
-			list.push(commit);
-			commitsByProject.set(commit.projectId, list);
+			evidenceFor(commit.projectId).commits.push(commit);
+		}
+		// A placed review sits on its own block, so it is not evidence for a work
+		// entry. It still says the day was worked, so its project still counts
+		// towards the rest-of-day block below.
+		const reviewedProjectIds = new Set<string>();
+		for (const event of pullRequests) {
+			if (placed.has(event.eventId)) reviewedProjectIds.add(event.projectId);
+			else evidenceFor(event.projectId).pullRequests.push(event);
 		}
 
-		const homelessProjectIds = [...commitsByProject.keys()].filter(
-			(projectId) => !byProject.has(projectId),
-		);
-		const homeless = homelessProjectIds.flatMap(
-			(projectId) => commitsByProject.get(projectId) ?? [],
+		const homelessProjectIds = [
+			...new Set([...evidenceByProject.keys(), ...reviewedProjectIds]),
+		].filter((projectId) => !byProject.has(projectId));
+		const homeless = mergeEvidence(
+			homelessProjectIds.flatMap(
+				(projectId) => evidenceByProject.get(projectId) ?? [],
+			),
 		);
 
-		// The fill block is created only for commits that found no home, and only
-		// if the day still has room and nobody has said no.
-		if (homeless.length > 0 && !fill && !generalEntry) {
+		// The fill block is created only for evidence that found no home — a day
+		// of reviews is a worked day as surely as a day of commits — and only if
+		// the day still has room and nobody has said no.
+		if (homelessProjectIds.length > 0 && !fill && !generalEntry) {
 			const durationSeconds = await computeDayFillSeconds(ctx, dayKey, tz, {
 				workingHours,
 				holidays,
@@ -564,9 +821,8 @@ const syncCommitWorkTimeForRange = async (
 						userId: ctx.userId,
 						taskId: workTask.id,
 						projectId: fillProjectId,
-						description: summarizeCommitMessages(
-							homeless.map((c) => c.message),
-						),
+						// Blank evidence: every review went to a block of its own.
+						description: describeEvidence(homeless) || "Rest of day",
 						date: dayKey,
 						durationSeconds,
 						fillsDay: true,
@@ -612,17 +868,18 @@ const syncCommitWorkTimeForRange = async (
 			}
 		}
 
-		// Where each project's commits go, best home first. Null means the day has
-		// nothing to attach to — a full day with no work entry on it — and the
-		// commits are simply left for a later run, once there is.
+		// Where each project's evidence goes, best home first. Null means the day
+		// has nothing to attach to — a full day with no work entry on it — and the
+		// evidence is simply left for a later run, once there is.
 		const fallback = fill ?? generalEntry;
-		const attachments = new Map<string, typeof commits>();
-		for (const [projectId, group] of commitsByProject) {
+		const attachments = new Map<string, DayEvidence>();
+		for (const [projectId, group] of evidenceByProject) {
 			const target = byProject.get(projectId) ?? fallback;
 			if (!target) continue;
-			const existing = attachments.get(target.id) ?? [];
-			existing.push(...group);
-			attachments.set(target.id, existing);
+			attachments.set(
+				target.id,
+				mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
+			);
 		}
 		if (attachments.size === 0) continue;
 
@@ -634,8 +891,8 @@ const syncCommitWorkTimeForRange = async (
 			.concat(fill && !dayEntries.some((e) => e.id === fill.id) ? [fill] : [])
 			.filter((e) => e.description.trim() === "" && attachments.has(e.id));
 		for (const entry of blankDescribable) {
-			const description = summarizeCommitMessages(
-				(attachments.get(entry.id) ?? []).map((c) => c.message),
+			const description = describeEvidence(
+				attachments.get(entry.id) ?? emptyEvidence(),
 			);
 			if (!description) continue;
 			await db
@@ -644,23 +901,36 @@ const syncCommitWorkTimeForRange = async (
 				.where(eq(timeEntry.id, entry.id));
 		}
 
-		await db
-			.insert(timeEntryGithubCommit)
-			.values(
-				[...attachments].flatMap(([timeEntryId, group]) =>
-					group.map((commit) => ({
-						timeEntryId,
-						projectGithubRepoId: commit.projectGithubRepoId,
-						sha: commit.sha,
-						message: commit.message,
-						authorLogin: commit.authorLogin,
-						committedAt: commit.committedAt,
-						url: commit.url,
-					})),
-				),
-			)
-			// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
-			.onConflictDoNothing();
+		const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
+			group.commits.map((commit) => ({
+				timeEntryId,
+				projectGithubRepoId: commit.projectGithubRepoId,
+				sha: commit.sha,
+				message: commit.message,
+				authorLogin: commit.authorLogin,
+				committedAt: commit.committedAt,
+				url: commit.url,
+			})),
+		);
+		if (commitRows.length > 0) {
+			await db
+				.insert(timeEntryGithubCommit)
+				.values(commitRows)
+				// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
+				.onConflictDoNothing();
+		}
+		const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
+			group.pullRequests.map((event) =>
+				pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
+			),
+		);
+		if (activityRows.length > 0) {
+			await db
+				.insert(timeEntryGithubPrActivity)
+				.values(activityRows)
+				// tegpa_entry_event_unq: the same, for pull request events.
+				.onConflictDoNothing();
+		}
 	}
 };
 
@@ -887,7 +1157,7 @@ export const timeEntriesService = {
 			}
 			if (emptied.length > 0) {
 				const dropped = new Set(emptied);
-				await rehomeDroppedFillCommits(
+				await rehomeDroppedFillEvidence(
 					ctx,
 					stale.filter((fill) => dropped.has(fill.id)),
 				);
@@ -896,30 +1166,42 @@ export const timeEntriesService = {
 			}
 		}
 
-		// Commit counts, so the week grid can badge entries that have work evidence
-		// attached (a count query rather than a relation, to avoid a
-		// domain.ts <-> github.ts import cycle).
+		// Commit and pull request counts, so the week grid can badge entries that
+		// have work evidence attached (count queries rather than relations, to
+		// avoid a domain.ts <-> github.ts import cycle).
 		const commitCountById = new Map<string, number>();
+		const pullRequestCountById = new Map<string, number>();
 		if (visible.length > 0) {
-			const counts = await db
+			const ids = visible.map((r) => r.id);
+			const commitCounts = await db
 				.select({
 					timeEntryId: timeEntryGithubCommit.timeEntryId,
 					count: count(),
 				})
 				.from(timeEntryGithubCommit)
-				.where(
-					inArray(
-						timeEntryGithubCommit.timeEntryId,
-						visible.map((r) => r.id),
-					),
-				)
+				.where(inArray(timeEntryGithubCommit.timeEntryId, ids))
 				.groupBy(timeEntryGithubCommit.timeEntryId);
-			for (const c of counts) commitCountById.set(c.timeEntryId, c.count);
+			for (const c of commitCounts) commitCountById.set(c.timeEntryId, c.count);
+
+			// Pull requests, not events: three review rounds on one PR are one PR
+			// on the badge.
+			const pullRequestCounts = await db
+				.select({
+					timeEntryId: timeEntryGithubPrActivity.timeEntryId,
+					count: countDistinct(timeEntryGithubPrActivity.pullRequestUrl),
+				})
+				.from(timeEntryGithubPrActivity)
+				.where(inArray(timeEntryGithubPrActivity.timeEntryId, ids))
+				.groupBy(timeEntryGithubPrActivity.timeEntryId);
+			for (const c of pullRequestCounts) {
+				pullRequestCountById.set(c.timeEntryId, c.count);
+			}
 		}
 
 		return visible.map((row) => ({
 			...row,
 			commitCount: commitCountById.get(row.id) ?? 0,
+			pullRequestCount: pullRequestCountById.get(row.id) ?? 0,
 		}));
 	},
 
@@ -1490,6 +1772,8 @@ export const timeEntriesService = {
 	remove: async (ctx: Ctx, timeEntryId: string) => {
 		return withCtxTx(ctx, async (txCtx) => {
 			const tx = ctxDb(txCtx);
+			// Before the delete: the attachments cascade with the row.
+			const heldReviews = await reviewsHeldBy(txCtx, timeEntryId);
 			const [existing] = await tx
 				.delete(timeEntry)
 				.where(
@@ -1536,6 +1820,14 @@ export const timeEntriesService = {
 						date: existing.date,
 					})
 					.onConflictDoNothing();
+			}
+
+			// And a review block. What told the engine this PR's block exists was
+			// its attached reviews, which just went with the row. A review taken
+			// off the block before the delete left its own tombstone then (see
+			// `githubService.detachPullRequestActivity`).
+			if (existing) {
+				await refuseReviewBlocks(txCtx, existing.date, heldReviews);
 			}
 			// Inside the transaction: the deletion and the fill block it resizes
 			// have to land together, or a reader between the two sees a day whose

@@ -51,6 +51,11 @@ export const taskScope = pgEnum("task_scope", ["site", "organization"]);
 // they used to do it by matching `name` against a string literal, which meant
 // renaming "Meeting" in Settings silently switched calendar sync off. The key is
 // what they resolve now; the name stays freely editable.
+//
+// `code_review` is what the commit engine files a reviewed pull request under
+// (see `services/pr-reviews.ts`). Org-scoped like `development`, so an org
+// without it — renamed before the key existed, or archived — simply gets no
+// review blocks and its reviews stay evidence on the day's work.
 export const taskSystemKey = pgEnum("task_system_key", [
 	"meeting",
 	"development",
@@ -58,6 +63,7 @@ export const taskSystemKey = pgEnum("task_system_key", [
 	"vacation",
 	"sick",
 	"paid_leave",
+	"code_review",
 ]);
 export type TaskSystemKey = (typeof taskSystemKey.enumValues)[number];
 
