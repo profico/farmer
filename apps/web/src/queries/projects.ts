@@ -30,15 +30,23 @@ export const projectQuery = (org: string, projectId: string) =>
 		queryFn: () => getProject({ data: projectId }),
 	});
 
+// Under the time-entries root, not the projects one: both are numbers rolled
+// up from time entries (the all-time strip, and each row's logged hours), so
+// a write from Log time or Book time off already moves them, without the
+// dialogs needing to know a project page happens to be open. Keyed under
+// "projects" they sat outside every invalidation a time-entry write does —
+// `AddBlockDialog` only ever stales the time-entries family — so the strip and
+// the roster's hours read stale until something else (a navigation, a project
+// list refetch) happened to refresh them.
 export const projectOverviewQuery = (org: string, projectId: string) =>
 	queryOptions({
-		queryKey: [...queryKeys(org).projects, "overview", projectId],
+		queryKey: [...queryKeys(org).timeEntries, "project-overview", projectId],
 		queryFn: () => getProjectOverview({ data: projectId }),
 	});
 
 export const projectMembersQuery = (org: string, projectId: string) =>
 	queryOptions({
-		queryKey: [...queryKeys(org).projects, "members", projectId],
+		queryKey: [...queryKeys(org).timeEntries, "project-members", projectId],
 		queryFn: () => listProjectMembers({ data: projectId }),
 	});
 
