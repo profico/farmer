@@ -56,9 +56,25 @@ function suggestionTitle(s: DaySuggestion): string {
 function suggestionSource(s: DaySuggestion): string {
 	if (s.kind === "meeting") return "From your calendar";
 	if (s.kind === "work") {
-		const repos = [...new Set(s.commits.map((c) => c.repoFullName))];
+		// Only claim one repo when every commit AND every pull request agree on
+		// it — a suggestion backed by a commit in one repo and a PR in another
+		// is exactly the case "in <repo>" would misdescribe.
+		const repos = [
+			...new Set([
+				...s.commits.map((c) => c.repoFullName),
+				...s.pullRequests.map((p) => p.repoFullName),
+			]),
+		];
 		const where = repos.length === 1 ? ` in ${repos[0]}` : "";
-		return `From ${s.commits.length} ${s.commits.length === 1 ? "commit" : "commits"}${where}`;
+		const parts = [
+			s.commits.length > 0
+				? `${s.commits.length} ${s.commits.length === 1 ? "commit" : "commits"}`
+				: null,
+			s.pullRequests.length > 0
+				? `${s.pullRequests.length} ${s.pullRequests.length === 1 ? "pull request" : "pull requests"}`
+				: null,
+		].filter((part): part is string => part !== null);
+		return `From ${parts.join(" and ")}${where}`;
 	}
 	if (s.kind === "break") return "From your recurring blocks";
 	return "Assumed from your working hours";
@@ -151,6 +167,13 @@ export function AssembleDayDialog({
 								? s.commits.map((c) => ({
 										projectGithubRepoId: c.projectGithubRepoId,
 										sha: c.sha,
+									}))
+								: undefined,
+						pullRequests:
+							s.pullRequests.length > 0
+								? s.pullRequests.map((p) => ({
+										projectGithubRepoId: p.projectGithubRepoId,
+										number: p.number,
 									}))
 								: undefined,
 					})),

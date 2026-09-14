@@ -8,6 +8,10 @@ import {
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
 import { splitProportionally, summarizeCommitMessages } from "../lib/day-plan";
+import {
+	describePullRequestActivity,
+	type PullRequestActivityKind,
+} from "../lib/github-activity";
 import { QUARTER_HOUR_SECONDS, snapToQuarterHour } from "../lib/time";
 import {
 	loggedSeconds,
@@ -22,7 +26,7 @@ import type {
 import { ctxAccess, ctxTimezone } from "./context";
 import { githubService } from "./github.service";
 import { holidaysService } from "./holidays.service";
-import { calendarSource, commitSource } from "./ports";
+import { calendarSource, commitSource, pullRequestSource } from "./ports";
 import { tasksService } from "./tasks.service";
 import {
 	assertDayHasRoom,
@@ -57,6 +61,21 @@ export type DaySuggestionCommit = {
 	repoFullName: string;
 };
 
+export type DaySuggestionPullRequest = {
+	projectGithubRepoId: string;
+	number: number;
+	title: string;
+	repoFullName: string;
+	/** What the person did on it that day, oldest first. */
+	kinds: PullRequestActivityKind[];
+};
+
+/** One project's evidence for the day — what its work suggestion is built from. */
+type ProjectEvidence = {
+	commits: Awaited<ReturnType<typeof githubService.listUserCommitsForDay>>;
+	pullRequests: DaySuggestionPullRequest[];
+};
+
 export type DaySuggestion = {
 	/** Stable client-side key: "meeting:<eventId>" | "work:<projectId>" | "break" | "fill". */
 	key: string;
@@ -71,6 +90,7 @@ export type DaySuggestion = {
 	meetingUrl: string | null;
 	calendarEventId: string | null;
 	commits: DaySuggestionCommit[];
+	pullRequests: DaySuggestionPullRequest[];
 	/**
 	 * This one is only here because `includeDismissed` was asked for: the person
 	 * deleted it before, and the sync engines have been told to leave it alone.
@@ -152,6 +172,7 @@ export const dayAssemblyService = {
 			breakTask,
 			calendarEvents,
 			commits,
+			pullRequestEvents,
 			calendarLinked,
 			githubLinked,
 			holidays,
@@ -183,6 +204,12 @@ export const dayAssemblyService = {
 				.listUserCommitsForDay(ctx, date)
 				.catch((error) => {
 					console.error("[day-assembly] commit read failed", error);
+					return [];
+				}),
+			pullRequestSource()
+				.listUserPullRequestActivityForDay(ctx, date)
+				.catch((error) => {
+					console.error("[day-assembly] pull request read failed", error);
 					return [];
 				}),
 			// "google-calendar", not "google": the plain Google provider is only a
@@ -252,6 +279,7 @@ export const dayAssemblyService = {
 					meetingUrl: event.meetingUrl,
 					calendarEventId: event.id,
 					commits: [],
+					pullRequests: [],
 					dismissed: deletedIds.has(event.id),
 				});
 			}
@@ -286,6 +314,7 @@ export const dayAssemblyService = {
 				meetingUrl: null,
 				calendarEventId: null,
 				commits: [],
+				pullRequests: [],
 				// A recurring-break skip is a rule adjusted for one day, not a row
 				// lost, so the toggle deliberately doesn't cover it — see the note on
 				// `includeDismissed` in schema/day-assembly. This branch never
@@ -301,13 +330,37 @@ export const dayAssemblyService = {
 			breakSeconds,
 		);
 
-		// ── Work: one entry per project the user committed to that day ──────────
+		// ── Work: one entry per project with commits or PR activity that day ────
 		let workSeconds = 0;
-		const commitsByProject = new Map<string, typeof commits>();
+		const evidenceByProject = new Map<string, ProjectEvidence>();
+		const evidenceFor = (projectId: string): ProjectEvidence => {
+			const existing = evidenceByProject.get(projectId);
+			if (existing) return existing;
+			const created: ProjectEvidence = { commits: [], pullRequests: [] };
+			evidenceByProject.set(projectId, created);
+			return created;
+		};
 		for (const commit of commits) {
-			const list = commitsByProject.get(commit.projectId) ?? [];
-			list.push(commit);
-			commitsByProject.set(commit.projectId, list);
+			evidenceFor(commit.projectId).commits.push(commit);
+		}
+		// One row per PR, not per event: the dialog and the attach both name a PR.
+		for (const event of pullRequestEvents) {
+			const { pullRequests } = evidenceFor(event.projectId);
+			const existing = pullRequests.find(
+				(pr) =>
+					pr.projectGithubRepoId === event.projectGithubRepoId &&
+					pr.number === event.number,
+			);
+			if (existing) existing.kinds.push(event.kind);
+			else {
+				pullRequests.push({
+					projectGithubRepoId: event.projectGithubRepoId,
+					number: event.number,
+					title: event.title,
+					repoFullName: event.repoFullName,
+					kinds: [event.kind],
+				});
+			}
 		}
 
 		// A day that already has a fill block is already claiming the rest of its
@@ -319,12 +372,12 @@ export const dayAssemblyService = {
 		const hasFillBlock = existing.some((e) => e.fillsDay);
 
 		if (
-			commitsByProject.size > 0 &&
+			evidenceByProject.size > 0 &&
 			workTask &&
 			!hasFillBlock &&
 			remaining >= QUARTER_HOUR_SECONDS
 		) {
-			const projectIds = [...commitsByProject.keys()];
+			const projectIds = [...evidenceByProject.keys()];
 			const [access, projects] = await Promise.all([
 				// `listUserCommitsForDay` scans EVERY repo linked anywhere in the org,
 				// so a commit to a repo whose project you are not on is routine rather
@@ -346,14 +399,14 @@ export const dayAssemblyService = {
 
 			const groups = projectIds
 				.filter((id) => nameById.has(id) && access.canTrackOn(id))
-				.map((id) => ({
-					projectId: id,
-					commits: commitsByProject.get(id) ?? [],
-				}));
+				.map((id) => ({ projectId: id, ...evidenceFor(id) }));
 
+			// A pull request somebody opened, merged or reviewed weighs what one
+			// commit does. Neither measures time; the split only needs a ratio
+			// that leaves a review-only project with a share rather than none.
 			const shares = splitProportionally(
 				remaining,
-				groups.map((g) => g.commits.length),
+				groups.map((g) => g.commits.length + g.pullRequests.length),
 			);
 
 			groups.forEach((group, index) => {
@@ -367,9 +420,18 @@ export const dayAssemblyService = {
 					taskName: workTask.name,
 					projectId: group.projectId,
 					projectName: nameById.get(group.projectId) ?? null,
-					description: summarizeCommitMessages(
-						group.commits.map((c) => c.message),
-					),
+					description: summarizeCommitMessages([
+						...group.commits.map((c) => c.message),
+						...describePullRequestActivity(
+							group.pullRequests.flatMap((pr) =>
+								pr.kinds.map((kind) => ({
+									kind,
+									number: pr.number,
+									title: pr.title,
+								})),
+							),
+						),
+					]),
 					durationSeconds: share,
 					fillsDay: false,
 					meetingUrl: null,
@@ -384,6 +446,7 @@ export const dayAssemblyService = {
 						message: c.message,
 						repoFullName: c.repoFullName,
 					})),
+					pullRequests: group.pullRequests,
 				});
 			});
 		}
@@ -430,6 +493,7 @@ export const dayAssemblyService = {
 					meetingUrl: null,
 					calendarEventId: null,
 					commits: [],
+					pullRequests: [],
 					dismissed: !!deletedFill,
 				});
 			}
@@ -517,6 +581,16 @@ export const dayAssemblyService = {
 						})
 						.catch((error) =>
 							console.error("[day-assembly] attachCommits failed", error),
+						);
+				}
+				if (entry.pullRequests && entry.pullRequests.length > 0) {
+					await githubService
+						.attachPullRequests(ctx, {
+							timeEntryId: row.id,
+							pullRequests: entry.pullRequests,
+						})
+						.catch((error) =>
+							console.error("[day-assembly] attachPullRequests failed", error),
 						);
 				}
 			} catch (error) {

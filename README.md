@@ -55,7 +55,7 @@ The required settings are `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL
 
 Both integrations are opt-in per member under Settings → Integrations, but they need app credentials first:
 
-- **GitHub** needs two things, and they aren't interchangeable: an OAuth app (identity — matching commits to members) and a GitHub App (the thing that actually reads repos and commits, installed per organization). `GITHUB_CLIENT_ID`/`SECRET` belong to the former, `GITHUB_APP_*` to the latter.
+- **GitHub** needs two things, and they aren't interchangeable: an OAuth app (identity — matching commits to members) and a GitHub App (the thing that actually reads repos, commits and pull requests, installed per organization). `GITHUB_CLIENT_ID`/`SECRET` belong to the former, `GITHUB_APP_*` to the latter. Give the App read access to **Contents** and **Pull requests**; without Pull requests, PR and review activity is silently empty.
 - **Google** is used twice over the same OAuth client, deliberately as two separate grants: sign-in (identity only) and the Calendar link (`calendar.events`, requested separately from Settings → Integrations). Enable the Calendar API on the client. Farmer requests offline access, so sync keeps working after the first access token expires.
 - **Slack** needs an app with the `chat:write`, `im:write`, `users:read` and `users:read.email` bot scopes and `{BETTER_AUTH_URL}/api/slack/callback` as a redirect URL. An admin installs it per organization from Settings → Integrations; no token is ever pasted into the app.
 

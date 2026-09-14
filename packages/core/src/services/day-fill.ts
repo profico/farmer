@@ -1,7 +1,11 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { task, timeEntry } from "../db/schema/domain";
-import { projectGithubRepo, timeEntryGithubCommit } from "../db/schema/github";
+import {
+	projectGithubRepo,
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import {
 	type HolidayLookup,
 	remainingSeconds,
@@ -68,7 +72,8 @@ export const computeDayFillSeconds = async (
 };
 
 /**
- * Before a squeezed-out fill block is dropped, move its commits to the entry
+ * Before a squeezed-out fill block is dropped, move its commits and pull
+ * request events to the entry
  * the commit engine would have chosen had the block never existed: that
  * project's own Development entry on the day, else a project-less one.
  *
@@ -92,12 +97,15 @@ export const computeDayFillSeconds = async (
  * Reads and writes through `ctxDb(ctx)`: `recomputeDayFill` runs inside the
  * caller's transaction, and an ambient query from there deadlocks.
  */
-export const rehomeDroppedFillCommits = async (
+export const rehomeDroppedFillEvidence = async (
 	ctx: Ctx,
 	dropped: { id: string; date: string }[],
 ) => {
 	if (dropped.length === 0) return;
 	const client = ctxDb(ctx);
+	const droppedIds = dropped.map((fill) => fill.id);
+	// One after the other, not in parallel: inside `withCtxTx` both reads share
+	// the transaction's one connection.
 	const attached = await client
 		.select({
 			timeEntryId: timeEntryGithubCommit.timeEntryId,
@@ -114,13 +122,28 @@ export const rehomeDroppedFillCommits = async (
 			projectGithubRepo,
 			eq(projectGithubRepo.id, timeEntryGithubCommit.projectGithubRepoId),
 		)
-		.where(
-			inArray(
-				timeEntryGithubCommit.timeEntryId,
-				dropped.map((fill) => fill.id),
-			),
-		);
-	if (attached.length === 0) return;
+		.where(inArray(timeEntryGithubCommit.timeEntryId, droppedIds));
+	const attachedActivity = await client
+		.select({
+			timeEntryId: timeEntryGithubPrActivity.timeEntryId,
+			projectGithubRepoId: timeEntryGithubPrActivity.projectGithubRepoId,
+			eventId: timeEntryGithubPrActivity.eventId,
+			kind: timeEntryGithubPrActivity.kind,
+			reviewState: timeEntryGithubPrActivity.reviewState,
+			number: timeEntryGithubPrActivity.number,
+			title: timeEntryGithubPrActivity.title,
+			pullRequestUrl: timeEntryGithubPrActivity.pullRequestUrl,
+			url: timeEntryGithubPrActivity.url,
+			occurredAt: timeEntryGithubPrActivity.occurredAt,
+			projectId: projectGithubRepo.projectId,
+		})
+		.from(timeEntryGithubPrActivity)
+		.leftJoin(
+			projectGithubRepo,
+			eq(projectGithubRepo.id, timeEntryGithubPrActivity.projectGithubRepoId),
+		)
+		.where(inArray(timeEntryGithubPrActivity.timeEntryId, droppedIds));
+	if (attached.length === 0 && attachedActivity.length === 0) return;
 
 	// The same candidates the commit engine considers: Development entries that
 	// are not themselves a fill block, found by system key rather than by name.
@@ -144,21 +167,37 @@ export const rehomeDroppedFillCommits = async (
 		.orderBy(asc(timeEntry.createdAt));
 
 	const dateOf = new Map(dropped.map((fill) => [fill.id, fill.date]));
+	const targetFor = (timeEntryId: string, projectId: string | null) => {
+		const onDay = work.filter((row) => row.date === dateOf.get(timeEntryId));
+		return (
+			(projectId ? onDay.find((row) => row.projectId === projectId) : null) ??
+			onDay.find((row) => row.projectId === null)
+		);
+	};
+
 	const moved: (typeof timeEntryGithubCommit.$inferInsert)[] = [];
 	for (const { timeEntryId, projectId, ...commit } of attached) {
-		const onDay = work.filter((row) => row.date === dateOf.get(timeEntryId));
-		const target =
-			(projectId ? onDay.find((row) => row.projectId === projectId) : null) ??
-			onDay.find((row) => row.projectId === null);
-		if (!target) continue;
-		moved.push({ ...commit, timeEntryId: target.id });
+		const target = targetFor(timeEntryId, projectId);
+		if (target) moved.push({ ...commit, timeEntryId: target.id });
 	}
-	if (moved.length === 0) return;
-	// tegc_entry_sha_unq: the target may already hold the same commit.
-	await client
-		.insert(timeEntryGithubCommit)
-		.values(moved)
-		.onConflictDoNothing();
+	const movedActivity: (typeof timeEntryGithubPrActivity.$inferInsert)[] = [];
+	for (const { timeEntryId, projectId, ...event } of attachedActivity) {
+		const target = targetFor(timeEntryId, projectId);
+		if (target) movedActivity.push({ ...event, timeEntryId: target.id });
+	}
+	// The unique keys: the target may already hold the same commit or event.
+	if (moved.length > 0) {
+		await client
+			.insert(timeEntryGithubCommit)
+			.values(moved)
+			.onConflictDoNothing();
+	}
+	if (movedActivity.length > 0) {
+		await client
+			.insert(timeEntryGithubPrActivity)
+			.values(movedActivity)
+			.onConflictDoNothing();
+	}
 };
 
 /**
@@ -197,8 +236,8 @@ export const recomputeDayFill = async (
 	if (!fill) return;
 	const next = await computeDayFillSeconds(ctx, dateKey, tz);
 	if (next === 0) {
-		// Its commits would cascade with it. See `rehomeDroppedFillCommits`.
-		await rehomeDroppedFillCommits(ctx, [{ id: fill.id, date: dateKey }]);
+		// Its evidence would cascade with it. See `rehomeDroppedFillEvidence`.
+		await rehomeDroppedFillEvidence(ctx, [{ id: fill.id, date: dateKey }]);
 		await client.delete(timeEntry).where(eq(timeEntry.id, fill.id));
 		return;
 	}

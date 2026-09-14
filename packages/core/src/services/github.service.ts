@@ -8,16 +8,23 @@ import {
 	orgGithubInstallation,
 	projectGithubRepo,
 	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
 } from "../db/schema/github";
+import {
+	type PullRequestActivity,
+	pullRequestActivity,
+} from "../lib/github-activity";
 import * as githubClient from "../lib/github-client";
 import { GithubRateLimitError } from "../lib/github-client";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
 import {
 	type AttachCommitsInput,
+	type AttachPullRequestsInput,
 	type ConnectInstallationInput,
 	commitSha,
 	type LinkProjectRepoInput,
 	type SuggestCommitsInput,
+	type SuggestPullRequestsInput,
 } from "../schema/github";
 import { AccessError } from "./access.service";
 import { ctxTimezone, requireAdmin } from "./context";
@@ -29,8 +36,10 @@ export type GithubClient = Pick<
 	| "getAuthenticatedUser"
 	| "getCommit"
 	| "getInstallationToken"
+	| "getPullRequest"
 	| "getRepoById"
 	| "listCommits"
+	| "searchPullRequests"
 	| "listInstallationRepos"
 	| "listUserInstallations"
 >;
@@ -290,6 +299,102 @@ const mapBounded = async <T, R>(
 	);
 	await Promise.all(workers);
 	return results;
+};
+
+// ── Pull request activity ──────────────────────────────────────────────────
+// The PR half of the evidence. Same scope as the commit scans (`reposForUser`,
+// for the same attribution argument), same failure rule (a rate limit ends the
+// scan, anything else costs that repo), and the same "no linked account is an
+// empty answer" — but read through GraphQL search, one page per role per repo,
+// rather than a REST list per repo. See `lib/github-client` for why.
+
+/** A PR event as a scan returns it, already carrying where it was found. */
+export type ScannedPullRequestActivity = PullRequestActivity & {
+	projectGithubRepoId: string;
+	projectId: string;
+	repoFullName: string;
+};
+
+/** The row `timeEntryGithubPrActivity` stores for one event. Shared with the
+ *  commit engine, which writes these without going through `attach`. */
+export const pullRequestActivityRow = (
+	timeEntryId: string,
+	projectGithubRepoId: string | null,
+	activity: PullRequestActivity,
+): typeof timeEntryGithubPrActivity.$inferInsert => ({
+	timeEntryId,
+	projectGithubRepoId,
+	eventId: activity.eventId,
+	kind: activity.kind,
+	reviewState: activity.reviewState,
+	number: activity.number,
+	title: activity.title,
+	pullRequestUrl: activity.pullRequestUrl,
+	url: activity.url,
+	occurredAt: activity.occurredAt,
+});
+
+/** The caller's GitHub login, or null when no account is linked. */
+const githubLoginFor = async (ctx: Ctx): Promise<string | null> => {
+	const token = await getAccessToken(ctx);
+	if (!token) return null;
+	const githubUser = await gh().getAuthenticatedUser(token);
+	return githubUser?.login ?? null;
+};
+
+const scanPullRequestActivity = async (
+	repos: Awaited<ReturnType<typeof reposForUser>>,
+	login: string,
+	window: { start: Date; end: Date },
+	caller: string,
+): Promise<ScannedPullRequestActivity[]> => {
+	const perRepo = await mapBounded(
+		repos,
+		REPO_SCAN_CONCURRENCY,
+		async (repo): Promise<ScannedPullRequestActivity[]> => {
+			if (!repo.installationId) return [];
+			try {
+				const token = await gh().getInstallationToken(repo.installationId);
+				// Two searches because search has no OR between `author:` and
+				// `reviewed-by:`. A PR can come back from both (reviewed, then taken
+				// over), so they are joined on the PR's node id.
+				const found = await Promise.all(
+					(["author", "reviewed-by"] as const).map((role) =>
+						gh().searchPullRequests(token, {
+							owner: repo.owner,
+							repo: repo.name,
+							login,
+							role,
+							since: window.start,
+						}),
+					),
+				);
+				const byId = new Map(found.flat().map((pr) => [pr.id, pr]));
+				return [...byId.values()].flatMap((pr) =>
+					pullRequestActivity(pr, login, window).map((activity) => ({
+						...activity,
+						projectGithubRepoId: repo.id,
+						projectId: repo.projectId,
+						repoFullName: repo.fullName,
+					})),
+				);
+			} catch (error) {
+				// A rate limit is not an answer — the same rule as the commit scans,
+				// for the same reason: "no activity" would let the engine file a day
+				// it never managed to read.
+				if (error instanceof GithubRateLimitError) throw error;
+				console.error(`[github] ${caller} repo failed`, {
+					repoId: repo.id,
+					installationId: repo.installationId,
+					error,
+				});
+				return [];
+			}
+		},
+	);
+	return perRepo
+		.flat()
+		.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
 };
 
 const assertTimeEntryOwnedByUser = async (ctx: Ctx, timeEntryId: string) => {
@@ -893,5 +998,212 @@ export const githubService = {
 		await db
 			.delete(timeEntryGithubCommit)
 			.where(eq(timeEntryGithubCommit.id, timeEntryGithubCommitId));
+	},
+
+	// ── Pull requests (installation token for access, user login for who) ────
+
+	/** The caller's PR events between two days, bucketed by org-tz day — the
+	 *  commit engine's and the assistant's read. [] without a linked account. */
+	listUserPullRequestActivityByDay: async (
+		ctx: Ctx,
+		input: { from: string; to: string },
+	): Promise<{ dayKey: string; activity: ScannedPullRequestActivity[] }[]> => {
+		const login = await githubLoginFor(ctx);
+		if (!login) return [];
+		const repos = await reposForUser(ctx);
+		if (repos.length === 0) return [];
+
+		const tz = await ctxTimezone(ctx);
+		const window = {
+			start: dayBoundsInTz(input.from, tz).start,
+			end: dayBoundsInTz(input.to, tz).end,
+		};
+		const activity = await scanPullRequestActivity(
+			repos,
+			login,
+			window,
+			"listUserPullRequestActivityByDay",
+		);
+
+		const byDay = new Map<string, ScannedPullRequestActivity[]>();
+		for (const event of activity) {
+			const dayKey = dayKeyInTz(event.occurredAt, tz);
+			const bucket = byDay.get(dayKey);
+			if (bucket) bucket.push(event);
+			else byDay.set(dayKey, [event]);
+		}
+		return [...byDay].map(([dayKey, events]) => ({ dayKey, activity: events }));
+	},
+
+	/** One day of the same, for day assembly. */
+	listUserPullRequestActivityForDay: async (
+		ctx: Ctx,
+		date: string,
+	): Promise<ScannedPullRequestActivity[]> => {
+		const days = await githubService.listUserPullRequestActivityByDay(ctx, {
+			from: date,
+			to: date,
+		});
+		return days.flatMap((day) => day.activity);
+	},
+
+	/**
+	 * The caller's PRs with activity on one project on one day, one row per PR,
+	 * for the entry dialog's picker.
+	 *
+	 * Scoped to the caller's assignments, unlike `suggestCommits`: attaching goes
+	 * through `reposForUser`, and offering a PR that attach will then refuse is a
+	 * picker full of rows that fail.
+	 */
+	suggestPullRequests: async (ctx: Ctx, input: SuggestPullRequestsInput) => {
+		await assertProjectInOrg(ctx, input.projectId);
+		const login = await githubLoginFor(ctx);
+		if (!login) throw new Error("GitHub not connected");
+
+		const repos = (await reposForUser(ctx)).filter(
+			(repo) => repo.projectId === input.projectId,
+		);
+		if (repos.length === 0) return [];
+
+		const tz = await ctxTimezone(ctx);
+		const activity = await scanPullRequestActivity(
+			repos,
+			login,
+			dayBoundsInTz(input.date, tz),
+			"suggestPullRequests",
+		);
+
+		const byPullRequest = new Map<
+			string,
+			{
+				projectGithubRepoId: string;
+				repoFullName: string;
+				number: number;
+				title: string;
+				url: string;
+				activity: Pick<
+					ScannedPullRequestActivity,
+					"kind" | "reviewState" | "occurredAt"
+				>[];
+			}
+		>();
+		for (const event of activity) {
+			const key = `${event.projectGithubRepoId}:${event.number}`;
+			const row = byPullRequest.get(key) ?? {
+				projectGithubRepoId: event.projectGithubRepoId,
+				repoFullName: event.repoFullName,
+				number: event.number,
+				title: event.title,
+				url: event.pullRequestUrl,
+				activity: [],
+			};
+			row.activity.push({
+				kind: event.kind,
+				reviewState: event.reviewState,
+				occurredAt: event.occurredAt,
+			});
+			byPullRequest.set(key, row);
+		}
+		return [...byPullRequest.values()];
+	},
+
+	/**
+	 * Attach the caller's own events on these PRs, on the entry's day, to the
+	 * entry.
+	 *
+	 * The caller names a PR and nothing more. What is stored is read back from
+	 * GitHub and cut to what this person did on the day the entry is for, so an
+	 * entry cannot claim a review somebody else wrote, or a merge from last
+	 * month. A PR with nothing of theirs on that day attaches nothing.
+	 */
+	attachPullRequests: async (ctx: Ctx, input: AttachPullRequestsInput) => {
+		const entry = await assertTimeEntryOwnedByUser(ctx, input.timeEntryId);
+
+		// The repo check comes first, before any call to GitHub, for the reason
+		// `attachCommits` gives: the leak would be the READ.
+		const repoIds = [
+			...new Set(input.pullRequests.map((pr) => pr.projectGithubRepoId)),
+		];
+		const repos = await reposForUser(ctx, repoIds);
+		if (repos.length !== repoIds.length) {
+			throw new AccessError(
+				"You are not assigned to the project that repository belongs to",
+			);
+		}
+		const repoById = new Map(repos.map((r) => [r.id, r]));
+
+		const login = await githubLoginFor(ctx);
+		if (!login) throw new Error("GitHub not connected");
+
+		const tz = await ctxTimezone(ctx);
+		const window = dayBoundsInTz(entry.date, tz);
+		const refs = [
+			...new Map(
+				input.pullRequests.map((pr) => [
+					`${pr.projectGithubRepoId}:${pr.number}`,
+					pr,
+				]),
+			).values(),
+		];
+
+		const rows = await mapBounded(refs, REPO_SCAN_CONCURRENCY, async (ref) => {
+			const repo = repoById.get(ref.projectGithubRepoId);
+			if (!repo || !repo.installationId) return [];
+			const token = await gh().getInstallationToken(repo.installationId);
+			const pr = await gh().getPullRequest(
+				token,
+				repo.owner,
+				repo.name,
+				ref.number,
+				login,
+			);
+			if (!pr) return [];
+			return pullRequestActivity(pr, login, window).map((activity) =>
+				pullRequestActivityRow(entry.id, repo.id, activity),
+			);
+		});
+
+		const flat = rows.flat();
+		if (flat.length > 0) {
+			await db
+				.insert(timeEntryGithubPrActivity)
+				.values(flat)
+				// tegpa_entry_event_unq: attaching the same PR twice adds nothing.
+				.onConflictDoNothing();
+		}
+		return githubService.listAttachedPullRequestActivity(ctx, entry.id);
+	},
+
+	listAttachedPullRequestActivity: async (ctx: Ctx, timeEntryId: string) => {
+		await assertTimeEntryOwnedByUser(ctx, timeEntryId);
+		return db.query.timeEntryGithubPrActivity.findMany({
+			where: eq(timeEntryGithubPrActivity.timeEntryId, timeEntryId),
+			with: { repo: true },
+			orderBy: desc(timeEntryGithubPrActivity.occurredAt),
+		});
+	},
+
+	detachPullRequestActivity: async (ctx: Ctx, activityId: string) => {
+		const [row] = await db
+			.select({ id: timeEntryGithubPrActivity.id })
+			.from(timeEntryGithubPrActivity)
+			.innerJoin(
+				timeEntry,
+				eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
+			)
+			.where(
+				and(
+					eq(timeEntryGithubPrActivity.id, activityId),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			)
+			.limit(1);
+		if (!row) {
+			throw new Error("Pull request activity not found");
+		}
+		await db
+			.delete(timeEntryGithubPrActivity)
+			.where(eq(timeEntryGithubPrActivity.id, activityId));
 	},
 };

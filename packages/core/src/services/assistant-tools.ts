@@ -30,6 +30,7 @@ import {
 	applyDayAssemblyInput,
 	assignProjectMemberInput,
 	attachCommitsInput,
+	attachPullRequestsInput,
 	clientIdInput,
 	copyTimeEntriesInput,
 	copyWeekEntriesInput,
@@ -56,6 +57,7 @@ import {
 	updateTimeEntryDescriptionInput,
 	updateTimeEntryInput,
 	userCommitsRangeInput,
+	userPullRequestsRangeInput,
 	yearReportInput,
 } from "../schema";
 import type { Access } from "./access.service";
@@ -515,10 +517,37 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		},
 	},
 	{
+		name: "list_pull_requests",
+		kind: "read",
+		description:
+			"The current user's pull request activity between two dates (inclusive, max 31 days apart) — pull requests they opened, merged or closed, and reviews they submitted — across the repos linked to projects they are on, grouped by day. Evidence for what was worked on, alongside list_commits.",
+		schema: userPullRequestsRangeInput,
+		run: async (ctx, args) => {
+			const input = userPullRequestsRangeInput.parse(args);
+			const days = await githubService.listUserPullRequestActivityByDay(
+				ctx,
+				input,
+			);
+			return days.map((day) => ({
+				date: day.dayKey,
+				activity: day.activity.map((event) => ({
+					// The pair `attach_pull_requests` names a pull request by.
+					projectGithubRepoId: event.projectGithubRepoId,
+					projectId: event.projectId,
+					number: event.number,
+					title: event.title,
+					kind: event.kind,
+					reviewState: event.reviewState,
+					occurredAt: event.occurredAt.toISOString(),
+				})),
+			}));
+		},
+	},
+	{
 		name: "suggest_day",
 		kind: "read",
 		description:
-			"What is missing from one day: its target, what is already logged, and suggested entries built from the person's calendar meetings, commits, recurring blocks and the rest of the working day. Prefer this over reconstructing a day by hand, then pass the suggestions you are accepting to apply_day_assembly.",
+			"What is missing from one day: its target, what is already logged, and suggested entries built from the person's calendar meetings, commits, pull request activity, recurring blocks and the rest of the working day. Prefer this over reconstructing a day by hand, then pass the suggestions you are accepting to apply_day_assembly.",
 		schema: suggestDayAssemblyInput,
 		run: async (ctx, args) => {
 			const input = suggestDayAssemblyInput.parse(args);
@@ -545,6 +574,11 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 					commits: suggestion.commits.map((commit) => ({
 						projectGithubRepoId: commit.projectGithubRepoId,
 						sha: commit.sha,
+					})),
+					pullRequests: suggestion.pullRequests.map((pr) => ({
+						projectGithubRepoId: pr.projectGithubRepoId,
+						number: pr.number,
+						kinds: pr.kinds,
 					})),
 				})),
 			};
@@ -891,6 +925,18 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			githubService.attachCommits(ctx, attachCommitsInput.parse(args)),
 	},
 	{
+		name: "attach_pull_requests",
+		kind: "write",
+		description:
+			"Attach pull requests to an existing time entry as evidence. Takes the projectGithubRepoId and number pairs from list_pull_requests. Only the user's own activity on the entry's date is attached, so a pull request they did nothing on that day adds nothing.",
+		schema: attachPullRequestsInput,
+		run: async (ctx, args) =>
+			githubService.attachPullRequests(
+				ctx,
+				attachPullRequestsInput.parse(args),
+			),
+	},
+	{
 		name: "create_client",
 		kind: "write",
 		description: "Create a client to hang projects off.",
@@ -1193,7 +1239,7 @@ export const systemPrompt = async (
 		"- Prefer an aggregate over a list: time_report_summary for hours by client, project or teammate; absence_totals for vacation taken.",
 		"- Creating and correcting things happens immediately, so just do what was asked rather than checking first. Deleting and archiving are shown to the user for approval — still call the tool, they will be asked.",
 		"- Batch writes (apply_day_assembly, file_time_entries) are shown as a checklist of their rows and the user may approve only some. Send the whole batch you believe in and let them un-tick; the tool result says what was actually written, so read it before reporting what you did.",
-		"- Reconstructing a day: suggest_day already assembles it from meetings, commits and recurring blocks, so prefer it and then apply_day_assembly. Use list_commits and list_time_entries when you need the raw evidence. Do not log the same work twice.",
+		"- Reconstructing a day: suggest_day already assembles it from meetings, commits, pull requests and recurring blocks, so prefer it and then apply_day_assembly. Use list_commits, list_pull_requests and list_time_entries when you need the raw evidence. Do not log the same work twice.",
 		"- Absence spanning several days goes through log_absence once, not one entry per day. It skips holidays and non-working days itself, so report which days it actually booked.",
 		"- If a tool returns an error, explain what went wrong in one sentence rather than retrying blindly.",
 		"- Be brief. This is a sidebar, not an essay.",

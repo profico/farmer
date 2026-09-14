@@ -272,8 +272,8 @@ function IntegrationsSettingsPage() {
 					}
 					description={
 						status.unreachable
-							? "Your account is still linked — GitHub itself isn't reachable right now, so your username and commit sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
-							: "Identifies you so commits you author can be matched to your time entries."
+							? "Your account is still linked — GitHub itself isn't reachable right now, so your username and commit/pull-request sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
+							: "Identifies you so commits and pull requests you author or review can be matched to your time entries."
 					}
 					action={
 						status.connected ? (
@@ -288,8 +288,8 @@ function IntegrationsSettingsPage() {
 									<AlertDialogHeader>
 										<AlertDialogTitle>Disconnect GitHub?</AlertDialogTitle>
 										<AlertDialogDescription>
-											Commits will no longer be matched to you when logging
-											time. You can reconnect at any time.
+											Commits and pull requests will no longer be matched to you
+											when logging time. You can reconnect at any time.
 										</AlertDialogDescription>
 									</AlertDialogHeader>
 									<AlertDialogFooter>
@@ -320,13 +320,13 @@ function IntegrationsSettingsPage() {
 							<>
 								<SettingToggleRow
 									title="Auto-load commits"
-									description="Show the day's commits automatically in the add-block dialog — no 'Find commits' click."
+									description="Show the day's commits and pull request activity automatically in the add-block dialog — no 'Find activity' click."
 									checked={settings.githubAutoLoadCommits}
 									patch={(value) => ({ githubAutoLoadCommits: value })}
 								/>
 								<SettingToggleRow
 									title="Sync commits as work time"
-									description="On days you push commits, automatically log a work block that fills your working hours."
+									description="On days you push commits or work on pull requests (open, merge, close or review one), automatically log a work block that fills your working hours."
 									checked={settings.githubSyncCommitsAsWorkTime}
 									patch={(value) => ({ githubSyncCommitsAsWorkTime: value })}
 								/>

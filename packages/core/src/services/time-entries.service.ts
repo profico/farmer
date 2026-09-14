@@ -2,6 +2,7 @@ import {
 	and,
 	asc,
 	count,
+	countDistinct,
 	eq,
 	gte,
 	inArray,
@@ -20,7 +21,10 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { timeEntryGithubCommit } from "../db/schema/github";
+import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
@@ -30,6 +34,7 @@ import {
 	enabledSinceKey,
 } from "../lib/automation-window";
 import { summarizeCommitMessages } from "../lib/day-plan";
+import { describePullRequestActivity } from "../lib/github-activity";
 import {
 	addDaysToKey,
 	datesBetween,
@@ -64,9 +69,14 @@ import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import {
 	computeDayFillSeconds,
 	recomputeDayFill,
-	rehomeDroppedFillCommits,
+	rehomeDroppedFillEvidence,
 } from "./day-fill";
 import { filingRuleKey, filingRulesService } from "./filing-rules.service";
+import {
+	pullRequestActivityRow,
+	type ScannedCommit,
+	type ScannedPullRequestActivity,
+} from "./github.service";
 import {
 	assertProjectInOrg,
 	assertDescribed,
@@ -78,7 +88,7 @@ import { WORKING_DAY_SECONDS } from "./hour-fund.service";
 import { integrationSettingsService } from "./integration-settings.service";
 import { ledgerWhere } from "./ledger";
 import { orgSettingsService } from "./org-settings.service";
-import { calendarSource, commitSource } from "./ports";
+import { calendarSource, commitSource, pullRequestSource } from "./ports";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
 import { CTX_MEMO, type Ctx, type CtxMemo } from "./types";
@@ -465,13 +475,51 @@ const resolveFillProject = async (
 	return projectId;
 };
 
+/** What GitHub says happened on one day, or on one project that day: what was
+ *  pushed, and what happened on pull requests. The engine treats both the same
+ *  way — evidence to attach, and a reason to file the rest of the day. */
+type DayEvidence = {
+	commits: ScannedCommit[];
+	pullRequests: ScannedPullRequestActivity[];
+};
+
+const emptyEvidence = (): DayEvidence => ({ commits: [], pullRequests: [] });
+
+const mergeEvidence = (groups: DayEvidence[]): DayEvidence => ({
+	commits: groups.flatMap((g) => g.commits),
+	pullRequests: groups.flatMap((g) => g.pullRequests),
+});
+
+/** A description written from the evidence: commit subjects first, since they
+ *  say what changed, then the pull request events. */
+const describeEvidence = (evidence: DayEvidence): string =>
+	summarizeCommitMessages([
+		...evidence.commits.map((c) => c.message),
+		...describePullRequestActivity(evidence.pullRequests),
+	]);
+
 const syncCommitWorkTimeForRange = async (
 	ctx: Ctx,
 	range: { from: string; to: string },
 	tz: string,
 ) => {
-	const days = await commitSource().listUserCommitsByDay(ctx, range);
-	if (days.length === 0) return;
+	// Commits and pull request events are one body of evidence, read together:
+	// a rate limit on either fails the pass, because half the evidence read as
+	// all of it would file a day on what was missing.
+	const [commitDays, pullRequestDays] = await Promise.all([
+		commitSource().listUserCommitsByDay(ctx, range),
+		pullRequestSource().listUserPullRequestActivityByDay(ctx, range),
+	]);
+	const days = new Map<string, DayEvidence>();
+	for (const { dayKey, commits } of commitDays) {
+		days.set(dayKey, { commits, pullRequests: [] });
+	}
+	for (const { dayKey, activity } of pullRequestDays) {
+		const day = days.get(dayKey) ?? emptyEvidence();
+		day.pullRequests.push(...activity);
+		days.set(dayKey, day);
+	}
+	if (days.size === 0) return;
 
 	// Resolved by system key, not by display name. The old lookup matched
 	// `name = 'Development'` scoped to the org, so an org that renamed the task
@@ -488,7 +536,7 @@ const syncCommitWorkTimeForRange = async (
 		// none, via that day being disabled in the person's working hours.
 		holidaysService.holidaySetForRange(ctx, range.from, range.to),
 	]);
-	for (const { dayKey, commits } of days) {
+	for (const [dayKey, { commits, pullRequests }] of days) {
 		// GitHub filters `since`/`until` on the COMMITTER date, and the source
 		// buckets by AUTHOR date. A rebase rewrites the one and keeps the other, so
 		// a branch rebased today returns commits written weeks ago, bucketed on the
@@ -527,25 +575,32 @@ const syncCommitWorkTimeForRange = async (
 		const generalEntry =
 			dayEntries.find((e) => e.projectId === null && !e.fillsDay) ?? null;
 
-		// Group by project so a commit lands on the entry for the project it was
-		// pushed to. Commits whose project has no entry fall through to the fill.
-		const commitsByProject = new Map<string, typeof commits>();
+		// Group by project so evidence lands on the entry for the project it
+		// belongs to. A project with no entry falls through to the fill.
+		const evidenceByProject = new Map<string, DayEvidence>();
+		const evidenceFor = (projectId: string): DayEvidence => {
+			const existing = evidenceByProject.get(projectId);
+			if (existing) return existing;
+			const created = emptyEvidence();
+			evidenceByProject.set(projectId, created);
+			return created;
+		};
 		for (const commit of commits) {
-			const list = commitsByProject.get(commit.projectId) ?? [];
-			list.push(commit);
-			commitsByProject.set(commit.projectId, list);
+			evidenceFor(commit.projectId).commits.push(commit);
+		}
+		for (const event of pullRequests) {
+			evidenceFor(event.projectId).pullRequests.push(event);
 		}
 
-		const homelessProjectIds = [...commitsByProject.keys()].filter(
+		const homelessProjectIds = [...evidenceByProject.keys()].filter(
 			(projectId) => !byProject.has(projectId),
 		);
-		const homeless = homelessProjectIds.flatMap(
-			(projectId) => commitsByProject.get(projectId) ?? [],
-		);
+		const homeless = mergeEvidence(homelessProjectIds.map(evidenceFor));
 
-		// The fill block is created only for commits that found no home, and only
-		// if the day still has room and nobody has said no.
-		if (homeless.length > 0 && !fill && !generalEntry) {
+		// The fill block is created only for evidence that found no home — a day
+		// of reviews is a worked day as surely as a day of commits — and only if
+		// the day still has room and nobody has said no.
+		if (homelessProjectIds.length > 0 && !fill && !generalEntry) {
 			const durationSeconds = await computeDayFillSeconds(ctx, dayKey, tz, {
 				workingHours,
 				holidays,
@@ -564,9 +619,7 @@ const syncCommitWorkTimeForRange = async (
 						userId: ctx.userId,
 						taskId: workTask.id,
 						projectId: fillProjectId,
-						description: summarizeCommitMessages(
-							homeless.map((c) => c.message),
-						),
+						description: describeEvidence(homeless),
 						date: dayKey,
 						durationSeconds,
 						fillsDay: true,
@@ -612,17 +665,18 @@ const syncCommitWorkTimeForRange = async (
 			}
 		}
 
-		// Where each project's commits go, best home first. Null means the day has
-		// nothing to attach to — a full day with no work entry on it — and the
-		// commits are simply left for a later run, once there is.
+		// Where each project's evidence goes, best home first. Null means the day
+		// has nothing to attach to — a full day with no work entry on it — and the
+		// evidence is simply left for a later run, once there is.
 		const fallback = fill ?? generalEntry;
-		const attachments = new Map<string, typeof commits>();
-		for (const [projectId, group] of commitsByProject) {
+		const attachments = new Map<string, DayEvidence>();
+		for (const [projectId, group] of evidenceByProject) {
 			const target = byProject.get(projectId) ?? fallback;
 			if (!target) continue;
-			const existing = attachments.get(target.id) ?? [];
-			existing.push(...group);
-			attachments.set(target.id, existing);
+			attachments.set(
+				target.id,
+				mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
+			);
 		}
 		if (attachments.size === 0) continue;
 
@@ -634,8 +688,8 @@ const syncCommitWorkTimeForRange = async (
 			.concat(fill && !dayEntries.some((e) => e.id === fill.id) ? [fill] : [])
 			.filter((e) => e.description.trim() === "" && attachments.has(e.id));
 		for (const entry of blankDescribable) {
-			const description = summarizeCommitMessages(
-				(attachments.get(entry.id) ?? []).map((c) => c.message),
+			const description = describeEvidence(
+				attachments.get(entry.id) ?? emptyEvidence(),
 			);
 			if (!description) continue;
 			await db
@@ -644,23 +698,36 @@ const syncCommitWorkTimeForRange = async (
 				.where(eq(timeEntry.id, entry.id));
 		}
 
-		await db
-			.insert(timeEntryGithubCommit)
-			.values(
-				[...attachments].flatMap(([timeEntryId, group]) =>
-					group.map((commit) => ({
-						timeEntryId,
-						projectGithubRepoId: commit.projectGithubRepoId,
-						sha: commit.sha,
-						message: commit.message,
-						authorLogin: commit.authorLogin,
-						committedAt: commit.committedAt,
-						url: commit.url,
-					})),
-				),
-			)
-			// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
-			.onConflictDoNothing();
+		const commitRows = [...attachments].flatMap(([timeEntryId, group]) =>
+			group.commits.map((commit) => ({
+				timeEntryId,
+				projectGithubRepoId: commit.projectGithubRepoId,
+				sha: commit.sha,
+				message: commit.message,
+				authorLogin: commit.authorLogin,
+				committedAt: commit.committedAt,
+				url: commit.url,
+			})),
+		);
+		if (commitRows.length > 0) {
+			await db
+				.insert(timeEntryGithubCommit)
+				.values(commitRows)
+				// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
+				.onConflictDoNothing();
+		}
+		const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
+			group.pullRequests.map((event) =>
+				pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
+			),
+		);
+		if (activityRows.length > 0) {
+			await db
+				.insert(timeEntryGithubPrActivity)
+				.values(activityRows)
+				// tegpa_entry_event_unq: the same, for pull request events.
+				.onConflictDoNothing();
+		}
 	}
 };
 
@@ -887,7 +954,7 @@ export const timeEntriesService = {
 			}
 			if (emptied.length > 0) {
 				const dropped = new Set(emptied);
-				await rehomeDroppedFillCommits(
+				await rehomeDroppedFillEvidence(
 					ctx,
 					stale.filter((fill) => dropped.has(fill.id)),
 				);
@@ -896,30 +963,42 @@ export const timeEntriesService = {
 			}
 		}
 
-		// Commit counts, so the week grid can badge entries that have work evidence
-		// attached (a count query rather than a relation, to avoid a
-		// domain.ts <-> github.ts import cycle).
+		// Commit and pull request counts, so the week grid can badge entries that
+		// have work evidence attached (count queries rather than relations, to
+		// avoid a domain.ts <-> github.ts import cycle).
 		const commitCountById = new Map<string, number>();
+		const pullRequestCountById = new Map<string, number>();
 		if (visible.length > 0) {
-			const counts = await db
+			const ids = visible.map((r) => r.id);
+			const commitCounts = await db
 				.select({
 					timeEntryId: timeEntryGithubCommit.timeEntryId,
 					count: count(),
 				})
 				.from(timeEntryGithubCommit)
-				.where(
-					inArray(
-						timeEntryGithubCommit.timeEntryId,
-						visible.map((r) => r.id),
-					),
-				)
+				.where(inArray(timeEntryGithubCommit.timeEntryId, ids))
 				.groupBy(timeEntryGithubCommit.timeEntryId);
-			for (const c of counts) commitCountById.set(c.timeEntryId, c.count);
+			for (const c of commitCounts) commitCountById.set(c.timeEntryId, c.count);
+
+			// Pull requests, not events: three review rounds on one PR are one PR
+			// on the badge.
+			const pullRequestCounts = await db
+				.select({
+					timeEntryId: timeEntryGithubPrActivity.timeEntryId,
+					count: countDistinct(timeEntryGithubPrActivity.pullRequestUrl),
+				})
+				.from(timeEntryGithubPrActivity)
+				.where(inArray(timeEntryGithubPrActivity.timeEntryId, ids))
+				.groupBy(timeEntryGithubPrActivity.timeEntryId);
+			for (const c of pullRequestCounts) {
+				pullRequestCountById.set(c.timeEntryId, c.count);
+			}
 		}
 
 		return visible.map((row) => ({
 			...row,
 			commitCount: commitCountById.get(row.id) ?? 0,
+			pullRequestCount: pullRequestCountById.get(row.id) ?? 0,
 		}));
 	},
 
