@@ -173,7 +173,7 @@ function HourFundPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Monthly hour fund"
 				lede="The official number of working hours in each month. It's the denominator of everyone's expected hours, so a month left blank simply shows no expected figure rather than guessing one."
 				action={

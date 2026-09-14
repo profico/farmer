@@ -333,7 +333,7 @@ function PreferencesSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Your account</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Preferences"
 				lede="Your account and this device."
 			/>

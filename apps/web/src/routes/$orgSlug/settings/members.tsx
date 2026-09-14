@@ -449,7 +449,7 @@ function MembersSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="People"
 				lede="Who has access, and what kind of person they are. Overhead employees are left out of reminders; hourly students and contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
 				action={

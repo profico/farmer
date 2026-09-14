@@ -312,7 +312,7 @@ function ClientsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Clients"
 				lede={`Every project belongs to a client, which is what makes the Time report's "by client" view add up. The Internal client is created automatically and holds work that is never invoiced.`}
 				action={

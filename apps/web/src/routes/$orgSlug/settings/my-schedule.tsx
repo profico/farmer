@@ -32,7 +32,7 @@ function MySchedulePage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Your schedule</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="My schedule"
 				lede={`Your working hours. These drive the "fill rest of day" block, a booked span of time off, and when a reminder reaches you. Your targets come from the month's hour fund, not from here.`}
 			/>

@@ -142,7 +142,7 @@ function RecurringBlocksPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Your schedule</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Recurring blocks"
 				lede="Blocks — a daily break, a standing meeting — that appear on your calendar without you logging them."
 				action={

@@ -10,7 +10,6 @@ import {
 	UploadSimpleIcon,
 } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
 
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import {
@@ -211,35 +210,29 @@ export const settingsSubNavItems = (audience: SettingsAudience): NavItem[] =>
  * A phone had nothing at all — no sidebar, and the tab bar's More sheet lists
  * the hub two taps away.
  *
- * It replaces the eyebrow rather than sitting above it, so the title still
- * begins at the same height as on every other screen (see `PageHeader`).
+ * It is the whole eyebrow: a static section name beside it ("Workspace")
+ * only repeated what the hub already said.
  */
-export function SettingsEyebrow({ children }: { children: ReactNode }) {
+export function SettingsEyebrow() {
 	const orgSlug = useOrgSlug();
 	return (
-		<span className="flex min-w-0 items-center gap-2">
-			<Link
-				to={SETTINGS_ITEM.to}
-				params={{ orgSlug }}
-				// The negative margins buy a real target without moving anything: the
-				// link is one 13px line of text, and on a phone it is the ONLY way out
-				// of a settings page. `-my-3` pairs with `py-3` so the eyebrow row
-				// keeps the height every other screen's does.
-				className="-my-3 -ml-1 flex shrink-0 items-center gap-1 py-3 pr-1 pl-1 transition-colors duration-(--dur-fast) hover:text-foreground"
-			>
-				{/* Nudged up off the flex centre. `items-center` centres the glyph on
-				    the LINE BOX, which is symmetric about the font's em square — but
-				    the label beside it is uppercase and has no descenders, so it is
-				    read as centred on its cap height, which sits higher. The
-				    correction is half that difference, and it is what stops the arrow
-				    sitting visibly low against SETTINGS. */}
-				<CaretLeftIcon weight="bold" className="-mt-px size-2.5" />
-				{SETTINGS_ITEM.label}
-			</Link>
-			<span aria-hidden className="opacity-40">
-				/
-			</span>
-			<span className="truncate">{children}</span>
-		</span>
+		<Link
+			to={SETTINGS_ITEM.to}
+			params={{ orgSlug }}
+			// The negative margins buy a real target without moving anything: the
+			// link is one 13px line of text, and on a phone it is the ONLY way out
+			// of a settings page. `-my-3` pairs with `py-3` so the eyebrow row
+			// keeps the height every other screen's does.
+			className="-my-3 -ml-1 flex w-fit items-center gap-1 py-3 pr-1 pl-1 transition-colors duration-(--dur-fast) hover:text-foreground"
+		>
+			{/* Nudged up off the flex centre. `items-center` centres the glyph on
+			    the LINE BOX, which is symmetric about the font's em square — but
+			    the label beside it is uppercase and has no descenders, so it is
+			    read as centred on its cap height, which sits higher. The
+			    correction is half that difference, and it is what stops the arrow
+			    sitting visibly low against SETTINGS. */}
+			<CaretLeftIcon weight="bold" className="-mt-px size-2.5" />
+			{SETTINGS_ITEM.label}
+		</Link>
 	);
 }

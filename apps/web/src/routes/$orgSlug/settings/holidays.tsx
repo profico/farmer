@@ -128,7 +128,7 @@ function HolidaysSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Holidays"
 				lede={
 					<>

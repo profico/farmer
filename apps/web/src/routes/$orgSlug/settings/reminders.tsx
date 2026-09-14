@@ -148,7 +148,7 @@ function RemindersPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Reminders"
 				lede="When each reminder goes out, and to whom. Nothing goes out before 07:00 or after 20:00, and nobody who is archived gets any of them."
 			/>

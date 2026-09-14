@@ -8,9 +8,9 @@ import { ensureOrgTasks } from "../db/seed-tasks";
  * Single-organization mode — the whole switch is one env var.
  *
  * Setting `SINGLE_ORG_SLUG` turns a deployment into a one-workspace instance:
- * nobody can create a second organization, signup is invitation-only, `/` is
- * the app instead of the marketing page, and the one screen sign-in can still
- * show — its error state — wears that organization's name and logo. Unset (the
+ * nobody can create a second organization, signup is invitation-only, and the
+ * one screen sign-in can still show — its error state — wears that
+ * organization's name and logo. `/` still renders the landing page. Unset (the
  * default) is the normal multi-tenant product, unchanged.
  *
  * It is a *slug*, not a boolean, on purpose: a boolean would leave "which

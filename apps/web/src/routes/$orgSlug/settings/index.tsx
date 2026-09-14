@@ -79,7 +79,6 @@ function SettingsIndex() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow="Settings"
 				title="Settings"
 				lede={
 					isAdmin

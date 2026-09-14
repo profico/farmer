@@ -113,16 +113,17 @@ export function PageColumn({
 }
 
 /**
- * The header a screen opens with: an eyebrow line stating what you're looking
- * at, the serif title under it, and optionally a line of lede.
+ * The header a screen opens with: an optional eyebrow line, the serif title
+ * under it, and optionally a line of lede.
  *
- * The eyebrow row is what fixes the geometry. `action` sits at its far right, so
- * the title always begins at the same height whether or not the screen has one,
- * and a control never moves as you walk through the sidebar.
+ * The eyebrow row holds `action` at its far right, so the title begins at the
+ * same height whether or not the screen has one, and a control never moves as
+ * you walk through the sidebar.
  *
- * `eyebrow` is required for that reason. Every screen can say what slice of data
- * it is showing — a date, a window, a scope — and a screen that genuinely can't
- * is a screen that doesn't know what it is.
+ * **An eyebrow carries live context or a way back** — a date, a period, a
+ * count, a return link. Never a static label: "Settings" over "Settings" says
+ * nothing the title does not. With neither an eyebrow nor an action the row is
+ * dropped and the title opens the header.
  *
  * **The header owns the gap under itself, and no caller may set it.** The gap is
  * `mb-7` — the same 1.75rem that separates one `PageSection` from the next, so a
@@ -150,22 +151,25 @@ export function PageHeader({
 	action,
 	className,
 }: {
-	eyebrow: ReactNode;
+	eyebrow?: ReactNode;
 	title: ReactNode;
 	lede?: ReactNode;
 	action?: ReactNode;
 	/** Layout only — never a margin. See the note above. */
 	className?: string;
 }) {
+	const hasRow = eyebrow != null || action != null;
 	return (
 		<header className={cn("mb-7", className)}>
 			{/* min-h holds the row open on screens with no action, so a missing
 			    button can't pull the title up a line. */}
-			<div className="section-head min-h-3.5">
-				<div className="eyebrow-lg">{eyebrow}</div>
-				{action}
-			</div>
-			<h1 className="h1 mt-4">{title}</h1>
+			{hasRow && (
+				<div className="section-head min-h-3.5">
+					<div className="eyebrow-lg">{eyebrow}</div>
+					{action}
+				</div>
+			)}
+			<h1 className={cn("h1", hasRow && "mt-4")}>{title}</h1>
 			{lede && <p className="lede mt-2 max-w-[62ch]">{lede}</p>}
 		</header>
 	);

@@ -131,7 +131,7 @@ function OrganizationSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Organization"
 				lede="General settings for this organization."
 			/>

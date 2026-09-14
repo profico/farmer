@@ -111,8 +111,7 @@ function SignInPage() {
 			tagline="Every hour, accounted for — without the friction."
 			brand={config.org}
 		>
-			<div className="eyebrow-lg">Sign in</div>
-			<h1 className="h2 mt-3">
+			<h1 className="h2">
 				{oauthError ? "Couldn't sign you in" : "Welcome back"}
 			</h1>
 			<p className="lede mt-2">

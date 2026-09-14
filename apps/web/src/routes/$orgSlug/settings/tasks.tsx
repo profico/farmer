@@ -506,7 +506,7 @@ function TasksPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Tasks"
 				lede={`One global list for the whole company.`}
 				action={

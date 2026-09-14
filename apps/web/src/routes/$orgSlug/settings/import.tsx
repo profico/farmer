@@ -189,7 +189,7 @@ function ImportPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Workspace</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Import from Harvest"
 				lede="Bring clients, projects, tasks, people and time in from the CSV files that Harvest exports. You can import the same files again: the import adds only what changed."
 			/>

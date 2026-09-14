@@ -246,7 +246,7 @@ function IntegrationsSettingsPage() {
 	return (
 		<Page>
 			<PageHeader
-				eyebrow={<SettingsEyebrow>Your account</SettingsEyebrow>}
+				eyebrow={<SettingsEyebrow />}
 				title="Integrations"
 				lede="Connect external accounts to enrich your time entries."
 			/>

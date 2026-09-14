@@ -150,7 +150,6 @@ function DevicePage() {
 
 	return (
 		<AuthSplitPanel tagline="Your timesheet, from the terminal." brand={brand}>
-			<div className="eyebrow-lg">Farmer CLI</div>
 			{userCode ? (
 				// Keyed on the code: a code typed into the form below is a new
 				// mount, so it is opened (bound) afresh, and the result of approving
@@ -158,7 +157,7 @@ function DevicePage() {
 				<DeviceApproval key={userCode} userCode={userCode} />
 			) : (
 				<>
-					<h1 className="h2 mt-3">Connect a terminal</h1>
+					<h1 className="h2">Connect a terminal</h1>
 					<p className="lede mt-2">
 						Enter the code that <code>farmer login</code> shows in your
 						terminal.
@@ -243,7 +242,7 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 		// approve until the code is bound, so no buttons yet.
 		return (
 			<>
-				<h1 className="h2 mt-3">Checking the code…</h1>
+				<h1 className="h2">Checking the code…</h1>
 				<p className="lede mt-2">
 					Signed in as <strong className="text-foreground">{email}</strong>.
 				</p>
@@ -256,7 +255,7 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 		case "pending":
 			return (
 				<>
-					<h1 className="h2 mt-3">Approve this sign-in?</h1>
+					<h1 className="h2">Approve this sign-in?</h1>
 					<p className="lede mt-2">
 						A terminal is asking to sign in to Farmer as{" "}
 						<strong className="text-foreground">{email}</strong>. Check that it
@@ -354,7 +353,7 @@ function Result({
 }) {
 	return (
 		<>
-			<h1 className="h2 mt-3">{title}</h1>
+			<h1 className="h2">{title}</h1>
 			<p className="lede mt-2">{children}</p>
 			{retry ? <UserCodeForm /> : null}
 		</>

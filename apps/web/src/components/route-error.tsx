@@ -19,8 +19,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 
 	return (
 		<div className="island island-pad flex-1">
-			<div className="eyebrow-lg">Error</div>
-			<h1 className="h2 mt-3">Something went wrong</h1>
+			<h1 className="h2">Something went wrong</h1>
 			<p className="lede mt-2 max-w-[52ch]">
 				This page ran into an unexpected error. Try again, and if it keeps
 				happening, let us know.
