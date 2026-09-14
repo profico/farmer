@@ -12,11 +12,21 @@
 // These go through `globalThis.fetch` rather than a seam because the client is
 // the layer under the seam — `ports.ts` substitutes the service above it.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	test,
+} from "bun:test";
+import crypto from "node:crypto";
 
 import {
 	type GithubCommit,
 	GithubRateLimitError,
+	getRepoContentsReadToken,
 	listCommits,
 } from "./github-client";
 
@@ -203,5 +213,94 @@ describe("403 is two different answers", () => {
 		respondWith([{ status: 500, body: { message: "boom" } }]);
 
 		await expect(fetchCommits()).rejects.toThrow("GitHub API error 500");
+	});
+});
+
+// The CLI download route's token. What matters is what it cannot do: it must
+// be narrowed to one repository and Contents: read when it is minted, because
+// the installation behind it also reads pull requests on every repository.
+describe("getRepoContentsReadToken", () => {
+	const savedAppId = process.env.GITHUB_APP_ID;
+	const savedKey = process.env.GITHUB_APP_PRIVATE_KEY;
+
+	/** The body of every POST, in order. */
+	let posted: string[] = [];
+
+	const stubGithub = (replies: Reply[]) => {
+		respondWith(replies);
+		const answer = globalThis.fetch;
+		// SAFETY: wraps the stub `respondWith` just installed, with the same
+		// accepted argument shapes; it only records the request body first.
+		globalThis.fetch = (async (
+			input: string | URL | Request,
+			init?: RequestInit,
+		) => {
+			if (init?.method === "POST") posted.push(String(init.body));
+			return answer(input, init);
+		}) as typeof fetch;
+	};
+
+	beforeAll(() => {
+		const { privateKey } = crypto.generateKeyPairSync("rsa", {
+			modulusLength: 2048,
+			privateKeyEncoding: { type: "pkcs8", format: "pem" },
+			publicKeyEncoding: { type: "spki", format: "pem" },
+		});
+		process.env.GITHUB_APP_ID = "12345";
+		process.env.GITHUB_APP_PRIVATE_KEY =
+			Buffer.from(privateKey).toString("base64");
+	});
+
+	afterAll(() => {
+		// Assigning `undefined` would store the string "undefined".
+		if (savedAppId === undefined) delete process.env.GITHUB_APP_ID;
+		else process.env.GITHUB_APP_ID = savedAppId;
+		if (savedKey === undefined) delete process.env.GITHUB_APP_PRIVATE_KEY;
+		else process.env.GITHUB_APP_PRIVATE_KEY = savedKey;
+	});
+
+	beforeEach(() => {
+		posted = [];
+	});
+
+	test("an App not installed on the repository is null, not an error", async () => {
+		stubGithub([{ status: 404, body: { message: "Not Found" } }]);
+
+		expect(await getRepoContentsReadToken("acme", "absent")).toBeNull();
+		expect(requested).toEqual([
+			"https://api.github.com/repos/acme/absent/installation",
+		]);
+	});
+
+	test("the token is minted for that repository and Contents: read only", async () => {
+		const expires = new Date(Date.now() + 60 * 60_000).toISOString();
+		stubGithub([
+			{ body: { id: 77 } },
+			{ status: 201, body: { token: "narrow", expires_at: expires } },
+		]);
+
+		expect(await getRepoContentsReadToken("acme", "cli")).toBe("narrow");
+		expect(requested[1]).toBe(
+			"https://api.github.com/app/installations/77/access_tokens",
+		);
+		expect(posted.map((body) => JSON.parse(body))).toEqual([
+			{ repositories: ["cli"], permissions: { contents: "read" } },
+		]);
+
+		// Cached until near expiry: a burst of installs mints once.
+		requested = [];
+		expect(await getRepoContentsReadToken("acme", "cli")).toBe("narrow");
+		expect(requested).toEqual([]);
+	});
+
+	test("a refused mint throws, so the route reports an upstream error", async () => {
+		stubGithub([
+			{ body: { id: 78 } },
+			{ status: 422, body: { message: "no access to repository" } },
+		]);
+
+		await expect(getRepoContentsReadToken("acme", "denied")).rejects.toThrow(
+			"GitHub API error 422",
+		);
 	});
 });

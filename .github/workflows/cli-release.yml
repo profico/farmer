@@ -5,8 +5,8 @@ name: CLI release
 #   git tag cli-v0.1.0 && git push origin cli-v0.1.0
 #
 # The web app's install script (`curl -fsSL <origin>/cli | sh`) downloads from
-# the newest release whose tag starts with `cli-v`, through a server-side token
-# (see CLI_RELEASES_TOKEN in .env.example), because the repository is private.
+# the newest release whose tag starts with `cli-v`, through the server's GitHub
+# App (see CLI_RELEASES_REPO in .env.example), because the repository is private.
 # So a release published here is live for every deployment within about five
 # minutes, which is how long the server caches the release lookup.
 

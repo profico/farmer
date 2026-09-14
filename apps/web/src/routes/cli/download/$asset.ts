@@ -16,8 +16,8 @@ const assetName = z.enum(CLI_RELEASE_ASSETS);
  * being a way to read any other release asset in the repository.
  *
  * Every answer but the redirect is plain text, because the install script
- * prints the body of a failed download — so "this deployment has no release
- * token" reaches the person running the script in words, not as a bare 503.
+ * prints the body of a failed download — so "the GitHub App is not installed
+ * on the repository" reaches the person running the script in words, not as a bare 503.
  */
 export const Route = createFileRoute("/cli/download/$asset")({
 	server: {
@@ -47,7 +47,12 @@ export const Route = createFileRoute("/cli/download/$asset")({
 						});
 					case "unconfigured":
 						return plainText(
-							"This Farmer server cannot hand out the CLI yet: it has no CLI_RELEASES_TOKEN. Ask the person who runs it to set one (see .env.example).",
+							"This Farmer server cannot hand out the CLI yet: it has no GitHub App configured (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY). Ask the person who runs it to set one up (see .env.example).",
+							503,
+						);
+					case "not-installed":
+						return plainText(
+							`This Farmer server cannot hand out the CLI yet: its GitHub App is not installed on ${download.repo}. Ask the person who runs it to give the App access to that repository.`,
 							503,
 						);
 					case "no-release":
@@ -63,7 +68,7 @@ export const Route = createFileRoute("/cli/download/$asset")({
 					case "upstream-error":
 						console.error("[cli-download]", download.detail);
 						return plainText(
-							"This Farmer server could not read the CLI release from GitHub. Try again in a minute; if it keeps happening, ask the person who runs it to check CLI_RELEASES_TOKEN.",
+							"This Farmer server could not read the CLI release from GitHub. Try again in a minute; if it keeps happening, ask the person who runs it to check the GitHub App's access to the releases repository.",
 							502,
 						);
 				}

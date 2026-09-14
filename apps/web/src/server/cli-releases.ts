@@ -1,3 +1,7 @@
+import {
+	getRepoContentsReadToken,
+	isGithubAppConfigured,
+} from "@farmer/core/lib/github-client";
 import { externalFetch } from "@farmer/core/lib/http";
 import { z } from "zod";
 
@@ -8,10 +12,13 @@ import type { CliReleaseAsset } from "./cli-install";
  * short-lived URL for one asset of the newest CLI release.
  *
  * The repository is private, so the script cannot read releases itself. This
- * server can, with `CLI_RELEASES_TOKEN` (a fine-grained token, Contents: read,
- * on that one repository), and it uses the token for exactly two requests:
- * the release list, and the asset's API URL, which GitHub answers with a 302
- * to a signed download link. The route passes that `Location` on. So:
+ * server can, through the GitHub App it already holds for the commit sync
+ * (`GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`), provided the App is installed on
+ * the repository with Contents: read. It mints an installation token narrowed to
+ * that one repository and that one permission (`getRepoContentsReadToken`) and
+ * uses it for exactly two requests: the release list, and the asset's API URL,
+ * which GitHub answers with a 302 to a signed download link. The route passes
+ * that `Location` on. So:
  *
  *  - the token never leaves this process — the client is redirected to a URL
  *    that carries its own short-lived signature instead;
@@ -22,10 +29,10 @@ import type { CliReleaseAsset } from "./cli-install";
  * "Newest CLI release" is the most recently published release whose tag starts
  * with `cli-v`, skipping drafts and pre-releases. The lookup is cached for five
  * minutes per process: an install fetches two assets and a team installs in a
- * burst, and every uncached lookup spends from the token's hourly API budget.
- * The signed `Location` is never cached, because GitHub expires it within
- * minutes. A failed lookup is not cached either, so a fixed token works on the
- * next try.
+ * burst, and every uncached lookup spends from the installation's hourly API
+ * budget, which the commit sync shares. The signed `Location` is never cached,
+ * because GitHub expires it within minutes. A failed lookup is not cached
+ * either, so a fixed installation works on the next try.
  */
 
 const RELEASE_TAG_PREFIX = "cli-v";
@@ -46,9 +53,11 @@ type Release = z.infer<typeof releaseList>[number];
 
 export type CliDownload =
 	| { kind: "redirect"; location: string }
-	/** No `CLI_RELEASES_TOKEN` on this deployment. */
+	/** No GitHub App credentials on this deployment. */
 	| { kind: "unconfigured" }
-	/** The token works, and no release matches. */
+	/** The App is configured, and not installed on the releases repository. */
+	| { kind: "not-installed"; repo: string }
+	/** The App can read the repository, and no release matches. */
 	| { kind: "no-release" }
 	| { kind: "missing-asset"; tag: string }
 	/** GitHub refused or failed. The detail is for the log, not the client. */
@@ -109,11 +118,20 @@ const newestCliRelease = async (
 export const resolveCliDownload = async (
 	asset: CliReleaseAsset,
 ): Promise<CliDownload> => {
-	const token = process.env.CLI_RELEASES_TOKEN?.trim();
-	if (!token) return { kind: "unconfigured" };
+	if (!isGithubAppConfigured()) return { kind: "unconfigured" };
 	const repo = process.env.CLI_RELEASES_REPO?.trim() || "profico/farmer";
+	const [owner, name] = repo.split("/");
+	if (!owner || !name) {
+		return {
+			kind: "upstream-error",
+			detail: `CLI_RELEASES_REPO is "${repo}", not owner/name`,
+		};
+	}
 
 	try {
+		const token = await getRepoContentsReadToken(owner, name);
+		if (!token) return { kind: "not-installed", repo };
+
 		const release = await newestCliRelease(repo, token);
 		if (!release) return { kind: "no-release" };
 		const file = release.assets.find((candidate) => candidate.name === asset);
