@@ -268,6 +268,7 @@ export const tasksService = {
 				scope: "organization",
 				organizationId: ctx.organizationId,
 				name,
+				group: input.group ?? "general",
 				color: input.color,
 				description: input.description,
 			})
@@ -343,6 +344,7 @@ export const tasksService = {
 		// `.set()` skips `undefined` keys, which is what makes the distinction work.
 		const patch: Partial<typeof task.$inferInsert> = { updatedAt: new Date() };
 		if (input.name !== undefined) patch.name = input.name.trim();
+		if (input.group !== undefined) patch.group = input.group;
 		if (input.color !== undefined) patch.color = input.color;
 		if (input.description !== undefined) patch.description = input.description;
 

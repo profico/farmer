@@ -1,3 +1,8 @@
+import {
+	TASK_GROUP_LABELS,
+	TASK_GROUPS,
+	type TaskGroup,
+} from "@farmer/core/lib/task-taxonomy";
 import { createTaskInput } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -6,7 +11,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -38,6 +43,13 @@ import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { RowActions } from "#/components/ui/row-actions.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "#/components/ui/select.tsx";
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -68,6 +80,48 @@ const searchSchema = z.object({
 
 const TASK_COLUMN_COUNT = 6;
 
+// Absence tasks are the fifth group and are built in, so the dialogs offer the
+// four an admin can put an org task under.
+const GROUP_ITEMS = TASK_GROUPS.filter((g) => g !== "time_off").map(
+	(value) => ({
+		value,
+		label: TASK_GROUP_LABELS[value],
+	}),
+);
+
+function GroupField({
+	value,
+	onChange,
+}: {
+	value: TaskGroup;
+	onChange: (next: TaskGroup) => void;
+}) {
+	return (
+		<Select
+			value={value}
+			onValueChange={(next) => {
+				const picked = GROUP_ITEMS.find((g) => g.value === next);
+				if (picked) onChange(picked.value);
+			}}
+			items={GROUP_ITEMS}
+		>
+			<SelectTrigger className="w-full">
+				<SelectValue />
+			</SelectTrigger>
+			{/* Opens below the field like a plain dropdown: aligning the chosen
+			    item with the field (the default) sends a four-item list upward
+			    over the Name field whenever the last item is chosen. */}
+			<SelectContent alignItemWithTrigger={false}>
+				{GROUP_ITEMS.map((g) => (
+					<SelectItem key={g.value} value={g.value}>
+						{g.label}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	);
+}
+
 export const Route = createFileRoute("/$orgSlug/settings/tasks")({
 	validateSearch: searchSchema,
 	beforeLoad: async () => {
@@ -93,7 +147,12 @@ function CreateTaskDialog() {
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof createTaskInput>>({
 		resolver: zodResolver(createTaskInput),
-		defaultValues: { name: "", color: DEFAULT_COLOR, description: "" },
+		defaultValues: {
+			name: "",
+			group: "general",
+			color: DEFAULT_COLOR,
+			description: "",
+		},
 	});
 
 	const mutation = useMutation({
@@ -128,6 +187,22 @@ function CreateTaskDialog() {
 									<FormLabel required>Name</FormLabel>
 									<FormControl>
 										<Input autoFocus {...field} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name="group"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel required>Group</FormLabel>
+									<FormControl>
+										<GroupField
+											value={field.value ?? "general"}
+											onChange={field.onChange}
+										/>
 									</FormControl>
 									<FormMessage />
 								</FormItem>
@@ -177,6 +252,7 @@ function CreateTaskDialog() {
 type EditableTask = {
 	id: string;
 	name: string;
+	group: TaskGroup;
 	color: string | null;
 	description: string | null;
 };
@@ -193,7 +269,12 @@ function EditTaskDialog({
 	const queryClient = useQueryClient();
 	const form = useForm<z.infer<typeof createTaskInput>>({
 		resolver: zodResolver(createTaskInput),
-		defaultValues: { name: "", color: DEFAULT_COLOR, description: "" },
+		defaultValues: {
+			name: "",
+			group: "general",
+			color: DEFAULT_COLOR,
+			description: "",
+		},
 	});
 
 	// One dialog serves every row, so the fields are re-seeded each time it opens
@@ -203,6 +284,7 @@ function EditTaskDialog({
 		if (task) {
 			reset({
 				name: task.name,
+				group: task.group,
 				color: task.color ?? DEFAULT_COLOR,
 				description: task.description ?? "",
 			});
@@ -240,6 +322,22 @@ function EditTaskDialog({
 									<FormLabel required>Name</FormLabel>
 									<FormControl>
 										<Input autoFocus {...field} />
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name="group"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel required>Group</FormLabel>
+									<FormControl>
+										<GroupField
+											value={field.value ?? "general"}
+											onChange={field.onChange}
+										/>
 									</FormControl>
 									<FormMessage />
 								</FormItem>
@@ -466,7 +564,24 @@ function TasksPage() {
 								: "No tasks match your search."}
 						</NoMatchesRow>
 					)}
-					{activeTasks.map(renderTaskRow)}
+					{TASK_GROUPS.map((group) => {
+						const rows = activeTasks.filter((t) => t.group === group);
+						if (rows.length === 0) return null;
+						return (
+							<Fragment key={group}>
+								<TableRow className="hover:bg-transparent">
+									<TableCell
+										colSpan={TASK_COLUMN_COUNT}
+										className="bg-muted py-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+									>
+										{TASK_GROUP_LABELS[group]}
+										<span className="mono ml-2 text-faint">{rows.length}</span>
+									</TableCell>
+								</TableRow>
+								{rows.map(renderTaskRow)}
+							</Fragment>
+						);
+					})}
 					<ArchivedSection
 						count={archivedTasks.length}
 						colSpan={TASK_COLUMN_COUNT}

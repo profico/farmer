@@ -47,6 +47,7 @@ import type {
 	HarvestSnapshot,
 } from "../lib/harvest/contract";
 import { DAY_DIGEST_LENGTH } from "../lib/harvest/keys";
+import { groupForTaskName } from "../lib/task-taxonomy";
 import { addDaysToKey } from "../lib/time";
 import type {
 	HarvestEmailsInput,
@@ -728,6 +729,7 @@ export const harvestImportService = {
 							scope: "organization",
 							organizationId: org,
 							name: t.name,
+							group: groupForTaskName(t.name) ?? "general",
 							archivedAt: t.archived ? new Date() : null,
 						})
 						.returning({ id: task.id });
