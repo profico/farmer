@@ -665,7 +665,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "absence_report",
 		kind: "read",
 		description:
-			"Time off per person over a date range — Vacation, Sick Leave, Paid Leave — in hours, split by task, with the entries behind each figure. Scoped to the caller's people: a Member sees themselves, a Team Lead their people, an Admin everyone.",
+			"Time off per person over a date range — Vacation, Sick Leave, Paid Leave — in hours, split by task, with the entries behind each figure. Scoped to the people the caller may see: everyone for an Admin, otherwise themselves, their Team Lead people, and everyone on the projects they manage.",
 		schema: absenceReportInput,
 		available: anyone,
 		run: async (ctx, args) => {

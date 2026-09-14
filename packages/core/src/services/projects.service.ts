@@ -23,7 +23,7 @@ import type {
 	RemoveProjectMemberInput,
 	UpdateProjectInput,
 } from "../schema/projects";
-import type { Access } from "./access.service";
+import { AccessError, type Access } from "./access.service";
 import { ctxAccess, invalidateCtxAccess } from "./context";
 import { assertProjectInOrg, assertUserInOrg } from "./guards";
 import { membersService } from "./members.service";
@@ -385,6 +385,32 @@ export const projectsService = {
 			throw new Error("That person is archived. Restore them to assign them.");
 		}
 
+		// `canManageProjectMembers` only asks whether the caller may touch the
+		// roster at all — Team Lead and up. Without this, a Team Lead (a rank
+		// that passes that check) could hand out PM, including to themselves, or
+		// re-rank an existing PM downward: one click on the new Team page. A
+		// non-admin caller may neither assign a role above their own held rank
+		// nor touch someone who already holds a role above it.
+		if (!access.isAdmin) {
+			const existing = await db.query.projectMember.findFirst({
+				where: and(
+					eq(projectMember.organizationId, ctx.organizationId),
+					eq(projectMember.projectId, input.projectId),
+					eq(projectMember.userId, input.userId),
+				),
+				columns: { role: true },
+			});
+			if (
+				existing &&
+				!access.canActOnProjectRole(input.projectId, existing.role)
+			) {
+				throw new AccessError("You cannot change this person's role");
+			}
+			if (!access.canActOnProjectRole(input.projectId, input.role)) {
+				throw new AccessError("You cannot assign that role");
+			}
+		}
+
 		await db
 			.insert(projectMember)
 			.values({
@@ -409,6 +435,25 @@ export const projectsService = {
 	removeMember: async (ctx: Ctx, input: RemoveProjectMemberInput) => {
 		const access = await ctxAccess(ctx);
 		access.assertCanManageProjectMembers(input.projectId);
+
+		// Same ceiling as assignMember: a Team Lead may drop a plain Member but
+		// not the PM (or another Team Lead who outranks their own assignment).
+		if (!access.isAdmin) {
+			const existing = await db.query.projectMember.findFirst({
+				where: and(
+					eq(projectMember.organizationId, ctx.organizationId),
+					eq(projectMember.projectId, input.projectId),
+					eq(projectMember.userId, input.userId),
+				),
+				columns: { role: true },
+			});
+			if (
+				existing &&
+				!access.canActOnProjectRole(input.projectId, existing.role)
+			) {
+				throw new AccessError("You cannot remove this person");
+			}
+		}
 
 		await db
 			.update(projectMember)

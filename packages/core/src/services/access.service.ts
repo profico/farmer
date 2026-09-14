@@ -17,8 +17,10 @@ import type { Ctx } from "./types";
 //   * A PEOPLE LIST — the Team Lead of the org chart. Somebody with people on
 //     their list (`team_lead_person`, edited by an Admin) sees everything about
 //     those people: their time on every project, their Tracking status, their
-//     time off. And on any project they are assigned to, they see and manage it
-//     as a PM does, whatever the assignment says.
+//     time off. And on any project where their OWN assignment is `team_lead`,
+//     they see and manage it as a PM does. A plain `member` assignment stays
+//     `member` — a people list is not a blanket PM grant on every project the
+//     lead happens to be on.
 //
 // Guiding principles this file exists to enforce:
 //   * Members see strictly their own time entries and nothing at project level —
@@ -91,19 +93,22 @@ export class Access {
 		return this.isAdmin || userId === this.userId || this.leadOf.has(userId);
 	}
 
-	/** The rank an assignment grants. A Team Lead assigned to a project — in
-	 *  any role — holds it as a PM does. */
+	/** The rank an assignment grants. A Team Lead's OWN `team_lead` assignment
+	 *  holds a project as a PM does; a `member` assignment never widens, list or
+	 *  no list — the list makes someone a Team Lead, not a PM on every project
+	 *  they happen to be tracking time on. */
 	private rankOf(role: ProjectRole): number {
-		return this.isTeamLead ? RANK.pm : RANK[role];
+		return this.isTeamLead && role === "team_lead" ? RANK.pm : RANK[role];
 	}
 
 	/** The role the caller HOLDS a project as — `roleOn` after the Team Lead
-	 *  rule, so a lead assigned as a plain member reads as PM here. What a
-	 *  screen should gate on; `roleOn` is what the assignment row says. */
+	 *  rule, so a lead assigned as `team_lead` reads as PM here. A `member`
+	 *  assignment is returned unchanged. What a screen should gate on; `roleOn`
+	 *  is what the assignment row says. */
 	heldAs(projectId: string): ProjectRole | null {
 		const mine = this.roleByProject.get(projectId);
 		if (mine == null) return null;
-		return this.isTeamLead ? "pm" : mine;
+		return this.isTeamLead && mine === "team_lead" ? "pm" : mine;
 	}
 
 	// The caller's role on a project, or null when unassigned. Admins are NOT
@@ -156,6 +161,20 @@ export class Access {
 	 *  light management capability beyond pure visibility. */
 	canManageProjectMembers(projectId: string): boolean {
 		return this.atLeast(projectId, "team_lead");
+	}
+
+	/** Whether the caller may set a project role to `role`, or act on someone
+	 *  who currently holds it — assign, change or remove. Admin is
+	 *  unrestricted; everyone else is capped at their own held rank on the
+	 *  project, so a Team Lead can staff or drop a plain Member but can
+	 *  neither promote anyone (themselves included) to PM nor touch a PM or a
+	 *  Team Lead who outranks their own assignment. `canManageProjectMembers`
+	 *  only asks whether the caller may touch the roster at all; this is the
+	 *  ceiling on what they may do to it once they can. */
+	canActOnProjectRole(projectId: string, role: ProjectRole): boolean {
+		if (this.isAdmin) return true;
+		const held = this.heldAs(projectId);
+		return held != null && RANK[role] <= RANK[held];
 	}
 
 	/** See the project's budget and hourly price. PM and Admin only — the two
@@ -295,9 +314,11 @@ export const accessService = {
 	/** The people whose time the caller may read in the reports that are about
 	 *  PEOPLE rather than projects — Tracking, Absence, a person's total across
 	 *  every project. Null for Admin (everyone). Otherwise themselves, the
-	 *  people on their list, and everyone on the projects they hold as PM (a
-	 *  Team Lead's assignments count, since they hold them as a PM). One query
-	 *  at most, and only for somebody who manages a project. */
+	 *  people on their list, and everyone on the projects they hold as PM —
+	 *  which, for a Team Lead, is only the projects where their OWN assignment
+	 *  is `team_lead`; a plain `member` assignment does not add its project's
+	 *  roster. One query at most, and only for somebody who manages a
+	 *  project. */
 	peopleScope: async (
 		ctx: Ctx,
 		access: Access,

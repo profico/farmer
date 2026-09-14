@@ -87,12 +87,37 @@ const PROJECT_TYPES: {
 	{ value: "internal", label: "Internal", hint: "Our own work. Never billed." },
 ];
 
+// Mirrors create-project-dialog.tsx: the server's money fields are
+// `regex(...).optional()`, which an empty string fails, and the empty string
+// is what an untouched — or type-hidden — input holds. Accept "" here and let
+// the mutation map it to undefined on the way out.
+const optionalMoney = z.union([
+	z.literal(""),
+	z
+		.string()
+		.trim()
+		.regex(/^\d+(\.\d{1,2})?$/, "Expected an amount like 1500 or 1500.00"),
+]);
+
 const formSchema = z.object({
 	name: updateProjectInput.shape.name.unwrap(),
 	code: z.string().trim().max(16),
 	clientId: z.uuid(),
 	type: projectTypeEnum,
 	icon: z.string().nullable(),
+	budgetHours: z.union([
+		z.literal(""),
+		z
+			.string()
+			.trim()
+			.regex(/^\d+(\.\d+)?$/, "Expected a number like 400 or 400.5")
+			.refine((v) => {
+				const n = Number(v);
+				return n > 0 && n <= 100_000;
+			}, "Must be between 1 and 100,000"),
+	]),
+	budgetAmount: optionalMoney,
+	hourlyPrice: optionalMoney,
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -127,9 +152,16 @@ function SettingsPage() {
 			clientId: project.clientId,
 			type: project.type,
 			icon: project.icon,
+			budgetHours:
+				project.budgetSeconds != null
+					? String(project.budgetSeconds / 3600)
+					: "",
+			budgetAmount: project.budgetAmount ?? "",
+			hourlyPrice: project.hourlyPrice ?? "",
 		},
 	});
 	const nameNow = form.watch("name");
+	const typeNow = form.watch("type");
 
 	const refresh = () =>
 		Promise.all([
@@ -153,8 +185,34 @@ function SettingsPage() {
 			if (dirty.name) patch.name = values.name;
 			if (dirty.code) patch.code = values.code;
 			if (dirty.clientId) patch.clientId = values.clientId;
-			if (dirty.type) patch.type = values.type;
 			if (dirty.icon) patch.icon = values.icon;
+			// Type-specific config moves together with type, matching the create
+			// dialog: the server rejects a budget or price sent without its type
+			// (`updateProjectInput`'s refinement), and sending `type` alone nulls
+			// out the money fields it doesn't hear about (`update` in
+			// projects.service.ts). So a caller who only edits the budget still
+			// carries the current type along, and a caller who only changes the
+			// type carries the money they just typed for it.
+			if (
+				dirty.type ||
+				dirty.budgetHours ||
+				dirty.budgetAmount ||
+				dirty.hourlyPrice
+			) {
+				patch.type = values.type;
+				patch.budgetHours =
+					values.type === "fixed_scope" && values.budgetHours
+						? Number(values.budgetHours)
+						: undefined;
+				patch.budgetAmount =
+					values.type === "fixed_scope"
+						? values.budgetAmount || undefined
+						: undefined;
+				patch.hourlyPrice =
+					values.type === "hourly"
+						? values.hourlyPrice || undefined
+						: undefined;
+			}
 			return updateProject({ data: patch });
 		},
 		onSuccess: async (_saved, values) => {
@@ -363,6 +421,73 @@ function SettingsPage() {
 									)}
 								/>
 							</div>
+							{typeNow === "fixed_scope" && (
+								<div className="grid grid-cols-2 gap-4 border-t pt-3.5">
+									<FormField
+										control={form.control}
+										name="budgetHours"
+										render={({ field }) => (
+											<FormItem>
+												<FormLabel>Budget, hours</FormLabel>
+												<FormControl>
+													<Input
+														inputMode="decimal"
+														placeholder="e.g. 400"
+														{...field}
+														value={field.value ?? ""}
+													/>
+												</FormControl>
+												<FormMessage />
+											</FormItem>
+										)}
+									/>
+									<FormField
+										control={form.control}
+										name="budgetAmount"
+										render={({ field }) => (
+											<FormItem>
+												<FormLabel>Budget, amount</FormLabel>
+												<FormControl>
+													<Input
+														inputMode="decimal"
+														placeholder="e.g. 32000"
+														{...field}
+														value={field.value ?? ""}
+													/>
+												</FormControl>
+												<p className="text-sm text-muted-foreground">
+													Shown as context beside the hours. Nothing is computed
+													from it.
+												</p>
+												<FormMessage />
+											</FormItem>
+										)}
+									/>
+								</div>
+							)}
+							{typeNow === "hourly" && (
+								<FormField
+									control={form.control}
+									name="hourlyPrice"
+									render={({ field }) => (
+										<FormItem className="border-t pt-3.5">
+											<FormLabel>Hourly price</FormLabel>
+											<FormControl>
+												<Input
+													inputMode="decimal"
+													placeholder="e.g. 85"
+													{...field}
+													value={field.value ?? ""}
+												/>
+											</FormControl>
+											<p className="text-sm text-muted-foreground">
+												Visible to this project's PMs and admins only.
+											</p>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							)}
 						</div>
 					</PageSection>
 

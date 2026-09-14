@@ -49,6 +49,7 @@ const HOUR = 3600;
 let harness: TestDb;
 let assignedId: string;
 let unassignedId: string;
+let clientId: string;
 
 /** A fresh Ctx per call: `Access` is memoized onto the object, and these tests
  *  deliberately resolve the same person under different fixtures. */
@@ -101,6 +102,7 @@ beforeAll(async () => {
 		.values({ organizationId: ORG, name: "Acme" })
 		.returning();
 	if (!c) throw new Error("client");
+	clientId = c.id;
 
 	const [assigned, unassigned] = await db
 		.insert(project)
@@ -332,6 +334,132 @@ describe("assignMember", () => {
 		await assign("u-projects-fresh");
 		const team = await projectsService.listMembers(ctx(ADMIN), unassignedId);
 		expect(team.map((m) => m.userId)).toContain("u-projects-fresh");
+	});
+});
+
+// The role-escalation guard on assignMember/removeMember: `canManageProjectMembers`
+// only asks whether the caller may touch the roster at all (Team Lead and up),
+// never how high they may set it or whether the person they are touching
+// already outranks them. A dedicated project and dedicated PM/Team Lead here,
+// so promoting or removing someone cannot leak into the fixtures every other
+// block in this file depends on.
+describe("project role escalation", () => {
+	const ESC_PM = "u-projects-esc-pm";
+	const ESC_LEAD = "u-projects-esc-lead";
+	let escProjectId: string;
+
+	const seedMember = async (id: string) => {
+		await db.insert(user).values({
+			id,
+			name: id,
+			email: `${id}@example.com`,
+			emailVerified: true,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await db.insert(member).values({
+			id: `m-${id}`,
+			organizationId: ORG,
+			userId: id,
+			role: "member",
+			createdAt: new Date(),
+		});
+	};
+
+	beforeAll(async () => {
+		await seedMember(ESC_PM);
+		await seedMember(ESC_LEAD);
+		const [p] = await db
+			.insert(project)
+			.values({
+				organizationId: ORG,
+				clientId,
+				name: "Escalation",
+			})
+			.returning();
+		if (!p) throw new Error("project");
+		escProjectId = p.id;
+		await db.insert(projectMember).values([
+			{
+				organizationId: ORG,
+				projectId: escProjectId,
+				userId: ESC_PM,
+				role: "pm",
+			},
+			{
+				organizationId: ORG,
+				projectId: escProjectId,
+				userId: ESC_LEAD,
+				role: "team_lead",
+			},
+		]);
+	});
+
+	test("a team lead cannot promote themselves to pm", async () => {
+		await expect(
+			projectsService.assignMember(ctx(ESC_LEAD), {
+				projectId: escProjectId,
+				userId: ESC_LEAD,
+				role: "pm",
+			}),
+		).rejects.toThrow(AccessError);
+	});
+
+	test("a team lead cannot promote someone else to pm", async () => {
+		await expect(
+			projectsService.assignMember(ctx(ESC_LEAD), {
+				projectId: escProjectId,
+				userId: ESC_PM,
+				role: "pm",
+			}),
+		).rejects.toThrow(AccessError);
+	});
+
+	test("a team lead cannot remove the pm", async () => {
+		await expect(
+			projectsService.removeMember(ctx(ESC_LEAD), {
+				projectId: escProjectId,
+				userId: ESC_PM,
+			}),
+		).rejects.toThrow(AccessError);
+	});
+
+	test("a team lead can add a plain member", async () => {
+		const newbie = "u-projects-esc-newbie";
+		await seedMember(newbie);
+		await projectsService.assignMember(ctx(ESC_LEAD), {
+			projectId: escProjectId,
+			userId: newbie,
+			role: "member",
+		});
+		const team = await projectsService.listMembers(ctx(ESC_PM), escProjectId);
+		const row = team.find((m) => m.userId === newbie);
+		expect(row?.role).toBe("member");
+	});
+
+	test("an admin can promote, demote and remove without restriction", async () => {
+		await projectsService.assignMember(ctx(ADMIN), {
+			projectId: escProjectId,
+			userId: ESC_LEAD,
+			role: "pm",
+		});
+		let team = await projectsService.listMembers(ctx(ADMIN), escProjectId);
+		expect(team.find((m) => m.userId === ESC_LEAD)?.role).toBe("pm");
+
+		await projectsService.assignMember(ctx(ADMIN), {
+			projectId: escProjectId,
+			userId: ESC_LEAD,
+			role: "member",
+		});
+		team = await projectsService.listMembers(ctx(ADMIN), escProjectId);
+		expect(team.find((m) => m.userId === ESC_LEAD)?.role).toBe("member");
+
+		await projectsService.removeMember(ctx(ADMIN), {
+			projectId: escProjectId,
+			userId: ESC_PM,
+		});
+		team = await projectsService.listMembers(ctx(ADMIN), escProjectId);
+		expect(team.find((m) => m.userId === ESC_PM)?.active).toBe(false);
 	});
 });
 

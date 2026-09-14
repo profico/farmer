@@ -43,3 +43,28 @@ export const heldRoleFrom = (
 	if (mine == null) return null;
 	return me.isTeamLead ? "pm" : mine;
 };
+
+// Mirrors `Access.canActOnProjectRole` in access.service.ts — the client-side
+// half of the same ceiling, so the Team page never offers a control the
+// service would refuse. Not authorization: the service re-checks this on
+// every write, this only decides what is worth rendering as an option.
+const RANK = {
+	member: 1,
+	team_lead: 2,
+	pm: 3,
+} satisfies Record<ProjectRole, number>;
+
+/** Whether someone holding `heldRole` on a project may set a member's role to
+ *  `role`, or act on a member who currently holds it — assign, change or
+ *  remove. Admin is unrestricted; everyone else is capped at their own held
+ *  rank, so a Team Lead can staff or drop a plain Member but neither promote
+ *  anyone (themselves included) to PM nor touch a PM or a Team Lead who
+ *  outranks their own assignment. */
+export const canActOnProjectRole = (
+	isAdmin: boolean,
+	heldRole: ProjectRole | null | undefined,
+	role: ProjectRole,
+): boolean => {
+	if (isAdmin) return true;
+	return heldRole != null && RANK[role] <= RANK[heldRole];
+};
