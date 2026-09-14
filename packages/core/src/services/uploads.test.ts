@@ -8,7 +8,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
-import { type ObjectStore, setObjectStoreForTests } from "../lib/storage";
+import {
+	type ObjectStore,
+	ObjectStoreFullError,
+	setObjectStoreForTests,
+} from "../lib/storage";
 import {
 	isUploadedFile,
 	uploadKeyOf,
@@ -34,6 +38,8 @@ const memoryStore: ObjectStore = {
 		stored.set(key, { bytes, contentType });
 	},
 	get: async () => null,
+	list: async function* () {},
+	delete: async () => {},
 };
 
 const ctx = (userId: string, organizationId: string = ORG_A): Ctx => ({
@@ -145,6 +151,25 @@ describe("uploadImage", () => {
 					bytes: PNG,
 				}),
 			).rejects.toThrow(UploadRejectedError);
+		} finally {
+			setObjectStoreForTests(memoryStore);
+		}
+	});
+
+	test("a full bucket is told to the person, not hidden as a server error", async () => {
+		setObjectStoreForTests({
+			...memoryStore,
+			put: async () => {
+				throw new ObjectStoreFullError("quota");
+			},
+		});
+		try {
+			await expect(
+				uploadsService.uploadImage(ctx(ADMIN), {
+					purpose: "org-logo",
+					bytes: PNG,
+				}),
+			).rejects.toThrow(/no space left/);
 		} finally {
 			setObjectStoreForTests(memoryStore);
 		}

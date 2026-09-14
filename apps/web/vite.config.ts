@@ -64,19 +64,22 @@ const WORKER_SCRIPT = fileURLToPath(
 	new URL("../../packages/core/src/jobs/worker.ts", import.meta.url),
 );
 
-// Only the automation sweep runs by default in development. The other two
+// Only the automation sweep runs by default in development. The two reminder
 // schedulers TALK TO PEOPLE — log-reminder emails, Slack nudges and DMs — and
 // the dev worker runs against whatever
 // DATABASE_URL the local .env points at, which is routinely a shared or restored
 // staging database full of real addresses. `bun run dev` is not consent to page
-// a colleague. The sweep is the one that has to run locally anyway, since it is
-// what replaced the write-on-read engines.
+// a colleague. The upload sweep DELETES from the bucket, and a local .env can
+// pair a database with a bucket that was never its own. The automation sweep is
+// the one that has to run locally anyway, since it is what replaced the
+// write-on-read engines.
 //
 // Set any of these to "true" in your own .env to opt back in.
 const DEV_WORKER_JOB_DEFAULTS = {
 	AUTOMATION_SYNC_ENABLED: "true",
 	LOG_REMINDERS_ENABLED: "false",
 	SLACK_REMINDERS_ENABLED: "false",
+	UPLOAD_SWEEP_ENABLED: "false",
 } satisfies Record<string, string>;
 
 function devWorker(): Plugin {

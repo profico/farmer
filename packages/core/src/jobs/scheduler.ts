@@ -34,6 +34,8 @@
  *   LOG_REMINDERS_INTERVAL_MINUTES    - minutes between reminder sweeps (default: 30)
  *   SLACK_REMINDERS_ENABLED           - "false" to disable Slack reminders (default: on)
  *   SLACK_REMINDERS_INTERVAL_MINUTES  - minutes between Slack sweeps (default: 15)
+ *   UPLOAD_SWEEP_ENABLED              - "false" to keep unused uploads (default: on)
+ *   UPLOAD_SWEEP_INTERVAL_MINUTES     - minutes between upload sweeps (default: 1440)
  *   SCHEDULER_STARTUP_DELAY_MS        - delay before the first tick (default: 15000)
  *
  * NOTE: assumes a single instance. If ever scaled to multiple replicas, each
@@ -44,6 +46,7 @@
 import { runAutomationSyncOnce } from "./automation-sync";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
+import { runUploadSweepOnce } from "./upload-sweep";
 
 export interface SchedulerHandle {
 	/** Clear the startup timeout and the recurring interval; no new ticks fire after this. */
@@ -148,6 +151,19 @@ function schedulerJobs(): SchedulerConfig[] {
 			run: async () => {
 				const s = await runSlackRemindersOnce();
 				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
+			},
+		},
+		{
+			name: "Upload sweep",
+			enabledEnv: "UPLOAD_SWEEP_ENABLED",
+			intervalEnv: "UPLOAD_SWEEP_INTERVAL_MINUTES",
+			// Daily. An unused file is at most 1 MB, and each deploy runs a pass
+			// shortly after boot anyway.
+			defaultIntervalMinutes: 1440,
+			run: async (logger) => {
+				const s = await runUploadSweepOnce({ logger });
+				if (!s.enabled) return "no object store configured";
+				return `${String(s.deleted)} deleted, ${String(s.failed)} failed (${String(s.listed)} objects)`;
 			},
 		},
 	];

@@ -1,4 +1,4 @@
-import { objectStore } from "../lib/storage";
+import { ObjectStoreFullError, objectStore } from "../lib/storage";
 import {
 	contentTypeOf,
 	MAX_UPLOAD_BYTES,
@@ -23,9 +23,8 @@ export const uploadsService = {
 	 *
 	 * Uploading sets nothing. The path is saved by the same update that saves
 	 * an emoji or a URL, so a picker closed without saving leaves the project as
-	 * it was — and leaves an unreferenced object behind, which at 1 MB and one
-	 * per change of mind is cheaper than a sweep that has to know every column
-	 * that may hold a path.
+	 * it was — and leaves an unreferenced object behind, which the upload sweep
+	 * (`jobs/upload-sweep.ts`) deletes a day later.
 	 */
 	uploadImage: async (
 		ctx: Ctx,
@@ -67,7 +66,18 @@ export const uploadsService = {
 			crypto.randomUUID(),
 			extension,
 		);
-		await store.put(key, input.bytes, contentTypeOf(extension));
+		try {
+			await store.put(key, input.bytes, contentTypeOf(extension));
+		} catch (error) {
+			// Any other store failure stays a server error: the person cannot fix it
+			// by choosing a different file, and its detail is not theirs to read.
+			if (error instanceof ObjectStoreFullError) {
+				throw new UploadRejectedError(
+					"There is no space left for uploads. Ask an admin to raise the storage limit.",
+				);
+			}
+			throw error;
+		}
 		return { url: uploadPath(key) };
 	},
 };
