@@ -364,19 +364,35 @@ export type ReportTableRow = {
 	searchFields?: readonly (string | null | undefined)[];
 };
 
-export function ReportTable({
+/** A column header of a `ReportTable`. With a `sortKey` — and once the table
+ *  is given a `sort` and an `onSort` — it is a label the reader can click to
+ *  sort by; without one it is just the label. The table only draws the
+ *  headers: the tab that owns the rows does the ordering, as the Time, Absence
+ *  and Overtime tabs do with their own tables. */
+export type ReportTableHeader<K extends string> = {
+	label: string;
+	sortKey?: K;
+	/** Starts biggest first. */
+	numeric?: boolean;
+};
+
+export function ReportTable<K extends string>({
 	headers,
 	rows,
 	empty,
+	sort,
+	onSort,
 	// Set by a tab that puts its tables side by side at xl (Tracking). Up to that
 	// point the table bleeds edge-to-edge like every other table in the app; once
 	// the grid splits, the negative margin would run each table under its
 	// neighbour, so from xl it sits inside its own column instead.
 	columned = false,
 }: {
-	headers: string[];
+	headers: ReportTableHeader<K>[];
 	rows: ReportTableRow[];
 	empty: string;
+	sort?: Sort<K>;
+	onSort?: (key: K, numeric: boolean) => void;
 	columned?: boolean;
 }) {
 	// The box only appears once some row actually carries searchable text — a
@@ -418,11 +434,23 @@ export function ReportTable({
 			>
 				<TableHeader>
 					<TableRow>
-						{headers.map((h, i) => (
-							<TableHead key={h} className={cn(i > 0 && "text-right")}>
-								{h}
-							</TableHead>
-						))}
+						{headers.map((h, i) =>
+							h.sortKey && sort && onSort ? (
+								<SortHead
+									key={h.label}
+									label={h.label}
+									sortKey={h.sortKey}
+									numeric={h.numeric}
+									sort={sort}
+									onSort={onSort}
+									className={cn(i > 0 && "text-right")}
+								/>
+							) : (
+								<TableHead key={h.label} className={cn(i > 0 && "text-right")}>
+									{h.label}
+								</TableHead>
+							),
+						)}
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -433,7 +461,7 @@ export function ReportTable({
 							<TableRow key={row.key} className={row.className}>
 								{row.cells.map((cell, i) => (
 									<TableCell
-										key={`${row.key}-${headers[i]}`}
+										key={`${row.key}-${headers[i]?.label}`}
 										className={cn(i === 0 ? "font-medium" : "mono text-right")}
 									>
 										{cell}
