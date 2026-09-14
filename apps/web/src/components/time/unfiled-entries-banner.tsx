@@ -263,15 +263,10 @@ function FileEntriesDialog({
 			<DialogContent className="sm:max-w-2xl">
 				<DialogHeader>
 					<DialogTitle>File your time</DialogTitle>
-					{/* Built-ins deliberately unnamed here: which tasks are universal is
-					    the service's call (isUniversalTask), and hardcoding "Meeting and
-					    Break" into copy is the same string coupling that made the engines
-					    brittle in the first place. */}
 					<DialogDescription>
 						Pick the entries that belong to a project and file them together.
-						Built-in tasks fit any project; for the rest, the project has to
-						offer that task — if yours doesn't, an admin adds it under Settings
-						→ Tasks.
+						Every task is available on every project, so filing only needs the
+						project.
 					</DialogDescription>
 				</DialogHeader>
 

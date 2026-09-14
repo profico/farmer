@@ -25,13 +25,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
-import {
-	client,
-	project,
-	projectTask,
-	task,
-	timeEntry,
-} from "../db/schema/domain";
+import { client, project, task, timeEntry } from "../db/schema/domain";
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import {
 	commitFillTombstone,
@@ -127,9 +121,6 @@ beforeAll(async () => {
 	devTaskId = await siteTask("development");
 	breakTaskId = await siteTask("break");
 	await siteTask("meeting");
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
 
 	// An explicit Mon-Fri 9-17, so the target is stated rather than defaulted.
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {

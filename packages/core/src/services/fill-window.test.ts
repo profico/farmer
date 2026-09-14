@@ -37,7 +37,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
@@ -129,9 +128,6 @@ beforeAll(async () => {
 		})
 		.returning({ id: task.id });
 	devTaskId = dev?.id ?? "";
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
 
 	const [repo] = await db
 		.insert(projectGithubRepo)

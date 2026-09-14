@@ -28,7 +28,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	recurringBlockRule,
 	task,
 	timeEntry,
@@ -166,9 +165,6 @@ beforeAll(async () => {
 		})
 		.returning({ id: task.id });
 	devTaskId = devTask?.id ?? "";
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG_ID, projectId, taskId: devTaskId });
 
 	// The two absence built-ins, so the project-less task list has something to
 	// be narrower than.

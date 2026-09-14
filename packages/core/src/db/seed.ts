@@ -2,13 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "./index";
 import { member, organization } from "./schema/auth";
-import {
-	client,
-	project,
-	projectMember,
-	projectTask,
-	task,
-} from "./schema/domain";
+import { client, project, projectMember } from "./schema/domain";
 import { memberTypeHistory } from "./schema/people";
 import { monthlyHourFund } from "./schema/settings";
 import { ensureOrgTasks, ensureSiteTasks } from "./seed-tasks";
@@ -32,12 +26,6 @@ if (!org) {
 
 await ensureSiteTasks();
 await ensureOrgTasks(org.id);
-
-const orgTasks = await db.query.task.findMany({
-	where: eq(task.organizationId, org.id),
-	columns: { id: true, name: true },
-});
-const taskIdByName = new Map(orgTasks.map((t) => [t.name, t.id]));
 
 // Every project belongs to a client, and internal work goes to the org's own
 // client — which is why `project.clientId` can be NOT NULL.
@@ -67,18 +55,15 @@ const [productTeam] = await db
 	.returning();
 if (!productTeam) throw new Error("Failed to insert seed project");
 
-const [fixedScope] = await db
-	.insert(project)
-	.values({
-		organizationId: org.id,
-		clientId: seedClient.id,
-		name: "Acme Website Redesign",
-		code: "AWR",
-		type: "fixed_scope",
-		budgetSeconds: 400 * 3600,
-		budgetAmount: "32000.00",
-	})
-	.returning();
+await db.insert(project).values({
+	organizationId: org.id,
+	clientId: seedClient.id,
+	name: "Acme Website Redesign",
+	code: "AWR",
+	type: "fixed_scope",
+	budgetSeconds: 400 * 3600,
+	budgetAmount: "32000.00",
+});
 
 const internal =
 	internalClient ??
@@ -94,30 +79,6 @@ if (internal?.isInternal) {
 		name: "Internal",
 		type: "internal",
 	});
-}
-
-// Projects cherry-pick their applicable subset of the global task list.
-const pickFor = (projectId: string, names: string[]) =>
-	names
-		.map((name) => taskIdByName.get(name))
-		.filter((id): id is string => !!id)
-		.map((taskId) => ({ organizationId: org.id, projectId, taskId }));
-
-const picks = [
-	...pickFor(productTeam.id, [
-		"Development",
-		"Design",
-		"Meeting",
-		"Code review",
-		"QA & testing",
-		"Project management",
-	]),
-	...(fixedScope
-		? pickFor(fixedScope.id, ["Development", "Design", "QA & testing"])
-		: []),
-];
-if (picks.length > 0) {
-	await db.insert(projectTask).values(picks).onConflictDoNothing();
 }
 
 // Assign every org member to the product-team project, with the first member as
@@ -170,6 +131,6 @@ await db
 	.onConflictDoNothing();
 
 console.log(
-	`Seeded clients, projects, task picks, assignments and an hour fund for "${org.name}" (${org.slug}).`,
+	`Seeded clients, projects, assignments and an hour fund for "${org.name}" (${org.slug}).`,
 );
 process.exit(0);

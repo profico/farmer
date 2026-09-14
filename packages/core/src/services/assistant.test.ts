@@ -43,7 +43,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
@@ -224,10 +223,6 @@ beforeAll(async () => {
 		.returning();
 	if (!t) throw new Error("Failed to seed task");
 	devTaskId = t.id;
-
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG, projectId, taskId: devTaskId });
 });
 
 afterAll(async () => {

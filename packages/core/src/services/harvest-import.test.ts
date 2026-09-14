@@ -22,7 +22,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
@@ -159,10 +158,6 @@ const plan = (): HarvestStartInput => ({
 		{ projectSourceKey: K.gamma, personSourceKey: K.ana, active: true },
 		{ projectSourceKey: K.alpha, personSourceKey: K.out, active: true },
 	],
-	projectTasks: [
-		{ projectSourceKey: K.gamma, taskSourceKey: K.dev },
-		{ projectSourceKey: K.gamma, taskSourceKey: K.design },
-	],
 });
 
 /** A plan that only matches what an earlier run mapped. */
@@ -175,7 +170,6 @@ const emptyPlan = (): HarvestStartInput => ({
 	projects: [],
 	people: [],
 	projectMembers: [],
-	projectTasks: [],
 });
 
 const row = (
@@ -309,9 +303,6 @@ beforeAll(async () => {
 		})
 		.returning();
 	devTaskId = present(dev, "development").id;
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG, projectId: alphaId, taskId: devTaskId });
 
 	const paid = await db.query.task.findFirst({
 		where: eq(task.systemKey, "paid_leave"),

@@ -141,9 +141,6 @@ export const harvestStartInput = z.object({
 			}),
 		)
 		.max(50_000),
-	projectTasks: z
-		.array(z.object({ projectSourceKey: sourceKey, taskSourceKey: sourceKey }))
-		.max(50_000),
 });
 export type HarvestStartInput = z.infer<typeof harvestStartInput>;
 export type HarvestClientPlan = z.infer<typeof clientPlan>;

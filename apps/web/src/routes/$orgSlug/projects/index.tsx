@@ -356,7 +356,6 @@ function capabilitiesFor(
 	return {
 		// projectsService.update / archive both assert canManageProject.
 		canEdit: isAdmin || myRole === "pm",
-		canManageTasks: leadOrAbove,
 		canManageMembers: leadOrAbove,
 		// Linking repos is orgAdminMiddleware — an org role, not a project one.
 		canManageRepos: isAdmin,
@@ -364,4 +363,4 @@ function capabilitiesFor(
 }
 
 const anyCapability = (c: ProjectCapabilities) =>
-	c.canEdit || c.canManageTasks || c.canManageMembers || c.canManageRepos;
+	c.canEdit || c.canManageMembers || c.canManageRepos;

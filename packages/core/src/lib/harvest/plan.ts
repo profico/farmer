@@ -1228,8 +1228,6 @@ export function planHarvestImport(
 	const taskPlans: HarvestTaskPlan[] = [];
 	const taskReview: HarvestTaskReview[] = [];
 	const taskLocal = new Map<string, string | null>();
-	/** Task source keys that never get a projectTask row. */
-	const universalTasks = new Set<string>();
 	for (const t of parsed.tasks) {
 		const mapped = mappings.get(mappingKey("task", t.sourceKey));
 		const systemKey = SYSTEM_KEY_BY_TASK.get(t.sourceKey);
@@ -1265,13 +1263,6 @@ export function planHarvestImport(
 				sourceKey: t.sourceKey,
 				message: `An earlier import mapped "${t.name}" to a task that no longer exists`,
 			});
-		}
-		if (
-			isAbsence ||
-			local?.isAbsence ||
-			(local?.scope === "site" && !local.isAbsence)
-		) {
-			universalTasks.add(t.sourceKey);
 		}
 		const archived =
 			localId !== null
@@ -1725,7 +1716,6 @@ export function planHarvestImport(
 		string,
 		{ project: string; person: string; last: string }
 	>();
-	const taskPairs = new Map<string, { project: string; task: string }>();
 	const secondsPerYear = new Map<string, number>();
 	let roundingDelta = 0;
 	let skippedDuplicate = 0;
@@ -1793,12 +1783,6 @@ export function planHarvestImport(
 					last: row.date,
 				});
 			else if (row.date > pair.last) pair.last = row.date;
-			if (!universalTasks.has(row.taskSourceKey)) {
-				taskPairs.set(pairKey(row.projectSourceKey, row.taskSourceKey), {
-					project: row.projectSourceKey,
-					task: row.taskSourceKey,
-				});
-			}
 		}
 		const netting = subtractNegativeRows(source);
 		for (const n of netting.negatives) {
@@ -1983,14 +1967,6 @@ export function planHarvestImport(
 				pairKey(b.projectSourceKey, b.personSourceKey),
 			),
 		);
-	const projectTasks = [...taskPairs.values()]
-		.map((p) => ({ projectSourceKey: p.project, taskSourceKey: p.task }))
-		.sort((a, b) =>
-			compareStrings(
-				pairKey(a.projectSourceKey, a.taskSourceKey),
-				pairKey(b.projectSourceKey, b.taskSourceKey),
-			),
-		);
 
 	const rowsImported = days.reduce((n, d) => n + d.rows.length, 0);
 	const summary: HarvestPlanSummary = {
@@ -2024,7 +2000,6 @@ export function planHarvestImport(
 			projects: projectPlans,
 			people: [...drafts.map((d) => d.plan), ...aliasPlans],
 			projectMembers,
-			projectTasks,
 		},
 		days,
 		removedDays: choices.confirmFullExport ? removed : [],

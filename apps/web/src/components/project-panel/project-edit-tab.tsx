@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { ProjectEditForm } from "#/components/project-panel/project-edit-form.tsx";
-import { ProjectTasksPicker } from "#/components/project-panel/project-tasks-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { projectsQuery } from "#/queries/projects.ts";
@@ -16,27 +15,24 @@ export type PanelProject = {
 };
 
 /**
- * Everything that is a property of the project itself: its name and colour, the
- * tasks it offers, and whether it is still active.
+ * Everything that is a property of the project itself: its name and colour,
+ * and whether it is still active.
  *
- * These were three separate row-action dialogs. They are one tab because they
- * answer one question — "what is this project?" — and because a menu whose
- * every item opens a modal is a menu doing the job of a panel badly.
+ * These were separate row-action dialogs. They are one tab because they answer
+ * one question — "what is this project?" — and because a menu whose every item
+ * opens a modal is a menu doing the job of a panel badly.
  *
- * The two capabilities differ and the server enforces both: editing the record
- * and archiving it are PM-and-up (`assertCanManageProject`), while the task
- * subset is Team-Lead-and-up. So a Team Lead sees this tab with only the task
- * picker on it. Hiding what you cannot do beats rendering a control whose only
- * outcome is the service's refusal.
+ * Editing the record and archiving it are both PM-and-up
+ * (`assertCanManageProject`), which the server enforces; the tab is only offered
+ * to a caller who has that. Hiding what you cannot do beats rendering a control
+ * whose only outcome is the service's refusal.
  */
 export function ProjectEditTab({
 	project,
 	canEdit,
-	canManageTasks,
 }: {
 	project: PanelProject;
 	canEdit: boolean;
-	canManageTasks: boolean;
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -79,12 +75,6 @@ export function ProjectEditTab({
 				/>
 			)}
 
-			{canManageTasks && (
-				<div className={canEdit ? "border-t border-line2 pt-6" : undefined}>
-					<ProjectTasksPicker projectId={project.id} />
-				</div>
-			)}
-
 			{canEdit && (
 				<div className="border-t border-line2 pt-6">
 					<p className="eyebrow">
@@ -110,7 +100,7 @@ export function ProjectEditTab({
 				</div>
 			)}
 
-			{!canEdit && !canManageTasks && (
+			{!canEdit && (
 				<p className="text-base text-muted-foreground">
 					You don't have permission to change this project's settings.
 				</p>

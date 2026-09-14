@@ -1,24 +1,8 @@
-import {
-	and,
-	asc,
-	desc,
-	eq,
-	inArray,
-	isNotNull,
-	isNull,
-	sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, user } from "../db/schema/auth";
-import {
-	client,
-	project,
-	projectMember,
-	projectTask,
-	task,
-	timeEntry,
-} from "../db/schema/domain";
+import { client, project, projectMember, timeEntry } from "../db/schema/domain";
 import { memberProfile } from "../db/schema/people";
 import { orgTimezone } from "../lib/org-time";
 import { dayKeyInTz, endOfMonthKey, startOfMonthKey } from "../lib/time";
@@ -160,10 +144,7 @@ const enrichedProjects = async (
 					inArray(project.id, projectIds),
 				)
 			: eq(project.organizationId, ctx.organizationId),
-		with: {
-			client: true,
-			projectTasks: { with: { task: true } },
-		},
+		with: { client: true },
 		orderBy: desc(project.createdAt),
 	});
 
@@ -181,10 +162,6 @@ const enrichedProjects = async (
 
 	return projects.map((p) => ({
 		...redactMoney(p, access),
-		tasks: p.projectTasks
-			.map((pt) => pt.task)
-			.filter((t) => t.archivedAt === null)
-			.sort((a, b) => a.name.localeCompare(b.name)),
 		myRole: access.roleOn(p.id),
 		...(stats.get(p.id) ?? emptyStats()),
 	}));
@@ -367,29 +344,6 @@ export const projectsService = {
 				role: "pm",
 			});
 
-			if (input.taskIds.length > 0) {
-				const valid = await tx.query.task.findMany({
-					where: and(
-						inArray(task.id, input.taskIds),
-						isNull(task.archivedAt),
-						eq(task.isAbsence, false),
-					),
-					columns: { id: true, scope: true, organizationId: true },
-				});
-				const usable = valid.filter(
-					(t) => t.scope === "site" || t.organizationId === ctx.organizationId,
-				);
-				if (usable.length !== input.taskIds.length) {
-					throw new Error("One or more tasks are not available");
-				}
-				await tx.insert(projectTask).values(
-					usable.map((t) => ({
-						organizationId: ctx.organizationId,
-						projectId: row.id,
-						taskId: t.id,
-					})),
-				);
-			}
 			return row;
 		});
 
@@ -449,9 +403,6 @@ export const projectsService = {
 				.where(eq(project.id, input.projectId));
 		});
 
-		if (input.taskIds !== undefined) {
-			await tasksService.setProjectTasks(ctx, input.projectId, input.taskIds);
-		}
 		return projectsService.get(ctx, input.projectId);
 	},
 

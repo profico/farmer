@@ -1,9 +1,8 @@
 // The task taxonomy: one global list per org plus the site built-ins every org
-// shares, cherry-picked onto projects through `projectTask`.
+// shares, offered on every project of the org.
 //
 // Pinned here are the boundaries rather than the CRUD. Writes to the list are
-// Admin-only; writes to a project's subset are Team Lead and up on THAT
-// project; and every id a caller hands in is checked against its own org in
+// Admin-only, and every id a caller hands in is checked against its own org in
 // the query, so another org's task or project cannot be smuggled through. The
 // built-ins are the other half: they cannot be edited or archived, the engines
 // find them by `systemKey` rather than by name, and absence tasks never land on
@@ -19,7 +18,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	type TaskSystemKey,
 	task,
 } from "../db/schema/domain";
@@ -42,7 +40,6 @@ const ADMIN_B = "u-tk-admin-b";
 let harness: TestDb;
 
 let projectA1: string;
-let projectA2: string;
 let projectB: string;
 let devA: string;
 let designA: string;
@@ -65,16 +62,6 @@ const siteTaskId = async (key: TaskSystemKey) => {
 	});
 	return present(row, `site task ${key}`).id;
 };
-
-const linkedTaskIds = async (projectId: string) =>
-	(
-		await db
-			.select({ taskId: projectTask.taskId })
-			.from(projectTask)
-			.where(eq(projectTask.projectId, projectId))
-	)
-		.map((r) => r.taskId)
-		.sort();
 
 const taskRow = async (id: string) =>
 	present(await db.query.task.findFirst({ where: eq(task.id, id) }), "task");
@@ -135,7 +122,6 @@ beforeAll(async () => {
 		])
 		.returning();
 	projectA1 = at(projects, 0).id;
-	projectA2 = at(projects, 1).id;
 	projectB = at(projects, 2).id;
 
 	await db.insert(projectMember).values([
@@ -178,12 +164,6 @@ beforeAll(async () => {
 	devA = at(tasks, 0).id;
 	designA = at(tasks, 1).id;
 	taskB = at(tasks, 2).id;
-
-	// Org B genuinely picked its own task for its own project — the pair is
-	// internally consistent, so only the org predicate keeps org A out of it.
-	await db
-		.insert(projectTask)
-		.values({ organizationId: ORG_B, projectId: projectB, taskId: taskB });
 
 	// Meeting, Break (0024) and Paid Leave (0038) come from the migrations;
 	// Vacation comes from `db:seed-tasks`, which the harness does not run.
@@ -420,148 +400,33 @@ describe("listForProject", () => {
 		expect(ids).not.toContain(taskB);
 	});
 
-	test("with a project it offers the picked subset plus the universal built-ins", async () => {
-		await tasksService.setProjectTasks(ctx(TL), projectA1, [devA]);
+	test("with a project it offers every live org task plus the universal built-ins, never absence", async () => {
 		const ids = (await tasksService.listForProject(ctx(MEM), projectA1)).map(
 			(t) => t.id,
 		);
-		expect(ids.sort()).toEqual([breakId, devA, meetingId].sort());
+		expect(ids).toEqual(
+			expect.arrayContaining([breakId, meetingId, devA, designA]),
+		);
+		expect(ids).not.toContain(vacationId);
+		expect(ids).not.toContain(paidLeaveId);
+		expect(ids).not.toContain(taskB);
 	});
 
-	test("another org's project shows none of that org's picks", async () => {
+	test("an archived task drops out of the project's list", async () => {
+		await tasksService.archive(ctx(ADMIN), designA);
+		const ids = (await tasksService.listForProject(ctx(MEM), projectA1)).map(
+			(t) => t.id,
+		);
+		expect(ids).toContain(devA);
+		expect(ids).not.toContain(designA);
+		await tasksService.unarchive(ctx(ADMIN), designA);
+	});
+
+	test("another org's tasks never appear, whichever project id is passed", async () => {
 		const ids = (await tasksService.listForProject(ctx(ADMIN), projectB)).map(
 			(t) => t.id,
 		);
 		expect(ids).not.toContain(taskB);
-	});
-});
-
-describe("setProjectTasks", () => {
-	test("a Team Lead on the project replaces its subset wholesale", async () => {
-		await tasksService.setProjectTasks(ctx(TL), projectA1, [devA, designA]);
-		expect(await linkedTaskIds(projectA1)).toEqual([devA, designA].sort());
-
-		await tasksService.setProjectTasks(ctx(TL), projectA1, [designA]);
-		expect(await linkedTaskIds(projectA1)).toEqual([designA]);
-	});
-
-	test("a plain Member on the project is refused", async () => {
-		const before = await linkedTaskIds(projectA1);
-		await expect(
-			tasksService.setProjectTasks(ctx(MEM), projectA1, [devA]),
-		).rejects.toThrow(AccessError);
-		expect(await linkedTaskIds(projectA1)).toEqual(before);
-	});
-
-	test("a Team Lead is refused on a project they do not lead", async () => {
-		await expect(
-			tasksService.setProjectTasks(ctx(TL), projectA2, [devA]),
-		).rejects.toThrow(AccessError);
-		expect(await linkedTaskIds(projectA2)).toEqual([]);
-	});
-
-	test("an inactive Team Lead assignment grants nothing", async () => {
-		await expect(
-			tasksService.setProjectTasks(ctx(TL_INACTIVE), projectA1, [devA]),
-		).rejects.toThrow(AccessError);
-	});
-
-	test("another org's task, an absence task and an archived task are all refused", async () => {
-		const [retired] = await db
-			.insert(task)
-			.values({
-				scope: "organization" as const,
-				organizationId: ORG_A,
-				name: "Retired",
-				archivedAt: new Date(),
-			})
-			.returning();
-		const retiredId = present(retired, "archived task").id;
-
-		const before = await linkedTaskIds(projectA1);
-		for (const bad of [taskB, vacationId, retiredId]) {
-			await expect(
-				tasksService.setProjectTasks(ctx(ADMIN), projectA1, [devA, bad]),
-			).rejects.toThrow("One or more tasks are not available to this project");
-		}
-		expect(await linkedTaskIds(projectA1)).toEqual(before);
-	});
-
-	test("a universal built-in in the list is dropped rather than stored", async () => {
-		await tasksService.setProjectTasks(ctx(ADMIN), projectA1, [
-			meetingId,
-			devA,
-		]);
-		expect(await linkedTaskIds(projectA1)).toEqual([devA]);
-		const offered = (
-			await tasksService.listForProject(ctx(MEM), projectA1)
-		).map((t) => t.id);
-		expect(offered).toContain(meetingId);
-	});
-
-	test("an admin of one org cannot edit another org's project", async () => {
-		await expect(
-			tasksService.setProjectTasks(ctx(ADMIN), projectB, []),
-		).rejects.toThrow("Project not found");
-		expect(await linkedTaskIds(projectB)).toEqual([taskB]);
-	});
-});
-
-describe("setTaskProjects and listProjectsForTask", () => {
-	test("an admin sets which projects offer a task, and reads it back", async () => {
-		const qa = await tasksService.create(ctx(ADMIN), { name: "QA" });
-		await tasksService.setTaskProjects(ctx(ADMIN), qa.id, [
-			projectA1,
-			projectA2,
-		]);
-		const projects = await tasksService.listProjectsForTask(ctx(ADMIN), qa.id);
-		expect(projects.sort()).toEqual([projectA1, projectA2].sort());
-
-		await tasksService.setTaskProjects(ctx(ADMIN), qa.id, [projectA2]);
-		expect(await tasksService.listProjectsForTask(ctx(ADMIN), qa.id)).toEqual([
-			projectA2,
-		]);
-	});
-
-	test("both directions are Admin-only, even for a PM", async () => {
-		await expect(
-			tasksService.setTaskProjects(ctx(PM), designA, [projectA1]),
-		).rejects.toThrow(AccessError);
-		await expect(
-			tasksService.listProjectsForTask(ctx(PM), designA),
-		).rejects.toThrow(AccessError);
-	});
-
-	test("a universal built-in cannot be limited to some projects", async () => {
-		await expect(
-			tasksService.setTaskProjects(ctx(ADMIN), meetingId, [projectA1]),
-		).rejects.toThrow("Built-in tasks are available on every project");
-	});
-
-	test("an absence task and another org's task are not available to this org", async () => {
-		for (const bad of [vacationId, taskB]) {
-			await expect(
-				tasksService.setTaskProjects(ctx(ADMIN), bad, [projectA1]),
-			).rejects.toThrow("Task is not available to this organization");
-		}
-		expect(await linkedTaskIds(projectB)).toEqual([taskB]);
-	});
-
-	test("another org's project id is refused and the existing links survive", async () => {
-		const ux = await tasksService.create(ctx(ADMIN), { name: "UX" });
-		await tasksService.setTaskProjects(ctx(ADMIN), ux.id, [projectA1]);
-		await expect(
-			tasksService.setTaskProjects(ctx(ADMIN), ux.id, [projectA2, projectB]),
-		).rejects.toThrow("One or more projects are not in this organization");
-		expect(await tasksService.listProjectsForTask(ctx(ADMIN), ux.id)).toEqual([
-			projectA1,
-		]);
-	});
-
-	test("another org's links to its own task are invisible", async () => {
-		expect(await tasksService.listProjectsForTask(ctx(ADMIN), taskB)).toEqual(
-			[],
-		);
 	});
 });
 
@@ -572,13 +437,13 @@ describe("listManaged", () => {
 		);
 	});
 
-	test("the org's tasks and the site built-ins, flagged, and nothing from another org", async () => {
+	test("the org's tasks and the site built-ins, and nothing from another org", async () => {
 		const rows = await tasksService.listManaged(ctx(ADMIN));
 		const byId = new Map(rows.map((r) => [r.id, r]));
 		expect(byId.has(taskB)).toBe(false);
-		expect(present(byId.get(meetingId), "Meeting").universal).toBe(true);
-		expect(present(byId.get(vacationId), "Vacation").universal).toBe(false);
-		expect(present(byId.get(devA), "Development").universal).toBe(false);
+		expect(byId.has(meetingId)).toBe(true);
+		expect(byId.has(vacationId)).toBe(true);
+		expect(byId.has(devA)).toBe(true);
 		// The archived "Old" from the create tests is listed: this is the screen
 		// that offers the restore.
 		expect(rows.some((r) => r.name === "Old" && r.archivedAt !== null)).toBe(

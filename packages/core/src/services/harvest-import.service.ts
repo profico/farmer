@@ -33,7 +33,6 @@ import {
 	client,
 	project,
 	projectMember,
-	projectTask,
 	task,
 	timeEntry,
 } from "../db/schema/domain";
@@ -970,32 +969,6 @@ export const harvestImportService = {
 			}));
 			for (const batch of inBatches(memberRows)) {
 				await tx.insert(projectMember).values(batch).onConflictDoNothing();
-			}
-
-			// A task mapped by an earlier run was checked by that run; only the
-			// absence rule needs its facts, so read the ones not already known.
-			const taskRows = input.projectTasks.map((pt) => ({
-				organizationId: org,
-				projectId: lookup(projectIds, "project", pt.projectSourceKey),
-				taskId: lookup(taskIds, "task", pt.taskSourceKey),
-			}));
-			const unknownTaskIds = [
-				...new Set(
-					taskRows.map((r) => r.taskId).filter((id) => !usableTasks.has(id)),
-				),
-			];
-			for (const batch of inBatches(unknownTaskIds)) {
-				const rows = await tx
-					.select({ id: task.id, isAbsence: task.isAbsence })
-					.from(task)
-					.where(inArray(task.id, batch));
-				for (const r of rows) usableTasks.set(r.id, { isAbsence: r.isAbsence });
-			}
-			if (taskRows.some((r) => usableTasks.get(r.taskId)?.isAbsence)) {
-				throw new Error("An absence task cannot be put on a project");
-			}
-			for (const batch of inBatches(taskRows)) {
-				await tx.insert(projectTask).values(batch).onConflictDoNothing();
 			}
 
 			return { runId, created: counts };

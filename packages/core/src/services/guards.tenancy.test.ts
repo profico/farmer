@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
-import { client, project, projectTask, task } from "../db/schema/domain";
+import { client, project, task } from "../db/schema/domain";
 import { createTestDb, type TestDb } from "../test/harness";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
@@ -81,9 +81,8 @@ beforeAll(async () => {
 	projectInAId = projectInA.id;
 	projectInBId = projectInB.id;
 
-	// Tasks are org-scoped taxonomy, not per-project rows; a project opts into one
-	// through projectTask. Org B picks its own task; org A leaves its task
-	// unpicked so the "not on this project" branch has something to fail on.
+	// Tasks are org-scoped taxonomy, not per-project rows: every project of an org
+	// offers every live task of that org, and nothing of any other org's.
 	const [taskInA, taskInB] = await db
 		.insert(task)
 		.values([
@@ -95,12 +94,6 @@ beforeAll(async () => {
 	taskInAId = taskInA.id;
 	taskInBId = taskInB.id;
 
-	await db.insert(projectTask).values({
-		organizationId: orgBId,
-		projectId: projectInBId,
-		taskId: taskInBId,
-	});
-
 	// A fresh database per run, so these no longer need UUID-suffixed names to
 	// avoid colliding with a previous run's leftovers.
 	const [absenceTask] = await db
@@ -110,9 +103,8 @@ beforeAll(async () => {
 	if (!absenceTask) throw new Error("Failed to seed absence task");
 	absenceTaskId = absenceTask.id;
 
-	// A site-scoped non-absence built-in (Meeting/Break in production).
-	// Deliberately never linked through projectTask — being available without a
-	// link is the whole property under test.
+	// A site-scoped non-absence built-in (Meeting/Break in production): available
+	// to every org without any org owning it.
 	const [universalTask] = await db
 		.insert(task)
 		.values({ scope: "site" as const, name: "Test Meeting", isAbsence: false })
@@ -151,28 +143,14 @@ describe("assertProjectInOrg", () => {
 describe("assertTaskAvailable", () => {
 	test("throws when the task's org does not match ctx, even if the pair is internally consistent", async () => {
 		// A malicious caller in org A could pass org B's real (project, task)
-		// pair together — org B genuinely picked that task for that project, so
-		// only the org constraint stops this.
+		// pair together — both rows genuinely exist and belong together, so only
+		// the org constraint stops this.
 		await expect(
 			assertTaskAvailable(ctxForOrgA, taskInBId, projectInBId),
 		).rejects.toThrow("Task not available");
 	});
 
-	test("throws when the project has not picked the task", async () => {
-		await expect(
-			assertTaskAvailable(ctxForOrgA, taskInAId, projectInAId),
-		).rejects.toThrow("not available on this project");
-	});
-
-	test("resolves for a task the project has picked", async () => {
-		await db
-			.insert(projectTask)
-			.values({
-				organizationId: orgAId,
-				projectId: projectInAId,
-				taskId: taskInAId,
-			})
-			.onConflictDoNothing();
+	test("resolves for any live task of the caller's own org", async () => {
 		await expect(
 			assertTaskAvailable(ctxForOrgA, taskInAId, projectInAId),
 		).resolves.toBeUndefined();

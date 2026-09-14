@@ -2,8 +2,6 @@ import {
 	archiveTaskInput,
 	createTaskInput,
 	projectIdInput,
-	setProjectTasksInput,
-	setTaskProjectsInput,
 	taskIdInput,
 	updateTaskInput,
 } from "@farmer/core/schema";
@@ -11,8 +9,8 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { orgAdminMiddleware, orgMiddleware } from "./auth";
 
-// The tasks a given project has cherry-picked, plus the two absence tasks —
-// exactly the option list for one entry form. Passing no project id returns
+// The tasks one entry form may offer: with a project, every live task of the
+// org plus the built-ins; without one, the absence tasks and built-ins only. Passing no project id returns
 // only the absence tasks, which is the right answer for "logging without a
 // project".
 export const listTasksForProject = createServerFn({ method: "GET" })
@@ -72,40 +70,4 @@ export const unarchiveTask = createServerFn({ method: "POST" })
 	.handler(async ({ data: taskId, context }) => {
 		const { tasksService } = await import("@farmer/core/services");
 		return tasksService.unarchive(context.ctx, taskId);
-	});
-
-// Which of the global tasks this project offers. Team Lead and up, enforced in
-// the service — not admin-only, so `orgMiddleware` is correct here.
-export const setProjectTasks = createServerFn({ method: "POST" })
-	.middleware([orgMiddleware])
-	.validator(setProjectTasksInput)
-	.handler(async ({ data, context }) => {
-		const { tasksService } = await import("@farmer/core/services");
-		return tasksService.setProjectTasks(
-			context.ctx,
-			data.projectId,
-			data.taskIds,
-		);
-	});
-
-// The same join read and written from the task's side. Admin-only, because it
-// spans every project in the org rather than one the caller leads.
-export const listProjectsForTask = createServerFn({ method: "GET" })
-	.middleware([orgAdminMiddleware])
-	.validator(taskIdInput)
-	.handler(async ({ data: taskId, context }) => {
-		const { tasksService } = await import("@farmer/core/services");
-		return tasksService.listProjectsForTask(context.ctx, taskId);
-	});
-
-export const setTaskProjects = createServerFn({ method: "POST" })
-	.middleware([orgAdminMiddleware])
-	.validator(setTaskProjectsInput)
-	.handler(async ({ data, context }) => {
-		const { tasksService } = await import("@farmer/core/services");
-		return tasksService.setTaskProjects(
-			context.ctx,
-			data.taskId,
-			data.projectIds,
-		);
 	});

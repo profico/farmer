@@ -81,7 +81,7 @@ Two workspaces today — `apps/web` (TanStack Start/React) and `packages/core` (
 `packages/core` layout:
 - `src/db/` — `drizzle-orm/postgres-js` client (`index.ts`) + schema split across:
   - `schema/auth.ts` — better-auth-owned (user/session/account/verification/organization/member/invitation). CLI-generated, see `auth:generate`.
-  - `schema/domain.ts` — client, project, **task**, projectTask, projectMember, recurringBlockRule(+Skip), timeEntry.
+  - `schema/domain.ts` — client, project, **task**, projectMember, recurringBlockRule(+Skip), timeEntry.
   - `schema/people.ts` — memberProfile, memberTypeHistory (effective-dated person type).
   - `schema/schedule.ts` — memberSchedule, memberWorkingHoursDay, disabledHoliday.
   - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, filingRule, orgSettings, reminderSettings, monthlyHourFund.
@@ -165,7 +165,7 @@ Two engine details that differ and should stay differing: the MEETING path upser
 
 ### Tasks
 
-The task taxonomy replaced the old "entry types". One global list per org (`scope: "organization"`) plus **site-scoped built-ins** shared by every org. Projects cherry-pick org tasks via `projectTask`; there is deliberately no project scope.
+The task taxonomy replaced the old "entry types". One global list per org (`scope: "organization"`) plus **site-scoped built-ins** shared by every org. Every project offers every live task — there is deliberately no project scope and no per-project subset (the `projectTask` pick was removed in Sept 2026 along with the taxonomy rewrite).
 
 Engines resolve tasks by **`systemKey`**, never by name (`meeting`, `development`, `break`, `vacation`, `sick`). The old lookup matched `name = 'Development'`, so an org renaming the task silently switched the whole engine off — no block, no error. Names stay freely editable.
 

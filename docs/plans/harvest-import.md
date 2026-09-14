@@ -337,8 +337,8 @@ The exports have no assignments. Make them from the time report:
 - `projectMember` for each (project, person) pair with a row. Role `member`.
   `active = true` only if the project and the person are active and the pair
   has a row in the 90 days before the cutoff.
-- `projectTask` for each (project, task) pair, except absence tasks and the
-  universal site tasks.
+- No per-project task rows: since Sept 2026 every project offers every live
+  task of the org, so the (project, task) pairs in the export are not stored.
 
 ### Time entries
 
