@@ -285,15 +285,24 @@ export type PeriodTarget = {
 	from: string;
 	to: string;
 	workingDays: number;
+	/** Working days strictly before today — the same "elapsed" the Tracking
+	 *  report counts — so a partly-worked today is never claimed early. */
 	workingDaysElapsed: number;
 	/** The whole period's target, or null when no target applies. */
 	targetSeconds: number | null;
-	/** Where they should be by today. */
+	/** Where they should be by today, from the working days elapsed above. */
 	targetSoFarSeconds: number | null;
 	workSeconds: number;
 	timeOffSeconds: number;
-	/** work + time off — everything in the period, booked days ahead included. */
+	/** work + time off — everything in the period, booked days ahead included.
+	 *  For the top figure and the "to go" line, which do count a day booked
+	 *  off next week as hours the period already has. */
 	totalSeconds: number;
+	/** work + time off through today only — never a day after it. This, not
+	 *  `totalSeconds`, is what the verdict and the gap are read from, so
+	 *  booking time off ahead of today cannot make someone who is behind
+	 *  today read as on track. */
+	totalSoFarSeconds: number;
 	status: TrackingStatus | null;
 };
 
@@ -315,9 +324,15 @@ export const complianceService = {
 	/**
 	 * The caller's own week and month against the rule — for the home page and
 	 * the strip on the timesheet, so how much is missing is never more than one
-	 * look away. The month is the Tracking row for this one person; the week is
+	 * look away, and never a different verdict than the one their lead reads on
+	 * Tracking. The month is the Tracking row for this one person; the week is
 	 * the same rule on Monday-to-Sunday: working days × a day's worth, where
-	 * you should be by today = the working days elapsed × the same.
+	 * you should be by today = the working days elapsed × the same — elapsed
+	 * meaning working days strictly BEFORE today, the same count Tracking
+	 * uses, so a partly-worked today is never claimed early. The verdict and
+	 * the gap are read from work + time off through today only; a day booked
+	 * off later in the period still shows in the period's total and its "to
+	 * go" line, but cannot make someone behind today read as on track.
 	 *
 	 * Nobody outside the rule gets a target — an hourly person without an
 	 * override, an overhead person, someone archived — but everybody gets
@@ -348,23 +363,41 @@ export const complianceService = {
 
 		const weekFrom = startOfWeekKey(today);
 		const weekTo = addDaysToKey(weekFrom, 6);
+		// Strictly before today — the day before, so "through yesterday" is a
+		// single range endpoint rather than a special case at either end.
+		const yesterday = addDaysToKey(today, -1);
 		const monthRange = monthBounds(year, month);
 		const userIds = [ctx.userId];
-		const [holidays, weekWork, weekOff, monthWork, monthOff] =
-			await Promise.all([
-				holidaysService.holidaySetForRange(ctx, weekFrom, weekTo),
-				ledgerByUser(ctx, { from: weekFrom, to: weekTo }, "worked", {
-					userIds,
-				}),
-				ledgerByUser(ctx, { from: weekFrom, to: weekTo }, "absence", {
-					userIds,
-				}),
-				// The whole month, booked days ahead included — the Tracking row
-				// stops at today, and a week of vacation booked for next week is
-				// hours the month already has.
-				ledgerByUser(ctx, monthRange, "worked", { userIds }),
-				ledgerByUser(ctx, monthRange, "absence", { userIds }),
-			]);
+		const [
+			holidays,
+			weekWork,
+			weekOff,
+			weekWorkSoFar,
+			weekOffSoFar,
+			monthWork,
+			monthOff,
+		] = await Promise.all([
+			holidaysService.holidaySetForRange(ctx, weekFrom, weekTo),
+			ledgerByUser(ctx, { from: weekFrom, to: weekTo }, "worked", {
+				userIds,
+			}),
+			ledgerByUser(ctx, { from: weekFrom, to: weekTo }, "absence", {
+				userIds,
+			}),
+			// Through today only — the range the verdict is read from, so a day
+			// booked off later in the same week cannot flatter it.
+			ledgerByUser(ctx, { from: weekFrom, to: today }, "worked", {
+				userIds,
+			}),
+			ledgerByUser(ctx, { from: weekFrom, to: today }, "absence", {
+				userIds,
+			}),
+			// The whole month, booked days ahead included — for the top figure
+			// and the "to go" line only. The verdict below reads the Tracking
+			// row's own total instead, which already stops at today.
+			ledgerByUser(ctx, monthRange, "worked", { userIds }),
+			ledgerByUser(ctx, monthRange, "absence", { userIds }),
+		]);
 
 		// The week has a yardstick whenever the rule applies to the person —
 		// even without a fund set, at 8h a day; an hourly person without an
@@ -373,12 +406,20 @@ export const complianceService = {
 			me != null &&
 			(!isHourlyMemberType(me.memberType) || me.monthTargetSeconds != null);
 		const weekDays = workingDaysIn(weekFrom, weekTo, holidays);
-		const weekElapsed = workingDaysIn(weekFrom, today, holidays);
+		const weekElapsed = workingDaysIn(weekFrom, yesterday, holidays);
 		const weekTarget = weekApplies ? weekDays * daySeconds : null;
 		const weekSoFar = weekApplies ? weekElapsed * daySeconds : null;
 		const weekTotal = sumOf(weekWork, ctx.userId) + sumOf(weekOff, ctx.userId);
+		const weekTotalSoFar =
+			sumOf(weekWorkSoFar, ctx.userId) + sumOf(weekOffSoFar, ctx.userId);
 		const monthTotal =
 			sumOf(monthWork, ctx.userId) + sumOf(monthOff, ctx.userId);
+		// The Tracking row's own total already stops at today (or the month's
+		// last day once it is over) — reusing it instead of a second month
+		// query is what keeps this verdict from ever disagreeing with
+		// Tracking's, and it inherits any later change to what "today" means
+		// there for free.
+		const monthTotalSoFar = me?.totalSeconds ?? monthTotal;
 
 		return {
 			today,
@@ -394,10 +435,11 @@ export const complianceService = {
 				workSeconds: sumOf(weekWork, ctx.userId),
 				timeOffSeconds: sumOf(weekOff, ctx.userId),
 				totalSeconds: weekTotal,
+				totalSoFarSeconds: weekTotalSoFar,
 				status:
 					weekSoFar == null
 						? null
-						: trackingStatusFor(weekTotal, weekSoFar, report.tolerancePct),
+						: trackingStatusFor(weekTotalSoFar, weekSoFar, report.tolerancePct),
 			},
 			month: {
 				from: monthRange.from,
@@ -409,11 +451,12 @@ export const complianceService = {
 				workSeconds: sumOf(monthWork, ctx.userId),
 				timeOffSeconds: sumOf(monthOff, ctx.userId),
 				totalSeconds: monthTotal,
+				totalSoFarSeconds: monthTotalSoFar,
 				status:
 					me?.targetSeconds == null
 						? null
 						: trackingStatusFor(
-								monthTotal,
+								monthTotalSoFar,
 								me.targetSeconds,
 								report.tolerancePct,
 							),

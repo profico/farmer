@@ -416,7 +416,10 @@ describe("my targets", () => {
 		await logEntry(DILIGENT, "2026-04-13", devTaskId, 8 * H);
 		await logEntry(DILIGENT, "2026-04-14", devTaskId, 8 * H);
 		await logEntry(DILIGENT, "2026-04-15", devTaskId, 3 * H);
-		// Time off booked for Friday counts already: it is hours the week has.
+		// Time off booked for Friday shows in the week's total and its "to go"
+		// line — it is hours the week has — but Friday is still ahead of today
+		// (Wednesday), so it does not count towards where they should be by
+		// today, nor towards the verdict.
 		await logEntry(DILIGENT, "2026-04-17", vacationTaskId, 8 * H, false);
 
 		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
@@ -426,12 +429,17 @@ describe("my targets", () => {
 			from: "2026-04-13",
 			to: "2026-04-19",
 			workingDays: 5,
-			workingDaysElapsed: 3,
+			// Working days strictly before Wednesday: Monday and Tuesday, 2 of
+			// the week's 5 — matching the Tracking report's own elapsed count.
+			workingDaysElapsed: 2,
 			targetSeconds: 40 * H,
-			targetSoFarSeconds: 24 * H,
+			targetSoFarSeconds: 16 * H,
 			workSeconds: 19 * H,
 			timeOffSeconds: 8 * H,
 			totalSeconds: 27 * H,
+			// Through today: Monday, Tuesday and Wednesday's work, not Friday's
+			// booked-ahead vacation.
+			totalSoFarSeconds: 19 * H,
 			status: "on_track",
 		});
 		expect(mine.month).toMatchObject({
@@ -442,15 +450,46 @@ describe("my targets", () => {
 			targetSeconds: 176 * H,
 			targetSoFarSeconds: 88 * H,
 			totalSeconds: 27 * H,
+			// The Tracking row's own total: work through today, Friday's
+			// booked-ahead vacation excluded.
+			totalSoFarSeconds: 19 * H,
 			status: "behind",
 		});
+	});
+
+	test("booked-ahead time off does not flatter the verdict", async () => {
+		await setFund(176 * H);
+		// Behind through today: 2h logged against a week whose first two working
+		// days (Monday, Tuesday) are worth 16h.
+		await logEntry(DILIGENT, "2026-04-13", devTaskId, 2 * H);
+		// A full week of vacation booked for next week — still within April, so
+		// it inflates the month's whole-period total, but every day of it is
+		// after today.
+		await logEntry(DILIGENT, "2026-04-20", vacationTaskId, 8 * H, false);
+		await logEntry(DILIGENT, "2026-04-21", vacationTaskId, 8 * H, false);
+		await logEntry(DILIGENT, "2026-04-22", vacationTaskId, 8 * H, false);
+		await logEntry(DILIGENT, "2026-04-23", vacationTaskId, 8 * H, false);
+		await logEntry(DILIGENT, "2026-04-24", vacationTaskId, 8 * H, false);
+
+		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
+		// The whole-period totals do carry the booked-ahead week — the top
+		// figure and "to go" line are allowed to count it.
+		expect(mine.week.totalSeconds).toBe(2 * H);
+		expect(mine.month.totalSeconds).toBe(42 * H);
+		// But the verdict and the gap are read through today only, so booking a
+		// week off next week cannot turn "behind" into "on track".
+		expect(mine.week.totalSoFarSeconds).toBe(2 * H);
+		expect(mine.week.status).toBe("behind");
+		expect(mine.month.totalSoFarSeconds).toBe(2 * H);
+		expect(mine.month.status).toBe("behind");
 	});
 
 	test("without a fund the month has no target but the week still has its 8h days", async () => {
 		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
 		expect(mine.daySeconds).toBe(8 * H);
 		expect(mine.week.targetSeconds).toBe(40 * H);
-		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+		// Monday and Tuesday, the working days strictly before Wednesday.
+		expect(mine.week.targetSoFarSeconds).toBe(16 * H);
 		expect(mine.month.targetSeconds).toBeNull();
 		expect(mine.month.targetSoFarSeconds).toBeNull();
 		expect(mine.month.status).toBeNull();

@@ -24,12 +24,14 @@ export const TARGET_STATUS = {
 	{ label: string; tone: "positive" | "warning" | "negative" }
 >;
 
-/** "5,00 short of today's 24,00", or "1,50 ahead of today's 24,00". */
+/** "5,00 short of today's 24,00", or "1,50 ahead of today's 24,00". Read from
+ *  work + time off through today, never a day booked off later in the
+ *  period — the same total the Tracking report itself would show. */
 export function TargetGap({ period }: { period: PeriodTarget }) {
 	if (period.targetSoFarSeconds == null) {
 		return <span className="text-muted-foreground">No target</span>;
 	}
-	const delta = period.totalSeconds - period.targetSoFarSeconds;
+	const delta = period.totalSoFarSeconds - period.targetSoFarSeconds;
 	return (
 		<span className="text-muted-foreground">
 			<span
