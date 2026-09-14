@@ -41,7 +41,10 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
-import { projectPageAccess } from "#/lib/project-access.ts";
+import {
+	canActOnProjectRole,
+	projectPageAccess,
+} from "#/lib/project-access.ts";
 import { matchesSearch } from "#/lib/search.ts";
 import {
 	assignableMembersQuery,
@@ -121,7 +124,12 @@ function TeamPage() {
 				title={title}
 				lede={`Who may log time on ${project.name}, and who runs it. A PM manages the project; a Team Lead here holds it as a PM does. Changes save straight away.`}
 			/>
-			<Roster orgSlug={orgSlug} projectId={projectId} />
+			<Roster
+				orgSlug={orgSlug}
+				projectId={projectId}
+				isAdmin={isAdmin}
+				heldRole={project.myRole}
+			/>
 		</Page>
 	);
 }
@@ -129,9 +137,13 @@ function TeamPage() {
 function Roster({
 	orgSlug,
 	projectId,
+	isAdmin,
+	heldRole,
 }: {
 	orgSlug: string;
 	projectId: string;
+	isAdmin: boolean;
+	heldRole: ProjectRoleValue | null;
 }) {
 	const queryClient = useQueryClient();
 	const { data: members } = useSuspenseQuery(
@@ -147,6 +159,18 @@ function Roster({
 	const free: Person[] = assignable
 		.filter((p) => !onTeamIds.has(p.userId))
 		.map((p) => ({ value: p.userId, label: p.name, email: p.email }));
+
+	// The ceiling `projects.service.ts` enforces on assignMember/removeMember:
+	// never above the caller's own held rank. A Team Lead is offered Member and
+	// Team Lead here, never PM; a PM (or Admin) is offered all three. Per-row,
+	// the same ceiling decides whether THIS person may be touched at all — a
+	// Team Lead cannot re-rank or remove a PM, or another Team Lead who reads
+	// as PM through the people list.
+	const assignableRoles = ROLES.filter((r) =>
+		canActOnProjectRole(isAdmin, heldRole, r.value),
+	);
+	const canManageRow = (m: { role: ProjectRoleValue }) =>
+		canActOnProjectRole(isAdmin, heldRole, m.role);
 
 	const refresh = () =>
 		Promise.all([
@@ -236,68 +260,79 @@ function Roster({
 							</TableCell>
 						</TableRow>
 					) : (
-						onTeam.map((m) => (
-							<TableRow key={m.userId}>
-								<TableCell>
-									<span className="flex items-center gap-3">
-										<PersonAvatar userId={m.userId} name={m.name} />
-										<span className="min-w-0">
-											<span className="block font-medium">{m.name}</span>
-											<span className="block truncate text-xs text-muted-foreground">
-												{m.email}
+						onTeam.map((m) => {
+							const manageable = canManageRow(m);
+							// A disabled row still needs its current role in `items`, or
+							// the Base UI trigger shows the raw value instead of the
+							// resolved label — a PM's row read as "pm" once a Team Lead's
+							// options no longer included it.
+							const rowRoles = manageable ? assignableRoles : ROLES;
+							return (
+								<TableRow key={m.userId}>
+									<TableCell>
+										<span className="flex items-center gap-3">
+											<PersonAvatar userId={m.userId} name={m.name} />
+											<span className="min-w-0">
+												<span className="block font-medium">{m.name}</span>
+												<span className="block truncate text-xs text-muted-foreground">
+													{m.email}
+												</span>
 											</span>
 										</span>
-									</span>
-								</TableCell>
-								<TableCell>
-									<Select
-										items={ROLES.map((r) => ({
-											value: r.value,
-											label: r.label,
-										}))}
-										value={m.role}
-										onValueChange={(next: string | null) => {
-											const picked = ROLES.find((r) => r.value === next);
-											if (picked) setRole(m, picked.value);
-										}}
-									>
-										<SelectTrigger
-											className="h-8 w-32 text-sm"
-											aria-label={`Role of ${m.name}`}
+									</TableCell>
+									<TableCell>
+										<Select
+											items={rowRoles.map((r) => ({
+												value: r.value,
+												label: r.label,
+											}))}
+											value={m.role}
+											disabled={!manageable}
+											onValueChange={(next: string | null) => {
+												const picked = rowRoles.find((r) => r.value === next);
+												if (picked) setRole(m, picked.value);
+											}}
 										>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{ROLES.map((r) => (
-												<SelectItem key={r.value} value={r.value}>
-													{r.label}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									<span className="mt-1 block text-xs text-muted-foreground">
-										{ROLES.find((r) => r.value === m.role)?.hint}
-									</span>
-								</TableCell>
-								<TableCell className="mono text-right text-muted-foreground">
-									{formatReportHours(m.allTimeSeconds)}
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{m.lastEntry ? formatDateKeyLong(m.lastEntry) : "—"}
-								</TableCell>
-								<TableCell className="text-right">
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										aria-label={`Remove ${m.name} from the project`}
-										disabled={remove.isPending}
-										onClick={() => removePerson(m)}
-									>
-										<XIcon weight="regular" />
-									</Button>
-								</TableCell>
-							</TableRow>
-						))
+											<SelectTrigger
+												className="h-8 w-32 text-sm"
+												aria-label={`Role of ${m.name}`}
+											>
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{rowRoles.map((r) => (
+													<SelectItem key={r.value} value={r.value}>
+														{r.label}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<span className="mt-1 block text-xs text-muted-foreground">
+											{ROLES.find((r) => r.value === m.role)?.hint}
+										</span>
+									</TableCell>
+									<TableCell className="mono text-right text-muted-foreground">
+										{formatReportHours(m.allTimeSeconds)}
+									</TableCell>
+									<TableCell className="text-muted-foreground">
+										{m.lastEntry ? formatDateKeyLong(m.lastEntry) : "—"}
+									</TableCell>
+									<TableCell className="text-right">
+										{manageable && (
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												aria-label={`Remove ${m.name} from the project`}
+												disabled={remove.isPending}
+												onClick={() => removePerson(m)}
+											>
+												<XIcon weight="regular" />
+											</Button>
+										)}
+									</TableCell>
+								</TableRow>
+							);
+						})
 					)}
 				</TableBody>
 			</Table>
