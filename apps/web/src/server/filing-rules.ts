@@ -1,4 +1,7 @@
-import { deleteFilingRuleInput } from "@farmer/core/schema";
+import {
+	deleteFilingRuleInput,
+	updateFilingRuleInput,
+} from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 
 import { orgMiddleware } from "./auth";
@@ -10,6 +13,14 @@ export const listFilingRules = createServerFn({ method: "POST" })
 	.handler(async ({ context }) => {
 		const { filingRulesService } = await import("@farmer/core/services");
 		return filingRulesService.list(context.ctx);
+	});
+
+export const updateFilingRule = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(updateFilingRuleInput)
+	.handler(async ({ data, context }) => {
+		const { filingRulesService } = await import("@farmer/core/services");
+		return filingRulesService.update(context.ctx, data);
 	});
 
 export const deleteFilingRule = createServerFn({ method: "POST" })

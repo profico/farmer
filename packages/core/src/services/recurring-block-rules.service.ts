@@ -104,7 +104,7 @@ const assertMayScheduleOn = async (ctx: Ctx, projectId: string | null) => {
  * the project is archived, the task is archived or un-picked. None of those
  * touch the rule, so the materializer went on writing real hours onto a project
  * the person could no longer log to by hand. Same answer as
- * `filingRulesService.resolveForTask`, for the same reason: a rule is a
+ * `filingRulesService.resolve`, for the same reason: a rule is a
  * standing write, and it is re-checked rather than trusted.
  *
  * A rule that fails is skipped, not deleted and not reported. Its day simply

@@ -34,6 +34,7 @@ type Item = {
 type Group = { value: string; label: string | null; items: Item[] };
 
 const RECENT = "recent";
+const NONE = "__none__";
 
 /**
  * The task picker every entry form shares. With a project it is the whole
@@ -52,6 +53,7 @@ export function TaskPicker({
 	value,
 	onValueChange,
 	grouped,
+	noTask,
 	placeholder = "Pick a task",
 	disabled,
 	className,
@@ -65,6 +67,8 @@ export function TaskPicker({
 	onValueChange: (taskId: string) => void;
 	/** Group headers and recents (a project is chosen), or one flat list. */
 	grouped: boolean;
+	/** The label of a "no task" row, chosen as "". Omit to require a task. */
+	noTask?: string;
 	placeholder?: string;
 	disabled?: boolean;
 	className?: string;
@@ -79,8 +83,21 @@ export function TaskPicker({
 			label: t.name,
 			recent,
 		});
+		// First and above everything, like the project picker's "no project" row.
+		const none: Group[] = noTask
+			? [
+					{
+						value: NONE,
+						label: null,
+						items: [{ value: NONE, id: "", label: noTask, recent: false }],
+					},
+				]
+			: [];
 		if (!grouped) {
-			return [{ value: "all", label: null, items: tasks.map((t) => item(t)) }];
+			return [
+				...none,
+				{ value: "all", label: null, items: tasks.map((t) => item(t)) },
+			];
 		}
 		const byId = new Map(tasks.map((t) => [t.id, t]));
 		const recent = recentIds
@@ -93,15 +110,19 @@ export function TaskPicker({
 			items: tasks.filter((t) => t.group === g).map((t) => item(t)),
 		})).filter((g) => g.items.length > 0);
 		return recent.length > 0
-			? [{ value: RECENT, label: "Recent", items: recent }, ...grouped_]
-			: grouped_;
-	}, [tasks, recentIds, grouped]);
+			? [
+					...none,
+					{ value: RECENT, label: "Recent", items: recent },
+					...grouped_,
+				]
+			: [...none, ...grouped_];
+	}, [tasks, recentIds, grouped, noTask]);
 
 	const [query, setQuery] = useState("");
 	const filtered = useMemo(() => {
 		if (query.trim() === "") return groups;
 		return groups
-			.filter((g) => g.value !== RECENT)
+			.filter((g) => g.value !== RECENT && g.value !== NONE)
 			.map((g) => ({
 				...g,
 				items: g.items.filter((i) => matchesSearch(query, [i.label])),

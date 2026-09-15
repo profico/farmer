@@ -63,6 +63,7 @@ export const queryKeys = (org: string) =>
 		recurringBlockRules: ["recurring-block-rules", org],
 		reminderSettings: ["reminder-settings", org],
 		reports: ["reports", org],
+		rewind: ["rewind", org],
 		slack: ["slack", org],
 		tasks: ["tasks", org],
 		timeEntries: ["time-entries", org],
