@@ -27,6 +27,16 @@ export type UnlinkProjectRepoInput = z.infer<typeof unlinkProjectRepoInput>;
 export const listProjectReposInput = z.uuid();
 export type ListProjectReposInput = z.infer<typeof listProjectReposInput>;
 
+// A GitHub `owner/name`, as `farmer init` reads it off a git remote — never a
+// full URL, since parsing that is the CLI's job, not the server's.
+export const repositoryProjectsInput = z.object({
+	repository: z
+		.string()
+		.trim()
+		.regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+});
+export type RepositoryProjectsInput = z.infer<typeof repositoryProjectsInput>;
+
 export const listAttachedCommitsInput = z.uuid();
 export type ListAttachedCommitsInput = z.infer<typeof listAttachedCommitsInput>;
 
