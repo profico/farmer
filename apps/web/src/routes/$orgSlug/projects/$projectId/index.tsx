@@ -235,13 +235,22 @@ function ProjectPage() {
 							<Suspense
 								fallback={
 									<Button variant="outline" size="sm" disabled>
-										Export CSV
+										Export
 									</Button>
 								}
 							>
 								<EntriesExport
 									input={input}
-									filename={`${project.code ?? project.name}_${from}_${to}.csv`}
+									by={by}
+									filename={`${project.code ?? project.name}_${from}_${to}`}
+									title="Detailed time report"
+									facts={[
+										[
+											"Project",
+											`${project.code ? `[${project.code}] ` : ""}${project.name}`,
+										],
+										["Client", project.client?.name ?? "—"],
+									]}
 								/>
 							</Suspense>
 						</PeriodPicker>

@@ -23,7 +23,6 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
-import { downloadCsv } from "#/lib/csv.ts";
 import { cn } from "#/lib/utils.ts";
 import { absenceReportQuery } from "#/queries/reports.ts";
 
@@ -31,6 +30,7 @@ import type { Search } from "./search.ts";
 import {
 	byNumber,
 	byText,
+	ExportMenu,
 	FigurePending,
 	formatDateHeading,
 	PeriodPicker,
@@ -108,7 +108,7 @@ export function AbsenceTab({
 				<Suspense
 					fallback={
 						<Button variant="outline" size="sm" disabled>
-							Export CSV
+							Export
 						</Button>
 					}
 				>
@@ -195,26 +195,45 @@ function AbsenceExport({
 	input: AbsenceReportInput;
 	view: View;
 }) {
-	const { rows, workingDaySeconds } = useView(input, view);
+	const { rows, workingDaySeconds, label } = useView(input, view);
 	return (
-		<Button
-			variant="outline"
-			size="sm"
+		<ExportMenu
 			disabled={rows.length === 0}
-			onClick={() =>
-				downloadCsv(
-					`absence_${view}_${input.from}_${input.to}.csv`,
-					["Person", "Days", "Hours"],
-					rows.map((r) => [
-						r.name,
-						(r.seconds / workingDaySeconds).toFixed(2),
-						formatDecimalHours(r.seconds),
-					]),
-				)
-			}
-		>
-			Export CSV
-		</Button>
+			filename={`absence_${view}_${input.from}_${input.to}`}
+			csv={() => ({
+				headers: ["Person", "Days", "Hours"],
+				rows: rows.map((r) => [
+					r.name,
+					(r.seconds / workingDaySeconds).toFixed(2),
+					formatDecimalHours(r.seconds),
+				]),
+			})}
+			pdf={() => ({
+				title: "Absence report",
+				from: input.from,
+				to: input.to,
+				total: formatReportHours(rows.reduce((sum, r) => sum + r.seconds, 0)),
+				facts: [["Kind of time-off", label]],
+				columns: [
+					{ label: "Person" },
+					{ label: "Days", align: "right" },
+					{ label: "Hours", align: "right" },
+				],
+				groups: [
+					{
+						rows: [...rows]
+							.sort((a, b) => b.seconds - a.seconds)
+							.map((r) => ({
+								cells: [
+									r.name,
+									formatReportDays(r.seconds, workingDaySeconds),
+									formatReportHours(r.seconds),
+								],
+							})),
+					},
+				],
+			})}
+		/>
 	);
 }
 
