@@ -75,7 +75,7 @@ export function DatePicker({
 						// focus treatment — so a date sits in a row of fields without
 						// looking like a different kind of control.
 						className={cn(
-							"flex h-8 w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-left text-base transition-[border-color,box-shadow] duration-(--dur-base) outline-none hover:not-disabled:not-focus-visible:border-muted-foreground/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/16 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground data-popup-open:border-ring data-popup-open:ring-3 data-popup-open:ring-ring/16",
+							"flex h-8 w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-secondary px-2.5 py-1 text-left text-base transition-[border-color,box-shadow] duration-(--dur-base) outline-none hover:not-disabled:not-focus-visible:border-line-strong focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/16 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground data-popup-open:border-ring data-popup-open:ring-3 data-popup-open:ring-ring/16",
 							className,
 						)}
 					>

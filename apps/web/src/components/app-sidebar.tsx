@@ -279,7 +279,7 @@ export function AppSidebar({
 					aria-hidden
 					layoutId="sidebar-active-nav"
 					transition={springLayout}
-					className="absolute inset-0 rounded-2xl bg-sidebar-accent shadow-[0_1px_2px_color-mix(in_srgb,var(--fg)_5%,transparent)]"
+					className="absolute inset-0 rounded-[10px] bg-sidebar-accent"
 				/>
 			)}
 			<item.icon className="relative size-4" />

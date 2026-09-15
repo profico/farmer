@@ -917,7 +917,7 @@ function Home() {
 									border:
 										"1px solid color-mix(in srgb, var(--acc) 16%, transparent)",
 									borderRadius: "999px",
-									font: "500 12px 'Instrument Sans',sans-serif",
+									font: "500 12px 'Geist',sans-serif",
 									color: "var(--acc)",
 									marginBottom: "22px",
 								}}

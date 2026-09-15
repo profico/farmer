@@ -33,8 +33,24 @@ const readTheme = (): Theme =>
 		? "dark"
 		: "light";
 
+/** Whether the toggle may crossfade. Both the OS preference and the app's
+ *  own "Less movement" switch (`lib/display-prefs.ts`) say no. */
+const mayAnimateThemeSwitch = () =>
+	!window.matchMedia("(prefers-reduced-motion: reduce)").matches &&
+	document.documentElement.getAttribute("data-motion") !== "reduce";
+
 export const setTheme = (theme: Theme) => {
-	document.documentElement.setAttribute("data-theme", theme);
+	const apply = () =>
+		document.documentElement.setAttribute("data-theme", theme);
+	// The whole document crossfades between palettes (220ms, styles.css sets
+	// the duration on the view-transition pseudo-elements) instead of every
+	// surface snapping at once. A browser without view transitions, or a
+	// reader who asked for less movement, gets the attribute write alone.
+	if ("startViewTransition" in document && mayAnimateThemeSwitch()) {
+		document.startViewTransition(apply);
+	} else {
+		apply();
+	}
 	try {
 		localStorage.setItem(STORAGE_KEY, theme);
 	} catch {

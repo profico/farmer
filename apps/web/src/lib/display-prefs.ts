@@ -12,13 +12,6 @@ import { useCallback, useSyncExternalStore } from "react";
 // attribute.
 
 const PREFS = {
-	/** Page titles and the big numbers in Instrument Sans instead of Instrument
-	 *  Serif: `--serif` points at the sans face. */
-	boringFont: {
-		key: "farmer-boring-font",
-		attribute: "data-font",
-		value: "sans",
-	},
 	/** Every CSS animation and transition ends at once, and so does every
 	 *  Motion animation (`syncMotion`). */
 	lessMotion: {

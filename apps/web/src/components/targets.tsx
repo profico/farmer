@@ -78,7 +78,7 @@ export function TargetBar({
 		<div className={cn("relative h-1.5 rounded-full bg-secondary", className)}>
 			<span
 				className={cn(
-					"absolute inset-y-0 left-0 rounded-full",
+					"rail-fill absolute inset-y-0 left-0 rounded-full",
 					period.status === "behind"
 						? "bg-bad"
 						: period.status === "slightly_behind"
@@ -133,7 +133,7 @@ export function TargetBlock({
 				<div className="eyebrow">{title}</div>
 				<Pill status={period.status} />
 			</div>
-			<div className="mono mt-1.5 text-xl">
+			<div className="font-display tnum mt-1.5 text-xl font-semibold">
 				{formatReportHours(period.totalSeconds)}
 				{period.targetSeconds != null && (
 					<span className="text-sm text-muted-foreground">
@@ -178,7 +178,7 @@ export function TargetsStrip({ orgSlug }: { orgSlug: string }) {
 						<span className="eyebrow">{title}</span>
 						{period ? (
 							<>
-								<span className="mono text-sm font-medium">
+								<span className="tnum text-sm font-medium">
 									{formatReportHours(period.totalSeconds)}
 									{period.targetSeconds != null && (
 										<span className="font-normal text-muted-foreground">

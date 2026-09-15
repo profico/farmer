@@ -131,7 +131,7 @@ function DialogContent({
 						// the close button (absolute against the popup) and the footer
 						// stay put while a tall form scrolls under them.
 						className={cn(
-							"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-base text-popover-foreground outline-none sm:max-w-lg",
+							"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl shadow-[var(--shadow-pop)] bg-popover text-base text-popover-foreground outline-none sm:max-w-lg",
 							className,
 						)}
 						render={
@@ -213,7 +213,7 @@ function DialogFooter({
 			// at 0 parks the footer that far above the popup's edge and leaves a
 			// stripe of scrolled content showing underneath it.
 			className={cn(
-				"-mx-6 -mb-6 -bottom-6 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-6 sm:flex-row sm:justify-end",
+				"-mx-6 -mb-6 -bottom-6 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-2xl border-t border-line2 bg-popover p-4 px-6 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}

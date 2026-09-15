@@ -196,7 +196,7 @@ export function Calendar({
 					<div
 						key={day}
 						aria-hidden
-						className="flex h-7 items-center justify-center text-xs font-medium text-faint"
+						className="flex h-7 items-center justify-center text-xs font-medium text-muted-foreground"
 					>
 						{short}
 					</div>
@@ -233,7 +233,7 @@ export function Calendar({
 							onKeyDown={(event) => onKeyDown(event, day)}
 							onClick={() => onSelect(day)}
 							className={cn(
-								"mono flex h-8 items-center justify-center rounded-md text-sm tabular-nums transition-colors duration-(--dur-fast) outline-none",
+								"tnum flex h-8 items-center justify-center rounded-full text-sm transition-colors duration-(--dur-fast) outline-none",
 								"focus-visible:ring-3 focus-visible:ring-ring/40",
 								inMonth ? "text-foreground" : "text-faint",
 								!disabled && !selected && "hover:bg-muted",
@@ -255,4 +255,4 @@ export function Calendar({
 }
 
 const navButtonClass =
-	"flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-30";
+	"flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/40 disabled:pointer-events-none disabled:opacity-30";

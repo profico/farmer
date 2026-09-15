@@ -9,7 +9,7 @@ const FOCUS =
 	"outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/16";
 
 const buttonVariants = cva(
-	`group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] duration-(--dur-base) select-none ${FOCUS} active:not-aria-[haspopup]:scale-[0.985] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`,
+	`group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] duration-(--dur-base) select-none ${FOCUS} active:not-aria-[haspopup]:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`,
 	{
 		variants: {
 			variant: {
@@ -24,15 +24,16 @@ const buttonVariants = cva(
 					"bg-primary text-primary-foreground hover:bg-[color-mix(in_srgb,var(--acc)_86%,var(--fg))] disabled:bg-[color-mix(in_srgb,var(--fg)_9%,transparent)] disabled:text-faint disabled:opacity-100",
 				outline:
 					"border-border bg-transparent hover:border-muted-foreground/60 hover:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground",
+				// A lift, not a border: the band surface on the island, one step up.
 				secondary:
 					"bg-secondary text-secondary-foreground hover:bg-[color-mix(in_srgb,var(--bg2),var(--fg)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
 				ghost:
 					"text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
-				// Not a second red — there is only one warm accent in this palette.
-				// An irreversible action sits at its neighbours' weight until you
-				// reach for it; the words carry the warning, the tint confirms it.
+				// The palette's one red at a tint. It sits at its neighbours' weight
+				// until you reach for it; the words carry the warning, the colour
+				// confirms it. Deliberately never a filled red button.
 				destructive:
-					"bg-destructive/8 text-destructive hover:bg-destructive/16",
+					"bg-destructive/10 text-destructive hover:bg-destructive/16",
 				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {

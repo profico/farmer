@@ -3,13 +3,14 @@ import type { ReactNode } from "react";
 import { cn } from "#/lib/utils.ts";
 
 /**
- * A large mono number over a small uppercase caption — the design's main way of
+ * A large number over a small uppercase caption — the design's main way of
  * showing a figure.
  *
- * Mono rather than the display serif, and that split is the whole point: the
- * serif names things (page titles, section headings) and the mono measures
- * them. A column of figures set in a proportional face can't be compared down
- * the page; one set in the serif reads as a pull-quote rather than as data.
+ * Set in the display face at 600 with tabular numerals, the way Framer sets a
+ * figure: the same family as the title above it, a step heavier, and digits
+ * that line up. Mono stays for what is an id rather than a measure — a sha, a
+ * project code — and for the columns of a table, where forty rows of figures
+ * are compared down the page.
  */
 export function Metric({
 	value,
@@ -28,8 +29,11 @@ export function Metric({
 	return (
 		<div className={className}>
 			<div
-				className={cn("mono", accent && "text-primary")}
-				style={{ fontSize: size, lineHeight: 1, letterSpacing: "-0.04em" }}
+				className={cn(
+					"font-display tnum font-semibold",
+					accent && "text-primary",
+				)}
+				style={{ fontSize: size, lineHeight: 1, letterSpacing: "-0.03em" }}
 			>
 				{value}
 			</div>

@@ -9,24 +9,24 @@ export type CategoryColor = {
 
 // The 5 project/task category colors, in picker order.
 //
-// All five sit in the same muted, earthy register as the rest of the palette
-// and are deliberately kept a step *below* the ember accent in chroma. A dot
+// All five sit in a muted register and are deliberately kept a step *below*
+// the violet accent in chroma. A dot
 // beside a task name is a label, not a signal: if a category read louder than
 // the one accent colour the app uses for "act on this", the eye would start
 // following project colours around the page instead of following actions. They
 // still separate cleanly from each other by hue, which is all a category has to
 // do.
 export const CATEGORY_COLORS: CategoryColor[] = [
-	{ dot: "#6b7f6a", tint: "#e0e3dd", text: "#455345" }, // sage
-	{ dot: "#55707d", tint: "#dce0e0", text: "#374951" }, // slate
-	{ dot: "#8a6a1f", tint: "#e6dfcf", text: "#5a4514" }, // ochre
-	{ dot: "#9c5a44", tint: "#e9dcd6", text: "#653a2c" }, // rust
-	{ dot: "#7a6a86", tint: "#e3dfe2", text: "#4f4557" }, // mauve
+	{ dot: "#6b7f6a", tint: "#e2e6e3", text: "#465345" }, // sage
+	{ dot: "#55707d", tint: "#dee3e6", text: "#374951" }, // slate
+	{ dot: "#8a6a1f", tint: "#e7e2d5", text: "#5a4514" }, // ochre
+	{ dot: "#9c5a44", tint: "#ebdfdc", text: "#653a2c" }, // rust
+	{ dot: "#7a6a86", tint: "#e5e2e8", text: "#4f4557" }, // mauve
 ];
 
 const FALLBACK_COLOR: CategoryColor = {
 	dot: "#79736a",
-	tint: "#e3e1dd",
+	tint: "#e4e3e3",
 	text: "#4f4b45",
 };
 
@@ -57,10 +57,12 @@ const mix = (
 	rgb[2] + (target[2] - rgb[2]) * amount,
 ];
 
-// Tints wash toward the page, not toward white: on warm paper a white-based
-// tint reads as a lighter patch of some other material laid on top of the
-// sheet, which is exactly the cut-out-card look this design avoids.
-const PAPER: [number, number, number] = [250, 249, 246];
+// Tints wash toward the page, not toward white: a white-based tint reads as a
+// lighter patch of some other material laid on top of the sheet, which is
+// exactly the cut-out-card look this design avoids. The paper is the light
+// island (`--bg` in styles.css); the hand-tuned pairs above are this same
+// blend, written out.
+const PAPER: [number, number, number] = [252, 252, 253];
 const BLACK: [number, number, number] = [0, 0, 0];
 
 // The palette (+ neutral fallback) colors have hand-tuned tint/text pairs;

@@ -35,9 +35,10 @@ function SegmentedControl({
 			<div
 				data-slot="segmented-control"
 				className={cn(
-					// The track is the sidebar's recessed ground and the pill is the page's own
-					// paper laid on it — the same two surfaces the nav uses to say "this one".
-					"inline-flex w-fit items-center gap-0.5 rounded-lg border border-border bg-secondary p-[3px] text-muted-foreground",
+					// The track is the band surface and the pill is the island's own paper
+					// laid on it — a lift, not a border, the same two surfaces the nav uses
+					// to say "this one".
+					"inline-flex w-fit items-center gap-0.5 rounded-[10px] bg-secondary p-[3px] text-muted-foreground",
 					className,
 				)}
 				{...props}
@@ -70,7 +71,7 @@ function SegmentedControlItem({
 					// Shared-element move; `reducedMotion="user"` on the root
 					// <MotionConfig> makes the pill jump instead of glide.
 					transition={springLayout}
-					className="absolute inset-0 z-0 rounded-md bg-background shadow-[0_1px_2px_color-mix(in_srgb,var(--fg)_6%,transparent)]"
+					className="absolute inset-0 z-0 rounded-lg bg-background shadow-[0_1px_2px_color-mix(in_srgb,var(--fg)_6%,transparent)]"
 				/>
 			)}
 			<span className="relative z-10 inline-flex items-center gap-1.5">
@@ -80,7 +81,7 @@ function SegmentedControlItem({
 	);
 
 	const cls = cn(
-		"relative inline-flex items-center justify-center rounded-md px-3.5 py-1 text-sm whitespace-nowrap outline-none transition-colors duration-(--dur-base) focus-visible:ring-2 focus-visible:ring-ring/30 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+		"relative inline-flex items-center justify-center rounded-lg px-3.5 py-1 text-sm whitespace-nowrap outline-none transition-colors duration-(--dur-base) focus-visible:ring-2 focus-visible:ring-ring/30 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
 		active
 			? "font-medium text-foreground"
 			: "text-muted-foreground hover:text-foreground",

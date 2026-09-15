@@ -92,7 +92,7 @@ function PopoverContent({
 							key="popover-content"
 							data-slot="popover-content"
 							className={cn(
-								"z-50 max-h-(--available-height) origin-(--transform-origin) rounded-xl border border-border bg-popover text-popover-foreground shadow-[var(--shadow-pop)] outline-none",
+								"z-50 max-h-(--available-height) origin-(--transform-origin) rounded-xl bg-popover text-popover-foreground shadow-[var(--shadow-pop)] outline-none",
 								className,
 							)}
 							render={

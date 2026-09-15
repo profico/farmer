@@ -14,7 +14,7 @@
  *      the first layer. Nothing sets these to a literal colour.
  * Adding a palette therefore means writing layer 1 again and nothing else. */
 
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap');
 @import 'tailwindcss';
 
 @import 'tw-animate-css';
@@ -24,15 +24,8 @@
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 /* Preferences → Display: one attribute on <html> per setting, set before the
-   first paint by lib/display-prefs.ts. These rules are unlayered on purpose. A
-   layered override would lose to the unlayered `:root` that sets `--serif`,
-   whatever its selector. */
-
-/* "Boring font": the display face in the body face. The weight and tracking
-   that go with it are beside `.h2`. */
-:root[data-font='sans'] {
-  --serif: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
-}
+   first paint by lib/display-prefs.ts. These rules are unlayered on purpose,
+   so they outrank the layered defaults whatever their selector. */
 
 /* "Less movement": every CSS animation and transition ends at once, on its
    end state. An element still arrives where it goes, and a spinner stops.
@@ -78,10 +71,12 @@
 
 /* ------------------------------------------------------------- palette --- */
 
-/* Paper: warm ground, violet accent — `--acc` is the logo's own #6f4ebe, so the
-   mark, the browser chrome (`theme-color`) and every accented control are one
-   colour. The ground stays warm on purpose; the violet is the only cool thing
-   in the palette, which is what makes it read as the accent.
+/* Paper: cool off-white ground, violet accent — `--acc` is the logo's own
+   #6f4ebe, so the mark, the browser chrome (`theme-color`) and every accented
+   control are one colour. The neutrals carry a faint violet bias (see
+   DESIGN.md at the repo root): a grey that leans towards the accent belongs to
+   it, where the old warm beige fought it. Depth is Framer's: ground → island →
+   band are three lifts of one neutral, and nothing floating wears a border.
    The app's default, and what an unset `data-theme` falls back to.
    `color-scheme` is declared per palette rather than left to the browser: the
    calendar's category tints are light washes computed in JS
@@ -96,45 +91,57 @@
   /* `--bg` is the *island* surface — the paper every panel, table and the
      sidebar are cut from. Nothing in the app paints directly onto `--ground`;
      it only ever shows through as the gap between islands. */
-  --bg: #faf9f6;
+  --bg: #fcfcfd;
   /* The ground the islands float on. One step recessed from the paper, which is
      the whole of the depth model: islands are lit, the gap between them is not.
      This is what `body` is painted with. */
-  --ground: #efece5;
+  --ground: #f1f0f5;
   /* A band *inside* an island — a table's header row, the calendar's weekday
-     strip. Recessed from the island's own paper, not from the ground. */
-  --bg2: #f4f2ed;
-  --fg: #1b1a17;
-  --mut: #79736a;
-  --faint: #a9a296;
+     strip, a filled field, a lifted secondary button. Recessed from the
+     island's own paper, not from the ground. */
+  --bg2: #f3f2f7;
+  /* What a floating thing is cut from — a menu, a popover, a dialog, a toast.
+     Pure white here, one step above the island; in dark it is the band. */
+  --pop: #ffffff;
+  /* Text is binary: ink or muted ink, both AA on every surface. `--faint` is
+     the one exception and is reserved for placeholders and disabled labels. */
+  --fg: #111016;
+  --mut: #6b6876;
+  --faint: #8e8a99;
 
   /* Two hairlines, and only two. `--line` divides sections and outlines
      controls; `--line2` separates repeated rows inside one list. Anything that
      draws a border picks one of these by that rule, so the same job never shows
      up at two weights. */
-  --line: rgba(27, 26, 23, 0.11);
-  --line2: rgba(27, 26, 23, 0.055);
+  --line: rgba(17, 16, 22, 0.1);
+  --line2: rgba(17, 16, 22, 0.06);
 
   --acc: #6f4ebe;
-  --warn: #8a6a1f;
-  --ok: #4a7050;
-  /* The one red, for a verdict — "behind", "short" — and nothing else.
-     Added for the Tracking report; the accent stays the colour of actions. */
-  --bad: #b3423f;
-  --sel: rgba(27, 26, 23, 0.045);
+  --warn: #9a6700;
+  --ok: #2f8a4f;
+  /* The one red: a verdict — "behind", "short" — and, since the refresh, the
+     destructive action. It stays a step below the accent in chroma so the eye
+     still follows actions, not warnings. */
+  --bad: #c73f3b;
+  --sel: rgba(17, 16, 22, 0.045);
 
   /* The one elevation in the app: what something looks like while it is off the
-     page — a menu, a dialog, a row you are dragging. Nothing is raised because
+     page — a sheet, a drawer, a row you are dragging. Nothing is raised because
      it is important. */
-  --lift: 0 8px 22px rgba(27, 26, 23, 0.14);
-  /* What a menu or dialog sits on. Two shadows: a contact shadow to seat it and
-     a long soft one to lift it. */
+  --lift: 0 8px 22px rgba(17, 16, 22, 0.14);
+  /* What a menu, popover, dialog or toast sits on: Framer's level-2 floating
+     card. A 1px ring stands in for the border it no longer has, a contact
+     shadow seats it, and a long soft tinted one lifts it. */
   --shadow-pop:
-    0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px -10px rgba(0, 0, 0, 0.22);
+    0 0 0 1px rgba(17, 16, 22, 0.06), 0 1px 2px rgba(17, 16, 22, 0.05),
+    0 12px 32px -8px rgba(17, 16, 22, 0.18);
 
-  /* The display face, as a variable so it is swappable in one place. Every
-     serif rule below reads this rather than naming the family. */
-  --serif: 'Instrument Serif', ui-serif, Georgia, serif;
+  /* The display face. One family for everything readable — titles, body,
+     figures — with hierarchy carried by size, weight and tracking rather than
+     by switching typeface. Still called `--serif` because every display rule
+     and the Tailwind `font-display` utility read it; the name is a fossil of
+     the Instrument Serif era, the value is not. */
+  --serif: 'Geist', ui-sans-serif, system-ui, sans-serif;
 
   /* Motion. Three speeds, because the app only ever does three things: tint a
      surface under the pointer, move a control between two states, and narrate
@@ -154,7 +161,7 @@
   --fs-small: 14px;
   --fs-base: 15px;
   --fs-md: 16px;
-  --fs-lg: 17.5px;
+  --fs-lg: 18px;
 
   /* The widescreen field. The dark block below says what both of these do. */
   --field-ink: #3a3128;
@@ -164,31 +171,40 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  /* The island paper. Lifted slightly from the old flat value so it still reads
-     as lit against the darker ground below it. */
-  --bg: #1a1914;
+  /* Framer's canvas and surfaces, with the same faint violet bias as light.
+     The island paper is surface-1, lifted from a near-black ground. */
+  --bg: #141317;
   /* The ground. Recessed hard here on purpose: in the island model the gap is
      meant to fall away, and at this end of the ramp a subtle step just reads as
      a rendering artefact rather than as depth. */
-  --ground: #0e0d0a;
+  --ground: #0a090c;
   /* A band inside an island — raised from the island's paper rather than
      recessed, since a step down from `--bg` lands on the ground's value and the
-     band would read as a hole punched through the panel. */
-  --bg2: #232219;
-  --fg: #ede8de;
-  --mut: #8f887c;
-  --faint: #6b6459;
-  --line: rgba(237, 232, 222, 0.13);
-  --line2: rgba(237, 232, 222, 0.06);
-  --acc: #9178de;
-  --warn: #c0a15a;
-  --ok: #7fa887;
-  --bad: #d98782;
-  --sel: rgba(237, 232, 222, 0.05);
+     band would read as a hole punched through the panel. Surface-2. */
+  --bg2: #1d1c22;
+  /* A floating thing is one surface up from the island it floats over. */
+  --pop: #1d1c22;
+  --fg: #f1f0f4;
+  --mut: #9895a3;
+  --faint: #6d6a78;
+  --line: rgba(241, 240, 244, 0.1);
+  --line2: rgba(241, 240, 244, 0.06);
+  /* One step lighter than the old dark accent, so purple text and the focus
+     ring pass 4.5:1 on the new island. Same hue. */
+  --acc: #9b84e6;
+  --warn: #d4a548;
+  --ok: #5fb883;
+  --bad: #e4736d;
+  --sel: rgba(241, 240, 244, 0.06);
   /* The ground is dark enough that a tinted shadow disappears into it; only a
      near-black one still reads as a gap. */
   --lift: 0 8px 22px rgba(0, 0, 0, 0.5);
-  --shadow-pop: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+  /* Framer's light-edge card: a half-tone ring, a one-pixel highlight along
+     the top edge, and a deep drop. On dark, lift is what separates a menu from
+     the island under it; a border would only draw a box. */
+  --shadow-pop:
+    0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 30px rgba(0, 0, 0, 0.5);
 
   /* The widescreen field (`@layer components`, section "field"). `--field-ink`
      is what the crop tint is mixed towards, so the whole ornament sits in the
@@ -212,7 +228,7 @@
   --foreground: var(--fg);
   --card: var(--bg);
   --card-foreground: var(--fg);
-  --popover: var(--bg);
+  --popover: var(--pop);
   --popover-foreground: var(--fg);
 
   --primary: var(--acc);
@@ -228,15 +244,19 @@
   --accent: var(--sel);
   --accent-foreground: var(--fg);
 
-  /* Destructive is the accent, deliberately. There is no red in this
-     palette at all, and the design's position is that an irreversible action
-     should sit at the same weight as its neighbours until you reach for it —
-     the words carry the warning, the colour only confirms it. */
-  --destructive: var(--acc);
-  --destructive-foreground: var(--bg);
+  /* Destructive is the palette's one red. It used to be the accent, on the
+     grounds that the words carry the warning; with a red already in the
+     palette for verdicts, "Delete" sharing a colour with "Save" was the one
+     thing the refresh's reviewers named first. Form errors, invalid fields and
+     the destructive menu item all read this. */
+  --destructive: var(--bad);
+  --destructive-foreground: #ffffff;
 
   --border: var(--line);
-  --input: var(--line);
+  /* A field's resting hairline is the soft one: the field is filled (`--bg2`),
+     so the surface does the outlining and the line only firms up under the
+     pointer. */
+  --input: var(--line2);
   --ring: var(--acc);
 
   /* Charts: the accent leads, the rest are the earths that sit beside it.
@@ -249,7 +269,7 @@
   --chart-4: #86655a;
   --chart-5: #55707d;
 
-  --radius: 5px;
+  --radius: 8px;
 
   /* The wash under a duotone icon's glyph. Phosphor paints that layer with the
      icon's own colour, which makes every icon in the app a two-tone grey; the
@@ -265,10 +285,10 @@
   --sidebar-foreground: var(--mut);
   --sidebar-primary: var(--acc);
   --sidebar-primary-foreground: var(--bg);
-  /* The lit nav entry can no longer be "the page's paper on a recessed ground"
-     — the sidebar *is* that paper now. It takes the same pointer tint every
-     other selected row in the app uses instead. */
-  --sidebar-accent: var(--sel);
+  /* The lit nav entry is a lift, not a colour: the band surface on the
+     island's paper, which is Framer's "selected pricing tab" rule. Hover keeps
+     the pointer tint, so the two states are told apart by depth. */
+  --sidebar-accent: var(--bg2);
   --sidebar-accent-foreground: var(--fg);
   --sidebar-border: var(--line);
   --sidebar-ring: var(--acc);
@@ -304,7 +324,7 @@
   --frame-max: 126rem;
   --frame-pad: 0.5rem;
   --frame-gap: 0.5rem;
-  --island-radius: 14px;
+  --island-radius: 16px;
 
   /* The height of the bar an island can close on, measured from its top rule to
      the island's bottom edge: the sidebar's profile row, and the timesheet's
@@ -385,7 +405,7 @@
 }
 
 @theme inline {
-  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--serif);
   --font-mono: 'Geist Mono', ui-monospace, monospace;
 
@@ -437,14 +457,15 @@
   --color-line: var(--line);
   --color-line2: var(--line2);
 
-  /* Radii, from the design: 3px on a list row, 5px on a control, 7px on a
-     floating card, 8px on the nav pill. Nothing in the app is rounder than
-     that except a genuine pill (`rounded-full`). */
-  --radius-sm: 3px;
-  --radius-md: 4px;
+  /* Radii by role (DESIGN.md): 8px on a control — a button, a field, a menu
+     item — and 6px on its small size; 12px on a floating card — a menu, a
+     popover, a toast; 16px on a dialog and on an island. Only a badge, a status
+     pill, an avatar and a calendar day are round. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
   --radius-lg: var(--radius);
-  --radius-xl: 7px;
-  --radius-2xl: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
 
   /* The app's one elevation, as a utility (`shadow-lift`). The menu/dialog pair
      is `--shadow-pop`, read directly rather than through the theme — naming it
@@ -472,8 +493,8 @@
   --color-orange: var(--orange);
   --color-orange-tint: var(--orange-tint);
   --radius-control: var(--radius);
-  --radius-chip: var(--radius);
-  --radius-card: 7px;
+  --radius-chip: var(--radius-md);
+  --radius-card: var(--radius-xl);
   --shadow-btn: var(--shadow-btn);
   --shadow-hairline: var(--shadow-hairline);
   --shadow-card: var(--shadow-card);
@@ -500,6 +521,8 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   font-size: var(--fs-small);
+  /* Framer's body voice: a touch of negative tracking at every size. */
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -616,8 +639,8 @@ html {
   .font-display,
   .serif {
     font-family: var(--serif);
-    font-weight: 400;
-    letter-spacing: 0.01em;
+    font-weight: 500;
+    letter-spacing: -0.02em;
   }
 
   /* Tabular figures for any body-font numbers in tables. */
@@ -635,17 +658,17 @@ html {
   /* Small caps-ish section marker. Used everywhere a heading would otherwise be
      too loud — which, in this design, is nearly everywhere. */
   .eyebrow {
-    font: 400 var(--fs-micro) / 1 var(--font-sans);
-    letter-spacing: 0.12em;
+    font: 500 var(--fs-micro) / 1 var(--font-sans);
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--faint);
+    color: var(--mut);
   }
 
   .eyebrow-lg {
-    font: 400 var(--fs-caption) / 1 var(--font-sans);
-    letter-spacing: 0.14em;
+    font: 500 var(--fs-caption) / 1 var(--font-sans);
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--faint);
+    color: var(--mut);
   }
 
   /* A section's label and the one line of context that belongs beside it. The
@@ -668,36 +691,33 @@ html {
     }
   }
 
+  /* Framer's display-md: 32px, medium, tracking pulled to about 3% of the
+     size. Weight stays in a narrow band (400 / 500 / 600) across the whole
+     scale; hierarchy is size and tracking, never a 700. */
   .h1 {
     font-family: var(--serif);
-    font-weight: 400;
+    font-weight: 500;
     font-size: 32px;
     line-height: 1.1;
-    letter-spacing: 0.01em;
+    letter-spacing: -0.025em;
     margin: 0;
+    text-wrap: balance;
   }
 
+  /* Framer's headline tier: 22px, semibold, tight. */
   .h2 {
     font-family: var(--serif);
-    font-weight: 400;
-    font-size: 23px;
+    font-weight: 600;
+    font-size: 22px;
     line-height: 1.2;
-    letter-spacing: 0.01em;
+    letter-spacing: -0.02em;
     margin: 0;
-  }
-
-  /* The display rules above are set for Instrument Serif, which is drawn
-     narrow and dark at 400. Instrument Sans at the same settings reads light
-     and loose, so under "Boring font" it takes a step of weight and gives the
-     tracking back. */
-  :root[data-font='sans'] :is(.font-display, .serif, .h1, .h2) {
-    font-weight: 500;
-    letter-spacing: -0.01em;
+    text-wrap: balance;
   }
 
   .lede {
     font-size: var(--fs-md);
-    line-height: 1.65;
+    line-height: 1.55;
     color: var(--mut);
     margin: 0;
     text-wrap: pretty;
@@ -724,7 +744,7 @@ html {
     width: calc(100% + 24px);
     padding: 11px 12px;
     margin: 0 -12px;
-    border-radius: 3px;
+    border-radius: var(--radius);
     font-size: var(--fs-small);
     text-align: left;
     transition: background var(--dur-fast);
@@ -839,7 +859,7 @@ html {
   /* A quiet text control: the app's default action treatment. Same weight as the
      text around it at rest, foreground under the pointer. */
   .quiet {
-    color: var(--faint);
+    color: var(--mut);
     cursor: pointer;
     transition: color var(--dur-base);
   }
@@ -1365,6 +1385,22 @@ html {
     }
   }
 
+  /* The home target rails: the fill grows once from nothing to what is
+     logged, and eases between values when an entry is saved. The "today" tick
+     never moves; only what you logged does. `from { width: 0 }` animates to
+     the inline width the component sets, which is what lets one keyframe
+     serve every rail. */
+  .rail-fill {
+    animation: rail-grow 450ms var(--ease-out) both;
+    transition: width 450ms var(--ease-out);
+  }
+
+  @keyframes rail-grow {
+    from {
+      width: 0;
+    }
+  }
+
   .spin {
     animation: spin 900ms linear infinite;
   }
@@ -1454,6 +1490,10 @@ html {
     .screen > :nth-child(n + 2) {
       animation: none;
     }
+    .rail-fill {
+      animation: none;
+      transition: none;
+    }
     /* The assistant's entrances and the loader's shimmer are narration: with
        reduced motion the content simply arrives. The loader grid stops at its
        dim resting state, which still reads as "working" because the elapsed
@@ -1483,6 +1523,16 @@ html {
     white-space: nowrap;
     border: 0;
   }
+}
+
+/* The theme toggle crossfades the whole document (`lib/theme.ts` wraps the
+   attribute write in a view transition) instead of snapping every surface at
+   once. Unlayered because the pseudo-elements are the browser's own. Reduced
+   motion skips the transition in `setTheme` itself, so nothing is needed here. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: var(--ease-out);
 }
 
 @layer base {

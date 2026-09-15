@@ -32,19 +32,19 @@ const Toaster = ({ ...props }: ToasterProps) => {
 				{
 					"--normal-bg": "var(--popover)",
 					"--normal-text": "var(--popover-foreground)",
-					"--normal-border": "var(--border)",
-					// A toast is off the page, so it takes the same pair of shadows
-					// every menu and dialog takes — the app's one "floating" look.
-					"--border-radius": "7px",
+					"--normal-border": "transparent",
+					// A toast is off the page, so it takes the floating card every menu
+					// takes: 12px, the light-edge shadow, and no border of its own.
+					"--border-radius": "12px",
 					"--success-bg": "var(--popover)",
 					"--success-text": "var(--ok)",
-					"--success-border": "var(--border)",
+					"--success-border": "transparent",
 					"--error-bg": "var(--popover)",
-					"--error-text": "var(--acc)",
-					"--error-border": "var(--border)",
+					"--error-text": "var(--bad)",
+					"--error-border": "transparent",
 					"--warning-bg": "var(--popover)",
 					"--warning-text": "var(--warn)",
-					"--warning-border": "var(--border)",
+					"--warning-border": "transparent",
 				} as React.CSSProperties
 			}
 			toastOptions={{

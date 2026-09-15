@@ -120,9 +120,10 @@ export function MobileTabBar({
 				data-slot="mobile-tab-bar"
 				className="fixed inset-x-0 bottom-0 z-40 flex justify-center pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
 			>
-				{/* One lift, the design's only one. The bar floats over the page, so it is
-				    the single element in the app entitled to a shadow. */}
-				<div className="flex h-16 items-center gap-1 rounded-full border bg-background p-1.5 shadow-lift">
+				{/* The bar floats over the page, so it takes the floating card every menu
+				    takes — and stays a pill, the one control that should be, because it
+				    floats. */}
+				<div className="flex h-16 items-center gap-1 rounded-full bg-popover p-1.5 shadow-[var(--shadow-pop)]">
 					{primaryItems.map((item) => {
 						const active = item.to === activeTo;
 						const badge = item.to === "/$orgSlug/time" ? unfiledCount : 0;
@@ -137,7 +138,7 @@ export function MobileTabBar({
 								onClick={(e) => active && e.preventDefault()}
 								className={cn(
 									"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform active:scale-95",
-									active ? "text-primary" : "text-muted-foreground",
+									active ? "text-foreground" : "text-muted-foreground",
 								)}
 							>
 								{active && (
@@ -147,7 +148,7 @@ export function MobileTabBar({
 									<motion.div
 										layoutId="tab-bar-active-pill"
 										transition={springExpressive}
-										className="absolute inset-0 -z-10 rounded-full bg-muted"
+										className="absolute inset-0 -z-10 rounded-full bg-secondary"
 									/>
 								)}
 								{/* The badge hangs off the icon rather than the label,
@@ -172,14 +173,14 @@ export function MobileTabBar({
 						onClick={() => setMoreOpen(true)}
 						className={cn(
 							"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform active:scale-95",
-							isMoreActive ? "text-primary" : "text-muted-foreground",
+							isMoreActive ? "text-foreground" : "text-muted-foreground",
 						)}
 					>
 						{isMoreActive && (
 							<motion.div
 								layoutId="tab-bar-active-pill"
 								transition={springExpressive}
-								className="absolute inset-0 -z-10 rounded-full bg-muted"
+								className="absolute inset-0 -z-10 rounded-full bg-secondary"
 							/>
 						)}
 						<DotsThreeIcon weight="regular" className="size-[21px]" />

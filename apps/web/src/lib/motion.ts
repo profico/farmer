@@ -70,9 +70,12 @@ export const dialogPopupVariants: Variants = {
  * node via the `origin-(--transform-origin)` class) so the menu emerges from its
  * trigger — Apple spatial anchoring. motion never touches `transform-origin`.
  */
+/** A menu arrives from its trigger: a small scale from the anchor plus a
+ *  4px rise, so the card comes out of the control rather than inflating in
+ *  place. Reversed on close. */
 export const menuPopupVariants: Variants = {
-	open: { opacity: 1, scale: 1 },
-	closed: { opacity: 0, scale: 0.96 },
+	open: { opacity: 1, scale: 1, y: 0 },
+	closed: { opacity: 0, scale: 0.96, y: -4 },
 };
 
 export type SheetSide = "top" | "right" | "bottom" | "left";

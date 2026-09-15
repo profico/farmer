@@ -363,11 +363,6 @@ function DisplaySection() {
 		>
 			<SettingList>
 				<DisplayPrefRow
-					pref="boringFont"
-					title="Boring font"
-					description="Show page titles and large numbers in a plain font."
-				/>
-				<DisplayPrefRow
 					pref="lessMotion"
 					title="Less movement"
 					description="Turn off animations. Menus, dialogs and lists appear at once."
