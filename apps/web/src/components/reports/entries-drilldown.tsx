@@ -250,7 +250,7 @@ export function EntriesExport({
 				]),
 			})}
 			pdf={() => {
-				const columns = COLUMNS.filter((c) => c.id !== by);
+				const columns = visibleColumns(input, by);
 				// The PDF writes a day as 12/08/2026; the screen as "Wed, Aug 12".
 				const cellFor = (row: DetailRow, column: EntryGroup) =>
 					column === "date" ? formatPdfDate(row.date) : cellOf(row, column);
@@ -366,6 +366,21 @@ const groupEntries = (rows: DetailRow[], by: EntryGroup): DetailGroup[] => {
 const groupOrder = (by: EntryGroup) => (a: DetailGroup, b: DetailGroup) =>
 	by === "date" ? a.key.localeCompare(b.key) : b.seconds - a.seconds;
 
+/** Which columns to show for a grouping: the group's own column drops (it's
+ *  the heading), and so does a column every row would repeat — the project
+ *  you opened, its client, the person a link narrowed to. The task column
+ *  stays — it carries the note. Shared by the on-screen table and the PDF
+ *  export, so a project page's PDF doesn't repeat the client and project on
+ *  every row the way the on-screen table already avoids. */
+const visibleColumns = (input: TimeReportDetailInput, by: EntryGroup) => {
+	const fixed = new Set<EntryGroup>([
+		...(input.clientId || input.projectId ? ["client" as const] : []),
+		...(input.projectId ? ["project" as const] : []),
+		...(input.userId ? ["teammate" as const] : []),
+	]);
+	return COLUMNS.filter((c) => c.id !== by && !fixed.has(c.id));
+};
+
 const cellOf = (row: DetailRow, column: EntryGroup) =>
 	column === "client"
 		? row.clientName
@@ -427,15 +442,7 @@ function EntriesTable({
 	);
 
 	const groups = groupEntries(filteredRows, by);
-	// A column every row would repeat says nothing: the project you opened,
-	// its client, the person a link narrowed to. The task column stays — it
-	// carries the note.
-	const fixed = new Set<EntryGroup>([
-		...(input.clientId || input.projectId ? ["client" as const] : []),
-		...(input.projectId ? ["project" as const] : []),
-		...(input.userId ? ["teammate" as const] : []),
-	]);
-	const columns = COLUMNS.filter((c) => c.id !== by && !fixed.has(c.id));
+	const columns = visibleColumns(input, by);
 	// A sort on a column no longer shown — it became the grouping, or a link
 	// fixed it — falls back to the order the entries arrived in.
 	const active: Sort<EntrySortKey> =
