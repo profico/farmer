@@ -15,6 +15,7 @@ export * from "./projects";
 export * from "./recurring-block-rules";
 export * from "./reminder-settings";
 export * from "./reports";
+export * from "./rewind";
 export * from "./sessions";
 export * from "./slack";
 export * from "./tasks";

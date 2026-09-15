@@ -23,6 +23,7 @@ import { Route as ApiLoginRouteImport } from './routes/api/login'
 import { Route as AcceptInviteInvitationIdRouteImport } from './routes/accept-invite/$invitationId'
 import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known/oauth-protected-resource'
 import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known/oauth-authorization-server'
+import { Route as OrgSlugRewindRouteImport } from './routes/$orgSlug/rewind'
 import { Route as OrgSlugReportsRouteImport } from './routes/$orgSlug/reports'
 import { Route as OrgSlugAssistantRouteImport } from './routes/$orgSlug/assistant'
 import { Route as OrgSlugTimeRouteRouteImport } from './routes/$orgSlug/time/route'
@@ -145,6 +146,11 @@ const DotwellKnownOauthAuthorizationServerRoute =
     path: '/.well-known/oauth-authorization-server',
     getParentRoute: () => rootRouteImport,
   } as any)
+const OrgSlugRewindRoute = OrgSlugRewindRouteImport.update({
+  id: '/rewind',
+  path: '/rewind',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugReportsRoute = OrgSlugReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -413,6 +419,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -475,6 +482,7 @@ export interface FileRoutesByTo {
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -540,6 +548,7 @@ export interface FileRoutesById {
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -606,6 +615,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
+    | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
@@ -668,6 +678,7 @@ export interface FileRouteTypes {
     | '/no-access'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
+    | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
@@ -732,6 +743,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
+    | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
@@ -928,6 +940,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/.well-known/oauth-authorization-server'
       preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/$orgSlug/rewind': {
+      id: '/$orgSlug/rewind'
+      path: '/rewind'
+      fullPath: '/$orgSlug/rewind'
+      preLoaderRoute: typeof OrgSlugRewindRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/reports': {
       id: '/$orgSlug/reports'
@@ -1287,6 +1306,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugTimeRouteRoute: typeof OrgSlugTimeRouteRouteWithChildren
   OrgSlugAssistantRoute: typeof OrgSlugAssistantRoute
   OrgSlugReportsRoute: typeof OrgSlugReportsRoute
+  OrgSlugRewindRoute: typeof OrgSlugRewindRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
   OrgSlugSettingsClientsRoute: typeof OrgSlugSettingsClientsRoute
   OrgSlugSettingsHolidaysRoute: typeof OrgSlugSettingsHolidaysRoute
@@ -1311,6 +1331,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugTimeRouteRoute: OrgSlugTimeRouteRouteWithChildren,
   OrgSlugAssistantRoute: OrgSlugAssistantRoute,
   OrgSlugReportsRoute: OrgSlugReportsRoute,
+  OrgSlugRewindRoute: OrgSlugRewindRoute,
   OrgSlugIndexRoute: OrgSlugIndexRoute,
   OrgSlugSettingsClientsRoute: OrgSlugSettingsClientsRoute,
   OrgSlugSettingsHolidaysRoute: OrgSlugSettingsHolidaysRoute,
