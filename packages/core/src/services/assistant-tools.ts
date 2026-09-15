@@ -780,7 +780,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "file_time_entries",
 		kind: "write",
 		description:
-			"Attribute existing unfiled entries (synced meetings, commit blocks) to a project, by id. Get the ids from list_unfiled_entries. The user is shown the entries as a checklist and may file only some of them.",
+			"Attribute existing unfiled entries (synced meetings, commit blocks) to a project, by id. Get the ids from list_unfiled_entries. Pass taskId only to change the task of every entry in the batch; leave it out to keep each entry's own task. The user is shown the entries as a checklist and may file only some of them.",
 		schema: fileTimeEntriesInput,
 		summarize: async (ctx, args) => {
 			const count = Array.isArray(args.timeEntryIds)

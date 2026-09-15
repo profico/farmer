@@ -2,7 +2,12 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "../db";
 import { account } from "../db/schema/auth";
-import { project, type TaskSystemKey, timeEntry } from "../db/schema/domain";
+import {
+	project,
+	task,
+	type TaskSystemKey,
+	timeEntry,
+} from "../db/schema/domain";
 import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
@@ -24,6 +29,7 @@ import type {
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
 import { ctxAccess, ctxTimezone } from "./context";
+import { filingRulesService, ruleKeyFor } from "./filing-rules.service";
 import {
 	githubService,
 	type ScannedPullRequestActivity,
@@ -622,11 +628,63 @@ export const dayAssemblyService = {
 			}
 		}
 
+		// ── Filing rules: the person's standing answers ─────────────────────────
+		//
+		// Every row proposed without a project (a meeting, the break, the
+		// rest-of-day block) gets the project and task the person already chose
+		// for that title, so the day is filed as it is added rather than filed
+		// again in File your time. A row that already has a project got it from
+		// its evidence, and a rule keyed on a title does not outrank that.
+		const rules = await filingRulesService.resolve(ctx, [
+			...new Set(
+				suggestions.filter((s) => s.projectId === null).map((s) => s.taskId),
+			),
+		]);
+		const ruled = suggestions.flatMap((s) => {
+			if (s.projectId !== null) return [];
+			const target = rules.get(ruleKeyFor(s.taskId, s.description));
+			return target ? [{ suggestion: s, target }] : [];
+		});
+		const [ruleProjects, ruleTasks] =
+			ruled.length === 0
+				? [[], []]
+				: await Promise.all([
+						db.query.project.findMany({
+							where: and(
+								eq(project.organizationId, ctx.organizationId),
+								inArray(project.id, [
+									...new Set(ruled.map((r) => r.target.projectId)),
+								]),
+							),
+							columns: { id: true, name: true },
+						}),
+						db.query.task.findMany({
+							where: inArray(task.id, [
+								...new Set(ruled.map((r) => r.target.taskId)),
+							]),
+							columns: { id: true, name: true },
+						}),
+					]);
+		const projectNames = new Map(ruleProjects.map((p) => [p.id, p.name]));
+		const taskNames = new Map(ruleTasks.map((t) => [t.id, t.name]));
+		const targets = new Map(ruled.map((r) => [r.suggestion.key, r.target]));
+		const filed = suggestions.map((s) => {
+			const target = targets.get(s.key);
+			if (!target) return s;
+			return {
+				...s,
+				projectId: target.projectId,
+				projectName: projectNames.get(target.projectId) ?? null,
+				taskId: target.taskId,
+				taskName: taskNames.get(target.taskId) ?? s.taskName,
+			};
+		});
+
 		return {
 			date,
 			targetSeconds,
 			loggedSeconds: logged,
-			suggestions,
+			suggestions: filed,
 			sources: {
 				calendar:
 					calendarLinked && calendarEvents !== null ? "ok" : "unavailable",

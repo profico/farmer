@@ -205,6 +205,13 @@ export const filingRule = pgTable(
 		projectId: uuid("project_id")
 			.notNull()
 			.references(() => project.id, { onDelete: "cascade" }),
+		/** The task the meeting is filed under. Null keeps `taskId`: most rules
+		 *  only answer "which project", and a Meeting stays a Meeting. Set null
+		 *  rather than cascade, because losing the task still leaves the project
+		 *  answer standing. */
+		targetTaskId: uuid("target_task_id").references(() => task.id, {
+			onDelete: "set null",
+		}),
 		...stamps,
 	},
 	(t) => [
