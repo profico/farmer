@@ -56,7 +56,22 @@ const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 let harness: TestDb;
 let breakTaskId: string;
 let devTaskId: string;
+let vacationTaskId: string;
 let projectId: string;
+
+/** A full day of vacation, booked the way the absence dialog books it. */
+const vacationOn = (date: string) =>
+	db
+		.insert(timeEntry)
+		.values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: vacationTaskId,
+			date,
+			description: "",
+			durationSeconds: 8 * 3600,
+		})
+		.returning({ id: timeEntry.id });
 
 const entriesOn = (date: string) =>
 	db.query.timeEntry.findMany({
@@ -168,10 +183,14 @@ beforeAll(async () => {
 
 	// The two absence built-ins, so the project-less task list has something to
 	// be narrower than.
-	await db.insert(task).values([
-		{ scope: "site" as const, name: "Vacation", isAbsence: true },
-		{ scope: "site" as const, name: "Sick Leave", isAbsence: true },
-	]);
+	const [vacation] = await db
+		.insert(task)
+		.values([
+			{ scope: "site" as const, name: "Vacation", isAbsence: true },
+			{ scope: "site" as const, name: "Sick Leave", isAbsence: true },
+		])
+		.returning({ id: task.id });
+	vacationTaskId = vacation?.id ?? "";
 });
 
 afterAll(async () => {
@@ -318,6 +337,53 @@ describe("materializing a recurring block", () => {
 		await recurringBlockRulesService.materializeRange(ctx, MONDAY, MONDAY);
 
 		expect(await entriesOn(MONDAY)).toHaveLength(2);
+	});
+});
+
+describe("a day off gets no recurring block", () => {
+	test("a day booked as vacation is skipped", async () => {
+		// The report: the daily break landed on every vacation day, so a week off
+		// showed 8h of vacation plus a 30-minute break nobody took.
+		await runningBreakRuleSince(MONDAY);
+		await vacationOn(TUESDAY);
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		const tuesday = await entriesOn(TUESDAY);
+		expect(tuesday).toHaveLength(1);
+		expect(tuesday[0]?.taskId).toBe(vacationTaskId);
+		expect(await allEntries()).toHaveLength(5); // four breaks + the vacation
+	});
+
+	test("a block already on a day later booked off is taken back", async () => {
+		// Absence booked for today, or for a past day inside the window, after the
+		// pass already wrote that day's break.
+		await runningBreakRuleSince(MONDAY);
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+		await vacationOn(WEDNESDAY);
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		const wednesday = await entriesOn(WEDNESDAY);
+		expect(wednesday).toHaveLength(1);
+		expect(wednesday[0]?.taskId).toBe(vacationTaskId);
+		expect(await allEntries()).toHaveLength(5);
+	});
+
+	test("the block comes back when the day off is removed", async () => {
+		// Taking the block back is not the person deleting it, so it writes no
+		// skip: cancel the vacation and the day is an ordinary working day again.
+		await runningBreakRuleSince(MONDAY);
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+		const [off] = await vacationOn(WEDNESDAY);
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		await db.delete(timeEntry).where(eq(timeEntry.id, off?.id ?? ""));
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
+
+		const wednesday = await entriesOn(WEDNESDAY);
+		expect(wednesday).toHaveLength(1);
+		expect(wednesday[0]?.taskId).toBe(breakTaskId);
 	});
 });
 
