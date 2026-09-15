@@ -22,7 +22,6 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
-import { downloadCsv } from "#/lib/csv.ts";
 import { cn } from "#/lib/utils.ts";
 import { overtimeReportQuery } from "#/queries/reports.ts";
 
@@ -31,6 +30,7 @@ import {
 	ActiveOnlyToggle,
 	byNumber,
 	byText,
+	ExportMenu,
 	FigurePending,
 	formatDateHeading,
 	PeriodPicker,
@@ -84,7 +84,7 @@ export function OvertimeTab({
 				<Suspense
 					fallback={
 						<Button variant="outline" size="sm" disabled>
-							Export CSV
+							Export
 						</Button>
 					}
 				>
@@ -112,24 +112,41 @@ function OvertimeExport({ input }: { input: OvertimeReportInput }) {
 	const orgSlug = useOrgSlug();
 	const { data } = useSuspenseQuery(overtimeReportQuery(orgSlug, input));
 	return (
-		<Button
-			variant="outline"
-			size="sm"
+		<ExportMenu
 			disabled={data.rows.length === 0}
-			onClick={() =>
-				downloadCsv(
-					`overtime_${input.from}_${input.to}.csv`,
-					["Person", "Entries", "Hours"],
-					data.rows.map((r) => [
-						r.name,
-						String(r.count),
-						formatDecimalHours(r.seconds),
-					]),
-				)
-			}
-		>
-			Export CSV
-		</Button>
+			filename={`overtime_${input.from}_${input.to}`}
+			csv={() => ({
+				headers: ["Person", "Entries", "Hours"],
+				rows: data.rows.map((r) => [
+					r.name,
+					String(r.count),
+					formatDecimalHours(r.seconds),
+				]),
+			})}
+			pdf={() => ({
+				title: "Overtime report",
+				from: input.from,
+				to: input.to,
+				total: formatReportHours(
+					data.rows.reduce((sum, r) => sum + r.seconds, 0),
+				),
+				facts: input.activeOnly ? [["Projects", "Active only"]] : [],
+				columns: [
+					{ label: "Person" },
+					{ label: "Entries", align: "right" },
+					{ label: "Hours", align: "right" },
+				],
+				groups: [
+					{
+						rows: [...data.rows]
+							.sort((a, b) => b.seconds - a.seconds)
+							.map((r) => ({
+								cells: [r.name, String(r.count), formatReportHours(r.seconds)],
+							})),
+					},
+				],
+			})}
+		/>
 	);
 }
 

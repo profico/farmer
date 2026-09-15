@@ -36,6 +36,8 @@
 		"clsx": "^2.1.1",
 		"drizzle-orm": "0.45.2",
 		"emojibase-data": "17.0.0",
+		"jspdf": "4.2.1",
+		"jspdf-autotable": "5.0.8",
 		"motion": "12.42.2",
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0",

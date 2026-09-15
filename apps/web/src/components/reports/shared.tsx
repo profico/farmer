@@ -15,9 +15,10 @@ import {
 	CaretRightIcon,
 	CaretUpIcon,
 } from "@phosphor-icons/react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { cloneElement, type ReactElement, Suspense, useState } from "react";
 import type * as React from "react";
+import { toast } from "sonner";
 
 import { TableLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import {
@@ -25,7 +26,14 @@ import {
 	stepperClass,
 	TimeToolbar,
 } from "#/components/time/time-toolbar.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "#/components/ui/dropdown-menu.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Select,
@@ -45,7 +53,9 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
+import { downloadCsv } from "#/lib/csv.ts";
 import { formatMonthKey, formatWeekRange } from "#/lib/format-date.ts";
+import { downloadPdf, type PdfReport } from "#/lib/pdf.ts";
 import { cn } from "#/lib/utils.ts";
 
 import type { PeriodSearch, Search } from "./search.ts";
@@ -601,6 +611,58 @@ export function RowDisclosure({
 			/>
 			{children}
 		</button>
+	);
+}
+
+/** The export control every report shares: one button, CSV or PDF. Both are
+ *  built on the click from the rows already on screen (lib/csv.ts says why),
+ *  so each format is a function returning what it writes. The filename
+ *  carries no extension — each format adds its own. The organization's name
+ *  is read here, once, for the PDF's header. */
+export function ExportMenu({
+	disabled,
+	filename,
+	csv,
+	pdf,
+}: {
+	disabled?: boolean;
+	filename: string;
+	csv: () => { headers: string[]; rows: string[][] };
+	pdf: () => Omit<PdfReport, "org">;
+}) {
+	const org = useRouteContext({
+		from: "/$orgSlug",
+		select: (context) => context.organization.name,
+	});
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				disabled={disabled}
+				render={<Button variant="outline" size="sm" disabled={disabled} />}
+			>
+				Export
+				<CaretDownIcon weight="bold" data-icon="inline-end" />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				<DropdownMenuItem
+					onClick={() => {
+						const { headers, rows } = csv();
+						downloadCsv(`${filename}.csv`, headers, rows);
+					}}
+				>
+					Export CSV
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={() =>
+						downloadPdf(`${filename}.pdf`, { org, ...pdf() }).catch(() =>
+							toast.error("Could not build the PDF"),
+						)
+					}
+				>
+					Export PDF
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }
 
