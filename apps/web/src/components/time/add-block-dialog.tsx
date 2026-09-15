@@ -1,5 +1,6 @@
 import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
+	addDaysToKey,
 	parseDuration,
 	snapToQuarterHour,
 	timeKeyInTz,
@@ -7,6 +8,8 @@ import {
 } from "@farmer/core/lib/time";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+	ArrowLeftIcon,
+	ArrowRightIcon,
 	CalendarDotIcon,
 	CaretRightIcon,
 	GitCommitIcon,
@@ -28,6 +31,7 @@ import { z } from "zod";
 
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { TaskPicker } from "#/components/pickers/task-picker.tsx";
+import { DateJump, stepperClass } from "#/components/time/time-toolbar.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
@@ -49,13 +53,6 @@ import {
 	FormMessage,
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
@@ -222,15 +219,15 @@ function activitySummary(
 
 export function AddBlockDialog({
 	timezone,
-	dateOptions,
 	defaultDate: defaultDateProp,
 	defaultProjectId,
 	entry,
 	trigger,
 }: {
 	timezone: string;
-	dateOptions: { value: string; label: string }[];
-	defaultDate?: string;
+	/** The day the dialog opens on; the stepper in its header moves from there.
+	 *  An existing entry opens on its own day. */
+	defaultDate: string;
 	/** Opened from a project's own page: that project, already chosen. */
 	defaultProjectId?: string;
 	entry?: ExistingTimeEntry;
@@ -241,8 +238,7 @@ export function AddBlockDialog({
 	const queryClient = useQueryClient();
 	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
 
-	const defaultDate =
-		entry?.date ?? defaultDateProp ?? dateOptions[0]?.value ?? "";
+	const defaultDate = entry?.date ?? defaultDateProp;
 
 	const buildDefaults = (): FormValues => ({
 		projectId: entry?.projectId ?? defaultProjectId ?? TIME_OFF,
@@ -672,10 +668,11 @@ export function AddBlockDialog({
 		);
 	};
 
-	const dialogDateLabel = (() => {
-		const parts = defaultDate.split("-").map(Number);
-		if (parts.length !== 3 || parts.some((p) => Number.isNaN(p)))
-			return defaultDate;
+	// "Tuesday, September 15, 2026" — the weekday because that is how a day is
+	// remembered, the year because the stepper can leave this one.
+	const dialogDateLabel = (key: string) => {
+		const parts = key.split("-").map(Number);
+		if (parts.length !== 3 || parts.some((p) => Number.isNaN(p))) return key;
 		const [year, month, day] = parts;
 		return new Date(
 			Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1),
@@ -683,9 +680,19 @@ export function AddBlockDialog({
 			weekday: "long",
 			month: "long",
 			day: "numeric",
+			year: "numeric",
 			timeZone: "UTC",
 		});
-	})();
+	};
+
+	// The repeat days default to the day being logged, so they follow it until
+	// repeat is switched on and the choice becomes the person's.
+	const setDate = (next: string) => {
+		form.setValue("date", next, { shouldValidate: true });
+		if (!form.getValues("repeatEnabled")) {
+			form.setValue("daysOfWeek", [weekdayInTz(next, timezone)]);
+		}
+	};
 
 	const mutation = useMutation<{ id: string }, Error, FormValues>({
 		mutationFn: (values: FormValues) => {
@@ -837,7 +844,31 @@ export function AddBlockDialog({
 			<DialogContent className="sm:max-w-xl">
 				<DialogHeader>
 					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
-					<p className="text-sm text-muted-foreground">{dialogDateLabel}</p>
+					{/* The timesheet's ‹ date › stepper, so the day can change without
+					    closing the dialog: yesterday's work logged today, or an entry
+					    moved to the day it belongs to. */}
+					<div className="flex h-8 w-fit items-center rounded-lg border text-sm">
+						<button
+							type="button"
+							className={stepperClass}
+							aria-label="Previous day"
+							onClick={() => setDate(addDaysToKey(targetDate, -1))}
+						>
+							<ArrowLeftIcon weight="regular" className="size-4" />
+						</button>
+						<span className="flex items-center gap-1.5 border-x px-3 font-medium whitespace-nowrap">
+							<DateJump value={targetDate} onPick={setDate} />
+							{dialogDateLabel(targetDate)}
+						</span>
+						<button
+							type="button"
+							className={stepperClass}
+							aria-label="Next day"
+							onClick={() => setDate(addDaysToKey(targetDate, 1))}
+						>
+							<ArrowRightIcon weight="regular" className="size-4" />
+						</button>
+					</div>
 				</DialogHeader>
 				<Form {...form}>
 					<form
@@ -915,36 +946,6 @@ export function AddBlockDialog({
 								/>
 							</div>
 						</div>
-						{dateOptions.length > 1 && (
-							<FormField
-								control={form.control}
-								name="date"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Day</FormLabel>
-										<Select
-											value={field.value}
-											onValueChange={field.onChange}
-											items={dateOptions}
-										>
-											<FormControl>
-												<SelectTrigger className="w-full">
-													<SelectValue />
-												</SelectTrigger>
-											</FormControl>
-											<SelectContent>
-												{dateOptions.map((d) => (
-													<SelectItem key={d.value} value={d.value}>
-														{d.label}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						)}
 						{/* What you did, and how long: side by side, the time box big
 						    enough to be the thing you read back. */}
 						<div className="grid gap-1.5">

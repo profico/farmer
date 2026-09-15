@@ -188,9 +188,7 @@ function ProjectPage() {
 						{access.canLogTime && !archived && (
 							<AddBlockDialog
 								timezone={organization.timezone}
-								dateOptions={[
-									{ value: today, label: formatDateKeyLong(today) },
-								]}
+								defaultDate={today}
 								defaultProjectId={projectId}
 								trigger={<Button>Log time</Button>}
 							/>

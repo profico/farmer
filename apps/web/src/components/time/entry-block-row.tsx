@@ -46,11 +46,9 @@ export function entryHeading(entry: EntryBlockRowEntry): string {
 export function EntryBlockRow({
 	entry,
 	timezone,
-	dateOptions,
 }: {
 	entry: EntryBlockRowEntry;
 	timezone: string;
-	dateOptions: { value: string; label: string }[];
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -290,7 +288,7 @@ export function EntryBlockRow({
 				)}
 				<AddBlockDialog
 					timezone={timezone}
-					dateOptions={dateOptions}
+					defaultDate={entry.date}
 					entry={entry}
 					trigger={
 						<Button variant="ghost" size="sm" className="text-faint">
