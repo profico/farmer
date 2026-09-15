@@ -151,10 +151,20 @@ const buildTableBody = (
 			const chain: Chain = [entryIndex];
 			if (row.note) {
 				chain.push(body.length);
-				body.push([
-					cell("", under),
-					cell(row.note, { textColor: MUTED, fontSize: 8.5, ...under }, last),
-				]);
+				const noteStyles: Partial<Styles> = {
+					textColor: MUTED,
+					fontSize: 8.5,
+					halign: "left",
+					...under,
+				};
+				// Indented past the first column, the way Harvest sets it — unless
+				// that column is the only one before Hours, where the note takes
+				// the whole row rather than the narrow Hours cell.
+				body.push(
+					last > 1
+						? [cell("", under), cell(row.note, noteStyles, last)]
+						: [cell(row.note, noteStyles, last + 1)],
+				);
 			}
 			if (heading !== null) {
 				chains.push([heading, ...chain]);
