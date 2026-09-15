@@ -1561,6 +1561,28 @@ export const timeEntriesService = {
 		});
 		if (!existing) throw new Error("Time entry not found");
 
+		// Commits and pull request events are evidence of work on the day they
+		// happened. An entry holding them stays on that day: moved, it would
+		// claim the work for a day it was not done on. Asked here rather than in
+		// the dialog alone, so the CLI and the MCP tools meet the same rule.
+		if (input.date !== existing.date) {
+			const [commit, pullRequestEvent] = await Promise.all([
+				db.query.timeEntryGithubCommit.findFirst({
+					where: eq(timeEntryGithubCommit.timeEntryId, existing.id),
+					columns: { id: true },
+				}),
+				db.query.timeEntryGithubPrActivity.findFirst({
+					where: eq(timeEntryGithubPrActivity.timeEntryId, existing.id),
+					columns: { id: true },
+				}),
+			]);
+			if (commit || pullRequestEvent) {
+				throw new Error(
+					"This entry holds GitHub commits or pull request events, so it stays on the day they happened",
+				);
+			}
+		}
+
 		if (input.projectId) {
 			await assertProjectInOrg(ctx, input.projectId);
 			const access = await ctxAccess(ctx);
