@@ -1,9 +1,13 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "../db";
 import { project, task } from "../db/schema/domain";
 import { filingRule } from "../db/schema/settings";
-import type { DeleteFilingRuleInput } from "../schema/filing-rules";
+import type {
+	DeleteFilingRuleInput,
+	UpdateFilingRuleInput,
+} from "../schema/filing-rules";
 import { ctxAccess } from "./context";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
@@ -13,18 +17,30 @@ import type { Ctx } from "./types";
 // The engines file nothing: a synced meeting lands project-less on purpose, and
 // the File-your-time dialog is where a person attributes it. That is the right
 // default and the wrong amount of work for the recurring case — a weekly
-// stand-up is fifty rows a year of one answer, which is the complaint the
+// stand-up is fifty rows of one answer a year, which is the complaint the
 // grouping in that dialog only half fixes.
 //
-// A rule is the other half: it is applied by `syncMeetingsForRange` at write
-// time, so the occurrence arrives already filed and never shows up as unfiled
-// at all.
+// A rule is the other half. `syncMeetingsForRange` applies it at write time, so
+// a meeting arrives already filed and never shows up as unfiled at all; and
+// Assemble my day applies it to every row it proposes without a project (a
+// meeting, the break, the rest-of-day block), so an assembled day is filed as it
+// is added.
 
 /** The match key. Trim + lower-case, and nothing else: two people typing the
  *  same meeting name with different capitalisation mean the same meeting, and
  *  anything cleverer (stripping punctuation, collapsing numbers) starts
  *  matching things the person never agreed to. */
 export const filingRuleKey = (title: string) => title.trim().toLowerCase();
+
+/** Where a matching entry goes: a project, and the task it is filed under. */
+export type FilingTarget = { projectId: string; taskId: string };
+
+/** The key `resolve` answers on: the task the entry was written with, and its
+ *  title. */
+export const ruleKeyFor = (taskId: string, title: string) =>
+	`${taskId}|${filingRuleKey(title)}`;
+
+const targetTask = alias(task, "target_task");
 
 export const filingRulesService = {
 	/** The caller's own rules, with the names needed to render them. */
@@ -35,6 +51,8 @@ export const filingRulesService = {
 				title: filingRule.title,
 				taskId: filingRule.taskId,
 				taskName: task.name,
+				targetTaskId: filingRule.targetTaskId,
+				targetTaskName: targetTask.name,
 				projectId: filingRule.projectId,
 				projectName: project.name,
 				projectCode: project.code,
@@ -43,6 +61,7 @@ export const filingRulesService = {
 			.from(filingRule)
 			.innerJoin(task, eq(filingRule.taskId, task.id))
 			.innerJoin(project, eq(filingRule.projectId, project.id))
+			.leftJoin(targetTask, eq(filingRule.targetTaskId, targetTask.id))
 			.where(
 				and(
 					eq(filingRule.organizationId, ctx.organizationId),
@@ -61,13 +80,17 @@ export const filingRulesService = {
 	 * the user's point of view — they ticked "remember this" on the decision they
 	 * were already making.
 	 *
+	 * `taskId` on an entry is the task it had BEFORE filing — the one the sync
+	 * writes and matches on. `targetTaskId` is the task it was filed under, when
+	 * the filing changed it.
+	 *
 	 * Best-effort and never throws: the filing itself already succeeded, and
 	 * failing the whole call because a preference could not be saved would report
 	 * an error for work that was done.
 	 */
 	rememberFrom: async (
 		ctx: Ctx,
-		projectId: string,
+		target: { projectId: string; targetTaskId?: string },
 		entries: { taskId: string; description: string }[],
 	) => {
 		// One row per distinct (task, title). A month of stand-ups is one rule.
@@ -92,10 +115,16 @@ export const filingRulesService = {
 		}
 		if (byKey.size === 0) return 0;
 
+		// A target equal to the key's own task is no change, and is stored as
+		// none, so renaming nothing never reads as a rule about the task.
 		const rows = [...byKey.values()].map((rule) => ({
 			organizationId: ctx.organizationId,
 			userId: ctx.userId,
-			projectId,
+			projectId: target.projectId,
+			targetTaskId:
+				target.targetTaskId && target.targetTaskId !== rule.taskId
+					? target.targetTaskId
+					: null,
 			...rule,
 		}));
 
@@ -112,13 +141,52 @@ export const filingRulesService = {
 					filingRule.titleKey,
 				],
 				set: {
-					projectId,
+					projectId: target.projectId,
+					targetTaskId: sql`excluded.target_task_id`,
 					// Refreshes the display casing to whatever the person just saw.
 					title: sql`excluded.title`,
 					updatedAt: new Date(),
 				},
 			});
 		return rows.length;
+	},
+
+	/**
+	 * Change where a rule files its meetings. The same checks as filing by hand,
+	 * because the next sync writes exactly this: the project must be live and the
+	 * person's, and the task one that may go on a project.
+	 */
+	update: async (ctx: Ctx, input: UpdateFilingRuleInput) => {
+		const existing = await db.query.filingRule.findFirst({
+			where: and(
+				eq(filingRule.id, input.id),
+				eq(filingRule.organizationId, ctx.organizationId),
+				eq(filingRule.userId, ctx.userId),
+			),
+			columns: { id: true, taskId: true },
+		});
+		if (!existing) throw new Error("Filing rule not found");
+
+		await assertProjectInOrg(ctx, input.projectId);
+		const access = await ctxAccess(ctx);
+		access.assertCanTrackOn(input.projectId);
+		const targetTaskId =
+			input.targetTaskId && input.targetTaskId !== existing.taskId
+				? input.targetTaskId
+				: null;
+		await assertTaskAvailable(
+			ctx,
+			targetTaskId ?? existing.taskId,
+			input.projectId,
+		);
+
+		const [updated] = await db
+			.update(filingRule)
+			.set({ projectId: input.projectId, targetTaskId, updatedAt: new Date() })
+			.where(eq(filingRule.id, existing.id))
+			.returning({ id: filingRule.id });
+		if (!updated) throw new Error("Filing rule not found");
+		return updated;
 	},
 
 	remove: async (ctx: Ctx, input: DeleteFilingRuleInput) => {
@@ -139,8 +207,8 @@ export const filingRulesService = {
 	},
 
 	/**
-	 * The engine-facing half: `titleKey -> projectId` for one task, already
-	 * filtered to projects the person may still write to.
+	 * The engine-facing half: `ruleKeyFor(task, title) -> where it goes` for the
+	 * given tasks, already filtered to projects the person may still write to.
 	 *
 	 * Re-checked rather than trusted, because a rule outlives the assignment that
 	 * made it valid — being taken off a project does not delete the rules naming
@@ -149,22 +217,27 @@ export const filingRulesService = {
 	 * that no longer applies is dropped silently: the entry lands unfiled, which
 	 * is the same place it would have landed with no rule at all, and the person
 	 * sees it in the dialog rather than getting a sync error about a preference.
+	 * A rule whose target task was archived is dropped whole for the same reason,
+	 * rather than filed under a task the person did not choose.
 	 */
-	resolveForTask: async (
+	resolve: async (
 		ctx: Ctx,
-		taskId: string,
-	): Promise<Map<string, string>> => {
+		taskIds: string[],
+	): Promise<Map<string, FilingTarget>> => {
+		if (taskIds.length === 0) return new Map();
 		const rules = await db
 			.select({
+				taskId: filingRule.taskId,
 				titleKey: filingRule.titleKey,
 				projectId: filingRule.projectId,
+				targetTaskId: filingRule.targetTaskId,
 			})
 			.from(filingRule)
 			.where(
 				and(
 					eq(filingRule.organizationId, ctx.organizationId),
 					eq(filingRule.userId, ctx.userId),
-					eq(filingRule.taskId, taskId),
+					inArray(filingRule.taskId, taskIds),
 				),
 			);
 		if (rules.length === 0) return new Map();
@@ -186,26 +259,35 @@ export const filingRulesService = {
 			);
 		const liveIds = new Set(live.map((p) => p.id));
 
-		const usable = new Set<string>();
-		for (const projectId of candidates) {
-			if (!liveIds.has(projectId)) continue;
-			if (!access.canTrackOn(projectId)) continue;
-			try {
-				// Meeting is a universal built-in so this passes today, but the check
-				// is what keeps the rule honest if a rule is ever recorded for an
-				// org-scoped task the project has since dropped.
-				await assertProjectInOrg(ctx, projectId);
-				await assertTaskAvailable(ctx, taskId, projectId);
-			} catch {
-				continue;
+		// Per (project, task) pair, since a dozen rules usually name two or three.
+		const checked = new Map<string, boolean>();
+		const usable = async (projectId: string, fileAs: string) => {
+			const key = `${projectId}|${fileAs}`;
+			const known = checked.get(key);
+			if (known !== undefined) return known;
+			let ok = liveIds.has(projectId) && access.canTrackOn(projectId);
+			if (ok) {
+				try {
+					await assertProjectInOrg(ctx, projectId);
+					await assertTaskAvailable(ctx, fileAs, projectId);
+				} catch {
+					ok = false;
+				}
 			}
-			usable.add(projectId);
-		}
+			checked.set(key, ok);
+			return ok;
+		};
 
-		return new Map(
-			rules
-				.filter((r) => usable.has(r.projectId))
-				.map((r) => [r.titleKey, r.projectId]),
-		);
+		const resolved = new Map<string, FilingTarget>();
+		for (const rule of rules) {
+			const fileAs = rule.targetTaskId ?? rule.taskId;
+			if (!(await usable(rule.projectId, fileAs))) continue;
+			// The stored key is already normalized, so the title passes through.
+			resolved.set(ruleKeyFor(rule.taskId, rule.titleKey), {
+				projectId: rule.projectId,
+				taskId: fileAs,
+			});
+		}
+		return resolved;
 	},
 };

@@ -75,12 +75,14 @@ export type UpdateTimeEntryDescriptionInput = z.infer<
 	typeof updateTimeEntryDescriptionInput
 >;
 
-// Attributing an already-existing entry to a project. Carries only the project,
-// because everything else about the entry is already right — a synced meeting
-// has its date, duration and task; what it lacks is where the time went.
+// Attributing an already-existing entry to a project. Carries the project and,
+// optionally, a task: a synced meeting has its date and duration right, but a
+// rest-of-day block lands as Development and is often design or product work.
+// Absent keeps the entry's own task.
 export const fileTimeEntryInput = z.object({
 	timeEntryId: z.uuid(),
 	projectId: z.uuid(),
+	taskId: z.uuid().optional(),
 });
 export type FileTimeEntryInput = z.infer<typeof fileTimeEntryInput>;
 
@@ -91,6 +93,8 @@ export type FileTimeEntryInput = z.infer<typeof fileTimeEntryInput>;
 export const fileTimeEntriesInput = z.object({
 	timeEntryIds: z.array(z.uuid()).min(1).max(200),
 	projectId: z.uuid(),
+	// One task for the whole batch; absent keeps each entry's own.
+	taskId: z.uuid().optional(),
 	// "Always file this one here." Not a list of rules to create — the service
 	// derives those from the entries it actually filed, so the client cannot ask
 	// for a standing rule about time it did not just attribute. See

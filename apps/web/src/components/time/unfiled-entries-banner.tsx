@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
+import { TaskPicker } from "#/components/pickers/task-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -20,6 +21,7 @@ import { formatHoursShort } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
+import { selectableTasksQuery } from "#/queries/tasks.ts";
 import {
 	unfiledEntriesQuery,
 	unfiledWindow,
@@ -170,10 +172,18 @@ function FileEntriesDialog({
 		...myProjectsQuery(orgSlug),
 		enabled: open,
 	});
+	// Every live non-absence task, which is exactly what may go on a project.
+	const { data: tasks } = useQuery({
+		...selectableTasksQuery(orgSlug),
+		enabled: open,
+	});
 
 	const groups = groupUnfiled(entries ?? []);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [projectId, setProjectId] = useState<string | null>(null);
+	// "" keeps each entry's own task. A rest-of-day block lands as Development
+	// and is often design or product work, so the task is a choice here too.
+	const [taskId, setTaskId] = useState("");
 	// "Always file this one here." Off by default: a standing rule about future
 	// time is a bigger statement than filing the rows in front of you, and it
 	// should be something you asked for rather than something you forgot to
@@ -188,6 +198,7 @@ function FileEntriesDialog({
 		if (open) {
 			setSelectedIds(new Set());
 			setProjectId(null);
+			setTaskId("");
 			setRemember(false);
 		}
 	}
@@ -214,6 +225,7 @@ function FileEntriesDialog({
 				data: {
 					timeEntryIds: [...selectedIds],
 					projectId: projectId ?? "",
+					taskId: taskId || undefined,
 					remember,
 				},
 			}),
@@ -254,8 +266,7 @@ function FileEntriesDialog({
 					<DialogTitle>File your time</DialogTitle>
 					<DialogDescription>
 						Pick the entries that belong to a project and file them together.
-						Every task is available on every project, so filing only needs the
-						project.
+						Choose a task only when they need a different one.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -284,36 +295,47 @@ function FileEntriesDialog({
 				</div>
 
 				{groups.length > 0 && (
-					<DialogFooter className="items-center gap-3">
-						<label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-							<input
-								type="checkbox"
-								className="accent-primary"
-								checked={remember}
-								onChange={(event) => setRemember(event.target.checked)}
+					<DialogFooter className="flex-col items-stretch gap-3 sm:flex-col">
+						<div className="grid gap-2 sm:grid-cols-2">
+							<ProjectPicker
+								projects={projects ?? []}
+								value={projectId}
+								onValueChange={setProjectId}
+								aria-label="File against project"
 							/>
-							Always file these here
-						</label>
-						<span className="text-xs text-muted-foreground">
-							{selectedIds.size === 0
-								? "Nothing selected"
-								: `${selectedIds.size} selected · ${formatHoursShort(selectedSeconds)}`}
-						</span>
-						<ProjectPicker
-							projects={projects ?? []}
-							value={projectId}
-							onValueChange={setProjectId}
-							className="w-60 shrink-0"
-							aria-label="File against project"
-						/>
-						<Button
-							disabled={
-								selectedIds.size === 0 || !projectId || fileMutation.isPending
-							}
-							onClick={() => fileMutation.mutate()}
-						>
-							{fileMutation.isPending ? "Filing…" : "File"}
-						</Button>
+							<TaskPicker
+								tasks={tasks ?? []}
+								value={taskId}
+								onValueChange={setTaskId}
+								grouped
+								noTask="Keep each entry's task"
+								aria-label="File under task"
+							/>
+						</div>
+						<div className="flex items-center gap-3">
+							<label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+								<input
+									type="checkbox"
+									className="accent-primary"
+									checked={remember}
+									onChange={(event) => setRemember(event.target.checked)}
+								/>
+								Always file these here
+							</label>
+							<span className="text-xs text-muted-foreground">
+								{selectedIds.size === 0
+									? "Nothing selected"
+									: `${selectedIds.size} selected · ${formatHoursShort(selectedSeconds)}`}
+							</span>
+							<Button
+								disabled={
+									selectedIds.size === 0 || !projectId || fileMutation.isPending
+								}
+								onClick={() => fileMutation.mutate()}
+							>
+								{fileMutation.isPending ? "Filing…" : "File"}
+							</Button>
+						</div>
 					</DialogFooter>
 				)}
 			</DialogContent>
