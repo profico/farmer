@@ -1510,22 +1510,12 @@ export function AddBlockDialog({
 								</AnimatePresence>
 							</div>
 						)}
-						<DialogFooter className="sm:justify-start">
-							<Button type="submit" disabled={mutation.isPending}>
-								{entry
-									? "Save entry"
-									: repeatEnabled
-										? "Create repeating entry"
-										: "Save entry"}
-								<kbd className="mono rounded-sm bg-primary-foreground/22 px-1 text-2xs">
-									{modKey}↩
-								</kbd>
-							</Button>
-							<DialogClose render={<Button type="button" variant="outline" />}>
-								Cancel
-							</DialogClose>
+						{/* Wraps as a whole: when the row is too narrow the links take a
+						    line of their own, instead of the group squeezing and putting
+						    each link on its own line. */}
+						<DialogFooter className="sm:flex-wrap">
 							{(showCalendarPicker || showCommitPicker) && (
-								<div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:ml-auto">
+								<div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:mr-auto sm:flex-nowrap">
 									{showCalendarPicker && (
 										<Button
 											type="button"
@@ -1562,6 +1552,19 @@ export function AddBlockDialog({
 									)}
 								</div>
 							)}
+							<DialogClose render={<Button type="button" variant="outline" />}>
+								Cancel
+							</DialogClose>
+							<Button type="submit" disabled={mutation.isPending}>
+								{entry
+									? "Save entry"
+									: repeatEnabled
+										? "Create repeating entry"
+										: "Save entry"}
+								<kbd className="mono rounded-sm bg-primary-foreground/22 px-1 text-2xs">
+									{modKey}↩
+								</kbd>
+							</Button>
 						</DialogFooter>
 					</form>
 				</Form>
