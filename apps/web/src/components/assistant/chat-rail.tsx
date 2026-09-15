@@ -11,12 +11,12 @@ import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
-	Sheet,
-	SheetContent,
-	SheetDescription,
-	SheetHeader,
-	SheetTitle,
-} from "#/components/ui/sheet.tsx";
+	Drawer,
+	DrawerContent,
+	DrawerDescription,
+	DrawerHeader,
+	DrawerTitle,
+} from "#/components/ui/drawer.tsx";
 import {
 	SidebarGroup,
 	SidebarGroupContent,
@@ -320,18 +320,14 @@ export function MobileChatBar({ orgSlug }: { orgSlug: string }) {
 				</Link>
 			)}
 
-			<Sheet open={open} onOpenChange={setOpen}>
-				<SheetContent
-					side="bottom"
-					className="max-h-[80svh] rounded-t-2xl pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
-				>
-					<div className="absolute top-2 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-line" />
-					<SheetHeader className="shrink-0 px-5 pt-2.5 pb-0">
-						<SheetTitle>Chats</SheetTitle>
-						<SheetDescription className="sr-only">
+			<Drawer open={open} onOpenChange={setOpen}>
+				<DrawerContent className="max-h-[80svh] pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+					<DrawerHeader className="shrink-0 px-5 pt-2.5 pb-0">
+						<DrawerTitle>Chats</DrawerTitle>
+						<DrawerDescription className="sr-only">
 							Your assistant conversations.
-						</SheetDescription>
-					</SheetHeader>
+						</DrawerDescription>
+					</DrawerHeader>
 					{/* Closes on navigation, not on delete: deleting the open thread
 					    already steps the page off it, and someone tidying up their
 					    history is rarely done after one. */}
@@ -341,8 +337,8 @@ export function MobileChatBar({ orgSlug }: { orgSlug: string }) {
 							onNavigate={() => setOpen(false)}
 						/>
 					</div>
-				</SheetContent>
-			</Sheet>
+				</DrawerContent>
+			</Drawer>
 		</div>
 	);
 }

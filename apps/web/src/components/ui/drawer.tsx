@@ -1,0 +1,129 @@
+"use client";
+
+import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer";
+import { XIcon } from "@phosphor-icons/react";
+import type * as React from "react";
+
+import { Button } from "#/components/ui/button.tsx";
+import { cn } from "#/lib/utils.ts";
+
+// A bottom sheet that follows the finger. Not the Sheet with side="bottom":
+// Base UI's dialog scroll lock is `overflow: hidden` on <html>, which iOS
+// ignores for touch, so the page kept scrolling under the backdrop. The
+// drawer's Viewport cancels those touchmoves itself (still letting a scrollable
+// list inside the popup scroll) and adds swipe-to-dismiss.
+//
+// Animated with CSS transitions rather than motion, unlike every other popup:
+// the swipe writes `--drawer-swipe-movement-y` on every pointer move, and a
+// motion-owned `transform` would overwrite it. The curve has no overshoot, so
+// the release from a drag never bounces past where the finger let go.
+
+function Drawer(props: DrawerPrimitive.Root.Props) {
+	return <DrawerPrimitive.Root {...props} />;
+}
+
+function DrawerTrigger(props: DrawerPrimitive.Trigger.Props) {
+	return <DrawerPrimitive.Trigger data-slot="drawer-trigger" {...props} />;
+}
+
+function DrawerClose(props: DrawerPrimitive.Close.Props) {
+	return <DrawerPrimitive.Close data-slot="drawer-close" {...props} />;
+}
+
+function DrawerContent({
+	className,
+	children,
+	showCloseButton = true,
+	...props
+}: DrawerPrimitive.Popup.Props & { showCloseButton?: boolean }) {
+	return (
+		<DrawerPrimitive.Portal>
+			<DrawerPrimitive.Backdrop
+				data-slot="drawer-overlay"
+				// Fades with the drag, so pulling the sheet halfway down shows the page
+				// halfway back. `absolute` on iOS covers the area behind a collapsed
+				// toolbar, which `fixed` leaves uncovered.
+				className="fixed inset-0 z-50 min-h-dvh bg-black/25 opacity-[calc(1-var(--drawer-swipe-progress))] transition-opacity duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] supports-backdrop-filter:backdrop-blur-xs supports-[-webkit-touch-callout:none]:absolute data-ending-style:opacity-0 data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:opacity-0 data-swiping:duration-0 motion-reduce:transition-none"
+			/>
+			<DrawerPrimitive.Viewport
+				data-slot="drawer-viewport"
+				className="fixed inset-0 z-50 flex items-end justify-center"
+			>
+				<DrawerPrimitive.Popup
+					data-slot="drawer-content"
+					className={cn(
+						// The `after:` strip is the bleed: it hangs below the popup in its
+						// colour, so an upward over-drag never shows the page underneath.
+						"relative flex w-full flex-col gap-4 rounded-t-2xl border-t bg-popover bg-clip-padding text-base text-popover-foreground shadow-[var(--lift)] outline-none after:absolute after:inset-x-0 after:top-full after:h-12 after:bg-popover [transform:translateY(var(--drawer-swipe-movement-y))] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] data-ending-style:[transform:translateY(calc(100%+2px))] data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:[transform:translateY(calc(100%+2px))] data-swiping:select-none motion-reduce:transition-none",
+						className,
+					)}
+					{...props}
+				>
+					<div
+						aria-hidden
+						className="absolute top-2 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-line"
+					/>
+					{children}
+					{showCloseButton && (
+						<DrawerPrimitive.Close
+							data-slot="drawer-close"
+							render={
+								<Button
+									variant="ghost"
+									className="absolute top-3 right-3"
+									size="icon-sm"
+								/>
+							}
+						>
+							<XIcon weight="regular" />
+							<span className="sr-only">Close</span>
+						</DrawerPrimitive.Close>
+					)}
+				</DrawerPrimitive.Popup>
+			</DrawerPrimitive.Viewport>
+		</DrawerPrimitive.Portal>
+	);
+}
+
+function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
+	return (
+		<div
+			data-slot="drawer-header"
+			className={cn("flex flex-col gap-0.5 p-4", className)}
+			{...props}
+		/>
+	);
+}
+
+function DrawerTitle({ className, ...props }: DrawerPrimitive.Title.Props) {
+	return (
+		<DrawerPrimitive.Title
+			data-slot="drawer-title"
+			className={cn("h2", className)}
+			{...props}
+		/>
+	);
+}
+
+function DrawerDescription({
+	className,
+	...props
+}: DrawerPrimitive.Description.Props) {
+	return (
+		<DrawerPrimitive.Description
+			data-slot="drawer-description"
+			className={cn("text-sm leading-normal text-muted-foreground", className)}
+			{...props}
+		/>
+	);
+}
+
+export {
+	Drawer,
+	DrawerTrigger,
+	DrawerClose,
+	DrawerContent,
+	DrawerHeader,
+	DrawerTitle,
+	DrawerDescription,
+};

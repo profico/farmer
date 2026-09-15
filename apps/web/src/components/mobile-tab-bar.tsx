@@ -7,12 +7,12 @@ import { useState } from "react";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import {
-	Sheet,
-	SheetContent,
-	SheetDescription,
-	SheetHeader,
-	SheetTitle,
-} from "#/components/ui/sheet.tsx";
+	Drawer,
+	DrawerContent,
+	DrawerDescription,
+	DrawerHeader,
+	DrawerTitle,
+} from "#/components/ui/drawer.tsx";
 import { useMediaQuery } from "#/hooks/use-media-query.ts";
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
@@ -188,21 +188,17 @@ export function MobileTabBar({
 				</div>
 			</nav>
 
-			<Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-				<SheetContent
-					side="bottom"
-					className="max-h-[80svh] rounded-t-2xl pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
-				>
-					<div className="absolute top-2 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-line" />
+			<Drawer open={moreOpen} onOpenChange={setMoreOpen}>
+				<DrawerContent className="max-h-[80svh] pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
 					{/* Left-aligned on the rows' own gutter — a centred label over a
 					    left-aligned list is the one thing on the sheet that doesn't
 					    line up with anything. */}
-					<SheetHeader className="shrink-0 px-5 pt-2.5 pb-0">
-						<SheetTitle>More</SheetTitle>
-						<SheetDescription className="sr-only">
+					<DrawerHeader className="shrink-0 px-5 pt-2.5 pb-0">
+						<DrawerTitle>More</DrawerTitle>
+						<DrawerDescription className="sr-only">
 							Additional navigation and account options.
-						</SheetDescription>
-					</SheetHeader>
+						</DrawerDescription>
+					</DrawerHeader>
 					<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pt-1">
 						{groups.map((group) => (
 							<div key={group.label} className="flex flex-col gap-1 pb-2">
@@ -248,8 +244,8 @@ export function MobileTabBar({
 							<SignOutIcon className="size-4" />
 						</button>
 					</div>
-				</SheetContent>
-			</Sheet>
+				</DrawerContent>
+			</Drawer>
 		</>
 	);
 }
