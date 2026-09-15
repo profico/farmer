@@ -456,7 +456,6 @@ export function WeekView({
 														(e) => e.description,
 													),
 												)}
-												disabled={row.locked}
 												onSave={saveRowNotes}
 											/>
 										)}
@@ -503,7 +502,6 @@ export function WeekView({
 																date={date}
 																entries={dayEntries}
 																hasNote={cellHasNote}
-																disabled={row.locked}
 																onSave={async (description) =>
 																	saveRowNotes(
 																		new Map<string, string>([
@@ -512,19 +510,15 @@ export function WeekView({
 																	)
 																}
 																contentClassName="sm:max-w-sm"
-																trigger={({ hasNote, disabled }) => (
+																trigger={({ hasNote }) => (
 																	<button
 																		type="button"
 																		aria-label={`Notes for ${row.heading} on ${date}`}
-																		disabled={disabled}
 																		className={cn(
-																			"flex size-5 items-center justify-center rounded-md border bg-background/80 shadow-sm backdrop-blur transition-colors duration-(--dur-fast)",
+																			"flex size-5 items-center justify-center rounded-md border bg-background/80 shadow-sm backdrop-blur transition-colors duration-(--dur-fast) hover:bg-muted hover:text-foreground",
 																			hasNote
 																				? "border-primary/40 text-primary"
 																				: "border-border text-faint",
-																			!disabled &&
-																				"hover:bg-muted hover:text-foreground",
-																			disabled && "opacity-40",
 																		)}
 																	>
 																		<NoteIcon className="size-3.5" />
@@ -757,7 +751,6 @@ function RowNoteDialog({
 	dates,
 	byDate,
 	hasNote,
-	disabled,
 	onSave,
 	trigger,
 	contentClassName,
@@ -768,43 +761,33 @@ function RowNoteDialog({
 	byDate: Map<string, EntryBlockRowEntry[]>;
 	/** Whether any day in the row carries a note, for the trigger's state. */
 	hasNote: boolean;
-	disabled: boolean;
 	/** date -> the note to write onto every entry on that date. */
 	onSave: (notesByDate: Map<string, string>) => Promise<void>;
 	/**
 	 * Optional trigger override, used to place the note icon inside other UI.
 	 * If omitted, the original row-footprint button is rendered.
 	 */
-	trigger?: (args: { hasNote: boolean; disabled: boolean }) => ReactNode;
+	trigger?: (args: { hasNote: boolean }) => ReactNode;
 	/** Allows a smaller popup when used inline inside grid cells. */
 	contentClassName?: string;
 }) {
 	const [open, setOpen] = useState(false);
 	const [saving, setSaving] = useState(false);
 
-	const defaultTrigger = ({
-		hasNote,
-		disabled,
-	}: {
-		hasNote: boolean;
-		disabled: boolean;
-	}) => (
+	const defaultTrigger = ({ hasNote }: { hasNote: boolean }) => (
 		<button
 			type="button"
 			aria-label={`Notes for ${heading}`}
-			disabled={disabled}
 			className={cn(
-				"flex size-7 items-center justify-center rounded-md border transition-colors duration-(--dur-fast)",
+				"flex size-7 items-center justify-center rounded-md border transition-colors duration-(--dur-fast) hover:bg-muted hover:text-foreground",
 				hasNote ? "border-border text-foreground" : "border-dashed text-faint",
-				!disabled && "hover:bg-muted hover:text-foreground",
-				disabled && "opacity-40",
 			)}
 		>
 			<NoteIcon className="size-3.5" />
 		</button>
 	);
 
-	const triggerNode = (trigger ?? defaultTrigger)({ hasNote, disabled });
+	const triggerNode = (trigger ?? defaultTrigger)({ hasNote });
 
 	// Only the days this row has entries on are editable.
 	const loggedDates = dates.filter(
@@ -942,7 +925,6 @@ function DayNoteDialog({
 	date,
 	entries,
 	hasNote,
-	disabled,
 	onSave,
 	trigger,
 	contentClassName,
@@ -951,9 +933,8 @@ function DayNoteDialog({
 	date: string;
 	entries: EntryBlockRowEntry[];
 	hasNote: boolean;
-	disabled: boolean;
 	onSave: (description: string) => Promise<void>;
-	trigger?: (args: { hasNote: boolean; disabled: boolean }) => ReactNode;
+	trigger?: (args: { hasNote: boolean }) => ReactNode;
 	contentClassName?: string;
 }) {
 	const [open, setOpen] = useState(false);
@@ -970,29 +951,20 @@ function DayNoteDialog({
 		if (open) setDraft(storedNote);
 	}
 
-	const defaultTrigger = ({
-		hasNote,
-		disabled,
-	}: {
-		hasNote: boolean;
-		disabled: boolean;
-	}) => (
+	const defaultTrigger = ({ hasNote }: { hasNote: boolean }) => (
 		<button
 			type="button"
 			aria-label={`Notes for ${heading} on ${date}`}
-			disabled={disabled}
 			className={cn(
-				"flex size-7 items-center justify-center rounded-md border transition-colors duration-(--dur-fast)",
+				"flex size-7 items-center justify-center rounded-md border transition-colors duration-(--dur-fast) hover:bg-muted hover:text-foreground",
 				hasNote ? "border-primary/40 text-primary" : "border-dashed text-faint",
-				!disabled && "hover:bg-muted hover:text-foreground",
-				disabled && "opacity-40",
 			)}
 		>
 			<NoteIcon className="size-3.5" />
 		</button>
 	);
 
-	const triggerNode = (trigger ?? defaultTrigger)({ hasNote, disabled });
+	const triggerNode = (trigger ?? defaultTrigger)({ hasNote });
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
