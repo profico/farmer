@@ -708,6 +708,18 @@ function Breakdown({
 				groups={ENTRY_GROUPS.map((g) => g.id)}
 				by={by}
 				onByChange={(next) => go({ by: next })}
+				// A group's hours add it as a filter and open the rest by date —
+				// the summary tab's gesture, one level down. The filter shows as a
+				// chip, so it can be taken off again.
+				narrow={(g, id) =>
+					g === "date"
+						? null
+						: {
+								...search,
+								...filterPatch(g === "teammate" ? "person" : g, id),
+								by: "date",
+							}
+				}
 			/>
 		</>
 	);
