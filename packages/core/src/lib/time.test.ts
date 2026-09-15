@@ -66,6 +66,12 @@ describe("parseDuration", () => {
 		expect(parseDuration(".5")).toBe(30 * MINUTE);
 	});
 
+	test("reads H:MM with the hours left out", () => {
+		expect(parseDuration(":30")).toBe(30 * MINUTE);
+		expect(parseDuration(":05")).toBe(5 * MINUTE);
+		expect(parseDuration(":")).toBeNull();
+	});
+
 	test("reads a comma as a decimal point", () => {
 		// Typed by everyone here; it used to fail the character whitelist and come
 		// back as null with no message on screen.
