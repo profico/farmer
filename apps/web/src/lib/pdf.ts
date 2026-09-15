@@ -105,6 +105,108 @@ const cell = (
 	colSpan?: number,
 ): CellDef => ({ content, styles, colSpan });
 
+/** A run of body row indices that autoTable must never split across a page
+ *  break: a group heading with its first entry (and that entry's note, if
+ *  it has one), or any other entry with its note. Everything else is its
+ *  own one-row chain, which is just the ordinary per-row page-break rule. */
+type Chain = number[];
+
+type TableRows = { body: CellDef[][]; chains: Chain[] };
+
+/** Lays the groups out as autoTable rows — Harvest's rules: a rule under
+ *  each entry (under its note, when it has one), a tinted row over each
+ *  group — and returns the chains alongside, so the caller can keep each
+ *  one on a single page. */
+const buildTableBody = (
+	report: PdfReport,
+	align: (i: number) => Styles["halign"],
+): TableRows => {
+	const last = report.columns.length - 1;
+	const under: Partial<Styles> = { lineWidth: { bottom: 0.25 } };
+	const tinted: Partial<Styles> = { fillColor: GROUP_FILL };
+	const body: CellDef[][] = [];
+	const chains: Chain[] = [];
+
+	for (const group of report.groups) {
+		// Holds the heading's row index until its first entry's chain is known,
+		// so the two (and that entry's note) can be merged into one chain.
+		let heading: number | null = null;
+		if (group.heading !== undefined) {
+			heading = body.length;
+			body.push([
+				cell(group.heading, tinted, last),
+				cell(group.hours ?? "", { ...tinted, halign: "right" }),
+			]);
+		}
+		for (const row of group.rows) {
+			const entryIndex = body.length;
+			// An entry with a note is ruled off under the note, not under itself.
+			body.push(
+				row.cells.map((content, i) => {
+					const styles: Partial<Styles> = { halign: align(i) };
+					if (!row.note) styles.lineWidth = under.lineWidth;
+					return cell(content, styles);
+				}),
+			);
+			const chain: Chain = [entryIndex];
+			if (row.note) {
+				chain.push(body.length);
+				body.push([
+					cell("", under),
+					cell(row.note, { textColor: MUTED, fontSize: 8.5, ...under }, last),
+				]);
+			}
+			if (heading !== null) {
+				chains.push([heading, ...chain]);
+				heading = null;
+			} else {
+				chains.push(chain);
+			}
+		}
+		// A heading with no rows under it — shouldn't happen, but leaves nothing
+		// orphaned if it does.
+		if (heading !== null) chains.push([heading]);
+	}
+	return { body, chains };
+};
+
+/** One autoTable call's worth of rows. `freshPage` is false only for the
+ *  very first chunk, which continues on the current page below the report's
+ *  own header rather than starting a new one. */
+type PageChunk = { rows: number[]; freshPage: boolean };
+
+/** Splits the body into the pages autoTable would draw it over, except a
+ *  chain (see above) that would otherwise straddle a page break is pushed
+ *  onto a fresh one whole. Each chunk becomes its own autoTable call, so the
+ *  break lands between two chunks rather than inside one. `rowHeights` and
+ *  `headHeight` come from a throwaway measurement table — autoTable's own
+ *  layout math, without drawing anything — so this lines up with what
+ *  autoTable would actually do. A chain taller than a whole page is left to
+ *  autoTable's own per-row page breaks; forcing it onto a fresh page would
+ *  still not make it fit. */
+const paginate = (
+	rowHeights: number[],
+	chains: Chain[],
+	headHeight: number,
+	firstPageY: number,
+): PageChunk[] => {
+	const bottomMargin = MARGIN + 6;
+	const continuationCapacity = PAGE_H - bottomMargin - (MARGIN + headHeight);
+	let remaining = PAGE_H - bottomMargin - (firstPageY + headHeight);
+
+	const chunks: PageChunk[] = [{ rows: [], freshPage: false }];
+	for (const chain of chains) {
+		const height = chain.reduce((sum, i) => sum + (rowHeights[i] ?? 0), 0);
+		if (height > remaining && height <= continuationCapacity) {
+			chunks.push({ rows: [], freshPage: true });
+			remaining = continuationCapacity;
+		}
+		remaining = Math.max(0, remaining - height);
+		chunks[chunks.length - 1]?.rows.push(...chain);
+	}
+	return chunks.filter((chunk) => chunk.rows.length > 0);
+};
+
 export async function downloadPdf(
 	filename: string,
 	report: PdfReport,
@@ -123,10 +225,8 @@ export async function buildPdf(
 	report: PdfReport,
 	fonts: PdfFonts,
 ): Promise<jsPDF> {
-	const [{ jsPDF }, { default: autoTable }] = await Promise.all([
-		import("jspdf"),
-		import("jspdf-autotable"),
-	]);
+	const [{ jsPDF }, { default: autoTable, __createTable: createTable }] =
+		await Promise.all([import("jspdf"), import("jspdf-autotable")]);
 
 	const doc = new jsPDF({ unit: "mm", format: "a4" });
 	doc.addFileToVFS(FONT_FILES.normal, fonts.normal);
@@ -198,58 +298,28 @@ export async function buildPdf(
 		doc.setFontSize(9);
 		doc.setFont(FONT, "normal");
 		doc.setTextColor(...MUTED);
-		doc.text(report.note, MARGIN, y + 1);
-		y += LINE;
+		const noteLines: string[] = doc.splitTextToSize(report.note, CONTENT_W);
+		doc.text(noteLines, MARGIN, y + 1);
+		y += noteLines.length * LINE;
 	}
 
 	// ── The table ───────────────────────────────────────────────────────────
-	// Harvest's rules: a rule under each entry (under its note, when it has
-	// one), a tinted row over each group, the total under a heavier rule.
 	const last = report.columns.length - 1;
 	const align = (i: number): Styles["halign"] =>
 		report.columns[i]?.align ?? "left";
-	const under: Partial<Styles> = { lineWidth: { bottom: 0.25 } };
-	const tinted: Partial<Styles> = { fillColor: GROUP_FILL };
 
-	const body: CellDef[][] = report.groups.flatMap((group) => {
-		const rows = group.rows.flatMap((row) => {
-			// An entry with a note is ruled off under the note, not under itself.
-			const cells = row.cells.map((content, i) => {
-				const styles: Partial<Styles> = { halign: align(i) };
-				if (!row.note) styles.lineWidth = under.lineWidth;
-				return cell(content, styles);
-			});
-			if (!row.note) return [cells];
-			return [
-				cells,
-				[
-					cell("", under),
-					cell(row.note, { textColor: MUTED, fontSize: 8.5, ...under }, last),
-				],
-			];
-		});
-		if (group.heading === undefined) return rows;
-		return [
-			[
-				cell(group.heading, tinted, last),
-				cell(group.hours ?? "", { ...tinted, halign: "right" }),
-			],
-			...rows,
-		];
-	});
+	const { body, chains } = buildTableBody(report, align);
 	const totalRow: Partial<Styles> = {
 		halign: "right",
 		fontStyle: "bold",
 		lineWidth: { top: 0.4 },
 	};
+	chains.push([body.length]);
 	body.push([cell("Total", totalRow, last), cell(report.total, totalRow)]);
 
-	autoTable(doc, {
-		startY: y + 4,
-		margin: { left: MARGIN, right: MARGIN, top: MARGIN, bottom: MARGIN + 6 },
-		theme: "plain",
+	const tableOptions = {
+		theme: "plain" as const,
 		head: [report.columns.map((c, i) => cell(c.label, { halign: align(i) }))],
-		body,
 		styles: {
 			font: FONT,
 			fontSize: 9,
@@ -257,15 +327,54 @@ export async function buildPdf(
 			lineColor: RULE,
 			lineWidth: 0,
 			cellPadding: { top: 2.4, bottom: 2.4, left: 2, right: 2 },
-			overflow: "linebreak",
+			overflow: "linebreak" as const,
 		},
 		headStyles: {
 			fillColor: HEAD_FILL,
 			textColor: MUTED,
-			fontStyle: "normal",
+			fontStyle: "normal" as const,
 		},
+		margin: { left: MARGIN, right: MARGIN, top: MARGIN, bottom: MARGIN + 6 },
+		// A row is never split mid-content; `paginate` below decides, chain by
+		// chain, whether a whole row (or several kept-together rows) move to
+		// the next page, so this needs to hold for the simulation to line up
+		// with what autoTable actually draws.
+		rowPageBreak: "avoid" as const,
+	};
+
+	// A throwaway table, never drawn, purely for autoTable's own row-height and
+	// column-width math — `paginate` needs real heights, not a guess, and every
+	// chunk below reuses the same widths so the columns don't drift page to
+	// page (each chunk's `body` is a different subset of rows, which could
+	// otherwise auto-size differently).
+	const measured = createTable(doc, {
+		...tableOptions,
+		body,
 		columnStyles: { [last]: { cellWidth: 22 } },
 	});
+	const headHeight = measured.getHeadHeight(measured.columns);
+	const rowHeights = measured.body.map((row) => row.height);
+	const columnStyles: Record<number, Partial<Styles>> = {};
+	measured.columns.forEach((column, i) => {
+		columnStyles[i] = { cellWidth: column.width };
+	});
+
+	for (const chunk of paginate(rowHeights, chains, headHeight, y + 4)) {
+		if (chunk.freshPage) doc.addPage();
+		autoTable(doc, {
+			...tableOptions,
+			startY: chunk.freshPage ? MARGIN : y + 4,
+			columnStyles,
+			// Every index in `chunk.rows` came from `chains`, built from this same
+			// `body` array by pushing an index right after pushing the row at it,
+			// so the lookup below always finds one — the empty case is here only
+			// to satisfy `noUncheckedIndexedAccess`.
+			body: chunk.rows.flatMap((i) => {
+				const row = body[i];
+				return row ? [row] : [];
+			}),
+		});
+	}
 
 	// ── Page numbers, once every page exists ────────────────────────────────
 	// Written after the table rather than through jsPDF's total-pages
