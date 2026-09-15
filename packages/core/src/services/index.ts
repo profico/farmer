@@ -27,6 +27,7 @@ export * from "./projects.service";
 export * from "./recurring-block-rules.service";
 export * from "./reminder-settings.service";
 export * from "./reports.service";
+export * from "./rewind.service";
 export * from "./sessions.service";
 export * from "./slack.service";
 export * from "./tasks.service";
