@@ -1,7 +1,11 @@
 import { CaretDownIcon } from "@phosphor-icons/react";
 import type * as React from "react";
 
-import { TableCell, TableRow } from "#/components/ui/table.tsx";
+import {
+	stickyRowCellClass,
+	TableCell,
+	TableRow,
+} from "#/components/ui/table.tsx";
 import { cn } from "#/lib/utils.ts";
 
 /**
@@ -20,12 +24,16 @@ export function ArchivedSection({
 	colSpan,
 	open,
 	onOpenChange,
+	sticky = false,
 	children,
 }: {
 	count: number;
 	colSpan: number;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
+	/** In a `stickyHeader` table: the toggle stays under the column labels
+	 *  while the archived rows go by, and covers the group heading above it. */
+	sticky?: boolean;
 	children: React.ReactNode;
 }) {
 	if (count === 0) return null;
@@ -33,7 +41,10 @@ export function ArchivedSection({
 	return (
 		<>
 			<TableRow className="hover:bg-transparent">
-				<TableCell colSpan={colSpan} className="p-0">
+				<TableCell
+					colSpan={colSpan}
+					className={cn("p-0", sticky && stickyRowCellClass)}
+				>
 					<button
 						type="button"
 						aria-expanded={open}

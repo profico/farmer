@@ -63,6 +63,7 @@ import {
 	resolveCategoryColor,
 } from "#/lib/category-colors.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
+import { searchFlag } from "#/lib/search-flag.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 import { managedTasksQuery } from "#/queries/tasks.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";
@@ -74,7 +75,7 @@ import {
 } from "#/server/tasks.ts";
 
 const searchSchema = z.object({
-	archived: z.literal("1").optional(),
+	archived: searchFlag,
 });
 
 const TASK_COLUMN_COUNT = 5;

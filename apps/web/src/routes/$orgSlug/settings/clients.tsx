@@ -33,7 +33,7 @@ import {
 	FormMessage,
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
-import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Table,
@@ -42,8 +42,10 @@ import {
 	TableHead,
 	TableHeader,
 	TableRow,
+	TableScroll,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { searchFlag } from "#/lib/search-flag.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { allClientsQuery } from "#/queries/clients.ts";
 import { queryKeys } from "#/queries/keys.ts";
@@ -55,7 +57,7 @@ import {
 } from "#/server/clients.ts";
 
 const searchSchema = z.object({
-	archived: z.literal("1").optional(),
+	archived: searchFlag,
 });
 
 const CLIENT_COLUMN_COUNT = 4;
@@ -190,7 +192,7 @@ function RenameClientDialog({
 		>
 			<DialogTrigger
 				render={
-					<Button variant="ghost" size="sm">
+					<Button variant="outline" size="sm">
 						Rename
 					</Button>
 				}
@@ -276,44 +278,48 @@ function ClientsPage() {
 					{client.archivedAt ? "Archived" : "Active"}
 				</StatusPill>
 			</TableCell>
-			<TableCell className="text-right">
+			<TableCell>
 				{/* Admin, not canCreateProjects: a PM may create a client to put a
 					    new project under, but rename/archive/restore are admin-only
 					    in clientsService, and a button that can only fail is worse
 					    than no button. */}
-				{access.isAdmin && <RenameClientDialog client={client} />}
-				{/* The internal client is structural — archiving it would
-					    strand every non-invoiced project. */}
-				{access.isAdmin &&
-					!client.isInternal &&
-					(client.archivedAt ? (
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={busy}
-							onClick={() => unarchive.mutate(client.id)}
-						>
-							Restore
-						</Button>
-					) : (
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={busy}
-							onClick={() => archive.mutate(client.id)}
-						>
-							Archive
-						</Button>
-					))}
+				{access.isAdmin && (
+					<div className="flex justify-end gap-2">
+						<RenameClientDialog client={client} />
+						{/* The internal client is structural — archiving it would
+						    strand every non-invoiced project. */}
+						{!client.isInternal &&
+							(client.archivedAt ? (
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={busy}
+									onClick={() => unarchive.mutate(client.id)}
+								>
+									Restore
+								</Button>
+							) : (
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={busy}
+									onClick={() => archive.mutate(client.id)}
+								>
+									Archive
+								</Button>
+							))}
+					</div>
+				)}
 			</TableCell>
 		</TableRow>
 	);
 
 	return (
-		<Page>
+		<PageFull>
 			<PageHeader
 				eyebrow={<SettingsEyebrow />}
 				title="Clients"
+				className="shrink-0"
 				lede={`Every project belongs to a client, which is what makes the Time report's "by client" view add up. The Internal client is created automatically and holds work that is never invoiced.`}
 				action={
 					<div className="flex items-center gap-2">
@@ -328,36 +334,39 @@ function ClientsPage() {
 				}
 			/>
 
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Client</TableHead>
-						<TableHead>Kind</TableHead>
-						<TableHead>Status</TableHead>
-						<TableHead />
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{searching && activeClients.length === 0 && (
-						<NoMatchesRow colSpan={CLIENT_COLUMN_COUNT}>
-							{archivedClients.length > 0
-								? "Only archived clients match your search."
-								: "No clients match your search."}
-						</NoMatchesRow>
-					)}
-					{activeClients.map(renderClientRow)}
-					<ArchivedSection
-						count={archivedClients.length}
-						colSpan={CLIENT_COLUMN_COUNT}
-						open={archivedOpen}
-						onOpenChange={(open) =>
-							navigate({ search: { archived: open ? "1" : undefined } })
-						}
-					>
-						{archivedClients.map(renderClientRow)}
-					</ArchivedSection>
-				</TableBody>
-			</Table>
-		</Page>
+			<TableScroll>
+				<Table bleed={false} stickyHeader containerClassName="border-b">
+					<TableHeader>
+						<TableRow>
+							<TableHead>Client</TableHead>
+							<TableHead>Kind</TableHead>
+							<TableHead>Status</TableHead>
+							<TableHead />
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{searching && activeClients.length === 0 && (
+							<NoMatchesRow colSpan={CLIENT_COLUMN_COUNT}>
+								{archivedClients.length > 0
+									? "Only archived clients match your search."
+									: "No clients match your search."}
+							</NoMatchesRow>
+						)}
+						{activeClients.map(renderClientRow)}
+						<ArchivedSection
+							count={archivedClients.length}
+							colSpan={CLIENT_COLUMN_COUNT}
+							open={archivedOpen}
+							sticky
+							onOpenChange={(open) =>
+								navigate({ search: { archived: open ? "1" : undefined } })
+							}
+						>
+							{archivedClients.map(renderClientRow)}
+						</ArchivedSection>
+					</TableBody>
+				</Table>
+			</TableScroll>
+		</PageFull>
 	);
 }

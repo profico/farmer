@@ -23,6 +23,42 @@
    are set by the same handle (`data-theme`) the design uses. */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
+/* Preferences → Display: one attribute on <html> per setting, set before the
+   first paint by lib/display-prefs.ts. These rules are unlayered on purpose. A
+   layered override would lose to the unlayered `:root` that sets `--serif`,
+   whatever its selector. */
+
+/* "Boring font": the display face in the body face. The weight and tracking
+   that go with it are beside `.h2`. */
+:root[data-font='sans'] {
+  --serif: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* "Less movement": every CSS animation and transition ends at once, on its
+   end state. An element still arrives where it goes, and a spinner stops.
+   0.01ms rather than `none`, so a component that waits for `animationend` or
+   `transitionend` before it unmounts still gets the event. Motion's springs
+   stop in JS, in the same module. This is stronger than the
+   `prefers-reduced-motion` blocks below, which keep some movement. */
+:root[data-motion='reduce'] *,
+:root[data-motion='reduce'] *::before,
+:root[data-motion='reduce'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+/* "Compact tables": less space above and below the text of a table row.
+   `TableCell` reads this variable, with its usual padding as the fallback, so a
+   cell that sets its own padding keeps it. The column labels keep their
+   height, because `stickyRowCellClass` is placed from it. */
+:root[data-density='compact'] {
+  --table-cell-py: 0.375rem;
+}
+
 /* The scroll fade's two edge lengths, registered so they can be TRANSITIONED —
    an unregistered custom property is an unanimatable string, and the fade would
    snap on at the first pixel of scroll instead of easing in. Top level rather
@@ -650,6 +686,15 @@ html {
     margin: 0;
   }
 
+  /* The display rules above are set for Instrument Serif, which is drawn
+     narrow and dark at 400. Instrument Sans at the same settings reads light
+     and loose, so under "Boring font" it takes a step of weight and gives the
+     tracking back. */
+  :root[data-font='sans'] :is(.font-display, .serif, .h1, .h2) {
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+
   .lede {
     font-size: var(--fs-md);
     line-height: 1.65;
@@ -1223,20 +1268,41 @@ html {
 
   /* `--fade-size` is how far the content dissolves at an edge that has more
      behind it: enough to read as "there is more", short enough never to hide a
-     whole row. The two edge lengths are registered at the top of this file so
-     the transition below actually animates. */
+     whole row. It stays under the island's top padding (1.75rem), so content
+     dissolves in the padding and not where it is being read. The two edge
+     lengths are registered at the top of this file so the transition below
+     actually animates.
+
+     The ramp is eased (smoothstep, a = t²(3 − 2t), sampled at eighths), not
+     linear. A straight ramp has a visible corner where it meets full opacity,
+     which the eye reads as the edge of a band laid over the content — a white
+     gradient, although nothing is painted. */
   .scroll-fade {
-    --fade-size: 2rem;
+    --fade-size: 1.5rem;
     min-height: 0;
     transition:
       --fade-top var(--dur-base) var(--ease-out),
       --fade-bottom var(--dur-base) var(--ease-out);
     mask-image: linear-gradient(
       to bottom,
-      transparent 0,
+      rgb(0 0 0 / 0) 0,
+      rgb(0 0 0 / 0.043) calc(var(--fade-top) * 0.125),
+      rgb(0 0 0 / 0.156) calc(var(--fade-top) * 0.25),
+      rgb(0 0 0 / 0.316) calc(var(--fade-top) * 0.375),
+      rgb(0 0 0 / 0.5) calc(var(--fade-top) * 0.5),
+      rgb(0 0 0 / 0.684) calc(var(--fade-top) * 0.625),
+      rgb(0 0 0 / 0.844) calc(var(--fade-top) * 0.75),
+      rgb(0 0 0 / 0.957) calc(var(--fade-top) * 0.875),
       #000 var(--fade-top),
       #000 calc(100% - var(--fade-bottom)),
-      transparent 100%
+      rgb(0 0 0 / 0.957) calc(100% - var(--fade-bottom) * 0.875),
+      rgb(0 0 0 / 0.844) calc(100% - var(--fade-bottom) * 0.75),
+      rgb(0 0 0 / 0.684) calc(100% - var(--fade-bottom) * 0.625),
+      rgb(0 0 0 / 0.5) calc(100% - var(--fade-bottom) * 0.5),
+      rgb(0 0 0 / 0.316) calc(100% - var(--fade-bottom) * 0.375),
+      rgb(0 0 0 / 0.156) calc(100% - var(--fade-bottom) * 0.25),
+      rgb(0 0 0 / 0.043) calc(100% - var(--fade-bottom) * 0.125),
+      rgb(0 0 0 / 0) 100%
     );
   }
 
