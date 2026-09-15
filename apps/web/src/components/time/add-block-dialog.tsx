@@ -63,6 +63,7 @@ import {
 	rememberEntryOptions,
 	rememberLastPick,
 } from "#/lib/entry-options.ts";
+import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
@@ -685,13 +686,30 @@ export function AddBlockDialog({
 		});
 	};
 
+	// Commits and pull request events happened on the entry's day, so an entry
+	// holding them stays there. The service refuses the move as well; this only
+	// keeps the stepper from offering it.
+	const dayLocked =
+		!!entry &&
+		((attachedCommits?.length ?? 0) > 0 ||
+			(attachedPullRequests?.length ?? 0) > 0);
+
 	// The repeat days default to the day being logged, so they follow it until
-	// repeat is switched on and the choice becomes the person's.
+	// repeat is switched on and the choice becomes the person's. What was picked
+	// from the old day goes: its commits, pull requests and meeting belong to
+	// that day, and saved on this one they would be evidence of the wrong day.
 	const setDate = (next: string) => {
+		if (next === form.getValues("date")) return;
 		form.setValue("date", next, { shouldValidate: true });
 		if (!form.getValues("repeatEnabled")) {
 			form.setValue("daysOfWeek", [weekdayInTz(next, timezone)]);
 		}
+		setSuggestedCommits([]);
+		setSelectedCommitKeys(new Set());
+		setSuggestedPullRequests([]);
+		setSelectedPullRequestKeys(new Set());
+		setMeetingUrl(null);
+		setCalendarEventId(null);
 	};
 
 	const mutation = useMutation<{ id: string }, Error, FormValues>({
@@ -797,6 +815,11 @@ export function AddBlockDialog({
 					queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
 				});
 			}
+			// Saved to a day other than the one the dialog opened on, which the page
+			// behind it may not show: say where the time went.
+			if (!values.repeatEnabled && values.date !== defaultDate) {
+				toast.success(`Saved to ${formatDateKeyLong(values.date)}`);
+			}
 			setOpen(false);
 		},
 		onError: (error) => {
@@ -850,25 +873,38 @@ export function AddBlockDialog({
 					<div className="flex h-8 w-fit items-center rounded-lg border text-sm">
 						<button
 							type="button"
-							className={stepperClass}
+							className={cn(
+								stepperClass,
+								"disabled:pointer-events-none disabled:opacity-40",
+							)}
 							aria-label="Previous day"
+							disabled={dayLocked}
 							onClick={() => setDate(addDaysToKey(targetDate, -1))}
 						>
 							<ArrowLeftIcon weight="regular" className="size-4" />
 						</button>
 						<span className="flex items-center gap-1.5 border-x px-3 font-medium whitespace-nowrap">
-							<DateJump value={targetDate} onPick={setDate} />
+							{!dayLocked && <DateJump value={targetDate} onPick={setDate} />}
 							{dialogDateLabel(targetDate)}
 						</span>
 						<button
 							type="button"
-							className={stepperClass}
+							className={cn(
+								stepperClass,
+								"disabled:pointer-events-none disabled:opacity-40",
+							)}
 							aria-label="Next day"
+							disabled={dayLocked}
 							onClick={() => setDate(addDaysToKey(targetDate, 1))}
 						>
 							<ArrowRightIcon weight="regular" className="size-4" />
 						</button>
 					</div>
+					{dayLocked && (
+						<p className="text-xs text-muted-foreground">
+							Its GitHub activity keeps this entry on this day.
+						</p>
+					)}
 				</DialogHeader>
 				<Form {...form}>
 					<form
