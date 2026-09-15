@@ -50,6 +50,8 @@ schema. It holds three keys and nothing else:
 - **Every value is a default.** A flag always wins.
 - **Only `log` reads `project` and `task`; every command reads `org`.** The
   order for the organization is `--org`, then the file, then `farmer org use`.
+  `--org` turns the file off for that command: the file's ids belong to its
+  own organization, so its project and task mean nothing in another one.
   `edit` would move an entry nobody asked to move; `file` handles calendar
   meetings, which often belong elsewhere, and with `--remember` would create a
   filing rule nobody chose; `off` takes an absence task, which carries no
@@ -107,10 +109,11 @@ schema. It holds three keys and nothing else:
 - Refuses outside a git repository, where no file would apply.
 - Takes `--org`, `-p` (a name or a code; the id is written) and `-t`; a missing
   value opens the picker, and without a terminal it stops, as `log` does. The
-  task picker offers "No default task" and no absence tasks.
+  task picker offers "No default task" (`-t none`) and no absence tasks.
 - **Suggests the project from the git remote, and only suggests.** It reads
-  `origin`, parses a github.com SSH or HTTPS URL into `owner/name`, and asks a
-  new route for the projects the caller may log time on that have a **Linked
+  `origin`, parses a github.com SSH or HTTPS URL into `owner/name`, and asks
+  `GET /api/v1/orgs/$orgSlug/repository-projects?repository=owner/name` for
+  the projects the caller may log time on that have a **Linked
   repository** of that name. The matches go first in the picker, marked as
   matching the remote; the person still confirms. Without a terminal a match
   is not taken as `-p`. A missing remote, another host, a renamed repository
@@ -127,7 +130,9 @@ schema. It holds three keys and nothing else:
 
 - Nobody types the file by hand in practice; `farmer init` or an agent writes
   it.
-- The CLI's `log` help shows each default and where it came from.
+- The CLI's `log` help says that `-p` and `-t` default to `.farmer.jsonc`.
+  Help does not show the names: they need a request, and help makes none.
+  `farmer whoami` shows them.
 - The file never holds a per-person preference. A setting that differs between
   two people in one repository belongs in `~/.config/farmer/config.json`.
 - The git remote is never a default at command time, only a suggestion in

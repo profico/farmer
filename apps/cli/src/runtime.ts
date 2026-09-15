@@ -14,6 +14,8 @@ export type Runtime = {
 	platform: NodeJS.Platform;
 	arch: string;
 	paths: Paths;
+	/** Where `.farmer.jsonc` is looked for. */
+	cwd: string;
 	keyring: Keyring | null;
 	fetch: FetchLike;
 	sleep: (ms: number) => Promise<void>;
@@ -70,6 +72,7 @@ export const systemRuntime = (): Runtime => ({
 	platform: process.platform,
 	arch: process.arch,
 	paths: configPaths(process.env, process.platform, homedir()),
+	cwd: process.cwd(),
 	// FARMER_NO_KEYRING=1 skips the system keyring and keeps the token in
 	// credentials.json — for a machine whose keyring exists but is locked or
 	// prompts on a display nobody is looking at.
