@@ -13,6 +13,13 @@ import { toast } from "sonner";
 
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
+import {
+	byNumber,
+	byText,
+	type Sort,
+	SortHead,
+	toggleSort,
+} from "#/components/reports/shared.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -92,6 +99,21 @@ export const Route = createFileRoute("/$orgSlug/projects/$projectId/team")({
 });
 
 type Person = { value: string; label: string; email: string };
+
+// Alphabetical by default; All-time hours and Last entry start biggest and
+// most recent first. A date key sorts as text, and a person who never logged
+// here has no last entry, so they sit at the bottom of the recent-first order.
+type SortKey = "name" | "hours" | "last";
+type RosterRow = {
+	name: string;
+	allTimeSeconds: number;
+	lastEntry: string | null;
+};
+const COMPARE = {
+	name: byText((m: RosterRow) => m.name),
+	hours: byNumber((m: RosterRow) => m.allTimeSeconds),
+	last: byText((m: RosterRow) => m.lastEntry),
+} satisfies Record<SortKey, (a: RosterRow, b: RosterRow) => number>;
 
 function TeamPage() {
 	const { organization, role } = Route.useRouteContext();
@@ -232,9 +254,16 @@ function Roster({
 	const { data: assignable } = useSuspenseQuery(
 		assignableMembersQuery(orgSlug, projectId),
 	);
+	const [sort, setSort] = useState<Sort<SortKey>>({ key: "name", dir: 1 });
+	const onSort = (key: SortKey, numeric: boolean) =>
+		setSort((current) => toggleSort(current, key, numeric));
 	const onTeam = members
 		.filter((m) => m.active)
-		.sort((a, b) => a.name.localeCompare(b.name, "hr"));
+		.sort(
+			(a, b) =>
+				COMPARE[sort.key](a, b) * sort.dir ||
+				a.name.localeCompare(b.name, "hr"),
+		);
 	const onTeamIds = new Set(onTeam.map((m) => m.userId));
 	const free: Person[] = assignable
 		.filter((p) => !onTeamIds.has(p.userId))
@@ -325,10 +354,28 @@ function Roster({
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Person</TableHead>
+						<SortHead
+							label="Person"
+							sortKey="name"
+							sort={sort}
+							onSort={onSort}
+						/>
 						<TableHead>Role</TableHead>
-						<TableHead className="text-right">All-time hours</TableHead>
-						<TableHead>Last entry</TableHead>
+						<SortHead
+							label="All-time hours"
+							sortKey="hours"
+							numeric
+							sort={sort}
+							onSort={onSort}
+							className="text-right"
+						/>
+						<SortHead
+							label="Last entry"
+							sortKey="last"
+							numeric
+							sort={sort}
+							onSort={onSort}
+						/>
 						<TableHead className="w-10" />
 					</TableRow>
 				</TableHeader>
