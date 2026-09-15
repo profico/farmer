@@ -6,6 +6,7 @@ import { matchesSearch } from "@farmer/core/lib/search";
 import type { TimeReportDetailInput } from "@farmer/core/schema";
 import type { TimeReportDetailRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
@@ -31,6 +32,7 @@ import { downloadCsv } from "#/lib/csv.ts";
 import { cn } from "#/lib/utils.ts";
 import { timeReportDetailQuery } from "#/queries/reports.ts";
 
+import type { Search } from "./search.ts";
 import {
 	byNumber,
 	byText,
@@ -77,6 +79,7 @@ export function EntriesDrilldown<G extends EntryGroup>({
 	groups,
 	by,
 	onByChange,
+	narrow,
 	roleOf,
 	empty = "No entries match these filters.",
 }: {
@@ -85,6 +88,11 @@ export function EntriesDrilldown<G extends EntryGroup>({
 	groups: readonly G[];
 	by: G;
 	onByChange: (by: G) => void;
+	/** Where a group's hours go: Reports adds the group as a filter, so a
+	 *  person's project row opens that person on that project. Null for a
+	 *  grouping that is not a filter (date); absent on a project's page, which
+	 *  has no filter to add, and the hours stay text. */
+	narrow?: (by: EntryGroup, id: string) => Search | null;
 	/** A project's page tags each person's row with their role there. */
 	roleOf?: (userId: string) => string | null;
 	empty?: string;
@@ -148,6 +156,7 @@ export function EntriesDrilldown<G extends EntryGroup>({
 					query={query}
 					expand={expand}
 					onToggle={(key) => setExpand(toggled(expand, key))}
+					narrow={narrow}
 					roleOf={roleOf}
 					empty={empty}
 				/>
@@ -268,6 +277,7 @@ function EntriesTable({
 	query,
 	expand,
 	onToggle,
+	narrow,
 	roleOf,
 	empty,
 }: {
@@ -276,6 +286,7 @@ function EntriesTable({
 	query: string;
 	expand: Expand;
 	onToggle: (key: string) => void;
+	narrow?: (by: EntryGroup, id: string) => Search | null;
 	roleOf?: (userId: string) => string | null;
 	empty: string;
 }) {
@@ -437,6 +448,7 @@ function EntriesTable({
 							const open = isOpen(expand, group.key);
 							const role =
 								roleOf && by === "teammate" ? roleOf(group.userId) : null;
+							const narrowed = narrow?.(by, group.key) ?? null;
 							return (
 								<Fragment key={group.key}>
 									{/* The summary row: a disclosure, the same one the
@@ -477,9 +489,20 @@ function EntriesTable({
 										</TableCell>
 										<TableCell className="text-right">
 											<span className="flex items-center justify-end gap-3">
-												<span className="mono font-medium">
-													{formatReportHours(group.seconds)}
-												</span>
+												{narrowed ? (
+													<Link
+														to="/$orgSlug/reports"
+														params={{ orgSlug }}
+														search={narrowed}
+														className="mono font-medium underlined"
+													>
+														{formatReportHours(group.seconds)}
+													</Link>
+												) : (
+													<span className="mono font-medium">
+														{formatReportHours(group.seconds)}
+													</span>
+												)}
 												<span className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-secondary">
 													<span
 														className="block h-full rounded-full bg-primary"
