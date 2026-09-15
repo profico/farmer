@@ -21,8 +21,10 @@ import { StatusPill } from "#/components/status-pill.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { CountUp } from "#/components/ui/count-up.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
+import { StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { projectPageAccess } from "#/lib/project-access.ts";
 import { myAccessQuery } from "#/queries/access.ts";
@@ -123,35 +125,38 @@ function ProjectPage() {
 						Projects
 					</Link>
 				}
+				// The code is a chip after the name, not a 24px monospace prefix in
+				// front of it: at that size the code WAS the title, and every project
+				// page opened on a different-width bracket (DESIGN.md).
 				title={
 					<span className="flex items-center gap-3">
 						<ProjectIcon icon={project.icon} name={project.name} />
-						<span className="min-w-0">
-							{project.code && (
-								<span className="mono mr-2 text-xl text-muted-foreground">
-									[{project.code}]
-								</span>
-							)}
-							{project.name}
-						</span>
+						<span className="min-w-0 truncate">{project.name}</span>
+						{project.code && (
+							<span className="mono shrink-0 self-center rounded-md bg-secondary px-2 py-1 text-sm font-normal text-muted-foreground">
+								{project.code}
+							</span>
+						)}
 					</span>
 				}
+				// One middle dot, not four. The client and the type are the same kind
+				// of fact and read as a path; the status and the team size are
+				// different kinds and stand apart (DESIGN.md, "Sentences, not
+				// chains").
 				lede={
-					<span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-						<span>{project.client?.name ?? "—"}</span>
-						<span aria-hidden>·</span>
-						<span>{TYPE_LABEL[project.type]}</span>
-						<span aria-hidden>·</span>
-						<StatusPill tone={archived ? "neutral" : "positive"}>
-							{archived ? "Archived" : "Active"}
-						</StatusPill>
+					<span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+						<span>
+							{project.client?.name ?? "—"}
+							<span className="mx-1.5 text-faint" aria-hidden>
+								/
+							</span>
+							{TYPE_LABEL[project.type]}
+						</span>
+						{archived && <StatusPill tone="neutral">Archived</StatusPill>}
 						{access.canView && (
-							<>
-								<span aria-hidden>·</span>
-								<span>
-									{teamSize} {teamSize === 1 ? "person" : "people"}
-								</span>
-							</>
+							<span>
+								{teamSize} {teamSize === 1 ? "person" : "people"}
+							</span>
 						)}
 					</span>
 				}
@@ -159,7 +164,7 @@ function ProjectPage() {
 					<div className="flex items-center gap-2">
 						{access.canManageTeam && (
 							<Button
-								variant="outline"
+								variant="secondary"
 								nativeButton={false}
 								render={
 									<Link
@@ -173,7 +178,7 @@ function ProjectPage() {
 						)}
 						{access.canManageSettings && (
 							<Button
-								variant="outline"
+								variant="secondary"
 								nativeButton={false}
 								render={
 									<Link
@@ -271,12 +276,10 @@ function ProjectPage() {
 						empty="Nothing logged in this period."
 					/>
 
-					<p className="mt-3 max-w-[72ch] text-sm text-muted-foreground">
-						{by === "teammate"
-							? "Open a name for their entries. Hours sorts the people; any other column sorts the entries inside."
-							: by === "task"
-								? "Open a task for its entries."
-								: "Open a day for its entries."}{" "}
+					{/* The sorting rule used to be spelled out here as a paragraph; the
+					    caret on the column head is what says it. What is left is the one
+					    thing the table cannot show. */}
+					<p className="mt-3 text-sm text-muted-foreground">
 						Roles are edited on the Team page.
 					</p>
 				</>
@@ -296,60 +299,69 @@ function OverviewStrip({
 }) {
 	const { data } = useSuspenseQuery(projectOverviewQuery(orgSlug, projectId));
 	return (
-		<div className="grid grid-cols-2 gap-x-8 gap-y-4 border-y border-line2 py-4 sm:grid-cols-4">
-			<div>
-				<div className="eyebrow">All-time hours</div>
-				<div className="mono mt-1 text-lg">
-					{formatReportHours(data.allTimeSeconds)}
-				</div>
-				<div className="text-xs text-muted-foreground">
-					{data.entryCount.toLocaleString("hr-HR")}{" "}
-					{data.entryCount === 1 ? "entry" : "entries"} · {data.peopleCount}{" "}
-					{data.peopleCount === 1 ? "person" : "people"} ever
-				</div>
-			</div>
-			<div>
-				<div className="eyebrow">This month</div>
-				<div className="mono mt-1 text-lg">
-					{formatReportHours(data.monthSeconds)}
-				</div>
-				<div className="text-xs text-muted-foreground">
-					{data.monthPeople} {data.monthPeople === 1 ? "person" : "people"}{" "}
-					logged
-				</div>
-			</div>
-			<div>
-				<div className="eyebrow">First entry</div>
-				<div className="mt-1 text-lg">
-					{data.firstEntry ? formatDateKeyLong(data.firstEntry) : "—"}
-				</div>
-				<div className="text-xs text-muted-foreground">
-					{data.lastEntry
-						? `last ${formatDateKeyLong(data.lastEntry)}`
-						: "nothing logged yet"}
-				</div>
-			</div>
-			<div>
-				<div className="eyebrow">Overtime</div>
-				<div className="mono mt-1 text-lg">
-					{formatReportHours(data.overtimeSeconds)}
-				</div>
-				<div className="text-xs text-muted-foreground">all-time, flagged</div>
-			</div>
-		</div>
+		<StatTiles columns={4} className="-mx-4 px-4 sm:-mx-8 sm:px-8">
+			<StatTile
+				label="All-time"
+				value={
+					<CountUp value={data.allTimeSeconds} format={formatReportHours} />
+				}
+				caption={
+					<>
+						{data.entryCount.toLocaleString("hr-HR")}{" "}
+						{data.entryCount === 1 ? "entry" : "entries"} · {data.peopleCount}{" "}
+						{data.peopleCount === 1 ? "person" : "people"} ever
+					</>
+				}
+			/>
+			<StatTile
+				label="This month"
+				value={<CountUp value={data.monthSeconds} format={formatReportHours} />}
+				caption={
+					<>
+						{data.monthPeople} {data.monthPeople === 1 ? "person" : "people"}{" "}
+						logged
+					</>
+				}
+			/>
+			{/* A date is not a figure, so it is set at the size a date is read at
+			    rather than in the figure's 28px — the strip used to put "January 2,
+			    2024" at the same weight as 33.644,25. */}
+			<StatTile
+				label="Active since"
+				value={
+					<span className="text-xl">
+						{data.firstEntry ? formatDateKeyLong(data.firstEntry) : "—"}
+					</span>
+				}
+				caption={
+					data.lastEntry
+						? `last entry ${formatDateKeyLong(data.lastEntry)}`
+						: "nothing logged yet"
+				}
+			/>
+			<StatTile
+				label="Overtime"
+				value={
+					<CountUp value={data.overtimeSeconds} format={formatReportHours} />
+				}
+				caption="all-time, flagged"
+			/>
+		</StatTiles>
 	);
 }
 
 function StripPending() {
 	return (
-		<div className="grid grid-cols-2 gap-x-8 gap-y-4 border-y border-line2 py-4 sm:grid-cols-4">
-			{["All-time hours", "This month", "First entry", "Overtime"].map((l) => (
-				<div key={l}>
-					<div className="eyebrow">{l}</div>
-					<Skeleton className="mt-2 h-5 w-20" />
-				</div>
+		<StatTiles columns={4} className="-mx-4 px-4 sm:-mx-8 sm:px-8">
+			{["All-time", "This month", "Active since", "Overtime"].map((l) => (
+				<StatTile
+					key={l}
+					label={l}
+					value={<Skeleton className="h-7 w-24" />}
+					caption={<Skeleton className="h-3 w-32" />}
+				/>
 			))}
-		</div>
+		</StatTiles>
 	);
 }
 

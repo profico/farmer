@@ -9,11 +9,16 @@ import {
 } from "#/components/ui/popover.tsx";
 import { cn } from "#/lib/utils.ts";
 
-// The toolbar every timesheet view shares, laid out the way Harvest lays it out:
-// the add button first, then the date stepper, then a "return to now" link, with
-// each view's own controls pushed to the right. Keeping the geometry identical
-// across Day/Week/Month is the point — the eye should not have to re-find the
-// arrows when the tab changes.
+// The one toolbar every timesheet view shares: where you are on the left, what
+// you can do on the right, one row, and the primary action last (DESIGN.md,
+// "One toolbar"). Keeping the geometry identical across Day/Week/Month is the
+// point — the eye should not have to re-find the arrows when the tab changes.
+//
+// The add button used to sit FIRST, as a bare square icon: the primary action
+// of the screen, unlabelled, at the far left, in a row that then ran date,
+// link, and two labelled secondary buttons. It is now the last control on the
+// right, labelled, which is where every other screen in the app puts its
+// primary.
 export function TimeToolbar({
 	add,
 	prev,
@@ -36,11 +41,13 @@ export function TimeToolbar({
 	children?: ReactNode;
 }) {
 	return (
-		<div className="flex shrink-0 flex-wrap items-center gap-3">
-			{add}
-			<div className="flex h-8 items-center rounded-lg border">
+		<div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+			{/* Cut from the band surface like every other control (DESIGN.md,
+			    `text-input`). Outlined, it was the only bordered thing on a screen
+			    whose fields are all filled. */}
+			<div className="flex h-8 items-center overflow-hidden rounded-lg bg-secondary">
 				{prev}
-				<span className="flex items-center gap-1.5 border-x px-3 text-sm font-medium whitespace-nowrap">
+				<span className="flex items-center gap-1.5 border-x border-line2 px-3 text-sm font-medium whitespace-nowrap">
 					{jumpTo ? (
 						<DateJump {...jumpTo} />
 					) : (
@@ -51,9 +58,10 @@ export function TimeToolbar({
 				{next}
 			</div>
 			{returnLink}
-			{children && (
-				<div className="ml-auto flex items-center gap-2">{children}</div>
-			)}
+			<div className="ml-auto flex items-center gap-2">
+				{children}
+				{add}
+			</div>
 		</div>
 	);
 }
@@ -114,11 +122,12 @@ export function DateJump({
 
 /** Shared classes for the ‹ / › steppers, so they sit flush inside the group. */
 export const stepperClass =
-	"flex h-full w-8 items-center justify-center text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted hover:text-foreground";
+	"flex h-full w-8 items-center justify-center text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:bg-hover-2 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16 focus-visible:ring-inset";
 
-/** Harvest renders "Return to today" as a plain underlined link, not a button —
- *  it's an escape hatch, not a peer of the steppers. */
-export const returnLinkClass = "underlined text-sm";
+/** "Return to today" is an escape hatch, not a peer of the steppers — a quiet
+ *  word beside them that only appears when you are somewhere else. */
+export const returnLinkClass =
+	"rounded-md px-1.5 py-1 text-sm text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16";
 
 export function ToolbarLabel({
 	children,

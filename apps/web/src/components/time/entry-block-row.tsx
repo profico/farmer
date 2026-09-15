@@ -1,15 +1,27 @@
-import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
+import {
+	CopySimpleIcon,
+	GitCommitIcon,
+	GitPullRequestIcon,
+	PencilSimpleIcon,
+	TrashIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { ProjectIcon } from "#/components/projects/project-icon.tsx";
 import {
 	AddBlockDialog,
 	type ExistingTimeEntry,
 } from "#/components/time/add-block-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "#/components/ui/tooltip.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
@@ -26,6 +38,7 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 	project: {
 		name: string;
 		code: string | null;
+		icon?: string | null;
 		client: { name: string } | null;
 	} | null;
 	task: { name: string; color: string | null; isAbsence: boolean };
@@ -33,14 +46,20 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 	pullRequestCount?: number;
 };
 
-/** Harvest's row heading: "[CODE] Project (Client)". The code is what people
- *  actually say out loud, so it leads; an absence has neither and just names
- *  itself. */
+/** The row's name in one string, for a tooltip or a screen reader: the project,
+ *  its client, and the task under it. An absence has no project and just names
+ *  itself.
+ *
+ *  The visible row no longer reads this. It used to be Harvest's
+ *  "[CODE] Project (Client)", with the code leading because it is what people
+ *  say out loud — but a bracketed monospace code in front of every name is the
+ *  loudest thing in the list and starts every project at a different x. The
+ *  code is now a chip AFTER the name (DESIGN.md, "Table heads and rows"), so
+ *  the names line up and the eye can run down them. */
 export function entryHeading(entry: EntryBlockRowEntry): string {
 	if (!entry.project) return entry.task.name;
-	const code = entry.project.code ? `[${entry.project.code}] ` : "";
 	const client = entry.project.client ? ` (${entry.project.client.name})` : "";
-	return `${code}${entry.project.name}${client}`;
+	return `${entry.project.name}${client} · ${entry.task.name}`;
 }
 
 export function EntryBlockRow({
@@ -183,11 +202,43 @@ export function EntryBlockRow({
 		},
 	});
 
+	// Duplicating is the same write `restore` makes, from the row in hand: the
+	// commonest way to log a second block is that it is nearly the first one.
+	const duplicateMutation = useMutation({
+		mutationFn: () =>
+			createTimeEntry({
+				data: {
+					taskId: entry.taskId,
+					projectId: entry.projectId ?? undefined,
+					description: entry.description || undefined,
+					date: entry.date,
+					durationSeconds: entry.durationSeconds,
+					overtime: entry.overtime,
+					fillsDay: false,
+				},
+			}),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+			toast("Entry duplicated");
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not duplicate entry");
+		},
+	});
+
 	return (
-		// Wraps on a phone. The figure and the three word-buttons are a fixed
-		// ~180px; holding them on the same line as the text squeezed a project
-		// name down to a dozen characters and turned every note into a five-line
-		// column, so below `sm` they drop to their own right-aligned line.
+		// The row is a hover group: its actions are hidden at rest and slide in
+		// under the pointer or the keyboard (`.row-actions`, styles.css). They used
+		// to be three permanent words — OT, Edit, Delete — on every row of every
+		// list, which put nine controls on a three-entry day and made the actions
+		// louder than the time they act on.
+		//
+		// Wraps on a phone: the figure and the actions are a fixed ~140px, and
+		// holding them on the same line as the text squeezed a project name down
+		// to a dozen characters. Touch has no hover, so the actions are always
+		// visible there — see the `(hover: none)` rule beside `.row-actions`.
 		//
 		// Delete only, no enter. Deleting a row used to drop it instantly and snap
 		// everything below it upward while the "Undo" toast slid in from the far
@@ -212,22 +263,46 @@ export function EntryBlockRow({
 					: undefined
 			}
 			transition={springProductive}
-			className="group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted sm:flex-nowrap sm:px-8"
+			className="group/row group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted sm:flex-nowrap sm:px-8"
 		>
-			<span
-				className="mt-1.5 size-2 shrink-0 rounded-full"
-				style={{
-					backgroundColor: entry.task.color ?? "var(--muted-foreground)",
-				}}
-			/>
+			{/* The project's own mark, which is what tells fifteen rows apart at a
+			    glance — its uploaded logo, its emoji, or the first letter of its
+			    name. An absence has no project, so it keeps the task's colour as a
+			    dot: a lettered box for "Vacation" would read as a project that
+			    isn't there. */}
+			{entry.project ? (
+				<ProjectIcon
+					size="sm"
+					icon={entry.project.icon}
+					name={entry.project.name}
+					className="mt-0.5 transition-transform duration-(--dur-base) group-hover/row:-translate-y-px"
+				/>
+			) : (
+				<span
+					className="mt-2 size-2 shrink-0 rounded-full"
+					style={{
+						backgroundColor: entry.task.color ?? "var(--muted-foreground)",
+					}}
+				/>
+			)}
 			<div className="min-w-0 flex-1">
-				{/* Project line, then task line, then the note — Harvest's three-tier
-				    row. The hierarchy is load-bearing: you scan for the project, then
-				    confirm the task, and only read the note if you need detail. */}
-				<div className="flex flex-wrap items-center gap-2">
+				{/* The project, then what it was, then the note. The hierarchy is
+				    load-bearing: you scan for the project, confirm the task, and
+				    read the note only if you need the detail. */}
+				<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 					<p className="truncate text-base font-medium">
-						{entryHeading(entry)}
+						{entry.project ? entry.project.name : entry.task.name}
 					</p>
+					{entry.project?.code && (
+						<span className="mono shrink-0 rounded-md bg-secondary px-1.5 py-0.5 text-2xs text-muted-foreground">
+							{entry.project.code}
+						</span>
+					)}
+					{entry.project && (
+						<span className="shrink-0 rounded-md bg-secondary px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+							{entry.task.name}
+						</span>
+					)}
 					{entry.fillsDay && (
 						<span className="eyebrow shrink-0 rounded-full bg-muted px-1.5 py-0.5">
 							Rest of day
@@ -257,8 +332,10 @@ export function EntryBlockRow({
 						</span>
 					)}
 				</div>
-				{entry.project && (
-					<p className="text-sm text-muted-foreground">{entry.task.name}</p>
+				{entry.project?.client && (
+					<p className="truncate text-sm text-muted-foreground">
+						{entry.project.client.name}
+					</p>
 				)}
 				<Textarea
 					value={note}
@@ -269,45 +346,96 @@ export function EntryBlockRow({
 					className="mt-0.5 -ml-1.5 min-h-7 w-full resize-none rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-muted-foreground shadow-none [field-sizing:content] placeholder:text-faint hover:border-input focus-visible:border-ring focus-visible:bg-background focus-visible:text-foreground"
 				/>
 			</div>
-			<div className="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto sm:items-start sm:gap-3">
-				<span className="mono mr-auto text-base sm:mt-0.5 sm:mr-0">
+			<div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto sm:gap-3">
+				<span className="mono mr-auto text-base sm:mr-0">
 					{formatClock(entry.durationSeconds)}
 				</span>
 				{/* Overtime is a one-click toggle from the row: it is purely manual, and
-				    making people reopen the dialog for it guarantees it never gets set. */}
+				    making people reopen the dialog for it guarantees it never gets set.
+				    It stays visible once ON — at that point it is a state the row is
+				    in, not an action waiting to be found. */}
 				{!entry.task.isAbsence && !entry.fillsDay && (
-					<Button
-						variant="ghost"
-						size="sm"
-						className={cn("text-faint", entry.overtime && "text-warn")}
-						onClick={() => overtimeMutation.mutate(!entry.overtime)}
-						disabled={overtimeMutation.isPending}
-					>
-						OT
-					</Button>
+					<Tooltip>
+						<TooltipTrigger
+							render={
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									className={cn(
+										"text-faint",
+										entry.overtime
+											? "text-warn"
+											: "row-actions hover:text-foreground",
+									)}
+									onClick={() => overtimeMutation.mutate(!entry.overtime)}
+									disabled={overtimeMutation.isPending}
+									aria-label={
+										entry.overtime ? "Not overtime" : "Mark as overtime"
+									}
+								>
+									<span className="text-2xs font-medium">OT</span>
+								</Button>
+							}
+						/>
+						<TooltipContent>
+							{entry.overtime ? "Not overtime" : "Mark as overtime"}
+						</TooltipContent>
+					</Tooltip>
 				)}
-				<AddBlockDialog
-					timezone={timezone}
-					defaultDate={entry.date}
-					entry={entry}
-					trigger={
-						<Button variant="ghost" size="sm" className="text-faint">
-							Edit
-						</Button>
-					}
-				/>
-				<Button
-					variant="ghost"
-					size="sm"
-					className="text-faint hover:text-primary"
-					onClick={() => {
-						setCollapsing(true);
-						deleteMutation.mutate();
-					}}
-					disabled={deleteMutation.isPending}
-				>
-					Delete
-				</Button>
+				<div className="row-actions flex items-center gap-0.5">
+					<AddBlockDialog
+						timezone={timezone}
+						defaultDate={entry.date}
+						entry={entry}
+						trigger={
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								className="text-muted-foreground"
+								aria-label="Edit entry"
+							>
+								<PencilSimpleIcon weight="regular" />
+							</Button>
+						}
+					/>
+					<Tooltip>
+						<TooltipTrigger
+							render={
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									className="text-muted-foreground"
+									onClick={() => duplicateMutation.mutate()}
+									disabled={duplicateMutation.isPending}
+									aria-label="Duplicate entry"
+								>
+									<CopySimpleIcon weight="regular" />
+								</Button>
+							}
+						/>
+						<TooltipContent>Duplicate</TooltipContent>
+					</Tooltip>
+					<Tooltip>
+						<TooltipTrigger
+							render={
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+									onClick={() => {
+										setCollapsing(true);
+										deleteMutation.mutate();
+									}}
+									disabled={deleteMutation.isPending}
+									aria-label="Delete entry"
+								>
+									<TrashIcon weight="regular" />
+								</Button>
+							}
+						/>
+						<TooltipContent>Delete</TooltipContent>
+					</Tooltip>
+				</div>
 			</div>
 		</motion.div>
 	);

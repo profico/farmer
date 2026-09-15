@@ -117,6 +117,11 @@ export type ExistingTimeEntry = {
 
 const MAX_ENTRY_SECONDS = 24 * 3600;
 
+/** The lengths most entries actually are, offered as chips beside the field.
+ *  Written as clock strings because that is what the field holds and what the
+ *  blur handler normalises to, so a chip and a typed "1.5" end in one state. */
+const QUICK_DURATIONS = ["0:30", "1:00", "2:00", "4:00", "8:00"] as const;
+
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
 const formSchema = z
@@ -920,8 +925,11 @@ export function AddBlockDialog({
 					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
 					{/* The timesheet's ‹ date › stepper, so the day can change without
 					    closing the dialog: yesterday's work logged today, or an entry
-					    moved to the day it belongs to. */}
-					<div className="flex h-8 w-fit items-center rounded-lg border text-sm">
+					    moved to the day it belongs to.
+					    Cut from the same filled surface as every other field in the
+					    dialog (DESIGN.md, `text-input`) rather than outlined: outlined,
+					    it read as a toolbar that had fallen into a form. */}
+					<div className="flex h-8 w-fit items-center rounded-lg bg-secondary text-sm">
 						<button
 							type="button"
 							className={cn(
@@ -934,7 +942,7 @@ export function AddBlockDialog({
 						>
 							<ArrowLeftIcon weight="regular" className="size-4" />
 						</button>
-						<span className="flex items-center gap-1.5 border-x px-3 font-medium whitespace-nowrap">
+						<span className="flex items-center gap-1.5 border-x border-line2 px-3 font-medium whitespace-nowrap">
 							{!dayLocked && <DateJump value={targetDate} onPick={setDate} />}
 							{dialogDateLabel(targetDate)}
 						</span>
@@ -968,18 +976,18 @@ export function AddBlockDialog({
 						// commit rows actually bite.
 						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
-						{/* One label over the two pickers, the way Harvest stacks them:
-						    the project decides the task list, so they read as one choice. */}
+						{/* Project then task, side by side from `sm`: the project decides
+						    the task list, so they read left to right as one choice made in
+						    two steps. Stacked under one "Project / Task" label they read
+						    as a single control that had been cut in half. */}
 						<div className="grid gap-1.5">
-							<span className="text-sm leading-none font-medium text-muted-foreground">
-								Project / Task
-							</span>
-							<div className="grid gap-2">
+							<div className="grid gap-2.5 sm:grid-cols-2">
 								<FormField
 									control={form.control}
 									name="projectId"
 									render={({ field }) => (
-										<FormItem className="gap-1">
+										<FormItem className="gap-1.5">
+											<FormLabel>Project</FormLabel>
 											<FormControl>
 												<ProjectPicker
 													aria-label="Project"
@@ -1011,7 +1019,8 @@ export function AddBlockDialog({
 									control={form.control}
 									name="taskId"
 									render={({ field }) => (
-										<FormItem className="gap-1">
+										<FormItem className="gap-1.5">
+											<FormLabel>Task</FormLabel>
 											<FormControl>
 												<TaskPicker
 													aria-label="Task"
@@ -1033,83 +1042,118 @@ export function AddBlockDialog({
 								/>
 							</div>
 						</div>
-						{/* What you did, and how long: side by side, the time box big
-						    enough to be the thing you read back. */}
-						<div className="grid gap-1.5">
-							<div className="grid grid-cols-[minmax(0,1fr)_9.5rem] gap-2.5 max-sm:grid-cols-[minmax(0,1fr)]">
+						{/* What you did, and how long. The duration stays to the RIGHT of
+						    the description, where it has always been: this is the most
+						    used form in the product and the hand already knows where the
+						    box is. What changed is its weight — it was a 30px monospace
+						    figure in a box the height of the textarea, which made the
+						    number the loudest thing in the dialog and read as a running
+						    timer rather than a field. It is now the display face at 22px
+						    in a normal control, with the common lengths as chips under
+						    it, so most entries are one click rather than a typed figure. */}
+						<div className="grid grid-cols-[minmax(0,1fr)_9.5rem] gap-x-3 gap-y-1.5 max-sm:grid-cols-[minmax(0,1fr)]">
+							<FormField
+								control={form.control}
+								name="description"
+								render={({ field }) => (
+									<FormItem className="gap-1.5">
+										<FormLabel>
+											{needsDescription && !fillsDay ? "What you did" : "Note"}
+										</FormLabel>
+										<FormControl>
+											<Textarea
+												rows={3}
+												className="min-h-20 resize-y"
+												placeholder={
+													needsDescription && !fillsDay
+														? "Rebuilt the project picker…"
+														: "Optional…"
+												}
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+							{fillsDay ? (
+								<div className="grid gap-1.5">
+									<span className="text-sm leading-none font-medium">
+										Duration
+									</span>
+									<div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed border-input px-3 text-center text-sm text-muted-foreground">
+										Rest of day
+									</div>
+								</div>
+							) : (
 								<FormField
 									control={form.control}
-									name="description"
+									name="duration"
 									render={({ field }) => (
-										<FormItem className="gap-1">
+										<FormItem className="gap-1.5">
+											<FormLabel>Duration</FormLabel>
 											<FormControl>
-												<Textarea
-													rows={3}
-													className="min-h-22 resize-y"
-													aria-label={
-														needsDescription && !fillsDay
-															? "What you did"
-															: "Note (optional)"
-													}
-													placeholder={
-														needsDescription && !fillsDay
-															? "What did you work on?"
-															: "Note (optional)"
-													}
+												<Input
 													{...field}
+													placeholder="0:00"
+													inputMode="decimal"
+													className="font-display h-10 text-right text-[22px] font-semibold tabular-nums"
+													// Normalise on blur, the way the week grid's cells
+													// already do — "1.5" becomes "1:30", so what is on
+													// screen is what will be saved rather than a form the
+													// reader has to snap in their own head.
+													onBlur={(e) => {
+														field.onBlur();
+														const parsed = parseDuration(e.target.value);
+														if (parsed !== null && parsed > 0) {
+															field.onChange(
+																formatClock(snapToQuarterHour(parsed)),
+															);
+														}
+													}}
 												/>
 											</FormControl>
+											{/* The five lengths that cover most entries. A chip
+											    writes the field rather than opening anything, so
+											    the commonest case is one click and the box still
+											    takes anything typed. */}
+											<div className="flex flex-wrap gap-1">
+												{QUICK_DURATIONS.map((value) => (
+													<button
+														key={value}
+														type="button"
+														onClick={() => {
+															form.setValue("duration", value, {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+														}}
+														className={cn(
+															"tnum rounded-md px-1.5 py-1 text-xs font-medium transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
+															field.value === value
+																? "bg-primary/12 text-primary"
+																: "bg-secondary text-muted-foreground hover:text-foreground",
+														)}
+													>
+														{value}
+													</button>
+												))}
+											</div>
 											<FormMessage />
 										</FormItem>
 									)}
 								/>
-								{fillsDay ? (
-									<div className="flex min-h-22 items-center justify-center rounded-lg border border-dashed border-input px-3 text-center text-sm text-muted-foreground">
-										Rest of day
-									</div>
-								) : (
-									<FormField
-										control={form.control}
-										name="duration"
-										render={({ field }) => (
-											<FormItem className="gap-1">
-												<FormControl>
-													<Input
-														{...field}
-														aria-label="Time"
-														placeholder="0:00"
-														inputMode="decimal"
-														className="mono h-full min-h-22 text-right text-[30px] font-medium tabular-nums"
-														// Normalise on blur, the way the week grid's cells
-														// already do — "1.5" becomes "1:30", so what is on
-														// screen is what will be saved rather than a form the
-														// reader has to snap in their own head.
-														onBlur={(e) => {
-															field.onBlur();
-															const parsed = parseDuration(e.target.value);
-															if (parsed !== null && parsed > 0) {
-																field.onChange(
-																	formatClock(snapToQuarterHour(parsed)),
-																);
-															}
-														}}
-													/>
-												</FormControl>
-												<FormMessage />
-											</FormItem>
-										)}
-									/>
-								)}
-							</div>
+							)}
 							{/* The rounding hint gives way to the error above: two lines of
-							    small print under one box is one too many. */}
+							    small print under one box is one too many. Spans both columns
+							    so it reads as a note on the pair, not on the textarea. */}
 							{!form.formState.errors.duration && (
-								<p className="text-sm text-muted-foreground">
+								<p className="text-sm text-muted-foreground max-sm:col-span-1 sm:col-span-2">
 									{fillsDay
 										? "Fills the rest of your working hours, minus everything else logged that day."
 										: willSnap && snappedSeconds != null
-											? `Rounds to ${formatClock(snappedSeconds)} — time is tracked in 15-minute steps.`
-											: "Type 1.5, 1h30m or 1:30 — tracked in 15-minute steps."}
+											? `Rounds to ${formatClock(snappedSeconds)}. Time is tracked in 15-minute steps.`
+											: "Type 1.5, 1h30m or 1:30. Tracked in 15-minute steps."}
 								</p>
 							)}
 						</div>
@@ -1640,7 +1684,7 @@ export function AddBlockDialog({
 									)}
 								</div>
 							)}
-							<DialogClose render={<Button type="button" variant="outline" />}>
+							<DialogClose render={<Button type="button" variant="ghost" />}>
 								Cancel
 							</DialogClose>
 							<Button type="submit" disabled={mutation.isPending}>

@@ -12,7 +12,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
-import { EmptyState } from "#/components/states/empty-state.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";
 import { BookTimeOffDialog } from "#/components/time/book-time-off-dialog.tsx";
@@ -27,6 +26,7 @@ import {
 } from "#/components/time/time-toolbar.tsx";
 import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
@@ -117,8 +117,9 @@ export function DayView({
 						timezone={timezone}
 						defaultDate={date}
 						trigger={
-							<Button size="icon" aria-label="Log time">
+							<Button size="sm">
 								<PlusIcon weight="regular" className="size-4" />
+								Log time
 							</Button>
 						}
 					/>
@@ -181,7 +182,7 @@ export function DayView({
 					orgSlug={orgSlug}
 					defaultDate={date}
 					trigger={
-						<Button variant="outline" size="sm">
+						<Button variant="secondary" size="sm">
 							<UmbrellaSimpleIcon className="size-4" />
 							Time off
 						</Button>
@@ -191,7 +192,7 @@ export function DayView({
 					orgSlug={orgSlug}
 					date={date}
 					trigger={
-						<Button variant="outline" size="sm">
+						<Button variant="secondary" size="sm">
 							<SparkleIcon className="size-4" />
 							Assemble my day
 						</Button>
@@ -214,38 +215,43 @@ export function DayView({
 			</div>
 
 			<div className="scrollbar-stable -mx-4 min-h-0 flex-1 overflow-y-auto sm:-mx-8">
-				{sortedEntries.length === 0 ? (
-					<EmptyState
-						title="Nothing logged yet"
-						description="Add a block, or copy yesterday's, to start the day."
+				{/* No AnimatePresence: a row's delete collapse is owned by the row
+				    itself (see EntryBlockRow). Presence only knows that a row left,
+				    not why — so stepping to another day, which replaces every entry
+				    at once, played the delete animation across the whole list.
+				    `key` re-runs the stagger when the day changes, which is the
+				    crossfade doing the same job honestly. */}
+				<div key={date} className="stagger divide-y divide-line2">
+					{sortedEntries.map((entry) => (
+						<EntryBlockRow key={entry.id} entry={entry} timezone={timezone} />
+					))}
+				</div>
+				{/* The list ends on the way to add to it, whether or not it has rows:
+				    an empty day is a sentence and this same row (DESIGN.md, "Empty
+				    and ghost rows"), rather than a centred placeholder with no action
+				    on it. */}
+				<div className="px-4 pt-3 sm:px-8">
+					<AddBlockDialog
+						timezone={timezone}
+						defaultDate={date}
+						trigger={
+							<GhostRow hint={sortedEntries.length === 0 ? undefined : "L"}>
+								{sortedEntries.length === 0
+									? "Nothing logged yet. Log your first block of the day"
+									: "Add another entry to this day"}
+							</GhostRow>
+						}
 					/>
-				) : (
-					<>
-						{/* No AnimatePresence: a row's delete collapse is owned by the row
-						    itself (see EntryBlockRow). Presence only knows that a row
-						    left, not why — so stepping to another day, which replaces
-						    every entry at once, played the delete animation across the
-						    whole list. */}
-						<div className="divide-y divide-line2">
-							{sortedEntries.map((entry) => (
-								<EntryBlockRow
-									key={entry.id}
-									entry={entry}
-									timezone={timezone}
-								/>
-							))}
-						</div>
-						{/* Harvest puts the day total under the list rather than over it,
-						    so it reads as the sum of what you just scanned. */}
-						<div className="flex items-center justify-end gap-3 border-t px-4 py-3.5 sm:px-8">
-							<span className="eyebrow">Total</span>
-							<span className="mono min-w-14 text-right text-md">
-								{formatClock(total)}
-							</span>
-							{/* Aligns with the row actions above it. */}
-							<span className="w-[136px] shrink-0" aria-hidden />
-						</div>
-					</>
+				</div>
+				{sortedEntries.length > 0 && (
+					// Harvest puts the day total under the list rather than over it,
+					// so it reads as the sum of what you just scanned.
+					<div className="mt-3 flex items-center justify-end gap-3 border-t px-4 py-3.5 sm:px-8">
+						<span className="eyebrow">Total</span>
+						<span className="tnum min-w-14 text-right text-md font-semibold">
+							{formatClock(total)}
+						</span>
+					</div>
 				)}
 			</div>
 

@@ -11,14 +11,18 @@ import {
 	useRouter,
 } from "@tanstack/react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import { ChatRail } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
-import { settingsSubNavItems } from "#/components/settings-nav.tsx";
+import {
+	settingsNavGroups,
+	settingsSubNavItems,
+} from "#/components/settings-nav.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
+import { DisclosureChevron } from "#/components/ui/disclosure.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { useScrollFade } from "#/components/ui/scroll-fade.tsx";
 import {
@@ -47,10 +51,8 @@ import { springLayout, springProductive } from "#/lib/motion.ts";
 import {
 	activeNavTo,
 	ASSISTANT_ITEM,
-	CLIENTS_ITEM,
 	isNavItemActive,
 	type NavItem,
-	PEOPLE_ITEM,
 	REPORTS_ITEM,
 	SETTINGS_ITEM,
 	WORK_ITEMS,
@@ -359,24 +361,36 @@ export function AppSidebar({
 	// Reports are for everyone — the services scope them, a Member sees their
 	// own row — so the item is not gated.
 	const lateWorkItems = [REPORTS_ITEM];
-	const manageItems = [
-		...(canManageClients ? [CLIENTS_ITEM] : []),
-		...(isAdmin ? [PEOPLE_ITEM] : []),
-	];
 
-	// The settings sub-menu, open only while you are somewhere under it.
+	// The settings sub-menu: every settings page this reader may open, in the
+	// hub's own two groups and the hub's own order.
 	//
 	// A settings page used to be a leaf: you arrived from the hub, and the only
-	// way to the next one was back to the hub first. The sub-menu turns the six
-	// pages that have no row of their own into siblings you can walk between, and
-	// it is what makes the Settings row read as a place rather than a link.
+	// way to the next one was back to the hub first. The sub-menu turns them into
+	// siblings you can walk between, and it is what makes the Settings row read
+	// as a place rather than a link.
 	//
-	// It is not a disclosure the reader opens and closes. There is no state to
-	// keep, nothing to remember across a navigation, and no way to be in settings
-	// while it is shut — the route IS the switch, which is also why it needs no
-	// aria-expanded: nothing here is a control.
+	// **It is a disclosure the reader controls now.** It used to open by route
+	// and have no way to close — twelve rows you could not put away, on a screen
+	// whose nav is meant to be four. It still opens itself when you navigate into
+	// settings, because that is what the sidebar looks like at that address, and
+	// closing it while you stand inside is allowed: the row stays lit, so nothing
+	// is lost.
 	const inSettings = isNavItemActive(pathname, SETTINGS_ITEM.to, orgSlug);
+	const settingsGroups = settingsNavGroups({ isAdmin, canManageClients });
 	const settingsItems = settingsSubNavItems({ isAdmin, canManageClients });
+	const [settingsOpenOverride, setSettingsOpenOverride] = useState<
+		boolean | null
+	>(null);
+	// The route wins on arrival, the reader wins after that, and walking OUT of
+	// settings clears the override so the next visit opens fresh.
+	const settingsWasIn = useRef(inSettings);
+	if (settingsWasIn.current !== inSettings) {
+		settingsWasIn.current = inSettings;
+		if (settingsOpenOverride !== null) setSettingsOpenOverride(null);
+	}
+	const settingsOpen = settingsOpenOverride ?? inSettings;
+
 	const activeTo = activeNavTo(
 		pathname,
 		[
@@ -384,7 +398,6 @@ export function AppSidebar({
 			...lateWorkItems,
 			...YOU_ITEMS,
 			...(inSettings ? settingsItems : []),
-			...manageItems,
 		],
 		orgSlug,
 	);
@@ -414,10 +427,10 @@ export function AppSidebar({
 					aria-hidden
 					layoutId="sidebar-active-nav"
 					transition={springLayout}
-					// `rounded-md`, matching the sub button's own corner — the pill and
-					// the hover background are the same shape at the same size, or the
-					// corner changes as you move onto the row you are already on.
-					className="absolute inset-0 rounded-md bg-sidebar-accent shadow-[0_1px_2px_color-mix(in_srgb,var(--fg)_5%,transparent)]"
+					// Matching the sub button's own corner — the pill and the hover
+					// background are the same shape at the same size, or the corner
+					// changes as you move onto the row you are already on.
+					className="absolute inset-0 rounded-lg bg-sidebar-accent"
 				/>
 			)}
 			{/* No icon, unlike the rows above and unlike the hub's list: the rail at
@@ -431,24 +444,55 @@ export function AppSidebar({
 		const isActive = activeTo === item.to;
 		return (
 			<SidebarMenuItem key={item.to}>
+				{/* The row is still a link to the hub — a phone has no sub-menu and
+				    the hub is where its rows live — with the chevron beside it as the
+				    disclosure's own control. A caret that navigated would be a
+				    control that did two things; one that only turned would leave the
+				    hub unreachable from the sidebar. So: label navigates, caret
+				    toggles, and the caret stops the click from reaching the link. */}
 				<SidebarMenuButton
 					isActive={isActive}
 					render={navLink(item, isActive)}
 				/>
+				<button
+					type="button"
+					aria-expanded={settingsOpen}
+					aria-label={settingsOpen ? "Collapse settings" : "Expand settings"}
+					onClick={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						setSettingsOpenOverride(!settingsOpen);
+					}}
+					className="absolute top-1.5 right-1 flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+				>
+					<DisclosureChevron open={settingsOpen} />
+				</button>
 				{/* `initial={false}` so a cold load that lands inside settings paints
 				    the sub-menu already open. It is not an entrance there — it is
 				    what the sidebar looks like at that address. */}
 				<AnimatePresence initial={false}>
-					{inSettings && (
+					{settingsOpen && (
 						<ExpandingSub>
 							<SidebarMenuSub className="mt-1">
-								{settingsItems.map((subItem) => (
-									<SidebarMenuSubItem key={subItem.to}>
-										<SidebarMenuSubButton
-											isActive={activeTo === subItem.to}
-											render={settingsSubLink(subItem, activeTo === subItem.to)}
-										/>
-									</SidebarMenuSubItem>
+								{settingsGroups.map((group) => (
+									<Fragment key={group.key}>
+										{/* The hub's own section labels, so the menu and the
+										    page it leads to name the same groups. */}
+										<li className="eyebrow px-2.5 pt-2.5 pb-1 first:pt-1">
+											{group.label}
+										</li>
+										{group.items.map((subItem) => (
+											<SidebarMenuSubItem key={subItem.to}>
+												<SidebarMenuSubButton
+													isActive={activeTo === subItem.to}
+													render={settingsSubLink(
+														subItem,
+														activeTo === subItem.to,
+													)}
+												/>
+											</SidebarMenuSubItem>
+										))}
+									</Fragment>
 								))}
 							</SidebarMenuSub>
 						</ExpandingSub>
@@ -541,8 +585,10 @@ export function AppSidebar({
 									</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
+							{/* No label over the Settings row: a heading over a single
+							    row names a group of one. The gap above it is the
+							    separation, the way the hub separates its two sections. */}
 							<SidebarGroup>
-								<SidebarGroupLabel>You</SidebarGroupLabel>
 								<SidebarGroupContent>
 									<SidebarMenu>
 										{YOU_ITEMS.map((item) =>
@@ -553,20 +599,6 @@ export function AppSidebar({
 									</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
-							{/* Admin is known before the first paint and a Team Lead's
-							    Clients row is not, so for a lead the whole group arrives
-							    late — the row opens (`lateNavRow`) and takes its label
-							    with it, rather than the label sitting alone over nothing. */}
-							{manageItems.length > 0 && (
-								<SidebarGroup>
-									<SidebarGroupLabel>Manage</SidebarGroupLabel>
-									<SidebarGroupContent>
-										<SidebarMenu>
-											{manageItems.map(isAdmin ? navRow : lateNavRow)}
-										</SidebarMenu>
-									</SidebarGroupContent>
-								</SidebarGroup>
-							)}
 						</>
 					)}
 				</FadeSwap>

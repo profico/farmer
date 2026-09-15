@@ -42,13 +42,16 @@ export type SettingsEntry = {
 	group: "account" | "workspace";
 	description: string;
 	/**
-	 * True when the page also has a nav row of its own.
+	 * Kept at `false` on every entry, and kept as a field so the shape of a
+	 * catalogue row does not change under anything reading it.
 	 *
-	 * Those four rows are listed by the hub and left out of the sub-menu: an
-	 * index that omitted them would not be an index, while a menu that repeated
-	 * them would put the same destination twice in one sidebar — and, since the
-	 * active pill is resolved by matching a path against a list of `to`s, two
-	 * rows carrying one `to` are two rows that light together.
+	 * It used to mark the four pages (My schedule, Recurring blocks, Clients,
+	 * People) that ALSO had a top-level sidebar row, which the sub-menu then
+	 * had to leave out — so the menu was "every settings page that lacks its own
+	 * row", a rule about the code rather than a group a person recognises, and
+	 * the sidebar and the hub listed different things in different orders. The
+	 * four rows moved into Settings with the rest (see `app-sidebar.tsx`), and
+	 * one catalogue now drives both surfaces in one order.
 	 */
 	hasNavRow: boolean;
 	show: (audience: SettingsAudience) => boolean;
@@ -74,7 +77,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "account",
 		description:
 			"Your working hours. They size the fill-rest-of-day block and the behind-pace reminder.",
-		hasNavRow: true,
+		hasNavRow: false,
 		show: always,
 	},
 	{
@@ -82,7 +85,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "account",
 		description:
 			"Time that repeats every week, written onto your days for you.",
-		hasNavRow: true,
+		hasNavRow: false,
 		show: always,
 	},
 	{
@@ -99,27 +102,27 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 	},
 	{
 		item: {
-			label: "Holidays",
-			to: "/$orgSlug/settings/holidays",
-			icon: CalendarHeartIcon,
+			label: "Organization",
+			to: "/$orgSlug/settings/organization",
+			icon: BuildingsIcon,
 		},
 		group: "workspace",
-		description: "The public holidays this workspace observes.",
+		description: "Name, logo, timezone, country and the automation lock date.",
 		hasNavRow: false,
-		show: always,
+		show: (audience) => audience.isAdmin,
 	},
 	{
 		item: CLIENTS_ITEM,
 		group: "workspace",
 		description: "The companies your projects are billed to.",
-		hasNavRow: true,
+		hasNavRow: false,
 		show: (audience) => audience.canManageClients,
 	},
 	{
 		item: PEOPLE_ITEM,
 		group: "workspace",
 		description: "Invite people, set their role and their person type.",
-		hasNavRow: true,
+		hasNavRow: false,
 		show: (audience) => audience.isAdmin,
 	},
 	{
@@ -172,14 +175,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 	},
 	{
 		item: {
-			label: "Organization",
-			to: "/$orgSlug/settings/organization",
-			icon: BuildingsIcon,
+			label: "Holidays",
+			to: "/$orgSlug/settings/holidays",
+			icon: CalendarHeartIcon,
 		},
 		group: "workspace",
-		description: "Name, logo, timezone, country and the automation lock date.",
+		description: "The public holidays this workspace observes.",
 		hasNavRow: false,
-		show: (audience) => audience.isAdmin,
+		show: always,
 	},
 ];
 
@@ -188,17 +191,39 @@ export const settingsEntriesFor = (
 	audience: SettingsAudience,
 ): SettingsEntry[] => SETTINGS_ENTRIES.filter((entry) => entry.show(audience));
 
-/**
- * The sidebar's sub-menu: the settings pages that have no nav row of their own.
- *
- * Three rows for a member, six for an admin — short enough to open under the
- * Settings row without the sidebar becoming the fifteen-row list the hub exists
- * to replace.
- */
+/** Every settings page this reader may open, flat — what the sidebar matches a
+ *  path against to decide which sub-row is lit. */
 export const settingsSubNavItems = (audience: SettingsAudience): NavItem[] =>
-	settingsEntriesFor(audience)
-		.filter((entry) => !entry.hasNavRow)
-		.map((entry) => entry.item);
+	settingsEntriesFor(audience).map((entry) => entry.item);
+
+/** The label each of the hub's two sections carries, in both surfaces. */
+export const SETTINGS_GROUP_LABEL = {
+	account: "Account",
+	workspace: "Workspace",
+} as const;
+
+/**
+ * The sidebar's sub-menu, in the hub's own groups and the hub's own order.
+ *
+ * One function feeds both, so the menu under the Settings row and the page it
+ * leads to can no longer disagree about what exists, what it is called, or
+ * which section it belongs to. An empty group is dropped rather than rendered
+ * as a heading over nothing.
+ */
+export const settingsNavGroups = (
+	audience: SettingsAudience,
+): { key: "account" | "workspace"; label: string; items: NavItem[] }[] => {
+	const entries = settingsEntriesFor(audience);
+	return (["account", "workspace"] as const)
+		.map((key) => ({
+			key,
+			label: SETTINGS_GROUP_LABEL[key],
+			items: entries
+				.filter((entry) => entry.group === key)
+				.map((entry) => entry.item),
+		}))
+		.filter((group) => group.items.length > 0);
+};
 
 /**
  * The way back up, in the one place every settings page already has a line of

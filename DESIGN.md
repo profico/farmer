@@ -300,11 +300,50 @@ Buttons are rounded rectangles, not pills, so a button beside a field reads as t
 - **Status pill**: round, 12px medium, a semantic colour on its 12% tint.
 - **Skeleton**: the hairline colour, breathing 1 to 0.55 on a 1.6s cycle, unstaggered.
 
+## Screen patterns
+
+Each of these is one component, used everywhere the shape recurs, so a screen
+tidies with the pattern rather than on its own.
+
+- **Page header** (`ui/page-header.tsx`): eyebrow for live context, 32px title,
+  one lede, actions right with the primary last and secondaries as lifts. Never
+  an outline button beside a filled one.
+- **One toolbar** (`time/time-toolbar.tsx`): where you are on the left as a
+  filled stepper, what you can do on the right, one row, 32px controls. The
+  timesheet, the reports, the hour fund and the project page all take it.
+- **Figure tiles** (`ui/stat-tile.tsx`): a band divided by soft hairlines, never
+  boxed. Eyebrow with room for a pill, a 28px figure with tabular digits, one
+  caption, and whatever the tile needs under it. Home's three targets and the
+  project page's four figures are the same component.
+- **Counting figures** (`ui/count-up.tsx`): a headline figure counts up from
+  zero on first paint and tweens between values afterwards, so the number that
+  changed is the one that moves.
+- **Ghost row** (`ui/ghost-row.tsx`): a list ends on the dashed row that adds to
+  it, and an empty list is a sentence plus that same row. No dashed boxes and no
+  centred placeholders with no action on them.
+- **Row actions** (`.row-actions` on a `group/row`): hidden at rest, slid in 4px
+  on hover or focus-within, always visible on touch. Icon buttons with tooltips,
+  never three permanent words on every row.
+- **Sparkline** (`ui/sparkline.tsx`): bars for a short history, the last one
+  accented, rising in order.
+- **Disclosure** (`ui/disclosure.tsx`): one height spring and one rotating
+  chevron for everything that unrolls.
+- **Sentences, not chains**: one fact per phrase, the number in medium, the
+  qualifier muted, at most one middle dot per line.
+- **Codes after names**: a project code is a small monospace chip after the
+  name, never a bracketed prefix in front of it. Names then line up down a list.
+- **Status only when it is not the default**: an "Active" pill on every row of
+  a list of active things is a column carrying no information.
+
 ## Motion
 
 Three speeds (120 / 150 / 180ms) and two curves. Entrances and exits ease out; travel eases in and out. Transform and opacity only.
 
-- A page assembles: blocks rise 6px, staggered 28ms, capped at the fifth.
+- A page assembles: blocks rise 6px, staggered 28ms, capped at the fifth. A
+  list inside one staggers its own rows 20ms apart (`.stagger`), capped at the
+  twelfth.
+- Bars and rails grow from zero (`.rise`, `.rail-fill`) and re-grow when the
+  period or the sort changes.
 - Menus and popovers spring from the trigger with a 4px rise; dialogs spring in with a blurred backdrop.
 - The sidebar selection and the segmented control move by shared-layout spring.
 - The theme toggle crossfades the whole document over 220ms through a view transition.

@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { useState } from "react";
 
 import { PersonAvatar } from "#/components/person-avatar.tsx";
+import { settingsNavGroups } from "#/components/settings-nav.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import {
 	Drawer,
@@ -19,10 +20,8 @@ import { authClient } from "#/lib/auth-client.ts";
 import { springExpressive } from "#/lib/motion.ts";
 import {
 	activeNavTo,
-	CLIENTS_ITEM,
 	mobileWorkItems,
 	type NavItem,
-	PEOPLE_ITEM,
 	REPORTS_ITEM,
 	YOU_ITEMS,
 } from "#/lib/nav-items.ts";
@@ -83,14 +82,16 @@ export function MobileTabBar({
 				REPORTS_ITEM,
 			],
 		},
-		{ label: "You", items: YOU_ITEMS },
-		{
-			label: "Manage",
-			items: [
-				...(canManageClients ? [CLIENTS_ITEM] : []),
-				...(isAdmin ? [PEOPLE_ITEM] : []),
-			],
-		},
+		// Settings, then everything behind it, in the hub's own two groups — the
+		// same catalogue the sidebar's sub-menu draws (`settingsNavGroups`), so a
+		// phone reaches every settings page in the order a desktop lists them.
+		// Before this the sheet showed "You" and "Manage", which were four of the
+		// twelve, and the other eight were two taps away behind the hub.
+		{ label: "Settings", items: YOU_ITEMS },
+		...settingsNavGroups({ isAdmin, canManageClients }).map((group) => ({
+			label: group.label,
+			items: group.items,
+		})),
 	].filter((group) => group.items.length > 0);
 
 	const moreItems = groups.flatMap((group) => group.items);

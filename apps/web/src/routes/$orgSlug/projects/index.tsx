@@ -22,6 +22,7 @@ import { AvatarGroup, AvatarGroupCount } from "#/components/ui/avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
+import { Switch } from "#/components/ui/switch.tsx";
 import {
 	stickyRowCellClass,
 	Table,
@@ -40,22 +41,28 @@ import { myAccessQuery } from "#/queries/access.ts";
 import { clientsQuery } from "#/queries/clients.ts";
 import { projectsQuery } from "#/queries/projects.ts";
 
-// The projects list, as on Harvest: grouped by client, active first, archived
-// folded away, the code as [CODE] before the name. Each row carries the
-// project's icon, its people, this month's hours and its all-time hours. A row
-// is a link to the project's page for the people who have one (Team Lead and
-// up on that project, and Admins); for a plain Member it is a row.
+// The projects list: one flat, sortable table, active first and archived folded
+// away. Each row carries the project's icon, its client, its people, this
+// month's hours against the busiest project's, and its all-time hours. A row is
+// a link to the project's page for the people who have one (Team Lead and up on
+// that project, and Admins); for a plain Member it is a row.
 //
 // Sorted by this month's hours, biggest first — "what is the company working
-// on" is the question the list gets asked — with the Project header as the
-// alphabetical alternative. The client groups follow the same sort by their
-// total, so the busiest client sits on top and its projects sort inside it.
+// on" is the question the list gets asked.
+//
+// **Grouping by client is a toggle now, and off by default.** It used to be the
+// only mode, which fought the sort it was paired with: the rows said they were
+// ordered by this month's hours, but the order only held inside a group, so the
+// busiest project in the workspace could sit two thirds of the way down the
+// page under a client heading. Twenty-one caps headings between sixty-seven
+// rows also made the table read as headers all the way down. The client is a
+// column instead, and the grouping is there for the reader who wants it.
 //
 // It replaced a master/detail — a list with a configuration rail beside it —
 // which put a project's team and settings in a panel and its hours nowhere.
 
 const MAX_AVATARS_SHOWN = 4;
-const COLUMNS = 5;
+const COLUMNS = 6;
 
 type SortKey = "name" | "month";
 type ProjectRow = { name: string; monthlyTotalSeconds: number };
@@ -66,6 +73,10 @@ const COMPARE = {
 
 const searchSchema = z.object({
 	archived: searchFlag,
+	/** Group the rows under their client. Off by default — see the note above.
+	 *  In the URL rather than in state so a grouped list survives a reload and
+	 *  can be linked to, which is what the guidelines ask of any stateful view. */
+	group: searchFlag,
 });
 
 export const Route = createFileRoute("/$orgSlug/projects/")({
@@ -95,6 +106,8 @@ function ProjectsPage() {
 		COMPARE[sort.key](a, b) * sort.dir || a.name.localeCompare(b.name, "hr");
 	const routeSearch = Route.useSearch();
 	const navigate = useNavigate();
+	const grouped = routeSearch.group === "1";
+	const clientCount = new Set(projects.map((p) => p.clientId)).size;
 
 	const counts = useMemo(
 		() => ({
@@ -102,6 +115,15 @@ function ProjectsPage() {
 			archived: projects.filter((p) => p.status === "archived").length,
 		}),
 		[projects],
+	);
+
+	// The busiest project's month, which every row's bar is a share of. Taken
+	// over the whole dataset rather than the filtered rows: a filter narrows
+	// what somebody sees, not what a bar is measured against (CLAUDE.md, "Table
+	// search … filters the view only").
+	const busiestSeconds = Math.max(
+		0,
+		...projects.map((p) => p.monthlyTotalSeconds),
 	);
 
 	const searching = search.trim() !== "";
@@ -158,28 +180,38 @@ function ProjectsPage() {
 		const shown = project.contributors.slice(0, MAX_AVATARS_SHOWN);
 		const overflow = project.contributorCount - shown.length;
 		const opens = projectPageAccess(isAdmin, project.myRole).canView;
+		// The code sits AFTER the name, as a chip. In front, bracketed and in
+		// monospace, it was the loudest thing on every row and started each name
+		// at a different x, so sixty-seven names could not be scanned down the
+		// page (DESIGN.md, "Table heads and rows").
 		const name = (
 			<span className="flex items-center gap-2.5">
-				<ProjectIcon icon={project.icon} name={project.name} size="sm" />
-				<span>
-					{project.code && (
-						<span className="mono mr-1.5 text-xs text-muted-foreground">
-							[{project.code}]
-						</span>
-					)}
-					{project.name}
-				</span>
-				{isArchived && (
-					<span className="rounded-full bg-muted px-2 py-0.5 text-2xs text-muted-foreground">
-						archived
+				<ProjectIcon
+					icon={project.icon}
+					name={project.name}
+					size="sm"
+					className="transition-transform duration-(--dur-base) group-hover/row:-translate-y-px"
+				/>
+				<span className="truncate">{project.name}</span>
+				{project.code && (
+					<span className="mono shrink-0 rounded-md bg-secondary px-1.5 py-0.5 text-2xs text-muted-foreground">
+						{project.code}
 					</span>
 				)}
 			</span>
 		);
+		const share =
+			busiestSeconds > 0
+				? Math.round((project.monthlyTotalSeconds / busiestSeconds) * 100)
+				: 0;
 		return (
 			<TableRow
 				key={project.id}
-				className={cn(isArchived && "opacity-60", opens && "cursor-pointer")}
+				className={cn(
+					"group/row",
+					isArchived && "opacity-60",
+					opens && "cursor-pointer",
+				)}
 				onClick={
 					opens
 						? () =>
@@ -203,13 +235,16 @@ function ProjectsPage() {
 						name
 					)}
 				</TableCell>
+				<TableCell className="max-w-48 truncate text-muted-foreground">
+					{project.client?.name ?? "—"}
+				</TableCell>
 				<TableCell>
 					{project.statsScope === "own" ? (
 						<span className="text-xs text-muted-foreground">
 							Your time only
 						</span>
 					) : shown.length === 0 ? (
-						<span className="text-muted-foreground">—</span>
+						<span className="text-sm text-muted-foreground">Nobody yet</span>
 					) : (
 						<AvatarGroup>
 							{shown.map((c) => (
@@ -228,16 +263,35 @@ function ProjectsPage() {
 						</AvatarGroup>
 					)}
 				</TableCell>
-				<TableCell className="mono text-right">
-					{formatReportHours(project.monthlyTotalSeconds)}
+				{/* The figure, and beside it its share of the busiest project's month:
+				    a column of numbers says who is biggest only after you have read
+				    all of them, and a hairline bar says it at a glance. */}
+				<TableCell className="text-right">
+					<span className="inline-flex items-center justify-end gap-2.5">
+						<span className="mono">
+							{project.monthlyTotalSeconds > 0
+								? formatReportHours(project.monthlyTotalSeconds)
+								: "—"}
+						</span>
+						<span
+							aria-hidden
+							className="hidden h-1 w-16 overflow-hidden rounded-full bg-secondary sm:block"
+						>
+							<span
+								className="rail-fill block h-full rounded-full bg-primary"
+								style={{ width: `${share}%` }}
+							/>
+						</span>
+					</span>
 				</TableCell>
 				<TableCell className="mono text-right text-muted-foreground">
 					{formatReportHours(project.allTimeSeconds)}
 				</TableCell>
+				{/* Status only when it is not the default. "Active" on every one of
+				    sixty-seven rows is a column of identical pills carrying no
+				    information (DESIGN.md, "Table heads and rows"). */}
 				<TableCell>
-					<StatusPill tone={isArchived ? "neutral" : "positive"}>
-						{isArchived ? "Archived" : "Active"}
-					</StatusPill>
+					{isArchived && <StatusPill tone="neutral">Archived</StatusPill>}
 				</TableCell>
 			</TableRow>
 		);
@@ -246,8 +300,12 @@ function ProjectsPage() {
 	return (
 		<PageFull>
 			<PageHeader
-				eyebrow={`${counts.active} active · ${counts.archived} archived`}
 				title="Projects"
+				lede={
+					projects.length === 0
+						? undefined
+						: `${counts.active} active${counts.archived > 0 ? `, ${counts.archived} archived` : ""} across ${clientCount} ${clientCount === 1 ? "client" : "clients"}.`
+				}
 				action={
 					<div className="flex items-center gap-2">
 						<SearchInput
@@ -261,6 +319,45 @@ function ProjectsPage() {
 				}
 				className="shrink-0"
 			/>
+
+			{/* One line between the header and the table: what the rows are grouped
+			    by on the left, how they are sorted on the right. Both are facts
+			    about the table, so they sit on it rather than in the header. */}
+			{projects.length > 0 && (
+				<div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 pb-3">
+					<label
+						htmlFor="projects-group-by-client"
+						className="flex cursor-pointer items-center gap-2.5 text-sm text-muted-foreground"
+					>
+						<Switch
+							id="projects-group-by-client"
+							size="sm"
+							checked={grouped}
+							onCheckedChange={(checked) =>
+								navigate({
+									to: "/$orgSlug/projects",
+									params: { orgSlug },
+									search: {
+										...routeSearch,
+										group: checked ? "1" : undefined,
+									},
+								})
+							}
+						/>
+						Group by client
+					</label>
+					<span className="text-sm text-muted-foreground">
+						Sorted by {sort.key === "name" ? "name" : "this month"},{" "}
+						{sort.dir > 0
+							? sort.key === "name"
+								? "A to Z"
+								: "smallest first"
+							: sort.key === "name"
+								? "Z to A"
+								: "biggest first"}
+					</span>
+				</div>
+			)}
 
 			<TableScroll>
 				{projects.length === 0 ? (
@@ -313,6 +410,7 @@ function ProjectsPage() {
 									sort={sort}
 									onSort={onSort}
 								/>
+								<TableHead>Client</TableHead>
 								<TableHead>Team</TableHead>
 								<SortHead
 									label="This month"
@@ -327,11 +425,11 @@ function ProjectsPage() {
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{byClient.length === 0 ? (
+							{active.length === 0 ? (
 								<NoMatchesRow colSpan={COLUMNS}>
 									No active projects match your search.
 								</NoMatchesRow>
-							) : (
+							) : grouped ? (
 								byClient.map((group) => (
 									<Fragment key={group.name}>
 										<TableRow className="hover:bg-transparent">
@@ -348,6 +446,8 @@ function ProjectsPage() {
 										{group.rows.map(row)}
 									</Fragment>
 								))
+							) : (
+								[...active].sort(compare).map(row)
 							)}
 							<ArchivedSection
 								count={archived.length}

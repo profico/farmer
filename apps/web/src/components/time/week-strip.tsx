@@ -6,15 +6,33 @@ import { springLayout } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const dayOfWeek = (date: string) => new Date(`${date}T12:00:00Z`).getUTCDay();
 const isWeekday = (date: string) => {
-	const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+	const day = dayOfWeek(date);
 	return day !== 0 && day !== 6;
 };
+/** "14" from "2026-09-14", without constructing a Date to ask. */
+const dayOfMonth = (date: string) => date.slice(8).replace(/^0/, "");
 
-// The seven-day context bar above the Day view. It exists so a person filling in
-// Tuesday can see, without navigating, that Thursday is still empty — which is
-// the whole reason Harvest puts it there and the single biggest thing our Day
-// view was missing.
+/**
+ * The seven days of the week, as the tabs the Day view is read through.
+ *
+ * It exists so a person filling in Tuesday can see, without navigating, that
+ * Thursday is still empty — which is the whole reason Harvest puts a strip
+ * there. It used to be seven columns of "0:00" in three different type styles
+ * (caps label, mono figure, red "short"), which is a lot of ink for a row that
+ * mostly says nothing: the eye could not find today, and the red on a day still
+ * being worked read as a scold rather than as information.
+ *
+ * Each day is now one tab: its name and date, what is on it against the day's
+ * worth, and a hairline rail. The active one is a lift plus a sliding accent
+ * underline, the same pair the sidebar and the segmented control use to say
+ * "this one".
+ *
+ * **Today is never short.** A day is only compared against the day's worth once
+ * it is over, so "2:00 short" appears on Monday evening and never on Tuesday
+ * morning. Today says what it has and what it is aiming at instead.
+ */
 export function WeekStrip({
 	orgSlug,
 	dates,
@@ -29,22 +47,37 @@ export function WeekStrip({
 	activeDate: string;
 	secondsByDay: Map<string, number>;
 	holidays: Map<string, string>;
-	/** With a day's worth, a past or present working day says how far it is
-	 *  from it. Omitted for people the rule does not apply to. */
+	/** With a day's worth, a PAST working day says how far it fell short.
+	 *  Omitted for people the rule does not apply to. */
 	today?: string;
 	dayTargetSeconds?: number | null;
 }) {
-	const weekTotal = dates.reduce(
-		(sum, date) => sum + (secondsByDay.get(date) ?? 0),
-		0,
-	);
-
 	return (
-		<div className="-mx-4 flex items-stretch gap-1 overflow-x-auto border-b px-4 sm:-mx-8 sm:px-8">
+		<div className="-mx-4 grid grid-cols-7 gap-1 border-b px-4 pb-1.5 sm:-mx-8 sm:px-8">
 			{dates.map((date) => {
 				const seconds = secondsByDay.get(date) ?? 0;
 				const isActive = date === activeDate;
+				const isToday = date === today;
 				const holidayName = holidays.get(date);
+				const weekend = !isWeekday(date);
+				const target = dayTargetSeconds ?? null;
+				const past = today != null && date < today;
+				const short =
+					target != null &&
+					!holidayName &&
+					!weekend &&
+					past &&
+					seconds < target;
+				const met =
+					target != null &&
+					!holidayName &&
+					!weekend &&
+					past &&
+					seconds >= target;
+				const fill =
+					target != null && target > 0
+						? Math.min(100, (seconds / target) * 100)
+						: 0;
 				return (
 					<Link
 						key={date}
@@ -52,21 +85,13 @@ export function WeekStrip({
 						params={{ orgSlug }}
 						search={{ date }}
 						title={holidayName}
-						// The active day is marked by a 2px accent underscore sitting on
-						// the strip's own hairline, not by a filled tab — the strip is
-						// context, and a filled cell would out-weigh the day below it.
-						//
-						// The underscore is drawn by the shared-layout span below rather
-						// than by this element's own border, so stepping to another day
-						// slides it instead of blinking it off one cell and on at another.
-						// The `border-b-2 border-transparent` stays to hold the 2px the
-						// underscore sits in, so no row changes height.
+						aria-current={isActive ? "page" : undefined}
+						// The whole tab is the hit target, including its figure — the
+						// strip used to be a 16px-wide column of text on a phone.
 						className={cn(
-							// No minimum on a phone: seven days have to fit the viewport or
-							// the strip becomes a horizontal scroller, and a context bar you
-							// have to scroll tells you nothing at a glance.
-							"relative min-w-0 flex-1 border-b-2 border-transparent px-1 py-2.5 transition-colors duration-(--dur-fast) sm:min-w-16",
-							!isActive && "hover:bg-muted",
+							"relative min-w-0 rounded-lg px-2 pt-2 pb-2.5 transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
+							isActive ? "bg-secondary" : "hover:bg-muted",
+							weekend && !isActive && "opacity-55",
 						)}
 					>
 						{isActive && (
@@ -76,50 +101,66 @@ export function WeekStrip({
 								// Same shared-element move, same spring, as the Day/Week/Month
 								// pill in the SegmentedControl directly above this strip —
 								// `reducedMotion="user"` on the root <MotionConfig> makes it
-								// jump instead of glide. Negative insets pull it back out to
-								// the border box the border-b-2 used to occupy.
+								// jump instead of glide. It sits on the strip's own bottom
+								// rule, which is what ties the tab to the list under it.
 								transition={springLayout}
-								className="absolute -inset-x-1 -bottom-0.5 h-0.5 bg-primary"
+								className="absolute inset-x-2 -bottom-1.5 h-0.5 rounded-full bg-primary"
 							/>
 						)}
-						<span className="eyebrow block">
-							{WEEKDAY_LABELS[new Date(`${date}T12:00:00Z`).getUTCDay()]}
+						<span className="eyebrow flex items-baseline gap-1">
+							<span className={cn(isActive && "text-foreground")}>
+								{WEEKDAY_LABELS[dayOfWeek(date)]}
+							</span>
+							<span
+								className={cn(
+									"text-2xs tracking-normal normal-case",
+									isToday ? "font-medium text-primary" : "text-faint",
+								)}
+							>
+								{dayOfMonth(date)}
+							</span>
 						</span>
 						<span
 							className={cn(
-								"mono mt-1 block text-sm",
-								seconds > 0 ? "text-muted-foreground" : "text-faint",
-								isActive && "text-foreground",
+								"tnum mt-1.5 block truncate text-base font-medium",
+								seconds > 0 ? "text-foreground" : "text-faint",
 							)}
 						>
-							{formatClock(seconds)}
+							{seconds > 0 ? formatClock(seconds) : "—"}
 						</span>
-						{holidayName && (
-							<span className="mt-1 block truncate text-2xs text-warn">
-								{holidayName}
+						<span className="mt-0.5 block h-4 truncate text-2xs">
+							{holidayName ? (
+								<span className="text-warn">{holidayName}</span>
+							) : short ? (
+								<span className="text-bad">
+									{formatClock(target - seconds)} short
+								</span>
+							) : met ? (
+								<span className="text-ok">done</span>
+							) : isToday && target != null && seconds < target ? (
+								<span className="text-muted-foreground">
+									of {formatClock(target)}
+								</span>
+							) : (
+								<span>&nbsp;</span>
+							)}
+						</span>
+						{/* A hairline rail rather than a number: seven of these read as a
+						    week's shape at a glance, which seven figures do not. */}
+						{target != null && target > 0 && !weekend && !holidayName && (
+							<span className="mt-1.5 block h-[3px] overflow-hidden rounded-full bg-line2">
+								<span
+									className={cn(
+										"rail-fill block h-full rounded-full",
+										short ? "bg-bad/70" : "bg-primary",
+									)}
+									style={{ width: `${fill}%` }}
+								/>
 							</span>
 						)}
-						{!holidayName &&
-							today != null &&
-							dayTargetSeconds != null &&
-							date <= today &&
-							isWeekday(date) &&
-							(seconds >= dayTargetSeconds ? (
-								<span className="mt-1 block text-2xs text-ok">done</span>
-							) : (
-								<span className="mt-1 block text-2xs text-bad">
-									{formatClock(dayTargetSeconds - seconds)} short
-								</span>
-							))}
 					</Link>
 				);
 			})}
-			{/* The week total is what would push the seventh day off a phone, and
-			    the Week tab is one tap away — so it's a desktop affordance. */}
-			<div className="ml-auto hidden min-w-24 flex-col justify-center py-2.5 pl-4 text-right sm:flex">
-				<span className="eyebrow">Week total</span>
-				<span className="mono mt-1 text-sm">{formatClock(weekTotal)}</span>
-			</div>
 		</div>
 	);
 }

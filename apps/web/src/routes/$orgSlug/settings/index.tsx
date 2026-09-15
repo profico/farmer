@@ -3,6 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import {
+	SETTINGS_GROUP_LABEL,
 	settingsEntriesFor,
 	type SettingsEntry,
 } from "#/components/settings-nav.tsx";
@@ -20,13 +21,16 @@ import { myAccessQuery } from "#/queries/access.ts";
  * group of eleven holding both the hour fund and your colour theme.
  *
  * The two sections here are the same split the pages' own eyebrows already
- * state — "Your account" over Preferences, "Workspace" over Organization. My
- * schedule, Recurring blocks, Clients and People are listed here AND kept as
- * nav rows: an index that omitted a settings page would not be an index.
+ * state: Account over Preferences, Workspace over Organization. Both the
+ * sections and their order come from `components/settings-nav.tsx`, which the
+ * sidebar's sub-menu reads too — so the menu and this page can no longer
+ * disagree about what exists, what it is called, or which section it is in.
  *
- * The rows themselves come from `components/settings-nav.tsx`, which the
- * sidebar's sub-menu reads too, so the two lists cannot disagree about what
- * exists.
+ * **Two columns, not one.** Twelve rows of icon-over-sentence-over-chevron at
+ * 125px each made this page 1500px tall for twelve links, which is a lot of
+ * scrolling to reach a list of destinations. The rows are the same rows, in two
+ * columns, with the icon at the size of the label beside it rather than in a
+ * box that outweighed it.
  */
 export const Route = createFileRoute("/$orgSlug/settings/")({
 	loader: async ({ context, params }) => {
@@ -36,26 +40,34 @@ export const Route = createFileRoute("/$orgSlug/settings/")({
 	component: SettingsIndex,
 });
 
+/**
+ * One destination: its mark, its name, and the one line saying what is behind
+ * it. The row tints under the pointer rather than carrying a permanent
+ * chevron — twelve identical chevrons down a page say only that twelve things
+ * are links, which the labels already said. The arrow arrives on hover, which
+ * is where an affordance belongs.
+ */
 function SettingsRowLink({ item, description }: SettingsEntry) {
 	const orgSlug = useOrgSlug();
 	return (
 		<Link
 			to={item.to}
 			params={{ orgSlug }}
-			className="group flex items-center gap-4 border-t border-line2 py-4 transition-colors duration-(--dur-fast) first:border-t-0 first:pt-0 last:pb-0"
+			className="group/row -mx-2.5 flex items-start gap-3 rounded-lg px-2.5 py-3 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/16"
 		>
-			<span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors duration-(--dur-fast) group-hover:text-foreground">
-				<item.icon className="size-4.5" />
+			<span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground transition-colors duration-(--dur-fast) group-hover/row:text-foreground">
+				<item.icon className="size-4" />
 			</span>
 			<span className="min-w-0 flex-1">
 				<span className="block text-base font-medium">{item.label}</span>
-				<span className="mt-0.5 block max-w-[68ch] text-sm leading-normal text-muted-foreground">
+				<span className="mt-0.5 block text-sm leading-normal text-muted-foreground">
 					{description}
 				</span>
 			</span>
 			<CaretRightIcon
 				weight="regular"
-				className="size-4 shrink-0 text-faint transition-transform duration-(--dur-fast) group-hover:translate-x-0.5"
+				aria-hidden
+				className="row-actions mt-2 size-3.5 shrink-0 text-faint"
 			/>
 		</Link>
 	);
@@ -87,14 +99,20 @@ function SettingsIndex() {
 				}
 			/>
 
-			<PageSection title="Your account">
+			<PageSection
+				title={SETTINGS_GROUP_LABEL.account}
+				contentClassName="grid gap-x-10 sm:grid-cols-2"
+			>
 				{account.map((entry) => (
 					<SettingsRowLink key={entry.item.to} {...entry} />
 				))}
 			</PageSection>
 
 			{workspace.length > 0 && (
-				<PageSection title="Workspace">
+				<PageSection
+					title={SETTINGS_GROUP_LABEL.workspace}
+					contentClassName="grid gap-x-10 sm:grid-cols-2"
+				>
 					{workspace.map((entry) => (
 						<SettingsRowLink key={entry.item.to} {...entry} />
 					))}

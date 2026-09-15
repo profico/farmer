@@ -161,9 +161,16 @@ export function TargetBlock({
 	);
 }
 
-/** The slim strip under the timesheet's Day · Week · Month tabs: the same two
- *  figures, above the entries being filled in. Read without suspending, so
- *  the timesheet never waits on it. */
+/**
+ * The slim strip under the timesheet's Day / Week / Month tabs: the same two
+ * figures, above the entries being filled in. Read without suspending, so the
+ * timesheet never waits on it.
+ *
+ * One line per period, not four. It used to stack an eyebrow, a figure, a pill,
+ * a sentence and a rail in each half, which made a strip of context taller and
+ * louder than the single row of real content under it — the thing the screen is
+ * actually for.
+ */
 export function TargetsStrip({ orgSlug }: { orgSlug: string }) {
 	const { data } = useQuery(myTargetsQuery(orgSlug));
 	const cells = [
@@ -171,35 +178,38 @@ export function TargetsStrip({ orgSlug }: { orgSlug: string }) {
 		{ key: "month", title: "This month", period: data?.month },
 	] as const;
 	return (
-		<div className="-mx-4 mt-5 grid shrink-0 border-y sm:-mx-8 sm:grid-cols-2 sm:divide-x">
+		<div className="-mx-4 grid shrink-0 border-y sm:-mx-8 sm:grid-cols-2 sm:divide-x">
 			{cells.map(({ key, title, period }) => (
-				<div key={key} className="px-4 py-3 sm:px-8">
-					<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-						<span className="eyebrow">{title}</span>
-						{period ? (
-							<>
-								<span className="tnum text-sm font-medium">
-									{formatReportHours(period.totalSeconds)}
-									{period.targetSeconds != null && (
-										<span className="font-normal text-muted-foreground">
-											{" "}
-											/ {formatReportHours(period.targetSeconds)}
-										</span>
-									)}
-								</span>
-								{period.status && <Pill status={period.status} />}
-								<span className="text-sm">
-									<TargetGap period={period} />
-								</span>
-							</>
-						) : (
-							<Skeleton className="h-4 w-48" />
-						)}
-					</div>
+				<div
+					key={key}
+					className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 sm:px-8"
+				>
+					<span className="eyebrow">{title}</span>
 					{period ? (
-						<TargetBar period={period} className="mt-2 h-1" />
+						<>
+							<span className="tnum text-sm font-medium">
+								{formatReportHours(period.totalSeconds)}
+								{period.targetSeconds != null && (
+									<span className="font-normal text-muted-foreground">
+										{" / "}
+										{formatReportHours(period.targetSeconds)}
+									</span>
+								)}
+							</span>
+							{period.status && <Pill status={period.status} />}
+							{/* The rail takes the rest of the line rather than sitting
+							    under it: a bar and its figure on one line read as one
+							    fact. */}
+							<TargetBar
+								period={period}
+								className="h-1 min-w-24 flex-1 basis-24"
+							/>
+							<span className="text-sm whitespace-nowrap">
+								<TargetGap period={period} />
+							</span>
+						</>
 					) : (
-						<div className="mt-2 h-1" />
+						<Skeleton className="h-4 w-48" />
 					)}
 				</div>
 			))}
