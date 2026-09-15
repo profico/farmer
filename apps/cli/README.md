@@ -15,7 +15,8 @@ curl -fsSL https://farmer.example.com/cli | sh
 irm https://farmer.example.com/cli | iex
 ```
 
-To update, run the same command again.
+To update, run `farmer update`. It runs the same install script over the
+installed binary, so running the install command again does the same.
 
 ## Log in
 
@@ -69,6 +70,7 @@ farmer tasks                        The tasks
 farmer status                       This week and month against your target
 farmer sync                         Run your syncs now
 farmer open                         Open your timesheet in the browser
+farmer update [url]                 Install the newest release over this one
 ```
 
 Examples:
