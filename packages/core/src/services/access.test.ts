@@ -20,7 +20,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
@@ -41,6 +41,7 @@ const accessWith = (
 	roles: Record<string, "member" | "team_lead" | "pm">,
 	isAdmin = false,
 	leadOf: string[] = [],
+	openProjects: string[] = [],
 ) =>
 	new Access(
 		"u1",
@@ -53,6 +54,7 @@ const accessWith = (
 			"member" | "team_lead" | "pm"
 		>,
 		new Set(leadOf),
+		new Set(openProjects),
 	);
 
 const P = "project-1";
@@ -188,6 +190,38 @@ describe("Access.scopeFor", () => {
 	// ("everything"). Conflating them would hand a member the whole org.
 	test("returns an empty array, not null, when nothing qualifies", () => {
 		expect(accessWith({ a: "member" }).scopeFor("pm")).toEqual([]);
+	});
+});
+
+describe("Access — projects open to the organization", () => {
+	const open = accessWith({}, false, [], [P]);
+
+	test("anyone may track on an open project without an assignment", () => {
+		expect(open.canTrackOn(P)).toBe(true);
+		expect(() => open.assertCanTrackOn(P)).not.toThrow();
+		expect(open.canTrackOn(OTHER)).toBe(false);
+	});
+
+	// Opening a project is a grant of Member rank, not a role: nobody reads the
+	// project's totals, its team or its money because of it.
+	test("it grants nothing above Member", () => {
+		expect(open.roleOn(P)).toBeNull();
+		expect(open.heldAs(P)).toBeNull();
+		expect(open.canViewProjectEntries(P)).toBe(false);
+		expect(open.canManageProjectMembers(P)).toBe(false);
+		expect(open.canManageProject(P)).toBe(false);
+		expect(open.canViewProjectMoney(P)).toBe(false);
+		expect(open.canCreateProjects()).toBe(false);
+		expect(open.canOverrideAbsenceFor([P])).toBe(false);
+		expect(open.assignments()).toEqual([]);
+	});
+
+	test("scopeFor adds it at Member rank only, once", () => {
+		const assigned = accessWith({ [P]: "pm", a: "member" }, false, [], [P]);
+		expect(assigned.scopeFor("member")?.sort()).toEqual([P, "a"].sort());
+		expect(open.scopeFor("member")).toEqual([P]);
+		expect(open.scopeFor("team_lead")).toEqual([]);
+		expect(open.scopeFor("pm")).toEqual([]);
 	});
 });
 
@@ -493,6 +527,29 @@ describe("accessService.resolve", () => {
 		expect(access.roleOn(projectAId)).toBe("member");
 		expect(access.roleOn(projectOtherOrgId)).toBeNull();
 		expect(access.canViewProjectMoney(projectOtherOrgId)).toBe(false);
+	});
+
+	// The open-project read carries the org predicate like the other three: a
+	// project opened in another organization must not become trackable here.
+	test("open projects are read from this org only", async () => {
+		const opened = [projectBId, projectOtherOrgId];
+		await db
+			.update(project)
+			.set({ openToOrg: true })
+			.where(inArray(project.id, opened));
+		try {
+			const access = await accessService.resolve({
+				organizationId: ORG,
+				userId: "u-plain",
+			});
+			expect(access.canTrackOn(projectBId)).toBe(true);
+			expect(access.canTrackOn(projectOtherOrgId)).toBe(false);
+		} finally {
+			await db
+				.update(project)
+				.set({ openToOrg: false })
+				.where(inArray(project.id, opened));
+		}
 	});
 
 	test("scopeFor reflects only active, in-org assignments", async () => {

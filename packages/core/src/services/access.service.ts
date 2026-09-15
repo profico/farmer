@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 
 import { member } from "../db/schema/auth";
-import { projectMember } from "../db/schema/domain";
+import { project, projectMember } from "../db/schema/domain";
 import { teamLeadPerson } from "../db/schema/people";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
@@ -61,7 +61,7 @@ export class NotAMemberError extends AccessError {
 	}
 }
 
-// A caller's full authorization picture, resolved with two queries and then
+// A caller's full authorization picture, resolved with four queries and then
 // answered from memory. Services should resolve this ONCE per request and pass
 // it down rather than re-querying per project, which is what turns a report over
 // 40 projects into 40 role lookups.
@@ -73,6 +73,9 @@ export class Access {
 		private readonly roleByProject: ReadonlyMap<string, ProjectRole>,
 		/** The people on the caller's list — empty for everyone who leads nobody. */
 		private readonly leadOf: ReadonlySet<string> = new Set(),
+		/** The org's projects with `openToOrg` set: trackable by every member,
+		 *  assigned or not. Member rank only — nothing else reads it. */
+		private readonly openProjects: ReadonlySet<string> = new Set(),
 	) {}
 
 	/** Whether the caller has a people list. There is no flag: a Team Lead is
@@ -137,18 +140,23 @@ export class Access {
 	 *  project filter in the WHERE clause" rather than a 200-id IN list. */
 	scopeFor(role: ProjectRole): string[] | null {
 		if (this.isAdmin) return null;
-		return [...this.roleByProject.entries()]
+		const ids = [...this.roleByProject.entries()]
 			.filter(([, mine]) => this.rankOf(mine) >= RANK[role])
 			.map(([projectId]) => projectId);
+		if (role !== "member") return ids;
+		// An open project holds everyone at Member rank, and at no rank above.
+		return [...new Set([...ids, ...this.openProjects])];
 	}
 
 	// ── Capabilities (one method per row of the §4.1 matrix) ──────────────────
 
-	/** Track own time. Requires an assignment of any role: people can only log
-	 *  time on projects they are assigned to, which keeps entry dropdowns short
-	 *  and the data clean. */
+	/** Track own time. Requires an assignment of any role, or a project open to
+	 *  the whole organization: people otherwise log time only on projects they
+	 *  are assigned to, which keeps entry dropdowns short and the data clean. */
 	canTrackOn(projectId: string): boolean {
-		return this.atLeast(projectId, "member");
+		return (
+			this.atLeast(projectId, "member") || this.openProjects.has(projectId)
+		);
 	}
 
 	/** See ALL entries on a project (hours, descriptions, who). Team Lead and up —
@@ -244,7 +252,7 @@ export class Access {
 }
 
 export const accessService = {
-	/** Resolve the caller's authorization picture. Two queries, no N+1.
+	/** Resolve the caller's authorization picture. Four parallel queries, no N+1.
 	 *
 	 *  Throws `NotAMemberError` when the caller has no membership row. A Ctx is
 	 *  built from `session.activeOrganizationId`, which is stamped onto the
@@ -262,7 +270,7 @@ export const accessService = {
 	 *  `setWeekCell` reaches this via `create(txCtx, …)`. See ./db-ctx. */
 	resolve: async (ctx: Ctx): Promise<Access> => {
 		const client = ctxDb(ctx);
-		const [membership, assignments, led] = await Promise.all([
+		const [membership, assignments, led, open] = await Promise.all([
 			client.query.member.findFirst({
 				where: and(
 					eq(member.organizationId, ctx.organizationId),
@@ -294,6 +302,15 @@ export const accessService = {
 						eq(teamLeadPerson.leadUserId, ctx.userId),
 					),
 				),
+			client
+				.select({ id: project.id })
+				.from(project)
+				.where(
+					and(
+						eq(project.organizationId, ctx.organizationId),
+						eq(project.openToOrg, true),
+					),
+				),
 		]);
 
 		if (!membership) throw new NotAMemberError(ctx.organizationId);
@@ -308,6 +325,7 @@ export const accessService = {
 			isAdmin,
 			new Map(assignments.map((a) => [a.projectId, a.role])),
 			new Set(led.map((l) => l.userId)),
+			new Set(open.map((p) => p.id)),
 		);
 	},
 

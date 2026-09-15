@@ -83,7 +83,7 @@ function ProjectPage() {
 	const orgSlug = organization.slug;
 	const isAdmin = role === "owner" || role === "admin";
 	const { data: project } = useSuspenseQuery(projectQuery(orgSlug, projectId));
-	const access = projectPageAccess(isAdmin, project.myRole);
+	const access = projectPageAccess(isAdmin, project.myRole, project.openToOrg);
 
 	const today = dayKeyInTz(new Date(), organization.timezone);
 	const thisMonth = today.slice(0, 7);

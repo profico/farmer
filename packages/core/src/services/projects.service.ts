@@ -566,6 +566,7 @@ export const projectsService = {
 			if (input.clientId !== undefined) patch.clientId = input.clientId;
 			if (input.code !== undefined) patch.code = input.code || null;
 			if (input.icon !== undefined) patch.icon = input.icon;
+			if (input.openToOrg !== undefined) patch.openToOrg = input.openToOrg;
 			// Project type is changeable after creation without history (e.g. a
 			// Fixed Scope engagement rolling into Maintenance). Close sheets render
 			// according to the type at the time of viewing. The type-specific config
@@ -586,6 +587,9 @@ export const projectsService = {
 				.where(eq(project.id, input.projectId));
 		});
 
+		// Opening or closing the project changes what the caller may track on,
+		// and the memoized picture was resolved before the write.
+		if (input.openToOrg !== undefined) invalidateCtxAccess(ctx);
 		return projectsService.get(ctx, input.projectId);
 	},
 

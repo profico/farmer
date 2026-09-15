@@ -25,7 +25,12 @@ import {
 	ComboboxTrigger,
 	ComboboxValue,
 } from "#/components/ui/combobox.tsx";
-import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import {
+	Page,
+	PageHeader,
+	SettingList,
+	SettingRow,
+} from "#/components/ui/page-header.tsx";
 import {
 	Select,
 	SelectContent,
@@ -33,6 +38,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
 	TableBody,
@@ -48,11 +54,16 @@ import {
 } from "#/lib/project-access.ts";
 import {
 	assignableMembersQuery,
+	myProjectsQuery,
 	projectMembersQuery,
 	projectQuery,
 	projectsQuery,
 } from "#/queries/projects.ts";
-import { assignProjectMember, removeProjectMember } from "#/server/projects.ts";
+import {
+	assignProjectMember,
+	removeProjectMember,
+	updateProject,
+} from "#/server/projects.ts";
 
 // A project's team: who is on it and at what role, with what each of them
 // ever logged here. Roles change in place and save at once; adding and
@@ -125,6 +136,12 @@ function TeamPage() {
 				title={title}
 				lede={`Who may log time on ${project.name}, and who runs it. A PM manages the project; a Team Lead here holds it as a PM does. Changes save straight away.`}
 			/>
+			<OpenToOrg
+				orgSlug={orgSlug}
+				projectId={projectId}
+				open={project.openToOrg}
+				canChange={access.canManageSettings}
+			/>
 			<Roster
 				orgSlug={orgSlug}
 				projectId={projectId}
@@ -132,6 +149,68 @@ function TeamPage() {
 				heldRole={project.myRole}
 			/>
 		</Page>
+	);
+}
+
+/** Whether everyone in the organization may log time here without being on
+ *  the team — the org's Internal project, which a new hire should not wait to
+ *  be added to. It grants Member rank only, so the roster below still decides
+ *  who runs the project. PM and Admin change it (`canManageProject`); a Team
+ *  Lead sees it. */
+function OpenToOrg({
+	orgSlug,
+	projectId,
+	open,
+	canChange,
+}: {
+	orgSlug: string;
+	projectId: string;
+	open: boolean;
+	canChange: boolean;
+}) {
+	const queryClient = useQueryClient();
+	const toggle = useMutation({
+		mutationFn: (openToOrg: boolean) =>
+			updateProject({ data: { projectId, openToOrg } }),
+		onSuccess: async (_saved, openToOrg) => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: projectQuery(orgSlug, projectId).queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: projectsQuery(orgSlug).queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: myProjectsQuery(orgSlug).queryKey,
+				}),
+			]);
+			toast.success(
+				openToOrg
+					? "Everyone in the organization can log time here"
+					: "Only the team can log time here",
+			);
+		},
+		onError: (error) => toast.error(error.message ?? "Could not save"),
+	});
+	return (
+		<SettingList className="mb-6 max-w-2xl">
+			<SettingRow
+				title="Open to everyone"
+				description={
+					canChange
+						? "Everyone in the organization can log time here, on the team or not. Nobody gains a role from it."
+						: "Everyone in the organization can log time here, on the team or not. The project's PMs change this."
+				}
+				action={
+					<Switch
+						aria-label="Open to everyone"
+						checked={open}
+						onCheckedChange={(value) => toggle.mutate(value)}
+						disabled={!canChange || toggle.isPending}
+					/>
+				}
+			/>
+		</SettingList>
 	);
 }
 
