@@ -81,7 +81,7 @@ export const updateCommand = (origin: string, platform: NodeJS.Platform) =>
 		: `curl -fsSL ${origin}/cli | sh`;
 
 export const outdatedMessage = (origin: string, platform: NodeJS.Platform) =>
-	`This version of farmer is too old for ${origin}. Update it with:\n  ${updateCommand(origin, platform)}`;
+	`This version of farmer is too old for ${origin}. Run \`farmer update\`, or install it again with:\n  ${updateCommand(origin, platform)}`;
 
 /** Seconds from a `Retry-After` header, which is either a number of seconds
  *  or an HTTP date. */

@@ -64,6 +64,7 @@ import { Route as ApiV1OrgsOrgSlugUnfiledRouteImport } from './routes/api/v1/org
 import { Route as ApiV1OrgsOrgSlugTrackingRouteImport } from './routes/api/v1/orgs/$orgSlug/tracking'
 import { Route as ApiV1OrgsOrgSlugTasksRouteImport } from './routes/api/v1/orgs/$orgSlug/tasks'
 import { Route as ApiV1OrgsOrgSlugSyncRouteImport } from './routes/api/v1/orgs/$orgSlug/sync'
+import { Route as ApiV1OrgsOrgSlugRepositoryProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/repository-projects'
 import { Route as ApiV1OrgsOrgSlugProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/projects'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/index'
 import { Route as ApiV1OrgsOrgSlugAbsencesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/index'
@@ -361,6 +362,12 @@ const ApiV1OrgsOrgSlugSyncRoute = ApiV1OrgsOrgSlugSyncRouteImport.update({
   path: '/api/v1/orgs/$orgSlug/sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1OrgsOrgSlugRepositoryProjectsRoute =
+  ApiV1OrgsOrgSlugRepositoryProjectsRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/repository-projects',
+    path: '/api/v1/orgs/$orgSlug/repository-projects',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugProjectsRoute =
   ApiV1OrgsOrgSlugProjectsRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/projects',
@@ -462,6 +469,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
+  '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
   '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
@@ -525,6 +533,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
+  '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
   '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
@@ -591,6 +600,7 @@ export interface FileRoutesById {
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
+  '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
   '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
@@ -658,6 +668,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId/team'
     | '/$orgSlug/projects/$projectId/'
     | '/api/v1/orgs/$orgSlug/projects'
+    | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
     | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
@@ -721,6 +732,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId/team'
     | '/$orgSlug/projects/$projectId'
     | '/api/v1/orgs/$orgSlug/projects'
+    | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
     | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
@@ -786,6 +798,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId/team'
     | '/$orgSlug/projects/$projectId/'
     | '/api/v1/orgs/$orgSlug/projects'
+    | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
     | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
@@ -827,6 +840,7 @@ export interface RootRouteChildren {
   ApiV1TimeEntriesRoute: typeof ApiV1TimeEntriesRoute
   CliDownloadAssetRoute: typeof CliDownloadAssetRoute
   ApiV1OrgsOrgSlugProjectsRoute: typeof ApiV1OrgsOrgSlugProjectsRoute
+  ApiV1OrgsOrgSlugRepositoryProjectsRoute: typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   ApiV1OrgsOrgSlugSyncRoute: typeof ApiV1OrgsOrgSlugSyncRoute
   ApiV1OrgsOrgSlugTasksRoute: typeof ApiV1OrgsOrgSlugTasksRoute
   ApiV1OrgsOrgSlugTrackingRoute: typeof ApiV1OrgsOrgSlugTrackingRoute
@@ -1228,6 +1242,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/repository-projects': {
+      id: '/api/v1/orgs/$orgSlug/repository-projects'
+      path: '/api/v1/orgs/$orgSlug/repository-projects'
+      fullPath: '/api/v1/orgs/$orgSlug/repository-projects'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugRepositoryProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/projects': {
       id: '/api/v1/orgs/$orgSlug/projects'
       path: '/api/v1/orgs/$orgSlug/projects'
@@ -1385,6 +1406,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1TimeEntriesRoute: ApiV1TimeEntriesRoute,
   CliDownloadAssetRoute: CliDownloadAssetRoute,
   ApiV1OrgsOrgSlugProjectsRoute: ApiV1OrgsOrgSlugProjectsRoute,
+  ApiV1OrgsOrgSlugRepositoryProjectsRoute:
+    ApiV1OrgsOrgSlugRepositoryProjectsRoute,
   ApiV1OrgsOrgSlugSyncRoute: ApiV1OrgsOrgSlugSyncRoute,
   ApiV1OrgsOrgSlugTasksRoute: ApiV1OrgsOrgSlugTasksRoute,
   ApiV1OrgsOrgSlugTrackingRoute: ApiV1OrgsOrgSlugTrackingRoute,
@@ -1403,12 +1426,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

@@ -19,8 +19,14 @@
  */
 
 /** Every file a release carries, and the only names `/cli/download/<asset>`
- *  answers for. The build (`apps/cli`, `bun run build:release`) writes exactly
- *  these; a name added there has to be added here, or the script 404s on it. */
+ *  answers for. The build (`apps/cli`, `bun run build:release`) writes the
+ *  binaries, and the release workflow adds a `.gz` copy of each after the macOS
+ *  ones are re-signed; a name added there has to be added here, or the script
+ *  404s on it.
+ *
+ *  The scripts download the `.gz` copy, which is less than half the size (a
+ *  Bun binary is mostly its runtime, and that compresses well), and fall back
+ *  to the binary for a release published before the copies existed. */
 export const CLI_RELEASE_ASSETS = [
 	"farmer-linux-x64",
 	"farmer-linux-arm64",
@@ -29,6 +35,13 @@ export const CLI_RELEASE_ASSETS = [
 	"farmer-darwin-x64",
 	"farmer-darwin-arm64",
 	"farmer-windows-x64.exe",
+	"farmer-linux-x64.gz",
+	"farmer-linux-arm64.gz",
+	"farmer-linux-x64-musl.gz",
+	"farmer-linux-arm64-musl.gz",
+	"farmer-darwin-x64.gz",
+	"farmer-darwin-arm64.gz",
+	"farmer-windows-x64.exe.gz",
 	"SHA256SUMS",
 ] as const;
 
@@ -106,6 +119,7 @@ export const shInstallScript = (origin: string): string => `#!/bin/sh
 #
 # FARMER_INSTALL_DIR   where to put the binary (default: $HOME/.local/bin)
 # FARMER_NO_LOGIN=1    install only; do not run "farmer login" afterwards
+# FARMER_UPDATE=1      set by "farmer update": install only, with no advice after
 set -eu
 
 FARMER_ORIGIN=${shQuote(origin)}
@@ -191,6 +205,18 @@ download() {
 	fi
 }
 
+# try_download URL FILE: the same download, reporting a failure instead of
+# stopping, for a file the install can do without.
+try_download() {
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL --retry 2 -o "$2" "$1" 2>/dev/null
+	elif command -v wget >/dev/null 2>&1; then
+		wget -q -O "$2" "$1" 2>/dev/null
+	else
+		return 1
+	fi
+}
+
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{ print $1 }'
@@ -217,7 +243,14 @@ main() {
 	trap 'exit 130' INT TERM
 
 	say "Downloading $asset from $FARMER_ORIGIN"
-	download "$FARMER_ORIGIN/cli/download/$asset" "$tmp/$asset"
+	# The .gz copy first. A release published before the copies existed has only
+	# the binary, and a system with no gunzip cannot use the copy. The checksum
+	# below is of the binary, so it covers both ways in.
+	if command -v gunzip >/dev/null 2>&1 && try_download "$FARMER_ORIGIN/cli/download/$asset.gz" "$tmp/$asset.gz"; then
+		gunzip -f "$tmp/$asset.gz" || fail "could not decompress $asset.gz"
+	else
+		download "$FARMER_ORIGIN/cli/download/$asset" "$tmp/$asset"
+	fi
 	download "$FARMER_ORIGIN/cli/download/SHA256SUMS" "$tmp/SHA256SUMS"
 
 	expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1; exit }' "$tmp/SHA256SUMS" | tr 'A-F' 'a-f')
@@ -237,6 +270,11 @@ main() {
 	chmod +x "$tmp/$asset"
 	mv -f "$tmp/$asset" "$install_dir/farmer"
 	say "Installed farmer to $install_dir/farmer"
+	# "farmer update" replaces a binary that is already on the PATH and signed
+	# in, and says what changed itself.
+	if [ "\${FARMER_UPDATE:-}" = 1 ]; then
+		return 0
+	fi
 
 	case ":$PATH:" in
 		*":$install_dir:"*)
@@ -290,6 +328,7 @@ export const psInstallScript = (
 #
 # FARMER_INSTALL_DIR   where to put farmer.exe (default: %LOCALAPPDATA%\\Programs\\farmer)
 # FARMER_NO_LOGIN=1    install only; do not run "farmer login" afterwards
+# FARMER_UPDATE=1      set by "farmer update": install only, with no advice after
 & {
 	$ErrorActionPreference = 'Stop'
 	# The progress bar makes Invoke-WebRequest many times slower on 5.1.
@@ -321,6 +360,22 @@ export const psInstallScript = (
 		}
 	}
 
+	function Expand-FarmerGzip([string] $Source, [string] $Destination) {
+		$file = [IO.File]::OpenRead($Source)
+		try {
+			$gzip = New-Object IO.Compression.GZipStream($file, [IO.Compression.CompressionMode]::Decompress)
+			$target = [IO.File]::Create($Destination)
+			try {
+				$gzip.CopyTo($target)
+			} finally {
+				$target.Dispose()
+				$gzip.Dispose()
+			}
+		} finally {
+			$file.Dispose()
+		}
+	}
+
 	if ($env:FARMER_INSTALL_DIR) {
 		$installDir = $env:FARMER_INSTALL_DIR
 	} else {
@@ -335,7 +390,21 @@ export const psInstallScript = (
 		$sums = Join-Path $tmp 'SHA256SUMS'
 
 		Write-Host ('Downloading ' + $Asset + ' from ' + $FarmerOrigin)
-		Get-FarmerFile ($FarmerOrigin + '/cli/download/' + $Asset) $download
+		# The .gz copy first. A release published before the copies existed has
+		# only the binary. The checksum below is of the binary, so it covers both
+		# ways in.
+		$compressed = $download + '.gz'
+		$haveCompressed = $true
+		try {
+			Invoke-WebRequest -Uri ($FarmerOrigin + '/cli/download/' + $Asset + '.gz') -OutFile $compressed -UseBasicParsing
+		} catch {
+			$haveCompressed = $false
+		}
+		if ($haveCompressed) {
+			Expand-FarmerGzip $compressed $download
+		} else {
+			Get-FarmerFile ($FarmerOrigin + '/cli/download/' + $Asset) $download
+		}
 		Get-FarmerFile ($FarmerOrigin + '/cli/download/SHA256SUMS') $sums
 
 		$expected = $null
@@ -356,11 +425,33 @@ export const psInstallScript = (
 		}
 
 		New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-		Move-Item -LiteralPath $download -Destination $exe -Force
+		# Windows refuses to overwrite a running exe, and "farmer update" runs this
+		# script while farmer.exe runs. It does allow renaming one, so the old
+		# binary steps aside first; it is deleted here when nothing runs it, or
+		# by the next install when something did.
+		$old = $exe + '.old'
+		Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
+		if (Test-Path -LiteralPath $exe) {
+			Move-Item -LiteralPath $exe -Destination $old -Force
+		}
+		try {
+			Move-Item -LiteralPath $download -Destination $exe -Force
+		} catch {
+			if (Test-Path -LiteralPath $old) {
+				Move-Item -LiteralPath $old -Destination $exe -Force
+			}
+			throw
+		}
+		Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
 	} finally {
 		Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 	}
 	Write-Host ('Installed farmer to ' + $exe)
+	# "farmer update" replaces a binary that is already on the PATH and signed
+	# in, and says what changed itself.
+	if ($env:FARMER_UPDATE -eq '1') {
+		return
+	}
 
 	# The user PATH, so a new terminal finds farmer; then this session's PATH, so
 	# the login below and the next command in this window do too. The stored value

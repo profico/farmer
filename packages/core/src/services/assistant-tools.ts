@@ -359,13 +359,14 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_projects",
 		kind: "read",
 		description:
-			"List the projects the current user may log time against, with their ids, type and clients. Call this before creating a time entry — a project must be named by id.",
+			"List the projects the current user may log time against, with their ids, codes, type and clients. Call this before creating a time entry — a project must be named by id.",
 		schema: z.object({}),
 		run: async (ctx) => {
 			const rows = await projectsService.listMine(ctx);
 			return rows.map((row) => ({
 				id: row.id,
 				name: row.name,
+				code: row.code,
 				type: row.type,
 				client: row.client?.name ?? null,
 			}));
@@ -780,7 +781,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "file_time_entries",
 		kind: "write",
 		description:
-			"Attribute existing unfiled entries (synced meetings, commit blocks) to a project, by id. Get the ids from list_unfiled_entries. The user is shown the entries as a checklist and may file only some of them.",
+			"Attribute existing unfiled entries (synced meetings, commit blocks) to a project, by id. Get the ids from list_unfiled_entries. Pass taskId only to change the task of every entry in the batch; leave it out to keep each entry's own task. The user is shown the entries as a checklist and may file only some of them.",
 		schema: fileTimeEntriesInput,
 		summarize: async (ctx, args) => {
 			const count = Array.isArray(args.timeEntryIds)

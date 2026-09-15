@@ -15,9 +15,10 @@ import {
 	CaretRightIcon,
 	CaretUpIcon,
 } from "@phosphor-icons/react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { cloneElement, type ReactElement, Suspense, useState } from "react";
 import type * as React from "react";
+import { toast } from "sonner";
 
 import { TableLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import {
@@ -25,7 +26,14 @@ import {
 	stepperClass,
 	TimeToolbar,
 } from "#/components/time/time-toolbar.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "#/components/ui/dropdown-menu.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Select,
@@ -45,7 +53,9 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
+import { downloadCsv } from "#/lib/csv.ts";
 import { formatMonthKey, formatWeekRange } from "#/lib/format-date.ts";
+import { downloadPdf, type PdfReport } from "#/lib/pdf.ts";
 import { cn } from "#/lib/utils.ts";
 
 import type { PeriodSearch, Search } from "./search.ts";
@@ -364,19 +374,35 @@ export type ReportTableRow = {
 	searchFields?: readonly (string | null | undefined)[];
 };
 
-export function ReportTable({
+/** A column header of a `ReportTable`. With a `sortKey` — and once the table
+ *  is given a `sort` and an `onSort` — it is a label the reader can click to
+ *  sort by; without one it is just the label. The table only draws the
+ *  headers: the tab that owns the rows does the ordering, as the Time, Absence
+ *  and Overtime tabs do with their own tables. */
+export type ReportTableHeader<K extends string> = {
+	label: string;
+	sortKey?: K;
+	/** Starts biggest first. */
+	numeric?: boolean;
+};
+
+export function ReportTable<K extends string>({
 	headers,
 	rows,
 	empty,
+	sort,
+	onSort,
 	// Set by a tab that puts its tables side by side at xl (Tracking). Up to that
 	// point the table bleeds edge-to-edge like every other table in the app; once
 	// the grid splits, the negative margin would run each table under its
 	// neighbour, so from xl it sits inside its own column instead.
 	columned = false,
 }: {
-	headers: string[];
+	headers: ReportTableHeader<K>[];
 	rows: ReportTableRow[];
 	empty: string;
+	sort?: Sort<K>;
+	onSort?: (key: K, numeric: boolean) => void;
 	columned?: boolean;
 }) {
 	// The box only appears once some row actually carries searchable text — a
@@ -418,11 +444,23 @@ export function ReportTable({
 			>
 				<TableHeader>
 					<TableRow>
-						{headers.map((h, i) => (
-							<TableHead key={h} className={cn(i > 0 && "text-right")}>
-								{h}
-							</TableHead>
-						))}
+						{headers.map((h, i) =>
+							h.sortKey && sort && onSort ? (
+								<SortHead
+									key={h.label}
+									label={h.label}
+									sortKey={h.sortKey}
+									numeric={h.numeric}
+									sort={sort}
+									onSort={onSort}
+									className={cn(i > 0 && "text-right")}
+								/>
+							) : (
+								<TableHead key={h.label} className={cn(i > 0 && "text-right")}>
+									{h.label}
+								</TableHead>
+							),
+						)}
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -433,7 +471,7 @@ export function ReportTable({
 							<TableRow key={row.key} className={row.className}>
 								{row.cells.map((cell, i) => (
 									<TableCell
-										key={`${row.key}-${headers[i]}`}
+										key={`${row.key}-${headers[i]?.label}`}
 										className={cn(i === 0 ? "font-medium" : "mono text-right")}
 									>
 										{cell}
@@ -573,6 +611,58 @@ export function RowDisclosure({
 			/>
 			{children}
 		</button>
+	);
+}
+
+/** The export control every report shares: one button, CSV or PDF. Both are
+ *  built on the click from the rows already on screen (lib/csv.ts says why),
+ *  so each format is a function returning what it writes. The filename
+ *  carries no extension — each format adds its own. The organization's name
+ *  is read here, once, for the PDF's header. */
+export function ExportMenu({
+	disabled,
+	filename,
+	csv,
+	pdf,
+}: {
+	disabled?: boolean;
+	filename: string;
+	csv: () => { headers: string[]; rows: string[][] };
+	pdf: () => Omit<PdfReport, "org">;
+}) {
+	const org = useRouteContext({
+		from: "/$orgSlug",
+		select: (context) => context.organization.name,
+	});
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				disabled={disabled}
+				render={<Button variant="outline" size="sm" disabled={disabled} />}
+			>
+				Export
+				<CaretDownIcon weight="bold" data-icon="inline-end" />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				<DropdownMenuItem
+					onClick={() => {
+						const { headers, rows } = csv();
+						downloadCsv(`${filename}.csv`, headers, rows);
+					}}
+				>
+					Export CSV
+				</DropdownMenuItem>
+				<DropdownMenuItem
+					onClick={() =>
+						downloadPdf(`${filename}.pdf`, { org, ...pdf() }).catch(() =>
+							toast.error("Could not build the PDF"),
+						)
+					}
+				>
+					Export PDF
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }
 

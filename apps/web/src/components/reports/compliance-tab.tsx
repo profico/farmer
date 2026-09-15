@@ -1,5 +1,7 @@
 import { formatReportHours } from "@farmer/core/lib/report-format";
+import type { TrackingRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
@@ -7,7 +9,13 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { trackingReportQuery } from "#/queries/compliance.ts";
 
-import { ReportTable } from "./shared.tsx";
+import {
+	byNumber,
+	byText,
+	ReportTable,
+	type Sort,
+	toggleSort,
+} from "./shared.tsx";
 
 // Tracking (PRD 6.2, revised Sept 2026): one table, one rule. Each person's
 // work + time-off against the month's hour fund prorated by the working days
@@ -34,6 +42,34 @@ const STATUS_LABEL = {
 		row: "bg-bad/6 hover:bg-bad/10",
 	},
 } as const;
+
+const STATUS_RANK = { behind: 0, slightly_behind: 1, on_track: 2 } as const;
+
+type SortKey =
+	| "name"
+	| "work"
+	| "timeOff"
+	| "total"
+	| "target"
+	| "delta"
+	| "status";
+
+// A person with no target has no target, no delta and no verdict, so on those
+// three columns they sit at the bottom whichever way the column is sorted — a
+// dash is not a small number.
+const hasTarget = (r: TrackingRow) => r.targetSeconds != null;
+const nullsLast = (a: TrackingRow, b: TrackingRow) =>
+	Number(!hasTarget(a)) - Number(!hasTarget(b));
+
+const COMPARE = {
+	name: byText((r: TrackingRow) => r.name),
+	work: byNumber((r: TrackingRow) => r.workSeconds),
+	timeOff: byNumber((r: TrackingRow) => r.timeOffSeconds),
+	total: byNumber((r: TrackingRow) => r.totalSeconds),
+	target: byNumber((r: TrackingRow) => r.targetSeconds ?? 0),
+	delta: byNumber((r: TrackingRow) => r.deltaSeconds ?? 0),
+	status: byNumber((r: TrackingRow) => (r.status ? STATUS_RANK[r.status] : 3)),
+} satisfies Record<SortKey, (a: TrackingRow, b: TrackingRow) => number>;
 
 // Ahead is green, short is red, exactly on target is just the number:
 // "+0" said the person was ahead by nothing, which is not a thing. Hours the
@@ -62,6 +98,21 @@ export function ComplianceTab({
 	const orgSlug = useOrgSlug();
 	const { data } = useSuspenseQuery(
 		trackingReportQuery(orgSlug, { year, month }),
+	);
+	// The report arrives worst first (status, then the biggest shortfall);
+	// that stays the default, and any column can take over — the delta column
+	// is the one people asked for, to find who is furthest ahead or behind.
+	const [sort, setSort] = useState<Sort<SortKey>>({ key: "status", dir: 1 });
+	const onSort = (key: SortKey, numeric: boolean) =>
+		setSort((current) => toggleSort(current, key, numeric));
+	const rows = [...data.rows].sort(
+		(a, b) =>
+			(sort.key === "target" || sort.key === "delta" || sort.key === "status"
+				? nullsLast(a, b)
+				: 0) ||
+			COMPARE[sort.key](a, b) * sort.dir ||
+			(a.deltaSeconds ?? 0) - (b.deltaSeconds ?? 0) ||
+			a.name.localeCompare(b.name, "hr"),
 	);
 
 	const counts = { behind: 0, slightly_behind: 0, on_track: 0 };
@@ -112,15 +163,17 @@ export function ComplianceTab({
 			<ReportTable
 				columned
 				headers={[
-					"Person",
-					"Work",
-					"Time-off",
-					"Total",
-					"Target so far",
-					"Δ",
-					"Status",
+					{ label: "Person", sortKey: "name" },
+					{ label: "Work", sortKey: "work", numeric: true },
+					{ label: "Time-off", sortKey: "timeOff", numeric: true },
+					{ label: "Total", sortKey: "total", numeric: true },
+					{ label: "Target so far", sortKey: "target", numeric: true },
+					{ label: "Δ", sortKey: "delta", numeric: true },
+					{ label: "Status", sortKey: "status" },
 				]}
-				rows={data.rows.map((r) => {
+				sort={sort}
+				onSort={onSort}
+				rows={rows.map((r) => {
 					const label = r.status ? STATUS_LABEL[r.status] : null;
 					return {
 						key: r.userId,

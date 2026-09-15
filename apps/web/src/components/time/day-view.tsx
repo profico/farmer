@@ -64,7 +64,6 @@ export function DayView({
 	const sortedEntries = [...entries].sort(
 		(a, b) => Number(a.fillsDay) - Number(b.fillsDay),
 	);
-	const dateOptions = [{ value: date, label: formatDateKeyLong(date) }];
 	const today = dayKeyInTz(new Date(), timezone);
 	const isToday = date === today;
 	const holidayName = holidays.get(date);
@@ -116,7 +115,7 @@ export function DayView({
 				add={
 					<AddBlockDialog
 						timezone={timezone}
-						dateOptions={dateOptions}
+						defaultDate={date}
 						trigger={
 							<Button size="icon" aria-label="Log time">
 								<PlusIcon weight="regular" className="size-4" />
@@ -233,7 +232,6 @@ export function DayView({
 									key={entry.id}
 									entry={entry}
 									timezone={timezone}
-									dateOptions={dateOptions}
 								/>
 							))}
 						</div>

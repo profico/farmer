@@ -15,20 +15,21 @@ export type ProjectPageAccess = {
 	canView: boolean;
 	canManageTeam: boolean;
 	canManageSettings: boolean;
-	/** Log time here — any assignment, or Admin. */
+	/** Log time here — any assignment, a project open to everyone, or Admin. */
 	canLogTime: boolean;
 };
 
 export const projectPageAccess = (
 	isAdmin: boolean,
 	heldRole: ProjectRole | null | undefined,
+	openToOrg = false,
 ): ProjectPageAccess => {
 	const lead = isAdmin || heldRole === "team_lead" || heldRole === "pm";
 	return {
 		canView: lead,
 		canManageTeam: lead,
 		canManageSettings: isAdmin || heldRole === "pm",
-		canLogTime: isAdmin || heldRole != null,
+		canLogTime: isAdmin || heldRole != null || openToOrg,
 	};
 };
 

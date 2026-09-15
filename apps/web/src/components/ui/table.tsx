@@ -21,21 +21,36 @@ function Table({
 	className,
 	containerClassName,
 	bleed = true,
+	stickyHeader = false,
 	...props
 }: React.ComponentProps<"table"> & {
 	containerClassName?: string;
 	/**
 	 * Off for a table inside a pane that already reaches its container's edge
-	 * (the close screen's two panes), where bleeding again would pull it out of
-	 * the pane entirely. Gutters still apply.
+	 * (the close screen's two panes, a `TableScroll`), where bleeding again
+	 * would pull it out of the pane entirely. Gutters still apply.
 	 */
 	bleed?: boolean;
+	/**
+	 * Keeps the column labels in view inside a `TableScroll`. The container
+	 * then does not scroll sideways by itself: a scroll container between the
+	 * header cells and the scroller becomes what they stick to, and it never
+	 * scrolls vertically, so nothing would stick. A wide table scrolls sideways
+	 * with the `TableScroll` instead, labels and all.
+	 *
+	 * The rules above and below the labels are shadows on the header cells, so
+	 * the container takes `border-b` only. A collapsed border belongs to the
+	 * table and stays where it was drawn, and the container's own top border
+	 * scrolled away with the first row.
+	 */
+	stickyHeader?: boolean;
 }) {
 	return (
 		<div
 			data-slot="table-container"
 			className={cn(
-				"relative overflow-x-auto",
+				"relative",
+				!stickyHeader && "overflow-x-auto",
 				bleed && "-mx-4 border-y sm:-mx-8",
 				containerClassName,
 			)}
@@ -45,6 +60,8 @@ function Table({
 				className={cn(
 					"w-full caption-bottom text-base",
 					"[&>*>tr>:first-child]:pl-4 [&>*>tr>:last-child]:pr-4 sm:[&>*>tr>:first-child]:pl-8 sm:[&>*>tr>:last-child]:pr-8",
+					stickyHeader &&
+						"[&>thead_th]:sticky [&>thead_th]:top-0 [&>thead_th]:z-20 [&>thead_th]:bg-background [&>thead_th]:shadow-[inset_0_1px_0_var(--color-border),inset_0_-1px_0_var(--color-border)]",
 					className,
 				)}
 				{...props}
@@ -52,6 +69,51 @@ function Table({
 		</div>
 	);
 }
+
+/**
+ * The scroll area of a full-height screen where only the table moves: the page
+ * heading above it stays put, and a `stickyHeader` table inside keeps its
+ * column labels in view. Pair it with `PageFull` and a `shrink-0` `PageHeader`.
+ *
+ * It bleeds to the island's edge itself, so a table inside takes
+ * `bleed={false}` and its own rules (`border-b` with a `stickyHeader`,
+ * `border-y` without). On a phone the island is not
+ * height-capped, so this grows with its rows and the document scrolls.
+ *
+ * The bottom bleeds too, and gives the island's padding back inside: rows then
+ * run under the island's bottom edge instead of being cut off a padding's
+ * height above it, and the end of the list still has room below its last row.
+ * The values are `island-pad`'s (1rem, then 1.75rem from `sm`).
+ */
+function TableScroll({ className, ...props }: React.ComponentProps<"div">) {
+	return (
+		<div
+			data-slot="table-scroll"
+			className={cn(
+				"-mx-4 -mb-4 min-h-0 flex-1 overflow-y-auto pb-4 sm:-mx-8 sm:-mb-7 sm:pb-7",
+				className,
+			)}
+			{...props}
+		/>
+	);
+}
+
+/**
+ * For the cells of a body row that stays under a `stickyHeader` while its rows
+ * go by: a group heading, the archived toggle. On the cells, because a sticky
+ * cell works in every browser and a sticky row does not.
+ *
+ * It sticks 2px higher than `TableHead`'s `h-9`, under the header (which is
+ * above it, `z-20`). Rows sit at fractional offsets, and exactly `top-9` left
+ * a sliver of the row behind showing between the labels and the heading at
+ * some scroll positions. The 2px it loses is top padding.
+ *
+ * A sticky cell is held back by the whole table, not by its group, so each one
+ * stays until the table ends. The next one slides over it (a later row paints
+ * on top), which is the hand-over from one group to the next — hence the
+ * opaque background.
+ */
+const stickyRowCellClass = "sticky top-[calc(2.25rem-2px)] z-10 bg-background";
 
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
 	return (
@@ -112,12 +174,17 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
 	);
 }
 
+/**
+ * The vertical padding is `--table-cell-py` when "Compact tables" sets it (see
+ * `styles.css`), and `py-2.5` otherwise. A `py-*` from the call site still
+ * replaces it, so a cell with its own spacing is not compacted.
+ */
 function TableCell({ className, ...props }: React.ComponentProps<"td">) {
 	return (
 		<td
 			data-slot="table-cell"
 			className={cn(
-				"px-2 py-2.5 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+				"px-2 py-[var(--table-cell-py,0.625rem)] align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
 				className,
 			)}
 			{...props}
@@ -147,4 +214,6 @@ export {
 	TableRow,
 	TableCell,
 	TableCaption,
+	TableScroll,
+	stickyRowCellClass,
 };

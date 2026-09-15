@@ -28,7 +28,7 @@ import {
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
-import { downloadCsv } from "#/lib/csv.ts";
+import type { PdfColumn } from "#/lib/pdf.ts";
 import { heldRoleFrom, projectPageAccess } from "#/lib/project-access.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { clientsQuery } from "#/queries/clients.ts";
@@ -52,6 +52,7 @@ import {
 	ActiveOnlyToggle,
 	byNumber,
 	byText,
+	ExportMenu,
 	FigurePending,
 	PeriodPicker,
 	QuietTabs,
@@ -92,11 +93,15 @@ type BreakdownGroup = EntryGroup;
  *  on the summary tab — and the rest are chips. */
 type FilterKind = "client" | "project" | "person" | "task";
 const FILTER_KINDS = [
-	{ kind: "client", label: "Client" },
-	{ kind: "project", label: "Project" },
-	{ kind: "person", label: "Person" },
-	{ kind: "task", label: "Task" },
-] as const satisfies readonly { kind: FilterKind; label: string }[];
+	{ kind: "client", label: "Client", all: "All clients" },
+	{ kind: "project", label: "Project", all: "All projects" },
+	{ kind: "person", label: "Person", all: "Everyone" },
+	{ kind: "task", label: "Task", all: "All tasks" },
+] as const satisfies readonly {
+	kind: FilterKind;
+	label: string;
+	all: string;
+}[];
 
 /** Which filter a summary tab's rows open, and so what "back" returns to. The
  *  tab stays in the URL across the drill-down for exactly this reason. */
@@ -142,6 +147,7 @@ export function TimeTab({
 	const { from, to } = resolveReportPeriod(search, today, weekStartsOn);
 	const activeOnly = search.active === "1";
 	const drilled = search.view === "breakdown";
+	const by: BreakdownGroup = search.by ?? "date";
 
 	const summaryInput: TimeReportSummaryInput = {
 		from,
@@ -176,14 +182,16 @@ export function TimeTab({
 				<Suspense
 					fallback={
 						<Button variant="outline" size="sm" disabled>
-							Export CSV
+							Export
 						</Button>
 					}
 				>
 					{drilled ? (
-						<EntriesExport
+						<BreakdownExport
 							input={detailInput}
-							filename={`time-breakdown_${from}_${to}.csv`}
+							search={search}
+							by={by}
+							filename={`time-breakdown_${from}_${to}`}
 						/>
 					) : (
 						<SummaryExport input={summaryInput} from={from} to={to} />
@@ -191,7 +199,12 @@ export function TimeTab({
 				</Suspense>
 			</PeriodPicker>
 			{drilled ? (
-				<Breakdown orgSlug={orgSlug} search={search} input={detailInput} />
+				<Breakdown
+					orgSlug={orgSlug}
+					search={search}
+					input={detailInput}
+					by={by}
+				/>
 			) : (
 				<TimeSummary orgSlug={orgSlug} search={search} input={summaryInput} />
 			)}
@@ -274,42 +287,114 @@ function SummaryExport({
 }) {
 	const orgSlug = useOrgSlug();
 	const { data } = useSuspenseQuery(timeReportSummaryQuery(orgSlug, input));
+	const group = input.tab;
+	const columns: PdfColumn[] =
+		group === "teammates"
+			? [
+					{ label: "Person" },
+					{ label: "Work", align: "right" },
+					{ label: "Time-off", align: "right" },
+					{ label: "Hours", align: "right" },
+				]
+			: group === "projects"
+				? [
+						{ label: "Project" },
+						{ label: "Code" },
+						{ label: "Client" },
+						{ label: "People", align: "right" },
+						{ label: "Hours", align: "right" },
+					]
+				: [
+						{ label: "Client" },
+						{ label: "Projects", align: "right" },
+						{ label: "Hours", align: "right" },
+					];
+	// The same row for both formats; only how an hour is written differs.
+	const cells = (r: TimeReportRow, hours: (seconds: number) => string) =>
+		group === "teammates"
+			? [
+					r.name,
+					hours(r.secondsTotal),
+					hours(r.timeOffSeconds),
+					hours(rowHours(r, group)),
+				]
+			: group === "projects"
+				? [
+						r.name,
+						r.code ?? "",
+						r.clientName ?? "",
+						String(r.count),
+						hours(r.secondsTotal),
+					]
+				: [r.name, String(r.count), hours(r.secondsTotal)];
 	return (
-		<Button
-			variant="outline"
-			size="sm"
+		<ExportMenu
 			disabled={data.rows.length === 0}
-			onClick={() =>
-				downloadCsv(
-					`time-report_${input.tab}_${from}_${to}.csv`,
-					input.tab === "teammates"
-						? ["Person", "Work", "Time-off", "Hours"]
-						: input.tab === "projects"
-							? ["Project", "Code", "Client", "People", "Hours"]
-							: ["Client", "Projects", "Hours"],
-					data.rows.map((r) =>
-						input.tab === "teammates"
-							? [
-									r.name,
-									formatDecimalHours(r.secondsTotal),
-									formatDecimalHours(r.timeOffSeconds),
-									formatDecimalHours(rowHours(r, input.tab)),
-								]
-							: input.tab === "projects"
-								? [
-										r.name,
-										r.code ?? "",
-										r.clientName ?? "",
-										String(r.count),
-										formatDecimalHours(r.secondsTotal),
-									]
-								: [r.name, String(r.count), formatDecimalHours(r.secondsTotal)],
+			filename={`time-report_${group}_${from}_${to}`}
+			csv={() => ({
+				headers: columns.map((c) => c.label),
+				rows: data.rows.map((r) => cells(r, formatDecimalHours)),
+			})}
+			pdf={() => {
+				const facts: [string, string][] = [
+					["Grouped by", GROUPS.find((g) => g.id === group)?.label ?? group],
+				];
+				if (input.activeOnly) facts.push(["Projects", "Active only"]);
+				return {
+					title: "Time report",
+					from,
+					to,
+					total: formatReportHours(
+						data.rows.reduce((sum, r) => sum + rowHours(r, group), 0),
 					),
-				)
-			}
-		>
-			Export CSV
-		</Button>
+					facts,
+					columns,
+					groups: [
+						{
+							rows: [...data.rows]
+								.sort((a, b) => rowHours(b, group) - rowHours(a, group))
+								.map((r) => ({ cells: cells(r, formatReportHours) })),
+						},
+					],
+				};
+			}}
+		/>
+	);
+}
+
+/** The Breakdown's export, with the four filters named for the PDF's header:
+ *  the ones in force by name, the rest as "All …". */
+function BreakdownExport({
+	input,
+	search,
+	by,
+	filename,
+}: {
+	input: TimeReportDetailInput;
+	search: Search;
+	by: BreakdownGroup;
+	filename: string;
+}) {
+	const nameOf = useEntityNames(input);
+	const facts = FILTER_KINDS.map(({ kind, label, all }): [string, string] => {
+		const id = search[kind];
+		// A project has one client, so narrowing to a project names it too.
+		if (!id && kind === "client" && search.project) {
+			return [label, nameOf("project", search.project).hint ?? all];
+		}
+		if (!id) return [label, all];
+		const name = nameOf(kind, id);
+		return [label, `${name.code ? `[${name.code}] ` : ""}${name.label}`];
+	});
+	if (input.activeOnly) facts.push(["Projects", "Active only"]);
+	return (
+		<EntriesExport
+			input={input}
+			by={by}
+			filename={filename}
+			title="Detailed time report"
+			facts={facts}
+		/>
 	);
 }
 
@@ -653,12 +738,13 @@ function Breakdown({
 	orgSlug,
 	search,
 	input,
+	by,
 }: {
 	orgSlug: string;
 	search: Search;
 	input: TimeReportDetailInput;
+	by: BreakdownGroup;
 }) {
-	const by: BreakdownGroup = search.by ?? "date";
 	const group: Group = search.group ?? "projects";
 	const subject = SUBJECT_OF[group];
 	const navigate = useNavigate({ from: "/$orgSlug/reports" });
@@ -708,6 +794,18 @@ function Breakdown({
 				groups={ENTRY_GROUPS.map((g) => g.id)}
 				by={by}
 				onByChange={(next) => go({ by: next })}
+				// A group's hours add it as a filter and open the rest by date —
+				// the summary tab's gesture, one level down. The filter shows as a
+				// chip, so it can be taken off again.
+				narrow={(g, id) =>
+					g === "date"
+						? null
+						: {
+								...search,
+								...filterPatch(g === "teammate" ? "person" : g, id),
+								by: "date",
+							}
+				}
 			/>
 		</>
 	);

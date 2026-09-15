@@ -582,3 +582,57 @@ describe("a plain member's figures with somebody else on the project", () => {
 		expect(row?.monthlyTotalSeconds).toBe(6 * HOUR);
 	});
 });
+
+// After the block above, which reads the plain member's first row: this block
+// opens the unassigned project, and closes it again at the end.
+describe("a project open to the organization", () => {
+	test("a PM of another project cannot open it", async () => {
+		await expect(
+			projectsService.update(ctx(PM), {
+				projectId: unassignedId,
+				openToOrg: true,
+			}),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	test("once open, a plain member may track on it and gains nothing more", async () => {
+		const updated = await projectsService.update(ctx(ADMIN), {
+			projectId: unassignedId,
+			openToOrg: true,
+		});
+		expect(updated.openToOrg).toBe(true);
+
+		expect(names(await projectsService.listMine(ctx(PLAIN)))).toEqual([
+			"Assigned",
+			"Unassigned",
+		]);
+		await projectsService.assertProjectMembership(ctx(PLAIN), unassignedId);
+
+		const seen = await projectsService.get(ctx(PLAIN), unassignedId);
+		expect(seen.myRole).toBeNull();
+		expect(seen.statsScope).toBe("own");
+		expect(seen.hourlyPrice).toBeNull();
+		await expect(
+			projectsService.listMembers(ctx(PLAIN), unassignedId),
+		).rejects.toBeInstanceOf(AccessError);
+		await expect(
+			projectsService.update(ctx(PLAIN), {
+				projectId: unassignedId,
+				openToOrg: false,
+			}),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	test("closing it takes the access away again", async () => {
+		await projectsService.update(ctx(ADMIN), {
+			projectId: unassignedId,
+			openToOrg: false,
+		});
+		expect(names(await projectsService.listMine(ctx(PLAIN)))).toEqual([
+			"Assigned",
+		]);
+		await expect(
+			projectsService.assertProjectMembership(ctx(PLAIN), unassignedId),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+});

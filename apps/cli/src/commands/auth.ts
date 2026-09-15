@@ -1,4 +1,4 @@
-import type { ApiWhoami } from "@farmer/core/api";
+import type { ApiTaskList, ApiWhoami } from "@farmer/core/api";
 
 import { openBrowser } from "../browser";
 import {
@@ -276,7 +276,13 @@ export const whoami: Command = {
 	run: async (args, runtime) => {
 		const { values } = parseCommandArgs(args, {}, 0, WHOAMI_USAGE);
 		const out = createOutput(values.json === true, runtime.env);
-		const { session, scope } = await openOrg(runtime, out, values.org);
+		// Not announced: the Defaults line below says the same with the names.
+		const { session, scope, defaults } = await openOrg(
+			runtime,
+			out,
+			values.org,
+			{ announce: false },
+		);
 		const who = await session.api.get<ApiWhoami>(scope.path("/whoami"));
 
 		const entry = session.server.orgs.find((org) => org.slug === scope.slug);
@@ -313,5 +319,23 @@ export const whoami: Command = {
 		);
 		say(out, `Working days  ${days || "none set"}`);
 		say(out, `Projects      ${who.projects.length}`);
+
+		if (!defaults) return;
+		// The file's comments may be stale; these names are the server's.
+		const projectName =
+			who.projects.find((project) => project.id === defaults.project)?.name ??
+			`${defaults.project} (not available)`;
+		const names = [defaults.org, projectName];
+		if (defaults.task !== undefined) {
+			const taskList = await session.api.get<ApiTaskList>(scope.path("/tasks"));
+			names.push(
+				taskList.tasks.find((task) => task.id === defaults.task)?.name ??
+					`${defaults.task} (not available)`,
+			);
+		}
+		say(
+			out,
+			`Defaults      ${names.join(", ")} ${dim(out, `(${defaults.shown})`)}`,
+		);
 	},
 };

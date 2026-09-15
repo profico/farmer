@@ -126,6 +126,8 @@ export const updateProjectInput = z
 		code: baseProject.code,
 		type: baseProject.type.optional(),
 		icon: baseProject.icon,
+		// Anyone in the organization may log time on it, assigned or not.
+		openToOrg: z.boolean().optional(),
 		budgetHours: baseProject.budgetHours,
 		budgetAmount: baseProject.budgetAmount,
 		hourlyPrice: baseProject.hourlyPrice,

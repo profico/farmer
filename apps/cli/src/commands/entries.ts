@@ -17,6 +17,7 @@ import { CancelledError, UsageError } from "../errors";
 import {
 	bold,
 	createOutput,
+	note,
 	type Output,
 	print,
 	printJson,
@@ -37,6 +38,7 @@ import {
 	shortId,
 	spanTitle,
 } from "../render";
+import { defaultRow, defaultsNotice } from "../repository-defaults";
 import { openOrg, type OrgScope, type Session } from "../session";
 import { type Command, parseCommandArgs } from "./command";
 
@@ -200,11 +202,13 @@ export const log: Command = {
 		"  fill              Fill the rest of the working day.",
 		"  [description]     What you worked on. Quotes are optional.",
 		"  -p, --project     A project name, code or client. `none` for no project.",
-		"  -t, --task        A task name.",
+		"                    The default is `project` in .farmer.jsonc.",
+		"  -t, --task        A task name. The default is `task` in .farmer.jsonc.",
 		"  -d, --date        today, yesterday, a weekday name, or yyyy-MM-dd.",
 		"  --overtime        Mark the entry as overtime.",
 		"",
-		"A missing -p or -t opens a searchable list.",
+		"A missing -p or -t with no default opens a searchable list.",
+		"`farmer init` writes .farmer.jsonc; `farmer whoami` shows what it names.",
 	],
 	run: async (args, runtime) => {
 		const { values, positionals } = parseCommandArgs(
@@ -229,14 +233,42 @@ export const log: Command = {
 		// Read before any request, so a typo costs nothing.
 		const seconds = fill ? null : parseQuarterHours(amount);
 
-		const { session, scope } = await openOrg(runtime, out, values.org);
+		const { session, scope, defaults } = await openOrg(
+			runtime,
+			out,
+			values.org,
+			{ announce: false },
+		);
 		const date = parseDay(values.date ?? "today", scope.clock);
 		const [projects, taskList] = await Promise.all([
 			session.api.get<ApiProject[]>(scope.path("/projects")),
 			session.api.get<ApiTaskList>(scope.path("/tasks")),
 		]);
-		const project = await chooseProjectOrNone(out, projects, values.project);
-		const task = await chooseTask(out, taskList.tasks, values.task, "-t");
+
+		// A flag wins; the file fills what the flags left out, and says so before
+		// a picker opens for anything it did not fill.
+		const projectDefault =
+			defaults && values.project === undefined
+				? defaultRow(projects, defaults.project, defaults, "project", "-p")
+				: undefined;
+		const taskDefault =
+			defaults?.task !== undefined && values.task === undefined
+				? defaultRow(taskList.tasks, defaults.task, defaults, "task", "-t")
+				: undefined;
+		if (defaults) {
+			note(
+				defaultsNotice(defaults.shown, [
+					`organization ${scope.slug}`,
+					...(projectDefault ? [`project ${projectDefault.name}`] : []),
+					...(taskDefault ? [`task ${taskDefault.name}`] : []),
+				]),
+			);
+		}
+		const project =
+			projectDefault ??
+			(await chooseProjectOrNone(out, projects, values.project));
+		const task =
+			taskDefault ?? (await chooseTask(out, taskList.tasks, values.task, "-t"));
 
 		let description = words.join(" ").trim();
 		if (!description && amountArg === undefined && out.interactive) {

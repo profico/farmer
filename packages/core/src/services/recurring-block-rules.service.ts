@@ -1,4 +1,15 @@
-import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	eq,
+	gte,
+	inArray,
+	isNull,
+	lte,
+	notExists,
+	or,
+	sql,
+} from "drizzle-orm";
 import postgres from "postgres";
 
 import { db } from "../db";
@@ -8,6 +19,10 @@ import {
 	recurringBlockRuleSkip,
 	timeEntry,
 } from "../db/schema/domain";
+import {
+	timeEntryGithubCommit,
+	timeEntryGithubPrActivity,
+} from "../db/schema/github";
 import { automationWriteWindow } from "../lib/automation-window";
 import {
 	datesBetween,
@@ -104,7 +119,7 @@ const assertMayScheduleOn = async (ctx: Ctx, projectId: string | null) => {
  * the project is archived, the task is archived or un-picked. None of those
  * touch the rule, so the materializer went on writing real hours onto a project
  * the person could no longer log to by hand. Same answer as
- * `filingRulesService.resolveForTask`, for the same reason: a rule is a
+ * `filingRulesService.resolve`, for the same reason: a rule is a
  * standing write, and it is re-checked rather than trusted.
  *
  * A rule that fails is skipped, not deleted and not reported. Its day simply
@@ -416,7 +431,57 @@ export const recurringBlockRulesService = {
 				lte(timeEntry.date, to),
 			),
 			columns: { date: true, taskId: true, projectId: true },
+			with: { task: { columns: { isAbsence: true } } },
 		});
+
+		// A day off takes no block. A rule is "on these weekdays", and a weekday
+		// somebody spends on vacation or sick leave is not a day they take a break
+		// or put an hour into a retainer — yet every day of a week off came back
+		// with 8h of vacation plus the daily break.
+		//
+		// Any absence counts, not only a full day of it: the materializer has no
+		// way to tell which half of a half day was worked.
+		//
+		// A block this pass wrote before the absence was booked (absence booked for
+		// today, or for a past day still inside the window) is taken back. No skip
+		// row is written for it, because the person did not delete it: cancel the
+		// day off and the next pass writes the block again. A block that holds
+		// GitHub evidence stays, since its attachments would cascade with it.
+		const daysOff = [
+			...new Set(existing.filter((e) => e.task.isAbsence).map((e) => e.date)),
+		];
+		const takenBack =
+			daysOff.length === 0
+				? []
+				: await db
+						.delete(timeEntry)
+						.where(
+							and(
+								eq(timeEntry.organizationId, ctx.organizationId),
+								eq(timeEntry.userId, ctx.userId),
+								inArray(
+									timeEntry.generatedFromRuleId,
+									rules.map((r) => r.id),
+								),
+								inArray(timeEntry.date, daysOff),
+								notExists(
+									db
+										.select({ one: sql`1` })
+										.from(timeEntryGithubCommit)
+										.where(eq(timeEntryGithubCommit.timeEntryId, timeEntry.id)),
+								),
+								notExists(
+									db
+										.select({ one: sql`1` })
+										.from(timeEntryGithubPrActivity)
+										.where(
+											eq(timeEntryGithubPrActivity.timeEntryId, timeEntry.id),
+										),
+								),
+							),
+						)
+						.returning({ date: timeEntry.date });
+		const isDayOff = new Set(daysOff);
 		// Two keys, because "is this block already here?" has two answers depending
 		// on whether the rule names a project.
 		//
@@ -472,6 +537,7 @@ export const recurringBlockRulesService = {
 				if (rule.effectiveUntil && date > rule.effectiveUntil) continue;
 				if (!rule.daysOfWeek.includes(weekdayByDate.get(date) ?? -1)) continue;
 				if (skipSet.has(`${rule.id}:${date}`)) continue;
+				if (isDayOff.has(date)) continue;
 				if (dayAlreadyHas(rule, date)) continue;
 
 				// Claimed as this batch goes, so two rules for the same block on the
@@ -494,16 +560,20 @@ export const recurringBlockRulesService = {
 				});
 			}
 		}
-		if (rows.length === 0) return;
-
-		const inserted = await db
-			.insert(timeEntry)
-			.values(rows)
-			.onConflictDoNothing({
-				target: [timeEntry.generatedFromRuleId, timeEntry.generatedForDate],
-				where: sql`${timeEntry.generatedFromRuleId} is not null`,
-			})
-			.returning({ date: timeEntry.date });
+		const inserted =
+			rows.length === 0
+				? []
+				: await db
+						.insert(timeEntry)
+						.values(rows)
+						.onConflictDoNothing({
+							target: [
+								timeEntry.generatedFromRuleId,
+								timeEntry.generatedForDate,
+							],
+							where: sql`${timeEntry.generatedFromRuleId} is not null`,
+						})
+						.returning({ date: timeEntry.date });
 
 		// A block that just landed on a day claims part of that day, so the day's
 		// fill block — which by definition is "whatever is left" — is now too long.
@@ -519,7 +589,11 @@ export const recurringBlockRulesService = {
 		//
 		// Best-effort and outside the insert: failing to resize a fill block must
 		// not cost the person the blocks that were just materialized.
-		const touched = [...new Set(inserted.map((row) => row.date))];
+		// A block taken back from a day off frees the same time, so that day is
+		// recomputed too.
+		const touched = [
+			...new Set([...takenBack, ...inserted].map((row) => row.date)),
+		];
 		for (const date of touched) {
 			try {
 				await recomputeDayFill(ctx, date, tz);

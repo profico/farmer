@@ -10,6 +10,8 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
+import { TaskPicker } from "#/components/pickers/task-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
 	Dialog,
@@ -24,6 +26,8 @@ import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { dayAssemblySuggestionsQuery } from "#/queries/day-assembly.ts";
 import { queryKeys } from "#/queries/keys.ts";
+import { myProjectsQuery } from "#/queries/projects.ts";
+import { selectableTasksQuery } from "#/queries/tasks.ts";
 import {
 	applyDayAssembly,
 	type suggestDayAssembly,
@@ -31,6 +35,9 @@ import {
 
 type DayAssembly = Awaited<ReturnType<typeof suggestDayAssembly>>;
 type DaySuggestion = DayAssembly["suggestions"][number];
+
+/** Where an accepted suggestion goes: the proposal, or what the person chose. */
+type Pick = { projectId: string | null; taskId: string };
 
 function suggestionTitle(s: DaySuggestion): string {
 	if (s.kind === "meeting") return s.description || "Meeting";
@@ -131,7 +138,21 @@ export function AssembleDayDialog({
 	const assembly = suggestionsQ.data;
 	const suggestions = assembly?.suggestions ?? [];
 
+	// `myProjectsQuery`, as in File your time: `apply` asserts `canTrackOn`.
+	const { data: projects } = useQuery({
+		...myProjectsQuery(orgSlug),
+		enabled: open,
+	});
+	// Every live non-absence task: what may go on a project, and on no project.
+	const { data: tasks } = useQuery({
+		...selectableTasksQuery(orgSlug),
+		enabled: open,
+	});
+
 	const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+	// The project and task per row, so a day is filed as it is added rather
+	// than added and then filed row by row. Keyed like the selection.
+	const [picks, setPicks] = useState<Map<string, Pick>>(new Map());
 	// Fresh suggestions arrive pre-selected — assembling should be one click.
 	// Except the ones the person deleted before: those are here because they
 	// asked to see them, which is not the same as asking for them back.
@@ -140,8 +161,16 @@ export function AssembleDayDialog({
 		setSelectedKeys(
 			new Set(suggestions.filter((s) => !s.dismissed).map((s) => s.key)),
 		);
+		setPicks(new Map());
 	}, [suggestionsQ.dataUpdatedAt]);
 	/* oxlint-enable react-hooks/exhaustive-deps */
+
+	const pickFor = (s: DaySuggestion): Pick =>
+		picks.get(s.key) ?? { projectId: s.projectId, taskId: s.taskId };
+	const setPick = (s: DaySuggestion, next: Partial<Pick>) =>
+		setPicks((current) =>
+			new Map(current).set(s.key, { ...pickFor(s), ...next }),
+		);
 
 	const toggle = (key: string) => {
 		setSelectedKeys((current) => {
@@ -164,8 +193,8 @@ export function AssembleDayDialog({
 				data: {
 					date,
 					entries: selected.map((s) => ({
-						taskId: s.taskId,
-						projectId: s.projectId ?? undefined,
+						taskId: pickFor(s).taskId,
+						projectId: pickFor(s).projectId ?? undefined,
 						description: s.description || undefined,
 						// A fill suggestion's duration is recomputed server-side from the
 						// day's remaining working hours, so it deliberately sends none.
@@ -220,7 +249,7 @@ export function AssembleDayDialog({
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger render={trigger} />
-			<DialogContent>
+			<DialogContent className="sm:max-w-2xl">
 				<DialogHeader>
 					<DialogTitle>Assemble my day</DialogTitle>
 					<p className="text-sm text-muted-foreground">
@@ -257,48 +286,70 @@ export function AssembleDayDialog({
 					// lighter repeat-rule weight.
 					<div className="-mx-6 divide-y divide-line2 border-y">
 						{suggestions.map((s) => (
-							<label
+							<div
 								key={s.key}
-								className="flex cursor-pointer items-start gap-3 px-6 py-2.5 transition-colors duration-(--dur-fast) hover:bg-muted"
+								className="px-6 py-2.5 transition-colors duration-(--dur-fast) hover:bg-muted"
 							>
-								<input
-									type="checkbox"
-									className="mt-1 accent-primary"
-									checked={selectedKeys.has(s.key)}
-									onChange={() => toggle(s.key)}
-								/>
-								<SuggestionIcon kind={s.kind} />
-								<span className="min-w-0 flex-1">
-									<span className="flex items-center gap-2">
-										<span className="min-w-0 truncate text-sm font-medium">
-											{suggestionTitle(s)}
+								{/* The pickers stay OUTSIDE the label: a control nested in a
+								    label toggles the checkbox on its way to its own handler. */}
+								<label className="flex cursor-pointer items-start gap-3">
+									<input
+										type="checkbox"
+										className="mt-1 accent-primary"
+										checked={selectedKeys.has(s.key)}
+										onChange={() => toggle(s.key)}
+									/>
+									<SuggestionIcon kind={s.kind} />
+									<span className="min-w-0 flex-1">
+										<span className="flex items-center gap-2">
+											<span className="min-w-0 truncate text-sm font-medium">
+												{suggestionTitle(s)}
+											</span>
+											{/* Named, not just silently present: a row that arrives
+											    unticked among ticked ones needs to say why. */}
+											{s.dismissed && (
+												<span className="shrink-0 text-xs text-muted-foreground">
+													deleted earlier
+												</span>
+											)}
 										</span>
-										{/* Named, not just silently present: a row that arrives
-										    unticked among ticked ones needs to say why. */}
-										{s.dismissed && (
-											<span className="shrink-0 text-xs text-muted-foreground">
-												deleted earlier
+										<span className="block text-xs text-muted-foreground">
+											{s.fillsDay
+												? `Fills the rest of the day · ~${formatHoursShort(s.durationSeconds)}`
+												: formatHoursShort(s.durationSeconds)}
+										</span>
+										{/* The evidence, on its own line under the figures rather
+										    than appended to them: it answers a different question
+										    ("why is this here") than the line above ("what would it
+										    log"). */}
+										<span className="block truncate text-xs text-faint">
+											{suggestionSource(s)}
+										</span>
+										{s.kind === "work" && s.description && (
+											<span className="block truncate text-xs text-muted-foreground">
+												{s.description}
 											</span>
 										)}
 									</span>
-									<span className="block text-xs text-muted-foreground">
-										{s.fillsDay
-											? `Fills the rest of the day · ~${formatHoursShort(s.durationSeconds)}`
-											: `${s.taskName} · ${formatHoursShort(s.durationSeconds)}`}
-									</span>
-									{/* The evidence, on its own line under the figures rather than
-									    appended to them: it answers a different question ("why is
-									    this here") than the line above ("what would it log"). */}
-									<span className="block truncate text-xs text-faint">
-										{suggestionSource(s)}
-									</span>
-									{s.kind === "work" && s.description && (
-										<span className="block truncate text-xs text-muted-foreground">
-											{s.description}
-										</span>
-									)}
-								</span>
-							</label>
+								</label>
+								{/* Indented past the checkbox and the icon, under the text. */}
+								<div className="mt-2 grid gap-2 pl-13 sm:grid-cols-2">
+									<ProjectPicker
+										projects={projects ?? []}
+										value={pickFor(s).projectId}
+										onValueChange={(projectId) => setPick(s, { projectId })}
+										noProject="No project"
+										aria-label={`Project for ${suggestionTitle(s)}`}
+									/>
+									<TaskPicker
+										tasks={tasks ?? []}
+										value={pickFor(s).taskId}
+										onValueChange={(taskId) => setPick(s, { taskId })}
+										grouped
+										aria-label={`Task for ${suggestionTitle(s)}`}
+									/>
+								</div>
+							</div>
 						))}
 					</div>
 				)}

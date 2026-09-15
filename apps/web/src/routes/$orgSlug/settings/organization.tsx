@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import type { WeekStartsOn } from "@farmer/core/lib/time";
 import {
 	isUploadedFile,
@@ -14,11 +15,21 @@ import {
 	useRouteContext,
 	useRouter,
 } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import {
+	Combobox,
+	ComboboxCollection,
+	ComboboxContent,
+	ComboboxEmpty,
+	ComboboxItem,
+	ComboboxList,
+	ComboboxTrigger,
+	ComboboxValue,
+} from "#/components/ui/combobox.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import {
@@ -77,11 +88,15 @@ function OrganizationSettingsPage() {
 		mutationFn: (data: {
 			name?: string;
 			country?: string;
+			timezone?: string;
 			weekStartsOn?: WeekStartsOn;
 			logo?: string | null;
 		}) => updateOrgSettings({ data }),
-		onSuccess: async () => {
+		onSuccess: async (_, variables) => {
 			await Promise.all([
+				// The timezone decides which day every entry, meeting and "today"
+				// falls on, so nothing cached for this workspace is still right.
+				variables.timezone !== undefined && queryClient.invalidateQueries(),
 				queryClient.invalidateQueries({
 					queryKey: orgSettingsQuery(orgSlug).queryKey,
 				}),
@@ -200,6 +215,17 @@ function OrganizationSettingsPage() {
 						))}
 					</SelectContent>
 				</Select>
+			</PageSection>
+
+			<PageSection
+				title="Timezone"
+				description="Decides which day an entry or a synced meeting falls on, the meeting times shown, and when today starts. On the next sync, synced meetings in the automation window move to the right day; other entries keep their day."
+			>
+				<TimezonePicker
+					value={settings.timezone}
+					onPick={(timezone) => mutation.mutate({ timezone })}
+					disabled={mutation.isPending}
+				/>
 			</PageSection>
 
 			<PageSection
@@ -332,6 +358,97 @@ function OrganizationSettingsPage() {
 			<TrackingToleranceSection />
 			<AutomationLockSection />
 		</Page>
+	);
+}
+
+type TimezoneItem = { value: string; label: string; offset: string };
+
+// "GMT+02:00", or "GMT" for UTC itself. Today's offset, so a zone with daylight
+// saving reads as it does now.
+const offsetOf = (timeZone: string, now: Date) =>
+	new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longOffset" })
+		.formatToParts(now)
+		.find((part) => part.type === "timeZoneName")?.value ?? "";
+
+// Every IANA zone the runtime knows. `UTC` is added because not every engine
+// lists it, and the stored value is added so a zone this browser does not know
+// still shows as chosen.
+const timezoneItems = (current: string): TimezoneItem[] => {
+	const zones = new Set(["UTC", ...Intl.supportedValuesOf("timeZone")]);
+	zones.add(current);
+	const now = new Date();
+	return [...zones].map((value) => ({
+		value,
+		label: value.replaceAll("_", " "),
+		offset: offsetOf(value, now),
+	}));
+};
+
+function TimezonePicker({
+	value,
+	onPick,
+	disabled,
+}: {
+	value: string;
+	onPick: (timezone: string) => void;
+	disabled: boolean;
+}) {
+	const items = useMemo(() => timezoneItems(value), [value]);
+	const selected = items.find((item) => item.value === value) ?? null;
+	const [query, setQuery] = useState("");
+	const filtered = useMemo(
+		() =>
+			query.trim() === ""
+				? items
+				: items.filter((item) =>
+						matchesSearch(query, [item.label, item.offset]),
+					),
+		[items, query],
+	);
+	return (
+		<Combobox
+			items={items}
+			filteredItems={filtered}
+			value={selected}
+			onValueChange={(item: TimezoneItem | null) => {
+				if (item && item.value !== value) onPick(item.value);
+			}}
+			isItemEqualToValue={(a: TimezoneItem, b: TimezoneItem) =>
+				a.value === b.value
+			}
+			itemToStringLabel={(item: TimezoneItem) => item.label}
+			inputValue={query}
+			onInputValueChange={setQuery}
+			onOpenChange={(open) => {
+				if (!open) setQuery("");
+			}}
+			autoHighlight
+			disabled={disabled}
+		>
+			<ComboboxTrigger
+				className="w-full max-w-sm bg-card"
+				aria-label="Timezone"
+			>
+				<ComboboxValue>
+					{() => (selected ? `${selected.label} (${selected.offset})` : value)}
+				</ComboboxValue>
+			</ComboboxTrigger>
+			<ComboboxContent searchPlaceholder="Search timezones…">
+				<ComboboxEmpty>No timezone matches.</ComboboxEmpty>
+				<ComboboxList>
+					<ComboboxCollection>
+						{(item: TimezoneItem) => (
+							<ComboboxItem key={item.value} value={item}>
+								<span className="truncate">{item.label}</span>
+								<span className="ml-auto shrink-0 text-xs text-muted-foreground">
+									{item.offset}
+								</span>
+							</ComboboxItem>
+						)}
+					</ComboboxCollection>
+				</ComboboxList>
+			</ComboboxContent>
+		</Combobox>
 	);
 }
 

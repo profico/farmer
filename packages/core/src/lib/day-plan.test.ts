@@ -44,7 +44,7 @@ describe("splitProportionally", () => {
 });
 
 describe("summarizeCommitMessages", () => {
-	test("joins first lines and counts the overflow", () => {
+	test("joins the first line of every message", () => {
 		expect(
 			summarizeCommitMessages([
 				"fix login\n\ndetails",
@@ -52,16 +52,18 @@ describe("summarizeCommitMessages", () => {
 				"bump",
 				"docs",
 			]),
-		).toBe("fix login; add page; bump (+1 more)");
+		).toBe("fix login; add page; bump; docs");
 	});
 
 	test("drops empty messages", () => {
 		expect(summarizeCommitMessages(["", "one\nbody"])).toBe("one");
 	});
 
-	// Dropped messages must not inflate the "+N more" count.
-	test("does not count dropped messages as overflow", () => {
-		expect(summarizeCommitMessages(["a", "b", "c", "   ", ""])).toBe("a; b; c");
+	test("stops at the description ceiling on a whole subject", () => {
+		const subject = "x".repeat(99);
+		const summary = summarizeCommitMessages(Array(200).fill(subject));
+		expect(summary.length).toBeLessThanOrEqual(10_000);
+		expect(summary.split("; ").every((s) => s === subject)).toBe(true);
 	});
 
 	test("trims trailing whitespace on subjects", () => {

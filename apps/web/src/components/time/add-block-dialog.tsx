@@ -1,5 +1,8 @@
+import { summarizeCommitMessages } from "@farmer/core/lib/day-plan";
+import { describePullRequestActivity } from "@farmer/core/lib/github-activity";
 import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
+	addDaysToKey,
 	parseDuration,
 	snapToQuarterHour,
 	timeKeyInTz,
@@ -7,6 +10,8 @@ import {
 } from "@farmer/core/lib/time";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+	ArrowLeftIcon,
+	ArrowRightIcon,
 	CalendarDotIcon,
 	CaretRightIcon,
 	GitCommitIcon,
@@ -28,6 +33,7 @@ import { z } from "zod";
 
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { TaskPicker } from "#/components/pickers/task-picker.tsx";
+import { DateJump, stepperClass } from "#/components/time/time-toolbar.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
@@ -49,13 +55,6 @@ import {
 	FormMessage,
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
@@ -66,6 +65,7 @@ import {
 	rememberEntryOptions,
 	rememberLastPick,
 } from "#/lib/entry-options.ts";
+import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
@@ -222,15 +222,15 @@ function activitySummary(
 
 export function AddBlockDialog({
 	timezone,
-	dateOptions,
 	defaultDate: defaultDateProp,
 	defaultProjectId,
 	entry,
 	trigger,
 }: {
 	timezone: string;
-	dateOptions: { value: string; label: string }[];
-	defaultDate?: string;
+	/** The day the dialog opens on; the stepper in its header moves from there.
+	 *  An existing entry opens on its own day. */
+	defaultDate: string;
 	/** Opened from a project's own page: that project, already chosen. */
 	defaultProjectId?: string;
 	entry?: ExistingTimeEntry;
@@ -241,8 +241,7 @@ export function AddBlockDialog({
 	const queryClient = useQueryClient();
 	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
 
-	const defaultDate =
-		entry?.date ?? defaultDateProp ?? dateOptions[0]?.value ?? "";
+	const defaultDate = entry?.date ?? defaultDateProp;
 
 	const buildDefaults = (): FormValues => ({
 		projectId: entry?.projectId ?? defaultProjectId ?? TIME_OFF,
@@ -481,13 +480,52 @@ export function AddBlockDialog({
 		(c) => !attachedShas.has(c.sha),
 	);
 
+	// Ticking activity writes the description from it, the way the commit engine
+	// writes its own blocks' — but only into a box that is empty or still holds
+	// what the last tick wrote. The ref is that last write: once the person types
+	// over it, the text is theirs and further ticks leave it alone.
+	const autoDescriptionRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (open) autoDescriptionRef.current = null;
+	}, [open]);
+	const describeSelection = (
+		commitKeys: Set<string>,
+		pullRequestKeys: Set<string>,
+	) => {
+		const current = form.getValues("description");
+		if (current.trim() && current !== autoDescriptionRef.current) return;
+		const next = summarizeCommitMessages([
+			...effectiveSuggested
+				.filter((c) => commitKeys.has(commitKey(c.projectGithubRepoId, c.sha)))
+				.map((c) => c.message),
+			...describePullRequestActivity(
+				effectiveSuggestedPullRequests
+					.filter((pr) =>
+						pullRequestKeys.has(
+							pullRequestKey(pr.projectGithubRepoId, pr.number),
+						),
+					)
+					.flatMap((pr) =>
+						pr.activity.map((a) => ({
+							kind: a.kind,
+							number: pr.number,
+							title: pr.title,
+						})),
+					),
+			),
+		]);
+		autoDescriptionRef.current = next;
+		if (next === current) return;
+		form.setValue("description", next);
+		if (next) form.clearErrors("description");
+	};
+
 	const toggleCommitSelection = (key: string) => {
-		setSelectedCommitKeys((current) => {
-			const next = new Set(current);
-			if (next.has(key)) next.delete(key);
-			else next.add(key);
-			return next;
-		});
+		const next = new Set(selectedCommitKeys);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		setSelectedCommitKeys(next);
+		describeSelection(next, selectedPullRequestKeys);
 	};
 
 	const suggestCommitsMutation = useMutation({
@@ -568,12 +606,11 @@ export function AddBlockDialog({
 	);
 
 	const togglePullRequestSelection = (key: string) => {
-		setSelectedPullRequestKeys((current) => {
-			const next = new Set(current);
-			if (next.has(key)) next.delete(key);
-			else next.add(key);
-			return next;
-		});
+		const next = new Set(selectedPullRequestKeys);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		setSelectedPullRequestKeys(next);
+		describeSelection(selectedCommitKeys, next);
 	};
 
 	const suggestPullRequestsMutation = useMutation({
@@ -672,10 +709,11 @@ export function AddBlockDialog({
 		);
 	};
 
-	const dialogDateLabel = (() => {
-		const parts = defaultDate.split("-").map(Number);
-		if (parts.length !== 3 || parts.some((p) => Number.isNaN(p)))
-			return defaultDate;
+	// "Tuesday, September 15, 2026" — the weekday because that is how a day is
+	// remembered, the year because the stepper can leave this one.
+	const dialogDateLabel = (key: string) => {
+		const parts = key.split("-").map(Number);
+		if (parts.length !== 3 || parts.some((p) => Number.isNaN(p))) return key;
 		const [year, month, day] = parts;
 		return new Date(
 			Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1),
@@ -683,9 +721,36 @@ export function AddBlockDialog({
 			weekday: "long",
 			month: "long",
 			day: "numeric",
+			year: "numeric",
 			timeZone: "UTC",
 		});
-	})();
+	};
+
+	// Commits and pull request events happened on the entry's day, so an entry
+	// holding them stays there. The service refuses the move as well; this only
+	// keeps the stepper from offering it.
+	const dayLocked =
+		!!entry &&
+		((attachedCommits?.length ?? 0) > 0 ||
+			(attachedPullRequests?.length ?? 0) > 0);
+
+	// The repeat days default to the day being logged, so they follow it until
+	// repeat is switched on and the choice becomes the person's. What was picked
+	// from the old day goes: its commits, pull requests and meeting belong to
+	// that day, and saved on this one they would be evidence of the wrong day.
+	const setDate = (next: string) => {
+		if (next === form.getValues("date")) return;
+		form.setValue("date", next, { shouldValidate: true });
+		if (!form.getValues("repeatEnabled")) {
+			form.setValue("daysOfWeek", [weekdayInTz(next, timezone)]);
+		}
+		setSuggestedCommits([]);
+		setSelectedCommitKeys(new Set());
+		setSuggestedPullRequests([]);
+		setSelectedPullRequestKeys(new Set());
+		setMeetingUrl(null);
+		setCalendarEventId(null);
+	};
 
 	const mutation = useMutation<{ id: string }, Error, FormValues>({
 		mutationFn: (values: FormValues) => {
@@ -761,6 +826,17 @@ export function AddBlockDialog({
 					});
 				}
 			}
+			// The attached lists sit in the cache under the entry's id, fresh for
+			// the default 30s, so reopening the entry showed the attachments from
+			// before this save until a reload.
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: attachedCommitsQuery(orgSlug, savedEntry.id).queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: attachedPullRequestsQuery(orgSlug, savedEntry.id).queryKey,
+				}),
+			]);
 			// Time off is never remembered: a day of leave is not what the next
 			// entry is likely to be. An edit does not move the last pick either,
 			// since correcting an old entry says nothing about the next one.
@@ -789,6 +865,11 @@ export function AddBlockDialog({
 				await queryClient.invalidateQueries({
 					queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
 				});
+			}
+			// Saved to a day other than the one the dialog opened on, which the page
+			// behind it may not show: say where the time went.
+			if (!values.repeatEnabled && values.date !== defaultDate) {
+				toast.success(`Saved to ${formatDateKeyLong(values.date)}`);
 			}
 			setOpen(false);
 		},
@@ -837,7 +918,44 @@ export function AddBlockDialog({
 			<DialogContent className="sm:max-w-xl">
 				<DialogHeader>
 					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
-					<p className="text-sm text-muted-foreground">{dialogDateLabel}</p>
+					{/* The timesheet's ‹ date › stepper, so the day can change without
+					    closing the dialog: yesterday's work logged today, or an entry
+					    moved to the day it belongs to. */}
+					<div className="flex h-8 w-fit items-center rounded-lg border text-sm">
+						<button
+							type="button"
+							className={cn(
+								stepperClass,
+								"disabled:pointer-events-none disabled:opacity-40",
+							)}
+							aria-label="Previous day"
+							disabled={dayLocked}
+							onClick={() => setDate(addDaysToKey(targetDate, -1))}
+						>
+							<ArrowLeftIcon weight="regular" className="size-4" />
+						</button>
+						<span className="flex items-center gap-1.5 border-x px-3 font-medium whitespace-nowrap">
+							{!dayLocked && <DateJump value={targetDate} onPick={setDate} />}
+							{dialogDateLabel(targetDate)}
+						</span>
+						<button
+							type="button"
+							className={cn(
+								stepperClass,
+								"disabled:pointer-events-none disabled:opacity-40",
+							)}
+							aria-label="Next day"
+							disabled={dayLocked}
+							onClick={() => setDate(addDaysToKey(targetDate, 1))}
+						>
+							<ArrowRightIcon weight="regular" className="size-4" />
+						</button>
+					</div>
+					{dayLocked && (
+						<p className="text-xs text-muted-foreground">
+							Its GitHub activity keeps this entry on this day.
+						</p>
+					)}
 				</DialogHeader>
 				<Form {...form}>
 					<form
@@ -915,36 +1033,6 @@ export function AddBlockDialog({
 								/>
 							</div>
 						</div>
-						{dateOptions.length > 1 && (
-							<FormField
-								control={form.control}
-								name="date"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Day</FormLabel>
-										<Select
-											value={field.value}
-											onValueChange={field.onChange}
-											items={dateOptions}
-										>
-											<FormControl>
-												<SelectTrigger className="w-full">
-													<SelectValue />
-												</SelectTrigger>
-											</FormControl>
-											<SelectContent>
-												{dateOptions.map((d) => (
-													<SelectItem key={d.value} value={d.value}>
-														{d.label}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-						)}
 						{/* What you did, and how long: side by side, the time box big
 						    enough to be the thing you read back. */}
 						<div className="grid gap-1.5">
@@ -1510,22 +1598,12 @@ export function AddBlockDialog({
 								</AnimatePresence>
 							</div>
 						)}
-						<DialogFooter className="sm:justify-start">
-							<Button type="submit" disabled={mutation.isPending}>
-								{entry
-									? "Save entry"
-									: repeatEnabled
-										? "Create repeating entry"
-										: "Save entry"}
-								<kbd className="mono rounded-sm bg-primary-foreground/22 px-1 text-2xs">
-									{modKey}↩
-								</kbd>
-							</Button>
-							<DialogClose render={<Button type="button" variant="outline" />}>
-								Cancel
-							</DialogClose>
+						{/* Wraps as a whole: when the row is too narrow the links take a
+						    line of their own, instead of the group squeezing and putting
+						    each link on its own line. */}
+						<DialogFooter className="sm:flex-wrap">
 							{(showCalendarPicker || showCommitPicker) && (
-								<div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:ml-auto">
+								<div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:mr-auto sm:flex-nowrap">
 									{showCalendarPicker && (
 										<Button
 											type="button"
@@ -1562,6 +1640,19 @@ export function AddBlockDialog({
 									)}
 								</div>
 							)}
+							<DialogClose render={<Button type="button" variant="outline" />}>
+								Cancel
+							</DialogClose>
+							<Button type="submit" disabled={mutation.isPending}>
+								{entry
+									? "Save entry"
+									: repeatEnabled
+										? "Create repeating entry"
+										: "Save entry"}
+								<kbd className="mono rounded-sm bg-primary-foreground/22 px-1 text-2xs">
+									{modKey}↩
+								</kbd>
+							</Button>
 						</DialogFooter>
 					</form>
 				</Form>

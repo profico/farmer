@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { auth } from "../auth";
 import { db } from "../db";
@@ -29,6 +29,7 @@ import {
 import { AccessError } from "./access.service";
 import { ctxDb, ctxTimezone, requireAdmin, withCtxTx } from "./context";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
+import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
 
 /** The GitHub HTTP calls this service makes. */
@@ -666,6 +667,35 @@ export const githubService = {
 			),
 			orderBy: desc(projectGithubRepo.createdAt),
 		});
+	},
+
+	/**
+	 * The projects the caller may log time on that have a Linked repository
+	 * named `repository` (case-insensitive `owner/name`) — `farmer init`'s
+	 * suggestion from a git remote.
+	 *
+	 * Filtered through `projectsService.listMine`, not just the organization:
+	 * `listLinkedRepos` above checks only that a repo belongs to this org,
+	 * which is right for a project's own settings page but wrong here, where
+	 * the answer is a suggestion for THIS person to log time against. `fullName`
+	 * is cached at link time, so a renamed repository simply stops matching —
+	 * acceptable, since this only ever feeds a suggestion.
+	 */
+	projectsForRepository: async (ctx: Ctx, repository: string) => {
+		const mine = await projectsService.listMine(ctx);
+		if (mine.length === 0) return [];
+
+		const linked = await db
+			.select({ projectId: projectGithubRepo.projectId })
+			.from(projectGithubRepo)
+			.where(
+				and(
+					eq(projectGithubRepo.organizationId, ctx.organizationId),
+					sql`lower(${projectGithubRepo.fullName}) = lower(${repository})`,
+				),
+			);
+		const linkedProjectIds = new Set(linked.map((row) => row.projectId));
+		return mine.filter((project) => linkedProjectIds.has(project.id));
 	},
 
 	// ── Commits (installation token for access, user login for authorship) ───

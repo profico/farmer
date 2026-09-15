@@ -1,5 +1,7 @@
 // An easter egg for whoever opens the browser console: the mark and the
-// wordmark, logged once per page load from the root shell.
+// wordmark, logged once per page load from the root shell. Production only —
+// in development every reload and full HMR refresh printed it again, and
+// ninety lines of art pushed the logs somebody was reading off the screen.
 
 const mark = `
       ...............................................
@@ -54,8 +56,9 @@ const wordmark = `
 let logged = false;
 
 export function logConsoleGreeting() {
-	// A module flag rather than trusting the effect to run once: StrictMode and
-	// HMR both re-run effects in development.
+	if (import.meta.env.DEV) return;
+	// A module flag rather than trusting the effect to run once: a remount of
+	// the root shell runs it again.
 	if (logged) return;
 	logged = true;
 	// `console.info`, not `console.log`: in development the TanStack devtools

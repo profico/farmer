@@ -83,7 +83,7 @@ function ProjectPage() {
 	const orgSlug = organization.slug;
 	const isAdmin = role === "owner" || role === "admin";
 	const { data: project } = useSuspenseQuery(projectQuery(orgSlug, projectId));
-	const access = projectPageAccess(isAdmin, project.myRole);
+	const access = projectPageAccess(isAdmin, project.myRole, project.openToOrg);
 
 	const today = dayKeyInTz(new Date(), organization.timezone);
 	const thisMonth = today.slice(0, 7);
@@ -188,9 +188,7 @@ function ProjectPage() {
 						{access.canLogTime && !archived && (
 							<AddBlockDialog
 								timezone={organization.timezone}
-								dateOptions={[
-									{ value: today, label: formatDateKeyLong(today) },
-								]}
+								defaultDate={today}
 								defaultProjectId={projectId}
 								trigger={<Button>Log time</Button>}
 							/>
@@ -237,13 +235,22 @@ function ProjectPage() {
 							<Suspense
 								fallback={
 									<Button variant="outline" size="sm" disabled>
-										Export CSV
+										Export
 									</Button>
 								}
 							>
 								<EntriesExport
 									input={input}
-									filename={`${project.code ?? project.name}_${from}_${to}.csv`}
+									by={by}
+									filename={`${project.code ?? project.name}_${from}_${to}`}
+									title="Detailed time report"
+									facts={[
+										[
+											"Project",
+											`${project.code ? `[${project.code}] ` : ""}${project.name}`,
+										],
+										["Client", project.client?.name ?? "—"],
+									]}
 								/>
 							</Suspense>
 						</PeriodPicker>

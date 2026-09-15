@@ -149,7 +149,6 @@ function OrgHome() {
 	);
 	const hasAutoTracked = meetingEntries.length > 0 || githubEntries.length > 0;
 
-	const dateOptions = [{ value: today, label: today }];
 	const firstName = session.user.name.split(" ")[0];
 
 	return (
@@ -162,7 +161,7 @@ function OrgHome() {
 				action={
 					<AddBlockDialog
 						timezone={organization.timezone}
-						dateOptions={dateOptions}
+						defaultDate={today}
 						trigger={
 							<Button size="sm">
 								<PlusIcon weight="regular" className="size-4" />
@@ -384,7 +383,6 @@ function OrgHome() {
 									key={entry.id}
 									entry={entry}
 									timezone={organization.timezone}
-									dateOptions={dateOptions}
 								/>
 							))}
 						</div>

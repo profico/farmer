@@ -64,9 +64,10 @@ export function TimeToolbar({
  * This one is the icon itself rather than the shared DatePicker box: it lives
  * inside the ‹ date › stepper group, where a bordered field would read as a
  * second control sitting on top of the first. Same popover and same calendar as
- * everywhere else — only the trigger differs.
+ * everywhere else — only the trigger differs. The Log time dialog's stepper
+ * borrows it, so a day is picked the same way in both places.
  */
-function DateJump({
+export function DateJump({
 	value,
 	onPick,
 }: {

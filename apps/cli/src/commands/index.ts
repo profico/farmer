@@ -4,7 +4,9 @@ import { type Command, GLOBAL_HELP } from "./command";
 import { edit, log, ls, rm, today, week } from "./entries";
 import { copyDay, copyWeek, file, off, unfiled } from "./filing";
 import { open, projects, status, sync, tasks } from "./info";
+import { init } from "./init";
 import { orgList, orgUse } from "./org";
+import { update } from "./update";
 
 /** In the order `farmer help` lists them. */
 export const COMMANDS: Command[] = [
@@ -13,6 +15,7 @@ export const COMMANDS: Command[] = [
 	whoami,
 	orgList,
 	orgUse,
+	init,
 	today,
 	week,
 	ls,
@@ -29,6 +32,7 @@ export const COMMANDS: Command[] = [
 	status,
 	sync,
 	open,
+	update,
 ];
 
 export type CommandMatch = { command: Command; args: string[] };

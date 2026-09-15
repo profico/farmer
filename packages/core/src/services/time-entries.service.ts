@@ -75,7 +75,7 @@ import {
 	recomputeDayFill,
 	rehomeDroppedFillEvidence,
 } from "./day-fill";
-import { filingRuleKey, filingRulesService } from "./filing-rules.service";
+import { filingRulesService, ruleKeyFor } from "./filing-rules.service";
 import {
 	pullRequestActivityRow,
 	type ScannedCommit,
@@ -191,11 +191,8 @@ const syncMeetingsForRange = async (
 	// Standing "always file this one to that project" answers, keyed on the
 	// normalized title. Resolved once for the whole range rather than per event,
 	// and already filtered to projects the person may still write to — see
-	// filingRulesService.resolveForTask.
-	const filingRules = await filingRulesService.resolveForTask(
-		ctx,
-		meetingTask.id,
-	);
+	// filingRulesService.resolve.
+	const filingRules = await filingRulesService.resolve(ctx, [meetingTask.id]);
 
 	const tombstones = await db.query.syncedMeetingTombstone.findMany({
 		where: and(
@@ -263,10 +260,10 @@ const syncMeetingsForRange = async (
 		// assembler has always checked `raw <= 0`; this is the engine that writes.
 		.filter(({ rawSeconds }) => rawSeconds > 0)
 		.map(({ event, startedAt, rawSeconds }) => {
+			const rule = filingRules.get(ruleKeyFor(meetingTask.id, event.title));
 			return {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
-				taskId: meetingTask.id,
 				// A synced meeting has no project by default: it's the user's job to
 				// file it against one, and it lands as a project-less draft they can
 				// complete. A filing rule is the person having already answered that
@@ -278,7 +275,12 @@ const syncMeetingsForRange = async (
 				// still disappears and a renamed one still updates. Taking ownership
 				// is what filing BY HAND means (see `file`), and that is a different
 				// act from having pre-answered where it goes.
-				projectId: filingRules.get(filingRuleKey(event.title)) ?? null,
+				//
+				// A rule may also name the task (a design review is not a Meeting to
+				// the person billing it). The upsert below never rewrites the task or
+				// the project of a row that exists, so this lands on the first write.
+				projectId: rule?.projectId ?? null,
+				taskId: rule?.taskId ?? meetingTask.id,
 				description: event.title,
 				date: dayKeyInTz(startedAt, tz),
 				durationSeconds: snapToQuarterHour(rawSeconds),
@@ -1559,6 +1561,28 @@ export const timeEntriesService = {
 		});
 		if (!existing) throw new Error("Time entry not found");
 
+		// Commits and pull request events are evidence of work on the day they
+		// happened. An entry holding them stays on that day: moved, it would
+		// claim the work for a day it was not done on. Asked here rather than in
+		// the dialog alone, so the CLI and the MCP tools meet the same rule.
+		if (input.date !== existing.date) {
+			const [commit, pullRequestEvent] = await Promise.all([
+				db.query.timeEntryGithubCommit.findFirst({
+					where: eq(timeEntryGithubCommit.timeEntryId, existing.id),
+					columns: { id: true },
+				}),
+				db.query.timeEntryGithubPrActivity.findFirst({
+					where: eq(timeEntryGithubPrActivity.timeEntryId, existing.id),
+					columns: { id: true },
+				}),
+			]);
+			if (commit || pullRequestEvent) {
+				throw new Error(
+					"This entry holds GitHub commits or pull request events, so it stays on the day they happened",
+				);
+			}
+		}
+
 		if (input.projectId) {
 			await assertProjectInOrg(ctx, input.projectId);
 			const access = await ctxAccess(ctx);
@@ -1672,7 +1696,10 @@ export const timeEntriesService = {
 	 * unfiled worklist does. Narrower than `update` on purpose: filing must not
 	 * require the caller to resupply date, duration and task just to attribute a
 	 * synced meeting, and the entry keeps its duration, so there is no fill to
-	 * recompute.
+	 * recompute. The task changes only when one is given.
+	 *
+	 * Returns the row as filed, plus the task it had before, which is what a
+	 * filing rule is keyed on.
 	 */
 	file: async (ctx: Ctx, input: FileTimeEntryInput) => {
 		const existing = await db.query.timeEntry.findFirst({
@@ -1682,21 +1709,36 @@ export const timeEntriesService = {
 				// Filing is self-service: nobody else attributes your time for you.
 				eq(timeEntry.userId, ctx.userId),
 			),
-			columns: { id: true, taskId: true, calendarEventId: true },
+			columns: {
+				id: true,
+				taskId: true,
+				calendarEventId: true,
+				description: true,
+				fillsDay: true,
+			},
 		});
 		if (!existing) throw new Error("Time entry not found");
 
 		await assertProjectInOrg(ctx, input.projectId);
 		const access = await ctxAccess(ctx);
 		access.assertCanTrackOn(input.projectId);
-		// The task still has to be one the target project picked, exactly as if the
+		// The task still has to be one that may go on a project, exactly as if the
 		// entry had been created against that project by hand.
-		await assertTaskAvailable(ctx, existing.taskId, input.projectId);
+		const taskId = input.taskId ?? existing.taskId;
+		const taskRow = await assertTaskAvailable(ctx, taskId, input.projectId);
+		// A new task brings its own note rule. The entry's own task was already
+		// held to it when the entry was written.
+		if (taskId !== existing.taskId) {
+			assertDescribed(taskRow, existing.description, {
+				fillsDay: existing.fillsDay,
+			});
+		}
 
 		const [updated] = await db
 			.update(timeEntry)
 			.set({
 				projectId: input.projectId,
+				taskId,
 				// Filing a synced meeting is the user taking ownership of it; without
 				// this the next sync would treat it as its own row again.
 				syncLocked: existing.calendarEventId != null ? true : undefined,
@@ -1705,7 +1747,7 @@ export const timeEntriesService = {
 			.where(eq(timeEntry.id, input.timeEntryId))
 			.returning();
 		if (!updated) throw new Error("Failed to file entry");
-		return updated;
+		return { ...updated, filedFromTaskId: existing.taskId };
 	},
 
 	/**
@@ -1735,9 +1777,11 @@ export const timeEntriesService = {
 				const entry = await timeEntriesService.file(ctx, {
 					timeEntryId,
 					projectId: input.projectId,
+					taskId: input.taskId,
 				});
 				succeeded.push({
-					taskId: entry.taskId,
+					// The key is the task the sync wrote, not the one filed under.
+					taskId: entry.filedFromTaskId,
 					description: entry.description ?? "",
 				});
 				filed++;
@@ -1753,12 +1797,13 @@ export const timeEntriesService = {
 		// preference that fails to save must not turn a successful filing into an
 		// error toast. `remembered` is reported instead, and it is 0 when nothing
 		// carried a title worth keying on.
+		//
 		let remembered = 0;
 		if (input.remember && succeeded.length > 0) {
 			try {
 				remembered = await filingRulesService.rememberFrom(
 					ctx,
-					input.projectId,
+					{ projectId: input.projectId, targetTaskId: input.taskId },
 					succeeded,
 				);
 			} catch (error) {

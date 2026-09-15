@@ -36,8 +36,10 @@ import {
 	SettingList,
 	SettingRow,
 } from "#/components/ui/page-header.tsx";
+import { Switch } from "#/components/ui/switch.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
+import { type DisplayPref, useDisplayPref } from "#/lib/display-prefs.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { mySessionsQuery } from "#/queries/sessions.ts";
@@ -327,6 +329,59 @@ function SignedInDevicesSection() {
 	);
 }
 
+function DisplayPrefRow({
+	pref,
+	title,
+	description,
+}: {
+	pref: DisplayPref;
+	title: string;
+	description: string;
+}) {
+	const [on, setOn] = useDisplayPref(pref);
+	return (
+		<SettingRow
+			title={title}
+			description={description}
+			action={
+				<Switch aria-label={title} checked={on} onCheckedChange={setOn} />
+			}
+		/>
+	);
+}
+
+/**
+ * How the app looks on this device. It is per device rather than per account,
+ * like the light/dark switch, because it has to apply before the first paint
+ * and only localStorage is there that early — see `lib/display-prefs.ts`.
+ */
+function DisplaySection() {
+	return (
+		<PageSection
+			title="Display"
+			description="How Farmer looks on this device. Other devices keep their own setting."
+		>
+			<SettingList>
+				<DisplayPrefRow
+					pref="boringFont"
+					title="Boring font"
+					description="Show page titles and large numbers in a plain font."
+				/>
+				<DisplayPrefRow
+					pref="lessMotion"
+					title="Less movement"
+					description="Turn off animations. Menus, dialogs and lists appear at once."
+				/>
+				<DisplayPrefRow
+					pref="compactTables"
+					title="Compact tables"
+					description="Put less space in table rows, so more rows fit on the screen."
+				/>
+			</SettingList>
+		</PageSection>
+	);
+}
+
 function PreferencesSettingsPage() {
 	const { devAuth } = Route.useLoaderData();
 
@@ -337,6 +392,8 @@ function PreferencesSettingsPage() {
 				title="Preferences"
 				lede="Your account and this device."
 			/>
+
+			<DisplaySection />
 
 			{devAuth ? <SignInMethodsSection /> : null}
 

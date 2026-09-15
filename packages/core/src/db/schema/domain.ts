@@ -120,6 +120,11 @@ export const project = pgTable(
 		// five projects in a list made indistinguishable. Null: the first letter
 		// of the name stands in.
 		icon: text("icon"),
+		// Everyone in the organization may log time here without an assignment —
+		// the org's "Internal" project, which a new hire should not have to be
+		// added to by hand. It grants Member rank only (`Access.canTrackOn`);
+		// Team Lead and PM stay explicit assignments.
+		openToOrg: boolean("open_to_org").notNull().default(false),
 		// Fixed Scope hour budget — the ONLY budget that is ever computed against
 		// (burn %, 80/100% alerts). Optional.
 		budgetSeconds: integer("budget_seconds"),

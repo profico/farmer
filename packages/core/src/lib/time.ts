@@ -164,9 +164,9 @@ export const parseDuration = (input: string): number | null => {
 
 	// H:MM — the format every duration is DISPLAYED in, so it has to be readable
 	// back or editing a cell in place would silently fail. "8:00" is 8 hours,
-	// "0:30" is 30 minutes. Checked before the arithmetic branch, which would
-	// otherwise choke on the colon.
-	const clock = /^(\d+):([0-5]?\d)$/.exec(trimmed);
+	// "0:30" is 30 minutes, and so is ":30" — the hours are optional. Checked
+	// before the arithmetic branch, which would otherwise choke on the colon.
+	const clock = /^(\d*):([0-5]?\d)$/.exec(trimmed);
 	if (clock) {
 		return Number(clock[1]) * 3600 + Number(clock[2]) * 60;
 	}

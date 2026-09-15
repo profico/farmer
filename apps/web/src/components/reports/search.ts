@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { searchFlag } from "#/lib/search-flag.ts";
+
 // The reports screen's URL: which tab, which period, which drill-down.
 //
 // It lives beside the tabs rather than in the route file because the tabs are
@@ -45,7 +47,7 @@ export const searchSchema = z.object({
 	group: z.enum(["clients", "projects", "teammates"]).optional(),
 	...periodSearch,
 	// "Active projects only".
-	active: z.literal("1").optional(),
+	active: searchFlag,
 	// The Breakdown: the entries behind a number, under up to four filters, in
 	// one of five groupings. Filters are ids so a link survives a rename.
 	view: z.literal("breakdown").optional(),

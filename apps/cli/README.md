@@ -15,7 +15,8 @@ curl -fsSL https://farmer.example.com/cli | sh
 irm https://farmer.example.com/cli | iex
 ```
 
-To update, run the same command again.
+To update, run `farmer update`. It runs the same install script over the
+installed binary, so running the install command again does the same.
 
 ## Log in
 
@@ -49,6 +50,7 @@ farmer logout                       End the session
 farmer whoami                       Your account, organization and timezone
 farmer org list                     Your organizations
 farmer org use <slug>               Set the default organization
+farmer init [-p project] [-t task]  Write .farmer.jsonc for this repository
 
 farmer today                        Today's entries
 farmer week [--last]                This week's entries
@@ -69,6 +71,7 @@ farmer tasks                        The tasks
 farmer status                       This week and month against your target
 farmer sync                         Run your syncs now
 farmer open                         Open your timesheet in the browser
+farmer update [url]                 Install the newest release over this one
 ```
 
 Examples:
@@ -84,10 +87,42 @@ farmer today --json | jq '.[].durationSeconds'
 - Durations: `1h30m`, `1.5` or `90m`, in 15-minute steps.
 - Dates: `today`, `yesterday`, a weekday name (the most recent one), or
   `yyyy-MM-dd`, in the timezone of the organization.
-- A missing `-p` or `-t` opens a searchable list.
+- A missing `-p` or `-t` opens a searchable list, unless the repository has
+  defaults (below).
 - Every command accepts `--json` and `--org <slug>`.
 - `farmer help <command>` shows the options of one command.
 - The CLI uses no colour when `NO_COLOR` is set or stdout is not a terminal.
+
+## Repository defaults
+
+Run `farmer init` in a git repository to write `.farmer.jsonc`, and commit it.
+It names the organization, the project and, optionally, the task that time
+logged in this repository goes to:
+
+```jsonc
+{
+	"org": "profico",
+	"project": "0b6f2c1e-1f7a-4c3e-9a2b-1d2e3f4a5b6c", // VINApps
+	"task": "9c1d4e2f-3a5b-4c6d-8e7f-0a1b2c3d4e5f" // Frontend
+}
+```
+
+Then `farmer log 90m "Checkout form"` needs no `-p` or `-t`.
+
+- The CLI uses the nearest `.farmer.jsonc` from the current directory up to the
+  git root. Outside a git repository, no file applies.
+- `farmer log` uses `project` and `task`. Every command uses `org`.
+- A flag always wins. `--org` turns the file off for that command.
+- Each command says which values it took from the file, on stderr.
+- A file that is broken, or names something you cannot use, stops the command.
+  Fix the file, or run `farmer init` again.
+- `farmer init` writes at the git root; pass `--here` for one package of a
+  monorepo. It puts the projects linked to the repository's GitHub remote first
+  in the list.
+- `farmer whoami` shows the current names behind the ids. The names in the
+  comments are only notes.
+- The file holds ids, not project codes, because a code can change or repeat.
+  See `docs/adr/0002-repository-defaults-file.md`.
 
 ## Do not poll
 

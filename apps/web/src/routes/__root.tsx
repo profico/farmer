@@ -17,6 +17,7 @@ import { RoutePending } from "../components/route-pending";
 import { Toaster } from "../components/ui/sonner";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import { logConsoleGreeting } from "../lib/console-greeting";
+import { displayInitScript } from "../lib/display-prefs";
 import { themeInitScript } from "../lib/theme";
 
 import appCss from "../styles.css?url";
@@ -100,23 +101,29 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 	shellComponent: RootDocument,
 });
 
+/** Light/dark and the Display preferences, applied in one inline script before
+ *  paint. */
+const headInitScript = themeInitScript + displayInitScript;
+
 function RootDocument({ children }: { children: React.ReactNode }) {
 	useEffect(logConsoleGreeting, []);
 
-	// `suppressHydrationWarning`: the theme script below writes `data-theme` onto
-	// <html> before React ever sees it, and the server has no way to render the
-	// same value — that mismatch is the point of the script, not a bug, and React
-	// otherwise logs it on every load. It suppresses one level only, which is
-	// exactly this attribute.
+	// `suppressHydrationWarning`: the script below writes `data-theme` (and the
+	// Display preferences' `data-font`, `data-motion` and `data-density`) onto
+	// <html> before React ever sees it, and
+	// the server has no way to render the same values — that mismatch is the
+	// point of the script, not a bug, and React otherwise logs it on every load.
+	// It suppresses one level only, which is exactly these attributes.
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<head>
 				{/* Before HeadContent, and therefore before the stylesheet: the
-				    reader's choice lives in localStorage, so the server can't render
-				    it, and applying it on hydrate instead would flash the light
-				    palette on every cold load. See lib/theme.ts. */}
-				{/* oxlint-disable-next-line react/no-danger -- a fixed, non-interpolated string — this is the standard no-flash theme script and it has to be inline to run before paint */}
-				<script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+				    reader's choices live in localStorage, so the server can't render
+				    them, and applying them on hydrate instead would flash the light
+				    palette and the serif on every cold load. See lib/theme.ts and
+				    lib/display-prefs.ts. */}
+				{/* oxlint-disable-next-line react/no-danger -- two fixed strings built from constants, the standard no-flash theme and display scripts, which have to be inline to run before paint */}
+				<script dangerouslySetInnerHTML={{ __html: headInitScript }} />
 				<HeadContent />
 			</head>
 			<body>
@@ -132,7 +139,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
               prefers-reduced-motion: transform/scale/slide are dropped (opacity
               is kept), so dialogs & menus cross-fade, sheets fade, and the
               tab-bar pill jumps instead of gliding — no per-component branching.
-              This is the app's only reduced-motion mechanism. */}
+              This is the app's only answer to the OS setting. "Less movement"
+              in Preferences goes further and makes every animation instant,
+              see lib/display-prefs.ts. */}
 					<MotionConfig reducedMotion="user">{children}</MotionConfig>
 					<Toaster />
 				</IconContext.Provider>

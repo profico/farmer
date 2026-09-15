@@ -12,7 +12,12 @@ import type { Output } from "./output";
 import { type Choice, pickOne, requireInteractive } from "./prompts";
 import { entryWhat } from "./render";
 
-const NO_PROJECT = "none";
+/** What `-p none` and `-t none` type, and the value of the list row that
+ *  stands for it. */
+const NONE = "none";
+
+/** The row for "none" when it is an answer. */
+type NoneChoice = { label: string; hint: string };
 
 type Pickable = {
 	id: string;
@@ -29,12 +34,12 @@ const resolvePick = async (
 	flag: string,
 	items: Pickable[],
 	query: string | undefined,
-	allowNoProject: boolean,
+	none: NoneChoice | null,
 ): Promise<string> => {
 	let initialSearch: string | undefined;
 	if (query !== undefined) {
 		const folded = foldForSearch(query);
-		if (allowNoProject && folded === NO_PROJECT) return NO_PROJECT;
+		if (none && folded === NONE) return NONE;
 		const byId = items.find((item) => item.id === query);
 		if (byId) return byId.id;
 
@@ -64,11 +69,11 @@ const resolvePick = async (
 	} else {
 		requireInteractive(
 			out,
-			`Pass ${flag} <${noun}>${allowNoProject ? ` (or ${flag} none)` : ""}.`,
+			`Pass ${flag} <${noun}>${none ? ` (or ${flag} none)` : ""}.`,
 		);
 	}
 
-	if (items.length === 0 && !allowNoProject) {
+	if (items.length === 0 && !none) {
 		throw new CliError(`There is no ${noun} you can use.`);
 	}
 	const choices: Choice[] = items.map((item) => ({
@@ -76,25 +81,31 @@ const resolvePick = async (
 		label: item.label,
 		hint: item.hint || undefined,
 	}));
-	if (allowNoProject) {
-		choices.unshift({
-			value: NO_PROJECT,
-			label: "No project",
-			hint: "a Break, or time to file later",
-		});
-	}
+	if (none) choices.unshift({ value: NONE, ...none });
 	return pickOne(`Choose a ${noun}`, choices, initialSearch);
 };
 
-const projectPickables = (projects: ApiProject[]): Pickable[] =>
-	projects.map((project) => ({
-		id: project.id,
-		label: project.name,
-		hint: project.code
-			? `${project.code} · ${project.client.name}`
-			: project.client.name,
-		exact: project.code ? [project.name, project.code] : [project.name],
-	}));
+/** `suggested` go first, marked: the projects linked to the repository's git
+ *  remote, which `farmer init` offers without choosing for the person. */
+const projectPickables = (
+	projects: ApiProject[],
+	suggested: ReadonlySet<string> = new Set(),
+): Pickable[] =>
+	projects
+		.map((project) => {
+			const hint = project.code
+				? `${project.code} · ${project.client.name}`
+				: project.client.name;
+			return {
+				id: project.id,
+				label: project.name,
+				hint: suggested.has(project.id)
+					? `matches the git remote · ${hint}`
+					: hint,
+				exact: project.code ? [project.name, project.code] : [project.name],
+			};
+		})
+		.sort((a, b) => Number(suggested.has(b.id)) - Number(suggested.has(a.id)));
 
 const byId = <T extends { id: string }>(rows: T[], id: string): T => {
 	const found = rows.find((row) => row.id === id);
@@ -106,6 +117,7 @@ export const chooseProject = async (
 	out: Output,
 	projects: ApiProject[],
 	query: string | undefined,
+	suggested?: ReadonlySet<string>,
 ): Promise<ApiProject> =>
 	byId(
 		projects,
@@ -113,9 +125,9 @@ export const chooseProject = async (
 			out,
 			"project",
 			"-p",
-			projectPickables(projects),
+			projectPickables(projects, suggested),
 			query,
-			false,
+			null,
 		),
 	);
 
@@ -132,10 +144,18 @@ export const chooseProjectOrNone = async (
 		"-p",
 		projectPickables(projects),
 		query,
-		true,
+		{ label: "No project", hint: "a Break, or time to file later" },
 	);
-	return id === NO_PROJECT ? null : byId(projects, id);
+	return id === NONE ? null : byId(projects, id);
 };
+
+const taskPickables = (tasks: ApiTask[]): Pickable[] =>
+	tasks.map((task) => ({
+		id: task.id,
+		label: task.name,
+		hint: task.group,
+		exact: [task.name],
+	}));
 
 export const chooseTask = async (
 	out: Output,
@@ -145,20 +165,22 @@ export const chooseTask = async (
 ): Promise<ApiTask> =>
 	byId(
 		tasks,
-		await resolvePick(
-			out,
-			"task",
-			flag,
-			tasks.map((task) => ({
-				id: task.id,
-				label: task.name,
-				hint: task.group,
-				exact: [task.name],
-			})),
-			query,
-			false,
-		),
+		await resolvePick(out, "task", flag, taskPickables(tasks), query, null),
 	);
+
+/** As `chooseTask`, with "no default task" as an answer — for `farmer init`,
+ *  where the task is optional. */
+export const chooseTaskOrNone = async (
+	out: Output,
+	tasks: ApiTask[],
+	query: string | undefined,
+): Promise<ApiTask | null> => {
+	const id = await resolvePick(out, "task", "-t", taskPickables(tasks), query, {
+		label: "No default task",
+		hint: "pass -t on each farmer log",
+	});
+	return id === NONE ? null : byId(tasks, id);
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

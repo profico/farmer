@@ -44,6 +44,7 @@ const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;
 let meetingTaskId: string;
+let designTaskId: string;
 let projectId: string;
 let otherProjectId: string;
 
@@ -81,7 +82,11 @@ const entries = () =>
 /** A rule written straight to the table. The product creates these through
  *  `rememberFrom`, which needs entries to have been filed first; these tests are
  *  about what the rule DOES, not about how it got there. */
-const ruleFor = async (title: string, targetProjectId: string) => {
+const ruleFor = async (
+	title: string,
+	targetProjectId: string,
+	targetTaskId: string | null = null,
+) => {
 	await db.insert(filingRule).values({
 		organizationId: ORG_ID,
 		userId: USER_ID,
@@ -89,6 +94,7 @@ const ruleFor = async (title: string, targetProjectId: string) => {
 		titleKey: title.trim().toLowerCase(),
 		title,
 		projectId: targetProjectId,
+		targetTaskId,
 	});
 };
 
@@ -149,6 +155,17 @@ beforeAll(async () => {
 		columns: { id: true },
 	});
 	meetingTaskId = present(meeting, "site Meeting task").id;
+
+	const [design] = await db
+		.insert(task)
+		.values({
+			organizationId: ORG_ID,
+			scope: "organization",
+			name: "Design",
+			isAbsence: false,
+		})
+		.returning({ id: task.id });
+	designTaskId = present(design, "Design task").id;
 });
 
 afterAll(async () => {
@@ -163,6 +180,10 @@ beforeEach(async () => {
 		.update(project)
 		.set({ status: "active" })
 		.where(eq(project.organizationId, ORG_ID));
+	await db
+		.update(task)
+		.set({ archivedAt: null })
+		.where(eq(task.organizationId, ORG_ID));
 });
 
 describe("filing rules applied by the meeting sync", () => {
@@ -255,12 +276,16 @@ describe("filing rules applied by the meeting sync", () => {
 
 describe("remembering a rule from what was just filed", () => {
 	test("one rule per distinct title, whatever the occurrence count", async () => {
-		const remembered = await filingRulesService.rememberFrom(ctx, projectId, [
-			{ taskId: meetingTaskId, description: "Daily standup" },
-			{ taskId: meetingTaskId, description: "daily standup" },
-			{ taskId: meetingTaskId, description: "Daily standup" },
-			{ taskId: meetingTaskId, description: "Retro" },
-		]);
+		const remembered = await filingRulesService.rememberFrom(
+			ctx,
+			{ projectId },
+			[
+				{ taskId: meetingTaskId, description: "Daily standup" },
+				{ taskId: meetingTaskId, description: "daily standup" },
+				{ taskId: meetingTaskId, description: "Daily standup" },
+				{ taskId: meetingTaskId, description: "Retro" },
+			],
+		);
 
 		expect(remembered).toBe(2);
 		expect(await filingRulesService.list(ctx)).toHaveLength(2);
@@ -270,20 +295,24 @@ describe("remembering a rule from what was just filed", () => {
 	// keyed on "" would claim every untitled meeting the sync ever imports, which
 	// is the one-default-project behaviour this feature exists instead of.
 	test("an entry with no description produces no rule", async () => {
-		const remembered = await filingRulesService.rememberFrom(ctx, projectId, [
-			{ taskId: meetingTaskId, description: "" },
-			{ taskId: meetingTaskId, description: "   " },
-		]);
+		const remembered = await filingRulesService.rememberFrom(
+			ctx,
+			{ projectId },
+			[
+				{ taskId: meetingTaskId, description: "" },
+				{ taskId: meetingTaskId, description: "   " },
+			],
+		);
 
 		expect(remembered).toBe(0);
 		expect(await filingRulesService.list(ctx)).toHaveLength(0);
 	});
 
 	test("re-filing the same meeting elsewhere moves the rule", async () => {
-		await filingRulesService.rememberFrom(ctx, otherProjectId, [
+		await filingRulesService.rememberFrom(ctx, { projectId: otherProjectId }, [
 			{ taskId: meetingTaskId, description: "Daily standup" },
 		]);
-		await filingRulesService.rememberFrom(ctx, projectId, [
+		await filingRulesService.rememberFrom(ctx, { projectId }, [
 			{ taskId: meetingTaskId, description: "Daily standup" },
 		]);
 
@@ -319,5 +348,140 @@ describe("remembering a rule from what was just filed", () => {
 				{ id },
 			),
 		).rejects.toThrow("Filing rule not found");
+	});
+});
+
+describe("the task a rule files under", () => {
+	test("a rule with a task files the meeting under that task", async () => {
+		await ruleFor("Design review", projectId, designTaskId);
+		setCalendarSourceForTests(
+			calendarReturning([event("e1", "Design review")]),
+		);
+
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		const [row] = await entries();
+		expect(row?.projectId).toBe(projectId);
+		expect(row?.taskId).toBe(designTaskId);
+	});
+
+	// Dropped whole, not filed under Meeting: the person chose the task, and a
+	// project answer without it is a filing they did not agree to.
+	test("a rule whose task was archived files nothing", async () => {
+		await ruleFor("Design review", projectId, designTaskId);
+		await db
+			.update(task)
+			.set({ archivedAt: new Date() })
+			.where(eq(task.id, designTaskId));
+		setCalendarSourceForTests(
+			calendarReturning([event("e1", "Design review")]),
+		);
+
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		const [row] = await entries();
+		expect(row?.projectId).toBeNull();
+		expect(row?.taskId).toBe(meetingTaskId);
+	});
+
+	test("filing under a task changes it and remembers it", async () => {
+		setCalendarSourceForTests(
+			calendarReturning([event("e1", "Design review")]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+		const [synced] = await entries();
+
+		const result = await timeEntriesService.fileMany(ctx, {
+			timeEntryIds: [present(synced, "the synced meeting").id],
+			projectId,
+			taskId: designTaskId,
+			remember: true,
+		});
+
+		expect(result.filed).toBe(1);
+		expect(result.remembered).toBe(1);
+		const [filed] = await entries();
+		expect(filed?.taskId).toBe(designTaskId);
+		// Keyed on the task the sync writes, or the next occurrence never matches.
+		const [rule] = await filingRulesService.list(ctx);
+		expect(rule?.taskId).toBe(meetingTaskId);
+		expect(rule?.targetTaskId).toBe(designTaskId);
+
+		// A later occurrence: a different length, so it is not the same meeting.
+		setCalendarSourceForTests(
+			calendarReturning([
+				event("e1", "Design review"),
+				{
+					...event("e2", "Design review"),
+					start: `${DATE}T13:00:00.000Z`,
+					end: `${DATE}T13:30:00.000Z`,
+				},
+			]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+		const next = (await entries()).find((r) => r.calendarEventId === "e2");
+		expect(next?.projectId).toBe(projectId);
+		expect(next?.taskId).toBe(designTaskId);
+	});
+
+	// Assemble my day applies a rule to the blocks it proposes, so a rule is
+	// worth keeping for any entry, not only for a synced meeting.
+	test("a hand-logged entry is remembered too", async () => {
+		const entry = await timeEntriesService.create(ctx, {
+			date: DATE,
+			taskId: designTaskId,
+			description: "Rest of day",
+			durationSeconds: 3600,
+			overtime: false,
+			fillsDay: false,
+		});
+
+		const result = await timeEntriesService.fileMany(ctx, {
+			timeEntryIds: [entry.id],
+			projectId,
+			remember: true,
+		});
+
+		expect(result.filed).toBe(1);
+		expect(result.remembered).toBe(1);
+		const [rule] = await filingRulesService.list(ctx);
+		expect(rule?.taskId).toBe(designTaskId);
+		expect(rule?.projectId).toBe(projectId);
+	});
+
+	test("a rule's project and task can be changed", async () => {
+		await ruleFor("Design review", projectId);
+		const [rule] = await filingRulesService.list(ctx);
+		const id = present(rule, "the rule").id;
+
+		await filingRulesService.update(ctx, {
+			id,
+			projectId,
+			targetTaskId: designTaskId,
+		});
+		expect((await filingRulesService.list(ctx))[0]?.targetTaskId).toBe(
+			designTaskId,
+		);
+
+		// The meeting's own task is stored as no change.
+		await filingRulesService.update(ctx, {
+			id,
+			projectId,
+			targetTaskId: meetingTaskId,
+		});
+		expect((await filingRulesService.list(ctx))[0]?.targetTaskId).toBeNull();
+	});
+
+	test("a rule cannot be pointed at a project the person is not on", async () => {
+		await ruleFor("Design review", projectId);
+		const [rule] = await filingRulesService.list(ctx);
+
+		await expect(
+			filingRulesService.update(ctx, {
+				id: present(rule, "the rule").id,
+				projectId: otherProjectId,
+				targetTaskId: null,
+			}),
+		).rejects.toThrow("You are not assigned to this project");
 	});
 });

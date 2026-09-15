@@ -16,8 +16,8 @@ name: CLI release
 #   smoke    runs each binary on its own OS and CPU. The two macOS binaries are
 #            re-signed there first (see that step), so what it uploads is what
 #            ships.
-#   publish  writes SHA256SUMS over the binaries that ran, and creates the
-#            release. Tags only.
+#   publish  adds a .gz copy of each binary that ran, writes SHA256SUMS over
+#            all of them, and creates the release. Tags only.
 #
 # A pull request that touches the CLI runs build and smoke too, without
 # publishing, so a broken target shows up before a tag does.
@@ -54,7 +54,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.14"
+          bun-version: "1.4.2"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -199,7 +199,7 @@ jobs:
           path: signed
           merge-multiple: true
 
-      - name: Replace the macOS binaries and write SHA256SUMS
+      - name: Replace the macOS binaries, compress them and write SHA256SUMS
         run: |
           cp -f signed/farmer-darwin-arm64 signed/farmer-darwin-x64 release/
           cd release
@@ -210,6 +210,13 @@ jobs:
             ls -la
             exit 1
           fi
+          # The install scripts download the .gz copy first. A binary is mostly
+          # Bun's runtime, which compresses to less than half its size. This
+          # runs after the re-sign, so each copy holds the binary that ran.
+          # `-n` keeps the name and time out of the header, so the same binary
+          # always gives the same copy.
+          gzip -9 -k -n "$@"
+          gzip -t ./*.gz
           sha256sum farmer-* > SHA256SUMS
           cat SHA256SUMS
 

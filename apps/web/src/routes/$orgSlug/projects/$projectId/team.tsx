@@ -13,6 +13,13 @@ import { toast } from "sonner";
 
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
+import {
+	byNumber,
+	byText,
+	type Sort,
+	SortHead,
+	toggleSort,
+} from "#/components/reports/shared.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -25,7 +32,12 @@ import {
 	ComboboxTrigger,
 	ComboboxValue,
 } from "#/components/ui/combobox.tsx";
-import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import {
+	Page,
+	PageHeader,
+	SettingList,
+	SettingRow,
+} from "#/components/ui/page-header.tsx";
 import {
 	Select,
 	SelectContent,
@@ -33,6 +45,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select.tsx";
+import { Switch } from "#/components/ui/switch.tsx";
 import {
 	Table,
 	TableBody,
@@ -48,11 +61,16 @@ import {
 } from "#/lib/project-access.ts";
 import {
 	assignableMembersQuery,
+	myProjectsQuery,
 	projectMembersQuery,
 	projectQuery,
 	projectsQuery,
 } from "#/queries/projects.ts";
-import { assignProjectMember, removeProjectMember } from "#/server/projects.ts";
+import {
+	assignProjectMember,
+	removeProjectMember,
+	updateProject,
+} from "#/server/projects.ts";
 
 // A project's team: who is on it and at what role, with what each of them
 // ever logged here. Roles change in place and save at once; adding and
@@ -81,6 +99,21 @@ export const Route = createFileRoute("/$orgSlug/projects/$projectId/team")({
 });
 
 type Person = { value: string; label: string; email: string };
+
+// Alphabetical by default; All-time hours and Last entry start biggest and
+// most recent first. A date key sorts as text, and a person who never logged
+// here has no last entry, so they sit at the bottom of the recent-first order.
+type SortKey = "name" | "hours" | "last";
+type RosterRow = {
+	name: string;
+	allTimeSeconds: number;
+	lastEntry: string | null;
+};
+const COMPARE = {
+	name: byText((m: RosterRow) => m.name),
+	hours: byNumber((m: RosterRow) => m.allTimeSeconds),
+	last: byText((m: RosterRow) => m.lastEntry),
+} satisfies Record<SortKey, (a: RosterRow, b: RosterRow) => number>;
 
 function TeamPage() {
 	const { organization, role } = Route.useRouteContext();
@@ -125,6 +158,12 @@ function TeamPage() {
 				title={title}
 				lede={`Who may log time on ${project.name}, and who runs it. A PM manages the project; a Team Lead here holds it as a PM does. Changes save straight away.`}
 			/>
+			<OpenToOrg
+				orgSlug={orgSlug}
+				projectId={projectId}
+				open={project.openToOrg}
+				canChange={access.canManageSettings}
+			/>
 			<Roster
 				orgSlug={orgSlug}
 				projectId={projectId}
@@ -132,6 +171,68 @@ function TeamPage() {
 				heldRole={project.myRole}
 			/>
 		</Page>
+	);
+}
+
+/** Whether everyone in the organization may log time here without being on
+ *  the team — the org's Internal project, which a new hire should not wait to
+ *  be added to. It grants Member rank only, so the roster below still decides
+ *  who runs the project. PM and Admin change it (`canManageProject`); a Team
+ *  Lead sees it. */
+function OpenToOrg({
+	orgSlug,
+	projectId,
+	open,
+	canChange,
+}: {
+	orgSlug: string;
+	projectId: string;
+	open: boolean;
+	canChange: boolean;
+}) {
+	const queryClient = useQueryClient();
+	const toggle = useMutation({
+		mutationFn: (openToOrg: boolean) =>
+			updateProject({ data: { projectId, openToOrg } }),
+		onSuccess: async (_saved, openToOrg) => {
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: projectQuery(orgSlug, projectId).queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: projectsQuery(orgSlug).queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: myProjectsQuery(orgSlug).queryKey,
+				}),
+			]);
+			toast.success(
+				openToOrg
+					? "Everyone in the organization can log time here"
+					: "Only the team can log time here",
+			);
+		},
+		onError: (error) => toast.error(error.message ?? "Could not save"),
+	});
+	return (
+		<SettingList className="mb-6 max-w-2xl">
+			<SettingRow
+				title="Open to everyone"
+				description={
+					canChange
+						? "Everyone in the organization can log time here, on the team or not. Nobody gains a role from it."
+						: "Everyone in the organization can log time here, on the team or not. The project's PMs change this."
+				}
+				action={
+					<Switch
+						aria-label="Open to everyone"
+						checked={open}
+						onCheckedChange={(value) => toggle.mutate(value)}
+						disabled={!canChange || toggle.isPending}
+					/>
+				}
+			/>
+		</SettingList>
 	);
 }
 
@@ -153,9 +254,16 @@ function Roster({
 	const { data: assignable } = useSuspenseQuery(
 		assignableMembersQuery(orgSlug, projectId),
 	);
+	const [sort, setSort] = useState<Sort<SortKey>>({ key: "name", dir: 1 });
+	const onSort = (key: SortKey, numeric: boolean) =>
+		setSort((current) => toggleSort(current, key, numeric));
 	const onTeam = members
 		.filter((m) => m.active)
-		.sort((a, b) => a.name.localeCompare(b.name, "hr"));
+		.sort(
+			(a, b) =>
+				COMPARE[sort.key](a, b) * sort.dir ||
+				a.name.localeCompare(b.name, "hr"),
+		);
 	const onTeamIds = new Set(onTeam.map((m) => m.userId));
 	const free: Person[] = assignable
 		.filter((p) => !onTeamIds.has(p.userId))
@@ -246,10 +354,28 @@ function Roster({
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Person</TableHead>
+						<SortHead
+							label="Person"
+							sortKey="name"
+							sort={sort}
+							onSort={onSort}
+						/>
 						<TableHead>Role</TableHead>
-						<TableHead className="text-right">All-time hours</TableHead>
-						<TableHead>Last entry</TableHead>
+						<SortHead
+							label="All-time hours"
+							sortKey="hours"
+							numeric
+							sort={sort}
+							onSort={onSort}
+							className="text-right"
+						/>
+						<SortHead
+							label="Last entry"
+							sortKey="last"
+							numeric
+							sort={sort}
+							onSort={onSort}
+						/>
 						<TableHead className="w-10" />
 					</TableRow>
 				</TableHeader>

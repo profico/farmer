@@ -6,11 +6,11 @@ import { matchesSearch } from "@farmer/core/lib/search";
 import type { TimeReportDetailInput } from "@farmer/core/schema";
 import type { TimeReportDetailRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
-import { Button } from "#/components/ui/button.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Select,
@@ -27,13 +27,15 @@ import {
 	TableRow,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { downloadCsv } from "#/lib/csv.ts";
+import { formatPdfDate } from "#/lib/pdf.ts";
 import { cn } from "#/lib/utils.ts";
 import { timeReportDetailQuery } from "#/queries/reports.ts";
 
+import type { Search } from "./search.ts";
 import {
 	byNumber,
 	byText,
+	ExportMenu,
 	formatDateHeading,
 	RowDisclosure,
 	type Sort,
@@ -77,6 +79,7 @@ export function EntriesDrilldown<G extends EntryGroup>({
 	groups,
 	by,
 	onByChange,
+	narrow,
 	roleOf,
 	empty = "No entries match these filters.",
 }: {
@@ -85,6 +88,11 @@ export function EntriesDrilldown<G extends EntryGroup>({
 	groups: readonly G[];
 	by: G;
 	onByChange: (by: G) => void;
+	/** Where a group's hours go: Reports adds the group as a filter, so a
+	 *  person's project row opens that person on that project. Null for a
+	 *  grouping that is not a filter (date); absent on a project's page, which
+	 *  has no filter to add, and the hours stay text. */
+	narrow?: (by: EntryGroup, id: string) => Search | null;
 	/** A project's page tags each person's row with their role there. */
 	roleOf?: (userId: string) => string | null;
 	empty?: string;
@@ -148,6 +156,7 @@ export function EntriesDrilldown<G extends EntryGroup>({
 					query={query}
 					expand={expand}
 					onToggle={(key) => setExpand(toggled(expand, key))}
+					narrow={narrow}
 					roleOf={roleOf}
 					empty={empty}
 				/>
@@ -189,12 +198,23 @@ export function EntriesFigure({
 	);
 }
 
+/** CSV or PDF of the entries. The PDF is grouped the way the screen is, with
+ *  the group's own column dropped and each entry's description under it —
+ *  Harvest's detailed report, which is what the accounting side reads. */
 export function EntriesExport({
 	input,
+	by,
 	filename,
+	title,
+	facts,
 }: {
 	input: TimeReportDetailInput;
+	by: EntryGroup;
+	/** Without an extension. */
 	filename: string;
+	title: string;
+	/** The filters in force, for the PDF's header. */
+	facts: [string, string][];
 }) {
 	const orgSlug = useOrgSlug();
 	const { data: detail } = useSuspenseQuery(
@@ -202,40 +222,77 @@ export function EntriesExport({
 	);
 	const rows = detail.rows;
 	return (
-		<Button
-			variant="outline"
-			size="sm"
+		<ExportMenu
 			disabled={rows.length === 0}
-			onClick={() =>
-				downloadCsv(
-					filename,
-					[
-						"Date",
-						"Client",
-						"Project",
-						"Code",
-						"Task",
-						"Person",
-						"Hours",
-						"Overtime",
-						"Description",
+			filename={filename}
+			csv={() => ({
+				headers: [
+					"Date",
+					"Client",
+					"Project",
+					"Code",
+					"Task",
+					"Person",
+					"Hours",
+					"Overtime",
+					"Description",
+				],
+				rows: rows.map((r) => [
+					r.date,
+					r.clientName,
+					r.projectName,
+					r.projectCode ?? "",
+					r.taskName,
+					r.userName,
+					formatDecimalHours(r.durationSeconds),
+					r.overtime ? "yes" : "",
+					r.description,
+				]),
+			})}
+			pdf={() => {
+				const columns = visibleColumns(input, by);
+				// The PDF writes a day as 12/08/2026; the screen as "Wed, Aug 12".
+				const cellFor = (row: DetailRow, column: EntryGroup) =>
+					column === "date" ? formatPdfDate(row.date) : cellOf(row, column);
+				return {
+					title,
+					from: input.from,
+					to: input.to,
+					total: formatReportHours(detail.totalSeconds),
+					facts,
+					note: detail.truncated
+						? `The first ${rows.length} of ${detail.totalRows} entries — the total is the full figure. Narrow the filters or the period for the rest.`
+						: undefined,
+					columns: [
+						...columns.map((c) => ({ label: c.label })),
+						{ label: "Hours", align: "right" as const },
 					],
-					rows.map((r) => [
-						r.date,
-						r.clientName,
-						r.projectName,
-						r.projectCode ?? "",
-						r.taskName,
-						r.userName,
-						formatDecimalHours(r.durationSeconds),
-						r.overtime ? "yes" : "",
-						r.description,
-					]),
-				)
-			}
-		>
-			Export CSV
-		</Button>
+					groups: groupEntries(rows, by)
+						.sort(groupOrder(by))
+						.map((group) => ({
+							heading:
+								by === "date"
+									? formatPdfDate(group.key)
+									: by === "project" && group.projectCode
+										? `[${group.projectCode}] ${group.label}`
+										: group.label,
+							hours: formatReportHours(group.seconds),
+							rows: [...group.rows]
+								.sort((a, b) => a.date.localeCompare(b.date))
+								.map((r) => ({
+									cells: [
+										...columns.map((c) => cellFor(r, c.id)),
+										formatReportHours(r.durationSeconds),
+									],
+									note:
+										[r.description, r.overtime ? "Overtime" : ""]
+											.filter(Boolean)
+											.join(" · ") || undefined,
+								})),
+						})),
+				};
+			}}
+		/>
 	);
 }
 
@@ -262,12 +319,86 @@ type DetailGroup = {
 	people: Set<string>;
 };
 
+/** Grouped by id, not by name: two people can share a name. */
+const groupEntries = (rows: DetailRow[], by: EntryGroup): DetailGroup[] => {
+	const keyOf = (row: DetailRow) =>
+		by === "client"
+			? row.clientId
+			: by === "project"
+				? row.projectId
+				: by === "task"
+					? row.taskId
+					: by === "teammate"
+						? row.userId
+						: row.date;
+	const labelOf = (row: DetailRow) =>
+		by === "client"
+			? row.clientName
+			: by === "project"
+				? row.projectName
+				: by === "task"
+					? row.taskName
+					: by === "teammate"
+						? row.userName
+						: formatDateHeading(row.date);
+	const groups = new Map<string, DetailGroup>();
+	for (const row of rows) {
+		const key = keyOf(row);
+		const group = groups.get(key) ?? {
+			key,
+			label: labelOf(row),
+			userId: row.userId,
+			projectCode: row.projectCode,
+			rows: [],
+			seconds: 0,
+			people: new Set<string>(),
+		};
+		group.rows.push(row);
+		group.seconds += row.durationSeconds;
+		group.people.add(row.userId);
+		groups.set(key, group);
+	}
+	return [...groups.values()];
+};
+
+/** Dates read in order; everything else biggest first — the group's sum is
+ *  the point of the header row. */
+const groupOrder = (by: EntryGroup) => (a: DetailGroup, b: DetailGroup) =>
+	by === "date" ? a.key.localeCompare(b.key) : b.seconds - a.seconds;
+
+/** Which columns to show for a grouping: the group's own column drops (it's
+ *  the heading), and so does a column every row would repeat — the project
+ *  you opened, its client, the person a link narrowed to. The task column
+ *  stays — it carries the note. Shared by the on-screen table and the PDF
+ *  export, so a project page's PDF doesn't repeat the client and project on
+ *  every row the way the on-screen table already avoids. */
+const visibleColumns = (input: TimeReportDetailInput, by: EntryGroup) => {
+	const fixed = new Set<EntryGroup>([
+		...(input.clientId || input.projectId ? ["client" as const] : []),
+		...(input.projectId ? ["project" as const] : []),
+		...(input.userId ? ["teammate" as const] : []),
+	]);
+	return COLUMNS.filter((c) => c.id !== by && !fixed.has(c.id));
+};
+
+const cellOf = (row: DetailRow, column: EntryGroup) =>
+	column === "client"
+		? row.clientName
+		: column === "project"
+			? `${row.projectCode ? `[${row.projectCode}] ` : ""}${row.projectName}`
+			: column === "task"
+				? row.taskName
+				: column === "teammate"
+					? row.userName
+					: formatDateHeading(row.date);
+
 function EntriesTable({
 	input,
 	by,
 	query,
 	expand,
 	onToggle,
+	narrow,
 	roleOf,
 	empty,
 }: {
@@ -276,6 +407,7 @@ function EntriesTable({
 	query: string;
 	expand: Expand;
 	onToggle: (key: string) => void;
+	narrow?: (by: EntryGroup, id: string) => Search | null;
 	roleOf?: (userId: string) => string | null;
 	empty: string;
 }) {
@@ -309,53 +441,8 @@ function EntriesTable({
 		]),
 	);
 
-	// Grouped by id, not by name: two people can share a name.
-	const keyOf = (row: DetailRow) =>
-		by === "client"
-			? row.clientId
-			: by === "project"
-				? row.projectId
-				: by === "task"
-					? row.taskId
-					: by === "teammate"
-						? row.userId
-						: row.date;
-	const labelOf = (row: DetailRow) =>
-		by === "client"
-			? row.clientName
-			: by === "project"
-				? row.projectName
-				: by === "task"
-					? row.taskName
-					: by === "teammate"
-						? row.userName
-						: formatDateHeading(row.date);
-	const groups = new Map<string, DetailGroup>();
-	for (const row of filteredRows) {
-		const key = keyOf(row);
-		const group = groups.get(key) ?? {
-			key,
-			label: labelOf(row),
-			userId: row.userId,
-			projectCode: row.projectCode,
-			rows: [],
-			seconds: 0,
-			people: new Set<string>(),
-		};
-		group.rows.push(row);
-		group.seconds += row.durationSeconds;
-		group.people.add(row.userId);
-		groups.set(key, group);
-	}
-	// A column every row would repeat says nothing: the project you opened,
-	// its client, the person a link narrowed to. The task column stays — it
-	// carries the note.
-	const fixed = new Set<EntryGroup>([
-		...(input.clientId || input.projectId ? ["client" as const] : []),
-		...(input.projectId ? ["project" as const] : []),
-		...(input.userId ? ["teammate" as const] : []),
-	]);
-	const columns = COLUMNS.filter((c) => c.id !== by && !fixed.has(c.id));
+	const groups = groupEntries(filteredRows, by);
+	const columns = visibleColumns(input, by);
 	// A sort on a column no longer shown — it became the grouping, or a link
 	// fixed it — falls back to the order the entries arrived in.
 	const active: Sort<EntrySortKey> =
@@ -363,28 +450,14 @@ function EntriesTable({
 			? sort
 			: { key: "date", dir: 1 };
 
-	// Dates read in order; everything else biggest first — the group's sum is
-	// the point of the header row. Hours is the one column that also reorders
-	// the groups; every other column sorts the entries inside each group.
-	const ordered = [...groups.values()].sort((a, b) =>
+	// Hours is the one column that also reorders the groups; every other
+	// column sorts the entries inside each group.
+	const ordered = [...groups].sort((a, b) =>
 		active.key === "hours"
 			? (a.seconds - b.seconds) * active.dir
-			: by === "date"
-				? a.key.localeCompare(b.key)
-				: b.seconds - a.seconds,
+			: groupOrder(by)(a, b),
 	);
 	const max = Math.max(...ordered.map((g) => g.seconds), 1);
-
-	const cellOf = (row: DetailRow, column: EntryGroup) =>
-		column === "client"
-			? row.clientName
-			: column === "project"
-				? `${row.projectCode ? `[${row.projectCode}] ` : ""}${row.projectName}`
-				: column === "task"
-					? row.taskName
-					: column === "teammate"
-						? row.userName
-						: formatDateHeading(row.date);
 
 	if (rows.length === 0) {
 		return (
@@ -437,6 +510,7 @@ function EntriesTable({
 							const open = isOpen(expand, group.key);
 							const role =
 								roleOf && by === "teammate" ? roleOf(group.userId) : null;
+							const narrowed = narrow?.(by, group.key) ?? null;
 							return (
 								<Fragment key={group.key}>
 									{/* The summary row: a disclosure, the same one the
@@ -477,9 +551,20 @@ function EntriesTable({
 										</TableCell>
 										<TableCell className="text-right">
 											<span className="flex items-center justify-end gap-3">
-												<span className="mono font-medium">
-													{formatReportHours(group.seconds)}
-												</span>
+												{narrowed ? (
+													<Link
+														to="/$orgSlug/reports"
+														params={{ orgSlug }}
+														search={narrowed}
+														className="mono font-medium underlined"
+													>
+														{formatReportHours(group.seconds)}
+													</Link>
+												) : (
+													<span className="mono font-medium">
+														{formatReportHours(group.seconds)}
+													</span>
+												)}
 												<span className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-secondary">
 													<span
 														className="block h-full rounded-full bg-primary"

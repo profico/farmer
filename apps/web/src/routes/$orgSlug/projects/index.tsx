@@ -23,15 +23,18 @@ import { Button } from "#/components/ui/button.tsx";
 import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
+	stickyRowCellClass,
 	Table,
 	TableBody,
 	TableCell,
 	TableHead,
 	TableHeader,
 	TableRow,
+	TableScroll,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { projectPageAccess } from "#/lib/project-access.ts";
+import { searchFlag } from "#/lib/search-flag.ts";
 import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 import { clientsQuery } from "#/queries/clients.ts";
@@ -62,7 +65,7 @@ const COMPARE = {
 } satisfies Record<SortKey, (a: ProjectRow, b: ProjectRow) => number>;
 
 const searchSchema = z.object({
-	archived: z.literal("1").optional(),
+	archived: searchFlag,
 });
 
 export const Route = createFileRoute("/$orgSlug/projects/")({
@@ -259,9 +262,7 @@ function ProjectsPage() {
 				className="shrink-0"
 			/>
 
-			{/* This scroller already bleeds to the island edge, so the table inside
-			    it takes gutters only — bleeding twice would pull it clean out. */}
-			<div className="-mx-4 min-h-0 flex-1 overflow-y-auto sm:-mx-8">
+			<TableScroll>
 				{projects.length === 0 ? (
 					<div className="border-t border-b">
 						<EmptyState
@@ -303,7 +304,7 @@ function ProjectsPage() {
 						No projects match your search.
 					</p>
 				) : (
-					<Table bleed={false} containerClassName="border-y">
+					<Table bleed={false} stickyHeader containerClassName="border-b">
 						<TableHeader>
 							<TableRow>
 								<SortHead
@@ -336,7 +337,10 @@ function ProjectsPage() {
 										<TableRow className="hover:bg-transparent">
 											<TableCell
 												colSpan={COLUMNS}
-												className="border-b-0 pt-5 pb-1"
+												className={cn(
+													"border-b-0 pt-5 pb-1",
+													stickyRowCellClass,
+												)}
 											>
 												<span className="eyebrow">{group.name}</span>
 											</TableCell>
@@ -349,6 +353,7 @@ function ProjectsPage() {
 								count={archived.length}
 								colSpan={COLUMNS}
 								open={archivedOpen}
+								sticky
 								onOpenChange={(open) =>
 									navigate({
 										to: "/$orgSlug/projects",
@@ -362,7 +367,7 @@ function ProjectsPage() {
 						</TableBody>
 					</Table>
 				)}
-			</div>
+			</TableScroll>
 		</PageFull>
 	);
 }

@@ -34,7 +34,7 @@ import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import { Input } from "#/components/ui/input.tsx";
-import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Select,
@@ -50,8 +50,10 @@ import {
 	TableHead,
 	TableHeader,
 	TableRow,
+	TableScroll,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { searchFlag } from "#/lib/search-flag.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
 	membersQuery,
@@ -84,7 +86,7 @@ const TYPE_ITEMS = memberTypeEnum.options.map((value) => ({
 }));
 
 const searchSchema = z.object({
-	archived: z.literal("1").optional(),
+	archived: searchFlag,
 });
 
 const MEMBER_COLUMN_COUNT = 8;
@@ -434,6 +436,7 @@ function MembersSettingsPage() {
 							<Button
 								variant="ghost"
 								size="sm"
+								className="text-destructive hover:bg-destructive/8 hover:text-destructive"
 								disabled={removeMutation.isPending}
 								onClick={() => removeMutation.mutate(m.id)}
 							>
@@ -447,10 +450,11 @@ function MembersSettingsPage() {
 	};
 
 	return (
-		<Page>
+		<PageFull>
 			<PageHeader
 				eyebrow={<SettingsEyebrow />}
 				title="People"
+				className="shrink-0"
 				lede="Who has access, and what kind of person they are. Overhead employees are left out of reminders; hourly students and contractors have no Expected hours unless you give them one. Archive someone who has left — their entries and closed months stay exactly as they were."
 				action={
 					<div className="flex items-center gap-2">
@@ -465,40 +469,91 @@ function MembersSettingsPage() {
 				}
 			/>
 
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Name</TableHead>
-						<TableHead>Email</TableHead>
-						<TableHead>Type</TableHead>
-						<TableHead>Expected</TableHead>
-						<TableHead>Started</TableHead>
-						<TableHead>Leads</TableHead>
-						<TableHead>Access</TableHead>
-						<TableHead />
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{searching && activeMembers.length === 0 && (
-						<NoMatchesRow colSpan={MEMBER_COLUMN_COUNT}>
-							{archivedMembers.length > 0
-								? "Only archived people match your search."
-								: "Nobody matches your search."}
-						</NoMatchesRow>
-					)}
-					{activeMembers.map(renderMemberRow)}
-					<ArchivedSection
-						count={archivedMembers.length}
-						colSpan={MEMBER_COLUMN_COUNT}
-						open={archivedOpen}
-						onOpenChange={(open) =>
-							navigate({ search: { archived: open ? "1" : undefined } })
-						}
-					>
-						{archivedMembers.map(renderMemberRow)}
-					</ArchivedSection>
-				</TableBody>
-			</Table>
+			<TableScroll>
+				<Table bleed={false} stickyHeader containerClassName="border-b">
+					<TableHeader>
+						<TableRow>
+							<TableHead>Name</TableHead>
+							<TableHead>Email</TableHead>
+							<TableHead>Type</TableHead>
+							<TableHead>Expected</TableHead>
+							<TableHead>Started</TableHead>
+							<TableHead>Leads</TableHead>
+							<TableHead>Access</TableHead>
+							<TableHead />
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{searching && activeMembers.length === 0 && (
+							<NoMatchesRow colSpan={MEMBER_COLUMN_COUNT}>
+								{archivedMembers.length > 0
+									? "Only archived people match your search."
+									: "Nobody matches your search."}
+							</NoMatchesRow>
+						)}
+						{activeMembers.map(renderMemberRow)}
+						<ArchivedSection
+							count={archivedMembers.length}
+							colSpan={MEMBER_COLUMN_COUNT}
+							open={archivedOpen}
+							sticky
+							onOpenChange={(open) =>
+								navigate({ search: { archived: open ? "1" : undefined } })
+							}
+						>
+							{archivedMembers.map(renderMemberRow)}
+						</ArchivedSection>
+					</TableBody>
+				</Table>
+
+				{shownInvitations.length > 0 && (
+					<div className="mt-8">
+						<h2 className="eyebrow px-4 sm:px-8">Pending invitations</h2>
+						<Table bleed={false} containerClassName="mt-3 border-y">
+							<TableHeader>
+								<TableRow>
+									<TableHead>Email</TableHead>
+									<TableHead>Role</TableHead>
+									<TableHead />
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{shownInvitations.map((inv) => (
+									<TableRow key={inv.id}>
+										<TableCell className="font-medium">
+											<span className="flex items-center gap-2">
+												{inv.email}
+												<InvitationEmailBadge delivery={inv.emailDelivery} />
+											</span>
+										</TableCell>
+										<TableCell className="capitalize">{inv.role}</TableCell>
+										<TableCell>
+											<div className="flex gap-1">
+												<Button
+													variant="ghost"
+													size="sm"
+													disabled={resendMutation.isPending}
+													onClick={() => resendMutation.mutate(inv.id)}
+												>
+													Resend
+												</Button>
+												<Button
+													variant="ghost"
+													size="sm"
+													disabled={cancelMutation.isPending}
+													onClick={() => cancelMutation.mutate(inv.id)}
+												>
+													Cancel
+												</Button>
+											</div>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
+				)}
+			</TableScroll>
 
 			<AlertDialog
 				open={confirmEmail != null}
@@ -545,55 +600,7 @@ function MembersSettingsPage() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-
-			{shownInvitations.length > 0 && (
-				<div className="mt-8">
-					<h2 className="eyebrow">Pending invitations</h2>
-					<Table containerClassName="mt-3">
-						<TableHeader>
-							<TableRow>
-								<TableHead>Email</TableHead>
-								<TableHead>Role</TableHead>
-								<TableHead />
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{shownInvitations.map((inv) => (
-								<TableRow key={inv.id}>
-									<TableCell className="font-medium">
-										<span className="flex items-center gap-2">
-											{inv.email}
-											<InvitationEmailBadge delivery={inv.emailDelivery} />
-										</span>
-									</TableCell>
-									<TableCell className="capitalize">{inv.role}</TableCell>
-									<TableCell>
-										<div className="flex gap-1">
-											<Button
-												variant="ghost"
-												size="sm"
-												disabled={resendMutation.isPending}
-												onClick={() => resendMutation.mutate(inv.id)}
-											>
-												Resend
-											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												disabled={cancelMutation.isPending}
-												onClick={() => cancelMutation.mutate(inv.id)}
-											>
-												Cancel
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
-		</Page>
+		</PageFull>
 	);
 }
 

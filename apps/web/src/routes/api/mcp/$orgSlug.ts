@@ -146,8 +146,7 @@ const handle = async (request: Request, orgSlug: string) => {
 		{ name: "farmer", version: "1.0.0" },
 		{
 			capabilities: { tools: {} },
-			instructions:
-				"Farmer is a time-tracking app for a software agency. Every tool acts as the signed-in person, in the one organization this connection names — ids are looked up with a read tool, never invented, and durations are whole quarter-hours.",
+			instructions: `Farmer is a time-tracking app for a software agency. Every tool acts as the signed-in person, in the one organization this connection names — ids are looked up with a read tool, never invented, and durations are whole quarter-hours.\n\nRepository defaults: a git repository may hold a \`.farmer.jsonc\` file (JSON with comments) with \`org\` (an organization slug), \`project\` (a project id) and optionally \`task\` (a task id). Look for it in the working directory and each parent up to the directory that contains \`.git\`; the nearest file wins and files are never merged; outside a git repository none applies. If its \`org\` is not "${orgSlug}", this connection's organization, stop and tell the person. Otherwise use \`project\` and \`task\` only as defaults for create_time_entry, only for a value the person did not name, and tell the person which values came from which file. If the person asks you to create the file, write it at the git root (or in the package directory of a monorepo) with \`org\` set to "${orgSlug}", a project id from list_projects and, if they want one, a task id from list_tasks that is not an absence task, each id followed by a \`// <name>\` comment; ask before you replace a file that already exists.`,
 		},
 	);
 

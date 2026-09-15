@@ -33,6 +33,7 @@ import {
 import { memberWorkingHoursDay } from "../db/schema/schedule";
 import {
 	commitFillTombstone,
+	filingRule,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
 import { createTestDb, present, type TestDb } from "../test/harness";
@@ -619,5 +620,76 @@ describe("offering back what was deleted", () => {
 		// The dialog hides the toggle on this answer, which is almost every day.
 		expect(assembly.dismissedCount).toBe(0);
 		expect(assembly.suggestions.every((s) => !s.dismissed)).toBe(true);
+	});
+});
+
+describe("filing rules in the assembler", () => {
+	// The same answer the sync gives: a meeting the person already filed once
+	// arrives on its project and task, so the day is filed as it is added.
+	test("a meeting with a rule is proposed on the rule's project and task", async () => {
+		const meetingTaskId = await siteTask("meeting");
+		await db.insert(filingRule).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: meetingTaskId,
+			titleKey: "design review",
+			title: "Design review",
+			projectId,
+			targetTaskId: reviewTaskId,
+		});
+		setCalendarSourceForTests({
+			...noCalendar,
+			listEventsForRange: async () => [
+				{
+					id: "rule-event",
+					title: "Design review",
+					start: `${MONDAY}T09:00:00.000Z`,
+					end: `${MONDAY}T10:00:00.000Z`,
+					meetingUrl: null,
+					htmlLink: null,
+				},
+			],
+		});
+
+		try {
+			const { suggestions } = await dayAssemblyService.suggest(ctx, {
+				date: MONDAY,
+			});
+			const meeting = suggestions.find((s) => s.kind === "meeting");
+			expect(meeting?.projectId).toBe(projectId);
+			expect(meeting?.projectName).toBe("Farmer");
+			expect(meeting?.taskId).toBe(reviewTaskId);
+		} finally {
+			await db.delete(filingRule);
+		}
+	});
+});
+
+describe("a rule on a proposed block", () => {
+	// The case from the report: a rule remembered from filing a rest-of-day block
+	// used to be listed under Preferences and never applied anywhere.
+	test("a rest-of-day rule files the rest-of-day suggestion", async () => {
+		await db.insert(filingRule).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: devTaskId,
+			titleKey: "rest of day",
+			title: "Rest of day",
+			projectId,
+			targetTaskId: reviewTaskId,
+		});
+
+		try {
+			const { suggestions } = await dayAssemblyService.suggest(ctx, {
+				date: MONDAY,
+			});
+			const fill = suggestions.find((s) => s.kind === "fill");
+			expect(fill?.projectId).toBe(projectId);
+			expect(fill?.taskId).toBe(reviewTaskId);
+			// The break has no rule and stays as proposed.
+			expect(suggestions.find((s) => s.kind === "break")?.projectId).toBeNull();
+		} finally {
+			await db.delete(filingRule);
+		}
 	});
 });

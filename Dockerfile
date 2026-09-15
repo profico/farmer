@@ -26,7 +26,7 @@
 
 # Pin Bun to the same version as `packageManager` in package.json so the image
 # resolves the lockfile identically to local installs.
-ARG BUN_VERSION=1.3.14
+ARG BUN_VERSION=1.4.2
 
 # ---- build: install all workspace deps and produce the bundles ----
 FROM oven/bun:${BUN_VERSION} AS build
@@ -113,10 +113,11 @@ COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh
 # resolved it fresh on every build — two images built from the same commit could
 # ship different code. docker/bun.lock is generated from this manifest and has
 # to be regenerated when a version in it changes; runtime.package.json says how.
-# It has to be written by THIS Bun: a lockfile from bun 1.4 is lockfileVersion 2
-# and 1.3.14 answers it with "Unknown lockfile version", then fails the frozen
-# install. The root bun.lock is exempt only because bun keeps the version of a
-# lockfile it is updating; this one is created from nothing every time.
+# It has to be written by THIS Bun: a newer Bun can write a lockfile version an
+# older one cannot read (bun 1.4 writes lockfileVersion 2, which 1.3 answers
+# with "Unknown lockfile version"), and the frozen install then fails. The root
+# bun.lock is exempt only because bun keeps the version of a lockfile it is
+# updating; this one is created from nothing every time.
 COPY docker/runtime.package.json ./package.json
 COPY docker/bun.lock ./bun.lock
 RUN set -e; \

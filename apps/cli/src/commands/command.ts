@@ -23,7 +23,8 @@ export const GLOBAL_OPTIONS = {
 
 export const GLOBAL_HELP = [
 	"  --json        Print the API response as JSON, and nothing else.",
-	"  --org <slug>  Run in this organization instead of the default one.",
+	"  --org <slug>  Run in this organization, not the default one or the one",
+	"                in .farmer.jsonc.",
 	"  -h, --help    Show this help.",
 ];
 
