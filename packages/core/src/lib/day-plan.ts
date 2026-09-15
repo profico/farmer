@@ -4,13 +4,14 @@
 // These are the module the engines call: `day-assembly.service` and the commit
 // fill-block sync in `time-entries.service` both go through here rather than
 // keeping their own copies. That matters because the copies had drifted — the
-// split disagreed about minimum shares and the summary disagreed about what
-// "+N more" counts.
+// split disagreed about minimum shares and the summary disagreed about which
+// subjects it kept.
 
 // Suggested amounts snap to 15-minute steps.
 const SLOT_SECONDS = 900;
 
-const COMMIT_SUMMARY_LIMIT = 3;
+// The ceiling every description input carries (`src/schema/time-entries.ts`).
+const DESCRIPTION_MAX_CHARS = 10_000;
 
 // Largest-remainder split of totalSeconds across weights, in 15-minute units.
 //
@@ -67,13 +68,19 @@ export const splitProportionally = (
 // the commit subjects are the only raw material they have; the person edits it
 // like any other entry.
 //
-// "+N more" counts what was left out of the SHOWN list, so empty messages —
-// which are dropped, not shown — are not counted twice.
+// Every subject is kept: a "+N more" tail hid the very work the entry is
+// evidence of. Subjects stop only at the description ceiling, and whole — a
+// subject cut mid-word reads as a typo, and the input schema would refuse the
+// entry the moment somebody saved it by hand.
 export const summarizeCommitMessages = (messages: string[]): string => {
 	const firstLines = messages
 		.map((m) => (m.split("\n")[0] ?? "").trim())
 		.filter((line) => line.length > 0);
-	const shown = firstLines.slice(0, COMMIT_SUMMARY_LIMIT).join("; ");
-	const extra = firstLines.length - COMMIT_SUMMARY_LIMIT;
-	return extra > 0 ? `${shown} (+${extra} more)` : shown;
+	let summary = "";
+	for (const line of firstLines) {
+		const next = summary ? `${summary}; ${line}` : line;
+		if (next.length > DESCRIPTION_MAX_CHARS) break;
+		summary = next;
+	}
+	return summary;
 };

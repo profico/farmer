@@ -1,3 +1,5 @@
+import { summarizeCommitMessages } from "@farmer/core/lib/day-plan";
+import { describePullRequestActivity } from "@farmer/core/lib/github-activity";
 import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
 	parseDuration,
@@ -481,13 +483,52 @@ export function AddBlockDialog({
 		(c) => !attachedShas.has(c.sha),
 	);
 
+	// Ticking activity writes the description from it, the way the commit engine
+	// writes its own blocks' — but only into a box that is empty or still holds
+	// what the last tick wrote. The ref is that last write: once the person types
+	// over it, the text is theirs and further ticks leave it alone.
+	const autoDescriptionRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (open) autoDescriptionRef.current = null;
+	}, [open]);
+	const describeSelection = (
+		commitKeys: Set<string>,
+		pullRequestKeys: Set<string>,
+	) => {
+		const current = form.getValues("description");
+		if (current.trim() && current !== autoDescriptionRef.current) return;
+		const next = summarizeCommitMessages([
+			...effectiveSuggested
+				.filter((c) => commitKeys.has(commitKey(c.projectGithubRepoId, c.sha)))
+				.map((c) => c.message),
+			...describePullRequestActivity(
+				effectiveSuggestedPullRequests
+					.filter((pr) =>
+						pullRequestKeys.has(
+							pullRequestKey(pr.projectGithubRepoId, pr.number),
+						),
+					)
+					.flatMap((pr) =>
+						pr.activity.map((a) => ({
+							kind: a.kind,
+							number: pr.number,
+							title: pr.title,
+						})),
+					),
+			),
+		]);
+		autoDescriptionRef.current = next;
+		if (next === current) return;
+		form.setValue("description", next);
+		if (next) form.clearErrors("description");
+	};
+
 	const toggleCommitSelection = (key: string) => {
-		setSelectedCommitKeys((current) => {
-			const next = new Set(current);
-			if (next.has(key)) next.delete(key);
-			else next.add(key);
-			return next;
-		});
+		const next = new Set(selectedCommitKeys);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		setSelectedCommitKeys(next);
+		describeSelection(next, selectedPullRequestKeys);
 	};
 
 	const suggestCommitsMutation = useMutation({
@@ -568,12 +609,11 @@ export function AddBlockDialog({
 	);
 
 	const togglePullRequestSelection = (key: string) => {
-		setSelectedPullRequestKeys((current) => {
-			const next = new Set(current);
-			if (next.has(key)) next.delete(key);
-			else next.add(key);
-			return next;
-		});
+		const next = new Set(selectedPullRequestKeys);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		setSelectedPullRequestKeys(next);
+		describeSelection(selectedCommitKeys, next);
 	};
 
 	const suggestPullRequestsMutation = useMutation({
@@ -761,6 +801,17 @@ export function AddBlockDialog({
 					});
 				}
 			}
+			// The attached lists sit in the cache under the entry's id, fresh for
+			// the default 30s, so reopening the entry showed the attachments from
+			// before this save until a reload.
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: attachedCommitsQuery(orgSlug, savedEntry.id).queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: attachedPullRequestsQuery(orgSlug, savedEntry.id).queryKey,
+				}),
+			]);
 			// Time off is never remembered: a day of leave is not what the next
 			// entry is likely to be. An edit does not move the last pick either,
 			// since correcting an old entry says nothing about the next one.
