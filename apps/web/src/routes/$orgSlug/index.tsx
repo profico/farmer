@@ -19,14 +19,20 @@ import { useState } from "react";
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { GithubReconnectBanner } from "#/components/github-reconnect-banner.tsx";
 import { RewindBanner } from "#/components/rewind/rewind-banner.tsx";
-import { EmptyState } from "#/components/states/empty-state.tsx";
 import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
-import { TargetBlock } from "#/components/targets.tsx";
+import { StatusPill } from "#/components/status-pill.tsx";
+import {
+	TARGET_STATUS,
+	TARGET_TONE,
+	TargetGap,
+} from "#/components/targets.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
+import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";
 import { EntryBlockRow } from "#/components/time/entry-block-row.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { Metric } from "#/components/ui/metric.tsx";
+import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
+import { Of, StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
@@ -55,10 +61,14 @@ export const Route = createFileRoute("/$orgSlug/")({
 	},
 	// The generic page placeholder is a header over a ruled list, which is the
 	// shape of most screens here and not of this one — it put four ragged lines
-	// where the two figures and the week's bars were about to land.
+	// where the three figures and the week's bars were about to land.
 	pendingComponent: DashboardLoadingSkeleton,
 	component: OrgHome,
 });
+
+/** The week chart's plot height in px. The columns, the target rule and the
+ *  maximum are all measured against it, so the chart is one number to re-tune. */
+const PLOT_H = 76;
 
 function greetingForHour(hour: number): string {
 	if (hour < 12) return "Good morning";
@@ -84,7 +94,7 @@ function OrgHome() {
 	const holidays = new Map(holidayEntries);
 
 	// The "by day" bars are clickable; the day the user picks drives the entry
-	// list at the bottom. Defaults to today.
+	// list beside them. Defaults to today.
 	const [selectedDay, setSelectedDay] = useState(today);
 
 	const todayEntries = weekEntries.filter((entry) => entry.date === today);
@@ -96,10 +106,14 @@ function OrgHome() {
 	const selectedEntries = weekEntries.filter(
 		(entry) => entry.date === selectedDay,
 	);
+	const selectedTotal = selectedEntries.reduce(
+		(sum, e) => sum + e.durationSeconds,
+		0,
+	);
 	const weekTotal = weekEntries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
-	// Per-weekday totals, in the org's week order, for the sparkline — derived
-	// from the same week query, so it costs no extra fetch.
+	// Per-weekday totals, in the org's week order, for the bars — derived from
+	// the same week query, so it costs no extra fetch.
 	const perDay = orderedWeekdays(organization.weekStartsOn).map(
 		({ day: weekday, label }, i) => {
 			const key = addDaysToKey(weekStart, i);
@@ -111,10 +125,17 @@ function OrgHome() {
 				key,
 				seconds,
 				isToday: key === today,
+				isWeekend: weekday === 0 || weekday === 6,
 				holiday: holidays.get(key),
-				// A day with a line to reach: a past or present working day.
-				expected:
-					key <= today && weekday !== 0 && weekday !== 6 && !holidays.has(key),
+				// A day that may be judged against the day's worth: a working day
+				// that has happened. A future day, a weekend and a public holiday
+				// are all simply not asked.
+				judged:
+					key <= today &&
+					weekday !== 0 &&
+					weekday !== 6 &&
+					!holidays.has(key) &&
+					targets.daySeconds > 0,
 			};
 		},
 	);
@@ -123,7 +144,8 @@ function OrgHome() {
 		targets.daySeconds,
 		1,
 	);
-	const dayTargetPx = Math.round((targets.daySeconds / maxDaySeconds) * 48);
+	// Where the dashed "a day's worth" rule sits, in the plot's own pixels.
+	const targetPx = Math.round((targets.daySeconds / maxDaySeconds) * PLOT_H);
 
 	// "Auto-tracked today": the blocks Farmer filled in for you rather than by
 	// hand — synced Google Calendar meetings (calendarEventId) and GitHub-linked
@@ -151,6 +173,8 @@ function OrgHome() {
 	const hasAutoTracked = meetingEntries.length > 0 || githubEntries.length > 0;
 
 	const firstName = session.user.name.split(" ")[0];
+	const weekStatus = targets.week.status;
+	const monthStatus = targets.month.status;
 
 	return (
 		<Page>
@@ -158,145 +182,311 @@ function OrgHome() {
 			<AutoTrackNag orgSlug={organization.slug} />
 			<RewindBanner orgSlug={organization.slug} today={today} />
 			<PageHeader
-				eyebrow={`${formatDayKey(today)} · ${formatReportHours(todayTotal)} logged`}
+				eyebrow={formatDayKey(today)}
 				title={`${greetingForHour(new Date().getHours())}, ${firstName}`}
 				action={
-					<AddBlockDialog
-						timezone={organization.timezone}
-						defaultDate={today}
-						trigger={
-							<Button size="sm">
-								<PlusIcon weight="regular" className="size-4" />
-								Add block
-							</Button>
-						}
-					/>
+					<div className="flex items-center gap-2">
+						{/* The same dialog the timesheet opens, on the screen people
+						    land on. Assembling a day is a morning job, and the morning
+						    is when this page is open. */}
+						<AssembleDayDialog
+							orgSlug={orgSlug}
+							date={today}
+							trigger={
+								<Button variant="outline" size="sm">
+									<SparkleIcon weight="regular" className="size-4" />
+									Assemble my day
+								</Button>
+							}
+						/>
+						<AddBlockDialog
+							timezone={organization.timezone}
+							defaultDate={today}
+							trigger={
+								<Button size="sm">
+									<PlusIcon weight="regular" className="size-4" />
+									Log time
+								</Button>
+							}
+						/>
+					</div>
 				}
 			/>
 
-			{/* Below xl this is one vertical stack: summary, then the selected day's
-			    entries. From xl the two sit side by side — the summary is a fixed
-			    reading width and the entry list takes the rest, which is what turns
-			    a tall scroll into one screenful on a wide monitor. The day bars
-			    already drive the list's selection, so the split makes the existing
-			    interaction visible instead of scrolling between cause and effect.
+			{/* Today, the week and the month, in that order: the horizon widens left
+			    to right, the full width of the page. It used to be a 26rem column
+			    holding two `Metric`s and two `TargetBlock`s, so today's figure was
+			    said in the eyebrow, again at 30px and again inside a rail — the
+			    screen answered "how am I doing" four times and never once at a
+			    glance. */}
+			<StatTiles columns={3}>
+				<StatTile
+					label="Today"
+					percent={
+						targets.daySeconds > 0
+							? (todayTotal / targets.daySeconds) * 100
+							: null
+					}
+					tone={todayTotal >= targets.daySeconds ? "ok" : "neutral"}
+					value={
+						<>
+							{formatReportHours(todayTotal)}
+							{targets.daySeconds > 0 && (
+								<Of>/ {formatReportHours(targets.daySeconds)}</Of>
+							)}
+						</>
+					}
+					caption={
+						targets.daySeconds > todayTotal
+							? `${formatReportHours(targets.daySeconds - todayTotal)} to go`
+							: `${todayEntries.length} ${todayEntries.length === 1 ? "entry" : "entries"}`
+					}
+				/>
+				<StatTile
+					label="This week"
+					aside={
+						weekStatus && (
+							<StatusPill tone={TARGET_STATUS[weekStatus].tone}>
+								{TARGET_STATUS[weekStatus].label}
+							</StatusPill>
+						)
+					}
+					percent={
+						targets.week.targetSeconds
+							? (weekTotal / targets.week.targetSeconds) * 100
+							: null
+					}
+					tone={weekStatus ? TARGET_TONE[weekStatus] : "neutral"}
+					value={
+						<>
+							{formatReportHours(weekTotal)}
+							{targets.week.targetSeconds != null && (
+								<Of>/ {formatReportHours(targets.week.targetSeconds)}</Of>
+							)}
+						</>
+					}
+					caption={<TargetGap period={targets.week} />}
+				/>
+				<StatTile
+					label="This month"
+					aside={
+						monthStatus && (
+							<StatusPill tone={TARGET_STATUS[monthStatus].tone}>
+								{TARGET_STATUS[monthStatus].label}
+							</StatusPill>
+						)
+					}
+					percent={
+						targets.month.targetSeconds
+							? (targets.month.totalSeconds / targets.month.targetSeconds) * 100
+							: null
+					}
+					tone={monthStatus ? TARGET_TONE[monthStatus] : "neutral"}
+					value={
+						<>
+							{formatReportHours(targets.month.totalSeconds)}
+							{targets.month.targetSeconds != null && (
+								<Of>/ {formatReportHours(targets.month.targetSeconds)}</Of>
+							)}
+						</>
+					}
+					caption={
+						<>
+							<TargetGap period={targets.month} /> · day{" "}
+							{targets.month.workingDaysElapsed} of {targets.month.workingDays}
+						</>
+					}
+				/>
+			</StatTiles>
 
-			    This is the one band in the app that opens ON a rule rather than on
-			    air, and it is a `div` rather than a `PageSection` so the
-			    `.screen > section:first-of-type` rule cannot take it away. The rest
-			    of the app's first bands are plain stacks, where a rule under the
-			    header only repeats the boundary the header already drew. This one
-			    is a grid: its `divide-x` verticals start at the band's top edge, so
-			    with no top rule they hang off nothing and the whole panel reads as
-			    unclosed. The rule is what they terminate on. */}
-			<div className="-mx-4 grid border-t border-b sm:-mx-8 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] xl:divide-x">
-				{/* Whichever summary section lands last keeps its rule when stacked
-				    (it separates summary from entries) but drops it side by side,
-				    where it would just be a stray line across the column. */}
-				<div className="min-w-0 xl:[&>*:last-child]:border-b-0">
-					<div className="grid grid-cols-2 divide-x border-b">
-						<Metric
-							className="px-4 py-5 sm:px-8"
-							label="Logged today"
-							value={formatReportHours(todayTotal)}
-							accent={todayTotal > 0}
-						/>
-						<Metric
-							className="px-4 py-5 sm:px-8"
-							label="This week"
-							value={formatReportHours(weekTotal)}
-						/>
+			{/* What you logged, and how the week is shaped. Side by side from lg:
+			    the day bars drive the list beside them, so cause and effect are on
+			    one screen. Below that they stack, entries first — on a phone the
+			    list is what you came for.
+
+			    **Three columns, matching the band.** The list takes the first two
+			    and the chart the third, so the split under the band falls on the
+			    band's own division rather than at some width of its own — the week
+			    chart sits under "This month", which is the figure it explains.
+
+			    The gutter is 64px because that is the width at which the two
+			    grids agree. `StatTiles` bleeds 32px each side and pads each cell
+			    32px, so its third cell's text starts at `2W/3 + 128/3` from the
+			    content edge; a three-column grid with gutter g starts its third
+			    column at `2W/3 + 2g/3`. Those are equal at g = 64, at every
+			    width — so "This week by day" sits exactly under "This month"
+			    rather than near it. Change the tiles' padding and this number
+			    changes with it.
+
+			    **No borders in here except the entry list's own.** The band above
+			    closes on `--line`, the rows below are separated by `--line2`, and
+			    that is the whole vocabulary this screen uses — the rule the rest of
+			    the app follows (see the palette notes in styles.css). The chart's
+			    baseline and its target rule are axes, not page furniture. */}
+			<div className="mt-7 grid gap-x-16 gap-y-8 lg:grid-cols-3">
+				<div className="min-w-0 lg:col-span-2">
+					<div className="section-head">
+						<h2 className="eyebrow">
+							{selectedDay === today
+								? "Today's entries"
+								: formatDayKey(selectedDay, { year: false })}
+						</h2>
+						<span className="text-sm text-muted-foreground">
+							{formatReportHours(selectedTotal)} logged
+						</span>
 					</div>
+					{/* No AnimatePresence — see the note in EntryBlockRow. It matters
+					    most here: picking another day in "This week by day" swaps every
+					    row at once, so the whole list collapsed as if each entry had
+					    been deleted. Switching days is navigation, not removal.
 
-					{/* This week and this month against the rule, each saying what is
-					    missing. They replaced the schedule's weekly target: the fund is
-					    the one yardstick, here and on Tracking. */}
-					<TargetBlock title="This week" period={targets.week} />
-					<TargetBlock
-						title="This month"
-						period={targets.month}
-						note={
-							<span className="text-muted-foreground">
-								{" "}
-								· {targets.month.workingDaysElapsed} of{" "}
-								{targets.month.workingDays} working days
-							</span>
+					    `px-0` on the rows: the row carries the island's own padding
+					    for a full-bleed list, and this list is one column of a grid. */}
+					<div className="mt-3 flex flex-col divide-y divide-line2">
+						{selectedEntries.map((entry) => (
+							<EntryBlockRow
+								key={entry.id}
+								entry={entry}
+								timezone={organization.timezone}
+								className="px-0 sm:px-0"
+							/>
+						))}
+					</div>
+					{/* The list ends on the way to add to it, whether or not it has
+					    rows: an empty day is a sentence and this same row, rather than
+					    a centred placeholder with no action on it. */}
+					<AddBlockDialog
+						timezone={organization.timezone}
+						defaultDate={selectedDay}
+						trigger={
+							<GhostRow
+								className={
+									selectedEntries.length > 0 ? "border-t border-line2" : "mt-1"
+								}
+							>
+								{selectedEntries.length === 0
+									? selectedDay === today
+										? "Nothing logged yet. Log your first block of the day"
+										: "Nothing logged. Add an entry to this day"
+									: `Add another entry to ${selectedDay === today ? "today" : formatDayKey(selectedDay, { year: false })}`}
+							</GhostRow>
 						}
 					/>
+				</div>
 
-					<div className="border-b px-4 py-4 sm:px-8">
-						<div className="eyebrow">This week by day</div>
-						<div className="mt-3.5 flex gap-2">
-							{perDay.map((d) => {
+				<div className="min-w-0">
+					<div className="section-head">
+						<h2 className="eyebrow">This week by day</h2>
+						<span className="text-sm text-muted-foreground">
+							{formatReportHours(weekTotal)}
+						</span>
+					</div>
+					{/* One baseline under the columns and ONE continuous target rule
+					    across the whole week, rather than seven per-column stubs. The
+					    rule is what turns seven bars into a chart: a column either
+					    reaches it or it does not.
+
+					    **The whole column is the button**, bar included. The plot used
+					    to be an `aria-hidden` block with the buttons under it, so only
+					    the label and the figure took a click and the tall, obvious
+					    target did nothing. The two rules are one absolutely-positioned
+					    layer over the grid, and `pointer-events-none` is what keeps
+					    them out of the way of the buttons underneath. */}
+					<div className="relative mt-4">
+						<span
+							aria-hidden
+							className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-foreground/25"
+							style={{ top: `${PLOT_H - targetPx}px` }}
+						/>
+						<span
+							aria-hidden
+							className="pointer-events-none absolute inset-x-0 z-10 border-t border-line"
+							style={{ top: `${PLOT_H}px` }}
+						/>
+						<div className="grid grid-cols-7">
+							{perDay.map((d, i) => {
 								const px =
 									d.seconds > 0
-										? Math.max(Math.round((d.seconds / maxDaySeconds) * 48), 4)
+										? Math.max(
+												Math.round((d.seconds / maxDaySeconds) * PLOT_H),
+												3,
+											)
 										: 2;
 								const isSelected = d.key === selectedDay;
+								const verdict = d.holiday
+									? "warn"
+									: !d.judged
+										? "none"
+										: d.seconds === 0
+											? "bad"
+											: d.seconds >= targets.daySeconds
+												? "ok"
+												: "warn";
 								return (
 									<button
 										type="button"
 										key={d.key}
 										onClick={() => setSelectedDay(d.key)}
 										aria-pressed={isSelected}
-										// basis-0 + min-w-0 so the day labels can't widen their own
-										// column: every day is an identical hit target regardless of
-										// how much (or how little) was logged.
+										aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
 										className={cn(
-											"flex min-w-0 flex-1 basis-0 flex-col items-center gap-2 rounded-sm py-1 transition-colors duration-(--dur-fast) hover:bg-muted",
-											isSelected && "bg-muted",
+											"flex flex-col rounded-sm pb-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40",
+											d.isWeekend && !isSelected && "opacity-45",
 										)}
 									>
-										{/* The 48px track is always here, bottom-aligned — an empty
-										    day used to collapse to a 2px-tall button that was
-										    almost impossible to hit. */}
-										<div className="relative flex h-12 w-full items-end justify-center">
-											{/* The day's worth, drawn as a line to reach — so an
-											    under-filled day shows as a bar that stops short. */}
-											{d.expected && (
-												<span
-													aria-hidden
-													className="absolute left-1/2 w-8 -translate-x-1/2 border-t border-foreground/30"
-													style={{ bottom: `${dayTargetPx}px` }}
-												/>
-											)}
-											<div
+										<span
+											className="flex w-full items-end justify-center"
+											style={{ height: `${PLOT_H}px` }}
+										>
+											<span
 												className={cn(
-													// Capped width: a full-width fill turns a 48px-tall bar
-													// into a 40px-wide slab, which out-weighs everything
-													// else on the screen. A column reads as a measurement.
-													"w-full max-w-6 rounded-[2px]",
-													d.holiday
-														? "bg-warn/30"
-														: d.isToday
-															? "bg-primary"
-															: d.seconds > 0
-																? "bg-primary/40"
-																: "bg-line",
-													isSelected && !d.isToday && "bg-primary/70",
+													"rise block w-5 rounded-t-[2px]",
+													verdict === "warn" && d.holiday
+														? "bg-warn/40"
+														: verdict === "none"
+															? "bg-line"
+															: verdict === "bad"
+																? "bg-bad"
+																: verdict === "ok"
+																	? "bg-ok"
+																	: "bg-warn",
 												)}
-												style={{ height: `${px}px` }}
+												style={{
+													height: `${px}px`,
+													animationDelay: `${i * 40}ms`,
+												}}
 											/>
-										</div>
+										</span>
 										<span
 											className={cn(
-												"eyebrow",
-												(d.isToday || isSelected) && "text-foreground",
+												"eyebrow mt-2.5",
+												d.isToday && "text-foreground",
+												isSelected && "text-primary",
 											)}
 										>
 											{d.label}
 										</span>
 										<span
 											className={cn(
-												"mono text-2xs",
-												d.holiday ? "text-warn" : "text-muted-foreground",
+												"mono mt-1.5 text-2xs",
+												d.holiday
+													? "text-warn"
+													: verdict === "none"
+														? "text-faint"
+														: verdict === "bad"
+															? "text-bad"
+															: verdict === "ok"
+																? "text-ok"
+																: "text-warn",
 											)}
 										>
 											{d.holiday
 												? "hol."
-												: d.key <= today
+												: d.seconds > 0
 													? formatReportHours(d.seconds)
-													: "\u00a0"}
+													: d.judged
+														? "—"
+														: " "}
 										</span>
 									</button>
 								);
@@ -305,51 +495,46 @@ function OrgHome() {
 					</div>
 
 					{hasAutoTracked && (
-						<div className="border-b">
-							<div className="eyebrow flex items-center gap-1.5 px-4 pt-4 pb-1 sm:px-8">
+						<div className="mt-7">
+							<h2 className="eyebrow flex items-center gap-1.5">
 								<SparkleIcon className="size-3" />
 								Auto-tracked today
-							</div>
-							<div>
+							</h2>
+							<div className="mt-3 flex flex-col gap-2.5">
 								{meetingEntries.length > 0 && (
-									<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
+									<div className="flex items-center gap-2.5 text-sm">
 										<CalendarBlankIcon className="size-4 shrink-0 text-muted-foreground" />
-										<div className="min-w-0 flex-1">
-											<p className="text-base">
+										<span className="min-w-0 flex-1 truncate text-muted-foreground">
+											<span className="font-medium text-foreground">
 												{meetingEntries.length} meeting
-												{meetingEntries.length === 1 ? "" : "s"} synced
-											</p>
-											<p className="mt-0.5 text-xs text-faint">
-												Google Calendar
-											</p>
-										</div>
-										<span className="mono shrink-0 text-sm">
+												{meetingEntries.length === 1 ? "" : "s"}
+											</span>{" "}
+											from your calendar
+										</span>
+										<span className="mono shrink-0 text-muted-foreground">
 											{formatHoursShort(meetingSeconds)}
 										</span>
 									</div>
 								)}
 								{githubEntries.length > 0 && (
-									<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
+									<div className="flex items-center gap-2.5 text-sm">
 										<GitCommitIcon className="size-4 shrink-0 text-muted-foreground" />
-										<div className="min-w-0 flex-1">
-											<p className="text-base">
+										<span className="min-w-0 flex-1 truncate text-muted-foreground">
+											<span className="font-medium text-foreground">
 												{[
 													commitTotal > 0
 														? `${commitTotal} commit${commitTotal === 1 ? "" : "s"}`
 														: null,
 													pullRequestTotal > 0
-														? `${pullRequestTotal} pull request${pullRequestTotal === 1 ? "" : "s"}`
+														? `${pullRequestTotal} PR event${pullRequestTotal === 1 ? "" : "s"}`
 														: null,
 												]
 													.filter(Boolean)
 													.join(" and ")}
-											</p>
-											<p className="mt-0.5 text-xs text-faint">
-												across {githubEntries.length} block
-												{githubEntries.length === 1 ? "" : "s"}
-											</p>
-										</div>
-										<span className="mono shrink-0 text-sm">
+											</span>{" "}
+											linked
+										</span>
+										<span className="mono shrink-0 text-muted-foreground">
 											{formatHoursShort(githubSeconds)}
 										</span>
 									</div>
@@ -357,51 +542,16 @@ function OrgHome() {
 							</div>
 						</div>
 					)}
-				</div>
 
-				<div className="min-w-0 pt-4 pb-1.5">
-					<div className="eyebrow mb-1 px-4 sm:px-8">
-						{selectedDay === today
-							? "Today's entries"
-							: `${formatDayKey(selectedDay, { year: false })} entries`}
-					</div>
-					{selectedEntries.length === 0 ? (
-						<EmptyState
-							title="Nothing logged"
-							description={
-								selectedDay === today
-									? "Add your first block to start tracking today's time."
-									: "No time was logged on this day."
-							}
-						/>
-					) : (
-						// No AnimatePresence — see the note in DayView. It mattered most
-						// here: picking another day in "This week by day" swaps every row
-						// at once, so the whole list collapsed as if each entry had been
-						// deleted. Switching days is navigation, not removal.
-						<div className="divide-y divide-line2">
-							{selectedEntries.map((entry) => (
-								<EntryBlockRow
-									key={entry.id}
-									entry={entry}
-									timezone={organization.timezone}
-								/>
-							))}
-						</div>
-					)}
+					<Link
+						to="/$orgSlug/time"
+						params={{ orgSlug: organization.slug }}
+						className="action mt-7 inline-flex text-sm text-primary transition-colors duration-(--dur-base) hover:text-foreground"
+					>
+						Open the timesheet
+						<ArrowRightIcon weight="regular" className="size-3.5" />
+					</Link>
 				</div>
-			</div>
-
-			<div className="mt-5">
-				<Link
-					to="/$orgSlug/time"
-					params={{ orgSlug: organization.slug }}
-					className="action serif text-primary transition-colors duration-(--dur-base) hover:text-foreground"
-					style={{ fontSize: 21 }}
-				>
-					View full calendar
-					<ArrowRightIcon weight="regular" className="size-4" />
-				</Link>
 			</div>
 		</Page>
 	);

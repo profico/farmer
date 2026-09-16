@@ -1365,6 +1365,35 @@ html {
     }
   }
 
+  /* The target band's meters: the fill grows once from nothing to what is
+     logged, and eases between values when an entry is saved. The rail's
+     "today" tick never moves; only what you logged does. `from { width: 0 }`
+     animates to the inline width the component sets, which is what lets one
+     keyframe serve every meter. */
+  .rail-fill {
+    animation: rail-grow 450ms var(--ease-out) both;
+    transition: width 450ms var(--ease-out);
+  }
+
+  @keyframes rail-grow {
+    from {
+      width: 0;
+    }
+  }
+
+  /* A bar rising from its baseline: the home page's week-by-day chart. The
+     caller sets `animation-delay` per bar, so the week rises left to right. */
+  .rise {
+    transform-origin: bottom;
+    animation: rise 600ms var(--ease-out) both;
+  }
+
+  @keyframes rise {
+    from {
+      transform: scaleY(0);
+    }
+  }
+
   .spin {
     animation: spin 900ms linear infinite;
   }
@@ -1452,6 +1481,13 @@ html {
   @media (prefers-reduced-motion: reduce) {
     .screen > *,
     .screen > :nth-child(n + 2) {
+      animation: none;
+    }
+    .rail-fill {
+      animation: none;
+      transition: none;
+    }
+    .rise {
       animation: none;
     }
     /* The assistant's entrances and the loader's shimmer are narration: with

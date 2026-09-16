@@ -12,7 +12,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
-import { EmptyState } from "#/components/states/empty-state.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";
 import { BookTimeOffDialog } from "#/components/time/book-time-off-dialog.tsx";
@@ -27,6 +26,7 @@ import {
 } from "#/components/time/time-toolbar.tsx";
 import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
@@ -214,38 +214,49 @@ export function DayView({
 			</div>
 
 			<div className="scrollbar-stable -mx-4 min-h-0 flex-1 overflow-y-auto sm:-mx-8">
-				{sortedEntries.length === 0 ? (
-					<EmptyState
-						title="Nothing logged yet"
-						description="Add a block, or copy yesterday's, to start the day."
-					/>
-				) : (
-					<>
-						{/* No AnimatePresence: a row's delete collapse is owned by the row
-						    itself (see EntryBlockRow). Presence only knows that a row
-						    left, not why — so stepping to another day, which replaces
-						    every entry at once, played the delete animation across the
-						    whole list. */}
-						<div className="divide-y divide-line2">
-							{sortedEntries.map((entry) => (
-								<EntryBlockRow
-									key={entry.id}
-									entry={entry}
-									timezone={timezone}
-								/>
-							))}
-						</div>
-						{/* Harvest puts the day total under the list rather than over it,
-						    so it reads as the sum of what you just scanned. */}
-						<div className="flex items-center justify-end gap-3 border-t px-4 py-3.5 sm:px-8">
-							<span className="eyebrow">Total</span>
-							<span className="mono min-w-14 text-right text-md">
-								{formatClock(total)}
-							</span>
-							{/* Aligns with the row actions above it. */}
-							<span className="w-[136px] shrink-0" aria-hidden />
-						</div>
-					</>
+				{/* No AnimatePresence: a row's delete collapse is owned by the row
+				    itself (see EntryBlockRow). Presence only knows that a row left,
+				    not why — so stepping to another day, which replaces every entry
+				    at once, played the delete animation across the whole list. */}
+				<div className="divide-y divide-line2">
+					{sortedEntries.map((entry) => (
+						<EntryBlockRow key={entry.id} entry={entry} timezone={timezone} />
+					))}
+				</div>
+				{/* The list ends on the way to add to it, whether or not it has rows.
+				    An empty day used to be a centred `EmptyState` — a title, a
+				    sentence and no action on it — so the only way to start the day
+				    was back up to the toolbar. An empty day is now that sentence and
+				    this row, and a full day ends on the same row rather than sending
+				    the reader back to the top to add a thirteenth entry. */}
+				<AddBlockDialog
+					timezone={timezone}
+					defaultDate={date}
+					trigger={
+						<GhostRow
+							className={
+								sortedEntries.length === 0
+									? "px-4 sm:px-8"
+									: "border-t border-line2 px-4 sm:px-8"
+							}
+						>
+							{sortedEntries.length === 0
+								? "Nothing logged yet. Log your first block of the day"
+								: "Add another entry to this day"}
+						</GhostRow>
+					}
+				/>
+				{sortedEntries.length > 0 && (
+					/* Harvest puts the day total under the list rather than over it,
+					   so it reads as the sum of what you just scanned. */
+					<div className="flex items-center justify-end gap-3 border-t px-4 py-3.5 sm:px-8">
+						<span className="eyebrow">Total</span>
+						<span className="mono min-w-14 text-right text-md">
+							{formatClock(total)}
+						</span>
+						{/* Aligns with the row actions above it. */}
+						<span className="w-[136px] shrink-0" aria-hidden />
+					</div>
 				)}
 			</div>
 
