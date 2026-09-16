@@ -44,6 +44,8 @@ export function PeriodPicker({
 	onPreset,
 	calendarValue,
 	onPickDay,
+	range,
+	onPickRange,
 	disabled,
 	align = "start",
 	className,
@@ -60,6 +62,14 @@ export function PeriodPicker({
 	calendarValue: string;
 	/** A day picked on the calendar. Omit to show presets only. */
 	onPickDay?: (date: string) => void;
+	/** The resolved span, painted under the days. Without it, a Week or a Month
+	 *  selection showed as ONE filled circle in the middle of a month, which
+	 *  says the reader picked the 14th when they picked the week it starts. */
+	range?: { from: string; to: string } | null;
+	/** Turns the calendar into a two-click range picker: the first click sets
+	 *  the start, the second the end, and the span between them previews as you
+	 *  move. Used by Custom, where the range IS the answer. */
+	onPickRange?: (range: { from: string; to: string }) => void;
 	disabled?: boolean;
 	align?: "start" | "center" | "end";
 	className?: string;
@@ -67,9 +77,22 @@ export function PeriodPicker({
 }) {
 	const [open, setOpen] = useState(false);
 	const gridRef = useRef<HTMLDivElement>(null);
+	// The half-made range, while a two-click pick is in flight. Cleared when the
+	// popover closes so a range abandoned half-way never survives to the next
+	// opening as a start with no end.
+	const [pendingFrom, setPendingFrom] = useState<string | null>(null);
+	const shownRange = pendingFrom
+		? { from: pendingFrom, to: pendingFrom }
+		: (range ?? null);
 
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Popover
+			open={open}
+			onOpenChange={(next) => {
+				setOpen(next);
+				if (!next) setPendingFrom(null);
+			}}
+		>
 			<PopoverTrigger
 				render={
 					<button
@@ -129,14 +152,39 @@ export function PeriodPicker({
 						</div>
 					))}
 				</div>
-				{onPickDay && (
+				{(onPickDay || onPickRange) && (
 					<div className="p-3">
+						{onPickRange && (
+							<p className="mb-2 px-1 text-xs text-muted-foreground">
+								{pendingFrom
+									? "Now pick the last day"
+									: "Pick the first day of the range"}
+							</p>
+						)}
 						<Calendar
 							gridRef={gridRef}
-							value={calendarValue}
+							value={onPickRange ? null : calendarValue}
+							range={shownRange}
 							today={calendarValue}
 							onSelect={(next) => {
-								onPickDay(next);
+								if (onPickRange) {
+									if (!pendingFrom) {
+										setPendingFrom(next);
+										return;
+									}
+									// Either way round: clicking an earlier day second means
+									// the reader is drawing the range backwards, not making a
+									// mistake.
+									onPickRange(
+										next < pendingFrom
+											? { from: next, to: pendingFrom }
+											: { from: pendingFrom, to: next },
+									);
+									setPendingFrom(null);
+									setOpen(false);
+									return;
+								}
+								onPickDay?.(next);
 								setOpen(false);
 							}}
 						/>

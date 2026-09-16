@@ -42,6 +42,7 @@ const shiftMonth = (monthKey: string, by: number) => {
 export function Calendar({
 	value,
 	onSelect,
+	range,
 	/** Day keys outside `[min, max]` are shown but not selectable. */
 	min,
 	max,
@@ -59,6 +60,11 @@ export function Calendar({
 	today?: string;
 	className?: string;
 	gridRef?: React.RefObject<HTMLDivElement | null>;
+	/** A span to paint under the days, inclusive. With it the grid shows the
+	 *  whole period rather than one day, which is what a Week or a Month
+	 *  selection actually is — a single filled circle in the middle of a month
+	 *  says the reader picked the 14th, when they picked the week it starts. */
+	range?: { from: string; to: string } | null;
 }) {
 	// The month on screen. Follows `value` when it moves to another month (a
 	// caller stepping the date with ‹ › should not leave the grid behind), but
@@ -215,6 +221,10 @@ export function Calendar({
 					const disabled = outOfRange(day);
 					const selected = value === day;
 					const isToday = today === day;
+					// Day keys are ISO, so a lexical compare IS a date compare.
+					const inRange = range != null && day >= range.from && day <= range.to;
+					const isRangeStart = range != null && day === range.from;
+					const isRangeEnd = range != null && day === range.to;
 					return (
 						<button
 							key={day}
@@ -233,15 +243,22 @@ export function Calendar({
 							onKeyDown={(event) => onKeyDown(event, day)}
 							onClick={() => onSelect(day)}
 							className={cn(
-								"tnum flex h-8 items-center justify-center rounded-full text-sm transition-colors duration-(--dur-fast) outline-none",
+								"tnum flex h-8 items-center justify-center text-sm transition-colors duration-(--dur-fast) outline-none",
 								"focus-visible:ring-3 focus-visible:ring-ring/40",
 								inMonth ? "text-foreground" : "text-faint",
-								!disabled && !selected && "hover:bg-muted",
+								!disabled && !selected && !inRange && "hover:bg-muted",
 								// Today reads as a ring so it survives being selected;
 								// selection is the filled one, and the two can coincide.
 								isToday && !selected && "ring-1 ring-border ring-inset",
-								selected &&
-									"bg-primary text-primary-foreground hover:bg-primary",
+								// A span is a continuous band with rounded ends, so a week
+								// or a month reads as one shape rather than as thirty
+								// separate marks.
+								inRange && "bg-primary/16",
+								isRangeStart && "rounded-l-full",
+								isRangeEnd && "rounded-r-full",
+								!inRange && "rounded-full",
+								(selected || isRangeStart || isRangeEnd) &&
+									"bg-primary font-semibold text-primary-foreground hover:bg-primary",
 								disabled && "cursor-not-allowed opacity-30",
 							)}
 						>

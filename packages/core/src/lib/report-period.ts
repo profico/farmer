@@ -15,11 +15,18 @@ import {
 	type WeekStartsOn,
 } from "./time";
 
-export type PeriodPreset = "week" | "month" | "quarter" | "year" | "custom";
+export type PeriodPreset =
+	| "day"
+	| "week"
+	| "month"
+	| "quarter"
+	| "year"
+	| "custom";
 
 /** Harvest's order, which the COO signed off screen by screen: shortest to
  *  longest, then the free range. */
 export const PERIOD_PRESETS = [
+	{ id: "day", label: "Day" },
 	{ id: "week", label: "Week" },
 	{ id: "month", label: "Month" },
 	{ id: "quarter", label: "Quarter" },
@@ -104,6 +111,13 @@ export const resolveReportPeriod = (
 	const thisMonth = monthKeyOf(today);
 	const preset = selection.preset ?? "month";
 
+	// A single day is a range of one, which is all the rest of the pipeline
+	// needs to know: every report already takes `from` and `to`.
+	if (preset === "day") {
+		const from = selection.from ?? today;
+		return { preset, from, to: from };
+	}
+
 	if (preset === "week") {
 		const from = selection.from ?? startOfWeekKey(today, weekStartsOn);
 		return { preset, from, to: addDaysToKey(from, 6) };
@@ -146,6 +160,7 @@ export const isCurrentPeriod = (
 		today,
 		weekStartsOn,
 	);
+	if (preset === "day") return from === today;
 	if (preset === "week") return from === startOfWeekKey(today, weekStartsOn);
 	if (preset === "quarter" || preset === "year") {
 		return from <= today && today <= to;

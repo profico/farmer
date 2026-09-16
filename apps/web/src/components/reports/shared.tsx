@@ -228,6 +228,29 @@ export function PeriodPicker<S extends PeriodSearch>({
 				),
 		});
 
+	// One list, one handler, used by both branches — a Custom range must be able
+	// to get back to Month, which it could not when the custom branch drew its
+	// own controls.
+	const presetItems = PERIOD_PRESETS.map((p) => ({
+		id: p.id,
+		label: p.label,
+		separated: p.id === "custom",
+	}));
+	const applyPreset = (id: string) => {
+		const picked = PERIOD_PRESETS.find((p) => p.id === id);
+		if (!picked) return;
+		navigateTo(
+			withSearch({
+				preset: picked.id,
+				// Switching preset restarts from "now" in the new unit, which is the
+				// only period that means the same thing in all of them. Custom keeps
+				// the range it was opened from.
+				from: picked.id === "custom" ? from : undefined,
+				to: picked.id === "custom" ? to : undefined,
+			}),
+		);
+	};
+
 	const label = periodLabel(search, today, weekStartsOn);
 	const atNow = isCurrentPeriod(search, today, weekStartsOn);
 
@@ -250,26 +273,21 @@ export function PeriodPicker<S extends PeriodSearch>({
 				<>
 					<PeriodControl
 						label={label}
-						presets={PERIOD_PRESETS.map((p) => ({
-							id: p.id,
-							label: p.label,
-							separated: p.id === "custom",
-						}))}
+						presets={presetItems}
 						activePresetId={preset}
-						onPreset={(id) => {
-							const picked = PERIOD_PRESETS.find((p) => p.id === id);
-							if (!picked) return;
+						onPreset={applyPreset}
+						calendarValue={from ?? today}
+						range={{ from, to }}
+						// Custom is the one mode where the range IS the answer, so the
+						// calendar takes two clicks: a start, then an end.
+						onPickRange={(picked) =>
 							navigateTo(
 								withSearch({
-									preset: picked.id,
-									from: picked.id === "custom" ? from : undefined,
-									to: picked.id === "custom" ? to : undefined,
+									preset: "custom",
+									from: picked.from,
+									to: picked.to,
 								}),
-							);
-						}}
-						calendarValue={from ?? today}
-						onPickDay={(day) =>
-							navigateTo(withSearch({ preset: "custom", from: day, to: day }))
+							)
 						}
 					/>
 					<CustomRangeFields

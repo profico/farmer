@@ -28,7 +28,9 @@ const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 // or a custom range.
 export const periodSearch = {
 	month: monthKey.optional(),
-	preset: z.enum(["week", "month", "quarter", "year", "custom"]).optional(),
+	preset: z
+		.enum(["day", "week", "month", "quarter", "year", "custom"])
+		.optional(),
 	from: dateKey.optional(),
 	to: dateKey.optional(),
 };

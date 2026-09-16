@@ -83,7 +83,13 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
 		<FormItemContext.Provider value={{ id }}>
 			<div
 				data-slot="form-item"
-				className={cn("grid gap-1.5", className)}
+				// `content-start` is load-bearing. A grid container's default
+				// `align-content` is stretch, so when two fields sit side by side and
+				// one is taller — because it has an error message under it — the
+				// shorter one's rows stretch to fill the row's height and its label
+				// drifts down away from its neighbour's. Packing the rows to the top
+				// is what keeps two labels on one line whatever is under them.
+				className={cn("grid content-start gap-1.5", className)}
 				{...props}
 			/>
 		</FormItemContext.Provider>

@@ -110,7 +110,15 @@ export function WeekStrip({
 						<span
 							className={cn(
 								"tnum mt-1.5 block truncate text-md font-semibold",
-								seconds > 0 ? "text-foreground" : "text-faint",
+								!judged
+									? seconds > 0
+										? "text-foreground"
+										: "text-faint"
+									: seconds === 0
+										? "text-bad"
+										: seconds >= target
+											? "text-ok"
+											: "text-warn",
 							)}
 						>
 							{seconds > 0 ? formatClock(seconds) : "—"}
@@ -135,15 +143,24 @@ export function WeekStrip({
 							)}
 						</span>
 						{/* Always drawn on a judged day, even at nothing: an empty track
-						    is what makes an untouched day visible rather than blank. */}
+						    is what makes an untouched day visible rather than blank.
+						    The same three colours the home chart uses — red at nothing,
+						    amber part-way, green at a full day — so "green means done"
+						    means one thing on both screens. */}
 						{judged && (
 							<span className="mt-2 block h-[3px] overflow-hidden rounded-full bg-line2">
 								<span
 									className={cn(
 										"rail-fill block h-full rounded-full",
-										short ? "bg-bad" : met ? "bg-ok" : "bg-primary",
+										seconds === 0
+											? "bg-bad"
+											: seconds >= target
+												? "bg-ok"
+												: "bg-warn",
 									)}
-									style={{ width: `${fill}%` }}
+									style={{
+										width: `${Math.max(fill, seconds === 0 ? 100 : 0)}%`,
+									}}
 								/>
 							</span>
 						)}
