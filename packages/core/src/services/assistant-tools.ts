@@ -359,13 +359,14 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_projects",
 		kind: "read",
 		description:
-			"List the projects the current user may log time against, with their ids, type and clients. Call this before creating a time entry — a project must be named by id.",
+			"List the projects the current user may log time against, with their ids, codes, type and clients. Call this before creating a time entry — a project must be named by id.",
 		schema: z.object({}),
 		run: async (ctx) => {
 			const rows = await projectsService.listMine(ctx);
 			return rows.map((row) => ({
 				id: row.id,
 				name: row.name,
+				code: row.code,
 				type: row.type,
 				client: row.client?.name ?? null,
 			}));

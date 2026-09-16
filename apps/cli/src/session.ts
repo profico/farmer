@@ -11,8 +11,9 @@ import { createCredentialStore } from "./credentials";
 import type { OrgClock } from "./dates";
 import { CliError, UsageError } from "./errors";
 import { ApiClient, normalizeOrigin, type Transport } from "./http";
-import type { Output } from "./output";
+import { note, type Output } from "./output";
 import { pickOne } from "./prompts";
+import { defaultsNotice, loadDefaults } from "./repository-defaults";
 import type { Runtime } from "./runtime";
 import { CLI_VERSION } from "./version";
 
@@ -147,6 +148,8 @@ export type OrgScope = {
 export const scopeOrg = async (
 	session: Session,
 	requested: string | undefined,
+	/** The file `requested` came from, for the error when it is wrong. */
+	source: string | null = null,
 ): Promise<OrgScope> => {
 	const { server } = session;
 	let changed = false;
@@ -163,8 +166,13 @@ export const scopeOrg = async (
 		const wanted = slug;
 		entry = server.orgs.find((org) => org.slug === wanted);
 		if (!entry) {
+			const problem = `You are not a member of "${wanted}" on ${session.api.origin}. Your organizations: ${slugList(me) || "none"}.`;
+			// A slug from the file must say so, or the person looks for a flag
+			// they never typed.
 			throw new UsageError(
-				`You are not a member of "${wanted}" on ${session.api.origin}. Your organizations: ${slugList(me) || "none"}.`,
+				source === null
+					? problem
+					: `${source}: ${problem} Fix the file, or pass --org.`,
 			);
 		}
 	}
@@ -191,12 +199,30 @@ export const scopeOrg = async (
 	};
 };
 
+/**
+ * `scopeOrg` behind the repository defaults: without `--org`, the nearest
+ * `.farmer.jsonc` names the organization, ahead of `farmer org use`. `--org`
+ * turns the file off for the command, so `defaults` is null then.
+ *
+ * The organization it took is announced unless `announce` is false, for a
+ * command that names more of the file's values in one line of its own.
+ */
 export const openOrg = async (
 	runtime: Runtime,
 	out: Output,
 	requested: string | undefined,
+	{ announce = true }: { announce?: boolean } = {},
 ) => {
+	// Read before any request, so a broken file costs nothing.
+	const defaults = requested === undefined ? await loadDefaults(runtime) : null;
 	const session = await connect(runtime, out);
-	const scope = await scopeOrg(session, requested);
-	return { session, scope };
+	const scope = await scopeOrg(
+		session,
+		requested ?? defaults?.org,
+		defaults?.shown ?? null,
+	);
+	if (defaults && announce) {
+		note(defaultsNotice(defaults.shown, [`organization ${scope.slug}`]));
+	}
+	return { session, scope, defaults };
 };

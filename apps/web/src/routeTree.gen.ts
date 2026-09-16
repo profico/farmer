@@ -23,6 +23,7 @@ import { Route as ApiLoginRouteImport } from './routes/api/login'
 import { Route as AcceptInviteInvitationIdRouteImport } from './routes/accept-invite/$invitationId'
 import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known/oauth-protected-resource'
 import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known/oauth-authorization-server'
+import { Route as OrgSlugRewindRouteImport } from './routes/$orgSlug/rewind'
 import { Route as OrgSlugReportsRouteImport } from './routes/$orgSlug/reports'
 import { Route as OrgSlugAssistantRouteImport } from './routes/$orgSlug/assistant'
 import { Route as OrgSlugTimeRouteRouteImport } from './routes/$orgSlug/time/route'
@@ -63,6 +64,7 @@ import { Route as ApiV1OrgsOrgSlugUnfiledRouteImport } from './routes/api/v1/org
 import { Route as ApiV1OrgsOrgSlugTrackingRouteImport } from './routes/api/v1/orgs/$orgSlug/tracking'
 import { Route as ApiV1OrgsOrgSlugTasksRouteImport } from './routes/api/v1/orgs/$orgSlug/tasks'
 import { Route as ApiV1OrgsOrgSlugSyncRouteImport } from './routes/api/v1/orgs/$orgSlug/sync'
+import { Route as ApiV1OrgsOrgSlugRepositoryProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/repository-projects'
 import { Route as ApiV1OrgsOrgSlugProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/projects'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/index'
 import { Route as ApiV1OrgsOrgSlugAbsencesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/index'
@@ -145,6 +147,11 @@ const DotwellKnownOauthAuthorizationServerRoute =
     path: '/.well-known/oauth-authorization-server',
     getParentRoute: () => rootRouteImport,
   } as any)
+const OrgSlugRewindRoute = OrgSlugRewindRouteImport.update({
+  id: '/rewind',
+  path: '/rewind',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
 const OrgSlugReportsRoute = OrgSlugReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -355,6 +362,12 @@ const ApiV1OrgsOrgSlugSyncRoute = ApiV1OrgsOrgSlugSyncRouteImport.update({
   path: '/api/v1/orgs/$orgSlug/sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1OrgsOrgSlugRepositoryProjectsRoute =
+  ApiV1OrgsOrgSlugRepositoryProjectsRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/repository-projects',
+    path: '/api/v1/orgs/$orgSlug/repository-projects',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugProjectsRoute =
   ApiV1OrgsOrgSlugProjectsRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/projects',
@@ -413,6 +426,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -455,6 +469,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
+  '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
   '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
@@ -475,6 +490,7 @@ export interface FileRoutesByTo {
   '/no-access': typeof NoAccessRoute
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -517,6 +533,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
+  '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
   '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
@@ -540,6 +557,7 @@ export interface FileRoutesById {
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
+  '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
   '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRoute
   '/accept-invite/$invitationId': typeof AcceptInviteInvitationIdRoute
@@ -582,6 +600,7 @@ export interface FileRoutesById {
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
+  '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
   '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
@@ -606,6 +625,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
+    | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
@@ -648,6 +668,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId/team'
     | '/$orgSlug/projects/$projectId/'
     | '/api/v1/orgs/$orgSlug/projects'
+    | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
     | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
@@ -668,6 +689,7 @@ export interface FileRouteTypes {
     | '/no-access'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
+    | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
@@ -710,6 +732,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId/team'
     | '/$orgSlug/projects/$projectId'
     | '/api/v1/orgs/$orgSlug/projects'
+    | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
     | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
@@ -732,6 +755,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
+    | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
     | '/.well-known/oauth-protected-resource'
     | '/accept-invite/$invitationId'
@@ -774,6 +798,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/projects/$projectId/team'
     | '/$orgSlug/projects/$projectId/'
     | '/api/v1/orgs/$orgSlug/projects'
+    | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
     | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
@@ -815,6 +840,7 @@ export interface RootRouteChildren {
   ApiV1TimeEntriesRoute: typeof ApiV1TimeEntriesRoute
   CliDownloadAssetRoute: typeof CliDownloadAssetRoute
   ApiV1OrgsOrgSlugProjectsRoute: typeof ApiV1OrgsOrgSlugProjectsRoute
+  ApiV1OrgsOrgSlugRepositoryProjectsRoute: typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   ApiV1OrgsOrgSlugSyncRoute: typeof ApiV1OrgsOrgSlugSyncRoute
   ApiV1OrgsOrgSlugTasksRoute: typeof ApiV1OrgsOrgSlugTasksRoute
   ApiV1OrgsOrgSlugTrackingRoute: typeof ApiV1OrgsOrgSlugTrackingRoute
@@ -928,6 +954,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/.well-known/oauth-authorization-server'
       preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/$orgSlug/rewind': {
+      id: '/$orgSlug/rewind'
+      path: '/rewind'
+      fullPath: '/$orgSlug/rewind'
+      preLoaderRoute: typeof OrgSlugRewindRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/reports': {
       id: '/$orgSlug/reports'
@@ -1209,6 +1242,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/repository-projects': {
+      id: '/api/v1/orgs/$orgSlug/repository-projects'
+      path: '/api/v1/orgs/$orgSlug/repository-projects'
+      fullPath: '/api/v1/orgs/$orgSlug/repository-projects'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugRepositoryProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/projects': {
       id: '/api/v1/orgs/$orgSlug/projects'
       path: '/api/v1/orgs/$orgSlug/projects'
@@ -1287,6 +1327,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugTimeRouteRoute: typeof OrgSlugTimeRouteRouteWithChildren
   OrgSlugAssistantRoute: typeof OrgSlugAssistantRoute
   OrgSlugReportsRoute: typeof OrgSlugReportsRoute
+  OrgSlugRewindRoute: typeof OrgSlugRewindRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
   OrgSlugSettingsClientsRoute: typeof OrgSlugSettingsClientsRoute
   OrgSlugSettingsHolidaysRoute: typeof OrgSlugSettingsHolidaysRoute
@@ -1311,6 +1352,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugTimeRouteRoute: OrgSlugTimeRouteRouteWithChildren,
   OrgSlugAssistantRoute: OrgSlugAssistantRoute,
   OrgSlugReportsRoute: OrgSlugReportsRoute,
+  OrgSlugRewindRoute: OrgSlugRewindRoute,
   OrgSlugIndexRoute: OrgSlugIndexRoute,
   OrgSlugSettingsClientsRoute: OrgSlugSettingsClientsRoute,
   OrgSlugSettingsHolidaysRoute: OrgSlugSettingsHolidaysRoute,
@@ -1364,6 +1406,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1TimeEntriesRoute: ApiV1TimeEntriesRoute,
   CliDownloadAssetRoute: CliDownloadAssetRoute,
   ApiV1OrgsOrgSlugProjectsRoute: ApiV1OrgsOrgSlugProjectsRoute,
+  ApiV1OrgsOrgSlugRepositoryProjectsRoute:
+    ApiV1OrgsOrgSlugRepositoryProjectsRoute,
   ApiV1OrgsOrgSlugSyncRoute: ApiV1OrgsOrgSlugSyncRoute,
   ApiV1OrgsOrgSlugTasksRoute: ApiV1OrgsOrgSlugTasksRoute,
   ApiV1OrgsOrgSlugTrackingRoute: ApiV1OrgsOrgSlugTrackingRoute,

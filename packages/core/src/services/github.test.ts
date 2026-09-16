@@ -311,6 +311,132 @@ describe("attachPullRequests", () => {
 	});
 });
 
+describe("projectsForRepository", () => {
+	const OTHER_ORG_ID = "org-github-other";
+	const OTHER_ORG_ADMIN_ID = "user-github-other-admin";
+
+	beforeAll(async () => {
+		// A second project the member is also assigned to, whose linked repo
+		// shares a full name with "Mine" — a rename can leave two rows with the
+		// same cached name, and the function must return both.
+		const acme2 = at(
+			await db
+				.insert(client)
+				.values({ organizationId: ORG_ID, name: "Acme 2" })
+				.returning(),
+			0,
+		);
+		const alsoMine = at(
+			await db
+				.insert(project)
+				.values({
+					organizationId: ORG_ID,
+					clientId: acme2.id,
+					name: "Also mine",
+				})
+				.returning(),
+			0,
+		);
+		await db.insert(projectMember).values({
+			organizationId: ORG_ID,
+			projectId: alsoMine.id,
+			userId: MEMBER_ID,
+		});
+		await db.insert(projectGithubRepo).values({
+			organizationId: ORG_ID,
+			projectId: alsoMine.id,
+			githubRepoId: 3,
+			installationId: 100,
+			owner: "profico",
+			name: "mine",
+			fullName: "profico/mine",
+		});
+
+		// A different organization with a project whose linked repo has the same
+		// full name — must never leak into this organization's answer.
+		await db.insert(organization).values({
+			id: OTHER_ORG_ID,
+			name: "Other GitHub Org",
+			slug: OTHER_ORG_ID,
+			createdAt: new Date(),
+		});
+		await db.insert(user).values({
+			id: OTHER_ORG_ADMIN_ID,
+			name: OTHER_ORG_ADMIN_ID,
+			email: `${OTHER_ORG_ADMIN_ID}@example.com`,
+			emailVerified: true,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await db.insert(member).values({
+			id: `member-${OTHER_ORG_ADMIN_ID}`,
+			organizationId: OTHER_ORG_ID,
+			userId: OTHER_ORG_ADMIN_ID,
+			role: "owner",
+			createdAt: new Date(),
+		});
+		const otherClient = at(
+			await db
+				.insert(client)
+				.values({ organizationId: OTHER_ORG_ID, name: "Other Acme" })
+				.returning(),
+			0,
+		);
+		const otherProject = at(
+			await db
+				.insert(project)
+				.values({
+					organizationId: OTHER_ORG_ID,
+					clientId: otherClient.id,
+					name: "Other org's project",
+				})
+				.returning(),
+			0,
+		);
+		await db.insert(projectGithubRepo).values({
+			organizationId: OTHER_ORG_ID,
+			projectId: otherProject.id,
+			githubRepoId: 4,
+			installationId: 200,
+			owner: "profico",
+			name: "mine",
+			fullName: "profico/mine",
+		});
+	});
+
+	test("matches case-insensitively", async () => {
+		const rows = await githubService.projectsForRepository(
+			memberCtx(),
+			"PROFICO/Mine",
+		);
+		expect(rows.some((r) => r.name === "Mine")).toBe(true);
+	});
+
+	test("a project in another organization with the same repository name is not returned", async () => {
+		const rows = await githubService.projectsForRepository(
+			memberCtx(),
+			"profico/mine",
+		);
+		expect(rows.every((r) => r.name !== "Other org's project")).toBe(true);
+	});
+
+	test("a project the caller is not assigned to is not returned", async () => {
+		const rows = await githubService.projectsForRepository(
+			memberCtx(),
+			"profico/secret",
+		);
+		expect(rows).toEqual([]);
+	});
+
+	test("a repository linked to two projects returns both", async () => {
+		const rows = await githubService.projectsForRepository(
+			memberCtx(),
+			"profico/mine",
+		);
+		expect(rows.map((r) => r.name).sort()).toEqual(["Also mine", "Mine"]);
+	});
+});
+
 describe("listAvailableRepos", () => {
 	test("is refused to a non-admin", async () => {
 		await expect(githubService.listAvailableRepos(memberCtx())).rejects.toThrow(

@@ -17,6 +17,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
+import { RewindBanner } from "#/components/rewind/rewind-banner.tsx";
 import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import {
@@ -187,6 +188,7 @@ function OrgHome() {
 	return (
 		<Page>
 			<AutoTrackNag orgSlug={organization.slug} />
+			<RewindBanner orgSlug={organization.slug} today={today} />
 			<PageHeader
 				eyebrow={formatDayKey(today)}
 				title={`${greetingForHour(new Date().getHours())}, ${firstName}`}
