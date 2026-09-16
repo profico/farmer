@@ -1199,6 +1199,89 @@ describe("a batch write, approved row by row", () => {
 	});
 });
 
+describe("who the model is told it is talking to", () => {
+	test("the caller's name, email and user id are in the system prompt", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "ok" })];
+		await collect(ctxFor(WORKER), { conversationId: chat.id, message: "hi" });
+
+		const text = seen.at(-1)?.[0]?.content ?? "";
+		// The name is what the reader types; the id is what every other tool
+		// takes. A prompt carrying one and not the other still leaves the model
+		// unable to turn "my hours" into a call.
+		expect(text).toContain("worker");
+		expect(text).toContain(`${WORKER}@example.com`);
+		expect(text).toContain(WORKER);
+		expect(text).toContain("AI Org");
+		// The line that stops it going to look the reader up in the roster.
+		expect(text).toMatch(/never search the member list/i);
+	});
+
+	test("it names the caller's own tier, not the org's most senior one", async () => {
+		const forWorker = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "ok" })];
+		await collect(ctxFor(WORKER), {
+			conversationId: forWorker.id,
+			message: "hi",
+		});
+		expect(seen.at(-1)?.[0]?.content ?? "").toContain("a Member");
+
+		const forAdmin = await startChat(ctxFor(ADMIN));
+		script = [turn({ content: "ok" })];
+		await collect(ctxFor(ADMIN), {
+			conversationId: forAdmin.id,
+			message: "hi",
+		});
+		expect(seen.at(-1)?.[0]?.content ?? "").toContain("an Admin");
+	});
+});
+
+describe("an empty answer", () => {
+	test("is reported, not stored as a blank row and called done", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		// What a model returns on a short, vague follow-up often enough to matter:
+		// no text and no tool call. The loop used to store it and emit `done`,
+		// which the transcript then skipped — leaving the question on screen with
+		// nothing under it and no error to explain the gap.
+		script = [turn({ content: "   " })];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "let me see it",
+		});
+
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		const failure = events.find((event) => event.type === "error");
+		expect(failure).toBeDefined();
+
+		const rows = await db
+			.select()
+			.from(assistantMessage)
+			.where(eq(assistantMessage.conversationId, chat.id));
+		// The question is kept — it is what the person said — and nothing else.
+		expect(rows.map((row) => row.role)).toEqual(["user"]);
+	});
+
+	test("a turn that only calls a tool is still not empty", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				content: "",
+				toolCalls: [
+					{ id: "call-empty-1", name: "list_projects", arguments: "{}" },
+				],
+			}),
+			turn({ content: "One project." }),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what projects are there",
+		});
+
+		expect(events.some((event) => event.type === "done")).toBe(true);
+		expect(events.some((event) => event.type === "error")).toBe(false);
+	});
+});
+
 describe("house rules", () => {
 	test("are appended below the built-in prompt, never instead of it", async () => {
 		await assistantService.settings.update(ctxFor(ADMIN), {

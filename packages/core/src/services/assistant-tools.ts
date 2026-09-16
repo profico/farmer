@@ -20,8 +20,10 @@
 // could have produced one reported a null project for absence too, so the one
 // action that clears unfiled time could only be aimed by guessing.
 
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { member, organization, user } from "../db/schema/auth";
 import type { JsonRecord, JsonValue, Serializable } from "../lib/json";
 import {
 	absenceReportInput,
@@ -62,7 +64,7 @@ import {
 } from "../schema";
 import type { Access } from "./access.service";
 import { clientsService } from "./clients.service";
-import { ctxAccess, ctxTimezone } from "./context";
+import { ctxAccess, ctxDb, ctxTimezone } from "./context";
 import { dayAssemblyService } from "./day-assembly.service";
 import { githubService } from "./github.service";
 import { holidaysService } from "./holidays.service";
@@ -609,8 +611,15 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "time_report_summary",
 		kind: "read",
+		// The `userId` sentence is load-bearing, and it is the same sentence on
+		// `time_report_detail`. "Scoped to what the caller is allowed to see" is
+		// true and was read as "scoped to the caller": ten of thirteen models
+		// benchmarked answered "how many hours did I log in August" with the whole
+		// team's total, presented as the person's own, because a PM, Team Lead or
+		// Admin may see everyone. Saying who the default covers fixed it in every
+		// model that got it wrong.
 		description:
-			"Total logged hours over a date range, grouped by client, project or teammate. Scoped to what the caller is allowed to see. Use this for aggregate questions instead of listing every entry.",
+			'Total logged hours over a date range, grouped by client, project or teammate. Scoped to what the caller is allowed to see. Use this for aggregate questions instead of listing every entry. IMPORTANT: leaving userId out returns EVERY person the caller may see, which for a PM, Team Lead or Admin is the whole team. A question about the caller themselves — "I", "me", "my" — must pass their own userId (from whoami).',
 		schema: timeReportSummaryInput,
 		available: anyone,
 		run: async (ctx, args) => {
@@ -629,8 +638,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "time_report_detail",
 		kind: "read",
+		// Same default, same misreading — see the note on `time_report_summary`.
 		description:
-			"The individual entries behind a report range — date, person, client, project, task, description, hours — with optional client, project, task and user filters. Use time_report_summary first; reach for this only when the question is about specific entries.",
+			'The individual entries behind a report range — date, person, client, project, task, description, hours — with optional client, project, task and user filters. Use time_report_summary first; reach for this only when the question is about specific entries. IMPORTANT: leaving userId out returns EVERY person the caller may see, which for a PM, Team Lead or Admin is the whole team. A question about the caller themselves — "I", "me", "my" — must pass their own userId (from whoami).',
 		schema: timeReportDetailInput,
 		available: anyone,
 		run: async (ctx, args) => {
@@ -1242,6 +1252,57 @@ export const toolDefinitions = (access: Access) =>
  * conventions an org layers on top, and a pasted paragraph that happens to
  * contradict one of them should lose rather than silently win.
  */
+/**
+ * Who the model is talking to, as two lines of the system prompt.
+ *
+ * It used to be told only the date, and that `whoami` existed. That is not the
+ * same thing: asked for "Omar's notes" it read the member list, found no Omar
+ * among the first page of a 200-person roster, and reported that no such person
+ * works here — to Omar. A model cannot be expected to guess that the question
+ * is about the person asking it, and the fix is not a better tool description;
+ * it is telling it whose session this is before it reads anything.
+ *
+ * The name and the id both, because every other tool takes an id and the reader
+ * only ever types a name. Deliberately NOT the whole `whoami` answer — working
+ * hours, member type and the project list are a real read and belong behind a
+ * tool the model calls when a question turns on them, whereas identity is
+ * needed to understand the question at all.
+ *
+ * One query, on `ctxDb`, beside the memoized `Access` the caller already has.
+ */
+const callerCard = async (ctx: Ctx): Promise<string> => {
+	const [access, rows] = await Promise.all([
+		ctxAccess(ctx),
+		ctxDb(ctx)
+			.select({
+				name: user.name,
+				email: user.email,
+				orgName: organization.name,
+			})
+			.from(member)
+			.innerJoin(user, eq(user.id, member.userId))
+			.innerJoin(organization, eq(organization.id, member.organizationId))
+			.where(
+				and(
+					eq(member.userId, ctx.userId),
+					eq(member.organizationId, ctx.organizationId),
+				),
+			)
+			.limit(1),
+	]);
+	const me = rows[0];
+	// `orgMiddleware` and `resolveApiOrgContext` both refuse a caller with no
+	// membership row long before a turn starts, so this is unreachable rather
+	// than a case to describe — but a prompt claiming the reader is nobody is
+	// worse than one that simply does not mention them.
+	if (!me) return "";
+
+	return [
+		`You are talking to ${me.name} (${me.email}), user id ${ctx.userId}, in the organization ${me.orgName}. They are ${access.isAdmin ? "an Admin" : "a Member"} of it.`,
+		'"I", "me", "my" and their own first or last name all mean this person. A question that names them is a question about them — never search the member list to find out whether they exist.',
+	].join("\n");
+};
+
 export const systemPrompt = async (
 	ctx: Ctx,
 	today: string,
@@ -1257,15 +1318,17 @@ export const systemPrompt = async (
 	 */
 	maxSteps: number,
 ) => {
-	const tz = await ctxTimezone(ctx);
+	const [tz, caller] = await Promise.all([ctxTimezone(ctx), callerCard(ctx)]);
 	const base = [
 		"You are the assistant inside Farmer, a time-tracking app for a software agency.",
 		`Today is ${today} in the organization's timezone (${tz}). Resolve every relative date against that.`,
 		"",
+		caller,
+		"",
 		"You answer questions about the user's tracked time and act on their behalf: logging and correcting time, booking absence, and creating clients, projects and task types. Everything you do runs as them and with their permissions, so a tool that refuses is a real answer about what they are allowed to do — report it, don't work around it. You are only offered the tools their role allows, so there is nothing to try around the edges.",
 		"Rules:",
 		"- Durations are seconds, always a multiple of 900 (15 minutes). Round to the nearest quarter hour and say that you did.",
-		"- Never invent an id. Call list_projects / list_tasks / list_clients / list_members first and use what comes back. whoami gives the current user's own id.",
+		"- Never invent an id. Call list_projects / list_tasks / list_clients / list_members first and use what comes back. Your own user id is above; whoami adds your working hours, member type and the projects you are on, for a question that turns on those.",
 		"- Prefer an aggregate over a list: time_report_summary for hours by client, project or teammate; absence_totals for vacation taken.",
 		"- Creating and correcting things happens immediately, so just do what was asked rather than checking first. Deleting and archiving are shown to the user for approval — still call the tool, they will be asked.",
 		"- Batch writes (apply_day_assembly, file_time_entries) are shown as a checklist of their rows and the user may approve only some. Send the whole batch you believe in and let them un-tick; the tool result says what was actually written, so read it before reporting what you did.",

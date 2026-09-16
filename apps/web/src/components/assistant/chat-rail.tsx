@@ -1,6 +1,7 @@
 import {
 	CaretDownIcon,
 	ChatsIcon,
+	CircleNotchIcon,
 	PencilSimpleIcon,
 	PlusIcon,
 	TrashIcon,
@@ -26,6 +27,8 @@ import { cn } from "#/lib/utils.ts";
 import { conversationsQuery } from "#/queries/assistant.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { deleteConversation, renameConversation } from "#/server/assistant.ts";
+
+import { useAssistantRunning } from "./assistant-runs.tsx";
 
 /**
  * The conversation list, and its two frames: the sidebar's Chat tab on desktop
@@ -72,6 +75,10 @@ export function ConversationList({
 	const { data: conversations = [], isPending } = useQuery(
 		conversationsQuery(orgSlug),
 	);
+	// Which threads have a turn in flight. Threads run in parallel, so the one
+	// you are reading is rarely the only one working — and the answer arriving in
+	// a thread you stepped away from is otherwise invisible until you open it.
+	const running = useAssistantRunning();
 
 	// Which row is being renamed, and the draft it holds. One row at a time, so
 	// this is an id rather than a flag per conversation.
@@ -215,6 +222,23 @@ export function ConversationList({
 						>
 							{conversation.title}
 						</Link>
+					)}
+					{/* Never hover-revealed, unlike the two buttons beside it: this is
+					    the only thing on screen saying that thread is working, and a
+					    state you have to go looking for is not a state. It sits before
+					    them so the row does not reflow when they appear. */}
+					{running.includes(conversation.id) && (
+						<span
+							className="flex shrink-0 items-center px-1"
+							title="Working on an answer"
+						>
+							<CircleNotchIcon
+								aria-hidden
+								weight="regular"
+								className="size-3.5 animate-spin text-ink-3"
+							/>
+							<span className="sr-only">Working on an answer</span>
+						</span>
 					)}
 					{editingId !== conversation.id && (
 						<>

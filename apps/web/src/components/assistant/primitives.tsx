@@ -23,7 +23,7 @@ import { projectsQuery } from "#/queries/projects.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
 
 import { MONTHS, printDayKey } from "./answer.tsx";
-import type { PendingApproval, ToolTrace } from "./use-assistant-stream.ts";
+import type { PendingApproval, ToolTrace } from "./assistant-runs.tsx";
 
 /* ── the pixel-grid loader (LoadingState) ─────────────────────────────────── */
 

@@ -1384,6 +1384,20 @@ const runTurn = async (
 			throw error;
 		}
 
+		// A turn with neither text nor a tool call is nothing at all, and it used
+		// to end the loop as a success. The blank row it stored is one the
+		// transcript skips (an assistant row with no text is a pure tool turn,
+		// rendered as its trace), so the person was left looking at their own
+		// question with no answer under it and no error to explain the gap —
+		// which is how a short, vague follow-up ("let me see it") read when a
+		// model returned an empty completion. Said plainly instead, in the same
+		// words the out-of-steps path uses, because from the outside the two
+		// failures are the same failure.
+		if (turn.toolCalls.length === 0 && !turn.content.trim()) {
+			onEvent({ type: "error", message: NO_ANSWER });
+			return;
+		}
+
 		const assistantRow = await insertMessage(ctx, conversation.id, {
 			role: "assistant",
 			content: turn.content,
