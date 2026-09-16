@@ -128,7 +128,14 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 					// |−mt| at each breakpoint so when the height springs to 0 the row
 					// below lands exactly where it sits once this element unmounts —
 					// no final reflow pop.
-					className="-mx-4 -mt-4 mb-4 overflow-hidden border-b bg-secondary sm:-mx-8 sm:-mt-7 sm:mb-7"
+					//
+					// `shrink-0`, the same as the two banners beside it: `Page` is a
+					// flex column, so once a screen is taller than the island this
+					// box is what flex-shrink takes the overflow out of. It has
+					// `overflow-hidden`, so it gives way all the way down to its own
+					// border and the banner vanishes the moment the spring hands the
+					// height back to `auto`.
+					className="-mx-4 -mt-4 mb-4 shrink-0 overflow-hidden border-b bg-secondary sm:-mx-8 sm:-mt-7 sm:mb-7"
 				>
 					<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
 						<SparkleIcon className="size-4 shrink-0 text-primary" />

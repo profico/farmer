@@ -1254,7 +1254,14 @@ html {
     .app-frame {
       height: calc(100 * var(--svh));
       min-height: 0;
-      overflow: hidden;
+      /* `clip`, not `hidden`: the two paint the same, and only `hidden` leaves
+         a scroll container behind. Nothing may scroll the frame — the islands
+         inside it move their own content — but `hidden` still lets a script
+         or a focus ring do it, and a frame scrolled by 14px hides the top of
+         both islands with no way for anybody to scroll it back. `clip` also
+         takes the scrollport a `sticky` island would otherwise measure itself
+         against out of the picture; see the island in `app-sidebar.tsx`. */
+      overflow: clip;
     }
   }
 
@@ -1928,6 +1935,14 @@ html {
     .scroll-fade {
       flex: 1;
       overflow-y: auto;
+      /* A scroll container has to be the containing block of what it scrolls.
+         Without this, an absolutely positioned descendant — every `sr-only`
+         input is one — resolves against the nearest positioned ancestor
+         OUTSIDE the scroller, so it is not clipped by it and its position adds
+         to the scrollable overflow of the frame instead. A settings screen
+         with a radio group far down it then made the frame scrollable, which
+         moved the sidebar island down by its own `top` offset. */
+      position: relative;
     }
   }
 

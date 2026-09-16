@@ -17,6 +17,18 @@ import { useCallback, useSyncExternalStore } from "react";
 // `var(--ui-scale` to find them — a new `svh`, `dvh`, `vw` or `env(safe-area-*)`
 // length needs the same division or it overflows at 150%.
 //
+// A third thing it gets wrong is not a length, so no division reaches it:
+// inside a zoomed subtree Chrome offsets a `position: sticky` element by its
+// own `top` ON TOP of its static position, as soon as the element has a
+// scrollable ancestor to stick within. The sidebar island is `sticky
+// top-(--frame-pad)` inside a frame that must never scroll, so it dropped a
+// frame-padding down the page on any screen long enough to give the frame
+// scrollable overflow — and only at 125% and above, because at 100% the same
+// screen fits. `styles.css` closes both halves: `.app-frame` is `overflow:
+// clip`, which paints as `hidden` did but leaves no scroll container behind,
+// and `.scroll-fade` is `position: relative`, so what a scroll area scrolls
+// cannot escape it and count as the frame's overflow.
+//
 // One consequence is deliberate and not corrected: at a large scale the media
 // queries report a narrower viewport, so a laptop switches to the mobile layout
 // and the tab bar appears. That is what browser zoom does. Freezing the
@@ -64,6 +76,12 @@ const read = (): number => {
 	const percent = Math.round(value * 100);
 	return isScale(percent) ? percent : DEFAULT_SCALE;
 };
+
+/** The scale in effect on this device, as a factor: 1 at 100%, 1.5 at 150%.
+ *  For the one reader that is not CSS — `unzoomPagePoint` in `lib/motion.ts`,
+ *  which takes the zoom back off the pixels motion measures in. */
+export const scaleFactor = (): number =>
+	import.meta.env.SSR ? 1 : read() / 100;
 
 export const setScale = (scale: number) => {
 	if (!isScale(scale)) return;

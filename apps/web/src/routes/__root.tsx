@@ -20,6 +20,7 @@ import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import { authClient } from "../lib/auth-client";
 import { logConsoleGreeting } from "../lib/console-greeting";
 import { displayInitScript } from "../lib/display-prefs";
+import { unzoomPagePoint } from "../lib/motion";
 import { navInitScript } from "../lib/nav-collapse";
 import { themeInitScript } from "../lib/theme";
 
@@ -201,8 +202,16 @@ function RootDocument({ children }: { children: React.ReactNode }) {
               tab-bar pill jumps instead of gliding — no per-component branching.
               This is the app's only answer to the OS setting. "Less movement"
               in Preferences goes further and makes every animation instant,
-              see lib/display-prefs.ts. */}
-						<MotionConfig reducedMotion="user">{children}</MotionConfig>
+              see lib/display-prefs.ts.
+
+              transformPagePoint takes Preferences → Display → Scale back off
+              every length motion measures — see the note on the function. */}
+						<MotionConfig
+							reducedMotion="user"
+							transformPagePoint={unzoomPagePoint}
+						>
+							{children}
+						</MotionConfig>
 						<Toaster />
 					</IconContext.Provider>
 					<TanStackDevtools

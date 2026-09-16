@@ -2,6 +2,8 @@ import { useReducedMotion } from "motion/react";
 import type { Transition, Variants } from "motion/react";
 import * as React from "react";
 
+import { scaleFactor } from "#/lib/scale.ts";
+
 /**
  * Motion system foundation.
  *
@@ -91,6 +93,40 @@ export function useHeightTransition(): Transition {
 		marginTop: { duration: 0 },
 		marginBottom: { duration: 0 },
 	};
+}
+
+/** A point in the viewport's own pixels, as motion measures one. */
+export type PagePoint = { x: number; y: number };
+
+/**
+ * What `zoom` gets wrong in JavaScript, where no CSS correction reaches.
+ *
+ * Preferences → Display → Scale is `zoom` on `<html>` (`lib/scale.ts`), and
+ * `getBoundingClientRect()` answers in the viewport's own pixels — so inside
+ * the zoomed root it reports every length multiplied by the scale. motion
+ * measures through that rect for all three things it has to measure: the value
+ * a `height: "auto"` keyframe resolves to, the boxes a `layoutId` transition
+ * interpolates between, and the pointer coordinates a drag follows.
+ *
+ * At 110% the "Connect your integrations" banner therefore sprang open to 71px,
+ * which is its 64px measured once too often, and snapped back the moment motion
+ * handed the height back to `auto`. Every height-collapse banner in the app did
+ * the same, and a shared-element pill slid one whole scale past its target.
+ *
+ * `transformPagePoint` is motion's own seam for a transformed page: every
+ * measured point passes through it before motion does arithmetic on it. Divide
+ * by the scale and a pixel is a CSS pixel again, which is what all of that
+ * arithmetic assumed. It is set once on the root `<MotionConfig>`
+ * (`routes/__root.tsx`), never per component.
+ *
+ * The scale is read per call rather than captured: this is one stable function
+ * for the app's life, and `MotionConfig` re-renders every motion component
+ * under it whenever that identity changes.
+ */
+export function unzoomPagePoint(point: PagePoint): PagePoint {
+	const scale = scaleFactor();
+	if (scale === 1) return point;
+	return { x: point.x / scale, y: point.y / scale };
 }
 
 export const backdropVariants: Variants = {
