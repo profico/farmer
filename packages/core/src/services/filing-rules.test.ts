@@ -150,7 +150,7 @@ beforeAll(async () => {
 	});
 
 	// Meeting is a site built-in seeded by migration 0024 — looked up, never
-	// re-inserted (see the note in CLAUDE.md about task_site_name_uidx).
+	// re-inserted (see the note in packages/core/CLAUDE.md about task_site_name_uidx).
 	const meeting = await db.query.task.findFirst({
 		where: and(eq(task.scope, "site"), eq(task.systemKey, "meeting")),
 		columns: { id: true },

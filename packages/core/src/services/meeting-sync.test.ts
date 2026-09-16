@@ -1,6 +1,6 @@
 // The idempotency claim, finally asserted.
 //
-// CLAUDE.md and jobs/meeting-sync.ts both describe the meeting sync as
+// docs/domains/automation.md and jobs/meeting-sync.ts both describe the meeting sync as
 // "idempotent by construction (onConflictDoNothing + tombstones)", and until
 // there was a seam at the calendar and a database that could be stood up in
 // process, nothing checked it. The claim was also imprecise: the MEETING path

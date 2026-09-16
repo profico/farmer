@@ -11,7 +11,7 @@ import { z } from "zod";
  *
  * Server-only, and deliberately NOT imported at the top of `server/about.ts`:
  * `lib/github-client` reaches `node:crypto` at module scope, which is the
- * client-bundle rule in CLAUDE.md. The server function defers this module
+ * client-bundle rule in apps/web/CLAUDE.md. The server function defers this module
  * inside its handler.
  *
  * Both halves fail soft. A deployment with no GitHub App still runs, and a
