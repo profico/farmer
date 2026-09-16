@@ -10,12 +10,19 @@
 //
 // Sources: LoadingState.tsx, ThinkingState.tsx, ApprovalCard.tsx.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 
+import { PersonAvatar } from "#/components/person-avatar.tsx";
+import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { cn } from "#/lib/utils.ts";
+import { clientsQuery } from "#/queries/clients.ts";
+import { directoryQuery } from "#/queries/members.ts";
+import { projectsQuery } from "#/queries/projects.ts";
+import { selectableTasksQuery } from "#/queries/tasks.ts";
 
-import { printDayKey } from "./answer.tsx";
+import { MONTHS, printDayKey } from "./answer.tsx";
 import type { PendingApproval, ToolTrace } from "./use-assistant-stream.ts";
 
 /* ── the pixel-grid loader (LoadingState) ─────────────────────────────────── */
@@ -177,11 +184,68 @@ const detailArgs = z
 		from: z.string().optional(),
 		to: z.string().optional(),
 		year: z.number().optional(),
-		groupBy: z.string().optional(),
+		month: z.number().optional(),
+		/** `time_report_summary`'s grouping — clients, projects or teammates. */
+		tab: z.string().optional(),
 		search: z.string().optional(),
 		name: z.string().optional(),
+		// The four ids a read can be scoped by. Opaque in the payload and the
+		// whole point of the lookup below: a uuid in a trace row is noise.
+		userId: z.string().optional(),
+		projectId: z.string().optional(),
+		clientId: z.string().optional(),
+		taskId: z.string().optional(),
 	})
 	.catch({});
+
+export type DetailArgs = z.infer<typeof detailArgs>;
+
+/** One call's arguments, or `{}` for a payload nothing can be read out of. */
+export const parseDetailArgs = (raw: string): DetailArgs => {
+	try {
+		return detailArgs.parse(JSON.parse(raw || "{}"));
+	} catch {
+		// Only `JSON.parse` reaches here — `.catch({})` above absorbs a payload
+		// that parsed but holds nothing this can use.
+		return {};
+	}
+};
+
+/** Id-to-name maps for the four things a step can be scoped to. Missing is the
+ *  normal case, not an error: the lists load while the turn is already running,
+ *  and a project the caller cannot see was never in them. */
+export type TraceNames = {
+	people: Map<string, string>;
+	projects: Map<string, string>;
+	clients: Map<string, string>;
+	tasks: Map<string, string>;
+};
+
+const EMPTY_NAMES: TraceNames = {
+	people: new Map(),
+	projects: new Map(),
+	clients: new Map(),
+	tasks: new Map(),
+};
+
+const TAB_WORDING = new Map(
+	Object.entries({
+		clients: "by client",
+		projects: "by project",
+		teammates: "by teammate",
+	}),
+);
+
+export type ToolDetail = {
+	/** The person the step was about. Rendered as a face and a name, because a
+	 *  column of six "Read the report's entries · 9 Sep – 11 Sep" is six reads
+	 *  of six different people and says so nowhere. */
+	person: { userId: string; name: string } | null;
+	/** Everything else, already worded: a scope, then a range or a day. */
+	text: string | null;
+};
+
+const EMPTY_DETAIL: ToolDetail = { person: null, text: null };
 
 /**
  * What a step was ABOUT, from the call's own arguments.
@@ -189,29 +253,111 @@ const detailArgs = z
  * Four rows reading "Read time entries" say the assistant did something four
  * times and nothing about what, which is exactly the question somebody opens
  * the trace to answer. The arguments already travel with `tool_start`, so the
- * row can name the range or the day it covered.
+ * row can name the person, the scope and the range it covered.
  *
- * Decoration, and written as such: anything unreadable gives null and the row
- * renders as its label alone. The wording lives here beside `toolLabel` rather
- * than in the service, for the same reason that one does.
+ * Decoration, and written as such: anything unreadable gives an empty detail
+ * and the row renders as its label alone. The wording lives here beside
+ * `toolLabel` rather than in the service, for the same reason that one does.
+ * An id whose name has not loaded is left out rather than printed raw — a uuid
+ * is worse than nothing in a row this size.
  */
-export const toolDetail = (raw: string): string | null => {
-	let args: z.infer<typeof detailArgs>;
-	try {
-		args = detailArgs.parse(JSON.parse(raw || "{}"));
-	} catch {
-		// Only `JSON.parse` reaches here — `.catch({})` above absorbs a payload
-		// that parsed but holds nothing this can use.
-		return null;
+export const toolDetail = (
+	args: DetailArgs,
+	names: TraceNames = EMPTY_NAMES,
+): ToolDetail => {
+	const person =
+		args.userId && names.people.has(args.userId)
+			? {
+					userId: args.userId,
+					name: names.people.get(args.userId) ?? args.userId,
+				}
+			: null;
+
+	// Widest scope first, so "Northwind · Atlas Platform" reads the way it is
+	// said. At most one of these is set on a real call, but a model may send
+	// several and all of them are then true of the step.
+	const parts = [
+		args.clientId ? names.clients.get(args.clientId) : null,
+		args.projectId ? names.projects.get(args.projectId) : null,
+		args.taskId ? names.tasks.get(args.taskId) : null,
+		args.search ?? args.name ?? null,
+	].filter((part): part is string => Boolean(part));
+
+	const when = whenOf(args);
+	if (when) parts.push(when);
+	if (args.tab) {
+		const wording = TAB_WORDING.get(args.tab);
+		if (wording) parts.push(wording);
 	}
+
+	if (!person && parts.length === 0) return EMPTY_DETAIL;
+	return { person, text: parts.length > 0 ? parts.join(" · ") : null };
+};
+
+/** The period a call covers, as one phrase. */
+const whenOf = (args: DetailArgs): string | null => {
 	const from = args.from ? printDayKey(args.from) : null;
 	const to = args.to ? printDayKey(args.to) : null;
 	if (from && to) return from === to ? from : `${from} – ${to}`;
 	const day = args.date ? printDayKey(args.date) : null;
 	if (day) return day;
-	if (args.year) return String(args.year);
-	if (args.groupBy) return `by ${args.groupBy.replaceAll("_", " ")}`;
-	return args.search ?? args.name ?? null;
+	if (args.year && args.month) {
+		return `${MONTHS[args.month - 1] ?? args.month} ${args.year}`;
+	}
+	return args.year ? String(args.year) : null;
+};
+
+// Module scope, not inline arrows: TanStack re-runs `select` whenever the
+// function's identity changes (see `person-avatar.tsx` for the same reason).
+const byUserId = (rows: { userId: string; name: string }[]) =>
+	new Map(rows.map((row) => [row.userId, row.name]));
+const byId = (rows: { id: string; name: string }[]) =>
+	new Map(rows.map((row) => [row.id, row.name]));
+
+/**
+ * The id-to-name maps a set of traces needs, and only those.
+ *
+ * Each list is fetched only once a trace row actually carries that kind of id,
+ * so the common turn — a couple of date ranges — costs no request at all. The
+ * directory is the exception in cost rather than in policy: the `/$orgSlug`
+ * layout has already warmed it for every avatar on screen.
+ */
+const useTraceNames = (args: DetailArgs[]): TraceNames => {
+	const orgSlug = useOrgSlug();
+	const wants = {
+		people: args.some((a) => a.userId),
+		projects: args.some((a) => a.projectId),
+		clients: args.some((a) => a.clientId),
+		tasks: args.some((a) => a.taskId),
+	};
+
+	const people = useQuery({
+		...directoryQuery(orgSlug),
+		select: byUserId,
+		enabled: wants.people,
+	});
+	const projects = useQuery({
+		...projectsQuery(orgSlug),
+		select: byId,
+		enabled: wants.projects,
+	});
+	const clients = useQuery({
+		...clientsQuery(orgSlug),
+		select: byId,
+		enabled: wants.clients,
+	});
+	const tasks = useQuery({
+		...selectableTasksQuery(orgSlug),
+		select: byId,
+		enabled: wants.tasks,
+	});
+
+	return {
+		people: people.data ?? EMPTY_NAMES.people,
+		projects: projects.data ?? EMPTY_NAMES.projects,
+		clients: clients.data ?? EMPTY_NAMES.clients,
+		tasks: tasks.data ?? EMPTY_NAMES.tasks,
+	};
 };
 
 /**
@@ -230,6 +376,13 @@ export function ToolTraceList({
 }) {
 	const [manual, setManual] = useState<boolean | null>(null);
 	const expanded = manual ?? working;
+	// Parsed once per trace rather than once per render of each row: the maps
+	// below are chosen from these, and the rows are drawn from them again.
+	const args = useMemo(
+		() => traces.map((trace) => parseDetailArgs(trace.arguments)),
+		[traces],
+	);
+	const names = useTraceNames(args);
 	const traceRef = useRef<HTMLDivElement>(null);
 	const [lineHeight, setLineHeight] = useState(0);
 
@@ -312,7 +465,7 @@ export function ToolTraceList({
 						/>
 						<div ref={traceRef} className="flex flex-col gap-1 py-1">
 							{traces.map((trace, index) => {
-								const detail = toolDetail(trace.arguments);
+								const detail = toolDetail(args[index] ?? {}, names);
 								return (
 									<div
 										key={trace.toolCallId}
@@ -352,10 +505,28 @@ export function ToolTraceList({
 										</span>
 										{/* The subject, dimmer and second: the step is what happened
 									    and this is what it happened to, so it truncates first
-									    when the row runs out of width. */}
-										{detail && (
+									    when the row runs out of width. The person keeps their
+									    face, because a name is what somebody scanning six
+									    near-identical rows is looking for. */}
+										{detail.person && (
+											// Allowed to shrink, unlike the label: a 40-character name
+											// beside a long project would otherwise push the row past
+											// its own width rather than ellipsize inside it.
+											<span className="flex min-w-0 items-center gap-1.5">
+												<PersonAvatar
+													userId={detail.person.userId}
+													name={detail.person.name}
+													size="sm"
+													className="shrink-0 data-[size=sm]:size-4"
+												/>
+												<span className="truncate text-[12.5px] text-ink-2">
+													{detail.person.name}
+												</span>
+											</span>
+										)}
+										{detail.text && (
 											<span className="min-w-0 truncate text-[12.5px] text-ink-3">
-												{detail}
+												{detail.text}
 											</span>
 										)}
 									</div>

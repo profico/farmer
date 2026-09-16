@@ -21,7 +21,7 @@ import {
 import { eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { member, organization, user } from "../db/schema/auth";
+import { account, member, organization, user } from "../db/schema/auth";
 import {
 	client,
 	project,
@@ -35,7 +35,10 @@ import {
 	timeEntryGithubCommit,
 	timeEntryGithubPrActivity,
 } from "../db/schema/github";
-import type { GithubCommit } from "../lib/github-client";
+import {
+	type GithubCommit,
+	GithubTokenInvalidError,
+} from "../lib/github-client";
 import { attachCommitsInput } from "../schema/github";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
@@ -577,5 +580,75 @@ describe("the repo list cache", () => {
 			accountType: "Organization",
 		});
 		expect(await namesAt(1)).toEqual(["profico/two"]);
+	});
+});
+
+// A revoked or expired OAuth grant is answered 401 for as long as it stays
+// revoked, and every read here begins by resolving the caller's login. That
+// throw used to leave the automation sweep with a failed engine and a stack
+// trace every twenty minutes, for an account that could not have worked either
+// way — and nothing anywhere told the person the one thing that ends it.
+describe("an OAuth token GitHub refuses", () => {
+	beforeAll(async () => {
+		await db.insert(account).values({
+			id: "account-github-member",
+			accountId: "12345",
+			providerId: "github",
+			userId: MEMBER_ID,
+			accessToken: "revoked-token",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+	});
+
+	const refuseTheToken = () =>
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			getAuthenticatedUser: async () => {
+				throw new GithubTokenInvalidError("https://api.github.com/user");
+			},
+		});
+
+	test("leaves the background reads answering as 'no account linked'", async () => {
+		refuseTheToken();
+		expect(
+			await githubService.listUserCommitsByDay(memberCtx(), {
+				from: "2026-09-01",
+				to: "2026-09-02",
+			}),
+		).toEqual([]);
+		expect(
+			await githubService.listUserCommitsForDay(memberCtx(), "2026-09-01"),
+		).toEqual([]);
+		expect(
+			await githubService.listUserPullRequestActivityForDay(
+				memberCtx(),
+				"2026-09-01",
+			),
+		).toEqual([]);
+	});
+
+	test("asks the person to reconnect, rather than reporting an outage", async () => {
+		refuseTheToken();
+		expect(await githubService.connectionStatus(memberCtx())).toEqual({
+			connected: true,
+			login: null,
+			unreachable: false,
+			needsReconnect: true,
+		});
+	});
+
+	test("a failure that is not the token stays an outage to wait out", async () => {
+		setGithubClientForTests({
+			getAuthenticatedUser: async () => {
+				throw new Error("GitHub API error 503: https://api.github.com/user");
+			},
+		});
+		expect(await githubService.connectionStatus(memberCtx())).toEqual({
+			connected: true,
+			login: null,
+			unreachable: true,
+			needsReconnect: false,
+		});
 	});
 });

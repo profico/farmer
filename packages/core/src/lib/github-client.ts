@@ -66,6 +66,9 @@ export const listUserInstallations = async (
 		`${GITHUB_API}/user/installations?per_page=100`,
 		{ headers: githubHeaders(userToken) },
 	);
+	if (response.status === 401) {
+		throw new GithubTokenInvalidError("/user/installations");
+	}
 	if (!response.ok) {
 		throw new Error(`GitHub API error ${response.status}: /user/installations`);
 	}
@@ -247,6 +250,19 @@ export class GithubRateLimitError extends Error {
 	}
 }
 
+/** GitHub refused the credential itself: 401. Unlike a rate limit this never
+ *  recovers on its own — an OAuth token stays refused until the person
+ *  authorizes the app again — so a caller that can degrade should answer as it
+ *  answers "no account linked" rather than retry the same dead token every
+ *  twenty minutes forever. `githubService.connectionStatus` is what turns it
+ *  into something the person can act on. */
+export class GithubTokenInvalidError extends Error {
+	constructor(url: string) {
+		super(`GitHub refused the token: ${url}`);
+		this.name = "GithubTokenInvalidError";
+	}
+}
+
 /** GitHub signals both flavours of throttling on 403 as well as 429: the
  *  primary limit zeroes `x-ratelimit-remaining`, the secondary/abuse limit sends
  *  `retry-after` and says so in the body. A plain forbidden has neither. */
@@ -266,6 +282,7 @@ const githubGet = async <T>(url: string, token: string): Promise<T | null> => {
 		// no longer covers it. Nothing to retry.
 		return null;
 	}
+	if (response.status === 401) throw new GithubTokenInvalidError(url);
 	if (response.status === 404) return null;
 	if (!response.ok) {
 		throw new Error(`GitHub API error ${response.status}: ${url}`);

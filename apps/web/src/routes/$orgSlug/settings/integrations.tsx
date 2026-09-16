@@ -257,7 +257,11 @@ function IntegrationsSettingsPage() {
 					icon={<GithubLogoIcon className="size-5" />}
 					title="GitHub"
 					badge={
-						status.unreachable ? (
+						status.needsReconnect ? (
+							// Louder than the outage badge on purpose: this one does not end
+							// unless the person ends it.
+							<Badge variant="destructive">Reconnect needed</Badge>
+						) : status.unreachable ? (
 							// Two facts, not one: the account is still linked, and GitHub is
 							// not answering. Collapsing them into "Connected" hides a real
 							// outage, and into "Disconnected" invites someone to reconnect an
@@ -272,12 +276,21 @@ function IntegrationsSettingsPage() {
 						)
 					}
 					description={
-						status.unreachable
-							? "Your account is still linked — GitHub itself isn't reachable right now, so your username and commit/pull-request sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
-							: "Identifies you so commits and pull requests you author or review can be matched to your time entries."
+						status.needsReconnect
+							? "GitHub no longer accepts this connection, so your commits and pull requests have stopped reaching your time entries. That happens when the authorisation is revoked or expires. Connecting again is the whole fix — nothing else is lost."
+							: status.unreachable
+								? "Your account is still linked — GitHub itself isn't reachable right now, so your username and commit/pull-request sync are unavailable until it recovers. Nothing to do here; it resumes on its own."
+								: "Identifies you so commits and pull requests you author or review can be matched to your time entries."
 					}
 					action={
-						status.connected ? (
+						status.needsReconnect ? (
+							// Straight back through the same grant, no unlink first:
+							// better-auth writes the fresh tokens onto the row it already
+							// has, and it only refuses when the GitHub account belongs to
+							// somebody else. Unlinking first would leave the person
+							// disconnected if they abandoned the second leg.
+							<Button onClick={handleConnect}>Reconnect GitHub</Button>
+						) : status.connected ? (
 							<AlertDialog
 								open={disconnectOpen}
 								onOpenChange={setDisconnectOpen}

@@ -15,7 +15,10 @@ import {
 	pullRequestActivity,
 } from "../lib/github-activity";
 import * as githubClient from "../lib/github-client";
-import { GithubRateLimitError } from "../lib/github-client";
+import {
+	GithubRateLimitError,
+	GithubTokenInvalidError,
+} from "../lib/github-client";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
 import {
 	type AttachCommitsInput,
@@ -336,12 +339,37 @@ export const pullRequestActivityRow = (
 	occurredAt: activity.occurredAt,
 });
 
-/** The caller's GitHub login, or null when no account is linked. */
+/** Said to a person, so it names both reasons a linked account can be unusable:
+ *  never connected, and connected with a grant they have since revoked. */
+const NOT_CONNECTED =
+	"GitHub is not connected, or the connection has expired — connect it again under Settings → Integrations.";
+
+/** The caller's GitHub login, or null when no account is linked — or when the
+ *  linked one no longer works.
+ *
+ *  A revoked, expired or re-issued OAuth token is answered 401 forever, and
+ *  every read here begins by resolving the login, so that throw came back out
+ *  of the automation sweep as a failed engine on every tick: the same stack
+ *  trace every twenty minutes, for a person whose sync could not have worked
+ *  either way. A refused token is not a failure to retry, it is an account that
+ *  cannot be used — which is what "not linked" already means to every caller
+ *  here. `connectionStatus` is where it becomes something the person can act
+ *  on. */
 const githubLoginFor = async (ctx: Ctx): Promise<string | null> => {
 	const token = await getAccessToken(ctx);
 	if (!token) return null;
-	const githubUser = await gh().getAuthenticatedUser(token);
-	return githubUser?.login ?? null;
+	try {
+		const githubUser = await gh().getAuthenticatedUser(token);
+		return githubUser?.login ?? null;
+	} catch (error) {
+		if (error instanceof GithubTokenInvalidError) {
+			console.warn("[github] the user's OAuth token was refused", {
+				userId: ctx.userId,
+			});
+			return null;
+		}
+		throw error;
+	}
 };
 
 const scanPullRequestActivity = async (
@@ -422,6 +450,12 @@ export const githubService = {
 		 *  `connected` stays true, because whether the account is linked is not
 		 *  GitHub's to tell us. */
 		unreachable: boolean;
+		/** The account is linked and GitHub refuses the token behind it: the
+		 *  person revoked the grant, an org owner did, or this deployment now
+		 *  signs with a different client id. Nothing recovers it except
+		 *  authorizing again, so it is a state with one action — not an outage to
+		 *  wait out, and not a disconnection the person performed. */
+		needsReconnect: boolean;
 	}> => {
 		// auth.api.accountInfo requires either an explicit accountId or a
 		// stored account cookie (account.storeAccountCookie, unset here) —
@@ -434,11 +468,26 @@ export const githubService = {
 			),
 		});
 		if (!linkedAccount) {
-			return { connected: false, login: null, unreachable: false };
+			return {
+				connected: false,
+				login: null,
+				unreachable: false,
+				needsReconnect: false,
+			};
 		}
 
+		// A stored row whose token better-auth cannot produce is the same dead end
+		// as one GitHub refuses: the refresh was declined, and nothing but a new
+		// authorization brings it back.
 		const token = await getAccessToken(ctx);
-		if (!token) return { connected: true, login: null, unreachable: false };
+		if (!token) {
+			return {
+				connected: true,
+				login: null,
+				unreachable: false,
+				needsReconnect: true,
+			};
+		}
 
 		// Whether the account is linked is a LOCAL fact, already answered above.
 		// The login name is a nicety fetched from GitHub, so a GitHub outage has to
@@ -456,13 +505,32 @@ export const githubService = {
 				connected: true,
 				login: githubUser?.login ?? null,
 				unreachable: false,
+				needsReconnect: false,
 			};
 		} catch (error) {
+			// Two different answers behind one throw. An outage is waited out; a
+			// refused token is waited out forever, because every read this account
+			// backs — commit sync, pull request sync, the pickers — resolves the
+			// login first and now quietly answers "nothing". Only the person can
+			// end that, so it has to reach them.
+			if (error instanceof GithubTokenInvalidError) {
+				return {
+					connected: true,
+					login: null,
+					unreachable: false,
+					needsReconnect: true,
+				};
+			}
 			console.error("[github] could not resolve the user's login", {
 				userId: ctx.userId,
 				error,
 			});
-			return { connected: true, login: null, unreachable: true };
+			return {
+				connected: true,
+				login: null,
+				unreachable: true,
+				needsReconnect: false,
+			};
 		}
 	},
 
@@ -481,7 +549,17 @@ export const githubService = {
 		const token = await getAccessToken(ctx);
 		if (!token) throw new Error("Connect your GitHub account first");
 
-		const installs = await gh().listUserInstallations(token);
+		// A token GitHub refuses means here what it means everywhere else: the
+		// grant is gone. Say the sentence that names the fix, rather than passing
+		// GitHub's own wording to an admin who cannot act on it.
+		const installs = await gh()
+			.listUserInstallations(token)
+			.catch((error: unknown) => {
+				if (error instanceof GithubTokenInvalidError) {
+					throw new Error(NOT_CONNECTED);
+				}
+				throw error;
+			});
 		const match = installs.find((i) => i.id === input.installationId);
 		if (!match) {
 			throw new AccessError(
@@ -702,11 +780,8 @@ export const githubService = {
 	suggestCommits: async (ctx: Ctx, input: SuggestCommitsInput) => {
 		await assertProjectInOrg(ctx, input.projectId);
 
-		const token = await getAccessToken(ctx);
-		if (!token) throw new Error("GitHub not connected");
-
-		const githubUser = await gh().getAuthenticatedUser(token);
-		if (!githubUser) throw new Error("Failed to resolve GitHub user");
+		const login = await githubLoginFor(ctx);
+		if (!login) throw new Error(NOT_CONNECTED);
 
 		const repos = await db.query.projectGithubRepo.findMany({
 			where: and(
@@ -733,7 +808,7 @@ export const githubService = {
 						repo.owner,
 						repo.name,
 						{
-							author: githubUser.login,
+							author: login,
 							since: start,
 							until: end,
 						},
@@ -783,10 +858,8 @@ export const githubService = {
 		ctx: Ctx,
 		input: { from: string; to: string },
 	): Promise<{ dayKey: string; commits: ScannedCommit[] }[]> => {
-		const token = await getAccessToken(ctx);
-		if (!token) return [];
-		const githubUser = await gh().getAuthenticatedUser(token);
-		if (!githubUser) return [];
+		const login = await githubLoginFor(ctx);
+		if (!login) return [];
 
 		const repos = await reposForUser(ctx);
 		if (repos.length === 0) return [];
@@ -809,7 +882,7 @@ export const githubService = {
 						repo.owner,
 						repo.name,
 						{
-							author: githubUser.login,
+							author: login,
 							since: start,
 							until: end,
 						},
@@ -862,10 +935,8 @@ export const githubService = {
 	// so suggestions can attribute work to specific projects. Returns [] when
 	// GitHub isn't connected so assembly degrades instead of breaking.
 	listUserCommitsForDay: async (ctx: Ctx, date: string) => {
-		const token = await getAccessToken(ctx);
-		if (!token) return [];
-		const githubUser = await gh().getAuthenticatedUser(token);
-		if (!githubUser) return [];
+		const login = await githubLoginFor(ctx);
+		if (!login) return [];
 
 		const repos = await reposForUser(ctx);
 		if (repos.length === 0) return [];
@@ -887,7 +958,7 @@ export const githubService = {
 						repo.owner,
 						repo.name,
 						{
-							author: githubUser.login,
+							author: login,
 							since: start,
 							until: end,
 						},
@@ -1089,7 +1160,7 @@ export const githubService = {
 	suggestPullRequests: async (ctx: Ctx, input: SuggestPullRequestsInput) => {
 		await assertProjectInOrg(ctx, input.projectId);
 		const login = await githubLoginFor(ctx);
-		if (!login) throw new Error("GitHub not connected");
+		if (!login) throw new Error(NOT_CONNECTED);
 
 		const repos = (await reposForUser(ctx)).filter(
 			(repo) => repo.projectId === input.projectId,
@@ -1164,7 +1235,7 @@ export const githubService = {
 		const repoById = new Map(repos.map((r) => [r.id, r]));
 
 		const login = await githubLoginFor(ctx);
-		if (!login) throw new Error("GitHub not connected");
+		if (!login) throw new Error(NOT_CONNECTED);
 
 		const tz = await ctxTimezone(ctx);
 		const window = dayBoundsInTz(entry.date, tz);
