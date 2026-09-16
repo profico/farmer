@@ -46,14 +46,16 @@ export const projects: Command = {
 				{ header: "Code" },
 				{ header: "Client" },
 				{ header: "Role" },
+				{ header: "ID" },
 			],
 			rows: rows.map((project) => [
 				project.name,
 				project.code ?? "",
 				project.client.name,
 				project.role?.replaceAll("_", " ") ?? "",
+				project.id,
 			]),
-			total: [plural(rows.length, "project"), "", "", ""],
+			total: [plural(rows.length, "project"), "", "", "", ""],
 		});
 	},
 };
@@ -80,13 +82,15 @@ export const tasks: Command = {
 				{ header: "Name" },
 				{ header: "Group" },
 				{ header: "Use with" },
+				{ header: "ID" },
 			],
 			rows: all.map((task) => [
 				task.name,
 				task.group,
 				task.isAbsence ? "farmer off" : "farmer log",
+				task.id,
 			]),
-			total: [plural(all.length, "task"), "", ""],
+			total: [plural(all.length, "task"), "", "", ""],
 		});
 	},
 };

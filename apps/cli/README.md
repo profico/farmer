@@ -121,6 +121,8 @@ Then `farmer log 90m "Checkout form"` needs no `-p` or `-t`.
   in the list.
 - `farmer whoami` shows the current names behind the ids. The names in the
   comments are only notes.
+- `farmer projects` and `farmer tasks` show the ids in their last column, to
+  write the file by hand.
 - The file holds ids, not project codes, because a code can change or repeat.
   See `docs/adr/0002-repository-defaults-file.md`.
 
