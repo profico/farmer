@@ -20,8 +20,14 @@
 // could have produced one reported a null project for absence too, so the one
 // action that clears unfiled time could only be aimed by guessing.
 
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
+import { member, organization, user } from "../db/schema/auth";
+// The one caller outside the scheduler. "Sync now" must share the sweep's
+// per-person guard, or a person pressing it while the sweep is on them gets two
+// passes over the same days at once — see `runExclusive`.
+import { runAutomationSyncForCtx } from "../jobs/automation-sync";
 import type { JsonRecord, JsonValue, Serializable } from "../lib/json";
 import {
 	absenceReportInput,
@@ -39,12 +45,14 @@ import {
 	createRecurringBlockRuleInput,
 	createTaskInput,
 	createTimeEntryInput,
+	deleteFilingRuleInput,
 	deleteRecurringBlockRuleInput,
 	deleteTimeEntryInput,
 	fileTimeEntriesInput,
 	listAbsenceForUserInput,
 	listTimeEntriesRangeInput,
 	logAbsenceRangeInput,
+	monthReportInput,
 	projectIdInput,
 	setTimeEntryOvertimeInput,
 	suggestDayAssemblyInput,
@@ -62,11 +70,16 @@ import {
 } from "../schema";
 import type { Access } from "./access.service";
 import { clientsService } from "./clients.service";
-import { ctxAccess, ctxTimezone } from "./context";
+import { complianceService, type PeriodTarget } from "./compliance.service";
+import { ctxAccess, ctxDb, ctxTimezone, ctxWeekStartsOn } from "./context";
 import { dayAssemblyService } from "./day-assembly.service";
+import { filingRulesService } from "./filing-rules.service";
 import { githubService } from "./github.service";
+import { googleCalendarService } from "./google-calendar.service";
 import { holidaysService } from "./holidays.service";
+import { integrationSettingsService } from "./integration-settings.service";
 import { membersService } from "./members.service";
+import { orgSettingsService } from "./org-settings.service";
 import { projectsService } from "./projects.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { reportsService } from "./reports.service";
@@ -198,6 +211,21 @@ export type AssistantTool = {
 		args: JsonRecord,
 		unticked: ReadonlySet<string>,
 	) => JsonRecord;
+	/**
+	 * This read must not run beside another call. Ignored on a write, which is
+	 * never run beside anything.
+	 *
+	 * A step asking for four lists is four questions that do not depend on each
+	 * other, so the loop claims the run of them at once and awaits them together
+	 * (`runClaimedBatch`) — the person waits for the slowest read rather than
+	 * for the sum of them. That is only true of a read that READS. A read that
+	 * writes on the way through races itself when two of them cover the same
+	 * days, so it says so here and goes back to running alone.
+	 *
+	 * A new read that touches a service which writes MUST set this. There is no
+	 * way to detect it from here, and the failure is a race, not an error.
+	 */
+	serial?: boolean;
 	/** Runs the tool. The result is stringified for the model and never
 	 *  inspected by the loop, so `Serializable | void` is the whole contract:
 	 *  domain rows with their Dates intact, or nothing at all. */
@@ -215,7 +243,11 @@ const hours = (seconds: JsonValue | undefined) => {
 };
 
 /** Seconds → hours, preserving null. Null is a real answer (nobody set a
- *  figure) and is not the same as zero. */
+ *  figure) and is not the same as zero — a person with no target is not a
+ *  person whose target is nothing. */
+const nullableHours = (seconds: number | null) =>
+	seconds == null ? null : seconds / 3600;
+
 /** The `timeEntryIds` argument, as it arrives from the model.
  *
  *  `.catch([])` rather than a throw: this runs on the way to an approval card,
@@ -315,6 +347,10 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "list_time_entries",
 		kind: "read",
+		// `listRange` recomputes and drops each day's fill block against the rows
+		// it just read (CLAUDE.md, Gotchas), so this read writes. Two of them over
+		// overlapping days would recompute the same day at once.
+		serial: true,
 		description:
 			"List the current user's own time entries between two dates (inclusive, yyyy-MM-dd, max 62 days apart). Returns each entry's date, duration, description, task and project.",
 		schema: listTimeEntriesRangeInput,
@@ -486,6 +522,73 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			}));
 		},
 	},
+	// ── reads: why the timesheet looks the way it does ──────────────────────
+	//
+	// "Where are my meetings" is the commonest question about this product, and
+	// every answer to it is a fact the assistant could not see: the switch is
+	// off, the Google token was revoked, the engine has not reached that day, or
+	// the month is locked to automations. Without these it guessed, and a guess
+	// about somebody's missing hours reads as a diagnosis.
+	{
+		name: "integration_status",
+		kind: "read",
+		// Both connection reads refresh an expired OAuth token through
+		// better-auth, which writes the new one back to the `account` row. A read
+		// that writes does not go in the claimed batch — see `serial`.
+		serial: true,
+		description:
+			"Why entries the current user did not type are, or are not, appearing: whether Google Calendar and GitHub are connected for them, whether each automatic sync is switched on, the day each switch was flipped (nothing before it is ever written), and the day the organization has locked automations up to. Call this before you explain a missing meeting, a missing commit block or an unexpected entry. A connected account whose token was refused is reported as needsReconnect, which no amount of syncing fixes.",
+		schema: z.object({}),
+		run: async (ctx) => {
+			const [settings, google, github, org] = await Promise.all([
+				integrationSettingsService.get(ctx),
+				googleCalendarService.connectionStatus(ctx),
+				githubService.connectionStatus(ctx),
+				orgSettingsService.get(ctx),
+			]);
+			return {
+				googleCalendar: {
+					connected: google.connected,
+					account: google.email,
+					// Google answered neither yes nor no. Saying so beats reporting a
+					// live connection as dead on a slow network.
+					unreachable: google.unreachable,
+					autoSyncMeetings: settings.googleAutoSyncMeetings,
+					autoSyncMeetingsSince: settings.googleAutoSyncMeetingsSince,
+				},
+				github: {
+					connected: github.connected,
+					account: github.login,
+					unreachable: github.unreachable,
+					needsReconnect: github.needsReconnect,
+					loadCommitsIntoSuggestions: settings.githubAutoLoadCommits,
+					syncCommitsAsWorkTime: settings.githubSyncCommitsAsWorkTime,
+					syncCommitsAsWorkTimeSince: settings.githubSyncCommitsAsWorkTimeSince,
+				},
+				// The org's floor. No automation may write on or before this day,
+				// which is what an invoiced month is protected by.
+				automationsLockedThrough: org.automationLockedThrough,
+			};
+		},
+	},
+	{
+		name: "list_filing_rules",
+		kind: "read",
+		description:
+			'The current user\'s standing filing rules: "always file a meeting called X under project Y". A rule is what makes a synced meeting land on a project instead of as unfiled time, so it explains an entry that already has a project nobody chose by hand. Rules are made by filing a meeting with remember set on file_time_entries, never created from nothing.',
+		schema: z.object({}),
+		run: async (ctx) => {
+			const rows = await filingRulesService.list(ctx);
+			return rows.map((row) => ({
+				id: row.id,
+				meetingTitle: row.title,
+				whenTaskIs: row.taskName,
+				filesToProject: row.projectName,
+				// Null keeps the meeting's own task.
+				andChangesTaskTo: row.targetTaskName,
+			}));
+		},
+	},
 	{
 		name: "list_commits",
 		kind: "read",
@@ -590,8 +693,15 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "time_report_summary",
 		kind: "read",
+		// The `userId` sentence is load-bearing, and it is the same sentence on
+		// `time_report_detail`. "Scoped to what the caller is allowed to see" is
+		// true and was read as "scoped to the caller": ten of thirteen models
+		// benchmarked answered "how many hours did I log in August" with the whole
+		// team's total, presented as the person's own, because a PM, Team Lead or
+		// Admin may see everyone. Saying who the default covers fixed it in every
+		// model that got it wrong.
 		description:
-			"Total logged hours over a date range, grouped by client, project or teammate. Scoped to what the caller is allowed to see. Use this for aggregate questions instead of listing every entry.",
+			'Total logged hours over a date range, grouped by client, project or teammate. Scoped to what the caller is allowed to see. Use this for aggregate questions instead of listing every entry. Pass q to total only the entries whose NOTE contains some text — the same filter time_report_detail takes, so the two agree. IMPORTANT: leaving userId out returns EVERY person the caller may see, which for a PM, Team Lead or Admin is the whole team. A question about the caller themselves — "I", "me", "my" — must pass their own userId (from whoami).',
 		schema: timeReportSummaryInput,
 		available: anyone,
 		run: async (ctx, args) => {
@@ -610,8 +720,14 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "time_report_detail",
 		kind: "read",
+		// Same default, same misreading — see the note on `time_report_summary`.
+		//
+		// It also answers "which entries mention X", through `q`. There is no
+		// separate search tool because a search IS a filtered detail report: the
+		// same range ceiling, the same access scope, and the summary above answers
+		// "how many hours" for the same words.
 		description:
-			"The individual entries behind a report range — date, person, client, project, task, description, hours — with optional client, project, task and user filters. Use time_report_summary first; reach for this only when the question is about specific entries.",
+			'The individual entries behind a report range — id, date, person, client, project, task, note, hours — with optional client, project, task and user filters. Use time_report_summary first; reach for this only when the question is about specific entries. Pass q to find entries whose NOTE contains some text (case-insensitive, and part of a word matches) — this is how you search for work by what it was about. Each row carries its entry id, which update_time_entry, update_entry_description, set_overtime and delete_time_entry take. Only time that has a project on it is reported here; use list_unfiled_entries for the rest. IMPORTANT: leaving userId out returns EVERY person the caller may see, which for a PM, Team Lead or Admin is the whole team. A question about the caller themselves — "I", "me", "my" — must pass their own userId (from whoami).',
 		schema: timeReportDetailInput,
 		available: anyone,
 		run: async (ctx, args) => {
@@ -619,6 +735,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			const result = await reportsService.timeDetail(ctx, input);
 			return {
 				rows: result.rows.map((row) => ({
+					id: row.id,
 					date: row.date,
 					user: row.userName,
 					client: row.clientName,
@@ -633,6 +750,87 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				totalRows: result.totalRows,
 				totalHours: result.totalSeconds / 3600,
 				truncated: result.truncated,
+			};
+		},
+	},
+	// ── reads: the targets people are measured against ──────────────────────
+	//
+	// Hours logged and hours EXPECTED are different questions, and until these
+	// two tools the assistant could only answer the first. Asked "am I behind",
+	// it added up a month and guessed against 8 hours a day — which is right
+	// only for a full-time person in a month with no public holiday and no day
+	// booked off. The rule that the home page, the Tracking report and every
+	// reminder read is `compliance.service.ts`, and these hand the model the
+	// same numbers, so the assistant cannot give a verdict the screens disagree
+	// with.
+	{
+		name: "my_targets",
+		kind: "read",
+		description:
+			'The caller\'s own week and month against their target: the target for the period, where they should be by today, what they have logged, how much of it is time off, and the verdict (on_track, slightly_behind or behind). Use this for "am I behind", "how many hours do I still owe" and anything about a full day being short — never work a target out from hours alone, because the target is the month hour fund prorated over working days, minus public holidays and days off. A null target means the person has no target at all (an hourly student or contractor without an override, or an overhead employee), which is not the same as a target of zero.',
+		schema: z.object({}),
+		available: anyone,
+		run: async (ctx) => {
+			const targets = await complianceService.myTargets(ctx);
+			const period = (p: PeriodTarget) => ({
+				from: p.from,
+				to: p.to,
+				workingDays: p.workingDays,
+				workingDaysElapsed: p.workingDaysElapsed,
+				targetHours: nullableHours(p.targetSeconds),
+				targetSoFarHours: nullableHours(p.targetSoFarSeconds),
+				workedHours: p.workSeconds / 3600,
+				timeOffHours: p.timeOffSeconds / 3600,
+				totalHours: p.totalSeconds / 3600,
+				// Through today only. The verdict is read from this and not from
+				// `totalHours`, so a day booked off next week cannot flatter it.
+				totalSoFarHours: p.totalSoFarSeconds / 3600,
+				status: p.status,
+			});
+			return {
+				today: targets.today,
+				// What one working day is worth for THIS person this month. It is 8
+				// only when the official fund applies.
+				fullDayHours: targets.daySeconds / 3600,
+				tolerancePct: targets.tolerancePct,
+				week: period(targets.week),
+				month: period(targets.month),
+			};
+		},
+	},
+	{
+		name: "tracking_report",
+		kind: "read",
+		description:
+			"The Tracking report for one month: every person the caller may see, with hours worked, time off, the month target so far, how far ahead or behind they are, and the verdict. Worst first. This is the report a lead acts on, and the same rule the reminders use, so a person it calls behind is a person the system nudges. Leaving out no filter — it always covers exactly the caller's own people: everyone for an Admin, and otherwise themselves, the people on their list and everyone on the projects they manage.",
+		schema: monthReportInput,
+		available: leadsSomething,
+		run: async (ctx, args) => {
+			const input = monthReportInput.parse(args);
+			const report = await complianceService.tracking(ctx, input);
+			return {
+				year: report.year,
+				month: report.month,
+				// The day the figures are read through, and whether the month is
+				// over. A verdict mid-month is about the month SO FAR.
+				asOf: report.asOf,
+				monthComplete: report.complete,
+				workingDaysInMonth: report.workingDaysInMonth,
+				workingDaysElapsed: report.workingDaysElapsed,
+				tolerancePct: report.tolerancePct,
+				rows: report.rows.map((row) => ({
+					userId: row.userId,
+					name: row.name,
+					memberType: row.memberType,
+					workedHours: row.workSeconds / 3600,
+					timeOffHours: row.timeOffSeconds / 3600,
+					totalHours: row.totalSeconds / 3600,
+					targetSoFarHours: nullableHours(row.targetSeconds),
+					monthTargetHours: nullableHours(row.monthTargetSeconds),
+					deltaHours: nullableHours(row.deltaSeconds),
+					// Null means no target applies, which is not "on track".
+					status: row.status,
+				})),
 			};
 		},
 	},
@@ -781,7 +979,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "file_time_entries",
 		kind: "write",
 		description:
-			"Attribute existing unfiled entries (synced meetings, commit blocks) to a project, by id. Get the ids from list_unfiled_entries. Pass taskId only to change the task of every entry in the batch; leave it out to keep each entry's own task. The user is shown the entries as a checklist and may file only some of them.",
+			"Attribute existing unfiled entries (synced meetings, commit blocks) to a project, by id. Get the ids from list_unfiled_entries. Pass taskId only to change the task of every entry in the batch; leave it out to keep each entry's own task. Pass remember to also make it a standing rule, so a meeting with the same title files itself here from now on — offer this when the same meeting keeps coming back unfiled. The user is shown the entries as a checklist and may file only some of them.",
 		schema: fileTimeEntriesInput,
 		summarize: async (ctx, args) => {
 			const count = Array.isArray(args.timeEntryIds)
@@ -829,6 +1027,26 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		}),
 		run: async (ctx, args) =>
 			timeEntriesService.fileMany(ctx, fileTimeEntriesInput.parse(args)),
+	},
+	{
+		name: "sync_now",
+		kind: "write",
+		// Through the job's guard, not straight to the service. Two passes over
+		// one person at once race each other for the day's fill block and pay
+		// somebody's API quota twice, and an agent loop re-reads far harder than a
+		// person presses a button. A request for a pass already running joins it.
+		description:
+			"Run the current user's automatic syncs now — recurring blocks, Google Calendar meetings, and GitHub commits and pull requests — instead of waiting for the next sweep. Reports each engine separately: ran did work, skipped had no days it was allowed to write to, failed broke, and off is an engine this person never switched on. An engine under off is not a sync that went wrong; tell them where the switch is instead of running this again. It only reaches recent days and never the future, so it cannot backfill a month.",
+		schema: z.object({}),
+		run: async (ctx) => {
+			const result = await runAutomationSyncForCtx(ctx);
+			return {
+				ran: result.ran,
+				skipped: result.skipped,
+				failed: result.failed,
+				off: result.off,
+			};
+		},
 	},
 	{
 		name: "copy_day",
@@ -1114,6 +1332,22 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		},
 	},
 	{
+		name: "delete_filing_rule",
+		kind: "destructive",
+		description:
+			"Remove one of the current user's standing filing rules, by id from list_filing_rules. The entries it already filed keep their project; only future meetings with that title stop being filed automatically. There is no way to create one back from here — a rule is made by filing a meeting with remember set.",
+		schema: deleteFilingRuleInput,
+		summarize: async (ctx, args) => {
+			const id = String(args.id ?? "");
+			const rules = await filingRulesService.list(ctx).catch(() => []);
+			const rule = rules.find((row) => row.id === id);
+			if (!rule) return "Remove a filing rule";
+			return `Stop filing "${rule.title}" to ${rule.projectName}`;
+		},
+		run: async (ctx, args) =>
+			filingRulesService.remove(ctx, deleteFilingRuleInput.parse(args)),
+	},
+	{
 		name: "archive_project",
 		kind: "destructive",
 		description:
@@ -1223,26 +1457,125 @@ export const toolDefinitions = (access: Access) =>
  * conventions an org layers on top, and a pasted paragraph that happens to
  * contradict one of them should lose rather than silently win.
  */
+/**
+ * Who the model is talking to, as two lines of the system prompt.
+ *
+ * It used to be told only the date, and that `whoami` existed. That is not the
+ * same thing: asked for "Omar's notes" it read the member list, found no Omar
+ * among the first page of a 200-person roster, and reported that no such person
+ * works here — to Omar. A model cannot be expected to guess that the question
+ * is about the person asking it, and the fix is not a better tool description;
+ * it is telling it whose session this is before it reads anything.
+ *
+ * The name and the id both, because every other tool takes an id and the reader
+ * only ever types a name. Deliberately NOT the whole `whoami` answer — working
+ * hours, member type and the project list are a real read and belong behind a
+ * tool the model calls when a question turns on them, whereas identity is
+ * needed to understand the question at all.
+ *
+ * One query, on `ctxDb`, beside the memoized `Access` the caller already has.
+ */
+const callerCard = async (ctx: Ctx): Promise<string> => {
+	const [access, rows] = await Promise.all([
+		ctxAccess(ctx),
+		ctxDb(ctx)
+			.select({
+				name: user.name,
+				email: user.email,
+				orgName: organization.name,
+			})
+			.from(member)
+			.innerJoin(user, eq(user.id, member.userId))
+			.innerJoin(organization, eq(organization.id, member.organizationId))
+			.where(
+				and(
+					eq(member.userId, ctx.userId),
+					eq(member.organizationId, ctx.organizationId),
+				),
+			)
+			.limit(1),
+	]);
+	const me = rows[0];
+	// `orgMiddleware` and `resolveApiOrgContext` both refuse a caller with no
+	// membership row long before a turn starts, so this is unreachable rather
+	// than a case to describe — but a prompt claiming the reader is nobody is
+	// worse than one that simply does not mention them.
+	if (!me) return "";
+
+	return [
+		`You are talking to ${me.name} (${me.email}), user id ${ctx.userId}, in the organization ${me.orgName}. They are ${access.isAdmin ? "an Admin" : "a Member"} of it.`,
+		'"I", "me", "my" and their own first or last name all mean this person. A question that names them is a question about them — never search the member list to find out whether they exist.',
+	].join("\n");
+};
+
 export const systemPrompt = async (
 	ctx: Ctx,
 	today: string,
-	houseRules?: string | null,
+	houseRules: string | null | undefined,
+	/**
+	 * The loop's step ceiling (`MAX_STEPS`), told to the model rather than
+	 * sprung on it.
+	 *
+	 * A model that does not know it has a budget spends it the way it would
+	 * spend an unlimited one — one narrow read per step — and the turns that
+	 * used to hit the ceiling were mostly that, not real loops. Passed in rather
+	 * than imported, so the number cannot come to differ from the loop's.
+	 */
+	maxSteps: number,
 ) => {
-	const tz = await ctxTimezone(ctx);
+	const [tz, weekStartsOn, caller] = await Promise.all([
+		ctxTimezone(ctx),
+		ctxWeekStartsOn(ctx),
+		callerCard(ctx),
+	]);
 	const base = [
 		"You are the assistant inside Farmer, a time-tracking app for a software agency.",
 		`Today is ${today} in the organization's timezone (${tz}). Resolve every relative date against that.`,
 		"",
+		caller,
+		"",
+		// The reader's words, mapped onto the data — because the model only ever
+		// sees the schema's words and the two differ where it matters most.
+		// Asked who had the most interesting "notes", it answered that it had no
+		// access to a notes system: every entry read it has returns `description`,
+		// which is the field the UI labels "Note". A missing synonym does not read
+		// as a missing synonym, it reads as a missing feature.
+		"Vocabulary — what people here say, and what it is in the data:",
+		'- A "note" on an entry IS its description field. Every entry has one, and every tool that reads entries returns it. There is no separate notes system.',
+		'- A "block" is a time entry. "Time off" is absence — Vacation, Sick Leave, Paid Leave. "Unfiled" is worked time that has no project on it yet.',
+		"",
+		"Facts about this timesheet that no tool's arguments show:",
+		// The week start is an org setting (`organization.week_starts_on`) and the
+		// model resolves "last week" itself, so without this every weekly figure in
+		// a Sunday-start org is silently a day out — and copy_week takes the START
+		// of a week as its argument, so a wrong boundary is a wrong write.
+		`- The week starts on ${weekStartsOn === 0 ? "Sunday" : "Monday"} here. Resolve "this week" and "last week" against that, and make copy_week's start dates land on that day.`,
+		"- A day holds at most 24 hours, and a write that would take it over is refused. Report that rather than retrying.",
+		// Half of a busy timesheet is written by the sync engines, which is why a
+		// question about what someone "wrote" is not a question about what they
+		// typed.
+		"- Not everything here was typed by hand: meetings sync from Google Calendar, commits and pull requests from GitHub, and recurring block rules materialize on their own. A description may be a commit subject or a meeting title rather than something the person wrote.",
+		// Hours LOGGED and hours EXPECTED are different questions, and the model
+		// answered the second with the first: it summed a month and judged it
+		// against eight hours a day, which is right only for a full-time person in
+		// a month with no public holiday and no day booked off. A verdict is a
+		// number somebody acts on, and an invented one disagrees with the same
+		// figure on the home page.
+		'- Being "behind" is a rule, not arithmetic. A target is the month\'s hour fund spread over its working days, minus public holidays and time off, and some people have no target at all. Never work one out from hours and a guess at a full day: my_targets answers it for yourself, tracking_report for the people you lead.',
+		"",
 		"You answer questions about the user's tracked time and act on their behalf: logging and correcting time, booking absence, and creating clients, projects and task types. Everything you do runs as them and with their permissions, so a tool that refuses is a real answer about what they are allowed to do — report it, don't work around it. You are only offered the tools their role allows, so there is nothing to try around the edges.",
 		"Rules:",
 		"- Durations are seconds, always a multiple of 900 (15 minutes). Round to the nearest quarter hour and say that you did.",
-		"- Never invent an id. Call list_projects / list_tasks / list_clients / list_members first and use what comes back. whoami gives the current user's own id.",
+		"- Never invent an id. Call list_projects / list_tasks / list_clients / list_members first and use what comes back. Your own user id is above; whoami adds your working hours, member type and the projects you are on, for a question that turns on those.",
 		"- Prefer an aggregate over a list: time_report_summary for hours by client, project or teammate; absence_totals for vacation taken.",
 		"- Creating and correcting things happens immediately, so just do what was asked rather than checking first. Deleting and archiving are shown to the user for approval — still call the tool, they will be asked.",
 		"- Batch writes (apply_day_assembly, file_time_entries) are shown as a checklist of their rows and the user may approve only some. Send the whole batch you believe in and let them un-tick; the tool result says what was actually written, so read it before reporting what you did.",
 		"- Reconstructing a day: suggest_day already assembles it from meetings, commits, pull requests and recurring blocks, so prefer it and then apply_day_assembly. Use list_commits, list_pull_requests and list_time_entries when you need the raw evidence. Do not log the same work twice.",
 		"- Absence spanning several days goes through log_absence once, not one entry per day. It skips holidays and non-working days itself, so report which days it actually booked.",
+		"- An entry that is missing, or one nobody typed, is usually a setting rather than a mistake. Call integration_status before you explain either: a switch that is off, a connection that needs reconnecting, and a month locked to automations are three different answers, and none of them is fixed by syncing again. list_filing_rules and list_recurring_block_rules explain an entry that already has a project nobody chose.",
+		"- sync_now runs the syncs on demand, but only over recent days — it cannot backfill a month, and it does nothing for an engine that is off.",
 		"- If a tool returns an error, explain what went wrong in one sentence rather than retrying blindly.",
+		`- You get ${maxSteps} rounds of tool calls per question, so spend them wide rather than deep: ask for everything a round needs in one go — several tools in the same round is normal and they run together — and prefer one broad read over four narrow ones. If a result says it dropped rows, work from what you have or narrow the call yourself; do not make the user ask again.`,
 		"- Be brief. This is a sidebar, not an essay.",
 		"",
 		// The renderer is apps/web/src/components/assistant/answer.tsx and it is

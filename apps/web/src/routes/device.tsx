@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { useMutation } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -182,6 +183,7 @@ function BigCode({ userCode }: { userCode: string }) {
 
 function DeviceApproval({ userCode }: { userCode: string }) {
 	const { email } = Route.useRouteContext();
+	const posthog = usePostHog();
 	const [decision, setDecision] = useState<Outcome | null>(null);
 	const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
 
@@ -227,6 +229,7 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 	// which is why "not yours" below says to start again instead.
 	const switchAccount = async () => {
 		await authClient.signOut();
+		posthog.reset();
 		window.location.assign(
 			`/login?redirect=${encodeURIComponent(devicePath(userCode))}`,
 		);

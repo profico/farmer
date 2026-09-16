@@ -1,5 +1,7 @@
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
+import { usePostHog } from "@posthog/react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import { Button } from "#/components/ui/button.tsx";
 
@@ -15,7 +17,12 @@ import { Button } from "#/components/ui/button.tsx";
  * it.
  */
 export function RouteError({ error, reset }: ErrorComponentProps) {
+	const posthog = usePostHog();
 	const message = error instanceof Error ? error.message : String(error);
+
+	useEffect(() => {
+		posthog.captureException(error);
+	}, [error, posthog]);
 
 	return (
 		<div className="island island-pad flex-1">
@@ -34,6 +41,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 				size="sm"
 				className="mt-6"
 				onClick={() => {
+					posthog.capture("route_error_retry_clicked");
 					reset();
 				}}
 			>

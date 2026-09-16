@@ -1,5 +1,9 @@
 export * from "./access.service";
 export * from "./account.service";
+// The analytics seam: the event shapes a turn reports, and the setter that
+// installs a sink for them. Exported because the adapter lives in `apps/web`,
+// beside the vendor's credentials — see `lib/posthog-ai.ts`.
+export * from "./ai-telemetry";
 export * from "./assistant.service";
 export * from "./assistant-tools";
 export * from "./clients.service";

@@ -134,7 +134,7 @@ export const inviteMember = createServerFn({ method: "POST" })
 	.validator(inviteMemberInput)
 	.handler(async ({ data, context }) => {
 		const { auth } = await import("@farmer/core/auth");
-		return auth.api.createInvitation({
+		const invitation = await auth.api.createInvitation({
 			body: {
 				email: data.email,
 				role: data.role,
@@ -142,6 +142,21 @@ export const inviteMember = createServerFn({ method: "POST" })
 			},
 			headers: getRequestHeaders(),
 		});
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "member_invited",
+				properties: {
+					organization_id: context.ctx.organizationId,
+					invitation_id: invitation.id,
+					invited_role: data.role,
+				},
+			});
+			await posthog.flush();
+		}
+		return invitation;
 	});
 
 export const cancelInvitation = createServerFn({ method: "POST" })

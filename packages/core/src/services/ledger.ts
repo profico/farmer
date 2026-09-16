@@ -89,6 +89,28 @@ export type LedgerFilter = {
 	 *  when it is on a visible project OR by a visible person; null is
 	 *  unscoped, and both empty is nothing. */
 	visibleUserIds?: string[] | null;
+	/** Free text, matched against the entry's own note (its `description`).
+	 *
+	 *  Here rather than in each report because it narrows WHICH ROWS COUNT, and
+	 *  a filter that changes a total belongs with the rest of the predicate — a
+	 *  summary and the detail behind it must agree about what the search
+	 *  matched, and they only do that while one function decides. */
+	q?: string;
+};
+
+/** Case-insensitive substring match on a note, with LIKE's own wildcards taken
+ *  literally.
+ *
+ *  `%` and `_` are ordinary characters in something a person typed — an entry
+ *  note genuinely contains "100%" — so a raw interpolation turns a search into
+ *  a wider one silently. Escaped against a backslash, declared with ESCAPE
+ *  because Postgres only assumes that character for `like`, not for every
+ *  configuration of it. */
+const notePredicate = (raw: string): SQL | undefined => {
+	const term = raw.trim();
+	if (!term) return undefined;
+	const escaped = term.replace(/[\\%_]/g, (match) => `\\${match}`);
+	return sql`${timeEntry.description} ilike ${`%${escaped}%`} escape '\\'`;
 };
 
 // The access arm of the predicate. `undefined` on either side means the caller
@@ -169,6 +191,7 @@ export const ledgerWhere = (
 		filter.userIds ? inArray(timeEntry.userId, filter.userIds) : undefined,
 		filter.overtimeOnly ? eq(timeEntry.overtime, true) : undefined,
 		filter.activeOnly ? eq(project.status, "active") : undefined,
+		filter.q ? notePredicate(filter.q) : undefined,
 	);
 
 const SECONDS = sql<string>`coalesce(sum(${timeEntry.durationSeconds}), 0)`;

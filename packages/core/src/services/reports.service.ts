@@ -65,6 +65,7 @@ const projectTimeWhere = (
 		taskId?: string;
 		userId?: string;
 		activeOnly?: boolean;
+		q?: string;
 	},
 	scope: ReportScope,
 ) =>
@@ -76,6 +77,7 @@ const projectTimeWhere = (
 		taskId: input.taskId,
 		userId: input.userId,
 		activeOnly: input.activeOnly,
+		q: input.q,
 	});
 
 export type TimeReportRow = {

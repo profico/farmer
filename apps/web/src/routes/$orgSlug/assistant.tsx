@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { Answer, AnswerActions } from "#/components/assistant/answer.tsx";
+import {
+	useAssistantActions,
+	useAssistantRun,
+} from "#/components/assistant/assistant-runs.tsx";
 import { MobileChatBar } from "#/components/assistant/chat-rail.tsx";
 import {
 	ApprovalCard,
@@ -13,7 +17,6 @@ import {
 	ToolTraceList,
 } from "#/components/assistant/primitives.tsx";
 import { PromptBar } from "#/components/assistant/prompt-bar.tsx";
-import { useAssistantStream } from "#/components/assistant/use-assistant-stream.ts";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
 import { ScrollFade } from "#/components/ui/scroll-fade.tsx";
@@ -156,33 +159,13 @@ function AssistantPage() {
 	// scrolls away from the bottom, and starts again when they return.
 	const pinnedRef = useRef(true);
 
-	const invalidateThread = async () => {
-		await Promise.all([
-			queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).assistant, "conversations"],
-			}),
-			conversationId
-				? queryClient.invalidateQueries({
-						queryKey: conversationQuery(orgSlug, conversationId).queryKey,
-					})
-				: Promise.resolve(),
-			// A turn can have written a time entry, so anything reading them is now
-			// stale. Named through the same root the writes use, so this cannot drift
-			// from what `createTimeEntry` invalidates.
-			queryClient.invalidateQueries({
-				queryKey: queryKeys(orgSlug).timeEntries,
-			}),
-		]);
-	};
-
-	const stream = useAssistantStream({
-		onDone: async () => {
-			await invalidateThread();
-			// Only after the server's copy has landed, or the answer would show
-			// twice — once live, once persisted — for a frame.
-			stream.reset();
-		},
-	});
+	// The turn in flight in THIS thread, and the actions that start one. Both
+	// come from the layout's `AssistantRunsProvider`, not from state here: a turn
+	// belongs to its conversation, so opening another thread must not show it
+	// this one's answer — and the thread list in the sidebar, which this
+	// component does not contain, needs to know which threads are working.
+	const actions = useAssistantActions();
+	const stream = useAssistantRun(conversationId);
 
 	const startChat = useMutation({
 		mutationFn: () => createConversation({ data: {} }),
@@ -296,13 +279,19 @@ function AssistantPage() {
 		pinnedRef.current = true;
 	}, [viewKey]);
 
+	/** Whether the message reached the server. The composer reads it to decide
+	 *  whether to hand the draft back — see `PromptBar`. */
 	const send = async (text: string) => {
 		let id = conversationId;
 		if (!id) {
-			const conversation = await startChat.mutateAsync();
+			// A thread that could not be started has nothing to hold the message,
+			// so this counts as undelivered like any other refusal. `startChat`
+			// has already said so in a toast.
+			const conversation = await startChat.mutateAsync().catch(() => null);
+			if (!conversation) return false;
 			id = conversation.id;
 		}
-		await stream.send(id, text);
+		return actions.send(id, text);
 	};
 
 	if (!settings?.configured || !settings.enabled) {
@@ -444,7 +433,7 @@ function AssistantPage() {
 									pending={pending}
 									busy={stream.isStreaming}
 									onDecide={(decision, selectedRowIds) =>
-										void stream.resolve(
+										void actions.resolve(
 											conversationId,
 											pending.toolCallId,
 											decision,
@@ -474,8 +463,10 @@ function AssistantPage() {
 							    keeps the thread well-formed — but that is a fallback for a
 							    stale tab, not a way anybody should answer. The card is. */}
 							<PromptBar
-								onSend={(text) => void send(text)}
-								onStop={stream.stop}
+								onSend={send}
+								onStop={() => {
+									if (conversationId) actions.stop(conversationId);
+								}}
 								busy={stream.isStreaming}
 								disabled={startChat.isPending || Boolean(pending)}
 								placeholder={

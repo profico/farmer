@@ -97,7 +97,11 @@ export function PromptBar({
 	placeholder = "Ask about your time, or log some…",
 	autoFocus,
 }: {
-	onSend: (text: string) => void;
+	/**
+	 * Sends the draft. Resolving FALSE means the message never reached the
+	 * server, and the composer takes the text back — see `send` below.
+	 */
+	onSend: (text: string) => Promise<boolean>;
 	onStop: () => void;
 	busy: boolean;
 	disabled?: boolean;
@@ -177,11 +181,28 @@ export function PromptBar({
 	};
 
 	const canSend = draft.trim().length > 0 && !busy && !disabled;
+	/**
+	 * Clear on send, and put it back if the send never landed.
+	 *
+	 * Clearing optimistically is right — the answer starts arriving immediately
+	 * and a composer still holding the question reads as a message that did not
+	 * go. But a turn refused by the rate limit, or by a session that has since
+	 * died, used to cost the person everything they had typed: the error line
+	 * said to try again, and there was nothing left to try again WITH. So a
+	 * refusal restores the text exactly as it was, cursor in it.
+	 */
 	const send = () => {
 		if (!canSend) return;
-		onSend(draft.trim());
+		const text = draft.trim();
 		setDraft("");
 		setDismissed(false);
+		void onSend(text).then((delivered) => {
+			if (delivered) return;
+			// Only into a composer the person has not started refilling — their
+			// own second thought outranks the one we are handing back.
+			setDraft((current) => (current ? current : text));
+			inputRef.current?.focus();
+		});
 	};
 
 	return (

@@ -13,6 +13,7 @@ import { isAssistantEnabled } from "../lib/assistant-flag";
 import type { JsonRecord, Serializable } from "../lib/json";
 import {
 	type ChatMessage,
+	type ChatTool,
 	type ChatTurn,
 	listModels as listOpenRouterModels,
 	OpenRouterError,
@@ -29,6 +30,7 @@ import type {
 	UpdateAssistantSettingsInput,
 } from "../schema";
 import { AccessError } from "./access.service";
+import { reportGeneration, reportSpan } from "./ai-telemetry";
 import {
 	type ApprovalPreview,
 	findTool,
@@ -118,7 +120,16 @@ export const setChatModelForTests = (port: ChatModelPort | null): void => {
 export type AssistantEvent =
 	| { type: "message"; messageId: string; role: "user" }
 	| { type: "delta"; text: string }
-	| { type: "tool_start"; toolCallId: string; name: string }
+	| {
+			type: "tool_start";
+			toolCallId: string;
+			name: string;
+			/** The call's raw arguments, so the trace can name the SUBJECT of the
+			 *  step and not only the step: "Read time entries · 1–16 Sep", not a
+			 *  column of identical "Read time entries". Read by the client, which
+			 *  owns the wording — see `toolDetail` in components/assistant. */
+			arguments: string;
+	  }
 	| { type: "tool_result"; toolCallId: string; name: string; ok: boolean }
 	| {
 			type: "approval_required";
@@ -143,15 +154,33 @@ export type AssistantEvent =
  *  A ceiling, not a budget: every step past the first is the model reacting to
  *  a tool result, and a model that has not answered after eight of those is
  *  looping, not working. Without it a malformed tool result the model keeps
- *  retrying is an unbounded spend against the org's key. */
-const MAX_STEPS = 8;
+ *  retrying is an unbounded spend against the org's key.
+ *
+ *  The number is told to the model (`systemPrompt`), which is what keeps most
+ *  turns from reaching it, and reaching it is answered rather than reported —
+ *  see `OUT_OF_STEPS`. */
+export const MAX_STEPS = 8;
+
+/** The last thing said to a model that has used every step.
+ *
+ *  Sent with the tools taken away, so the ceiling is enforced by making another
+ *  call impossible rather than by asking the model to stop. A `user` line and
+ *  not a second system one: appended after the whole thread, a system message
+ *  reads to some models as a new brief and to others as a leaked prompt, while
+ *  this is plainly the last thing said in the conversation. */
+const OUT_OF_STEPS =
+	"Stop using tools and answer now with what you already have. Name the part of the question you could not reach, and offer a narrower question that would get there. Keep to the formatting rules.";
+
+/** What the person is told when even that closing answer does not arrive. */
+const NO_ANSWER =
+	"The assistant kept working without reaching an answer. Everything it read is still in this thread — ask again more specifically and it will carry on from here.";
 
 /** Tool output that goes back to the model, capped.
  *
  *  `list_time_entries` over 62 days is legitimately hundreds of rows, and the
  *  whole array comes back as one string in the next prompt — so an uncapped
  *  result is both the token bill and, past the context window, a hard failure
- *  mid-conversation. Truncating tells the model to narrow the range instead. */
+ *  mid-conversation. */
 const MAX_TOOL_RESULT_CHARS = 12_000;
 
 // ── settings ─────────────────────────────────────────────────────────────────
@@ -548,7 +577,8 @@ const insertMessage = async (
 };
 
 /**
- * Take the right to answer one tool call, by writing its answer.
+ * Take the right to answer one tool call — or a run of them — by writing their
+ * answers.
  *
  * The tool row IS the claim. It is inserted under a row lock on the assistant
  * turn, after re-reading the thread inside that lock, so two answers racing
@@ -557,16 +587,18 @@ const insertMessage = async (
  * gets null. The check used to be a read outside any lock, and both requests
  * passed it and both ran the delete.
  *
- * Only the turn's FIRST unanswered call may be claimed, which is what keeps a
- * turn's calls running in the order the model asked for them.
+ * Only the turn's FIRST unanswered calls may be claimed, which is what keeps a
+ * turn's calls running in the order the model asked for them. A batch is
+ * claimed in ONE transaction for that reason: claiming reads one at a time and
+ * then running them together would let a racing tab slip between two of them.
  */
-const claimCall = async (
+const claimCalls = async (
 	ctx: Ctx,
 	conversationId: string,
 	assistantId: string,
-	call: AssistantToolCall,
+	calls: AssistantToolCall[],
 	content: string,
-): Promise<string | null> =>
+): Promise<{ call: AssistantToolCall; rowId: string }[] | null> =>
 	db.transaction(async (tx) => {
 		await tx
 			.select({ id: assistantMessage.id })
@@ -575,16 +607,28 @@ const claimCall = async (
 			.for("update");
 		const history = await loadHistory(conversationId, tx);
 		const assistant = history.find((row) => row.id === assistantId);
-		if (!assistant || firstUnresolvedCall(assistant, history)?.id !== call.id) {
+		if (!assistant) return null;
+		// The batch must be exactly the LEADING run of what is still unanswered.
+		// One call is the old rule ("only the first") spelled for a list; several
+		// is a run of reads taken together, and either way a second tab asking for
+		// the same ground finds the first of them already answered and gets null.
+		const unresolved = unresolvedCalls(assistant, history);
+		if (calls.some((call, index) => unresolved[index]?.id !== call.id)) {
 			return null;
 		}
-		const row = await insertMessage(
-			ctx,
-			conversationId,
-			{ role: "tool", content, toolCallId: call.id, toolName: call.name },
-			{ client: tx, sequenced: true },
-		);
-		return row.id;
+		const claimed: { call: AssistantToolCall; rowId: string }[] = [];
+		// In order, and `sequenced` so `clock_timestamp()` keeps them in it — the
+		// wire history pairs by id, but the transcript is read by a person.
+		for (const call of calls) {
+			const row = await insertMessage(
+				ctx,
+				conversationId,
+				{ role: "tool", content, toolCallId: call.id, toolName: call.name },
+				{ client: tx, sequenced: true },
+			);
+			claimed.push({ call, rowId: row.id });
+		}
+		return claimed;
 	});
 
 /** What a claimed call's row says until the real result replaces it. Worded
@@ -609,11 +653,47 @@ const NOT_REACHED =
 /** Every tool call's arguments, before the tool's own schema narrows them. */
 const argumentsPayload = z.record(z.string(), z.json());
 
+/** The note under a result cut at a row boundary. It says how much is missing
+ *  and whose problem that is: the old wording ("narrow the date range and ask
+ *  again") sent the model back to the PERSON, who then had to re-ask a question
+ *  they had already asked because a cap they cannot see was hit. */
+const droppedRowsNote = (kept: number, total: number) =>
+	`…${total - kept} of ${total} rows were dropped to fit; the first ${kept} are above. Do not ask the user to repeat themselves. Either answer from these and say which part you used, or call the tool again over a narrower range.`;
+
+/** The same, for a result that is not a list and can only be cut mid-text. */
+const CUT_SHORT =
+	"…cut short to fit. Do not ask the user to repeat themselves: answer from what is above and say so, or call the tool again for a smaller part of it.";
+
+/**
+ * A tool's return value as the model will read it, capped — by ROW wherever
+ * the value is a list.
+ *
+ * A character cut lands in the middle of a row, which leaves the model half an
+ * object to guess at and an array that no longer parses. Dropping whole rows
+ * instead costs the same tokens and keeps every row it does send readable.
+ */
 const stringifyResult = (value: Serializable | void) => {
 	const text = JSON.stringify(value ?? null);
-	return text.length > MAX_TOOL_RESULT_CHARS
-		? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n…truncated. Narrow the date range and ask again.`
-		: text;
+	if (text.length <= MAX_TOOL_RESULT_CHARS) return text;
+	if (Array.isArray(value)) {
+		const kept: Serializable[] = [];
+		// The two brackets. Each row below adds itself plus the comma joining it
+		// to the row before, so the running total is the real encoded length.
+		let size = 2;
+		for (const row of value) {
+			const encoded = JSON.stringify(row ?? null).length + 1;
+			if (size + encoded > MAX_TOOL_RESULT_CHARS) break;
+			size += encoded;
+			kept.push(row);
+		}
+		// A single row bigger than the whole cap keeps nothing, and an empty list
+		// under a note about dropped rows tells the model the tool found nothing.
+		// The character cut at least hands it the beginning of the one row.
+		if (kept.length > 0) {
+			return `${JSON.stringify(kept)}\n${droppedRowsNote(kept.length, value.length)}`;
+		}
+	}
+	return `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n${CUT_SHORT}`;
 };
 
 /** Runs one tool and returns what the model should be told, including on
@@ -701,6 +781,20 @@ const needsApproval = (name: string) => {
 	return tool?.kind === "destructive" || Boolean(tool?.preview);
 };
 
+/** The leading calls of `queue` that may run beside each other: reads, minus
+ *  the reads that write on the way through (`AssistantTool.serial`). Stops at
+ *  the first call that does not qualify, so order is never reshuffled — only
+ *  collapsed. */
+const concurrentRun = (queue: AssistantToolCall[]): AssistantToolCall[] => {
+	const run: AssistantToolCall[] = [];
+	for (const call of queue) {
+		const tool = findTool(call.name);
+		if (!tool || tool.kind !== "read" || tool.serial) break;
+		run.push(call);
+	}
+	return run;
+};
+
 /** Narrows a call to what the person agreed to. Returns the call unchanged
  *  when there is no selection to apply, and null when the selection is empty —
  *  "none of these" is a refusal, not a write of nothing.
@@ -763,16 +857,105 @@ const truncatedTitle = (message: string) => {
  * the placeholder standing, because a thread whose label is slightly worse is
  * not worth failing a turn over.
  */
+/** What one turn's model calls and tool runs are reported under.
+ *
+ *  Carried down the loop rather than rebuilt, because the whole value of a
+ *  trace is that every call in one question shares an id. `generationId` is the
+ *  last call made, which is the one whose `tool_calls` any span now running
+ *  came from. */
+type TurnTrace = {
+	id: string;
+	conversationId: string;
+	model: string;
+	generationId: string | null;
+};
+
+/**
+ * One billed model call, timed and reported.
+ *
+ * Every call goes through here — the steps, the closing out-of-steps call and
+ * the thread title — so a turn's cost is the sum of its trace and nothing is
+ * missing from it. A failure is reported too: a rate limit that ends a turn is
+ * exactly the thing somebody is looking at the dashboard to find, and a trace
+ * that simply stops is indistinguishable from one nobody started.
+ *
+ * Reporting never changes what the caller sees: the turn, or the same throw.
+ */
+const generate = async (
+	ctx: Ctx,
+	trace: TurnTrace,
+	step: number | null,
+	opts: {
+		apiKey: string;
+		messages: ChatMessage[];
+		tools?: ChatTool[];
+		signal?: AbortSignal;
+		onDelta?: (text: string) => void;
+	},
+): Promise<ChatTurn> => {
+	const spanId = crypto.randomUUID();
+	trace.generationId = spanId;
+	const startedAt = Date.now();
+	const common = {
+		organizationId: ctx.organizationId,
+		userId: ctx.userId,
+		traceId: trace.id,
+		spanId,
+		conversationId: trace.conversationId,
+		model: trace.model,
+		step,
+		input: opts.messages,
+		tools: opts.tools ?? [],
+	};
+	try {
+		const turn = await chatModel().streamChatCompletion({
+			apiKey: opts.apiKey,
+			model: trace.model,
+			messages: opts.messages,
+			tools: opts.tools,
+			signal: opts.signal,
+			onDelta: opts.onDelta,
+		});
+		reportGeneration({
+			...common,
+			latencySeconds: (Date.now() - startedAt) / 1000,
+			inputTokens: turn.promptTokens,
+			outputTokens: turn.completionTokens,
+			costUsd: turn.costUsd,
+			finishReason: turn.finishReason,
+			calledTools: turn.toolCalls.map((call) => call.name),
+			outputText: turn.content,
+			error: null,
+		});
+		return turn;
+	} catch (error) {
+		reportGeneration({
+			...common,
+			latencySeconds: (Date.now() - startedAt) / 1000,
+			inputTokens: null,
+			outputTokens: null,
+			costUsd: null,
+			finishReason: null,
+			calledTools: [],
+			outputText: "",
+			error: error instanceof Error ? error.message : String(error),
+		});
+		throw error;
+	}
+};
+
 const generateTitle = async (
+	ctx: Ctx,
+	trace: TurnTrace,
 	apiKey: string,
-	model: string,
 	message: string,
 	signal?: AbortSignal,
 ): Promise<string | null> => {
 	try {
-		const turn = await chatModel().streamChatCompletion({
+		// `step: null` — this is not a step of the answer. It is one more billed
+		// call on the same question, which is why it is on the same trace.
+		const turn = await generate(ctx, trace, null, {
 			apiKey,
-			model,
 			// The turn's own signal: a reader who has left does not need their
 			// thread named, and this is billed like any other completion.
 			signal,
@@ -848,8 +1031,17 @@ const run = async (
 	const settings = await loadSettings(ctx);
 	const title = settings
 		? await generateTitle(
+				ctx,
+				{
+					// Its own trace. The answer's trace closed when `runTurn`
+					// returned, and naming a thread is a call nobody asked for —
+					// folding it into the question's cost would misattribute it.
+					id: crypto.randomUUID(),
+					conversationId: conversation.id,
+					model: conversation.model,
+					generationId: null,
+				},
 				settings.apiKey,
-				conversation.model,
 				input.message,
 				signal,
 			)
@@ -907,36 +1099,122 @@ const suspendOn = async (
 	onEvent({ type: "done" });
 };
 
-/** Claim a call, run it, and record what it returned. False when somebody
- *  else answered the call first. */
-const runClaimed = async (
+/** Run one claimed call and record what it returned. */
+const executeClaimed = async (
 	ctx: Ctx,
-	conversationId: string,
-	assistantId: string,
-	call: AssistantToolCall,
+	trace: TurnTrace,
+	claimed: { call: AssistantToolCall; rowId: string },
 	toRun: AssistantToolCall,
 	onEvent: (event: AssistantEvent) => void,
-): Promise<boolean> => {
-	const claim = await claimCall(
-		ctx,
-		conversationId,
-		assistantId,
-		call,
-		RESULT_PENDING,
-	);
-	if (!claim) return false;
-	onEvent({ type: "tool_start", toolCallId: call.id, name: call.name });
+) => {
+	const { call, rowId } = claimed;
+	// The one place a tool actually runs — the single path, the claimed batch
+	// and the resume after an approval all arrive here — so it is the one place
+	// a span has to be reported from.
+	const startedAt = Date.now();
 	const result = await executeTool(ctx, toRun);
+	reportSpan({
+		organizationId: ctx.organizationId,
+		userId: ctx.userId,
+		traceId: trace.id,
+		spanId: crypto.randomUUID(),
+		// The generation whose `tool_calls` asked for this. Null only for a row
+		// left behind by a process that died, which has no call to point at.
+		parentId: trace.generationId ?? trace.id,
+		conversationId: trace.conversationId,
+		name: call.name,
+		kind: findTool(call.name)?.kind ?? "unknown",
+		latencySeconds: (Date.now() - startedAt) / 1000,
+		ok: result.ok,
+		inputState: toRun.arguments,
+		outputState: result.content,
+	});
 	await db
 		.update(assistantMessage)
 		.set({ content: result.content })
-		.where(eq(assistantMessage.id, claim));
+		.where(eq(assistantMessage.id, rowId));
 	onEvent({
 		type: "tool_result",
 		toolCallId: call.id,
 		name: call.name,
 		ok: result.ok,
 	});
+};
+
+/** Claim a call, run it, and record what it returned. False when somebody
+ *  else answered the call first. */
+const runClaimed = async (
+	ctx: Ctx,
+	trace: TurnTrace,
+	conversationId: string,
+	assistantId: string,
+	call: AssistantToolCall,
+	toRun: AssistantToolCall,
+	onEvent: (event: AssistantEvent) => void,
+): Promise<boolean> => {
+	const claimed = await claimCalls(
+		ctx,
+		conversationId,
+		assistantId,
+		[call],
+		RESULT_PENDING,
+	);
+	const first = claimed?.[0];
+	if (!first) return false;
+	onEvent({
+		type: "tool_start",
+		toolCallId: call.id,
+		name: call.name,
+		arguments: call.arguments,
+	});
+	await executeClaimed(ctx, trace, first, toRun, onEvent);
+	return true;
+};
+
+/**
+ * Claim a run of reads and run them at the same time.
+ *
+ * A model that asks for four lists in one step is asking four questions that do
+ * not depend on each other, and answering them one after the other makes the
+ * person wait for the sum of four round trips to the database — or, for
+ * `list_commits` and `list_pull_requests`, to GitHub. Waiting is the whole felt
+ * cost of this feature, so the reads go out together.
+ *
+ * Only reads, and only the ones that declare themselves safe to run beside
+ * another (`AssistantTool.serial`). Writes stay strictly in order: the model
+ * asked for them in an order, and two of them may be about the same day.
+ */
+const runClaimedBatch = async (
+	ctx: Ctx,
+	trace: TurnTrace,
+	conversationId: string,
+	assistantId: string,
+	calls: AssistantToolCall[],
+	onEvent: (event: AssistantEvent) => void,
+): Promise<boolean> => {
+	const claimed = await claimCalls(
+		ctx,
+		conversationId,
+		assistantId,
+		calls,
+		RESULT_PENDING,
+	);
+	if (!claimed) return false;
+	// Every step announced before any of them runs, so the trace shows the four
+	// spinners the person is actually waiting on rather than one at a time.
+	for (const { call } of claimed) {
+		onEvent({
+			type: "tool_start",
+			toolCallId: call.id,
+			name: call.name,
+			arguments: call.arguments,
+		});
+	}
+	await Promise.all(
+		claimed.map((entry) =>
+			executeClaimed(ctx, trace, entry, entry.call, onEvent),
+		),
+	);
 	return true;
 };
 
@@ -954,12 +1232,16 @@ const runClaimed = async (
  */
 const runPendingCalls = async (
 	ctx: Ctx,
+	trace: TurnTrace,
 	conversationId: string,
 	assistant: StoredMessage,
 	onEvent: (event: AssistantEvent) => void,
 ): Promise<boolean> => {
 	const history = await loadHistory(conversationId);
-	for (const call of unresolvedCalls(assistant, history)) {
+	let queue = unresolvedCalls(assistant, history);
+	while (queue.length > 0) {
+		const head = queue[0];
+		if (!head) break;
 		// Destructive tools stop the turn, and so does a batch write that can
 		// show its rows. Single creates and corrections still run inline: asking
 		// before each one turns "reconstruct my week from my commits" into
@@ -967,24 +1249,36 @@ const runPendingCalls = async (
 		// replace — whereas the batch that would HAVE been those fifteen writes
 		// is one card with fifteen rows. See ToolKind and ApprovalPreview in
 		// assistant-tools.ts for where the line sits and why.
-		if (needsApproval(call.name)) {
-			await suspendOn(ctx, assistant.id, call, onEvent);
+		if (needsApproval(head.name)) {
+			await suspendOn(ctx, assistant.id, head, onEvent);
 			return true;
 		}
+		// A leading run of independent reads goes out together; everything else
+		// keeps its place in the queue. See `runClaimedBatch`.
+		const together = concurrentRun(queue);
+		const ran =
+			together.length > 1
+				? await runClaimedBatch(
+						ctx,
+						trace,
+						conversationId,
+						assistant.id,
+						together,
+						onEvent,
+					)
+				: await runClaimed(
+						ctx,
+						trace,
+						conversationId,
+						assistant.id,
+						head,
+						head,
+						onEvent,
+					);
 		// Lost the claim: a new message answered this turn's calls while the
 		// approved one ran (`abandonPendingCalls`), and cleared the flag itself.
-		if (
-			!(await runClaimed(
-				ctx,
-				conversationId,
-				assistant.id,
-				call,
-				call,
-				onEvent,
-			))
-		) {
-			return false;
-		}
+		if (!ran) return false;
+		queue = queue.slice(together.length > 1 ? together.length : 1);
 	}
 	if (assistant.pendingApproval) {
 		await db
@@ -1062,6 +1356,19 @@ const runTurn = async (
 ): Promise<void> => {
 	const config = await requireKey(ctx);
 	const conversation = await requireConversation(ctx, input.conversationId);
+	// One trace for the whole question, so the steps it took and the tools they
+	// ran are one thing somebody can read a cost off — see `ai-telemetry.ts`.
+	// An approval resume is a second `run` call and therefore a second trace,
+	// which is honest: it is a second request, minutes later, that the person
+	// consented to separately.
+	const trace: TurnTrace = {
+		id: crypto.randomUUID(),
+		conversationId: conversation.id,
+		model: conversation.model,
+		// Set by each generation, so the spans its tool calls produce can name
+		// the call that asked for them.
+		generationId: null,
+	};
 
 	if (input.message) {
 		// Before the message, never after: see `abandonPendingCalls`.
@@ -1122,17 +1429,18 @@ const runTurn = async (
 		const answered = narrowed
 			? await runClaimed(
 					ctx,
+					trace,
 					conversation.id,
 					pending.id,
 					call,
 					narrowed,
 					onEvent,
 				)
-			: (await claimCall(
+			: (await claimCalls(
 					ctx,
 					conversation.id,
 					pending.id,
-					call,
+					[call],
 					decision === "approved" ? NONE_SELECTED : DECLINED,
 				)) !== null;
 		if (!answered) {
@@ -1155,11 +1463,12 @@ const runTurn = async (
 
 		// The rest of the turn: reads and writes run now, and a second
 		// destructive call stops it again with a card of its own.
-		if (await runPendingCalls(ctx, conversation.id, pending, onEvent)) return;
+		if (await runPendingCalls(ctx, trace, conversation.id, pending, onEvent))
+			return;
 	}
 
 	const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
-	const system = await systemPrompt(ctx, today, config.systemPrompt);
+	const system = await systemPrompt(ctx, today, config.systemPrompt, MAX_STEPS);
 	// Scoped to the caller: a Member is never shown the admin reports, which are both a per-step token cost and a tool call that could
 	// only come back refused. Resolved once here, off the Ctx memo.
 	const tools = toolDefinitions(await ctxAccess(ctx));
@@ -1199,9 +1508,8 @@ const runTurn = async (
 
 		let turn: ChatTurn;
 		try {
-			turn = await chatModel().streamChatCompletion({
+			turn = await generate(ctx, trace, step + 1, {
 				apiKey: config.apiKey,
-				model: conversation.model,
 				messages: [
 					{ role: "system", content: system },
 					...toWireMessages(history),
@@ -1216,6 +1524,48 @@ const runTurn = async (
 				return;
 			}
 			throw error;
+		}
+
+		// Stopped part-way — the person pressed Stop, or closed the tab.
+		//
+		// What arrived is kept, because it was paid for and because a half
+		// answer beats the question sitting there alone; but the HALF-ARRIVED
+		// TOOL CALLS ARE DROPPED. A stored `tool_calls` row with no `tool` result
+		// under it 400s the next request for the rest of the thread's life, and
+		// the calls were never run, so there is nothing to answer them with.
+		// An empty partial stores nothing and reports nothing: stopping a turn
+		// before it said anything is not a failure to explain.
+		if (signal?.aborted) {
+			if (turn.content.trim()) {
+				await insertMessage(ctx, conversation.id, {
+					role: "assistant",
+					content: turn.content,
+					toolCalls: null,
+					model: conversation.model,
+					promptTokens: turn.promptTokens,
+					completionTokens: turn.completionTokens,
+					pendingApproval: false,
+				});
+				await db
+					.update(assistantConversation)
+					.set({ updatedAt: new Date() })
+					.where(eq(assistantConversation.id, conversation.id));
+			}
+			return;
+		}
+
+		// A turn with neither text nor a tool call is nothing at all, and it used
+		// to end the loop as a success. The blank row it stored is one the
+		// transcript skips (an assistant row with no text is a pure tool turn,
+		// rendered as its trace), so the person was left looking at their own
+		// question with no answer under it and no error to explain the gap —
+		// which is how a short, vague follow-up ("let me see it") read when a
+		// model returned an empty completion. Said plainly instead, in the same
+		// words the out-of-steps path uses, because from the outside the two
+		// failures are the same failure.
+		if (turn.toolCalls.length === 0 && !turn.content.trim()) {
+			onEvent({ type: "error", message: NO_ANSWER });
+			return;
 		}
 
 		const assistantRow = await insertMessage(ctx, conversation.id, {
@@ -1241,18 +1591,65 @@ const runTurn = async (
 		}
 
 		// In order, so a read the model wanted done first still happens first.
-		if (await runPendingCalls(ctx, conversation.id, assistantRow, onEvent)) {
+		if (
+			await runPendingCalls(ctx, trace, conversation.id, assistantRow, onEvent)
+		) {
 			return;
 		}
 	}
 
-	// Fell out of the loop still calling tools. Said plainly rather than silently
-	// ending, because from the outside the two are indistinguishable.
-	onEvent({
-		type: "error",
-		message:
-			"The assistant kept working without reaching an answer. Try asking more specifically.",
-	});
+	// Fell out of the loop still calling tools.
+	//
+	// The turn used to end here on a red line, which threw away everything the
+	// eight steps had read and told the person their question had failed — when
+	// what had really happened is that the answer was most of the way there. So
+	// one more call is spent, with the tools taken away: the model cannot ask for
+	// a ninth step, so this terminates, and it answers from the tool results
+	// already in the thread. Not billed on a turn nobody is waiting for.
+	if (signal?.aborted) return;
+
+	let closing: ChatTurn | null = null;
+	try {
+		closing = await generate(ctx, trace, null, {
+			apiKey: config.apiKey,
+			messages: [
+				{ role: "system", content: system },
+				...toWireMessages(await loadHistory(conversation.id)),
+				{ role: "user", content: OUT_OF_STEPS },
+			],
+			signal,
+			onDelta: (text) => onEvent({ type: "delta", text }),
+		});
+	} catch (error) {
+		// Anything but OpenRouter's own answer is a bug, and belongs in the log
+		// the stream route keeps rather than swallowed here. `NO_ANSWER` covers
+		// the rest below.
+		if (!(error instanceof OpenRouterError)) throw error;
+	}
+
+	// The nudge itself is deliberately NOT stored: it is this loop talking to the
+	// model about its own ceiling, and a later turn re-reading it as something
+	// the person said would be a lie about the conversation.
+	if (closing?.content.trim()) {
+		await insertMessage(ctx, conversation.id, {
+			role: "assistant",
+			content: closing.content,
+			model: conversation.model,
+			promptTokens: closing.promptTokens,
+			completionTokens: closing.completionTokens,
+			pendingApproval: false,
+		});
+		await db
+			.update(assistantConversation)
+			.set({ updatedAt: new Date() })
+			.where(eq(assistantConversation.id, conversation.id));
+		onEvent({ type: "done" });
+		return;
+	}
+
+	// No closing answer either. Said plainly rather than silently ending, because
+	// from the outside the two are indistinguishable.
+	onEvent({ type: "error", message: NO_ANSWER });
 };
 
 export const assistantService = { settings, conversations, run };

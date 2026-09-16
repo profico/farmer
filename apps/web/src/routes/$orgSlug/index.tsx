@@ -17,6 +17,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
+import { GithubReconnectBanner } from "#/components/github-reconnect-banner.tsx";
 import { RewindBanner } from "#/components/rewind/rewind-banner.tsx";
 import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
@@ -187,6 +188,7 @@ function OrgHome() {
 
 	return (
 		<Page>
+			<GithubReconnectBanner orgSlug={organization.slug} />
 			<AutoTrackNag orgSlug={organization.slug} />
 			<RewindBanner orgSlug={organization.slug} today={today} />
 			<PageHeader

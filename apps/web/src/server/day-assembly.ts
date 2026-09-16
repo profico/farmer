@@ -19,5 +19,18 @@ export const applyDayAssembly = createServerFn({ method: "POST" })
 	.validator(applyDayAssemblyInput)
 	.handler(async ({ data, context }) => {
 		const { dayAssemblyService } = await import("@farmer/core/services");
-		return dayAssemblyService.apply(context.ctx, data);
+		const result = await dayAssemblyService.apply(context.ctx, data);
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "day_assembly_applied",
+				properties: {
+					organization_id: context.ctx.organizationId,
+				},
+			});
+			await posthog.flush();
+		}
+		return result;
 	});

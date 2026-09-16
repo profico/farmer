@@ -24,6 +24,10 @@
 		"format": "oxfmt --write",
 		"check": "oxfmt --check && oxlint"
 	},
+	"dependencies": {
+		"@posthog/react": "1.11.0",
+		"posthog-node": "5.52.4"
+	},
 	"devDependencies": {
 		"@oxlint/plugins": "1.80.0",
 		"oxfmt": "0.65.0",

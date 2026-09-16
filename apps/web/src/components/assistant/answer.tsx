@@ -315,20 +315,9 @@ const parseBlocks = (source: string): Block[] => {
 const safeHref = (href: string) =>
 	/^(https?:\/\/|mailto:|\/)/i.test(href.trim()) ? href.trim() : null;
 
-/**
- * A day the answer is citing, as `[[2026-08-03]]`, rendered as a link to that
- * day's timesheet.
- *
- * This is the citation story, and it is deliberately the cheap half of it. The
- * expensive half — every figure carrying the ids of the entries it was summed
- * from — needs the read tools to return those ids alongside their totals, which
- * is a change to what every report answers with. A date is the one handle the
- * model always already has, it is the coordinate the app is actually organised
- * by, and "where did 37.5h come from" is answered by landing on the day and
- * looking. Anything that isn't a real calendar date renders as plain text, so
- * a hallucinated citation is inert rather than a link to nowhere.
- */
-const MONTHS = [
+/** Shared with the tool trace, which prints a month on its own
+ *  (`primitives.tsx`). One table, so the two never drift apart. */
+export const MONTHS = [
 	"Jan",
 	"Feb",
 	"Mar",
@@ -349,7 +338,7 @@ const MONTHS = [
  *  instant: parsing it into a Date to print it back introduces the local
  *  midnight that `lib/time.ts` exists to keep out of this app, and the one
  *  timezone bug worth never having is the one that renders the wrong date. */
-const printDayKey = (day: string) => {
+export const printDayKey = (day: string) => {
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
 	if (!match) return null;
 	const month = Number(match[2]);
@@ -358,6 +347,19 @@ const printDayKey = (day: string) => {
 	return `${date} ${MONTHS[month - 1]}`;
 };
 
+/**
+ * A day the answer is citing, as `[[2026-08-03]]`, rendered as a link to that
+ * day's timesheet.
+ *
+ * This is the citation story, and it is deliberately the cheap half of it. The
+ * expensive half — every figure carrying the ids of the entries it was summed
+ * from — needs the read tools to return those ids alongside their totals, which
+ * is a change to what every report answers with. A date is the one handle the
+ * model always already has, it is the coordinate the app is actually organised
+ * by, and "where did 37.5h come from" is answered by landing on the day and
+ * looking. Anything that isn't a real calendar date renders as plain text, so
+ * a hallucinated citation is inert rather than a link to nowhere.
+ */
 function DayCitation({ day }: { day: string }) {
 	const orgSlug = useOrgSlug();
 	const label = printDayKey(day);

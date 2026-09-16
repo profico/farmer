@@ -86,7 +86,23 @@ export const createProject = createServerFn({ method: "POST" })
 	.validator(createProjectInput)
 	.handler(async ({ data, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
-		return projectsService.create(context.ctx, data);
+		const project = await projectsService.create(context.ctx, data);
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "project_created",
+				properties: {
+					organization_id: context.ctx.organizationId,
+					project_id: project.id,
+					project_type: data.type,
+					has_budget: Boolean(data.budgetHours || data.budgetAmount),
+				},
+			});
+			await posthog.flush();
+		}
+		return project;
 	});
 
 export const updateProject = createServerFn({ method: "POST" })

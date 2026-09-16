@@ -1,7 +1,10 @@
+import { usePostHog } from "@posthog/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import { AppSidebar } from "#/components/app-sidebar.tsx";
+import { AssistantRunsProvider } from "#/components/assistant/assistant-runs.tsx";
 import { Field } from "#/components/field.tsx";
 import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
 import { AppShellLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
@@ -107,7 +110,16 @@ export const Route = createFileRoute("/$orgSlug")({
 function OrgLayout() {
 	const { session, organization, role, singleOrg, assistantEnabled } =
 		Route.useRouteContext();
+	const posthog = usePostHog();
 	const isAdmin = role === "owner" || role === "admin";
+
+	useEffect(() => {
+		posthog.identify(session.user.id, {
+			email: session.user.email,
+			name: session.user.name,
+			role,
+		});
+	}, [posthog, role, session.user.email, session.user.id, session.user.name]);
 
 	// Three switches decide whether the assistant exists for this reader, and
 	// only the first one was ever consulted here: the deployment flag
@@ -127,7 +139,12 @@ function OrgLayout() {
 		Boolean(assistantSettings?.configured && assistantSettings.enabled);
 
 	return (
-		<>
+		// Above the sidebar and the outlet both, because an assistant turn belongs
+		// to its thread rather than to the screen that started it: the thread list
+		// in the sidebar marks the threads that are working, the assistant page
+		// renders the one it has open, and a turn carries on while you go and look
+		// at something else.
+		<AssistantRunsProvider orgSlug={organization.slug}>
 			{/* Outside the frame on purpose: SidebarProvider's element IS
 			    `.app-frame`, so anything inside it is a flex child of the two
 			    islands. The field is a fixed sibling painted behind them. */}
@@ -158,6 +175,6 @@ function OrgLayout() {
 					timezone={organization.timezone}
 				/>
 			</SidebarProvider>
-		</>
+		</AssistantRunsProvider>
 	);
 }

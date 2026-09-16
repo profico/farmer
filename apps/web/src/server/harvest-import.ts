@@ -67,7 +67,21 @@ export const finishHarvestImport = createServerFn({ method: "POST" })
 	.validator(harvestFinishInput)
 	.handler(async ({ data, context }) => {
 		const { harvestImportService } = await import("@farmer/core/services");
-		return harvestImportService.finish(context.ctx, data);
+		const result = await harvestImportService.finish(context.ctx, data);
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "harvest_import_completed",
+				properties: {
+					organization_id: context.ctx.organizationId,
+					import_run_id: data.runId,
+				},
+			});
+			await posthog.flush();
+		}
+		return result;
 	});
 
 export const undoHarvestImport = createServerFn({ method: "POST" })
