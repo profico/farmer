@@ -216,21 +216,30 @@ export function PromptBar({
 						role="menu"
 						aria-label="Commands"
 						onMouseLeave={() => setEngaged(false)}
+						// No entrance. This is a command palette: it opens because you
+						// typed `/`, and it is re-opened and dismissed on almost every
+						// character while you are choosing. Anything that plays on the way
+						// in plays again on the backspace, and a palette that has to
+						// finish arriving before you can read it is a palette you wait for.
 						className="assistant-motion absolute inset-x-0 bottom-full z-10 mb-2 rounded-[10px] bg-surface p-1 shadow-raised"
-						style={{
-							animation: "pop-in 180ms cubic-bezier(0.23,1,0.32,1) both",
-							transformOrigin: "bottom center",
-						}}
 					>
 						<span
 							aria-hidden
 							className="pointer-events-none absolute inset-x-1 rounded-[6px] bg-hover"
+							// `top` and `height` move with no transition at all. This
+							// highlight is the keyboard cursor — ArrowDown moves it, and
+							// holding the key repeats faster than any tween can finish, so a
+							// 220ms glide put the highlight permanently behind the selection
+							// it is supposed to show. Both are layout properties too, so
+							// every repeat queued a relayout of the menu.
+							//
+							// Only the fade survives, because that one is not a cursor move:
+							// it is the menu handing control to the pointer and back.
 							style={{
 								top: rowBox?.top ?? 0,
 								height: rowBox?.height ?? 0,
 								opacity: rowBox && engaged ? 1 : 0,
-								transition:
-									"top 220ms cubic-bezier(0.23,1,0.32,1), height 220ms cubic-bezier(0.23,1,0.32,1), opacity 150ms ease",
+								transition: "opacity var(--dur-fast) var(--ease-out)",
 							}}
 						/>
 						{rows.map((command, index) => (
@@ -275,7 +284,7 @@ export function PromptBar({
 					className={cn(
 						"relative isolate flex flex-col gap-1.5 overflow-hidden rounded-[22px] border border-line p-2 shadow-lift",
 						"bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] backdrop-blur-xl",
-						"transition-[border-color] duration-150 focus-within:border-line-strong",
+						"transition-[border-color] duration-(--dur-base) focus-within:border-line-strong",
 					)}
 				>
 					<div className="grid grid-cols-[minmax(0,1fr)_28px] items-end gap-x-1">
@@ -344,7 +353,7 @@ export function PromptBar({
 								// Round, like the shell around it — a squircle inside a pill
 								// reads as two different families of corner.
 								"flex size-7 shrink-0 items-center justify-center rounded-full",
-								"transition-[background-color,color,transform] duration-200 enabled:active:scale-[0.94]",
+								"transition-[background-color,color,transform] duration-(--dur-fast) enabled:active:scale-[0.97]",
 							)}
 							style={{
 								background:

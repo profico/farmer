@@ -12,7 +12,7 @@ import { Button } from "#/components/ui/button.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatClock } from "#/lib/format-hours.ts";
-import { springProductive } from "#/lib/motion.ts";
+import { useHeightTransition } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
@@ -54,11 +54,14 @@ export function EntryBlockRow({
 	 * Layout only, and in practice only the row's inset. The row is built for a
 	 * full-bleed list and carries the island's own padding (`px-4 sm:px-8`), so
 	 * a list that is one COLUMN of a grid rather than the page's whole width —
-	 * the home page's — passes `px-0` and lines the rows up with the heading
-	 * over them. `cn` is tailwind-merge, so the pair really is replaced.
+	 * the home page's — passes the matching negative margin (`-mx-4 sm:-mx-8`)
+	 * to bleed the fill back out to the island's edge while the text stays on
+	 * the column. `cn` is tailwind-merge, so a padding passed here really does
+	 * replace the pair.
 	 */
 	className?: string;
 }) {
+	const heightTransition = useHeightTransition();
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
 
@@ -212,15 +215,17 @@ export function EntryBlockRow({
 		// `overflow-hidden` is what makes the collapse read as the row closing
 		// rather than its contents spilling; the controls inside are inset far
 		// enough from the edges that it never clips a focus ring.
-		// `prefers-reduced-motion` is handled globally by the root
-		// <MotionConfig reducedMotion="user">.
+		// `prefers-reduced-motion` is NOT covered by the root
+		// <MotionConfig reducedMotion="user"> here: it drops transform, scale and
+		// slide, and this collapse is height and padding. `useHeightTransition`
+		// is what answers the preference — see `lib/motion.ts`.
 		<motion.div
 			animate={
 				collapsing
 					? { height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0 }
 					: undefined
 			}
-			transition={springProductive}
+			transition={heightTransition}
 			className={cn(
 				"group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted sm:flex-nowrap sm:px-8",
 				className,

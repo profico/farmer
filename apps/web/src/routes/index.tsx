@@ -16,7 +16,6 @@ import {
 	UsersIcon,
 } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { MotionConfig } from "motion/react";
 
 import { FarmerLogo } from "#/components/farmer-logo.tsx";
 import { GITHUB_URL } from "#/lib/links.ts";
@@ -177,845 +176,834 @@ const recentEntries = [
 function Home() {
 	const { orgSlug, signedIn } = Route.useLoaderData();
 	return (
-		<MotionConfig reducedMotion="user">
-			<div className="fm-landing">
-				{/* ============ HEADER ============ */}
-				{/* Painted with the page's own paper rather than a translucent wash of
+		// No <MotionConfig> here: `__root.tsx` already wraps the whole app in an
+		// identical one, and this route holds no `motion.*` element for it to
+		// configure. It only cost the landing page — which should be the cheapest
+		// and most cacheable in the app — a Motion import.
+		<div className="fm-landing">
+			{/* ============ HEADER ============ */}
+			{/* Painted with the page's own paper rather than a translucent wash of
 				    a slightly different white — the tint used to show as a seam across
 				    the top of the hero the moment anything scrolled under it. */}
-				<header
-					style={{
-						position: "sticky",
-						top: 0,
-						zIndex: 50,
-						background: "var(--bg)",
-					}}
-				>
-					<div
-						className="fm-header-inner"
-						style={{
-							maxWidth: "1140px",
-							margin: "0 auto",
-							padding: "16px 40px",
-							display: "flex",
-							alignItems: "center",
-							justifyContent: "space-between",
-						}}
-					>
-						<a href="#top" style={{ display: "block", color: "var(--fg)" }}>
-							<FarmerLogo height={30} />
-						</a>
-						<div
-							className="fm-nav"
-							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: "26px",
-								fontSize: "14px",
-								fontWeight: 500,
-							}}
-						>
-							<a
-								className="u-link fm-nav-section"
-								href="#opensource"
-								style={{ color: "var(--mut)" }}
-							>
-								Open source
-							</a>
-							<DashButton orgSlug={orgSlug} signedIn={signedIn} />
-						</div>
-					</div>
-				</header>
-
-				{/* ============ HERO ============ */}
-				<section
-					id="top"
-					className="fm-hero"
+			<header
+				style={{
+					position: "sticky",
+					top: 0,
+					zIndex: 50,
+					background: "var(--bg)",
+				}}
+			>
+				<div
+					className="fm-header-inner"
 					style={{
 						maxWidth: "1140px",
 						margin: "0 auto",
-						padding: "74px 40px 34px",
-						textAlign: "center",
+						padding: "16px 40px",
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "space-between",
 					}}
 				>
-					<h1
-						className="fm-serif fm-hero-title"
-						style={{
-							margin: "0 auto",
-							maxWidth: "840px",
-							fontSize: "80px",
-							lineHeight: 0.98,
-							letterSpacing: "-.015em",
-							textWrap: "balance",
-						}}
-					>
-						Do less tracking,
-						<br />
-						do more{" "}
-						<span style={{ fontStyle: "italic", color: "var(--acc)" }}>
-							doing.
-						</span>
-					</h1>
-					<p
-						className="fm-hero-sub"
-						style={{
-							margin: "24px auto 0",
-							maxWidth: "540px",
-							fontSize: "17px",
-							lineHeight: 1.6,
-							color: "var(--mut)",
-						}}
-					>
-						Farmer is calendar-first time tracking that logs your meetings from
-						Google Calendar and your commits from GitHub — automatically. Spend
-						your attention on the work, not the timesheet.
-					</p>
+					<a href="#top" style={{ display: "block", color: "var(--fg)" }}>
+						<FarmerLogo height={30} />
+					</a>
 					<div
-						className="fm-hero-cta"
+						className="fm-nav"
 						style={{
 							display: "flex",
-							justifyContent: "center",
 							alignItems: "center",
-							gap: "10px",
-							marginTop: "30px",
+							gap: "26px",
+							fontSize: "14px",
+							fontWeight: 500,
 						}}
 					>
-						<DashButton orgSlug={orgSlug} signedIn={signedIn} />
-						<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
-							<GitBranchIcon size={15} data-icon="inline-start" />
-							Star on GitHub
+						<a
+							className="u-link fm-nav-section"
+							href="#opensource"
+							style={{ color: "var(--mut)" }}
+						>
+							Open source
 						</a>
+						<DashButton orgSlug={orgSlug} signedIn={signedIn} />
 					</div>
-				</section>
+				</div>
+			</header>
 
-				{/* ============ APP WINDOW ============ */}
-				{/* A facsimile of the real product, drawn against the app's own tokens:
+			{/* ============ HERO ============ */}
+			<section
+				id="top"
+				className="fm-hero"
+				style={{
+					maxWidth: "1140px",
+					margin: "0 auto",
+					padding: "74px 40px 34px",
+					textAlign: "center",
+				}}
+			>
+				<h1
+					className="fm-serif fm-hero-title"
+					style={{
+						margin: "0 auto",
+						maxWidth: "840px",
+						fontSize: "80px",
+						lineHeight: 0.98,
+						letterSpacing: "-.015em",
+						textWrap: "balance",
+					}}
+				>
+					Do less tracking,
+					<br />
+					do more{" "}
+					<span style={{ fontStyle: "italic", color: "var(--acc)" }}>
+						doing.
+					</span>
+				</h1>
+				<p
+					className="fm-hero-sub"
+					style={{
+						margin: "24px auto 0",
+						maxWidth: "540px",
+						fontSize: "17px",
+						lineHeight: 1.6,
+						color: "var(--mut)",
+					}}
+				>
+					Farmer is calendar-first time tracking that logs your meetings from
+					Google Calendar and your commits from GitHub — automatically. Spend
+					your attention on the work, not the timesheet.
+				</p>
+				<div
+					className="fm-hero-cta"
+					style={{
+						display: "flex",
+						justifyContent: "center",
+						alignItems: "center",
+						gap: "10px",
+						marginTop: "30px",
+					}}
+				>
+					<DashButton orgSlug={orgSlug} signedIn={signedIn} />
+					<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
+						<GitBranchIcon size={15} data-icon="inline-start" />
+						Star on GitHub
+					</a>
+				</div>
+			</section>
+
+			{/* ============ APP WINDOW ============ */}
+			{/* A facsimile of the real product, drawn against the app's own tokens:
 				    the ground with two islands standing on it — the sidebar and the
 				    page — separated by the gap rather than by a border, captions in the
 				    faint uppercase eyebrow, and every figure in the mono face. The app
 				    names things in the serif and measures them in mono; so does this. */}
-				<section
-					id="features"
-					className="fm-appwindow-section"
+			<section
+				id="features"
+				className="fm-appwindow-section"
+				style={{
+					maxWidth: "1140px",
+					margin: "22px auto 0",
+					padding: "0 40px",
+				}}
+			>
+				<div
 					style={{
-						maxWidth: "1140px",
-						margin: "22px auto 0",
-						padding: "0 40px",
+						borderRadius: "16px",
+						overflow: "hidden",
+						border: "1px solid var(--line)",
+						background: "var(--ground)",
+						boxShadow: "var(--fm-shadow-window)",
 					}}
 				>
 					<div
 						style={{
-							borderRadius: "16px",
-							overflow: "hidden",
-							border: "1px solid var(--line)",
-							background: "var(--ground)",
-							boxShadow: "var(--fm-shadow-window)",
+							display: "flex",
+							alignItems: "center",
+							gap: "12px",
+							padding: "11px 16px",
+							borderBottom: "1px solid var(--line2)",
 						}}
 					>
-						<div
-							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: "12px",
-								padding: "11px 16px",
-								borderBottom: "1px solid var(--line2)",
-							}}
-						>
-							<div style={{ display: "flex", gap: "6px" }}>
-								<span
-									style={{
-										width: "10px",
-										height: "10px",
-										borderRadius: "50%",
-										background: "var(--line)",
-									}}
-								/>
-								<span
-									style={{
-										width: "10px",
-										height: "10px",
-										borderRadius: "50%",
-										background: "var(--line)",
-									}}
-								/>
-								<span
-									style={{
-										width: "10px",
-										height: "10px",
-										borderRadius: "50%",
-										background: "var(--line)",
-									}}
-								/>
-							</div>
-							<div
-								className="fm-mono"
+						<div style={{ display: "flex", gap: "6px" }}>
+							<span
 								style={{
-									flex: 1,
-									textAlign: "center",
-									fontSize: "12px",
-									color: "var(--mut)",
+									width: "10px",
+									height: "10px",
+									borderRadius: "50%",
+									background: "var(--line)",
 								}}
-							>
-								farmer.profi.co
-							</div>
+							/>
+							<span
+								style={{
+									width: "10px",
+									height: "10px",
+									borderRadius: "50%",
+									background: "var(--line)",
+								}}
+							/>
+							<span
+								style={{
+									width: "10px",
+									height: "10px",
+									borderRadius: "50%",
+									background: "var(--line)",
+								}}
+							/>
 						</div>
-						{/* The frame: ground, with the two islands floating in it. */}
 						<div
-							className="fm-preview-body"
+							className="fm-mono"
 							style={{
-								display: "flex",
-								gap: "10px",
-								padding: "10px",
-								// Tall enough for the summary column's natural height: the
-								// island clips, so a few pixels short silently cropped the
-								// last auto-tracked row.
-								height: "492px",
+								flex: 1,
+								textAlign: "center",
+								fontSize: "12px",
+								color: "var(--mut)",
 							}}
 						>
-							<aside
-								className="fm-preview-sidebar"
-								style={{
-									width: "186px",
-									flex: "none",
-									background: "var(--bg)",
-									borderRadius: "12px",
-									overflow: "hidden",
-									display: "flex",
-									flexDirection: "column",
-								}}
-							>
-								<div style={{ padding: "7px" }}>
-									<div
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: "7px",
-											padding: "5px 6px",
-											borderRadius: "8px",
-										}}
-									>
-										<span
-											style={{
-												width: "19px",
-												height: "19px",
-												borderRadius: "4px",
-												background: "var(--acc)",
-												color: "var(--bg)",
-												display: "flex",
-												alignItems: "center",
-												justifyContent: "center",
-												fontSize: "9.5px",
-												fontWeight: 500,
-												flex: "none",
-											}}
-										>
-											P
-										</span>
-										<span
-											style={{ flex: 1, fontSize: "11.5px", fontWeight: 500 }}
-										>
-											Profico
-										</span>
-										<CaretUpDownIcon
-											weight="regular"
-											size={11}
-											color="var(--mut)"
-										/>
-									</div>
-								</div>
+							farmer.profi.co
+						</div>
+					</div>
+					{/* The frame: ground, with the two islands floating in it. */}
+					<div
+						className="fm-preview-body"
+						style={{
+							display: "flex",
+							gap: "10px",
+							padding: "10px",
+							// Tall enough for the summary column's natural height: the
+							// island clips, so a few pixels short silently cropped the
+							// last auto-tracked row.
+							height: "492px",
+						}}
+					>
+						<aside
+							className="fm-preview-sidebar"
+							style={{
+								width: "186px",
+								flex: "none",
+								background: "var(--bg)",
+								borderRadius: "12px",
+								overflow: "hidden",
+								display: "flex",
+								flexDirection: "column",
+							}}
+						>
+							<div style={{ padding: "7px" }}>
 								<div
 									style={{
-										padding: "0 7px",
-										display: "flex",
-										flexDirection: "column",
-										gap: "7px",
-									}}
-								>
-									{previewNavGroups.map((group) => (
-										<div key={group.label}>
-											<div
-												className="fm-eyebrow"
-												style={{
-													display: "flex",
-													alignItems: "center",
-													height: "20px",
-													padding: "0 6px",
-												}}
-											>
-												{group.label}
-											</div>
-											{group.items.map(({ Icon, label, active }) => (
-												<span
-													key={label}
-													style={{
-														display: "flex",
-														alignItems: "center",
-														gap: "8px",
-														padding: "5px 7px",
-														borderRadius: "8px",
-														fontSize: "12px",
-														fontWeight: active ? 500 : 400,
-														color: active ? "var(--fg)" : "var(--mut)",
-														background: active ? "var(--sel)" : undefined,
-														boxShadow: active
-															? "var(--fm-shadow-chip)"
-															: undefined,
-													}}
-												>
-													<Icon size={14} />
-													{label}
-												</span>
-											))}
-										</div>
-									))}
-								</div>
-								<div
-									style={{
-										marginTop: "auto",
 										display: "flex",
 										alignItems: "center",
-										gap: "8px",
-										padding: "10px 11px",
-										borderTop: "1px solid var(--line)",
+										gap: "7px",
+										padding: "5px 6px",
+										borderRadius: "8px",
 									}}
 								>
 									<span
 										style={{
-											width: "20px",
-											height: "20px",
-											borderRadius: "50%",
-											background:
-												"color-mix(in srgb, var(--fg) 8%, transparent)",
-											color: "var(--mut)",
+											width: "19px",
+											height: "19px",
+											borderRadius: "4px",
+											background: "var(--acc)",
+											color: "var(--bg)",
 											display: "flex",
 											alignItems: "center",
 											justifyContent: "center",
-											fontSize: "9px",
+											fontSize: "9.5px",
 											fontWeight: 500,
 											flex: "none",
 										}}
 									>
-										AH
+										P
 									</span>
-									<span style={{ flex: 1, fontSize: "11px", fontWeight: 500 }}>
-										Ana Horvat
+									<span
+										style={{ flex: 1, fontSize: "11.5px", fontWeight: 500 }}
+									>
+										Profico
 									</span>
-									<SignOutIcon
+									<CaretUpDownIcon
 										weight="regular"
-										size={12}
-										color="var(--faint)"
+										size={11}
+										color="var(--mut)"
 									/>
 								</div>
-							</aside>
-							{/* The page island — a facsimile of $orgSlug/index.tsx. */}
-							<main
+							</div>
+							<div
 								style={{
-									flex: 1,
-									minWidth: 0,
-									background: "var(--bg)",
-									borderRadius: "12px",
-									overflow: "hidden",
+									padding: "0 7px",
 									display: "flex",
 									flexDirection: "column",
+									gap: "7px",
 								}}
 							>
-								<div style={{ padding: "15px 20px 14px" }}>
-									<div
-										style={{
-											display: "flex",
-											alignItems: "center",
-											justifyContent: "space-between",
-											gap: "12px",
-										}}
-									>
+								{previewNavGroups.map((group) => (
+									<div key={group.label}>
 										<div
 											className="fm-eyebrow"
-											style={{ letterSpacing: ".14em" }}
-										>
-											Tue, Jul 8 · 3h logged
-										</div>
-										<span
 											style={{
-												display: "inline-flex",
+												display: "flex",
 												alignItems: "center",
-												gap: "4px",
-												height: "21px",
-												padding: "0 7px 0 8px",
-												borderRadius: "4px",
-												background: "var(--acc)",
-												color: "var(--bg)",
-												fontSize: "10.5px",
-												fontWeight: 500,
-												flex: "none",
+												height: "20px",
+												padding: "0 6px",
 											}}
 										>
-											<PlusIcon weight="regular" size={11} />
-											Add block
-										</span>
-									</div>
-									<div
-										className="fm-serif"
-										style={{
-											marginTop: "11px",
-											fontSize: "24px",
-											lineHeight: 1.1,
-										}}
-									>
-										Good morning, Ana
-									</div>
-								</div>
-								<div
-									className="fm-preview-split"
-									style={{
-										display: "flex",
-										flex: 1,
-										minHeight: 0,
-										borderTop: "1px solid var(--line)",
-										borderBottom: "1px solid var(--line)",
-									}}
-								>
-									<div
-										className="fm-preview-col"
-										style={{
-											width: "53%",
-											flex: "none",
-											borderRight: "1px solid var(--line)",
-										}}
-									>
-										{/* The two figures, mono over an eyebrow — the app's Metric. */}
-										<div
-											style={{
-												display: "grid",
-												gridTemplateColumns: "1fr 1fr",
-												borderBottom: "1px solid var(--line)",
-											}}
-										>
-											<div
-												style={{
-													padding: "12px 16px",
-													borderRight: "1px solid var(--line)",
-												}}
-											>
-												<div
-													className="fm-mono"
-													style={{
-														fontSize: "22px",
-														lineHeight: 1,
-														letterSpacing: "-.04em",
-														color: "var(--acc)",
-													}}
-												>
-													3.0h
-												</div>
-												<div
-													className="fm-eyebrow"
-													style={{ marginTop: "9px", color: "var(--mut)" }}
-												>
-													Logged today
-												</div>
-											</div>
-											<div style={{ padding: "12px 16px" }}>
-												<div
-													className="fm-mono"
-													style={{
-														fontSize: "22px",
-														lineHeight: 1,
-														letterSpacing: "-.04em",
-													}}
-												>
-													37.5h
-												</div>
-												<div
-													className="fm-eyebrow"
-													style={{ marginTop: "9px", color: "var(--mut)" }}
-												>
-													This week
-												</div>
-											</div>
+											{group.label}
 										</div>
-										{/* The app's one progress rail: 2px, hairline ground, accent fill. */}
-										<div
-											style={{
-												padding: "11px 16px",
-												borderBottom: "1px solid var(--line)",
-											}}
-										>
-											<div
-												style={{
-													display: "flex",
-													alignItems: "baseline",
-													justifyContent: "space-between",
-													gap: "8px",
-												}}
-											>
-												<div className="fm-eyebrow">
-													This week vs. your target
-												</div>
-												<div
-													className="fm-mono"
-													style={{ fontSize: "10px", color: "var(--mut)" }}
-												>
-													37.5 / 40.0h{" "}
-													<span style={{ color: "var(--fg)" }}>94%</span>
-												</div>
-											</div>
-											<div
-												style={{
-													position: "relative",
-													height: "2px",
-													marginTop: "10px",
-													background: "var(--line2)",
-													overflow: "hidden",
-												}}
-											>
-												<span
-													style={{
-														position: "absolute",
-														inset: "0 auto 0 0",
-														width: "94%",
-														background: "var(--acc)",
-													}}
-												/>
-											</div>
-										</div>
-										<div
-											style={{
-												padding: "11px 16px",
-												borderBottom: "1px solid var(--line)",
-											}}
-										>
-											<div className="fm-eyebrow">This week by day</div>
-											<div
-												style={{
-													marginTop: "11px",
-													display: "flex",
-													gap: "6px",
-												}}
-											>
-												{previewWeek.map((b) => (
-													<div
-														key={b.d}
-														style={{
-															flex: "1 1 0",
-															minWidth: 0,
-															display: "flex",
-															flexDirection: "column",
-															alignItems: "center",
-															gap: "7px",
-														}}
-													>
-														<div
-															style={{
-																display: "flex",
-																width: "100%",
-																height: "34px",
-																alignItems: "flex-end",
-																justifyContent: "center",
-															}}
-														>
-															<span
-																style={{
-																	width: "100%",
-																	maxWidth: "17px",
-																	height: `${b.px}px`,
-																	borderRadius: "2px",
-																	background: b.today
-																		? "var(--acc)"
-																		: b.px > 2
-																			? "color-mix(in srgb, var(--acc) 40%, transparent)"
-																			: "var(--line)",
-																}}
-															/>
-														</div>
-														<span
-															className="fm-eyebrow"
-															style={{
-																color: b.today ? "var(--fg)" : undefined,
-															}}
-														>
-															{b.d}
-														</span>
-													</div>
-												))}
-											</div>
-										</div>
-										<div>
-											<div
-												className="fm-eyebrow"
+										{group.items.map(({ Icon, label, active }) => (
+											<span
+												key={label}
 												style={{
 													display: "flex",
 													alignItems: "center",
-													gap: "5px",
-													padding: "12px 16px 3px",
+													gap: "8px",
+													padding: "5px 7px",
+													borderRadius: "8px",
+													fontSize: "12px",
+													fontWeight: active ? 500 : 400,
+													color: active ? "var(--fg)" : "var(--mut)",
+													background: active ? "var(--sel)" : undefined,
+													boxShadow: active
+														? "var(--fm-shadow-chip)"
+														: undefined,
 												}}
 											>
-												<SparkleIcon weight="regular" size={11} />
-												Auto-tracked today
+												<Icon size={14} />
+												{label}
+											</span>
+										))}
+									</div>
+								))}
+							</div>
+							<div
+								style={{
+									marginTop: "auto",
+									display: "flex",
+									alignItems: "center",
+									gap: "8px",
+									padding: "10px 11px",
+									borderTop: "1px solid var(--line)",
+								}}
+							>
+								<span
+									style={{
+										width: "20px",
+										height: "20px",
+										borderRadius: "50%",
+										background: "color-mix(in srgb, var(--fg) 8%, transparent)",
+										color: "var(--mut)",
+										display: "flex",
+										alignItems: "center",
+										justifyContent: "center",
+										fontSize: "9px",
+										fontWeight: 500,
+										flex: "none",
+									}}
+								>
+									AH
+								</span>
+								<span style={{ flex: 1, fontSize: "11px", fontWeight: 500 }}>
+									Ana Horvat
+								</span>
+								<SignOutIcon weight="regular" size={12} color="var(--faint)" />
+							</div>
+						</aside>
+						{/* The page island — a facsimile of $orgSlug/index.tsx. */}
+						<main
+							style={{
+								flex: 1,
+								minWidth: 0,
+								background: "var(--bg)",
+								borderRadius: "12px",
+								overflow: "hidden",
+								display: "flex",
+								flexDirection: "column",
+							}}
+						>
+							<div style={{ padding: "15px 20px 14px" }}>
+								<div
+									style={{
+										display: "flex",
+										alignItems: "center",
+										justifyContent: "space-between",
+										gap: "12px",
+									}}
+								>
+									<div
+										className="fm-eyebrow"
+										style={{ letterSpacing: ".14em" }}
+									>
+										Tue, Jul 8 · 3h logged
+									</div>
+									<span
+										style={{
+											display: "inline-flex",
+											alignItems: "center",
+											gap: "4px",
+											height: "21px",
+											padding: "0 7px 0 8px",
+											borderRadius: "4px",
+											background: "var(--acc)",
+											color: "var(--bg)",
+											fontSize: "10.5px",
+											fontWeight: 500,
+											flex: "none",
+										}}
+									>
+										<PlusIcon weight="regular" size={11} />
+										Add block
+									</span>
+								</div>
+								<div
+									className="fm-serif"
+									style={{
+										marginTop: "11px",
+										fontSize: "24px",
+										lineHeight: 1.1,
+									}}
+								>
+									Good morning, Ana
+								</div>
+							</div>
+							<div
+								className="fm-preview-split"
+								style={{
+									display: "flex",
+									flex: 1,
+									minHeight: 0,
+									borderTop: "1px solid var(--line)",
+									borderBottom: "1px solid var(--line)",
+								}}
+							>
+								<div
+									className="fm-preview-col"
+									style={{
+										width: "53%",
+										flex: "none",
+										borderRight: "1px solid var(--line)",
+									}}
+								>
+									{/* The two figures, mono over an eyebrow — the app's Metric. */}
+									<div
+										style={{
+											display: "grid",
+											gridTemplateColumns: "1fr 1fr",
+											borderBottom: "1px solid var(--line)",
+										}}
+									>
+										<div
+											style={{
+												padding: "12px 16px",
+												borderRight: "1px solid var(--line)",
+											}}
+										>
+											<div
+												className="fm-mono"
+												style={{
+													fontSize: "22px",
+													lineHeight: 1,
+													letterSpacing: "-.04em",
+													color: "var(--acc)",
+												}}
+											>
+												3.0h
 											</div>
-											{autoTracked.map(({ Icon, title, sub, hours }) => (
+											<div
+												className="fm-eyebrow"
+												style={{ marginTop: "9px", color: "var(--mut)" }}
+											>
+												Logged today
+											</div>
+										</div>
+										<div style={{ padding: "12px 16px" }}>
+											<div
+												className="fm-mono"
+												style={{
+													fontSize: "22px",
+													lineHeight: 1,
+													letterSpacing: "-.04em",
+												}}
+											>
+												37.5h
+											</div>
+											<div
+												className="fm-eyebrow"
+												style={{ marginTop: "9px", color: "var(--mut)" }}
+											>
+												This week
+											</div>
+										</div>
+									</div>
+									{/* The app's one progress rail: 2px, hairline ground, accent fill. */}
+									<div
+										style={{
+											padding: "11px 16px",
+											borderBottom: "1px solid var(--line)",
+										}}
+									>
+										<div
+											style={{
+												display: "flex",
+												alignItems: "baseline",
+												justifyContent: "space-between",
+												gap: "8px",
+											}}
+										>
+											<div className="fm-eyebrow">
+												This week vs. your target
+											</div>
+											<div
+												className="fm-mono"
+												style={{ fontSize: "10px", color: "var(--mut)" }}
+											>
+												37.5 / 40.0h{" "}
+												<span style={{ color: "var(--fg)" }}>94%</span>
+											</div>
+										</div>
+										<div
+											style={{
+												position: "relative",
+												height: "2px",
+												marginTop: "10px",
+												background: "var(--line2)",
+												overflow: "hidden",
+											}}
+										>
+											<span
+												style={{
+													position: "absolute",
+													inset: "0 auto 0 0",
+													width: "94%",
+													background: "var(--acc)",
+												}}
+											/>
+										</div>
+									</div>
+									<div
+										style={{
+											padding: "11px 16px",
+											borderBottom: "1px solid var(--line)",
+										}}
+									>
+										<div className="fm-eyebrow">This week by day</div>
+										<div
+											style={{
+												marginTop: "11px",
+												display: "flex",
+												gap: "6px",
+											}}
+										>
+											{previewWeek.map((b) => (
 												<div
-													key={title}
+													key={b.d}
 													style={{
+														flex: "1 1 0",
+														minWidth: 0,
 														display: "flex",
+														flexDirection: "column",
 														alignItems: "center",
-														gap: "9px",
-														padding: "7px 16px",
+														gap: "7px",
 													}}
 												>
-													<Icon size={13} color="var(--mut)" />
-													<div style={{ flex: 1, minWidth: 0 }}>
-														<div style={{ fontSize: "11.5px" }}>{title}</div>
-														<div
+													<div
+														style={{
+															display: "flex",
+															width: "100%",
+															height: "34px",
+															alignItems: "flex-end",
+															justifyContent: "center",
+														}}
+													>
+														<span
 															style={{
-																marginTop: "1px",
-																fontSize: "10px",
-																color: "var(--faint)",
+																width: "100%",
+																maxWidth: "17px",
+																height: `${b.px}px`,
+																borderRadius: "2px",
+																background: b.today
+																	? "var(--acc)"
+																	: b.px > 2
+																		? "color-mix(in srgb, var(--acc) 40%, transparent)"
+																		: "var(--line)",
 															}}
-														>
-															{sub}
-														</div>
+														/>
 													</div>
 													<span
-														className="fm-mono"
-														style={{ fontSize: "11px" }}
+														className="fm-eyebrow"
+														style={{
+															color: b.today ? "var(--fg)" : undefined,
+														}}
 													>
-														{hours}
+														{b.d}
 													</span>
 												</div>
 											))}
 										</div>
 									</div>
-									<div style={{ flex: 1, minWidth: 0, padding: "13px 0 4px" }}>
+									<div>
 										<div
 											className="fm-eyebrow"
-											style={{ padding: "0 16px 5px" }}
+											style={{
+												display: "flex",
+												alignItems: "center",
+												gap: "5px",
+												padding: "12px 16px 3px",
+											}}
 										>
-											Today's entries
+											<SparkleIcon weight="regular" size={11} />
+											Auto-tracked today
 										</div>
-										{recentEntries.map((e, i) => (
+										{autoTracked.map(({ Icon, title, sub, hours }) => (
 											<div
-												key={e.title}
+												key={title}
 												style={{
 													display: "flex",
-													alignItems: "flex-start",
+													alignItems: "center",
 													gap: "9px",
-													padding: "9px 16px",
-													borderTop:
-														i === 0 ? undefined : "1px solid var(--line2)",
+													padding: "7px 16px",
 												}}
 											>
-												<span
-													style={{
-														marginTop: "4px",
-														width: "7px",
-														height: "7px",
-														borderRadius: "50%",
-														background: e.dot,
-														flex: "none",
-													}}
-												/>
+												<Icon size={13} color="var(--mut)" />
 												<div style={{ flex: 1, minWidth: 0 }}>
+													<div style={{ fontSize: "11.5px" }}>{title}</div>
 													<div
 														style={{
-															display: "flex",
-															alignItems: "center",
-															gap: "6px",
+															marginTop: "1px",
+															fontSize: "10px",
+															color: "var(--faint)",
 														}}
 													>
-														<span
-															style={{ fontSize: "11.5px", fontWeight: 500 }}
-														>
-															{e.title}
-														</span>
-														{e.badge && (
-															<span
-																className="fm-eyebrow"
-																style={{
-																	display: "inline-flex",
-																	alignItems: "center",
-																	gap: "3px",
-																	padding: "2px 6px",
-																	borderRadius: "999px",
-																	background: "var(--sel)",
-																	color: "var(--mut)",
-																}}
-															>
-																<e.badge.Icon weight="regular" size={10} />
-																{e.badge.text}
-															</span>
-														)}
-													</div>
-													<div
-														style={{
-															marginTop: "2px",
-															fontSize: "10.5px",
-															color: "var(--mut)",
-														}}
-													>
-														{e.sub}
+														{sub}
 													</div>
 												</div>
-												<span
-													className="fm-mono"
-													style={{ fontSize: "11.5px", flex: "none" }}
-												>
-													{e.hours}
+												<span className="fm-mono" style={{ fontSize: "11px" }}>
+													{hours}
 												</span>
 											</div>
 										))}
 									</div>
 								</div>
-								{/* The page's closing action: the serif accent link. */}
-								<div style={{ padding: "12px 20px" }}>
-									<span
-										className="fm-serif"
-										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											gap: "6px",
-											fontSize: "16px",
-											color: "var(--acc)",
-										}}
-									>
-										View full calendar
-										<ArrowRightIcon weight="regular" size={13} />
-									</span>
+								<div style={{ flex: 1, minWidth: 0, padding: "13px 0 4px" }}>
+									<div className="fm-eyebrow" style={{ padding: "0 16px 5px" }}>
+										Today's entries
+									</div>
+									{recentEntries.map((e, i) => (
+										<div
+											key={e.title}
+											style={{
+												display: "flex",
+												alignItems: "flex-start",
+												gap: "9px",
+												padding: "9px 16px",
+												borderTop:
+													i === 0 ? undefined : "1px solid var(--line2)",
+											}}
+										>
+											<span
+												style={{
+													marginTop: "4px",
+													width: "7px",
+													height: "7px",
+													borderRadius: "50%",
+													background: e.dot,
+													flex: "none",
+												}}
+											/>
+											<div style={{ flex: 1, minWidth: 0 }}>
+												<div
+													style={{
+														display: "flex",
+														alignItems: "center",
+														gap: "6px",
+													}}
+												>
+													<span style={{ fontSize: "11.5px", fontWeight: 500 }}>
+														{e.title}
+													</span>
+													{e.badge && (
+														<span
+															className="fm-eyebrow"
+															style={{
+																display: "inline-flex",
+																alignItems: "center",
+																gap: "3px",
+																padding: "2px 6px",
+																borderRadius: "999px",
+																background: "var(--sel)",
+																color: "var(--mut)",
+															}}
+														>
+															<e.badge.Icon weight="regular" size={10} />
+															{e.badge.text}
+														</span>
+													)}
+												</div>
+												<div
+													style={{
+														marginTop: "2px",
+														fontSize: "10.5px",
+														color: "var(--mut)",
+													}}
+												>
+													{e.sub}
+												</div>
+											</div>
+											<span
+												className="fm-mono"
+												style={{ fontSize: "11.5px", flex: "none" }}
+											>
+												{e.hours}
+											</span>
+										</div>
+									))}
 								</div>
-							</main>
-						</div>
+							</div>
+							{/* The page's closing action: the serif accent link. */}
+							<div style={{ padding: "12px 20px" }}>
+								<span
+									className="fm-serif"
+									style={{
+										display: "inline-flex",
+										alignItems: "center",
+										gap: "6px",
+										fontSize: "16px",
+										color: "var(--acc)",
+									}}
+								>
+									View full calendar
+									<ArrowRightIcon weight="regular" size={13} />
+								</span>
+							</div>
+						</main>
 					</div>
-				</section>
-				{/* ============ OPEN SOURCE + CTA ============ */}
-				<section
-					id="opensource"
-					className="fm-os-section"
+				</div>
+			</section>
+			{/* ============ OPEN SOURCE + CTA ============ */}
+			<section
+				id="opensource"
+				className="fm-os-section"
+				style={{
+					maxWidth: "1140px",
+					margin: "0 auto",
+					padding: "104px 40px 0",
+					scrollMarginTop: "80px",
+				}}
+			>
+				<div
+					style={{
+						paddingTop: "64px",
+						display: "flex",
+						alignItems: "flex-end",
+						justifyContent: "space-between",
+						gap: "40px",
+						flexWrap: "wrap",
+					}}
+				>
+					<div>
+						<div
+							style={{
+								display: "inline-flex",
+								alignItems: "center",
+								gap: "8px",
+								padding: "6px 13px",
+								background: "color-mix(in srgb, var(--acc) 8%, transparent)",
+								border:
+									"1px solid color-mix(in srgb, var(--acc) 16%, transparent)",
+								borderRadius: "999px",
+								font: "500 12px 'Instrument Sans',sans-serif",
+								color: "var(--acc)",
+								marginBottom: "22px",
+							}}
+						>
+							<GitBranchIcon size={14} />
+							Free · MIT licensed
+						</div>
+						<h2
+							className="fm-serif fm-os-title"
+							style={{
+								margin: 0,
+								maxWidth: "640px",
+								fontSize: "58px",
+								lineHeight: 0.98,
+								letterSpacing: "-.01em",
+								textWrap: "balance",
+							}}
+						>
+							Built in the open.{" "}
+							<span style={{ fontStyle: "italic", color: "var(--acc)" }}>
+								Yours to run.
+							</span>
+						</h2>
+					</div>
+					<div
+						className="fm-os-actions"
+						style={{ display: "flex", gap: "10px" }}
+					>
+						<DashButton orgSlug={orgSlug} signedIn={signedIn} />
+						<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
+							<GitBranchIcon size={15} data-icon="inline-start" />
+							View on GitHub
+						</a>
+					</div>
+				</div>
+			</section>
+
+			{/* ============ FOOTER ============ */}
+			<footer style={{ marginTop: "100px" }}>
+				<div
+					className="fm-footer-inner"
 					style={{
 						maxWidth: "1140px",
 						margin: "0 auto",
-						padding: "104px 40px 0",
-						scrollMarginTop: "80px",
+						padding: "30px 40px",
+						display: "flex",
+						alignItems: "center",
+						gap: "24px",
+						flexWrap: "wrap",
 					}}
 				>
+					<a href="#top" style={{ display: "block", color: "var(--fg)" }}>
+						<FarmerLogo height={26} />
+					</a>
 					<div
 						style={{
-							paddingTop: "64px",
 							display: "flex",
-							alignItems: "flex-end",
-							justifyContent: "space-between",
-							gap: "40px",
-							flexWrap: "wrap",
+							gap: "22px",
+							fontSize: "13.5px",
+							fontWeight: 500,
 						}}
 					>
-						<div>
-							<div
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: "8px",
-									padding: "6px 13px",
-									background: "color-mix(in srgb, var(--acc) 8%, transparent)",
-									border:
-										"1px solid color-mix(in srgb, var(--acc) 16%, transparent)",
-									borderRadius: "999px",
-									font: "500 12px 'Instrument Sans',sans-serif",
-									color: "var(--acc)",
-									marginBottom: "22px",
-								}}
-							>
-								<GitBranchIcon size={14} />
-								Free · MIT licensed
-							</div>
-							<h2
-								className="fm-serif fm-os-title"
-								style={{
-									margin: 0,
-									maxWidth: "640px",
-									fontSize: "58px",
-									lineHeight: 0.98,
-									letterSpacing: "-.01em",
-									textWrap: "balance",
-								}}
-							>
-								Built in the open.{" "}
-								<span style={{ fontStyle: "italic", color: "var(--acc)" }}>
-									Yours to run.
-								</span>
-							</h2>
-						</div>
-						<div
-							className="fm-os-actions"
-							style={{ display: "flex", gap: "10px" }}
+						<a
+							className="u-link"
+							href="#features"
+							style={{ color: "var(--mut)" }}
 						>
-							<DashButton orgSlug={orgSlug} signedIn={signedIn} />
-							<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
-								<GitBranchIcon size={15} data-icon="inline-start" />
-								View on GitHub
-							</a>
-						</div>
-					</div>
-				</section>
-
-				{/* ============ FOOTER ============ */}
-				<footer style={{ marginTop: "100px" }}>
-					<div
-						className="fm-footer-inner"
-						style={{
-							maxWidth: "1140px",
-							margin: "0 auto",
-							padding: "30px 40px",
-							display: "flex",
-							alignItems: "center",
-							gap: "24px",
-							flexWrap: "wrap",
-						}}
-					>
-						<a href="#top" style={{ display: "block", color: "var(--fg)" }}>
-							<FarmerLogo height={26} />
+							Features
 						</a>
-						<div
+						<a
+							className="u-link"
+							href="#opensource"
+							style={{ color: "var(--mut)" }}
+						>
+							Open source
+						</a>
+					</div>
+					<div style={{ flex: 1 }} />
+					<div style={{ fontSize: "13px", color: "var(--mut)" }}>
+						© 2026 · MIT · Maintained by{" "}
+						<a
+							className="u-link"
+							href={PROFICO_URL}
 							style={{
-								display: "flex",
-								gap: "22px",
-								fontSize: "13.5px",
-								fontWeight: 500,
+								display: "inline-flex",
+								alignItems: "center",
+								gap: "3px",
+								fontWeight: 600,
+								color: "var(--fg)",
 							}}
 						>
-							<a
-								className="u-link"
-								href="#features"
-								style={{ color: "var(--mut)" }}
-							>
-								Features
-							</a>
-							<a
-								className="u-link"
-								href="#opensource"
-								style={{ color: "var(--mut)" }}
-							>
-								Open source
-							</a>
-						</div>
-						<div style={{ flex: 1 }} />
-						<div style={{ fontSize: "13px", color: "var(--mut)" }}>
-							© 2026 · MIT · Maintained by{" "}
-							<a
-								className="u-link"
-								href={PROFICO_URL}
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: "3px",
-									fontWeight: 600,
-									color: "var(--fg)",
-								}}
-							>
-								Profico
-								<ArrowUpRightIcon weight="regular" size={12} />
-							</a>
-						</div>
+							Profico
+							<ArrowUpRightIcon weight="regular" size={12} />
+						</a>
 					</div>
-				</footer>
-			</div>
-		</MotionConfig>
+				</div>
+			</footer>
+		</div>
 	);
 }

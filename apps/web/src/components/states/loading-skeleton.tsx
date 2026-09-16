@@ -107,67 +107,63 @@ export function PageLoadingSkeleton({ rows = 4 }: { rows?: number }) {
 	);
 }
 
-/** One nav row: the icon square and its label, at `SidebarMenuButton`'s height. */
-function NavRowSkeleton({ width }: { width: number }) {
-	return (
-		<div className="flex h-8 items-center gap-2.5 px-2.5">
-			<Skeleton className="size-4 shrink-0 rounded-sm" />
-			<Skeleton className="h-3" style={{ width }} />
-		</div>
-	);
-}
-
-// Hand-picked so the column of labels is ragged rather than a solid block, and
-// fixed for the same reason the row widths above are. The counts are the nav an
-// admin sees (seven workspace rows, four admin ones) — the shape a placeholder
-// should commit to is the fuller one, since a list that grows on arrival pushes
-// the whole column down and a list that shrinks only pulls it up.
-const NAV_GROUPS = [
-	{ group: "workspace", widths: [46, 62, 40, 88, 66, 82, 92] },
-	{ group: "admin", widths: [44, 68, 84, 54] },
+// The nav's rows, named so the keys are stable, each with the width its label
+// takes. The two at the foot (Settings and Report a problem) are not drawn —
+// they sit against the footer rule, and a placeholder there reads as content
+// rather than as chrome waiting.
+const NAV_ROWS = [
+	{ key: "home", width: 40 },
+	{ key: "time", width: 34 },
+	{ key: "projects", width: 58 },
+	{ key: "reports", width: 52 },
+	{ key: "assistant", width: 62 },
 ];
 
 /**
- * The sidebar island, as a placeholder.
+ * The nav column, as a placeholder.
  *
  * It has to be here rather than reusing `AppSidebar` with empty props: the real
- * sidebar needs the org and the session, and the whole reason this is on screen
+ * column needs the org and the session, and the whole reason this is on screen
  * is that neither has resolved yet.
+ *
+ * It carries `.app-nav`, so a reader who collapsed the column gets the rail
+ * width here too — that rule reads `data-nav` off <html>, which the inline head
+ * script has already set by this point (`lib/nav-collapse.ts`). The labels are
+ * drawn either way and simply clip, which is the same frame the real column
+ * spends before `useNavCollapsed` catches up.
+ *
+ * The column alone, with no section panel beside it: the panel belongs to
+ * Settings and to Chat, and which section is being entered is not yet known —
+ * an incoming panel that turns out not to exist is a 240px column that opens
+ * and shuts itself, which is worse than one that opens a beat late. It takes
+ * neither the hairline nor the darker paper for the same reason: both belong to
+ * a column that has a panel beside it.
  */
-function SidebarLoadingSkeleton() {
+function NavLoadingSkeleton() {
 	return (
-		// w-64 rather than `w-(--sidebar-width)`: that variable is set by
-		// SidebarProvider, which is exactly the component that hasn't mounted
-		// yet. 16rem is SIDEBAR_WIDTH in `ui/sidebar.tsx`.
-		<div className="island sticky top-(--frame-pad) hidden h-[calc(100svh-2*var(--frame-pad))] w-64 shrink-0 flex-col self-stretch md:flex">
-			{/* The org switcher, at the size the real mark + name occupy. */}
-			<div className="shrink-0 p-2.5">
-				<div className="flex items-center gap-2.5 p-2">
+		// The geometry is `AppSidebar`'s own: 40px targets and a footer row at
+		// `--footer-h`, so the hairline lands where the real one does.
+		<div className="app-nav island sticky top-(--frame-pad) hidden h-[calc(100svh-2*var(--frame-pad))] shrink-0 flex-col self-stretch overflow-hidden md:flex">
+			<div className="flex min-h-0 flex-1 flex-col gap-1 px-2.5 pt-2.5">
+				{/* The workspace mark and its name, where the switcher sits. */}
+				<div className="flex h-9 shrink-0 items-center gap-2.5 px-2">
 					<Skeleton className="size-6.5 shrink-0 rounded-md" />
-					<Skeleton className="h-3.5 w-28" />
+					<Skeleton className="h-3 w-24" />
 				</div>
-			</div>
-			<div className="min-h-0 flex-1 px-2.5">
-				{NAV_GROUPS.map(({ group, widths }) => (
-					<div key={group} className="flex flex-col p-2">
-						{/* The group label, at `SidebarGroupLabel`'s h-7. */}
-						<div className="flex h-7 items-center px-2.5">
-							<Skeleton className="h-2 w-16" />
-						</div>
-						<div className="flex flex-col gap-1">
-							{widths.map((width) => (
-								<NavRowSkeleton key={width} width={width} />
-							))}
-						</div>
+				<div className="h-1.5 shrink-0" />
+				{NAV_ROWS.map(({ key, width }) => (
+					<div
+						key={key}
+						className="flex h-10 shrink-0 items-center gap-2.5 px-2.5"
+					>
+						<Skeleton className="size-4.5 shrink-0 rounded-sm" />
+						<Skeleton className="h-3" style={{ width }} />
 					</div>
 				))}
 			</div>
-			{/* The footer row is a fixed `--footer-h` in the real sidebar, and the
-			    timesheet's own footer aligns to it — so it keeps that height here
-			    rather than being sized by its contents. */}
-			<div className="flex h-(--footer-h) shrink-0 items-center gap-2.5 border-t px-3.5">
-				<Skeleton className="size-6.5 shrink-0 rounded-full" />
-				<Skeleton className="h-3 w-24" />
+			<div className="flex h-(--footer-h) shrink-0 items-center gap-2.5 border-t px-4">
+				<Skeleton className="size-7 shrink-0 rounded-full" />
+				<Skeleton className="h-3 w-20" />
 			</div>
 		</div>
 	);
@@ -192,7 +188,7 @@ export function AppShellLoadingSkeleton({
 }) {
 	return (
 		<div className="app-frame">
-			<SidebarLoadingSkeleton />
+			<NavLoadingSkeleton />
 			{/* Matches `SidebarInset`: transparent, so the ground shows between the
 			    two islands the way it does once the real layout mounts. */}
 			<main className="relative flex w-full min-w-0 flex-1 flex-col">

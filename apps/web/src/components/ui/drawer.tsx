@@ -43,7 +43,7 @@ function DrawerContent({
 				// Fades with the drag, so pulling the sheet halfway down shows the page
 				// halfway back. `absolute` on iOS covers the area behind a collapsed
 				// toolbar, which `fixed` leaves uncovered.
-				className="fixed inset-0 z-50 min-h-dvh bg-black/25 opacity-[calc(1-var(--drawer-swipe-progress))] transition-opacity duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] supports-backdrop-filter:backdrop-blur-xs supports-[-webkit-touch-callout:none]:absolute data-ending-style:opacity-0 data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:opacity-0 data-swiping:duration-0 motion-reduce:transition-none"
+				className="fixed inset-0 z-50 min-h-dvh bg-black/25 opacity-[calc(1-var(--drawer-swipe-progress))] transition-opacity duration-300 ease-(--ease-drawer) supports-backdrop-filter:backdrop-blur-xs supports-[-webkit-touch-callout:none]:absolute data-ending-style:opacity-0 data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:opacity-0 data-swiping:duration-0"
 			/>
 			<DrawerPrimitive.Viewport
 				data-slot="drawer-viewport"
@@ -54,7 +54,7 @@ function DrawerContent({
 					className={cn(
 						// The `after:` strip is the bleed: it hangs below the popup in its
 						// colour, so an upward over-drag never shows the page underneath.
-						"relative flex w-full flex-col gap-4 rounded-t-2xl border-t bg-popover bg-clip-padding text-base text-popover-foreground shadow-[var(--lift)] outline-none after:absolute after:inset-x-0 after:top-full after:h-12 after:bg-popover [transform:translateY(var(--drawer-swipe-movement-y))] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] data-ending-style:[transform:translateY(calc(100%+2px))] data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:[transform:translateY(calc(100%+2px))] data-swiping:select-none motion-reduce:transition-none",
+						"relative flex w-full flex-col gap-4 rounded-t-2xl border-t bg-popover bg-clip-padding text-base text-popover-foreground shadow-[var(--lift)] outline-none after:absolute after:inset-x-0 after:top-full after:h-12 after:bg-popover [transform:translateY(var(--drawer-swipe-movement-y))] transition-transform duration-300 ease-(--ease-drawer) data-ending-style:[transform:translateY(calc(100%+2px))] data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:[transform:translateY(calc(100%+2px))] data-swiping:select-none motion-reduce:transition-none motion-reduce:data-ending-style:[transform:none] motion-reduce:data-starting-style:[transform:none]",
 						className,
 					)}
 					{...props}

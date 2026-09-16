@@ -364,7 +364,7 @@ function AssistantPage() {
 													key={suggestion}
 													type="button"
 													onClick={() => void send(suggestion)}
-													className="rounded-control px-2.5 py-1.5 text-left text-[13px] text-ink-2 shadow-hairline transition-colors duration-100 hover:bg-hover hover:text-ink"
+													className="rounded-control px-2.5 py-1.5 text-left text-[13px] text-ink-2 shadow-hairline transition-colors duration-(--dur-fast) hover:bg-hover hover:text-ink"
 												>
 													{suggestion}
 												</button>

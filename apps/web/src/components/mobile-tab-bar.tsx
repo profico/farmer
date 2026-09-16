@@ -140,7 +140,7 @@ export function MobileTabBar({
 								// loader for no reason.
 								onClick={(e) => active && e.preventDefault()}
 								className={cn(
-									"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform active:scale-95",
+									"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform duration-(--dur-fast) active:scale-[0.97]",
 									active ? "text-primary" : "text-muted-foreground",
 								)}
 							>
@@ -175,7 +175,7 @@ export function MobileTabBar({
 						type="button"
 						onClick={() => setMoreOpen(true)}
 						className={cn(
-							"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform active:scale-95",
+							"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform duration-(--dur-fast) active:scale-[0.97]",
 							isMoreActive ? "text-primary" : "text-muted-foreground",
 						)}
 					>
@@ -218,7 +218,11 @@ export function MobileTabBar({
 											params={{ orgSlug }}
 											onClick={() => setMoreOpen(false)}
 											className={cn(
-												"flex min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-base transition-colors duration-(--dur-fast) active:scale-[0.985]",
+												// `transition-colors` does not cover `transform`, so the
+												// press scale below was snapping in and out with no
+												// easing at all. The two primary tab rows above get this
+												// right; this row in the More sheet did not.
+												"flex min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-base transition-[background-color,color,transform] duration-(--dur-fast) active:scale-[0.97]",
 												active
 													? "bg-muted font-medium text-foreground"
 													: "text-muted-foreground",

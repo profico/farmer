@@ -67,7 +67,7 @@ import {
 } from "#/lib/entry-options.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
-import { springProductive } from "#/lib/motion.ts";
+import { useHeightTransition } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import {
 	attachedCommitsQuery,
@@ -249,6 +249,9 @@ export function AddBlockDialog({
 	trigger: React.ReactElement;
 }) {
 	const orgSlug = useOrgSlug();
+	// The three disclosures below all open by changing their HEIGHT, which the
+	// root <MotionConfig reducedMotion="user"> does not touch — see the hook.
+	const heightTransition = useHeightTransition();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
 	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
@@ -1249,7 +1252,7 @@ export function AddBlockDialog({
 											initial={{ height: 0, opacity: 0 }}
 											animate={{ height: "auto", opacity: 1 }}
 											exit={{ height: 0, opacity: 0 }}
-											transition={springProductive}
+											transition={heightTransition}
 											className="overflow-hidden"
 										>
 											<p className="pt-3 text-sm text-muted-foreground">
@@ -1267,7 +1270,7 @@ export function AddBlockDialog({
 									<span className="text-sm font-medium">Google Calendar</span>
 									{calendarEventsQ.isFetching && (
 										<span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-											<CalendarDotIcon className="size-3.5 animate-pulse" />
+											<CalendarDotIcon className="pulse-quiet size-3.5" />
 											Loading…
 										</span>
 									)}
@@ -1610,7 +1613,7 @@ export function AddBlockDialog({
 											initial={{ height: 0, opacity: 0 }}
 											animate={{ height: "auto", opacity: 1 }}
 											exit={{ height: 0, opacity: 0 }}
-											transition={springProductive}
+											transition={heightTransition}
 											className="overflow-hidden"
 										>
 											<div className="grid divide-y divide-line2 pt-1">
@@ -1645,7 +1648,7 @@ export function AddBlockDialog({
 																	initial={{ height: 0, opacity: 0 }}
 																	animate={{ height: "auto", opacity: 1 }}
 																	exit={{ height: 0, opacity: 0 }}
-																	transition={springProductive}
+																	transition={heightTransition}
 																	className="overflow-hidden"
 																>
 																	<div className="mt-3 flex flex-col gap-3">

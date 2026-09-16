@@ -262,11 +262,30 @@ export function PageSection({
 export function SettingList({
 	children,
 	className,
+	bleed = true,
 }: {
 	children: ReactNode;
 	className?: string;
+	/**
+	 * Whether the rows' hairlines reach the island's own edge.
+	 *
+	 * On by default, because that is what every `PageSection` above them already
+	 * does: a section's rule runs the full width of the island's padding box, so
+	 * a list of rows that stopped 32px short of it drew two different left edges
+	 * down one screen — the section rules at the island's edge and the row rules
+	 * inset from it. Turn it off only where the list sits in a container
+	 * narrower than the island, since the bleed resolves against the PARENT and
+	 * would then overhang whatever that container is.
+	 */
+	bleed?: boolean;
 }) {
-	return <div className={cn("flex flex-col", className)}>{children}</div>;
+	return (
+		<div
+			className={cn("flex flex-col", bleed && "setting-list-bleed", className)}
+		>
+			{children}
+		</div>
+	);
 }
 
 /**

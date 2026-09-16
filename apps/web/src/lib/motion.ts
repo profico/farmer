@@ -1,3 +1,4 @@
+import { useReducedMotion } from "motion/react";
 import type { Transition, Variants } from "motion/react";
 import * as React from "react";
 
@@ -20,6 +21,18 @@ import * as React from "react";
  * (dialog popup, the sliding tab-bar pill, drawers) get any overshoot;
  * functional chrome (backdrops, menus) stays crisp at `bounce: 0`.
  */
+
+/**
+ * The CSS easing tokens, for the tweens that cannot reach them.
+ *
+ * `--ease-out` and `--ease-in-out` live in `styles.css` and are the house
+ * curves. A JS tween cannot read a custom property, so every one of them was
+ * re-typing the control points — seven copies of `--ease-out` across the
+ * assistant and Rewind, which is how a token system quietly stops being one.
+ * Import these instead, and change the curve in two places rather than nine.
+ */
+export const easeOut = [0.23, 1, 0.32, 1] as const;
+export const easeInOut = [0.77, 0, 0.175, 1] as const;
 
 /** Crisp, no overshoot — backdrops, menus, small state changes. */
 export const springProductive: Transition = {
@@ -48,6 +61,37 @@ export const springLayout: Transition = {
 	bounce: 0.15,
 	visualDuration: 0.16,
 };
+
+/**
+ * The transition for anything that opens or closes by changing its HEIGHT.
+ *
+ * `<MotionConfig reducedMotion="user">` drops transform, scale and slide — and
+ * nothing else. A banner that expands from `height: 0` to `height: "auto"` is
+ * therefore untouched by it, and it is the most disruptive movement of the lot,
+ * because every row under it travels too. Several call sites carried a comment
+ * saying reduced motion was "handled globally by the root MotionConfig", which
+ * was true of their opacity and false of their height.
+ *
+ * So the height is ended by hand and the fade is kept: the panel still arrives
+ * and departs, it just stops pushing the page around on the way.
+ *
+ * The per-property form matters. A bare `{ duration: 0 }` applies to EVERY
+ * animated property on the component, and every call site here animates opacity
+ * beside height — so it took the fade out too and the banners popped, which is
+ * the opposite of what the paragraph above promises.
+ */
+export function useHeightTransition(): Transition {
+	const reduced = useReducedMotion();
+	if (!reduced) return springProductive;
+	return {
+		duration: 0.15,
+		height: { duration: 0 },
+		paddingTop: { duration: 0 },
+		paddingBottom: { duration: 0 },
+		marginTop: { duration: 0 },
+		marginBottom: { duration: 0 },
+	};
+}
 
 export const backdropVariants: Variants = {
 	open: { opacity: 1 },

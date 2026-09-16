@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 
 import { Button } from "#/components/ui/button.tsx";
-import { springProductive } from "#/lib/motion.ts";
+import { useHeightTransition } from "#/lib/motion.ts";
 import { githubConnectionStatusQuery } from "#/queries/github.ts";
 import { googleCalendarStatusQuery } from "#/queries/google-calendar.ts";
 import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
@@ -22,6 +22,7 @@ function joinAnd(parts: string[]): string {
 // nudge the user toward the integrations page. Dismissal is remembered per-org
 // in localStorage so it never comes back once waved away.
 export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
+	const heightTransition = useHeightTransition();
 	const storageKey = `farmer:auto-track-nag-dismissed:${orgSlug}`;
 
 	// Start hidden and only reveal after we've read localStorage on the client —
@@ -120,7 +121,7 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 					initial={{ height: 0, opacity: 0 }}
 					animate={{ height: "auto", opacity: 1 }}
 					exit={{ height: 0, opacity: 0 }}
-					transition={springProductive}
+					transition={heightTransition}
 					// The negative insets cancel `island-pad` exactly, so this banner
 					// meets the island's own edge: 1rem all round below sm, and
 					// 1.75rem vertical / 2rem horizontal at sm and up. mb matches

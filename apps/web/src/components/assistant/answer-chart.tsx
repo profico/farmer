@@ -102,7 +102,7 @@ export function AnswerChart({ spec }: { spec: ChartSpec }) {
 							    something to sit in and the row can't jump as values change. */}
 							<div className="flex h-16 w-full items-end rounded-[3px] bg-inset">
 								<div
-									className="w-full rounded-[3px] bg-chart-1 transition-[height] duration-300"
+									className="w-full rounded-[3px] bg-chart-1 transition-[height] duration-(--dur-base) ease-(--ease-out)"
 									style={{ height: `${Math.max(share(point.value), 2)}%` }}
 								/>
 							</div>
@@ -125,7 +125,7 @@ export function AnswerChart({ spec }: { spec: ChartSpec }) {
 							</span>
 							<span className="h-2.5 rounded-[3px] bg-inset">
 								<span
-									className="block h-full rounded-[3px] bg-chart-1 transition-[width] duration-300"
+									className="block h-full rounded-[3px] bg-chart-1 transition-[width] duration-(--dur-base) ease-(--ease-out)"
 									style={{ width: `${Math.max(share(point.value), 1)}%` }}
 								/>
 							</span>

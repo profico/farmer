@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 
 import { Button } from "#/components/ui/button.tsx";
-import { springProductive } from "#/lib/motion.ts";
+import { useHeightTransition } from "#/lib/motion.ts";
 import { githubConnectionStatusQuery } from "#/queries/github.ts";
 
 // A GitHub grant that has been revoked, or has expired, is refused forever.
@@ -25,6 +25,7 @@ import { githubConnectionStatusQuery } from "#/queries/github.ts";
 // good per org, and a person who waved it away a year ago is exactly the person
 // this has to reach.
 export function GithubReconnectBanner({ orgSlug }: { orgSlug: string }) {
+	const heightTransition = useHeightTransition();
 	const { data } = useQuery({
 		...githubConnectionStatusQuery(orgSlug),
 		staleTime: 5 * 60_000,
@@ -38,29 +39,38 @@ export function GithubReconnectBanner({ orgSlug }: { orgSlug: string }) {
 					initial={{ height: 0, opacity: 0 }}
 					animate={{ height: "auto", opacity: 1 }}
 					exit={{ height: 0, opacity: 0 }}
-					transition={springProductive}
-					className="mb-4 shrink-0 overflow-hidden rounded-lg border border-destructive/30 bg-destructive/10"
+					transition={heightTransition}
+					className="shrink-0 overflow-hidden"
 				>
-					<div className="flex items-center gap-3 px-4 py-3">
-						<GithubLogoIcon className="size-4 shrink-0 text-destructive" />
-						<div className="min-w-0 flex-1">
-							<p className="text-base font-medium">
-								Reconnect GitHub to keep logging your commits
-							</p>
-							<p className="text-sm text-muted-foreground">
-								GitHub no longer accepts your connection, so your commits and
-								pull requests are not reaching your time entries.
-							</p>
+					{/* The gap under the banner is a PADDING on this inner shell, not a
+					    margin on the animated box: a margin is not part of the height,
+					    so the content below used to drop 16px in one frame on mount and
+					    snap 16px back once the spring finished on unmount. */}
+					<div className="pb-4">
+						<div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
+							<GithubLogoIcon className="size-4 shrink-0 text-destructive" />
+							<div className="min-w-0 flex-1">
+								<p className="text-base font-medium">
+									Reconnect GitHub to keep logging your commits
+								</p>
+								<p className="text-sm text-muted-foreground">
+									GitHub no longer accepts your connection, so your commits and
+									pull requests are not reaching your time entries.
+								</p>
+							</div>
+							<Button
+								size="sm"
+								nativeButton={false}
+								render={
+									<Link
+										to="/$orgSlug/settings/integrations"
+										params={{ orgSlug }}
+									>
+										Reconnect
+									</Link>
+								}
+							/>
 						</div>
-						<Button
-							size="sm"
-							nativeButton={false}
-							render={
-								<Link to="/$orgSlug/settings/integrations" params={{ orgSlug }}>
-									Reconnect
-								</Link>
-							}
-						/>
 					</div>
 				</motion.div>
 			)}

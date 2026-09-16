@@ -608,13 +608,13 @@ export function AnswerActions({ text }: { text: string }) {
 	return (
 		// Revealed on hover of the message, and always present for keyboard and
 		// touch (neither of which has a hover to reveal it with).
-		<div className="-mt-1 flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/answer:opacity-100 focus-within:opacity-100 md:opacity-0 max-md:opacity-100">
+		<div className="-mt-1 flex items-center gap-1 opacity-0 transition-opacity duration-(--dur-base) group-hover/answer:opacity-100 focus-within:opacity-100 md:opacity-0 max-md:opacity-100">
 			<button
 				type="button"
 				onClick={() => void copy()}
 				title="Copy this answer"
 				aria-label="Copy this answer"
-				className="quiet flex items-center gap-1.5 rounded-control px-1.5 py-1 text-[12px] transition-colors duration-100 hover:bg-hover"
+				className="quiet flex items-center gap-1.5 rounded-control px-1.5 py-1 text-[12px] transition-colors duration-(--dur-fast) hover:bg-hover"
 			>
 				{copied ? (
 					<CheckIcon weight="regular" className="size-3.5" />
@@ -684,7 +684,7 @@ export function Answer({
 									type="button"
 									disabled={!onFollowUp}
 									onClick={() => onFollowUp?.(prompt)}
-									className="rounded-control px-2.5 py-1.5 text-left text-[12.5px] text-ink-2 shadow-hairline transition-colors duration-100 enabled:hover:bg-hover enabled:hover:text-ink disabled:opacity-60"
+									className="rounded-control px-2.5 py-1.5 text-left text-[12.5px] text-ink-2 shadow-hairline transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-ink disabled:opacity-60"
 								>
 									{prompt}
 								</button>

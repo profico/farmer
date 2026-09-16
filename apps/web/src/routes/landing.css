@@ -67,8 +67,13 @@
 	text-decoration: none;
 	color: inherit;
 }
-.fm-landing .self-host-card:hover .u-link::after {
-	transform: scaleX(1);
+/* Behind a real pointer. A hand-written `:hover` is not gated the way
+   Tailwind's `hover:` variant is, so on a touchscreen the tap fired it and the
+   underline stayed drawn until something else was tapped. */
+@media (hover: hover) and (pointer: fine) {
+	.fm-landing .self-host-card:hover .u-link::after {
+		transform: scaleX(1);
+	}
 }
 .fm-landing ::selection {
 	background: var(--sel);
@@ -80,6 +85,13 @@
 }
 html:has(.fm-landing) {
 	scroll-behavior: smooth;
+}
+/* An in-page anchor animates the whole viewport, which is the movement people
+   who ask for less movement are asking about first. */
+@media (prefers-reduced-motion: reduce) {
+	html:has(.fm-landing) {
+		scroll-behavior: auto;
+	}
 }
 /* The landing is one sheet of island paper rather than islands standing on the
    ground, so <html> and <body> have to be repainted from `--ground` to `--bg`
@@ -108,10 +120,16 @@ html:has(.fm-landing) body {
 	background: currentColor;
 	transform: scaleX(0);
 	transform-origin: left;
-	transition: transform 0.25s;
+	/* The underline is a press-adjacent affordance, so it takes the product's
+	   entrance curve rather than the CSS default `ease`, which starts slow. The
+	   length is the marketing page's own — it is allowed a looser bar than the
+	   app — but the curve is the house one. */
+	transition: transform 0.25s var(--ease-out);
 }
-.fm-landing .u-link:hover::after {
-	transform: scaleX(1);
+@media (hover: hover) and (pointer: fine) {
+	.fm-landing .u-link:hover::after {
+		transform: scaleX(1);
+	}
 }
 
 /* The product's Button (components/ui/button.tsx), transcribed: the same 32px
@@ -134,11 +152,14 @@ html:has(.fm-landing) body {
 		sans-serif;
 	text-decoration: none;
 	white-space: nowrap;
+	/* The three colour legs keep the browser's own curve, which the house rule
+	   allows for a plain tint — it has no direction to express. The transform
+	   leg is a press and takes `--ease-out`. 0.15s is `--dur-base`. */
 	transition:
-		background-color 0.15s,
-		border-color 0.15s,
-		color 0.15s,
-		transform 0.15s;
+		background-color var(--dur-base),
+		border-color var(--dur-base),
+		color var(--dur-base),
+		transform var(--dur-base) var(--ease-out);
 }
 .fm-landing .fm-btn:has([data-icon="inline-start"]) {
 	padding: 0 12px 0 10px;
@@ -253,5 +274,23 @@ html:has(.fm-landing) body {
 	}
 	.fm-landing .fm-footer-inner {
 		padding: 26px 20px !important;
+	}
+}
+
+/* The landing page's own movement, answered once. Everything above changes
+   colour or opacity as well, and those stay — this drops only what travels:
+   the underline sweep and the button's press scale. */
+@media (prefers-reduced-motion: reduce) {
+	.fm-landing .u-link::after {
+		transition: none;
+	}
+	.fm-landing .fm-btn {
+		transition:
+			background-color 0.15s,
+			border-color 0.15s,
+			color 0.15s;
+	}
+	.fm-landing .fm-btn:active {
+		transform: none;
 	}
 }

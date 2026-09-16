@@ -92,7 +92,7 @@ export function ImportProgress({
 				aria-label="Import progress"
 				max={100}
 				value={pct}
-				className="mt-3 block h-2 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary [&::-webkit-progress-value]:transition-[width] [&::-webkit-progress-value]:duration-(--dur-slow)"
+				className="mt-3 block h-2 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:bg-primary [&::-moz-progress-bar]:transition-[width] [&::-moz-progress-bar]:duration-(--dur-slow) [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:bg-primary [&::-webkit-progress-value]:transition-[width] [&::-webkit-progress-value]:duration-(--dur-slow)"
 			/>
 			<p className="mt-3 max-w-[68ch] text-sm text-muted-foreground">
 				{count(state.inserted)} entries added so far. Keep this tab open. If it

@@ -214,8 +214,10 @@ function OpenToOrg({
 		},
 		onError: (error) => toast.error(error.message ?? "Could not save"),
 	});
+	// No bleed: this list is capped at `max-w-2xl`, and a bleed resolves against
+	// its parent — the rules would overhang the cap rather than reach the island.
 	return (
-		<SettingList className="mb-6 max-w-2xl">
+		<SettingList bleed={false} className="mb-6 max-w-2xl">
 			<SettingRow
 				title="Open to everyone"
 				description={

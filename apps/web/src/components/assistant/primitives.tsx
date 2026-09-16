@@ -71,18 +71,14 @@ function useElapsed(active: boolean) {
 	return `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;
 }
 
-/** The shimmering label the loader and the trace header share. */
+/** The shimmering label the loader and the trace header share.
+ *
+ *  The effect itself is `.shimmer-ink` in `styles.css`, because the thread list
+ *  wears it too — on the title of any thread with a turn in flight. Only the
+ *  size is stated here. */
 function ShimmerLabel({ children }: { children: React.ReactNode }) {
 	return (
-		<span
-			className="bg-clip-text text-[13px] font-medium whitespace-nowrap text-transparent"
-			style={{
-				backgroundImage:
-					"linear-gradient(90deg, var(--ink-3) 35%, var(--ink) 50%, var(--ink-3) 65%)",
-				backgroundSize: "200% 100%",
-				animation: "shimmer-text 1.4s linear infinite",
-			}}
-		>
+		<span className="shimmer-ink text-[13px] font-medium whitespace-nowrap">
 			{children}
 		</span>
 	);
@@ -404,7 +400,7 @@ export function ToolTraceList({
 				type="button"
 				aria-expanded={expanded}
 				onClick={() => setManual((current) => !(current ?? working))}
-				className="-mx-1.5 flex w-fit items-center gap-2 rounded-control px-1.5 py-1 transition-colors duration-100 hover:bg-hover-2"
+				className="-mx-1.5 flex w-fit items-center gap-2 rounded-control px-1.5 py-1 transition-colors duration-(--dur-fast) hover:bg-hover-2"
 			>
 				<svg
 					width="16"
@@ -421,7 +417,9 @@ export function ToolTraceList({
 				) : (
 					<span
 						className="text-[13px] font-medium whitespace-nowrap text-ink-2"
-						style={{ animation: "fade-in 350ms ease-out both" }}
+						style={{
+							animation: "fade-in var(--dur-slow) var(--ease-out) both",
+						}}
 					>
 						{done === 1 ? "Used 1 tool" : `Used ${done} tools`}
 					</span>
@@ -435,7 +433,7 @@ export function ToolTraceList({
 					strokeWidth="2.2"
 					strokeLinecap="round"
 					strokeLinejoin="round"
-					className="transition-transform duration-300"
+					className="transition-transform duration-(--dur-fast) ease-(--ease-out)"
 					style={{ transform: expanded ? "rotate(180deg)" : "rotate(0)" }}
 					aria-hidden="true"
 				>
@@ -445,11 +443,12 @@ export function ToolTraceList({
 			</button>
 
 			<div
-				className="grid transition-[grid-template-rows,opacity] duration-400"
+				// `--dur-long`, not the 400ms this was: a disclosure is a dropdown by
+				// another name, and it is clicked repeatedly while reading a turn.
+				className="grid transition-[grid-template-rows,opacity] duration-(--dur-long) ease-(--ease-out)"
 				style={{
 					gridTemplateRows: expanded ? "1fr" : "0fr",
 					opacity: expanded ? 1 : 0,
-					transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)",
 				}}
 			>
 				<div className="overflow-hidden">
@@ -460,7 +459,7 @@ export function ToolTraceList({
 							style={{
 								top: -8,
 								height: lineHeight ? lineHeight - 2 : 0,
-								transition: "height 500ms cubic-bezier(0.23,1,0.32,1)",
+								transition: "height var(--dur-long) var(--ease-out)",
 							}}
 						/>
 						<div ref={traceRef} className="flex flex-col gap-1 py-1">
@@ -470,15 +469,23 @@ export function ToolTraceList({
 									<div
 										key={trace.toolCallId}
 										className="flex min-h-7 w-full items-center gap-2 rounded-[6px] px-1.5 py-0.5 text-left"
+										// 40ms a row, capped at the fifth, matching the route
+										// cascade in styles.css. At the 120ms step this had, an
+										// eight-tool turn was still arriving a second after it
+										// opened — and rows keep coming while the answer streams,
+										// so the last one was always the one being waited for.
 										style={{
-											animation: `fade-up 320ms cubic-bezier(0.23,1,0.32,1) ${index * 120}ms both`,
+											animation: `fade-up var(--dur-slow) var(--ease-out) ${Math.min(index, 4) * 40}ms both`,
 										}}
 									>
 										{trace.ok === null ? (
-											<span
-												className="size-3 shrink-0 rounded-full border-[1.5px] border-line-strong border-t-ink-2"
-												style={{ animation: "spin 700ms linear infinite" }}
-											/>
+											// The shared `.spin`, not an inline copy at its own
+											// speed: this was a third spinner tempo (700ms beside
+											// 900ms and 1s), and because it was inline it was also
+											// the one spinner the reduced-motion rules froze solid,
+											// which turns "running" and "finished" into the same
+											// picture.
+											<span className="spin size-3 shrink-0 rounded-full border-[1.5px] border-line-strong border-t-ink-2" />
 										) : (
 											<svg
 												width="14"
@@ -614,7 +621,7 @@ export function ApprovalCard({
 				// 25rem card with four columns in it is four columns of ellipsis.
 				rows.length > 0 ? "max-w-[36rem]" : "max-w-100",
 			)}
-			style={{ animation: "fade-up 350ms cubic-bezier(0.23,1,0.32,1) both" }}
+			style={{ animation: "fade-up var(--dur-slow) var(--ease-out) both" }}
 		>
 			<div className="flex flex-col gap-1 px-3.5 pt-3 pb-2.5">
 				<span className="text-2xs font-medium tracking-wide text-ink-3 uppercase">
@@ -647,7 +654,7 @@ export function ApprovalCard({
 										<tr
 											key={row.id}
 											className={cn(
-												"border-b border-line2 last:border-0 transition-opacity duration-150",
+												"border-b border-line2 last:border-0 transition-opacity duration-(--dur-base)",
 												// An unticked row stays legible rather than
 												// disappearing: it is still part of what was proposed,
 												// and the person needs to see what they turned off.
@@ -699,7 +706,7 @@ export function ApprovalCard({
 				<button
 					type="button"
 					onClick={() => setShowArgs((current) => !current)}
-					className="mt-1 w-fit text-[12px] text-ink-3 transition-colors duration-100 hover:text-ink-2"
+					className="mt-1 w-fit text-[12px] text-ink-3 transition-colors duration-(--dur-fast) hover:text-ink-2"
 				>
 					{showArgs ? "Hide details" : "Show details"}
 				</button>
@@ -722,7 +729,7 @@ export function ApprovalCard({
 					type="button"
 					disabled={busy}
 					onClick={() => onDecide("rejected")}
-					className="h-7 rounded-control px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors duration-100 enabled:hover:bg-hover enabled:hover:text-ink disabled:opacity-40"
+					className="h-7 rounded-control px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-ink disabled:opacity-40"
 				>
 					Don't
 				</button>
@@ -734,7 +741,7 @@ export function ApprovalCard({
 					onClick={approve}
 					className={cn(
 						"flex h-7 items-center gap-1.5 rounded-control px-3 text-[12.5px] font-medium",
-						"bg-ink text-surface transition-[opacity,transform] duration-150",
+						"bg-ink text-surface transition-[opacity,transform] duration-(--dur-base)",
 						"enabled:active:scale-[0.97] disabled:opacity-40",
 					)}
 				>

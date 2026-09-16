@@ -20,6 +20,7 @@ import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import { authClient } from "../lib/auth-client";
 import { logConsoleGreeting } from "../lib/console-greeting";
 import { displayInitScript } from "../lib/display-prefs";
+import { navInitScript } from "../lib/nav-collapse";
 import { paletteInitScript } from "../lib/palette";
 import { themeInitScript } from "../lib/theme";
 
@@ -158,14 +159,18 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
  *  is read from the environment on the server and a module-scope constant in a
  *  route file is evaluated in the browser too. */
 const headInitScript = () =>
-	themeInitScript + displayInitScript + paletteInitScript + posthogInitScript();
+	themeInitScript +
+	displayInitScript +
+	paletteInitScript +
+	navInitScript +
+	posthogInitScript();
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	useEffect(logConsoleGreeting, []);
 
 	// `suppressHydrationWarning`: the script below writes `data-theme` (and the
 	// Display preferences' `data-font`, `data-motion`, `data-density` and
-	// `data-palette`) onto
+	// `data-palette`, and the nav column's `data-nav`) onto
 	// <html> before React ever sees it, and
 	// the server has no way to render the same values — that mismatch is the
 	// point of the script, not a bug, and React otherwise logs it on every load.

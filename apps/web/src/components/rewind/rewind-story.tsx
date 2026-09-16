@@ -23,6 +23,8 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { easeOut } from "#/lib/motion.ts";
+
 import {
 	BigDaySlide,
 	DaysSlide,
@@ -51,7 +53,7 @@ import {
 const SLIDE_MS = 7000;
 /** How long a press must last to read as "hold to pause" rather than a tap. */
 const HOLD_MS = 220;
-const EASE = [0.23, 1, 0.32, 1] as const;
+const EASE = easeOut;
 
 type Slide = {
 	key: string;

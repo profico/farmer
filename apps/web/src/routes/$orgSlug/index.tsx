@@ -176,8 +176,12 @@ function OrgHome() {
 	const weekStatus = targets.week.status;
 	const monthStatus = targets.month.status;
 
+	// `flex flex-col` on the page: it is what lets the body grid below claim the
+	// height the header and the band leave, and so what lets the rule between
+	// its two columns run to the island's own bottom edge rather than stopping
+	// under the last entry.
 	return (
-		<Page>
+		<Page className="flex flex-col">
 			<GithubReconnectBanner orgSlug={organization.slug} />
 			<AutoTrackNag orgSlug={organization.slug} />
 			<RewindBanner orgSlug={organization.slug} today={today} />
@@ -318,13 +322,17 @@ function OrgHome() {
 			    rather than near it. Change the tiles' padding and this number
 			    changes with it.
 
-			    **No borders in here except the entry list's own.** The band above
-			    closes on `--line`, the rows below are separated by `--line2`, and
-			    that is the whole vocabulary this screen uses — the rule the rest of
-			    the app follows (see the palette notes in styles.css). The chart's
+			    **One vertical rule divides them, and it is the band's own rule
+			    turned a corner.** It hangs from the hairline that closes the band
+			    (`lg:-mt-7 lg:pt-7`) and runs to the island's bottom edge
+			    (`lg:-mb-7`, the island's own bottom padding), so the two halves of
+			    the screen are separated for their whole height rather than for as
+			    far as the shorter one happens to reach. `lg:-mr-8` widens the left
+			    column by half the 64px gutter, which is what puts the rule at the
+			    gutter's centre; `lg:pr-8` pads the text back off it. The chart's
 			    baseline and its target rule are axes, not page furniture. */}
-			<div className="mt-7 grid gap-x-16 gap-y-8 lg:grid-cols-3">
-				<div className="min-w-0 lg:col-span-2">
+			<div className="mt-7 grid gap-x-16 gap-y-8 lg:grid-cols-3 lg:flex-1">
+				<div className="min-w-0 lg:col-span-2 lg:-mt-7 lg:-mr-8 lg:-mb-7 lg:border-r lg:border-line2 lg:pt-7 lg:pr-8 lg:pb-7">
 					<div className="section-head">
 						<h2 className="eyebrow">
 							{selectedDay === today
@@ -340,15 +348,19 @@ function OrgHome() {
 					    row at once, so the whole list collapsed as if each entry had
 					    been deleted. Switching days is navigation, not removal.
 
-					    `px-0` on the rows: the row carries the island's own padding
-					    for a full-bleed list, and this list is one column of a grid. */}
+					    The rows keep the island's own padding and take a negative
+					    margin of the same size, so the text stays on the column's
+					    text edge while the hover fill and the rules between rows run
+					    edge to edge — the island's left edge, and the vertical rule
+					    on the right. A row highlighted only as far as its text is a
+					    row that looks narrower than the list it is in. */}
 					<div className="mt-3 flex flex-col divide-y divide-line2">
 						{selectedEntries.map((entry) => (
 							<EntryBlockRow
 								key={entry.id}
 								entry={entry}
 								timezone={organization.timezone}
-								className="px-0 sm:px-0"
+								className="-mx-4 sm:-mx-8"
 							/>
 						))}
 					</div>
@@ -360,9 +372,14 @@ function OrgHome() {
 						defaultDate={selectedDay}
 						trigger={
 							<GhostRow
-								className={
-									selectedEntries.length > 0 ? "border-t border-line2" : "mt-1"
-								}
+								className={cn(
+									// The same bleed the rows take, so its rule ends where
+									// theirs do. The width is spelled out because the row is
+									// `w-full`: a negative margin alone moves it left without
+									// widening it, and the rule would stop short on the right.
+									"-ml-4 w-[calc(100%+2rem)] px-4 sm:-ml-8 sm:w-[calc(100%+4rem)] sm:px-8",
+									selectedEntries.length > 0 ? "border-t border-line2" : "mt-1",
+								)}
 							>
 								{selectedEntries.length === 0
 									? selectedDay === today

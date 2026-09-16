@@ -34,21 +34,64 @@
   --serif: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
 }
 
-/* "Less movement": every CSS animation and transition ends at once, on its
-   end state. An element still arrives where it goes, and a spinner stops.
-   0.01ms rather than `none`, so a component that waits for `animationend` or
-   `transitionend` before it unmounts still gets the event. Motion's springs
-   stop in JS, in the same module. This is stronger than the
-   `prefers-reduced-motion` blocks below, which keep some movement. */
+/* "Less movement": nothing on screen MOVES any more. It is not "nothing on
+   screen changes" — that is a different setting, and a worse one.
+
+   The rule used to end every transition at 0.01ms, which took the colour and
+   opacity changes with it: a button no longer lit under the pointer, a row no
+   longer shaded, a "there is more below" fade snapped on and off. Those carry
+   no position and cause nobody any trouble; removing them read as the app
+   going dead rather than going still. So the switch now re-points
+   `transition-property` at the properties that cannot move you, and lets them
+   keep a short duration.
+
+   Animations are still ended rather than filtered, because a keyframe can move
+   an element under any property name and there is nothing to inspect. 0.01ms
+   rather than `none`, so a component that waits for `animationend` before it
+   unmounts still gets its event.
+
+   `transitionend` is NOT guaranteed here, and that changed when this rule did.
+   A property outside the whitelist above is no longer transitioned at all, so
+   nothing fires for it — a listener waiting on `transitionend` for a height, a
+   width or a transform would wait forever. Nothing in the tree does today;
+   anything new that wants one has to use a whitelisted property or an
+   animation. Motion's springs stop in JS, in the same module. `.spin` is put back below, because a frozen
+   spinner is not a still spinner, it is a missing answer to "is this working".
+
+   This is stronger than the `prefers-reduced-motion` blocks further down, which
+   keep some movement. */
 :root[data-motion='reduce'] *,
 :root[data-motion='reduce'] *::before,
 :root[data-motion='reduce'] *::after {
   animation-duration: 0.01ms !important;
   animation-delay: 0s !important;
   animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
+  transition-property:
+    color, background-color, border-color, text-decoration-color, fill, stroke,
+    opacity, box-shadow !important;
+  transition-duration: var(--dur-fast) !important;
   transition-delay: 0s !important;
+}
+
+/* `scroll-behavior` belongs to the scrolling element, which is <html> itself —
+   and `:root[…] *` is a DESCENDANT selector, so it could never match <html> and
+   the smooth scrolling this meant to switch off stayed on. It needs its own
+   rule, on the element rather than under it. */
+:root[data-motion='reduce'] {
   scroll-behavior: auto !important;
+}
+
+/* A spinner is the one looping animation that IS the information. Everything
+   above stops it dead on its first frame, which leaves a shape that means
+   nothing — "working" and "finished" become the same picture. It keeps turning,
+   slower, because that is gentler than removing the only thing telling somebody
+   the app has not hung. */
+:root[data-motion='reduce'] .spin,
+:root[data-motion='reduce'] .animate-spin {
+  animation-name: spin !important;
+  animation-duration: 1.8s !important;
+  animation-timing-function: linear !important;
+  animation-iteration-count: infinite !important;
 }
 
 /* "Compact tables": less space above and below the text of a table row.
@@ -147,8 +190,32 @@
   --dur-fast: 120ms;
   --dur-base: 150ms;
   --dur-slow: 180ms;
+  /* The long one. Named for its LENGTH rather than for a call site, because it
+     started as the nav column's own and is now on five things: the two shell
+     columns, `.rise`, `.rail-fill`'s entrance and the assistant's tool-trace
+     disclosure. A token whose name is a claim about where it is used stops
+     being checkable the moment it has a second user. */
+  --dur-long: 340ms;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  /* The bottom sheet's own curve, and only its own: a long flat tail is what
+     makes a dragged surface feel like it is settling under its own weight
+     rather than being placed. It was typed inline twice in `drawer.tsx`. */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* What a bare `transition-colors` / `transition-transform` resolves to.
+     Without these two lines Tailwind supplies its own `cubic-bezier(0.4, 0,
+     0.2, 1)`, which is a FOURTH curve sitting beside `--ease-out`,
+     `--ease-in-out` and the springs — and the app was on it 97 times out of
+     102: only five `transition-*` utilities in the tree carry an
+     `ease-(--ease-*)` companion. Tailwind's curve starts slow, so on the
+     press-feedback sites it was the one thing the house rule forbids: an
+     ease-in on a control somebody just touched.
+
+     The duration is Tailwind's own 150ms written as the token it already
+     equals, so the two cannot drift apart silently. */
+  --default-transition-timing-function: var(--ease-out);
+  --default-transition-duration: var(--dur-base);
 
   /* The type scale. Six steps; the floor is 12px and only uppercase tracked-out
      captions go there — those read a size larger than their number. */
@@ -1071,6 +1138,292 @@ html {
     }
   }
 
+  /* The shell's nav column: a labelled sidebar by default, an icon rail when
+     the reader collapses it or a section panel opens beside it.
+
+     The width is CSS rather than React state for the same reason `data-theme`
+     is: the reader's choice lives in localStorage, which the server cannot
+     read, so a column sized from React opens wide on every cold load and then
+     shuts. `navInitScript` sets `data-nav` before the first paint instead, and
+     React catches up a frame later — inside a box that already clips it.
+
+     `data-panel` is the other half, and it is React's: which section you are
+     in comes off the URL, which the server does know. Same rule either way. */
+  /* Both columns share ONE transition, and that is the whole point of the rule.
+     The nav shrinks by 184px over exactly the frames the panel grows by 240, so
+     what the page beside them sees is the SUM. The panel used to be a Motion
+     spring next to this CSS transition — two clocks — and whenever the incoming
+     route's commit ran long the nav's recalculation started a frame or two late.
+     Measured: the island bulged to 405px on its way from 296px to 240px, and
+     dipped to 110px on its way from 240px to 296px, so the page jumped wider and
+     snapped back on every navigation. One property, one curve, one duration,
+     started by one style recalculation, and the sum is linear by construction.
+
+     `--dur-long` is longer than `--dur-base` because this is the widest travel in
+     the app: 240px crossed in 150ms reads as a snap rather than as a move.
+     `--ease-in-out` follows the house rule for anything that travels across the
+     screen, rather than the `--ease-out` an entrance takes.
+
+     `:root[data-motion='reduce']` (the app's own Display switch, at the top of
+     this file) ends these transitions, but it is off by default and three
+     levels into Preferences — so the OS preference needs its own rule below, or
+     somebody who asked their system for less movement gets the widest travel in
+     the app on every walk into Settings and out of it. */
+  .app-nav,
+  .app-panel {
+    transition:
+      width var(--dur-long) var(--ease-in-out),
+      border-color var(--dur-long) var(--ease-in-out);
+  }
+
+  /* The hairline is ALWAYS there, and what changes is its colour. A border
+     cannot transition into existence: `border-right-width: 0` to `1px` has one
+     frame to cross, so the rule snapped on as the panel opened and snapped off
+     as it closed, next to a 340ms column. Held at `transparent` it costs one
+     pixel of the column in both states — constant, so nothing inside it moves —
+     and the colour crosses on the same clock as the width. */
+  .app-nav {
+    width: 15rem;
+    border-right: 1px solid transparent;
+  }
+
+  [data-panel] .app-nav {
+    border-right-color: var(--border);
+  }
+
+  :root[data-nav='rail'] .app-nav,
+  [data-panel] .app-nav {
+    width: 3.5rem;
+  }
+
+  /* Always in the tree, at zero width, rather than mounted and unmounted: an
+     element that does not exist cannot transition its way in, and giving it the
+     same start as the nav is what keeps the two in step. Its contents keep a
+     fixed width inside the clip, so the list does not reflow as the box opens. */
+  .app-panel {
+    width: 0;
+    overflow: hidden;
+  }
+
+  [data-panel] .app-panel {
+    width: 15rem;
+  }
+
+  /* A nav row's label, and whatever rides beside it — the unfiled count, the
+     external-link arrow.
+
+     ABSOLUTE, and that is the whole rule. The label used to be a flex item that
+     React dropped when the column collapsed, so it vanished in a single frame
+     while the column took 340ms to close. Leaving it mounted as a flex item was
+     tried and is worse: it still claims its text width, which pushes the icon
+     off the 56px column and the text past its edge, and clipping cannot help
+     because the overflow belongs to the ROW rather than to the column. Out of
+     flow it claims nothing, so the icon does not move and the row cannot grow.
+
+     The width is FIXED at the width it has when the column is open, for the
+     same reason `.app-panel`'s contents are: a band that narrowed with the
+     column would re-truncate its text on every frame, which reads as the label
+     shrinking rather than fading. Pinned, the text is simply clipped by
+     `.app-nav`'s own `overflow: hidden` as the edge comes past it.
+
+     `--nav-label-left` is the row's own geometry written out: 0.625rem of
+     padding, a 1.125rem icon, then the 0.625rem gap. Change `navRowClass` in
+     `app-sidebar.tsx` and change this with it. The account row at the foot has
+     a bigger mark and less padding, so it passes its own value.
+
+     Driven by the same two attributes as the width, NOT by React's `collapsed`.
+     One attribute flip is one style recalculation, so the fade and the box it
+     is inside start on the same frame — the lesson `.app-nav` above is built
+     around. */
+  .nav-label {
+    position: absolute;
+    inset-block: 0;
+    left: var(--nav-label-left, 2.375rem);
+    width: var(--nav-label-width, 11rem);
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    opacity: 1;
+    filter: blur(0);
+    transition:
+      opacity var(--dur-long) var(--ease-in-out),
+      filter var(--dur-long) var(--ease-in-out);
+  }
+
+  :root[data-nav='rail'] .nav-label,
+  [data-panel] .nav-label {
+    opacity: 0;
+    filter: blur(5px);
+  }
+
+  /* The collapse toggle, which has nothing to do beside an open panel. It keeps
+     its space and fades, rather than unmounting: dropping it moved the row under
+     it 44px down the column, and it blinked out in one frame while the column
+     beside it took `--dur-long` to close. `inert` on the element is the other
+     half — this rule only stops the pointer. */
+  [data-panel] .nav-toggle {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .nav-toggle {
+    opacity: 1;
+    transition: opacity var(--dur-long) var(--ease-in-out);
+  }
+
+  /* The org switcher at the head of the column. It used to be two different
+     controls chosen by a React prop — the mark alone when collapsed, the mark
+     plus the name and the caret when open — so the name appeared and vanished
+     in one frame while everything around it took `--dur-long`. It is one
+     control now, and the name rides in a `.nav-label` band like every other row
+     in the column.
+
+     Which means the BOX has to be CSS too. Left at `w-full` the pill would stay
+     224px wide behind a 56px column and be clipped by it, and `w-full` measured
+     against a parent whose own width is mid-transition resolves per frame. A
+     pair of fixed widths on the same curve is one clock again. The open width
+     is the header's inner width (15rem less its `px-2`); the closed one is the
+     mark plus its padding. It closes 2px faster than the column does, so the
+     pill is never the thing that overflows.
+
+     The radius travels with it: 1rem is right around a 224px row and reads as a
+     lozenge around a 38px one. Both live here rather than as Tailwind classes,
+     because a utility would win the cascade against this layer. */
+  .nav-brand {
+    position: relative;
+    width: 14rem;
+    /* `!important` on both, and it is the layer rather than the specificity
+       being answered. The trigger is a `Button`, which carries its own radius
+       and its own `transition-*` utility; a utility beats this whole layer
+       whatever its selector, so the measured element kept `rounded-md` and a
+       150ms list naming neither width nor radius — the pill snapped between the
+       two widths while the name faded over 340ms. `!important` reverses the
+       layer order, and the list has to be the WHOLE list, since an element has
+       one `transition`: the button's own colour and shadow crossings are
+       carried here rather than lost. */
+    border-radius: 1rem !important;
+    transition:
+      width var(--dur-long) var(--ease-in-out),
+      border-radius var(--dur-long) var(--ease-in-out),
+      background-color var(--dur-base) var(--ease-out),
+      border-color var(--dur-base) var(--ease-out),
+      color var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out) !important;
+  }
+
+  :root[data-nav='rail'] .nav-brand,
+  [data-panel] .nav-brand {
+    width: 2.375rem;
+    border-radius: 0.75rem !important;
+  }
+
+  /* 0.375rem of padding, a 1.625rem mark, then the 0.625rem gap. The band runs
+     to the trigger's own right padding. */
+  .nav-label-brand {
+    --nav-label-left: 2.625rem;
+    --nav-label-width: 11rem;
+  }
+
+  /* The account row at the foot: 0.375rem of padding, a 1.75rem avatar, then
+     the same 0.625rem gap. Its row is the footer's own `px-2` rather than the
+     list's, so the band is a little wider too. */
+  .nav-label-user {
+    --nav-label-left: 2.75rem;
+    --nav-label-width: 10.5rem;
+  }
+
+  /* The count on the icon's corner, which is the rail's answer to the band
+     above. It crosses the other way, and off the same attributes, so the two
+     never both show: closing the column fades the label out and the corner
+     count in. Opacity alone — it is 16px across, and a blur on something that
+     small is a smudge. */
+  .nav-rail-badge {
+    opacity: 0;
+    transition: opacity var(--dur-long) var(--ease-in-out);
+  }
+
+  :root[data-nav='rail'] .nav-rail-badge,
+  [data-panel] .nav-rail-badge {
+    opacity: 1;
+  }
+
+  /* The list RESOLVES rather than slides. The panel's contents are a fixed
+     width inside the clip, so widening the box drags them out from behind the
+     nav — a sideways motion the list is not actually making, and the one thing
+     on screen that says "this was always here, you just could not see it".
+     Fading up through a short blur says arriving instead, and carries no
+     direction at all. Blur rather than opacity alone because a plain crossfade
+     over moving geometry reads as a ghost; the blur gives the text somewhere to
+     come from.
+
+     `--ease-in-out` rather than the `--ease-out` an entrance would normally
+     take, because this is not an independent entrance: it has to resolve on the
+     same curve as the box around it. On `--ease-out` the blur cleared in the
+     first quarter of the box's travel, which put sharp text inside a
+     still-moving frame — the slide again, just with a softer start. (Measured
+     at 60ms against a 240ms box; `--dur-long` is 340ms now, and the ratio is
+     what the argument rests on.) */
+  .app-panel > * {
+    opacity: 0;
+    filter: blur(5px);
+    transition:
+      opacity var(--dur-long) var(--ease-in-out),
+      filter var(--dur-long) var(--ease-in-out);
+  }
+
+  /* `blur(0)` rather than `none`, and it has to be. `none` is not interpolable
+     against a `blur()`, so a resting `filter: none` gives the CLOSING panel
+     nothing to transition from — the blur snaps on in one frame instead of
+     ramping. That was tried, on the argument that any non-`none` filter keeps a
+     compositing layer alive and costs this column of labels its subpixel
+     antialiasing. The cost is real and it is smaller than losing the exit. */
+  [data-panel] .app-panel > * {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  /* The OS preference, which `<MotionConfig reducedMotion="user">` cannot apply
+     to a CSS transition and which the app's own switch is not a substitute for.
+     Both columns arrive at their width in one frame; the panel's contents keep
+     their fade, because a crossfade is not movement, and lose the blur, which
+     is what gave the text somewhere to travel from. */
+  @media (prefers-reduced-motion: reduce) {
+    .app-nav,
+    .app-panel {
+      transition: none;
+    }
+
+    /* `!important` for the reason the rule above carries it. */
+    .nav-brand {
+      transition: none !important;
+    }
+
+    .app-panel > * {
+      filter: none;
+      transition: opacity var(--dur-fast) var(--ease-out);
+    }
+
+    [data-panel] .app-panel > * {
+      filter: none;
+    }
+
+    /* The labels keep their crossfade — an opacity change is not movement — and
+       lose the blur and the length. */
+    .nav-label {
+      filter: none;
+      transition: opacity var(--dur-fast) var(--ease-out);
+    }
+
+    :root[data-nav='rail'] .nav-label,
+    [data-panel] .nav-label {
+      filter: none;
+    }
+
+    .nav-rail-badge {
+      transition-duration: var(--dur-fast);
+    }
+  }
+
   /* An island: the app's one container. A panel, a table, the sidebar and a
      full-height view are all this. It carries the surface and the corner; what
      separates it from its neighbour is the ground in the gap, so it deliberately
@@ -1096,6 +1449,27 @@ html {
   @media (min-width: 640px) {
     .island-pad {
       padding: 1.75rem 2rem;
+    }
+  }
+
+  /* A ruled settings list whose hairlines reach the island's own edge, matching
+     the `PageSection` rules above them. Each ROW takes the bleed rather than the
+     list, because the rule is a `border-t` on the row: widening the list alone
+     would move the rules' ends without moving the text, and the labels have to
+     stay on the island's text column.
+
+     The numbers are `.island-pad`'s, and they have to be — a bleed resolves
+     against the parent box, so these two rules are one measurement written
+     twice. Change one and change the other. */
+  .setting-list-bleed > * {
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .setting-list-bleed > * {
+      margin-inline: -2rem;
+      padding-inline: 2rem;
     }
   }
 
@@ -1437,9 +1811,12 @@ html {
     }
   }
 
+  /* Shortened, not removed. The mask is an opacity ramp saying "there is more
+     below" — it moves nothing, and taking it away entirely makes the affordance
+     snap on and off, which is more noticeable than the ramp was. */
   @media (prefers-reduced-motion: reduce) {
     .scroll-fade {
-      transition: none;
+      transition-duration: var(--dur-fast);
     }
   }
 
@@ -1492,8 +1869,12 @@ html {
      animates to the inline width the component sets, which is what lets one
      keyframe serve every meter. */
   .rail-fill {
-    animation: rail-grow 450ms var(--ease-out) both;
-    transition: width 450ms var(--ease-out);
+    animation: rail-grow var(--dur-long) var(--ease-out) both;
+    /* Shorter than the first fill on purpose: the first is an entrance nobody
+       asked for, but a change of value is FEEDBACK — you just saved an entry and
+       this is the app answering. Feedback has to land inside the window where
+       you still connect it to what you did. */
+    transition: width var(--dur-slow) var(--ease-out);
   }
 
   @keyframes rail-grow {
@@ -1506,12 +1887,25 @@ html {
      caller sets `animation-delay` per bar, so the week rises left to right. */
   .rise {
     transform-origin: bottom;
-    animation: rise 600ms var(--ease-out) both;
+    animation: rise var(--dur-long) var(--ease-out) both;
+    /* The same pairing `.rail-fill` has, and for the same reason: the entrance
+       plays once, and after that a CHANGE of value eases. Log an hour from the
+       dashboard and the target meter used to glide to its new figure while the
+       bar for that day jumped to a new height in one frame — one event, two
+       answers, side by side on one screen. */
+    transition:
+      height var(--dur-slow) var(--ease-out),
+      background-color var(--dur-slow) var(--ease-out);
   }
 
+  /* From a sliver rather than from nothing, and from transparent: a bar that
+     starts at exactly zero height is an element appearing out of the void,
+     which is the one thing physical motion never does. The sliver reads as the
+     bar already being there and growing. */
   @keyframes rise {
     from {
-      transform: scaleY(0);
+      opacity: 0;
+      transform: scaleY(0.04);
     }
   }
 
@@ -1556,9 +1950,11 @@ html {
    * inlined into each component — three of the four are shared by more than
    * one primitive, and a keyframe defined twice is one that drifts.
    *
-   * `shimmer-text` is the "thinking" label's travelling highlight; it animates
-   * background-position under `bg-clip-text`, which is why the elements using
-   * it set a 200% background and transparent text. */
+   * `shimmer-text` is the travelling highlight that says a turn is working; it
+   * animates background-position under `bg-clip-text`, which is why the
+   * elements using it set a 200% background and transparent text. `.shimmer-ink`
+   * below is the whole effect as one class — the loader's label and the thread
+   * list's titles both wear it, at their own size. */
   @keyframes fade-up {
     from {
       opacity: 0;
@@ -1572,13 +1968,6 @@ html {
     }
   }
 
-  @keyframes pop-in {
-    from {
-      opacity: 0;
-      transform: scale(0.96);
-    }
-  }
-
   @keyframes shimmer-text {
     from {
       background-position: 150% 0;
@@ -1586,6 +1975,36 @@ html {
     to {
       background-position: -50% 0;
     }
+  }
+
+  /* Text that says it is working by BEING the thing that is working.
+   *
+   * The thread list used to put a spinning icon beside a title. That icon is a
+   * second object saying something about a first one, and it changed the row's
+   * width on its way in, so a thread starting an answer nudged its own title.
+   * A title that shimmers needs no room and cannot be mistaken for a control.
+   *
+   * Size-agnostic on purpose: it sets no font-size and no weight, so the loader
+   * keeps its 13px label and a rail row keeps the size its breakpoint gave it.
+   * The gradient runs on `--ink-2` with an `--ink` crest, so it reads as the
+   * resting text colour being lit rather than as a colour of its own.
+   *
+   * `--ink-2` and not `--ink-3`, which is what the loader's label started at.
+   * Between the crests the whole string sits at the base tone, and in a column
+   * of five thread titles the faintest tone made the one thread that IS working
+   * the quietest row on screen — the opposite of what it is there to say. One
+   * step down from full ink still reads as lit rather than as a colour. */
+  .shimmer-ink {
+    background-image: linear-gradient(
+      90deg,
+      var(--ink-2) 35%,
+      var(--ink) 50%,
+      var(--ink-2) 65%
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer-text 1.4s linear infinite;
   }
 
   /* The pixel-grid loader's cell: a brief lift out of its resting dimness. */
@@ -1599,6 +2018,36 @@ html {
     }
   }
 
+  /* The Base UI popups that still use `tw-animate-css` — tooltip, select,
+     combobox, the menu submenu, the alert dialog — enter with `slide-in-from-*`
+     (a translate) and `zoom-in-95` (a scale). Those are CSS keyframes, so the
+     root `<MotionConfig reducedMotion="user">` never sees them, and the app's
+     own dialog, menu, popover and sheet degrade while these five do not. The
+     fade is kept; the travel, the scale, the spin and the blur are dropped.
+
+     EVERY declaration carries `!important`, and that is load-bearing rather
+     than emphatic. These custom properties are set by tw-animate's own
+     `@utility slide-in-from-*` / `zoom-in-*` / `spin-in-*` rules, which Tailwind
+     compiles into the `utilities` layer; this file is `@layer components`, and
+     a later layer beats an earlier one whatever the specificity. `!important`
+     reverses that order, and is the only thing that makes the rule apply at
+     all. Without it the block reads as applied and does nothing. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-in,
+    .animate-out {
+      --tw-enter-translate-x: 0 !important;
+      --tw-enter-translate-y: 0 !important;
+      --tw-exit-translate-x: 0 !important;
+      --tw-exit-translate-y: 0 !important;
+      --tw-enter-scale: 1 !important;
+      --tw-exit-scale: 1 !important;
+      --tw-enter-rotate: 0 !important;
+      --tw-exit-rotate: 0 !important;
+      --tw-enter-blur: 0 !important;
+      --tw-exit-blur: 0 !important;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .screen > *,
     .screen > :nth-child(n + 2) {
@@ -1608,8 +2057,13 @@ html {
       animation: none;
       transition: none;
     }
+    /* Both halves. The animation is the entrance; the `height` transition is
+       the bar re-sizing as the day's total changes, which is the half that is
+       actually movement — left on, saving an entry made the target meter jump
+       and the bar for that day glide. */
     .rise {
       animation: none;
+      transition: none;
     }
     /* The assistant's entrances and the loader's shimmer are narration: with
        reduced motion the content simply arrives. The loader grid stops at its
@@ -1619,10 +2073,37 @@ html {
     .assistant-motion * {
       animation: none !important;
     }
+    /* Except the per-tool spinner, for the reason above: it is the only thing
+       distinguishing a tool that is still running from one that finished. */
+    .assistant-motion .spin {
+      animation: spin 1.8s linear infinite !important;
+    }
+    /* Slower, never stopped. A spinner is the one loop that IS the
+       information: frozen, "working" and "finished" look identical.
+
+       `!important` for the reason given on the tw-animate block above:
+       `animate-spin` sets the `animation` SHORTHAND from the utilities layer,
+       which resets `animation-duration` and out-ranks this file's layer. */
+    .spin,
+    .animate-spin {
+      animation-duration: 1.8s !important;
+    }
     /* The skeleton keeps its shape but stops breathing — the placeholder is
        doing its job by being the right size, not by moving. */
     .pulse-quiet {
       animation: none;
+    }
+    /* Slowed, never stopped, for the reason the spinner is: in the thread list
+       this shimmer is the only thing saying that thread is working, and stopped
+       it is indistinguishable from a title nobody is waiting on. The travel is
+       a highlight crossing one line of text — small, local, and nowhere near
+       the vestibular motion the setting is asking us to drop.
+
+       `!important` because the loader's own rule above ends every animation
+       under `.assistant-motion`, where the elapsed timer carries the state
+       instead; a rail row has no timer to fall back on. */
+    .shimmer-ink {
+      animation: shimmer-text 3.2s linear infinite !important;
     }
   }
 

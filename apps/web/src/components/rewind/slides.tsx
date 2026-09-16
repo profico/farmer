@@ -3,6 +3,7 @@ import { animate, motion, useReducedMotion } from "motion/react";
 import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
 
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
+import { easeOut } from "#/lib/motion.ts";
 
 // The slides of a Rewind. Each is a full screen of one colour and one idea,
 // set large: the serif names the moment, the mono carries the number.
@@ -21,7 +22,7 @@ export const THEMES = {
 	paper: { bg: "#f6f2ea", fg: "#1b1a17", accent: "#5b3aa8" },
 } as const satisfies Record<string, RewindTheme>;
 
-const EASE = [0.23, 1, 0.32, 1] as const;
+const EASE = easeOut;
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 

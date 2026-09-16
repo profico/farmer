@@ -42,6 +42,10 @@ export const Route = createFileRoute("/$orgSlug/reports")({
 	component: ReportsPage,
 });
 
+/** The tabs in the order the strip draws them, so a swap knows which way the
+ *  reader moved along it. */
+const TAB_ORDER = TABS.map((tab) => tab.id);
+
 function ReportsPage() {
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
@@ -130,7 +134,11 @@ function ReportsPage() {
 			    rendered outside a nested boundary of its own, so moving one replaces
 			    the figures it changes and nothing else. A control that vanishes into
 			    the skeleton it just triggered can't be clicked twice in a row. */}
-			<FadeSwap activeKey={tab} className="mt-6">
+			{/* The control that changes this is a horizontal segmented strip, so the
+			    panel leaves the way the strip went — pressing a segment to the
+			    right sends the content left. `order` is what lets the swap know
+			    which way that was. */}
+			<FadeSwap activeKey={tab} order={TAB_ORDER} className="mt-6">
 				<Suspense key={tab} fallback={<TabPending />}>
 					{tab === "time" && (
 						<TimeTab

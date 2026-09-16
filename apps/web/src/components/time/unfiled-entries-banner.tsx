@@ -18,7 +18,7 @@ import {
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
-import { springProductive } from "#/lib/motion.ts";
+import { useHeightTransition } from "#/lib/motion.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
@@ -40,6 +40,7 @@ import { fileTimeEntries } from "#/server/time-entries.ts";
 // The window this nags about now lives with the query (`unfiledWindow`), because
 // the Time nav row's badge counts the same list and the two must not drift.
 export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
+	const heightTransition = useHeightTransition();
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const { from } = unfiledWindow(todayKey);
@@ -64,7 +65,7 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 						initial={{ height: 0, opacity: 0 }}
 						animate={{ height: "auto", opacity: 1 }}
 						exit={{ height: 0, opacity: 0 }}
-						transition={springProductive}
+						transition={heightTransition}
 						className="mb-4 shrink-0 overflow-hidden rounded-lg border bg-secondary"
 					>
 						<div className="flex items-center gap-3 px-4 py-3">

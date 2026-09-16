@@ -1,7 +1,12 @@
 import {
 	ArrowUpRightIcon,
+	CaretDoubleLeftIcon,
+	CaretDoubleRightIcon,
+	CaretUpDownIcon,
 	GithubLogoIcon,
+	MoonIcon,
 	SignOutIcon,
+	SunIcon,
 } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import { useQuery } from "@tanstack/react-query";
@@ -11,43 +16,39 @@ import {
 	useNavigate,
 	useRouter,
 } from "@tanstack/react-router";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef } from "react";
 
-import { ChatRail } from "#/components/assistant/chat-rail.tsx";
+import { ConversationList } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import {
 	settingsNavGroups,
 	settingsSubNavItems,
 } from "#/components/settings-nav.tsx";
-import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "#/components/ui/dropdown-menu.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { useScrollFade } from "#/components/ui/scroll-fade.tsx";
 import {
-	SegmentedControl,
-	SegmentedControlItem,
-} from "#/components/ui/segmented-control.tsx";
-import {
-	Sidebar,
-	SidebarContent,
-	SidebarFooter,
-	SidebarGroup,
-	SidebarGroupContent,
-	SidebarGroupLabel,
-	SidebarHeader,
-	SidebarMenu,
-	SidebarMenuButton,
-	SidebarMenuItem,
-	SidebarMenuSub,
-	SidebarMenuSubButton,
-	SidebarMenuSubItem,
-} from "#/components/ui/sidebar.tsx";
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "#/components/ui/tooltip.tsx";
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { GITHUB_NEW_ISSUE_URL } from "#/lib/links.ts";
-import { springLayout, springProductive } from "#/lib/motion.ts";
+import { easeOut } from "#/lib/motion.ts";
+import { setNavCollapsed, useNavCollapsed } from "#/lib/nav-collapse.ts";
 import {
 	activeNavTo,
 	ASSISTANT_ITEM,
@@ -56,110 +57,42 @@ import {
 	REPORTS_ITEM,
 	SETTINGS_ITEM,
 	WORK_ITEMS,
-	YOU_ITEMS,
 } from "#/lib/nav-items.ts";
+import { useTheme } from "#/lib/theme.ts";
 import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 
-type SidebarTab = "browse" | "chat";
-
 /**
- * The opening used by a row that arrives late and by the settings sub-menu:
- * height and opacity together, or opacity alone for a reader who has asked for
- * less motion.
+ * The shell's left edge: a NAV column that names the sections, and a PANEL
+ * beside it that lists what is inside the one you are in.
  *
- * `MotionConfig reducedMotion="user"` (see `__root.tsx`) is the app's only
- * reduced-motion mechanism, and it drops transform, scale and slide. A height
- * animation is none of those, so it is the one piece of motion in the app that
- * would keep unrolling for somebody who asked all of it to stop — hence the
- * only per-component branch on the preference.
+ * It replaces a single labelled column that had to carry both at once — four
+ * work rows, a Settings row, and twelve settings pages unrolling underneath it,
+ * plus a Browse/Chat switch to reach the assistant's threads. Depth goes
+ * sideways now: the nav never changes, and the panel is the section's own
+ * contents.
+ *
+ * **The panel exists only where there is a list to put in it** — Settings (the
+ * hub's two groups) and Chat (the thread list). Home, Time, Projects and
+ * Reports have no second level, so the nav keeps its labels there and the page
+ * takes the width back. A panel drawn empty would be a promise of depth that
+ * isn't there.
+ *
+ * **The nav collapses to an icon rail when a panel opens** — two labelled
+ * columns side by side are two sidebars, and the second one is the specific
+ * one. The reader can also collapse it themselves, anywhere, and that choice
+ * sticks (`lib/nav-collapse.ts`).
+ *
+ * Both columns live in ONE island, rather than two with ground between them:
+ * the nav is not a peer of the panel, it is what the panel belongs to. One
+ * paper throughout, at both widths: the rail is the same surface as the page
+ * beside it, and the hairline that appears once there are two columns is the
+ * only thing that marks the boundary. A tinted rail made the shell read as
+ * three materials for what is one sheet with a fold in it.
  */
-function useUnroll(reduced: boolean | null) {
-	if (reduced) {
-		return {
-			initial: { opacity: 0 },
-			animate: { opacity: 1 },
-			exit: { opacity: 0 },
-		};
-	}
-	return {
-		initial: { height: 0, opacity: 0 },
-		animate: { height: "auto", opacity: 1 },
-		exit: { height: 0, opacity: 0 },
-	};
-}
 
-/**
- * A `SidebarMenuItem` that opens rather than appears, for the two rows whose
- * visibility depends on a query that resolves after first paint.
- *
- * `overflow-hidden` is what makes it read as the row opening instead of its
- * label spilling out of a 0px box — but the button inside carries a
- * `focus-visible:ring-2` that sits *outside* its border, and this `li` is
- * exactly the button's size, so leaving the clip on permanently would shave the
- * focus ring off two of the fourteen nav rows. It comes off once the row has
- * settled, which is the only moment it was needed.
- */
-function EnteringMenuItem({
-	onSettled,
-	children,
-}: {
-	/** Called once the row has finished opening. See `lateRowsSettled`. */
-	onSettled?: () => void;
-	children: React.ReactNode;
-}) {
-	const [settled, setSettled] = useState(false);
-	const { initial, animate } = useUnroll(useReducedMotion());
-	return (
-		<motion.li
-			data-sidebar="menu-item"
-			className={cn("group/menu-item relative", !settled && "overflow-hidden")}
-			initial={initial}
-			animate={animate}
-			transition={springProductive}
-			onAnimationComplete={() => {
-				setSettled(true);
-				onSettled?.();
-			}}
-		>
-			{children}
-		</motion.li>
-	);
-}
-
-/**
- * The settings sub-menu's opening, and the reason it is not a plain `<div>`.
- *
- * The same shape as `EnteringMenuItem` above: `overflow-hidden` is what makes
- * the list read as unrolling under the Settings row rather than six labels
- * arriving at once, and it comes off the moment the animation ends, because a
- * sub-row's `focus-visible:ring-2` sits outside its border and this box is
- * exactly the list's size.
- */
-function ExpandingSub({ children }: { children: React.ReactNode }) {
-	const [settled, setSettled] = useState(false);
-	const { initial, animate, exit } = useUnroll(useReducedMotion());
-	return (
-		<motion.div
-			className={cn(!settled && "overflow-hidden")}
-			initial={initial}
-			animate={animate}
-			// It leaves the way it arrived, rolling back up under the row it
-			// belongs to. Unmounting it on the frame the route changes made the
-			// list vanish where it had unrolled, which is the one thing a person
-			// reads as "that was not a place".
-			exit={exit}
-			transition={springProductive}
-			// The clip is only wanted while the box is moving: a sub-row's
-			// focus ring sits outside its border, and this box is exactly the
-			// list's size. It comes back for the exit.
-			onAnimationStart={() => setSettled(false)}
-			onAnimationComplete={() => setSettled(true)}
-		>
-			{children}
-		</motion.div>
-	);
-}
+/** Which list the panel is showing, or `null` for a section that has none. */
+type PanelKind = "settings" | "chat" | null;
 
 export function AppSidebar({
 	orgSlug,
@@ -187,8 +120,8 @@ export function AppSidebar({
 	/**
 	 * Whether the assistant exists for this reader at all — the deployment flag
 	 * AND a connected key AND not paused for this org, resolved once in the
-	 * layout route. Deliberately not just `ASSISTANT_ENABLED`: a Chat tab whose
-	 * destination explains that it isn't connected is a tab that shouldn't be
+	 * layout route. Deliberately not just `ASSISTANT_ENABLED`: a Chat row whose
+	 * destination explains that it isn't connected is a row that shouldn't be
 	 * there.
 	 */
 	assistantAvailable: boolean;
@@ -196,279 +129,595 @@ export function AppSidebar({
 	timezone: string;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
-	const router = useRouter();
 	const navigate = useNavigate();
-	const posthog = usePostHog();
 
-	// Which list the sidebar is showing.
-	//
-	// It FOLLOWS THE ROUTE by default — on the assistant you get your threads,
-	// anywhere else you get the nav — with a temporary override so you can peek
-	// at the other tab without navigating. The override is cleared by the next
-	// navigation, so the tab always settles back to describing where you are
-	// rather than becoming a third thing to keep track of.
+	const panelScrollRef = useRef<HTMLDivElement>(null);
+	useScrollFade(panelScrollRef);
 	const navScrollRef = useRef<HTMLDivElement>(null);
 	useScrollFade(navScrollRef);
 
-	const onAssistant = isNavItemActive(pathname, ASSISTANT_ITEM.to, orgSlug);
-	const [tabOverride, setTabOverride] = useState<SidebarTab | null>(null);
-	// With no assistant there is no second list, so the tab is pinned rather than
-	// merely unswitchable — otherwise an admin who pauses it mid-session is left
-	// looking at an empty thread rail with no control to leave it by.
-	const tab: SidebarTab = !assistantAvailable
-		? "browse"
-		: (tabOverride ?? (onAssistant ? "chat" : "browse"));
-	// oxlint-disable-next-line react-hooks/exhaustive-deps -- it exists to clear the override on navigation, and `pathname` is the navigation
-	useEffect(() => {
-		setTabOverride(null);
-	}, [pathname]);
-
-	// Navigate on mouse *press* rather than the full click (press + release) so
-	// the sidebar feels instant. Only one link is ever mid-interaction at a
-	// time, so a single shared flag — set on the press we handle, read+cleared on
-	// the trailing click — is enough to swallow that click's duplicate navigation.
-	const swallowClickRef = useRef(false);
-
-	// Navigation happens on the press, for every row and sub-row alike: a nav
-	// that waits for the release feels slower than the one beside it, and two
-	// lists that look the same must answer the same way.
-	const pressToNavigate = (item: NavItem, isActive: boolean) => ({
-		onMouseDown: (e: React.MouseEvent) => {
-			swallowClickRef.current = false;
-			// Only fast-path a plain primary-button press. Modifier / middle
-			// clicks fall through so the browser can open a new tab; keyboard
-			// activation has no mousedown and navigates on click below.
-			if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
-				return;
-			// This press owns the interaction, so its click is a duplicate.
-			swallowClickRef.current = true;
-			// Re-pressing the tab you're on stays a no-op (matches onClick).
-			if (!isActive) navigate({ to: item.to, params: { orgSlug } });
-		},
-		onClick: (e: React.MouseEvent) => {
-			// A mouse press already navigated on mousedown — swallow its click
-			// so we don't navigate twice. Keyboard Enter reaches here with no
-			// preceding mousedown (flag false) and navigates normally, except
-			// on the active tab, which stays a no-op.
-			if (swallowClickRef.current || isActive) e.preventDefault();
-			swallowClickRef.current = false;
-		},
-	});
-
-	const navLink = (item: NavItem, isActive: boolean, badge?: number) => (
-		<Link
-			to={item.to}
-			params={{ orgSlug }}
-			// `data-active:*` on the shared button variant paints the pill directly
-			// on whichever row is active, which means the pill blinks off one row and
-			// on at another. Neutralised here so the shared-layout span below can
-			// draw it instead and carry it between rows. This is the only consumer of
-			// SidebarMenuButton, so nothing else is affected.
-			className="data-active:bg-transparent data-active:shadow-none"
-			{...pressToNavigate(item, isActive)}
-		>
-			{/* The active pill, as a shared element rather than a background on the
-			    row — so moving between destinations slides it down the nav instead
-			    of blinking it out here and in there. Same spring as the
-			    SegmentedControl pill; `reducedMotion="user"` on the root
-			    <MotionConfig> makes it jump instead of glide.
-
-			    First child, with the icon and label made `relative` so they paint
-			    over it — cheaper than a wrapper. The label used to lean on the
-			    variant's `[&>span:last-child]:truncate`; a row with a badge has a
-			    later span than the label, so it carries `truncate` itself now. */}
-			{isActive && (
-				<motion.span
-					aria-hidden
-					layoutId="sidebar-active-nav"
-					transition={springLayout}
-					className="absolute inset-0 rounded-2xl bg-sidebar-accent shadow-[0_1px_2px_color-mix(in_srgb,var(--fg)_5%,transparent)]"
-				/>
-			)}
-			<item.icon className="relative size-4" />
-			<span className="relative min-w-0 flex-1 truncate">{item.label}</span>
-			{/* A count, not a dot: how much unattributed time is waiting decides
-			    whether you deal with it now, and "some" does not. Quiet rather than
-			    the loud `default` badge — this is a standing worklist that is
-			    normally non-empty, so a red-adjacent fill on it would be permanent
-			    alarm rather than information. */}
-			{badge !== undefined && badge > 0 && (
-				<Badge
-					variant="secondary"
-					className="relative h-5 min-w-5 px-1.5 text-2xs tabular-nums"
-				>
-					{badge > 99 ? "99+" : badge}
-				</Badge>
-			)}
-		</Link>
-	);
-
-	const navRow = (item: NavItem) => {
-		const isActive = activeTo === item.to;
-		return (
-			<SidebarMenuItem key={item.to}>
-				<SidebarMenuButton
-					isActive={isActive}
-					render={navLink(item, isActive, badgeFor(item))}
-				/>
-			</SidebarMenuItem>
-		);
-	};
-
-	// Clients and Reports are gated on `myAccess`, which is a plain
-	// `useQuery` (see below) — so unlike every other row they arrive a moment
-	// after the sidebar has already painted, popping in at the end of Workspace
-	// and knocking the whole Admin group down a notch. These two open instead.
-	//
-	// That is ONE moment, though, and the rows live inside the swapped panel:
-	// every return to the Browse tab remounts them, so without this latch three
-	// row heights spring open again underneath a crossfade that has already
-	// faded them in. The latch sits on the sidebar, which the swap never
-	// unmounts, and flips on the animation's own completion rather than on the
-	// query resolving — an unrelated re-render landing mid-flight would
-	// otherwise snap the rows to full height halfway through.
-	const lateRowsSettled = useRef(false);
-	const lateNavRow = (item: NavItem) => {
-		const isActive = activeTo === item.to;
-		const button = (
-			<SidebarMenuButton
-				isActive={isActive}
-				render={navLink(item, isActive, badgeFor(item))}
-			/>
-		);
-		return lateRowsSettled.current ? (
-			<SidebarMenuItem key={item.to}>{button}</SidebarMenuItem>
-		) : (
-			<EnteringMenuItem
-				key={item.to}
-				onSettled={() => {
-					lateRowsSettled.current = true;
-				}}
-			>
-				{button}
-			</EnteringMenuItem>
-		);
-	};
-
-	// Not a suspense query: the sidebar is always mounted and shouldn't block or
+	// Not a suspense query: the shell is always mounted and shouldn't block or
 	// suspend on this. Clients are gated on a per-project lead role (or a people
 	// list), which the org role alone can't tell us.
 	const { data: access } = useQuery(myAccessQuery(orgSlug));
 	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
 
-	// The gated rows, resolved once: the render needs them twice over (which
-	// group draws which row, and which row the path belongs to) and they must be
-	// the same answer both times.
-	// Reports are for everyone — the services scope them, a Member sees their
-	// own row — so the item is not gated.
-	const lateWorkItems = [REPORTS_ITEM];
-
-	// The settings sub-menu, open only while you are somewhere under it.
-	//
-	// A settings page used to be a leaf: you arrived from the hub, and the only
-	// way to the next one was back to the hub first. The sub-menu turns the
-	// whole catalogue into siblings you can walk between, and it is what makes
-	// the Settings row read as a place rather than a link.
-	//
-	// It carries every settings page now, under the hub's two headings, because
-	// the four that used to hold top-level rows (My schedule, Recurring blocks,
-	// Clients, People) moved in here with the rest. The sidebar is four rows
-	// shorter at rest and nothing is listed in two places.
-	//
-	// It is not a disclosure the reader opens and closes. There is no state to
-	// keep, nothing to remember across a navigation, and no way to be in settings
-	// while it is shut — the route IS the switch, which is also why it needs no
-	// aria-expanded: nothing here is a control.
 	const inSettings = isNavItemActive(pathname, SETTINGS_ITEM.to, orgSlug);
+	const onAssistant = isNavItemActive(pathname, ASSISTANT_ITEM.to, orgSlug);
+	const panel: PanelKind = inSettings
+		? "settings"
+		: onAssistant
+			? "chat"
+			: null;
+
+	// Two things collapse the column and they are not the same thing: a panel
+	// (the URL's doing, and the server knows it) and the reader's own choice
+	// (localStorage, which the server does not). The width comes off CSS either
+	// way — see `.app-nav` in styles.css — and this is only what the ROWS are
+	// drawn from, which is why the pref being a frame late costs nothing.
+	const navCollapsed = useNavCollapsed();
+	const collapsed = panel !== null || navCollapsed;
+
+	// What the panel DRAWS, which is not what the panel IS: on the way out it
+	// keeps the list it was showing, so a closing panel narrows around its own
+	// contents instead of emptying itself first and then shrinking. `panel` is
+	// still what decides whether it is open.
+	const lastPanel = useRef<Exclude<PanelKind, null>>("settings");
+	if (panel !== null) lastPanel.current = panel;
+	const shown = panel ?? lastPanel.current;
+
 	const settingsGroups = settingsNavGroups({ isAdmin, canManageClients });
+
+	// The nav's own rows: the four work screens, then the assistant where it is
+	// available. Reports joins the work group rather than standing alone — a
+	// report is read off the same work the three rows above it are about.
+	const navItems: NavItem[] = [
+		...WORK_ITEMS,
+		REPORTS_ITEM,
+		...(assistantAvailable ? [ASSISTANT_ITEM] : []),
+	];
+
+	// Which single row is lit, resolved over every destination either column can
+	// reach — the nav's, plus the settings pages when the panel is carrying
+	// them. Longest match wins, so `/acme/settings/tasks` lights the Tasks row in
+	// the panel AND the Settings row in the nav without either being a guess.
 	const activeTo = activeNavTo(
 		pathname,
 		[
-			...WORK_ITEMS,
-			...lateWorkItems,
-			...YOU_ITEMS,
+			...navItems,
+			SETTINGS_ITEM,
 			...(inSettings ? settingsSubNavItems({ isAdmin, canManageClients }) : []),
 		],
 		orgSlug,
+	);
+	// The nav marks the SECTION, which is the settings hub for every page under
+	// it — the panel says which one.
+	const activeSection = inSettings ? SETTINGS_ITEM.to : activeTo;
+
+	// Which edge each column's active background grows from. The nav's order is
+	// the order its rows are drawn in; the panel's is the settings list flattened,
+	// because that is the only list `panelLink` draws.
+	const navFillFrom = useFillFrom(
+		[...navItems.map((item) => item.to), SETTINGS_ITEM.to],
+		activeSection,
+	);
+	const panelFillFrom = useFillFrom(
+		settingsGroups.flatMap((group) => group.items.map((item) => item.to)),
+		activeTo,
 	);
 
 	// Unattributed time, on the row that leads to the screen that files it.
 	// Everything the sync engines write lands project-less, so this is the one
 	// number in the app that grows while nobody is looking at it.
 	const unfiledCount = useUnfiledCount(orgSlug, timezone);
-	const badgeFor = (item: NavItem) =>
-		item.to === "/$orgSlug/time" ? unfiledCount : undefined;
 
-	// A sub-row: the same shared pill as a top-level row, one indent in.
+	// Navigate on mouse *press* rather than the full click (press + release) so
+	// the nav feels instant, then swallow the trailing click so the navigation
+	// does not happen twice.
 	//
-	// `SidebarMenuSubButton` paints its own `data-active` background, which would
-	// blink the highlight off a nav row and on down here. Neutralised so the
-	// shared-layout span can draw it instead and carry it into the sub-menu, the
-	// same way it already travels between the groups above.
-	const settingsSubLink = (item: NavItem, isActive: boolean) => (
-		<Link
-			to={item.to}
-			params={{ orgSlug }}
-			className="relative data-active:bg-transparent"
-			{...pressToNavigate(item, isActive)}
-		>
-			{isActive && (
-				<motion.span
-					aria-hidden
-					layoutId="sidebar-active-nav"
-					transition={springLayout}
-					// `rounded-md`, matching the sub button's own corner — the pill and
-					// the hover background are the same shape at the same size, or the
-					// corner changes as you move onto the row you are already on.
-					className="absolute inset-0 rounded-md bg-sidebar-accent shadow-[0_1px_2px_color-mix(in_srgb,var(--fg)_5%,transparent)]"
-				/>
-			)}
-			{/* No icon, unlike the rows above and unlike the hub's list: the rail at
-			    the left already says these belong to the row over them, and a second
-			    column of glyphs at this indent leaves the labels nowhere to go. */}
-			<span className="relative min-w-0 flex-1 truncate">{item.label}</span>
-		</Link>
-	);
+	// What is remembered is the ELEMENT pressed, not a boolean. A press that ends
+	// somewhere else — press a row, drag off it, release — fires no click on that
+	// row at all, so a boolean set on the press had nothing to clear it and
+	// stayed true; the ref is shared by every row, so the next keyboard Enter on
+	// ANY of them was swallowed and went nowhere. Comparing against
+	// `e.currentTarget` makes an unanswered press only ever affect the one row it
+	// was made on, and clearing on `keydown` closes even that: a keyboard
+	// activation always sends keydown before click, a mouse press never does.
+	const pressedRef = useRef<EventTarget | null>(null);
+	const pressToNavigate = (item: NavItem, isActive: boolean) => ({
+		onMouseDown: (e: React.MouseEvent) => {
+			pressedRef.current = null;
+			// Only fast-path a plain primary-button press. Modifier / middle clicks
+			// fall through so the browser can open a new tab; keyboard activation
+			// has no mousedown and navigates on click below.
+			if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+				return;
+			pressedRef.current = e.currentTarget;
+			if (!isActive) navigate({ to: item.to, params: { orgSlug } });
+		},
+		onKeyDown: () => {
+			pressedRef.current = null;
+		},
+		onClick: (e: React.MouseEvent) => {
+			// This row's own press already navigated on mousedown — swallow its
+			// click. Keyboard Enter reaches here with the ref cleared and navigates
+			// normally, except on the active row, which stays a no-op.
+			const pressedHere = pressedRef.current === e.currentTarget;
+			pressedRef.current = null;
+			if (pressedHere || isActive) e.preventDefault();
+		},
+	});
 
-	const settingsRow = (item: NavItem) => {
-		const isActive = activeTo === item.to;
+	/** A nav row, in whichever of the column's two widths it is being drawn at. */
+	const navRow = (item: NavItem, badge?: number) => {
+		const isActive = activeSection === item.to;
 		return (
-			<SidebarMenuItem key={item.to}>
-				<SidebarMenuButton
-					isActive={isActive}
-					render={navLink(item, isActive)}
+			<Tooltip key={item.to}>
+				<TooltipTrigger
+					render={
+						<Link
+							to={item.to}
+							params={{ orgSlug }}
+							aria-label={item.label}
+							aria-current={isActive ? "page" : undefined}
+							className={navRowClass}
+							{...pressToNavigate(item, isActive)}
+						>
+							{isActive && (
+								<ActiveFill from={navFillFrom} className="rounded-xl" />
+							)}
+							{/* The icon and, at rail width, the count on its corner — in one
+							    relative box. The row is the full width of the column now, so a
+							    badge anchored to the ROW's corner would sit out in the padding
+							    with nothing under it. */}
+							<span className="relative flex shrink-0 items-center">
+								<item.icon className="size-4.5 shrink-0" />
+								{badge !== undefined && badge > 0 && (
+									<Badge
+										variant="secondary"
+										className="nav-rail-badge absolute -top-1.5 -right-2 h-4 min-w-4 justify-center px-1 text-[10px] leading-none tabular-nums"
+									>
+										{badge > 99 ? "99+" : badge}
+									</Badge>
+								)}
+							</span>
+							{/* The label band — see `.nav-label` in styles.css. Always
+							    mounted and OUT OF FLOW, so it can fade instead of vanishing
+							    in one frame without ever being able to widen the row.
+
+							    A count, not a dot: how much unattributed time is waiting
+							    decides whether you deal with it now, and "some" does not. It
+							    follows the label here; at rail width there is no label, so it
+							    moves onto the icon's corner above. */}
+							<span className="nav-label">
+								<span className="min-w-0 flex-1 truncate text-base">
+									{item.label}
+								</span>
+								{badge !== undefined && badge > 0 && (
+									<Badge
+										variant="secondary"
+										className="h-5 min-w-5 shrink-0 justify-center px-1.5 text-2xs tabular-nums"
+									>
+										{badge > 99 ? "99+" : badge}
+									</Badge>
+								)}
+							</span>
+						</Link>
+					}
 				/>
-				{/* `initial={false}` so a cold load that lands inside settings paints
-				    the sub-menu already open. It is not an entrance there — it is
-				    what the sidebar looks like at that address. */}
-				<AnimatePresence initial={false}>
-					{inSettings && (
-						<ExpandingSub>
-							{settingsGroups.map((group) => (
-								<SidebarMenuSub key={group.key} className="mt-1">
-									{/* The heading the hub uses over the same rows. Twelve
-									    labels at one indent are a list; the two headings are
-									    what make them two groups you can scan. */}
-									<li className="eyebrow px-2 pt-1.5 pb-1">{group.label}</li>
-									{group.items.map((subItem) => (
-										<SidebarMenuSubItem key={subItem.to}>
-											<SidebarMenuSubButton
-												isActive={activeTo === subItem.to}
-												render={settingsSubLink(
-													subItem,
-													activeTo === subItem.to,
-												)}
-											/>
-										</SidebarMenuSubItem>
-									))}
-								</SidebarMenuSub>
-							))}
-						</ExpandingSub>
-					)}
-				</AnimatePresence>
-			</SidebarMenuItem>
+				{/* Only where the label is gone. Same rule the shadcn sidebar uses:
+				    the trigger is always wrapped, so collapsing does not remount the
+				    row. */}
+				<TooltipContent side="right" sideOffset={8} hidden={!collapsed}>
+					{item.label}
+				</TooltipContent>
+			</Tooltip>
 		);
 	};
+
+	const panelLink = (item: NavItem) => {
+		const isActive = activeTo === item.to;
+		return (
+			<li key={item.to}>
+				<Link
+					to={item.to}
+					params={{ orgSlug }}
+					aria-current={isActive ? "page" : undefined}
+					className={cn(
+						"relative flex items-center rounded-lg px-2.5 py-1.5 text-base ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
+						isActive
+							? "font-medium text-foreground"
+							: "text-sidebar-foreground hover:text-foreground",
+					)}
+					{...pressToNavigate(item, isActive)}
+				>
+					{isActive && (
+						<ActiveFill from={panelFillFrom} className="rounded-lg" />
+					)}
+					{/* No icon, unlike the nav: the nav already carries the glyph for the
+					    section these pages belong to, and a second column of them at this
+					    width leaves the labels nowhere to go. */}
+					<span className="relative min-w-0 truncate">{item.label}</span>
+				</Link>
+			</li>
+		);
+	};
+
+	return (
+		<TooltipProvider delay={300}>
+			<div
+				// Sticks to the top of the frame rather than the viewport, and stops a
+				// frame-padding short of the bottom, so the island keeps ground visible
+				// on all four sides as the page scrolls past it.
+				// `data-panel` sits here rather than on the nav alone: BOTH columns
+				// size off it (`.app-nav` and `.app-panel` in styles.css), so one
+				// attribute on their common parent is one style recalculation and
+				// therefore one start time for the two transitions.
+				data-panel={panel ?? undefined}
+				className="island sticky top-(--frame-pad) hidden h-[calc(100svh-2*var(--frame-pad))] shrink-0 self-stretch text-sidebar-foreground md:flex"
+			>
+				{/* ── the nav column ───────────────────────────────────────────── */}
+				<nav
+					aria-label="Sections"
+					// `data-panel` is what collapses it beside an open panel, and what
+					// earns it the hairline: with no panel this column IS the page's own
+					// surface, cut from one sheet. The hairline is a colour rather than a
+					// border that comes and goes — see `.app-nav` in styles.css.
+					data-panel={panel ?? undefined}
+					className="app-nav flex shrink-0 flex-col overflow-hidden"
+				>
+					<div className="flex min-h-0 flex-1 flex-col">
+						{/* A ROW at both widths, holding one thing. It used to become a
+						    column when collapsed so the toggle could sit under the mark, and
+						    `items-center` in a flex COLUMN centres horizontally — which rode
+						    the switcher in from the right as the column shut. It also made the
+						    header two different heights, so every icon under it stepped down
+						    when a panel opened. The toggle lives at the foot now, so there is
+						    nothing left here to stack. */}
+						<div className="flex shrink-0 items-center px-2 pt-2.5">
+							<OrgSwitcher
+								orgSlug={orgSlug}
+								organizationName={organizationName}
+								organizationLogo={organizationLogo}
+								singleOrg={singleOrg}
+							/>
+						</div>
+						<div
+							ref={navScrollRef}
+							className={cn(
+								// ONE padding at both widths, and no `items-center`, and no
+								// `justify-center` on the rows. Three separate reasons, one
+								// rule:
+								//
+								// `items-center` sized each row to its CONTENT, so a collapsed
+								// row was 18px — its icon — and the active pill, which is
+								// `inset-0` of the row, came out as a narrow capsule pinched
+								// around the glyph instead of a square behind it.
+								//
+								// `justify-center` re-centred the icon the instant `collapsed`
+								// flipped, while the column still had its old width. Collapsing
+								// therefore threw the icons into the middle of a 240px box and
+								// then dragged them left as the edge came in — which reads as
+								// the rail sliding in from the right rather than the column
+								// closing.
+								//
+								// Left-aligned at one padding, the icon does not move at all:
+								// it sits 18px from the column's edge whatever that column is
+								// currently doing, and only the labels beside it come and go.
+								// `overflow-x-hidden` because `.scroll-fade` sets `overflow-y: auto`,
+								// and CSS then forces `overflow-x` to `auto` as well. Expanding
+								// mounts every label while the column is still 56px wide, which
+								// overflows it by 14px for a few frames — long enough for a
+								// horizontal scrollbar to flash across the foot of the column.
+								"scroll-fade mt-1 flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden px-2",
+							)}
+						>
+							{navItems.map((item) =>
+								navRow(
+									item,
+									item.to === "/$orgSlug/time" ? unfiledCount : undefined,
+								),
+							)}
+							{/* Settings closes the list of places rather than standing apart at
+							    the foot: the panel it opens is the same kind of thing the other
+							    rows lead to, and a row held down by a spacer reads as a
+							    different class of destination than it is. */}
+							{navRow(SETTINGS_ITEM)}
+							<div className="flex-1" />
+							{/* The two rows the spacer holds at the foot: neither is a place in
+							    the app. A nav row like every other one — same height, same
+							    padding, same icon size — so they line up with the glyphs above
+							    them at both widths.
+
+							    No toggle while a panel is open: the panel IS the column's
+							    expansion, and a control that would put two labelled lists side
+							    by side is a control with nowhere to go. It FADES and keeps its
+							    space rather than unmounting — dropping the element both moved
+							    the row under it 44px down the column and made the button blink
+							    out in one frame while the column beside it took `--dur-long` to
+							    close. `inert` is what "gone" means for a reader who is not
+							    looking at it.
+
+							    `navCollapsed`, not `collapsed`: a panel forces the rail, so
+							    `collapsed` would flip the carets round halfway through the fade
+							    for a state the button does not control. */}
+							<CollapseToggle
+								collapsed={navCollapsed}
+								hidden={panel !== null}
+							/>
+							<Tooltip>
+								<TooltipTrigger
+									render={
+										<a
+											href={GITHUB_NEW_ISSUE_URL}
+											target="_blank"
+											rel="noreferrer"
+											aria-label="Report a problem"
+											className={cn(navRowClass, "mb-2.5")}
+										>
+											<GithubLogoIcon className="relative size-4.5 shrink-0" />
+											<span className="nav-label">
+												<span className="min-w-0 flex-1 truncate text-base">
+													Report a problem
+												</span>
+												<ArrowUpRightIcon
+													weight="regular"
+													className="size-3.5 shrink-0 text-muted-foreground"
+												/>
+											</span>
+										</a>
+									}
+								/>
+								<TooltipContent
+									side="right"
+									sideOffset={8}
+									hidden={!collapsed}
+									className="gap-1"
+								>
+									Report a problem
+									<ArrowUpRightIcon weight="regular" className="size-3" />
+								</TooltipContent>
+							</Tooltip>
+						</div>
+					</div>
+					{/* Fixed height, not padding, and the one hairline inside the
+					    column: the timesheet's own footer aligns to this rule (see
+					    `--footer-h`), so the two islands close on the same line. */}
+					<div
+						className={cn(
+							"flex h-(--footer-h) shrink-0 items-center border-t",
+							"px-2",
+						)}
+					>
+						<UserMenu
+							userName={userName}
+							userEmail={userEmail}
+							userImage={userImage}
+							isAdmin={isAdmin}
+							collapsed={collapsed}
+						/>
+					</div>
+				</nav>
+
+				{/* ── the panel ────────────────────────────────────────────────── */}
+				{/* It OPENS rather than appearing, and closes the same way, because the
+				    nav column beside it is shedding its labels at that moment — the two
+				    together read as the list stepping sideways out of the column rather
+				    than as the shell being rebuilt.
+
+				    Always mounted, and sized by CSS off the island's `data-panel` — see
+				    `.app-panel` in styles.css for why the width cannot be a Motion value
+				    beside a CSS transition. `inert` is what closing it means for anyone
+				    not looking at it: at zero width the rows are still in the tree, and
+				    without this they stay tabbable and readable. */}
+				<div className="app-panel" inert={panel === null}>
+					<div className="flex h-full w-60 flex-col">
+						{/* The section's name, once, as a title — the rail beside it
+						    carries no label, so without this nothing on screen says which
+						    section the list belongs to. */}
+						<div className="shrink-0 px-4 pt-4 pb-2">
+							<h2 className="h2">
+								{shown === "settings" ? "Settings" : "Chats"}
+							</h2>
+						</div>
+						<div
+							ref={panelScrollRef}
+							className="scroll-fade min-h-0 flex-1 px-2.5 pb-2.5"
+						>
+							{/* The two lists are a swap, not a replacement — the same
+							    crossfade the rest of the app uses for a panel change, because
+							    that is what this is. */}
+							<FadeSwap activeKey={shown} className="flex flex-col">
+								{shown === "settings" ? (
+									settingsGroups.map((group) => (
+										<div key={group.key} className="flex flex-col">
+											{/* The heading the hub uses over the same rows. Twelve
+											    labels at one indent are a list; the two headings are
+											    what make them two groups you can scan. */}
+											<div className="eyebrow px-2.5 pt-3 pb-1.5">
+												{group.label}
+											</div>
+											<ul className="flex flex-col gap-px">
+												{group.items.map(panelLink)}
+											</ul>
+										</div>
+									))
+								) : (
+									<div className="pt-1">
+										<ConversationList orgSlug={orgSlug} />
+									</div>
+								)}
+							</FadeSwap>
+						</div>
+					</div>
+				</div>
+			</div>
+		</TooltipProvider>
+	);
+}
+
+/**
+ * Which edge the lit row's background grows from: the one the reader came from.
+ * Moving down the column fills from the top, moving up fills from the bottom,
+ * and the first paint does not fill at all.
+ *
+ * `null` for a render that changed nothing, which is every render except the
+ * one a navigation commits — the fill element does not remount then, so its
+ * `initial` is never read again and the answer costs nothing.
+ */
+function useFillFrom(
+	order: string[],
+	active: string | null,
+): "top" | "bottom" | null {
+	// -1 for a column with nothing lit — the chat panel draws no `panelLink` at
+	// all — which compares like any other position, so arriving from it fills
+	// downwards and nothing has to special-case it.
+	const index = active === null ? -1 : order.indexOf(active);
+	// Read during render and written after it: on the render that commits a
+	// navigation this still holds where the reader WAS, which is the whole
+	// question being asked.
+	const previous = useRef<number | null>(null);
+	useEffect(() => {
+		previous.current = index;
+	}, [index]);
+	if (previous.current === null || previous.current === index) return null;
+	return index > previous.current ? "top" : "bottom";
+}
+
+/**
+ * The lit row's background.
+ *
+ * A background ON the row, not a pill that travels between rows. The pill was a
+ * `layoutId` shared element, which put an object in the sidebar that existed
+ * independently of any row and slid around behind them — and beside the
+ * column's own width transition it was a second clock: it measured its
+ * destination while `.app-nav` was still at its old width, glided to a box that
+ * was no longer there, and snapped. Filling in place has no destination to
+ * measure and nothing to keep in step with.
+ *
+ * `clip-path` rather than `scaleY`, which would squash the corner radius on the
+ * way in. The element keeps its own radius and the clip simply uncovers it.
+ */
+function ActiveFill({
+	from,
+	className,
+}: {
+	from: "top" | "bottom" | null;
+	className?: string;
+}) {
+	// The app's own "Less movement" switch reaches Motion through
+	// `MotionGlobalConfig.instantAnimations`; this is the OS preference, which
+	// only `useReducedMotion` can see.
+	const reduced = useReducedMotion();
+	return (
+		<motion.span
+			aria-hidden
+			initial={
+				from === null || reduced
+					? false
+					: {
+							clipPath:
+								from === "top" ? "inset(0 0 100% 0)" : "inset(100% 0 0 0)",
+						}
+			}
+			animate={{ clipPath: "inset(0 0 0 0)" }}
+			// 180ms is `--dur-slow`, and `easeOut` is `--ease-out`. Both are typed
+			// here because a Motion transition cannot read a CSS custom property.
+			transition={{ duration: 0.18, ease: easeOut }}
+			className={cn("absolute inset-0 bg-sidebar-accent", className)}
+		/>
+	);
+}
+
+/** Every nav row's shape, at either width. `relative` carries the active fill. */
+const navRowClass =
+	"relative flex h-10 shrink-0 items-center gap-2.5 rounded-xl px-2.5 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-[color,transform] duration-(--dur-base) hover:text-foreground focus-visible:ring-2 active:scale-[0.97]";
+
+/**
+ * The switch between the labelled column and the icon rail.
+ *
+ * Its own control rather than a keyboard shortcut alone: the rail is what the
+ * app looks like inside Settings, so somebody who wants it everywhere has seen
+ * it and has to be able to ask for it.
+ */
+function CollapseToggle({
+	collapsed,
+	hidden = false,
+	className,
+}: {
+	collapsed: boolean;
+	/** A panel is open, so the control has nowhere to go. It keeps its space and
+	 *  fades instead of unmounting — see the call site. */
+	hidden?: boolean;
+	className?: string;
+}) {
+	const label = collapsed ? "Expand the sidebar" : "Collapse the sidebar";
+	// The carets point the way the column is about to travel, so the control says
+	// what it does rather than what it is: closed, they point right, because that
+	// is where the edge goes when you press it.
+	const Caret = collapsed ? CaretDoubleRightIcon : CaretDoubleLeftIcon;
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<button
+						type="button"
+						onClick={() => setNavCollapsed(!collapsed)}
+						aria-label={label}
+						inert={hidden}
+						// `text-left` because this row is a <button>, and a button centres its
+						// text where the <a> rows beside it do not.
+						className={cn(navRowClass, "nav-toggle text-left", className)}
+					>
+						<Caret
+							weight="regular"
+							className="relative size-4.5 shrink-0 text-muted-foreground"
+						/>
+						<span className="nav-label">
+							<span className="min-w-0 flex-1 truncate text-base">
+								Collapse
+							</span>
+						</span>
+					</button>
+				}
+			/>
+			<TooltipContent side="right" sideOffset={8} hidden={!collapsed || hidden}>
+				{label}
+			</TooltipContent>
+		</Tooltip>
+	);
+}
+
+/**
+ * The signed-in person, at the foot of the column.
+ *
+ * A menu rather than the row of controls the old sidebar had: on the rail there
+ * are 56px to fit a name, a role, a theme switch and a sign-out across, and two
+ * different footers for one column is two things to keep in step. Everything
+ * that was on that row is in here, plus the email, which was only ever a
+ * `title` attribute before.
+ */
+function UserMenu({
+	userName,
+	userEmail,
+	userImage,
+	isAdmin,
+	collapsed,
+}: {
+	userName: string;
+	userEmail: string;
+	userImage: string | null;
+	isAdmin: boolean;
+	collapsed: boolean;
+}) {
+	const router = useRouter();
+	const posthog = usePostHog();
+	const { theme, toggle } = useTheme();
+	// Shows the theme you'd get by choosing it, not the one you're in: the item
+	// is a destination, and "Light mode" on a light page is a statement of the
+	// obvious.
+	const nextTheme = theme === "dark" ? "light" : "dark";
+	const ThemeIcon = theme === "dark" ? SunIcon : MoonIcon;
 
 	const handleLogout = async () => {
 		await authClient.signOut();
@@ -477,151 +726,73 @@ export function AppSidebar({
 	};
 
 	return (
-		<Sidebar
-			collapsible="none"
-			// Sticks to the top of the frame rather than the viewport, and stops a
-			// frame-padding short of the bottom, so the island keeps ground visible
-			// on all four sides as the page scrolls past it.
-			className="sticky top-(--frame-pad) hidden h-[calc(100svh-2*var(--frame-pad))] md:flex"
-		>
-			<SidebarHeader className="shrink-0 gap-2.5 p-2.5">
-				<OrgSwitcher
-					orgSlug={orgSlug}
-					organizationName={organizationName}
-					organizationLogo={organizationLogo}
-					singleOrg={singleOrg}
-				/>
-				{assistantAvailable && (
-					<SegmentedControl className="w-full">
-						{/* Browse only switches the list — you may want the nav while
-						    staying in a conversation. */}
-						<SegmentedControlItem
-							active={tab === "browse"}
-							onClick={() => setTabOverride("browse")}
-							className="flex-1"
-						>
-							Browse
-						</SegmentedControlItem>
-						{/* Chat is a destination, because it is now the ONLY door to the
-						    assistant. Navigating only when you aren't already there keeps
-						    it from throwing away the thread you have open. */}
-						<SegmentedControlItem
-							active={tab === "chat"}
-							onClick={() => {
-								setTabOverride("chat");
-								if (!onAssistant) {
-									navigate({
-										to: "/$orgSlug/assistant",
-										params: { orgSlug },
-										search: {},
-									});
-								}
-							}}
-							className="flex-1"
-						>
-							Chat
-						</SegmentedControlItem>
-					</SegmentedControl>
-				)}
-			</SidebarHeader>
-			{/* Same fade as the page beside it. It earns its keep on the Chat tab,
-			    where the thread list is as long as your history — but it is the nav's
-			    too, since fourteen rows plus an Admin group already overflows a
-			    laptop. */}
-			<SidebarContent ref={navScrollRef} className="scroll-fade px-2.5">
-				{/* The two lists are a swap, not a replacement — the same crossfade the
-				    rest of the app uses for a panel change, because that is what this
-				    is. It travels along the switch that caused it: the Chat segment
-				    sits to the RIGHT of Browse, so arriving at Chat sends the content
-				    left and going back sends it right. There are only two tabs, so the
-				    one being entered names the one being left and no previous-tab ref
-				    is needed. */}
-				<FadeSwap
-					activeKey={tab}
-					direction={tab === "chat" ? "left" : "right"}
-					className="flex flex-col"
-				>
-					{tab === "chat" ? (
-						<ChatRail orgSlug={orgSlug} />
-					) : (
-						<>
-							<SidebarGroup>
-								<SidebarGroupLabel>Work</SidebarGroupLabel>
-								<SidebarGroupContent>
-									<SidebarMenu>
-										{WORK_ITEMS.map(navRow)}
-										{lateWorkItems.map(lateNavRow)}
-									</SidebarMenu>
-								</SidebarGroupContent>
-							</SidebarGroup>
-							{/* No label over the Settings row: a heading over a single row
-							    names a group of one, and the sub-menu that opens under it
-							    brings its own two. The gap above is the separation. */}
-							<SidebarGroup>
-								<SidebarGroupContent>
-									<SidebarMenu>
-										{YOU_ITEMS.map((item) =>
-											item.to === SETTINGS_ITEM.to
-												? settingsRow(item)
-												: navRow(item),
-										)}
-									</SidebarMenu>
-								</SidebarGroupContent>
-							</SidebarGroup>
-						</>
-					)}
-				</FadeSwap>
-			</SidebarContent>
-			<SidebarFooter className="shrink-0 gap-0 p-0">
-				{/* Outside the swapped panel, so it stays put on both tabs. A new tab,
-				    since it leaves the app, and the arrow says so before the click. */}
-				<SidebarMenu className="px-2.5 pb-2.5">
-					<SidebarMenuItem>
-						<SidebarMenuButton
-							render={
-								<a href={GITHUB_NEW_ISSUE_URL} target="_blank" rel="noreferrer">
-									<GithubLogoIcon className="size-4" />
-									<span className="min-w-0 flex-1 truncate">
-										Report a problem
-									</span>
-									<ArrowUpRightIcon
-										weight="regular"
-										className="size-3.5 text-muted-foreground"
-									/>
-								</a>
-							}
-						/>
-					</SidebarMenuItem>
-				</SidebarMenu>
-				{/* Fixed height, not padding: the row is one line tall for an admin
-				    and two for everyone else, and the timesheet's footer aligns to
-				    this rule (see `--footer-h`). */}
-				<div className="flex h-(--footer-h) items-center gap-2.5 border-t px-3.5">
-					<PersonAvatar
-						name={userName}
-						image={userImage}
-						size="sm"
-						className="size-6.5"
-					/>
-					<div className="min-w-0 flex-1">
-						<div className="truncate text-sm font-medium">{userName}</div>
-						{!isAdmin && (
-							<div className="truncate text-2xs text-muted-foreground">
-								Member
-							</div>
-						)}
-					</div>
-					<ThemeToggle />
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				render={
 					<button
 						type="button"
-						onClick={handleLogout}
-						title={`Log out (${userEmail})`}
-						className="quiet shrink-0"
+						aria-label={`Account: ${userName}`}
+						className={cn(
+							"relative flex items-center rounded-xl ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
+							// `p-1.5` and the same corner at both widths, so the avatar
+							// keeps its position on the left instead of centring itself in a
+							// column that is about to close.
+							"gap-2.5 p-1.5 text-left hover:bg-muted",
+							!collapsed && "w-full",
+						)}
 					>
-						<SignOutIcon weight="fill" className="size-3.75" />
+						<PersonAvatar
+							name={userName}
+							image={userImage}
+							size="sm"
+							className="size-7"
+						/>
+						{/* The same out-of-flow band the nav rows use, at this row's own
+						    geometry — a bigger mark and less padding, so it takes the
+						    modifier. See `.nav-label` in styles.css. */}
+						<span className="nav-label nav-label-user">
+							<span className="min-w-0 flex-1">
+								<span className="block truncate text-sm font-medium">
+									{userName}
+								</span>
+								{!isAdmin && (
+									<span className="block truncate text-2xs text-muted-foreground">
+										Member
+									</span>
+								)}
+							</span>
+							<CaretUpDownIcon
+								weight="regular"
+								className="size-3.5 shrink-0 text-muted-foreground"
+							/>
+						</span>
 					</button>
-				</div>
-			</SidebarFooter>
-		</Sidebar>
+				}
+			/>
+			<DropdownMenuContent side="right" align="end" className="w-56">
+				{/* Base UI's GroupLabel reads a group context, so it needs the Group
+				    around it — outside one it throws rather than rendering plain. */}
+				<DropdownMenuGroup>
+					<DropdownMenuLabel className="flex flex-col gap-0.5">
+						<span className="truncate font-medium text-foreground">
+							{userName}
+						</span>
+						<span className="truncate text-2xs font-normal text-muted-foreground">
+							{userEmail}
+						</span>
+					</DropdownMenuLabel>
+				</DropdownMenuGroup>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem onClick={toggle}>
+					<ThemeIcon weight="fill" className="size-4" />
+					Switch to {nextTheme} mode
+				</DropdownMenuItem>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem onClick={handleLogout}>
+					<SignOutIcon weight="fill" className="size-4" />
+					Log out
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }
