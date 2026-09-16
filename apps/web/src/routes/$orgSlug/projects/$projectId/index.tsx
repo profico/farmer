@@ -23,6 +23,7 @@ import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
+import { StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { projectPageAccess } from "#/lib/project-access.ts";
 import { myAccessQuery } from "#/queries/access.ts";
@@ -286,7 +287,9 @@ function ProjectPage() {
 }
 
 /** The whole of the project's history in four numbers, whatever period the
- *  table below is set to. */
+ *  table below is set to. The home page's band, four cells wide: same
+ *  hairlines, same bleed to the island's edge, same figures. None of the four
+ *  is a fraction of a target, so none of them carries a meter. */
 function OverviewStrip({
 	orgSlug,
 	projectId,
@@ -296,60 +299,54 @@ function OverviewStrip({
 }) {
 	const { data } = useSuspenseQuery(projectOverviewQuery(orgSlug, projectId));
 	return (
-		<div className="grid grid-cols-2 gap-x-8 gap-y-4 border-y border-line2 py-4 sm:grid-cols-4">
-			<div>
-				<div className="eyebrow">All-time hours</div>
-				<div className="mono mt-1 text-lg">
-					{formatReportHours(data.allTimeSeconds)}
-				</div>
-				<div className="text-xs text-muted-foreground">
-					{data.entryCount.toLocaleString("hr-HR")}{" "}
-					{data.entryCount === 1 ? "entry" : "entries"} · {data.peopleCount}{" "}
-					{data.peopleCount === 1 ? "person" : "people"} ever
-				</div>
-			</div>
-			<div>
-				<div className="eyebrow">This month</div>
-				<div className="mono mt-1 text-lg">
-					{formatReportHours(data.monthSeconds)}
-				</div>
-				<div className="text-xs text-muted-foreground">
-					{data.monthPeople} {data.monthPeople === 1 ? "person" : "people"}{" "}
-					logged
-				</div>
-			</div>
-			<div>
-				<div className="eyebrow">First entry</div>
-				<div className="mt-1 text-lg">
-					{data.firstEntry ? formatDateKeyLong(data.firstEntry) : "—"}
-				</div>
-				<div className="text-xs text-muted-foreground">
-					{data.lastEntry
+		<StatTiles columns={4}>
+			<StatTile
+				label="All-time hours"
+				value={formatReportHours(data.allTimeSeconds)}
+				caption={
+					<>
+						{data.entryCount.toLocaleString("hr-HR")}{" "}
+						{data.entryCount === 1 ? "entry" : "entries"} · {data.peopleCount}{" "}
+						{data.peopleCount === 1 ? "person" : "people"} ever
+					</>
+				}
+			/>
+			<StatTile
+				label="This month"
+				value={formatReportHours(data.monthSeconds)}
+				caption={`${data.monthPeople} ${data.monthPeople === 1 ? "person" : "people"} logged`}
+			/>
+			{/* The one cell that is a date rather than a measurement, so it keeps the
+			    body face the rest of the app sets dates in. */}
+			<StatTile
+				label="First entry"
+				value={
+					<span className="font-sans tracking-normal">
+						{data.firstEntry ? formatDateKeyLong(data.firstEntry) : "—"}
+					</span>
+				}
+				caption={
+					data.lastEntry
 						? `last ${formatDateKeyLong(data.lastEntry)}`
-						: "nothing logged yet"}
-				</div>
-			</div>
-			<div>
-				<div className="eyebrow">Overtime</div>
-				<div className="mono mt-1 text-lg">
-					{formatReportHours(data.overtimeSeconds)}
-				</div>
-				<div className="text-xs text-muted-foreground">all-time, flagged</div>
-			</div>
-		</div>
+						: "nothing logged yet"
+				}
+			/>
+			<StatTile
+				label="Overtime"
+				value={formatReportHours(data.overtimeSeconds)}
+				caption="all-time, flagged"
+			/>
+		</StatTiles>
 	);
 }
 
 function StripPending() {
 	return (
-		<div className="grid grid-cols-2 gap-x-8 gap-y-4 border-y border-line2 py-4 sm:grid-cols-4">
+		<StatTiles columns={4}>
 			{["All-time hours", "This month", "First entry", "Overtime"].map((l) => (
-				<div key={l}>
-					<div className="eyebrow">{l}</div>
-					<Skeleton className="mt-2 h-5 w-20" />
-				</div>
+				<StatTile key={l} label={l} value={<Skeleton className="h-6 w-24" />} />
 			))}
-		</div>
+		</StatTiles>
 	);
 }
 

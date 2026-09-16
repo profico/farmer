@@ -150,7 +150,7 @@ export function ContributorsCard({ className }: { className?: string }) {
 									// The fill runs edge to edge, so the focus ring has to be
 									// drawn INSIDE it: a ring on a box whose sides are the
 									// column's sides is clipped down to its top and bottom.
-									className="flex h-full w-full items-center justify-between gap-2.5 px-(--colophon-px) text-left ring-sidebar-ring transition-colors duration-(--dur-fast) outline-hidden hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset"
+									className="group/card flex h-full w-full items-center justify-between gap-2.5 px-(--colophon-px) text-left ring-sidebar-ring transition-colors duration-(--dur-fast) outline-hidden hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset"
 								>
 									<span className="min-w-0 truncate text-sm text-muted-foreground transition-colors duration-(--dur-fast) group-hover/card:text-foreground">
 										{contributors.length} contributor

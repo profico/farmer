@@ -17,7 +17,25 @@ import { cn } from "#/lib/utils.ts";
  * every other screen does; `--line` closes the band and `--line2` divides the
  * cells inside it, which is the app's one rule for which hairline does which
  * job. Nothing here invents a border of its own.
+ *
+ * **The cells are divided by a 1px GAP over the band's own background**, not by
+ * `divide-x`/`divide-y`. `divide-*` puts a border on every child but the first,
+ * which is one rule per DOM position and therefore only correct while the grid
+ * is a single row or a single column; a four-cell band wraps to 2x2 on a
+ * tablet, where it drew a stray vertical rule down the left edge of the second
+ * row and no rule between the rows at all. A gap is drawn by the GRID, so it
+ * follows whatever arrangement each breakpoint asks for.
  */
+
+/** Per-column-count metrics, handed to the cells as custom properties: a denser
+ *  band pads less and sets its figures smaller. Two and three are the numbers
+ *  the band has always used, so those screens are unchanged. */
+const COLUMNS = {
+	2: "sm:grid-cols-2 [--stat-tile-px:2rem] [--stat-value-size:26px]",
+	3: "sm:grid-cols-3 [--stat-tile-px:2rem] [--stat-value-size:26px]",
+	4: "sm:grid-cols-2 lg:grid-cols-4 [--stat-tile-px:1.5rem] [--stat-value-size:22px]",
+} as const satisfies Record<2 | 3 | 4, string>;
+
 export function StatTiles({
 	children,
 	className,
@@ -25,15 +43,14 @@ export function StatTiles({
 }: {
 	children: ReactNode;
 	className?: string;
-	columns?: 2 | 3;
+	columns?: 2 | 3 | 4;
 }) {
 	return (
 		<div
 			data-slot="stat-tiles"
 			className={cn(
-				"-mx-4 grid divide-y divide-line2 border-y border-line sm:-mx-8 sm:divide-x sm:divide-y-0",
-				columns === 2 && "sm:grid-cols-2",
-				columns === 3 && "sm:grid-cols-3",
+				"-mx-4 grid gap-px border-y border-line bg-line2 sm:-mx-8",
+				COLUMNS[columns],
 				className,
 			)}
 		>
@@ -57,7 +74,8 @@ export function StatTile({
 	aside,
 	value,
 	caption,
-	/** 0 to 100, drawn as the meter. `null` draws the track only. */
+	/** 0 to 100, drawn as the meter. `null` draws the track only; omitted draws
+	 *  no meter, for a figure that is not a fraction of anything. */
 	percent,
 	tone = "neutral",
 	className,
@@ -71,11 +89,18 @@ export function StatTile({
 	tone?: Tone;
 	className?: string;
 }) {
+	// Three answers, not two: a figure with a target draws a fill, a figure whose
+	// target is missing draws the empty track (so the cells in one row stay the
+	// same height), and a figure that is a fraction of nothing — a date, a count,
+	// a project's all-time hours — draws no meter at all.
 	const shown = percent == null ? null : Math.max(0, Math.min(100, percent));
 	return (
 		<div
 			data-slot="stat-tile"
-			className={cn("flex min-w-0 flex-col px-4 py-4 sm:px-8", className)}
+			className={cn(
+				"flex min-w-0 flex-col bg-background px-4 py-4 sm:px-(--stat-tile-px)",
+				className,
+			)}
 		>
 			{/* Held open whether or not there is a pill, so the figures in a row
 			    sit on one baseline. */}
@@ -87,7 +112,11 @@ export function StatTile({
 			    the mono measures them (see `Metric`). */}
 			<div
 				className="mono mt-2.5"
-				style={{ fontSize: 26, lineHeight: 1, letterSpacing: "-0.04em" }}
+				style={{
+					fontSize: "var(--stat-value-size, 26px)",
+					lineHeight: 1,
+					letterSpacing: "-0.04em",
+				}}
 			>
 				{value}
 			</div>
@@ -96,17 +125,19 @@ export function StatTile({
 			<div className="mt-2 h-[17px] truncate text-xs text-muted-foreground">
 				{caption}
 			</div>
-			<div className="mt-3 h-[3px] overflow-hidden rounded-full bg-line2">
-				{shown != null && (
-					<span
-						className={cn(
-							"rail-fill block h-full rounded-full",
-							TONE_FILL[tone],
-						)}
-						style={{ width: `${shown}%` }}
-					/>
-				)}
-			</div>
+			{percent !== undefined && (
+				<div className="mt-3 h-[3px] overflow-hidden rounded-full bg-line2">
+					{shown != null && (
+						<span
+							className={cn(
+								"rail-fill block h-full rounded-full",
+								TONE_FILL[tone],
+							)}
+							style={{ width: `${shown}%` }}
+						/>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }
