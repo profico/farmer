@@ -130,7 +130,7 @@ export function PeriodPicker({
 			>
 				{/* The rail. A preset is the answer for nine visits out of ten, so it
 				    sits where the pointer already is rather than behind the calendar. */}
-				<div className="flex min-w-[9.5rem] flex-col gap-px border-r border-line2 p-2">
+				<div className="flex w-40 shrink-0 flex-col gap-px border-r border-line2 p-2">
 					{presets.map((preset) => (
 						<div key={preset.id}>
 							{preset.separated && <div className="my-1.5 h-px bg-line2" />}
@@ -153,11 +153,13 @@ export function PeriodPicker({
 					))}
 				</div>
 				{(onPickDay || onPickRange) && (
-					<div className="p-3">
+					// A fixed width, so the grid does not resize between a five-week
+					// month and a six-week one and the rail beside it never shifts.
+					<div className="w-[17.5rem] shrink-0 p-3">
 						{onPickRange && (
-							<p className="mb-2 px-1 text-xs text-muted-foreground">
+							<p className="mb-2.5 rounded-md bg-secondary px-2 py-1.5 text-xs text-muted-foreground">
 								{pendingFrom
-									? "Now pick the last day"
+									? "Now pick the last day of the range"
 									: "Pick the first day of the range"}
 							</p>
 						)}

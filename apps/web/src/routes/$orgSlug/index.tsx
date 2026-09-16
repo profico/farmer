@@ -328,7 +328,11 @@ function OrgHome() {
 					    been deleted. Switching days is navigation, not removal.
 					    `key` on the wrapper re-runs the stagger when the day changes,
 					    which is the crossfade doing the same job honestly. */}
-					<div key={selectedDay} className="stagger mt-3 -mx-4 sm:-mx-8">
+					{/* No negative margins. The rows were full-bleed strips once and
+					    kept the bleed after they became cards, so every row hung a
+					    padding's width to the left of the heading above it and the
+					    ghost row below it. A card aligns with its own column. */}
+					<div key={selectedDay} className="stagger mt-3 flex flex-col gap-1.5">
 						{selectedEntries.map((entry) => (
 							<EntryBlockRow
 								key={entry.id}

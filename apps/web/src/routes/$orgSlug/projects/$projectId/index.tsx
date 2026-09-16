@@ -214,7 +214,7 @@ function ProjectPage() {
 						<OverviewStrip orgSlug={orgSlug} projectId={projectId} />
 					</Suspense>
 
-					<div className="mt-6">
+					<div className="mt-7">
 						<PeriodPicker
 							search={search}
 							today={today}

@@ -10,7 +10,7 @@ import { Link } from "@tanstack/react-router";
 import { Fragment, Suspense, useState } from "react";
 
 import { PersonCell } from "#/components/person-avatar.tsx";
-import { returnLinkClass } from "#/components/time/time-toolbar.tsx";
+import { Button } from "#/components/ui/button.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
 	Select,
@@ -107,7 +107,10 @@ export function EntriesDrilldown<G extends EntryGroup>({
 
 	return (
 		<>
-			<div className="mt-4 flex flex-wrap items-center gap-3">
+			{/* Sits directly under the period row rather than a band below it, so
+			    the period, the grouping and the search read as one toolbar for one
+			    table instead of two rows that happen to be near each other. */}
+			<div className="mt-2.5 flex flex-wrap items-center gap-2.5">
 				<label className="flex items-center gap-2 text-sm text-muted-foreground">
 					Group by
 					<Select
@@ -139,15 +142,18 @@ export function EntriesDrilldown<G extends EntryGroup>({
 					placeholder="Search entries…"
 					className="w-full sm:w-56"
 				/>
-				<button
-					type="button"
-					className={`${returnLinkClass} ml-auto`}
+				{/* A button, not an underlined word: it toggles the table's state,
+				    which is what every other control on this row does. */}
+				<Button
+					variant="ghost"
+					size="sm"
+					className="ml-auto"
 					onClick={() =>
 						setExpand(expand.mode === "open" ? ALL_CLOSED : ALL_OPEN)
 					}
 				>
 					{expand.mode === "open" ? "Collapse all" : "Expand all"}
-				</button>
+				</Button>
 			</div>
 
 			<Suspense fallback={<TabPending className="mt-6" />}>

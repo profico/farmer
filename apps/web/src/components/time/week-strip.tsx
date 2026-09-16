@@ -60,7 +60,13 @@ export function WeekStrip({
 				const weekend = isWeekend(date);
 				const target = dayTargetSeconds ?? null;
 				const past = today != null && date < today;
-				const judged = target != null && target > 0 && !holidayName && !weekend;
+				// A day is judged only once it HAS HAPPENED. Without the date test a
+				// future Thursday with nothing on it was scored as "nothing logged"
+				// and went red, which is a verdict on a day nobody has lived yet —
+				// and it appeared as soon as you stepped forward a week.
+				const happened = today != null && date <= today;
+				const judged =
+					target != null && target > 0 && !holidayName && !weekend && happened;
 				const short = judged && past && seconds < target;
 				const met = judged && past && seconds >= target;
 				const fill =

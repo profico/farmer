@@ -197,7 +197,7 @@ export function Calendar({
 				</button>
 			</div>
 
-			<div className="grid grid-cols-7 gap-0.5 pb-1">
+			<div className="grid grid-cols-7 gap-y-0.5 pb-1">
 				{orderedWeekdays(weekStartsOn).map(({ day, short }) => (
 					<div
 						key={day}
@@ -214,7 +214,7 @@ export function Calendar({
 				// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the layout is CSS grid, not a table; the ARIA grid pattern is what the roving tabstop below implements.
 				role="grid"
 				aria-label={formatMonthKey(month)}
-				className="grid grid-cols-7 gap-0.5"
+				className="grid grid-cols-7 gap-y-0.5"
 			>
 				{days.map((day) => {
 					const inMonth = monthOf(day) === month;

@@ -7,7 +7,12 @@ import {
 	shiftMonthKey,
 } from "@farmer/core/lib/report-period";
 import { matchesSearch } from "@farmer/core/lib/search";
-import { addDaysToKey, type WeekStartsOn } from "@farmer/core/lib/time";
+import {
+	addDaysToKey,
+	formatDayKey,
+	startOfWeekKey,
+	type WeekStartsOn,
+} from "@farmer/core/lib/time";
 import {
 	ArrowLeftIcon,
 	ArrowRightIcon,
@@ -152,13 +157,15 @@ export const periodLabel = (
 ) => {
 	const { preset, from, to } = resolveReportPeriod(search, today, weekStartsOn);
 	const month = search.month ?? today.slice(0, 7);
-	return preset === "month"
-		? formatMonthKey(month)
-		: preset === "quarter"
-			? formatQuarterKey(month)
-			: preset === "year"
-				? month.slice(0, 4)
-				: formatWeekRange(from, to);
+	return preset === "day"
+		? formatDayKey(from, { year: false })
+		: preset === "month"
+			? formatMonthKey(month)
+			: preset === "quarter"
+				? formatQuarterKey(month)
+				: preset === "year"
+					? month.slice(0, 4)
+					: formatWeekRange(from, to);
 };
 
 /** What a caller renders a period link as: an element the picker fills in —
@@ -251,6 +258,30 @@ export function PeriodPicker<S extends PeriodSearch>({
 		);
 	};
 
+	/**
+	 * A day picked on the calendar MOVES the current period to contain it. It
+	 * never changes which period you are in.
+	 *
+	 * It used to switch you to Custom and set a one-day range, so clicking the
+	 * 14th while reading a month threw you out of Month into a custom range of
+	 * one day — and Custom then had no way back, which is what made the control
+	 * feel like a trap rather than a calendar.
+	 */
+	const goToDay = (day: string) => {
+		if (preset === "day") return navigateTo(withSearch({ from: day, to: day }));
+		if (preset === "week") {
+			const start = startOfWeekKey(day, weekStartsOn);
+			return navigateTo(
+				withSearch({ from: start, to: addDaysToKey(start, 6) }),
+			);
+		}
+		// Month, quarter and year are all anchored by a month key, so the month
+		// the day falls in is the whole answer.
+		navigateTo(
+			withSearch({ month: day.slice(0, 7), from: undefined, to: undefined }),
+		);
+	};
+
 	const label = periodLabel(search, today, weekStartsOn);
 	const atNow = isCurrentPeriod(search, today, weekStartsOn);
 
@@ -308,27 +339,15 @@ export function PeriodPicker<S extends PeriodSearch>({
 						<PeriodControl
 							triggerClassName="h-8 rounded-none border-x border-y-0 border-line2 bg-transparent"
 							label={label}
-							presets={PERIOD_PRESETS.map((p) => ({
-								id: p.id,
-								label: p.label,
-								separated: p.id === "custom",
-							}))}
+							presets={presetItems}
 							activePresetId={preset}
-							onPreset={(id) => {
-								const picked = PERIOD_PRESETS.find((p) => p.id === id);
-								if (!picked) return;
-								navigateTo(
-									withSearch({
-										preset: picked.id,
-										from: picked.id === "custom" ? from : undefined,
-										to: picked.id === "custom" ? to : undefined,
-									}),
-								);
-							}}
-							calendarValue={from ?? today}
-							onPickDay={(day) =>
-								navigateTo(withSearch({ preset: "custom", from: day, to: day }))
-							}
+							onPreset={applyPreset}
+							calendarValue={from}
+							// The whole resolved span is painted, so Week shows the week
+							// and Month shows the month rather than one circled day in
+							// the middle of it.
+							range={{ from, to }}
+							onPickDay={goToDay}
 						/>
 					}
 					returnLink={
