@@ -1,4 +1,5 @@
 import { IconContext } from "@phosphor-icons/react";
+import { PostHogProvider, usePostHog } from "@posthog/react";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import type { QueryClient } from "@tanstack/react-query";
 import {
@@ -9,13 +10,14 @@ import {
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { createIsomorphicFn } from "@tanstack/react-start";
 import { MotionConfig } from "motion/react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { RouteError } from "../components/route-error";
 import { RouteNotFound } from "../components/route-not-found";
 import { RoutePending } from "../components/route-pending";
 import { Toaster } from "../components/ui/sonner";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
+import { authClient } from "../lib/auth-client";
 import { logConsoleGreeting } from "../lib/console-greeting";
 import { displayInitScript } from "../lib/display-prefs";
 import { themeInitScript } from "../lib/theme";
@@ -27,6 +29,53 @@ interface MyRouterContext {
 }
 
 const DESCRIPTION = "Farmer — a simple, open-source time tracker.";
+
+/**
+ * Where the browser's PostHog credentials come from, and why they are not a
+ * `VITE_` variable.
+ *
+ * `import.meta.env.VITE_*` is substituted by `vite build`, and that build runs
+ * inside the Docker image — so a `VITE_` value can only ever be what CI was
+ * given, never what the deployment is configured with. One image runs several
+ * environments here, which is why `ASSISTANT_ENABLED` and `SINGLE_ORG_SLUG` are
+ * plain variables read per request (`server/config.ts` says the same thing).
+ *
+ * So the server reads `process.env` and writes the pair into the inline script
+ * below, beside the theme; the browser reads it back off `window`. Not through
+ * `getPublicAppConfig`, which is a server FUNCTION: the root route has no
+ * loader to call one from, and `RootDocument` is the `shellComponent`, which
+ * renders on the error and not-found paths where no loader has run. An inline
+ * script is a value the document always carries.
+ *
+ * The project token is public by design — it ships in the page either way.
+ */
+type PostHogConfig = { token: string; host: string } | null;
+
+declare global {
+	interface Window {
+		__FARMER_POSTHOG__?: PostHogConfig;
+	}
+}
+
+const posthogConfig = createIsomorphicFn()
+	.server((): PostHogConfig => {
+		const token = process.env.POSTHOG_PROJECT_TOKEN;
+		const host = process.env.POSTHOG_HOST;
+		return token && host ? { token, host } : null;
+	})
+	.client((): PostHogConfig => window.__FARMER_POSTHOG__ ?? null);
+
+/** The server's answer, as a statement the browser runs before React exists.
+ *
+ *  `JSON.stringify` of an object with two string fields, so there is nothing
+ *  here for a value to break out of; `</script>` inside a JSON string would,
+ *  which is what the `<` escape covers. */
+const posthogInitScript = createIsomorphicFn()
+	.server(
+		() =>
+			`window.__FARMER_POSTHOG__=${JSON.stringify(posthogConfig()).replace(/</g, "\\u003c")};`,
+	)
+	.client(() => "");
 
 // A link preview only follows an absolute image URL, and the crawlers that
 // fetch one never run JavaScript, so the server's answer is the one that
@@ -101,9 +150,14 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 	shellComponent: RootDocument,
 });
 
-/** Light/dark and the Display preferences, applied in one inline script before
- *  paint. */
-const headInitScript = themeInitScript + displayInitScript;
+/** Light/dark, the Display preferences and PostHog's credentials, in one inline
+ *  script before paint.
+ *
+ *  Built per render rather than once at module scope, because the PostHog half
+ *  is read from the environment on the server and a module-scope constant in a
+ *  route file is evaluated in the browser too. */
+const headInitScript = () =>
+	themeInitScript + displayInitScript + posthogInitScript();
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	useEffect(logConsoleGreeting, []);
@@ -123,42 +177,96 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				    palette and the serif on every cold load. See lib/theme.ts and
 				    lib/display-prefs.ts. */}
 				{/* oxlint-disable-next-line react/no-danger -- two fixed strings built from constants, the standard no-flash theme and display scripts, which have to be inline to run before paint */}
-				<script dangerouslySetInnerHTML={{ __html: headInitScript }} />
+				<script dangerouslySetInnerHTML={{ __html: headInitScript() }} />
 				<HeadContent />
 			</head>
 			<body>
-				{/* Every icon in the app is Phosphor duotone, set once here rather
+				<PostHogRoot>
+					{/* Every icon in the app is Phosphor duotone, set once here rather
             than repeated as a `weight` prop on every call site. Individual
             icons still override it — check / X / plus glyphs and every arrow
             or caret are always weight="regular": duotone turns a line-drawn
             glyph into a muddy blob at the sizes those are used at.
             Size stays unset so Tailwind's `size-*` classes keep control.
             Wraps the Toaster too, whose status icons are Phosphor as well. */}
-				<IconContext.Provider value={{ weight: "duotone" }}>
-					{/* reducedMotion="user" degrades every spring under
+					<IconContext.Provider value={{ weight: "duotone" }}>
+						{/* reducedMotion="user" degrades every spring under
               prefers-reduced-motion: transform/scale/slide are dropped (opacity
               is kept), so dialogs & menus cross-fade, sheets fade, and the
               tab-bar pill jumps instead of gliding — no per-component branching.
               This is the app's only answer to the OS setting. "Less movement"
               in Preferences goes further and makes every animation instant,
               see lib/display-prefs.ts. */}
-					<MotionConfig reducedMotion="user">{children}</MotionConfig>
-					<Toaster />
-				</IconContext.Provider>
-				<TanStackDevtools
-					config={{
-						position: "bottom-right",
-					}}
-					plugins={[
-						{
-							name: "Tanstack Router",
-							render: <TanStackRouterDevtoolsPanel />,
-						},
-						TanStackQueryDevtools,
-					]}
-				/>
+						<MotionConfig reducedMotion="user">{children}</MotionConfig>
+						<Toaster />
+					</IconContext.Provider>
+					<TanStackDevtools
+						config={{
+							position: "bottom-right",
+						}}
+						plugins={[
+							{
+								name: "Tanstack Router",
+								render: <TanStackRouterDevtoolsPanel />,
+							},
+							TanStackQueryDevtools,
+						]}
+					/>
+				</PostHogRoot>
 				<Scripts />
 			</body>
 		</html>
 	);
+}
+
+function PostHogRoot({ children }: { children: React.ReactNode }) {
+	// Resolved per render, not at module scope: on the server it is the
+	// environment, and in the browser it is the value the inline script above
+	// planted. Both answer the same thing, so the provider is either present on
+	// both sides of hydration or absent on both.
+	const config = posthogConfig();
+	if (!config) return children;
+
+	return (
+		<PostHogProvider
+			apiKey={config.token}
+			options={{
+				api_host: config.host,
+				defaults: "2026-05-30",
+				capture_exceptions: {
+					capture_unhandled_errors: true,
+					capture_unhandled_rejections: true,
+					capture_console_errors: false,
+				},
+				debug: import.meta.env.DEV,
+				tracing_headers: import.meta.env.SSR ? [] : [window.location.hostname],
+			}}
+		>
+			<PostHogIdentity />
+			{children}
+		</PostHogProvider>
+	);
+}
+
+function PostHogIdentity() {
+	const posthog = usePostHog();
+	const { data: session } = authClient.useSession();
+	const identifiedUserId = useRef<string | null>(null);
+
+	useEffect(() => {
+		const user = session?.user;
+		if (!user) {
+			identifiedUserId.current = null;
+			return;
+		}
+		if (identifiedUserId.current === user.id) return;
+
+		posthog.identify(user.id, {
+			email: user.email,
+			name: user.name,
+		});
+		identifiedUserId.current = user.id;
+	}, [posthog, session?.user]);
+
+	return null;
 }

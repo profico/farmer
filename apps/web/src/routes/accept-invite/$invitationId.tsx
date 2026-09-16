@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ function AcceptInvitePage() {
 	const { email, org, orgSlug, role } = Route.useSearch();
 	const { session } = Route.useRouteContext();
 	const navigate = useNavigate();
+	const posthog = usePostHog();
 	const [accepting, setAccepting] = useState(false);
 
 	const redirectTarget = `/accept-invite/${invitationId}`;
@@ -62,6 +64,7 @@ function AcceptInvitePage() {
 
 	const handleSignOutAndSwitch = async () => {
 		await authClient.signOut();
+		posthog.reset();
 		await navigate({
 			to: "/login",
 			search: { redirect: redirectTarget, ...inviteContext },

@@ -29,6 +29,8 @@ import {
 import { memberProfile, memberTypeHistory } from "../db/schema/people";
 import { monthlyHourFund, orgSettings } from "../db/schema/settings";
 import { createTestDb, type TestDb } from "../test/harness";
+import { accessService } from "./access.service";
+import { findTool } from "./assistant-tools";
 import { complianceService } from "./compliance.service";
 import { membersService } from "./members.service";
 import { orgSettingsService } from "./org-settings.service";
@@ -545,5 +547,72 @@ describe("my targets", () => {
 		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
 		expect(mine.daySeconds).toBe(7 * H);
 		expect(mine.week.targetSeconds).toBe(35 * H);
+	});
+});
+
+// ── the assistant reads the same rule ───────────────────────────────────────
+//
+// Asked "am I behind", the assistant used to add up a month of hours and judge
+// it against 8 hours a day. That is right only for a full-time person in a
+// month with no public holiday and no day off, and it is wrong in the exact
+// cases the rule exists for. These two tools hand it the rule's own numbers.
+describe("the tools that carry the rule to the assistant", () => {
+	const ctxOf = (userId: string): Ctx => ({ organizationId: ORG, userId });
+
+	test("no target comes back as null, never as zero hours", async () => {
+		// A contractor has no target at all. Reported as 0 it reads as a target
+		// they have missed by everything they did not log, which is the one
+		// answer worse than no answer.
+		await setFund(176 * H);
+		const result = await findTool("my_targets")?.run(ctxOf(CONTRACTOR), {});
+		// SAFETY: the projection is fixed in assistant-tools.ts, and every
+		// expectation below fails loudly if its shape ever changed.
+		const mine = result as {
+			fullDayHours: number;
+			month: { targetHours: number | null; status: string | null };
+		};
+		expect(mine.month.targetHours).toBeNull();
+		expect(mine.month.status).toBeNull();
+		// The yardstick still comes back, so the model can say what a full day is
+		// worth even for somebody the rule does not measure.
+		expect(mine.fullDayHours).toBe(8);
+	});
+
+	test("hours, not seconds, and the same figures the screens read", async () => {
+		await setFund(176 * H);
+		const result = await findTool("tracking_report")?.run(adminCtx(), APRIL);
+		// SAFETY: as above — the projection is this file's own, and the
+		// expectations name every field they read.
+		const report = result as {
+			workingDaysInMonth: number;
+			rows: {
+				userId: string;
+				targetSoFarHours: number | null;
+				monthTargetHours: number | null;
+				deltaHours: number | null;
+				status: string | null;
+			}[];
+		};
+		const truth = await complianceService.tracking(adminCtx(), APRIL, AT);
+		expect(report.workingDaysInMonth).toBe(truth.workingDaysInMonth);
+
+		const contractor = report.rows.find((row) => row.userId === CONTRACTOR);
+		expect(contractor?.monthTargetHours).toBeNull();
+		expect(contractor?.deltaHours).toBeNull();
+		expect(contractor?.status).toBeNull();
+
+		const diligent = report.rows.find((row) => row.userId === DILIGENT);
+		expect(diligent?.monthTargetHours).toBe(176);
+	});
+
+	test("the report goes to the people who act on it, my_targets to everyone", async () => {
+		// `available` decides what the model is TOLD it can do, not what it may
+		// do. A Member gets their own targets; the team report is a lead's
+		// question, and their own row is already in my_targets.
+		const access = await accessService.resolve(ctxOf(DILIGENT));
+		const adminAccess = await accessService.resolve(adminCtx());
+		expect(findTool("my_targets")?.available?.(access)).toBe(true);
+		expect(findTool("tracking_report")?.available?.(access)).toBe(false);
+		expect(findTool("tracking_report")?.available?.(adminAccess)).toBe(true);
 	});
 });

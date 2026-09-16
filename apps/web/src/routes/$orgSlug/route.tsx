@@ -1,5 +1,7 @@
+import { usePostHog } from "@posthog/react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import { AppSidebar } from "#/components/app-sidebar.tsx";
 import { AssistantRunsProvider } from "#/components/assistant/assistant-runs.tsx";
@@ -108,7 +110,16 @@ export const Route = createFileRoute("/$orgSlug")({
 function OrgLayout() {
 	const { session, organization, role, singleOrg, assistantEnabled } =
 		Route.useRouteContext();
+	const posthog = usePostHog();
 	const isAdmin = role === "owner" || role === "admin";
+
+	useEffect(() => {
+		posthog.identify(session.user.id, {
+			email: session.user.email,
+			name: session.user.name,
+			role,
+		});
+	}, [posthog, role, session.user.email, session.user.id, session.user.name]);
 
 	// Three switches decide whether the assistant exists for this reader, and
 	// only the first one was ever consulted here: the deployment flag

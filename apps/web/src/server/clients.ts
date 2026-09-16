@@ -31,7 +31,21 @@ export const createClient = createServerFn({ method: "POST" })
 	.validator(createClientInput)
 	.handler(async ({ data, context }) => {
 		const { clientsService } = await import("@farmer/core/services");
-		return clientsService.create(context.ctx, data);
+		const client = await clientsService.create(context.ctx, data);
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "client_created",
+				properties: {
+					organization_id: context.ctx.organizationId,
+					client_id: client.id,
+				},
+			});
+			await posthog.flush();
+		}
+		return client;
 	});
 
 export const updateClient = createServerFn({ method: "POST" })

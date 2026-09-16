@@ -31,7 +31,25 @@ export const createTimeEntry = createServerFn({ method: "POST" })
 	.validator(createTimeEntryInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
-		return timeEntriesService.create(context.ctx, data);
+		const entry = await timeEntriesService.create(context.ctx, data);
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "time_entry_created",
+				properties: {
+					organization_id: context.ctx.organizationId,
+					time_entry_id: entry.id,
+					has_project: Boolean(data.projectId),
+					is_overtime: data.overtime,
+					fills_day: data.fillsDay,
+					duration_seconds: data.durationSeconds,
+				},
+			});
+			await posthog.flush();
+		}
+		return entry;
 	});
 
 export const updateTimeEntry = createServerFn({ method: "POST" })
@@ -39,7 +57,25 @@ export const updateTimeEntry = createServerFn({ method: "POST" })
 	.validator(updateTimeEntryInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
-		return timeEntriesService.update(context.ctx, data);
+		const entry = await timeEntriesService.update(context.ctx, data);
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "time_entry_updated",
+				properties: {
+					organization_id: context.ctx.organizationId,
+					time_entry_id: entry.id,
+					has_project: Boolean(data.projectId),
+					is_overtime: data.overtime,
+					fills_day: data.fillsDay,
+					duration_seconds: data.durationSeconds,
+				},
+			});
+			await posthog.flush();
+		}
+		return entry;
 	});
 
 export const updateTimeEntryDescription = createServerFn({ method: "POST" })
@@ -66,7 +102,20 @@ export const fileTimeEntries = createServerFn({ method: "POST" })
 	.validator(fileTimeEntriesInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
-		return timeEntriesService.fileMany(context.ctx, data);
+		const entries = await timeEntriesService.fileMany(context.ctx, data);
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "time_entries_filed",
+				properties: {
+					organization_id: context.ctx.organizationId,
+				},
+			});
+			await posthog.flush();
+		}
+		return entries;
 	});
 
 export const copyTimeEntriesWeek = createServerFn({ method: "POST" })
@@ -74,7 +123,20 @@ export const copyTimeEntriesWeek = createServerFn({ method: "POST" })
 	.validator(copyWeekEntriesInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
-		return timeEntriesService.copyWeek(context.ctx, data);
+		const entries = await timeEntriesService.copyWeek(context.ctx, data);
+		const { getPostHogClient } = await import("../lib/posthog-server");
+		const posthog = getPostHogClient();
+		if (posthog) {
+			posthog.capture({
+				distinctId: context.ctx.userId,
+				event: "time_entries_week_copied",
+				properties: {
+					organization_id: context.ctx.organizationId,
+				},
+			});
+			await posthog.flush();
+		}
+		return entries;
 	});
 
 export const setTimeEntryOvertime = createServerFn({ method: "POST" })

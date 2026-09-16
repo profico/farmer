@@ -48,11 +48,24 @@ export type ChatTool = {
 };
 
 /** What a streamed turn produced, once the stream has ended. */
+/** `finishReason` on a turn the caller stopped part-way.
+ *
+ *  Not one of OpenRouter's own reasons — it never gets to send one — so it is
+ *  named here and exported, because the loop must be able to tell "the model
+ *  stopped" from "the person did". */
+export const ABORTED = "aborted";
+
 export type ChatTurn = {
 	content: string;
 	toolCalls: { id: string; name: string; arguments: string }[];
 	promptTokens: number | null;
 	completionTokens: number | null;
+	/** What OpenRouter charged for the call, in USD, from the same usage row as
+	 *  the token counts. Null when it did not send one — a model with no price,
+	 *  or a stream that ended before the final chunk. Reported rather than
+	 *  computed here, because a price table in this file would go stale
+	 *  silently and quote the wrong figure with total confidence. */
+	costUsd: number | null;
 	/** OpenRouter's own stop reason, passed through for logging. */
 	finishReason: string | null;
 };
@@ -218,6 +231,7 @@ export const streamChatCompletion = async (opts: {
 	>();
 	let promptTokens: number | null = null;
 	let completionTokens: number | null = null;
+	let costUsd: number | null = null;
 	let finishReason: string | null = null;
 
 	const reader = response.body.getReader();
@@ -255,7 +269,12 @@ export const streamChatCompletion = async (opts: {
 						};
 						finish_reason?: string | null;
 					}[];
-					usage?: { prompt_tokens?: number; completion_tokens?: number };
+					usage?: {
+						prompt_tokens?: number;
+						completion_tokens?: number;
+						/** OpenRouter's own extension to the OpenAI usage row. */
+						cost?: number;
+					};
 				};
 				try {
 					chunk = JSON.parse(payload);
@@ -270,6 +289,7 @@ export const streamChatCompletion = async (opts: {
 				if (chunk.usage) {
 					promptTokens = chunk.usage.prompt_tokens ?? promptTokens;
 					completionTokens = chunk.usage.completion_tokens ?? completionTokens;
+					costUsd = chunk.usage.cost ?? costUsd;
 				}
 
 				const choice = chunk.choices?.[0];
@@ -296,6 +316,25 @@ export const streamChatCompletion = async (opts: {
 				}
 			}
 		}
+	} catch (error) {
+		// An abort is not a failure, and what had already arrived is not rubbish.
+		//
+		// `reader.read()` rejects the moment the signal fires, and with no catch
+		// here that rejection carried every token of a half-written answer out of
+		// the function with it — so pressing Stop, or navigating away, threw away
+		// work the org had already paid OpenRouter for and left the thread looking
+		// as though the question had never been asked. The partial answer is
+		// returned instead, under a finish reason that says what happened; the
+		// caller decides whether it is worth storing. Any other error is a real
+		// one and still travels.
+		// Two shapes reach here: the `AbortError` a fetch body read rejects with,
+		// and whatever the runtime throws when a stream is torn down under it. The
+		// signal is the reliable half of the answer, so it is asked first.
+		const aborted =
+			opts.signal?.aborted === true ||
+			(error instanceof Error && error.name === "AbortError");
+		if (!aborted) throw error;
+		finishReason = ABORTED;
 	} finally {
 		// Releasing the lock lets the connection be torn down when the caller
 		// aborts mid-answer, which is the common case for a user who navigates away.
@@ -304,6 +343,7 @@ export const streamChatCompletion = async (opts: {
 
 	return {
 		content,
+		costUsd,
 		toolCalls: [...slots.entries()]
 			.sort(([a], [b]) => a - b)
 			.map(([, slot]) => slot)

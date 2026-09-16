@@ -13,6 +13,7 @@ import { isAssistantEnabled } from "../lib/assistant-flag";
 import type { JsonRecord, Serializable } from "../lib/json";
 import {
 	type ChatMessage,
+	type ChatTool,
 	type ChatTurn,
 	listModels as listOpenRouterModels,
 	OpenRouterError,
@@ -29,6 +30,7 @@ import type {
 	UpdateAssistantSettingsInput,
 } from "../schema";
 import { AccessError } from "./access.service";
+import { reportGeneration, reportSpan } from "./ai-telemetry";
 import {
 	type ApprovalPreview,
 	findTool,
@@ -855,16 +857,105 @@ const truncatedTitle = (message: string) => {
  * the placeholder standing, because a thread whose label is slightly worse is
  * not worth failing a turn over.
  */
+/** What one turn's model calls and tool runs are reported under.
+ *
+ *  Carried down the loop rather than rebuilt, because the whole value of a
+ *  trace is that every call in one question shares an id. `generationId` is the
+ *  last call made, which is the one whose `tool_calls` any span now running
+ *  came from. */
+type TurnTrace = {
+	id: string;
+	conversationId: string;
+	model: string;
+	generationId: string | null;
+};
+
+/**
+ * One billed model call, timed and reported.
+ *
+ * Every call goes through here — the steps, the closing out-of-steps call and
+ * the thread title — so a turn's cost is the sum of its trace and nothing is
+ * missing from it. A failure is reported too: a rate limit that ends a turn is
+ * exactly the thing somebody is looking at the dashboard to find, and a trace
+ * that simply stops is indistinguishable from one nobody started.
+ *
+ * Reporting never changes what the caller sees: the turn, or the same throw.
+ */
+const generate = async (
+	ctx: Ctx,
+	trace: TurnTrace,
+	step: number | null,
+	opts: {
+		apiKey: string;
+		messages: ChatMessage[];
+		tools?: ChatTool[];
+		signal?: AbortSignal;
+		onDelta?: (text: string) => void;
+	},
+): Promise<ChatTurn> => {
+	const spanId = crypto.randomUUID();
+	trace.generationId = spanId;
+	const startedAt = Date.now();
+	const common = {
+		organizationId: ctx.organizationId,
+		userId: ctx.userId,
+		traceId: trace.id,
+		spanId,
+		conversationId: trace.conversationId,
+		model: trace.model,
+		step,
+		input: opts.messages,
+		tools: opts.tools ?? [],
+	};
+	try {
+		const turn = await chatModel().streamChatCompletion({
+			apiKey: opts.apiKey,
+			model: trace.model,
+			messages: opts.messages,
+			tools: opts.tools,
+			signal: opts.signal,
+			onDelta: opts.onDelta,
+		});
+		reportGeneration({
+			...common,
+			latencySeconds: (Date.now() - startedAt) / 1000,
+			inputTokens: turn.promptTokens,
+			outputTokens: turn.completionTokens,
+			costUsd: turn.costUsd,
+			finishReason: turn.finishReason,
+			calledTools: turn.toolCalls.map((call) => call.name),
+			outputText: turn.content,
+			error: null,
+		});
+		return turn;
+	} catch (error) {
+		reportGeneration({
+			...common,
+			latencySeconds: (Date.now() - startedAt) / 1000,
+			inputTokens: null,
+			outputTokens: null,
+			costUsd: null,
+			finishReason: null,
+			calledTools: [],
+			outputText: "",
+			error: error instanceof Error ? error.message : String(error),
+		});
+		throw error;
+	}
+};
+
 const generateTitle = async (
+	ctx: Ctx,
+	trace: TurnTrace,
 	apiKey: string,
-	model: string,
 	message: string,
 	signal?: AbortSignal,
 ): Promise<string | null> => {
 	try {
-		const turn = await chatModel().streamChatCompletion({
+		// `step: null` — this is not a step of the answer. It is one more billed
+		// call on the same question, which is why it is on the same trace.
+		const turn = await generate(ctx, trace, null, {
 			apiKey,
-			model,
 			// The turn's own signal: a reader who has left does not need their
 			// thread named, and this is billed like any other completion.
 			signal,
@@ -940,8 +1031,17 @@ const run = async (
 	const settings = await loadSettings(ctx);
 	const title = settings
 		? await generateTitle(
+				ctx,
+				{
+					// Its own trace. The answer's trace closed when `runTurn`
+					// returned, and naming a thread is a call nobody asked for —
+					// folding it into the question's cost would misattribute it.
+					id: crypto.randomUUID(),
+					conversationId: conversation.id,
+					model: conversation.model,
+					generationId: null,
+				},
 				settings.apiKey,
-				conversation.model,
 				input.message,
 				signal,
 			)
@@ -1002,12 +1102,33 @@ const suspendOn = async (
 /** Run one claimed call and record what it returned. */
 const executeClaimed = async (
 	ctx: Ctx,
+	trace: TurnTrace,
 	claimed: { call: AssistantToolCall; rowId: string },
 	toRun: AssistantToolCall,
 	onEvent: (event: AssistantEvent) => void,
 ) => {
 	const { call, rowId } = claimed;
+	// The one place a tool actually runs — the single path, the claimed batch
+	// and the resume after an approval all arrive here — so it is the one place
+	// a span has to be reported from.
+	const startedAt = Date.now();
 	const result = await executeTool(ctx, toRun);
+	reportSpan({
+		organizationId: ctx.organizationId,
+		userId: ctx.userId,
+		traceId: trace.id,
+		spanId: crypto.randomUUID(),
+		// The generation whose `tool_calls` asked for this. Null only for a row
+		// left behind by a process that died, which has no call to point at.
+		parentId: trace.generationId ?? trace.id,
+		conversationId: trace.conversationId,
+		name: call.name,
+		kind: findTool(call.name)?.kind ?? "unknown",
+		latencySeconds: (Date.now() - startedAt) / 1000,
+		ok: result.ok,
+		inputState: toRun.arguments,
+		outputState: result.content,
+	});
 	await db
 		.update(assistantMessage)
 		.set({ content: result.content })
@@ -1024,6 +1145,7 @@ const executeClaimed = async (
  *  else answered the call first. */
 const runClaimed = async (
 	ctx: Ctx,
+	trace: TurnTrace,
 	conversationId: string,
 	assistantId: string,
 	call: AssistantToolCall,
@@ -1045,7 +1167,7 @@ const runClaimed = async (
 		name: call.name,
 		arguments: call.arguments,
 	});
-	await executeClaimed(ctx, first, toRun, onEvent);
+	await executeClaimed(ctx, trace, first, toRun, onEvent);
 	return true;
 };
 
@@ -1064,6 +1186,7 @@ const runClaimed = async (
  */
 const runClaimedBatch = async (
 	ctx: Ctx,
+	trace: TurnTrace,
 	conversationId: string,
 	assistantId: string,
 	calls: AssistantToolCall[],
@@ -1088,7 +1211,9 @@ const runClaimedBatch = async (
 		});
 	}
 	await Promise.all(
-		claimed.map((entry) => executeClaimed(ctx, entry, entry.call, onEvent)),
+		claimed.map((entry) =>
+			executeClaimed(ctx, trace, entry, entry.call, onEvent),
+		),
 	);
 	return true;
 };
@@ -1107,6 +1232,7 @@ const runClaimedBatch = async (
  */
 const runPendingCalls = async (
 	ctx: Ctx,
+	trace: TurnTrace,
 	conversationId: string,
 	assistant: StoredMessage,
 	onEvent: (event: AssistantEvent) => void,
@@ -1134,6 +1260,7 @@ const runPendingCalls = async (
 			together.length > 1
 				? await runClaimedBatch(
 						ctx,
+						trace,
 						conversationId,
 						assistant.id,
 						together,
@@ -1141,6 +1268,7 @@ const runPendingCalls = async (
 					)
 				: await runClaimed(
 						ctx,
+						trace,
 						conversationId,
 						assistant.id,
 						head,
@@ -1228,6 +1356,19 @@ const runTurn = async (
 ): Promise<void> => {
 	const config = await requireKey(ctx);
 	const conversation = await requireConversation(ctx, input.conversationId);
+	// One trace for the whole question, so the steps it took and the tools they
+	// ran are one thing somebody can read a cost off — see `ai-telemetry.ts`.
+	// An approval resume is a second `run` call and therefore a second trace,
+	// which is honest: it is a second request, minutes later, that the person
+	// consented to separately.
+	const trace: TurnTrace = {
+		id: crypto.randomUUID(),
+		conversationId: conversation.id,
+		model: conversation.model,
+		// Set by each generation, so the spans its tool calls produce can name
+		// the call that asked for them.
+		generationId: null,
+	};
 
 	if (input.message) {
 		// Before the message, never after: see `abandonPendingCalls`.
@@ -1288,6 +1429,7 @@ const runTurn = async (
 		const answered = narrowed
 			? await runClaimed(
 					ctx,
+					trace,
 					conversation.id,
 					pending.id,
 					call,
@@ -1321,7 +1463,8 @@ const runTurn = async (
 
 		// The rest of the turn: reads and writes run now, and a second
 		// destructive call stops it again with a card of its own.
-		if (await runPendingCalls(ctx, conversation.id, pending, onEvent)) return;
+		if (await runPendingCalls(ctx, trace, conversation.id, pending, onEvent))
+			return;
 	}
 
 	const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
@@ -1365,9 +1508,8 @@ const runTurn = async (
 
 		let turn: ChatTurn;
 		try {
-			turn = await chatModel().streamChatCompletion({
+			turn = await generate(ctx, trace, step + 1, {
 				apiKey: config.apiKey,
-				model: conversation.model,
 				messages: [
 					{ role: "system", content: system },
 					...toWireMessages(history),
@@ -1382,6 +1524,34 @@ const runTurn = async (
 				return;
 			}
 			throw error;
+		}
+
+		// Stopped part-way — the person pressed Stop, or closed the tab.
+		//
+		// What arrived is kept, because it was paid for and because a half
+		// answer beats the question sitting there alone; but the HALF-ARRIVED
+		// TOOL CALLS ARE DROPPED. A stored `tool_calls` row with no `tool` result
+		// under it 400s the next request for the rest of the thread's life, and
+		// the calls were never run, so there is nothing to answer them with.
+		// An empty partial stores nothing and reports nothing: stopping a turn
+		// before it said anything is not a failure to explain.
+		if (signal?.aborted) {
+			if (turn.content.trim()) {
+				await insertMessage(ctx, conversation.id, {
+					role: "assistant",
+					content: turn.content,
+					toolCalls: null,
+					model: conversation.model,
+					promptTokens: turn.promptTokens,
+					completionTokens: turn.completionTokens,
+					pendingApproval: false,
+				});
+				await db
+					.update(assistantConversation)
+					.set({ updatedAt: new Date() })
+					.where(eq(assistantConversation.id, conversation.id));
+			}
+			return;
 		}
 
 		// A turn with neither text nor a tool call is nothing at all, and it used
@@ -1421,7 +1591,9 @@ const runTurn = async (
 		}
 
 		// In order, so a read the model wanted done first still happens first.
-		if (await runPendingCalls(ctx, conversation.id, assistantRow, onEvent)) {
+		if (
+			await runPendingCalls(ctx, trace, conversation.id, assistantRow, onEvent)
+		) {
 			return;
 		}
 	}
@@ -1438,9 +1610,8 @@ const runTurn = async (
 
 	let closing: ChatTurn | null = null;
 	try {
-		closing = await chatModel().streamChatCompletion({
+		closing = await generate(ctx, trace, null, {
 			apiKey: config.apiKey,
-			model: conversation.model,
 			messages: [
 				{ role: "system", content: system },
 				...toWireMessages(await loadHistory(conversation.id)),

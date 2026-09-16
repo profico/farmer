@@ -38,7 +38,7 @@ import {
 	teamLeadPerson,
 } from "../db/schema/people";
 import { monthlyHourFund } from "../db/schema/settings";
-import { createTestDb, type TestDb } from "../test/harness";
+import { at, createTestDb, type TestDb } from "../test/harness";
 import { reportsService } from "./reports.service";
 import type { Ctx } from "./types";
 
@@ -548,6 +548,133 @@ describe("time detail", () => {
 		const detail = await reportsService.timeDetail(ctxFor(LEAD), detailInput);
 		expect(detail.totalRows).toBe(1);
 		expect(detail.totalSeconds).toBe(3 * H);
+	});
+
+	test("the row carries the entry id, so the caller can act on it", async () => {
+		await logEntry({ userId: WORKER, seconds: 3 * H });
+
+		const detail = await reportsService.timeDetail(ctxFor(ADMIN), detailInput);
+		const row = at(detail.rows, 0);
+		const stored = await db
+			.select({ id: timeEntry.id })
+			.from(timeEntry)
+			.where(eq(timeEntry.organizationId, ORG));
+		expect(row.id).toBe(at(stored, 0).id);
+	});
+});
+
+describe("searching notes", () => {
+	const may = { from: FROM, to: TO };
+
+	test("matches part of a word, in any case", async () => {
+		await logEntry({
+			userId: WORKER,
+			description: "Ran the Migration",
+			seconds: 3 * H,
+		});
+		await logEntry({ userId: WORKER, description: "Standup", seconds: 1 * H });
+
+		const detail = await reportsService.timeDetail(ctxFor(ADMIN), {
+			...may,
+			q: "migra",
+		});
+		expect(detail.totalRows).toBe(1);
+		expect(at(detail.rows, 0).description).toBe("Ran the Migration");
+		expect(detail.totalSeconds).toBe(3 * H);
+	});
+
+	test("the summary totals the same rows the detail lists", async () => {
+		// The two halves of one report. A total nobody can drill into is worse
+		// than no total, so the filter lives under both.
+		await logEntry({
+			userId: WORKER,
+			description: "migration part one",
+			seconds: 3 * H,
+		});
+		await logEntry({
+			userId: WORKER,
+			description: "migration part two",
+			seconds: 2 * H,
+		});
+		await logEntry({
+			userId: WORKER,
+			description: "unrelated",
+			seconds: 6 * H,
+		});
+
+		const summary = await reportsService.timeSummary(ctxFor(ADMIN), {
+			...may,
+			tab: "projects",
+			q: "migration",
+		});
+		const detail = await reportsService.timeDetail(ctxFor(ADMIN), {
+			...may,
+			q: "migration",
+		});
+		expect(summary.totalSeconds).toBe(5 * H);
+		expect(detail.totalSeconds).toBe(summary.totalSeconds);
+		expect(detail.totalRows).toBe(2);
+	});
+
+	test("a percent sign is a character, not a wildcard", async () => {
+		// `%` and `_` are ordinary in something a person typed. Taken as LIKE
+		// wildcards they widen the search silently, which reads as a right answer.
+		await logEntry({
+			userId: WORKER,
+			description: "cut 100% down",
+			seconds: 3 * H,
+		});
+		await logEntry({
+			userId: WORKER,
+			description: "cut 1000 pages down",
+			seconds: 5 * H,
+		});
+
+		const detail = await reportsService.timeDetail(ctxFor(ADMIN), {
+			...may,
+			q: "100% d",
+		});
+		// Taken as a wildcard, "100% d" also matches "cut 1000 pages down".
+		expect(detail.totalRows).toBe(1);
+		expect(at(detail.rows, 0).description).toBe("cut 100% down");
+	});
+
+	test("an underscore is a character too", async () => {
+		await logEntry({
+			userId: WORKER,
+			description: "fix day_fill",
+			seconds: 3 * H,
+		});
+		await logEntry({
+			userId: WORKER,
+			description: "fix dayXfill",
+			seconds: 5 * H,
+		});
+
+		const detail = await reportsService.timeDetail(ctxFor(ADMIN), {
+			...may,
+			q: "day_fill",
+		});
+		expect(detail.totalRows).toBe(1);
+		expect(at(detail.rows, 0).description).toBe("fix day_fill");
+	});
+
+	test("the search stays inside what the caller may see", async () => {
+		// The filter narrows; it never widens. A Team Lead who searches for a word
+		// another team used must still get nothing.
+		await logEntry({
+			userId: OUTSIDER,
+			projectId: betaId,
+			description: "migration",
+			seconds: 11 * H,
+		});
+
+		const detail = await reportsService.timeDetail(ctxFor(LEAD), {
+			...may,
+			q: "migration",
+		});
+		expect(detail.totalRows).toBe(0);
+		expect(detail.totalSeconds).toBe(0);
 	});
 });
 

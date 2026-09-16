@@ -52,6 +52,12 @@ const filters = {
 	userId: z.string().min(1).optional(),
 	/** "Active projects only": leave out time on archived projects. */
 	activeOnly: z.boolean().optional(),
+	/** Free text, matched against the note on each entry. Case-insensitive, and
+	 *  a substring rather than a word, so "migra" finds "migration".
+	 *
+	 *  Shared with the summary on purpose: a total the caller cannot drill into
+	 *  is worse than no total, so both halves of a report read one filter. */
+	q: z.string().trim().min(1).max(200).optional(),
 };
 
 export const timeReportSummaryInput = withRangeLimits(

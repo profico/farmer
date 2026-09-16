@@ -3,6 +3,7 @@ import {
 	GithubLogoIcon,
 	SignOutIcon,
 } from "@phosphor-icons/react";
+import { usePostHog } from "@posthog/react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Link,
@@ -196,6 +197,7 @@ export function AppSidebar({
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const router = useRouter();
 	const navigate = useNavigate();
+	const posthog = usePostHog();
 
 	// Which list the sidebar is showing.
 	//
@@ -460,6 +462,7 @@ export function AppSidebar({
 
 	const handleLogout = async () => {
 		await authClient.signOut();
+		posthog.reset();
 		await router.invalidate();
 	};
 

@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -42,6 +43,7 @@ export const Route = createFileRoute("/no-access")({
 function NoAccessPage() {
 	const { config, invitations } = Route.useLoaderData();
 	const navigate = useNavigate();
+	const posthog = usePostHog();
 	const [busyId, setBusyId] = useState<string | null>(null);
 
 	const workspace = config.org?.name ?? "this workspace";
@@ -61,6 +63,7 @@ function NoAccessPage() {
 
 	const handleSignOut = async () => {
 		await authClient.signOut();
+		posthog.reset();
 		await navigate({ to: "/login" });
 	};
 

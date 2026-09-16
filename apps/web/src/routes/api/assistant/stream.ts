@@ -18,6 +18,35 @@ import { admitAssistantTurn } from "#/server/assistant-rate-limit.ts";
 // server/auth.ts — see the note at the top of that file. It also re-checks
 // membership, so an ex-member with a live session gets a 401 here.
 
+/**
+ * Point the agent loop's analytics seam at PostHog, once per process.
+ *
+ * Here rather than in `server.ts`, which `vite dev` never loads — so a sink
+ * installed there would exist in production and nowhere else, and the one
+ * place anybody would notice the difference is the dashboard. This route is
+ * the only way a turn ever starts, including the resume after an approval, so
+ * installing on the way through covers every call the loop makes.
+ *
+ * Deferred and guarded: `posthog-ai.ts` pulls in `posthog-node`, and
+ * `routeTree.gen.ts` imports every route module statically, so a top-level
+ * import here would ship the server's analytics client to the browser.
+ */
+let aiTelemetryInstalled = false;
+
+const installAiTelemetry = async () => {
+	if (aiTelemetryInstalled) return;
+	aiTelemetryInstalled = true;
+	const [{ setAiTelemetrySink }, { posthogAiSink }] = await Promise.all([
+		import("@farmer/core/services"),
+		import("#/lib/posthog-ai.ts"),
+	]);
+	// A deployment with no PostHog credentials installs nothing, so the loop
+	// keeps the no-op sink and never builds an event.
+	const { posthogServerConfig } = await import("#/lib/posthog-server.ts");
+	if (!posthogServerConfig()) return;
+	setAiTelemetrySink(posthogAiSink);
+};
+
 const encoder = new TextEncoder();
 
 const frame = (event: AssistantEvent) =>
@@ -72,6 +101,7 @@ export const Route = createFileRoute("/api/assistant/stream")({
 
 				const { assistantService, userFacingAssistantError } =
 					await import("@farmer/core/services");
+				await installAiTelemetry();
 
 				const stream = new ReadableStream({
 					async start(controller) {

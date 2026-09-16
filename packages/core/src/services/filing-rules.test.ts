@@ -30,6 +30,7 @@ import {
 import { filingRule } from "../db/schema/settings";
 import { createTestDb, type TestDb } from "../test/harness";
 import { present } from "../test/harness";
+import { findTool } from "./assistant-tools";
 import { filingRulesService } from "./filing-rules.service";
 import { setCalendarSourceForTests } from "./ports";
 import { timeEntriesService } from "./time-entries.service";
@@ -483,5 +484,62 @@ describe("the task a rule files under", () => {
 				targetTaskId: null,
 			}),
 		).rejects.toThrow("You are not assigned to this project");
+	});
+});
+
+// ── the assistant's half ────────────────────────────────────────────────────
+//
+// A rule is the reason a synced meeting already has a project nobody chose by
+// hand. Without a way to read them the assistant could see the effect and never
+// the cause, so "why is this on Acme" had no answer it could give.
+describe("the tools that carry the rules to the assistant", () => {
+	test("the rules read back as sentences, not as ids", async () => {
+		await ruleFor("Design review", projectId, designTaskId);
+
+		const result = await findTool("list_filing_rules")?.run(ctx, {});
+		// SAFETY: the projection is fixed in assistant-tools.ts, and the
+		// expectation below names every field it reads.
+		const rows = result as {
+			id: string;
+			meetingTitle: string;
+			whenTaskIs: string;
+			filesToProject: string;
+			andChangesTaskTo: string | null;
+		}[];
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({
+			meetingTitle: "Design review",
+			whenTaskIs: "Meeting",
+			filesToProject: "Farmer",
+			andChangesTaskTo: "Design",
+		});
+	});
+
+	test("removing one is a card that says what stops happening", async () => {
+		await ruleFor("Standup", projectId);
+		const [rule] = await filingRulesService.list(ctx);
+		const id = present(rule, "the rule").id;
+
+		const tool = present(findTool("delete_filing_rule"), "the tool");
+		// Destructive, so the turn suspends and this wording is what the person
+		// consents to. "Remove filing rule 3f2a…" is not consent to anything.
+		expect(await tool.summarize?.(ctx, { id })).toBe(
+			'Stop filing "Standup" to Farmer',
+		);
+
+		await tool.run(ctx, { id });
+		expect(await filingRulesService.list(ctx)).toEqual([]);
+	});
+
+	test("a card for a rule that is already gone still renders", async () => {
+		// `summarize` runs before the tool's own schema does. It must fall back
+		// rather than throw, or a failed card leaves a pending write nobody can
+		// answer either way.
+		const tool = present(findTool("delete_filing_rule"), "the tool");
+		expect(
+			await tool.summarize?.(ctx, {
+				id: "00000000-0000-4000-8000-000000000000",
+			}),
+		).toBe("Remove a filing rule");
 	});
 });

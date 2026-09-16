@@ -1,4 +1,5 @@
 import { DotsThreeIcon, SignOutIcon } from "@phosphor-icons/react";
+import { usePostHog } from "@posthog/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { motion } from "motion/react";
@@ -52,6 +53,7 @@ export function MobileTabBar({
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const router = useRouter();
+	const posthog = usePostHog();
 	const [moreOpen, setMoreOpen] = useState(false);
 
 	// Narrow phones (iPhone SE/mini-class) only comfortably fit 3 tabs + More;
@@ -111,6 +113,7 @@ export function MobileTabBar({
 	const handleLogout = async () => {
 		setMoreOpen(false);
 		await authClient.signOut();
+		posthog.reset();
 		await router.invalidate();
 	};
 

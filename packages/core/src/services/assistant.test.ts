@@ -46,6 +46,7 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
+import { ABORTED } from "../lib/openrouter-client";
 import type { ChatMessage, ChatTool, ChatTurn } from "../lib/openrouter-client";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { type Access, AccessError, accessService } from "./access.service";
@@ -96,6 +97,7 @@ const turn = (over: Partial<ChatTurn> = {}): ChatTurn => ({
 	toolCalls: [],
 	promptTokens: null,
 	completionTokens: null,
+	costUsd: null,
 	finishReason: null,
 	...over,
 });
@@ -711,6 +713,51 @@ describe("read tools", () => {
 		}
 	});
 
+	test("an engine nobody switched on is reported as off, not as a sync", async () => {
+		// "Sync now" said "Synced" after a pass that touched nothing, because an
+		// engine the person never enabled appeared in none of the four lists. The
+		// answer somebody who came looking for their meetings needs is "your
+		// calendar sync is off", and that is a different sentence.
+		const result = await findTool("sync_now")?.run(ctxFor(WORKER), {});
+		// SAFETY: the four lists are `runAutomationsForUser`'s own contract, and
+		// every expectation below names the list it reads.
+		const pass = result as {
+			ran: string[];
+			skipped: string[];
+			failed: string[];
+			off: string[];
+		};
+		// Neither integration is switched on in this org, and both say so by name
+		// rather than by being missing.
+		expect(pass.off.sort()).toEqual(["commit-work-time", "meetings"]);
+		expect(pass.failed).toEqual([]);
+		// Recurring blocks carry no switch, so that engine really did run.
+		expect(pass.ran).toContain("recurring-blocks");
+	});
+
+	test("the assistant can see why nothing syncs", async () => {
+		const result = await findTool("integration_status")?.run(
+			ctxFor(WORKER),
+			{},
+		);
+		// SAFETY: the projection is fixed in assistant-tools.ts; the expectations
+		// below name every field they read.
+		const status = result as {
+			googleCalendar: { connected: boolean; autoSyncMeetings: boolean };
+			github: { connected: boolean; needsReconnect: boolean };
+			automationsLockedThrough: string | null;
+		};
+		// Nothing linked and nothing switched on — the two halves of "where are my
+		// meetings", and each is a different thing to tell the person.
+		expect(status.googleCalendar.connected).toBe(false);
+		expect(status.googleCalendar.autoSyncMeetings).toBe(false);
+		expect(status.github.connected).toBe(false);
+		// A token GitHub refuses is not the same as no account, and no amount of
+		// syncing fixes it.
+		expect(status.github.needsReconnect).toBe(false);
+		expect(status.automationsLockedThrough).toBeNull();
+	});
+
 	test("every tool the model is offered can be dispatched", async () => {
 		// The list the model is shown and the list `findTool` can dispatch are two
 		// places, and a tool present in one and absent from the other fails only at
@@ -1233,6 +1280,188 @@ describe("who the model is told it is talking to", () => {
 			message: "hi",
 		});
 		expect(seen.at(-1)?.[0]?.content ?? "").toContain("an Admin");
+	});
+});
+
+describe("the domain the model is given by default", () => {
+	test("the reader's words are mapped onto the data's", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "ok" })];
+		await collect(ctxFor(WORKER), { conversationId: chat.id, message: "hi" });
+		const text = seen.at(-1)?.[0]?.content ?? "";
+
+		// The one that cost a whole turn: asked whose notes were most
+		// interesting, the model answered that it had no access to a notes
+		// system — while every entry read it has returns the field the UI labels
+		// "Note".
+		expect(text).toMatch(/"note".*description/is);
+		expect(text).toMatch(/no separate notes system/i);
+		expect(text).toMatch(/"time off" is absence/i);
+	});
+
+	test("the week start is stated, because the model resolves 'last week' itself", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "ok" })];
+		await collect(ctxFor(WORKER), { conversationId: chat.id, message: "hi" });
+		// The seeded org takes the default, Monday. A Sunday-start org that was
+		// never told would have every weekly figure a day out, silently.
+		expect(seen.at(-1)?.[0]?.content ?? "").toContain(
+			"The week starts on Monday here",
+		);
+	});
+
+	test("it follows the org's own week start, not the default", async () => {
+		await db
+			.update(organization)
+			.set({ weekStartsOn: 0 })
+			.where(eq(organization.id, ORG));
+		try {
+			const chat = await startChat(ctxFor(WORKER));
+			script = [turn({ content: "ok" })];
+			await collect(ctxFor(WORKER), {
+				conversationId: chat.id,
+				message: "hi",
+			});
+			expect(seen.at(-1)?.[0]?.content ?? "").toContain(
+				"The week starts on Sunday here",
+			);
+		} finally {
+			await db
+				.update(organization)
+				.set({ weekStartsOn: 1 })
+				.where(eq(organization.id, ORG));
+		}
+	});
+
+	test("a verdict is a rule to look up, not arithmetic to do", async () => {
+		// Asked "am I behind", the model summed a month and judged it against
+		// eight hours a day. That is right only for a full-time person in a month
+		// with no public holiday and no day off, and a wrong verdict disagrees
+		// with the same figure on the person's own home page.
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "ok" })];
+		await collect(ctxFor(WORKER), { conversationId: chat.id, message: "hi" });
+		const text = seen.at(-1)?.[0]?.content ?? "";
+		expect(text).toMatch(/"behind" is a rule, not arithmetic/i);
+		expect(text).toContain("my_targets");
+	});
+
+	test("a missing entry is a setting to read before it is a diagnosis", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "ok" })];
+		await collect(ctxFor(WORKER), { conversationId: chat.id, message: "hi" });
+		const text = seen.at(-1)?.[0]?.content ?? "";
+		expect(text).toContain("integration_status");
+		// Syncing again is the wrong answer for all three of the reasons it
+		// could be, so the prompt says so rather than leaving it as the default
+		// suggestion.
+		expect(text).toMatch(/none of them is fixed by syncing again/i);
+	});
+});
+
+describe("a turn the person stopped", () => {
+	// Pressing Stop aborts the fetch, which aborts the loop's signal. The work
+	// the model had already done was paid for, and used to be thrown away whole
+	// — the thread came back looking as though the question had never been asked.
+	test("keeps what the model had already written", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		const stop = new AbortController();
+		script = [
+			turn({
+				content: "Your March looks like ",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "list_time_entries",
+						arguments: JSON.stringify({ from: "2026-03-01", to: "2026-03-31" }),
+					},
+				],
+				finishReason: ABORTED,
+			}),
+			turn({ content: "a second step nobody asked for" }),
+		];
+		const events: AssistantEvent[] = [];
+		await assistantService.run(
+			ctxFor(WORKER),
+			{ conversationId: chat.id, message: "how was March?" },
+			(event) => {
+				events.push(event);
+				// The model is mid-answer when the person gives up on it.
+				if (event.type === "delta") stop.abort();
+			},
+			stop.signal,
+		);
+
+		// No error line: stopping a turn is the person's own doing, not a failure
+		// to explain back to them.
+		expect(events.some((e) => e.type === "error")).toBe(false);
+
+		const rows = await db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, chat.id),
+		});
+		const answer = rows.find((row) => row.role === "assistant");
+		expect(answer?.content).toBe("Your March looks like ");
+		// And the loop stopped there. Without this it ran the tool the aborted
+		// turn had asked for and spent another billed step answering nobody.
+		expect(seen).toHaveLength(1);
+		expect(rows.some((row) => row.content.includes("nobody asked for"))).toBe(
+			false,
+		);
+	});
+
+	test("does not store the half-arrived tool calls", async () => {
+		// A stored `tool_calls` row with no `tool` result under it 400s every
+		// later request in the thread, and the calls were never run, so there is
+		// nothing to answer them with.
+		const chat = await startChat(ctxFor(WORKER));
+		const stop = new AbortController();
+		script = [
+			turn({
+				content: "Let me check. ",
+				toolCalls: [
+					{ id: "call-1", name: "list_time_entries", arguments: '{"fro' },
+				],
+				finishReason: ABORTED,
+			}),
+		];
+		await assistantService.run(
+			ctxFor(WORKER),
+			{ conversationId: chat.id, message: "how was March?" },
+			(event) => {
+				if (event.type === "delta") stop.abort();
+			},
+			stop.signal,
+		);
+
+		const rows = await db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, chat.id),
+		});
+		const answer = rows.find((row) => row.role === "assistant");
+		expect(answer?.content).toBe("Let me check. ");
+		expect(answer?.toolCalls).toBeNull();
+		expect(rows.some((row) => row.role === "tool")).toBe(false);
+	});
+
+	test("a stop before the model said anything stores nothing", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		const stop = new AbortController();
+		stop.abort();
+		script = [turn({ content: "", finishReason: ABORTED })];
+		const events: AssistantEvent[] = [];
+		await assistantService.run(
+			ctxFor(WORKER),
+			{ conversationId: chat.id, message: "how was March?" },
+			(event) => events.push(event),
+			stop.signal,
+		);
+
+		// An empty stopped turn is not the empty ANSWER the loop reports — nobody
+		// is waiting for a verdict on a turn they cancelled.
+		expect(events.some((e) => e.type === "error")).toBe(false);
+		const rows = await db.query.assistantMessage.findMany({
+			where: eq(assistantMessage.conversationId, chat.id),
+		});
+		expect(rows.some((row) => row.role === "assistant")).toBe(false);
 	});
 });
 

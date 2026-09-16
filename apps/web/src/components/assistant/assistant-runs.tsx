@@ -93,6 +93,12 @@ export type AssistantRun = {
 	isStreaming: boolean;
 };
 
+/** How long to wait for the server's copy of a stopped turn, and how often to
+ *  look. Two seconds all told: long enough for one insert on a busy database,
+ *  short enough that nobody reads it as the answer having frozen. */
+const SETTLE_TRIES = 8;
+const SETTLE_WAIT_MS = 250;
+
 const IDLE: AssistantRun = {
 	streamingText: "",
 	sentMessage: null,
@@ -229,6 +235,55 @@ export function AssistantRunsProvider({
 		});
 	}, []);
 
+	/** Take the server's copy of the turn and let go of the live one.
+	 *
+	 *  Both endings run it — the turn that finished and the turn somebody
+	 *  stopped — because both leave a row in the thread that this store is
+	 *  holding a second, unsaved copy of.
+	 *
+	 *  `awaitAnswer` is what a STOPPED turn needs and a finished one does not.
+	 *  A finished turn's `done` event is sent after the row is written, so one
+	 *  refetch is enough. A stop is the other way round: the browser hangs up
+	 *  first and the server writes the partial answer a round trip later, so
+	 *  refetching immediately reads the thread without it and dropping the live
+	 *  copy then leaves the reader with nothing at all until they reload. */
+	const settle = useCallback(
+		async (conversationId: string, awaitAnswer = false) => {
+			const keys = queryKeys(orgSlugRef.current);
+			const query = conversationQuery(orgSlugRef.current, conversationId);
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...keys.assistant, "conversations"],
+				}),
+				// This thread by name, not "the open one": the turn that just
+				// finished may be in a thread nobody is looking at.
+				queryClient.invalidateQueries({ queryKey: query.queryKey }),
+				// A turn can have written a time entry, so anything reading them is
+				// now stale. Named through the same root the writes use, so this
+				// cannot drift from what `createTimeEntry` invalidates.
+				queryClient.invalidateQueries({ queryKey: keys.timeEntries }),
+			]);
+			// Bounded, because waiting forever for a row that may never come is a
+			// thread frozen mid-answer. Every ending other than the one it is for
+			// either has its row already or has no row to wait for, and that is
+			// what the ceiling costs: a second and a half of the live copy still
+			// showing, which is exactly what it showed a moment ago.
+			for (let tries = 0; awaitAnswer && tries < SETTLE_TRIES; tries++) {
+				const thread = queryClient.getQueryData(query.queryKey);
+				const last = thread?.messages.at(-1);
+				if (last?.role === "assistant" && last.content.trim()) break;
+				await new Promise((resolve) => setTimeout(resolve, SETTLE_WAIT_MS));
+				await queryClient.refetchQueries({ queryKey: query.queryKey });
+			}
+			// Only after the server's copy has landed, or the answer would show
+			// twice — once live, once persisted — for a frame. `pending` and
+			// `error` stay: a suspended write outlives the connection that
+			// proposed it, and an error is the only record the turn failed.
+			dropLiveTurn(conversationId);
+		},
+		[dropLiveTurn, queryClient],
+	);
+
 	const run = useCallback(
 		async (conversationId: string, body: Body): Promise<boolean> => {
 			// One turn at a time in THIS thread: sending again mid-answer abandons
@@ -263,6 +318,9 @@ export function AssistantRunsProvider({
 			// call a turn delivered that died inside the handler before it stored
 			// anything — which is the case where the draft most needs giving back.
 			let delivered = false;
+			// Whether the model said anything before the turn ended. Only a turn
+			// that did leaves a partial answer on the server for a stop to wait on.
+			let streamed = false;
 
 			try {
 				const response = await fetch("/api/assistant/stream", {
@@ -314,6 +372,7 @@ export function AssistantRunsProvider({
 								delivered = true;
 								break;
 							case "delta":
+								streamed = true;
 								patch(conversationId, (state) => ({
 									...state,
 									streamingText: state.streamingText + event.text,
@@ -368,37 +427,26 @@ export function AssistantRunsProvider({
 					}
 				}
 
-				if (current()) {
-					const keys = queryKeys(orgSlugRef.current);
-					await Promise.all([
-						queryClient.invalidateQueries({
-							queryKey: [...keys.assistant, "conversations"],
-						}),
-						// This thread by name, not "the open one": the turn that just
-						// finished may be in a thread nobody is looking at.
-						queryClient.invalidateQueries({
-							queryKey: conversationQuery(orgSlugRef.current, conversationId)
-								.queryKey,
-						}),
-						// A turn can have written a time entry, so anything reading them is
-						// now stale. Named through the same root the writes use, so this
-						// cannot drift from what `createTimeEntry` invalidates.
-						queryClient.invalidateQueries({ queryKey: keys.timeEntries }),
-					]);
-					// Only after the server's copy has landed, or the answer would show
-					// twice — once live, once persisted — for a frame. `pending` and
-					// `error` stay: a suspended write outlives the connection that
-					// proposed it, and an error is the only record the turn failed.
-					dropLiveTurn(conversationId);
-				}
+				if (current()) await settle(conversationId);
 				return delivered;
 			} catch (caught) {
 				// An abort is the user's own doing (they stopped it, or typed over
 				// it), not a failure to report back to them — and not a draft to hand
 				// back either. Returning false here would drop the abandoned message
 				// into a composer the person has already refilled.
-				if (caught instanceof DOMException && caught.name === "AbortError")
+				//
+				// It still settles, because a stopped turn is not an empty one: the
+				// server keeps whatever the model had already written (see the abort
+				// branch in `assistant.service.ts`). Without the refetch the live
+				// half-answer would sit in this store beside the stored copy and the
+				// reader would see it twice the moment anything else invalidated.
+				if (caught instanceof DOMException && caught.name === "AbortError") {
+					// Wait for the partial answer only when there is one to wait for:
+					// the server stores nothing for a turn stopped before the model
+					// said a word.
+					if (current()) await settle(conversationId, streamed);
 					return true;
+				}
 				if (current()) {
 					const message =
 						caught instanceof Error ? caught.message : "The assistant failed";
@@ -420,7 +468,7 @@ export function AssistantRunsProvider({
 				}
 			}
 		},
-		[dropLiveTurn, patch, queryClient],
+		[patch, settle],
 	);
 
 	const actions = useMemo<Actions>(
