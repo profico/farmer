@@ -17,7 +17,10 @@ import { useEffect, useRef, useState } from "react";
 import { ChatRail } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
-import { settingsSubNavItems } from "#/components/settings-nav.tsx";
+import {
+	settingsNavGroups,
+	settingsSubNavItems,
+} from "#/components/settings-nav.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
@@ -48,10 +51,8 @@ import { springLayout, springProductive } from "#/lib/motion.ts";
 import {
 	activeNavTo,
 	ASSISTANT_ITEM,
-	CLIENTS_ITEM,
 	isNavItemActive,
 	type NavItem,
-	PEOPLE_ITEM,
 	REPORTS_ITEM,
 	SETTINGS_ITEM,
 	WORK_ITEMS,
@@ -361,32 +362,32 @@ export function AppSidebar({
 	// Reports are for everyone — the services scope them, a Member sees their
 	// own row — so the item is not gated.
 	const lateWorkItems = [REPORTS_ITEM];
-	const manageItems = [
-		...(canManageClients ? [CLIENTS_ITEM] : []),
-		...(isAdmin ? [PEOPLE_ITEM] : []),
-	];
 
 	// The settings sub-menu, open only while you are somewhere under it.
 	//
 	// A settings page used to be a leaf: you arrived from the hub, and the only
-	// way to the next one was back to the hub first. The sub-menu turns the six
-	// pages that have no row of their own into siblings you can walk between, and
-	// it is what makes the Settings row read as a place rather than a link.
+	// way to the next one was back to the hub first. The sub-menu turns the
+	// whole catalogue into siblings you can walk between, and it is what makes
+	// the Settings row read as a place rather than a link.
+	//
+	// It carries every settings page now, under the hub's two headings, because
+	// the four that used to hold top-level rows (My schedule, Recurring blocks,
+	// Clients, People) moved in here with the rest. The sidebar is four rows
+	// shorter at rest and nothing is listed in two places.
 	//
 	// It is not a disclosure the reader opens and closes. There is no state to
 	// keep, nothing to remember across a navigation, and no way to be in settings
 	// while it is shut — the route IS the switch, which is also why it needs no
 	// aria-expanded: nothing here is a control.
 	const inSettings = isNavItemActive(pathname, SETTINGS_ITEM.to, orgSlug);
-	const settingsItems = settingsSubNavItems({ isAdmin, canManageClients });
+	const settingsGroups = settingsNavGroups({ isAdmin, canManageClients });
 	const activeTo = activeNavTo(
 		pathname,
 		[
 			...WORK_ITEMS,
 			...lateWorkItems,
 			...YOU_ITEMS,
-			...(inSettings ? settingsItems : []),
-			...manageItems,
+			...(inSettings ? settingsSubNavItems({ isAdmin, canManageClients }) : []),
 		],
 		orgSlug,
 	);
@@ -443,16 +444,25 @@ export function AppSidebar({
 				<AnimatePresence initial={false}>
 					{inSettings && (
 						<ExpandingSub>
-							<SidebarMenuSub className="mt-1">
-								{settingsItems.map((subItem) => (
-									<SidebarMenuSubItem key={subItem.to}>
-										<SidebarMenuSubButton
-											isActive={activeTo === subItem.to}
-											render={settingsSubLink(subItem, activeTo === subItem.to)}
-										/>
-									</SidebarMenuSubItem>
-								))}
-							</SidebarMenuSub>
+							{settingsGroups.map((group) => (
+								<SidebarMenuSub key={group.key} className="mt-1">
+									{/* The heading the hub uses over the same rows. Twelve
+									    labels at one indent are a list; the two headings are
+									    what make them two groups you can scan. */}
+									<li className="eyebrow px-2 pt-1.5 pb-1">{group.label}</li>
+									{group.items.map((subItem) => (
+										<SidebarMenuSubItem key={subItem.to}>
+											<SidebarMenuSubButton
+												isActive={activeTo === subItem.to}
+												render={settingsSubLink(
+													subItem,
+													activeTo === subItem.to,
+												)}
+											/>
+										</SidebarMenuSubItem>
+									))}
+								</SidebarMenuSub>
+							))}
 						</ExpandingSub>
 					)}
 				</AnimatePresence>
@@ -544,8 +554,10 @@ export function AppSidebar({
 									</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
+							{/* No label over the Settings row: a heading over a single row
+							    names a group of one, and the sub-menu that opens under it
+							    brings its own two. The gap above is the separation. */}
 							<SidebarGroup>
-								<SidebarGroupLabel>You</SidebarGroupLabel>
 								<SidebarGroupContent>
 									<SidebarMenu>
 										{YOU_ITEMS.map((item) =>
@@ -556,20 +568,6 @@ export function AppSidebar({
 									</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
-							{/* Admin is known before the first paint and a Team Lead's
-							    Clients row is not, so for a lead the whole group arrives
-							    late — the row opens (`lateNavRow`) and takes its label
-							    with it, rather than the label sitting alone over nothing. */}
-							{manageItems.length > 0 && (
-								<SidebarGroup>
-									<SidebarGroupLabel>Manage</SidebarGroupLabel>
-									<SidebarGroupContent>
-										<SidebarMenu>
-											{manageItems.map(isAdmin ? navRow : lateNavRow)}
-										</SidebarMenu>
-									</SidebarGroupContent>
-								</SidebarGroup>
-							)}
 						</>
 					)}
 				</FadeSwap>

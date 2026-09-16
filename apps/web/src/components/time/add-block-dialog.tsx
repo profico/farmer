@@ -117,6 +117,18 @@ export type ExistingTimeEntry = {
 
 const MAX_ENTRY_SECONDS = 24 * 3600;
 
+/** The lengths most entries actually are, offered as a row under the field.
+ *
+ *  Written as clock strings because that is what the field holds and what its
+ *  blur handler normalises to, so a preset and a typed "1.5" end in one state
+ *  rather than two that only look alike.
+ *
+ *  Four, not seven. "Rest of day" sits beside them as a fifth and is not one of
+ *  these: it is a different KIND of answer — a block sized from whatever the
+ *  day has left rather than a number — which is why it is set apart, and why it
+ *  came out of More options, where nobody found it. */
+const QUICK_DURATIONS = ["0:30", "1:00", "2:00", "4:00"] as const;
+
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
 const formSchema = z
@@ -342,21 +354,16 @@ export function AddBlockDialog({
 
 	// Duration is typed, not derived: there is no clock in this system, so an
 	// entry is a date plus an amount of time, in 15-minute steps.
-	const durationText = form.watch("duration");
-	const parsedSeconds = parseDuration(durationText);
-	// `snapToQuarterHour` rather than a local `Math.round(x / 900) * 900`: the
-	// shared one floors at 15 minutes, so "0.1" becomes a real 15-minute block
-	// instead of a 0 the server then rejects with a toast.
-	const snappedSeconds =
-		parsedSeconds !== null && parsedSeconds > 0
-			? snapToQuarterHour(parsedSeconds)
-			: null;
-	// Show the rounding before the user commits to it, rather than silently
-	// changing what they typed on save.
-	const willSnap =
-		snappedSeconds != null &&
-		parsedSeconds != null &&
-		snappedSeconds !== parsedSeconds;
+	//
+	// The rounding used to be announced under the field ("Rounds to 1:30 — time
+	// is tracked in 15-minute steps"), which is a paragraph of small print under
+	// a box that has just demonstrated the rule. The blur IS the feedback: you
+	// type 1.5 and you watch 1:30 appear. `snapToQuarterHour` does it there and
+	// again in the validator, and it floors at 15 minutes, so "0.1" becomes a
+	// real block rather than a 0 the server then rejects with a toast.
+	//
+	// Read so a preset can light up when the field already holds its value.
+	const durationValue = form.watch("duration");
 
 	const { data: dayEntries } = useQuery({
 		...timeEntriesRangeQuery(orgSlug, targetDate, targetDate),
@@ -879,8 +886,14 @@ export function AddBlockDialog({
 	});
 
 	const showRepeatSection = !entry && !fillsDay && !isAbsence;
+	/** The fifth preset. An absence is a whole day off, not a block sized from
+	 *  what the day has left, and a repeating entry has no single day to take a
+	 *  remainder from — which is the condition the old switch was hidden by. */
+	const showFillPreset = !isAbsence && !repeatEnabled;
+	// What the collapsed disclosure says it is holding. "Fill rest of day" is no
+	// longer one of them: it is a preset beside the lengths now, lit whether or
+	// not this is open.
 	const activeOptions = [
-		fillsDay ? "Fill rest of day" : null,
 		repeatEnabled ? "Repeat" : null,
 		form.watch("overtime") ? "Overtime" : null,
 	].flatMap((o) => (o ? [o] : []));
@@ -968,21 +981,38 @@ export function AddBlockDialog({
 						// commit rows actually bite.
 						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
-						{/* One label over the two pickers, the way Harvest stacks them:
-						    the project decides the task list, so they read as one choice. */}
+						{/* Project then task, side by side from `sm`: the project decides
+						    the task list, so they read left to right as one choice made in
+						    two steps. Stacked under a single "Project / Task" label they
+						    read as one control that had been cut in half, and neither half
+						    carried a name of its own.
+
+						    The same two columns as the note and duration below, so Task is
+						    exactly as wide as Duration and the two rows share one edge.
+						    `minmax(0,1fr)`, not `1fr`: a column sized `1fr` is
+						    `minmax(auto,1fr)`, so its item's min-content width is a floor
+						    and one long project name pushes the column past the dialog and
+						    over the task picker beside it. */}
 						<div className="grid gap-1.5">
-							<span className="text-sm leading-none font-medium text-muted-foreground">
-								Project / Task
-							</span>
-							<div className="grid gap-2">
+							<div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_10.75rem]">
 								<FormField
 									control={form.control}
 									name="projectId"
 									render={({ field }) => (
-										<FormItem className="gap-1">
+										// `grid-rows-[auto_1fr]` plus `h-full` on the trigger:
+										// the label row stays its own height and the picker
+										// takes the rest, so the two triggers are as tall as
+										// each other whatever is in them — a project with no
+										// client, or a task whose group this build does not
+										// know, no longer leaves one box shorter than the one
+										// beside it. An error message lands in an implicit row
+										// under both.
+										<FormItem className="grid-rows-[auto_1fr] gap-2">
+											<FormLabel>Project</FormLabel>
 											<FormControl>
 												<ProjectPicker
 													aria-label="Project"
+													className="h-full"
 													projects={projects}
 													noProject="Time-off"
 													value={field.value === TIME_OFF ? null : field.value}
@@ -1011,10 +1041,12 @@ export function AddBlockDialog({
 									control={form.control}
 									name="taskId"
 									render={({ field }) => (
-										<FormItem className="gap-1">
+										<FormItem className="grid-rows-[auto_1fr] gap-2">
+											<FormLabel>Task</FormLabel>
 											<FormControl>
 												<TaskPicker
 													aria-label="Task"
+													className="h-full"
 													tasks={pickableTasks}
 													recentIds={recentIds}
 													grouped={!isTimeOff}
@@ -1034,27 +1066,29 @@ export function AddBlockDialog({
 							</div>
 						</div>
 						{/* What you did, and how long: side by side, the time box big
-						    enough to be the thing you read back. */}
-						<div className="grid gap-1.5">
-							<div className="grid grid-cols-[minmax(0,1fr)_9.5rem] gap-2.5 max-sm:grid-cols-[minmax(0,1fr)]">
+						    enough to be the thing you read back. The duration stays to the
+						    RIGHT of the note, where it has always been — this is the most
+						    used form in the product and the hand knows where the box is. */}
+						<div className="grid gap-3">
+							<div className="grid grid-cols-[minmax(0,1fr)_10.75rem] gap-2.5 max-sm:grid-cols-[minmax(0,1fr)]">
 								<FormField
 									control={form.control}
 									name="description"
 									render={({ field }) => (
-										<FormItem className="gap-1">
+										<FormItem className="gap-2">
+											<FormLabel>
+												{needsDescription && !fillsDay
+													? "What you did"
+													: "Note"}
+											</FormLabel>
 											<FormControl>
 												<Textarea
 													rows={3}
 													className="min-h-22 resize-y"
-													aria-label={
-														needsDescription && !fillsDay
-															? "What you did"
-															: "Note (optional)"
-													}
 													placeholder={
 														needsDescription && !fillsDay
 															? "What did you work on?"
-															: "Note (optional)"
+															: "Optional…"
 													}
 													{...field}
 												/>
@@ -1064,19 +1098,29 @@ export function AddBlockDialog({
 									)}
 								/>
 								{fillsDay ? (
-									<div className="flex min-h-22 items-center justify-center rounded-lg border border-dashed border-input px-3 text-center text-sm text-muted-foreground">
-										Rest of day
+									// Labelled like the field it stands in for, so the row keeps
+									// both its names. Main's dashed `--input` outline, not a
+									// tinted one: the preset below is already lit, and a second
+									// highlight here would say the same thing twice in two
+									// different colours.
+									<div className="grid gap-2">
+										<span className="text-sm leading-none font-medium">
+											Duration
+										</span>
+										<div className="flex min-h-22 items-center justify-center rounded-lg border border-dashed border-input px-3 text-center text-sm text-muted-foreground">
+											Rest of day
+										</div>
 									</div>
 								) : (
 									<FormField
 										control={form.control}
 										name="duration"
 										render={({ field }) => (
-											<FormItem className="gap-1">
+											<FormItem className="gap-2">
+												<FormLabel>Duration</FormLabel>
 												<FormControl>
 													<Input
 														{...field}
-														aria-label="Time"
 														placeholder="0:00"
 														inputMode="decimal"
 														className="mono h-full min-h-22 text-right text-[30px] font-medium tabular-nums"
@@ -1101,17 +1145,121 @@ export function AddBlockDialog({
 									/>
 								)}
 							</div>
-							{/* The rounding hint gives way to the error above: two lines of
-							    small print under one box is one too many. */}
-							{!form.formState.errors.duration && (
-								<p className="text-sm text-muted-foreground">
-									{fillsDay
-										? "Fills the rest of your working hours, minus everything else logged that day."
-										: willSnap && snappedSeconds != null
-											? `Rounds to ${formatClock(snappedSeconds)} — time is tracked in 15-minute steps.`
-											: "Type 1.5, 1h30m or 1:30 — tracked in 15-minute steps."}
-								</p>
-							)}
+							{/* The lengths, across the width of the pair above. Four numbers
+							    and "Rest of day", which is a different kind of answer and is
+							    set apart as one by its words rather than by a treatment of
+							    its own. A preset writes the field instead of opening
+							    something, so the commonest case is one click and the box
+							    still takes anything typed.
+
+							    The lengths show whatever the project is. `isTimeOff` would
+							    have been the obvious gate and is the wrong one: it means "no
+							    project picked", which is the state every fresh dialog opens
+							    in, so the row would be missing exactly when it is most
+							    useful. Rest of day is the part that is conditional — an
+							    absence has no fill block, and Repeat hid its switch for the
+							    same reason. */}
+							<div>
+								<div
+									className={cn(
+										"grid gap-1.5",
+										showFillPreset
+											? "grid-cols-[repeat(4,1fr)_1.6fr]"
+											: "grid-cols-4",
+									)}
+								>
+									{QUICK_DURATIONS.map((value) => {
+										const on = !fillsDay && durationValue === value;
+										return (
+											<button
+												key={value}
+												type="button"
+												aria-pressed={on}
+												onClick={() => {
+													form.setValue("fillsDay", false, {
+														shouldDirty: true,
+													});
+													form.setValue("duration", value, {
+														shouldDirty: true,
+														shouldValidate: true,
+													});
+												}}
+												// The same `--input` hairline, hover and focus ring the
+												// pickers and the boxes above wear. Unbordered they read
+												// as chips dropped under a row of outlined controls —
+												// the one row on the form drawn to a rule of its own.
+												className={cn(
+													"tnum rounded-lg border py-2 text-sm font-medium transition-[background-color,border-color,color] duration-(--dur-fast) outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/16",
+													on
+														? "border-primary/35 bg-primary/12 text-primary"
+														: "border-input bg-transparent text-muted-foreground hover:border-muted-foreground/60 hover:text-foreground",
+												)}
+											>
+												{value}
+											</button>
+										);
+									})}
+									{showFillPreset && (
+										<button
+											type="button"
+											aria-pressed={fillsDay}
+											disabled={dayHasFill && !fillsDay}
+											title={
+												dayHasFill && !fillsDay
+													? "This day already has a rest-of-day block — edit or delete that one instead."
+													: "Fills the rest of your working hours, minus everything else logged that day."
+											}
+											onClick={() =>
+												form.setValue("fillsDay", !fillsDay, {
+													shouldDirty: true,
+												})
+											}
+											// Not highlighted at rest. It used to carry an accent
+											// tint while switched OFF, which reads as selected —
+											// the one thing a control must not do when it is not.
+											className={cn(
+												"rounded-lg border py-2 text-sm font-medium transition-[background-color,border-color,color] duration-(--dur-fast) outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/16 disabled:pointer-events-none disabled:opacity-40",
+												fillsDay
+													? "border-primary/35 bg-primary/12 font-semibold text-primary"
+													: "border-input bg-transparent text-muted-foreground hover:border-muted-foreground/60 hover:text-foreground",
+											)}
+										>
+											Rest of day
+										</button>
+									)}
+								</div>
+
+								{/* What Rest of day means, only while it is chosen. As permanent
+							    small print it explained a control most readers had not
+							    picked; the four numbers beside it need no gloss at all.
+
+							    On a height spring, the same one the Repeat and More options
+							    disclosures below ride: appearing and disappearing, this line
+							    is the only thing on the form that changes the dialog's
+							    height, and the popup is centred — so a snap moves every
+							    field under the pointer by half the line. It sits INSIDE the
+							    preset row's wrapper rather than beside it as another grid
+							    child, because a collapsed grid row still contributes the
+							    parent's gap: the caption would reach zero height and leave
+							    12px of its own behind, which is the jump again, smaller. */}
+								<AnimatePresence initial={false}>
+									{fillsDay && (
+										<motion.div
+											key="fills-day-hint"
+											initial={{ height: 0, opacity: 0 }}
+											animate={{ height: "auto", opacity: 1 }}
+											exit={{ height: 0, opacity: 0 }}
+											transition={springProductive}
+											className="overflow-hidden"
+										>
+											<p className="pt-3 text-sm text-muted-foreground">
+												Fills the rest of your working hours, minus everything
+												else logged that day.
+											</p>
+										</motion.div>
+									)}
+								</AnimatePresence>
+							</div>
 						</div>
 						{showCalendarPicker && calendarOpen && (
 							<div className="rounded-lg border border-line2">
@@ -1466,27 +1614,12 @@ export function AddBlockDialog({
 											className="overflow-hidden"
 										>
 											<div className="grid divide-y divide-line2 pt-1">
-												{!repeatEnabled && (
-													<div className="flex items-center justify-between gap-3 py-3">
-														<div className="min-w-0">
-															<span className="text-base font-medium">
-																Fill rest of day
-															</span>
-															<p className="text-sm text-muted-foreground">
-																{dayHasFill
-																	? "This day already has a fill block — edit or delete that one instead."
-																	: "Auto-expands to your working hours minus everything else logged that day."}
-															</p>
-														</div>
-														<Switch
-															checked={fillsDay}
-															disabled={dayHasFill}
-															onCheckedChange={(checked) =>
-																form.setValue("fillsDay", checked)
-															}
-														/>
-													</div>
-												)}
+												{/* Overtime and Repeat, and nothing else. "Fill rest
+												    of day" left this disclosure to become the fifth
+												    preset under the duration field, which is where
+												    somebody looking for it actually looks — behind a
+												    fold, the one control that sizes a block from the
+												    day's remainder was a feature nobody found. */}
 												{showRepeatSection && (
 													<div className="py-3">
 														<div className="flex items-center justify-between gap-3">
@@ -1640,7 +1773,7 @@ export function AddBlockDialog({
 									)}
 								</div>
 							)}
-							<DialogClose render={<Button type="button" variant="outline" />}>
+							<DialogClose render={<Button type="button" variant="ghost" />}>
 								Cancel
 							</DialogClose>
 							<Button type="submit" disabled={mutation.isPending}>

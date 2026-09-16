@@ -46,9 +46,18 @@ export function entryHeading(entry: EntryBlockRowEntry): string {
 export function EntryBlockRow({
 	entry,
 	timezone,
+	className,
 }: {
 	entry: EntryBlockRowEntry;
 	timezone: string;
+	/**
+	 * Layout only, and in practice only the row's inset. The row is built for a
+	 * full-bleed list and carries the island's own padding (`px-4 sm:px-8`), so
+	 * a list that is one COLUMN of a grid rather than the page's whole width —
+	 * the home page's — passes `px-0` and lines the rows up with the heading
+	 * over them. `cn` is tailwind-merge, so the pair really is replaced.
+	 */
+	className?: string;
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -212,7 +221,10 @@ export function EntryBlockRow({
 					: undefined
 			}
 			transition={springProductive}
-			className="group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted sm:flex-nowrap sm:px-8"
+			className={cn(
+				"group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted sm:flex-nowrap sm:px-8",
+				className,
+			)}
 		>
 			<span
 				className="mt-1.5 size-2 shrink-0 rounded-full"

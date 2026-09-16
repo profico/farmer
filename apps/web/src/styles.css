@@ -24,9 +24,9 @@
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 /* Preferences → Display: one attribute on <html> per setting, set before the
-   first paint by lib/display-prefs.ts. These rules are unlayered on purpose. A
-   layered override would lose to the unlayered `:root` that sets `--serif`,
-   whatever its selector. */
+   first paint by lib/display-prefs.ts, and lib/palette.ts for the colours.
+   These rules are unlayered on purpose. A layered override would lose to the
+   unlayered `:root` that sets `--serif`, whatever its selector. */
 
 /* "Boring font": the display face in the body face. The weight and tracking
    that go with it are beside `.h2`. */
@@ -82,6 +82,9 @@
    mark, the browser chrome (`theme-color`) and every accented control are one
    colour. The ground stays warm on purpose; the violet is the only cool thing
    in the palette, which is what makes it read as the accent.
+   This is the "Warm grey" colour choice; the other five (violet grey, teal,
+   graphite, cocoa, lilac) are overrides at the end of this section, switched by
+   `data-palette` (lib/palette.ts). They swap the neutrals and nothing else.
    The app's default, and what an unset `data-theme` falls back to.
    `color-scheme` is declared per palette rather than left to the browser: the
    calendar's category tints are light washes computed in JS
@@ -197,6 +200,124 @@
      than a dark one on paper. */
   --field-ink: #cbb98f;
   --field-strength: 0.085;
+}
+
+/* The other five colour choices (Preferences → Display → Colours, written to
+   `data-palette` by lib/palette.ts; no attribute is the default above). Each
+   swaps only the neutrals — ground, island, band, text and the hairlines mixed
+   from the text — in light and in dark. The accent and green/amber/red stay the
+   same in all of them, and every pair here passes the same checks as the
+   default: text and muted text 4.5:1 on island and band, placeholders 3:1 on
+   band. */
+:root[data-palette='violet']:not([data-theme='dark']) {
+  --ground: #f1f0f5;
+  --bg: #fcfcfd;
+  --bg2: #f3f2f7;
+  --fg: #111016;
+  --mut: #6b6876;
+  --faint: #8e8a99;
+  --line: rgba(17, 16, 22, 0.11);
+  --line2: rgba(17, 16, 22, 0.06);
+  --sel: rgba(17, 16, 22, 0.045);
+}
+:root[data-theme='dark'][data-palette='violet'] {
+  --ground: #0a090c;
+  --bg: #141317;
+  --bg2: #1d1c22;
+  --fg: #f1f0f4;
+  --mut: #9895a3;
+  --faint: #6d6a78;
+  --line: rgba(241, 240, 244, 0.12);
+  --line2: rgba(241, 240, 244, 0.06);
+  --sel: rgba(241, 240, 244, 0.05);
+}
+:root[data-palette='teal']:not([data-theme='dark']) {
+  --ground: #e2ecec;
+  --bg: #f8fbfb;
+  --bg2: #ecf3f3;
+  --fg: #131b1c;
+  --mut: #586767;
+  --faint: #808d8e;
+  --line: rgba(19, 27, 28, 0.11);
+  --line2: rgba(19, 27, 28, 0.06);
+  --sel: rgba(19, 27, 28, 0.045);
+}
+:root[data-theme='dark'][data-palette='teal'] {
+  --ground: #091112;
+  --bg: #121c1e;
+  --bg2: #1b282a;
+  --fg: #eef3ef;
+  --mut: #a1b2af;
+  --faint: #6b7f7d;
+  --line: rgba(238, 243, 239, 0.12);
+  --line2: rgba(238, 243, 239, 0.06);
+  --sel: rgba(238, 243, 239, 0.05);
+}
+:root[data-palette='graphite']:not([data-theme='dark']) {
+  --ground: #ece9e5;
+  --bg: #fbfaf9;
+  --bg2: #f3f1ee;
+  --fg: #1b1916;
+  --mut: #67625d;
+  --faint: #8e8985;
+  --line: rgba(27, 25, 22, 0.11);
+  --line2: rgba(27, 25, 22, 0.06);
+  --sel: rgba(27, 25, 22, 0.045);
+}
+:root[data-theme='dark'][data-palette='graphite'] {
+  --ground: #0f0e0d;
+  --bg: #191816;
+  --bg2: #24221f;
+  --fg: #efebe5;
+  --mut: #a8a198;
+  --faint: #79736c;
+  --line: rgba(239, 235, 229, 0.12);
+  --line2: rgba(239, 235, 229, 0.06);
+  --sel: rgba(239, 235, 229, 0.05);
+}
+:root[data-palette='cocoa']:not([data-theme='dark']) {
+  --ground: #f1e7e2;
+  --bg: #fdfaf8;
+  --bg2: #f7efec;
+  --fg: #201713;
+  --mut: #6f6058;
+  --faint: #958780;
+  --line: rgba(32, 23, 19, 0.11);
+  --line2: rgba(32, 23, 19, 0.06);
+  --sel: rgba(32, 23, 19, 0.045);
+}
+:root[data-theme='dark'][data-palette='cocoa'] {
+  --ground: #0f0b09;
+  --bg: #1a1411;
+  --bg2: #261d19;
+  --fg: #f7ece5;
+  --mut: #bca99f;
+  --faint: #8a776d;
+  --line: rgba(247, 236, 229, 0.12);
+  --line2: rgba(247, 236, 229, 0.06);
+  --sel: rgba(247, 236, 229, 0.05);
+}
+:root[data-palette='lilac']:not([data-theme='dark']) {
+  --ground: #ebe7f3;
+  --bg: #fbfafe;
+  --bg2: #f2f0f8;
+  --fg: #1b1721;
+  --mut: #666072;
+  --faint: #8e899a;
+  --line: rgba(27, 23, 33, 0.11);
+  --line2: rgba(27, 23, 33, 0.06);
+  --sel: rgba(27, 23, 33, 0.045);
+}
+:root[data-theme='dark'][data-palette='lilac'] {
+  --ground: #121017;
+  --bg: #1f1b27;
+  --bg2: #2c2635;
+  --fg: #f6f1fb;
+  --mut: #b9afc6;
+  --faint: #82798f;
+  --line: rgba(246, 241, 251, 0.12);
+  --line2: rgba(246, 241, 251, 0.06);
+  --sel: rgba(246, 241, 251, 0.05);
 }
 
 /* ------------------------------------------------- shadcn token bridge --- */
@@ -1365,6 +1486,35 @@ html {
     }
   }
 
+  /* The target band's meters: the fill grows once from nothing to what is
+     logged, and eases between values when an entry is saved. The rail's
+     "today" tick never moves; only what you logged does. `from { width: 0 }`
+     animates to the inline width the component sets, which is what lets one
+     keyframe serve every meter. */
+  .rail-fill {
+    animation: rail-grow 450ms var(--ease-out) both;
+    transition: width 450ms var(--ease-out);
+  }
+
+  @keyframes rail-grow {
+    from {
+      width: 0;
+    }
+  }
+
+  /* A bar rising from its baseline: the home page's week-by-day chart. The
+     caller sets `animation-delay` per bar, so the week rises left to right. */
+  .rise {
+    transform-origin: bottom;
+    animation: rise 600ms var(--ease-out) both;
+  }
+
+  @keyframes rise {
+    from {
+      transform: scaleY(0);
+    }
+  }
+
   .spin {
     animation: spin 900ms linear infinite;
   }
@@ -1452,6 +1602,13 @@ html {
   @media (prefers-reduced-motion: reduce) {
     .screen > *,
     .screen > :nth-child(n + 2) {
+      animation: none;
+    }
+    .rail-fill {
+      animation: none;
+      transition: none;
+    }
+    .rise {
       animation: none;
     }
     /* The assistant's entrances and the loader's shimmer are narration: with
