@@ -10,9 +10,10 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
+import { ColorWheel } from "#/components/color-wheel.tsx";
 import { FilingRulesSettings } from "#/components/filing-rules-settings.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
@@ -36,12 +37,20 @@ import {
 	SettingList,
 	SettingRow,
 } from "#/components/ui/page-header.tsx";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "#/components/ui/select.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { type DisplayPref, useDisplayPref } from "#/lib/display-prefs.ts";
-import { PALETTES, usePalette } from "#/lib/palette.ts";
-import { useTheme } from "#/lib/theme.ts";
+import { FACES, type FaceRole, useFace } from "#/lib/fonts.ts";
+import { supportsCustomPalette, usePalette } from "#/lib/palette.ts";
+import { SCALES, useScale } from "#/lib/scale.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { mySessionsQuery } from "#/queries/sessions.ts";
@@ -353,70 +362,211 @@ function DisplayPrefRow({
 }
 
 /**
- * How the app looks on this device. It is per device rather than per account,
- * like the light/dark switch, because it has to apply before the first paint
- * and only localStorage is there that early — see `lib/display-prefs.ts`.
+ * How the app looks on this device. Every setting below is per device rather
+ * than per account, like the light/dark switch, because each has to apply
+ * before the first paint and only localStorage is there that early — see
+ * `lib/display-prefs.ts`.
  */
-/**
- * Which greys the app is drawn in. Six choices, each shown as a strip of its
- * ground, island, band and text in the theme you are looking at now, so the
- * swatch matches what picking it will do to this screen.
- *
- * Native radios (visually hidden) rather than buttons: arrow keys move between
- * them and the group is announced as one choice, for free.
- */
-function ColoursRow() {
-	const { palette, setPalette } = usePalette();
-	const { theme } = useTheme();
+
+/** The shell a valued Display setting sits in: the same divider and rhythm
+ *  `SettingRow` draws, for a control too tall to sit beside its label. */
+function SettingBlock({
+	title,
+	description,
+	labelId,
+	children,
+}: {
+	title: string;
+	description: string;
+	labelId: string;
+	children: React.ReactNode;
+}) {
 	return (
 		<div className="border-t border-line2 py-4 first:border-t-0 first:pt-0 last:pb-0">
-			<div id="colours-label" className="text-base font-medium">
-				Colours
+			<div id={labelId} className="text-base font-medium">
+				{title}
 			</div>
 			<p className="mt-1 max-w-[68ch] text-sm leading-normal text-muted-foreground">
-				The greys Farmer is drawn in, in light and in dark. The purple and the
-				status colours stay the same in all of them.
+				{description}
 			</p>
-			<div
-				role="radiogroup"
-				aria-labelledby="colours-label"
-				className="mt-3 flex flex-wrap gap-1.5"
-			>
-				{PALETTES.map((option) => {
-					const id = `palette-${option.id}`;
-					return (
-						<label
-							key={option.id}
-							htmlFor={id}
-							className="flex cursor-pointer items-center gap-2.5 rounded-lg py-1.5 pr-3 pl-1.5 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted hover:text-foreground has-checked:bg-secondary has-checked:font-medium has-checked:text-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring/40"
-						>
-							<input
-								id={id}
-								type="radio"
-								name="palette"
-								value={option.id}
-								checked={palette === option.id}
-								onChange={() => setPalette(option.id)}
-								className="sr-only"
-							/>
-							<span
-								aria-hidden
-								className="flex overflow-hidden rounded-md ring-1 ring-line"
-							>
-								{option.swatch[theme].map((colour) => (
-									<span
-										key={colour}
-										className="h-6 w-3.5"
-										style={{ backgroundColor: colour }}
-									/>
-								))}
-							</span>
-							{option.label}
-						</label>
-					);
-				})}
-			</div>
+			<div className="mt-3">{children}</div>
 		</div>
+	);
+}
+
+/** A row of radios that read as one segmented control. Native radios rather
+ *  than buttons: arrow keys move between them and the group is announced as
+ *  one choice, for free. */
+function RadioChips<T extends string>({
+	name,
+	value,
+	options,
+	onChange,
+}: {
+	name: string;
+	value: T;
+	options: readonly { value: T; label: string }[];
+	onChange: (value: T) => void;
+}) {
+	return (
+		<div className="flex flex-wrap gap-1.5">
+			{options.map((option) => (
+				<label
+					key={option.value}
+					className="cursor-pointer rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted hover:text-foreground has-checked:bg-secondary has-checked:font-medium has-checked:text-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring/40"
+				>
+					<input
+						type="radio"
+						name={name}
+						value={option.value}
+						checked={value === option.value}
+						onChange={() => onChange(option.value)}
+						className="sr-only"
+					/>
+					{option.label}
+				</label>
+			))}
+		</div>
+	);
+}
+
+/** `oklch()` and `mod()` are the whole of the custom palette, so a browser
+ *  without them is offered Vanilla and told why, rather than a choice that
+ *  silently does nothing. Server-renders as supported, because the markup a
+ *  browser that CAN do it should get is the normal one. */
+const subscribeNothing = () => () => {};
+
+/**
+ * Which colour the app is drawn from. Vanilla is the palette the app has
+ * always had; Custom derives every neutral, the accent and the status colours
+ * from one seed — see `lib/palette.ts` and the custom palette in `styles.css`.
+ */
+function ColoursRow() {
+	const { mode, seed, setVanilla, setCustom } = usePalette();
+	const supported = useSyncExternalStore(
+		subscribeNothing,
+		supportsCustomPalette,
+		() => true,
+	);
+
+	return (
+		<SettingBlock
+			labelId="colours-label"
+			title="Colours"
+			description="Vanilla is the palette Farmer ships with. Custom draws the whole app from one colour you pick: the greys take its hue, the purple becomes it, and green, amber and red lean towards it without ceasing to read as green, amber and red."
+		>
+			{supported ? (
+				<div
+					role="radiogroup"
+					aria-labelledby="colours-label"
+					className="space-y-4"
+				>
+					<RadioChips
+						name="palette"
+						value={mode}
+						options={[
+							{ value: "vanilla", label: "Vanilla" },
+							{ value: "custom", label: "Custom" },
+						]}
+						onChange={(next) =>
+							next === "vanilla" ? setVanilla() : setCustom(seed)
+						}
+					/>
+					{mode === "custom" ? (
+						<ColorWheel seed={seed} onChange={setCustom} />
+					) : null}
+				</div>
+			) : (
+				<p className="text-sm text-muted-foreground">
+					This browser cannot draw a custom palette. Farmer stays on Vanilla
+					here.
+				</p>
+			)}
+		</SettingBlock>
+	);
+}
+
+/** One face selector. The prop is `face` and not `role`, because `role` on a
+ *  JSX element is the ARIA attribute as far as the linter is concerned. */
+function FaceSelect({ face, label }: { face: FaceRole; label: string }) {
+	const role = face;
+	const [id, setId] = useFace(role);
+	const items = FACES[role].map((face) => ({
+		value: face.id,
+		label: face.label,
+	}));
+	return (
+		<label className="flex flex-col gap-1.5">
+			<span className="text-sm text-muted-foreground">{label}</span>
+			<Select
+				value={id}
+				// Base UI's `onValueChange` is nullable because a Select may be
+				// clearable. This one is not — every role always has a face.
+				onValueChange={(value) => setId(value ?? id)}
+				items={items}
+			>
+				<SelectTrigger className="w-full bg-card sm:w-56">
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					{items.map((item) => (
+						<SelectItem key={item.value} value={item.value}>
+							{item.label}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
+		</label>
+	);
+}
+
+/**
+ * The three faces. Display disappears while "Boring font" is on, because that
+ * switch IS the answer to which display face to use — it points the display
+ * face at the body face — and offering a choice that the switch below
+ * overrules would be two controls for one thing.
+ */
+function FontRow() {
+	const [boring] = useDisplayPref("boringFont");
+	return (
+		<SettingBlock
+			labelId="font-label"
+			title="Font"
+			description="A face for text, one for page titles and large numbers, and one for durations and code. A face that is not already here is fetched the first time you pick it."
+		>
+			<div className="flex flex-wrap gap-4">
+				<FaceSelect face="body" label="Text" />
+				{boring ? null : <FaceSelect face="display" label="Titles" />}
+				<FaceSelect face="mono" label="Durations" />
+			</div>
+		</SettingBlock>
+	);
+}
+
+/**
+ * How large the app is drawn. It is the browser's own zoom, so it moves the
+ * layout as well as the type — see `lib/scale.ts`.
+ */
+function ScaleRow() {
+	const [scale, setScale] = useScale();
+	return (
+		<SettingBlock
+			labelId="scale-label"
+			title="Scale"
+			description="Draw everything larger or smaller, the way the browser's own zoom does. At a large scale a narrow window switches to the phone layout, which is the same thing zooming does."
+		>
+			<div role="radiogroup" aria-labelledby="scale-label">
+				<RadioChips
+					name="scale"
+					value={String(scale)}
+					options={SCALES.map((step) => ({
+						value: String(step),
+						label: `${step}%`,
+					}))}
+					onChange={(next) => setScale(Number(next))}
+				/>
+			</div>
+		</SettingBlock>
 	);
 }
 
@@ -428,10 +578,12 @@ function DisplaySection() {
 		>
 			<SettingList>
 				<ColoursRow />
+				<FontRow />
+				<ScaleRow />
 				<DisplayPrefRow
 					pref="boringFont"
 					title="Boring font"
-					description="Show page titles and large numbers in a plain font."
+					description="Set page titles and large numbers in the text face, rather than in their own."
 				/>
 				<DisplayPrefRow
 					pref="lessMotion"

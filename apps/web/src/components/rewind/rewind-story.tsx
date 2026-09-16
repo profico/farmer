@@ -473,7 +473,7 @@ export function RewindStory({
 
 	return (
 		<RewindFrame theme={theme} label={`Farmer Rewind ${rewind.year}`}>
-			<header className="relative z-30 mx-auto w-full max-w-3xl px-5 pt-[calc(env(safe-area-inset-top)+1rem)] sm:px-8">
+			<header className="relative z-30 mx-auto w-full max-w-3xl px-5 pt-[calc(var(--safe-t)+1rem)] sm:px-8">
 				<div className="flex gap-1.5">
 					{slides.map((s, i) => (
 						<div
@@ -539,7 +539,7 @@ export function RewindStory({
 					className="absolute inset-y-0 right-0 z-10 w-[70%] cursor-default outline-none"
 					{...zone(next)}
 				/>
-				<div className="pointer-events-none relative z-20 mx-auto flex h-full w-full max-w-3xl flex-col justify-center px-5 pb-[calc(env(safe-area-inset-bottom)+2.5rem)] sm:px-8">
+				<div className="pointer-events-none relative z-20 mx-auto flex h-full w-full max-w-3xl flex-col justify-center px-5 pb-[calc(var(--safe-b)+2.5rem)] sm:px-8">
 					<AnimatePresence mode="wait">
 						<motion.div
 							key={slide?.key}

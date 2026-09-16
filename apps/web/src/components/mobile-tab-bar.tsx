@@ -122,7 +122,7 @@ export function MobileTabBar({
 		<>
 			<nav
 				data-slot="mobile-tab-bar"
-				className="fixed inset-x-0 bottom-0 z-40 flex justify-center pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
+				className="fixed inset-x-0 bottom-0 z-40 flex justify-center pb-[calc(0.75rem+var(--safe-b))] md:hidden"
 			>
 				{/* One lift, the design's only one. The bar floats over the page, so it is
 				    the single element in the app entitled to a shadow. */}
@@ -193,7 +193,7 @@ export function MobileTabBar({
 			</nav>
 
 			<Drawer open={moreOpen} onOpenChange={setMoreOpen}>
-				<DrawerContent className="max-h-[80svh] pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+				<DrawerContent className="max-h-[calc(80*var(--svh))] pb-[calc(0.75rem+var(--safe-b))]">
 					{/* Left-aligned on the rows' own gutter — a centred label over a
 					    left-aligned list is the one thing on the sheet that doesn't
 					    line up with anything. */}

@@ -28,10 +28,42 @@
    These rules are unlayered on purpose. A layered override would lose to the
    unlayered `:root` that sets `--serif`, whatever its selector. */
 
-/* "Boring font": the display face in the body face. The weight and tracking
-   that go with it are beside `.h2`. */
+/* "Boring font": the display face in the body face, whichever body face that
+   is (Preferences → Display → Font). The two corrections are the pair a sans
+   needs to hold a page title — the display rules below are set for a serif
+   drawn narrow and dark at 400, and a sans at those settings reads light and
+   loose. `lib/fonts.ts` leaves the display role alone while this is on, since
+   an inline property would beat this rule whatever its selector. */
 :root[data-font='sans'] {
-  --serif: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --serif: var(--sans);
+  --display-weight: 500;
+  --display-tracking: -0.01em;
+}
+
+/* "Scale": the browser's own zoom, in one property. `lib/scale.ts` explains
+   what it scales and what it gets wrong. */
+:root {
+  zoom: var(--ui-scale, 1);
+
+  /* The corrections, and the only lengths in the app that need one. A viewport
+     unit and an `env()` inset are both resolved against the UNZOOMED viewport
+     and then scaled by `zoom`, so at 150% a `100svh` panel is half a screen too
+     tall and a safe-area inset is half again too deep. These are one of each,
+     already divided; a call site multiplies.
+
+         min-height: calc(100 * var(--svh));
+         padding-bottom: calc(0.75rem + var(--safe-b));
+
+     ANY new `svh`/`dvh`/`vw` length or `env(safe-area-*)` inset has to come
+     from here, or it overflows the moment somebody scales the app. Grep for
+     `var(--svh` to see the whole set — there is no way to catch a missing one
+     at build time. Everything else in the app is already in px or rem, which
+     `zoom` scales correctly on its own. */
+  --svh: calc(1svh / var(--ui-scale, 1));
+  --dvh: calc(1dvh / var(--ui-scale, 1));
+  --vw: calc(1vw / var(--ui-scale, 1));
+  --safe-t: calc(env(safe-area-inset-top) / var(--ui-scale, 1));
+  --safe-b: calc(env(safe-area-inset-bottom) / var(--ui-scale, 1));
 }
 
 /* "Less movement": nothing on screen MOVES any more. It is not "nothing on
@@ -178,9 +210,19 @@
   --shadow-pop:
     0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px -10px rgba(0, 0, 0, 0.22);
 
-  /* The display face, as a variable so it is swappable in one place. Every
-     serif rule below reads this rather than naming the family. */
+  /* The three faces, as variables so each is swappable in one place. Every
+     rule below reads these rather than naming a family, and `@theme inline`
+     points Tailwind's `--font-sans` / `--font-display` / `--font-mono` at them
+     so a utility class follows too. Preferences → Display → Font writes them
+     per device; `lib/fonts.ts` holds the catalogue.
+     `--display-weight` / `--display-tracking` / `--mono-tracking` are the
+     corrections a chosen face may need. They are deliberately NOT declared
+     here: every rule reads them with its own value in the `var()` fallback, so
+     an unwritten correction is the design's own setting and there is no second
+     place recording what that setting was. */
+  --sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
   --serif: 'Instrument Serif', ui-serif, Georgia, serif;
+  --mono: 'Geist Mono', ui-monospace, monospace;
 
   /* Motion. Three speeds, because the app only ever does three things: tint a
      surface under the pointer, move a control between two states, and narrate
@@ -269,122 +311,143 @@
   --field-strength: 0.085;
 }
 
-/* The other five colour choices (Preferences → Display → Colours, written to
-   `data-palette` by lib/palette.ts; no attribute is the default above). Each
-   swaps only the neutrals — ground, island, band, text and the hairlines mixed
-   from the text — in light and in dark. The accent and green/amber/red stay the
-   same in all of them, and every pair here passes the same checks as the
-   default: text and muted text 4.5:1 on island and band, placeholders 3:1 on
-   band. */
-:root[data-palette='violet']:not([data-theme='dark']) {
-  --ground: #f1f0f5;
-  --bg: #fcfcfd;
-  --bg2: #f3f2f7;
-  --fg: #111016;
-  --mut: #6b6876;
-  --faint: #8e8a99;
-  --line: rgba(17, 16, 22, 0.11);
-  --line2: rgba(17, 16, 22, 0.06);
-  --sel: rgba(17, 16, 22, 0.045);
-}
-:root[data-theme='dark'][data-palette='violet'] {
-  --ground: #0a090c;
-  --bg: #141317;
-  --bg2: #1d1c22;
-  --fg: #f1f0f4;
-  --mut: #9895a3;
-  --faint: #6d6a78;
-  --line: rgba(241, 240, 244, 0.12);
-  --line2: rgba(241, 240, 244, 0.06);
-  --sel: rgba(241, 240, 244, 0.05);
-}
-:root[data-palette='teal']:not([data-theme='dark']) {
-  --ground: #e2ecec;
-  --bg: #f8fbfb;
-  --bg2: #ecf3f3;
-  --fg: #131b1c;
-  --mut: #586767;
-  --faint: #808d8e;
-  --line: rgba(19, 27, 28, 0.11);
-  --line2: rgba(19, 27, 28, 0.06);
-  --sel: rgba(19, 27, 28, 0.045);
-}
-:root[data-theme='dark'][data-palette='teal'] {
-  --ground: #091112;
-  --bg: #121c1e;
-  --bg2: #1b282a;
-  --fg: #eef3ef;
-  --mut: #a1b2af;
-  --faint: #6b7f7d;
-  --line: rgba(238, 243, 239, 0.12);
-  --line2: rgba(238, 243, 239, 0.06);
-  --sel: rgba(238, 243, 239, 0.05);
-}
-:root[data-palette='graphite']:not([data-theme='dark']) {
-  --ground: #ece9e5;
-  --bg: #fbfaf9;
-  --bg2: #f3f1ee;
-  --fg: #1b1916;
-  --mut: #67625d;
-  --faint: #8e8985;
-  --line: rgba(27, 25, 22, 0.11);
-  --line2: rgba(27, 25, 22, 0.06);
-  --sel: rgba(27, 25, 22, 0.045);
-}
-:root[data-theme='dark'][data-palette='graphite'] {
-  --ground: #0f0e0d;
-  --bg: #191816;
-  --bg2: #24221f;
-  --fg: #efebe5;
-  --mut: #a8a198;
-  --faint: #79736c;
-  --line: rgba(239, 235, 229, 0.12);
-  --line2: rgba(239, 235, 229, 0.06);
-  --sel: rgba(239, 235, 229, 0.05);
-}
-:root[data-palette='cocoa']:not([data-theme='dark']) {
-  --ground: #f1e7e2;
-  --bg: #fdfaf8;
-  --bg2: #f7efec;
-  --fg: #201713;
-  --mut: #6f6058;
-  --faint: #958780;
-  --line: rgba(32, 23, 19, 0.11);
-  --line2: rgba(32, 23, 19, 0.06);
-  --sel: rgba(32, 23, 19, 0.045);
-}
-:root[data-theme='dark'][data-palette='cocoa'] {
-  --ground: #0f0b09;
-  --bg: #1a1411;
-  --bg2: #261d19;
-  --fg: #f7ece5;
-  --mut: #bca99f;
-  --faint: #8a776d;
-  --line: rgba(247, 236, 229, 0.12);
-  --line2: rgba(247, 236, 229, 0.06);
-  --sel: rgba(247, 236, 229, 0.05);
-}
-:root[data-palette='lilac']:not([data-theme='dark']) {
-  --ground: #ebe7f3;
-  --bg: #fbfafe;
-  --bg2: #f2f0f8;
-  --fg: #1b1721;
-  --mut: #666072;
-  --faint: #8e899a;
-  --line: rgba(27, 23, 33, 0.11);
-  --line2: rgba(27, 23, 33, 0.06);
-  --sel: rgba(27, 23, 33, 0.045);
-}
-:root[data-theme='dark'][data-palette='lilac'] {
-  --ground: #121017;
-  --bg: #1f1b27;
-  --bg2: #2c2635;
-  --fg: #f6f1fb;
-  --mut: #b9afc6;
-  --faint: #82798f;
-  --line: rgba(246, 241, 251, 0.12);
-  --line2: rgba(246, 241, 251, 0.06);
-  --sel: rgba(246, 241, 251, 0.05);
+/* ------------------------------------------------- the custom palette --- */
+
+/* Preferences → Display → Colours, second choice: one seed colour, and every
+   token below derived from it. `lib/palette.ts` writes the two numbers —
+   `--seed-h`, a hue in degrees, and `--seed-c`, a chroma — onto <html> before
+   the first paint, and sets `data-palette="custom"`. No attribute is Vanilla,
+   which is the block above, untouched.
+   This is Material You's idea in CSS: one source colour, a tonal scheme
+   derived from it, and the colours that carry meaning rotated TOWARDS it
+   rather than replaced by it.
+
+   THE LIGHTNESS OF EVERY ROLE IS FIXED, and only hue and chroma move. OKLCH
+   lightness is perceptual, so text contrast stays near-constant whatever hue
+   somebody picks — that is the whole reason a generated palette can be allowed
+   near a timesheet. Every L below is the measured lightness of the vanilla
+   token it replaces, and `scripts/check-palette-contrast.ts` checks both that
+   claim and the contrast it buys, across the whole wheel.
+
+   IT IS A SIBLING OF VANILLA, NOT A SUPERSET OF IT. At seed (293, 0.168) — the
+   logo's own #6f4ebe — the accent, green, amber, red and the three chart earths
+   come out exactly as vanilla draws them, and the greys do not: vanilla pairs a
+   warm ground with a cool accent on purpose (see the block above), and a
+   palette drawn from ONE seed cannot hold both. So Custom at the default seed
+   is the app in violet-tinted greys. Vanilla stays its own choice, which is
+   what that choice is for.
+
+   EVERY NEUTRAL'S CHROMA IS A FRACTION OF THE SEED'S, and the fractions are
+   vanilla's own ratios: the ground carries 5.9% of the accent's chroma, the
+   island paper 2.4%, muted text 9.2%. A grey seed therefore gives grey greys
+   and a vivid one gives tinted greys, with no second decision to make.
+
+   THE HAIRLINES ARE MIXED FROM THE TEXT, at the same percentages the vanilla
+   block writes as rgba, so they follow the hue without being listed again.
+
+   Guarded by `@supports` AND by the same two tests in the inline script.
+   `oklch()` and `mod()` are the whole of this block, and half a palette is not
+   a degraded palette — a `var(--bg)` holding an unparsable value is invalid at
+   computed-value time, which paints the app transparent. Both gates fail to
+   vanilla instead. */
+@supports (color: oklch(0.5 0.1 200)) and (top: mod(1px, 1px)) {
+  :root[data-palette='custom']:not([data-theme='dark']) {
+    --ground: oklch(0.9435 calc(var(--seed-c) * 0.059) var(--seed-h));
+    --bg: oklch(0.982 calc(var(--seed-c) * 0.024) var(--seed-h));
+    --bg2: oklch(0.9613 calc(var(--seed-c) * 0.042) var(--seed-h));
+    --fg: oklch(0.2178 calc(var(--seed-c) * 0.035) var(--seed-h));
+    --mut: oklch(0.5582 calc(var(--seed-c) * 0.092) var(--seed-h));
+    --faint: oklch(0.7147 calc(var(--seed-c) * 0.113) var(--seed-h));
+
+    /* The seed itself, given a floor and a ceiling: a near-grey pick still has
+       to produce something a button can be painted with, and past the ceiling
+       sRGB has nothing left to give at this lightness.
+
+       The LIGHTNESS is the one place the "fixed L" rule bends, and it has to.
+       OKLCH lightness is perceptual; WCAG's contrast formula is not. A cyan at
+       vanilla's accent lightness carries far more relative luminance than the
+       violet does, and white-on-button falls to 4.16 — under the 4.5 a button
+       label needs. The curve below is the ceiling that keeps every hue at 4.5,
+       fitted to a cosine: highest around red, lowest around hue 190, which is
+       the shape of the luminance error itself. `min()` with vanilla's own
+       0.5174 is what keeps the flat part flat, so seed 293 still reproduces
+       the shipped accent exactly and only the hues that must go darker do.
+       `scripts/check-palette-contrast.ts` walks the wheel and checks it. The
+       dark accent needs no curve: its worst hue is 4.80 already. */
+    --acc: oklch(
+      min(0.5174, 0.536 + 0.045 * cos((var(--seed-h) - 4) * 1deg))
+        clamp(0.06, var(--seed-c), 0.2) var(--seed-h)
+    );
+
+    --line: color-mix(in srgb, var(--fg) 11%, transparent);
+    --line2: color-mix(in srgb, var(--fg) 5.5%, transparent);
+    --sel: color-mix(in srgb, var(--fg) 4.5%, transparent);
+    --lift: 0 8px 22px color-mix(in srgb, var(--fg) 14%, transparent);
+
+    --field-ink: oklch(0.32 calc(var(--seed-c) * 0.12) var(--seed-h));
+  }
+
+  /* The dark half. Same rules, vanilla's dark lightnesses and ratios. The
+     accent carries 89% of the seed's chroma, which is the step vanilla's own
+     dark accent takes down from its light one. */
+  :root[data-theme='dark'][data-palette='custom'] {
+    --ground: oklch(0.1591 calc(var(--seed-c) * 0.043) var(--seed-h));
+    --bg: oklch(0.2127 calc(var(--seed-c) * 0.064) var(--seed-h));
+    --bg2: oklch(0.25 calc(var(--seed-c) * 0.109) var(--seed-h));
+    --fg: oklch(0.9322 calc(var(--seed-c) * 0.096) var(--seed-h));
+    --mut: oklch(0.6293 calc(var(--seed-c) * 0.13) var(--seed-h));
+    --faint: oklch(0.5064 calc(var(--seed-c) * 0.128) var(--seed-h));
+
+    --acc: oklch(0.6407 clamp(0.05, calc(var(--seed-c) * 0.89), 0.18)
+        var(--seed-h));
+
+    --line: color-mix(in srgb, var(--fg) 13%, transparent);
+    --line2: color-mix(in srgb, var(--fg) 6%, transparent);
+    --sel: color-mix(in srgb, var(--fg) 5%, transparent);
+
+    --field-ink: oklch(0.7905 calc(var(--seed-c) * 0.4) var(--seed-h));
+  }
+
+  /* Green, amber and red, and the three chart earths beside the accent, are
+     ROTATED with the accent rather than replaced by it — Material You calls
+     this harmonizing. Each keeps its own lightness and chroma and moves at most
+     15 degrees, so a teal seed tilts the whole palette without a "behind"
+     verdict arriving in teal.
+
+     ONE rotation, shared by all six, and it is measured from VANILLA's OWN
+     hue rather than from each token's. Two things follow, and both are the
+     reason it is written this way. The six move together, so the gaps that
+     tell one chart series from the next are preserved exactly rather than
+     approximately. And the rotation is zero at seed 293, so Custom at the
+     logo's own colour reproduces vanilla down to the last token — picking
+     Custom and not touching the wheel changes nothing on screen, which is what
+     makes the wheel safe to open.
+
+     The arithmetic is the shortest signed arc from vanilla's hue to the seed's,
+     clamped: `mod(d + 180, 360) - 180` puts the difference in [-180, 180)
+     whichever way round the wheel it lies, and `clamp` takes the first 15
+     degrees of it. */
+  :root[data-palette='custom'] {
+    --harmony: clamp(-15, mod(var(--seed-h) - 293 + 180, 360) - 180, 15);
+  }
+
+  :root[data-palette='custom']:not([data-theme='dark']) {
+    --warn: oklch(0.5426 0.0983 calc(84.4 + var(--harmony)));
+    --ok: oklch(0.5072 0.0664 calc(148.6 + var(--harmony)));
+    --bad: oklch(0.5348 0.1479 calc(25 + var(--harmony)));
+    --chart-2: oklch(0.5741 0.0394 calc(143.8 + var(--harmony)));
+    --chart-4: oklch(0.5371 0.0462 calc(39.2 + var(--harmony)));
+    --chart-5: oklch(0.5288 0.0376 calc(229 + var(--harmony)));
+  }
+
+  :root[data-theme='dark'][data-palette='custom'] {
+    --warn: oklch(0.7217 0.0973 calc(86.3 + var(--harmony)));
+    --ok: oklch(0.6923 0.0655 calc(150.3 + var(--harmony)));
+    --bad: oklch(0.7076 0.1016 calc(23.7 + var(--harmony)));
+    --chart-2: oklch(0.7045 0.0488 calc(142.1 + var(--harmony)));
+    --chart-4: oklch(0.6732 0.0422 calc(39.8 + var(--harmony)));
+    --chart-5: oklch(0.6683 0.0394 calc(227.9 + var(--harmony)));
+  }
 }
 
 /* ------------------------------------------------- shadcn token bridge --- */
@@ -568,14 +631,19 @@
 
 @media (max-width: 767px) {
   :root {
-    --mobile-nav-h: calc(5rem + env(safe-area-inset-bottom));
+    --mobile-nav-h: calc(5rem + var(--safe-b));
   }
 }
 
 @theme inline {
-  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  /* All three name a variable rather than a family, and the `inline` above is
+     what makes that work: it inlines the REFERENCE into every generated
+     utility, so `font-sans` compiles to `font-family: var(--sans)` and follows
+     a font chosen at runtime. Written as a family name, Tailwind would bake it
+     into the utility and no choice would ever reach a `font-sans` class. */
+  --font-sans: var(--sans);
   --font-display: var(--serif);
-  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-mono: var(--mono);
 
   /* Tailwind's size ramp, pinned to the design's six steps. Deliberately
      overrides several Tailwind defaults — a product UI this dense needs its
@@ -804,8 +872,8 @@ html {
   .font-display,
   .serif {
     font-family: var(--serif);
-    font-weight: 400;
-    letter-spacing: 0.01em;
+    font-weight: var(--display-weight, 400);
+    letter-spacing: var(--display-tracking, 0.01em);
   }
 
   /* Tabular figures for any body-font numbers in tables. */
@@ -816,7 +884,9 @@ html {
   .mono {
     font-family: var(--font-mono);
     font-weight: 400;
-    letter-spacing: -0.03em;
+    /* Geist Mono's. A wider mono at this setting runs its figures together, so
+       each face in the catalogue carries its own. */
+    letter-spacing: var(--mono-tracking, -0.03em);
     font-variant-numeric: tabular-nums;
   }
 
@@ -858,29 +928,20 @@ html {
 
   .h1 {
     font-family: var(--serif);
-    font-weight: 400;
+    font-weight: var(--display-weight, 400);
     font-size: 32px;
     line-height: 1.1;
-    letter-spacing: 0.01em;
+    letter-spacing: var(--display-tracking, 0.01em);
     margin: 0;
   }
 
   .h2 {
     font-family: var(--serif);
-    font-weight: 400;
+    font-weight: var(--display-weight, 400);
     font-size: 23px;
     line-height: 1.2;
-    letter-spacing: 0.01em;
+    letter-spacing: var(--display-tracking, 0.01em);
     margin: 0;
-  }
-
-  /* The display rules above are set for Instrument Serif, which is drawn
-     narrow and dark at 400. Instrument Sans at the same settings reads light
-     and loose, so under "Boring font" it takes a step of weight and gives the
-     tracking back. */
-  :root[data-font='sans'] :is(.font-display, .serif, .h1, .h2) {
-    font-weight: 500;
-    letter-spacing: -0.01em;
   }
 
   .lede {
@@ -1115,7 +1176,7 @@ html {
     /* Reserves room for the fixed mobile tab bar so the last row of any island
        never ends up underneath it. */
     padding-bottom: calc(var(--frame-pad) + var(--mobile-nav-h));
-    min-height: 100svh;
+    min-height: calc(100 * var(--svh));
     align-items: stretch;
   }
 
@@ -1132,7 +1193,7 @@ html {
      row under the URL bar. */
   @media (min-width: 768px) {
     .app-frame {
-      height: 100svh;
+      height: calc(100 * var(--svh));
       min-height: 0;
       overflow: hidden;
     }

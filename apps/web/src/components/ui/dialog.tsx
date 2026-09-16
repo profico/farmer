@@ -131,7 +131,7 @@ function DialogContent({
 						// the close button (absolute against the popup) and the footer
 						// stay put while a tall form scrolls under them.
 						className={cn(
-							"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-base text-popover-foreground outline-none sm:max-w-lg",
+							"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100*var(--dvh)-2rem)] w-full max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-base text-popover-foreground outline-none sm:max-w-lg",
 							className,
 						)}
 						render={

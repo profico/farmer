@@ -68,7 +68,7 @@ function NoAccessPage() {
 	};
 
 	return (
-		<div className="flex min-h-svh items-center justify-center p-4">
+		<div className="flex min-h-[calc(100*var(--svh))] items-center justify-center p-4">
 			<Card className="w-full max-w-sm">
 				<CardHeader>
 					<CardTitle className="h2">

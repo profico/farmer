@@ -46,7 +46,7 @@
 	font-family: "Instrument Sans", system-ui, sans-serif;
 	line-height: 1.5;
 	overflow-x: hidden;
-	min-height: 100vh;
+	min-height: calc(100 * var(--svh));
 	user-select: none;
 	cursor: default;
 }

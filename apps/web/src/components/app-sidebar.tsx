@@ -354,7 +354,7 @@ export function AppSidebar({
 				// attribute on their common parent is one style recalculation and
 				// therefore one start time for the two transitions.
 				data-panel={panel ?? undefined}
-				className="island sticky top-(--frame-pad) hidden h-[calc(100svh-2*var(--frame-pad))] shrink-0 self-stretch text-sidebar-foreground md:flex"
+				className="island sticky top-(--frame-pad) hidden h-[calc(100*var(--svh)-2*var(--frame-pad))] shrink-0 self-stretch text-sidebar-foreground md:flex"
 			>
 				{/* ── the nav column ───────────────────────────────────────────── */}
 				<nav

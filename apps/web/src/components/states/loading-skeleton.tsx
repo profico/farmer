@@ -143,7 +143,7 @@ function NavLoadingSkeleton() {
 	return (
 		// The geometry is `AppSidebar`'s own: 40px targets and a footer row at
 		// `--footer-h`, so the hairline lands where the real one does.
-		<div className="app-nav island sticky top-(--frame-pad) hidden h-[calc(100svh-2*var(--frame-pad))] shrink-0 flex-col self-stretch overflow-hidden md:flex">
+		<div className="app-nav island sticky top-(--frame-pad) hidden h-[calc(100*var(--svh)-2*var(--frame-pad))] shrink-0 flex-col self-stretch overflow-hidden md:flex">
 			<div className="flex min-h-0 flex-1 flex-col gap-1 px-2.5 pt-2.5">
 				{/* The workspace mark and its name, where the switcher sits. */}
 				<div className="flex h-9 shrink-0 items-center gap-2.5 px-2">

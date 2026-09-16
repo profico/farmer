@@ -42,7 +42,7 @@ export function AuthSplitPanel({
 	children: ReactNode;
 }) {
 	return (
-		<div className="flex min-h-svh items-center justify-center p-4 sm:p-8">
+		<div className="flex min-h-[calc(100*var(--svh))] items-center justify-center p-4 sm:p-8">
 			{/* A hairline, not a shadow. The card is not floating over anything. */}
 			<div className="flex w-full max-w-[900px] overflow-hidden rounded-2xl border">
 				<div

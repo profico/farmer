@@ -43,7 +43,7 @@ function DrawerContent({
 				// Fades with the drag, so pulling the sheet halfway down shows the page
 				// halfway back. `absolute` on iOS covers the area behind a collapsed
 				// toolbar, which `fixed` leaves uncovered.
-				className="fixed inset-0 z-50 min-h-dvh bg-black/25 opacity-[calc(1-var(--drawer-swipe-progress))] transition-opacity duration-300 ease-(--ease-drawer) supports-backdrop-filter:backdrop-blur-xs supports-[-webkit-touch-callout:none]:absolute data-ending-style:opacity-0 data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:opacity-0 data-swiping:duration-0"
+				className="fixed inset-0 z-50 min-h-[calc(100*var(--dvh))] bg-black/25 opacity-[calc(1-var(--drawer-swipe-progress))] transition-opacity duration-300 ease-(--ease-drawer) supports-backdrop-filter:backdrop-blur-xs supports-[-webkit-touch-callout:none]:absolute data-ending-style:opacity-0 data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:opacity-0 data-swiping:duration-0"
 			/>
 			<DrawerPrimitive.Viewport
 				data-slot="drawer-viewport"

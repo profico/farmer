@@ -372,7 +372,7 @@ export function MobileChatBar({ orgSlug }: { orgSlug: string }) {
 			)}
 
 			<Drawer open={open} onOpenChange={setOpen}>
-				<DrawerContent className="max-h-[80svh] pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+				<DrawerContent className="max-h-[calc(80*var(--svh))] pb-[calc(0.75rem+var(--safe-b))]">
 					<DrawerHeader className="shrink-0 px-5 pt-2.5 pb-0">
 						<DrawerTitle>Chats</DrawerTitle>
 						<DrawerDescription className="sr-only">

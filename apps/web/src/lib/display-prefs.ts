@@ -1,8 +1,19 @@
 import { MotionGlobalConfig } from "motion/react";
 import { useCallback, useSyncExternalStore } from "react";
 
+import { applyFaces, fontsInitScript } from "./fonts.ts";
+import { paletteInitScript } from "./palette.ts";
+import { scaleInitScript } from "./scale.ts";
+
 // Preferences → Display: switches that change how the app looks on this device.
 // Every one is off by default.
+//
+// The section also holds three settings that carry a VALUE rather than a
+// switch — the colours, the three faces and the scale. Each owns its own
+// module, because each has real work to do (a colour scheme, a font catalogue,
+// a list of steps), and each exports one before-paint script. This module
+// concatenates the four into `displayInitScript`, so `__root.tsx` names one
+// thing and the whole of Preferences → Display arrives before the first paint.
 //
 // Built the way `lib/theme.ts` builds light/dark, for the same reasons. The
 // choice lives in localStorage, so it belongs to the device. It has to be on
@@ -43,8 +54,14 @@ type Pref = (typeof PREFS)[DisplayPref];
 const CHANGE_EVENT = "farmer:display-prefs";
 
 /** Runs in <head> before anything paints, beside `themeInitScript` — see
- *  `__root.tsx`. */
-export const displayInitScript = `(function(){try{var p=${JSON.stringify(Object.values(PREFS))};for(var i=0;i<p.length;i++){if(localStorage.getItem(p[i].key)==="1")document.documentElement.setAttribute(p[i].attribute,p[i].value);}}catch(e){}})();`;
+ *  `__root.tsx`. The switches first: the font script reads "Boring font" back
+ *  out of storage, and the ORDER is what keeps `data-font` on <html> by the
+ *  time anything else asks. */
+export const displayInitScript =
+	`(function(){try{var p=${JSON.stringify(Object.values(PREFS))};for(var i=0;i<p.length;i++){if(localStorage.getItem(p[i].key)==="1")document.documentElement.setAttribute(p[i].attribute,p[i].value);}}catch(e){}})();` +
+	paletteInitScript +
+	fontsInitScript +
+	scaleInitScript;
 
 const read = (pref: Pref) =>
 	document.documentElement.getAttribute(pref.attribute) === pref.value;
@@ -63,6 +80,11 @@ const apply = (pref: Pref, on: boolean) => {
 	if (on) document.documentElement.setAttribute(pref.attribute, pref.value);
 	else document.documentElement.removeAttribute(pref.attribute);
 	syncMotion();
+	// "Boring font" decides whether the chosen display face is written to <html>
+	// at all: an inline property beats the `:root[data-font='sans']` rule that
+	// the switch works through, whatever that rule's selector. So moving the
+	// switch has to take the display face off <html>, or put it back.
+	applyFaces();
 };
 
 if (!import.meta.env.SSR) {

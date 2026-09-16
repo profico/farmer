@@ -21,7 +21,6 @@ import { authClient } from "../lib/auth-client";
 import { logConsoleGreeting } from "../lib/console-greeting";
 import { displayInitScript } from "../lib/display-prefs";
 import { navInitScript } from "../lib/nav-collapse";
-import { paletteInitScript } from "../lib/palette";
 import { themeInitScript } from "../lib/theme";
 
 import appCss from "../styles.css?url";
@@ -152,29 +151,28 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 	shellComponent: RootDocument,
 });
 
-/** Light/dark, the Display preferences, the colour choice and PostHog's
- *  credentials, in one inline script before paint.
+/** Light/dark, every Preferences → Display setting and PostHog's credentials,
+ *  in one inline script before paint. `displayInitScript` carries the colour
+ *  seed, the three faces and the scale with the switches — see
+ *  `lib/display-prefs.ts`.
  *
  *  Built per render rather than once at module scope, because the PostHog half
  *  is read from the environment on the server and a module-scope constant in a
  *  route file is evaluated in the browser too. */
 const headInitScript = () =>
-	themeInitScript +
-	displayInitScript +
-	paletteInitScript +
-	navInitScript +
-	posthogInitScript();
+	themeInitScript + displayInitScript + navInitScript + posthogInitScript();
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	useEffect(logConsoleGreeting, []);
 
 	// `suppressHydrationWarning`: the script below writes `data-theme` (and the
 	// Display preferences' `data-font`, `data-motion`, `data-density` and
-	// `data-palette`, and the nav column's `data-nav`) onto
-	// <html> before React ever sees it, and
-	// the server has no way to render the same values — that mismatch is the
-	// point of the script, not a bug, and React otherwise logs it on every load.
-	// It suppresses one level only, which is exactly these attributes.
+	// `data-palette`, the nav column's `data-nav`, and the inline properties
+	// carrying the colour seed, the three faces and the scale) onto <html>
+	// before React ever sees it, and the server has no way to render the same
+	// values — that mismatch is the point of the script, not a bug, and React
+	// otherwise logs it on every load. It suppresses one level only, which is
+	// exactly these attributes.
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<head>

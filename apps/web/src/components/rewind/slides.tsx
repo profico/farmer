@@ -172,7 +172,7 @@ function Big({ children }: { children: ReactNode }) {
 		>
 			<span
 				style={{
-					fontSize: "clamp(5rem, 22vw, 13rem)",
+					fontSize: "clamp(5rem, calc(22 * var(--vw)), 13rem)",
 					letterSpacing: "-0.06em",
 				}}
 			>
@@ -225,7 +225,10 @@ export function IntroSlide({
 			<Rise>
 				<span
 					className="serif block leading-[0.8]"
-					style={{ fontSize: "clamp(7rem, 34vw, 19rem)", color: theme.accent }}
+					style={{
+						fontSize: "clamp(7rem, calc(34 * var(--vw)), 19rem)",
+						color: theme.accent,
+					}}
 				>
 					{rewind.year}
 				</span>
@@ -632,7 +635,7 @@ export function GithubSlide({
 						<div
 							className="mono leading-none"
 							style={{
-								fontSize: "clamp(3rem, 12vw, 6rem)",
+								fontSize: "clamp(3rem, calc(12 * var(--vw)), 6rem)",
 								color: theme.accent,
 							}}
 						>
@@ -731,7 +734,7 @@ export function PersonaSlide({
 				<span
 					className="serif block leading-[0.85] text-balance"
 					style={{
-						fontSize: "clamp(4.5rem, 17vw, 11rem)",
+						fontSize: "clamp(4.5rem, calc(17 * var(--vw)), 11rem)",
 						color: theme.accent,
 					}}
 				>
