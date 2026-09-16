@@ -1,3 +1,4 @@
+import { matchesSearch } from "@farmer/core/lib/search";
 import {
 	MAX_SYSTEM_PROMPT_CHARS,
 	type UpdateIntegrationSettingsInput,
@@ -18,7 +19,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
@@ -35,6 +36,15 @@ import {
 } from "#/components/ui/alert-dialog.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import {
+	Combobox,
+	ComboboxContent,
+	ComboboxEmpty,
+	ComboboxItem,
+	ComboboxList,
+	ComboboxTrigger,
+	ComboboxValue,
+} from "#/components/ui/combobox.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import {
 	Page,
@@ -43,13 +53,6 @@ import {
 	SettingList,
 	SettingRow,
 } from "#/components/ui/page-header.tsx";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
@@ -671,6 +674,96 @@ function HouseRulesRow({ stored }: { stored: string }) {
 	);
 }
 
+type ModelItem = { value: string; label: string };
+
+/**
+ * The default-model picker.
+ *
+ * OpenRouter answers with hundreds of tool-capable models, so this is the same
+ * searching Combobox the project and task pickers use rather than a Select
+ * nobody can scan. The search covers the model id as well as its name: a
+ * provider is spelled one way there ("anthropic/", "google/") and several ways
+ * in the names, so the id is what somebody types to see one vendor's list.
+ *
+ * The stored model is added to the list when the catalogue does not have it —
+ * while the catalogue is still loading, and for a model OpenRouter has since
+ * retired. The trigger then shows the raw id, which is what is actually saved.
+ */
+function ModelPicker({
+	models,
+	value,
+	onValueChange,
+	disabled,
+}: {
+	models: { id: string; name: string }[];
+	/** The stored model id, or "" before one is chosen. */
+	value: string;
+	onValueChange: (modelId: string) => void;
+	disabled?: boolean;
+}) {
+	const items = useMemo<ModelItem[]>(() => {
+		const known = models.map((model) => ({
+			value: model.id,
+			label: model.name,
+		}));
+		if (value === "" || known.some((item) => item.value === value))
+			return known;
+		return [{ value, label: value }, ...known];
+	}, [models, value]);
+
+	const [query, setQuery] = useState("");
+	const filtered = useMemo(() => {
+		if (query.trim() === "") return items;
+		return items.filter((item) =>
+			matchesSearch(query, [item.label, item.value]),
+		);
+	}, [items, query]);
+
+	const selected = items.find((item) => item.value === value) ?? null;
+
+	return (
+		<Combobox
+			items={items}
+			filteredItems={filtered}
+			value={selected}
+			onValueChange={(item: ModelItem | null) => {
+				if (item) onValueChange(item.value);
+			}}
+			isItemEqualToValue={(a: ModelItem, b: ModelItem) => a.value === b.value}
+			itemToStringLabel={(item: ModelItem) => item.label}
+			inputValue={query}
+			onInputValueChange={setQuery}
+			onOpenChange={(open) => {
+				if (!open) setQuery("");
+			}}
+			autoHighlight
+			disabled={disabled}
+		>
+			<ComboboxTrigger className="w-64" aria-label="Default model">
+				<ComboboxValue placeholder="Pick a model">
+					{(item: ModelItem | null) =>
+						item ? (
+							<span className="truncate">{item.label}</span>
+						) : (
+							"Pick a model"
+						)
+					}
+				</ComboboxValue>
+			</ComboboxTrigger>
+			<ComboboxContent searchPlaceholder="Search models…">
+				<ComboboxEmpty>No model matches.</ComboboxEmpty>
+				<ComboboxList>
+					{(item: ModelItem) => (
+						<ComboboxItem key={item.value} value={item}>
+							<span className="truncate">{item.label}</span>
+						</ComboboxItem>
+					)}
+				</ComboboxList>
+			</ComboboxContent>
+		</Combobox>
+	);
+}
+
 // Admin-only and mounted only for admins: `assistantModelsQuery` sits behind
 // `orgAdminMiddleware` (it needs the key), so prefetching it in the route loader
 // would 403 for every member. Same shape as SlackSection below.
@@ -738,11 +831,6 @@ function OpenRouterSection() {
 		},
 		onError: (error) => toast.error(error.message ?? "Could not disconnect"),
 	});
-
-	const modelItems = models.map((model) => ({
-		value: model.id,
-		label: model.name,
-	}));
 
 	return (
 		<PageSection>
@@ -827,22 +915,12 @@ function OpenRouterSection() {
 						title="Default model"
 						description="What a new conversation starts on. Only models that support tool calling are listed — the assistant reads your data through tools, and one that ignores them just makes things up."
 						action={
-							<Select
+							<ModelPicker
+								models={models}
 								value={settings?.defaultModel ?? ""}
-								onValueChange={(value) => setModel.mutate(String(value))}
-								items={modelItems}
-							>
-								<SelectTrigger className="w-64">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{modelItems.map((item) => (
-										<SelectItem key={item.value} value={item.value}>
-											{item.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+								onValueChange={(modelId) => setModel.mutate(modelId)}
+								disabled={setModel.isPending}
+							/>
 						}
 					/>
 				)}
