@@ -47,14 +47,80 @@ const capturedParameters = z.looseObject({
 
 const REDACTED = "[redacted]";
 
+/** A tool answer, as the route builds it in `text()`: the parts, each carrying
+ *  the JSON its tool returned. Loose, because `isError` and anything the
+ *  protocol adds later travel untouched. */
+const capturedResponse = z.looseObject({
+	content: z.array(z.looseObject({ text: z.string().optional() })).optional(),
+});
+
+/** How many rows a tool answered with, or null when its answer is not a list.
+ *
+ *  Parsed rather than measured: every tool in `mcp-tools.ts` answers with
+ *  `JSON.stringify`, so a list tool's body really is a JSON array and its
+ *  length really is the row count. Anything else — an object from `whoami`, a
+ *  sentence from a refusal — is not a list and says so, rather than being
+ *  reported as zero rows. */
+const rowsIn = (text: string): number | null => {
+	try {
+		const parsed = z.array(z.json()).safeParse(JSON.parse(text));
+		return parsed.success ? parsed.data.length : null;
+	} catch {
+		// Not JSON at all. A refusal's "Error: …" lands here, and so would a tool
+		// that answered with prose.
+		return null;
+	}
+};
+
+/**
+ * Put "how much did this answer" on the event, as METADATA.
+ *
+ * The whole reason this is not simply read off `$mcp_response` later: the
+ * response is CONTENT, so it disappears behind `[redacted]` the moment a
+ * deployment turns content capture off, and a monitor built on it would go
+ * quiet at exactly the moment somebody tightened privacy. A row count and a
+ * flag name nobody and leak nothing, so "which tools keep answering nothing"
+ * stays answerable under either setting.
+ *
+ * `mcp_result_empty` is the alertable one. An empty answer is not an error —
+ * the tool worked, the filter matched nothing — which is precisely why nothing
+ * else catches it: `$mcp_is_error` stays false and the call looks healthy. A
+ * tool that suddenly answers nothing all day is a broken filter, a lost
+ * assignment or an agent calling it wrongly, and all three are invisible
+ * without this.
+ */
+const annotateResult = (event: Parameters<BeforeSendFn>[0]): void => {
+	const response = event.properties[PostHogMCPAnalyticsProperty.Response];
+	if (response === undefined) return;
+	const parsed = capturedResponse.safeParse(response);
+	if (!parsed.success) return;
+
+	const body = (parsed.data.content ?? [])
+		.map((part) => part.text ?? "")
+		.join("")
+		.trim();
+	const rows = rowsIn(body);
+	event.properties.mcp_result_rows = rows;
+	// Three ways a call answers nothing: no body at all, a literal null, or a
+	// list with no rows in it.
+	event.properties.mcp_result_empty =
+		body === "" || body === "null" || rows === 0;
+};
+
 /**
  * Content out of every event, unless the deployment asked for it.
  *
  * Runs once per event, `$exception` siblings included. It never drops an event:
- * the metadata — which tool, how long, whether it failed, which client — is the
- * whole point and carries nothing about the organization.
+ * the metadata — which tool, how long, whether it failed, which client, and now
+ * how much it answered — is the whole point and carries nothing about the
+ * organization.
  */
 const redactContent: BeforeSendFn = (event) => {
+	// Before the early return below, not after: the row count has to be taken
+	// off the real answer, and it has to be taken whether or not that answer is
+	// then redacted.
+	annotateResult(event);
+
 	if (captureContent()) return event;
 
 	const parameters = event.properties[PostHogMCPAnalyticsProperty.Parameters];
