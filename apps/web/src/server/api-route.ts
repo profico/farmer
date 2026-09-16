@@ -8,6 +8,9 @@ import type { JsonValue } from "@farmer/core/lib/json";
 import type { Ctx } from "@farmer/core/services";
 import { z } from "zod";
 
+// Type-only, so it is erased and `posthog-node` never reaches the client graph
+// through this module. The values come from the deferred import in `serve`.
+import type { ApiRequestReport } from "#/lib/posthog-api.ts";
 import { resolveCliOrgContext, resolveCliUser } from "#/server/api-auth.ts";
 import {
 	type Admission,
@@ -233,28 +236,68 @@ const failure = async (error: Error): Promise<Response> => {
 	});
 };
 
-/** Steps 1 to 5 and 7's error mapping, for any principal. */
-const serve = async <TPrincipal extends { userId: string }>(
+/**
+ * Steps 1 to 5 and 7's error mapping, for any principal.
+ *
+ * Also the one place this surface is reported from. Every exit runs through
+ * `finish`, so a request that was refused by the flag, the rate limiter, the
+ * version check or the credential is counted exactly like one that was served —
+ * a CLI that is being turned away is the thing you most want to see, and it is
+ * the thing a per-route capture would miss. The principal is read for its
+ * `organizationId` where it has one, which is how `/api/v1/me` and
+ * `/api/v1/session` report none rather than a wrong one.
+ */
+const serve = async <
+	TPrincipal extends { userId: string; organizationId?: string },
+>(
 	request: Request,
 	authenticate: () => Promise<TPrincipal | null>,
 	handle: (principal: TPrincipal) => Promise<Response>,
 ): Promise<Response> => {
+	const startedAt = performance.now();
+	const { captureApiFailure, captureApiRequest } =
+		await import("#/lib/posthog-api.ts");
+	// Filled in as the pipeline learns who is calling, and reported once by
+	// whichever step answers.
+	const report: ApiRequestReport = {
+		userId: null,
+		organizationId: null,
+		method: request.method,
+		pathname: new URL(request.url).pathname,
+		status: 0,
+		durationMs: 0,
+		cliVersion: request.headers.get(CLI_VERSION_HEADER),
+	};
+
+	const finish = (response: Response, error?: Error): Response => {
+		report.status = response.status;
+		report.durationMs = Math.round(performance.now() - startedAt);
+		// A 403, a 404 and a 422 are answers this pipeline gives on purpose, and
+		// they are already counted by `api_request`. Only the generic 500 — an
+		// error `failure` could not map — is a fault worth an `$exception`.
+		if (error && response.status >= 500) captureApiFailure(error, report);
+		captureApiRequest(report);
+		return response;
+	};
+
 	const { isCliEnabled } = await import("@farmer/core/lib/cli-flag");
 	if (!isCliEnabled()) {
-		return refuse(404, { error: "Not found", code: "not_found" });
+		return finish(refuse(404, { error: "Not found", code: "not_found" }));
 	}
 
 	const address = callerAddress(request);
 	const byAddress = rateLimited(admitCaller("cli", address));
-	if (byAddress) return byAddress;
+	if (byAddress) return finish(byAddress);
 
 	const version = request.headers.get(CLI_VERSION_HEADER);
 	if (version !== null && !isCliVersionSupported(version)) {
-		return refuse(426, {
-			error:
-				"This version of the Farmer CLI is too old for this server. Update it.",
-			code: "cli_outdated",
-		});
+		return finish(
+			refuse(426, {
+				error:
+					"This version of the Farmer CLI is too old for this server. Update it.",
+				code: "cli_outdated",
+			}),
+		);
 	}
 
 	const principal = await authenticate();
@@ -262,28 +305,34 @@ const serve = async <TPrincipal extends { userId: string }>(
 	// are one answer on purpose — see `orgContextService.resolveBySlug`.
 	if (!principal) {
 		recordAuthFailure("cli", address);
-		return refuse(401, {
-			error: "Not signed in. Run `farmer login`.",
-			code: "unauthorized",
-		});
+		return finish(
+			refuse(401, {
+				error: "Not signed in. Run `farmer login`.",
+				code: "unauthorized",
+			}),
+		);
 	}
+	report.userId = principal.userId;
+	report.organizationId = principal.organizationId ?? null;
 
 	const byUser = rateLimited(admitRequest("cli", principal.userId));
-	if (byUser) return byUser;
+	if (byUser) return finish(byUser);
 	if (request.method !== "GET") {
 		const byWrites = rateLimited(admitWrite("cli", principal.userId));
-		if (byWrites) return byWrites;
+		if (byWrites) return finish(byWrites);
 	}
 
 	try {
-		return await handle(principal);
+		return finish(await handle(principal));
 	} catch (error) {
-		if (error instanceof Error) return failure(error);
+		if (error instanceof Error) return finish(await failure(error), error);
 		console.error("[api] request failed", error);
-		return refuse(500, {
-			error: "The server failed. Try again in a moment.",
-			code: "server_error",
-		});
+		return finish(
+			refuse(500, {
+				error: "The server failed. Try again in a moment.",
+				code: "server_error",
+			}),
+		);
 	}
 };
 
