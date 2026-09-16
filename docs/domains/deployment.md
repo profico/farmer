@@ -1,0 +1,23 @@
+# Production
+
+Dev is `vite dev`. **Production is a Bun-native host, not Nitro/srvx** — `apps/web/server.ts` brings its own `Bun.serve`, with static-asset preloading and the in-process schedulers. That host, and its load-bearing `idleTimeout`, are documented in `apps/web/CLAUDE.md`.
+
+The `Dockerfile` bundles with `bun build` into `app.js` (better-auth, framer-motion and the `#tanstack-*` entries stay external), `migrate.js` and `seed-tasks.js`, and installs runtime dependencies from `docker/runtime.package.json` + `docker/bun.lock`. `docker-entrypoint.sh` applies migrations under an advisory lock (`RUN_MIGRATIONS`), seeds tasks (`RUN_SEED`), then starts `app.js`. CI (`.github/workflows/ci.yml`) runs check, typecheck, test and build, then builds the image, pushes it to GHCR and triggers a Coolify deploy. The CLI has its own release workflow (see `apps/cli/CLAUDE.md`).
+
+**This backend is a long-lived process, not a serverless function — background work goes in a job, never in a request handler.** There are four jobs: the automation sweep, log reminders, Slack reminders and the upload sweep. The scheduler lives in `@farmer/core/jobs/scheduler.ts` rather than in `server.ts` so it can run three ways off one implementation:
+
+| Where | How | Why |
+|---|---|---|
+| Production web host | `startSchedulers()` in `server.ts` | default; single instance |
+| Development | `vite dev` spawns `packages/core/src/jobs/worker.ts` (the `farmer:dev-worker` plugin) | `vite dev` never loads `server.ts`, and nothing syncs on page load. Runs the **automation sweep only**: the other jobs message real people or delete files, and dev usually points at a shared database. `DEV_WORKER=false` to opt out |
+| Separate worker container | `bun run worker` from `packages/core` | set every `<NAME>_ENABLED=false` on the web host; run exactly one worker |
+
+Each job is env-gated by `<NAME>_ENABLED` / `<NAME>_INTERVAL_MINUTES`; the full list, with `AUTOMATION_SYNC_CONCURRENCY`, `AUTOMATION_SYNC_USER_TIMEOUT_MS`, `EXTERNAL_FETCH_TIMEOUT_MS` and `SCHEDULER_STARTUP_DELAY_MS`, is in the `scheduler.ts` header, and `.env.example` documents the rest. All of it assumes a single instance; the jobs are idempotent, so a second replica is redundant rather than harmful. The tables in `scheduler.ts` are built by hoisted **functions**, not module-scope `const`s — that is load-bearing in the bundled image, and the header explains why.
+
+`ASSISTANT_ENABLED`, `MCP_ENABLED`, `CLI_ENABLED` and `SINGLE_ORG_SLUG` are plain env vars rather than `VITE_` ones, because `VITE_` values bake at build time and the Dockerfile builds one image for several environments.
+
+**PostHog reads that same rule, and the BROWSER half is the part that catches people out.** `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` are plain variables: `vite build` runs inside the Docker image, so a `VITE_` value could only ever be what CI was given. The server reads them per request (`lib/posthog-server.ts`, memoized, null when either is missing) and `routes/__root.tsx` writes the pair into the inline `<head>` script beside the theme, for the browser to read back off `window`. Not through `getPublicAppConfig`, which is a server FUNCTION: the root route has no loader to call one from, and `RootDocument` is the `shellComponent`, which renders on the error and not-found paths where no loader has run. `POSTHOG_AI_CAPTURE_CONTENT` (default `false`) is the one switch for whether an agent's content — the assistant's prompts and answers, and the MCP server's tool arguments and results — leaves the process at all. The metadata goes either way and is what the dashboards are built on; the content is a customer's timesheet, so on a multi-tenant deployment sending it is a decision an operator makes rather than inherits. Four adapters read that one client and nothing else does: `lib/posthog-ai.ts` (the assistant's turns), `lib/posthog-mcp.ts` (the MCP server's requests), `lib/posthog-api.ts` (the REST API's requests and failures) and the `capture` calls in `server/*.ts` (what a person did in the browser).
+
+---
+
+See also: `apps/web/CLAUDE.md` (`server.ts` and the build), `packages/core/CLAUDE.md` (`jobs/scheduler.ts`).

@@ -19,7 +19,7 @@ import { ensureOrgTasks } from "../db/seed-tasks";
  *
  * SERVER ONLY. This module reads `process.env` and touches the database, so
  * importing it from a component or from a route module's top level would both
- * crash hydration (see CLAUDE.md) and read the mode as "off" in the browser.
+ * crash hydration (see apps/web/CLAUDE.md) and read the mode as "off" in the browser.
  * The client learns the mode from `getPublicAppConfig` instead.
  */
 export const SINGLE_ORG_SLUG = process.env.SINGLE_ORG_SLUG?.trim() || null;

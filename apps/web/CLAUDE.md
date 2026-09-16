@@ -1,0 +1,66 @@
+# apps/web
+
+The TanStack Start / React app, and the production host that serves it. Read the
+root `CLAUDE.md` first for the commands and the lint rules.
+
+```bash
+bun run build            # vite build → dist/{client,server}, then prunes dist/client
+bun run start            # NODE_ENV=production bun run server.ts — the production host
+bun run generate-routes  # tsr generate — regenerates routeTree.gen.ts
+```
+
+## Layout
+
+- `src/routes/` — TanStack Router file-based routing.
+  - `$orgSlug/route.tsx` is the org-scoped layout: its `beforeLoad` resolves the session, the organization and the caller's role in ONE server call (`enterOrganization`) alongside `getPublicAppConfig`, and redirects out if any check fails — every nested route inherits that guard. `enterOrganization` repoints the session only when the active org actually differs.
+  - Under it: `index.tsx` (home: today, plus week and month targets), `time/` (a `route.tsx` layout with the targets strip and the unfiled banner, then `index`/`week`/`month`), `projects/` (the list, and `$projectId/` with `index`/`team`/`settings`), `reports.tsx`, `assistant.tsx`, and `settings/` (an `index.tsx` hub plus organization, members, my-schedule, clients, tasks, recurring-blocks, holidays, hour-fund, reminders, import, integrations, preferences).
+  - Outside it: `index.tsx` (the landing page), `login.tsx`, `accept-invite/$invitationId.tsx`, `no-access.tsx`, `device.tsx` (approves a CLI login) and `cli/` (the install scripts and binary downloads).
+  - Server routes: `api/auth/$.ts` (better-auth), `api/login.ts`, `api/mcp-login.ts`, `api/github/setup.ts`, `api/slack/callback.ts`, `api/files/$.ts`, `api/assistant/stream.ts`, `api/mcp/$orgSlug.ts`, `[.]well-known/oauth-*.ts`, `api/v1/projects` + `api/v1/time-entries` (cookie-authed REST reads), and `api/v1/{meta,me,session}` + `api/v1/orgs/$orgSlug/*` (the CLI's API). All of that auth lives in `server/api-auth.ts` — deliberately NOT `server/auth.ts`, see the client-bundle rule below.
+  - `reports.tsx` is the shell. Its four tabs — Time, Overtime, Tracking (`compliance`) and Absence — are declared in `components/reports/search.ts` and live in `components/reports/`. `periodSearch` there is shared with the project page.
+- `src/server/` — thin `createServerFn` wrappers, one file per aggregate, mirroring `services/`. **Auth is attached via middleware** (`sessionMiddleware` / `orgMiddleware` / `orgAdminMiddleware` from `server/auth.ts`), read from the handler's `context` — never by calling `requireOrgContext()` inline, so the protection is part of the function's declared shape. `auth.ts` itself is the only place the bare helpers are called, because route `beforeLoad`s need them. `orgMiddleware` re-checks membership inside its `.server()` callback rather than in a shared helper: a top-level function body in `auth.ts` ships to the browser, so a deferred `import("@farmer/core/services")` there becomes a real client chunk.
+- `src/queries/` — TanStack Query `queryOptions` factories, one per aggregate; loaders prefetch, components read via `useSuspenseQuery`. **Every key names its organization**: factories take the slug first (`timeEntriesRangeQuery(orgSlug, from, to)`) and spread their root from `queryKeys(orgSlug)` in `queries/keys.ts`; invalidations name the same root. Components get the slug from `useOrgSlug()`, loaders from `params.orgSlug`. Never write a bare `queryKey: ["…"]` literal and never drop the org — an org-blind key is an answer from the previous workspace. Server functions are deliberately NOT generated from a shared declaration — see `docs/adr/0001-no-server-function-generator.md`.
+- `src/components/ui/` — shadcn on **Base UI** (`@base-ui/react`), not Radix (`components.json` style is `base-nova`). Composition uses the `render` prop, not `asChild`. The project picker (grouped by client) and task picker (grouped by `taskGroup`) are in `components/pickers/`.
+- **An eyebrow carries live context or a way back** — a date, a period, a count, a return link (`SettingsEyebrow`, the project pages' back link). Never a static label that repeats the title or the page; on a `PageHeader`, leave `eyebrow` out instead.
+- **Table search filters the view only.** `@farmer/core/lib/search` (`matchesSearch`: case- and accent-insensitive, any word in any field) and `components/ui/search-input.tsx` back every search box. **Totals and stats are computed over the full dataset, never over the filtered rows** — a total that tracked the search box is a wrong number, not a filtered one.
+- **`lib/entry-options.ts` remembers per device** (localStorage) the last project and task per org and per dialog, and the `fillsDay`/`overtime` options per project and task. Repeat is deliberately not remembered.
+- **The week starts on the organization's `weekStartsOn`** (`organization.week_starts_on`, 1 = Monday by default, 0 = Sunday; Settings → Organization). `startOfWeekKey` and `resolveReportPeriod` take it as a required argument, so a new caller cannot forget it silently. Pages read it from the `/$orgSlug` route context (`useWeekStartsOn`, `useWeekdays`), services from `ctxWeekStartsOn`, and the CLI from `whoami`. Stored weekday numbers stay `Date#getDay()`'s (Sunday = 0); only the order a week is drawn in changes.
+- **Light/dark is `data-theme` on `<html>` and nothing else.** Both palettes are written out in `styles.css`; `lib/theme.ts` owns the attribute and the DOM is the state — no provider. `themeInitScript` runs inline in `<head>` (`__root.tsx`) before React exists, because the choice lives in localStorage and applying it on hydrate flashes the light palette; that mismatch is why `<html>` carries `suppressHydrationWarning`. No stored choice follows the OS. The calendar's category tints (`lib/category-colors.ts`) are light washes computed in JS and read bright in dark mode. **Preferences → Display is the same design**, per device and off by default: "Boring font" (`data-font="sans"`), "Less movement" (`data-motion="reduce"`) and "Compact tables" (`data-density="compact"`), all owned by `lib/display-prefs.ts` and set by `displayInitScript` in the same `<head>` script. Boring font re-points `--serif`, so a new display rule must read `var(--serif)`, never name Instrument Serif. Less movement ends every CSS animation and transition at once (`styles.css`) and sets Motion's `MotionGlobalConfig.instantAnimations`, so completion callbacks still fire but no animation is seen. Compact tables sets `--table-cell-py`, which only `TableCell`'s default padding reads — a cell with its own `py-*` keeps it.
+
+## The client-bundle rule
+
+**Critical, non-obvious rule:** never put a static top-level `import ... from "@farmer/core/db"` / `"/auth"` / `"/services"` in any route or `src/server/*.ts` file. `postgres` touches `Buffer` at module scope, which crashes hydration in the browser — silently: forms fall back to native submission instead of throwing. Always import inside the handler body:
+```ts
+export const createTimeEntry = createServerFn({ method: "POST" })
+  .middleware([orgMiddleware])
+  .validator(createTimeEntryInput)
+  .handler(async ({ data, context }) => {
+    const { timeEntriesService } = await import("@farmer/core/services");
+    return timeEntriesService.create(context.ctx, data);
+  });
+```
+This is also why `requireOrgAdmin` routes through the `getMyRole` server function instead of importing services directly — it's called from a route `beforeLoad`, which also runs client-side during SPA navigation.
+
+
+## The host
+
+Dev is `vite dev`, which never loads `server.ts`. **Production is a Bun-native host, not Nitro/srvx**: `vite build` emits a web-standard `{ fetch }` handler with nothing to serve it, so `apps/web/server.ts` (TanStack's start-bun reference) brings its own `Bun.serve` — static-asset preloading plus the in-process schedulers. The image, the jobs and the env flags are in `docs/domains/deployment.md`.
+
+**`Bun.serve` carries `idleTimeout: 255`, Bun's maximum, and it is load-bearing.** The default is 10 seconds, and Bun enforces it by closing the socket with an empty reply while the handler keeps running. A server function that works longer than that — "Re-match people" on Slack, a Harvest import step — then succeeds on the server while the browser gets an unreadable reply, which TanStack Start reports as the bare "Invariant failed". `vite dev` does not run `server.ts`, so this never reproduces locally. Work that can outlast 255 seconds belongs in a job, not a request.
+
+## Gotchas
+
+- **`vite build` can emit server code into `dist/client`, and `server.ts` serves everything it finds there.** A deferred `await import("@farmer/core/…")` in a client-reachable module is chunked by rolldown *before* the server-fn transform strips the handler, which leaves an orphan island (better-auth's config, the drizzle schema, services) published at `/assets/<hash>.js`. `apps/web/scripts/prune-client-assets.ts` runs as the second half of `bun run build`, deletes the island and prints what it removed. It currently prunes nothing; keep it anyway, because it is the detector. It computes reachability from what the server build can name and aborts rather than guess — don't "simplify" it into an unconditional delete, and don't drop it from the `build` script.
+- Base UI shadcn components have runtime-only failure modes that typecheck/build/lint all miss: `<Button render={<Link/>}>` to a non-`<button>` element needs `nativeButton={false}` or it throws in the console; `<Select>` needs an `items={[{value, label}]}` prop or the trigger displays the raw value instead of the resolved label.
+- **An anchored popup is portalled into `#popup-layer`, never into `<body>`.** Preferences → Display → Scale is `zoom` on `<html>`, and a popup is placed by arithmetic on `getBoundingClientRect` — viewport pixels — so a popup drawn inside that zoom has every offset multiplied a second time and lands a whole scale further down the page. `lib/popup-layer.ts` is one element that takes the zoom back off, and `.popup-scaled` on the popup puts it back on so the popup is still drawn at the app's size; `--popup-anchor-width` and `--popup-available-height` are the same two lengths already divided, and a popup reads those and never Base UI's own. The zoom has to stay OFF the positioner: Floating UI reads the scale of the element it is placing and changes the pixels it answers in to match, so a zoomed positioner moves the error rather than removing it. At 100% none of it does anything, which is why a new popup that skips it looks correct on the machine it was written on.
+- Always verify interactive changes in a real browser, not curl/SSR output — the hydration crash described above passed every curl-based check while silently breaking every form in the app. No browser automation package is installed in the repo.
+
+## See also
+
+- `docs/domains/assistant.md` — `routes/api/assistant/stream.ts`, `components/assistant/`.
+- `docs/domains/mcp-server.md` — `routes/api/mcp/$orgSlug.ts` and the OAuth routes.
+- `docs/domains/authentication.md` — `routes/login.tsx`, `routes/api/login.ts`, `/no-access`.
+- `docs/domains/integrations.md` — `routes/api/github/*`, `routes/api/slack/callback.ts`.
+- `docs/domains/uploads.md` — `routes/api/files/$.ts` and the upload pickers.
+- `docs/domains/harvest-import.md` — `routes/…/settings/import.tsx` and the Web Worker.
+- `packages/core/CLAUDE.md` — the services every server function wraps.
+- `docs/adr/0001-no-server-function-generator.md`.

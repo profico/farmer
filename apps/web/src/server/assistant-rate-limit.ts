@@ -8,7 +8,7 @@
  * answer — and unlike MCP, nothing here had a ceiling at all.
  *
  * Same shape as `api-rate-limit.ts`, and in memory for the same reason: this
- * deployment is one process (see CLAUDE.md's Production table), so there is no
+ * deployment is one process (see the table in `docs/domains/deployment.md`), so there is no
  * second counter to disagree with. A fixed window rather than a sliding one,
  * which admits a burst across a boundary; the job is to stop a runaway, not to
  * shape traffic.

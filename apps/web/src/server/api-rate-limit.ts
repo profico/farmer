@@ -18,7 +18,7 @@
  *
  * In memory, and so per process, which is the right shape here rather than a
  * concession: `startSchedulers` already assumes a single instance (see
- * CLAUDE.md's Production table), so there is no second web process for a
+ * the table in `docs/domains/deployment.md`), so there is no second web process for a
  * counter to disagree with. A deployment that grows one needs a shared store
  * for this and a lock for the jobs, in that order.
  *

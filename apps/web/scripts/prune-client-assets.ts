@@ -5,8 +5,8 @@
  * WHY THIS EXISTS
  *
  * Every server function in this app defers its server-only imports into the
- * handler body (`await import("@farmer/core/services")` — see the "Critical,
- * non-obvious rule" in CLAUDE.md). That keeps `postgres` out of the *executed*
+ * handler body (`await import("@farmer/core/services")` — see the client-bundle
+ * rule in apps/web/CLAUDE.md). That keeps `postgres` out of the *executed*
  * client graph, which is what stops the hydration crash. It does NOT stop the
  * bundler from seeing those dynamic imports while it is building the CLIENT
  * environment: rolldown chunks them before TanStack Start's server-fn transform
