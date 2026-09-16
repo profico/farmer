@@ -661,8 +661,20 @@ function ActiveFill({
 }
 
 /** Every nav row's shape, at either width. `relative` carries the active fill. */
-const navRowClass =
-	"relative flex h-10 shrink-0 items-center gap-2.5 rounded-xl px-2.5 text-sidebar-foreground ring-sidebar-ring outline-hidden transition-[color,transform] duration-(--dur-base) hover:text-foreground focus-visible:ring-2 active:scale-[0.97]";
+const navRowBase =
+	"relative flex h-10 shrink-0 items-center gap-2.5 rounded-xl px-2.5 text-sidebar-foreground ring-sidebar-ring outline-hidden hover:text-foreground focus-visible:ring-2 active:scale-[0.97]";
+
+/**
+ * The shape plus the hover/press transition every row but one carries.
+ *
+ * Split from the base because a Tailwind `transition-*` class lands in
+ * `@layer utilities`, which beats anything `@layer components` says about
+ * `transition-property` no matter how the selector is written. A row that needs
+ * CSS to fade it — `.nav-toggle`, which crosses on the panel's own clock and
+ * not on this one — must therefore NOT carry this, or the stylesheet's
+ * transition is silently dropped and the element snaps.
+ */
+const navRowClass = `${navRowBase} transition-[color,transform] duration-(--dur-base)`;
 
 /**
  * The switch between the labelled column and the icon rail.
@@ -698,7 +710,10 @@ function CollapseToggle({
 						inert={hidden}
 						// `text-left` because this row is a <button>, and a button centres its
 						// text where the <a> rows beside it do not.
-						className={cn(navRowClass, "nav-toggle text-left", className)}
+						// `navRowBase`, not `navRowClass`: this row's transition is the
+						// stylesheet's, because it fades on the panel's `--dur-long` while
+						// the rows above it hover on `--dur-base`. See `navRowClass`.
+						className={cn(navRowBase, "nav-toggle text-left", className)}
 					>
 						<Caret
 							weight="regular"

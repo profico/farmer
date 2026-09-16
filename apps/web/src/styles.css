@@ -1417,9 +1417,19 @@ html {
     pointer-events: none;
   }
 
+  /* All three properties are listed here, and that is deliberate. A Tailwind
+     `transition-*` class sits in `@layer utilities` and beats this rule's
+     `transition-property` outright — layers, not specificity — so the row that
+     needs CSS to fade it cannot also carry the hover transition its siblings
+     get from `navRowClass`. It takes `navRowBase` instead and this rule
+     restores the hover half, on `--dur-base` like the rows above it, beside the
+     fade on the panel's own `--dur-long`. */
   .nav-toggle {
     opacity: 1;
-    transition: opacity var(--dur-long) var(--ease-in-out);
+    transition:
+      color var(--dur-base) var(--ease-in-out),
+      transform var(--dur-base) var(--ease-in-out),
+      opacity var(--dur-long) var(--ease-in-out);
   }
 
   /* Below `lg` the window holds the column shut (`lib/nav-collapse.ts`), so the
