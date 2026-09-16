@@ -39,9 +39,11 @@ export function GithubReconnectBanner({ orgSlug }: { orgSlug: string }) {
 					animate={{ height: "auto", opacity: 1 }}
 					exit={{ height: 0, opacity: 0 }}
 					transition={springProductive}
-					className="mb-4 shrink-0 overflow-hidden rounded-lg border border-destructive/30 bg-destructive/10"
+					// A strip between hairlines like the other banners, not a tinted box:
+					// nothing inside the page is a card. The red icon carries the urgency.
+					className="mb-4 shrink-0 overflow-hidden border-y border-line"
 				>
-					<div className="flex items-center gap-3 px-4 py-3">
+					<div className="flex items-center gap-3 py-3">
 						<GithubLogoIcon className="size-4 shrink-0 text-destructive" />
 						<div className="min-w-0 flex-1">
 							<p className="text-base font-medium">
