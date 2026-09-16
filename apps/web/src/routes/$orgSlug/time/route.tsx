@@ -8,7 +8,7 @@ import {
 
 import { TargetsStrip } from "#/components/targets.tsx";
 import { UnfiledEntriesBanner } from "#/components/time/unfiled-entries-banner.tsx";
-import { PageFull } from "#/components/ui/page-header.tsx";
+import { Page } from "#/components/ui/page-header.tsx";
 import {
 	SegmentedControl,
 	SegmentedControlItem,
@@ -35,7 +35,10 @@ function TimeLayout() {
 		// view capped itself, so stepping between the three tabs changed the
 		// page's width and left Day's rules stopping short of where Week's and
 		// Month's did.
-		<PageFull className="min-h-0 flex-1">
+		// `Page`, not `PageFull`: the document scrolls (6A), so the island grows
+		// with its content instead of being capped at the viewport with a second
+		// scrollbar inside it. The day strip sticks instead — see `day-view.tsx`.
+		<Page>
 			<div className="flex shrink-0 flex-wrap items-baseline justify-between gap-3">
 				<h1 className="h1">Timesheet</h1>
 				<SegmentedControl>
@@ -61,17 +64,18 @@ function TimeLayout() {
 				</SegmentedControl>
 			</div>
 			{/* This week and this month against the rule, on every view — the
-			    figure a person is filling the timesheet towards. */}
+			    figure a person is filling the timesheet towards. Context rather than
+			    a control, so it scrolls away with the title rather than sticking. */}
 			<TargetsStrip orgSlug={organization.slug} />
 			{/* Above the tabs' content rather than inside a view, because unfiled time
 			    isn't scoped to the day/week/month you happen to be looking at — it's
 			    a standing worklist that follows you across all three. */}
-			<div className="mt-6 flex min-h-0 flex-1 flex-col">
+			<div className="mt-5 flex flex-1 flex-col">
 				<UnfiledEntriesBanner
 					todayKey={dayKeyInTz(new Date(), organization.timezone)}
 				/>
 				<Outlet />
 			</div>
-		</PageFull>
+		</Page>
 	);
 }

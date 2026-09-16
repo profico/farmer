@@ -379,6 +379,22 @@ Issues live in the `profico/farmer` GitHub Issues, managed via the `gh` CLI. See
 
 The five canonical triage roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
 
+### UI and design work
+
+**Invoke the `farmer-ui` skill before any visual change** — a component, a
+screen, a token, a stylesheet, or a design artifact. It is checked in at
+`.claude/skills/farmer-ui/SKILL.md` and loads, in order: `DESIGN.md` (this
+product's own system), then the four review lenses installed at
+`~/.claude/skills/` — `redesign-existing-projects` (the audit checklist),
+`design-taste-frontend` (anti-slop rules and the redesign protocol),
+`minimalist-ui` (editorial structure for a dense UI) and
+`high-end-visual-design` (craft and motion) — then the Vercel Web Interface
+Guidelines. The skill also says what to state back, so which rule drove which
+decision is checkable rather than claimed.
+
+The four lenses are user-level installs (`npx skills add`), so a fresh clone
+has the skill but not the lenses; the skill names the repos to install from.
+
 ### Domain docs
 
 Single-context — one root `CONTEXT.md` plus `docs/adr/`. Neither `CONTEXT.md` nor a `CONTEXT-MAP.md` exists yet; that is expected, and their absence should not be flagged. See `docs/agents/domain.md`.

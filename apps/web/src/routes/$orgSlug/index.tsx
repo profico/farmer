@@ -5,6 +5,7 @@ import {
 	formatDayKey,
 	startOfWeekKey,
 } from "@farmer/core/lib/time";
+import type { TrackingStatus } from "@farmer/core/services";
 import {
 	ArrowRightIcon,
 	CalendarBlankIcon,
@@ -18,8 +19,7 @@ import { useState } from "react";
 
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
-import { StatusPill } from "#/components/status-pill.tsx";
-import { TARGET_STATUS, TargetBar, TargetGap } from "#/components/targets.tsx";
+import { TargetGap } from "#/components/targets.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";
 import { EntryBlockRow } from "#/components/time/entry-block-row.tsx";
@@ -60,6 +60,18 @@ export const Route = createFileRoute("/$orgSlug/")({
 	pendingComponent: DashboardLoadingSkeleton,
 	component: OrgHome,
 });
+
+/** The plot's height in px. The columns, the target rule and the maximum are
+ *  all measured against it, so the chart is one number to re-tune. */
+const PLOT_H = 76;
+
+/** A verdict maps to a tile's ring colour. The Tracking report's own three
+ *  words, so the home page and the report cannot disagree about what green is. */
+const TARGET_TONE = {
+	on_track: "ok",
+	slightly_behind: "warn",
+	behind: "bad",
+} as const satisfies Record<TrackingStatus, "ok" | "warn" | "bad">;
 
 function greetingForHour(hour: number): string {
 	if (hour < 12) return "Good morning";
@@ -111,7 +123,6 @@ function OrgHome() {
 		(entry) => entry.date === selectedDay,
 	);
 	const weekTotal = weekEntries.reduce((sum, e) => sum + e.durationSeconds, 0);
-	const todayLeft = Math.max(0, targets.daySeconds - todayTotal);
 
 	// Per-weekday totals, in the org's week order, for the bars — derived from
 	// the same week query, so it costs no extra fetch.
@@ -128,9 +139,15 @@ function OrgHome() {
 				isToday: key === today,
 				isWeekend: weekday === 0 || weekday === 6,
 				holiday: holidays.get(key),
-				// A day with a line to reach: a past or present working day.
-				expected:
-					key <= today && weekday !== 0 && weekday !== 6 && !holidays.has(key),
+				// A day that may be judged against the day's worth: a working day
+				// that has happened. A future day, a weekend and a public holiday
+				// are all simply not asked.
+				judged:
+					key <= today &&
+					weekday !== 0 &&
+					weekday !== 6 &&
+					!holidays.has(key) &&
+					targets.daySeconds > 0,
 			};
 		},
 	);
@@ -139,7 +156,8 @@ function OrgHome() {
 		targets.daySeconds,
 		1,
 	);
-	const dayTargetPx = Math.round((targets.daySeconds / maxDaySeconds) * 64);
+	// Where the dashed "a day's worth" rule sits, in the plot's own pixels.
+	const targetPx = Math.round((targets.daySeconds / maxDaySeconds) * PLOT_H);
 
 	// "Auto-tracked today": the blocks Farmer filled in for you rather than by
 	// hand — synced Google Calendar meetings (calendarEventId) and GitHub-linked
@@ -202,14 +220,21 @@ function OrgHome() {
 				}
 			/>
 
-			{/* Today, the week and the month, in that order: the horizon widens left
-			    to right. Each is `logged / target`, one sentence saying what is
-			    missing, and one rail. The figures count up on arrival and tween
-			    when an entry is saved, so the number that changed is the one that
-			    moves (`CountUp`). */}
-			<StatTiles columns={3} className="-mx-4 px-4 sm:-mx-8 sm:px-8">
+			{/* Today, the week and the month, in that order: the horizon widens
+			    left to right. Each is a ring carrying the proportion, a label and
+			    `logged / target`, with the month's sentence beside them on the same
+			    row rather than under each tile. About half the height of the band
+			    it replaces, which is what puts the entry list back at the top of
+			    the screen where it belongs. */}
+			<StatTiles className="mt-1">
 				<StatTile
 					label="Today"
+					percent={
+						targets.daySeconds > 0
+							? (todayTotal / targets.daySeconds) * 100
+							: null
+					}
+					tone={todayTotal >= targets.daySeconds ? "ok" : "neutral"}
 					value={
 						<>
 							<CountUp value={todayTotal} format={formatReportHours} />
@@ -218,52 +243,15 @@ function OrgHome() {
 							)}
 						</>
 					}
-					caption={
-						targets.daySeconds > 0 ? (
-							<>
-								{todayLeft > 0 ? (
-									<>
-										<span className="font-medium text-foreground">
-											{formatReportHours(todayLeft)}
-										</span>{" "}
-										to go
-									</>
-								) : (
-									<span className="font-medium text-ok">Day complete</span>
-								)}
-								{" · "}
-								{todayEntries.length}{" "}
-								{todayEntries.length === 1 ? "entry" : "entries"}
-							</>
-						) : (
-							<>
-								{todayEntries.length}{" "}
-								{todayEntries.length === 1 ? "entry" : "entries"}
-							</>
-						)
-					}
-				>
-					{targets.daySeconds > 0 && (
-						<div className="mt-3 h-1.5 rounded-full bg-secondary">
-							<span
-								className="rail-fill block h-full rounded-full bg-primary"
-								style={{
-									width: `${Math.min(100, (todayTotal / targets.daySeconds) * 100)}%`,
-								}}
-							/>
-						</div>
-					)}
-				</StatTile>
-
+				/>
 				<StatTile
 					label="This week"
-					aside={
-						weekStatus && (
-							<StatusPill tone={TARGET_STATUS[weekStatus].tone}>
-								{TARGET_STATUS[weekStatus].label}
-							</StatusPill>
-						)
+					percent={
+						targets.week.targetSeconds
+							? (weekTotal / targets.week.targetSeconds) * 100
+							: null
 					}
+					tone={weekStatus ? TARGET_TONE[weekStatus] : "neutral"}
 					value={
 						<>
 							<CountUp value={weekTotal} format={formatReportHours} />
@@ -272,20 +260,15 @@ function OrgHome() {
 							)}
 						</>
 					}
-					caption={<TargetGap period={targets.week} />}
-				>
-					<TargetBar period={targets.week} className="mt-3" />
-				</StatTile>
-
+				/>
 				<StatTile
 					label="This month"
-					aside={
-						monthStatus && (
-							<StatusPill tone={TARGET_STATUS[monthStatus].tone}>
-								{TARGET_STATUS[monthStatus].label}
-							</StatusPill>
-						)
+					percent={
+						targets.month.targetSeconds
+							? (targets.month.totalSeconds / targets.month.targetSeconds) * 100
+							: null
 					}
+					tone={monthStatus ? TARGET_TONE[monthStatus] : "neutral"}
 					value={
 						<>
 							<CountUp
@@ -297,16 +280,15 @@ function OrgHome() {
 							)}
 						</>
 					}
-					caption={
-						<>
-							<TargetGap period={targets.month} />
-							{" · day "}
-							{targets.month.workingDaysElapsed} of {targets.month.workingDays}
-						</>
-					}
-				>
-					<TargetBar period={targets.month} className="mt-3" />
-				</StatTile>
+				/>
+				{/* The sentence the tiles no longer carry, once, for the period that
+				    is actually behind. Three sentences said the same thing three
+				    ways; this says it about the one that matters. */}
+				<p className="text-sm text-muted-foreground">
+					<TargetGap period={targets.month} />
+					{" · day "}
+					{targets.month.workingDaysElapsed} of {targets.month.workingDays}
+				</p>
 			</StatTiles>
 
 			{/* What you logged, and how the week is shaped. Side by side from lg:
@@ -368,14 +350,64 @@ function OrgHome() {
 							{formatReportHours(weekTotal)}
 						</span>
 					</div>
-					{/* Each bar rises from its baseline in turn (`.rise`), which is what
-					    makes seven columns read as a week rather than a barcode. */}
-					<div className="mt-4 flex gap-1.5">
-						{perDay.map((d, i) => {
-							const px =
-								d.seconds > 0
-									? Math.max(Math.round((d.seconds / maxDaySeconds) * 64), 5)
-									: 3;
+					{/* W1: one baseline under the columns, ONE continuous target rule
+					    across the whole week rather than seven per-column stubs, and
+					    fixed text rows so every label and figure lands on the same y
+					    whatever the day holds. The rule is what turns seven bars into
+					    a chart: a column either reaches it or it does not.
+					    Colour is the verdict, and only for days that have happened —
+					    green at a full day, amber part, red nothing. A future day is
+					    a hairline, because a day nobody has lived cannot be behind. */}
+					<div
+						className="relative mt-4"
+						style={{ height: `${PLOT_H}px` }}
+						aria-hidden
+					>
+						<span
+							className="absolute inset-x-0 border-t border-dashed border-foreground/25"
+							style={{ bottom: `${targetPx}px` }}
+						/>
+						<span className="absolute inset-x-0 bottom-0 border-t border-line" />
+						<div className="grid h-full grid-cols-7">
+							{perDay.map((d, i) => {
+								const px =
+									d.seconds > 0
+										? Math.max(
+												Math.round((d.seconds / maxDaySeconds) * PLOT_H),
+												3,
+											)
+										: 2;
+								return (
+									<div key={d.key} className="flex items-end justify-center">
+										<span
+											className={cn(
+												"rise block w-5 rounded-t-[4px]",
+												d.holiday
+													? "bg-warn/40"
+													: !d.judged
+														? "bg-line"
+														: d.seconds === 0
+															? "bg-bad"
+															: d.seconds >= targets.daySeconds
+																? "bg-ok"
+																: "bg-warn",
+											)}
+											style={{
+												height: `${px}px`,
+												animationDelay: `${i * 40}ms`,
+											}}
+										/>
+									</div>
+								);
+							})}
+						</div>
+					</div>
+					{/* Two fixed rows under the plot, so the day names sit on one line
+					    and the figures on another however ragged the week is. Each is
+					    a button covering its own column, so the whole column is the
+					    hit target. */}
+					<div className="mt-2.5 grid grid-cols-7">
+						{perDay.map((d) => {
 							const isSelected = d.key === selectedDay;
 							return (
 								<button
@@ -384,52 +416,15 @@ function OrgHome() {
 									onClick={() => setSelectedDay(d.key)}
 									aria-pressed={isSelected}
 									aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
-									// basis-0 + min-w-0 so the day labels can't widen their own
-									// column: every day is an identical hit target regardless of
-									// how much (or how little) was logged.
 									className={cn(
-										"flex min-w-0 flex-1 basis-0 flex-col items-center gap-2 rounded-lg py-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/16",
+										"rounded-lg py-1 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/16",
 										isSelected && "bg-secondary",
-										d.isWeekend && !isSelected && "opacity-55",
+										d.isWeekend && !isSelected && "opacity-45",
 									)}
 								>
-									{/* The 64px track is always here, bottom-aligned — an empty
-									    day used to collapse to a 2px-tall button that was
-									    almost impossible to hit. */}
-									<div className="relative flex h-16 w-full items-end justify-center">
-										{/* The day's worth, drawn as a line to reach — so an
-										    under-filled day shows as a bar that stops short. */}
-										{d.expected && (
-											<span
-												aria-hidden
-												className="absolute left-1/2 w-7 -translate-x-1/2 border-t border-dashed border-foreground/25"
-												style={{ bottom: `${dayTargetPx}px` }}
-											/>
-										)}
-										<div
-											className={cn(
-												// Capped width: a full-width fill turns a 64px-tall bar
-												// into a slab that out-weighs everything else on the
-												// screen. A column reads as a measurement.
-												"rise w-full max-w-5 rounded-t-[3px] rounded-b-[1px]",
-												d.holiday
-													? "bg-warn/30"
-													: d.isToday
-														? "bg-primary"
-														: d.seconds > 0
-															? "bg-primary/45"
-															: "bg-line",
-												isSelected && !d.isToday && "bg-primary/70",
-											)}
-											style={{
-												height: `${px}px`,
-												animationDelay: `${i * 40}ms`,
-											}}
-										/>
-									</div>
 									<span
 										className={cn(
-											"eyebrow",
+											"eyebrow block",
 											(d.isToday || isSelected) && "text-foreground",
 										)}
 									>
@@ -437,17 +432,25 @@ function OrgHome() {
 									</span>
 									<span
 										className={cn(
-											"tnum text-2xs",
-											d.holiday ? "text-warn" : "text-muted-foreground",
+											"tnum mt-1.5 block text-2xs",
+											d.holiday
+												? "text-warn"
+												: !d.judged
+													? "text-faint"
+													: d.seconds === 0
+														? "text-bad"
+														: d.seconds >= targets.daySeconds
+															? "text-ok"
+															: "text-warn",
 										)}
 									>
 										{d.holiday
 											? "hol."
-											: d.key <= today && d.seconds > 0
+											: d.seconds > 0
 												? formatReportHours(d.seconds)
-												: d.key <= today
+												: d.judged
 													? "—"
-													: " "}
+													: "\u00a0"}
 									</span>
 								</button>
 							);

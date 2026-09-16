@@ -263,6 +263,21 @@
      `--chart-4` used to be a mauve; it moved to clay when the accent went
      violet, because a desaturated purple next to `--chart-1` stopped being a
      separate series and started looking like a faded one. */
+  /* The five task groups (`lib/task-taxonomy.ts`: engineering, product,
+     learning, general, time off), as the colour a task chip is tinted with.
+     Five groups, five colours — which is the whole reason this works where the
+     per-task colour did not: the taxonomy assigns twenty-four of those, and a
+     row wearing one of twenty-four colours is wearing a colour that means
+     nothing. A group colour is a family you learn in one glance.
+     Each sits a step below the accent in chroma, so a chip never competes with
+     an action, and each is a member of the same muted palette the calendar
+     tints already come from. */
+  --group-engineering: #55707d;
+  --group-product: #9c5a44;
+  --group-learning: #6b7f6a;
+  --group-general: var(--mut);
+  --group-time-off: #8a6a1f;
+
   --chart-1: var(--acc);
   --chart-2: #6b7f6a;
   --chart-3: var(--warn);
@@ -393,6 +408,13 @@
 }
 
 :root[data-theme='dark'] {
+  /* Lifted for the dark island, the same way `--acc` is: the hue is the same,
+     the value is what changes so a tinted chip's label still passes AA. */
+  --group-engineering: #7c9aa8;
+  --group-product: #ae8e83;
+  --group-learning: #8fa88c;
+  --group-time-off: #c0a15a;
+
   --chart-2: #8fa88c;
   --chart-4: #ae8e83;
   --chart-5: #7c9aa8;
@@ -441,6 +463,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-group-engineering: var(--group-engineering);
+  --color-group-product: var(--group-product);
+  --color-group-learning: var(--group-learning);
+  --color-group-general: var(--group-general);
+  --color-group-time-off: var(--group-time-off);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -1478,6 +1506,17 @@ html {
       opacity: 1;
       transform: none;
     }
+  }
+
+  /* An entry's note, held to two lines with a "Show more" under it, so a list
+     of twelve keeps one rhythm however long a note is. `-webkit-line-clamp`
+     rather than a height, so the cut lands on a line rather than through one,
+     and it is the only cross-browser way to do this today. */
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .spin {

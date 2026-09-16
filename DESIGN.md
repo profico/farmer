@@ -311,10 +311,19 @@ tidies with the pattern rather than on its own.
 - **One toolbar** (`time/time-toolbar.tsx`): where you are on the left as a
   filled stepper, what you can do on the right, one row, 32px controls. The
   timesheet, the reports, the hour fund and the project page all take it.
-- **Figure tiles** (`ui/stat-tile.tsx`): a band divided by soft hairlines, never
-  boxed. Eyebrow with room for a pill, a 28px figure with tabular digits, one
-  caption, and whatever the tile needs under it. Home's three targets and the
-  project page's four figures are the same component.
+- **Figure chips** (`ui/stat-tile.tsx`, `StatTiles` / `StatTile`): a progress
+  ring, a label and a figure, in a card the width of what it holds. For a figure
+  that is a proportion of a target. Home's three targets.
+- **Figure band** (`ui/stat-tile.tsx`, `FigureBand` / `FigureCell`): plain cells
+  divided by soft hairlines, never boxed, for figures that are not a proportion
+  of anything. The project page's four.
+- **Entry row** (`time/entry-block-row.tsx`): a code-and-mark stub at the left,
+  identity on line one (project, client, task), the note on line two aligned
+  under the project name, and the time in its own box pinned to the top right.
+  The note clamps to two lines with a measured "Show more".
+- **Task colour is the GROUP's colour**, not the task's (`lib/task-group-colors.ts`).
+  Five groups, five colours, so it is a family you can learn. The taxonomy's
+  per-task colours are not used on rows.
 - **Counting figures** (`ui/count-up.tsx`): a headline figure counts up from
   zero on first paint and tweens between values afterwards, so the number that
   changed is the one that moves.
@@ -342,6 +351,10 @@ Three speeds (120 / 150 / 180ms) and two curves. Entrances and exits ease out; t
 - A page assembles: blocks rise 6px, staggered 28ms, capped at the fifth. A
   list inside one staggers its own rows 20ms apart (`.stagger`), capped at the
   twelfth.
+- The week chart has ONE continuous target rule across all seven days and one
+  baseline, so a column either reaches it or does not. A day is only coloured by
+  verdict once it is over: green at a full day, amber part, red nothing, and a
+  future day is a hairline.
 - Bars and rails grow from zero (`.rise`, `.rail-fill`) and re-grow when the
   period or the sort changes.
 - Menus and popovers spring from the trigger with a 4px rise; dialogs spring in with a blurred backdrop.

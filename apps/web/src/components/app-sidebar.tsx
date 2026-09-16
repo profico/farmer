@@ -3,26 +3,20 @@ import {
 	GithubLogoIcon,
 	SignOutIcon,
 } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
 import {
 	Link,
 	useLocation,
 	useNavigate,
 	useRouter,
 } from "@tanstack/react-router";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 
 import { ChatRail } from "#/components/assistant/chat-rail.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
-import {
-	settingsNavGroups,
-	settingsSubNavItems,
-} from "#/components/settings-nav.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
-import { DisclosureChevron } from "#/components/ui/disclosure.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { useScrollFade } from "#/components/ui/scroll-fade.tsx";
 import {
@@ -40,9 +34,6 @@ import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
-	SidebarMenuSub,
-	SidebarMenuSubButton,
-	SidebarMenuSubItem,
 } from "#/components/ui/sidebar.tsx";
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
@@ -54,12 +45,10 @@ import {
 	isNavItemActive,
 	type NavItem,
 	REPORTS_ITEM,
-	SETTINGS_ITEM,
 	WORK_ITEMS,
 	YOU_ITEMS,
 } from "#/lib/nav-items.ts";
 import { cn } from "#/lib/utils.ts";
-import { myAccessQuery } from "#/queries/access.ts";
 
 type SidebarTab = "browse" | "chat";
 
@@ -124,40 +113,6 @@ function EnteringMenuItem({
 		>
 			{children}
 		</motion.li>
-	);
-}
-
-/**
- * The settings sub-menu's opening, and the reason it is not a plain `<div>`.
- *
- * The same shape as `EnteringMenuItem` above: `overflow-hidden` is what makes
- * the list read as unrolling under the Settings row rather than six labels
- * arriving at once, and it comes off the moment the animation ends, because a
- * sub-row's `focus-visible:ring-2` sits outside its border and this box is
- * exactly the list's size.
- */
-function ExpandingSub({ children }: { children: React.ReactNode }) {
-	const [settled, setSettled] = useState(false);
-	const { initial, animate, exit } = useUnroll(useReducedMotion());
-	return (
-		<motion.div
-			className={cn(!settled && "overflow-hidden")}
-			initial={initial}
-			animate={animate}
-			// It leaves the way it arrived, rolling back up under the row it
-			// belongs to. Unmounting it on the frame the route changes made the
-			// list vanish where it had unrolled, which is the one thing a person
-			// reads as "that was not a place".
-			exit={exit}
-			transition={springProductive}
-			// The clip is only wanted while the box is moving: a sub-row's
-			// focus ring sits outside its border, and this box is exactly the
-			// list's size. It comes back for the exit.
-			onAnimationStart={() => setSettled(false)}
-			onAnimationComplete={() => setSettled(true)}
-		>
-			{children}
-		</motion.div>
 	);
 }
 
@@ -349,12 +304,6 @@ export function AppSidebar({
 		);
 	};
 
-	// Not a suspense query: the sidebar is always mounted and shouldn't block or
-	// suspend on this. Clients are gated on a per-project lead role (or a people
-	// list), which the org role alone can't tell us.
-	const { data: access } = useQuery(myAccessQuery(orgSlug));
-	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
-
 	// The gated rows, resolved once: the render needs them twice over (which
 	// group draws which row, and which row the path belongs to) and they must be
 	// the same answer both times.
@@ -362,43 +311,18 @@ export function AppSidebar({
 	// own row — so the item is not gated.
 	const lateWorkItems = [REPORTS_ITEM];
 
-	// The settings sub-menu: every settings page this reader may open, in the
-	// hub's own two groups and the hub's own order.
+	// Settings is a plain row like every other, and the pages behind it live on
+	// the hub it leads to.
 	//
-	// A settings page used to be a leaf: you arrived from the hub, and the only
-	// way to the next one was back to the hub first. The sub-menu turns them into
-	// siblings you can walk between, and it is what makes the Settings row read
-	// as a place rather than a link.
-	//
-	// **It is a disclosure the reader controls now.** It used to open by route
-	// and have no way to close — twelve rows you could not put away, on a screen
-	// whose nav is meant to be four. It still opens itself when you navigate into
-	// settings, because that is what the sidebar looks like at that address, and
-	// closing it while you stand inside is allowed: the row stays lit, so nothing
-	// is lost.
-	const inSettings = isNavItemActive(pathname, SETTINGS_ITEM.to, orgSlug);
-	const settingsGroups = settingsNavGroups({ isAdmin, canManageClients });
-	const settingsItems = settingsSubNavItems({ isAdmin, canManageClients });
-	const [settingsOpenOverride, setSettingsOpenOverride] = useState<
-		boolean | null
-	>(null);
-	// The route wins on arrival, the reader wins after that, and walking OUT of
-	// settings clears the override so the next visit opens fresh.
-	const settingsWasIn = useRef(inSettings);
-	if (settingsWasIn.current !== inSettings) {
-		settingsWasIn.current = inSettings;
-		if (settingsOpenOverride !== null) setSettingsOpenOverride(null);
-	}
-	const settingsOpen = settingsOpenOverride ?? inSettings;
-
+	// It was a disclosure: the row opened a sub-menu of all twelve settings
+	// pages under it. That made one row in a five-row nav taller than the rest
+	// of the nav put together, and it put the same twelve destinations in two
+	// places — the menu and the hub — which is the duplication the hub exists to
+	// remove. The hub is one click away and lists them with a sentence each,
+	// which a nav row cannot do.
 	const activeTo = activeNavTo(
 		pathname,
-		[
-			...WORK_ITEMS,
-			...lateWorkItems,
-			...YOU_ITEMS,
-			...(inSettings ? settingsItems : []),
-		],
+		[...WORK_ITEMS, ...lateWorkItems, ...YOU_ITEMS],
 		orgSlug,
 	);
 
@@ -408,99 +332,6 @@ export function AppSidebar({
 	const unfiledCount = useUnfiledCount(orgSlug, timezone);
 	const badgeFor = (item: NavItem) =>
 		item.to === "/$orgSlug/time" ? unfiledCount : undefined;
-
-	// A sub-row: the same shared pill as a top-level row, one indent in.
-	//
-	// `SidebarMenuSubButton` paints its own `data-active` background, which would
-	// blink the highlight off a nav row and on down here. Neutralised so the
-	// shared-layout span can draw it instead and carry it into the sub-menu, the
-	// same way it already travels between the groups above.
-	const settingsSubLink = (item: NavItem, isActive: boolean) => (
-		<Link
-			to={item.to}
-			params={{ orgSlug }}
-			className="relative data-active:bg-transparent"
-			{...pressToNavigate(item, isActive)}
-		>
-			{isActive && (
-				<motion.span
-					aria-hidden
-					layoutId="sidebar-active-nav"
-					transition={springLayout}
-					// Matching the sub button's own corner — the pill and the hover
-					// background are the same shape at the same size, or the corner
-					// changes as you move onto the row you are already on.
-					className="absolute inset-0 rounded-lg bg-sidebar-accent"
-				/>
-			)}
-			{/* No icon, unlike the rows above and unlike the hub's list: the rail at
-			    the left already says these belong to the row over them, and a second
-			    column of glyphs at this indent leaves the labels nowhere to go. */}
-			<span className="relative min-w-0 flex-1 truncate">{item.label}</span>
-		</Link>
-	);
-
-	const settingsRow = (item: NavItem) => {
-		const isActive = activeTo === item.to;
-		return (
-			<SidebarMenuItem key={item.to}>
-				{/* The row is still a link to the hub — a phone has no sub-menu and
-				    the hub is where its rows live — with the chevron beside it as the
-				    disclosure's own control. A caret that navigated would be a
-				    control that did two things; one that only turned would leave the
-				    hub unreachable from the sidebar. So: label navigates, caret
-				    toggles, and the caret stops the click from reaching the link. */}
-				<SidebarMenuButton
-					isActive={isActive}
-					render={navLink(item, isActive)}
-				/>
-				<button
-					type="button"
-					aria-expanded={settingsOpen}
-					aria-label={settingsOpen ? "Collapse settings" : "Expand settings"}
-					onClick={(event) => {
-						event.preventDefault();
-						event.stopPropagation();
-						setSettingsOpenOverride(!settingsOpen);
-					}}
-					className="absolute top-1.5 right-1 flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
-				>
-					<DisclosureChevron open={settingsOpen} />
-				</button>
-				{/* `initial={false}` so a cold load that lands inside settings paints
-				    the sub-menu already open. It is not an entrance there — it is
-				    what the sidebar looks like at that address. */}
-				<AnimatePresence initial={false}>
-					{settingsOpen && (
-						<ExpandingSub>
-							<SidebarMenuSub className="mt-1">
-								{settingsGroups.map((group) => (
-									<Fragment key={group.key}>
-										{/* The hub's own section labels, so the menu and the
-										    page it leads to name the same groups. */}
-										<li className="eyebrow px-2.5 pt-2.5 pb-1 first:pt-1">
-											{group.label}
-										</li>
-										{group.items.map((subItem) => (
-											<SidebarMenuSubItem key={subItem.to}>
-												<SidebarMenuSubButton
-													isActive={activeTo === subItem.to}
-													render={settingsSubLink(
-														subItem,
-														activeTo === subItem.to,
-													)}
-												/>
-											</SidebarMenuSubItem>
-										))}
-									</Fragment>
-								))}
-							</SidebarMenuSub>
-						</ExpandingSub>
-					)}
-				</AnimatePresence>
-			</SidebarMenuItem>
-		);
-	};
 
 	const handleLogout = async () => {
 		await authClient.signOut();
@@ -590,13 +421,7 @@ export function AppSidebar({
 							    separation, the way the hub separates its two sections. */}
 							<SidebarGroup>
 								<SidebarGroupContent>
-									<SidebarMenu>
-										{YOU_ITEMS.map((item) =>
-											item.to === SETTINGS_ITEM.to
-												? settingsRow(item)
-												: navRow(item),
-										)}
-									</SidebarMenu>
+									<SidebarMenu>{YOU_ITEMS.map(navRow)}</SidebarMenu>
 								</SidebarGroupContent>
 							</SidebarGroup>
 						</>

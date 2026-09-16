@@ -117,10 +117,15 @@ export type ExistingTimeEntry = {
 
 const MAX_ENTRY_SECONDS = 24 * 3600;
 
-/** The lengths most entries actually are, offered as chips beside the field.
+/** The lengths most entries actually are, offered as a row under the field.
  *  Written as clock strings because that is what the field holds and what the
- *  blur handler normalises to, so a chip and a typed "1.5" end in one state. */
-const QUICK_DURATIONS = ["0:30", "1:00", "2:00", "4:00", "8:00"] as const;
+ *  blur handler normalises to, so a preset and a typed "1.5" end in one state.
+ *
+ *  Four, not seven. "Rest of day" sits beside them as the fifth and is not one
+ *  of these: it is a different KIND of answer — a block sized from whatever the
+ *  day has left rather than a number — which is why it is marked out and why it
+ *  came out of More options, where nobody found it. */
+const QUICK_DURATIONS = ["0:30", "1:00", "2:00", "4:00"] as const;
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
@@ -296,6 +301,8 @@ export function AddBlockDialog({
 	const targetDate = form.watch("date") || defaultDate;
 	const repeatEnabled = form.watch("repeatEnabled");
 	const fillsDay = form.watch("fillsDay");
+	// Read so a preset can light up when the field already holds its value.
+	const durationValue = form.watch("duration");
 	const daysOfWeek = form.watch("daysOfWeek");
 	const weekdays = useWeekdays();
 
@@ -347,21 +354,13 @@ export function AddBlockDialog({
 
 	// Duration is typed, not derived: there is no clock in this system, so an
 	// entry is a date plus an amount of time, in 15-minute steps.
-	const durationText = form.watch("duration");
-	const parsedSeconds = parseDuration(durationText);
-	// `snapToQuarterHour` rather than a local `Math.round(x / 900) * 900`: the
-	// shared one floors at 15 minutes, so "0.1" becomes a real 15-minute block
-	// instead of a 0 the server then rejects with a toast.
-	const snappedSeconds =
-		parsedSeconds !== null && parsedSeconds > 0
-			? snapToQuarterHour(parsedSeconds)
-			: null;
-	// Show the rounding before the user commits to it, rather than silently
-	// changing what they typed on save.
-	const willSnap =
-		snappedSeconds != null &&
-		parsedSeconds != null &&
-		snappedSeconds !== parsedSeconds;
+	//
+	// The rounding used to be announced under the field ("Rounds to 1:30 — time
+	// is tracked in 15-minute steps"), which was a paragraph of small print
+	// under a box that already normalises itself on blur. The blur is the
+	// feedback: you see 1:30 appear where you typed 1.5. `snapToQuarterHour`
+	// does that on blur and again in the validator, which floors at 15 minutes
+	// so "0.1" becomes a real block rather than a 0 the server rejects.
 
 	const { data: dayEntries } = useQuery({
 		...timeEntriesRangeQuery(orgSlug, targetDate, targetDate),
@@ -884,8 +883,10 @@ export function AddBlockDialog({
 	});
 
 	const showRepeatSection = !entry && !fillsDay && !isAbsence;
+	// What the collapsed disclosure says it is holding. "Fill rest of day" is
+	// no longer one of them: it is a preset now, visible whether or not this is
+	// open.
 	const activeOptions = [
-		fillsDay ? "Fill rest of day" : null,
 		repeatEnabled ? "Repeat" : null,
 		form.watch("overtime") ? "Overtime" : null,
 	].flatMap((o) => (o ? [o] : []));
@@ -921,15 +922,16 @@ export function AddBlockDialog({
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger render={trigger} />
 			<DialogContent className="sm:max-w-xl">
-				<DialogHeader>
-					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
-					{/* The timesheet's ‹ date › stepper, so the day can change without
-					    closing the dialog: yesterday's work logged today, or an entry
-					    moved to the day it belongs to.
-					    Cut from the same filled surface as every other field in the
-					    dialog (DESIGN.md, `text-input`) rather than outlined: outlined,
-					    it read as a toolbar that had fallen into a form. */}
-					<div className="flex h-8 w-fit items-center rounded-lg bg-secondary text-sm">
+				{/* Title and date on ONE line. They were stacked, which put a block of
+				    empty space between the word "Log time" and the first field and
+				    made the date read as a toolbar that had fallen into a form. The
+				    date is the entry's most important property after its length, so
+				    it belongs beside the title, not under it. */}
+				<DialogHeader className="flex-row flex-wrap items-center gap-x-4 gap-y-2 pr-8">
+					<DialogTitle className="mr-auto">
+						{entry ? "Edit entry" : "Log time"}
+					</DialogTitle>
+					<div className="flex h-8 w-fit shrink-0 items-center rounded-lg bg-secondary text-sm">
 						<button
 							type="button"
 							className={cn(
@@ -960,7 +962,7 @@ export function AddBlockDialog({
 						</button>
 					</div>
 					{dayLocked && (
-						<p className="text-xs text-muted-foreground">
+						<p className="w-full text-xs text-muted-foreground">
 							Its GitHub activity keeps this entry on this day.
 						</p>
 					)}
@@ -1048,10 +1050,8 @@ export function AddBlockDialog({
 						    box is. What changed is its weight — it was a 30px monospace
 						    figure in a box the height of the textarea, which made the
 						    number the loudest thing in the dialog and read as a running
-						    timer rather than a field. It is now the display face at 22px
-						    in a normal control, with the common lengths as chips under
-						    it, so most entries are one click rather than a typed figure. */}
-						<div className="grid grid-cols-[minmax(0,1fr)_9.5rem] gap-x-3 gap-y-1.5 max-sm:grid-cols-[minmax(0,1fr)]">
+						    timer rather than a field. */}
+						<div className="grid grid-cols-[minmax(0,1fr)_10.75rem] gap-3 max-sm:grid-cols-[minmax(0,1fr)]">
 							<FormField
 								control={form.control}
 								name="description"
@@ -1063,7 +1063,7 @@ export function AddBlockDialog({
 										<FormControl>
 											<Textarea
 												rows={3}
-												className="min-h-20 resize-y"
+												className="min-h-[5.25rem] resize-y"
 												placeholder={
 													needsDescription && !fillsDay
 														? "Rebuilt the project picker…"
@@ -1081,7 +1081,7 @@ export function AddBlockDialog({
 									<span className="text-sm leading-none font-medium">
 										Duration
 									</span>
-									<div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed border-input px-3 text-center text-sm text-muted-foreground">
+									<div className="flex min-h-[5.25rem] items-center justify-center rounded-lg border border-dashed border-primary/40 bg-primary/8 px-3 text-center text-sm font-medium text-primary">
 										Rest of day
 									</div>
 								</div>
@@ -1095,9 +1095,9 @@ export function AddBlockDialog({
 											<FormControl>
 												<Input
 													{...field}
-													placeholder="0:00"
+													placeholder="1:30"
 													inputMode="decimal"
-													className="font-display h-10 text-right text-[22px] font-semibold tabular-nums"
+													className="font-display h-[5.25rem] text-right text-[30px] font-semibold tabular-nums"
 													// Normalise on blur, the way the week grid's cells
 													// already do — "1.5" becomes "1:30", so what is on
 													// screen is what will be saved rather than a form the
@@ -1113,50 +1113,67 @@ export function AddBlockDialog({
 													}}
 												/>
 											</FormControl>
-											{/* The five lengths that cover most entries. A chip
-											    writes the field rather than opening anything, so
-											    the commonest case is one click and the box still
-											    takes anything typed. */}
-											<div className="flex flex-wrap gap-1">
-												{QUICK_DURATIONS.map((value) => (
-													<button
-														key={value}
-														type="button"
-														onClick={() => {
-															form.setValue("duration", value, {
-																shouldDirty: true,
-																shouldValidate: true,
-															});
-														}}
-														className={cn(
-															"tnum rounded-md px-1.5 py-1 text-xs font-medium transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
-															field.value === value
-																? "bg-primary/12 text-primary"
-																: "bg-secondary text-muted-foreground hover:text-foreground",
-														)}
-													>
-														{value}
-													</button>
-												))}
-											</div>
 											<FormMessage />
 										</FormItem>
 									)}
 								/>
 							)}
-							{/* The rounding hint gives way to the error above: two lines of
-							    small print under one box is one too many. Spans both columns
-							    so it reads as a note on the pair, not on the textarea. */}
-							{!form.formState.errors.duration && (
-								<p className="text-sm text-muted-foreground max-sm:col-span-1 sm:col-span-2">
-									{fillsDay
-										? "Fills the rest of your working hours, minus everything else logged that day."
-										: willSnap && snappedSeconds != null
-											? `Rounds to ${formatClock(snappedSeconds)}. Time is tracked in 15-minute steps.`
-											: "Type 1.5, 1h30m or 1:30. Tracked in 15-minute steps."}
-								</p>
-							)}
 						</div>
+
+						{/* The lengths, across the full width of the pair above. Four
+						    numbers and "Rest of day", which is a different kind of answer
+						    and is marked out as one. A preset writes the field rather
+						    than opening anything, so the commonest case is one click and
+						    the box still takes anything typed. */}
+						{!isTimeOff && (
+							<div className="grid grid-cols-[repeat(4,1fr)_1.6fr] gap-1.5">
+								{QUICK_DURATIONS.map((value) => {
+									const on = !fillsDay && durationValue === value;
+									return (
+										<button
+											key={value}
+											type="button"
+											aria-pressed={on}
+											onClick={() => {
+												form.setValue("fillsDay", false);
+												form.setValue("duration", value, {
+													shouldDirty: true,
+													shouldValidate: true,
+												});
+											}}
+											className={cn(
+												"tnum rounded-lg py-2 text-sm font-medium transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
+												on
+													? "bg-primary/16 text-primary"
+													: "bg-secondary text-muted-foreground hover:text-foreground",
+											)}
+										>
+											{value}
+										</button>
+									);
+								})}
+								<button
+									type="button"
+									aria-pressed={fillsDay}
+									disabled={dayHasFill && !fillsDay}
+									title={
+										dayHasFill && !fillsDay
+											? "This day already has a rest-of-day block"
+											: undefined
+									}
+									onClick={() => form.setValue("fillsDay", !fillsDay)}
+									className={cn(
+										"rounded-lg py-2 text-sm font-semibold transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16 disabled:pointer-events-none disabled:opacity-40",
+										fillsDay
+											? "bg-primary text-primary-foreground"
+											: "bg-primary/12 text-primary ring-1 ring-primary/35 ring-inset hover:bg-primary/16",
+									)}
+								>
+									Rest of day
+								</button>
+							</div>
+						)}
+
 						{showCalendarPicker && calendarOpen && (
 							<div className="rounded-lg border border-line2">
 								<div className="flex items-center justify-between px-3 py-2">
@@ -1510,27 +1527,10 @@ export function AddBlockDialog({
 											className="overflow-hidden"
 										>
 											<div className="grid divide-y divide-line2 pt-1">
-												{!repeatEnabled && (
-													<div className="flex items-center justify-between gap-3 py-3">
-														<div className="min-w-0">
-															<span className="text-base font-medium">
-																Fill rest of day
-															</span>
-															<p className="text-sm text-muted-foreground">
-																{dayHasFill
-																	? "This day already has a fill block — edit or delete that one instead."
-																	: "Auto-expands to your working hours minus everything else logged that day."}
-															</p>
-														</div>
-														<Switch
-															checked={fillsDay}
-															disabled={dayHasFill}
-															onCheckedChange={(checked) =>
-																form.setValue("fillsDay", checked)
-															}
-														/>
-													</div>
-												)}
+												{/* Overtime and Repeat, and nothing else: "Fill rest
+												    of day" left this disclosure and became the
+												    highlighted preset beside the lengths, which is
+												    where somebody looking for it actually looks. */}
 												{showRepeatSection && (
 													<div className="py-3">
 														<div className="flex items-center justify-between gap-3">

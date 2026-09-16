@@ -1,6 +1,7 @@
 import { parseMonthKey } from "@farmer/core/lib/report-period";
 import { dayKeyInTz } from "@farmer/core/lib/time";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import { Suspense } from "react";
 
 import { AbsenceTab } from "#/components/reports/absence-tab.tsx";
@@ -15,11 +16,9 @@ import {
 import { TimeTab } from "#/components/reports/time-tab.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
-import {
-	SegmentedControl,
-	SegmentedControlItem,
-} from "#/components/ui/segmented-control.tsx";
 import { formatMonthKey } from "#/lib/format-date.ts";
+import { springLayout } from "#/lib/motion.ts";
+import { cn } from "#/lib/utils.ts";
 import { myAccessQuery } from "#/queries/access.ts";
 
 // The shell only: the route, the tab strip, and which tab is allowed to render.
@@ -73,37 +72,57 @@ function ReportsPage() {
 						: periodLabel(search, today, organization.weekStartsOn)
 				}
 				title="Reports"
-				// The report tabs sit on the eyebrow row, where every other screen
-				// keeps its one control, rather than as a strip of their own under
-				// the title — a screen that already has two rows of controls below
-				// the title had no room for a third.
-				action={
-					<div className="overflow-x-auto">
-						<SegmentedControl>
-							{visibleTabs.map((t) => (
-								<SegmentedControlItem
-									key={t.id}
-									active={tab === t.id}
-									render={
-										<Link
-											to="/$orgSlug/reports"
-											params={{ orgSlug: organization.slug }}
-											// Deliberately drops every other search param: a period
-											// or drill-down belongs to the tab it was set on, and
-											// carrying a client filter into the Absence report would
-											// only ever confuse.
-											search={{ tab: t.id, month: search.month }}
-											aria-current={tab === t.id ? "page" : undefined}
-										/>
-									}
-								>
-									{t.label}
-								</SegmentedControlItem>
-							))}
-						</SegmentedControl>
-					</div>
-				}
+				className="mb-4"
 			/>
+
+			{/* 8A: the four reports are the page's own tab bar, directly under the
+			    title and left-aligned, sitting ON the rule that opens the content.
+			    They used to float in the top-right corner as a segmented control,
+			    unrelated to the period controls beneath them and to each tab's own
+			    Clients / Projects / Team switch beneath those — three rows of
+			    switches for one table, none of them saying which level it belonged
+			    to. An underlined tab bar says "this is the page you are on"; a
+			    segmented control says "this is a setting", and the report is not a
+			    setting. */}
+			<div
+				role="tablist"
+				aria-label="Reports"
+				className="scrollbar-stable -mb-px flex shrink-0 gap-1 overflow-x-auto border-b border-line"
+			>
+				{visibleTabs.map((t) => {
+					const active = tab === t.id;
+					return (
+						<Link
+							key={t.id}
+							to="/$orgSlug/reports"
+							params={{ orgSlug: organization.slug }}
+							// Deliberately drops every other search param: a period or
+							// drill-down belongs to the tab it was set on, and carrying a
+							// client filter into the Absence report would only ever confuse.
+							search={{ tab: t.id, month: search.month }}
+							role="tab"
+							aria-selected={active}
+							aria-current={active ? "page" : undefined}
+							className={cn(
+								"relative shrink-0 rounded-t-lg px-3 py-2.5 text-base whitespace-nowrap transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
+								active
+									? "font-semibold text-foreground"
+									: "text-muted-foreground hover:text-foreground",
+							)}
+						>
+							{t.label}
+							{active && (
+								<motion.span
+									aria-hidden
+									layoutId="reports-active-tab"
+									transition={springLayout}
+									className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-primary"
+								/>
+							)}
+						</Link>
+					);
+				})}
+			</div>
 
 			{/* Every tab body reads its data with `useSuspenseQuery` and the route
 			    loader only prefetches `myAccess`, so the first visit to a tab always

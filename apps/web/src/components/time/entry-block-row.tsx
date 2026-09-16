@@ -1,3 +1,4 @@
+import type { TaskGroup } from "@farmer/core/lib/task-taxonomy";
 import {
 	CopySimpleIcon,
 	GitCommitIcon,
@@ -7,7 +8,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
@@ -25,6 +26,7 @@ import {
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { springProductive } from "#/lib/motion.ts";
+import { taskGroupChipClass } from "#/lib/task-group-colors.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
@@ -41,7 +43,12 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 		icon?: string | null;
 		client: { name: string } | null;
 	} | null;
-	task: { name: string; color: string | null; isAbsence: boolean };
+	task: {
+		name: string;
+		color: string | null;
+		isAbsence: boolean;
+		group?: TaskGroup | null;
+	};
 	commitCount?: number;
 	pullRequestCount?: number;
 };
@@ -228,6 +235,29 @@ export function EntryBlockRow({
 		},
 	});
 
+	// The note is held to two lines with a "Show more" under it, so a list of
+	// twelve entries keeps one rhythm however long a note is. Measured rather
+	// than guessed from the character count: a note wraps differently at every
+	// window width, and a link offering to expand two lines that are already
+	// whole is worse than no link.
+	const noteRef = useRef<HTMLTextAreaElement>(null);
+	const [expanded, setExpanded] = useState(false);
+	const [clamped, setClamped] = useState(false);
+	useEffect(() => {
+		const el = noteRef.current;
+		if (!el) return;
+		const measure = () => {
+			// Only meaningful while the clamp is on: expanded, the two heights are
+			// equal by definition.
+			if (expanded) return;
+			setClamped(el.scrollHeight > el.clientHeight + 1);
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, [expanded]);
+
 	return (
 		// The row is a hover group: its actions are hidden at rest and slide in
 		// under the pointer or the keyboard (`.row-actions`, styles.css). They used
@@ -235,10 +265,13 @@ export function EntryBlockRow({
 		// list, which put nine controls on a three-entry day and made the actions
 		// louder than the time they act on.
 		//
-		// Wraps on a phone: the figure and the actions are a fixed ~140px, and
-		// holding them on the same line as the text squeezed a project name down
-		// to a dozen characters. Touch has no hover, so the actions are always
-		// visible there — see the `(hover: none)` rule beside `.row-actions`.
+		// Three parts, and the split is the whole design. The STUB at the left
+		// holds the project's code and mark and nothing else, so the code never
+		// competes with the name and every name starts at the same x. The BODY
+		// holds identity on line one (project, client, task) and the note on line
+		// two, aligned under the name rather than under the code. The TIME sits in
+		// its own box at the right, pinned to the top so a four-line note does not
+		// leave the figure floating in the middle of a tall row.
 		//
 		// Delete only, no enter. Deleting a row used to drop it instantly and snap
 		// everything below it upward while the "Undo" toast slid in from the far
@@ -250,191 +283,208 @@ export function EntryBlockRow({
 		// Collapsing and deleting start together rather than in sequence: the
 		// request is never gated on an animation finishing, so a frame that never
 		// arrives can cost the collapse but never the delete.
-		//
-		// `overflow-hidden` is what makes the collapse read as the row closing
-		// rather than its contents spilling; the controls inside are inset far
-		// enough from the edges that it never clips a focus ring.
 		// `prefers-reduced-motion` is handled globally by the root
 		// <MotionConfig reducedMotion="user">.
 		<motion.div
-			animate={
-				collapsing
-					? { height: 0, opacity: 0, paddingTop: 0, paddingBottom: 0 }
-					: undefined
-			}
+			animate={collapsing ? { height: 0, opacity: 0 } : undefined}
 			transition={springProductive}
-			className="group/row group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted sm:flex-nowrap sm:px-8"
+			className="group/row overflow-hidden"
 		>
-			{/* The project's own mark, which is what tells fifteen rows apart at a
-			    glance — its uploaded logo, its emoji, or the first letter of its
-			    name. An absence has no project, so it keeps the task's colour as a
-			    dot: a lettered box for "Vacation" would read as a project that
-			    isn't there. */}
-			{entry.project ? (
-				<ProjectIcon
-					size="sm"
-					icon={entry.project.icon}
-					name={entry.project.name}
-					className="mt-0.5 transition-transform duration-(--dur-base) group-hover/row:-translate-y-px"
-				/>
-			) : (
-				<span
-					className="mt-2 size-2 shrink-0 rounded-full"
-					style={{
-						backgroundColor: entry.task.color ?? "var(--muted-foreground)",
-					}}
-				/>
-			)}
-			<div className="min-w-0 flex-1">
-				{/* The project, then what it was, then the note. The hierarchy is
-				    load-bearing: you scan for the project, confirm the task, and
-				    read the note only if you need the detail. */}
-				<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-					<p className="truncate text-base font-medium">
-						{entry.project ? entry.project.name : entry.task.name}
-					</p>
-					{entry.project?.code && (
-						<span className="mono shrink-0 rounded-md bg-secondary px-1.5 py-0.5 text-2xs text-muted-foreground">
-							{entry.project.code}
-						</span>
-					)}
-					{entry.project && (
-						<span className="shrink-0 rounded-md bg-secondary px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
-							{entry.task.name}
-						</span>
-					)}
-					{entry.fillsDay && (
-						<span className="eyebrow shrink-0 rounded-full bg-muted px-1.5 py-0.5">
-							Rest of day
-						</span>
-					)}
-					{entry.overtime && (
-						<span className="eyebrow shrink-0 rounded-full bg-warn/12 px-1.5 py-0.5 text-warn">
-							Overtime
-						</span>
-					)}
-					{!!entry.commitCount && entry.commitCount > 0 && (
+			<div className="flex items-stretch gap-px">
+				{/* The stub. A column rather than a prefix: the code is an id, and an
+				    id in front of a name starts every name at a different x. */}
+				<div className="flex w-14 shrink-0 flex-col items-center justify-center gap-1.5 rounded-l-[9px] bg-secondary px-1 py-2.5 sm:w-16">
+					{entry.project ? (
+						<ProjectIcon
+							size="sm"
+							icon={entry.project.icon}
+							name={entry.project.name}
+							className="size-5 rounded-[5px] border-0 transition-transform duration-(--dur-base) group-hover/row:-translate-y-px"
+						/>
+					) : (
 						<span
-							className="mono flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
-							title={`${entry.commitCount} linked commit${entry.commitCount === 1 ? "" : "s"}`}
-						>
-							<GitCommitIcon className="size-3" />
-							{entry.commitCount}
-						</span>
+							className="size-2 rounded-full"
+							style={{
+								backgroundColor: entry.task.color ?? "var(--muted-foreground)",
+							}}
+						/>
 					)}
-					{!!entry.pullRequestCount && entry.pullRequestCount > 0 && (
-						<span
-							className="mono flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
-							title={`${entry.pullRequestCount} linked pull request${entry.pullRequestCount === 1 ? "" : "s"}`}
-						>
-							<GitPullRequestIcon className="size-3" />
-							{entry.pullRequestCount}
-						</span>
-					)}
+					<span className="mono w-full truncate text-center text-2xs leading-none text-muted-foreground">
+						{entry.project?.code ?? ""}
+					</span>
 				</div>
-				{entry.project?.client && (
-					<p className="truncate text-sm text-muted-foreground">
-						{entry.project.client.name}
-					</p>
-				)}
-				<Textarea
-					value={note}
-					onChange={(event) => setNote(event.target.value)}
-					onBlur={saveNote}
-					placeholder="Add a note…"
-					rows={1}
-					className="mt-0.5 -ml-1.5 min-h-7 w-full resize-none rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-muted-foreground shadow-none [field-sizing:content] placeholder:text-faint hover:border-input focus-visible:border-ring focus-visible:bg-background focus-visible:text-foreground"
-				/>
-			</div>
-			<div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto sm:gap-3">
-				<span className="mono mr-auto text-base sm:mr-0">
-					{formatClock(entry.durationSeconds)}
-				</span>
-				{/* Overtime is a one-click toggle from the row: it is purely manual, and
-				    making people reopen the dialog for it guarantees it never gets set.
-				    It stays visible once ON — at that point it is a state the row is
-				    in, not an action waiting to be found. */}
-				{!entry.task.isAbsence && !entry.fillsDay && (
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<Button
-									variant="ghost"
-									size="icon-sm"
+
+				<div className="flex min-w-0 flex-1 items-start gap-3 rounded-r-[9px] bg-secondary/45 px-3 py-2.5 transition-colors duration-(--dur-fast) group-hover/row:bg-secondary/80">
+					<div className="min-w-0 flex-1">
+						{/* Identity: what this row is. The client sits with the project
+						    because they are the same kind of fact; the task sits here
+						    rather than beside the note because it is a property of the
+						    row, not a prefix to what you wrote. */}
+						<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+							<p className="truncate font-semibold tracking-[-0.01em]">
+								{entry.project ? entry.project.name : entry.task.name}
+							</p>
+							{entry.project?.client && (
+								<span className="truncate text-sm text-muted-foreground">
+									{entry.project.client.name}
+								</span>
+							)}
+							{entry.project && (
+								<span
 									className={cn(
-										"text-faint",
-										entry.overtime
-											? "text-warn"
-											: "row-actions hover:text-foreground",
+										"shrink-0 rounded-md px-1.5 py-0.5 text-2xs font-medium",
+										taskGroupChipClass(entry.task.group),
 									)}
-									onClick={() => overtimeMutation.mutate(!entry.overtime)}
-									disabled={overtimeMutation.isPending}
-									aria-label={
-										entry.overtime ? "Not overtime" : "Mark as overtime"
-									}
 								>
-									<span className="text-2xs font-medium">OT</span>
-								</Button>
-							}
+									{entry.task.name}
+								</span>
+							)}
+							{entry.fillsDay && (
+								<span className="eyebrow shrink-0 rounded-full bg-muted px-1.5 py-0.5">
+									Rest of day
+								</span>
+							)}
+							{entry.overtime && (
+								<span className="eyebrow shrink-0 rounded-full bg-warn/12 px-1.5 py-0.5 text-warn">
+									Overtime
+								</span>
+							)}
+							{!!entry.commitCount && entry.commitCount > 0 && (
+								<span
+									className="mono flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
+									title={`${entry.commitCount} linked commit${entry.commitCount === 1 ? "" : "s"}`}
+								>
+									<GitCommitIcon className="size-3" />
+									{entry.commitCount}
+								</span>
+							)}
+							{!!entry.pullRequestCount && entry.pullRequestCount > 0 && (
+								<span
+									className="mono flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
+									title={`${entry.pullRequestCount} linked pull request${entry.pullRequestCount === 1 ? "" : "s"}`}
+								>
+									<GitPullRequestIcon className="size-3" />
+									{entry.pullRequestCount}
+								</span>
+							)}
+						</div>
+
+						{/* The note, editable in place. Reading and editing are the same
+						    element: it is a textarea that looks like text until it is
+						    focused, so writing four lines never means opening a dialog.
+						    The clamp comes off while it has focus — you cannot edit the
+						    third line of something showing two. */}
+						<Textarea
+							ref={noteRef}
+							value={note}
+							onChange={(event) => setNote(event.target.value)}
+							onBlur={saveNote}
+							placeholder="Add a note…"
+							rows={1}
+							className={cn(
+								"mt-1 -ml-1.5 min-h-6 w-full resize-none rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-sm leading-relaxed text-muted-foreground shadow-none [field-sizing:content] placeholder:text-faint hover:border-input focus-visible:border-ring focus-visible:bg-background focus-visible:text-foreground",
+								!expanded && "clamp-2",
+							)}
 						/>
-						<TooltipContent>
-							{entry.overtime ? "Not overtime" : "Mark as overtime"}
-						</TooltipContent>
-					</Tooltip>
-				)}
-				<div className="row-actions flex items-center gap-0.5">
-					<AddBlockDialog
-						timezone={timezone}
-						defaultDate={entry.date}
-						entry={entry}
-						trigger={
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								className="text-muted-foreground"
-								aria-label="Edit entry"
+						{(clamped || expanded) && (
+							<button
+								type="button"
+								onClick={() => setExpanded((open) => !open)}
+								className="mt-0.5 rounded-sm text-xs font-medium text-primary transition-colors duration-(--dur-fast) outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16"
 							>
-								<PencilSimpleIcon weight="regular" />
-							</Button>
-						}
-					/>
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									className="text-muted-foreground"
-									onClick={() => duplicateMutation.mutate()}
-									disabled={duplicateMutation.isPending}
-									aria-label="Duplicate entry"
-								>
-									<CopySimpleIcon weight="regular" />
-								</Button>
-							}
-						/>
-						<TooltipContent>Duplicate</TooltipContent>
-					</Tooltip>
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-									onClick={() => {
-										setCollapsing(true);
-										deleteMutation.mutate();
-									}}
-									disabled={deleteMutation.isPending}
-									aria-label="Delete entry"
-								>
-									<TrashIcon weight="regular" />
-								</Button>
-							}
-						/>
-						<TooltipContent>Delete</TooltipContent>
-					</Tooltip>
+								{expanded ? "Show less" : "Show more"}
+							</button>
+						)}
+					</div>
+
+					<div className="flex shrink-0 items-start gap-1.5">
+						<div className="row-actions flex items-center gap-0.5">
+							{!entry.task.isAbsence && !entry.fillsDay && (
+								<Tooltip>
+									<TooltipTrigger
+										render={
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												className={cn(
+													"text-muted-foreground",
+													entry.overtime && "text-warn",
+												)}
+												onClick={() => overtimeMutation.mutate(!entry.overtime)}
+												disabled={overtimeMutation.isPending}
+												aria-label={
+													entry.overtime ? "Not overtime" : "Mark as overtime"
+												}
+											>
+												<span className="text-2xs font-medium">OT</span>
+											</Button>
+										}
+									/>
+									<TooltipContent>
+										{entry.overtime ? "Not overtime" : "Mark as overtime"}
+									</TooltipContent>
+								</Tooltip>
+							)}
+							<AddBlockDialog
+								timezone={timezone}
+								defaultDate={entry.date}
+								entry={entry}
+								trigger={
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										className="text-muted-foreground"
+										aria-label="Edit entry"
+									>
+										<PencilSimpleIcon weight="regular" />
+									</Button>
+								}
+							/>
+							<Tooltip>
+								<TooltipTrigger
+									render={
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											className="text-muted-foreground"
+											onClick={() => duplicateMutation.mutate()}
+											disabled={duplicateMutation.isPending}
+											aria-label="Duplicate entry"
+										>
+											<CopySimpleIcon weight="regular" />
+										</Button>
+									}
+								/>
+								<TooltipContent>Duplicate</TooltipContent>
+							</Tooltip>
+							<Tooltip>
+								<TooltipTrigger
+									render={
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+											onClick={() => {
+												setCollapsing(true);
+												deleteMutation.mutate();
+											}}
+											disabled={deleteMutation.isPending}
+											aria-label="Delete entry"
+										>
+											<TrashIcon weight="regular" />
+										</Button>
+									}
+								/>
+								<TooltipContent>Delete</TooltipContent>
+							</Tooltip>
+						</div>
+						{/* Pinned to the top of the row rather than centred: with a
+						    four-line note, a centred figure floats halfway down a tall
+						    row and stops lining up with its neighbours. */}
+						<span className="tnum grid h-10 w-[76px] shrink-0 place-items-center rounded-[10px] bg-secondary text-md font-semibold tracking-[-0.02em]">
+							{formatClock(entry.durationSeconds)}
+						</span>
+					</div>
 				</div>
 			</div>
 		</motion.div>

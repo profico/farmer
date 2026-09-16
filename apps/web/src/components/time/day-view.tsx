@@ -200,7 +200,17 @@ export function DayView({
 				/>
 			</TimeToolbar>
 
-			<div className="mt-4">
+			{/* 6A: the day strip is the ONE thing that sticks. The island used to
+			    be capped at the viewport with the entries scrolling inside it,
+			    which put a scrollbar inside a scrollbar and broke the browser's own
+			    scroll restoration. The document scrolls now, like every other page,
+			    and the strip alone pins to the top of the frame so you always know
+			    which day you are filling. The targets bar above it scrolls away,
+			    which is right: it is context, not a control.
+
+			    `bg-background` and the bottom rule are what stop the entries showing
+			    through it while they pass underneath. */}
+			<div className="sticky top-0 z-20 mt-5 border-b border-line bg-background pt-1">
 				<WeekStrip
 					orgSlug={orgSlug}
 					dates={weekDates}
@@ -214,14 +224,14 @@ export function DayView({
 				/>
 			</div>
 
-			<div className="scrollbar-stable -mx-4 min-h-0 flex-1 overflow-y-auto sm:-mx-8">
+			<div className="mt-4 flex-1">
 				{/* No AnimatePresence: a row's delete collapse is owned by the row
 				    itself (see EntryBlockRow). Presence only knows that a row left,
 				    not why — so stepping to another day, which replaces every entry
 				    at once, played the delete animation across the whole list.
 				    `key` re-runs the stagger when the day changes, which is the
 				    crossfade doing the same job honestly. */}
-				<div key={date} className="stagger divide-y divide-line2">
+				<div key={date} className="stagger flex flex-col gap-1.5">
 					{sortedEntries.map((entry) => (
 						<EntryBlockRow key={entry.id} entry={entry} timezone={timezone} />
 					))}
@@ -230,7 +240,7 @@ export function DayView({
 				    an empty day is a sentence and this same row (DESIGN.md, "Empty
 				    and ghost rows"), rather than a centred placeholder with no action
 				    on it. */}
-				<div className="px-4 pt-3 sm:px-8">
+				<div className="pt-2.5">
 					<AddBlockDialog
 						timezone={timezone}
 						defaultDate={date}
@@ -246,7 +256,7 @@ export function DayView({
 				{sortedEntries.length > 0 && (
 					// Harvest puts the day total under the list rather than over it,
 					// so it reads as the sum of what you just scanned.
-					<div className="mt-3 flex items-center justify-end gap-3 border-t px-4 py-3.5 sm:px-8">
+					<div className="mt-4 flex items-center justify-end gap-3 border-t px-1 py-3.5">
 						<span className="eyebrow">Total</span>
 						<span className="tnum min-w-14 text-right text-md font-semibold">
 							{formatClock(total)}

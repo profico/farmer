@@ -24,7 +24,7 @@ import { Button } from "#/components/ui/button.tsx";
 import { CountUp } from "#/components/ui/count-up.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
-import { StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
+import { FigureBand, FigureCell } from "#/components/ui/stat-tile.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { projectPageAccess } from "#/lib/project-access.ts";
 import { myAccessQuery } from "#/queries/access.ts";
@@ -299,8 +299,8 @@ function OverviewStrip({
 }) {
 	const { data } = useSuspenseQuery(projectOverviewQuery(orgSlug, projectId));
 	return (
-		<StatTiles columns={4} className="-mx-4 px-4 sm:-mx-8 sm:px-8">
-			<StatTile
+		<FigureBand columns={4} className="-mx-4 px-4 sm:-mx-8 sm:px-8">
+			<FigureCell
 				label="All-time"
 				value={
 					<CountUp value={data.allTimeSeconds} format={formatReportHours} />
@@ -313,7 +313,7 @@ function OverviewStrip({
 					</>
 				}
 			/>
-			<StatTile
+			<FigureCell
 				label="This month"
 				value={<CountUp value={data.monthSeconds} format={formatReportHours} />}
 				caption={
@@ -326,10 +326,10 @@ function OverviewStrip({
 			{/* A date is not a figure, so it is set at the size a date is read at
 			    rather than in the figure's 28px — the strip used to put "January 2,
 			    2024" at the same weight as 33.644,25. */}
-			<StatTile
+			<FigureCell
 				label="Active since"
 				value={
-					<span className="text-xl">
+					<span className="text-base font-medium">
 						{data.firstEntry ? formatDateKeyLong(data.firstEntry) : "—"}
 					</span>
 				}
@@ -339,29 +339,29 @@ function OverviewStrip({
 						: "nothing logged yet"
 				}
 			/>
-			<StatTile
+			<FigureCell
 				label="Overtime"
 				value={
 					<CountUp value={data.overtimeSeconds} format={formatReportHours} />
 				}
 				caption="all-time, flagged"
 			/>
-		</StatTiles>
+		</FigureBand>
 	);
 }
 
 function StripPending() {
 	return (
-		<StatTiles columns={4} className="-mx-4 px-4 sm:-mx-8 sm:px-8">
+		<FigureBand columns={4} className="-mx-4 px-4 sm:-mx-8 sm:px-8">
 			{["All-time", "This month", "Active since", "Overtime"].map((l) => (
-				<StatTile
+				<FigureCell
 					key={l}
 					label={l}
 					value={<Skeleton className="h-7 w-24" />}
 					caption={<Skeleton className="h-3 w-32" />}
 				/>
 			))}
-		</StatTiles>
+		</FigureBand>
 	);
 }
 
