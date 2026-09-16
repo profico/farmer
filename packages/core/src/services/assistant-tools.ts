@@ -198,6 +198,21 @@ export type AssistantTool = {
 		args: JsonRecord,
 		unticked: ReadonlySet<string>,
 	) => JsonRecord;
+	/**
+	 * This read must not run beside another call. Ignored on a write, which is
+	 * never run beside anything.
+	 *
+	 * A step asking for four lists is four questions that do not depend on each
+	 * other, so the loop claims the run of them at once and awaits them together
+	 * (`runClaimedBatch`) — the person waits for the slowest read rather than
+	 * for the sum of them. That is only true of a read that READS. A read that
+	 * writes on the way through races itself when two of them cover the same
+	 * days, so it says so here and goes back to running alone.
+	 *
+	 * A new read that touches a service which writes MUST set this. There is no
+	 * way to detect it from here, and the failure is a race, not an error.
+	 */
+	serial?: boolean;
 	/** Runs the tool. The result is stringified for the model and never
 	 *  inspected by the loop, so `Serializable | void` is the whole contract:
 	 *  domain rows with their Dates intact, or nothing at all. */
@@ -315,6 +330,10 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 	{
 		name: "list_time_entries",
 		kind: "read",
+		// `listRange` recomputes and drops each day's fill block against the rows
+		// it just read (CLAUDE.md, Gotchas), so this read writes. Two of them over
+		// overlapping days would recompute the same day at once.
+		serial: true,
 		description:
 			"List the current user's own time entries between two dates (inclusive, yyyy-MM-dd, max 62 days apart). Returns each entry's date, duration, description, task and project.",
 		schema: listTimeEntriesRangeInput,
@@ -1226,7 +1245,17 @@ export const toolDefinitions = (access: Access) =>
 export const systemPrompt = async (
 	ctx: Ctx,
 	today: string,
-	houseRules?: string | null,
+	houseRules: string | null | undefined,
+	/**
+	 * The loop's step ceiling (`MAX_STEPS`), told to the model rather than
+	 * sprung on it.
+	 *
+	 * A model that does not know it has a budget spends it the way it would
+	 * spend an unlimited one — one narrow read per step — and the turns that
+	 * used to hit the ceiling were mostly that, not real loops. Passed in rather
+	 * than imported, so the number cannot come to differ from the loop's.
+	 */
+	maxSteps: number,
 ) => {
 	const tz = await ctxTimezone(ctx);
 	const base = [
@@ -1243,6 +1272,7 @@ export const systemPrompt = async (
 		"- Reconstructing a day: suggest_day already assembles it from meetings, commits, pull requests and recurring blocks, so prefer it and then apply_day_assembly. Use list_commits, list_pull_requests and list_time_entries when you need the raw evidence. Do not log the same work twice.",
 		"- Absence spanning several days goes through log_absence once, not one entry per day. It skips holidays and non-working days itself, so report which days it actually booked.",
 		"- If a tool returns an error, explain what went wrong in one sentence rather than retrying blindly.",
+		`- You get ${maxSteps} rounds of tool calls per question, so spend them wide rather than deep: ask for everything a round needs in one go — several tools in the same round is normal and they run together — and prefer one broad read over four narrow ones. If a result says it dropped rows, work from what you have or narrow the call yourself; do not make the user ask again.`,
 		"- Be brief. This is a sidebar, not an essay.",
 		"",
 		// The renderer is apps/web/src/components/assistant/answer.tsx and it is

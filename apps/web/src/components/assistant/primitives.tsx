@@ -11,9 +11,11 @@
 // Sources: LoadingState.tsx, ThinkingState.tsx, ApprovalCard.tsx.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { z } from "zod";
 
 import { cn } from "#/lib/utils.ts";
 
+import { printDayKey } from "./answer.tsx";
 import type { PendingApproval, ToolTrace } from "./use-assistant-stream.ts";
 
 /* ── the pixel-grid loader (LoadingState) ─────────────────────────────────── */
@@ -118,6 +120,7 @@ const TOOL_LABELS = new Map(
 		list_holidays: "Checked the holidays",
 		list_recurring_block_rules: "Read your recurring blocks",
 		list_commits: "Read your commits",
+		list_pull_requests: "Read your pull requests",
 		suggest_day: "Assembled the day",
 		time_report_summary: "Ran a time report",
 		time_report_detail: "Read the report's entries",
@@ -137,6 +140,7 @@ const TOOL_LABELS = new Map(
 		log_absence: "Book absence",
 		apply_day_assembly: "Log the day's entries",
 		attach_commits: "Attach commits",
+		attach_pull_requests: "Attach pull requests",
 		create_client: "Create a client",
 		create_project: "Create a project",
 		update_project: "Change a project",
@@ -158,6 +162,57 @@ const TOOL_LABELS = new Map(
 
 export const toolLabel = (name: string) =>
 	TOOL_LABELS.get(name) ?? name.replaceAll("_", " ");
+
+/**
+ * The arguments a trace row can say something about.
+ *
+ * PARSED rather than narrowed by hand, because this reads a payload a language
+ * model wrote: every field is optional, an argument of the wrong type is not a
+ * field this can use, and `.catch({})` makes a malformed call a row with no
+ * subject instead of a crash inside the transcript.
+ */
+const detailArgs = z
+	.object({
+		date: z.string().optional(),
+		from: z.string().optional(),
+		to: z.string().optional(),
+		year: z.number().optional(),
+		groupBy: z.string().optional(),
+		search: z.string().optional(),
+		name: z.string().optional(),
+	})
+	.catch({});
+
+/**
+ * What a step was ABOUT, from the call's own arguments.
+ *
+ * Four rows reading "Read time entries" say the assistant did something four
+ * times and nothing about what, which is exactly the question somebody opens
+ * the trace to answer. The arguments already travel with `tool_start`, so the
+ * row can name the range or the day it covered.
+ *
+ * Decoration, and written as such: anything unreadable gives null and the row
+ * renders as its label alone. The wording lives here beside `toolLabel` rather
+ * than in the service, for the same reason that one does.
+ */
+export const toolDetail = (raw: string): string | null => {
+	let args: z.infer<typeof detailArgs>;
+	try {
+		args = detailArgs.parse(JSON.parse(raw || "{}"));
+	} catch {
+		// Only `JSON.parse` reaches here — `.catch({})` above absorbs a payload
+		// that parsed but holds nothing this can use.
+		return null;
+	}
+	const from = args.from ? printDayKey(args.from) : null;
+	const to = args.to ? printDayKey(args.to) : null;
+	if (from && to) return from === to ? from : `${from} – ${to}`;
+	const day = args.date ? printDayKey(args.date) : null;
+	if (day) return day;
+	if (args.year) return String(args.year);
+	if (args.groupBy) return `by ${args.groupBy.replaceAll("_", " ")}`;
+	return args.search ?? args.name ?? null;
+};
 
 /**
  * The expandable trace of what the assistant did to answer.
@@ -256,45 +311,56 @@ export function ToolTraceList({
 							}}
 						/>
 						<div ref={traceRef} className="flex flex-col gap-1 py-1">
-							{traces.map((trace, index) => (
-								<div
-									key={trace.toolCallId}
-									className="flex min-h-7 w-full items-center gap-2 rounded-[6px] px-1.5 py-0.5 text-left"
-									style={{
-										animation: `fade-up 320ms cubic-bezier(0.23,1,0.32,1) ${index * 120}ms both`,
-									}}
-								>
-									{trace.ok === null ? (
-										<span
-											className="size-3 shrink-0 rounded-full border-[1.5px] border-line-strong border-t-ink-2"
-											style={{ animation: "spin 700ms linear infinite" }}
-										/>
-									) : (
-										<svg
-											width="14"
-											height="14"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke={trace.ok ? "var(--ink-3)" : "var(--orange)"}
-											strokeWidth="2.5"
-											strokeLinecap="round"
-											strokeLinejoin="round"
-											className="shrink-0"
-											aria-hidden="true"
-										>
-											<title>{trace.ok ? "Done" : "Failed"}</title>
-											{trace.ok ? (
-												<path d="M20 6L9 17l-5-5" />
-											) : (
-												<path d="M18 6L6 18M6 6l12 12" />
-											)}
-										</svg>
-									)}
-									<span className="min-w-0 truncate text-[12.5px] font-medium text-ink">
-										{toolLabel(trace.name)}
-									</span>
-								</div>
-							))}
+							{traces.map((trace, index) => {
+								const detail = toolDetail(trace.arguments);
+								return (
+									<div
+										key={trace.toolCallId}
+										className="flex min-h-7 w-full items-center gap-2 rounded-[6px] px-1.5 py-0.5 text-left"
+										style={{
+											animation: `fade-up 320ms cubic-bezier(0.23,1,0.32,1) ${index * 120}ms both`,
+										}}
+									>
+										{trace.ok === null ? (
+											<span
+												className="size-3 shrink-0 rounded-full border-[1.5px] border-line-strong border-t-ink-2"
+												style={{ animation: "spin 700ms linear infinite" }}
+											/>
+										) : (
+											<svg
+												width="14"
+												height="14"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke={trace.ok ? "var(--ink-3)" : "var(--orange)"}
+												strokeWidth="2.5"
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												className="shrink-0"
+												aria-hidden="true"
+											>
+												<title>{trace.ok ? "Done" : "Failed"}</title>
+												{trace.ok ? (
+													<path d="M20 6L9 17l-5-5" />
+												) : (
+													<path d="M18 6L6 18M6 6l12 12" />
+												)}
+											</svg>
+										)}
+										<span className="shrink-0 text-[12.5px] font-medium text-ink">
+											{toolLabel(trace.name)}
+										</span>
+										{/* The subject, dimmer and second: the step is what happened
+									    and this is what it happened to, so it truncates first
+									    when the row runs out of width. */}
+										{detail && (
+											<span className="min-w-0 truncate text-[12.5px] text-ink-3">
+												{detail}
+											</span>
+										)}
+									</div>
+								);
+							})}
 						</div>
 					</div>
 				</div>

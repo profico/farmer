@@ -15,7 +15,14 @@ import { useCallback, useRef, useState } from "react";
 export type AssistantEvent =
 	| { type: "message"; messageId: string; role: "user" }
 	| { type: "delta"; text: string }
-	| { type: "tool_start"; toolCallId: string; name: string }
+	| {
+			type: "tool_start";
+			toolCallId: string;
+			name: string;
+			/** The call's raw arguments — `toolDetail` turns them into the subject
+			 *  line beside the step. */
+			arguments: string;
+	  }
 	| { type: "tool_result"; toolCallId: string; name: string; ok: boolean }
 	| {
 			type: "approval_required";
@@ -35,6 +42,8 @@ export type ToolTrace = {
 	toolCallId: string;
 	name: string;
 	ok: boolean | null;
+	/** The call's raw arguments, as the model sent them. */
+	arguments: string;
 };
 
 /** The rows a batch write would touch. Mirrors `ApprovalPreview` in
@@ -81,7 +90,16 @@ export type AssistantStream = {
 	pending: PendingApproval | null;
 	error: string | null;
 	isStreaming: boolean;
-	send: (conversationId: string, message: string) => Promise<void>;
+	/**
+	 * Sends one message. Resolves TRUE when the server stored it and FALSE when
+	 * it never got that far — a rate limit, a dead session, a network that was
+	 * not there.
+	 *
+	 * The composer clears itself on send, so without this answer a refused turn
+	 * costs the person what they typed and they retype it from memory. False is
+	 * "this was never said", which is exactly when the draft should come back.
+	 */
+	send: (conversationId: string, message: string) => Promise<boolean>;
 	resolve: (
 		conversationId: string,
 		toolCallId: string,
@@ -125,7 +143,7 @@ export const useAssistantStream = (opts: {
 		setTraces([]);
 	}, []);
 
-	const run = useCallback(async (body: Body) => {
+	const run = useCallback(async (body: Body): Promise<boolean> => {
 		// One turn at a time: sending again mid-answer abandons the first, which
 		// is what the user meant by typing over it.
 		abortRef.current?.abort();
@@ -140,6 +158,12 @@ export const useAssistantStream = (opts: {
 		setSentMessage("message" in body ? body.message : null);
 		setTraces([]);
 		setIsStreaming(true);
+
+		// The server's `message` event is the receipt: it is emitted once the row
+		// is written. Inferring delivery from "the response was 200" instead would
+		// call a turn delivered that died inside the handler before it stored
+		// anything — which is the case where the draft most needs giving back.
+		let delivered = false;
 
 		try {
 			const response = await fetch("/api/assistant/stream", {
@@ -156,7 +180,7 @@ export const useAssistantStream = (opts: {
 					error?: string;
 				} | null;
 				setError(detail?.error ?? `The assistant failed (${response.status})`);
-				return;
+				return false;
 			}
 
 			const reader = response.body.getReader();
@@ -183,13 +207,21 @@ export const useAssistantStream = (opts: {
 					}
 
 					switch (event.type) {
+						case "message":
+							delivered = true;
+							break;
 						case "delta":
 							setStreamingText((current) => current + event.text);
 							break;
 						case "tool_start":
 							setTraces((current) => [
 								...current,
-								{ toolCallId: event.toolCallId, name: event.name, ok: null },
+								{
+									toolCallId: event.toolCallId,
+									name: event.name,
+									ok: null,
+									arguments: event.arguments,
+								},
 							]);
 							break;
 						case "tool_result":
@@ -224,14 +256,19 @@ export const useAssistantStream = (opts: {
 			}
 
 			await optsRef.current.onDone();
+			return delivered;
 		} catch (caught) {
 			// An abort is the user's own doing (they stopped it, or navigated), not
-			// a failure to report back to them.
+			// a failure to report back to them — and not a draft to hand back
+			// either. Typing over a turn in flight aborts it, so returning false
+			// here would drop the abandoned message into a composer the person has
+			// already refilled.
 			if (caught instanceof DOMException && caught.name === "AbortError")
-				return;
+				return true;
 			setError(
 				caught instanceof Error ? caught.message : "The assistant failed",
 			);
+			return delivered;
 		} finally {
 			if (abortRef.current === controller) {
 				abortRef.current = null;
@@ -249,11 +286,14 @@ export const useAssistantStream = (opts: {
 		isStreaming,
 		reset,
 		send: (conversationId, message) => run({ conversationId, message }),
-		resolve: (conversationId, toolCallId, decision, selectedRowIds) =>
-			run({
+		// An approval turn carries no message, so there is no receipt to report
+		// and nothing to give back.
+		resolve: async (conversationId, toolCallId, decision, selectedRowIds) => {
+			await run({
 				conversationId,
 				resolve: { toolCallId, decision, selectedRowIds },
-			}),
+			});
+		},
 		stop: () => abortRef.current?.abort(),
 	};
 };

@@ -296,13 +296,19 @@ function AssistantPage() {
 		pinnedRef.current = true;
 	}, [viewKey]);
 
+	/** Whether the message reached the server. The composer reads it to decide
+	 *  whether to hand the draft back — see `PromptBar`. */
 	const send = async (text: string) => {
 		let id = conversationId;
 		if (!id) {
-			const conversation = await startChat.mutateAsync();
+			// A thread that could not be started has nothing to hold the message,
+			// so this counts as undelivered like any other refusal. `startChat`
+			// has already said so in a toast.
+			const conversation = await startChat.mutateAsync().catch(() => null);
+			if (!conversation) return false;
 			id = conversation.id;
 		}
-		await stream.send(id, text);
+		return stream.send(id, text);
 	};
 
 	if (!settings?.configured || !settings.enabled) {
@@ -474,7 +480,7 @@ function AssistantPage() {
 							    keeps the thread well-formed — but that is a fallback for a
 							    stale tab, not a way anybody should answer. The card is. */}
 							<PromptBar
-								onSend={(text) => void send(text)}
+								onSend={send}
 								onStop={stream.stop}
 								busy={stream.isStreaming}
 								disabled={startChat.isPending || Boolean(pending)}

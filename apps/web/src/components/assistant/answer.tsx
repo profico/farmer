@@ -349,7 +349,7 @@ const MONTHS = [
  *  instant: parsing it into a Date to print it back introduces the local
  *  midnight that `lib/time.ts` exists to keep out of this app, and the one
  *  timezone bug worth never having is the one that renders the wrong date. */
-const printDayKey = (day: string) => {
+export const printDayKey = (day: string) => {
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
 	if (!match) return null;
 	const month = Number(match[2]);

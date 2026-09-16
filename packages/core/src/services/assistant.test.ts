@@ -46,7 +46,7 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import type { ChatMessage, ChatTurn } from "../lib/openrouter-client";
+import type { ChatMessage, ChatTool, ChatTurn } from "../lib/openrouter-client";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { type Access, AccessError, accessService } from "./access.service";
 import { findTool, toolDefinitions, toolsFor } from "./assistant-tools";
@@ -87,6 +87,9 @@ const ctxFor = (userId: string, organizationId = ORG): Ctx => ({
 
 let script: ChatTurn[] = [];
 let seen: ChatMessage[][] = [];
+/** The tool list each call was sent, so a call made deliberately WITHOUT tools
+ *  can be told from one that simply had none to offer. */
+let seenTools: (ChatTool[] | undefined)[] = [];
 
 const turn = (over: Partial<ChatTurn> = {}): ChatTurn => ({
 	content: "",
@@ -112,6 +115,7 @@ beforeAll(async () => {
 	setChatModelForTests({
 		streamChatCompletion: async (opts) => {
 			seen.push(opts.messages);
+			seenTools.push(opts.tools);
 			const next = script.shift();
 			if (!next) throw new Error("scripted model ran out of turns");
 			if (next.content) opts.onDelta?.(next.content);
@@ -233,6 +237,7 @@ afterAll(async () => {
 beforeEach(async () => {
 	script = [];
 	seen = [];
+	seenTools = [];
 	await db.delete(assistantConversation);
 	await db.delete(assistantSettings);
 	await db.delete(timeEntry);
@@ -1247,19 +1252,56 @@ describe("house rules", () => {
 });
 
 describe("the loop's ceiling", () => {
-	test("stops and says so rather than calling tools forever", async () => {
-		const chat = await startChat(ctxFor(WORKER));
-		script = Array.from({ length: 12 }, (_, i) =>
+	/** A model that would call `list_projects` forever. */
+	const forever = (count: number) =>
+		Array.from({ length: count }, (_, i) =>
 			turn({
 				toolCalls: [
-					{
-						id: `call-${i}`,
-						name: "list_projects",
-						arguments: "{}",
-					},
+					{ id: `call-${i}`, name: "list_projects", arguments: "{}" },
 				],
 			}),
 		);
+
+	test("stops calling tools after eight steps", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [...forever(12), turn({ content: "Here is what I found." })];
+
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "go forever",
+		});
+		// Eight steps, not twelve — plus the one closing call below.
+		expect(script).toHaveLength(4);
+	});
+
+	test("spends its last breath answering, not reporting a failure", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [...forever(8), turn({ content: "Partly answered." })];
+
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "go forever",
+		});
+
+		// The turn ends on an ANSWER. Everything the eight steps read is still
+		// in the thread, and the person is not told their question failed.
+		expect(events.find((e) => e.type === "error")).toBeUndefined();
+		expect(events.at(-1)?.type).toBe("done");
+		const { messages } = await assistantService.conversations.get(
+			ctxFor(WORKER),
+			chat.id,
+		);
+		expect(messages.at(-1)?.content).toBe("Partly answered.");
+
+		// And it could not have asked for a ninth step: the closing call is the
+		// only one made with no tools at all.
+		expect(seenTools.at(-1)).toBeUndefined();
+		expect(seenTools.slice(0, -1).every((tools) => tools?.length)).toBe(true);
+	});
+
+	test("says so plainly when even the closing answer is empty", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = forever(9);
 
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
@@ -1267,8 +1309,162 @@ describe("the loop's ceiling", () => {
 		});
 		const error = events.find((e) => e.type === "error");
 		expect(error).toBeDefined();
-		// Eight steps, not twelve.
-		expect(script).toHaveLength(4);
+		// It points at the thread rather than blaming the question.
+		expect(error?.type === "error" && error.message).toContain(
+			"still in this thread",
+		);
+	});
+});
+
+describe("a step that asks for several reads", () => {
+	/** The tool steps, flattened to `type:name` in the order they arrived. */
+	const stepOrder = (events: AssistantEvent[]) =>
+		events
+			.filter((e) => e.type === "tool_start" || e.type === "tool_result")
+			.map((e) =>
+				e.type === "tool_start" ? `start:${e.name}` : `result:${e.name}`,
+			);
+
+	test("runs the independent ones together", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-1", name: "list_projects", arguments: "{}" },
+					{ id: "call-2", name: "list_clients", arguments: "{}" },
+					{ id: "call-3", name: "list_tasks", arguments: "{}" },
+				],
+			}),
+			turn({ content: "Here they are." }),
+		];
+
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what projects, clients and tasks are there?",
+		});
+
+		// All three announced before any of them answers: that ordering IS the
+		// batch, and it is what the person sees as three spinners at once rather
+		// than one row appearing at a time.
+		expect(stepOrder(events).slice(0, 3)).toEqual([
+			"start:list_projects",
+			"start:list_clients",
+			"start:list_tasks",
+		]);
+		expect(events.filter((e) => e.type === "tool_result")).toHaveLength(3);
+		expectPaired(at(seen, seen.length - 1));
+	});
+
+	test("but a read that writes still runs on its own", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-1", name: "list_projects", arguments: "{}" },
+					{
+						id: "call-2",
+						name: "list_time_entries",
+						arguments: JSON.stringify({ from: "2026-03-01", to: "2026-03-05" }),
+					},
+					{ id: "call-3", name: "list_clients", arguments: "{}" },
+				],
+			}),
+			turn({ content: "Done." }),
+		];
+
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "everything",
+		});
+
+		// `list_time_entries` recomputes the day's fill block, so it is claimed
+		// alone — and the read after it waits, rather than being reordered in
+		// front of it.
+		expect(stepOrder(events)).toEqual([
+			"start:list_projects",
+			"result:list_projects",
+			"start:list_time_entries",
+			"result:list_time_entries",
+			"start:list_clients",
+			"result:list_clients",
+		]);
+	});
+
+	test("every step carries its own arguments, so the trace can name it", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		const range = JSON.stringify({ from: "2026-03-01", to: "2026-03-05" });
+		script = [
+			turn({
+				toolCalls: [
+					{ id: "call-1", name: "list_time_entries", arguments: range },
+				],
+			}),
+			turn({ content: "Nothing that week." }),
+		];
+
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "that week?",
+		});
+		const start = events.find((e) => e.type === "tool_start");
+		expect(start?.type === "tool_start" && start.arguments).toBe(range);
+	});
+});
+
+describe("a tool result too big for the model", () => {
+	test("is cut at a row boundary, and still parses as a list", async () => {
+		// Well past 12,000 characters of JSON: 240 rows of a description long
+		// enough that no plausible cap keeps them all.
+		await db.insert(timeEntry).values(
+			Array.from({ length: 240 }, (_, i) => ({
+				organizationId: ORG,
+				userId: WORKER,
+				projectId,
+				taskId: devTaskId,
+				date: `2026-03-${String((i % 28) + 1).padStart(2, "0")}`,
+				durationSeconds: 900,
+				description: `a description long enough to matter, number ${i}`,
+			})),
+		);
+
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "list_time_entries",
+						arguments: JSON.stringify({ from: "2026-03-01", to: "2026-03-28" }),
+					},
+				],
+			}),
+			turn({ content: "Lots." }),
+		];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "list March",
+		});
+
+		const toolRow = present(
+			(
+				await db.query.assistantMessage.findMany({
+					where: eq(assistantMessage.conversationId, chat.id),
+				})
+			).find((row) => row.role === "tool"),
+			"the tool result",
+		);
+
+		const [payload, note] = toolRow.content.split("\n");
+		// The cut lands between rows, never through one — a half-written object
+		// is not something the model can read at all.
+		const rows = JSON.parse(present(payload, "the rows"));
+		expect(Array.isArray(rows)).toBe(true);
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows.length).toBeLessThan(240);
+		// And the note counts what is missing, instead of sending the model back
+		// to the person to ask the same question again.
+		expect(note).toContain("of 240 rows were dropped");
+		expect(note).toContain("Do not ask the user to repeat themselves");
 	});
 });
 
