@@ -159,13 +159,16 @@ export function ProjectPicker({
 			autoHighlight
 			disabled={disabled}
 		>
-			<ComboboxTrigger className={cn("w-full", className)} {...triggerProps}>
+			<ComboboxTrigger
+				className={cn("@container w-full min-w-0", className)}
+				{...triggerProps}
+			>
 				{/* `flex-row`, overriding ComboboxValue's own `flex-col`. That column
 				    is what stacked the client ABOVE the project name however this
 				    render prop was written — which reads as the field having two
 				    labels. The client belongs beside the name, muted, as a suffix. */}
 				<ComboboxValue
-					className="flex-row items-center gap-2"
+					className="min-w-0 flex-row items-center gap-2 overflow-hidden"
 					placeholder={placeholder}
 				>
 					{(item: Item | null) =>
@@ -187,9 +190,15 @@ export function ProjectPicker({
 										{item.icon}
 									</span>
 								) : null}
-								<span className="truncate font-medium">{item.label}</span>
+								{/* The name may shrink but keeps a readable floor; the client
+								    gives way first and disappears entirely once there is no
+								    room, rather than pushing the whole value past the field
+								    and over the control beside it. */}
+								<span className="min-w-[6ch] truncate font-medium">
+									{item.label}
+								</span>
 								{item.clientName && (
-									<span className="truncate text-sm font-normal text-muted-foreground">
+									<span className="hidden min-w-0 shrink truncate text-sm font-normal text-muted-foreground @[13rem]:inline">
 										{item.clientName}
 									</span>
 								)}

@@ -974,7 +974,11 @@ export function AddBlockDialog({
 						    two steps. Stacked under one "Project / Task" label they read
 						    as a single control that had been cut in half. */}
 						<div className="grid gap-1.5">
-							<div className="grid gap-2.5 sm:grid-cols-2">
+							{/* `minmax(0,1fr)` twice, not `1fr` twice: a grid column sized
+							    `1fr` is `minmax(auto, 1fr)`, so its item's min-content width
+							    is a floor and a long project name pushes the column past the
+							    dialog and over the task picker beside it. */}
+							<div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
 								<FormField
 									control={form.control}
 									name="projectId"
