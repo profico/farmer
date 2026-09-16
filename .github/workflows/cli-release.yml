@@ -21,6 +21,14 @@ name: CLI release
 #
 # A pull request that touches the CLI runs build and smoke too, without
 # publishing, so a broken target shows up before a tag does.
+#
+# `bun.lock` is in the paths above because one lockfile serves every workspace,
+# so a dependency bump anywhere can break the CLI build. It also means a
+# web-only pull request that adds one package lands here. Such a run builds and
+# stops: `build` proves the CLI still compiles against the new dependency graph,
+# and `smoke` is skipped, because running seven binaries to learn that a
+# lockfile bump did not change them spends two macOS runners (billed at ten
+# times the rate) on a question nobody asked.
 
 on:
   push:
@@ -47,9 +55,33 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      cli-changed: ${{ steps.scope.outputs.cli-changed }}
     steps:
+      # Depth 2 on a pull request: the checked-out commit is the merge of the
+      # base and the head, and the step below diffs it against its first
+      # parent, which is the base.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      # Whether `smoke` runs. Anything that is not a pull request — a tag — is
+      # a release, and a release runs every binary.
+      - name: Did this pull request touch the CLI?
+        id: scope
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "cli-changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(git diff --name-only HEAD^1 HEAD -- apps/cli .github/workflows/cli-release.yml)"
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            echo "cli-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No file under apps/cli changed. The binaries are built, not run."
+            echo "cli-changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -96,6 +128,7 @@ jobs:
   smoke:
     name: Run ${{ matrix.asset }}
     needs: build
+    if: needs.build.outputs.cli-changed == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       # Every target is reported, not just the first to fail.
@@ -186,6 +219,13 @@ jobs:
     env:
       VERSION: ${{ needs.build.outputs.version }}
     steps:
+      # First, because `actions/checkout` cleans the workspace and would take
+      # the downloaded binaries with it. The history is here for the notes.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download the binaries
         uses: actions/download-artifact@v8
         with:
@@ -220,6 +260,41 @@ jobs:
           sha256sum farmer-* > SHA256SUMS
           cat SHA256SUMS
 
+      # `--generate-notes` wrote GitHub's own list: every pull request merged
+      # since the previous release, which in a monorepo is mostly web work.
+      # A person downloading a binary reads this to learn what changed in the
+      # binary, so the notes are the commits that touched `apps/cli`, and the
+      # compare link is there for anyone who wants the rest.
+      - name: Write the release notes
+        run: |
+          previous="$(git describe --tags --abbrev=0 --match 'cli-v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          if [ -n "$previous" ]; then
+            range="$previous..$GITHUB_REF_NAME"
+            heading="What changed in the CLI since $previous."
+          else
+            range="$GITHUB_REF_NAME"
+            heading="The first release of the CLI."
+          fi
+          entries="$(git log --no-merges --format='- %s' \
+            --invert-grep --grep='^chore(cli): release' \
+            "$range" -- apps/cli)"
+          {
+            echo "$heading"
+            echo
+            if [ -n "$entries" ]; then
+              echo "$entries"
+            else
+              echo "- Nothing under \`apps/cli\` changed. The binaries are built again from the same source."
+            fi
+            echo
+            echo "Install it with the command under Settings → Integrations, or run \`farmer update\`."
+            if [ -n "$previous" ]; then
+              echo
+              echo "[Every commit in between](https://github.com/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_REF_NAME)"
+            fi
+          } > notes.md
+          cat notes.md
+
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -228,4 +303,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "Farmer CLI $VERSION" \
-            --generate-notes
+            --notes-file notes.md
