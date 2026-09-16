@@ -572,7 +572,10 @@ describe("the repo list cache", () => {
 			}),
 			"the connected installation",
 		);
-		await githubService.disconnectInstallation(adminCtx(), row.id);
+		await githubService.disconnectInstallation(adminCtx(), {
+			installationRowId: row.id,
+			uninstall: false,
+		});
 		await db.insert(orgGithubInstallation).values({
 			organizationId: ORG_ID,
 			installationId: 100,
@@ -650,5 +653,166 @@ describe("an OAuth token GitHub refuses", () => {
 			unreachable: true,
 			needsReconnect: false,
 		});
+	});
+});
+
+// Disconnecting is two acts, and the second one is not this org's to spend on
+// its own: it removes the App from a GitHub account that another workspace on
+// the same deployment may also be reading. The local half must land whatever
+// GitHub says, or a refused uninstall leaves an admin still connected to an
+// installation they just disconnected.
+describe("disconnecting an installation", () => {
+	/** A second workspace on the same deployment, for the cases where one GitHub
+	 *  installation is connected to more than one of them. */
+	const SECOND_ORG_ID = "org-github-second";
+	let uninstalled: number[] = [];
+	let failing = false;
+
+	const connect = async (organizationId: string, installationId: number) => {
+		const [row] = await db
+			.insert(orgGithubInstallation)
+			.values({
+				organizationId,
+				installationId,
+				accountLogin: "profico",
+				accountType: "Organization",
+			})
+			.returning({ id: orgGithubInstallation.id });
+		return present(row, "the connected installation").id;
+	};
+
+	beforeAll(async () => {
+		await db.insert(organization).values({
+			id: SECOND_ORG_ID,
+			name: "A second workspace",
+			slug: SECOND_ORG_ID,
+			createdAt: new Date(),
+		});
+		// The App's credentials, so the service gets past `isGithubAppConfigured`
+		// to the seam below. The seam is what actually answers.
+		process.env.GITHUB_APP_ID = "12345";
+		process.env.GITHUB_APP_PRIVATE_KEY = "not-a-real-key";
+	});
+
+	afterAll(async () => {
+		await db.delete(orgGithubInstallation);
+		// `delete`, not `= undefined`: assigning undefined to a process.env slot
+		// stores the STRING "undefined", which reads as configured.
+		delete process.env.GITHUB_APP_ID;
+		delete process.env.GITHUB_APP_PRIVATE_KEY;
+		setGithubClientForTests(null);
+	});
+
+	beforeEach(async () => {
+		await db.delete(orgGithubInstallation);
+		uninstalled = [];
+		failing = false;
+		setGithubClientForTests({
+			deleteInstallation: async (installationId: number) => {
+				if (failing) throw new Error("GitHub is down");
+				uninstalled.push(installationId);
+				return true;
+			},
+		});
+	});
+
+	test("leaves the app installed when nobody asked for it", async () => {
+		const rowId = await connect(ORG_ID, 200);
+		const result = await githubService.disconnectInstallation(adminCtx(), {
+			installationRowId: rowId,
+			uninstall: false,
+		});
+		expect(result.uninstall).toBe("not-requested");
+		expect(uninstalled).toEqual([]);
+	});
+
+	test("uninstalls from GitHub when it is asked for", async () => {
+		const rowId = await connect(ORG_ID, 201);
+		const result = await githubService.disconnectInstallation(adminCtx(), {
+			installationRowId: rowId,
+			uninstall: true,
+		});
+		expect(result.uninstall).toBe("uninstalled");
+		expect(uninstalled).toEqual([201]);
+		expect(
+			await db.query.orgGithubInstallation.findFirst({
+				where: eq(orgGithubInstallation.id, rowId),
+			}),
+		).toBeUndefined();
+	});
+
+	test("keeps the app installed while another workspace is connected", async () => {
+		const rowId = await connect(ORG_ID, 202);
+		await connect(SECOND_ORG_ID, 202);
+
+		const result = await githubService.disconnectInstallation(adminCtx(), {
+			installationRowId: rowId,
+			uninstall: true,
+		});
+		expect(result.uninstall).toBe("shared");
+		expect(uninstalled).toEqual([]);
+		// This workspace is still disconnected — the other one is untouched.
+		const left = await db.query.orgGithubInstallation.findMany({
+			where: eq(orgGithubInstallation.installationId, 202),
+		});
+		expect(left.map((r) => r.organizationId)).toEqual([SECOND_ORG_ID]);
+	});
+
+	test("disconnects anyway, and says so, when GitHub refuses", async () => {
+		const rowId = await connect(ORG_ID, 203);
+		failing = true;
+
+		const result = await githubService.disconnectInstallation(adminCtx(), {
+			installationRowId: rowId,
+			uninstall: true,
+		});
+		expect(result.uninstall).toBe("failed");
+		expect(
+			await db.query.orgGithubInstallation.findFirst({
+				where: eq(orgGithubInstallation.id, rowId),
+			}),
+		).toBeUndefined();
+	});
+
+	test("refuses a member, who cannot disconnect at all", async () => {
+		const rowId = await connect(ORG_ID, 204);
+		await expect(
+			githubService.disconnectInstallation(memberCtx(), {
+				installationRowId: rowId,
+				uninstall: true,
+			}),
+		).rejects.toThrow(AccessError);
+		expect(uninstalled).toEqual([]);
+	});
+
+	test("another org's row is not this admin's to disconnect", async () => {
+		const rowId = await connect(SECOND_ORG_ID, 205);
+		const result = await githubService.disconnectInstallation(adminCtx(), {
+			installationRowId: rowId,
+			uninstall: true,
+		});
+		expect(result.uninstall).toBe("not-requested");
+		expect(uninstalled).toEqual([]);
+		expect(
+			await db.query.orgGithubInstallation.findFirst({
+				where: eq(orgGithubInstallation.id, rowId),
+			}),
+		).toBeDefined();
+	});
+
+	// The webhook's half: uninstalled on GitHub rather than here. Every
+	// workspace's row goes, because the installation they all name is gone.
+	test("forgetInstallation drops the row in every workspace", async () => {
+		await connect(ORG_ID, 206);
+		await connect(SECOND_ORG_ID, 206);
+		await connect(ORG_ID, 207);
+
+		expect(await githubService.forgetInstallation(206)).toBe(2);
+		const left = await db.query.orgGithubInstallation.findMany({});
+		expect(left.map((r) => r.installationId)).toEqual([207]);
+	});
+
+	test("forgetInstallation on an installation nobody connected is a no-op", async () => {
+		expect(await githubService.forgetInstallation(999)).toBe(0);
 	});
 });

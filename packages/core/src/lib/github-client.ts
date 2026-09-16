@@ -122,6 +122,69 @@ export const getInstallationToken = async (
 export const isGithubAppConfigured = (): boolean =>
 	Boolean(process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY);
 
+// Uninstall the App from the account this installation belongs to — the App
+// JWT, never an installation token, because this authenticates AS the App and
+// an installation cannot remove itself. GitHub needs no extra permission for
+// it; an App may always delete its own installations.
+//
+// This is the whole GitHub account's App, not one org's view of it. The caller
+// is responsible for knowing nothing else still depends on the installation;
+// `githubService.disconnectInstallation` is the only one today, and it checks.
+//
+// Answers whether something was actually removed. A 404 is the outcome the
+// caller wanted, reached by somebody else first: the App is already gone.
+export const deleteInstallation = async (
+	installationId: number,
+): Promise<boolean> => {
+	const response = await externalFetch(
+		`${GITHUB_API}/app/installations/${installationId}`,
+		{ method: "DELETE", headers: appHeaders() },
+	);
+	// Either way the cached token is now worthless, and a 401 an hour from now
+	// would be a harder thing to read than a fresh mint that fails immediately.
+	installationTokenCache.delete(installationId);
+	if (response.status === 404) return false;
+	if (!response.ok) {
+		throw new Error(
+			`GitHub API error ${response.status}: uninstall ${installationId}`,
+		);
+	}
+	return true;
+};
+
+// ── Webhooks ───────────────────────────────────────────────────────────────
+
+/** Whether this deployment can accept webhooks. Separate from the App's own
+ *  credentials: an App may be configured with no webhook secret, and the
+ *  endpoint has to say which of the two is missing. */
+export const isGithubWebhookConfigured = (): boolean =>
+	Boolean(process.env.GITHUB_WEBHOOK_SECRET);
+
+/** Whether a delivery really came from GitHub: HMAC-SHA256 of the RAW body
+ *  under the App's webhook secret, as `X-Hub-Signature-256`.
+ *
+ *  The body must be the bytes GitHub sent, not a re-serialized parse — key
+ *  order and whitespace are part of what was signed. Compared in constant
+ *  time, because a byte-by-byte compare on a 64-character hex digest leaks
+ *  the digest to anyone who can time the endpoint, and this signature is the
+ *  only thing standing in front of a public, unauthenticated route. */
+export const verifyWebhookSignature = (
+	body: string,
+	signature: string | null,
+): boolean => {
+	const secret = process.env.GITHUB_WEBHOOK_SECRET;
+	if (!secret || !signature) return false;
+	const expected = `sha256=${crypto
+		.createHmac("sha256", secret)
+		.update(body)
+		.digest("hex")}`;
+	const given = Buffer.from(signature);
+	const want = Buffer.from(expected);
+	// timingSafeEqual throws on a length mismatch, which is itself a compare.
+	if (given.length !== want.length) return false;
+	return crypto.timingSafeEqual(given, want);
+};
+
 const repoReadTokenCache = new Map<
 	string,
 	{ token: string; expiresAt: number }

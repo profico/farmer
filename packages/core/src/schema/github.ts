@@ -16,10 +16,28 @@ export const connectInstallationInput = z.object({
 });
 export type ConnectInstallationInput = z.infer<typeof connectInstallationInput>;
 
-export const disconnectInstallationInput = z.uuid();
+// Disconnecting takes the installation away from THIS workspace. `uninstall`
+// additionally removes the App from the GitHub account, for everybody — a
+// different act with a different blast radius, so it is a separate, opt-in
+// field rather than the meaning of the same button.
+export const disconnectInstallationInput = z.object({
+	installationRowId: z.uuid(),
+	uninstall: z.boolean().default(false),
+});
 export type DisconnectInstallationInput = z.infer<
 	typeof disconnectInstallationInput
 >;
+
+// A webhook delivery body, narrowed to what `api/github/webhook` acts on.
+// GitHub sends far more than these two fields, and more events than the route
+// subscribes to, so a payload this does not describe is answered "not handled"
+// rather than as an error — an error status makes GitHub retry a delivery that
+// will never parse, and mark the endpoint as failing.
+export const githubWebhookPayload = z.object({
+	action: z.string().optional(),
+	installation: z.object({ id: z.number().int() }).optional(),
+});
+export type GithubWebhookPayload = z.infer<typeof githubWebhookPayload>;
 
 export const unlinkProjectRepoInput = z.uuid();
 export type UnlinkProjectRepoInput = z.infer<typeof unlinkProjectRepoInput>;

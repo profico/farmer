@@ -3,6 +3,9 @@ import {
 	MAX_SYSTEM_PROMPT_CHARS,
 	type UpdateIntegrationSettingsInput,
 } from "@farmer/core/schema";
+// Type-only, so it is erased: a runtime import of the services barrel in a
+// route reaches `postgres` and crashes hydration.
+import type { UninstallOutcome } from "@farmer/core/services";
 import {
 	BuildingsIcon,
 	CalendarBlankIcon,
@@ -1119,13 +1122,20 @@ function OrgInstallationsSection({
 	};
 
 	const disconnectMutation = useMutation({
-		mutationFn: (installationRowId: string) =>
-			disconnectGithubInstallation({ data: installationRowId }),
-		onSuccess: async () => {
+		mutationFn: (input: { installationRowId: string; uninstall: boolean }) =>
+			disconnectGithubInstallation({ data: input }),
+		onSuccess: async ({ uninstall }) => {
 			await queryClient.invalidateQueries({
 				queryKey: githubInstallationsQuery(orgSlug).queryKey,
 			});
-			toast.success("GitHub account disconnected");
+			// The workspace is disconnected either way — that half already
+			// succeeded, so it is never an error toast. What varies is what became
+			// of the App on GitHub, and four of the six answers are things the
+			// admin has to know to finish the job themselves.
+			const note = uninstallNotes[uninstall];
+			if (note)
+				toast.warning("GitHub account disconnected", { description: note });
+			else toast.success("GitHub account disconnected");
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not disconnect");
@@ -1165,59 +1175,125 @@ function OrgInstallationsSection({
 			{installations && installations.length > 0 && (
 				<div className="border-t border-line2 pt-1">
 					{installations.map((inst) => (
-						<div
+						<InstallationRow
 							key={inst.id}
-							className="flex items-center justify-between gap-2 border-b border-line2 py-2.5 last:border-b-0"
-						>
-							<span className="flex min-w-0 items-center gap-2 text-sm">
-								<GithubLogoIcon className="size-4 shrink-0 text-muted-foreground" />
-								<span className="truncate font-medium">
-									{inst.accountLogin}
-								</span>
-								<Badge variant="outline" className="shrink-0 capitalize">
-									{inst.accountType}
-								</Badge>
-							</span>
-							<AlertDialog>
-								<AlertDialogTrigger
-									render={
-										<Button
-											variant="ghost"
-											size="sm"
-											className="shrink-0"
-											disabled={disconnectMutation.isPending}
-										>
-											Disconnect
-										</Button>
-									}
-								/>
-								<AlertDialogContent>
-									<AlertDialogHeader>
-										<AlertDialogTitle>
-											Disconnect {inst.accountLogin}?
-										</AlertDialogTitle>
-										<AlertDialogDescription>
-											Projects linked to repositories from this account will
-											stop suggesting commits. This does not uninstall the app
-											on GitHub — do that from GitHub settings to fully revoke
-											access.
-										</AlertDialogDescription>
-									</AlertDialogHeader>
-									<AlertDialogFooter>
-										<AlertDialogCancel>Cancel</AlertDialogCancel>
-										<AlertDialogAction
-											variant="destructive"
-											onClick={() => disconnectMutation.mutate(inst.id)}
-										>
-											Disconnect
-										</AlertDialogAction>
-									</AlertDialogFooter>
-								</AlertDialogContent>
-							</AlertDialog>
-						</div>
+							accountLogin={inst.accountLogin}
+							accountType={inst.accountType}
+							disabled={disconnectMutation.isPending}
+							onDisconnect={(uninstall) =>
+								disconnectMutation.mutate({
+									installationRowId: inst.id,
+									uninstall,
+								})
+							}
+						/>
 					))}
 				</div>
 			)}
 		</>
+	);
+}
+
+// What to say about the "also uninstall" half when it did not simply happen.
+// Every outcome is named and `null` is an explicit answer, rather than a
+// partial map with a lookup that misses: a new outcome then fails to compile
+// here, which is the one place that has to have a sentence for it.
+//
+// `uninstalled` and `already-gone` both mean the App is off the account, so
+// neither needs one — the plain success toast is the whole story.
+const uninstallNotes = {
+	"not-requested": null,
+	uninstalled: null,
+	"already-gone": null,
+	shared:
+		"The app was left installed on GitHub: another workspace is still connected to it.",
+	"not-configured":
+		"The app was left installed on GitHub: this deployment holds no GitHub App credentials.",
+	failed:
+		"The app was left installed on GitHub — GitHub refused the request. Remove it from GitHub settings.",
+} satisfies Record<UninstallOutcome, string | null>;
+
+// One row, and its own dialog, because the "also uninstall" switch is per row:
+// a single piece of state in the parent would be shared by every installation's
+// dialog, and the one an admin ticked would still be ticked for the next.
+function InstallationRow({
+	accountLogin,
+	accountType,
+	disabled,
+	onDisconnect,
+}: {
+	accountLogin: string;
+	accountType: string;
+	disabled: boolean;
+	onDisconnect: (uninstall: boolean) => void;
+}) {
+	const [uninstall, setUninstall] = useState(false);
+
+	return (
+		<div className="flex items-center justify-between gap-2 border-b border-line2 py-2.5 last:border-b-0">
+			<span className="flex min-w-0 items-center gap-2 text-sm">
+				<GithubLogoIcon className="size-4 shrink-0 text-muted-foreground" />
+				<span className="truncate font-medium">{accountLogin}</span>
+				<Badge variant="outline" className="shrink-0 capitalize">
+					{accountType}
+				</Badge>
+			</span>
+			<AlertDialog
+				// Reset on close, so a cancelled dialog does not reopen pre-armed with
+				// the heavier of the two acts.
+				onOpenChange={(open) => {
+					if (!open) setUninstall(false);
+				}}
+			>
+				<AlertDialogTrigger
+					render={
+						<Button
+							variant="ghost"
+							size="sm"
+							className="shrink-0"
+							disabled={disabled}
+						>
+							Disconnect
+						</Button>
+					}
+				/>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Disconnect {accountLogin}?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Projects linked to repositories from this account will stop
+							suggesting commits. The app stays installed on GitHub unless you
+							also remove it below.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<div className="flex items-start justify-between gap-4 rounded-lg border border-line2 p-3">
+						<div className="min-w-0">
+							<p className="text-sm font-medium">
+								Also remove the app from GitHub
+							</p>
+							<p className="text-sm text-faint">
+								Uninstalls it from {accountLogin} for everyone, not just this
+								workspace. Skipped if another workspace is still connected to
+								it.
+							</p>
+						</div>
+						<Switch
+							checked={uninstall}
+							onCheckedChange={setUninstall}
+							className="mt-0.5 shrink-0"
+						/>
+					</div>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							onClick={() => onDisconnect(uninstall)}
+						>
+							{uninstall ? "Disconnect and uninstall" : "Disconnect"}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+		</div>
 	);
 }

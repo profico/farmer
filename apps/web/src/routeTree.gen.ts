@@ -38,6 +38,7 @@ import { Route as ApiV1MetaRouteImport } from './routes/api/v1/meta'
 import { Route as ApiV1MeRouteImport } from './routes/api/v1/me'
 import { Route as ApiSlackCallbackRouteImport } from './routes/api/slack/callback'
 import { Route as ApiMcpOrgSlugRouteImport } from './routes/api/mcp/$orgSlug'
+import { Route as ApiGithubWebhookRouteImport } from './routes/api/github/webhook'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiFilesSplatRouteImport } from './routes/api/files/$'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -220,6 +221,11 @@ const ApiSlackCallbackRoute = ApiSlackCallbackRouteImport.update({
 const ApiMcpOrgSlugRoute = ApiMcpOrgSlugRouteImport.update({
   id: '/api/mcp/$orgSlug',
   path: '/api/mcp/$orgSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubWebhookRoute = ApiGithubWebhookRouteImport.update({
+  id: '/api/github/webhook',
+  path: '/api/github/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
@@ -454,6 +460,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRoute
@@ -518,6 +525,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRoute
@@ -585,6 +593,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/files/$': typeof ApiFilesSplatRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRoute
@@ -653,6 +662,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/files/$'
     | '/api/github/setup'
+    | '/api/github/webhook'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
     | '/api/v1/me'
@@ -717,6 +727,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/files/$'
     | '/api/github/setup'
+    | '/api/github/webhook'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
     | '/api/v1/me'
@@ -783,6 +794,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/files/$'
     | '/api/github/setup'
+    | '/api/github/webhook'
     | '/api/mcp/$orgSlug'
     | '/api/slack/callback'
     | '/api/v1/me'
@@ -831,6 +843,7 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiFilesSplatRoute: typeof ApiFilesSplatRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
+  ApiGithubWebhookRoute: typeof ApiGithubWebhookRoute
   ApiMcpOrgSlugRoute: typeof ApiMcpOrgSlugRoute
   ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
   ApiV1MeRoute: typeof ApiV1MeRoute
@@ -1058,6 +1071,13 @@ declare module '@tanstack/react-router' {
       path: '/api/mcp/$orgSlug'
       fullPath: '/api/mcp/$orgSlug'
       preLoaderRoute: typeof ApiMcpOrgSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/webhook': {
+      id: '/api/github/webhook'
+      path: '/api/github/webhook'
+      fullPath: '/api/github/webhook'
+      preLoaderRoute: typeof ApiGithubWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/github/setup': {
@@ -1397,6 +1417,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiFilesSplatRoute: ApiFilesSplatRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
+  ApiGithubWebhookRoute: ApiGithubWebhookRoute,
   ApiMcpOrgSlugRoute: ApiMcpOrgSlugRoute,
   ApiSlackCallbackRoute: ApiSlackCallbackRoute,
   ApiV1MeRoute: ApiV1MeRoute,
