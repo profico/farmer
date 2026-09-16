@@ -161,21 +161,47 @@ const readContributors = async (): Promise<Contributor[]> => {
 };
 
 /**
- * The commit this build came from.
+ * The commit this build came from, asked for three ways.
  *
  * `GIT_SHA` is a plain environment variable rather than a `VITE_` one for the
  * reason the rest of them are: `vite build` runs inside the Docker image, so a
  * `VITE_` value could only ever be what CI was given. The Dockerfile takes it as
  * a build argument and CI passes `github.sha`.
  *
- * Off a build there is no such variable, so development reads `.git` directly —
- * two small file reads, once per process. Without it the line at the foot of
+ * `SOURCE_COMMIT` is Coolify's, and it is here because it fails in a different
+ * way. `GIT_SHA` is baked INTO the image, so an image built before the build
+ * argument existed can never report one however it is deployed; `SOURCE_COMMIT`
+ * is set ON the deployment, so it answers for exactly that case and for any
+ * later one where the workflow stops passing the argument. Neither is a
+ * substitute for the other, which is why both are read rather than one chosen.
+ *
+ * Off a build there is neither, so development reads `.git` directly — two
+ * small file reads, once per process. Without it the line at the foot of
  * Settings would only ever appear in Docker, which is the one place nobody is
  * looking at it while they work on it.
  */
 let resolvedSha: string | null | undefined;
 
 const SHA = /^[0-9a-f]{40}$/;
+
+/** What a commit id may look like coming off the environment. Wider than `SHA`
+ *  because a platform is free to hand over the short form, and `shortSha`
+ *  below truncates either one to the same seven characters. */
+const ENV_SHA = /^[0-9a-f]{7,40}$/;
+
+/**
+ * The first environment variable that names a commit, in order of how much it
+ * is trusted to be THIS build's.
+ */
+const shaFromEnvironment = (): string | null => {
+	for (const name of ["GIT_SHA", "SOURCE_COMMIT"]) {
+		const value = process.env[name]?.trim().toLowerCase();
+		// Tested rather than taken: a platform that sets the variable to a branch
+		// name or to an empty string would otherwise put that in the link.
+		if (value && ENV_SHA.test(value)) return value;
+	}
+	return null;
+};
 
 const readShaFromGit = async (): Promise<string | null> => {
 	try {
@@ -224,9 +250,8 @@ const readShaFromGit = async (): Promise<string | null> => {
 
 const readCommit = async (): Promise<DeploymentInfo["commit"]> => {
 	if (resolvedSha === undefined) {
-		const fromEnv = process.env.GIT_SHA?.trim();
 		resolvedSha =
-			fromEnv ||
+			shaFromEnvironment() ??
 			(process.env.NODE_ENV === "production" ? null : await readShaFromGit());
 	}
 	if (!resolvedSha) return null;
