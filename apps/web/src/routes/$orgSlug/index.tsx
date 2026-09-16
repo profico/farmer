@@ -5,7 +5,6 @@ import {
 	formatDayKey,
 	startOfWeekKey,
 } from "@farmer/core/lib/time";
-import type { TrackingStatus } from "@farmer/core/services";
 import {
 	ArrowRightIcon,
 	CalendarBlankIcon,
@@ -19,7 +18,12 @@ import { useState } from "react";
 
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { DashboardLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
-import { TargetGap } from "#/components/targets.tsx";
+import { StatusPill } from "#/components/status-pill.tsx";
+import {
+	TARGET_STATUS,
+	TARGET_TONE,
+	TargetGap,
+} from "#/components/targets.tsx";
 import { AddBlockDialog } from "#/components/time/add-block-dialog.tsx";
 import { AssembleDayDialog } from "#/components/time/assemble-day-dialog.tsx";
 import { EntryBlockRow } from "#/components/time/entry-block-row.tsx";
@@ -64,14 +68,6 @@ export const Route = createFileRoute("/$orgSlug/")({
 /** The plot's height in px. The columns, the target rule and the maximum are
  *  all measured against it, so the chart is one number to re-tune. */
 const PLOT_H = 76;
-
-/** A verdict maps to a tile's ring colour. The Tracking report's own three
- *  words, so the home page and the report cannot disagree about what green is. */
-const TARGET_TONE = {
-	on_track: "ok",
-	slightly_behind: "warn",
-	behind: "bad",
-} as const satisfies Record<TrackingStatus, "ok" | "warn" | "bad">;
 
 function greetingForHour(hour: number): string {
 	if (hour < 12) return "Good morning";
@@ -221,12 +217,10 @@ function OrgHome() {
 			/>
 
 			{/* Today, the week and the month, in that order: the horizon widens
-			    left to right. Each is a ring carrying the proportion, a label and
-			    `logged / target`, with the month's sentence beside them on the same
-			    row rather than under each tile. About half the height of the band
-			    it replaces, which is what puts the entry list back at the top of
-			    the screen where it belongs. */}
-			<StatTiles className="mt-1">
+			    left to right. Each is a tile on the band surface whose bottom edge
+			    is its rail, so the verdict colour has somewhere to live without
+			    becoming a fourth object in a small tile. */}
+			<StatTiles columns={3} className="mt-1">
 				<StatTile
 					label="Today"
 					percent={
@@ -243,9 +237,21 @@ function OrgHome() {
 							)}
 						</>
 					}
+					caption={
+						targets.daySeconds > todayTotal
+							? `${formatReportHours(targets.daySeconds - todayTotal)} to go`
+							: `${todayEntries.length} ${todayEntries.length === 1 ? "entry" : "entries"}`
+					}
 				/>
 				<StatTile
 					label="This week"
+					aside={
+						weekStatus && (
+							<StatusPill tone={TARGET_STATUS[weekStatus].tone}>
+								{TARGET_STATUS[weekStatus].label}
+							</StatusPill>
+						)
+					}
 					percent={
 						targets.week.targetSeconds
 							? (weekTotal / targets.week.targetSeconds) * 100
@@ -260,9 +266,17 @@ function OrgHome() {
 							)}
 						</>
 					}
+					caption={<TargetGap period={targets.week} />}
 				/>
 				<StatTile
 					label="This month"
+					aside={
+						monthStatus && (
+							<StatusPill tone={TARGET_STATUS[monthStatus].tone}>
+								{TARGET_STATUS[monthStatus].label}
+							</StatusPill>
+						)
+					}
 					percent={
 						targets.month.targetSeconds
 							? (targets.month.totalSeconds / targets.month.targetSeconds) * 100
@@ -280,15 +294,13 @@ function OrgHome() {
 							)}
 						</>
 					}
+					caption={
+						<>
+							<TargetGap period={targets.month} /> · day{" "}
+							{targets.month.workingDaysElapsed} of {targets.month.workingDays}
+						</>
+					}
 				/>
-				{/* The sentence the tiles no longer carry, once, for the period that
-				    is actually behind. Three sentences said the same thing three
-				    ways; this says it about the one that matters. */}
-				<p className="text-sm text-muted-foreground">
-					<TargetGap period={targets.month} />
-					{" · day "}
-					{targets.month.workingDaysElapsed} of {targets.month.workingDays}
-				</p>
 			</StatTiles>
 
 			{/* What you logged, and how the week is shaped. Side by side from lg:

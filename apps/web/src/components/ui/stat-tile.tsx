@@ -3,64 +3,73 @@ import type { ReactNode } from "react";
 import { cn } from "#/lib/utils.ts";
 
 /**
- * A row of small figure chips: a progress ring, a label and a figure, in a
- * card the width of what it holds.
+ * The target band: one tile per period, on the band surface, with its rail as a
+ * full-bleed underline along the bottom edge.
  *
- * It used to be a full-bleed band of three tall tiles with a 28px figure, a
- * sentence and a rail each, which took a third of the home page's height and
- * out-weighed the entry list underneath — the thing the screen is actually
- * for. This is about half as tall and much narrower, so the row it sits in has
- * room for the sentence that used to need its own line.
+ * Two earlier shapes failed for the same reason, and it is worth writing down.
+ * A 28px figure over a caption was simply too tall for a band that sits above
+ * the thing the screen is for. Then an 11px bold caps label beside a 17px
+ * figure was too SHORT, and worse: caps with wide tracking read heavier than
+ * their point size, so a bold caps label and a 17px figure land at nearly the
+ * same optical weight and neither leads. A progress ring made it a third
+ * element competing at that weight, carrying what the rail already carried.
  *
- * The ring carries the proportion, which is what the rail used to do in four
- * times the width. It is a conic gradient rather than an SVG: one element, no
- * viewBox arithmetic, and it animates by interpolating a single percentage.
+ * So: the label is 12px medium in the muted tone and never bold, the figure is
+ * 22px semibold — a real step above it — and the rail is the tile's bottom
+ * edge rather than an inset bar, which is what lets it carry the verdict colour
+ * without becoming a fourth object.
  */
 export function StatTiles({
 	children,
 	className,
+	columns = 3,
 }: {
 	children: ReactNode;
 	className?: string;
+	columns?: 2 | 3 | 4;
 }) {
 	return (
 		<div
 			data-slot="stat-tiles"
-			className={cn("flex flex-wrap items-center gap-2", className)}
+			className={cn(
+				"grid gap-2.5",
+				columns === 2 && "sm:grid-cols-2",
+				columns === 3 && "sm:grid-cols-3",
+				columns === 4 && "sm:grid-cols-2 lg:grid-cols-4",
+				className,
+			)}
 		>
 			{children}
 		</div>
 	);
 }
 
-/** The tone of a tile's ring and its percentage. `neutral` is the accent. */
+/** The tone of a tile's underline. `neutral` is the accent. */
 type Tone = "neutral" | "ok" | "warn" | "bad";
 
-const TONE_VAR = {
-	neutral: "var(--acc)",
-	ok: "var(--ok)",
-	warn: "var(--warn)",
-	bad: "var(--bad)",
-} as const satisfies Record<Tone, string>;
-
-const TONE_TEXT = {
-	neutral: "text-primary",
-	ok: "text-ok",
-	warn: "text-warn",
-	bad: "text-bad",
+const TONE_FILL = {
+	neutral: "bg-primary",
+	ok: "bg-ok",
+	warn: "bg-warn",
+	bad: "bg-bad",
 } as const satisfies Record<Tone, string>;
 
 export function StatTile({
 	label,
+	aside,
 	value,
-	/** 0 to 100. Drives the ring and the figure inside it. */
+	caption,
+	/** 0 to 100, drawn as the tile's bottom edge. `null` draws the track only. */
 	percent,
 	tone = "neutral",
 	className,
 }: {
 	label: ReactNode;
+	/** The far right of the label row: a status pill. */
+	aside?: ReactNode;
 	value: ReactNode;
-	percent: number | null;
+	caption?: ReactNode;
+	percent?: number | null;
 	tone?: Tone;
 	className?: string;
 }) {
@@ -69,34 +78,32 @@ export function StatTile({
 		<div
 			data-slot="stat-tile"
 			className={cn(
-				"flex items-center gap-3 rounded-xl bg-secondary py-2.5 pr-3.5 pl-2.5",
+				"flex flex-col overflow-hidden rounded-xl bg-secondary px-3.5 pt-3",
 				className,
 			)}
 		>
-			{shown != null && (
-				<span
-					aria-hidden
-					className="grid size-8 shrink-0 place-items-center rounded-full"
-					style={{
-						background: `conic-gradient(${TONE_VAR[tone]} ${shown}%, var(--line) 0)`,
-					}}
-				>
+			<div className="flex min-h-5 items-center justify-between gap-2">
+				<span className="text-xs font-medium tracking-[0.07em] text-muted-foreground uppercase">
+					{label}
+				</span>
+				{aside}
+			</div>
+			<div className="tnum mt-2 text-[22px] leading-none font-semibold tracking-[-0.025em]">
+				{value}
+			</div>
+			{/* One fixed row whether or not there is a caption, so three tiles in a
+			    row are the same height and their underlines land on one line. */}
+			<div className="mt-1.5 h-[17px] truncate text-xs text-muted-foreground">
+				{caption}
+			</div>
+			<div className="mt-3 -mx-3.5 h-[3px] bg-line2">
+				{shown != null && (
 					<span
-						className={cn(
-							"tnum grid size-6 place-items-center rounded-full bg-secondary text-[9px] font-semibold",
-							TONE_TEXT[tone],
-						)}
-					>
-						{Math.round(shown)}%
-					</span>
-				</span>
-			)}
-			<span className="min-w-0">
-				<span className="eyebrow block">{label}</span>
-				<span className="tnum mt-1 block text-md leading-none font-semibold tracking-[-0.02em]">
-					{value}
-				</span>
-			</span>
+						className={cn("rail-fill block h-full", TONE_FILL[tone])}
+						style={{ width: `${shown}%` }}
+					/>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -104,7 +111,8 @@ export function StatTile({
 /** The lesser figure trailing a big one: "8,00<Of>/ 40,00</Of>". */
 export function Of({ children }: { children: ReactNode }) {
 	return (
-		<span className="ml-1 text-xs font-normal tracking-[-0.01em] text-muted-foreground">
+		<span className="text-[13px] font-normal tracking-[-0.01em] text-muted-foreground">
+			{" "}
 			{children}
 		</span>
 	);

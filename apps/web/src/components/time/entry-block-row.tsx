@@ -8,7 +8,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
@@ -35,6 +35,11 @@ import {
 	setTimeEntryOvertime,
 	updateTimeEntryDescription,
 } from "#/server/time-entries.ts";
+
+/** How much of a note a collapsed row shows. Two comfortable lines at the
+ *  width the list is read at, and a hard number rather than a measurement — see
+ *  the note beside `isLong`. */
+const NOTE_LIMIT = 220;
 
 export type EntryBlockRowEntry = ExistingTimeEntry & {
 	project: {
@@ -235,32 +240,25 @@ export function EntryBlockRow({
 		},
 	});
 
-	// The note is held to two lines with a "Show more" under it, so a list of
-	// twelve entries keeps one rhythm however long a note is.
+	// The note is held to a fixed number of CHARACTERS, not to a number of
+	// lines, and that is deliberate.
 	//
-	// **It is a paragraph until you click it**, and only then a textarea. It was
-	// a textarea throughout, and a textarea cannot be clamped: `line-clamp`
-	// works on line boxes inside a block, and a textarea's value is not laid out
-	// as line boxes the property can reach. With `field-sizing: content` on top,
-	// a twenty-line note simply grew the field to twenty lines and pushed the
-	// whole day off the screen. Reading and editing are different jobs, so they
-	// are different elements now, swapped on click.
-	const noteRef = useRef<HTMLButtonElement>(null);
+	// It was `-webkit-line-clamp` twice, and failed twice. First on a textarea,
+	// which cannot be clamped at all: the property works on line boxes inside a
+	// block, and a textarea's value is not laid out as ones it can reach. Then
+	// on a button carrying `block`, where the clamp lost the cascade — `block`
+	// is a Tailwind utility and `.clamp-2` is in the components layer, and
+	// utilities sort after components, so `display: block` quietly replaced
+	// `display: -webkit-box` and the clamp did nothing.
+	//
+	// A character cap cannot be beaten by a layer, needs no measurement, and is
+	// the same on every window width. `line-clamp-2` rides along for the case
+	// where 220 characters still wrap past two lines in a narrow column.
 	const [expanded, setExpanded] = useState(false);
 	const [editing, setEditing] = useState(false);
-	const [clamped, setClamped] = useState(false);
-	// Measured rather than guessed from the character count: a note wraps
-	// differently at every window width, and a link offering to expand two lines
-	// that are already whole is worse than no link.
-	useEffect(() => {
-		const el = noteRef.current;
-		if (!el || expanded || editing) return;
-		const measure = () => setClamped(el.scrollHeight > el.clientHeight + 1);
-		measure();
-		const observer = new ResizeObserver(measure);
-		observer.observe(el);
-		return () => observer.disconnect();
-	}, [expanded, editing, note]);
+	const isLong = note.length > NOTE_LIMIT;
+	const shownNote =
+		isLong && !expanded ? `${note.slice(0, NOTE_LIMIT).trimEnd()}…` : note;
 
 	return (
 		// The row is a hover group: its actions are hidden at rest and slide in
@@ -407,24 +405,22 @@ export function EntryBlockRow({
 						) : (
 							<button
 								type="button"
-								ref={noteRef}
-								// A real button, not a paragraph wearing a role: it opens the
-								// editor, which is what a button does. `text-left` and
-								// `whitespace-pre-wrap` are what let a button's label hold a
-								// wrapped, multi-line note.
+								// A real button: it opens the editor, which is what a button
+								// does. `text-left` and `whitespace-pre-wrap` are what let a
+								// button's label hold a wrapped, multi-line note.
 								aria-label={note ? `Edit note: ${note}` : "Add a note"}
 								onClick={() => setEditing(true)}
 								className={cn(
-									"block w-full text-left",
-									"mt-1 -ml-1.5 cursor-text rounded-md border border-transparent px-1.5 py-0.5 text-sm leading-relaxed whitespace-pre-wrap transition-colors duration-(--dur-fast) outline-none hover:border-input focus-visible:ring-3 focus-visible:ring-ring/16",
+									"w-full cursor-text rounded-md border border-transparent px-1.5 py-0.5 text-left text-sm leading-relaxed whitespace-pre-wrap transition-colors duration-(--dur-fast) outline-none hover:border-input focus-visible:ring-3 focus-visible:ring-ring/16",
+									"mt-1 -ml-1.5",
+									!expanded && "line-clamp-2",
 									note ? "text-muted-foreground" : "text-faint",
-									!expanded && "clamp-2",
 								)}
 							>
-								{note || "Add a note…"}
+								{shownNote || "Add a note…"}
 							</button>
 						)}
-						{!editing && (clamped || expanded) && (
+						{!editing && isLong && (
 							<button
 								type="button"
 								onClick={() => setExpanded((open) => !open)}

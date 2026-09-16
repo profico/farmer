@@ -2,7 +2,6 @@ import { summarizeCommitMessages } from "@farmer/core/lib/day-plan";
 import { describePullRequestActivity } from "@farmer/core/lib/github-activity";
 import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
-	addDaysToKey,
 	dayKeyInTz,
 	parseDuration,
 	snapToQuarterHour,
@@ -11,8 +10,6 @@ import {
 } from "@farmer/core/lib/time";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-	ArrowLeftIcon,
-	ArrowRightIcon,
 	CalendarDotIcon,
 	CaretRightIcon,
 	GitCommitIcon,
@@ -34,7 +31,6 @@ import { z } from "zod";
 
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { TaskPicker } from "#/components/pickers/task-picker.tsx";
-import { stepperClass } from "#/components/time/time-toolbar.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
@@ -941,47 +937,21 @@ export function AddBlockDialog({
 					<DialogTitle className="mr-auto">
 						{entry ? "Edit entry" : "Log time"}
 					</DialogTitle>
-					{/* The same period picker the timesheet and the reports use, in day
-					    mode. The dialog used to carry a stepper of its own, which was a
-					    fourth answer to "which day" in an app that now has one. */}
-					<div className="flex h-8 w-fit shrink-0 items-center overflow-hidden rounded-lg bg-secondary text-sm">
-						<button
-							type="button"
-							className={cn(
-								stepperClass,
-								"disabled:pointer-events-none disabled:opacity-40",
-							)}
-							aria-label="Previous day"
-							disabled={dayLocked}
-							onClick={() => setDate(addDaysToKey(targetDate, -1))}
-						>
-							<ArrowLeftIcon weight="regular" className="size-4" />
-						</button>
-						<PeriodPicker
-							disabled={dayLocked}
-							triggerClassName="h-8 rounded-none border-x border-y-0 border-line2 bg-transparent"
-							label={dialogDateLabel(targetDate)}
-							sub={dayTriggerLabel(targetDate, todayKey).sub}
-							presets={dayPresets(todayKey)}
-							activePresetId={targetDate}
-							onPreset={setDate}
-							calendarValue={targetDate}
-							onPickDay={setDate}
-							align="center"
-						/>
-						<button
-							type="button"
-							className={cn(
-								stepperClass,
-								"disabled:pointer-events-none disabled:opacity-40",
-							)}
-							aria-label="Next day"
-							disabled={dayLocked}
-							onClick={() => setDate(addDaysToKey(targetDate, 1))}
-						>
-							<ArrowRightIcon weight="regular" className="size-4" />
-						</button>
-					</div>
+					{/* Just the picker. The ‹ › arrows went: the calendar and the
+					    presets inside it reach any day in one click, so a pair of
+					    arrows that step one day at a time was three controls doing
+					    what one does, and they made the header read as a toolbar. */}
+					<PeriodPicker
+						disabled={dayLocked}
+						label={dialogDateLabel(targetDate)}
+						sub={dayTriggerLabel(targetDate, todayKey).sub}
+						presets={dayPresets(todayKey)}
+						activePresetId={targetDate}
+						onPreset={setDate}
+						calendarValue={targetDate}
+						onPickDay={setDate}
+						align="end"
+					/>
 					{dayLocked && (
 						<p className="w-full text-xs text-muted-foreground">
 							Its GitHub activity keeps this entry on this day.

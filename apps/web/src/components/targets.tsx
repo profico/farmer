@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { StatusPill } from "#/components/status-pill.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
+import { StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
 import { cn } from "#/lib/utils.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
 
@@ -14,6 +15,14 @@ import { myTargetsQuery } from "#/queries/compliance.ts";
 // logged / target, a rail with a tick at "today", and one sentence saying
 // what is missing. Same words and colours as the Tracking report, so what a
 // person reads here is what their lead reads there.
+
+/** A verdict as a tile's underline colour. Same three words as the pill, so
+ *  the colour and the label can never disagree. */
+export const TARGET_TONE = {
+	on_track: "ok",
+	slightly_behind: "warn",
+	behind: "bad",
+} as const satisfies Record<TrackingStatus, "ok" | "warn" | "bad">;
 
 export const TARGET_STATUS = {
 	on_track: { label: "On track", tone: "positive" },
@@ -162,14 +171,15 @@ export function TargetBlock({
 }
 
 /**
- * The slim strip under the timesheet's Day / Week / Month tabs: the same two
- * figures, above the entries being filled in. Read without suspending, so the
- * timesheet never waits on it.
+ * The timesheet's two targets, in the same tiles the home page uses.
  *
- * One line per period, not four. It used to stack an eyebrow, a figure, a pill,
- * a sentence and a rail in each half, which made a strip of context taller and
- * louder than the single row of real content under it — the thing the screen is
- * actually for.
+ * It was a bespoke strip of its own: an eyebrow, a figure, a pill, a rail and
+ * a sentence crammed onto one line, in type sizes that existed nowhere else. So
+ * the same two numbers were set two different ways on two screens a tab apart.
+ * They are `StatTile`s now, which means one component to tune and one look to
+ * recognise.
+ *
+ * Read without suspending, so the timesheet never waits on it.
  */
 export function TargetsStrip({ orgSlug }: { orgSlug: string }) {
 	const { data } = useQuery(myTargetsQuery(orgSlug));
@@ -178,41 +188,36 @@ export function TargetsStrip({ orgSlug }: { orgSlug: string }) {
 		{ key: "month", title: "This month", period: data?.month },
 	] as const;
 	return (
-		<div className="-mx-4 grid shrink-0 border-y sm:-mx-8 sm:grid-cols-2 sm:divide-x">
+		<StatTiles columns={2} className="mt-4 shrink-0">
 			{cells.map(({ key, title, period }) => (
-				<div
+				<StatTile
 					key={key}
-					className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 sm:px-8"
-				>
-					<span className="eyebrow">{title}</span>
-					{period ? (
-						<>
-							<span className="tnum text-sm font-medium">
+					label={title}
+					aside={period?.status && <Pill status={period.status} />}
+					percent={
+						period?.targetSeconds
+							? (period.totalSeconds / period.targetSeconds) * 100
+							: null
+					}
+					tone={period?.status ? TARGET_TONE[period.status] : "neutral"}
+					value={
+						period ? (
+							<>
 								{formatReportHours(period.totalSeconds)}
 								{period.targetSeconds != null && (
-									<span className="font-normal text-muted-foreground">
+									<span className="text-[13px] font-normal tracking-[-0.01em] text-muted-foreground">
 										{" / "}
 										{formatReportHours(period.targetSeconds)}
 									</span>
 								)}
-							</span>
-							{period.status && <Pill status={period.status} />}
-							{/* The rail takes the rest of the line rather than sitting
-							    under it: a bar and its figure on one line read as one
-							    fact. */}
-							<TargetBar
-								period={period}
-								className="h-1 min-w-24 flex-1 basis-24"
-							/>
-							<span className="text-sm whitespace-nowrap">
-								<TargetGap period={period} />
-							</span>
-						</>
-					) : (
-						<Skeleton className="h-4 w-48" />
-					)}
-				</div>
+							</>
+						) : (
+							<Skeleton className="h-5 w-28" />
+						)
+					}
+					caption={period ? <TargetGap period={period} /> : null}
+				/>
 			))}
-		</div>
+		</StatTiles>
 	);
 }
