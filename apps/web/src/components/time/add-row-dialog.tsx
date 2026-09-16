@@ -30,6 +30,8 @@ export type DraftRow = {
 	heading: string;
 	taskName: string;
 	color: string | null;
+	/** The chosen project, for the row's icon; null for a time-off row. */
+	project: { name: string; icon?: string | null } | null;
 };
 
 /**
@@ -119,6 +121,7 @@ export function AddRowDialog({
 				: selectedTask.name,
 			taskName: selectedProject ? selectedTask.name : "",
 			color: selectedTask.color,
+			project: selectedProject,
 		});
 		// Time off is never remembered: a week of leave is not the next row.
 		if (resolvedProjectId) {

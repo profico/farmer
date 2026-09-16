@@ -303,10 +303,18 @@ function OrgHome() {
 				/>
 			</StatTiles>
 
-			{/* What you logged, and how the week is shaped. Side by side from lg:
-			    the day bars drive the list beside them, so cause and effect are on
-			    one screen. Below that they stack, entries first — on a phone the
-			    list is what you came for.
+			{/* What you logged, and how the week is shaped. Side by side once the
+			    PAGE is wide enough (`@4xl/page`, the container declared on
+			    `SidebarInset`): the day bars drive the list beside them, so cause
+			    and effect are on one screen. Below that they stack, entries first —
+			    on a phone the list is what you came for.
+
+			    The threshold is the page's width rather than the window's because
+			    the nav column is not on the page. Split at `lg` on the viewport, a
+			    1024px window gave the chart a 250px third column — seven weekday
+			    labels drawn over each other — and the list beside it a width where
+			    a project name truncated to its code. 896px of PAGE is where the
+			    third column reaches 256px, which is what the labels need.
 
 			    **Three columns, matching the band.** The list takes the first two
 			    and the chart the third, so the split under the band falls on the
@@ -324,15 +332,15 @@ function OrgHome() {
 
 			    **One vertical rule divides them, and it is the band's own rule
 			    turned a corner.** It hangs from the hairline that closes the band
-			    (`lg:-mt-7 lg:pt-7`) and runs to the island's bottom edge
-			    (`lg:-mb-7`, the island's own bottom padding), so the two halves of
+			    (`@4xl/page:-mt-7 @4xl/page:pt-7`) and runs to the island's bottom edge
+			    (`@4xl/page:-mb-7`, the island's own bottom padding), so the two halves of
 			    the screen are separated for their whole height rather than for as
-			    far as the shorter one happens to reach. `lg:-mr-8` widens the left
+			    far as the shorter one happens to reach. `@4xl/page:-mr-8` widens the left
 			    column by half the 64px gutter, which is what puts the rule at the
-			    gutter's centre; `lg:pr-8` pads the text back off it. The chart's
+			    gutter's centre; `@4xl/page:pr-8` pads the text back off it. The chart's
 			    baseline and its target rule are axes, not page furniture. */}
-			<div className="mt-7 grid gap-x-16 gap-y-8 lg:grid-cols-3 lg:flex-1">
-				<div className="min-w-0 lg:col-span-2 lg:-mt-7 lg:-mr-8 lg:-mb-7 lg:border-r lg:border-line2 lg:pt-7 lg:pr-8 lg:pb-7">
+			<div className="mt-7 grid gap-x-16 gap-y-8 @4xl/page:flex-1 @4xl/page:grid-cols-3">
+				<div className="min-w-0 @4xl/page:col-span-2 @4xl/page:-mt-7 @4xl/page:-mr-8 @4xl/page:-mb-7 @4xl/page:border-r @4xl/page:border-line2 @4xl/page:pt-7 @4xl/page:pr-8 @4xl/page:pb-7">
 					<div className="section-head">
 						<h2 className="eyebrow">
 							{selectedDay === today
@@ -354,7 +362,7 @@ function OrgHome() {
 					    edge to edge — the island's left edge, and the vertical rule
 					    on the right. A row highlighted only as far as its text is a
 					    row that looks narrower than the list it is in. */}
-					<div className="mt-3 flex flex-col divide-y divide-line2">
+					<div className="@container/entries mt-3 flex flex-col divide-y divide-line2">
 						{selectedEntries.map((entry) => (
 							<EntryBlockRow
 								key={entry.id}
@@ -446,8 +454,14 @@ function OrgHome() {
 										onClick={() => setSelectedDay(d.key)}
 										aria-pressed={isSelected}
 										aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
+										// `min-w-0` because a grid item will not shrink below its
+										// content by default, and the content here is a three-letter
+										// label with tracking on it. Without it a narrow chart did
+										// not compress — it overflowed, and seven weekday labels
+										// were drawn across each other. The spans truncate for the
+										// same reason: past a point the honest answer is "WE…".
 										className={cn(
-											"flex flex-col rounded-sm pb-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40",
+											"flex min-w-0 flex-col rounded-sm pb-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40",
 											d.isWeekend && !isSelected && "opacity-45",
 										)}
 									>
@@ -476,7 +490,7 @@ function OrgHome() {
 										</span>
 										<span
 											className={cn(
-												"eyebrow mt-2.5",
+												"eyebrow mt-2.5 w-full truncate",
 												d.isToday && "text-foreground",
 												isSelected && "text-primary",
 											)}
@@ -485,7 +499,7 @@ function OrgHome() {
 										</span>
 										<span
 											className={cn(
-												"mono mt-1.5 text-2xs",
+												"mono mt-1.5 w-full truncate text-2xs",
 												d.holiday
 													? "text-warn"
 													: verdict === "none"

@@ -1422,6 +1422,20 @@ html {
     transition: opacity var(--dur-long) var(--ease-in-out);
   }
 
+  /* Below `lg` the window holds the column shut (`lib/nav-collapse.ts`), so the
+     toggle has nothing to do here either — same treatment as an open panel, and
+     for the same reason. A media query rather than the attribute the rest of
+     this block reads, because `data-nav` cannot say WHY the column is a rail:
+     the reader's own choice is still stored under this, and pressing a control
+     that cannot answer is worse than not being offered it. `inert` is React's
+     half, in `app-sidebar.tsx`. */
+  @media (max-width: 63.999rem) {
+    .nav-toggle {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
   /* The org switcher at the head of the column. It used to be two different
      controls chosen by a React prop — the mark alone when collapsed, the mark
      plus the name and the caret when open — so the name appeared and vanished

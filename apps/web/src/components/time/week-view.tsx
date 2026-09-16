@@ -26,6 +26,7 @@ import {
 	type EntryBlockRowEntry,
 	entryHeading,
 } from "#/components/time/entry-block-row.tsx";
+import { EntryMark } from "#/components/time/entry-mark.tsx";
 import {
 	returnLinkClass,
 	stepperClass,
@@ -72,6 +73,8 @@ type GridRow = {
 	heading: string;
 	taskName: string;
 	color: string | null;
+	/** The row's project, for its icon; null on a project-less row. */
+	project: { name: string; icon?: string | null } | null;
 	/** date -> the entries behind that cell (usually exactly one). */
 	byDate: Map<string, EntryBlockRowEntry[]>;
 	/** True when nothing in the row may be edited from the grid. */
@@ -138,6 +141,7 @@ export function WeekView({
 				heading: entryHeading(entry),
 				taskName: entry.project ? entry.task.name : "",
 				color: entry.task.color,
+				project: entry.project,
 				byDate: new Map(),
 				locked: false,
 			};
@@ -157,6 +161,7 @@ export function WeekView({
 			heading: draft.heading,
 			taskName: draft.taskName,
 			color: draft.color,
+			project: draft.project,
 			byDate: new Map(),
 			locked: false,
 		});
@@ -419,12 +424,10 @@ export function WeekView({
 								>
 									<td className="px-4 py-2 sm:pl-8">
 										<div className="flex items-start gap-2">
-											<span
-												className="mt-1.5 size-2 shrink-0 rounded-full"
-												style={{
-													backgroundColor:
-														row.color ?? "var(--muted-foreground)",
-												}}
+											<EntryMark
+												project={row.project}
+												taskColor={row.color}
+												className="mt-0.5"
 											/>
 											<div className="min-w-0">
 												<p className="truncate text-base font-medium">

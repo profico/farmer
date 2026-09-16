@@ -29,11 +29,18 @@ import { cn } from "#/lib/utils.ts";
 
 /** Per-column-count metrics, handed to the cells as custom properties: a denser
  *  band pads less and sets its figures smaller. Two and three are the numbers
- *  the band has always used, so those screens are unchanged. */
+ *  the band has always used, so those screens are unchanged.
+ *
+ *  **The counts are container queries, not viewport ones** (`@…/page`, declared
+ *  on `SidebarInset`). A cell holds a figure, a status pill and a caption, and
+ *  needs about 11rem to do it; what decides whether three of those fit is the
+ *  band's own width, which is the window MINUS the nav column. On the viewport
+ *  these went three-across at 640px, where the band is 380px — three figures in
+ *  a row, each clipped mid-digit. */
 const COLUMNS = {
-	2: "sm:grid-cols-2 [--stat-tile-px:2rem] [--stat-value-size:26px]",
-	3: "sm:grid-cols-3 [--stat-tile-px:2rem] [--stat-value-size:26px]",
-	4: "sm:grid-cols-2 lg:grid-cols-4 [--stat-tile-px:1.5rem] [--stat-value-size:22px]",
+	2: "@xl/page:grid-cols-2 [--stat-tile-px:2rem] [--stat-value-size:26px]",
+	3: "@xl/page:grid-cols-3 [--stat-tile-px:2rem] [--stat-value-size:26px]",
+	4: "@xl/page:grid-cols-2 @4xl/page:grid-cols-4 [--stat-tile-px:1.5rem] [--stat-value-size:22px]",
 } as const satisfies Record<2 | 3 | 4, string>;
 
 export function StatTiles({

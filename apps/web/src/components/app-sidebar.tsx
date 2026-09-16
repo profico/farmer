@@ -49,7 +49,11 @@ import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { GITHUB_NEW_ISSUE_URL } from "#/lib/links.ts";
 import { easeOut } from "#/lib/motion.ts";
-import { setNavCollapsed, useNavCollapsed } from "#/lib/nav-collapse.ts";
+import {
+	setNavCollapsed,
+	useNavCollapsed,
+	useNavForced,
+} from "#/lib/nav-collapse.ts";
 import {
 	activeNavTo,
 	ASSISTANT_ITEM,
@@ -151,12 +155,18 @@ export function AppSidebar({
 			? "chat"
 			: null;
 
-	// Two things collapse the column and they are not the same thing: a panel
-	// (the URL's doing, and the server knows it) and the reader's own choice
-	// (localStorage, which the server does not). The width comes off CSS either
-	// way — see `.app-nav` in styles.css — and this is only what the ROWS are
-	// drawn from, which is why the pref being a frame late costs nothing.
+	// Three things collapse the column and they are not the same thing: a panel
+	// (the URL's doing, and the server knows it), the reader's own choice
+	// (localStorage, which the server does not) and a window under `lg` (neither
+	// knows, so it is read from the window itself). The width comes off CSS
+	// either way — see `.app-nav` in styles.css — and this is only what the ROWS
+	// are drawn from, which is why the pref being a frame late costs nothing.
+	//
+	// `navCollapsed` already covers the narrow window, because that is where the
+	// attribute is decided. `navForced` is the separate question the toggle asks:
+	// whether the reader could expand it if they pressed.
 	const navCollapsed = useNavCollapsed();
+	const navForced = useNavForced();
 	const collapsed = panel !== null || navCollapsed;
 
 	// What the panel DRAWS, which is not what the panel IS: on the way out it
@@ -444,7 +454,7 @@ export function AppSidebar({
 							    for a state the button does not control. */}
 							<CollapseToggle
 								collapsed={navCollapsed}
-								hidden={panel !== null}
+								hidden={panel !== null || navForced}
 							/>
 							<Tooltip>
 								<TooltipTrigger

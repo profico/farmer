@@ -218,7 +218,11 @@ export function DayView({
 				    itself (see EntryBlockRow). Presence only knows that a row left,
 				    not why — so stepping to another day, which replaces every entry
 				    at once, played the delete animation across the whole list. */}
-				<div className="divide-y divide-line2">
+				{/* `@container/entries` is the width each row wraps against — see the
+				    comment on EntryBlockRow. The list is the right thing to measure
+				    because the row is always as wide as its list and rarely as wide
+				    as the window. */}
+				<div className="@container/entries divide-y divide-line2">
 					{sortedEntries.map((entry) => (
 						<EntryBlockRow key={entry.id} entry={entry} timezone={timezone} />
 					))}

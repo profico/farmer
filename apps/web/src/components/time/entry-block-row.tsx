@@ -9,6 +9,7 @@ import {
 	AddBlockDialog,
 	type ExistingTimeEntry,
 } from "#/components/time/add-block-dialog.tsx";
+import { EntryMark } from "#/components/time/entry-mark.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
@@ -29,6 +30,7 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 	project: {
 		name: string;
 		code: string | null;
+		icon: string | null;
 		client: { name: string } | null;
 	} | null;
 	task: { name: string; color: string | null; isAbsence: boolean };
@@ -252,10 +254,23 @@ export function EntryBlockRow({
 	});
 
 	return (
-		// Wraps on a phone. The figure and the three word-buttons are a fixed
-		// ~180px; holding them on the same line as the text squeezed a project
-		// name down to a dozen characters and turned every note into a five-line
-		// column, so below `sm` they drop to their own right-aligned line.
+		// Wraps in a narrow column. The figure and the three word-buttons are a
+		// fixed ~180px; holding them on the same line as the text squeezed a
+		// project name down to a dozen characters and turned every note into a
+		// five-line column, so under 28rem they drop to their own right-aligned
+		// line.
+		//
+		// That 28rem is the LIST's width (`@container/entries`, declared by the
+		// two lists that render this row), not the window's. On the viewport this
+		// was `sm:`, which is 640px of window — but on the home page the list is
+		// two thirds of the page, which is itself the window minus the nav column,
+		// so a 1024px window handed this row 470px and the rule read it as wide.
+		// The result was the shape the rule exists to prevent: "[BDT] …" beside a
+		// full row of buttons.
+		//
+		// The INSET stays on the viewport (`px-4 sm:px-8`). It is the island's own
+		// padding rather than anything about this row, and every band on the page
+		// shares it.
 		//
 		// Delete only, no enter. Deleting a row used to drop it instantly and snap
 		// everything below it upward while the "Undo" toast slid in from the far
@@ -283,15 +298,14 @@ export function EntryBlockRow({
 			}
 			transition={heightTransition}
 			className={cn(
-				"group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted sm:flex-nowrap sm:px-8",
+				"group/entry flex flex-wrap items-start gap-x-3 gap-y-1 overflow-hidden px-4 py-3 transition-colors duration-(--dur-fast) hover:bg-muted @md/entries:flex-nowrap sm:px-8",
 				className,
 			)}
 		>
-			<span
-				className="mt-1.5 size-2 shrink-0 rounded-full"
-				style={{
-					backgroundColor: entry.task.color ?? "var(--muted-foreground)",
-				}}
+			<EntryMark
+				project={entry.project}
+				taskColor={entry.task.color}
+				className="mt-0.5"
 			/>
 			<div className="min-w-0 flex-1">
 				{/* Project line, then task line, then the note — Harvest's three-tier
@@ -342,13 +356,13 @@ export function EntryBlockRow({
 					className="mt-0.5 -ml-1.5 min-h-7 w-full resize-none rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-muted-foreground shadow-none [field-sizing:content] placeholder:text-faint hover:border-input focus-visible:border-ring focus-visible:bg-background focus-visible:text-foreground"
 				/>
 			</div>
-			<div className="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto sm:items-start sm:gap-3">
+			<div className="flex w-full shrink-0 items-center justify-end gap-1 @md/entries:w-auto @md/entries:items-start @md/entries:gap-3">
 				{/* A fill block's length is the day's leftover working time, recomputed
 				    on every write, so there is nothing here to type into — it stays a
 				    figure. Everything else is editable in place, like the note. */}
 				{entry.fillsDay ? (
 					<span
-						className="mono mr-auto px-1.5 text-base sm:mt-0.5 sm:mr-0"
+						className="mono mr-auto px-1.5 text-base @md/entries:mt-0.5 @md/entries:mr-0"
 						title="This block fills the rest of the day, so its length follows the day"
 					>
 						{formatClock(entry.durationSeconds)}
@@ -373,7 +387,7 @@ export function EntryBlockRow({
 						}}
 						inputMode="decimal"
 						aria-label={`Duration — ${entryHeading(entry)}`}
-						className="mono mr-auto h-7 w-16 shrink-0 rounded-md border-transparent px-1.5 text-right text-base hover:not-disabled:not-focus-visible:border-input focus-visible:bg-background sm:mr-0"
+						className="mono mr-auto h-7 w-16 shrink-0 rounded-md border-transparent px-1.5 text-right text-base hover:not-disabled:not-focus-visible:border-input focus-visible:bg-background @md/entries:mr-0"
 					/>
 				)}
 				{/* Overtime is a one-click toggle from the row: it is purely manual, and

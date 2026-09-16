@@ -336,7 +336,17 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
 			className={cn(
 				// Not an island itself — it's the slot the page's own island(s) sit in,
 				// so it stays transparent and lets the ground show between them.
-				"relative flex w-full min-w-0 flex-1 flex-col",
+				//
+				// **It is also the app's page container** (`@container/page`), and the
+				// layouts inside it measure THIS rather than the window. The nav column
+				// is 240px of a window that a viewport breakpoint cannot see it taking,
+				// so `sm:grid-cols-3` on the target band went three-across at 640px —
+				// when the band itself was 380px and its three figures overlapped. Every
+				// rule that decides how many columns something has belongs on
+				// `@…/page:`; the ones that decide a page's INSET (`px-4 sm:px-8`) stay
+				// on the viewport, because that is the window's own margin and the
+				// islands share it.
+				"@container/page relative flex w-full min-w-0 flex-1 flex-col",
 				className,
 			)}
 			{...props}
