@@ -1,3 +1,4 @@
+import { parseDuration, snapToQuarterHour } from "@farmer/core/lib/time";
 import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
@@ -9,6 +10,7 @@ import {
 	type ExistingTimeEntry,
 } from "#/components/time/add-block-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { Input } from "#/components/ui/input.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatClock } from "#/lib/format-hours.ts";
@@ -20,6 +22,7 @@ import {
 	deleteTimeEntry,
 	setTimeEntryOvertime,
 	updateTimeEntryDescription,
+	updateTimeEntryDuration,
 } from "#/server/time-entries.ts";
 
 export type EntryBlockRowEntry = ExistingTimeEntry & {
@@ -92,6 +95,59 @@ export function EntryBlockRow({
 		const trimmed = note.trimEnd();
 		if (trimmed === (entry.description ?? "")) return;
 		noteMutation.mutate(trimmed);
+	};
+
+	// Inline duration editing, the note field's twin: a local draft, committed on
+	// blur. Synced from the server value only while the box is idle, or a
+	// refetch landing mid-edit would rewrite what is being typed.
+	const [duration, setDuration] = useState(formatClock(entry.durationSeconds));
+	const [editingDuration, setEditingDuration] = useState(false);
+	useEffect(() => {
+		if (!editingDuration) setDuration(formatClock(entry.durationSeconds));
+	}, [entry.durationSeconds, editingDuration]);
+
+	const durationMutation = useMutation({
+		mutationFn: (durationSeconds: number) =>
+			updateTimeEntryDuration({
+				data: { timeEntryId: entry.id, durationSeconds },
+			}),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not save duration");
+			setDuration(formatClock(entry.durationSeconds));
+		},
+	});
+
+	const saveDuration = () => {
+		setEditingDuration(false);
+		const trimmed = duration.trim();
+		// An emptied box is an abandoned edit, not a request to log nothing —
+		// deleting an entry is the Delete button, and a zero-length one cannot
+		// exist. Same for a cleared-then-retyped value that comes back unchanged.
+		if (trimmed === "") {
+			setDuration(formatClock(entry.durationSeconds));
+			return;
+		}
+		const parsed = parseDuration(trimmed);
+		if (parsed == null || parsed <= 0) {
+			// Said out loud rather than reverted in silence. The grid cell next door
+			// can revert quietly because a wrong cell sits in a field of right ones;
+			// a single figure snapping back on its own reads as the app ignoring the
+			// edit. The hint is the dialog's, word for word.
+			toast.error("Could not read that duration — try 1.5, 1h30m or 1:30");
+			setDuration(formatClock(entry.durationSeconds));
+			return;
+		}
+		const snapped = snapToQuarterHour(parsed);
+		// Show the snap even when the length did not change, so typing "1h20m"
+		// against an hour and a half does not look like nothing happened.
+		setDuration(formatClock(snapped));
+		if (snapped === entry.durationSeconds) return;
+		durationMutation.mutate(snapped);
 	};
 
 	const overtimeMutation = useMutation({
@@ -287,9 +343,39 @@ export function EntryBlockRow({
 				/>
 			</div>
 			<div className="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto sm:items-start sm:gap-3">
-				<span className="mono mr-auto text-base sm:mt-0.5 sm:mr-0">
-					{formatClock(entry.durationSeconds)}
-				</span>
+				{/* A fill block's length is the day's leftover working time, recomputed
+				    on every write, so there is nothing here to type into — it stays a
+				    figure. Everything else is editable in place, like the note. */}
+				{entry.fillsDay ? (
+					<span
+						className="mono mr-auto px-1.5 text-base sm:mt-0.5 sm:mr-0"
+						title="This block fills the rest of the day, so its length follows the day"
+					>
+						{formatClock(entry.durationSeconds)}
+					</span>
+				) : (
+					<Input
+						value={duration}
+						onFocus={() => setEditingDuration(true)}
+						onChange={(event) => setDuration(event.target.value)}
+						onBlur={saveDuration}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") {
+								event.preventDefault();
+								event.currentTarget.blur();
+								return;
+							}
+							if (event.key === "Escape") {
+								setEditingDuration(false);
+								setDuration(formatClock(entry.durationSeconds));
+								event.currentTarget.blur();
+							}
+						}}
+						inputMode="decimal"
+						aria-label={`Duration — ${entryHeading(entry)}`}
+						className="mono mr-auto h-7 w-16 shrink-0 rounded-md border-transparent px-1.5 text-right text-base hover:not-disabled:not-focus-visible:border-input focus-visible:bg-background sm:mr-0"
+					/>
+				)}
 				{/* Overtime is a one-click toggle from the row: it is purely manual, and
 				    making people reopen the dialog for it guarantees it never gets set. */}
 				{!entry.task.isAbsence && !entry.fillsDay && (
