@@ -22,9 +22,13 @@ import { createFileRoute } from "@tanstack/react-router";
 // whether or not the installation was known — an unverified caller learns
 // nothing about which accounts this deployment holds.
 //
-// Configure it in the App settings: Webhook URL {BETTER_AUTH_URL}/api/github/webhook,
-// a secret matching GITHUB_WEBHOOK_SECRET, and the "Installation" and
-// "Installation repositories" event subscriptions.
+// Configure it in the App settings: Webhook URL
+// {BETTER_AUTH_URL}/api/github/webhook, "Active" ticked, and a Webhook secret
+// matching GITHUB_WEBHOOK_SECRET. Neither event is subscribed to — GitHub
+// sends `installation` and `installation_repositories` to every App and says
+// so: "All GitHub Apps receive this event by default. You cannot manually
+// subscribe to this event." So a webhook URL and a secret are the whole
+// setup, and an App with an empty "Subscribe to events" list still gets both.
 export const Route = createFileRoute("/api/github/webhook")({
 	server: {
 		handlers: {
