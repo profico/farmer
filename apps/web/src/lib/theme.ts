@@ -40,8 +40,13 @@ const mayAnimateThemeSwitch = () =>
 	document.documentElement.getAttribute("data-motion") !== "reduce";
 
 export const setTheme = (theme: Theme) => {
-	const apply = () =>
+	// The change event goes out once the attribute is written, not when the
+	// switch is asked for: a view transition runs `apply` a frame later, and a
+	// `useTheme` reading the attribute before then would keep the old theme.
+	const apply = () => {
 		document.documentElement.setAttribute("data-theme", theme);
+		window.dispatchEvent(new Event(CHANGE_EVENT));
+	};
 	// The whole document crossfades between palettes (220ms, styles.css sets
 	// the duration on the view-transition pseudo-elements) instead of every
 	// surface snapping at once. A browser without view transitions, or a
@@ -57,7 +62,6 @@ export const setTheme = (theme: Theme) => {
 		// Private-mode / blocked storage: the switch still works for this page,
 		// it just won't be remembered. Not worth failing the click over.
 	}
-	window.dispatchEvent(new Event(CHANGE_EVENT));
 };
 
 const subscribe = (onChange: () => void) => {
