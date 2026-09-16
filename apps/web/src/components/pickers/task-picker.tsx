@@ -28,7 +28,19 @@ type Item = {
 	value: string;
 	id: string;
 	label: string;
+	/** The group's own name, shown over the task on the trigger — the line the
+	 *  project picker gives its client. Null for a group this build does not
+	 *  know, which is a task row from a newer taxonomy, not an error. */
+	groupLabel: string | null;
 	recent: boolean;
+};
+
+/** The group's display name, without asserting the stored string is one of
+ *  ours. `find` over `TASK_GROUPS` narrows it, so an unknown group comes back
+ *  null and the trigger simply shows one line. */
+const groupLabelOf = (group: string): string | null => {
+	const known = TASK_GROUPS.find((candidate) => candidate === group);
+	return known ? TASK_GROUP_LABELS[known] : null;
 };
 
 type Group = { value: string; label: string | null; items: Item[] };
@@ -81,6 +93,7 @@ export function TaskPicker({
 			value: recent ? `${RECENT}:${t.id}` : t.id,
 			id: t.id,
 			label: t.name,
+			groupLabel: groupLabelOf(t.group),
 			recent,
 		});
 		// First and above everything, like the project picker's "no project" row.
@@ -89,7 +102,15 @@ export function TaskPicker({
 					{
 						value: NONE,
 						label: null,
-						items: [{ value: NONE, id: "", label: noTask, recent: false }],
+						items: [
+							{
+								value: NONE,
+								id: "",
+								label: noTask,
+								groupLabel: null,
+								recent: false,
+							},
+						],
 					},
 				]
 			: [];
@@ -155,9 +176,28 @@ export function TaskPicker({
 		>
 			<ComboboxTrigger className={cn("w-full", className)} {...triggerProps}>
 				<ComboboxValue placeholder={placeholder}>
-					{(item: Item | null) => (
-						<span className="truncate">{item ? item.label : placeholder}</span>
-					)}
+					{(item: Item | null) =>
+						item ? (
+							<>
+								{/* The group over the task, which is the shape the project
+								    picker already uses for its client — and what makes the
+								    two triggers beside each other on the entry form read as
+								    one row rather than two boxes of different heights. Only
+								    when the list is grouped: without a project the list is
+								    flat and every row is time off or a built-in, so a header
+								    over each would name a grouping the picker is not
+								    showing. */}
+								{grouped && item.groupLabel && (
+									<span className="truncate text-xs text-muted-foreground">
+										{item.groupLabel}
+									</span>
+								)}
+								<span className="truncate">{item.label}</span>
+							</>
+						) : (
+							placeholder
+						)
+					}
 				</ComboboxValue>
 			</ComboboxTrigger>
 			<ComboboxContent
