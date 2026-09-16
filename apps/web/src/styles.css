@@ -88,8 +88,32 @@
    of the element it is placing and changes the pixels it answers in to match,
    so a positioner that carries the zoom moves the error rather than removing
    it. The layer is a parent, and a parent it does not measure. */
+
+/* The layer also carries the stacking context every popup is drawn in, above
+   the `z-50` every overlay in the app shares. A popup used to win against the
+   dialog it was opened from by being LATER in <body>: each portal appended its
+   own element, so the newest one — the popup — painted last. The layer is made
+   once, on first use, so a dialog opened after it appends after it and a tie on
+   z-index goes to the dialog: the project and task pickers in Log time were
+   drawn behind the form they belong to.
+
+   It has to be POSITIONED to carry a z-index at all, and the box it is given
+   has to be the whole viewport: a positioner inside it is `position: absolute`,
+   so this is now the box it is placed against, and Floating UI reads the box's
+   own scale off it — a layer sized to nothing answers a zoomed popup one whole
+   scale out of place. `pointer-events` is what keeps a viewport-sized layer
+   from swallowing every click meant for the page underneath; the children take
+   them back, and everything inside a popup inherits that. */
 .popup-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
   zoom: calc(1 / var(--ui-scale, 1));
+}
+
+.popup-layer > * {
+  pointer-events: auto;
 }
 
 .popup-scaled {
