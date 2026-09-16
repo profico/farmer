@@ -6,6 +6,7 @@ import { motion } from "motion/react";
 import { useState } from "react";
 
 import { PersonAvatar } from "#/components/person-avatar.tsx";
+import { settingsNavGroups } from "#/components/settings-nav.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import {
 	Drawer,
@@ -20,10 +21,8 @@ import { authClient } from "#/lib/auth-client.ts";
 import { springExpressive } from "#/lib/motion.ts";
 import {
 	activeNavTo,
-	CLIENTS_ITEM,
 	mobileWorkItems,
 	type NavItem,
-	PEOPLE_ITEM,
 	REPORTS_ITEM,
 	YOU_ITEMS,
 } from "#/lib/nav-items.ts";
@@ -71,10 +70,10 @@ export function MobileTabBar({
 	const { data: access } = useQuery(myAccessQuery(orgSlug));
 	const canManageClients = isAdmin || !!access?.isLeadSomewhere;
 
-	// The sheet carries the sidebar's three groups rather than one flat run of
-	// rows. It was up to eleven undifferentiated links, which is the phone
-	// showing less structure than the desktop for exactly the same nav — and the
-	// place where a person is most likely to be hunting rather than aiming.
+	// The sheet carries the sidebar's groups rather than one flat run of rows.
+	// It was up to eleven undifferentiated links, which is the phone showing
+	// less structure than the desktop for exactly the same nav — and the place
+	// where a person is most likely to be hunting rather than aiming.
 	const groups: { label: string; items: NavItem[] }[] = [
 		{
 			label: "Work",
@@ -85,20 +84,22 @@ export function MobileTabBar({
 				REPORTS_ITEM,
 			],
 		},
-		{ label: "You", items: YOU_ITEMS },
-		{
-			label: "Manage",
-			items: [
-				...(canManageClients ? [CLIENTS_ITEM] : []),
-				...(isAdmin ? [PEOPLE_ITEM] : []),
-			],
-		},
+		// Settings, then everything behind it, in the hub's own two groups — the
+		// same catalogue the sidebar's sub-menu draws (`settingsNavGroups`), so a
+		// phone reaches every settings page in the order a desktop lists them.
+		// Before this the sheet showed "You" and "Manage", which were four of the
+		// twelve; the other eight were two taps away behind the hub.
+		{ label: "Settings", items: YOU_ITEMS },
+		...settingsNavGroups({ isAdmin, canManageClients }).map((group) => ({
+			label: group.label,
+			items: group.items,
+		})),
 	].filter((group) => group.items.length > 0);
 
 	const moreItems = groups.flatMap((group) => group.items);
 	// One resolution over every row the bar can reach, primary and overflow
-	// alike: the Settings hub is a URL prefix of four other rows, so asked row by
-	// row it lights two at once. See `activeNavTo`.
+	// alike: the Settings hub is a URL prefix of every row listed under it, so
+	// asked row by row it lights two at once. See `activeNavTo`.
 	const activeTo = activeNavTo(
 		pathname,
 		[...primaryItems, ...moreItems],

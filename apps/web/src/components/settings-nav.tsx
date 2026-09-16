@@ -26,9 +26,9 @@ import {
  *
  * The hub (`routes/$orgSlug/settings/index.tsx`) draws every row of it with its
  * description; the sidebar draws the sub-menu under the Settings row from the
- * same array. Spelled out twice, the two lists drift the first time a page is
- * added — which reads on screen as a settings page you can reach from the index
- * and not from the menu beside it.
+ * same array, in the same groups and the same order. Spelled out twice, the two
+ * lists drift the first time a page is added — which reads on screen as a
+ * settings page you can reach from the index and not from the menu beside it.
  */
 export type SettingsAudience = {
 	isAdmin: boolean;
@@ -41,16 +41,6 @@ export type SettingsEntry = {
 	/** Which of the hub's two sections the row belongs to. */
 	group: "account" | "workspace";
 	description: string;
-	/**
-	 * True when the page also has a nav row of its own.
-	 *
-	 * Those four rows are listed by the hub and left out of the sub-menu: an
-	 * index that omitted them would not be an index, while a menu that repeated
-	 * them would put the same destination twice in one sidebar — and, since the
-	 * active pill is resolved by matching a path against a list of `to`s, two
-	 * rows carrying one `to` are two rows that light together.
-	 */
-	hasNavRow: boolean;
 	show: (audience: SettingsAudience) => boolean;
 };
 
@@ -66,7 +56,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "account",
 		description:
 			"Appearance, notifications and how you sign in to this account.",
-		hasNavRow: false,
 		show: always,
 	},
 	{
@@ -74,7 +63,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "account",
 		description:
 			"Your working hours. They size the fill-rest-of-day block and the behind-pace reminder.",
-		hasNavRow: true,
 		show: always,
 	},
 	{
@@ -82,7 +70,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "account",
 		description:
 			"Time that repeats every week, written onto your days for you.",
-		hasNavRow: true,
 		show: always,
 	},
 	{
@@ -94,32 +81,28 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "account",
 		description:
 			"Connect GitHub and Google Calendar so your meetings and commits log themselves.",
-		hasNavRow: false,
 		show: always,
 	},
 	{
 		item: {
-			label: "Holidays",
-			to: "/$orgSlug/settings/holidays",
-			icon: CalendarHeartIcon,
+			label: "Organization",
+			to: "/$orgSlug/settings/organization",
+			icon: BuildingsIcon,
 		},
 		group: "workspace",
-		description: "The public holidays this workspace observes.",
-		hasNavRow: false,
-		show: always,
+		description: "Name, logo, timezone, country and the automation lock date.",
+		show: (audience) => audience.isAdmin,
 	},
 	{
 		item: CLIENTS_ITEM,
 		group: "workspace",
 		description: "The companies your projects are billed to.",
-		hasNavRow: true,
 		show: (audience) => audience.canManageClients,
 	},
 	{
 		item: PEOPLE_ITEM,
 		group: "workspace",
 		description: "Invite people, set their role and their person type.",
-		hasNavRow: true,
 		show: (audience) => audience.isAdmin,
 	},
 	{
@@ -131,7 +114,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "workspace",
 		description:
 			"The task list every project picks from, plus the built-in absence tasks.",
-		hasNavRow: false,
 		show: (audience) => audience.isAdmin,
 	},
 	{
@@ -143,7 +125,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "workspace",
 		description:
 			"The monthly hours each person is expected to deliver. Tracking reads Expected off this.",
-		hasNavRow: false,
 		show: (audience) => audience.isAdmin,
 	},
 	{
@@ -155,7 +136,6 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "workspace",
 		description:
 			"When the log reminder, the Slack nudge, the month-end reminder and the admin digest go out, and to whom.",
-		hasNavRow: false,
 		show: (audience) => audience.isAdmin,
 	},
 	{
@@ -167,19 +147,17 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "workspace",
 		description:
 			"Bring clients, projects, people and time in from Harvest's CSV exports.",
-		hasNavRow: false,
 		show: (audience) => audience.isAdmin,
 	},
 	{
 		item: {
-			label: "Organization",
-			to: "/$orgSlug/settings/organization",
-			icon: BuildingsIcon,
+			label: "Holidays",
+			to: "/$orgSlug/settings/holidays",
+			icon: CalendarHeartIcon,
 		},
 		group: "workspace",
-		description: "Name, logo, timezone, country and the automation lock date.",
-		hasNavRow: false,
-		show: (audience) => audience.isAdmin,
+		description: "The public holidays this workspace observes.",
+		show: always,
 	},
 ];
 
@@ -188,17 +166,43 @@ export const settingsEntriesFor = (
 	audience: SettingsAudience,
 ): SettingsEntry[] => SETTINGS_ENTRIES.filter((entry) => entry.show(audience));
 
-/**
- * The sidebar's sub-menu: the settings pages that have no nav row of their own.
- *
- * Three rows for a member, six for an admin — short enough to open under the
- * Settings row without the sidebar becoming the fifteen-row list the hub exists
- * to replace.
- */
+/** Every settings page this reader may open, flat — what the sidebar matches a
+ *  path against to decide which sub-row is lit. */
 export const settingsSubNavItems = (audience: SettingsAudience): NavItem[] =>
-	settingsEntriesFor(audience)
-		.filter((entry) => !entry.hasNavRow)
-		.map((entry) => entry.item);
+	settingsEntriesFor(audience).map((entry) => entry.item);
+
+/** The label each of the hub's two sections carries, on both surfaces. */
+export const SETTINGS_GROUP_LABEL = {
+	account: "Account",
+	workspace: "Workspace",
+} as const;
+
+/**
+ * The sidebar's sub-menu, in the hub's own groups and the hub's own order.
+ *
+ * It used to be "every settings page that has no nav row of its own" — a rule
+ * about the code rather than a group a person recognises, and it left My
+ * schedule, Recurring blocks, Clients and People out of the menu because they
+ * ALSO sat at the top level, in a different order under different headings.
+ * Those four moved in with the rest (see `lib/nav-items.ts`), so one catalogue
+ * now drives both surfaces and every settings page is one click from any other.
+ *
+ * An empty group is dropped rather than drawn as a heading over nothing.
+ */
+export const settingsNavGroups = (
+	audience: SettingsAudience,
+): { key: "account" | "workspace"; label: string; items: NavItem[] }[] => {
+	const entries = settingsEntriesFor(audience);
+	return (["account", "workspace"] as const)
+		.map((key) => ({
+			key,
+			label: SETTINGS_GROUP_LABEL[key],
+			items: entries
+				.filter((entry) => entry.group === key)
+				.map((entry) => entry.item),
+		}))
+		.filter((group) => group.items.length > 0);
+};
 
 /**
  * The way back up, in the one place every settings page already has a line of

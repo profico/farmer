@@ -64,25 +64,20 @@ export const ASSISTANT_ITEM: NavItem = {
 };
 
 /**
- * The nav is three groups, and each one answers a different question.
+ * The nav is one group of work, plus the door to everything else.
  *
- * It was one group of eleven called "Workspace" plus four called "Admin", and
- * the first label had stopped meaning anything: it held the timesheet, the
- * project list, the reports, your own working hours AND your theme. Every
- * page in the app already knew the right taxonomy and printed it as its own
- * eyebrow — "Your account" over Preferences, "Your schedule" over My schedule,
- * "Workspace" over Organization — so the screens agreed on a grouping the menu
- * beside them did not use.
+ * It was three groups and fifteen destinations for an admin — Work, then "You"
+ * (My schedule, Recurring blocks, Settings), then "Manage" (Clients, People) —
+ * with four of those rows ALSO listed inside Settings, in a different order and
+ * under different headings. Two lists of the same pages that disagreed.
  *
- * - **Work** is what you came here to do, and what a report is read off.
- * - **You** is the shape of your own week, plus the door to everything else.
- * - **Manage** is running the place: people and the companies they bill to.
+ * Everything configurable now sits behind the Settings row, and the sub-menu
+ * that opens under it carries the whole catalogue in the hub's two groups and
+ * the hub's order (`components/settings-nav.tsx`) — so the sidebar lost four
+ * duplicate rows and every settings page stayed one click from any other.
  *
- * The six configuration pages that used to be rows (Preferences, Integrations,
- * Holidays, Tasks, Hour fund, Organization) now live behind the Settings hub —
- * see `routes/$orgSlug/settings/index.tsx`. They are set once and revisited
- * rarely, which is the definition of a page that belongs one click deeper, and
- * moving them takes an admin's sidebar from fifteen rows to ten.
+ * Reports joins Work rather than standing alone: a report is read off the same
+ * work the three rows above it are about.
  */
 export const WORK_ITEMS: NavItem[] = [
 	{ label: "Home", to: "/$orgSlug", icon: SquaresFourIcon },
@@ -98,9 +93,6 @@ export const MY_SCHEDULE_ITEM: NavItem = {
 	icon: CalendarDotsIcon,
 };
 
-// Beside My schedule rather than behind the hub with the rest of the settings:
-// a recurring block is the other half of "what my week looks like", and it
-// writes entries onto days by itself — which is not something to hide.
 export const RECURRING_BLOCKS_ITEM: NavItem = {
 	label: "Recurring blocks",
 	to: "/$orgSlug/settings/recurring-blocks",
@@ -116,11 +108,14 @@ export const SETTINGS_ITEM: NavItem = {
 	icon: GearSixIcon,
 };
 
-export const YOU_ITEMS: NavItem[] = [
-	MY_SCHEDULE_ITEM,
-	RECURRING_BLOCKS_ITEM,
-	SETTINGS_ITEM,
-];
+/**
+ * The rows under the work group: the one door to everything else.
+ *
+ * It held My schedule and Recurring blocks too. Both are settings pages, both
+ * were also listed inside Settings, and keeping them here made the sidebar say
+ * the same thing twice in two places.
+ */
+export const YOU_ITEMS: NavItem[] = [SETTINGS_ITEM];
 
 /**
  * The mobile tab bar's rows, which are Work plus the assistant.
@@ -136,8 +131,9 @@ export const YOU_ITEMS: NavItem[] = [
 export const mobileWorkItems = (assistantAvailable: boolean): NavItem[] =>
 	assistantAvailable ? [...WORK_ITEMS, ASSISTANT_ITEM] : WORK_ITEMS;
 
-// Gated on a PROJECT role rather than the org role, so neither list fits:
-// clients are creatable by PMs and Team Leads (PRD 3.3), not just Admins.
+// Gated on a PROJECT role rather than the org role: clients are creatable by
+// PMs and Team Leads (PRD 3.3), not just Admins. It lives inside Settings now,
+// so the gate is `SettingsAudience.canManageClients`.
 export const CLIENTS_ITEM: NavItem = {
 	label: "Clients",
 	to: "/$orgSlug/settings/clients",
@@ -169,13 +165,12 @@ export function isNavItemActive(pathname: string, to: string, orgSlug: string) {
 /**
  * Which single row a path belongs to: the longest match wins.
  *
- * `isNavItemActive` is a prefix test, and the Settings hub is now the prefix of
- * ten rows that are not it — two of which (My schedule, Recurring blocks) are
- * still rows of their own, and six of which are the hub's sub-menu. Asked row by
- * row, `/acme/settings/preferences` lights both the sub-row and the hub above
- * it, which is wrong twice over: it says you are in two places, and the active
- * pill is a shared element, so two carriers of one `layoutId` leave the
- * animation with no single destination to travel to.
+ * `isNavItemActive` is a prefix test, and the Settings hub is the prefix of
+ * every row in its sub-menu. Asked row by row, `/acme/settings/preferences`
+ * lights both the sub-row and the hub above it, which is wrong twice over: it
+ * says you are in two places, and the active pill is a shared element, so two
+ * carriers of one `layoutId` leave the animation with no single destination to
+ * travel to.
  *
  * Resolving it here rather than per row also gives the hub the behaviour it
  * wants for free — Settings stays lit while its sub-menu is closed, and hands
