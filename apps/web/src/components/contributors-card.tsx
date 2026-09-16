@@ -66,11 +66,15 @@ const MAX_FACES = 8;
  *  recognizable while the row still reads as one stack and not as a list. */
 const OVERLAP = 0.25;
 
-/** The range a face may be drawn at while filling the row it is given. The
- *  floor keeps a face a face in the sidebar's narrow column; the ceiling stops
- *  a short roster in a full-width card becoming a row of portraits. */
+/** The range a face may be drawn at. The floor keeps a face a face in the
+ *  sidebar's narrow column; the ceiling is a backstop for a card wider than
+ *  either of the two this is used in. */
 const MIN_FACE = 22;
 const MAX_FACE = 44;
+
+/** The widest a row ever gets, in face-widths: `MAX_FACES` of them plus the
+ *  `+N`, each covering a quarter of the one before. */
+const FULL_ROW = 1 + (1 - OVERLAP) * MAX_FACES;
 
 /** How far the colophon travels as it arrives. The same four pixels `FadeSwap`
  *  moves the panels through, because it is the same house entrance. */
@@ -260,7 +264,6 @@ function ContributorAvatar({
 function ContributorStack({ contributors }: { contributors: Contributor[] }) {
 	const shown = contributors.slice(0, MAX_FACES);
 	const rest = contributors.length - shown.length;
-	const items = shown.length + (rest > 0 ? 1 : 0);
 
 	// Measured rather than read off a breakpoint: this component does not know
 	// which of the two cards it is in, and the phone one is as wide as the phone.
@@ -275,14 +278,25 @@ function ContributorStack({ contributors }: { contributors: Contributor[] }) {
 		return () => observer.disconnect();
 	}, [row]);
 
-	// A row of overlapping faces is one whole face plus the uncovered part of
-	// each of the others. `span` is that width in face-widths, so dividing the
-	// room by it gives the face size that ends exactly at the far edge. Before
-	// the first measurement it draws at the floor rather than at zero, so the
-	// card does not grow a face-sized gap on its first frame.
-	const span = 1 + (1 - OVERLAP) * (items - 1);
+	// The size is solved from a FULL row, never from this one. A row of
+	// overlapping faces is one whole face plus the uncovered part of each of the
+	// others, so dividing the room by `FULL_ROW` gives the size at which the
+	// longest possible roster would end exactly at the far edge — and a shorter
+	// roster then draws at that same size and simply stops early.
+	//
+	// Solving from the actual count instead is what made four contributors four
+	// portraits: four items need little of the width, so each one inflated until
+	// it hit the ceiling. How many people wrote the app is not a reason to draw
+	// them bigger, and a card whose face size moved with its contents looked
+	// like a different component in each workspace.
+	//
+	// Before the first measurement it draws at the floor rather than at zero, so
+	// the card does not grow a face-sized gap on its first frame.
 	const size = Math.round(
-		Math.min(MAX_FACE, Math.max(MIN_FACE, (width || MIN_FACE * span) / span)),
+		Math.min(
+			MAX_FACE,
+			Math.max(MIN_FACE, (width || MIN_FACE * FULL_ROW) / FULL_ROW),
+		),
 	);
 	const overlap = Math.round(size * OVERLAP);
 
