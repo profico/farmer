@@ -40,6 +40,8 @@ import { Switch } from "#/components/ui/switch.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { type DisplayPref, useDisplayPref } from "#/lib/display-prefs.ts";
+import { PALETTES, usePalette } from "#/lib/palette.ts";
+import { useTheme } from "#/lib/theme.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { mySessionsQuery } from "#/queries/sessions.ts";
@@ -355,6 +357,69 @@ function DisplayPrefRow({
  * like the light/dark switch, because it has to apply before the first paint
  * and only localStorage is there that early — see `lib/display-prefs.ts`.
  */
+/**
+ * Which greys the app is drawn in. Six choices, each shown as a strip of its
+ * ground, island, band and text in the theme you are looking at now, so the
+ * swatch matches what picking it will do to this screen.
+ *
+ * Native radios (visually hidden) rather than buttons: arrow keys move between
+ * them and the group is announced as one choice, for free.
+ */
+function ColoursRow() {
+	const { palette, setPalette } = usePalette();
+	const { theme } = useTheme();
+	return (
+		<div className="border-t border-line2 py-4 first:border-t-0 first:pt-0 last:pb-0">
+			<div id="colours-label" className="text-base font-medium">
+				Colours
+			</div>
+			<p className="mt-1 max-w-[68ch] text-sm leading-normal text-muted-foreground">
+				The greys Farmer is drawn in, in light and in dark. The purple and the
+				status colours stay the same in all of them.
+			</p>
+			<div
+				role="radiogroup"
+				aria-labelledby="colours-label"
+				className="mt-3 flex flex-wrap gap-1.5"
+			>
+				{PALETTES.map((option) => {
+					const id = `palette-${option.id}`;
+					return (
+						<label
+							key={option.id}
+							htmlFor={id}
+							className="flex cursor-pointer items-center gap-2.5 rounded-lg py-1.5 pr-3 pl-1.5 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted hover:text-foreground has-checked:bg-secondary has-checked:font-medium has-checked:text-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring/40"
+						>
+							<input
+								id={id}
+								type="radio"
+								name="palette"
+								value={option.id}
+								checked={palette === option.id}
+								onChange={() => setPalette(option.id)}
+								className="sr-only"
+							/>
+							<span
+								aria-hidden
+								className="flex overflow-hidden rounded-md ring-1 ring-line"
+							>
+								{option.swatch[theme].map((colour) => (
+									<span
+										key={colour}
+										className="h-6 w-3.5"
+										style={{ backgroundColor: colour }}
+									/>
+								))}
+							</span>
+							{option.label}
+						</label>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 function DisplaySection() {
 	return (
 		<PageSection
@@ -362,6 +427,7 @@ function DisplaySection() {
 			description="How Farmer looks on this device. Other devices keep their own setting."
 		>
 			<SettingList>
+				<ColoursRow />
 				<DisplayPrefRow
 					pref="boringFont"
 					title="Boring font"
