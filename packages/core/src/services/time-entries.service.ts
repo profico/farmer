@@ -66,6 +66,7 @@ import type {
 	SetTimeEntryOvertimeInput,
 	SetWeekCellInput,
 	UpdateTimeEntryDescriptionInput,
+	UpdateTimeEntryDurationInput,
 	UpdateTimeEntryInput,
 } from "../schema/time-entries";
 import { AccessError } from "./access.service";
@@ -1845,6 +1846,69 @@ export const timeEntriesService = {
 			.returning();
 		if (!updated) throw new Error("Failed to update note");
 		return updated;
+	},
+
+	/**
+	 * Patch an entry's length and nothing else — the row's inline duration box.
+	 *
+	 * Narrower than `update` on the same grounds as `file` and
+	 * `updateDescription`: correcting an hour must not make the caller resupply
+	 * the project, task and date. It still owes the day the two things a length
+	 * change owes it, which is why this is not `updateDescription` with a
+	 * different column — the 24-hour ceiling, and the fill block, which is sized
+	 * from what the rest of the day holds and so is wrong the moment any entry
+	 * beside it grows or shrinks.
+	 */
+	updateDuration: async (ctx: Ctx, input: UpdateTimeEntryDurationInput) => {
+		const existing = await db.query.timeEntry.findFirst({
+			where: and(
+				eq(timeEntry.id, input.timeEntryId),
+				eq(timeEntry.organizationId, ctx.organizationId),
+				// Own entries only, as every other manual write here. A PM does not
+				// correct somebody else's worked time.
+				eq(timeEntry.userId, ctx.userId),
+			),
+			columns: {
+				id: true,
+				date: true,
+				fillsDay: true,
+				calendarEventId: true,
+			},
+		});
+		if (!existing) throw new Error("Time entry not found");
+
+		// A fill block claims the rest of the working day, so its length is
+		// derived rather than entered — `recomputeDayFill` below would overwrite
+		// anything typed here on the same tick. Refused rather than ignored, so
+		// the box does not appear to accept a number it then discards.
+		if (existing.fillsDay) {
+			throw new Error(
+				"A work-time block's length comes from the day's remaining hours",
+			);
+		}
+
+		const tz = await ctxTimezone(ctx);
+		return withCtxTx(ctx, async (txCtx) => {
+			await assertDayHasRoom(txCtx, existing.date, input.durationSeconds, {
+				replacing: (row) => row.id === existing.id,
+			});
+			const [updated] = await ctxDb(txCtx)
+				.update(timeEntry)
+				.set({
+					durationSeconds: input.durationSeconds,
+					// Re-length a synced meeting by hand and it is yours: Google stops
+					// being the source of truth for it, exactly as editing its note or
+					// opening the dialog on it does.
+					syncLocked: existing.calendarEventId != null ? true : undefined,
+					updatedAt: new Date(),
+				})
+				.where(eq(timeEntry.id, input.timeEntryId))
+				.returning();
+			if (!updated) throw new Error("Failed to update duration");
+
+			await recomputeDayFill(txCtx, existing.date, tz);
+			return updated;
+		});
 	},
 
 	/** Overtime is purely manual — this is the only thing that ever sets it. */

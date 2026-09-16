@@ -75,6 +75,18 @@ export type UpdateTimeEntryDescriptionInput = z.infer<
 	typeof updateTimeEntryDescriptionInput
 >;
 
+// Patches only the length of an entry — the row's inline duration box, the note
+// field's twin. Narrow for the same reason: correcting "1:15" to "1:30" must not
+// require the caller to resupply the project, task and date, and an edit that
+// resent them could move the entry off the day its commits belong to.
+export const updateTimeEntryDurationInput = z.object({
+	timeEntryId: z.uuid(),
+	durationSeconds: duration,
+});
+export type UpdateTimeEntryDurationInput = z.infer<
+	typeof updateTimeEntryDurationInput
+>;
+
 // Attributing an already-existing entry to a project. Carries the project and,
 // optionally, a task: a synced meeting has its date and duration right, but a
 // rest-of-day block lands as Development and is often design or product work.

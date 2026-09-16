@@ -12,6 +12,7 @@ import {
 	setTimeEntryOvertimeInput,
 	setWeekCellInput,
 	updateTimeEntryDescriptionInput,
+	updateTimeEntryDurationInput,
 	updateTimeEntryInput,
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
@@ -84,6 +85,14 @@ export const updateTimeEntryDescription = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
 		return timeEntriesService.updateDescription(context.ctx, data);
+	});
+
+export const updateTimeEntryDuration = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(updateTimeEntryDurationInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.updateDuration(context.ctx, data);
 	});
 
 // The unfiled worklist: entries with no project yet (synced meetings, fill
