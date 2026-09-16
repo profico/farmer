@@ -105,6 +105,11 @@ jobs:
           context: .
           platforms: linux/arm64
           push: true
+          # What the running deployment reports at the foot of Settings. The
+          # image is built from this commit, so this is the only place that
+          # knows it — see GIT_SHA in the Dockerfile.
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

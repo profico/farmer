@@ -913,7 +913,7 @@ function OpenRouterSection() {
 				{configured && (
 					<SettingRow
 						title="Default model"
-						description="What a new conversation starts on. Only models that support tool calling are listed — the assistant reads your data through tools, and one that ignores them just makes things up."
+						description="What a new conversation starts on. Only models that support tool calling are listed. The quality and output of the model will determine how the assistant responds."
 						action={
 							<ModelPicker
 								models={models}

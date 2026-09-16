@@ -94,6 +94,16 @@ RUN cd apps/web && bun build ../../packages/core/src/db/seed-tasks.ts \
 FROM oven/bun:${BUN_VERSION}-slim AS runtime
 ENV NODE_ENV=production
 ENV PORT=3000
+
+# The commit this image was built from, shown at the foot of Settings. A plain
+# environment variable rather than a VITE_ one for the reason every other flag
+# here is: `vite build` runs inside this image, so a VITE_ value could only ever
+# be what CI was given, baked for every environment the image is then deployed
+# to. It lands in the RUNTIME stage only — passing it to the build stage would
+# invalidate the dependency-install cache on every commit. Empty off CI, which
+# the server reads as "unknown" and draws no line.
+ARG GIT_SHA=""
+ENV GIT_SHA=${GIT_SHA}
 WORKDIR /app
 
 # Pull the build artifacts first. These COPY --from=build lines also serialize

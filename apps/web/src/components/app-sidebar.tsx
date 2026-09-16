@@ -20,6 +20,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
 
 import { ConversationList } from "#/components/assistant/chat-rail.tsx";
+import { ContributorsCard } from "#/components/contributors-card.tsx";
 import { OrgSwitcher } from "#/components/org-switcher.tsx";
 import { PersonAvatar } from "#/components/person-avatar.tsx";
 import {
@@ -549,6 +550,24 @@ export function AppSidebar({
 								)}
 							</FadeSwap>
 						</div>
+						{/* The panel's foot, and the one thing in either column that is
+						    about the APP rather than about this workspace: who built it,
+						    and which commit is running. It closes the settings list the way
+						    a colophon closes a book — below everything, at the bottom of
+						    the one screen where "what is this thing" is a question somebody
+						    is already having.
+
+						    Outside the scroll area, so it stays put while twelve settings
+						    rows move past it. Its own `FadeSwap` on the same key as the
+						    list above, so switching to Chat takes it out with the same
+						    crossfade rather than snapping it away — and, being a swap
+						    rather than a hidden element, it reserves no empty band under
+						    the thread list. */}
+						<FadeSwap activeKey={shown} className="shrink-0">
+							{shown === "settings" && (
+								<ContributorsCard className="px-2.5 pb-3" />
+							)}
+						</FadeSwap>
 					</div>
 				</div>
 			</div>

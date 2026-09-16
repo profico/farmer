@@ -2,6 +2,7 @@ import { CaretRightIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
+import { ContributorsCard } from "#/components/contributors-card.tsx";
 import {
 	SETTINGS_GROUP_LABEL,
 	settingsEntriesFor,
@@ -120,6 +121,18 @@ function SettingsIndex() {
 					))}
 				</PageSection>
 			)}
+
+			{/* The same colophon the sidebar panel closes with, and ONLY below the
+			    width where that panel exists (`md`, the sidebar's own breakpoint):
+			    on a phone this page IS Settings, so without this the four faces and
+			    the commit hash would be desktop-only. On a desktop the panel is
+			    already showing them a column away, and two copies of one colophon
+			    on one screen is one too many.
+
+			    Full width here rather than the panel's narrow column, because a
+			    card sized for a 240px rail reads as a fragment in a page's
+			    measure. */}
+			<ContributorsCard className="mt-2 md:hidden" />
 		</Page>
 	);
 }
