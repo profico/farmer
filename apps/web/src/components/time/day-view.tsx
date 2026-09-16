@@ -246,7 +246,7 @@ export function DayView({
 				    at once, played the delete animation across the whole list.
 				    `key` re-runs the stagger when the day changes, which is the
 				    crossfade doing the same job honestly. */}
-				<div key={date} className="stagger flex flex-col border-t border-line">
+				<div key={date} className="stagger flex flex-col">
 					{sortedEntries.map((entry) => (
 						<EntryBlockRow key={entry.id} entry={entry} timezone={timezone} />
 					))}
