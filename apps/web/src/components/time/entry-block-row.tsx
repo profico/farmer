@@ -292,10 +292,13 @@ export function EntryBlockRow({
 			transition={springProductive}
 			className="group/row overflow-hidden"
 		>
-			<div className="flex items-stretch gap-px">
+			{/* A row of a list between hairlines, not a card: the page is the only
+			    island, so the row carries no fill of its own. The soft hairline
+			    closes each row; the list's top rule belongs to its parent. */}
+			<div className="flex items-start gap-3 border-b border-line2 py-3">
 				{/* The stub. A column rather than a prefix: the code is an id, and an
 				    id in front of a name starts every name at a different x. */}
-				<div className="flex w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-l-[9px] bg-secondary px-1 py-2.5 sm:w-16">
+				<div className="flex w-12 shrink-0 flex-col items-center gap-1 pt-0.5 sm:w-14">
 					{/* The mark is the thing you recognise a project by, so it leads at
 					    full size; the code is a reference you read only when you need
 					    it, so it sits under the mark at 10px. They were the same weight,
@@ -322,7 +325,7 @@ export function EntryBlockRow({
 					)}
 				</div>
 
-				<div className="flex min-w-0 flex-1 items-start gap-3 rounded-r-[9px] bg-secondary/45 px-3 py-2.5 transition-colors duration-(--dur-fast) group-hover/row:bg-secondary/80">
+				<div className="flex min-w-0 flex-1 items-start gap-3">
 					<div className="min-w-0 flex-1">
 						{/* Identity: what this row is. The client sits with the project
 						    because they are the same kind of fact; the task sits here
@@ -514,8 +517,11 @@ export function EntryBlockRow({
 						</div>
 						{/* Pinned to the top of the row rather than centred: with a
 						    four-line note, a centred figure floats halfway down a tall
-						    row and stops lining up with its neighbours. */}
-						<span className="tnum grid h-10 w-[76px] shrink-0 place-items-center rounded-[10px] bg-secondary text-md font-semibold tracking-[-0.02em]">
+						    row and stops lining up with its neighbours. Plain figures,
+						    not a box, and Geist Mono, because a column of times has to
+						    line up and neither Hedvig nor Inclusive Sans has tabular
+						    figures. */}
+						<span className="mono min-w-14 shrink-0 pt-0.5 text-right text-md font-medium">
 							{formatClock(entry.durationSeconds)}
 						</span>
 					</div>

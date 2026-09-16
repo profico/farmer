@@ -83,7 +83,9 @@ export function WeekStrip({
 						aria-current={isActive ? "page" : undefined}
 						className={cn(
 							"relative min-w-0 rounded-[10px] px-2.5 pt-2 pb-2.5 transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
-							isActive ? "bg-secondary" : "hover:bg-muted",
+							// The active day has no fill (nothing inside the page is a card);
+							// the purple rule under it is the whole indicator.
+							!isActive && "hover:bg-muted",
 							weekend && !isActive && "opacity-45",
 						)}
 					>

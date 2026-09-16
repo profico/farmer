@@ -126,8 +126,9 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 					// 1.75rem vertical / 2rem horizontal at sm and up. mb matches
 					// |−mt| at each breakpoint so when the height springs to 0 the row
 					// below lands exactly where it sits once this element unmounts —
-					// no final reflow pop.
-					className="-mx-4 -mt-4 mb-4 overflow-hidden border-b bg-secondary sm:-mx-8 sm:-mt-7 sm:mb-7"
+					// no final reflow pop. No fill: the page is the only island, so the
+					// banner is a strip closed by the hairline, not a box.
+					className="-mx-4 -mt-4 mb-4 overflow-hidden border-b sm:-mx-8 sm:-mt-7 sm:mb-7"
 				>
 					<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
 						<SparkleIcon className="size-4 shrink-0 text-primary" />

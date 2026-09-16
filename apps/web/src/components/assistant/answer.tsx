@@ -528,10 +528,10 @@ function AnswerTable({
 		// scrollbar inside it. The inner scroller is the last resort for the one
 		// that is wider than the screen even so.
 		<div className="answer-wide">
-			<div className="overflow-x-auto rounded-card border border-line bg-surface">
+			<div className="overflow-x-auto border-y border-line">
 				<table className="w-full border-collapse text-[13px]">
 					<thead>
-						<tr className="border-b border-line bg-inset">
+						<tr className="border-b border-line">
 							{head.map((cell, column) => (
 								<th
 									// oxlint-disable-next-line react/no-array-index-key -- re-derived from one string on every delta, so position IS the identity

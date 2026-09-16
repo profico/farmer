@@ -40,9 +40,10 @@ type PendingLink = Pick<
 /** Above this many linkable repos, the list stays empty until a search. */
 const SEARCH_FIRST_THRESHOLD = 10;
 
-/** A list that scrolls inside its own border rather than growing the page. */
+/** A list that scrolls between its own hairlines rather than growing the page.
+ *  Rules above and below, not a box: nothing inside the page is a card. */
 const LIST_CLASS =
-	"scrollbar-stable max-h-80 overflow-y-auto overscroll-contain rounded-md border";
+	"scrollbar-stable max-h-80 overflow-y-auto overscroll-contain border-y border-line";
 
 /** How old the repo list is: "just now", "12 min ago", "3 h ago", "2 d ago". */
 const formatAge = (fetchedAt: Date, now: number) => {

@@ -219,9 +219,8 @@ function OrgHome() {
 			/>
 
 			{/* Today, the week and the month, in that order: the horizon widens
-			    left to right. Each is a tile on the band surface whose bottom edge
-			    is its rail, so the verdict colour has somewhere to live without
-			    becoming a fourth object in a small tile. */}
+			    left to right. One band between hairlines, each cell with a thin
+			    meter that carries the verdict colour, so the figure never has to. */}
 			<StatTiles columns={3} className="mt-1">
 				<StatTile
 					label="Today"
@@ -334,7 +333,10 @@ function OrgHome() {
 					    kept the bleed after they became cards, so every row hung a
 					    padding's width to the left of the heading above it and the
 					    ghost row below it. A card aligns with its own column. */}
-					<div key={selectedDay} className="stagger mt-3 flex flex-col gap-1.5">
+					<div
+						key={selectedDay}
+						className="stagger mt-3 flex flex-col border-t border-line"
+					>
 						{selectedEntries.map((entry) => (
 							<EntryBlockRow
 								key={entry.id}
@@ -348,7 +350,7 @@ function OrgHome() {
 						defaultDate={selectedDay}
 						trigger={
 							<GhostRow
-								className="mt-2"
+								className="mt-1"
 								hint={selectedEntries.length > 0 ? undefined : "or press L"}
 							>
 								{selectedEntries.length === 0
@@ -422,7 +424,6 @@ function OrgHome() {
 										aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
 										className={cn(
 											"group/day flex flex-col rounded-lg pb-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/16",
-											isSelected && "bg-secondary",
 											d.isWeekend && !isSelected && "opacity-45",
 										)}
 									>
@@ -452,7 +453,11 @@ function OrgHome() {
 										<span
 											className={cn(
 												"eyebrow mt-2.5",
-												(d.isToday || isSelected) && "text-foreground",
+												// No filled column for the picked day: nothing inside the
+												// page is a card. The picked day's label turns purple and
+												// today's stays ink.
+												d.isToday && "text-foreground",
+												isSelected && "text-primary",
 											)}
 										>
 											{d.label}
@@ -502,7 +507,7 @@ function OrgHome() {
 											</span>{" "}
 											from your calendar
 										</span>
-										<span className="tnum shrink-0 text-muted-foreground">
+										<span className="mono shrink-0 text-muted-foreground">
 											{formatHoursShort(meetingSeconds)}
 										</span>
 									</div>
@@ -525,7 +530,7 @@ function OrgHome() {
 											</span>{" "}
 											linked
 										</span>
-										<span className="tnum shrink-0 text-muted-foreground">
+										<span className="mono shrink-0 text-muted-foreground">
 											{formatHoursShort(githubSeconds)}
 										</span>
 									</div>

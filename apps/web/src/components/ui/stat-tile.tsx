@@ -3,21 +3,17 @@ import type { ReactNode } from "react";
 import { cn } from "#/lib/utils.ts";
 
 /**
- * The target band: one tile per period, on the band surface, with its rail as a
- * full-bleed underline along the bottom edge.
+ * The target band: one cell per period, side by side between two hairlines,
+ * each with a thin meter under its caption.
  *
- * Two earlier shapes failed for the same reason, and it is worth writing down.
- * A 28px figure over a caption was simply too tall for a band that sits above
- * the thing the screen is for. Then an 11px bold caps label beside a 17px
- * figure was too SHORT, and worse: caps with wide tracking read heavier than
- * their point size, so a bold caps label and a 17px figure land at nearly the
- * same optical weight and neither leads. A progress ring made it a third
- * element competing at that weight, carrying what the rail already carried.
+ * It used to be a row of filled tiles, and before that a ring in a card. The
+ * page is the only island, and nothing inside it is a card any more: a band of
+ * plain cells is the same shape the project page's figures already take
+ * (`FigureBand`), so the two read as one idiom.
  *
- * So: the label is 12px medium in the muted tone and never bold, the figure is
- * 22px semibold — a real step above it — and the rail is the tile's bottom
- * edge rather than an inset bar, which is what lets it carry the verdict colour
- * without becoming a fourth object.
+ * The figure is the display face (Hedvig Letters Serif, or Inclusive Sans under
+ * "Boring font") at 26px, a real step above the 12px label; the meter carries
+ * the verdict colour so the figure never has to.
  */
 export function StatTiles({
 	children,
@@ -26,16 +22,15 @@ export function StatTiles({
 }: {
 	children: ReactNode;
 	className?: string;
-	columns?: 2 | 3 | 4;
+	columns?: 2 | 3;
 }) {
 	return (
 		<div
 			data-slot="stat-tiles"
 			className={cn(
-				"grid gap-2.5",
+				"grid border-y border-line",
 				columns === 2 && "sm:grid-cols-2",
 				columns === 3 && "sm:grid-cols-3",
-				columns === 4 && "sm:grid-cols-2 lg:grid-cols-4",
 				className,
 			)}
 		>
@@ -44,7 +39,7 @@ export function StatTiles({
 	);
 }
 
-/** The tone of a tile's underline. `neutral` is the accent. */
+/** The tone of a cell's meter. `neutral` is the accent. */
 type Tone = "neutral" | "ok" | "warn" | "bad";
 
 const TONE_FILL = {
@@ -59,7 +54,7 @@ export function StatTile({
 	aside,
 	value,
 	caption,
-	/** 0 to 100, drawn as the tile's bottom edge. `null` draws the track only. */
+	/** 0 to 100, drawn as the meter. `null` draws the track only. */
 	percent,
 	tone = "neutral",
 	className,
@@ -78,7 +73,11 @@ export function StatTile({
 		<div
 			data-slot="stat-tile"
 			className={cn(
-				"flex flex-col overflow-hidden rounded-xl bg-secondary px-3.5 pt-3",
+				// Stacked on a phone, the cells are divided by the soft hairline on
+				// top; side by side, by the same hairline on the left, and the outer
+				// cells lose their outer padding so the band's text lines up with
+				// the page's.
+				"flex min-w-0 flex-col py-3.5 not-first:border-t not-first:border-line2 sm:px-5 sm:not-first:border-t-0 sm:not-first:border-l sm:first:pl-0 sm:last:pr-0",
 				className,
 			)}
 		>
@@ -88,18 +87,21 @@ export function StatTile({
 				</span>
 				{aside}
 			</div>
-			<div className="tnum mt-2 text-[22px] leading-none font-semibold tracking-[-0.025em]">
+			<div className="font-display mt-2.5 text-[26px] leading-none">
 				{value}
 			</div>
-			{/* One fixed row whether or not there is a caption, so three tiles in a
-			    row are the same height and their underlines land on one line. */}
+			{/* One fixed row whether or not there is a caption, so the cells in a
+			    row are the same height and their meters land on one line. */}
 			<div className="mt-1.5 h-[17px] truncate text-xs text-muted-foreground">
 				{caption}
 			</div>
-			<div className="mt-3 -mx-3.5 h-[3px] bg-line2">
+			<div className="mt-3 h-[3px] overflow-hidden rounded-full bg-line2">
 				{shown != null && (
 					<span
-						className={cn("rail-fill block h-full", TONE_FILL[tone])}
+						className={cn(
+							"rail-fill block h-full rounded-full",
+							TONE_FILL[tone],
+						)}
 						style={{ width: `${shown}%` }}
 					/>
 				)}
@@ -108,10 +110,11 @@ export function StatTile({
 	);
 }
 
-/** The lesser figure trailing a big one: "8,00<Of>/ 40,00</Of>". */
+/** The lesser figure trailing a big one: "8,00<Of>/ 40,00</Of>". Always the
+ *  body face, so the display face is kept for the figure that matters. */
 export function Of({ children }: { children: ReactNode }) {
 	return (
-		<span className="text-[13px] font-normal tracking-[-0.01em] text-muted-foreground">
+		<span className="font-sans text-[13px] font-normal tracking-normal text-muted-foreground">
 			{" "}
 			{children}
 		</span>
@@ -175,9 +178,7 @@ export function FigureCell({
 			)}
 		>
 			<div className="eyebrow">{label}</div>
-			<div className="tnum mt-2 text-xl leading-none font-semibold tracking-[-0.03em]">
-				{value}
-			</div>
+			<div className="font-display mt-2 text-[22px] leading-none">{value}</div>
 			{caption && (
 				<div className="mt-2 text-sm text-muted-foreground">{caption}</div>
 			)}

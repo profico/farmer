@@ -18,6 +18,7 @@ import { Toaster } from "../components/ui/sonner";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import { logConsoleGreeting } from "../lib/console-greeting";
 import { displayInitScript } from "../lib/display-prefs";
+import { paletteInitScript } from "../lib/palette";
 import { themeInitScript } from "../lib/theme";
 
 import appCss from "../styles.css?url";
@@ -101,15 +102,16 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 	shellComponent: RootDocument,
 });
 
-/** Light/dark and the Display preferences, applied in one inline script before
- *  paint. */
-const headInitScript = themeInitScript + displayInitScript;
+/** Light/dark, the Display preferences and the colour choice, applied in one
+ *  inline script before paint. */
+const headInitScript = themeInitScript + displayInitScript + paletteInitScript;
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	useEffect(logConsoleGreeting, []);
 
 	// `suppressHydrationWarning`: the script below writes `data-theme` (and the
-	// Display preferences' `data-font`, `data-motion` and `data-density`) onto
+	// Display preferences' `data-font`, `data-motion`, `data-density` and
+	// `data-palette`) onto
 	// <html> before React ever sees it, and
 	// the server has no way to render the same values — that mismatch is the
 	// point of the script, not a bug, and React otherwise logs it on every load.
@@ -120,9 +122,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				{/* Before HeadContent, and therefore before the stylesheet: the
 				    reader's choices live in localStorage, so the server can't render
 				    them, and applying them on hydrate instead would flash the light
-				    palette and the serif on every cold load. See lib/theme.ts and
-				    lib/display-prefs.ts. */}
-				{/* oxlint-disable-next-line react/no-danger -- two fixed strings built from constants, the standard no-flash theme and display scripts, which have to be inline to run before paint */}
+				    palette and the serif on every cold load. See lib/theme.ts,
+				    lib/display-prefs.ts and lib/palette.ts. */}
+				{/* oxlint-disable-next-line react/no-danger -- three fixed strings built from constants, the standard no-flash theme, display and colour scripts, which have to be inline to run before paint */}
 				<script dangerouslySetInnerHTML={{ __html: headInitScript }} />
 				<HeadContent />
 			</head>

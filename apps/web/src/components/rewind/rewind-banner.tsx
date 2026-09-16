@@ -20,24 +20,23 @@ export function RewindBanner({
 			to="/$orgSlug/rewind"
 			params={{ orgSlug }}
 			search={{ year }}
-			className="group mb-4 flex items-center gap-4 overflow-hidden rounded-lg px-5 py-4 text-[#fbf8ff] transition-[filter] duration-(--dur-base) hover:brightness-110"
-			style={{
-				background:
-					"linear-gradient(115deg, #5b3aa8 0%, #22418f 62%, #cf553f 100%)",
-			}}
+			// A strip between hairlines rather than a gradient card: the page is
+			// the only island and nothing inside it is a box. The year in the
+			// display face and the accent is what still makes it the Rewind.
+			className="group mb-6 flex items-center gap-4 border-y border-line py-3.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/16"
 		>
-			<span className="serif shrink-0 text-4xl leading-none text-[#ffd27a]">
+			<span className="serif shrink-0 text-4xl leading-none text-primary">
 				{year}
 			</span>
 			<div className="min-w-0 flex-1">
 				<p className="text-base font-medium">Your Farmer Rewind is here</p>
-				<p className="text-sm opacity-80">
+				<p className="text-sm text-muted-foreground">
 					{inProgress
 						? "Your year in hours, with the rest of December projected."
 						: "Your year in hours, rewound."}
 				</p>
 			</div>
-			<ArrowRightIcon className="size-5 shrink-0 transition-transform duration-(--dur-base) group-hover:translate-x-0.5" />
+			<ArrowRightIcon className="size-5 shrink-0 text-primary transition-transform duration-(--dur-base) group-hover:translate-x-0.5" />
 		</Link>
 	);
 }

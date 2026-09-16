@@ -372,7 +372,9 @@ export function ApprovalCard({
 	return (
 		<div
 			className={cn(
-				"assistant-motion w-full overflow-hidden rounded-card bg-surface shadow-card",
+				// Between hairlines, not a raised card: nothing inside the page is a
+				// box. The accent on the buttons is what asks for a decision.
+				"assistant-motion w-full overflow-hidden border-y border-line",
 				// A yes/no card stays narrow; a table needs the column width, and a
 				// 25rem card with four columns in it is four columns of ellipsis.
 				rows.length > 0 ? "max-w-[36rem]" : "max-w-100",

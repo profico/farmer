@@ -100,7 +100,7 @@ export function ImportProgress({
 				already added.
 			</p>
 			{state.status === "failed" && (
-				<div className="mt-5 flex flex-col items-start gap-3 rounded-md bg-destructive/8 px-4 py-3">
+				<div className="mt-5 flex flex-col items-start gap-3 border-y border-line py-3">
 					<p className="text-sm text-destructive">{state.error}</p>
 					<div className="flex gap-2">
 						<Button onClick={onRetry}>Retry</Button>

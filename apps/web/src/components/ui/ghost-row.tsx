@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { cn } from "#/lib/utils.ts";
 
 /**
- * The row a list ends on: dashed, quiet, and the "add" action itself
+ * The row a list ends on: quiet, boxless, and the "add" action itself
  * (DESIGN.md, "Empty and ghost rows"). An empty list is a sentence and this
  * same row, so a screen with nothing on it still has somewhere to start.
  *
@@ -29,7 +29,7 @@ export function GhostRow({
 			type="button"
 			onClick={onClick}
 			className={cn(
-				"flex w-full items-center gap-2.5 rounded-lg border border-dashed border-line px-3 py-2.5 text-left text-sm text-faint transition-[color,background-color,border-color] duration-(--dur-base) outline-none hover:border-transparent hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/16 [&_svg]:size-4 [&_svg]:shrink-0",
+				"flex w-full items-center gap-2.5 rounded-md py-2.5 text-left text-sm text-faint transition-colors duration-(--dur-base) outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16 [&_svg]:size-4 [&_svg]:shrink-0",
 				className,
 			)}
 		>

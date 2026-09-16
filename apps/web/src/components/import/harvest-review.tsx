@@ -215,11 +215,11 @@ export function HarvestReview({
 					title="Fix these before the import"
 					description="The import cannot start while one of these stays."
 				>
-					<ul className="flex flex-col gap-2">
+					<ul className="flex flex-col">
 						{plan.blocked.map((b) => (
 							<li
 								key={`${b.kind}:${b.sourceKey}:${b.message}`}
-								className="rounded-md bg-warn/12 px-3 py-2 text-sm text-warn"
+								className="border-t border-line2 py-2 text-sm text-warn first:border-t-0 first:pt-0"
 							>
 								{b.message}
 							</li>

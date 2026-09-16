@@ -65,9 +65,10 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 						animate={{ height: "auto", opacity: 1 }}
 						exit={{ height: 0, opacity: 0 }}
 						transition={springProductive}
-						className="mb-4 shrink-0 overflow-hidden rounded-lg border bg-secondary"
+						// A strip between hairlines, not a card: nothing inside the page is a box.
+						className="mb-4 shrink-0 overflow-hidden border-y border-line"
 					>
-						<div className="flex items-center gap-3 px-4 py-3">
+						<div className="flex items-center gap-3 py-3">
 							<TrayIcon className="size-4 shrink-0 text-primary" />
 							<div className="min-w-0 flex-1">
 								<p className="text-base font-medium">

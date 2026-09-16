@@ -246,7 +246,7 @@ export function DayView({
 				    at once, played the delete animation across the whole list.
 				    `key` re-runs the stagger when the day changes, which is the
 				    crossfade doing the same job honestly. */}
-				<div key={date} className="stagger flex flex-col gap-1.5">
+				<div key={date} className="stagger flex flex-col border-t border-line">
 					{sortedEntries.map((entry) => (
 						<EntryBlockRow key={entry.id} entry={entry} timezone={timezone} />
 					))}
@@ -273,7 +273,7 @@ export function DayView({
 					// so it reads as the sum of what you just scanned.
 					<div className="mt-4 flex items-center justify-end gap-3 border-t px-1 py-3.5">
 						<span className="eyebrow">Total</span>
-						<span className="tnum min-w-14 text-right text-md font-semibold">
+						<span className="mono min-w-14 text-right text-md font-medium">
 							{formatClock(total)}
 						</span>
 					</div>

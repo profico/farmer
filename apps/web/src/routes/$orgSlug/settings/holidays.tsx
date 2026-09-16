@@ -199,7 +199,7 @@ function HolidaysSettingsPage() {
 									h.date < todayKey && "text-muted-foreground",
 								)}
 							>
-								<TableCell className="tnum">
+								<TableCell className="mono">
 									{formatHolidayDate(h.date)}
 								</TableCell>
 								<TableCell>{weekdayFor(h.date)}</TableCell>
