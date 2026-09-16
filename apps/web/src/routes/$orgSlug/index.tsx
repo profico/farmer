@@ -367,20 +367,28 @@ function OrgHome() {
 					    fixed text rows so every label and figure lands on the same y
 					    whatever the day holds. The rule is what turns seven bars into
 					    a chart: a column either reaches it or it does not.
-					    Colour is the verdict, and only for days that have happened —
-					    green at a full day, amber part, red nothing. A future day is
-					    a hairline, because a day nobody has lived cannot be behind. */}
-					<div
-						className="relative mt-4"
-						style={{ height: `${PLOT_H}px` }}
-						aria-hidden
-					>
+
+					    **The whole column is the button**, bar included. The plot used
+					    to be an `aria-hidden` block with the buttons under it, so only
+					    the label and the figure took a click and the tall, obvious
+					    target — the bar — did nothing.
+
+					    The rule and the baseline are one absolutely-positioned layer
+					    over the grid rather than something each button draws, because
+					    seven stubs are not an axis, and `pointer-events-none` is what
+					    keeps them out of the way of the buttons underneath. */}
+					<div className="relative mt-4">
 						<span
-							className="absolute inset-x-0 border-t border-dashed border-foreground/25"
-							style={{ bottom: `${targetPx}px` }}
+							aria-hidden
+							className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-foreground/25"
+							style={{ top: `${PLOT_H - targetPx}px` }}
 						/>
-						<span className="absolute inset-x-0 bottom-0 border-t border-line" />
-						<div className="grid h-full grid-cols-7">
+						<span
+							aria-hidden
+							className="pointer-events-none absolute inset-x-0 z-10 border-t border-line"
+							style={{ top: `${PLOT_H}px` }}
+						/>
+						<div className="grid grid-cols-7">
 							{perDay.map((d, i) => {
 								const px =
 									d.seconds > 0
@@ -389,84 +397,86 @@ function OrgHome() {
 												3,
 											)
 										: 2;
+								const isSelected = d.key === selectedDay;
+								const verdict = d.holiday
+									? "warn"
+									: !d.judged
+										? "none"
+										: d.seconds === 0
+											? "bad"
+											: d.seconds >= targets.daySeconds
+												? "ok"
+												: "warn";
 								return (
-									<div key={d.key} className="flex items-end justify-center">
+									<button
+										type="button"
+										key={d.key}
+										onClick={() => setSelectedDay(d.key)}
+										aria-pressed={isSelected}
+										aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
+										className={cn(
+											"group/day flex flex-col rounded-lg pb-1.5 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/16",
+											isSelected && "bg-secondary",
+											d.isWeekend && !isSelected && "opacity-45",
+										)}
+									>
+										<span
+											className="flex w-full items-end justify-center"
+											style={{ height: `${PLOT_H}px` }}
+										>
+											<span
+												className={cn(
+													"rise block w-5 rounded-t-[4px]",
+													verdict === "warn" && d.holiday
+														? "bg-warn/40"
+														: verdict === "none"
+															? "bg-line"
+															: verdict === "bad"
+																? "bg-bad"
+																: verdict === "ok"
+																	? "bg-ok"
+																	: "bg-warn",
+												)}
+												style={{
+													height: `${px}px`,
+													animationDelay: `${i * 40}ms`,
+												}}
+											/>
+										</span>
 										<span
 											className={cn(
-												"rise block w-5 rounded-t-[4px]",
-												d.holiday
-													? "bg-warn/40"
-													: !d.judged
-														? "bg-line"
-														: d.seconds === 0
-															? "bg-bad"
-															: d.seconds >= targets.daySeconds
-																? "bg-ok"
-																: "bg-warn",
+												"eyebrow mt-2.5",
+												(d.isToday || isSelected) && "text-foreground",
 											)}
-											style={{
-												height: `${px}px`,
-												animationDelay: `${i * 40}ms`,
-											}}
-										/>
-									</div>
+										>
+											{d.label}
+										</span>
+										<span
+											className={cn(
+												"tnum mt-1.5 text-2xs",
+												d.holiday
+													? "text-warn"
+													: verdict === "none"
+														? "text-faint"
+														: verdict === "bad"
+															? "text-bad"
+															: verdict === "ok"
+																? "text-ok"
+																: "text-warn",
+											)}
+										>
+											{d.holiday
+												? "hol."
+												: d.seconds > 0
+													? formatReportHours(d.seconds)
+													: d.judged
+														? "—"
+														: "\u00a0"}
+										</span>
+									</button>
 								);
 							})}
 						</div>
-					</div>
-					{/* Two fixed rows under the plot, so the day names sit on one line
-					    and the figures on another however ragged the week is. Each is
-					    a button covering its own column, so the whole column is the
-					    hit target. */}
-					<div className="mt-2.5 grid grid-cols-7">
-						{perDay.map((d) => {
-							const isSelected = d.key === selectedDay;
-							return (
-								<button
-									type="button"
-									key={d.key}
-									onClick={() => setSelectedDay(d.key)}
-									aria-pressed={isSelected}
-									aria-label={`${d.label}, ${formatReportHours(d.seconds)}`}
-									className={cn(
-										"rounded-lg py-1 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/16",
-										isSelected && "bg-secondary",
-										d.isWeekend && !isSelected && "opacity-45",
-									)}
-								>
-									<span
-										className={cn(
-											"eyebrow block",
-											(d.isToday || isSelected) && "text-foreground",
-										)}
-									>
-										{d.label}
-									</span>
-									<span
-										className={cn(
-											"tnum mt-1.5 block text-2xs",
-											d.holiday
-												? "text-warn"
-												: !d.judged
-													? "text-faint"
-													: d.seconds === 0
-														? "text-bad"
-														: d.seconds >= targets.daySeconds
-															? "text-ok"
-															: "text-warn",
-										)}
-									>
-										{d.holiday
-											? "hol."
-											: d.seconds > 0
-												? formatReportHours(d.seconds)
-												: d.judged
-													? "—"
-													: "\u00a0"}
-									</span>
-								</button>
-							);
-						})}
 					</div>
 
 					{hasAutoTracked && (
