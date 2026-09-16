@@ -928,15 +928,14 @@ export function AddBlockDialog({
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger render={trigger} />
 			<DialogContent className="sm:max-w-xl">
-				{/* Title and date on ONE line. They were stacked, which put a block of
-				    empty space between the word "Log time" and the first field and
-				    made the date read as a toolbar that had fallen into a form. The
-				    date is the entry's most important property after its length, so
-				    it belongs beside the title, not under it. */}
-				<DialogHeader className="flex-row flex-wrap items-center gap-x-4 gap-y-2 pr-8">
-					<DialogTitle className="mr-auto">
-						{entry ? "Edit entry" : "Log time"}
-					</DialogTitle>
+				{/* The date is the title's subtitle: "Log time", then the day it is
+				    for, as a quiet text button on its own line. Beside the title it
+				    was a bordered control that lined up with neither the title nor
+				    the fields and crowded the close button. `items-start`, or the
+				    column stretches the trigger (and its hover tint) across the
+				    dialog. */}
+				<DialogHeader className="items-start gap-1.5">
+					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
 					{/* Just the picker. The ‹ › arrows went: the calendar and the
 					    presets inside it reach any day in one click, so a pair of
 					    arrows that step one day at a time was three controls doing
@@ -950,10 +949,14 @@ export function AddBlockDialog({
 						onPreset={setDate}
 						calendarValue={targetDate}
 						onPickDay={setDate}
-						align="end"
+						align="start"
+						// A line of text, not a field: the label in ink, "Today" muted,
+						// and a hover tint to say it opens something. The negative
+						// margin puts the icon under the title's first letter.
+						triggerClassName="-ml-2 h-7 border-transparent bg-transparent px-2 text-base hover:border-transparent hover:bg-muted"
 					/>
 					{dayLocked && (
-						<p className="w-full text-xs text-muted-foreground">
+						<p className="text-xs text-muted-foreground">
 							Its GitHub activity keeps this entry on this day.
 						</p>
 					)}
@@ -967,23 +970,27 @@ export function AddBlockDialog({
 						// widens the column past the dialog, taking every sibling field
 						// with it. Pinning the column is what lets the `truncate` on the
 						// commit rows actually bite.
-						className="grid grid-cols-[minmax(0,1fr)] gap-4"
+						// `mt-2` on top of the body's 16px puts 24px between the header
+						// and the first field; `gap-5` gives each group of fields 20px.
+						className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-5"
 					>
 						{/* Project then task, side by side from `sm`: the project decides
 						    the task list, so they read left to right as one choice made in
 						    two steps. Stacked under one "Project / Task" label they read
 						    as a single control that had been cut in half. */}
 						<div className="grid gap-1.5">
-							{/* `minmax(0,1fr)` twice, not `1fr` twice: a grid column sized
-							    `1fr` is `minmax(auto, 1fr)`, so its item's min-content width
-							    is a floor and a long project name pushes the column past the
-							    dialog and over the task picker beside it. */}
-							<div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+							{/* The same two columns as the note and duration below, so Task
+							    is exactly as wide as Duration and both rows share one edge.
+							    `minmax(0,1fr)`, not `1fr`: a grid column sized `1fr` is
+							    `minmax(auto, 1fr)`, so its item's min-content width is a floor
+							    and a long project name pushes the column past the dialog and
+							    over the task picker beside it. */}
+							<div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10.75rem]">
 								<FormField
 									control={form.control}
 									name="projectId"
 									render={({ field }) => (
-										<FormItem className="gap-1.5">
+										<FormItem className="gap-2">
 											<FormLabel>Project</FormLabel>
 											<FormControl>
 												<ProjectPicker
@@ -1016,7 +1023,7 @@ export function AddBlockDialog({
 									control={form.control}
 									name="taskId"
 									render={({ field }) => (
-										<FormItem className="gap-1.5">
+										<FormItem className="gap-2">
 											<FormLabel>Task</FormLabel>
 											<FormControl>
 												<TaskPicker
@@ -1046,133 +1053,140 @@ export function AddBlockDialog({
 						    figure in a box the height of the textarea, which made the
 						    number the loudest thing in the dialog and read as a running
 						    timer rather than a field. */}
-						<div className="grid grid-cols-[minmax(0,1fr)_10.75rem] gap-3 max-sm:grid-cols-[minmax(0,1fr)]">
-							<FormField
-								control={form.control}
-								name="description"
-								render={({ field }) => (
-									<FormItem className="gap-1.5">
-										<FormLabel>
-											{needsDescription && !fillsDay ? "What you did" : "Note"}
-										</FormLabel>
-										<FormControl>
-											<Textarea
-												rows={3}
-												className="min-h-[5.25rem] resize-y"
-												placeholder={
-													needsDescription && !fillsDay
-														? "Rebuilt the project picker…"
-														: "Optional…"
-												}
-												{...field}
-											/>
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							{fillsDay ? (
-								<div className="grid gap-1.5">
-									<span className="text-sm leading-none font-medium">
-										Duration
-									</span>
-									<div className="flex min-h-[5.25rem] items-center justify-center rounded-lg border border-dashed border-primary/40 bg-primary/8 px-3 text-center text-sm font-medium text-primary">
-										Rest of day
-									</div>
-								</div>
-							) : (
+						{/* The note and duration with their presets, as one group: the
+						    presets sit 12px under the pair they fill in, closer than the
+						    20px between groups, so they read as part of Duration. */}
+						<div className="grid gap-3">
+							<div className="grid grid-cols-[minmax(0,1fr)_10.75rem] gap-3 max-sm:grid-cols-[minmax(0,1fr)]">
 								<FormField
 									control={form.control}
-									name="duration"
+									name="description"
 									render={({ field }) => (
-										<FormItem className="gap-1.5">
-											<FormLabel>Duration</FormLabel>
+										<FormItem className="gap-2">
+											<FormLabel>
+												{needsDescription && !fillsDay
+													? "What you did"
+													: "Note"}
+											</FormLabel>
 											<FormControl>
-												<Input
+												<Textarea
+													rows={3}
+													className="min-h-[5.25rem] resize-y"
+													placeholder={
+														needsDescription && !fillsDay
+															? "Rebuilt the project picker…"
+															: "Optional…"
+													}
 													{...field}
-													placeholder="1:30"
-													inputMode="decimal"
-													className="font-display h-[5.25rem] text-right text-[30px] font-semibold tabular-nums"
-													// Normalise on blur, the way the week grid's cells
-													// already do — "1.5" becomes "1:30", so what is on
-													// screen is what will be saved rather than a form the
-													// reader has to snap in their own head.
-													onBlur={(e) => {
-														field.onBlur();
-														const parsed = parseDuration(e.target.value);
-														if (parsed !== null && parsed > 0) {
-															field.onChange(
-																formatClock(snapToQuarterHour(parsed)),
-															);
-														}
-													}}
 												/>
 											</FormControl>
 											<FormMessage />
 										</FormItem>
 									)}
 								/>
-							)}
-						</div>
+								{fillsDay ? (
+									<div className="grid gap-2">
+										<span className="text-sm leading-none font-medium">
+											Duration
+										</span>
+										<div className="flex min-h-[5.25rem] items-center justify-center rounded-lg border border-dashed border-primary/40 bg-primary/8 px-3 text-center text-sm font-medium text-primary">
+											Rest of day
+										</div>
+									</div>
+								) : (
+									<FormField
+										control={form.control}
+										name="duration"
+										render={({ field }) => (
+											<FormItem className="gap-2">
+												<FormLabel>Duration</FormLabel>
+												<FormControl>
+													<Input
+														{...field}
+														placeholder="1:30"
+														inputMode="decimal"
+														className="font-display h-[5.25rem] text-right text-[30px] font-semibold tabular-nums"
+														// Normalise on blur, the way the week grid's cells
+														// already do — "1.5" becomes "1:30", so what is on
+														// screen is what will be saved rather than a form the
+														// reader has to snap in their own head.
+														onBlur={(e) => {
+															field.onBlur();
+															const parsed = parseDuration(e.target.value);
+															if (parsed !== null && parsed > 0) {
+																field.onChange(
+																	formatClock(snapToQuarterHour(parsed)),
+																);
+															}
+														}}
+													/>
+												</FormControl>
+												<FormMessage />
+											</FormItem>
+										)}
+									/>
+								)}
+							</div>
 
-						{/* The lengths, across the full width of the pair above. Four
+							{/* The lengths, across the full width of the pair above. Four
 						    numbers and "Rest of day", which is a different kind of answer
 						    and is marked out as one. A preset writes the field rather
 						    than opening anything, so the commonest case is one click and
 						    the box still takes anything typed. */}
-						{!isTimeOff && (
-							<div className="grid grid-cols-[repeat(4,1fr)_1.6fr] gap-1.5">
-								{QUICK_DURATIONS.map((value) => {
-									const on = !fillsDay && durationValue === value;
-									return (
-										<button
-											key={value}
-											type="button"
-											aria-pressed={on}
-											onClick={() => {
-												form.setValue("fillsDay", false);
-												form.setValue("duration", value, {
-													shouldDirty: true,
-													shouldValidate: true,
-												});
-											}}
-											className={cn(
-												"tnum rounded-lg py-2 text-sm font-medium transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
-												on
-													? "bg-primary/16 text-primary"
-													: "bg-secondary text-muted-foreground hover:text-foreground",
-											)}
-										>
-											{value}
-										</button>
-									);
-								})}
-								<button
-									type="button"
-									aria-pressed={fillsDay}
-									disabled={dayHasFill && !fillsDay}
-									title={
-										dayHasFill && !fillsDay
-											? "This day already has a rest-of-day block"
-											: undefined
-									}
-									onClick={() => form.setValue("fillsDay", !fillsDay)}
-									// Not highlighted at rest. It used to carry an accent tint
-									// and a ring while switched OFF, which reads as selected or
-									// focused — the one thing a control must not do when it is
-									// neither. It is simply the fifth option, set apart by its
-									// words and by being the only one that is not a number.
-									className={cn(
-										"rounded-lg py-2 text-sm font-medium transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16 disabled:pointer-events-none disabled:opacity-40",
-										fillsDay
-											? "bg-primary/16 font-semibold text-primary"
-											: "bg-secondary text-muted-foreground hover:text-foreground",
-									)}
-								>
-									Rest of day
-								</button>
-							</div>
-						)}
+							{!isTimeOff && (
+								<div className="grid grid-cols-[repeat(4,1fr)_1.6fr] gap-1.5">
+									{QUICK_DURATIONS.map((value) => {
+										const on = !fillsDay && durationValue === value;
+										return (
+											<button
+												key={value}
+												type="button"
+												aria-pressed={on}
+												onClick={() => {
+													form.setValue("fillsDay", false);
+													form.setValue("duration", value, {
+														shouldDirty: true,
+														shouldValidate: true,
+													});
+												}}
+												className={cn(
+													"tnum rounded-lg py-2 text-sm font-medium transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16",
+													on
+														? "bg-primary/16 text-primary"
+														: "bg-secondary text-muted-foreground hover:text-foreground",
+												)}
+											>
+												{value}
+											</button>
+										);
+									})}
+									<button
+										type="button"
+										aria-pressed={fillsDay}
+										disabled={dayHasFill && !fillsDay}
+										title={
+											dayHasFill && !fillsDay
+												? "This day already has a rest-of-day block"
+												: undefined
+										}
+										onClick={() => form.setValue("fillsDay", !fillsDay)}
+										// Not highlighted at rest. It used to carry an accent tint
+										// and a ring while switched OFF, which reads as selected or
+										// focused — the one thing a control must not do when it is
+										// neither. It is simply the fifth option, set apart by its
+										// words and by being the only one that is not a number.
+										className={cn(
+											"rounded-lg py-2 text-sm font-medium transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16 disabled:pointer-events-none disabled:opacity-40",
+											fillsDay
+												? "bg-primary/16 font-semibold text-primary"
+												: "bg-secondary text-muted-foreground hover:text-foreground",
+										)}
+									>
+										Rest of day
+									</button>
+								</div>
+							)}
+						</div>
 
 						{showCalendarPicker && calendarOpen && (
 							<div className="rounded-lg border border-line2">
@@ -1488,7 +1502,7 @@ export function AddBlockDialog({
 								</div>
 							)}
 						{!isTimeOff && (
-							<div className="border-t border-line2 pt-2">
+							<div className="border-t border-line2 pt-3">
 								{/* A disclosure, not a bare conditional render, for the same
 								    reason the Repeat block inside it is one: opening it must not
 								    jump the footer out from under the pointer. */}
