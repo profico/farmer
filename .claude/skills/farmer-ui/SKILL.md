@@ -60,7 +60,13 @@ whole switch.
 
 - **The accent hue never changes.** `#6f4ebe` in light, one step lighter in
   dark for contrast. Not negotiable, whatever a lens says about purple.
-- **One typeface** (Geist), weights 400 / 500 / 600 only.
+- **Three faces, each with one job**: Hedvig Letters Serif (one weight, 400)
+  for page titles and big numbers, Inclusive Sans (400 / 500 / 600) for
+  everything else, Geist Mono for every column of figures.
+- **Two islands only**, the sidebar and the page. Nothing inside the page is a
+  card: structure it with hairlines and space.
+- **A colour choice swaps neutrals only**; check new colours against all six
+  choices in both themes.
 - **Radius by role**, from DESIGN.md. Never a new radius.
 - **Semantic colour is a label on a tint, never a fill.**
 - Where a lens contradicts DESIGN.md, DESIGN.md wins and the lens is noted.

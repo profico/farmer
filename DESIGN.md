@@ -1,76 +1,74 @@
 ---
 version: alpha
 name: Farmer
-description: "A time-tracking product UI built as lit islands on a recessed ground. One typeface, Geist, carries titles, body and figures, with hierarchy in size, weight and negative tracking rather than in a change of face. Neutrals lean faintly violet so they belong to the single accent, the logo's #6f4ebe. Depth is Framer's: three lifts of one neutral, and anything floating wears a light-edge shadow instead of a border. Both themes are written out in full and switch on one attribute."
+description: "A time-tracking product UI with exactly two islands, the navigation and the page, on a recessed ground; nothing inside the page is a card. Hedvig Letters Serif sets page titles and the big numbers, Inclusive Sans everything else, and Geist Mono every column of figures. Warm grey neutrals by default, with five other neutral sets as a per-device choice; the accent is always the logo's #6f4ebe. Both themes are written out in full and switch on one attribute."
 
 colors:
   accent: "#6f4ebe"
   accent-dark: "#9b84e6"
-  ink: "#111016"
-  ink-muted: "#6b6876"
-  ink-faint: "#8e8a99"
-  ground: "#f1f0f5"
-  island: "#fcfcfd"
-  band: "#f3f2f7"
+  ink: "#1b1a17"
+  ink-muted: "#6f695f"
+  ink-faint: "#928b80"
+  ground: "#efece5"
+  island: "#faf9f6"
+  band: "#f4f2ed"
   floating: "#ffffff"
-  hairline: "rgba(17, 16, 22, 0.10)"
-  hairline-soft: "rgba(17, 16, 22, 0.06)"
-  dark-ink: "#f1f0f4"
-  dark-ink-muted: "#9895a3"
-  dark-ink-faint: "#6d6a78"
-  dark-ground: "#0a090c"
-  dark-island: "#141317"
-  dark-band: "#1d1c22"
-  dark-floating: "#1d1c22"
-  semantic-ok: "#2f8a4f"
-  semantic-warn: "#9a6700"
-  semantic-bad: "#c73f3b"
+  hairline: "rgba(27, 26, 23, 0.11)"
+  hairline-soft: "rgba(27, 26, 23, 0.06)"
+  dark-ink: "#ede8de"
+  dark-ink-muted: "#8f887c"
+  dark-ink-faint: "#6b6459"
+  dark-ground: "#0e0d0a"
+  dark-island: "#1a1914"
+  dark-band: "#232219"
+  dark-floating: "#232219"
+  semantic-ok: "#067037"
+  semantic-warn: "#895700"
+  semantic-bad: "#b42b2b"
+  dark-semantic-ok: "#5fb883"
+  dark-semantic-warn: "#d4a548"
+  dark-semantic-bad: "#e4736d"
 
 typography:
   page-title:
-    fontFamily: Geist
-    fontSize: 32px
-    fontWeight: 500
+    fontFamily: Hedvig Letters Serif
+    fontSize: 34px
+    fontWeight: 400
     lineHeight: 1.10
-    letterSpacing: -0.025em
+    letterSpacing: -0.015em
   headline:
-    fontFamily: Geist
-    fontSize: 22px
-    fontWeight: 600
+    fontFamily: Hedvig Letters Serif
+    fontSize: 23px
+    fontWeight: 400
     lineHeight: 1.20
-    letterSpacing: -0.02em
+    letterSpacing: -0.01em
   lede:
-    fontFamily: Geist
+    fontFamily: Inclusive Sans
     fontSize: 16px
     fontWeight: 400
     lineHeight: 1.55
-    letterSpacing: -0.01em
   body:
-    fontFamily: Geist
+    fontFamily: Inclusive Sans
     fontSize: 14px
     fontWeight: 400
     lineHeight: 1.45
-    letterSpacing: -0.01em
   caption:
-    fontFamily: Geist
+    fontFamily: Inclusive Sans
     fontSize: 13px
     fontWeight: 400
     lineHeight: 1.40
-    letterSpacing: -0.01em
   eyebrow:
-    fontFamily: Geist
+    fontFamily: Inclusive Sans
     fontSize: 12px
     fontWeight: 500
     lineHeight: 1.00
     letterSpacing: 0.08em
     textTransform: uppercase
   figure:
-    fontFamily: Geist
-    fontSize: 30px
-    fontWeight: 600
+    fontFamily: Hedvig Letters Serif
+    fontSize: 26px
+    fontWeight: 400
     lineHeight: 1.00
-    letterSpacing: -0.03em
-    fontFeature: tnum
   mono:
     fontFamily: Geist Mono
     fontSize: 13px
@@ -79,11 +77,10 @@ typography:
     letterSpacing: -0.03em
     fontFeature: tnum
   button:
-    fontFamily: Geist
+    fontFamily: Inclusive Sans
     fontSize: 14px
     fontWeight: 500
     lineHeight: 1.00
-    letterSpacing: -0.01em
 
 rounded:
   sm: 4px
@@ -207,57 +204,72 @@ components:
 
 ## Overview
 
-Farmer is a dense product UI, read for minutes at a time and operated with a keyboard, so the system is built for scanning: one family of type, three lifts of one neutral, one accent, and a strict answer to every shape question. The whole shell is a centered frame holding **islands** (the sidebar, the page, a stacked panel) cut from `{colors.island}` and standing on `{colors.ground}`; what separates one island from the next is the ground showing through the gap, never a border and never a shadow.
+Farmer is a dense product UI, read for minutes at a time and operated with a keyboard, so the system is built for scanning. The whole shell is a centered frame holding **exactly two islands**, the sidebar and the page, cut from `{colors.island}` and standing on `{colors.ground}`; what separates them is the ground showing through the gap, never a border and never a shadow.
 
-The reference for surfaces, radii and the typographic voice is Framer's marketing system: near-black canvas, surface lift for hierarchy, a floating card with a light top edge, negative tracking that scales with size, and weight held in a narrow band. Where Framer is dark only, Farmer writes both palettes out in full and switches them on `data-theme` on `<html>`.
+**Nothing inside the page is a card.** Structure inside the page is hairlines and space: sections are divided by `{colors.hairline}`, repeated rows by `{colors.hairline-soft}`, figures sit in a band between two hairlines. A filled, rounded box inside the page is reserved for a control (a button, a field, a chip, a selected option); a block of content never gets one. Floating things (menus, popovers, dialogs, toasts) are not inside the page and keep their surface.
 
 **Key characteristics**
 
-- One typeface. Geist for titles, body, captions and figures; Geist Mono only for what is an id (a sha, a project code) or a column of table figures.
-- Hierarchy is size, weight (400 / 500 / 600) and tracking. There is no 700 anywhere.
-- Text is binary: `{colors.ink}` or `{colors.ink-muted}`. `{colors.ink-faint}` exists for placeholders and disabled labels and nothing else.
-- Neutrals lean violet. Every grey is mixed from the accent's family, so the accent reads as belonging rather than as a foreign colour.
-- Depth is lift. Ground, island, band; a floating thing is one more step up and carries the light-edge shadow (`--shadow-pop`) instead of a border.
-- One accent, the logo's violet, for actions, links, focus and selection. Green, amber and red are semantic and sit below it in chroma.
+- Three faces, each with one job. Hedvig Letters Serif for page titles and the big numbers; Inclusive Sans for everything else; Geist Mono for every column of figures, tables, ids and codes. "Boring font" (Preferences → Display) puts Inclusive Sans on the titles and numbers too.
+- Hedvig Letters Serif has one weight. Titles and figures are 400 and weight synthesis is off; hierarchy comes from size. Inclusive Sans carries 400 / 500 / 600.
+- Neither Hedvig nor Inclusive Sans has tabular figures, so anything read down a column (entry times, the timesheet grid, report tables, a day total) is Geist Mono.
+- Text is binary: `{colors.ink}` or `{colors.ink-muted}`. `{colors.ink-faint}` is for placeholders and disabled labels.
+- Warm grey neutrals by default (production's), with five other neutral sets as a per-device choice. The accent, green/amber/red and the task group colours are the same in all of them.
+- One accent, the logo's violet, for actions, links, focus and selection.
 
 ## Colors
 
 ### Accent
 
-- **Violet** (`{colors.accent}`): every filled primary control, link, focus ring and selected day. In dark it lifts one step to `{colors.accent-dark}` so violet text passes 4.5:1 on the island; the hue is the same.
+- **Violet** (`{colors.accent}`): every filled primary control, link, focus ring and selected state. In dark it lifts one step to `{colors.accent-dark}` so violet text passes 4.5:1 on the island; the hue is the same. It never changes with the colour choice.
 
 ### Surfaces (light / dark)
 
-- **Ground** (`{colors.ground}` / `{colors.dark-ground}`): what `body` is painted. Never painted on directly; it shows through the gaps.
-- **Island** (`{colors.island}` / `{colors.dark-island}`): the paper of every panel, table and the sidebar.
-- **Band** (`{colors.band}` / `{colors.dark-band}`): a recessed strip inside an island, a filled field, a lifted secondary button, the selected nav row.
+- **Ground** (`{colors.ground}` / `{colors.dark-ground}`): what `body` is painted. It only shows through as the gap around the two islands.
+- **Island** (`{colors.island}` / `{colors.dark-island}`): the paper of the sidebar and of the page.
+- **Band** (`{colors.band}` / `{colors.dark-band}`): a filled field, a secondary button, a selected nav row or option. A control surface, never a content box.
 - **Floating** (`{colors.floating}` / `{colors.dark-floating}`): a menu, a popover, a dialog, a toast. White in light; the band in dark.
-- **Hairline** (`{colors.hairline}`) divides sections and outlines controls under the pointer; **hairline-soft** (`{colors.hairline-soft}`) separates repeated rows and rests on a field. Nothing else draws a line.
+- **Hairline** (`{colors.hairline}`) divides sections and the top and bottom of a band of figures; **hairline-soft** (`{colors.hairline-soft}`) separates repeated rows and the cells of a band.
 
-### Text
+### Colour choices
 
-- **Ink** (`{colors.ink}` / `{colors.dark-ink}`) and **ink-muted** (`{colors.ink-muted}` / `{colors.dark-ink-muted}`). Both pass AA on every surface they sit on.
+Preferences → Display → Colours sets `data-palette` on `<html>` (`lib/palette.ts`, applied before paint like the theme). Each choice swaps ground, island, band, the three text greys and the hairlines mixed from the ink, in light and in dark, and nothing else:
+
+| Choice | Light ground / island / band / ink | Dark ground / island / band / ink |
+|---|---|---|
+| Warm grey (default) | #efece5 / #faf9f6 / #f4f2ed / #1b1a17 | #0e0d0a / #1a1914 / #232219 / #ede8de |
+| Violet grey | #f1f0f5 / #fcfcfd / #f3f2f7 / #111016 | #0a090c / #141317 / #1d1c22 / #f1f0f4 |
+| Teal | #e2ecec / #f8fbfb / #ecf3f3 / #131b1c | #091112 / #121c1e / #1b282a / #eef3ef |
+| Graphite | #ece9e5 / #fbfaf9 / #f3f1ee / #1b1916 | #0f0e0d / #191816 / #24221f / #efebe5 |
+| Cocoa | #f1e7e2 / #fdfaf8 / #f7efec / #201713 | #0f0b09 / #1a1411 / #261d19 / #f7ece5 |
+| Lilac | #ebe7f3 / #fbfafe / #f2f0f8 / #1b1721 | #121017 / #1f1b27 / #2c2635 / #f6f1fb |
+
+Every light set passes 4.5:1 for ink and muted ink on island and band, and 3:1 for placeholders on band. A new choice has to pass the same checks before it ships.
 
 ### Semantic
 
-- **OK** (`{colors.semantic-ok}`), **warn** (`{colors.semantic-warn}`), **bad** (`{colors.semantic-bad}`): verdicts on the Tracking report, status pills, and the one red also marks a destructive action, a form error and an invalid field. Always as text on a 12% tint, never as a fill.
+- **OK** (`{colors.semantic-ok}` / `{colors.dark-semantic-ok}`), **warn** (`{colors.semantic-warn}` / `{colors.dark-semantic-warn}`), **bad** (`{colors.semantic-bad}` / `{colors.dark-semantic-bad}`): verdicts, status pills, the week chart, and the one red also marks a destructive action, a form error and an invalid field. Always as text on a 12% tint, never as a fill. In light they are dark enough for that label to pass 4.5:1 on its own tint on every colour choice; at their old values it sat near 3.6:1.
+- **Task groups** (`--group-*`): engineering #486370, product #8e4d37, learning #50634f, time off #7a5a05 in light (lifted in dark), general is muted ink. Chips are the group colour on a 15% tint.
 
 ## Typography
 
-Geist, variable 400 to 700, from Google Fonts, with Geist Mono beside it. Tracking pulls tighter as size grows: `-0.01em` at body, `-0.02em` on a headline, `-0.025em` on the page title, `-0.03em` on a large figure. Line height is tight for a product UI: 1.1 on the title, 1.2 on a headline, 1.45 on body.
+Hedvig Letters Serif (optical sizes 12–24, one weight) and Inclusive Sans (300–700) from Google Fonts, with Geist Mono beside them. Tracking stays near zero: the serif is pulled in slightly at title size, the sans is set as drawn.
 
-| Token | Size | Weight | Tracking | Use |
+| Token | Face | Size | Weight | Use |
 |---|---|---|---|---|
-| `{typography.page-title}` | 32px | 500 | -0.025em | The `PageHeader` title, `.h1` |
-| `{typography.headline}` | 22px | 600 | -0.02em | Dialog titles, section headings, `.h2` |
-| `{typography.lede}` | 16px | 400 | -0.01em | The line under a page title |
-| `{typography.body}` | 14px | 400 | -0.01em | Everything else |
-| `{typography.caption}` | 13px | 400 | -0.01em | Notes under a setting, table captions |
-| `{typography.eyebrow}` | 12px | 500 | 0.08em, caps | Section labels, column heads, group labels |
-| `{typography.figure}` | 30px | 600 | -0.03em, tnum | A `Metric`, the home targets |
-| `{typography.mono}` | 13px | 400 | -0.03em, tnum | Ids, codes, table figures |
+| `{typography.page-title}` | Hedvig Letters Serif | 34px | 400 | The `PageHeader` title, `.h1` |
+| `{typography.headline}` | Hedvig Letters Serif | 23px | 400 | Dialog titles, `.h2` |
+| `{typography.figure}` | Hedvig Letters Serif | 26px | 400 | A target figure, a `Metric`, `FigureCell` |
+| `{typography.lede}` | Inclusive Sans | 16px | 400 | The line under a page title |
+| `{typography.body}` | Inclusive Sans | 14px | 400 | Everything else |
+| `{typography.caption}` | Inclusive Sans | 13px | 400 | Notes under a setting, captions |
+| `{typography.eyebrow}` | Inclusive Sans | 12px | 500, caps | Section labels, column heads |
+| `{typography.mono}` | Geist Mono | 13–15px | 400–500 | Columns of figures, tables, ids, codes |
 
-Every column of digits sets `font-variant-numeric: tabular-nums`. Headings take `text-wrap: balance`. Ellipses are `…`, never three dots.
+- **Display rules turn weight synthesis off** (`font-synthesis-weight: none`), so a `font-semibold` next to `font-display` renders the serif's real 400 instead of a smeared fake bold.
+- **"Boring font"** (`data-font="sans"`) re-points `--serif` at Inclusive Sans and gives the display rules 600 and -0.02em. A new display rule must read `var(--serif)`, never name a face.
+- **Columns of figures are Geist Mono** (`.mono`). A single figure, or a number inside a sentence, stays in its own face. `.tnum` only asks for tabular figures and does nothing in Hedvig or Inclusive Sans.
+- Headings take `text-wrap: balance`. Ellipses are `…`, never three dots.
 
 ## Shapes
 
@@ -268,7 +280,7 @@ One answer per role, applied everywhere:
 | `{rounded.control}` | 8px | Buttons, fields, selects, menu items, project icons |
 | `{rounded.md}` | 6px | Small buttons, chips |
 | `{rounded.nav}` | 10px | Sidebar rows |
-| `{rounded.floating}` | 12px | Menus, popovers, toasts, cards |
+| `{rounded.floating}` | 12px | Menus, popovers, toasts |
 | `{rounded.dialog}` | 16px | Dialogs, islands |
 | `{rounded.full}` | round | Badges, status pills, avatars, calendar days, the floating mobile tab bar |
 
@@ -279,7 +291,7 @@ Buttons are rounded rectangles, not pills, so a button beside a field reads as t
 | Level | Treatment | Use |
 |---|---|---|
 | 0 | Ground | The body |
-| 1 | Island paper | Every panel |
+| 1 | Island paper | The sidebar and the page, nothing else |
 | 2 | Band | Fields, secondary buttons, selected rows |
 | 3 | Floating + `--shadow-pop` | Menus, popovers, dialogs, toasts, the tab bar |
 | 4 | `--lift` | A sheet, a drawer, a dragged row |
@@ -311,24 +323,26 @@ tidies with the pattern rather than on its own.
 - **One toolbar** (`time/time-toolbar.tsx`): where you are on the left as a
   filled stepper, what you can do on the right, one row, 32px controls. The
   timesheet, the reports, the hour fund and the project page all take it.
-- **Figure chips** (`ui/stat-tile.tsx`, `StatTiles` / `StatTile`): a progress
-  ring, a label and a figure, in a card the width of what it holds. For a figure
-  that is a proportion of a target. Home's three targets.
+- **Target band** (`ui/stat-tile.tsx`, `StatTiles` / `StatTile`): cells side by
+  side between two hairlines, each a label, a figure in the display face, a
+  caption and a thin meter carrying the verdict colour. For a figure that is a
+  proportion of a target: home's three, the timesheet's two.
 - **Figure band** (`ui/stat-tile.tsx`, `FigureBand` / `FigureCell`): plain cells
   divided by soft hairlines, never boxed, for figures that are not a proportion
   of anything. The project page's four.
-- **Entry row** (`time/entry-block-row.tsx`): a code-and-mark stub at the left,
-  identity on line one (project, client, task), the note on line two aligned
-  under the project name, and the time in its own box pinned to the top right.
-  The note clamps to two lines with a measured "Show more".
+- **Entry row** (`time/entry-block-row.tsx`): a row of a list closed by the soft
+  hairline, no fill. A code-and-mark stub at the left, identity on line one
+  (project, client, task), the note on line two aligned under the project name,
+  and the time in Geist Mono pinned to the top right. The list's own top rule is
+  its parent's.
 - **Task colour is the GROUP's colour**, not the task's (`lib/task-group-colors.ts`).
   Five groups, five colours, so it is a family you can learn. The taxonomy's
   per-task colours are not used on rows.
 - **Counting figures** (`ui/count-up.tsx`): a headline figure counts up from
   zero on first paint and tweens between values afterwards, so the number that
   changed is the one that moves.
-- **Ghost row** (`ui/ghost-row.tsx`): a list ends on the dashed row that adds to
-  it, and an empty list is a sentence plus that same row. No dashed boxes and no
+- **Ghost row** (`ui/ghost-row.tsx`): a list ends on a quiet, boxless "add" row,
+  and an empty list is a sentence plus that same row. No dashed boxes and no
   centred placeholders with no action on them.
 - **Row actions** (`.row-actions` on a `group/row`): hidden at rest, slid in 4px
   on hover or focus-within, always visible on touch. Icon buttons with tooltips,
@@ -365,23 +379,25 @@ Three speeds (120 / 150 / 180ms) and two curves. Entrances and exits ease out; t
 
 ## Do
 
-- Reach for lift before a border, and for a border before a shadow.
-- Keep weight at 400, 500 or 600. Make a thing bigger or tighter before making it bolder.
+- Structure the inside of the page with hairlines and space before anything else.
+- Set every column of figures in Geist Mono.
+- Keep Hedvig Letters Serif at 400; make a title bigger, never bolder.
 - Use ink-muted for secondary text and reserve ink-faint for placeholders.
-- Give every column of figures tabular numerals.
 - Let a status colour be text on a tint.
+- Check a new colour against every colour choice, in both themes.
 
 ## Don't
 
-- Don't introduce a second typeface for emphasis. Italic or a step of weight in Geist is the move.
+- Don't put a filled or bordered box around a block of content inside the page. Only controls and floating things have a surface.
+- Don't add a third island, or a stacked panel beside the page.
+- Don't set figures that are read down a column in Hedvig or Inclusive Sans; they don't line up.
 - Don't put a border around a menu, a popover or a dialog. The shadow ring is the edge.
 - Don't fill a button with red, green or amber. Semantic colour is a label, not a surface.
-- Don't add a fourth grey for text.
 - Don't make a button a pill. Only what is round by nature (a badge, an avatar, a day) is round.
-- Don't warm the neutrals. Every grey in this system leans violet.
+- Don't let a colour choice change the accent or a semantic colour.
 
 ## Iteration guide
 
-1. Change a token in `apps/web/src/styles.css` before touching a component: both palettes live there, in full, in layer 1 (`--bg`, `--fg`, `--acc`, …), and shadcn's names are derived from them.
+1. Change a token in `apps/web/src/styles.css` before touching a component: both palettes and the five colour choices live there, in full, in layer 1 (`--bg`, `--fg`, `--acc`, …), and shadcn's names are derived from them.
 2. Name a component by its entry above when asking for a change, and say which surface it lives on.
-3. Check both themes before finishing. `data-theme` on `<html>` is the whole switch.
+3. Check both themes and at least one other colour choice before finishing. `data-theme` and `data-palette` on `<html>` are the whole switch.
