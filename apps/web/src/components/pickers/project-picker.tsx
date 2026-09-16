@@ -160,7 +160,14 @@ export function ProjectPicker({
 			disabled={disabled}
 		>
 			<ComboboxTrigger className={cn("w-full", className)} {...triggerProps}>
-				<ComboboxValue placeholder={placeholder}>
+				{/* `flex-row`, overriding ComboboxValue's own `flex-col`. That column
+				    is what stacked the client ABOVE the project name however this
+				    render prop was written — which reads as the field having two
+				    labels. The client belongs beside the name, muted, as a suffix. */}
+				<ComboboxValue
+					className="flex-row items-center gap-2"
+					placeholder={placeholder}
+				>
 					{(item: Item | null) =>
 						item ? (
 							// The project's mark, its name, then the client as a muted

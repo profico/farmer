@@ -239,12 +239,45 @@ export function PeriodPicker<S extends PeriodSearch>({
 
 			{/* A custom range has no natural next, so it gets two date fields
 			    instead of arrows rather than arrows that guess a stride. */}
+			{/* The picker is rendered in BOTH branches, and that is the point.
+			    Custom used to swap the whole toolbar for two date fields, which
+			    took the presets away with it — so choosing "Custom range" was a
+			    one-way door with no way back to Month or Week short of editing the
+			    URL. A custom range has no natural next, so it loses the ‹ › arrows
+			    and gains two date fields; it does not lose the control that chose
+			    it. */}
 			{preset === "custom" ? (
-				<CustomRangeFields
-					from={from}
-					to={to}
-					onChange={(patch) => navigateTo(withSearch(patch))}
-				/>
+				<>
+					<PeriodControl
+						label={label}
+						presets={PERIOD_PRESETS.map((p) => ({
+							id: p.id,
+							label: p.label,
+							separated: p.id === "custom",
+						}))}
+						activePresetId={preset}
+						onPreset={(id) => {
+							const picked = PERIOD_PRESETS.find((p) => p.id === id);
+							if (!picked) return;
+							navigateTo(
+								withSearch({
+									preset: picked.id,
+									from: picked.id === "custom" ? from : undefined,
+									to: picked.id === "custom" ? to : undefined,
+								}),
+							);
+						}}
+						calendarValue={from ?? today}
+						onPickDay={(day) =>
+							navigateTo(withSearch({ preset: "custom", from: day, to: day }))
+						}
+					/>
+					<CustomRangeFields
+						from={from}
+						to={to}
+						onChange={(patch) => navigateTo(withSearch(patch))}
+					/>
+				</>
 			) : (
 				<TimeToolbar
 					prev={stepLink(-1)}
