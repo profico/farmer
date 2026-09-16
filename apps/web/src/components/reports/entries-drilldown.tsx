@@ -23,6 +23,7 @@ import {
 	Table,
 	TableBody,
 	TableCell,
+	TableHead,
 	TableHeader,
 	TableRow,
 } from "#/components/ui/table.tsx";
@@ -483,6 +484,10 @@ function EntriesTable({
 			<Table containerClassName="mt-4">
 				<TableHeader>
 					<TableRow>
+						{/* The rank. A table sorted by hours is a ranking, and a ranking
+						    that does not number itself makes you count rows to find the
+						    third. Blank in the head because "1, 2, 3" needs no label. */}
+						<TableHead className="w-10 text-right" />
 						{columns.map((c) => (
 							<SortHead
 								key={c.id}
@@ -492,6 +497,11 @@ function EntriesTable({
 								onSort={onSort}
 							/>
 						))}
+						{/* Entries and people were a run-on sentence inside the label
+						    cell ("84 entries · 6 people"), which cannot be scanned down a
+						    column or sorted. They are columns now. */}
+						<TableHead className="text-right">Entries</TableHead>
+						<TableHead className="text-right">People</TableHead>
 						<SortHead
 							label="Hours"
 							sortKey="hours"
@@ -504,9 +514,9 @@ function EntriesTable({
 				</TableHeader>
 				<TableBody>
 					{ordered.length === 0 ? (
-						<NoMatchesRow colSpan={columns.length + 1} />
+						<NoMatchesRow colSpan={columns.length + 4} />
 					) : (
-						ordered.map((group) => {
+						ordered.map((group, rank) => {
 							const open = isOpen(expand, group.key);
 							const role =
 								roleOf && by === "teammate" ? roleOf(group.userId) : null;
@@ -516,6 +526,9 @@ function EntriesTable({
 									{/* The summary row: a disclosure, the same one the
 									    archived section under every list uses. */}
 									<TableRow className="bg-secondary/60 hover:bg-secondary">
+										<TableCell className="mono text-right text-xs text-faint">
+											{rank + 1}
+										</TableCell>
 										<TableCell colSpan={columns.length} className="p-0">
 											<RowDisclosure
 												open={open}
@@ -541,13 +554,13 @@ function EntriesTable({
 														{role ?? "Not on the team"}
 													</span>
 												)}
-												<span className="text-sm font-normal text-muted-foreground">
-													{group.rows.length}{" "}
-													{group.rows.length === 1 ? "entry" : "entries"}
-													{by !== "teammate" &&
-														` · ${group.people.size} ${group.people.size === 1 ? "person" : "people"}`}
-												</span>
 											</RowDisclosure>
+										</TableCell>
+										<TableCell className="mono text-right text-muted-foreground">
+											{group.rows.length}
+										</TableCell>
+										<TableCell className="mono text-right text-muted-foreground">
+											{by === "teammate" ? "—" : group.people.size}
 										</TableCell>
 										<TableCell className="text-right">
 											<span className="flex items-center justify-end gap-3">
@@ -581,6 +594,7 @@ function EntriesTable({
 											.sort((a, b) => compare[active.key](a, b) * active.dir)
 											.map((row) => (
 												<TableRow key={row.id}>
+													<TableCell />
 													{columns.map((c, i) => (
 														<TableCell
 															key={c.id}
@@ -609,6 +623,7 @@ function EntriesTable({
 															)}
 														</TableCell>
 													))}
+													<TableCell colSpan={2} />
 													<TableCell className="mono text-right">
 														{formatReportHours(row.durationSeconds)}
 														{row.overtime && (
@@ -624,11 +639,19 @@ function EntriesTable({
 						})
 					)}
 					{ordered.length > 0 && (
-						<TableRow className="bg-secondary/60 hover:bg-secondary/60">
-							<TableCell colSpan={columns.length} className="font-medium">
+						<TableRow className="hover:bg-transparent">
+							<TableCell />
+							<TableCell
+								colSpan={columns.length}
+								className="border-t border-line font-semibold"
+							>
 								Total
 							</TableCell>
-							<TableCell className="mono text-right font-medium">
+							<TableCell className="mono border-t border-line text-right font-semibold">
+								{ordered.reduce((sum, g) => sum + g.rows.length, 0)}
+							</TableCell>
+							<TableCell className="border-t border-line" />
+							<TableCell className="mono border-t border-line text-right font-semibold">
 								{formatReportHours(
 									ordered.reduce((sum, g) => sum + g.seconds, 0),
 								)}

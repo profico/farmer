@@ -27,6 +27,11 @@ import {
 import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { GhostRow } from "#/components/ui/ghost-row.tsx";
+import {
+	dayPresets,
+	dayTriggerLabel,
+	PeriodPicker,
+} from "#/components/ui/period-picker.tsx";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
@@ -75,6 +80,13 @@ export function DayView({
 			(secondsByDay.get(entry.date) ?? 0) + entry.durationSeconds,
 		);
 	}
+
+	const goToDate = (picked: string) =>
+		navigate({
+			to: "/$orgSlug/time",
+			params: { orgSlug },
+			search: { date: picked },
+		});
 
 	// "Copy from previous day" — Harvest's backfill affordance, and the closest
 	// honest equivalent to a start/stop timer in a duration-only model.
@@ -135,15 +147,27 @@ export function DayView({
 						<ArrowLeftIcon weight="regular" className="size-4" />
 					</Link>
 				}
-				label={
-					<>
-						{formatDateKeyLong(date)}
-						{holidayName && (
-							<span className="ml-1.5 font-medium text-warn">
-								{holidayName}
-							</span>
-						)}
-					</>
+				label={formatDateKeyLong(date)}
+				picker={
+					<PeriodPicker
+						triggerClassName="h-8 rounded-none border-x border-y-0 border-line2 bg-transparent"
+						label={
+							<>
+								{formatDateKeyLong(date)}
+								{holidayName && (
+									<span className="ml-1.5 font-medium text-warn">
+										{holidayName}
+									</span>
+								)}
+							</>
+						}
+						sub={dayTriggerLabel(date, today).sub}
+						presets={dayPresets(today)}
+						activePresetId={date}
+						onPreset={(picked) => goToDate(picked)}
+						calendarValue={date}
+						onPickDay={goToDate}
+					/>
 				}
 				next={
 					<Link
@@ -156,15 +180,6 @@ export function DayView({
 						<ArrowRightIcon weight="regular" className="size-4" />
 					</Link>
 				}
-				jumpTo={{
-					value: date,
-					onPick: (picked) =>
-						navigate({
-							to: "/$orgSlug/time",
-							params: { orgSlug },
-							search: { date: picked },
-						}),
-				}}
 				returnLink={
 					!isToday && (
 						<Link

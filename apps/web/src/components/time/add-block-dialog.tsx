@@ -3,6 +3,7 @@ import { describePullRequestActivity } from "@farmer/core/lib/github-activity";
 import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
 	addDaysToKey,
+	dayKeyInTz,
 	parseDuration,
 	snapToQuarterHour,
 	timeKeyInTz,
@@ -33,7 +34,7 @@ import { z } from "zod";
 
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { TaskPicker } from "#/components/pickers/task-picker.tsx";
-import { DateJump, stepperClass } from "#/components/time/time-toolbar.tsx";
+import { stepperClass } from "#/components/time/time-toolbar.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
@@ -55,6 +56,11 @@ import {
 	FormMessage,
 } from "#/components/ui/form.tsx";
 import { Input } from "#/components/ui/input.tsx";
+import {
+	dayPresets,
+	dayTriggerLabel,
+	PeriodPicker,
+} from "#/components/ui/period-picker.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
@@ -742,6 +748,10 @@ export function AddBlockDialog({
 	// repeat is switched on and the choice becomes the person's. What was picked
 	// from the old day goes: its commits, pull requests and meeting belong to
 	// that day, and saved on this one they would be evidence of the wrong day.
+	// Today in the ORG's timezone, which is what "Today" and "Yesterday" mean in
+	// the picker's presets and what the trigger compares against.
+	const todayKey = dayKeyInTz(new Date(), timezone);
+
 	const setDate = (next: string) => {
 		if (next === form.getValues("date")) return;
 		form.setValue("date", next, { shouldValidate: true });
@@ -931,7 +941,10 @@ export function AddBlockDialog({
 					<DialogTitle className="mr-auto">
 						{entry ? "Edit entry" : "Log time"}
 					</DialogTitle>
-					<div className="flex h-8 w-fit shrink-0 items-center rounded-lg bg-secondary text-sm">
+					{/* The same period picker the timesheet and the reports use, in day
+					    mode. The dialog used to carry a stepper of its own, which was a
+					    fourth answer to "which day" in an app that now has one. */}
+					<div className="flex h-8 w-fit shrink-0 items-center overflow-hidden rounded-lg bg-secondary text-sm">
 						<button
 							type="button"
 							className={cn(
@@ -944,10 +957,18 @@ export function AddBlockDialog({
 						>
 							<ArrowLeftIcon weight="regular" className="size-4" />
 						</button>
-						<span className="flex items-center gap-1.5 border-x border-line2 px-3 font-medium whitespace-nowrap">
-							{!dayLocked && <DateJump value={targetDate} onPick={setDate} />}
-							{dialogDateLabel(targetDate)}
-						</span>
+						<PeriodPicker
+							disabled={dayLocked}
+							triggerClassName="h-8 rounded-none border-x border-y-0 border-line2 bg-transparent"
+							label={dialogDateLabel(targetDate)}
+							sub={dayTriggerLabel(targetDate, todayKey).sub}
+							presets={dayPresets(todayKey)}
+							activePresetId={targetDate}
+							onPreset={setDate}
+							calendarValue={targetDate}
+							onPickDay={setDate}
+							align="center"
+						/>
 						<button
 							type="button"
 							className={cn(
@@ -1162,11 +1183,16 @@ export function AddBlockDialog({
 											: undefined
 									}
 									onClick={() => form.setValue("fillsDay", !fillsDay)}
+									// Not highlighted at rest. It used to carry an accent tint
+									// and a ring while switched OFF, which reads as selected or
+									// focused — the one thing a control must not do when it is
+									// neither. It is simply the fifth option, set apart by its
+									// words and by being the only one that is not a number.
 									className={cn(
-										"rounded-lg py-2 text-sm font-semibold transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16 disabled:pointer-events-none disabled:opacity-40",
+										"rounded-lg py-2 text-sm font-medium transition-colors duration-(--dur-fast) outline-none focus-visible:ring-3 focus-visible:ring-ring/16 disabled:pointer-events-none disabled:opacity-40",
 										fillsDay
-											? "bg-primary text-primary-foreground"
-											: "bg-primary/12 text-primary ring-1 ring-primary/35 ring-inset hover:bg-primary/16",
+											? "bg-primary/16 font-semibold text-primary"
+											: "bg-secondary text-muted-foreground hover:text-foreground",
 									)}
 								>
 									Rest of day

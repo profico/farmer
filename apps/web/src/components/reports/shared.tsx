@@ -34,14 +34,12 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu.tsx";
+import { PeriodPicker as PeriodControl } from "#/components/ui/period-picker.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "#/components/ui/select.tsx";
+	SegmentedControl,
+	SegmentedControlItem,
+} from "#/components/ui/segmented-control.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
 import {
@@ -235,35 +233,9 @@ export function PeriodPicker<S extends PeriodSearch>({
 
 	return (
 		<div className="flex flex-wrap items-center gap-3">
-			<Select
-				items={PERIOD_PRESETS.map((p) => ({ value: p.id, label: p.label }))}
-				value={preset}
-				onValueChange={(next: string | null) => {
-					const picked = PERIOD_PRESETS.find((p) => p.id === next);
-					if (!picked) return;
-					navigateTo(
-						withSearch({
-							preset: picked.id,
-							// Switching preset restarts from "now" in the new unit,
-							// which is the only period that means the same thing in
-							// all of them. Custom keeps the range it was opened from.
-							from: picked.id === "custom" ? from : undefined,
-							to: picked.id === "custom" ? to : undefined,
-						}),
-					);
-				}}
-			>
-				<SelectTrigger aria-label="Period" className="h-8 w-28 text-sm">
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					{PERIOD_PRESETS.map((p) => (
-						<SelectItem key={p.id} value={p.id}>
-							{p.label}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
+			{/* The `Month ▾` select is gone: its options are the picker's presets
+			    now, so the period is one control rather than a select beside a
+			    stepper that each knew half the answer. */}
 
 			{/* A custom range has no natural next, so it gets two date fields
 			    instead of arrows rather than arrows that guess a stride. */}
@@ -278,6 +250,36 @@ export function PeriodPicker<S extends PeriodSearch>({
 					prev={stepLink(-1)}
 					label={label}
 					next={stepLink(1)}
+					// The 5A picker, in period mode: the presets ARE the period
+					// select, so `Month ▾` and the stepper's own date stop being two
+					// controls asking one question.
+					picker={
+						<PeriodControl
+							triggerClassName="h-8 rounded-none border-x border-y-0 border-line2 bg-transparent"
+							label={label}
+							presets={PERIOD_PRESETS.map((p) => ({
+								id: p.id,
+								label: p.label,
+								separated: p.id === "custom",
+							}))}
+							activePresetId={preset}
+							onPreset={(id) => {
+								const picked = PERIOD_PRESETS.find((p) => p.id === id);
+								if (!picked) return;
+								navigateTo(
+									withSearch({
+										preset: picked.id,
+										from: picked.id === "custom" ? from : undefined,
+										to: picked.id === "custom" ? to : undefined,
+									}),
+								);
+							}}
+							calendarValue={from ?? today}
+							onPickDay={(day) =>
+								navigateTo(withSearch({ preset: "custom", from: day, to: day }))
+							}
+						/>
+					}
 					returnLink={
 						!atNow &&
 						cloneElement(
@@ -557,29 +559,31 @@ export function QuietTabs<T extends string>({
 	/** The search for a tab — the caller decides which param it is. */
 	search: (id: T) => Search;
 }) {
+	// A SEGMENTED control, not a second underlined tab bar. The report type is
+	// now an underlined tab bar under the page title (8A), and two underlined
+	// bars stacked eight pixels apart say the same thing at two levels with no
+	// way to tell which is which. A tab bar says "this is the page you are on";
+	// a segmented control says "this is a setting on it", which is exactly what
+	// Clients / Projects / Team is.
 	return (
-		<nav aria-label={label} className="flex flex-wrap gap-x-5 gap-y-1">
-			{items.map((item) => {
-				const on = item.id === active;
-				return (
-					<Link
-						key={item.id}
-						to="/$orgSlug/reports"
-						params={{ orgSlug }}
-						search={search(item.id)}
-						aria-current={on ? "page" : undefined}
-						className={cn(
-							"border-b-2 py-1.5 text-sm whitespace-nowrap transition-colors duration-(--dur-fast)",
-							on
-								? "border-primary font-medium text-foreground"
-								: "border-transparent text-muted-foreground hover:text-foreground",
-						)}
-					>
-						{item.label}
-					</Link>
-				);
-			})}
-		</nav>
+		<SegmentedControl aria-label={label}>
+			{items.map((item) => (
+				<SegmentedControlItem
+					key={item.id}
+					active={item.id === active}
+					render={
+						<Link
+							to="/$orgSlug/reports"
+							params={{ orgSlug }}
+							search={search(item.id)}
+							aria-current={item.id === active ? "page" : undefined}
+						/>
+					}
+				>
+					{item.label}
+				</SegmentedControlItem>
+			))}
+		</SegmentedControl>
 	);
 }
 

@@ -24,6 +24,7 @@ export function TimeToolbar({
 	prev,
 	label,
 	next,
+	picker,
 	jumpTo,
 	returnLink,
 	children,
@@ -32,9 +33,13 @@ export function TimeToolbar({
 	prev: ReactNode;
 	label: ReactNode;
 	next: ReactNode;
-	/** Where a picked date should take this view. Turns the calendar icon in the
-	 *  middle of the stepper group into an actual date picker — without it the
-	 *  only way to reach a date six weeks back was forty-two clicks on ‹. */
+	/** The period picker, sitting between the two steppers. When given, it
+	 *  replaces `label` and `jumpTo` entirely: it carries the date, the presets
+	 *  and the calendar itself. */
+	picker?: ReactNode;
+	/** Where a picked date should take this view. The older, narrower form of
+	 *  the same idea: a calendar icon inside the stepper group. Kept for the
+	 *  screens that have not moved to `picker` yet. */
 	jumpTo?: { value: string; onPick: (date: string) => void };
 	/** Rendered only when the view is off today/this week/this month. */
 	returnLink?: ReactNode;
@@ -45,16 +50,22 @@ export function TimeToolbar({
 			{/* Cut from the band surface like every other control (DESIGN.md,
 			    `text-input`). Outlined, it was the only bordered thing on a screen
 			    whose fields are all filled. */}
+			{/* The stepper flanks the period picker rather than containing a date
+			    of its own: ‹ and › step, the middle opens the presets and the
+			    calendar (`ui/period-picker.tsx`). One control answers "which
+			    period", on every screen that asks. */}
 			<div className="flex h-8 items-center overflow-hidden rounded-lg bg-secondary">
 				{prev}
-				<span className="flex items-center gap-1.5 border-x border-line2 px-3 text-sm font-medium whitespace-nowrap">
-					{jumpTo ? (
-						<DateJump {...jumpTo} />
-					) : (
-						<CalendarDotsIcon className="size-3.5 text-muted-foreground" />
-					)}
-					{label}
-				</span>
+				{picker ?? (
+					<span className="flex items-center gap-1.5 border-x border-line2 px-3 text-sm font-medium whitespace-nowrap">
+						{jumpTo ? (
+							<DateJump {...jumpTo} />
+						) : (
+							<CalendarDotsIcon className="size-3.5 text-muted-foreground" />
+						)}
+						{label}
+					</span>
+				)}
 				{next}
 			</div>
 			{returnLink}

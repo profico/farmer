@@ -163,13 +163,29 @@ export function ProjectPicker({
 				<ComboboxValue placeholder={placeholder}>
 					{(item: Item | null) =>
 						item ? (
+							// The project's mark, its name, then the client as a muted
+							// SUFFIX on the same line. The client used to sit stacked
+							// ABOVE the name in small grey type, which reads as the
+							// field's label rather than as part of its value — so the
+							// dialog looked like it had two labels over one control.
 							<>
+								{isUploadedFile(item.icon) ? (
+									<img
+										src={item.icon}
+										alt=""
+										className="size-4.5 shrink-0 rounded-[4px] object-contain"
+									/>
+								) : item.icon ? (
+									<span className="shrink-0 text-base leading-none">
+										{item.icon}
+									</span>
+								) : null}
+								<span className="truncate font-medium">{item.label}</span>
 								{item.clientName && (
-									<span className="truncate text-xs text-muted-foreground">
+									<span className="truncate text-sm font-normal text-muted-foreground">
 										{item.clientName}
 									</span>
 								)}
-								<span className="truncate">{item.label}</span>
 							</>
 						) : (
 							placeholder

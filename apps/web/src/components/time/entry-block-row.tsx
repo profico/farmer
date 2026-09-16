@@ -236,27 +236,31 @@ export function EntryBlockRow({
 	});
 
 	// The note is held to two lines with a "Show more" under it, so a list of
-	// twelve entries keeps one rhythm however long a note is. Measured rather
-	// than guessed from the character count: a note wraps differently at every
-	// window width, and a link offering to expand two lines that are already
-	// whole is worse than no link.
-	const noteRef = useRef<HTMLTextAreaElement>(null);
+	// twelve entries keeps one rhythm however long a note is.
+	//
+	// **It is a paragraph until you click it**, and only then a textarea. It was
+	// a textarea throughout, and a textarea cannot be clamped: `line-clamp`
+	// works on line boxes inside a block, and a textarea's value is not laid out
+	// as line boxes the property can reach. With `field-sizing: content` on top,
+	// a twenty-line note simply grew the field to twenty lines and pushed the
+	// whole day off the screen. Reading and editing are different jobs, so they
+	// are different elements now, swapped on click.
+	const noteRef = useRef<HTMLButtonElement>(null);
 	const [expanded, setExpanded] = useState(false);
+	const [editing, setEditing] = useState(false);
 	const [clamped, setClamped] = useState(false);
+	// Measured rather than guessed from the character count: a note wraps
+	// differently at every window width, and a link offering to expand two lines
+	// that are already whole is worse than no link.
 	useEffect(() => {
 		const el = noteRef.current;
-		if (!el) return;
-		const measure = () => {
-			// Only meaningful while the clamp is on: expanded, the two heights are
-			// equal by definition.
-			if (expanded) return;
-			setClamped(el.scrollHeight > el.clientHeight + 1);
-		};
+		if (!el || expanded || editing) return;
+		const measure = () => setClamped(el.scrollHeight > el.clientHeight + 1);
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(el);
 		return () => observer.disconnect();
-	}, [expanded]);
+	}, [expanded, editing, note]);
 
 	return (
 		// The row is a hover group: its actions are hidden at rest and slide in
@@ -293,25 +297,31 @@ export function EntryBlockRow({
 			<div className="flex items-stretch gap-px">
 				{/* The stub. A column rather than a prefix: the code is an id, and an
 				    id in front of a name starts every name at a different x. */}
-				<div className="flex w-14 shrink-0 flex-col items-center justify-center gap-1.5 rounded-l-[9px] bg-secondary px-1 py-2.5 sm:w-16">
+				<div className="flex w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-l-[9px] bg-secondary px-1 py-2.5 sm:w-16">
+					{/* The mark is the thing you recognise a project by, so it leads at
+					    full size; the code is a reference you read only when you need
+					    it, so it sits under the mark at 10px. They were the same weight,
+					    which made a five-letter string compete with a logo. */}
 					{entry.project ? (
 						<ProjectIcon
 							size="sm"
 							icon={entry.project.icon}
 							name={entry.project.name}
-							className="size-5 rounded-[5px] border-0 transition-transform duration-(--dur-base) group-hover/row:-translate-y-px"
+							className="size-7 rounded-[7px] border-0 transition-transform duration-(--dur-base) group-hover/row:-translate-y-px"
 						/>
 					) : (
 						<span
-							className="size-2 rounded-full"
+							className="size-2.5 rounded-full"
 							style={{
 								backgroundColor: entry.task.color ?? "var(--muted-foreground)",
 							}}
 						/>
 					)}
-					<span className="mono w-full truncate text-center text-2xs leading-none text-muted-foreground">
-						{entry.project?.code ?? ""}
-					</span>
+					{entry.project?.code && (
+						<span className="mono w-full truncate text-center text-[10px] leading-none text-faint">
+							{entry.project.code}
+						</span>
+					)}
 				</div>
 
 				<div className="flex min-w-0 flex-1 items-start gap-3 rounded-r-[9px] bg-secondary/45 px-3 py-2.5 transition-colors duration-(--dur-fast) group-hover/row:bg-secondary/80">
@@ -369,24 +379,52 @@ export function EntryBlockRow({
 							)}
 						</div>
 
-						{/* The note, editable in place. Reading and editing are the same
-						    element: it is a textarea that looks like text until it is
-						    focused, so writing four lines never means opening a dialog.
-						    The clamp comes off while it has focus — you cannot edit the
-						    third line of something showing two. */}
-						<Textarea
-							ref={noteRef}
-							value={note}
-							onChange={(event) => setNote(event.target.value)}
-							onBlur={saveNote}
-							placeholder="Add a note…"
-							rows={1}
-							className={cn(
-								"mt-1 -ml-1.5 min-h-6 w-full resize-none rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-sm leading-relaxed text-muted-foreground shadow-none [field-sizing:content] placeholder:text-faint hover:border-input focus-visible:border-ring focus-visible:bg-background focus-visible:text-foreground",
-								!expanded && "clamp-2",
-							)}
-						/>
-						{(clamped || expanded) && (
+						{/* Editable in place: click the text and it becomes the field.
+						    Never a dialog for a note. The textarea grows to its content
+						    while it is open, because you cannot edit the third line of
+						    something showing two. */}
+						{editing ? (
+							<Textarea
+								autoFocus
+								value={note}
+								onChange={(event) => setNote(event.target.value)}
+								onBlur={() => {
+									saveNote();
+									setEditing(false);
+								}}
+								onKeyDown={(event) => {
+									// Escape abandons the edit and puts the stored value back,
+									// which is what every other inline field in the app does.
+									if (event.key === "Escape") {
+										setNote(entry.description ?? "");
+										setEditing(false);
+									}
+								}}
+								placeholder="Add a note…"
+								rows={1}
+								className="mt-1 -ml-1.5 max-h-56 min-h-6 w-full resize-none overflow-y-auto rounded-md border-transparent bg-background px-1.5 py-0.5 text-sm leading-relaxed [field-sizing:content] placeholder:text-faint"
+							/>
+						) : (
+							<button
+								type="button"
+								ref={noteRef}
+								// A real button, not a paragraph wearing a role: it opens the
+								// editor, which is what a button does. `text-left` and
+								// `whitespace-pre-wrap` are what let a button's label hold a
+								// wrapped, multi-line note.
+								aria-label={note ? `Edit note: ${note}` : "Add a note"}
+								onClick={() => setEditing(true)}
+								className={cn(
+									"block w-full text-left",
+									"mt-1 -ml-1.5 cursor-text rounded-md border border-transparent px-1.5 py-0.5 text-sm leading-relaxed whitespace-pre-wrap transition-colors duration-(--dur-fast) outline-none hover:border-input focus-visible:ring-3 focus-visible:ring-ring/16",
+									note ? "text-muted-foreground" : "text-faint",
+									!expanded && "clamp-2",
+								)}
+							>
+								{note || "Add a note…"}
+							</button>
+						)}
+						{!editing && (clamped || expanded) && (
 							<button
 								type="button"
 								onClick={() => setExpanded((open) => !open)}
