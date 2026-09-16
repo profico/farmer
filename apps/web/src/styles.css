@@ -213,8 +213,8 @@
 /* ------------------------------------------------------------- palette --- */
 
 /* Paper: warm ground, violet accent — `--acc` is the logo's own #6f4ebe, so the
-   mark, the browser chrome (`theme-color`) and every accented control are one
-   color. The ground stays warm on purpose; the violet is the only cool thing
+   mark and every accented control are one color. (The browser chrome is not:
+   `theme-color` follows `--ground`, see `lib/theme-color.ts`.) The ground stays warm on purpose; the violet is the only cool thing
    in the palette, which is what makes it read as the accent.
    This is the "Warm grey" color choice; the other five (violet grey, teal,
    graphite, cocoa, lilac) are overrides at the end of this section, switched by
@@ -236,7 +236,9 @@
   --bg: #faf9f6;
   /* The ground the islands float on. One step recessed from the paper, which is
      the whole of the depth model: islands are lit, the gap between them is not.
-     This is what `body` is painted with. */
+     This is what `body` is painted with, and what the browser chrome takes as
+     `theme-color` — `lib/theme-color.ts` copies this literal for the frame
+     before the stylesheet exists, so change both. */
   --ground: #efece5;
   /* A band *inside* an island — a table's header row, the calendar's weekday
      strip. Recessed from the island's own paper, not from the ground. */
@@ -340,7 +342,8 @@
   --bg: #1a1914;
   /* The ground. Recessed hard here on purpose: in the island model the gap is
      meant to fall away, and at this end of the ramp a subtle step just reads as
-     a rendering artefact rather than as depth. */
+     a rendering artefact rather than as depth. Copied in `lib/theme-color.ts`
+     like the light one. */
   --ground: #0e0d0a;
   /* A band inside an island — raised from the island's paper rather than
      recessed, since a step down from `--bg` lands on the ground's value and the

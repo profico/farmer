@@ -10,8 +10,9 @@ import { useId } from "react";
  * Here they take `currentColor`, which the call site points at `--fg`.
  *
  * The mark keeps its own violet in both palettes. It is the brand's one fixed
- * color — the same value `__root.tsx` gives the browser as `theme-color` — and
- * a violet tile is legible on either ground, so there is nothing to invert.
+ * color, and a violet tile is legible on either ground, so there is nothing to
+ * invert. The browser chrome does NOT take it: `theme-color` follows the
+ * ground (`lib/theme-color.ts`), so the mark is the only violet surface.
  *
  * `useId` scopes the gradient. The header and the footer both render this, and
  * two `<linearGradient id="…">` of one name in one document is a collision the

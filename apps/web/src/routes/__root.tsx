@@ -23,6 +23,7 @@ import { displayInitScript } from "../lib/display-prefs";
 import { unzoomPagePoint } from "../lib/motion";
 import { navInitScript } from "../lib/nav-collapse";
 import { themeInitScript } from "../lib/theme";
+import { startThemeColorSync, themeColorInitScript } from "../lib/theme-color";
 
 import appCss from "../styles.css?url";
 
@@ -116,14 +117,9 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 			{ property: "og:image:alt", content: "Farmer, by Profico" },
 			{ name: "twitter:card", content: "summary_large_image" },
 			{ name: "twitter:image", content: `${appOrigin()}/og.png` },
-			{
-				name: "theme-color",
-				// The logo violet — the flat fill and top gradient stop of
-				// Icon.svg / logo.svg. Deliberately not `--acc` (the terracotta
-				// UI accent): browser chrome and the PWA title bar are brand
-				// surfaces, so they take the mark's color, not the app's.
-				content: "#6f4ebe",
-			},
+			// No `theme-color` here: the browser chrome takes the page's ground,
+			// which depends on the theme and the palette, so the inline script
+			// below writes the meta and `lib/theme-color.ts` keeps it current.
 		],
 		links: [
 			{
@@ -152,19 +148,25 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 	shellComponent: RootDocument,
 });
 
-/** Light/dark, every Preferences → Display setting and PostHog's credentials,
- *  in one inline script before paint. `displayInitScript` carries the color
- *  seed, the three faces and the scale with the switches — see
- *  `lib/display-prefs.ts`.
+/** Light/dark, every Preferences → Display setting, the chrome's color and
+ *  PostHog's credentials, in one inline script before paint.
+ *  `displayInitScript` carries the color seed, the three faces and the scale
+ *  with the switches — see `lib/display-prefs.ts`. `themeColorInitScript`
+ *  reads `data-theme`, so it comes after the theme script.
  *
  *  Built per render rather than once at module scope, because the PostHog half
  *  is read from the environment on the server and a module-scope constant in a
  *  route file is evaluated in the browser too. */
 const headInitScript = () =>
-	themeInitScript + displayInitScript + navInitScript + posthogInitScript();
+	themeInitScript +
+	displayInitScript +
+	themeColorInitScript +
+	navInitScript +
+	posthogInitScript();
 
 function RootDocument({ children }: { children: React.ReactNode }) {
 	useEffect(logConsoleGreeting, []);
+	useEffect(startThemeColorSync, []);
 
 	// `suppressHydrationWarning`: the script below writes `data-theme` (and the
 	// Display preferences' `data-font`, `data-motion`, `data-density` and
