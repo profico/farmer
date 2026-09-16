@@ -437,11 +437,11 @@ function RadioChips<T extends string>({
 const subscribeNothing = () => () => {};
 
 /**
- * Which colour the app is drawn from. Vanilla is the palette the app has
- * always had; Custom derives every neutral, the accent and the status colours
+ * Which color the app is drawn from. Vanilla is the palette the app has
+ * always had; Custom derives every neutral, the accent and the status colors
  * from one seed — see `lib/palette.ts` and the custom palette in `styles.css`.
  */
-function ColoursRow() {
+function ColorsRow() {
 	const { mode, seed, setVanilla, setCustom } = usePalette();
 	const supported = useSyncExternalStore(
 		subscribeNothing,
@@ -451,14 +451,14 @@ function ColoursRow() {
 
 	return (
 		<SettingBlock
-			labelId="colours-label"
-			title="Colours"
-			description="Vanilla is the palette Farmer ships with. Custom draws the whole app from one colour you pick: the greys take its hue, the purple becomes it, and green, amber and red lean towards it without ceasing to read as green, amber and red."
+			labelId="colors-label"
+			title="Colors"
+			description="Vanilla is the palette Farmer ships with. Custom draws the whole app from one color you pick: round the wheel is the color, and out from the middle is how much of it. The ring is a set to start from."
 		>
 			{supported ? (
 				<div
 					role="radiogroup"
-					aria-labelledby="colours-label"
+					aria-labelledby="colors-label"
 					className="space-y-4"
 				>
 					<RadioChips
@@ -577,7 +577,7 @@ function DisplaySection() {
 			description="How Farmer looks on this device. Other devices keep their own setting."
 		>
 			<SettingList>
-				<ColoursRow />
+				<ColorsRow />
 				<FontRow />
 				<ScaleRow />
 				<DisplayPrefRow

@@ -15,10 +15,10 @@
  * generated image. The CSS reads them as masks and nothing else:
  *
  *   1. Alpha carries the shape. The mask uses the alpha channel, so the art is
- *      an opaque silhouette on a fully transparent background. Colour is
+ *      an opaque silhouette on a fully transparent background. Color is
  *      ignored: the layer is painted with `--field-tint` and the season decides
  *      that, which is what lets one asset serve winter and summer, light and
- *      dark. A shaded or coloured drawing loses its shading here and reads as a
+ *      dark. A shaded or colored drawing loses its shading here and reads as a
  *      flat blob.
  *   2. It tiles horizontally. Nothing crosses the left or right edge, so the
  *      repeat has no seam. `mask-repeat: repeat-x`.

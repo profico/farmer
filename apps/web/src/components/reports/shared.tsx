@@ -363,7 +363,7 @@ export type ReportTableRow = {
 	 *  collide into one React key. */
 	key: string;
 	cells: React.ReactNode[];
-	/** A tint for the whole row — the Tracking table colours a row by its
+	/** A tint for the whole row — the Tracking table colors a row by its
 	 *  verdict so a list of forty people can be read at a glance. */
 	className?: string;
 	/** Plain text for the row, for the table's own search box. A cell can render

@@ -120,7 +120,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 				// The logo violet — the flat fill and top gradient stop of
 				// Icon.svg / logo.svg. Deliberately not `--acc` (the terracotta
 				// UI accent): browser chrome and the PWA title bar are brand
-				// surfaces, so they take the mark's colour, not the app's.
+				// surfaces, so they take the mark's color, not the app's.
 				content: "#6f4ebe",
 			},
 		],
@@ -152,7 +152,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 });
 
 /** Light/dark, every Preferences → Display setting and PostHog's credentials,
- *  in one inline script before paint. `displayInitScript` carries the colour
+ *  in one inline script before paint. `displayInitScript` carries the color
  *  seed, the three faces and the scale with the switches — see
  *  `lib/display-prefs.ts`.
  *
@@ -168,7 +168,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	// `suppressHydrationWarning`: the script below writes `data-theme` (and the
 	// Display preferences' `data-font`, `data-motion`, `data-density` and
 	// `data-palette`, the nav column's `data-nav`, and the inline properties
-	// carrying the colour seed, the three faces and the scale) onto <html>
+	// carrying the color seed, the three faces and the scale) onto <html>
 	// before React ever sees it, and the server has no way to render the same
 	// values — that mismatch is the point of the script, not a bug, and React
 	// otherwise logs it on every load. It suppresses one level only, which is
@@ -181,7 +181,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				    them, and applying them on hydrate instead would flash the light
 				    palette and the serif on every cold load. See lib/theme.ts,
 				    lib/display-prefs.ts and lib/palette.ts. */}
-				{/* oxlint-disable-next-line react/no-danger -- fixed strings built from constants and the server's PostHog settings: the standard no-flash theme, display and colour scripts, which have to be inline to run before paint */}
+				{/* oxlint-disable-next-line react/no-danger -- fixed strings built from constants and the server's PostHog settings: the standard no-flash theme, display and color scripts, which have to be inline to run before paint */}
 				<script dangerouslySetInnerHTML={{ __html: headInitScript() }} />
 				<HeadContent />
 			</head>

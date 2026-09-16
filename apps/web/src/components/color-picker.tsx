@@ -82,7 +82,7 @@ export function ColorPicker({
 					)}
 				</label>
 				<span className="eyebrow">
-					Custom colour
+					Custom color
 					{customColor && (
 						<span className="mono ml-2 text-foreground uppercase">
 							{customColor}

@@ -42,6 +42,11 @@ function Table({
 	 * the container takes `border-b` only. A collapsed border belongs to the
 	 * table and stays where it was drawn, and the container's own top border
 	 * scrolled away with the first row.
+	 *
+	 * For the same reason the header row gives its own `border-b` up: the
+	 * shadow already draws the rule under the labels, and the two sat one
+	 * pixel apart at the top of an unscrolled table, reading as a 2px rule
+	 * above the first row.
 	 */
 	stickyHeader?: boolean;
 }) {
@@ -61,7 +66,7 @@ function Table({
 					"w-full caption-bottom text-base",
 					"[&>*>tr>:first-child]:pl-4 [&>*>tr>:last-child]:pr-4 sm:[&>*>tr>:first-child]:pl-8 sm:[&>*>tr>:last-child]:pr-8",
 					stickyHeader &&
-						"[&>thead_th]:sticky [&>thead_th]:top-0 [&>thead_th]:z-20 [&>thead_th]:bg-background [&>thead_th]:shadow-[inset_0_1px_0_var(--color-border),inset_0_-1px_0_var(--color-border)]",
+						"[&>thead>tr]:border-b-0 [&>thead_th]:sticky [&>thead_th]:top-0 [&>thead_th]:z-20 [&>thead_th]:bg-background [&>thead_th]:shadow-[inset_0_1px_0_var(--color-border),inset_0_-1px_0_var(--color-border)]",
 					className,
 				)}
 				{...props}

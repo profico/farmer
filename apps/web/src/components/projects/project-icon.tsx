@@ -4,7 +4,7 @@ import { cn } from "#/lib/utils.ts";
 
 // A project's mark, wherever the project appears: its emoji or uploaded image
 // on the quiet ground, or — with neither chosen — the first letter of its name. It
-// replaced a colour dot, which told five projects in a list apart from each
+// replaced a color dot, which told five projects in a list apart from each
 // other about as well as five shades of the same purple do.
 const SIZES = {
 	sm: "size-7 rounded-md text-base",

@@ -10,7 +10,7 @@ import { useId } from "react";
  * Here they take `currentColor`, which the call site points at `--fg`.
  *
  * The mark keeps its own violet in both palettes. It is the brand's one fixed
- * colour — the same value `__root.tsx` gives the browser as `theme-color` — and
+ * color — the same value `__root.tsx` gives the browser as `theme-color` — and
  * a violet tile is legible on either ground, so there is nothing to invert.
  *
  * `useId` scopes the gradient. The header and the footer both render this, and

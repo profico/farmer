@@ -91,7 +91,7 @@ farmer today --json | jq '.[].durationSeconds'
   defaults (below).
 - Every command accepts `--json` and `--org <slug>`.
 - `farmer help <command>` shows the options of one command.
-- The CLI uses no colour when `NO_COLOR` is set or stdout is not a terminal.
+- The CLI uses no color when `NO_COLOR` is set or stdout is not a terminal.
 
 ## Repository defaults
 

@@ -4,6 +4,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { CaretDownIcon, CaretUpIcon, CheckIcon } from "@phosphor-icons/react";
 import type * as React from "react";
 
+import { popupLayer } from "#/lib/popup-layer.ts";
 import { cn } from "#/lib/utils.ts";
 
 const Select = SelectPrimitive.Root;
@@ -59,6 +60,14 @@ function SelectTrigger({
 	);
 }
 
+/** `alignItemWithTrigger` is Base UI's native-macOS behaviour: the popup opens
+ *  over the trigger with the selected item on top of it. It is off here, so a
+ *  Select opens beside its trigger and follows it, the way every other popup in
+ *  the app does. Aligned to the item, the popup is placed once and then stays
+ *  where it was put — scrolling the page leaves it behind, which reads as a
+ *  bug rather than as a convention, and the open animation has to be turned off
+ *  for it as well. Pass `alignItemWithTrigger` where one control really wants
+ *  the native feel. */
 function SelectContent({
 	className,
 	children,
@@ -66,7 +75,7 @@ function SelectContent({
 	sideOffset = 4,
 	align = "center",
 	alignOffset = 0,
-	alignItemWithTrigger = true,
+	alignItemWithTrigger = false,
 	...props
 }: SelectPrimitive.Popup.Props &
 	Pick<
@@ -74,7 +83,7 @@ function SelectContent({
 		"align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
 	>) {
 	return (
-		<SelectPrimitive.Portal>
+		<SelectPrimitive.Portal container={popupLayer()}>
 			<SelectPrimitive.Positioner
 				side={side}
 				sideOffset={sideOffset}
@@ -87,7 +96,7 @@ function SelectContent({
 					data-slot="select-content"
 					data-align-trigger={alignItemWithTrigger}
 					className={cn(
-						"relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-popover-foreground duration-(--dur-fast) ease-(--ease-out) data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+						"popup-scaled relative isolate z-50 max-h-(--popup-available-height) w-(--popup-anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-xl border border-border shadow-[var(--shadow-pop)] bg-popover text-popover-foreground duration-(--dur-fast) ease-(--ease-out) data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
 						className,
 					)}
 					{...props}

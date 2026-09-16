@@ -116,7 +116,7 @@ export const project = pgTable(
 		type: projectType("type").notNull().default("product_team"),
 		status: projectStatus("status").notNull().default("active"),
 		// An emoji shown wherever the project appears — the list, its page, the
-		// picker, the timesheet. Replaced the colour swatch (Sept 2026), which
+		// picker, the timesheet. Replaced the color swatch (Sept 2026), which
 		// five projects in a list made indistinguishable. Null: the first letter
 		// of the name stands in.
 		icon: text("icon"),

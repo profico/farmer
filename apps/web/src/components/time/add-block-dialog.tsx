@@ -1105,7 +1105,7 @@ export function AddBlockDialog({
 									// both its names. Main's dashed `--input` outline, not a
 									// tinted one: the preset below is already lit, and a second
 									// highlight here would say the same thing twice in two
-									// different colours.
+									// different colors.
 									<div className="grid gap-2">
 										<span className="text-sm leading-none font-medium">
 											Duration

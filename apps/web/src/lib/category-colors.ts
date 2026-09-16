@@ -12,8 +12,8 @@ export type CategoryColor = {
 // All five sit in the same muted, earthy register as the rest of the palette
 // and are deliberately kept a step *below* the ember accent in chroma. A dot
 // beside a task name is a label, not a signal: if a category read louder than
-// the one accent colour the app uses for "act on this", the eye would start
-// following project colours around the page instead of following actions. They
+// the one accent color the app uses for "act on this", the eye would start
+// following project colors around the page instead of following actions. They
 // still separate cleanly from each other by hue, which is all a category has to
 // do.
 export const CATEGORY_COLORS: CategoryColor[] = [

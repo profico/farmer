@@ -9,7 +9,7 @@
 export type Output = {
 	/** `--json`: stdout carries the API response and nothing else. */
 	json: boolean;
-	/** Colour on stdout. Off for `NO_COLOR`, a pipe, and `--json`. */
+	/** Color on stdout. Off for `NO_COLOR`, a pipe, and `--json`. */
 	color: boolean;
 	/** A person is at the keyboard, so a missing value can be asked for. */
 	interactive: boolean;
@@ -59,7 +59,7 @@ export const say = (out: Output, text: string) => {
 };
 
 // Stderr has its own terminal test: `farmer today | less` still shows a
-// coloured warning, and `2> log.txt` does not.
+// colored warning, and `2> log.txt` does not.
 const toStderr = (label: string, code: number, text: string) => {
 	const colored =
 		process.stderr.isTTY === true && !noColorRequested(process.env);

@@ -223,7 +223,7 @@ function useSlideClock(
 	return progress;
 }
 
-/** A pill on a coloured slide: filled for the main action, outlined else. */
+/** A pill on a colored slide: filled for the main action, outlined else. */
 export const pillStyle = (theme: RewindTheme, filled: boolean) =>
 	filled
 		? { background: theme.fg, color: theme.bg }
@@ -232,7 +232,7 @@ export const pillStyle = (theme: RewindTheme, filled: boolean) =>
 export const PILL =
 	"inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-base font-medium transition-opacity duration-(--dur-base) hover:opacity-85";
 
-/** The full-screen coloured layer, with the slow drifting light behind it. */
+/** The full-screen colored layer, with the slow drifting light behind it. */
 export function RewindFrame({
 	theme,
 	label,

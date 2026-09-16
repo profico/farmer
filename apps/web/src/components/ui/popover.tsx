@@ -10,6 +10,7 @@ import {
 	springProductive,
 	useControllableOpen,
 } from "#/lib/motion.ts";
+import { popupLayer } from "#/lib/popup-layer.ts";
 import { cn } from "#/lib/utils.ts";
 
 // Same open-state/actionsRef bridge as dropdown-menu.tsx and dialog.tsx: the
@@ -75,7 +76,7 @@ function PopoverContent({
 	// transform on its own node while motion animates scale/opacity on the
 	// popup — different nodes, never fighting over `transform`.
 	return (
-		<PopoverPrimitive.Portal keepMounted>
+		<PopoverPrimitive.Portal container={popupLayer()} keepMounted>
 			<PopoverPrimitive.Positioner
 				className="isolate z-50 outline-none"
 				align={align}
@@ -92,7 +93,7 @@ function PopoverContent({
 							key="popover-content"
 							data-slot="popover-content"
 							className={cn(
-								"z-50 max-h-(--available-height) origin-(--transform-origin) rounded-xl border border-border bg-popover text-popover-foreground shadow-[var(--shadow-pop)] outline-none",
+								"popup-scaled z-50 max-h-(--popup-available-height) origin-(--transform-origin) rounded-xl border border-border bg-popover text-popover-foreground shadow-[var(--shadow-pop)] outline-none",
 								className,
 							)}
 							render={

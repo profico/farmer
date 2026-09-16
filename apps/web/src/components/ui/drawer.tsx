@@ -53,7 +53,7 @@ function DrawerContent({
 					data-slot="drawer-content"
 					className={cn(
 						// The `after:` strip is the bleed: it hangs below the popup in its
-						// colour, so an upward over-drag never shows the page underneath.
+						// color, so an upward over-drag never shows the page underneath.
 						"relative flex w-full flex-col gap-4 rounded-t-2xl border-t bg-popover bg-clip-padding text-base text-popover-foreground shadow-[var(--lift)] outline-none after:absolute after:inset-x-0 after:top-full after:h-12 after:bg-popover [transform:translateY(var(--drawer-swipe-movement-y))] transition-transform duration-300 ease-(--ease-drawer) data-ending-style:[transform:translateY(calc(100%+2px))] data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:[transform:translateY(calc(100%+2px))] data-swiping:select-none motion-reduce:transition-none motion-reduce:data-ending-style:[transform:none] motion-reduce:data-starting-style:[transform:none]",
 						className,
 					)}

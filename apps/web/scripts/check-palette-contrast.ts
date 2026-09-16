@@ -3,7 +3,7 @@
  *
  *   bun run scripts/check-palette-contrast.ts
  *
- * Preferences → Display → Colours lets somebody generate a palette nobody has
+ * Preferences → Display → Colors lets somebody generate a palette nobody has
  * ever looked at. The whole reason that is allowed near a timesheet is that
  * every role's LIGHTNESS is fixed and only hue and chroma move — OKLCH
  * lightness is perceptual, so contrast should barely notice the hue. "Barely"
@@ -17,13 +17,13 @@
  * check written to the round numbers those were meant to hit would fail the
  * palette this app has used all along, and a check the shipped design fails
  * teaches everyone to ignore it. So the promise made here is the one worth
- * keeping: a colour somebody generated is never materially worse than the
- * colour they would have had. `--fg` also carries an absolute floor, since
+ * keeping: a color somebody generated is never materially worse than the
+ * color they would have had. `--fg` also carries an absolute floor, since
  * body text is the one pair no tolerance should be able to eat into.
  *
  * It also checks that every constant in that block was DERIVED from vanilla
  * rather than guessed. Seed (293, 0.168) — the logo's own #6f4ebe — has to
- * reproduce vanilla's accent and all six harmonised colours exactly. The
+ * reproduce vanilla's accent and all six harmonised colors exactly. The
  * neutrals cannot be checked that way and must not be: vanilla pairs a WARM
  * ground with a COOL accent on purpose, and a one-seed scheme tints the greys
  * with the accent's own hue by definition, so Custom is a sibling of vanilla
@@ -132,7 +132,13 @@ const HARMONISED = {
 const harmony = (h: number) =>
 	clamp(((((h - VANILLA_SEED.h + 180) % 360) + 360) % 360) - 180, -15, 15);
 
-const SEED_MAX_CHROMA = 0.2;
+const SEED_MAX_CHROMA = 0.3;
+
+/** `--tint`: how hard the seed is pushed into the greys. One at and under the
+ *  default seed's own chroma, then linear — see the custom palette block. It
+ *  is what fixes SEED_MAX_CHROMA above: raise either and the sweep below says
+ *  which pair gives way first. */
+const tint = (c: number) => Math.max(1, c / VANILLA_SEED.c);
 
 /** Vanilla, straight out of `styles.css`, and the seed that should reproduce
  *  it. */
@@ -178,7 +184,7 @@ const TOLERANCE = 0.95;
 /** Two pairs answer to an absolute number instead of to vanilla. Body text,
  *  because no tolerance should be allowed to eat into it. And the accent,
  *  because holding every hue to VANILLA's ratio is the wrong promise: the
- *  violet is an unusually dark colour for its lightness in WCAG's arithmetic,
+ *  violet is an unusually dark color for its lightness in WCAG's arithmetic,
  *  so matching it would force every cyan and teal accent to be muddy for no
  *  benefit anybody can see. What a button owes its label is 4.5. */
 const FLOOR = { fg: 4.5, acc: 4.5, bg: 4.5 };
@@ -200,7 +206,7 @@ const accentLightness = (spec: Accent, h: number) =>
 
 /** OKLCH → linear sRGB, then clipped into gamut the way a browser does before
  *  it paints. Clipping is what makes this honest: a vivid seed at a hue sRGB
- *  cannot reach is not the colour the maths asked for, and the check has to
+ *  cannot reach is not the color the maths asked for, and the check has to
  *  measure what lands on the screen. */
 const toLinearSrgb = ({ l, c, h }: Oklch) => {
 	const radians = (h * Math.PI) / 180;
@@ -260,7 +266,11 @@ const derive = (theme: Theme, h: number, c: number) => {
 	const roles = theme === "light" ? LIGHT : DARK;
 	const accent = ACCENT[theme];
 	const neutral = (name: Neutral) =>
-		toLinearSrgb({ l: roles[name].l, c: c * roles[name].ratio, h });
+		toLinearSrgb({
+			l: roles[name].l,
+			c: c * roles[name].ratio * tint(c),
+			h,
+		});
 	const rotated = (name: Harmonised) => {
 		const spec = HARMONISED[theme][name];
 		return toLinearSrgb({ l: spec.l, c: spec.c, h: spec.h + harmony(h) });
@@ -343,7 +353,9 @@ for (const theme of THEMES) {
 		const off = drift(
 			toLinearSrgb({
 				l: roles[name].l,
-				c: VANILLA_SEED.c * roles[name].ratio,
+				// tint() is 1 here by construction, and named rather than dropped so
+				// that changing where it turns on cannot quietly skip this check.
+				c: VANILLA_SEED.c * roles[name].ratio * tint(VANILLA_SEED.c),
 				h: NEUTRAL_HUE[theme][name],
 			}),
 			hexToLinearSrgb(VANILLA[theme][name]),
@@ -383,7 +395,7 @@ for (const theme of THEMES) {
 		const off = drift(derived[name], hexToLinearSrgb(VANILLA[theme][name]));
 		if (off > 2) {
 			reproduction.push(
-				`  ${theme} --${name}: seed 293 no longer reproduces the shipped colour (off by ${off}/255)`,
+				`  ${theme} --${name}: seed 293 no longer reproduces the shipped color (off by ${off}/255)`,
 			);
 		}
 	}
@@ -417,7 +429,11 @@ let checked = 0;
 for (const theme of THEMES) {
 	// 5-degree steps, and chroma from grey to the ceiling the wheel allows.
 	for (let h = 0; h < 360; h += 5) {
-		for (const c of [0, 0.04, 0.08, 0.12, 0.16, SEED_MAX_CHROMA]) {
+		// Twenty steps rather than a handful: `--tint` makes the neutrals grow
+		// faster than the seed does, so the worst case is no longer guaranteed to
+		// sit at the ceiling.
+		for (let step = 0; step <= 20; step += 1) {
+			const c = (SEED_MAX_CHROMA * step) / 20;
 			const tokens = derive(theme, h, c);
 			for (const pair of PAIRS) {
 				checked += 1;

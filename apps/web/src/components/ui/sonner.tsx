@@ -13,7 +13,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
 	const { theme } = useTheme();
 	return (
 		<Sonner
-			// Every colour below is a token that already flips with `data-theme`,
+			// Every color below is a token that already flips with `data-theme`,
 			// so this only decides which of Sonner's own defaults it starts from —
 			// but leaving it pinned to light left the close button and the swipe
 			// affordance drawn for a white toast.

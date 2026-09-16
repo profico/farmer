@@ -21,7 +21,7 @@ import { Skeleton } from "#/components/ui/skeleton.tsx";
 const ROW_WIDTHS = [70, 58, 46, 34, 62, 40] as const;
 
 /**
- * A ruled list: colour chip, label, figure — the shape of the entry rows on the
+ * A ruled list: color chip, label, figure — the shape of the entry rows on the
  * timesheet and of most settings lists.
  */
 export function ListLoadingSkeleton({ rows = 4 }: { rows?: number }) {

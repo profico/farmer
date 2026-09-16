@@ -1178,7 +1178,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "update_project",
 		kind: "write",
 		description:
-			"Change a project's name, code, colour, type or budget. Send the project type alongside any budget or price field.",
+			"Change a project's name, code, color, type or budget. Send the project type alongside any budget or price field.",
 		schema: updateProjectInput,
 		available: canCreateProjects,
 		run: async (ctx, args) =>

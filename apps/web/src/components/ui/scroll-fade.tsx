@@ -6,8 +6,8 @@ import { cn } from "#/lib/utils.ts";
  * A scroll region that fades at whichever edge has more content behind it.
  *
  * The fade is a mask on the SCROLLER, not a gradient overlay stacked on top of
- * it. An overlay has to be painted in the island's colour, which means it stops
- * working the moment the thing underneath isn't that colour (a table's banded
+ * it. An overlay has to be painted in the island's color, which means it stops
+ * working the moment the thing underneath isn't that color (a table's banded
  * row, the calendar's tinted blocks) and it sits above the content, so it eats
  * pointer events at exactly the edge people flick from. A mask fades whatever
  * is actually there, in any theme, and is inert.

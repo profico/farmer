@@ -202,7 +202,7 @@ export function TaskPicker({
 			</ComboboxTrigger>
 			<ComboboxContent
 				searchPlaceholder={grouped ? "Search tasks…" : false}
-				className={grouped ? undefined : "w-auto min-w-(--anchor-width)"}
+				className={grouped ? undefined : "w-auto min-w-(--popup-anchor-width)"}
 			>
 				<ComboboxEmpty>No task matches.</ComboboxEmpty>
 				<ComboboxList>

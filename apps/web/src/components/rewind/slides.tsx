@@ -5,12 +5,12 @@ import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
 import { ProjectIcon } from "#/components/projects/project-icon.tsx";
 import { easeOut } from "#/lib/motion.ts";
 
-// The slides of a Rewind. Each is a full screen of one colour and one idea,
+// The slides of a Rewind. Each is a full screen of one color and one idea,
 // set large: the serif names the moment, the mono carries the number.
 
 export type RewindTheme = { bg: string; fg: string; accent: string };
 
-// Fixed colours rather than the app's palette: a Rewind is an occasion, and
+// Fixed colors rather than the app's palette: a Rewind is an occasion, and
 // it reads the same in light and dark.
 export const THEMES = {
 	violet: { bg: "#5b3aa8", fg: "#fbf8ff", accent: "#ffd27a" },
@@ -782,8 +782,8 @@ export function SummarySlide({
 			<Eyebrow>Farmer Rewind {rewind.year}</Eyebrow>
 			{/* The card settles in as one piece, a slow fade with no travel: after
 			    a dozen slides of movement the last one holds still. The gap is
-			    the rule: each tile is painted the slide's colour over a grid
-			    filled with the line colour. */}
+			    the rule: each tile is painted the slide's color over a grid
+			    filled with the line color. */}
 			<motion.div
 				className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border"
 				style={{ borderColor: `${theme.fg}33`, background: `${theme.fg}33` }}

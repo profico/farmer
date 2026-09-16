@@ -111,7 +111,7 @@ function GroupField({
 			{/* Opens below the field like a plain dropdown: aligning the chosen
 			    item with the field (the default) sends a four-item list upward
 			    over the Name field whenever the last item is chosen. */}
-			<SelectContent alignItemWithTrigger={false}>
+			<SelectContent>
 				{GROUP_ITEMS.map((g) => (
 					<SelectItem key={g.value} value={g.value}>
 						{g.label}

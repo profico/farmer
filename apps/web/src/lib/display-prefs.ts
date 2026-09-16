@@ -9,8 +9,8 @@ import { scaleInitScript } from "./scale.ts";
 // Every one is off by default.
 //
 // The section also holds three settings that carry a VALUE rather than a
-// switch — the colours, the three faces and the scale. Each owns its own
-// module, because each has real work to do (a colour scheme, a font catalogue,
+// switch — the colors, the three faces and the scale. Each owns its own
+// module, because each has real work to do (a color scheme, a font catalogue,
 // a list of steps), and each exports one before-paint script. This module
 // concatenates the four into `displayInitScript`, so `__root.tsx` names one
 // thing and the whole of Preferences → Display arrives before the first paint.

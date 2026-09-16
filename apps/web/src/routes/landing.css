@@ -9,7 +9,7 @@
  * that job, and the string cost the file its formatter, its linter and its
  * minifier, and re-parsed the whole sheet on every mount.
  *
- * Every colour here reads the product's own token from styles.css through
+ * Every color here reads the product's own token from styles.css through
  * var(--…). It used to spell the light values out as literals, on the grounds
  * that the page should stay light whatever the reader's theme was — but the
  * theme applies to <html>, and therefore to the app shell, the route pending
@@ -152,7 +152,7 @@ html:has(.fm-landing) body {
 		sans-serif;
 	text-decoration: none;
 	white-space: nowrap;
-	/* The three colour legs keep the browser's own curve, which the house rule
+	/* The three color legs keep the browser's own curve, which the house rule
 	   allows for a plain tint — it has no direction to express. The transform
 	   leg is a press and takes `--ease-out`. 0.15s is `--dur-base`. */
 	transition:
@@ -278,7 +278,7 @@ html:has(.fm-landing) body {
 }
 
 /* The landing page's own movement, answered once. Everything above changes
-   colour or opacity as well, and those stay — this drops only what travels:
+   color or opacity as well, and those stay — this drops only what travels:
    the underline sweep and the button's press scale. */
 @media (prefers-reduced-motion: reduce) {
 	.fm-landing .u-link::after {

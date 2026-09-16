@@ -361,7 +361,7 @@ export function AppSidebar({
 					aria-label="Sections"
 					// `data-panel` is what collapses it beside an open panel, and what
 					// earns it the hairline: with no panel this column IS the page's own
-					// surface, cut from one sheet. The hairline is a colour rather than a
+					// surface, cut from one sheet. The hairline is a color rather than a
 					// border that comes and goes — see `.app-nav` in styles.css.
 					data-panel={panel ?? undefined}
 					className="app-nav flex shrink-0 flex-col overflow-hidden"

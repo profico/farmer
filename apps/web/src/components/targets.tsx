@@ -12,7 +12,7 @@ import { myTargetsQuery } from "#/queries/compliance.ts";
 // the timesheet show them. The rule is the Tracking rule (8h a working day,
 // public holidays out, time-off counts), read for one person: the figure as
 // logged / target, a meter carrying the verdict, and one sentence saying what
-// is missing. Same words and colours as the Tracking report, so what a person
+// is missing. Same words and colors as the Tracking report, so what a person
 // reads here is what their lead reads there.
 //
 // `TargetBlock` and `TargetBar` lived here too — the home page's stacked
@@ -21,8 +21,8 @@ import { myTargetsQuery } from "#/queries/compliance.ts";
 // ever used them, so they are gone rather than kept as a second way to draw
 // the same number.
 
-/** A verdict as a tile's meter colour. Same three words as the pill, so the
- *  colour and the label can never disagree. */
+/** A verdict as a tile's meter color. Same three words as the pill, so the
+ *  color and the label can never disagree. */
 export const TARGET_TONE = {
 	on_track: "ok",
 	slightly_behind: "warn",

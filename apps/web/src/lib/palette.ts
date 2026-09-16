@@ -1,12 +1,12 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-// Preferences → Display → Colours: the one colour the whole app is drawn from.
+// Preferences → Display → Colors: the one color the whole app is drawn from.
 //
 // Two choices, Vanilla and Custom. Vanilla is the palette `styles.css` has
 // always carried, untouched. Custom takes a single seed — a hue and a chroma,
 // nothing else — and `styles.css` derives every neutral, the accent, the status
-// colours and the chart series from it, the way Material You derives a scheme
-// from one source colour.
+// colors and the chart series from it, the way Material You derives a scheme
+// from one source color.
 //
 // Built the way `lib/theme.ts` builds light/dark and for the same reasons. The
 // choice lives in localStorage, so it belongs to the device; it has to be on
@@ -14,10 +14,15 @@ import { useCallback, useSyncExternalStore } from "react";
 // the state, with no provider to disagree with it.
 //
 // The seed is stored as the two numbers rather than as a hex, so the inline
-// script needs `parseFloat` and not a colour-space conversion. Nothing in this
-// app converts between colour spaces at all: the wheel picks an angle and a
+// script needs `parseFloat` and not a color-space conversion. Nothing in this
+// app converts between color spaces at all: the wheel picks an angle and a
 // radius, CSS turns those into every token, and there is no third place where
 // the two could drift apart.
+//
+// Intensity is one number and reaches further than the accent can use. Past
+// the default seed's chroma the greys take a growing share of it, so turning
+// the slider up keeps changing the app after the button has saturated. See
+// `--tint` in `styles.css`.
 //
 // Why the lightness of every role is FIXED, and only hue and chroma move:
 // OKLCH lightness is perceptual, so text contrast stays near-constant whatever
@@ -31,11 +36,16 @@ export type PaletteMode = "vanilla" | "custom";
  *  `--seed-h` and `--seed-c`. */
 export type Seed = { h: number; c: number };
 
-/** The ceiling on the seed's chroma, and the outer edge of the wheel. Past
- *  this, sRGB has nothing left to give at the accent's lightness and the
- *  browser gamut-maps the value back anyway, so the wheel would have a dead
- *  rim. */
-export const SEED_MAX_CHROMA = 0.2;
+/** The ceiling on the seed's chroma, and the outer edge of the wheel.
+ *
+ *  The ACCENT stops changing at 0.2: sRGB has nothing left to give at its
+ *  lightness, and `styles.css` clamps it there. The range past that point is
+ *  not wasted, because `--tint` spends it on the greys — the top third of the
+ *  Intensity slider goes on coloring the paper after the button has stopped
+ *  getting louder. 0.3 is the last value at which no pair anywhere on the
+ *  wheel falls materially under vanilla's own contrast; the number is fixed by
+ *  `scripts/check-palette-contrast.ts`, not chosen. */
+export const SEED_MAX_CHROMA = 0.3;
 
 /** Vanilla's own accent, #6f4ebe, measured in OKLCH. Picking Custom lands
  *  here, so the accent, green, amber, red and every chart series stay exactly
@@ -45,7 +55,7 @@ export const SEED_MAX_CHROMA = 0.2;
  *  cannot hold both. Custom is a sibling of vanilla, not a superset. */
 export const VANILLA_SEED: Seed = { h: 293, c: 0.168 };
 
-/** The quick seeds under the wheel. Most people want a colour, not a colour
+/** The quick seeds under the wheel. Most people want a color, not a color
  *  space, and reaching one in a single click is the difference between a
  *  control and a toy. Every one sits at the same chroma as vanilla's accent,
  *  so none of them arrives louder than the app was drawn to be. */
@@ -182,7 +192,7 @@ const subscribe = (onChange: () => void) => {
 	return () => window.removeEventListener(CHANGE_EVENT, onChange);
 };
 
-/** The colour choice on this device, and the two ways to change it.
+/** The color choice on this device, and the two ways to change it.
  *  Server-renders as vanilla and corrects itself on hydration, which only ever
  *  moves the selected option. */
 export function usePalette() {
