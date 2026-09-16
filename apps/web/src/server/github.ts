@@ -55,9 +55,9 @@ export const getGithubInstallUrl = createServerFn({ method: "GET" })
 export const disconnectGithubInstallation = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(disconnectInstallationInput)
-	.handler(async ({ data: installationRowId, context }) => {
+	.handler(async ({ data, context }) => {
 		const { githubService } = await import("@farmer/core/services");
-		return githubService.disconnectInstallation(context.ctx, installationRowId);
+		return githubService.disconnectInstallation(context.ctx, data);
 	});
 
 // Admin-only, like linking: the list is every repo every connected installation

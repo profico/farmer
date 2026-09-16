@@ -24,6 +24,7 @@ import {
 	type AttachCommitsInput,
 	type AttachPullRequestsInput,
 	type ConnectInstallationInput,
+	type DisconnectInstallationInput,
 	commitSha,
 	type LinkProjectRepoInput,
 	type SuggestCommitsInput,
@@ -47,6 +48,7 @@ export type GithubClient = Pick<
 	| "searchPullRequests"
 	| "listInstallationRepos"
 	| "listUserInstallations"
+	| "deleteInstallation"
 >;
 
 let clientOverride: Partial<GithubClient> | null = null;
@@ -439,6 +441,19 @@ const assertTimeEntryOwnedByUser = async (ctx: Ctx, timeEntryId: string) => {
 	return row;
 };
 
+/** What became of the "also uninstall from GitHub" half of a disconnect. Five
+ *  answers rather than a boolean, because four of them are things the admin
+ *  should read: nothing was asked for, another workspace still uses the
+ *  installation, this deployment holds no App credentials, or GitHub refused.
+ *  Only `uninstalled` and `already-gone` mean the App is off the account. */
+export type UninstallOutcome =
+	| "not-requested"
+	| "uninstalled"
+	| "already-gone"
+	| "shared"
+	| "not-configured"
+	| "failed";
+
 export const githubService = {
 	// ── User identity (per user) ─────────────────────────────────────────────
 	connectionStatus: async (
@@ -595,17 +610,87 @@ export const githubService = {
 		return row;
 	},
 
-	disconnectInstallation: async (ctx: Ctx, installationRowId: string) => {
+	// Two acts behind one button, and the second is opt-in. Disconnecting stops
+	// THIS workspace reading the installation. `uninstall` additionally removes
+	// the App from the GitHub account — which is not this org's to spend on its
+	// own, so it is asked for explicitly and refused when anyone else is using
+	// the installation.
+	//
+	// The row goes first, and the outcome of the GitHub call is REPORTED rather
+	// than thrown. A refused, rate-limited or slow uninstall must not leave the
+	// workspace still connected to an installation the admin just disconnected;
+	// the local half is the part they can act on, and GitHub's own settings
+	// page is always there for the other half.
+	disconnectInstallation: async (
+		ctx: Ctx,
+		input: DisconnectInstallationInput,
+	): Promise<{ uninstall: UninstallOutcome }> => {
+		await requireAdmin(ctx);
 		const removed = await db
 			.delete(orgGithubInstallation)
 			.where(
 				and(
-					eq(orgGithubInstallation.id, installationRowId),
+					eq(orgGithubInstallation.id, input.installationRowId),
 					eq(orgGithubInstallation.organizationId, ctx.organizationId),
 				),
 			)
 			.returning({ installationId: orgGithubInstallation.installationId });
 		for (const row of removed) repoLists.delete(row.installationId);
+
+		const row = removed[0];
+		if (!input.uninstall || !row) return { uninstall: "not-requested" };
+
+		// Read AFTER the delete, so this org's own row is not what it finds. One
+		// GitHub account can be connected to several workspaces on a deployment
+		// (`ogi_org_installation_unq` is per org), and uninstalling would take
+		// the App away from all of them for a decision one of them made.
+		const sharedWith = await db.query.orgGithubInstallation.findFirst({
+			where: eq(orgGithubInstallation.installationId, row.installationId),
+			columns: { id: true },
+		});
+		if (sharedWith) return { uninstall: "shared" };
+
+		if (!githubClient.isGithubAppConfigured()) {
+			return { uninstall: "not-configured" };
+		}
+		try {
+			const gone = await gh().deleteInstallation(row.installationId);
+			return { uninstall: gone ? "uninstalled" : "already-gone" };
+		} catch (error) {
+			console.error("[github] uninstall failed", error);
+			return { uninstall: "failed" };
+		}
+	},
+
+	// ── What the webhook tells us ────────────────────────────────────────────
+	// No Ctx, because a webhook has no caller: the delivery is GitHub saying
+	// something about an installation, and which orgs connected it is what this
+	// looks up rather than what it is told. The route verifies the signature —
+	// that is the whole authorization, and it is why nothing here takes an id
+	// from a person.
+
+	/** GitHub says the App was uninstalled (or this installation revoked).
+	 *  Drops every workspace's row for it and answers how many there were.
+	 *
+	 *  Without this the row outlives the installation, and every commit and
+	 *  pull request read fails against a dead installation id — a sync that is
+	 *  broken and still looks connected. */
+	forgetInstallation: async (installationId: number): Promise<number> => {
+		const removed = await db
+			.delete(orgGithubInstallation)
+			.where(eq(orgGithubInstallation.installationId, installationId))
+			.returning({ id: orgGithubInstallation.id });
+		repoLists.delete(installationId);
+		repoListFetches.delete(installationId);
+		return removed.length;
+	},
+
+	/** GitHub says the installation's repository selection changed. The list is
+	 *  cached for five minutes to a day (see the cache above), so the admin who
+	 *  just changed it on GitHub would otherwise come back to the old one. */
+	forgetRepoList: (installationId: number): void => {
+		repoLists.delete(installationId);
+		repoListFetches.delete(installationId);
 	},
 
 	// ── Repos (read via installation tokens) ─────────────────────────────────
