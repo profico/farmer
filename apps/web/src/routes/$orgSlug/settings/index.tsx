@@ -130,9 +130,13 @@ function SettingsIndex() {
 			    on one screen is one too many.
 
 			    Full width here rather than the panel's narrow column, because a
-			    card sized for a 240px rail reads as a fragment in a page's
-			    measure. */}
-			<ContributorsCard className="mt-2 md:hidden" />
+			    band sized for a 240px rail reads as a fragment in a page's measure.
+
+			    Bled to the island's own edges, so its rule ends where a
+			    `PageSection`'s does — the numbers are `.island-pad`'s, and the
+			    inner margin it hands back is the same pair. This renders below
+			    `md` only, so the `sm` step is the only one it can meet. */}
+			<ContributorsCard className="mt-2 -mx-4 sm:-mx-8 sm:[--colophon-px:2rem] md:hidden" />
 		</Page>
 	);
 }

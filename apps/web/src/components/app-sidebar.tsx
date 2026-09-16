@@ -562,11 +562,13 @@ export function AppSidebar({
 						    list above, so switching to Chat takes it out with the same
 						    crossfade rather than snapping it away — and, being a swap
 						    rather than a hidden element, it reserves no empty band under
-						    the thread list. */}
+						    the thread list.
+
+						    No padding from here: it is a band the width of the panel, and
+						    its contents sit on the same 1rem margin the panel's own title
+						    does. */}
 						<FadeSwap activeKey={shown} className="shrink-0">
-							{shown === "settings" && (
-								<ContributorsCard className="px-2.5 pb-3" />
-							)}
+							{shown === "settings" && <ContributorsCard />}
 						</FadeSwap>
 					</div>
 				</div>
