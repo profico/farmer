@@ -234,4 +234,26 @@ describe("a recurring block follows the same rule", () => {
 			}),
 		).rejects.toThrow("Describe what you worked on");
 	});
+
+	// The bug this replaced: update asked the note question a second time, keyed
+	// on the project rather than the task, so a Break rule on a project saved
+	// fine and then refused every later edit over the note its label calls
+	// optional.
+	test("a Break rule on a project can be edited with no note", async () => {
+		const rule = await recurringBlockRulesService.create(ctx(), {
+			taskId: breakTaskId,
+			projectId,
+			daysOfWeek: [1, 2, 3, 4, 5],
+			duration: "30m",
+		});
+		const updated = await recurringBlockRulesService.update(ctx(), {
+			ruleId: rule.id,
+			taskId: breakTaskId,
+			projectId,
+			description: "",
+			duration: "45m",
+		});
+		expect(updated?.durationSeconds).toBe(45 * 60);
+		expect(updated?.description).toBe("");
+	});
 });
