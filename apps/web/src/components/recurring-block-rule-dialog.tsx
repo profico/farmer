@@ -31,7 +31,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from "#/components/ui/form.tsx";
-import { Input } from "#/components/ui/input.tsx";
+import { InputGroup, InputGroupInput } from "#/components/ui/input-group.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useWeekdays } from "#/hooks/use-week-starts-on.ts";
 import { cn } from "#/lib/utils.ts";
@@ -48,11 +48,11 @@ const NO_PROJECT = "__none__";
 // No start time: a recurring block reserves an AMOUNT of time on a weekday, not
 // a slot on a clock, which is the whole point of the duration-only model.
 const formSchema = z.object({
-	taskId: z.uuid("Pick a task"),
+	taskId: z.uuid("Required"),
 	projectId: z.string(),
 	description: z.string(),
-	daysOfWeek: z.array(z.number()).min(1, "Pick at least one day"),
-	duration: z.string().min(1, "Duration is required"),
+	daysOfWeek: z.array(z.number()).min(1, "Pick a day"),
+	duration: z.string().min(1, "Required"),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -206,9 +206,7 @@ function RecurringBlockRuleDialog({
 					<form
 						onSubmit={form.handleSubmit((values) => {
 							if (needsDescription && !values.description.trim()) {
-								form.setError("description", {
-									message: "Describe what this block is for",
-								});
+								form.setError("description", { message: "Required" });
 								return;
 							}
 							mutation.mutate(values);
@@ -249,14 +247,23 @@ function RecurringBlockRuleDialog({
 											grouped={projectId !== NO_PROJECT}
 											value={field.value}
 											onValueChange={field.onChange}
+											message={<FormMessage aria-hidden />}
 										/>
 									</FormControl>
-									<FormMessage />
 								</FormItem>
 							)}
 						/>
 						<FormItem>
-							<FormLabel required>Days</FormLabel>
+							{/* The days have no box to hold an error, so it sits at the end
+							    of the label's line and the field never grows. */}
+							<div className="flex items-center justify-between gap-2">
+								<FormLabel required>Days</FormLabel>
+								{form.formState.errors.daysOfWeek && (
+									<span className="text-xs text-destructive">
+										{form.formState.errors.daysOfWeek.message}
+									</span>
+								)}
+							</div>
 							<div className="flex gap-1">
 								{weekdays.map(({ day, initial }) => (
 									<button
@@ -274,11 +281,6 @@ function RecurringBlockRuleDialog({
 									</button>
 								))}
 							</div>
-							{form.formState.errors.daysOfWeek && (
-								<p className="text-sm text-destructive">
-									{form.formState.errors.daysOfWeek.message}
-								</p>
-							)}
 						</FormItem>
 						<FormField
 							control={form.control}
@@ -286,10 +288,15 @@ function RecurringBlockRuleDialog({
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel required>Duration</FormLabel>
-									<FormControl>
-										<Input placeholder="1.5, 30m, or 1h30m" {...field} />
-									</FormControl>
-									<FormMessage />
+									<InputGroup>
+										<FormControl>
+											<InputGroupInput
+												placeholder="1.5, 30m, or 1h30m"
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</InputGroup>
 								</FormItem>
 							)}
 						/>
@@ -304,10 +311,12 @@ function RecurringBlockRuleDialog({
 									<FormLabel required={needsDescription}>
 										{needsDescription ? "Note" : "Note (optional)"}
 									</FormLabel>
-									<FormControl>
-										<Input {...field} />
-									</FormControl>
-									<FormMessage />
+									<InputGroup>
+										<FormControl>
+											<InputGroupInput {...field} />
+										</FormControl>
+										<FormMessage />
+									</InputGroup>
 								</FormItem>
 							)}
 						/>

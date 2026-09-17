@@ -38,6 +38,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from "#/components/ui/form.tsx";
+import { InputGroup, InputGroupInput } from "#/components/ui/input-group.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { RowActions } from "#/components/ui/row-actions.tsx";
@@ -141,12 +142,23 @@ export const Route = createFileRoute("/$orgSlug/settings/tasks")({
 
 const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 
+// Core's name rule in the form's own words: the error sits inside the box,
+// beside its label, where "Required" is all it needs to say. The boxes stop at
+// the schema's limits, so "too long" is never the error.
+const taskFormSchema = createTaskInput.extend({
+	name: z.string().trim().min(1, "Required").max(80),
+});
+type TaskFormValues = z.infer<typeof taskFormSchema>;
+const NAME_MAX_LENGTH = taskFormSchema.shape.name.maxLength ?? undefined;
+const DESCRIPTION_MAX_LENGTH =
+	createTaskInput.shape.description.unwrap().maxLength ?? undefined;
+
 function CreateTaskDialog() {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
-	const form = useForm<z.infer<typeof createTaskInput>>({
-		resolver: zodResolver(createTaskInput),
+	const form = useForm<TaskFormValues>({
+		resolver: zodResolver(taskFormSchema),
 		defaultValues: {
 			name: "",
 			group: "general",
@@ -156,7 +168,7 @@ function CreateTaskDialog() {
 	});
 
 	const mutation = useMutation({
-		mutationFn: (data: z.infer<typeof createTaskInput>) => createTask({ data }),
+		mutationFn: (data: TaskFormValues) => createTask({ data }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
 				queryKey: managedTasksQuery(orgSlug).queryKey,
@@ -185,10 +197,16 @@ function CreateTaskDialog() {
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel required>Name</FormLabel>
-									<FormControl>
-										<Input autoFocus {...field} />
-									</FormControl>
-									<FormMessage />
+									<InputGroup>
+										<FormControl>
+											<InputGroupInput
+												autoFocus
+												maxLength={NAME_MAX_LENGTH}
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</InputGroup>
 								</FormItem>
 							)}
 						/>
@@ -231,7 +249,11 @@ function CreateTaskDialog() {
 								<FormItem>
 									<FormLabel>Description (optional)</FormLabel>
 									<FormControl>
-										<Input {...field} value={field.value ?? ""} />
+										<Input
+											maxLength={DESCRIPTION_MAX_LENGTH}
+											{...field}
+											value={field.value ?? ""}
+										/>
 									</FormControl>
 									<FormMessage />
 								</FormItem>
@@ -267,8 +289,8 @@ function EditTaskDialog({
 	const orgSlug = useOrgSlug();
 	const open = task !== null;
 	const queryClient = useQueryClient();
-	const form = useForm<z.infer<typeof createTaskInput>>({
-		resolver: zodResolver(createTaskInput),
+	const form = useForm<TaskFormValues>({
+		resolver: zodResolver(taskFormSchema),
 		defaultValues: {
 			name: "",
 			group: "general",
@@ -292,7 +314,7 @@ function EditTaskDialog({
 	}, [task, reset]);
 
 	const mutation = useMutation({
-		mutationFn: (data: z.infer<typeof createTaskInput>) =>
+		mutationFn: (data: TaskFormValues) =>
 			updateTask({ data: { taskId: task?.id ?? "", ...data } }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
@@ -320,10 +342,16 @@ function EditTaskDialog({
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel required>Name</FormLabel>
-									<FormControl>
-										<Input autoFocus {...field} />
-									</FormControl>
-									<FormMessage />
+									<InputGroup>
+										<FormControl>
+											<InputGroupInput
+												autoFocus
+												maxLength={NAME_MAX_LENGTH}
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</InputGroup>
 								</FormItem>
 							)}
 						/>
@@ -366,7 +394,11 @@ function EditTaskDialog({
 								<FormItem>
 									<FormLabel>Description (optional)</FormLabel>
 									<FormControl>
-										<Input {...field} value={field.value ?? ""} />
+										<Input
+											maxLength={DESCRIPTION_MAX_LENGTH}
+											{...field}
+											value={field.value ?? ""}
+										/>
 									</FormControl>
 									<FormMessage />
 								</FormItem>

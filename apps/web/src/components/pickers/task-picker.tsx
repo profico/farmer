@@ -1,6 +1,11 @@
 import { matchesSearch } from "@farmer/core/lib/search";
 import { TASK_GROUP_LABELS, TASK_GROUPS } from "@farmer/core/lib/task-taxonomy";
-import { type ComponentPropsWithRef, useMemo, useState } from "react";
+import {
+	type ComponentPropsWithRef,
+	type ReactNode,
+	useMemo,
+	useState,
+} from "react";
 
 import {
 	Combobox,
@@ -69,6 +74,7 @@ export function TaskPicker({
 	placeholder = "Pick a task",
 	disabled,
 	className,
+	message,
 	...triggerProps
 }: {
 	tasks: PickableTask[];
@@ -84,6 +90,9 @@ export function TaskPicker({
 	placeholder?: string;
 	disabled?: boolean;
 	className?: string;
+	/** The field's error, drawn inside the trigger before the caret — a form
+	 *  passes `<FormMessage />` so an error never adds a line under the box. */
+	message?: ReactNode;
 } & Omit<
 	ComponentPropsWithRef<"button">,
 	"value" | "onChange" | "children" | "className" | "disabled" | "type"
@@ -199,6 +208,7 @@ export function TaskPicker({
 						)
 					}
 				</ComboboxValue>
+				{message}
 			</ComboboxTrigger>
 			<ComboboxContent
 				searchPlaceholder={grouped ? "Search tasks…" : false}
