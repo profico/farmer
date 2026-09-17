@@ -368,10 +368,23 @@ const rebindOrphanedRepos = async (
 			`${repo.organizationId}\u0000${repo.owner.toLowerCase()}`,
 		);
 		if (replacement === undefined) continue;
-		await db
+		// Compare-and-set on the id we read, not a blind write. The sweep scans
+		// several people at once and they share an org's repos, so two of them
+		// reach the same orphan holding the same stale id. Without the second
+		// predicate both "repair" it and both log, which is how one uninstall
+		// produced two identical rebind lines per repo. The loser matches no
+		// row, changes nothing and stays quiet.
+		const rebound = await db
 			.update(projectGithubRepo)
 			.set({ installationId: replacement, updatedAt: new Date() })
-			.where(eq(projectGithubRepo.id, repo.id));
+			.where(
+				and(
+					eq(projectGithubRepo.id, repo.id),
+					eq(projectGithubRepo.installationId, repo.installationId),
+				),
+			)
+			.returning({ id: projectGithubRepo.id });
+		if (rebound.length === 0) continue;
 		repaired += 1;
 		console.info("[github] rebound repo to a live installation", {
 			repoId: repo.id,
