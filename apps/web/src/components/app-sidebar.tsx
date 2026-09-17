@@ -7,6 +7,7 @@ import {
 	MoonIcon,
 	SignOutIcon,
 	SunIcon,
+	UserSwitchIcon,
 } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import { useQuery } from "@tanstack/react-query";
@@ -17,7 +18,8 @@ import {
 	useRouter,
 } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { ConversationList } from "#/components/assistant/chat-rail.tsx";
 import { ContributorsCard } from "#/components/contributors-card.tsx";
@@ -47,6 +49,7 @@ import {
 } from "#/components/ui/tooltip.tsx";
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
+import { stopImpersonating } from "#/lib/impersonation.ts";
 import { GITHUB_NEW_ISSUE_URL } from "#/lib/links.ts";
 import { easeOut } from "#/lib/motion.ts";
 import {
@@ -110,6 +113,7 @@ export function AppSidebar({
 	singleOrg = false,
 	assistantAvailable,
 	timezone,
+	impersonating = null,
 }: {
 	orgSlug: string;
 	organizationName: string;
@@ -132,6 +136,12 @@ export function AppSidebar({
 	assistantAvailable: boolean;
 	/** The organization's timezone, for the unfiled worklist's "today". */
 	timezone: string;
+	/**
+	 * The name of the person this session currently IS, when a platform admin
+	 * reached it by impersonation. Null the rest of the time — which is almost
+	 * always, so the row it draws costs a signed-in person nothing.
+	 */
+	impersonating?: string | null;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const navigate = useNavigate();
@@ -452,6 +462,15 @@ export function AppSidebar({
 							    `navCollapsed`, not `collapsed`: a panel forces the rail, so
 							    `collapsed` would flip the carets round halfway through the fade
 							    for a state the button does not control. */}
+							{/* Above the toggle rather than at the very foot: the two rows
+							    under it are furniture that never changes, and a warning that
+							    sits below the furniture reads as more of it. Nothing else is
+							    moved or hidden while it is up — the app is meant to look
+							    exactly as it does for the person being impersonated, which
+							    is the entire point of looking at it. */}
+							{impersonating !== null && (
+								<ImpersonationRow name={impersonating} collapsed={collapsed} />
+							)}
 							<CollapseToggle
 								collapsed={navCollapsed}
 								hidden={panel !== null || navForced}
@@ -675,6 +694,87 @@ const navRowBase =
  * transition is silently dropped and the element snaps.
  */
 const navRowClass = `${navRowBase} transition-[color,transform] duration-(--dur-base)`;
+
+/**
+ * "You are not you" — the one row in the column that is a warning.
+ *
+ * It has to be here, in the furniture, rather than in a banner over the page:
+ * the sidebar is the one surface that is on screen on every route, and
+ * impersonation is a state you can forget you are in and then act from. A
+ * dismissible banner would be worse than nothing, because dismissing it is the
+ * thing somebody does two minutes before they edit the wrong person's
+ * timesheet.
+ *
+ * It carries the name, and pressing it stops. Those are deliberately the same
+ * control: the row is an alarm, and an alarm with no way to silence it teaches
+ * people to look past it. `--warn` rather than `--destructive`, which in this
+ * palette IS the accent (see styles.css) and would have made the loudest row in
+ * the column look like the active one.
+ *
+ * At rail width the name is gone with every other label, so the tooltip
+ * carries it — this is the row where "an icon you have to hover to read" is
+ * least acceptable, and the amber glyph is at least unlike anything else in the
+ * column.
+ */
+function ImpersonationRow({
+	name,
+	collapsed,
+}: {
+	name: string;
+	collapsed: boolean;
+}) {
+	const [stopping, setStopping] = useState(false);
+	const stop = () => {
+		// No `finally`: on success this navigates the document away, and clearing
+		// the flag would only re-enable a button on a page that is leaving.
+		setStopping(true);
+		stopImpersonating().catch((error: Error) => {
+			setStopping(false);
+			toast.error(error.message);
+		});
+	};
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<button
+						type="button"
+						onClick={stop}
+						disabled={stopping}
+						aria-label={`Impersonating ${name} — stop`}
+						className={cn(
+							navRowClass,
+							"text-left text-warn hover:bg-warn/10 hover:text-warn",
+							"disabled:pointer-events-none disabled:opacity-60",
+						)}
+					>
+						<UserSwitchIcon
+							weight="fill"
+							className="relative size-4.5 shrink-0"
+						/>
+						{/* Two lines in the band the other rows use for one: the state
+						    and who you are in it are both load-bearing, and "Impersonating"
+						    alone leaves you checking the account menu to find out who. */}
+						<span className="nav-label">
+							<span className="min-w-0 flex-1">
+								<span className="block truncate text-2xs">
+									{stopping ? "Stopping…" : "Impersonating"}
+								</span>
+								<span className="block truncate text-sm font-medium">
+									{name}
+								</span>
+							</span>
+							<SignOutIcon weight="fill" className="size-3.5 shrink-0" />
+						</span>
+					</button>
+				}
+			/>
+			<TooltipContent side="right" sideOffset={8} hidden={!collapsed}>
+				Impersonating {name} — stop
+			</TooltipContent>
+		</Tooltip>
+	);
+}
 
 /**
  * The switch between the labelled column and the icon rail.

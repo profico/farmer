@@ -51,6 +51,10 @@ const DESCRIPTION = "Farmer — a simple, open-source time tracker.";
  * script is a value the document always carries.
  *
  * The project token is public by design — it ships in the page either way.
+ *
+ * Development answers null, whatever the variables hold, so the browser never
+ * receives the credentials and the provider below is never mounted. The reason
+ * is in `lib/posthog-server.ts`, which gates its half on the same `NODE_ENV`.
  */
 type PostHogConfig = { token: string; host: string } | null;
 
@@ -62,6 +66,7 @@ declare global {
 
 const posthogConfig = createIsomorphicFn()
 	.server((): PostHogConfig => {
+		if (process.env.NODE_ENV !== "production") return null;
 		const token = process.env.POSTHOG_PROJECT_TOKEN;
 		const host = process.env.POSTHOG_HOST;
 		return token && host ? { token, host } : null;
@@ -283,6 +288,40 @@ function PostHogIdentity() {
 		});
 		identifiedUserId.current = user.id;
 	}, [posthog, session?.user]);
+
+	// The operator's user id while a platform admin is impersonating somebody,
+	// and null the rest of the time (`docs/domains/authentication.md`).
+	const impersonatedBy = session?.session.impersonatedBy ?? null;
+
+	// Super properties, deliberately NOT person properties on the identify
+	// above.
+	//
+	// The session belongs to the person being impersonated, so PostHog
+	// identifies THEM and every event goes onto their profile — which is right,
+	// because that is whose account the clicks are happening in, and wrong for
+	// anyone later reading that profile as a record of what its owner did. A
+	// person property would be the wrong repair: it persists, so the first
+	// impersonation would mark the real user as impersonated for good, and the
+	// property would have to be unset from a session that may never come back.
+	//
+	// A super property is attached to every EVENT the browser sends until it is
+	// unregistered, which is exactly the shape of the fact: these events, not
+	// this person. Both ends of an impersonation reload the document
+	// (`lib/impersonation.ts`), so this effect runs afresh on each, and the
+	// `unregister` branch is what takes the tag off — the registration is
+	// persisted in the browser, so leaving it out would carry the tag into the
+	// operator's own next session on the same machine.
+	//
+	// The ledger itself is captured on the server, where a browser cannot
+	// decline to send it — see `lib/posthog-impersonation.ts`.
+	useEffect(() => {
+		if (impersonatedBy) {
+			posthog.register({ impersonated: true, impersonated_by: impersonatedBy });
+			return;
+		}
+		posthog.unregister("impersonated");
+		posthog.unregister("impersonated_by");
+	}, [posthog, impersonatedBy]);
 
 	return null;
 }
