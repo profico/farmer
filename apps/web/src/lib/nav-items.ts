@@ -4,7 +4,7 @@ import {
 	ChartLineIcon,
 	ChatCircleDotsIcon,
 	ClockIcon,
-	FolderIcon,
+	FolderSimpleIcon,
 	GearSixIcon,
 	RepeatIcon,
 	SquaresFourIcon,
@@ -86,7 +86,7 @@ export const WORK_ITEMS: NavItem[] = [
 	// Ahead of Projects, unlike before: this is a time tracker, and the timesheet
 	// is the screen its people open every day.
 	{ label: "Time", to: "/$orgSlug/time", icon: ClockIcon },
-	{ label: "Projects", to: "/$orgSlug/projects", icon: FolderIcon },
+	{ label: "Projects", to: "/$orgSlug/projects", icon: FolderSimpleIcon },
 ];
 
 export const MY_SCHEDULE_ITEM: NavItem = {

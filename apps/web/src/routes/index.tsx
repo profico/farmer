@@ -6,7 +6,7 @@ import {
 	CaretUpDownIcon,
 	ChartLineIcon,
 	ClockIcon,
-	FolderIcon,
+	FolderSimpleIcon,
 	GitBranchIcon,
 	GitCommitIcon,
 	PlusIcon,
@@ -108,7 +108,7 @@ const previewNavGroups: { label: string; items: PreviewNavItem[] }[] = [
 		items: [
 			{ Icon: SquaresFourIcon, label: "Home", active: true },
 			{ Icon: ClockIcon, label: "Time" },
-			{ Icon: FolderIcon, label: "Projects" },
+			{ Icon: FolderSimpleIcon, label: "Projects" },
 		],
 	},
 	{

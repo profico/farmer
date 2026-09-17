@@ -51,6 +51,42 @@ const messagesToSend = (messages: AiGeneration["input"]) =>
 const textToSend = (text: string) =>
 	captureContent() ? text : `[redacted, ${String(text.length)} characters]`;
 
+/**
+ * The assistant's answer, in the shape PostHog reads tool usage out of.
+ *
+ * **This is what lights up the Tools tab.** PostHog extracts the tool names
+ * from the RESPONSE at ingestion time and writes them to `$ai_tools_called`
+ * and `$ai_tool_call_count`; `$ai_tools` beside it is only what the model was
+ * OFFERED. So a choice carrying text alone reports a turn that called nothing,
+ * however many `$ai_span` events follow it — and on a tool-calling step that
+ * text is empty, which is why the tab was blank rather than wrong.
+ *
+ * `tool_calls` is left off entirely on a step that made none, which is what
+ * the OpenAI shape does and what the extractor expects. The NAME rides either
+ * way, as everywhere else: it is this app's own vocabulary. `arguments` is a
+ * person's ids, dates and notes, so it goes behind the content switch.
+ */
+const outputChoicesToSend = (event: AiGeneration) => {
+	const choice = {
+		role: "assistant",
+		content: textToSend(event.outputText),
+	};
+	if (event.toolCalls.length === 0) return [choice];
+	return [
+		{
+			...choice,
+			tool_calls: event.toolCalls.map((call) => ({
+				id: call.id,
+				type: "function",
+				function: {
+					name: call.name,
+					arguments: textToSend(call.arguments),
+				},
+			})),
+		},
+	];
+};
+
 export const posthogAiSink = {
 	generation: (event: AiGeneration): void => {
 		const posthog = getPostHogClient();
@@ -69,9 +105,7 @@ export const posthogAiSink = {
 				$ai_latency: event.latencySeconds,
 				$ai_input: messagesToSend(event.input),
 				$ai_input_tokens: event.inputTokens,
-				$ai_output_choices: [
-					{ role: "assistant", content: textToSend(event.outputText) },
-				],
+				$ai_output_choices: outputChoicesToSend(event),
 				$ai_output_tokens: event.outputTokens,
 				$ai_total_cost_usd: event.costUsd,
 				// Tool NAMES either way: they are this app's own vocabulary and say
@@ -88,7 +122,7 @@ export const posthogAiSink = {
 				organization_id: event.organizationId,
 				ai_step: event.step,
 				ai_finish_reason: event.finishReason,
-				ai_called_tools: event.calledTools,
+				ai_called_tools: event.toolCalls.map((call) => call.name),
 			},
 		});
 	},

@@ -16,7 +16,7 @@
 // `report` swallows whatever the sink does; a sink that wants to send over the
 // network queues rather than awaits.
 
-import type { ChatMessage, ChatTool } from "../lib/openrouter-client";
+import type { ChatMessage, ChatTool, ChatTurn } from "../lib/openrouter-client";
 
 /** One billed model call.
  *
@@ -53,10 +53,15 @@ export type AiGeneration = {
 	costUsd: number | null;
 	/** OpenRouter's own stop reason, or `aborted` when the person stopped it. */
 	finishReason: string | null;
-	/** The names of the tools the model asked to run, in order. Metadata, not
-	 *  content: a tool name is the app's own vocabulary and carries nothing
-	 *  about the organization. */
-	calledTools: string[];
+	/** The tools the model asked to run, in order, exactly as the stream
+	 *  reported them.
+	 *
+	 *  The whole call rather than its name, because PostHog reads the tool
+	 *  names off the RESPONSE at ingestion time — a generation whose output
+	 *  carries no `tool_calls` is a generation that called nothing, however
+	 *  many spans follow it. The name is metadata; `arguments` is content and
+	 *  the adapter redacts it under the same rule as the rest. */
+	toolCalls: ChatTurn["toolCalls"];
 	input: ChatMessage[];
 	tools: ChatTool[];
 	outputText: string;

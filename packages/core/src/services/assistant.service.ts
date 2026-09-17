@@ -923,7 +923,7 @@ const generate = async (
 			outputTokens: turn.completionTokens,
 			costUsd: turn.costUsd,
 			finishReason: turn.finishReason,
-			calledTools: turn.toolCalls.map((call) => call.name),
+			toolCalls: turn.toolCalls,
 			outputText: turn.content,
 			error: null,
 		});
@@ -936,7 +936,7 @@ const generate = async (
 			outputTokens: null,
 			costUsd: null,
 			finishReason: null,
-			calledTools: [],
+			toolCalls: [],
 			outputText: "",
 			error: error instanceof Error ? error.message : String(error),
 		});
