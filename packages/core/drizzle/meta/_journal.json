@@ -414,6 +414,13 @@
       "when": 1789632400379,
       "tag": "0058_lyrical_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1789635197108,
+      "tag": "0059_grant_platform_admin_to_first_user",
+      "breakpoints": true
     }
   ]
 }

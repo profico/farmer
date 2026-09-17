@@ -61,7 +61,7 @@ export const Route = createFileRoute("/$orgSlug")({
 			organization: entered.organization,
 			role: entered.role,
 			// Operates the deployment, as opposed to administering this workspace
-			// — `PLATFORM_ADMIN_EMAILS`, not `member.role`. The only thing it opens
+			// — `user.role`, not `member.role`. The only thing it opens
 			// is Impersonate on Settings → People.
 			isPlatformAdmin: entered.isPlatformAdmin,
 			// The name of the person this session currently IS, when it got there by

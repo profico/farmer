@@ -6,7 +6,7 @@
 // person did in the browser). All five read `posthog-server.ts` for the client,
 // so a deployment with no token has none of them — and a ledger nobody
 // configured a destination for is the same as no ledger, which is why the
-// grant, `PLATFORM_ADMIN_EMAILS`, is the control that actually holds.
+// grant itself, and not this file, is the control that actually holds.
 //
 // **Captured on the server, from the server's own session state.** The two
 // events are the audit record, so neither the ids nor the fact may come from
