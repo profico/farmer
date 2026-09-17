@@ -113,7 +113,7 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 		// the banner only appears *after* the async status queries resolve, so it's
 		// added to AnimatePresence later and still animates in from height 0. The
 		// height collapse (not just a fade) makes the surrounding page content
-		// reflow smoothly as the full-bleed banner unfolds / folds away.
+		// reflow smoothly as the banner unfolds / folds away.
 		<AnimatePresence initial={false}>
 			{message && (
 				<motion.div
@@ -122,12 +122,12 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 					animate={{ height: "auto", opacity: 1 }}
 					exit={{ height: 0, opacity: 0 }}
 					transition={heightTransition}
-					// The negative insets cancel `island-pad` exactly, so this banner
-					// meets the island's own edge: 1rem all round below sm, and
-					// 1.75rem vertical / 2rem horizontal at sm and up. mb matches
-					// |−mt| at each breakpoint so when the height springs to 0 the row
-					// below lands exactly where it sits once this element unmounts —
-					// no final reflow pop.
+					// An inset card, the same shape as GithubReconnectBanner and
+					// RewindBanner, because all three share one slot and any two of
+					// them can be up at once. This box used to bleed to the island's
+					// own edge on a negative top margin, which only held while it was
+					// the first thing on the page: with the reconnect banner above it
+					// the margin pulled it 28px up and over that banner's text.
 					//
 					// `shrink-0`, the same as the two banners beside it: `Page` is a
 					// flex column, so once a screen is taller than the island this
@@ -135,31 +135,40 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 					// `overflow-hidden`, so it gives way all the way down to its own
 					// border and the banner vanishes the moment the spring hands the
 					// height back to `auto`.
-					className="-mx-4 -mt-4 mb-4 shrink-0 overflow-hidden border-b bg-secondary sm:-mx-8 sm:-mt-7 sm:mb-7"
+					className="shrink-0 overflow-hidden"
 				>
-					<div className="flex items-center gap-3 px-4 py-3 sm:px-8">
-						<SparkleIcon className="size-4 shrink-0 text-primary" />
-						<div className="min-w-0 flex-1">
-							<p className="text-base font-medium">{message.title}</p>
-							<p className="text-sm text-muted-foreground">{message.body}</p>
+					{/* The gap under the banner is a PADDING on this inner shell, not a
+					    margin on the animated box: a margin is not part of the height,
+					    so the content below would drop 16px in one frame on mount and
+					    snap 16px back once the spring finished on unmount. */}
+					<div className="pb-4">
+						<div className="flex items-center gap-3 rounded-lg border bg-secondary px-4 py-3">
+							<SparkleIcon className="size-4 shrink-0 text-primary" />
+							<div className="min-w-0 flex-1">
+								<p className="text-base font-medium">{message.title}</p>
+								<p className="text-sm text-muted-foreground">{message.body}</p>
+							</div>
+							<Button
+								size="sm"
+								nativeButton={false}
+								render={
+									<Link
+										to="/$orgSlug/settings/integrations"
+										params={{ orgSlug }}
+									>
+										Set up
+									</Link>
+								}
+							/>
+							<button
+								type="button"
+								onClick={handleDismiss}
+								aria-label="Dismiss"
+								className="quiet shrink-0 rounded-md p-1"
+							>
+								<XIcon weight="regular" className="size-4" />
+							</button>
 						</div>
-						<Button
-							size="sm"
-							nativeButton={false}
-							render={
-								<Link to="/$orgSlug/settings/integrations" params={{ orgSlug }}>
-									Set up
-								</Link>
-							}
-						/>
-						<button
-							type="button"
-							onClick={handleDismiss}
-							aria-label="Dismiss"
-							className="quiet shrink-0 rounded-md p-1"
-						>
-							<XIcon weight="regular" className="size-4" />
-						</button>
 					</div>
 				</motion.div>
 			)}
