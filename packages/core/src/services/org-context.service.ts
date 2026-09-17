@@ -53,15 +53,18 @@ export const orgContextService = {
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.slug, orgSlug),
 		});
+
 		if (!org) return null;
 
 		const role = await membersService.getRole({
 			organizationId: org.id,
 			userId,
 		});
+
 		if (!role) return null;
 
 		const ctx = { organizationId: org.id, userId };
+
 		try {
 			await ctxAccess(ctx);
 		} catch (error) {
@@ -72,6 +75,7 @@ export const orgContextService = {
 			if (error instanceof NotAMemberError) return null;
 			throw error;
 		}
+
 		return ctx;
 	},
 
@@ -99,7 +103,9 @@ export const orgContextService = {
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.id, ctx.organizationId),
 		});
+
 		if (!org) throw new Error("Organization not found");
+
 		return { slug: org.slug, name: org.name };
 	},
 };

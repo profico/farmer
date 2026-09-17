@@ -32,8 +32,10 @@ const FALLBACK_COLOR: CategoryColor = {
 
 const hexToRgb = (hex: string): [number, number, number] | null => {
 	const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+
 	if (!match?.[1]) return null;
 	const value = Number.parseInt(match[1], 16);
+
 	return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
 };
 
@@ -61,6 +63,7 @@ const mix = (
 // tint reads as a lighter patch of some other material laid on top of the
 // sheet, which is exactly the cut-out-card look this design avoids.
 const PAPER: [number, number, number] = [250, 249, 246];
+
 const BLACK: [number, number, number] = [0, 0, 0];
 
 // The palette (+ neutral fallback) colors have hand-tuned tint/text pairs;
@@ -90,7 +93,9 @@ export const resolveCategoryColor = (
 ): CategoryColor => {
 	if (!hex) return FALLBACK_COLOR;
 	const rgb = hexToRgb(hex);
+
 	if (!rgb) return FALLBACK_COLOR;
+
 	return (
 		KNOWN_BY_DOT.get(hex.trim().toLowerCase()) ??
 		deriveCategoryColor(hex.trim(), rgb)

@@ -28,27 +28,43 @@ import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
 
 const ORG_A = "tk-a";
+
 const ORG_B = "tk-b";
 
 const ADMIN = "u-tk-admin";
+
 const PM = "u-tk-pm";
+
 const TL = "u-tk-tl";
+
 const MEM = "u-tk-member";
+
 const TL_INACTIVE = "u-tk-tl-inactive";
+
 const OUTSIDER = "u-tk-outsider";
+
 const ADMIN_B = "u-tk-admin-b";
 
 let harness: TestDb;
 
 let projectA1: string;
+
 let projectA2: string;
+
 let projectB: string;
+
 let devA: string;
+
 let designA: string;
+
 let taskB: string;
+
 let meetingId: string;
+
 let breakId: string;
+
 let vacationId: string;
+
 let paidLeaveId: string;
 
 /** A fresh Ctx per call: `ctxAccess` memoizes Access on the object. */
@@ -62,6 +78,7 @@ const siteTaskId = async (key: TaskSystemKey) => {
 		where: and(eq(task.scope, "site"), eq(task.systemKey, key)),
 		columns: { id: true },
 	});
+
 	return present(row, `site task ${key}`).id;
 };
 
@@ -112,6 +129,7 @@ beforeAll(async () => {
 			{ organizationId: ORG_B, name: "Client B" },
 		])
 		.returning();
+
 	const clientA = at(clients, 0);
 	const clientB = at(clients, 1);
 
@@ -123,6 +141,7 @@ beforeAll(async () => {
 			{ organizationId: ORG_B, clientId: clientB.id, name: "B" },
 		])
 		.returning();
+
 	projectA1 = at(projects, 0).id;
 	projectA2 = at(projects, 1).id;
 	projectB = at(projects, 2).id;
@@ -164,6 +183,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	devA = at(tasks, 0).id;
 	designA = at(tasks, 1).id;
 	taskB = at(tasks, 2).id;
@@ -179,6 +199,7 @@ beforeAll(async () => {
 			systemKey: "vacation" as const,
 		})
 		.returning();
+
 	vacationId = present(vacation, "vacation task").id;
 	meetingId = await siteTaskId("meeting");
 	breakId = await siteTaskId("break");
@@ -194,6 +215,7 @@ describe("create", () => {
 		const created = await tasksService.create(ctx(ADMIN), {
 			name: "  Research  ",
 		});
+
 		expect(created.scope).toBe("organization");
 		expect(created.organizationId).toBe(ORG_A);
 		expect(created.name).toBe("Research");
@@ -205,9 +227,11 @@ describe("create", () => {
 				tasksService.create(ctx(who), { name: "Sneaky" }),
 			).rejects.toThrow(AccessError);
 		}
+
 		const rows = await db.query.task.findMany({
 			where: eq(task.name, "Sneaky"),
 		});
+
 		expect(rows).toHaveLength(0);
 	});
 
@@ -230,9 +254,11 @@ describe("create", () => {
 		await expect(
 			tasksService.create(ctx(ADMIN), { name: "Old" }),
 		).rejects.toThrow("Restore it instead");
+
 		const rows = await db.query.task.findMany({
 			where: and(eq(task.organizationId, ORG_A), eq(task.name, "Old")),
 		});
+
 		expect(rows).toHaveLength(1);
 	});
 
@@ -240,6 +266,7 @@ describe("create", () => {
 		const created = await tasksService.create(ctx(ADMIN_B, ORG_B), {
 			name: "Research",
 		});
+
 		expect(created.organizationId).toBe(ORG_B);
 	});
 });
@@ -250,6 +277,7 @@ describe("update", () => {
 			taskId: devA,
 			name: "Engineering",
 		});
+
 		expect(present(renamed, "updated task").systemKey).toBe("development");
 
 		const found = await tasksService.findBySystemKey(ctx(MEM), "development");
@@ -306,6 +334,7 @@ describe("archive and unarchive", () => {
 				archivedAt: new Date(),
 			})
 			.returning();
+
 		const archivedBId = present(archivedB, "archived org B task").id;
 		await expect(
 			tasksService.unarchive(ctx(ADMIN), archivedBId),
@@ -360,6 +389,7 @@ describe("archive and unarchive", () => {
 				systemKey: "development" as const,
 			})
 			.returning();
+
 		const devBId = present(devB, "org B development").id;
 
 		// Each org resolves the key to its own row, never the other's.
@@ -396,6 +426,7 @@ describe("listForProject", () => {
 		const ids = (await tasksService.listForProject(ctx(MEM), undefined)).map(
 			(t) => t.id,
 		);
+
 		expect(ids).toEqual(
 			expect.arrayContaining([meetingId, breakId, vacationId, paidLeaveId]),
 		);
@@ -407,6 +438,7 @@ describe("listForProject", () => {
 		const ids = (await tasksService.listForProject(ctx(MEM), projectA1)).map(
 			(t) => t.id,
 		);
+
 		expect(ids).toEqual(
 			expect.arrayContaining([breakId, meetingId, devA, designA]),
 		);
@@ -417,9 +449,11 @@ describe("listForProject", () => {
 
 	test("an archived task drops out of the project's list", async () => {
 		await tasksService.archive(ctx(ADMIN), designA);
+
 		const ids = (await tasksService.listForProject(ctx(MEM), projectA1)).map(
 			(t) => t.id,
 		);
+
 		expect(ids).toContain(devA);
 		expect(ids).not.toContain(designA);
 		await tasksService.unarchive(ctx(ADMIN), designA);
@@ -429,6 +463,7 @@ describe("listForProject", () => {
 		const ids = (await tasksService.listForProject(ctx(ADMIN), projectB)).map(
 			(t) => t.id,
 		);
+
 		expect(ids).not.toContain(taskB);
 	});
 });

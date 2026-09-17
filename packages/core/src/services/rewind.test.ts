@@ -14,18 +14,27 @@ import { rewindService } from "./rewind.service";
 import type { Ctx } from "./types";
 
 const H = 3600;
+
 const ORG = "rw-org";
+
 const ME = "u-rw-me";
+
 const OTHER = "u-rw-other";
+
 const NOW = new Date("2025-12-10T12:00:00Z");
 
 const ctx: Ctx = { organizationId: ORG, userId: ME };
 
 let harness: TestDb;
+
 let devTaskId: string;
+
 let meetingTaskId: string;
+
 let vacationTaskId: string;
+
 let alphaId: string;
+
 let betaId: string;
 
 const log = async (
@@ -85,6 +94,7 @@ beforeAll(async () => {
 			{ organizationId: ORG, name: "Globex" },
 		])
 		.returning();
+
 	const [alpha, beta] = await db
 		.insert(project)
 		.values([
@@ -100,6 +110,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	alphaId = present(alpha, "Alpha").id;
 	betaId = present(beta, "Beta").id;
 
@@ -122,20 +133,25 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	devTaskId = present(dev, "Development").id;
 	vacationTaskId = present(vacation, "Vacation").id;
+
 	// Seeded by the migrations.
 	const meeting = await db.query.task.findFirst({
 		where: eq(task.systemKey, "meeting"),
 	});
+
 	meetingTaskId = present(meeting, "Meeting").id;
 
 	// Mon 1 to Tue 9 December: 8h a working day, the Monday on Beta.
 	await log(ME, "2025-12-01", devTaskId, 8, betaId, "Checkout redesign");
+
 	for (const day of ["02", "03", "04", "05", "08", "09"]) {
 		await log(ME, `2025-12-${day}`, devTaskId, 6, alphaId, "Checkout fixes");
 		await log(ME, `2025-12-${day}`, meetingTaskId, 2, null, "Standup");
 	}
+
 	// Saturday work, overtime.
 	await db.insert(timeEntry).values({
 		organizationId: ORG,
@@ -148,9 +164,11 @@ beforeAll(async () => {
 	});
 	// A row on a day nobody has lived yet, and a holiday booked ahead.
 	await log(ME, "2025-12-15", devTaskId, 8, alphaId);
+
 	for (const day of ["22", "23", "24", "26", "29", "30", "31"]) {
 		await log(ME, `2025-12-${day}`, vacationTaskId, 8, null);
 	}
+
 	// The year before, and somebody else's year.
 	await log(ME, "2024-06-03", devTaskId, 5, alphaId);
 	await log(OTHER, "2025-12-02", devTaskId, 8, alphaId);
@@ -208,11 +226,13 @@ describe("rewindService.mine", () => {
 
 	test("a year that is over carries no projection", async () => {
 		const later = new Date("2026-03-01T12:00:00Z");
+
 		const rewind = await rewindService.mine(
 			ctx,
 			{ year: 2025 },
 			{ now: later },
 		);
+
 		expect(rewind.complete).toBe(true);
 		expect(rewind.asOf).toBe("2025-12-31");
 		expect(rewind.projectedWorkedSeconds).toBeNull();

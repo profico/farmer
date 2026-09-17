@@ -146,6 +146,7 @@ function recordsFor(
 ): ReadonlyMap<string, string>[] {
 	const line = (cells: string[]) => cells.map(csvField).join(",");
 	const text = `${line(header)}\n${rows.map(line).join("\n")}\n`;
+
 	return Array.from(iterateCsvRecords(text));
 }
 
@@ -177,6 +178,7 @@ describe("typed row accessors", () => {
 				"",
 			],
 		]);
+
 		const row = toTimeReportRow(at(records, 0));
 		expect(row.date).toBe("2014-12-30");
 		expect(row.client).toBe("Profico");
@@ -207,6 +209,7 @@ describe("typed row accessors", () => {
 				"40.0",
 			],
 		]);
+
 		const row = toPeopleRow(at(records, 0));
 		expect(row.firstName).toBe("Mateo");
 		expect(row.email).toBe("mateo@profico.hr");
@@ -236,6 +239,7 @@ describe("typed row accessors", () => {
 				"0",
 			],
 		]);
+
 		const row = toProjectRow(at(records, 0));
 		expect(row.client).toBe("ABC Startsiden AS");
 		expect(row.name).toBe("MeeTV");

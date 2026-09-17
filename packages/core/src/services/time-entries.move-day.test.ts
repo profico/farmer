@@ -29,15 +29,21 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-move-day";
+
 const USER_ID = "user-move-day";
+
 const DAY = "2026-08-10";
+
 const OTHER_DAY = "2026-08-11";
+
 const HOUR = 3600;
 
 const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 
 let harness: TestDb;
+
 let projectId = "";
+
 let devTaskId = "";
 
 const addEntry = async () => {
@@ -53,6 +59,7 @@ const addEntry = async () => {
 			durationSeconds: 2 * HOUR,
 		})
 		.returning();
+
 	return present(row, "fixture entry");
 };
 
@@ -98,6 +105,7 @@ const dateOf = async (entryId: string) => {
 		where: eq(timeEntry.id, entryId),
 		columns: { date: true },
 	});
+
 	return present(row, "entry").date;
 };
 
@@ -131,6 +139,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({
@@ -139,6 +148,7 @@ beforeAll(async () => {
 			name: "Farmer",
 		})
 		.returning();
+
 	projectId = present(p, "project").id;
 
 	const [t] = await db
@@ -150,6 +160,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning();
+
 	devTaskId = present(t, "development task").id;
 });
 
@@ -199,6 +210,7 @@ describe("moving an entry to another day", () => {
 		const row = await db.query.timeEntry.findFirst({
 			where: eq(timeEntry.id, entry.id),
 		});
+
 		expect(present(row, "entry").durationSeconds).toBe(3 * HOUR);
 	});
 });

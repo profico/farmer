@@ -118,16 +118,19 @@ const formSchema = z.object({
 			.regex(/^\d+(\.\d+)?$/, "Must be an amount")
 			.refine((v) => {
 				const n = Number(v);
+
 				return n > 0 && n <= 100_000;
 			}, "Must be 1 to 100,000"),
 	]),
 	budgetAmount: optionalMoney,
 	hourlyPrice: optionalMoney,
 });
+
 type FormValues = z.infer<typeof formSchema>;
 
 // The boxes stop at the schema's limits, so "too long" is never the error.
 const NAME_MAX_LENGTH = formSchema.shape.name.maxLength ?? undefined;
+
 const CODE_MAX_LENGTH = formSchema.shape.code.maxLength ?? undefined;
 
 export const Route = createFileRoute("/$orgSlug/projects/$projectId/settings")({
@@ -169,6 +172,7 @@ function SettingsPage() {
 			hourlyPrice: project.hourlyPrice ?? "",
 		},
 	});
+
 	const nameNow = form.watch("name");
 	const typeNow = form.watch("type");
 
@@ -191,10 +195,15 @@ function SettingsPage() {
 			// type-specific budget fields, which a rename has no business doing.
 			const dirty = form.formState.dirtyFields;
 			const patch: UpdateProjectInput = { projectId };
+
 			if (dirty.name) patch.name = values.name;
+
 			if (dirty.code) patch.code = values.code;
+
 			if (dirty.clientId) patch.clientId = values.clientId;
+
 			if (dirty.icon) patch.icon = values.icon;
+
 			// Type-specific config moves together with type, matching the create
 			// dialog: the server rejects a budget or price sent without its type
 			// (`updateProjectInput`'s refinement), and sending `type` alone nulls
@@ -222,6 +231,7 @@ function SettingsPage() {
 						? values.hourlyPrice || undefined
 						: undefined;
 			}
+
 			return updateProject({ data: patch });
 		},
 		onSuccess: async (_saved, values) => {
@@ -261,6 +271,7 @@ function SettingsPage() {
 			{project.name}
 		</Link>
 	);
+
 	const title = (
 		<span className="flex items-center gap-3">
 			<ProjectIcon icon={project.icon} name={project.name} size="sm" />
@@ -282,6 +293,7 @@ function SettingsPage() {
 	const recentIcons = projects
 		.map((p) => p.icon)
 		.filter((i): i is string => i != null);
+
 	const dirty = form.formState.isDirty;
 
 	return (

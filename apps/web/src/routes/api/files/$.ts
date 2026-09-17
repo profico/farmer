@@ -21,16 +21,21 @@ export const Route = createFileRoute("/api/files/$")({
 		handlers: {
 			GET: async ({ params }) => {
 				const key = params._splat ?? "";
+
 				const { isUploadKey, uploadContentType } =
 					await import("@farmer/core/lib/uploads");
+
 				const contentType = uploadContentType(key);
+
 				if (!isUploadKey(key) || !contentType) return NOT_FOUND();
 
 				const { objectStore } = await import("@farmer/core/lib/storage");
 				const store = objectStore();
+
 				if (!store) return NOT_FOUND();
 
 				const object = await store.get(key);
+
 				if (!object) return NOT_FOUND();
 
 				const headers = new Headers({
@@ -40,9 +45,11 @@ export const Route = createFileRoute("/api/files/$")({
 					"content-security-policy":
 						"default-src 'none'; style-src 'unsafe-inline'; sandbox",
 				});
+
 				if (object.size !== null) {
 					headers.set("content-length", String(object.size));
 				}
+
 				return new Response(object.body, { headers });
 			},
 		},

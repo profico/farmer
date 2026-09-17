@@ -13,7 +13,9 @@ export const organizationService = {
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.id, ctx.organizationId),
 		});
+
 		if (!org) throw new Error("Organization not found");
+
 		return {
 			name: org.name,
 			country: org.country,
@@ -29,43 +31,55 @@ export const organizationService = {
 		// (a job, an assistant tool, a future REST route) cannot rename the org.
 		await requireAdmin(ctx);
 		const patch: Partial<typeof organization.$inferInsert> = {};
+
 		if (input.name !== undefined) patch.name = input.name;
+
 		if (input.country !== undefined) patch.country = input.country;
+
 		if (input.timezone !== undefined) {
 			// Validate against the IANA database rather than trusting the client —
 			// an invalid zone here would silently corrupt every downstream time
 			// calculation (see lib/time.ts).
 			let isValidTimezone = false;
+
 			try {
 				new Intl.DateTimeFormat(undefined, { timeZone: input.timezone });
 				isValidTimezone = true;
 			} catch {
 				isValidTimezone = false;
 			}
+
 			if (!isValidTimezone) {
 				throw new Error("Invalid timezone");
 			}
+
 			patch.timezone = input.timezone;
 		}
+
 		if (input.weekStartsOn !== undefined) {
 			patch.weekStartsOn = input.weekStartsOn;
 		}
+
 		// An empty string clears the logo; a URL or an uploaded image sets it.
 		if (input.logo !== undefined) {
 			assertOwnUpload(ctx, input.logo);
 			patch.logo = input.logo || null;
 		}
+
 		const [updated] = await db
 			.update(organization)
 			.set(patch)
 			.where(eq(organization.id, ctx.organizationId))
 			.returning();
+
 		if (!updated) throw new Error("Organization not found");
+
 		// The Ctx memoizes the org timezone and week start; a stale one would keep
 		// computing day keys and weeks the old way for the rest of this request.
 		if (input.timezone !== undefined || input.weekStartsOn !== undefined) {
 			invalidateCtxOrgCalendar(ctx);
 		}
+
 		return {
 			name: updated.name,
 			country: updated.country,

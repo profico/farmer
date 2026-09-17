@@ -78,14 +78,18 @@ export const Route = createFileRoute("/$orgSlug/settings/clients")({
 // beside its label, where "Required" is all it needs to say. The box stops at
 // the schema's limit, so "too long" is never the error.
 const clientName = z.string().trim().min(1, "Required").max(120);
+
 const createClientForm = createClientInput.extend({ name: clientName });
+
 const renameClientForm = updateClientInput.extend({ name: clientName });
+
 const NAME_MAX_LENGTH = clientName.maxLength ?? undefined;
 
 function CreateClientDialog() {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
+
 	const form = useForm<z.infer<typeof createClientForm>>({
 		resolver: zodResolver(createClientForm),
 		defaultValues: { name: "" },
@@ -166,6 +170,7 @@ function RenameClientDialog({
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
+
 	const form = useForm<z.infer<typeof renameClientForm>>({
 		resolver: zodResolver(renameClientForm),
 		defaultValues: { clientId: client.id, name: client.name },
@@ -199,6 +204,7 @@ function RenameClientDialog({
 			open={open}
 			onOpenChange={(next) => {
 				setOpen(next);
+
 				// Re-seed from the row on every open: a cancelled edit must not be
 				// what the field shows the next time somebody opens it.
 				if (next) form.reset({ clientId: client.id, name: client.name });
@@ -269,11 +275,13 @@ function ClientsPage() {
 		onSuccess: invalidate,
 		onError: (error) => toast.error(error.message ?? "Could not archive"),
 	});
+
 	const unarchive = useMutation({
 		mutationFn: (clientId: string) => unarchiveClient({ data: clientId }),
 		onSuccess: invalidate,
 		onError: (error) => toast.error(error.message ?? "Could not restore"),
 	});
+
 	const busy = archive.isPending || unarchive.isPending;
 
 	const [query, setQuery] = useState("");
@@ -281,6 +289,7 @@ function ClientsPage() {
 	const matching = clients.filter((c) => matchesSearch(query, [c.name]));
 	const activeClients = matching.filter((c) => !c.archivedAt);
 	const archivedClients = matching.filter((c) => c.archivedAt);
+
 	// A search that only turns up archived rows opens their section rather than
 	// reading as no result at all — the same rule as Projects.
 	const archivedOpen =

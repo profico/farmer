@@ -15,6 +15,7 @@ const brokenKeyring: Keyring = {
 };
 
 let dir = "";
+
 let filePath = "";
 
 beforeEach(async () => {
@@ -48,6 +49,7 @@ describe("createCredentialStore", () => {
 
 	test("a working keyring keeps the token out of the file", async () => {
 		const tokens = new Map<string, string>();
+
 		const keyring: Keyring = {
 			get: async (origin) => tokens.get(origin) ?? null,
 			set: async (origin, token) => {
@@ -57,6 +59,7 @@ describe("createCredentialStore", () => {
 				tokens.delete(origin);
 			},
 		};
+
 		// A token left in the file from a session without a keyring.
 		await createCredentialStore(null, filePath).set(ORIGIN, "old-token");
 

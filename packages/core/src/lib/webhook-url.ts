@@ -70,37 +70,56 @@ const refuse = (reason: string): WebhookUrlRefusal => ({ ok: false, reason });
 
 const ipv4Bytes = (address: string): number[] | null => {
 	const parts = address.split(".");
+
 	if (parts.length !== 4) return null;
 	const bytes: number[] = [];
+
 	for (const part of parts) {
 		// No leading zeros: `0177.0.0.1` is 127.0.0.1 to some parsers and a
 		// different address to others, and a guard that disagrees with the
 		// resolver is not a guard.
 		if (!/^(0|[1-9]\d{0,2})$/.test(part)) return null;
 		const value = Number(part);
+
 		if (value > 255) return null;
 		bytes.push(value);
 	}
+
 	return bytes;
 };
 
 /** Every IPv4 block that is not a host on the public internet. */
 const isPublicIpv4 = (bytes: number[]): boolean => {
 	const [a = 0, b = 0, c = 0] = bytes;
+
 	if (a === 0) return false; // 0.0.0.0/8 "this network"
+
 	if (a === 10) return false; // private
+
 	if (a === 127) return false; // loopback
+
 	if (a === 100 && b >= 64 && b <= 127) return false; // 100.64/10 CGNAT
+
 	if (a === 169 && b === 254) return false; // link-local — the metadata address
+
 	if (a === 172 && b >= 16 && b <= 31) return false; // 172.16/12 private
+
 	if (a === 192 && b === 168) return false; // private
+
 	if (a === 192 && b === 0 && c === 0) return false; // IETF protocol assignments
+
 	if (a === 192 && b === 0 && c === 2) return false; // documentation
+
 	if (a === 192 && b === 88 && c === 99) return false; // 6to4 relay anycast
+
 	if (a === 198 && (b === 18 || b === 19)) return false; // benchmarking
+
 	if (a === 198 && b === 51 && c === 100) return false; // documentation
+
 	if (a === 203 && b === 0 && c === 113) return false; // documentation
+
 	if (a >= 224) return false; // multicast, reserved, broadcast
+
 	return true;
 };
 
@@ -111,47 +130,62 @@ const ipv6Bytes = (address: string): number[] | null => {
 	// A zone index (`fe80::1%eth0`) names an interface, which is as local as an
 	// address gets. Strip it and let the prefix rules refuse it.
 	const zone = text.indexOf("%");
+
 	if (zone !== -1) text = text.slice(0, zone);
 
 	// The trailing-IPv4 form: `::ffff:127.0.0.1`, `64:ff9b::192.0.2.1`. Peel the
 	// dotted quad off as the last four bytes, then parse what is left as groups.
 	let tail: number[] = [];
+
 	if (text.includes(".")) {
 		const lastColon = text.lastIndexOf(":");
+
 		if (lastColon === -1) return null;
 		const embedded = ipv4Bytes(text.slice(lastColon + 1));
+
 		if (!embedded) return null;
 		tail = embedded;
 		text = text.slice(0, lastColon);
+
 		// A trailing colon here is the second colon of a `::` run, which the
 		// slice took half of. Put it back, or `::127.0.0.1` parses as `:`.
 		if (text.endsWith(":")) text += ":";
 	}
 
 	const halves = text.split("::");
+
 	if (halves.length > 2) return null;
+
 	const groupsOf = (part: string): number[][] | null => {
 		if (part === "") return [];
 		const out: number[][] = [];
+
 		for (const group of part.split(":")) {
 			if (!/^[0-9a-fA-F]{1,4}$/.test(group)) return null;
 			const value = Number.parseInt(group, 16);
 			out.push([value >> 8, value & 0xff]);
 		}
+
 		return out;
 	};
+
 	const head = groupsOf(halves[0] ?? "");
 	const rest = halves.length === 2 ? groupsOf(halves[1] ?? "") : [];
+
 	if (!head || !rest) return null;
 
 	const headBytes = head.flat();
 	const restBytes = rest.flat();
 	const fixed = headBytes.length + restBytes.length + tail.length;
+
 	if (fixed > 16) return null;
+
 	if (halves.length === 1) {
 		if (fixed !== 16) return null;
+
 		return [...headBytes, ...tail];
 	}
+
 	return [
 		...headBytes,
 		...new Array<number>(16 - fixed).fill(0),
@@ -167,6 +201,7 @@ const isPublicIpv6 = (bytes: number[]): boolean => {
 	if (bytes.every((byte, index) => (index === 15 ? byte <= 1 : byte === 0))) {
 		return false;
 	}
+
 	// ::ffff:a.b.c.d — an IPv4 address wearing an IPv6 coat. Classify what is
 	// actually inside it, or `::ffff:127.0.0.1` walks straight through.
 	if (
@@ -176,6 +211,7 @@ const isPublicIpv6 = (bytes: number[]): boolean => {
 	) {
 		return isPublicIpv4(bytes.slice(12));
 	}
+
 	// 64:ff9b::/96 NAT64, same reasoning.
 	if (
 		b0 === 0x00 &&
@@ -186,15 +222,22 @@ const isPublicIpv6 = (bytes: number[]): boolean => {
 	) {
 		return isPublicIpv4(bytes.slice(12));
 	}
+
 	// 2002::/16 6to4 carries the v4 address in the next four bytes.
 	if (b0 === 0x20 && b1 === 0x02) return isPublicIpv4(bytes.slice(2, 6));
+
 	if ((b0 & 0xfe) === 0xfc) return false; // fc00::/7 unique local
+
 	if (b0 === 0xfe && (b1 & 0xc0) === 0x80) return false; // fe80::/10 link-local
+
 	if (b0 === 0xff) return false; // ff00::/8 multicast
+
 	if (b0 === 0x20 && b1 === 0x01 && b2 === 0x0d && b3 === 0xb8) return false; // 2001:db8::/32
+
 	if (b0 === 0x01 && b1 === 0x00 && bytes.slice(2, 8).every((x) => x === 0)) {
 		return false; // 100::/64 discard-only
 	}
+
 	return true;
 };
 
@@ -206,9 +249,12 @@ const isPublicIpv6 = (bytes: number[]): boolean => {
  */
 export const isPublicIpAddress = (address: string): boolean => {
 	const v4 = ipv4Bytes(address);
+
 	if (v4) return isPublicIpv4(v4);
 	const v6 = ipv6Bytes(address);
+
 	if (v6) return isPublicIpv6(v6);
+
 	// Not an address this module can classify. Refusing is the only safe answer.
 	return false;
 };
@@ -224,7 +270,9 @@ export const isPublicIpAddress = (address: string): boolean => {
  */
 export const checkWebhookUrlRules = (raw: string): WebhookUrlCheck => {
 	const trimmed = raw.trim();
+
 	if (trimmed.length === 0) return refuse("Enter a URL");
+
 	if (trimmed.length > MAX_WEBHOOK_URL_LENGTH) {
 		return refuse(
 			`Keep the URL under ${String(MAX_WEBHOOK_URL_LENGTH)} characters`,
@@ -232,6 +280,7 @@ export const checkWebhookUrlRules = (raw: string): WebhookUrlCheck => {
 	}
 
 	let url: URL;
+
 	try {
 		url = new URL(trimmed);
 	} catch {
@@ -239,15 +288,18 @@ export const checkWebhookUrlRules = (raw: string): WebhookUrlCheck => {
 	}
 
 	const allowPrivate = allowsPrivateWebhookHosts();
+
 	if (
 		url.protocol !== "https:" &&
 		!(allowPrivate && url.protocol === "http:")
 	) {
 		return refuse("The URL must start with https://");
 	}
+
 	if (url.username !== "" || url.password !== "") {
 		return refuse("Remove the username and password from the URL");
 	}
+
 	if (url.hostname === "") return refuse("The URL has no host");
 
 	// A literal address is refused here rather than at the lookup, so the error
@@ -255,6 +307,7 @@ export const checkWebhookUrlRules = (raw: string): WebhookUrlCheck => {
 	const hostname = url.hostname.startsWith("[")
 		? url.hostname.slice(1, -1)
 		: url.hostname;
+
 	if (isIP(hostname) !== 0 && !allowPrivate && !isPublicIpAddress(hostname)) {
 		return refuse("That address is not reachable from the public internet");
 	}
@@ -277,20 +330,25 @@ export const resolveWebhookTarget = async (
 	raw: string,
 ): Promise<WebhookUrlCheck> => {
 	const checked = checkWebhookUrlRules(raw);
+
 	if (!checked.ok) return checked;
+
 	if (allowsPrivateWebhookHosts()) return checked;
 
 	const hostname = checked.url.hostname.startsWith("[")
 		? checked.url.hostname.slice(1, -1)
 		: checked.url.hostname;
+
 	if (isIP(hostname) !== 0) return { ...checked, addresses: [hostname] };
 
 	let answers: { address: string }[];
+
 	try {
 		answers = await lookup(hostname, { all: true });
 	} catch {
 		return refuse(`Could not resolve ${hostname}`);
 	}
+
 	if (answers.length === 0) return refuse(`Could not resolve ${hostname}`);
 
 	for (const answer of answers) {
@@ -300,5 +358,6 @@ export const resolveWebhookTarget = async (
 			);
 		}
 	}
+
 	return { ...checked, addresses: answers.map((answer) => answer.address) };
 };

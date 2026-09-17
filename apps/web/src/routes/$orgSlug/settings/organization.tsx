@@ -78,9 +78,11 @@ const WEEK_START_ITEMS = [
 function OrganizationSettingsPage() {
 	const orgSlug = useOrgSlug();
 	const { data: settings } = useSuspenseQuery(orgSettingsQuery(orgSlug));
+
 	const { data: countries } = useSuspenseQuery(
 		supportedCountriesQuery(orgSlug),
 	);
+
 	const queryClient = useQueryClient();
 	const router = useRouter();
 
@@ -122,6 +124,7 @@ function OrganizationSettingsPage() {
 
 	const [name, setName] = useState(settings.name);
 	const trimmedName = name.trim();
+
 	const nameChanged =
 		trimmedName.length > 0 &&
 		trimmedName.length <= 120 &&
@@ -134,15 +137,18 @@ function OrganizationSettingsPage() {
 
 	const { uploadsEnabled } = useRouteContext({ from: "/$orgSlug" });
 	const fileInput = useRef<HTMLInputElement>(null);
+
 	const upload = useMutation({
 		mutationFn: async (file: File) => {
 			// The server refuses it too; checking here first saves sending it.
 			if (file.size > MAX_UPLOAD_BYTES) {
 				throw new Error("The image is larger than 1 MB.");
 			}
+
 			const form = new FormData();
 			form.set("purpose", "org-logo");
 			form.set("file", file);
+
 			return uploadImage({ data: form });
 		},
 		// Saved as soon as it lands. Choosing the file was the decision, and a
@@ -172,6 +178,7 @@ function OrganizationSettingsPage() {
 					className="flex w-full max-w-sm gap-2"
 					onSubmit={(e) => {
 						e.preventDefault();
+
 						if (nameChanged) mutation.mutate({ name: trimmedName });
 					}}
 				>
@@ -265,6 +272,7 @@ function OrganizationSettingsPage() {
 					className="flex w-full max-w-sm flex-col gap-3"
 					onSubmit={(e) => {
 						e.preventDefault();
+
 						if (logoChanged) mutation.mutate({ logo: trimmedLogo });
 					}}
 				>
@@ -332,6 +340,7 @@ function OrganizationSettingsPage() {
 										const file = e.currentTarget.files?.[0];
 										// Cleared, so choosing the same file again still fires.
 										e.currentTarget.value = "";
+
 										if (file) upload.mutate(file);
 									}}
 								/>
@@ -378,6 +387,7 @@ const timezoneItems = (current: string): TimezoneItem[] => {
 	const zones = new Set(["UTC", ...Intl.supportedValuesOf("timeZone")]);
 	zones.add(current);
 	const now = new Date();
+
 	return [...zones].map((value) => ({
 		value,
 		label: value.replaceAll("_", " "),
@@ -397,6 +407,7 @@ function TimezonePicker({
 	const items = useMemo(() => timezoneItems(value), [value]);
 	const selected = items.find((item) => item.value === value) ?? null;
 	const [query, setQuery] = useState("");
+
 	const filtered = useMemo(
 		() =>
 			query.trim() === ""
@@ -406,6 +417,7 @@ function TimezonePicker({
 					),
 		[items, query],
 	);
+
 	return (
 		<Combobox
 			items={items}
@@ -486,11 +498,13 @@ function TrackingToleranceSection() {
 	});
 
 	const parsed = Number(pct);
+
 	const valid =
 		Number.isInteger(parsed) &&
 		parsed >= 0 &&
 		parsed <= 50 &&
 		pct.trim() !== "";
+
 	const changed = valid && parsed !== policy.trackingTolerancePct;
 
 	return (
@@ -502,6 +516,7 @@ function TrackingToleranceSection() {
 				className="flex w-full max-w-sm items-center gap-2"
 				onSubmit={(e) => {
 					e.preventDefault();
+
 					if (changed) mutation.mutate(parsed);
 				}}
 			>
@@ -567,11 +582,13 @@ function AutomationLockSection() {
 	// and "changed" has to compare against null rather than against "".
 	const trimmed = value.trim();
 	const next = trimmed === "" ? null : trimmed;
+
 	const valid =
 		next === null ||
 		(/^\d{4}-\d{2}-\d{2}$/.test(next) &&
 			!Number.isNaN(new Date(`${next}T00:00:00Z`).getTime()) &&
 			new Date(`${next}T00:00:00Z`).toISOString().startsWith(next));
+
 	const changed = valid && next !== (policy.automationLockedThrough ?? null);
 
 	return (
@@ -583,6 +600,7 @@ function AutomationLockSection() {
 				className="flex w-full max-w-sm items-center gap-2"
 				onSubmit={(e) => {
 					e.preventDefault();
+
 					if (changed) mutation.mutate(next);
 				}}
 			>

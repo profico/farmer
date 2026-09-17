@@ -50,6 +50,7 @@ const REQUIRED_COLUMNS = {
 export function detectHarvestFile(header: readonly string[]): DetectResult {
 	const columns = new Set(header.map((cell) => cell.trim()));
 	const matches: KnownKind[] = [];
+
 	for (const kind of KNOWN_KINDS) {
 		if (REQUIRED_COLUMNS[kind].every((col) => columns.has(col))) {
 			matches.push(kind);
@@ -57,12 +58,14 @@ export function detectHarvestFile(header: readonly string[]): DetectResult {
 	}
 
 	const [onlyMatch] = matches;
+
 	if (matches.length === 1 && onlyMatch) {
 		return {
 			kind: onlyMatch,
 			reason: `header has every required column for ${onlyMatch}: ${REQUIRED_COLUMNS[onlyMatch].join(", ")}`,
 		};
 	}
+
 	if (matches.length > 1) {
 		return {
 			kind: "unknown",
@@ -72,8 +75,10 @@ export function detectHarvestFile(header: readonly string[]): DetectResult {
 
 	const missing = KNOWN_KINDS.map((kind) => {
 		const need = REQUIRED_COLUMNS[kind].filter((col) => !columns.has(col));
+
 		return `${kind} is missing ${need.join(", ")}`;
 	}).join("; ");
+
 	return {
 		kind: "unknown",
 		reason: `header matches no known Harvest export kind (${missing})`,
@@ -92,18 +97,25 @@ function parseYesNo(raw: string): boolean {
 // zero-padding a `YYYY-M-D` or `M/D/YYYY` value. Anything else is `null`.
 export function parseHarvestDate(raw: string): string | null {
 	const trimmed = raw.trim();
+
 	if (trimmed === "") return null;
 
 	const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
+
 	if (iso) {
 		const [, year, month, day] = iso;
+
 		return `${year}-${(month ?? "").padStart(2, "0")}-${(day ?? "").padStart(2, "0")}`;
 	}
+
 	const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
+
 	if (slash) {
 		const [, month, day, year] = slash;
+
 		return `${year}-${(month ?? "").padStart(2, "0")}-${(day ?? "").padStart(2, "0")}`;
 	}
+
 	return null;
 }
 
@@ -150,6 +162,7 @@ export function toTimeReportRow(
 	record: ReadonlyMap<string, string>,
 ): TimeReportRow {
 	const hoursRaw = col(record, "Hours");
+
 	return {
 		date: parseHarvestDate(col(record, "Date")),
 		client: col(record, "Client"),

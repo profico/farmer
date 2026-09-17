@@ -120,13 +120,17 @@ const whyEmailNotConfirmable = async (
 		where: eq(user.id, userId),
 		columns: { emailVerified: true },
 	});
+
 	if (!target || target.emailVerified) return "confirmed";
+
 	const [signedIn] = await db
 		.select({ id: account.id })
 		.from(account)
 		.where(eq(account.userId, userId))
 		.limit(1);
+
 	if (signedIn) return "signed-in";
+
 	const [elsewhere] = await db
 		.select({ id: member.id })
 		.from(member)
@@ -137,6 +141,7 @@ const whyEmailNotConfirmable = async (
 			),
 		)
 		.limit(1);
+
 	return elsewhere ? "elsewhere" : null;
 };
 
@@ -154,6 +159,7 @@ export const membersService = {
 				eq(member.userId, ctx.userId),
 			),
 		});
+
 		return row?.role ?? null;
 	},
 
@@ -174,7 +180,9 @@ export const membersService = {
 			),
 			columns: { userId: true },
 		});
+
 		if (byId) return byId.userId;
+
 		const byEmail = await db
 			.select({ userId: member.userId })
 			.from(member)
@@ -186,6 +194,7 @@ export const membersService = {
 				),
 			)
 			.limit(1);
+
 		return byEmail[0]?.userId ?? null;
 	},
 
@@ -237,6 +246,7 @@ export const membersService = {
 			.innerJoin(user, eq(member.userId, user.id))
 			.where(eq(member.organizationId, ctx.organizationId))
 			.orderBy(asc(member.createdAt), asc(member.id));
+
 		return {
 			members: rows.map((r) => ({
 				id: r.id,
@@ -259,6 +269,7 @@ export const membersService = {
 	 *  applied — and this list is what the members screen draws. */
 	list: async (ctx: Ctx): Promise<PersonRow[]> => {
 		const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
+
 		const rows = await db
 			.select({
 				userId: member.userId,
@@ -300,6 +311,7 @@ export const membersService = {
 		const unverified = rows
 			.filter((r) => !r.emailVerified)
 			.map((r) => r.userId);
+
 		const signedIn = new Set(
 			unverified.length === 0
 				? []
@@ -317,6 +329,7 @@ export const membersService = {
 			.from(teamLeadPerson)
 			.where(eq(teamLeadPerson.organizationId, ctx.organizationId))
 			.groupBy(teamLeadPerson.leadUserId);
+
 		const leadsPeople = new Map(
 			leadRows.map((r) => [r.leadUserId, Number(r.people)]),
 		);
@@ -399,6 +412,7 @@ export const membersService = {
 		asOf: string,
 	): Promise<ResolvedMemberType> => {
 		const all = await membersService.typesAsOf(ctx, asOf);
+
 		return all.get(userId) ?? DEFAULT_TYPE;
 	},
 
@@ -442,6 +456,7 @@ export const membersService = {
 						updatedAt: new Date(),
 					})
 					.where(eq(memberTypeHistory.id, current.id));
+
 				return;
 			}
 
@@ -501,6 +516,7 @@ export const membersService = {
 					isNotNull(memberProfile.archivedAt),
 				),
 			);
+
 		return new Set(rows.map((r) => r.userId));
 	},
 
@@ -521,6 +537,7 @@ export const membersService = {
 					isNotNull(memberProfile.archivedAt),
 				),
 			);
+
 		return new Map(
 			rows.flatMap((r) => (r.archivedAt ? [[r.userId, r.archivedAt]] : [])),
 		);
@@ -531,11 +548,13 @@ export const membersService = {
 	setArchived: async (ctx: Ctx, userId: string, archived: boolean) => {
 		await requireAdmin(ctx);
 		await assertUserInOrg(ctx, userId);
+
 		// Archiving yourself would drop you out of the very lists you administer
 		// while leaving you logged in — a state with no way back through the UI.
 		if (archived && userId === ctx.userId) {
 			throw new Error("You cannot archive yourself");
 		}
+
 		const archivedAt = archived ? new Date() : null;
 		await db
 			.insert(memberProfile)
@@ -544,6 +563,7 @@ export const membersService = {
 				target: [memberProfile.organizationId, memberProfile.userId],
 				set: { archivedAt, updatedAt: new Date() },
 			});
+
 		if (archived) {
 			// An archived person is gone from every forward-looking surface; a
 			// stale Team Lead list row is exactly the kind of thing that survives
@@ -553,6 +573,7 @@ export const membersService = {
 			await emitEvent(ctx, "member.archived", () =>
 				memberWebhookPayload(ctx, userId),
 			);
+
 			return { emailConfirmed: false };
 		}
 
@@ -562,7 +583,9 @@ export const membersService = {
 		if (await whyEmailNotConfirmable(ctx, userId)) {
 			return { emailConfirmed: false };
 		}
+
 		await markEmailVerified(userId);
+
 		return { emailConfirmed: true };
 	},
 
@@ -573,6 +596,7 @@ export const membersService = {
 	confirmEmail: async (ctx: Ctx, userId: string) => {
 		await requireAdmin(ctx);
 		await assertUserInOrg(ctx, userId);
+
 		const profile = await db.query.memberProfile.findFirst({
 			where: and(
 				eq(memberProfile.organizationId, ctx.organizationId),
@@ -580,9 +604,11 @@ export const membersService = {
 			),
 			columns: { archivedAt: true },
 		});
+
 		if (profile?.archivedAt) {
 			throw new Error("Restore this person instead: that confirms the address");
 		}
+
 		switch (await whyEmailNotConfirmable(ctx, userId)) {
 			case "confirmed":
 				throw new Error("This address is confirmed already");
@@ -596,6 +622,7 @@ export const membersService = {
 				);
 			case null:
 				await markEmailVerified(userId);
+
 				return { emailConfirmed: true };
 		}
 	},
@@ -657,6 +684,7 @@ export const membersService = {
 		invitationId: string,
 	): Promise<{ email: string; role: InviteMemberInput["role"] } | null> => {
 		await requireAdmin(ctx);
+
 		const row = await db.query.invitation.findFirst({
 			where: and(
 				eq(invitation.id, invitationId),
@@ -665,7 +693,9 @@ export const membersService = {
 			),
 			columns: { email: true, role: true },
 		});
+
 		if (!row) return null;
+
 		// Narrowed to the roles an invitation can be made with here, because a
 		// resend is a second `createInvitation` and better-auth types its role.
 		// The column is plain text; anything but "admin" resends as a member,
@@ -686,6 +716,7 @@ export const membersService = {
 		{ now = new Date() }: { now?: Date } = {},
 	): Promise<Map<string, InvitationEmailState>> => {
 		await requireAdmin(ctx);
+
 		const rows = await db
 			.select({
 				invitationId: invitationEmail.invitationId,
@@ -695,6 +726,7 @@ export const membersService = {
 			})
 			.from(invitationEmail)
 			.where(eq(invitationEmail.organizationId, ctx.organizationId));
+
 		return new Map(
 			rows.map((r): [string, InvitationEmailState] => [
 				r.invitationId,
@@ -708,6 +740,7 @@ export const membersService = {
 
 	typeHistory: async (ctx: Ctx, userId: string) => {
 		await requireAdmin(ctx);
+
 		return db.query.memberTypeHistory.findMany({
 			where: and(
 				eq(memberTypeHistory.organizationId, ctx.organizationId),

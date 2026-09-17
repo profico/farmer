@@ -44,11 +44,17 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-since";
+
 const USER_ID = "user-since";
+
 const MONDAY = "2026-08-10";
+
 const TUESDAY = "2026-08-11";
+
 const WEDNESDAY = "2026-08-12";
+
 const THURSDAY = "2026-08-13";
+
 // A Wednesday, comfortably outside any grace window from the fixture week.
 const LAST_MONTH = "2026-07-15";
 
@@ -64,8 +70,11 @@ const runAutomationsOn = (dayKey: string) =>
 	});
 
 let harness: TestDb;
+
 let devTaskId: string;
+
 let projectId: string;
+
 let repoId: string;
 
 const entriesOn = (date: string) =>
@@ -98,16 +107,20 @@ const switchedOnAt = async (
  *  adapter does — otherwise a clamped range would prove nothing here. */
 const calendarWithMeetingsOn = (dates: string[]) => ({
 	listEventsForRange: async (_ctx: Ctx, range: { from: string; to: string }) =>
-		dates
-			.filter((d) => d >= range.from && d <= range.to)
-			.map((d) => ({
-				id: `event-${d}`,
-				title: "Standup",
-				start: `${d}T09:00:00.000Z`,
-				end: `${d}T10:00:00.000Z`,
-				meetingUrl: null,
-				htmlLink: null,
-			})),
+		dates.flatMap((d) =>
+			d >= range.from && d <= range.to
+				? [
+						{
+							id: `event-${d}`,
+							title: "Standup",
+							start: `${d}T09:00:00.000Z`,
+							end: `${d}T10:00:00.000Z`,
+							meetingUrl: null,
+							htmlLink: null,
+						},
+					]
+				: [],
+		),
 	listEventsForDay: async () => [],
 });
 
@@ -119,22 +132,26 @@ const commitsOn = (dates: string[]) => ({
 		_ctx: Ctx,
 		range: { from: string; to: string },
 	) =>
-		dates
-			.filter((d) => d >= range.from && d <= range.to)
-			.map((d) => ({
-				dayKey: d,
-				commits: [
-					{
-						projectGithubRepoId: repoId,
-						projectId,
-						sha: `sha-${d}`,
-						message: "Fix the thing",
-						authorLogin: "tester",
-						committedAt: new Date(`${d}T12:00:00.000Z`),
-						url: `https://example.com/${d}`,
-					},
-				],
-			})),
+		dates.flatMap((d) =>
+			d >= range.from && d <= range.to
+				? [
+						{
+							dayKey: d,
+							commits: [
+								{
+									projectGithubRepoId: repoId,
+									projectId,
+									sha: `sha-${d}`,
+									message: "Fix the thing",
+									authorLogin: "tester",
+									committedAt: new Date(`${d}T12:00:00.000Z`),
+									url: `https://example.com/${d}`,
+								},
+							],
+						},
+					]
+				: [],
+		),
 });
 
 beforeAll(async () => {
@@ -167,11 +184,14 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Farmer" })
 		.returning();
+
 	projectId = p?.id ?? "";
+
 	// A real repo row, so the commits the engine attaches satisfy their foreign
 	// key the way production commits do.
 	const [repo] = await db
@@ -185,6 +205,7 @@ beforeAll(async () => {
 			fullName: "profico/farmer",
 		})
 		.returning({ id: projectGithubRepo.id });
+
 	repoId = repo?.id ?? "";
 
 	// The commit engine resolves its task by system key; "development" is
@@ -199,6 +220,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = dev?.id ?? "";
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
@@ -229,6 +251,7 @@ beforeEach(async () => {
 describe("recording when a switch was flipped", () => {
 	test("turning one on stamps the moment", async () => {
 		const before = new Date();
+
 		const settings = await integrationSettingsService.update(ctx, {
 			googleAutoSyncMeetings: true,
 		});
@@ -247,6 +270,7 @@ describe("recording when a switch was flipped", () => {
 		await integrationSettingsService.update(ctx, {
 			googleAutoSyncMeetings: true,
 		});
+
 		const off = await integrationSettingsService.update(ctx, {
 			googleAutoSyncMeetings: false,
 		});
@@ -258,9 +282,11 @@ describe("recording when a switch was flipped", () => {
 		const first = await integrationSettingsService.update(ctx, {
 			githubSyncCommitsAsWorkTime: true,
 		});
+
 		await integrationSettingsService.update(ctx, {
 			githubSyncCommitsAsWorkTime: false,
 		});
+
 		const second = await integrationSettingsService.update(ctx, {
 			githubSyncCommitsAsWorkTime: true,
 		});
@@ -284,6 +310,7 @@ describe("recording when a switch was flipped", () => {
 		const first = await integrationSettingsService.update(ctx, {
 			googleAutoSyncMeetings: true,
 		});
+
 		const again = await integrationSettingsService.update(ctx, {
 			googleAutoSyncMeetings: true,
 			githubAutoLoadCommits: true,

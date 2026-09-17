@@ -73,6 +73,7 @@ export function ConversationList({
 	const { data: conversations = [], isPending } = useQuery(
 		conversationsQuery(orgSlug),
 	);
+
 	// Which threads have a turn in flight. Threads run in parallel, so the one
 	// you are reading is rarely the only one working — and the answer arriving in
 	// a thread you stepped away from is otherwise invisible until you open it.
@@ -117,6 +118,7 @@ export function ConversationList({
 	const commit = (conversation: { id: string; title: string }) => {
 		const title = draft.trim();
 		setEditingId(null);
+
 		if (!title || title === conversation.title) return;
 		rename.mutate({ conversationId: conversation.id, title });
 	};
@@ -135,6 +137,7 @@ export function ConversationList({
 					replace: true,
 				});
 			}
+
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).assistant, "conversations"],
 			});
@@ -213,8 +216,10 @@ export function ConversationList({
 									onBlur={() => {
 										if (cancelledRef.current) {
 											cancelledRef.current = false;
+
 											return;
 										}
+
 										commit(conversation);
 									}}
 									onKeyDown={(event) => {
@@ -222,6 +227,7 @@ export function ConversationList({
 											event.preventDefault();
 											commit(conversation);
 										}
+
 										if (event.key === "Escape") {
 											event.preventDefault();
 											cancelledRef.current = true;
@@ -327,9 +333,11 @@ export function MobileChatBar({ orgSlug }: { orgSlug: string }) {
 	const [open, setOpen] = useState(false);
 	const openId = useSearch({ strict: false, select: (search) => search.c });
 	const { data: conversations = [] } = useQuery(conversationsQuery(orgSlug));
+
 	const title = conversations.find(
 		(conversation) => conversation.id === openId,
 	)?.title;
+
 	// The same shimmer the sidebar's rows wear. It belongs here more than there,
 	// if anything: this bar is the only place on a phone that names the thread,
 	// so it is also the only place that can say the thread is working.

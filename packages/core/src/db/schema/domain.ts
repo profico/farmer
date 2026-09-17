@@ -65,14 +65,17 @@ export const taskSystemKey = pgEnum("task_system_key", [
 	"paid_leave",
 	"code_review",
 ]);
+
 export type TaskSystemKey = (typeof taskSystemKey.enumValues)[number];
 
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });
+
 const org = () =>
 	text("organization_id")
 		.notNull()
 		.references(() => organization.id, { onDelete: "cascade" });
+
 const stamps = {
 	createdAt: ts("created_at").notNull().defaultNow(),
 	updatedAt: ts("updated_at").notNull().defaultNow(),

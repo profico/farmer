@@ -3,6 +3,7 @@ import { z } from "zod";
 import { TASK_GROUPS } from "../lib/task-taxonomy";
 
 export const taskGroupEnum = z.enum(TASK_GROUPS);
+
 export type TaskGroupValue = z.infer<typeof taskGroupEnum>;
 
 export const createTaskInput = z.object({
@@ -13,6 +14,7 @@ export const createTaskInput = z.object({
 	color: z.string().optional(),
 	description: z.string().max(500).optional(),
 });
+
 export type CreateTaskInput = z.infer<typeof createTaskInput>;
 
 export const updateTaskInput = z.object({
@@ -22,12 +24,15 @@ export const updateTaskInput = z.object({
 	color: z.string().optional(),
 	description: z.string().max(500).optional(),
 });
+
 export type UpdateTaskInput = z.infer<typeof updateTaskInput>;
 
 export const archiveTaskInput = z.uuid();
+
 export type ArchiveTaskInput = z.infer<typeof archiveTaskInput>;
 
 export const taskIdInput = z.uuid();
+
 export type TaskIdInput = z.infer<typeof taskIdInput>;
 
 // Preferences → Your tasks: switch one task off (or back on) for the caller.
@@ -35,4 +40,5 @@ export const setTaskHiddenInput = z.object({
 	taskId: z.uuid(),
 	hidden: z.boolean(),
 });
+
 export type SetTaskHiddenInput = z.infer<typeof setTaskHiddenInput>;

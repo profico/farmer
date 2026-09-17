@@ -63,6 +63,7 @@ import type { Ctx } from "./types";
 export const WEBHOOK_SUBSCRIPTION_CACHE_MS = 60_000;
 
 type SubscriptionEntry = { kinds: Set<string>; expiresAt: number };
+
 const subscriptions = new Map<string, SubscriptionEntry>();
 
 /** Drop an organization's cached subscriptions, after an endpoint of theirs was
@@ -81,6 +82,7 @@ export const clearWebhookSubscriptionCacheForTests = (): void => {
 
 const subscribedKinds = async (ctx: Ctx): Promise<Set<string>> => {
 	const cached = subscriptions.get(ctx.organizationId);
+
 	if (cached && cached.expiresAt > Date.now()) return cached.kinds;
 
 	// On `ctxDb`, never the ambient handle: this runs from inside the caller's
@@ -95,11 +97,13 @@ const subscribedKinds = async (ctx: Ctx): Promise<Set<string>> => {
 				isNull(webhookEndpoint.disabledAt),
 			),
 		);
+
 	const kinds = new Set(rows.flatMap((row) => row.enabledEvents));
 	subscriptions.set(ctx.organizationId, {
 		kinds,
 		expiresAt: Date.now() + WEBHOOK_SUBSCRIPTION_CACHE_MS,
 	});
+
 	return kinds;
 };
 
@@ -115,6 +119,7 @@ export const webhookWants = async (
 	kind: WebhookEventKind,
 ): Promise<boolean> => {
 	if (process.env.WEBHOOK_DELIVERY_ENABLED === "false") return false;
+
 	return (await subscribedKinds(ctx)).has(kind);
 };
 
@@ -142,6 +147,7 @@ export const emitEvent = async <K extends WebhookEventKind>(
 	try {
 		if (!(await webhookWants(ctx, kind))) return;
 		const data = await build();
+
 		if (!data) return;
 		await ctxDb(ctx)
 			.insert(webhookEvent)
@@ -185,6 +191,7 @@ export const emitEventToEndpoint = async (
 			data: { kind: "webhook.test", ...data },
 		})
 		.returning({ id: webhookEvent.id });
+
 	return row?.id ?? null;
 };
 
@@ -212,6 +219,7 @@ export const timeEntryWebhookPayload = async (
 	timeEntryId: string,
 ): Promise<{ entry: WebhookTimeEntry; member: WebhookMember } | null> => {
 	const payloads = await timeEntryWebhookPayloads(ctx, [timeEntryId]);
+
 	return payloads[0] ?? null;
 };
 
@@ -224,6 +232,7 @@ export const timeEntryWebhookPayloads = async (
 ): Promise<{ entry: WebhookTimeEntry; member: WebhookMember }[]> => {
 	if (timeEntryIds.length === 0) return [];
 	const db = ctxDb(ctx);
+
 	const rows = await db.query.timeEntry.findMany({
 		where: and(
 			eq(timeEntry.organizationId, ctx.organizationId),
@@ -231,20 +240,25 @@ export const timeEntryWebhookPayloads = async (
 		),
 		with: { task: true, project: { with: { client: true } } },
 	});
+
 	if (rows.length === 0) return [];
 
 	const people = await db
 		.select({ id: user.id, name: user.name, email: user.email })
 		.from(user)
 		.where(inArray(user.id, [...new Set(rows.map((row) => row.userId))]));
+
 	const byUserId = new Map(people.map((person) => [person.id, person]));
 	const byId = new Map(rows.map((row) => [row.id, row]));
 
 	const payloads: { entry: WebhookTimeEntry; member: WebhookMember }[] = [];
+
 	for (const id of timeEntryIds) {
 		const row = byId.get(id);
+
 		if (!row) continue;
 		const person = byUserId.get(row.userId);
+
 		if (!person) continue;
 		payloads.push({
 			member: toWebhookMember(person),
@@ -275,6 +289,7 @@ export const timeEntryWebhookPayloads = async (
 			},
 		});
 	}
+
 	return payloads;
 };
 
@@ -301,7 +316,9 @@ export const projectWebhookPayload = async (
 		),
 		with: { client: true },
 	});
+
 	if (!row) return null;
+
 	return {
 		project: {
 			id: row.id,
@@ -327,7 +344,9 @@ export const clientWebhookPayload = async (
 			),
 		)
 		.limit(1);
+
 	if (!row) return null;
+
 	return { client: { id: row.id, name: row.name } };
 };
 
@@ -340,7 +359,9 @@ export const memberWebhookPayload = async (
 		.from(user)
 		.where(eq(user.id, userId))
 		.limit(1);
+
 	if (!row) return null;
+
 	return { member: toWebhookMember(row) };
 };
 
@@ -357,5 +378,6 @@ export const pendingWebhookEventCount = async (ctx: Ctx): Promise<number> => {
 				isNull(webhookEvent.fannedOutAt),
 			),
 		);
+
 	return row?.count ?? 0;
 };

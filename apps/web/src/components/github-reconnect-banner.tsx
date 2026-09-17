@@ -26,6 +26,7 @@ import { githubConnectionStatusQuery } from "#/queries/github.ts";
 // this has to reach.
 export function GithubReconnectBanner({ orgSlug }: { orgSlug: string }) {
 	const heightTransition = useHeightTransition();
+
 	const { data } = useQuery({
 		...githubConnectionStatusQuery(orgSlug),
 		staleTime: 5 * 60_000,

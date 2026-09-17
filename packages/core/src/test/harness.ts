@@ -112,9 +112,11 @@ export const closeTestEngine = async (): Promise<void> => {
  */
 export const at = <T>(rows: readonly T[], index: number): T => {
 	const row = rows[index];
+
 	if (row === undefined) {
 		throw new Error(`fixture has no row at index ${index} (of ${rows.length})`);
 	}
+
 	return row;
 };
 
@@ -130,5 +132,6 @@ export const present = <T>(value: T | null | undefined, what: string): T => {
 	if (value === null || value === undefined) {
 		throw new Error(`expected ${what} to be present`);
 	}
+
 	return value;
 };

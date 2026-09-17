@@ -25,6 +25,7 @@ export const projectPageAccess = (
 	openToOrg = false,
 ): ProjectPageAccess => {
 	const lead = isAdmin || heldRole === "team_lead" || heldRole === "pm";
+
 	return {
 		canView: lead,
 		canManageTeam: lead,
@@ -41,7 +42,9 @@ export const heldRoleFrom = (
 	projectId: string,
 ): ProjectRole | null => {
 	const mine = me.projectRoles[projectId];
+
 	if (mine == null) return null;
+
 	return me.isTeamLead ? "pm" : mine;
 };
 
@@ -67,5 +70,6 @@ export const canActOnProjectRole = (
 	role: ProjectRole,
 ): boolean => {
 	if (isAdmin) return true;
+
 	return heldRole != null && RANK[role] <= RANK[heldRole];
 };

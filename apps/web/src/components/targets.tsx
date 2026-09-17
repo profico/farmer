@@ -45,7 +45,9 @@ export function TargetGap({ period }: { period: PeriodTarget }) {
 	if (period.targetSoFarSeconds == null) {
 		return <span className="text-muted-foreground">No target</span>;
 	}
+
 	const delta = period.totalSoFarSeconds - period.targetSoFarSeconds;
+
 	return (
 		<span className="text-muted-foreground">
 			<span
@@ -69,7 +71,9 @@ function Pill({ status }: { status: TrackingStatus | null }) {
 	if (!status) {
 		return <span className="text-xs text-muted-foreground">No target</span>;
 	}
+
 	const s = TARGET_STATUS[status];
+
 	return <StatusPill tone={s.tone}>{s.label}</StatusPill>;
 }
 
@@ -86,10 +90,12 @@ function Pill({ status }: { status: TrackingStatus | null }) {
  */
 export function TargetsStrip({ orgSlug }: { orgSlug: string }) {
 	const { data } = useQuery(myTargetsQuery(orgSlug));
+
 	const cells = [
 		{ key: "week", title: "This week", period: data?.week },
 		{ key: "month", title: "This month", period: data?.month },
 	] as const;
+
 	return (
 		<StatTiles columns={2} className="mt-5 shrink-0">
 			{cells.map(({ key, title, period }) => (

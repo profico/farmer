@@ -93,7 +93,9 @@ const FACE_OVERLAP = Math.round(FACE * OVERLAP);
 const ENTER_TRAVEL = 4;
 
 const neverChanges = () => () => {};
+
 const onClient = () => true;
+
 const onServer = () => false;
 
 export function ContributorsCard({ className }: { className?: string }) {

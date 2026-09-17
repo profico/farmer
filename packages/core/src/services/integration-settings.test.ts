@@ -15,8 +15,11 @@ import { integrationSettingsService } from "./integration-settings.service";
 import type { Ctx } from "./types";
 
 const ORG_A = "is-a";
+
 const ORG_B = "is-b";
+
 const ME = "u-is-me";
+
 const COLLEAGUE = "u-is-colleague";
 
 let harness: TestDb;
@@ -89,9 +92,11 @@ describe("get", () => {
 describe("update", () => {
 	test("turning a switch on stamps it and leaves the others off", async () => {
 		const before = Date.now();
+
 		const next = await integrationSettingsService.update(ctx(ME), {
 			googleAutoSyncMeetings: true,
 		});
+
 		expect(next.googleAutoSyncMeetings).toBe(true);
 		expect(next.githubAutoLoadCommits).toBe(false);
 		expect(next.githubSyncCommitsAsWorkTime).toBe(false);
@@ -103,10 +108,13 @@ describe("update", () => {
 	test("a patch of one switch keeps the others and their stamps as stored", async () => {
 		const stamp = (await integrationSettingsService.get(ctx(ME)))
 			.googleAutoSyncMeetingsSince;
+
 		await Bun.sleep(5);
+
 		const next = await integrationSettingsService.update(ctx(ME), {
 			githubAutoLoadCommits: true,
 		});
+
 		expect(next.googleAutoSyncMeetings).toBe(true);
 		expect(next.googleAutoSyncMeetingsSince).toEqual(stamp);
 		expect(next.githubAutoLoadCommits).toBe(true);
@@ -115,10 +123,13 @@ describe("update", () => {
 	test("re-sending ON for a switch already on does not move its stamp", async () => {
 		const stamp = (await integrationSettingsService.get(ctx(ME)))
 			.googleAutoSyncMeetingsSince;
+
 		await Bun.sleep(5);
+
 		const next = await integrationSettingsService.update(ctx(ME), {
 			googleAutoSyncMeetings: true,
 		});
+
 		expect(next.googleAutoSyncMeetingsSince).toEqual(stamp);
 	});
 
@@ -128,16 +139,20 @@ describe("update", () => {
 				.googleAutoSyncMeetingsSince,
 			"first stamp",
 		);
+
 		const off = await integrationSettingsService.update(ctx(ME), {
 			googleAutoSyncMeetings: false,
 		});
+
 		expect(off.googleAutoSyncMeetings).toBe(false);
 		expect(off.googleAutoSyncMeetingsSince).toBeNull();
 
 		await Bun.sleep(5);
+
 		const on = await integrationSettingsService.update(ctx(ME), {
 			googleAutoSyncMeetings: true,
 		});
+
 		const second = present(on.googleAutoSyncMeetingsSince, "second stamp");
 		expect(second.getTime()).toBeGreaterThan(first.getTime());
 	});
@@ -146,6 +161,7 @@ describe("update", () => {
 		const next = await integrationSettingsService.update(ctx(ME), {
 			githubSyncCommitsAsWorkTime: true,
 		});
+
 		expect(next.githubSyncCommitsAsWorkTimeSince).not.toBeNull();
 	});
 

@@ -59,6 +59,7 @@ export function AddRowDialog({
 	const [taskId, setTaskId] = useState("");
 
 	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
+
 	const { data: tasks = [] } = useQuery({
 		...tasksForProjectQuery(
 			orgSlug,
@@ -66,6 +67,7 @@ export function AddRowDialog({
 		),
 		enabled: open,
 	});
+
 	const { data: recentIds = [] } = useQuery({
 		...recentTasksQuery(orgSlug, projectId),
 		enabled: open && projectId !== TIME_OFF,
@@ -80,6 +82,7 @@ export function AddRowDialog({
 	// against the offered list rather than for a non-empty id, because a
 	// remembered task may since have been archived.
 	const canAdd = pickableTasks.some((t) => t.id === taskId);
+
 	// Every project offers the same task list, so the task survives a switch
 	// between them. Time-off offers only the leave kinds, so crossing into or out
 	// of it lets go of a task the new list does not hold — once that list has
@@ -99,10 +102,13 @@ export function AddRowDialog({
 	// would only set up the "already a row" refusal.
 	const prefill = () => {
 		const last = readLastPick("week-row", orgSlug);
+
 		if (!last) return;
+
 		const live = projects.some(
 			(p) => p.id === last.projectId && p.status === "active",
 		);
+
 		if (!live || existingKeys.has(`${last.projectId}|${last.taskId}`)) return;
 		setProjectId(last.projectId);
 		setTaskId(last.taskId);
@@ -112,14 +118,19 @@ export function AddRowDialog({
 		if (!selectedTask) return;
 		const resolvedProjectId = projectId === TIME_OFF ? null : projectId;
 		const key = `${resolvedProjectId ?? "none"}|${taskId}`;
+
 		if (existingKeys.has(key)) {
 			toast.error("That project and task is already a row this week");
+
 			return;
 		}
+
 		const code = selectedProject?.code ? `[${selectedProject.code}] ` : "";
+
 		const client = selectedProject?.client
 			? ` (${selectedProject.client.name})`
 			: "";
+
 		onAdd({
 			key,
 			projectId: resolvedProjectId,
@@ -131,6 +142,7 @@ export function AddRowDialog({
 			color: selectedTask.color,
 			project: selectedProject,
 		});
+
 		// Time off is never remembered: a week of leave is not the next row.
 		if (resolvedProjectId) {
 			rememberLastPick("week-row", orgSlug, {
@@ -138,6 +150,7 @@ export function AddRowDialog({
 				taskId,
 			});
 		}
+
 		reset();
 		setOpen(false);
 	};
@@ -147,6 +160,7 @@ export function AddRowDialog({
 			open={open}
 			onOpenChange={(next) => {
 				setOpen(next);
+
 				if (next) prefill();
 				else reset();
 			}}

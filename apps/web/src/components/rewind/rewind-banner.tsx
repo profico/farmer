@@ -13,8 +13,10 @@ export function RewindBanner({
 	today: string;
 }) {
 	const year = featuredRewindYear(today);
+
 	if (year === null) return null;
 	const inProgress = year === Number(today.slice(0, 4));
+
 	return (
 		<Link
 			to="/$orgSlug/rewind"

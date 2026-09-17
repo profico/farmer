@@ -20,6 +20,7 @@ export function ImportProgress({
 	if (state.status === "done") {
 		const created = state.created;
 		const finish = state.finish;
+
 		return (
 			<PageSection
 				title="Import done"
@@ -82,6 +83,7 @@ export function ImportProgress({
 	}
 
 	const pct = state.total ? Math.round((state.done / state.total) * 100) : 0;
+
 	return (
 		<PageSection title="Importing">
 			<div className="flex items-baseline justify-between gap-4 text-sm">

@@ -22,7 +22,9 @@ export const configPaths = (
 		platform === "win32"
 			? env.APPDATA || join(home, "AppData", "Roaming")
 			: env.XDG_CONFIG_HOME || join(home, ".config");
+
 	const dir = join(base, "farmer");
+
 	return {
 		dir,
 		config: join(dir, "config.json"),
@@ -58,30 +60,40 @@ const configFile = z.object({
 });
 
 export type OrgEntry = z.infer<typeof orgEntry>;
+
 export type ServerEntry = z.infer<typeof serverEntry>;
+
 export type Config = z.infer<typeof configFile>;
 
 export const configExists = (paths: Paths) => Bun.file(paths.config).exists();
 
 export const readConfig = async (paths: Paths): Promise<Config> => {
 	const file = Bun.file(paths.config);
+
 	if (!(await file.exists())) return { lastServer: null, servers: [] };
+
 	const invalid = new CliError(
 		`${paths.config} is not a valid Farmer config. Delete it and run \`farmer login\` again.`,
 	);
+
 	let raw: string;
+
 	try {
 		raw = await file.text();
 	} catch {
 		throw invalid;
 	}
+
 	let parsed: ReturnType<typeof configFile.safeParse>;
+
 	try {
 		parsed = configFile.safeParse(JSON.parse(raw));
 	} catch {
 		throw invalid;
 	}
+
 	if (!parsed.success) throw invalid;
+
 	return parsed.data;
 };
 
@@ -93,8 +105,10 @@ export const writeConfig = async (paths: Paths, config: Config) => {
 /** The entry for `origin`, added to `config` when it has none yet. */
 export const serverEntryFor = (config: Config, origin: string): ServerEntry => {
 	const found = config.servers.find((server) => server.origin === origin);
+
 	if (found) return found;
 	const created: ServerEntry = { origin, org: null, orgs: [] };
 	config.servers.push(created);
+
 	return created;
 };

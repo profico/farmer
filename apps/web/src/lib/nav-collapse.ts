@@ -27,11 +27,15 @@ import { useSyncExternalStore } from "react";
 // choice back, because it was never overwritten.
 
 const STORAGE_KEY = "farmer-nav-rail";
+
 const ATTRIBUTE = "data-nav";
+
 const VALUE = "rail";
+
 /** Below `lg`. Tailwind's breakpoint, so the content's container queries and
  *  the column that sets their width agree about where a tablet starts. */
 const NARROW = "(max-width: 63.999rem)";
+
 /** Fired on the window whenever *this* tab collapses or expands — `storage`
  *  only reaches the OTHER tabs. */
 const CHANGE_EVENT = "farmer:nav-collapse";
@@ -70,6 +74,7 @@ export const setNavCollapsed = (collapsed: boolean) => {
 		// Private-mode / blocked storage: the toggle still works for this page, it
 		// just won't be remembered. Not worth failing the click over.
 	}
+
 	// Written first, then read back through `sync`: on a narrow window the
 	// column stays a rail whatever was just asked for, and expanding is what the
 	// reader gets back when the window grows.
@@ -86,16 +91,20 @@ const subscribe = (onChange: () => void) => {
 		sync();
 		onChange();
 	};
+
 	// Resizing past the breakpoint is the same kind of input as a click, so it
 	// goes through `sync` for the same reason.
 	const media = window.matchMedia(NARROW);
+
 	const onMedia = () => {
 		sync();
 		onChange();
 	};
+
 	window.addEventListener(CHANGE_EVENT, onChange);
 	window.addEventListener("storage", onStorage);
 	media.addEventListener("change", onMedia);
+
 	return () => {
 		window.removeEventListener(CHANGE_EVENT, onChange);
 		window.removeEventListener("storage", onStorage);

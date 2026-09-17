@@ -37,8 +37,10 @@ describe("formatTable", () => {
 			...entries,
 			rows: [["a1", "1:30", "A very long description of the work"]],
 		};
+
 		const lines = formatTable(long, 30);
 		expect(lines[1]).toBe("a1      1:30  A very long des…");
+
 		for (const line of lines) {
 			expect(Bun.stringWidth(line)).toBeLessThanOrEqual(30);
 		}
@@ -49,6 +51,7 @@ describe("formatTable", () => {
 			...entries,
 			rows: [["a1", "1:30", "A very long description of the work"]],
 		};
+
 		expect(formatTable(long, null)[1]).toEndWith(
 			"A very long description of the work",
 		);

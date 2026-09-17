@@ -26,6 +26,7 @@ export const jsonReply = <T>(
 export const scriptedServer = (replies: Response[]) => {
 	const requests: RecordedRequest[] = [];
 	const sleeps: number[] = [];
+
 	const transport: Transport = {
 		origin: "https://farmer.test",
 		fetch: async (url, init) => {
@@ -36,7 +37,9 @@ export const scriptedServer = (replies: Response[]) => {
 				body: init.body ? String(init.body) : null,
 			});
 			const reply = replies.shift();
+
 			if (!reply) throw new Error(`No reply scripted for ${url}`);
+
 			return reply;
 		},
 		sleep: async (ms) => {
@@ -46,5 +49,6 @@ export const scriptedServer = (replies: Response[]) => {
 		platform: "linux",
 		arch: "x64",
 	};
+
 	return { transport, requests, sleeps };
 };

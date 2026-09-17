@@ -93,6 +93,7 @@ const MATCHED_BY = {
 const SHOW = 300;
 
 const TABS = ["people", "projects", "clients", "tasks", "time"] as const;
+
 type Tab = (typeof TABS)[number];
 
 const hours = (seconds: number) =>
@@ -122,6 +123,7 @@ function Choice<V extends string>({
 				// Resolved against the list, so the union comes from the options
 				// rather than from an assertion about what the widget handed back.
 				const picked = items.find((item) => item.value === next);
+
 				if (picked) onChange(picked.value);
 			}}
 		>
@@ -141,6 +143,7 @@ function Choice<V extends string>({
 
 function More({ total }: { total: number }) {
 	if (total <= SHOW) return null;
+
 	return (
 		<p className="mt-3 text-sm text-muted-foreground">
 			The list shows {SHOW} of {count(total)}.
@@ -188,6 +191,7 @@ export function HarvestReview({
 				[key]: { ...choices.people[key], ...patch },
 			},
 		});
+
 	const setClient = (key: string, choice: HarvestClientChoice) =>
 		onChoices({ ...choices, clients: { ...choices.clients, [key]: choice } });
 
@@ -517,6 +521,7 @@ export function HarvestReview({
 															const next = event.target.value
 																.trim()
 																.toLowerCase();
+
 															if (next && next !== p.email) {
 																setPerson(p.sourceKey, { email: next });
 															}

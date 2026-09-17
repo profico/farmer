@@ -108,6 +108,7 @@ export const Route = createFileRoute(
 function WorkspaceIntegrationsPage() {
 	const orgSlug = useOrgSlug();
 	const { assistantEnabled } = Route.useRouteContext();
+
 	const { data: status } = useSuspenseQuery(
 		githubConnectionStatusQuery(orgSlug),
 	);
@@ -154,10 +155,12 @@ function HouseRulesRow({ stored }: { stored: string }) {
 	// Re-seed when the server's copy changes underneath (another admin, another
 	// tab) — but only when the box is clean, so it can't eat what is being typed.
 	const [baseline, setBaseline] = useState(stored);
+
 	if (stored !== baseline && draft === baseline) {
 		setBaseline(stored);
 		setDraft(stored);
 	}
+
 	const dirty = draft !== stored;
 
 	const save = useMutation({
@@ -244,14 +247,18 @@ function ModelPicker({
 			value: model.id,
 			label: model.name,
 		}));
+
 		if (value === "" || known.some((item) => item.value === value))
 			return known;
+
 		return [{ value, label: value }, ...known];
 	}, [models, value]);
 
 	const [query, setQuery] = useState("");
+
 	const filtered = useMemo(() => {
 		if (query.trim() === "") return items;
+
 		return items.filter((item) =>
 			matchesSearch(query, [item.label, item.value]),
 		);
@@ -676,6 +683,7 @@ function OrgInstallationsSection({
 			// of the App on GitHub, and four of the six answers are things the
 			// admin has to know to finish the job themselves.
 			const note = uninstallNotes[uninstall];
+
 			if (note)
 				toast.warning("GitHub account disconnected", { description: note });
 			else toast.success("GitHub account disconnected");

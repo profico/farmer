@@ -27,6 +27,7 @@ const entry = (id: string, date: string): ApiTimeEntry => ({
 });
 
 const DAY = "2026-09-14";
+
 const entries = [
 	entry("11111111-1111-4111-8111-111111111111", DAY),
 	entry("22222222-2222-4222-8222-222222222222", DAY),

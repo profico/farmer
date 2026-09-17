@@ -71,7 +71,9 @@ const outputChoicesToSend = (event: AiGeneration) => {
 		role: "assistant",
 		content: textToSend(event.outputText),
 	};
+
 	if (event.toolCalls.length === 0) return [choice];
+
 	return [
 		{
 			...choice,
@@ -90,6 +92,7 @@ const outputChoicesToSend = (event: AiGeneration) => {
 export const posthogAiSink = {
 	generation: (event: AiGeneration): void => {
 		const posthog = getPostHogClient();
+
 		if (!posthog) return;
 		// `capture` queues and returns; it is never awaited. An answer somebody
 		// is waiting for does not get slower because a metric is in flight.
@@ -129,6 +132,7 @@ export const posthogAiSink = {
 
 	span: (event: AiSpan): void => {
 		const posthog = getPostHogClient();
+
 		if (!posthog) return;
 		posthog.capture({
 			distinctId: event.userId,

@@ -48,24 +48,34 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-assembly";
+
 const USER_ID = "user-assembly";
+
 const MONDAY = "2026-08-10";
+
 const SATURDAY = "2026-08-15";
+
 const EIGHT_HOURS = 8 * 3600;
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;
+
 let devTaskId: string;
+
 let breakTaskId: string;
+
 let reviewTaskId: string;
+
 let projectId: string;
+
 let repoId: string;
 
 const noCalendar = {
 	listEventsForRange: async () => [],
 	listEventsForDay: async () => [],
 };
+
 const noCommits = {
 	listUserCommitsForDay: async () => [],
 	listUserCommitsByDay: async () => [],
@@ -78,7 +88,9 @@ const siteTask = async (
 		where: and(eq(task.scope, "site"), eq(task.systemKey, systemKey)),
 		columns: { id: true },
 	});
+
 	if (existing) return existing.id;
+
 	const [row] = await db
 		.insert(task)
 		.values({
@@ -88,6 +100,7 @@ const siteTask = async (
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	return row!.id;
 };
 
@@ -126,11 +139,14 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c!.id, name: "Farmer" })
 		.returning();
+
 	projectId = p!.id;
+
 	const [repo] = await db
 		.insert(projectGithubRepo)
 		.values({
@@ -142,6 +158,7 @@ beforeAll(async () => {
 			fullName: "acme/farmer",
 		})
 		.returning({ id: projectGithubRepo.id });
+
 	repoId = present(repo, "the repo").id;
 
 	devTaskId = await siteTask("development");
@@ -289,10 +306,12 @@ describe("assemble my day", () => {
 			projectId,
 			repoFullName: "acme/farmer",
 		});
+
 		setPullRequestSourceForTests({
 			listUserPullRequestActivityByDay: async () => [],
 			listUserPullRequestActivityForDay: async () => [review(7), review(9)],
 		});
+
 		const [inserted] = await db
 			.insert(timeEntry)
 			.values({
@@ -305,6 +324,7 @@ describe("assemble my day", () => {
 				description: "PR review: Change 7",
 			})
 			.returning({ id: timeEntry.id });
+
 		const block = present(inserted, "the review block");
 		await db
 			.insert(timeEntryGithubPrActivity)
@@ -385,6 +405,7 @@ describe("assemble my day", () => {
 
 	test("applying the proposal fills the day to target", async () => {
 		const assembly = await dayAssemblyService.suggest(ctx, { date: MONDAY });
+
 		const { created, errors } = await dayAssemblyService.apply(ctx, {
 			date: MONDAY,
 			entries: assembly.suggestions.map((s) => ({
@@ -408,6 +429,7 @@ describe("assemble my day", () => {
 				eq(timeEntry.date, MONDAY),
 			),
 		});
+
 		const logged = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
 		expect(logged).toBe(EIGHT_HOURS);
 		expect(rows.some((r) => r.taskId === breakTaskId)).toBe(true);
@@ -435,6 +457,7 @@ describe("assemble my day", () => {
 				eq(timeEntry.date, MONDAY),
 			),
 		});
+
 		// The fill is derived on write, so dropping the break leaves no hole.
 		const logged = rows.reduce((sum, r) => sum + r.durationSeconds, 0);
 		expect(logged).toBe(EIGHT_HOURS);
@@ -535,6 +558,7 @@ describe("offering back what was deleted", () => {
 			fillsDay: false,
 			calendarEventId: "event-deleted",
 		});
+
 		await timeEntriesService.remove(ctx, created.id);
 	};
 
@@ -599,6 +623,7 @@ describe("offering back what was deleted", () => {
 			overtime: false,
 			fillsDay: true,
 		});
+
 		await timeEntriesService.remove(ctx, created.id);
 
 		const quiet = await dayAssemblyService.suggest(ctx, { date: MONDAY });
@@ -609,6 +634,7 @@ describe("offering back what was deleted", () => {
 			date: MONDAY,
 			includeDismissed: true,
 		});
+
 		expect(loud.suggestions.find((s) => s.kind === "fill")?.dismissed).toBe(
 			true,
 		);
@@ -655,6 +681,7 @@ describe("filing rules in the assembler", () => {
 			const { suggestions } = await dayAssemblyService.suggest(ctx, {
 				date: MONDAY,
 			});
+
 			const meeting = suggestions.find((s) => s.kind === "meeting");
 			expect(meeting?.projectId).toBe(projectId);
 			expect(meeting?.projectName).toBe("Farmer");
@@ -683,6 +710,7 @@ describe("a rule on a proposed block", () => {
 			const { suggestions } = await dayAssemblyService.suggest(ctx, {
 				date: MONDAY,
 			});
+
 			const fill = suggestions.find((s) => s.kind === "fill");
 			expect(fill?.projectId).toBe(projectId);
 			expect(fill?.taskId).toBe(reviewTaskId);

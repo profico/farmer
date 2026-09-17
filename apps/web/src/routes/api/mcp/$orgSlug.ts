@@ -73,7 +73,9 @@ const text = (body: string, isError = false) => ({
 const unauthorized = (requestOrigin: string) => {
 	const origin =
 		URL.parse(process.env.BETTER_AUTH_URL ?? "")?.origin ?? requestOrigin;
+
 	const challenge = `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
+
 	return Response.json(
 		{
 			jsonrpc: "2.0",
@@ -107,6 +109,7 @@ const handle = async (request: Request, orgSlug: string) => {
 	// same reason as the assistant's stream — there is nothing here to be
 	// authorized for. Deliberately NOT `isAssistantEnabled`: see lib/mcp-flag.ts.
 	const { isMcpEnabled } = await import("@farmer/core/lib/mcp-flag");
+
 	if (!isMcpEnabled()) {
 		return Response.json({ error: "Not found" }, { status: 404 });
 	}
@@ -116,22 +119,27 @@ const handle = async (request: Request, orgSlug: string) => {
 	// to a caller that never became a user. See api-rate-limit.ts.
 	const address = callerAddress(request);
 	const caller = admitCaller("mcp", address);
+
 	if (!caller.ok) return tooManyRequests(caller.retryAfterSeconds);
 
 	const origin = new URL(request.url).origin;
 	const ctx = await resolveMcpOrgContext(request, orgSlug);
+
 	// A slug that does not exist, a caller with no credential and an ex-member
 	// are one answer on purpose — see `resolveMcpOrgContext`.
 	if (!ctx) {
 		recordAuthFailure("mcp", address);
+
 		return unauthorized(origin);
 	}
 
 	const admitted = admitRequest("mcp", ctx.userId);
+
 	if (!admitted.ok) return tooManyRequests(admitted.retryAfterSeconds);
 
 	const { ctxAccess, findTool, mcpToolDefinitions } =
 		await import("@farmer/core/services");
+
 	// Already resolved and memoized at the boundary; this reads the memo.
 	const access = await ctxAccess(ctx);
 
@@ -165,12 +173,14 @@ const handle = async (request: Request, orgSlug: string) => {
 
 	server.setRequestHandler(types.CallToolRequestSchema, async (call) => {
 		const tool = findTool(call.params.name);
+
 		// Four different answers, not one, and the wording is `executeTool`'s for
 		// the same reason it is worded that way there: an unknown tool, a tool the
 		// caller was not offered, bad arguments and a service that refused are
 		// four different mistakes, and telling the model which one it made is the
 		// difference between it correcting the call and repeating it.
 		if (!tool) return text(`Unknown tool "${call.params.name}".`, true);
+
 		// Not a security check — the service behind it would refuse anyway. But a
 		// client caches a tool list, and a stored connection outlives the role its
 		// owner held when it was made.
@@ -179,12 +189,14 @@ const handle = async (request: Request, orgSlug: string) => {
 		}
 
 		const parsed = argumentsPayload.safeParse(call.params.arguments ?? {});
+
 		if (!parsed.success) {
 			return text("The arguments were not a JSON object.", true);
 		}
 
 		if (tool.kind !== "read") {
 			const write = admitWrite("mcp", ctx.userId);
+
 			if (!write.ok) {
 				return text(
 					`Too many writes. Wait ${write.retryAfterSeconds}s and try again.`,
@@ -215,7 +227,9 @@ const handle = async (request: Request, orgSlug: string) => {
 		sessionIdGenerator: undefined,
 		enableJsonResponse: true,
 	});
+
 	await server.connect(transport);
+
 	return transport.handleRequest(request);
 };
 

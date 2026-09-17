@@ -31,9 +31,11 @@
 export const resolveApiOrgContext = async (request: Request) => {
 	const { auth } = await import("@farmer/core/auth");
 	const session = await auth.api.getSession({ headers: request.headers });
+
 	if (!session?.session.activeOrganizationId) {
 		return null;
 	}
+
 	const ctx = {
 		organizationId: session.session.activeOrganizationId,
 		userId: session.user.id,
@@ -46,12 +48,14 @@ export const resolveApiOrgContext = async (request: Request) => {
 	// ex-member — the credential is valid and no longer entitles them to this
 	// organization.
 	const { ctxAccess, NotAMemberError } = await import("@farmer/core/services");
+
 	try {
 		await ctxAccess(ctx);
 	} catch (error) {
 		if (error instanceof NotAMemberError) return null;
 		throw error;
 	}
+
 	return ctx;
 };
 
@@ -94,12 +98,15 @@ export const resolveMcpOrgContext = async (
 	const { auth } = await import("@farmer/core/auth");
 
 	const session = await auth.api.getSession({ headers: request.headers });
+
 	const userId =
 		session?.user.id ??
 		(await auth.api.getMcpSession({ headers: request.headers }))?.userId;
+
 	if (!userId) return null;
 
 	const { orgContextService } = await import("@farmer/core/services");
+
 	return orgContextService.resolveBySlug(userId, orgSlug);
 };
 
@@ -143,18 +150,22 @@ export const resolveCliUser = async (
 	const header = request.headers.get("authorization");
 	const match = header ? /^Bearer\s+(\S+)\s*$/i.exec(header) : null;
 	const token = match?.[1];
+
 	if (!token) return null;
 
 	const { auth } = await import("@farmer/core/auth");
 	const context = await auth.$context;
 	const found = await context.internalAdapter.findSession(token);
 	const now = Date.now();
+
 	if (!found || found.session.expiresAt.getTime() <= now) return null;
 
 	const { expiresIn, updateAge } = context.sessionConfig;
+
 	const shouldBeUpdated =
 		found.session.expiresAt.getTime() - expiresIn * 1000 + updateAge * 1000 <=
 		now;
+
 	if (shouldBeUpdated) {
 		// A failed refresh is not a failed request: the session is still valid
 		// for as long as it was a moment ago, and `getSession` itself only gives
@@ -199,8 +210,10 @@ export const resolveCliOrgContext = async (
 	orgSlug: string,
 ) => {
 	const cliUser = await resolveCliUser(request);
+
 	if (!cliUser) return null;
 
 	const { orgContextService } = await import("@farmer/core/services");
+
 	return orgContextService.resolveBySlug(cliUser.userId, orgSlug);
 };

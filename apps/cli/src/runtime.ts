@@ -30,6 +30,7 @@ export type Runtime = {
  *  it cannot mix with `--json` output; with it, stdout is returned. stdin and
  *  stderr are the terminal's either way. */
 export type SpawnOptions = { env: NodeJS.ProcessEnv; capture: boolean };
+
 export type SpawnResult = { exitCode: number; stdout: string };
 
 /** A compiled Bun binary runs its code from an embedded file system, whose root
@@ -52,18 +53,22 @@ const spawn = async (
 			stdout: "pipe",
 			stderr: "inherit",
 		});
+
 		const [stdout, exitCode] = await Promise.all([
 			new Response(child.stdout).text(),
 			child.exited,
 		]);
+
 		return { exitCode, stdout };
 	}
+
 	const child = Bun.spawn(command, {
 		env,
 		stdin: "inherit",
 		stdout: 2,
 		stderr: "inherit",
 	});
+
 	return { exitCode: await child.exited, stdout: "" };
 };
 

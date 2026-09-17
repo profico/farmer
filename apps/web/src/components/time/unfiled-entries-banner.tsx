@@ -51,6 +51,7 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 	});
 
 	const count = entries?.length ?? 0;
+
 	const seconds = (entries ?? []).reduce(
 		(sum, e) => sum + e.durationSeconds,
 		0,
@@ -121,10 +122,12 @@ type UnfiledGroup = {
 
 const groupUnfiled = (entries: UnfiledEntry[]): UnfiledGroup[] => {
 	const byKey = new Map<string, UnfiledGroup>();
+
 	for (const entry of entries) {
 		const title = entry.description || entry.taskName;
 		const key = `${entry.taskId}|${title.trim().toLowerCase()}|${entry.durationSeconds}`;
 		const group = byKey.get(key);
+
 		if (group) {
 			group.entries.push(entry);
 			group.seconds += entry.durationSeconds;
@@ -138,6 +141,7 @@ const groupUnfiled = (entries: UnfiledEntry[]): UnfiledGroup[] => {
 			});
 		}
 	}
+
 	// Biggest backlog first — the recurring meeting that produced thirty rows is
 	// the one worth answering, and it should not be buried under one-offs.
 	return [...byKey.values()].sort(
@@ -158,10 +162,12 @@ function FileEntriesDialog({
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
+
 	const { data: entries } = useQuery({
 		...unfiledEntriesQuery(orgSlug, from, to),
 		enabled: open,
 	});
+
 	// `myProjectsQuery`, not `projectsQuery`: this dropdown is a "file this time
 	// against" picker, and the write behind it (`timeEntriesService.update`)
 	// asserts `canTrackOn`. Listing every project in the organization offered
@@ -173,6 +179,7 @@ function FileEntriesDialog({
 		...myProjectsQuery(orgSlug),
 		enabled: open,
 	});
+
 	// Every live non-absence task, which is exactly what may go on a project.
 	const { data: tasks } = useQuery({
 		...selectableTasksQuery(orgSlug),
@@ -194,8 +201,10 @@ function FileEntriesDialog({
 	// Start clean on each open: the list behind it has changed, and a selection
 	// carried over from last time would be filing rows nobody just looked at.
 	const [wasOpen, setWasOpen] = useState(false);
+
 	if (open !== wasOpen) {
 		setWasOpen(open);
+
 		if (open) {
 			setSelectedIds(new Set());
 			setProjectId(null);
@@ -208,10 +217,12 @@ function FileEntriesDialog({
 		setSelectedIds((current) => {
 			const next = new Set(current);
 			const allIn = group.entries.every((e) => next.has(e.id));
+
 			for (const entry of group.entries) {
 				if (allIn) next.delete(entry.id);
 				else next.add(entry.id);
 			}
+
 			return next;
 		});
 	};
@@ -240,6 +251,7 @@ function FileEntriesDialog({
 				}),
 			]);
 			setSelectedIds(new Set());
+
 			if (failed > 0) {
 				// The one real failure here is a task the project hasn't picked, so
 				// say which rule was hit rather than just how many rows bounced.
@@ -281,8 +293,10 @@ function FileEntriesDialog({
 							onToggleEntry={(id) =>
 								setSelectedIds((current) => {
 									const next = new Set(current);
+
 									if (next.has(id)) next.delete(id);
 									else next.add(id);
+
 									return next;
 								})
 							}

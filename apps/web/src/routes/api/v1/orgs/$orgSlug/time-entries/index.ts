@@ -26,6 +26,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/time-entries/")({
 				run: async (ctx, range) => {
 					const { timeEntriesService } = await import("@farmer/core/services");
 					const rows = await timeEntriesService.listRange(ctx, range);
+
 					return rows.map(toApiTimeEntry);
 				},
 			}),
@@ -36,11 +37,14 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/time-entries/")({
 				run: async (ctx, input) => {
 					const { timeEntriesService } = await import("@farmer/core/services");
 					const created = await timeEntriesService.create(ctx, input);
+
 					const entry = await timeEntriesService.getOwnDetailed(
 						ctx,
 						created.id,
 					);
+
 					if (!entry) throw new Error("Time entry not found");
+
 					return toApiTimeEntry(entry);
 				},
 			}),

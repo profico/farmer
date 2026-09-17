@@ -22,6 +22,7 @@ export const Route = createFileRoute("/api/v1/session")({
 					const { auth } = await import("@farmer/core/auth");
 					const context = await auth.$context;
 					await context.internalAdapter.deleteSession(caller.token);
+
 					return null;
 				},
 			}),

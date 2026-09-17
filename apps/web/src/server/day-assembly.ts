@@ -11,6 +11,7 @@ export const suggestDayAssembly = createServerFn({ method: "GET" })
 	.validator(suggestDayAssemblyInput)
 	.handler(async ({ data, context }) => {
 		const { dayAssemblyService } = await import("@farmer/core/services");
+
 		return dayAssemblyService.suggest(context.ctx, data);
 	});
 
@@ -22,6 +23,7 @@ export const applyDayAssembly = createServerFn({ method: "POST" })
 		const result = await dayAssemblyService.apply(context.ctx, data);
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
+
 		if (posthog) {
 			posthog.capture({
 				distinctId: context.ctx.userId,
@@ -32,5 +34,6 @@ export const applyDayAssembly = createServerFn({ method: "POST" })
 			});
 			await posthog.flush();
 		}
+
 		return result;
 	});

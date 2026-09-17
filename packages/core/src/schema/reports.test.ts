@@ -83,6 +83,7 @@ describe("report range limits", () => {
 			["2000-01-01", "2099-12-31"],
 			["2026-03-31", "2026-03-01"],
 		];
+
 		for (const [from, to] of cases) {
 			const legal = summary(from, to).success;
 			expect(detail(from, to).success).toBe(legal);

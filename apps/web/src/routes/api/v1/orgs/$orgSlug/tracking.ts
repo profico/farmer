@@ -17,6 +17,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/tracking")({
 				run: async (ctx): Promise<ApiTracking> => {
 					const { complianceService } = await import("@farmer/core/services");
 					const targets = await complianceService.myTargets(ctx);
+
 					return {
 						today: targets.today,
 						daySeconds: targets.daySeconds,

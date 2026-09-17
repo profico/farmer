@@ -73,7 +73,9 @@ const read = async (ctx: Ctx): Promise<ReminderSettings> => {
 	const row = await db.query.reminderSettings.findFirst({
 		where: eq(reminderSettings.organizationId, ctx.organizationId),
 	});
+
 	if (!row) return REMINDER_SETTINGS_DEFAULTS;
+
 	return {
 		logEnabled: row.logEnabled,
 		logMode: row.logMode,
@@ -113,9 +115,11 @@ export const reminderSettingsService = {
 		// this keeps a caller that skipped it from writing one, since the
 		// database's "at most three days" counts entries, not distinct days.
 		if (own.nudgeWeekdays) own.nudgeWeekdays = uniqueSorted(own.nudgeWeekdays);
+
 		if (own.nudgeMemberTypes) {
 			own.nudgeMemberTypes = uniqueSorted(own.nudgeMemberTypes);
 		}
+
 		if (own.monthEndMemberTypes) {
 			own.monthEndMemberTypes = uniqueSorted(own.monthEndMemberTypes);
 		}
@@ -129,6 +133,7 @@ export const reminderSettingsService = {
 					set: { ...own, updatedAt: new Date() },
 				});
 		}
+
 		return read(ctx);
 	},
 
@@ -147,6 +152,7 @@ export const reminderSettingsService = {
 		date: string,
 	): Promise<ReminderPreview> => {
 		await requireAdmin(ctx);
+
 		const [settings, tz, org] = await Promise.all([
 			read(ctx),
 			ctxTimezone(ctx),
@@ -155,6 +161,7 @@ export const reminderSettingsService = {
 				columns: { slug: true },
 			}),
 		]);
+
 		const result: ReminderPreview = {
 			kind,
 			date,
@@ -168,13 +175,17 @@ export const reminderSettingsService = {
 			const installation = await slackService.installationFor(
 				ctx.organizationId,
 			);
+
 			if (!installation) {
 				result.skipped =
 					"Slack is not connected, so no Slack reminder goes out.";
+
 				return result;
 			}
 		}
+
 		result.skipped = await reminderDayCheck(ctx, settings, kind, date);
+
 		if (result.skipped) return result;
 
 		// Midday in the org's timezone: squarely inside `date` whatever the
@@ -182,6 +193,7 @@ export const reminderSettingsService = {
 		const now = new Date(
 			dayBoundsInTz(date, tz).start.getTime() + 12 * 3_600_000,
 		);
+
 		const picked = await reminderRecipients(
 			ctx,
 			settings,
@@ -189,6 +201,7 @@ export const reminderSettingsService = {
 			{ dayKey: date, timeKey: null, tz, now, slug: org?.slug ?? "" },
 			dashboardLoader(ctx, settings, now),
 		);
+
 		const blocks = await deliveryBlocks(
 			ctx.organizationId,
 			picked.map((p) => p.userId),
@@ -197,11 +210,13 @@ export const reminderSettingsService = {
 
 		for (const person of picked.sort((a, b) => a.name.localeCompare(b.name))) {
 			const block = blocks.get(person.userId);
+
 			const who = {
 				userId: person.userId,
 				name: person.name,
 				email: person.email,
 			};
+
 			if (block) {
 				result.heldBack.push({ ...who, reason: HELD_BACK_REASON[block] });
 			} else {
@@ -214,6 +229,7 @@ export const reminderSettingsService = {
 				});
 			}
 		}
+
 		return result;
 	},
 };

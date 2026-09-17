@@ -18,16 +18,21 @@ import { createTestDb, type TestDb } from "../test/harness";
 import { slackService } from "./slack.service";
 
 const ORG = "org-slack-sync";
+
 /** Active, with a profile row, and in the workspace. */
 const ACTIVE = "u-ss-active";
+
 /** Active with no profile row at all: still somebody to match. */
 const NO_PROFILE = "u-ss-no-profile";
+
 /** Active, but not in the workspace. */
 const OUTSIDE = "u-ss-outside";
+
 /** Archived, and matched before they were archived. */
 const ARCHIVED = "u-ss-archived";
 
 const email = (id: string) => `${id}@example.com`;
+
 const IN_WORKSPACE = new Map([
 	[email(ACTIVE), "U-ACTIVE"],
 	[email(NO_PROFILE), "U-NO-PROFILE"],
@@ -88,12 +93,15 @@ afterAll(async () => {
 describe("syncIdentities", () => {
 	test("asks Slack about active people only, and keeps an archived match", async () => {
 		const asked: string[] = [];
+
 		const lookup = spyOn(slackClient, "lookupUserByEmail").mockImplementation(
 			async (_token, address) => {
 				asked.push(address);
+
 				return IN_WORKSPACE.get(address) ?? null;
 			},
 		);
+
 		try {
 			const mapped = await slackService.syncIdentities({
 				organizationId: ORG,
@@ -104,6 +112,7 @@ describe("syncIdentities", () => {
 			expect(asked.sort()).toEqual(
 				[email(ACTIVE), email(NO_PROFILE), email(OUTSIDE)].sort(),
 			);
+
 			const rows = await db
 				.select({
 					userId: memberSlackIdentity.userId,
@@ -111,17 +120,20 @@ describe("syncIdentities", () => {
 				})
 				.from(memberSlackIdentity)
 				.where(eq(memberSlackIdentity.organizationId, ORG));
+
 			expect(rows.sort((a, b) => a.userId.localeCompare(b.userId))).toEqual([
 				{ userId: ACTIVE, slackUserId: "U-ACTIVE" },
 				{ userId: ARCHIVED, slackUserId: "U-ARCHIVED" },
 				{ userId: NO_PROFILE, slackUserId: "U-NO-PROFILE" },
 			]);
+
 			const outside = await db.query.memberSlackIdentity.findFirst({
 				where: and(
 					eq(memberSlackIdentity.organizationId, ORG),
 					eq(memberSlackIdentity.userId, OUTSIDE),
 				),
 			});
+
 			expect(outside).toBeUndefined();
 		} finally {
 			lookup.mockRestore();

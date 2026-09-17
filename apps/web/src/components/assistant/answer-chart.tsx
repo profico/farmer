@@ -63,6 +63,7 @@ const chartSpecSchema = z.object({
 export const parseChartSpec = (source: string): ChartSpec | null => {
 	try {
 		const parsed = chartSpecSchema.safeParse(JSON.parse(source));
+
 		return parsed.success ? parsed.data : null;
 	} catch {
 		return null;
@@ -72,6 +73,7 @@ export const parseChartSpec = (source: string): ChartSpec | null => {
 /** Trailing zeros dropped: "7.5h", "8h", not "7.50h". */
 const printValue = (value: number, unit?: string) => {
 	const rounded = Math.round(value * 100) / 100;
+
 	return `${rounded}${unit ?? ""}`;
 };
 
@@ -82,6 +84,7 @@ export function AnswerChart({ spec }: { spec: ChartSpec }) {
 	// the baseline rather than mirrored: nothing in this app charts below zero
 	// yet, and a half-implemented negative axis is a wrong chart.
 	const peak = Math.max(...spec.data.map((point) => Math.abs(point.value)), 0);
+
 	const share = (value: number) =>
 		peak === 0 ? 0 : Math.max(0, (value / peak) * 100);
 
@@ -177,6 +180,7 @@ export const outlineChart = (body: string): ChartOutline => ({
 /** Widths cycled rather than randomised: a random width is a different width on
  *  every streamed delta, which is a placeholder that twitches. */
 const LABEL_WIDTHS = ["w-24", "w-16", "w-28", "w-20", "w-14"];
+
 const BAR_SHARES = [82, 54, 96, 38, 67, 74, 45, 88];
 
 const pick = <T,>(table: readonly T[], index: number, fallback: T) =>
@@ -207,6 +211,7 @@ function TextSlot({ className }: { className: string }) {
  *  metrics, same tokens — see `ChartOutline` for why it is worth the trouble. */
 export function ChartPlaceholder({ outline }: { outline: ChartOutline }) {
 	const rows = Array.from({ length: outline.rows }, (_, index) => index);
+
 	return (
 		<div aria-hidden className="my-0.5 flex flex-col gap-2">
 			{outline.titled && <TextSlot className="w-32" />}

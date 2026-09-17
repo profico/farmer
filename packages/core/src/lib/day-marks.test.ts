@@ -3,15 +3,25 @@ import { describe, expect, test } from "bun:test";
 import { weekDayMarks } from "./day-marks";
 
 const H = 3600;
+
 const MON = "2026-09-07";
+
 const TUE = "2026-09-08";
+
 const WED = "2026-09-09";
+
 const THU = "2026-09-10";
+
 const FRI = "2026-09-11";
+
 const SAT = "2026-09-12";
+
 const SUN = "2026-09-13";
+
 const WEEK = [MON, TUE, WED, THU, FRI, SAT, SUN];
+
 const LAST_SUNDAY = "2026-09-06";
+
 const NEXT_MONDAY = "2026-09-14";
 
 /** The week's marks, Monday first, `null` for a day that is not judged. */
@@ -27,6 +37,7 @@ const marksFor = (
 		today,
 		daySeconds: 8 * H,
 	});
+
 	return WEEK.map((date) => marks.get(date) ?? null);
 };
 

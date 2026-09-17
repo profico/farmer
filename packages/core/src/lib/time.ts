@@ -5,6 +5,7 @@ export const formatDuration = (totalSeconds: number): string => {
 	const hours = Math.floor(totalSeconds / 3600);
 	const minutes = Math.floor((totalSeconds % 3600) / 60);
 	const seconds = Math.floor(totalSeconds % 60);
+
 	return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
@@ -16,8 +17,11 @@ export const formatDurationLong = (totalSeconds: number): string => {
 	const hours = Math.floor(totalMinutes / 60);
 	const minutes = totalMinutes % 60;
 	const parts: string[] = [];
+
 	if (hours) parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
+
 	if (minutes) parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
+
 	return parts.length ? parts.join(" ") : "0 minutes";
 };
 
@@ -45,6 +49,7 @@ export const formatDayKey = (
 ): string => {
 	const [y, m, d] = key.split("-");
 	const base = `${MONTHS_SHORT[Number(m) - 1]} ${Number(d)}`;
+
 	return year ? `${base}, ${y}` : base;
 };
 
@@ -56,8 +61,11 @@ export const formatDurationShort = (totalSeconds: number): string => {
 	const totalMinutes = Math.round(totalSeconds / 60);
 	const hours = Math.floor(totalMinutes / 60);
 	const minutes = totalMinutes % 60;
+
 	if (hours && minutes) return `${hours}h ${minutes}m`;
+
 	if (minutes) return `${minutes}m`;
+
 	return `${hours}h`;
 };
 
@@ -66,8 +74,11 @@ export const formatDurationInput = (totalSeconds: number): string => {
 	const roundedMinutes = Math.round(totalSeconds / 60);
 	const hours = Math.floor(roundedMinutes / 60);
 	const minutes = roundedMinutes % 60;
+
 	if (hours && minutes) return `${hours}h${minutes}m`;
+
 	if (hours) return `${hours}h`;
+
 	return `${minutes}m`;
 };
 
@@ -79,6 +90,7 @@ const evalArithmetic = (expr: string): number | null => {
 	if (!/^[\d.+\-*/()\s]+$/.test(expr)) return null;
 
 	let pos = 0;
+
 	const skipSpace = () => {
 		while (expr[pos] === " ") pos++;
 	};
@@ -86,31 +98,40 @@ const evalArithmetic = (expr: string): number | null => {
 	// expression := term (('+' | '-') term)*
 	const parseExpression = (): number | null => {
 		let left = parseTerm();
+
 		if (left === null) return null;
 		skipSpace();
+
 		while (expr[pos] === "+" || expr[pos] === "-") {
 			const op = expr[pos++];
 			const right = parseTerm();
+
 			if (right === null) return null;
 			left = op === "+" ? left + right : left - right;
 			skipSpace();
 		}
+
 		return left;
 	};
 
 	// term := factor (('*' | '/') factor)*
 	const parseTerm = (): number | null => {
 		let left = parseFactor();
+
 		if (left === null) return null;
 		skipSpace();
+
 		while (expr[pos] === "*" || expr[pos] === "/") {
 			const op = expr[pos++];
 			const right = parseFactor();
+
 			if (right === null) return null;
+
 			if (op === "/" && right === 0) return null;
 			left = op === "*" ? left * right : left / right;
 			skipSpace();
 		}
+
 		return left;
 	};
 
@@ -118,31 +139,42 @@ const evalArithmetic = (expr: string): number | null => {
 	const parseFactor = (): number | null => {
 		skipSpace();
 		let sign = 1;
+
 		while (expr[pos] === "+" || expr[pos] === "-") {
 			if (expr[pos] === "-") sign = -sign;
 			pos++;
 			skipSpace();
 		}
+
 		if (expr[pos] === "(") {
 			pos++;
 			const value = parseExpression();
+
 			if (value === null) return null;
 			skipSpace();
+
 			if (expr[pos] !== ")") return null;
 			pos++;
+
 			return sign * value;
 		}
+
 		const start = pos;
+
 		while (pos < expr.length && /[\d.]/.test(expr[pos] ?? "")) pos++;
 		const numStr = expr.slice(start, pos);
+
 		if (!/^(\d+\.?\d*|\.\d+)$/.test(numStr)) return null;
+
 		return sign * Number.parseFloat(numStr);
 	};
 
 	const result = parseExpression();
 	skipSpace();
+
 	// Trailing garbage (e.g. "1 2" or "1)") means the whole input is invalid.
 	if (pos !== expr.length) return null;
+
 	return result;
 };
 
@@ -160,6 +192,7 @@ export const parseDuration = (input: string): number | null => {
 	// A comma is what half of Europe types for a decimal point, and it can mean
 	// nothing else in a duration — there is no thousands separator in "1,5 hours".
 	const trimmed = input.trim().toLowerCase().replace(/,/g, ".");
+
 	if (!trimmed) return null;
 
 	// H:MM — the format every duration is DISPLAYED in, so it has to be readable
@@ -167,6 +200,7 @@ export const parseDuration = (input: string): number | null => {
 	// "0:30" is 30 minutes, and so is ":30" — the hours are optional. Checked
 	// before the arithmetic branch, which would otherwise choke on the colon.
 	const clock = /^(\d*):([0-5]?\d)$/.exec(trimmed);
+
 	if (clock) {
 		return Number(clock[1]) * 3600 + Number(clock[2]) * 60;
 	}
@@ -175,6 +209,7 @@ export const parseDuration = (input: string): number | null => {
 	// anyone who reads "1h30m" and thinks the trailing m is optional, which it
 	// visibly is on a clock face.
 	const hoursThenMinutes = /^(\d+)\s*h\s*([0-5]?\d)$/.exec(trimmed);
+
 	if (hoursThenMinutes) {
 		return (
 			Number(hoursThenMinutes[1]) * 3600 + Number(hoursThenMinutes[2]) * 60
@@ -189,6 +224,7 @@ export const parseDuration = (input: string): number | null => {
 		// Where the last match ended, so a tail the pattern never looked at (the
 		// "30" in "1h30x") fails the whole input instead of vanishing.
 		let consumedTo = 0;
+
 		for (const match of trimmed.matchAll(unitPattern)) {
 			if (
 				match.index !== consumedTo &&
@@ -196,19 +232,25 @@ export const parseDuration = (input: string): number | null => {
 			) {
 				return null;
 			}
+
 			matched = true;
 			const value = Number.parseFloat(match[1] ?? "0");
 			totalSeconds += match[2] === "h" ? value * 3600 : value * 60;
 			consumedTo = match.index + match[0].length;
 		}
+
 		if (!matched) return null;
+
 		if (trimmed.slice(consumedTo).trim() !== "") return null;
+
 		return Math.round(totalSeconds);
 	}
 
 	// Otherwise treat the input as a number/expression of hours.
 	const hours = evalArithmetic(trimmed);
+
 	if (hours === null || !Number.isFinite(hours) || hours < 0) return null;
+
 	return Math.round(hours * 3600);
 };
 
@@ -237,6 +279,7 @@ export type InstantRange = { start: Date; end: Date };
 // First and last day keys of a calendar month.
 export const monthBounds = (year: number, month: number): DayKeyRange => {
 	const from = `${year}-${String(month).padStart(2, "0")}-01`;
+
 	return { from, to: endOfMonthKey(from) };
 };
 
@@ -250,12 +293,14 @@ export const timeKeyInTz = (instant: Date, ianaTz: string): string =>
 // stored UTC instant still falls on the intended day after dayKeyInTz.
 const anchorDate = (dateStr: string, tz: string): Date => {
 	const [year, month, day] = dateStr.split("-").map(Number);
+
 	return new TZDate(year ?? 1970, (month ?? 1) - 1, day ?? 1, 12, 0, 0, tz);
 };
 
 // Midnight-to-midnight bounds of a calendar day in the given timezone.
 export const dayBoundsInTz = (dateStr: string, tz: string): InstantRange => {
 	const [year, month, day] = dateStr.split("-").map(Number);
+
 	return {
 		start: new TZDate(year ?? 1970, (month ?? 1) - 1, day ?? 1, 0, 0, 0, tz),
 		end: new TZDate(
@@ -275,12 +320,15 @@ export const dayBoundsInTz = (dateStr: string, tz: string): InstantRange => {
 // so results don't depend on the host process's timezone.
 const keyToUtcDate = (dateStr: string): Date => {
 	const [year, month, day] = dateStr.split("-").map(Number);
+
 	return new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
 };
+
 const utcDateToKey = (date: Date): string => {
 	const y = date.getUTCFullYear();
 	const m = String(date.getUTCMonth() + 1).padStart(2, "0");
 	const d = String(date.getUTCDate()).padStart(2, "0");
+
 	return `${y}-${m}-${d}`;
 };
 
@@ -289,16 +337,19 @@ export const datesBetween = (fromStr: string, toStr: string): string[] => {
 	const cursor = keyToUtcDate(fromStr);
 	const end = keyToUtcDate(toStr);
 	const dates: string[] = [];
+
 	while (cursor.getTime() <= end.getTime()) {
 		dates.push(utcDateToKey(cursor));
 		cursor.setUTCDate(cursor.getUTCDate() + 1);
 	}
+
 	return dates;
 };
 
 export const addDaysToKey = (dateStr: string, amount: number): string => {
 	const date = keyToUtcDate(dateStr);
 	date.setUTCDate(date.getUTCDate() + amount);
+
 	return utcDateToKey(date);
 };
 
@@ -351,6 +402,7 @@ export const startOfWeekKey = (
 	const date = keyToUtcDate(dateStr);
 	const back = (date.getUTCDay() - weekStartsOn + 7) % 7;
 	date.setUTCDate(date.getUTCDate() - back);
+
 	return utcDateToKey(date);
 };
 
@@ -359,6 +411,7 @@ export const startOfMonthKey = (dateStr: string): string =>
 
 export const endOfMonthKey = (dateStr: string): string => {
 	const [year, month] = dateStr.split("-").map(Number);
+
 	// Day 0 of next month = last day of this month.
 	return utcDateToKey(new Date(Date.UTC(year ?? 1970, month ?? 1, 0)));
 };

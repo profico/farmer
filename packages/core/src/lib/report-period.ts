@@ -31,12 +31,14 @@ export const PERIOD_PRESETS = [
 export const startOfQuarterKey = (monthKey: string): string => {
 	const { year, month } = parseMonthKey(monthKey);
 	const first = Math.floor((month - 1) / 3) * 3 + 1;
+
 	return `${year}-${String(first).padStart(2, "0")}`;
 };
 
 /** `2026-08` -> "Q3 2026". */
 export const formatQuarterKey = (monthKey: string): string => {
 	const { year, month } = parseMonthKey(monthKey);
+
 	return `Q${Math.floor((month - 1) / 3) + 1} ${year}`;
 };
 
@@ -66,6 +68,7 @@ export type MonthKeyParts = { year: number; month: number };
 /** `2026-07` -> `{ year: 2026, month: 7 }`. */
 export const parseMonthKey = (key: string): MonthKeyParts => {
 	const [year, month] = key.split("-").map(Number);
+
 	return { year: year ?? 1970, month: month ?? 1 };
 };
 
@@ -73,6 +76,7 @@ export const parseMonthKey = (key: string): MonthKeyParts => {
 export const shiftMonthKey = (key: string, delta: number): string => {
 	const { year, month } = parseMonthKey(key);
 	const total = year * 12 + (month - 1) + delta;
+
 	return `${Math.floor(total / 12)}-${String((((total % 12) + 12) % 12) + 1).padStart(2, "0")}`;
 };
 
@@ -83,6 +87,7 @@ export const trailingMonths = (
 	count: number,
 ): { year: number; month: number }[] => {
 	const endKey = `${end.year}-${String(end.month).padStart(2, "0")}`;
+
 	return Array.from({ length: Math.max(count, 0) }, (_, i) =>
 		parseMonthKey(shiftMonthKey(endKey, i - (count - 1))),
 	);
@@ -106,27 +111,34 @@ export const resolveReportPeriod = (
 
 	if (preset === "week") {
 		const from = selection.from ?? startOfWeekKey(today, weekStartsOn);
+
 		return { preset, from, to: addDaysToKey(from, 6) };
 	}
 
 	if (preset === "custom") {
 		const from = selection.from ?? `${selection.month ?? thisMonth}-01`;
 		const to = selection.to ?? today;
+
 		// An inverted range is a half-finished edit in the date pickers, not an
 		// error worth a screen: collapse it to the single day the user has set.
 		return { preset, from, to: to < from ? from : to };
 	}
 
 	const month = selection.month ?? thisMonth;
+
 	if (preset === "quarter") {
 		const first = startOfQuarterKey(month);
 		const last = shiftMonthKey(first, 2);
+
 		return { preset, from: `${first}-01`, to: endOfMonthKey(`${last}-01`) };
 	}
+
 	if (preset === "year") {
 		const { year } = parseMonthKey(month);
+
 		return { preset, from: `${year}-01-01`, to: `${year}-12-31` };
 	}
+
 	return { preset, from: `${month}-01`, to: endOfMonthKey(`${month}-01`) };
 };
 
@@ -146,10 +158,13 @@ export const isCurrentPeriod = (
 		today,
 		weekStartsOn,
 	);
+
 	if (preset === "week") return from === startOfWeekKey(today, weekStartsOn);
+
 	if (preset === "quarter" || preset === "year") {
 		return from <= today && today <= to;
 	}
+
 	// Month and Custom both step by month, so the month key is what "current"
 	// means for either — a custom range is still anchored to the month picker.
 	return (selection.month ?? monthKeyOf(today)) === monthKeyOf(today);

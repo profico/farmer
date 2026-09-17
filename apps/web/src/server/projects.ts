@@ -20,6 +20,7 @@ export const listProjects = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.list(context.ctx);
 	});
 
@@ -28,6 +29,7 @@ export const listMyProjects = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.listMine(context.ctx);
 	});
 
@@ -36,6 +38,7 @@ export const getProject = createServerFn({ method: "GET" })
 	.validator(projectIdInput)
 	.handler(async ({ data: projectId, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.get(context.ctx, projectId);
 	});
 
@@ -45,6 +48,7 @@ export const getProjectOverview = createServerFn({ method: "GET" })
 	.validator(projectIdInput)
 	.handler(async ({ data: projectId, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.overview(context.ctx, projectId);
 	});
 
@@ -53,6 +57,7 @@ export const listProjectMembers = createServerFn({ method: "GET" })
 	.validator(listProjectMembersInput)
 	.handler(async ({ data: projectId, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.listMembers(context.ctx, projectId);
 	});
 
@@ -62,6 +67,7 @@ export const listAssignableMembers = createServerFn({ method: "GET" })
 	.validator(projectIdInput)
 	.handler(async ({ data: projectId, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.listAssignable(context.ctx, projectId);
 	});
 
@@ -70,6 +76,7 @@ export const assignProjectMember = createServerFn({ method: "POST" })
 	.validator(assignProjectMemberInput)
 	.handler(async ({ data, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.assignMember(context.ctx, data);
 	});
 
@@ -78,6 +85,7 @@ export const removeProjectMember = createServerFn({ method: "POST" })
 	.validator(removeProjectMemberInput)
 	.handler(async ({ data, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.removeMember(context.ctx, data);
 	});
 
@@ -89,6 +97,7 @@ export const createProject = createServerFn({ method: "POST" })
 		const project = await projectsService.create(context.ctx, data);
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
+
 		if (posthog) {
 			posthog.capture({
 				distinctId: context.ctx.userId,
@@ -102,6 +111,7 @@ export const createProject = createServerFn({ method: "POST" })
 			});
 			await posthog.flush();
 		}
+
 		return project;
 	});
 
@@ -110,6 +120,7 @@ export const updateProject = createServerFn({ method: "POST" })
 	.validator(updateProjectInput)
 	.handler(async ({ data, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.update(context.ctx, data);
 	});
 
@@ -118,6 +129,7 @@ export const archiveProject = createServerFn({ method: "POST" })
 	.validator(projectIdInput)
 	.handler(async ({ data: projectId, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.archive(context.ctx, projectId);
 	});
 
@@ -126,6 +138,7 @@ export const unarchiveProject = createServerFn({ method: "POST" })
 	.validator(projectIdInput)
 	.handler(async ({ data: projectId, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.unarchive(context.ctx, projectId);
 	});
 
@@ -134,5 +147,6 @@ export const listProjectTasks = createServerFn({ method: "GET" })
 	.validator(projectIdInput)
 	.handler(async ({ data: projectId, context }) => {
 		const { projectsService } = await import("@farmer/core/services");
+
 		return projectsService.listTasks(context.ctx, projectId);
 	});

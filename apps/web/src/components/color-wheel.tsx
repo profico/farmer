@@ -26,6 +26,7 @@ import { cn } from "#/lib/utils.ts";
  *  telling each other apart. This is a step brighter, which is legible in both
  *  themes without claiming to be the color it produces. */
 const WHEEL_L = 0.65;
+
 /** What the rim is DRAWN at, which is no longer what the rim MEANS. The seed
  *  runs to `SEED_MAX_CHROMA`, and past 0.2 sRGB has nothing left to give at
  *  this lightness — a disc drawn to the seed's own ceiling would gamut-map its
@@ -38,8 +39,11 @@ const WHEEL_C = 0.2;
 /** The geometry, in px at scale 100%. The ring sits far enough out to clear the
  *  disc, and the box is large enough to hold a swatch and its selected ring. */
 const DISC = 160;
+
 const RING_RADIUS = 104;
+
 const SWATCH = 24;
+
 const BOX = 2 * (RING_RADIUS + SWATCH / 2 + 4);
 
 /** The least angle two swatches may sit apart. A chord of `2 * RING_RADIUS *
@@ -59,21 +63,27 @@ const RING = (() => {
 		seed: quick.seed,
 		angle: quick.seed.h,
 	})).sort((a, b) => a.angle - b.angle);
+
 	for (let pass = 0; pass < 200; pass += 1) {
 		let settled = true;
+
 		for (let i = 0; i < points.length; i += 1) {
 			const here = points[i];
 			const next = points[(i + 1) % points.length];
+
 			if (!here || !next) continue;
 			const gap = (next.angle - here.angle + 360) % 360;
+
 			if (gap >= RING_MIN_GAP) continue;
 			const push = (RING_MIN_GAP - gap) / 2;
 			here.angle = (here.angle - push + 360) % 360;
 			next.angle = (next.angle + push) % 360;
 			settled = false;
 		}
+
 		if (settled) break;
 	}
+
 	return points;
 })();
 
@@ -83,6 +93,7 @@ const RING = (() => {
 const toPoint = (seed: Seed) => {
 	const radians = (seed.h * Math.PI) / 180;
 	const radius = Math.min(seed.c / SEED_MAX_CHROMA, 1);
+
 	return {
 		x: 50 + 50 * radius * Math.sin(radians),
 		y: 50 - 50 * radius * Math.cos(radians),
@@ -92,6 +103,7 @@ const toPoint = (seed: Seed) => {
 /** The same angle, in px on the ring rather than in percent of the disc. */
 const toRingPoint = (angle: number) => {
 	const radians = (angle * Math.PI) / 180;
+
 	return {
 		x: BOX / 2 + RING_RADIUS * Math.sin(radians),
 		y: BOX / 2 - RING_RADIUS * Math.cos(radians),
@@ -100,6 +112,7 @@ const toRingPoint = (angle: number) => {
 
 const round = (value: number, places: number) => {
 	const factor = 10 ** places;
+
 	return Math.round(value * factor) / factor;
 };
 
@@ -122,20 +135,24 @@ export function ColorWheel({
 	const pick = useCallback(
 		(clientX: number, clientY: number) => {
 			const disc = discRef.current;
+
 			if (!disc) return;
 			const box = disc.getBoundingClientRect();
 			const dx = clientX - (box.left + box.width / 2);
 			const dy = clientY - (box.top + box.height / 2);
+
 			const radius = Math.min(
 				Math.hypot(dx, dy) / (Math.min(box.width, box.height) / 2),
 				1,
 			);
+
 			// Dead centre has no angle to read, so the hue is left where it was
 			// rather than snapping to whichever way the last pixel of travel went.
 			const h =
 				dx === 0 && dy === 0
 					? seed.h
 					: ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+
 			onChange({ h: round(h, 1), c: round(radius * SEED_MAX_CHROMA, 4) });
 		},
 		[onChange, seed.h],
@@ -228,9 +245,11 @@ export function ColorWheel({
 			{/* Most people want a color, not a color space. */}
 			{RING.map((quick) => {
 				const point = toRingPoint(quick.angle);
+
 				const selected =
 					Math.round(quick.seed.h) === Math.round(seed.h) &&
 					Math.abs(quick.seed.c - seed.c) < 0.005;
+
 				return (
 					<button
 						key={quick.label}

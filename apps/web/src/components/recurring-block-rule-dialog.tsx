@@ -111,6 +111,7 @@ function RecurringBlockRuleDialog({
 	const projectId = form.watch("projectId");
 	const daysOfWeek = form.watch("daysOfWeek");
 	const weekdays = useWeekdays();
+
 	// The task list follows the chosen project: with one it is the whole grouped
 	// list, without one the short project-less list (time off and the built-ins).
 	const { data: taskOptions = [] } = useSuspenseQuery(
@@ -119,6 +120,7 @@ function RecurringBlockRuleDialog({
 			projectId === NO_PROJECT ? undefined : projectId,
 		),
 	);
+
 	const { data: recentIds = [] } = useQuery({
 		...recentTasksQuery(orgSlug, projectId),
 		enabled: open && projectId !== NO_PROJECT,
@@ -136,6 +138,7 @@ function RecurringBlockRuleDialog({
 	useEffect(() => {
 		if (taskId && !selectedTask) form.setValue("taskId", "");
 	}, [taskId, selectedTask, form]);
+
 	const needsDescription = selectedTask
 		? descriptionRequiredFor(selectedTask)
 		: true;
@@ -157,6 +160,7 @@ function RecurringBlockRuleDialog({
 		mutationFn: (values: FormValues) => {
 			const projectValue =
 				values.projectId === NO_PROJECT ? undefined : values.projectId;
+
 			if (rule) {
 				return updateRecurringBlockRule({
 					data: {
@@ -171,6 +175,7 @@ function RecurringBlockRuleDialog({
 					},
 				});
 			}
+
 			return createRecurringBlockRule({
 				data: {
 					taskId: values.taskId,
@@ -186,6 +191,7 @@ function RecurringBlockRuleDialog({
 				queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
 			});
 			setOpen(false);
+
 			if (!rule) form.reset();
 		},
 		onError: (error) => {
@@ -198,6 +204,7 @@ function RecurringBlockRuleDialog({
 			open={open}
 			onOpenChange={(next) => {
 				setOpen(next);
+
 				// Reopening an edit dialog after a cancelled edit should show the rule
 				// as it stands, not the abandoned draft.
 				if (next) form.reset(defaults);
@@ -215,8 +222,10 @@ function RecurringBlockRuleDialog({
 						onSubmit={form.handleSubmit((values) => {
 							if (needsDescription && !values.description.trim()) {
 								form.setError("description", { message: "Required" });
+
 								return;
 							}
+
 							mutation.mutate(values);
 						})}
 						className="grid grid-cols-[minmax(0,1fr)] gap-4"

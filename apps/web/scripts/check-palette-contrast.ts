@@ -53,11 +53,15 @@ type Token =
 	| "faint"
 	| "acc"
 	| Harmonised;
+
 /** The tokens that keep their own lightness and chroma and rotate with the
  *  accent — see `--harmony` in the custom palette. */
 type Harmonised = "warn" | "ok" | "bad" | "chart2" | "chart4" | "chart5";
+
 type Neutral = Exclude<Token, "acc" | Harmonised>;
+
 type Theme = "light" | "dark";
+
 /** Preferences → Display → High contrast. A second palette per theme, drawn on
  *  the same paper: the surfaces do not move and only the ink is pushed. Swept
  *  here as its own dimension, because a generated palette AND a contrast mode
@@ -382,8 +386,10 @@ const toLinearSrgb = ({ l, c, h }: Oklch) => {
 
 const hexToLinearSrgb = (hex: string) => {
 	const value = Number.parseInt(hex.slice(1), 16);
+
 	return [(value >> 16) & 255, (value >> 8) & 255, value & 255].map((c) => {
 		const channel = c / 255;
+
 		return channel <= 0.04045
 			? channel / 12.92
 			: ((channel + 0.055) / 1.055) ** 2.4;
@@ -397,6 +403,7 @@ const luminance = (rgb: number[]) =>
 const contrast = (a: number[], b: number[]) => {
 	const la = luminance(a);
 	const lb = luminance(b);
+
 	return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 };
 
@@ -429,16 +436,20 @@ const PAIRS: readonly { of: Token; on: Token; absolute?: true }[] = [
 const derive = (contrast: Contrast, theme: Theme, h: number, c: number) => {
 	const roles = ROLES[contrast][theme];
 	const accent = ACCENT[contrast][theme];
+
 	const neutral = (name: Neutral) =>
 		toLinearSrgb({
 			l: roles[name].l,
 			c: c * roles[name].ratio * tint(c),
 			h,
 		});
+
 	const rotated = (name: Harmonised) => {
 		const spec = HARMONISED[contrast][theme][name];
+
 		return toLinearSrgb({ l: spec.l, c: spec.c, h: spec.h + harmony(h) });
 	};
+
 	return {
 		acc: toLinearSrgb({
 			l: accentLightness(accent, h),
@@ -507,6 +518,7 @@ const drift = (a: number[], b: number[]) =>
 	);
 
 const reproduction: string[] = [];
+
 for (const contrast of CONTRASTS) {
 	for (const theme of THEMES) {
 		const roles = ROLES[contrast][theme];
@@ -526,6 +538,7 @@ for (const contrast of CONTRASTS) {
 				}),
 				hexToLinearSrgb(VANILLA[contrast][theme][name]),
 			);
+
 			if (off > 2) {
 				reproduction.push(
 					`  ${where} --${name}: lightness or chroma is no longer vanilla's (off by ${off}/255)`,
@@ -541,6 +554,7 @@ for (const contrast of CONTRASTS) {
 			}),
 			hexToLinearSrgb(VANILLA[contrast][theme].acc),
 		);
+
 		if (accOff > 2) {
 			reproduction.push(
 				`  ${where} --acc: seed 293 no longer reproduces the shipped accent (off by ${accOff}/255)`,
@@ -550,6 +564,7 @@ for (const contrast of CONTRASTS) {
 		// The harmonised six rotate by zero at vanilla's own hue, so these must land
 		// on the shipped hex exactly.
 		const derived = derive(contrast, theme, VANILLA_SEED.h, VANILLA_SEED.c);
+
 		for (const name of [
 			"warn",
 			"ok",
@@ -562,6 +577,7 @@ for (const contrast of CONTRASTS) {
 				derived[name],
 				hexToLinearSrgb(VANILLA[contrast][theme][name]),
 			);
+
 			if (off > 2) {
 				reproduction.push(
 					`  ${where} --${name}: seed 293 no longer reproduces the shipped color (off by ${off}/255)`,
@@ -573,6 +589,7 @@ for (const contrast of CONTRASTS) {
 
 if (reproduction.length) {
 	console.error("The custom palette has drifted from vanilla:\n");
+
 	for (const line of reproduction) console.error(line);
 	process.exit(1);
 }
@@ -597,6 +614,7 @@ type Failure = {
 };
 
 const failures: Failure[] = [];
+
 let checked = 0;
 
 for (const level of CONTRASTS) {
@@ -609,15 +627,18 @@ for (const level of CONTRASTS) {
 			for (let step = 0; step <= 20; step += 1) {
 				const c = (SEED_MAX_CHROMA * step) / 20;
 				const tokens = derive(level, theme, h, c);
+
 				for (const pair of PAIRS) {
 					checked += 1;
 					const got = contrast(tokens[pair.of], tokens[pair.on]);
+
 					const want = pair.absolute
 						? floorFor(level, pair.of)
 						: Math.max(
 								baseline(level, theme, pair.of, pair.on) * TOLERANCE,
 								floorFor(level, pair.of),
 							);
+
 					if (got + 0.005 < want) {
 						failures.push({
 							level,
@@ -643,6 +664,7 @@ if (failures.length === 0) {
 }
 
 console.error(`${failures.length} of ${checked} pairs fall short:\n`);
+
 // Worst first, so the fix is obvious: move that role's lightness in the custom
 // palette block until the worst hue clears it.
 for (const f of failures.sort((a, b) => a.got - b.got).slice(0, 40)) {
@@ -656,4 +678,5 @@ for (const f of failures.sort((a, b) => a.got - b.got).slice(0, 40)) {
 			)}  ${f.pair.padEnd(16)} ${f.got.toFixed(2)} < ${f.want.toFixed(2)}`,
 	);
 }
+
 process.exit(1);

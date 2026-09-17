@@ -85,6 +85,7 @@ describe("parseCsv", () => {
 	test("a quoted field holding a comma and a newline together", () => {
 		const text =
 			'Date,Notes,Hours\n2014-12-30,"line one, still one\nline two","0,5"\n';
+
 		expect(parseCsv(text)).toEqual([
 			["Date", "Notes", "Hours"],
 			["2014-12-30", "line one, still one\nline two", "0,5"],

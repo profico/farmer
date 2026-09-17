@@ -41,9 +41,13 @@ import { INVITATION_EMAIL_STALE_MS, membersService } from "./members.service";
 import type { Ctx } from "./types";
 
 const ORG = "mt-org";
+
 const ADMIN = "u-mt-admin";
+
 const PERSON = "u-mt-person";
+
 const OTHER = "u-mt-other";
+
 const PLAIN = "u-mt-plain";
 
 let harness: TestDb;
@@ -79,6 +83,7 @@ const segments = async (userId: string) => {
 				eq(memberTypeHistory.userId, userId),
 			),
 		);
+
 	return rows
 		.sort((a, b) => a.from.localeCompare(b.from))
 		.map((r) => [r.from, r.until, r.type]);
@@ -165,6 +170,7 @@ describe("invitation email status", () => {
 		const emails = await membersService.invitationEmails(adminCtx(), {
 			now: later,
 		});
+
 		expect(emails.get(INVITE)?.status).toBe("failed");
 	});
 
@@ -321,6 +327,7 @@ describe("setType", () => {
 
 	test("re-stating from the SAME date edits in place, adding no segment", async () => {
 		await setType(PERSON, "contractor_hourly", "2025-01-01", 100 * 3600);
+
 		const [before] = await db
 			.select({ id: memberTypeHistory.id })
 			.from(memberTypeHistory)
@@ -438,14 +445,17 @@ describe("the mth_no_overlap trigger", () => {
 			() => null,
 			(error: unknown) => error,
 		);
+
 		expect(raised).toBeInstanceOf(Error);
 
 		const messages: string[] = [];
 		let cursor: unknown = raised;
+
 		while (cursor instanceof Error) {
 			messages.push(cursor.message);
 			cursor = cursor.cause;
 		}
+
 		expect(messages.join(" ")).toMatch(/overlaps an existing one/);
 	});
 
@@ -475,12 +485,14 @@ describe("typesAsOf", () => {
 		await setType(PERSON, "contractor_hourly", "2025-01-01");
 
 		expect(await typeOn(PERSON, "2024-12-31")).toBeNull();
+
 		// Billable is the default and the right one — delivery is the common case.
 		const resolved = await membersService.typeFor(
 			adminCtx(),
 			PERSON,
 			"2024-12-31",
 		);
+
 		expect(resolved.type).toBe("employee_billable");
 	});
 

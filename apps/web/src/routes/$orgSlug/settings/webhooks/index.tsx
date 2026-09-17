@@ -76,11 +76,14 @@ const healthOf = (endpoint: {
 	lastSuccessAt: Date | null;
 }) => {
 	if (endpoint.disabledAt) return { tone: "neutral" as const, label: "Off" };
+
 	if (endpoint.failingSince)
 		return { tone: "negative" as const, label: "Failing" };
+
 	if (endpoint.lastSuccessAt) {
 		return { tone: "positive" as const, label: "Delivering" };
 	}
+
 	return { tone: "warning" as const, label: "Untested" };
 };
 
@@ -128,6 +131,7 @@ function WebhooksSettingsPage() {
 					<TableBody>
 						{endpoints.map((endpoint) => {
 							const health = healthOf(endpoint);
+
 							return (
 								<TableRow key={endpoint.id}>
 									{/* The URL is the row's name and a receiver's is routinely
@@ -225,6 +229,7 @@ function CreateEndpointDialog() {
 					setSecret(null);
 					form.reset({ url: "", description: "", enabledEvents: [] });
 				}
+
 				setOpen(next);
 			}}
 		>
@@ -317,6 +322,7 @@ function CreateEndpointDialog() {
 												selectedIds={field.value}
 												onToggle={(id) => {
 													const chosen = new Set<string>(field.value);
+
 													if (chosen.has(id)) chosen.delete(id);
 													else chosen.add(id);
 													// Kept in the catalogue's order rather than in the

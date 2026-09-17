@@ -28,10 +28,12 @@ const suggestedProjects = async (
 	repository: string | null,
 ): Promise<Set<string>> => {
 	if (repository === null) return new Set();
+
 	try {
 		const rows = await session.api.get<ApiProject[]>(
 			scope.path(`/repository-projects?${new URLSearchParams({ repository })}`),
 		);
+
 		return new Set(rows.map((row) => row.id));
 	} catch (error) {
 		if (error instanceof CliError) return new Set();
@@ -68,21 +70,26 @@ export const init: Command = {
 			0,
 			INIT_USAGE,
 		);
+
 		const out = createOutput(values.json === true, runtime.env);
 
 		const root = await gitRoot(runtime.cwd);
+
 		if (root === null) {
 			throw new CliError(
 				"This is not a git repository. Repository defaults apply only inside one.",
 			);
 		}
+
 		const path = join(values.here ? runtime.cwd : root, DEFAULTS_FILE);
 		const shown = shownPath(runtime.cwd, path);
 
 		if ((await Bun.file(path).exists()) && values.yes !== true) {
 			requireInteractive(out, `${shown} exists. Pass --yes to replace it.`);
+
 			if (!(await askConfirm(`Replace ${shown}?`))) throw new CancelledError();
 		}
+
 		if (values.here !== true && runtime.cwd !== root) {
 			// A file in the wrong directory applies only there, and nobody notices.
 			note(
@@ -95,17 +102,20 @@ export const init: Command = {
 		const session = await connect(runtime, out);
 		const scope = await scopeOrg(session, values.org);
 		const repository = await originRepository(runtime, root);
+
 		const [projects, taskList, suggested] = await Promise.all([
 			session.api.get<ApiProject[]>(scope.path("/projects")),
 			session.api.get<ApiTaskList>(scope.path("/tasks")),
 			suggestedProjects(session, scope, repository),
 		]);
+
 		const project = await chooseProject(
 			out,
 			projects,
 			values.project,
 			suggested,
 		);
+
 		const task = await chooseTaskOrNone(out, taskList.tasks, values.task);
 
 		await Bun.write(path, formatDefaults({ org: scope.slug, project, task }));
@@ -117,8 +127,10 @@ export const init: Command = {
 				project: { id: project.id, name: project.name },
 				task: task ? { id: task.id, name: task.name } : null,
 			});
+
 			return;
 		}
+
 		const names = [scope.slug, project.name, ...(task ? [task.name] : [])];
 		print(`Wrote ${shown}: ${names.join(", ")}.`);
 		print("Commit it, so everyone who works here logs to the same project.");

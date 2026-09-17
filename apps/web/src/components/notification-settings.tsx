@@ -43,6 +43,7 @@ function NotifyToggleRow({
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
+
 	const mutation = useMutation({
 		mutationFn: (value: boolean) =>
 			updateNotificationSettings({ data: patch(value) }),
@@ -55,6 +56,7 @@ function NotifyToggleRow({
 			toast.error(error.message ?? "Could not update setting");
 		},
 	});
+
 	return (
 		<SettingRow
 			title={title}
@@ -72,14 +74,18 @@ function NotifyToggleRow({
 
 export function NotificationSettings() {
 	const orgSlug = useOrgSlug();
+
 	const { data: settings } = useSuspenseQuery(
 		notificationSettingsQuery(orgSlug),
 	);
+
 	const [supported, setSupported] = useState(true);
 	const [subscribed, setSubscribed] = useState(false);
+
 	const [permission, setPermission] = useState<
 		NotificationPermission | "unsupported"
 	>("default");
+
 	const [busy, setBusy] = useState(false);
 
 	// Device-level push state is client-only (OS permission + a live
@@ -88,16 +94,20 @@ export function NotificationSettings() {
 		if (!pushSupported()) {
 			setSupported(false);
 			setPermission("unsupported");
+
 			return;
 		}
+
 		setPermission(currentPermission());
 		isSubscribed().then(setSubscribed);
 	}, []);
 
 	const enable = async () => {
 		setBusy(true);
+
 		try {
 			const result = await enablePush();
+
 			if (result === "subscribed") {
 				setSubscribed(true);
 				setPermission("granted");
@@ -126,6 +136,7 @@ export function NotificationSettings() {
 
 	const disable = async () => {
 		setBusy(true);
+
 		try {
 			await disablePush();
 			setSubscribed(false);

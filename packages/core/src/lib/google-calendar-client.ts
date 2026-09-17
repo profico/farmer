@@ -18,10 +18,13 @@ export const getGoogleUserInfo = async (
 	const response = await externalFetch(`${GOOGLE_API}/oauth2/v3/userinfo`, {
 		headers: authHeaders(token),
 	});
+
 	if (response.status === 401 || response.status === 403) return null;
+
 	if (!response.ok) {
 		throw new Error(`Google API error ${response.status}: /oauth2/v3/userinfo`);
 	}
+
 	// SAFETY: 401/403 returned null and every other non-2xx threw above, so this
 	// is Google's documented userinfo body. Only `email` is read from it, and the
 	// caller treats a missing one as an unusable connection.
@@ -87,15 +90,20 @@ const NON_MEETING_EVENT_TYPES = new Set(["outOfOffice", "focusTime"]);
  */
 export const isImportableEvent = (event: GoogleCalendarEvent): boolean => {
 	if (event.status === "cancelled") return false;
+
 	// All-day events carry `date`, not `dateTime` — no clock time to import.
 	if (!event.start?.dateTime || !event.end?.dateTime) return false;
+
 	if (event.eventType && NON_MEETING_EVENT_TYPES.has(event.eventType)) {
 		return false;
 	}
+
 	// Only the owner's own row counts. An event with no attendees at all is a
 	// solo block the person put on their own calendar, which is real time.
 	const self = event.attendees?.find((a) => a.self);
+
 	if (self?.responseStatus === "declined") return false;
+
 	return true;
 };
 
@@ -106,12 +114,14 @@ export const isImportableEvent = (event: GoogleCalendarEvent): boolean => {
 // events are simply omitted (showDeleted defaults to false), which is exactly
 // the "absent" signal the engine keys on. MAX_PAGES caps a pathological loop.
 const MAX_PAGES = 20;
+
 export const listCalendarEvents = async (
 	token: string,
 	options: { timeMin: Date; timeMax: Date },
 ): Promise<GoogleCalendarEvent[]> => {
 	const items: GoogleCalendarEvent[] = [];
 	let pageToken: string | undefined;
+
 	for (let page = 0; page < MAX_PAGES; page++) {
 		const params = new URLSearchParams({
 			timeMin: options.timeMin.toISOString(),
@@ -120,16 +130,20 @@ export const listCalendarEvents = async (
 			orderBy: "startTime", // only allowed alongside singleEvents=true
 			maxResults: "250",
 		});
+
 		if (pageToken) params.set("pageToken", pageToken);
+
 		const response = await externalFetch(
 			`${GOOGLE_API}/calendar/v3/calendars/primary/events?${params}`,
 			{ headers: authHeaders(token) },
 		);
+
 		if (!response.ok) {
 			throw new Error(
 				`Google Calendar API error ${response.status}: list events`,
 			);
 		}
+
 		// SAFETY: guarded by the `!response.ok` throw above. Both fields are declared
 		// optional precisely because the last page carries no `nextPageToken` and an
 		// empty calendar carries no `items`.
@@ -137,10 +151,13 @@ export const listCalendarEvents = async (
 			items?: GoogleCalendarEvent[];
 			nextPageToken?: string;
 		};
+
 		if (body.items) items.push(...body.items);
+
 		if (!body.nextPageToken) return items;
 		pageToken = body.nextPageToken;
 	}
+
 	// Reaching the cap means the list is TRUNCATED, and delete-by-absence reads
 	// absence as cancellation — so the meetings on the pages never fetched would
 	// have their entries deleted. It takes >5000 events in a window of a few
@@ -152,6 +169,7 @@ export const listCalendarEvents = async (
 		timeMin: options.timeMin.toISOString(),
 		timeMax: options.timeMax.toISOString(),
 	});
+
 	return items;
 };
 
@@ -177,16 +195,20 @@ export const insertAllDayEvent = async (
 			}),
 		},
 	);
+
 	if (response.status === 401 || response.status === 403) return null;
+
 	if (!response.ok) {
 		throw new Error(
 			`Google Calendar API error ${response.status}: insert event`,
 		);
 	}
+
 	// SAFETY: 401/403 returned null and every other non-2xx threw above. `id` is
 	// optional here rather than asserted present — the caller maps a missing one
 	// to null, so a surprising body costs the id, not the request.
 	const body = (await response.json()) as { id?: string };
+
 	return body.id ?? null;
 };
 
@@ -198,13 +220,18 @@ export const extractMeetingUrl = (
 	event: GoogleCalendarEvent,
 ): string | null => {
 	if (event.hangoutLink) return event.hangoutLink;
+
 	const video = event.conferenceData?.entryPoints?.find(
 		(entry) => entry.entryPointType === "video" && entry.uri,
 	);
+
 	if (video?.uri) return video.uri;
+
 	if (event.location) {
 		const match = event.location.match(/https?:\/\/\S+/);
+
 		if (match) return match[0];
 	}
+
 	return null;
 };

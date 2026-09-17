@@ -36,10 +36,12 @@ const exists = (path: string) =>
  *  is a directory in a clone and a file in a worktree or a submodule. */
 export const gitRoot = async (start: string): Promise<string | null> => {
 	let dir = start;
+
 	for (;;) {
 		// oxlint-disable-next-line no-await-in-loop -- each step decides whether the next one runs
 		if (await exists(join(dir, ".git"))) return dir;
 		const parent = dirname(dir);
+
 		if (parent === dir) return null;
 		dir = parent;
 	}
@@ -51,14 +53,19 @@ export const findDefaultsFile = async (
 	start: string,
 ): Promise<string | null> => {
 	const root = await gitRoot(start);
+
 	if (root === null) return null;
 	let dir = start;
+
 	for (;;) {
 		const candidate = join(dir, DEFAULTS_FILE);
+
 		// oxlint-disable-next-line no-await-in-loop -- the nearest file wins, so the walk stops at the first
 		if (await Bun.file(candidate).exists()) return candidate;
+
 		if (dir === root) return null;
 		const parent = dirname(dir);
+
 		if (parent === dir) return null;
 		dir = parent;
 	}
@@ -70,12 +77,15 @@ export const shownPath = (cwd: string, path: string) =>
 export const parseDefaults = (text: string, shown: string) => {
 	const rewrite = "Fix it, or run `farmer init` to write it again.";
 	let raw: ReturnType<typeof Bun.JSONC.parse>;
+
 	try {
 		raw = Bun.JSONC.parse(text);
 	} catch {
 		throw new CliError(`${shown} is not valid JSON. ${rewrite}`);
 	}
+
 	const parsed = defaultsFile.safeParse(raw);
+
 	if (!parsed.success) {
 		const problems = parsed.error.issues
 			.map((issue) =>
@@ -84,9 +94,12 @@ export const parseDefaults = (text: string, shown: string) => {
 					: issue.message,
 			)
 			.join("; ");
+
 		throw new CliError(`${shown} is not valid (${problems}). ${rewrite}`);
 	}
+
 	const defaults: RepositoryDefaults = { ...parsed.data, shown };
+
 	return defaults;
 };
 
@@ -97,7 +110,9 @@ export const loadDefaults = async (
 	runtime: Pick<Runtime, "cwd">,
 ): Promise<RepositoryDefaults | null> => {
 	const path = await findDefaultsFile(runtime.cwd);
+
 	if (path === null) return null;
+
 	return parseDefaults(
 		await Bun.file(path).text(),
 		shownPath(runtime.cwd, path),
@@ -114,11 +129,13 @@ export const defaultRow = <T extends { id: string }>(
 	flag: string,
 ): T => {
 	const found = rows.find((row) => row.id === id);
+
 	if (!found) {
 		throw new CliError(
 			`${defaults.shown}: the ${noun} ${id} is archived or not available to you. Pass ${flag}, or run \`farmer init\` to choose another.`,
 		);
 	}
+
 	return found;
 };
 
@@ -138,12 +155,16 @@ export const formatDefaults = (values: {
 		["org", values.org, null],
 		["project", values.project.id, values.project.name],
 	];
+
 	if (values.task) rows.push(["task", values.task.id, values.task.name]);
+
 	const lines = rows.map(([key, value, name], index) => {
 		const comma = index < rows.length - 1 ? "," : "";
 		const comment = name === null ? "" : ` // ${oneLine(name)}`;
+
 		return `\t${JSON.stringify(key)}: ${JSON.stringify(value)}${comma}${comment}`;
 	});
+
 	return `{\n${lines.join("\n")}\n}\n`;
 };
 
@@ -153,6 +174,7 @@ export const defaultsNotice = (shown: string, used: string[]) => {
 		used.length > 1
 			? `${used.slice(0, -1).join(", ")} and ${used.at(-1)}`
 			: (used[0] ?? "");
+
 	return `Using ${list} from ${shown}.`;
 };
 
@@ -163,7 +185,9 @@ const GITHUB_REMOTE =
  *  host. */
 export const parseGithubRemote = (url: string): string | null => {
 	const match = GITHUB_REMOTE.exec(url.trim());
+
 	if (!match?.[1] || !match[2]) return null;
+
 	return `${match[1]}/${match[2]}`;
 };
 
@@ -179,6 +203,7 @@ export const originRepository = async (
 			["git", "-C", root, "config", "--get", "remote.origin.url"],
 			{ env: runtime.env, capture: true },
 		);
+
 		return result.exitCode === 0 ? parseGithubRemote(result.stdout) : null;
 	} catch {
 		return null;

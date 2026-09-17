@@ -351,24 +351,31 @@ export const applyFaces = () => {
 		if (role === "display" && boring) {
 			// The switch owns `--serif` and both corrections while it is on.
 			root.style.removeProperty(spec.property);
+
 			if (spec.a) root.style.removeProperty(spec.a);
+
 			if (spec.b) root.style.removeProperty(spec.b);
 			continue;
 		}
 
 		if (skip) {
 			root.style.removeProperty(spec.property);
+
 			if (spec.a) root.style.removeProperty(spec.a);
+
 			if (spec.b) root.style.removeProperty(spec.b);
 			continue;
 		}
 
 		root.style.setProperty(spec.property, stackOf(role, face));
+
 		if (face.google) wanted.push(face.google);
+
 		if (spec.a) {
 			if (face.a) root.style.setProperty(spec.a, face.a);
 			else root.style.removeProperty(spec.a);
 		}
+
 		if (spec.b) {
 			if (face.b) root.style.setProperty(spec.b, face.b);
 			else root.style.removeProperty(spec.b);
@@ -380,15 +387,21 @@ export const applyFaces = () => {
 	// reflow twice. The href is rebuilt from what is wanted NOW, so the next
 	// cold load asks for nothing extra.
 	const existing = document.getElementById(LINK_ID);
+
 	if (!wanted.length) {
 		existing?.remove();
+
 		return;
 	}
+
 	const href = `${GOOGLE_BASE}${wanted.join("&family=")}&display=swap`;
+
 	if (existing instanceof HTMLLinkElement) {
 		if (existing.href !== href) existing.href = href;
+
 		return;
 	}
+
 	const link = document.createElement("link");
 	link.id = LINK_ID;
 	link.rel = "stylesheet";
@@ -405,6 +418,7 @@ export const setFace = (role: FaceRole, id: string) => {
 		// this one is genuinely lost rather than merely unremembered — there is
 		// nowhere else to keep it that the inline script could reach.
 	}
+
 	applyFaces();
 	window.dispatchEvent(new Event(CHANGE_EVENT));
 };
@@ -422,6 +436,7 @@ if (!import.meta.env.SSR) {
 
 const subscribe = (onChange: () => void) => {
 	window.addEventListener(CHANGE_EVENT, onChange);
+
 	return () => window.removeEventListener(CHANGE_EVENT, onChange);
 };
 
@@ -434,6 +449,8 @@ export function useFace(role: FaceRole) {
 		() => readStored(role),
 		() => defaultId(role),
 	);
+
 	const set = useCallback((next: string) => setFace(role, next), [role]);
+
 	return [id, set] as const;
 }

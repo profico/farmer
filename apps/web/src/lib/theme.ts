@@ -13,6 +13,7 @@ import { useSyncExternalStore } from "react";
 export type Theme = "light" | "dark";
 
 const STORAGE_KEY = "farmer-theme";
+
 /** Fired on the window whenever *this* tab changes the theme — `storage` only
  *  reaches the OTHER tabs, so it can't keep two toggles on one page in sync. */
 const CHANGE_EVENT = "farmer:theme";
@@ -35,12 +36,14 @@ const readTheme = (): Theme =>
 
 export const setTheme = (theme: Theme) => {
 	document.documentElement.setAttribute("data-theme", theme);
+
 	try {
 		localStorage.setItem(STORAGE_KEY, theme);
 	} catch {
 		// Private-mode / blocked storage: the switch still works for this page,
 		// it just won't be remembered. Not worth failing the click over.
 	}
+
 	window.dispatchEvent(new Event(CHANGE_EVENT));
 };
 
@@ -54,8 +57,10 @@ const subscribe = (onChange: () => void) => {
 		document.documentElement.setAttribute("data-theme", next);
 		onChange();
 	};
+
 	window.addEventListener(CHANGE_EVENT, onChange);
 	window.addEventListener("storage", onStorage);
+
 	return () => {
 		window.removeEventListener(CHANGE_EVENT, onChange);
 		window.removeEventListener("storage", onStorage);
@@ -71,6 +76,7 @@ export function useTheme() {
 		readTheme,
 		(): Theme => "light",
 	);
+
 	return {
 		theme,
 		setTheme,

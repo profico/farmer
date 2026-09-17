@@ -51,6 +51,7 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-ctxtx";
+
 const USER_ID = "user-ctxtx";
 
 /** A Ctx exactly as `requireOrgContext` builds one: a plain literal, no memo.
@@ -62,10 +63,13 @@ const freshCtx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 const NO_DEADLOCK_MS = 15_000;
 
 const MONDAY = "2026-08-17";
+
 const TUESDAY = "2026-08-18";
 
 let harness: TestDb;
+
 let devTaskId = "";
+
 let projectId = "";
 
 beforeAll(async () => {
@@ -100,10 +104,12 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Farmer" })
 		.returning();
+
 	projectId = p?.id ?? "";
 	await db.insert(projectMember).values({
 		organizationId: ORG_ID,
@@ -123,6 +129,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = dev?.id ?? "";
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
@@ -191,10 +198,12 @@ describe("transactional entry points survive a cold Ctx", () => {
 		"copyDay",
 		async () => {
 			await seedEntry(MONDAY);
+
 			const result = await timeEntriesService.copyDay(freshCtx(), {
 				fromDate: MONDAY,
 				toDate: TUESDAY,
 			});
+
 			expect(result.copied).toBe(1);
 			expect(await entriesOn(TUESDAY)).toHaveLength(1);
 		},
@@ -205,10 +214,12 @@ describe("transactional entry points survive a cold Ctx", () => {
 		"copyWeek",
 		async () => {
 			await seedEntry(MONDAY);
+
 			const result = await timeEntriesService.copyWeek(freshCtx(), {
 				fromWeekStart: MONDAY,
 				toWeekStart: "2026-08-24",
 			});
+
 			expect(result.copied).toBe(1);
 		},
 		NO_DEADLOCK_MS,
@@ -227,6 +238,7 @@ describe("transactional entry points survive a cold Ctx", () => {
 				taskId: devTaskId,
 				durationSeconds: 3 * 3600,
 			});
+
 			expect(result.entryId).toBeString();
 			expect(await entriesOn(MONDAY)).toHaveLength(1);
 		},
@@ -238,12 +250,14 @@ describe("transactional entry points survive a cold Ctx", () => {
 		async () => {
 			await seedEntry(MONDAY);
 			await seedEntry(MONDAY);
+
 			const result = await timeEntriesService.setWeekCell(freshCtx(), {
 				date: MONDAY,
 				projectId,
 				taskId: devTaskId,
 				durationSeconds: 0,
 			});
+
 			expect(result.cleared).toBe(2);
 			expect(await entriesOn(MONDAY)).toHaveLength(0);
 		},
@@ -254,6 +268,7 @@ describe("transactional entry points survive a cold Ctx", () => {
 		"update",
 		async () => {
 			const row = await seedEntry(MONDAY);
+
 			const updated = await timeEntriesService.update(freshCtx(), {
 				timeEntryId: row.id,
 				taskId: devTaskId,
@@ -264,6 +279,7 @@ describe("transactional entry points survive a cold Ctx", () => {
 				overtime: false,
 				fillsDay: false,
 			});
+
 			expect(updated?.durationSeconds).toBe(4 * 3600);
 		},
 		NO_DEADLOCK_MS,

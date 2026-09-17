@@ -31,12 +31,14 @@ export type DayClaim = {
 };
 
 const DEFAULT_START = "09:00";
+
 const DEFAULT_END = "17:00";
 
 // A day without a stored row gets a synthesized Mon-Fri 9-5 default rather
 // than requiring a backfill.
 export const defaultDayRow = (dayOfWeek: number): WorkingHoursDay => {
 	const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+
 	return {
 		dayOfWeek,
 		enabled: isWeekday,
@@ -47,12 +49,14 @@ export const defaultDayRow = (dayOfWeek: number): WorkingHoursDay => {
 
 const timeToMinutes = (time: string): number => {
 	const [hours, minutes] = time.split(":").map(Number);
+
 	return (hours ?? 0) * 60 + (minutes ?? 0);
 };
 
 /** Expected working seconds for a day row — 0 if disabled or times are unset. */
 export const dayDurationSeconds = (day: WorkingHoursDay): number => {
 	if (!day.enabled || !day.startTime || !day.endTime) return 0;
+
 	return Math.max(
 		0,
 		(timeToMinutes(day.endTime) - timeToMinutes(day.startTime)) * 60,
@@ -93,6 +97,7 @@ export const targetSecondsFor = (
 ): number => {
 	if (holidays.has(dateKey)) return 0;
 	const day = dayForWeekday(workingHours, weekdayInTz(dateKey, tz));
+
 	return day ? dayDurationSeconds(day) : 0;
 };
 

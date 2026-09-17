@@ -102,6 +102,7 @@ export const Route = createFileRoute("/$orgSlug")({
 		void context.queryClient.prefetchQuery(
 			directoryQuery(context.organization.slug),
 		);
+
 		// The assistant settings ARE awaited, and only fetched when the deployment
 		// has the feature at all. Whether this org has connected OpenRouter decides
 		// whether the nav shows a Chat tab, so arriving a moment late means the tab
@@ -124,6 +125,7 @@ function OrgLayout() {
 		assistantEnabled,
 		impersonating,
 	} = Route.useRouteContext();
+
 	const posthog = usePostHog();
 	const isAdmin = role === "owner" || role === "admin";
 
@@ -148,6 +150,7 @@ function OrgLayout() {
 		...assistantSettingsQuery(organization.slug),
 		enabled: assistantEnabled,
 	});
+
 	const assistantAvailable =
 		assistantEnabled &&
 		Boolean(assistantSettings?.configured && assistantSettings.enabled);

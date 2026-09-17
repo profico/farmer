@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 // frame where the field is absent and then appears.
 
 export type FieldSeason = "winter" | "spring" | "summer" | "autumn";
+
 export type FieldDaylight = "dawn" | "day" | "dusk" | "night";
 
 /** Northern hemisphere. See the season comment in `styles.css`: the org country
@@ -18,8 +19,11 @@ export type FieldDaylight = "dawn" | "day" | "dusk" | "night";
  *  nothing. */
 const seasonOf = (month: number): FieldSeason => {
 	if (month <= 2 || month === 12) return "winter";
+
 	if (month <= 5) return "spring";
+
 	if (month <= 8) return "summer";
+
 	return "autumn";
 };
 
@@ -27,9 +31,13 @@ const seasonOf = (month: number): FieldSeason => {
  *  app has no reason to hold. */
 const daylightOf = (hour: number): FieldDaylight => {
 	if (hour < 5) return "night";
+
 	if (hour < 8) return "dawn";
+
 	if (hour < 17) return "day";
+
 	if (hour < 21) return "dusk";
+
 	return "night";
 };
 
@@ -55,7 +63,9 @@ export function useFieldPhase(timezone: string): FieldPhase {
 			() => setPhase(fieldPhase(new Date(), timezone)),
 			TICK_MS,
 		);
+
 		return () => clearInterval(id);
 	}, [timezone]);
+
 	return phase;
 }

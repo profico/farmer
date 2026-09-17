@@ -57,6 +57,7 @@ export function TeamLeadPeopleDialog({
 		...teamLeadPeopleQuery(orgSlug, lead.userId),
 		enabled: open,
 	});
+
 	// Local edits start from the saved list once it arrives; until then the
 	// boxes reflect the server and nothing can be ticked into a stale state.
 	const picked = selected ?? new Set((current.data ?? []).map((p) => p.userId));
@@ -68,8 +69,10 @@ export function TeamLeadPeopleDialog({
 	const toggle = (userId: string) => {
 		setSelected(() => {
 			const next = new Set(picked);
+
 			if (next.has(userId)) next.delete(userId);
 			else next.add(userId);
+
 			return next;
 		});
 	};
@@ -102,6 +105,7 @@ export function TeamLeadPeopleDialog({
 			open={open}
 			onOpenChange={(next) => {
 				setOpen(next);
+
 				if (!next) {
 					setSelected(null);
 					setQuery("");

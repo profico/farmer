@@ -34,7 +34,9 @@ export const posthogServerConfig = (): {
 	if (process.env.NODE_ENV !== "production") return null;
 	const token = process.env.POSTHOG_PROJECT_TOKEN;
 	const host = process.env.POSTHOG_HOST;
+
 	if (!token || !host) return null;
+
 	return { token, host };
 };
 
@@ -42,6 +44,7 @@ export function getPostHogClient(): PostHog | null {
 	if (posthogClient) return posthogClient;
 
 	const config = posthogServerConfig();
+
 	if (!config) return null;
 
 	posthogClient = new PostHog(config.token, {
@@ -50,5 +53,6 @@ export function getPostHogClient(): PostHog | null {
 		flushInterval: 0,
 		enableExceptionAutocapture: true,
 	});
+
 	return posthogClient;
 }

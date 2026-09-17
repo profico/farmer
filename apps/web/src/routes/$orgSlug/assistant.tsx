@@ -75,10 +75,12 @@ export const Route = createFileRoute("/$orgSlug/assistant")({
 		// instead would replace a readable screen with a pending one.
 		if (deps.c) {
 			const thread = conversationQuery(params.orgSlug, deps.c);
+
 			if (import.meta.env.SSR)
 				await context.queryClient.ensureQueryData(thread);
 			else void context.queryClient.prefetchQuery(thread);
 		}
+
 		await Promise.all([
 			context.queryClient.ensureQueryData(
 				assistantSettingsQuery(params.orgSlug),
@@ -112,6 +114,7 @@ function PinToEnd({ pin }: { pin: () => void }) {
 	useLayoutEffect(() => {
 		pin();
 	}, [pin]);
+
 	return null;
 }
 
@@ -134,6 +137,7 @@ function AssistantPage() {
 	const conversationId = Route.useSearch().c ?? null;
 
 	const { data: settings } = useQuery(assistantSettingsQuery(orgSlug));
+
 	const { data: thread } = useQuery({
 		...conversationQuery(orgSlug, conversationId ?? ""),
 		enabled: Boolean(conversationId),
@@ -153,10 +157,13 @@ function AssistantPage() {
 	});
 
 	const scrollRef = useRef<HTMLDivElement>(null);
+
 	const pinToEnd = useCallback(() => {
 		const element = scrollRef.current;
+
 		if (element) element.scrollTop = element.scrollHeight;
 	}, []);
+
 	// Whether the transcript is following its own end. Reading up is a decision,
 	// and an answer that arrives while you are three screens back should not
 	// haul you down to it — so this stops being true the moment the reader
@@ -216,6 +223,7 @@ function AssistantPage() {
 	const storedPending = (() => {
 		const index = messages.findIndex((message) => message.pendingApproval);
 		const row = messages[index];
+
 		if (!row) return null;
 		// Only the tool rows of THIS turn answer its calls — up to the next
 		// assistant row. A provider may reuse call ids across turns, and an older
@@ -223,13 +231,17 @@ function AssistantPage() {
 		// Mirrors `turnRows` in assistant.service.ts.
 		const after = messages.slice(index + 1);
 		const end = after.findIndex((message) => message.role === "assistant");
+
 		const answered = new Set(
 			(end === -1 ? after : after.slice(0, end))
 				.filter((message) => message.role === "tool")
 				.map((message) => message.toolCallId),
 		);
+
 		const call = row.toolCalls?.find((entry) => !answered.has(entry.id));
+
 		if (!call) return null;
+
 		return {
 			toolCallId: call.id,
 			name: call.name,
@@ -242,6 +254,7 @@ function AssistantPage() {
 			selectable: Boolean(row.approvalPreview?.selectable),
 		};
 	})();
+
 	const pending = stream.pending ?? storedPending;
 
 	// Which transcript is on screen — the thread that has actually loaded, not
@@ -262,25 +275,32 @@ function AssistantPage() {
 	// covers all three, plus the streamed answer growing a line at a time.
 	useEffect(() => {
 		const element = scrollRef.current;
+
 		if (!element) return;
+
 		const stick = () => {
 			if (pinnedRef.current) pinToEnd();
 		};
+
 		const onScroll = () => {
 			// A screenful of slack: "near the end" is where the next answer would
 			// still be in view, not the last pixel, which momentum scrolling and
 			// sub-pixel layout both undershoot.
 			const distance =
 				element.scrollHeight - element.scrollTop - element.clientHeight;
+
 			pinnedRef.current = distance < 96;
 		};
+
 		element.addEventListener("scroll", onScroll, { passive: true });
 		const observer = new ResizeObserver(stick);
 		observer.observe(element);
 		// The column inside it is what actually grows; the viewport's own height
 		// only changes when the window does, which is the other reason to stick.
 		const column = element.firstElementChild;
+
 		if (column) observer.observe(column);
+
 		return () => {
 			element.removeEventListener("scroll", onScroll);
 			observer.disconnect();
@@ -298,14 +318,17 @@ function AssistantPage() {
 	 *  whether to hand the draft back — see `PromptBar`. */
 	const send = async (text: string) => {
 		let id = conversationId;
+
 		if (!id) {
 			// A thread that could not be started has nothing to hold the message,
 			// so this counts as undelivered like any other refusal. `startChat`
 			// has already said so in a toast.
 			const conversation = await startChat.mutateAsync().catch(() => null);
+
 			if (!conversation) return false;
 			id = conversation.id;
 		}
+
 		return actions.send(id, text);
 	};
 
@@ -394,11 +417,14 @@ function AssistantPage() {
 											<UserMessage key={message.id} text={message.content} />
 										);
 									}
+
 									if (message.role === "tool") return null;
+
 									// An assistant row with no text is a pure tool turn; its trace
 									// is rendered live above and its persisted form has nothing to
 									// show, so it stays out of the transcript.
 									if (!message.content.trim()) return null;
+
 									return (
 										// The group is what reveals the actions on hover — on the
 										// whole answer, not on a strip under it, so the target is the

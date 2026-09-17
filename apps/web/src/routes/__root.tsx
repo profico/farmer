@@ -69,6 +69,7 @@ const posthogConfig = createIsomorphicFn()
 		if (process.env.NODE_ENV !== "production") return null;
 		const token = process.env.POSTHOG_PROJECT_TOKEN;
 		const host = process.env.POSTHOG_HOST;
+
 		return token && host ? { token, host } : null;
 	})
 	.client((): PostHogConfig => window.__FARMER_POSTHOG__ ?? null);
@@ -247,6 +248,7 @@ function PostHogRoot({ children }: { children: React.ReactNode }) {
 	// planted. Both answer the same thing, so the provider is either present on
 	// both sides of hydration or absent on both.
 	const config = posthogConfig();
+
 	if (!config) return children;
 
 	return (
@@ -277,10 +279,13 @@ function PostHogIdentity() {
 
 	useEffect(() => {
 		const user = session?.user;
+
 		if (!user) {
 			identifiedUserId.current = null;
+
 			return;
 		}
+
 		if (identifiedUserId.current === user.id) return;
 
 		posthog.identify(user.id, {
@@ -318,8 +323,10 @@ function PostHogIdentity() {
 	useEffect(() => {
 		if (impersonatedBy) {
 			posthog.register({ impersonated: true, impersonated_by: impersonatedBy });
+
 			return;
 		}
+
 		posthog.unregister("impersonated");
 		posthog.unregister("impersonated_by");
 	}, [posthog, impersonatedBy]);

@@ -62,27 +62,37 @@ import {
 } from "./slack-reminders";
 
 const H = 3600;
+
 const ORG = "org-reminders";
 
 /** Owner. Logs a full day, every day: never nagged, always gets the digest. */
 const ADMIN = "u-rem-admin";
+
 /** Logs nothing: no entries, and at 0% of pace. */
 const SILENT = "u-rem-silent";
+
 /** Logs half a day, every day: recent entries, but at 50% of pace. */
 const SLOW = "u-rem-slow";
+
 /** Contractor with no expected-hours override: no entries, and no pace. */
 const CONTRACTOR = "u-rem-contractor";
+
 /** Logs nothing, and has no `account` row — an imported person. */
 const NEVER = "u-rem-never";
+
 /** An admin who left. Would get every reminder, the digest included. */
 const ARCHIVED = "u-rem-archived";
 
 const EVERYONE = [ADMIN, SILENT, SLOW, CONTRACTOR, NEVER, ARCHIVED];
 
 const TUESDAY = "2026-04-14";
+
 const WEDNESDAY = "2026-04-15";
+
 const FRIDAY = "2026-04-17";
+
 const DAY_BEFORE_MONTH_END = "2026-04-29";
+
 const MONTH_END = "2026-04-30";
 
 /** "HH:mm" on `day`, in the org's timezone (UTC). */
@@ -100,6 +110,7 @@ type Sent = {
 };
 
 let harness: TestDb;
+
 let sent: Sent[] = [];
 
 const recorder =
@@ -113,6 +124,7 @@ const recorder =
 			body: event.body,
 			slack: event.slack,
 		});
+
 		return true;
 	};
 
@@ -172,14 +184,20 @@ beforeAll(async () => {
 	);
 	// Everyone but NEVER has signed in.
 	await db.insert(account).values(
-		EVERYONE.filter((id) => id !== NEVER).map((id) => ({
-			id: `acc-${id}`,
-			accountId: id,
-			providerId: "credential",
-			userId: id,
-			createdAt: new Date(),
-			updatedAt: new Date(),
-		})),
+		EVERYONE.flatMap((id) =>
+			id === NEVER
+				? []
+				: [
+						{
+							id: `acc-${id}`,
+							accountId: id,
+							providerId: "credential",
+							userId: id,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+						},
+					],
+		),
 	);
 	await db.insert(memberTypeHistory).values({
 		organizationId: ORG,
@@ -214,11 +232,15 @@ beforeAll(async () => {
 			name: "Development",
 		})
 		.returning();
+
 	if (!dev) throw new Error("Failed to seed a task");
+
 	const workingDays = datesBetween("2026-04-01", MONTH_END).filter((key) => {
 		const weekday = new Date(`${key}T00:00:00Z`).getUTCDay();
+
 		return weekday !== 0 && weekday !== 6;
 	});
+
 	await db.insert(timeEntry).values(
 		workingDays.flatMap((date) => [
 			{
@@ -577,6 +599,7 @@ describe("archived people", () => {
 		await logAt(TUESDAY, "17:00");
 		await slackAt(TUESDAY, "09:00");
 		await slackAt(MONTH_END, "09:00");
+
 		// Every kind went out to somebody, so the archived admin had every
 		// chance to be picked.
 		for (const kind of [
@@ -601,12 +624,15 @@ describe("archived people", () => {
 				{ organizationId: ORG, userId: ARCHIVED },
 				{ kind, title: "t", body: "b" },
 			);
+
 			expect(wasDelivered(outcome)).toBe(false);
 		}
+
 		const other = await notify(
 			{ organizationId: ORG, userId: ARCHIVED },
 			{ kind: "test", title: "Heads up", body: "detail" },
 		);
+
 		expect(wasDelivered(other)).toBe(true);
 	});
 });
@@ -618,6 +644,7 @@ describe("the preview names the people the job sends to", () => {
 		["admin-digest", TUESDAY, "09:00", "slack"],
 		["month-end", MONTH_END, "09:00", "slack"],
 	];
+
 	for (const [kind, day, time, job] of cases) {
 		test(kind, async () => {
 			const preview = await reminderSettingsService.preview(
@@ -625,6 +652,7 @@ describe("the preview names the people the job sends to", () => {
 				kind,
 				day,
 			);
+
 			if (job === "log") await logAt(day, time);
 			else await slackAt(day, time);
 
@@ -632,11 +660,13 @@ describe("the preview names the people the job sends to", () => {
 			expect(sorted(preview.recipients.map((r) => r.userId))).toEqual(
 				reached(kind),
 			);
+
 			// And the words: the preview shows what the job sent.
 			for (const recipient of preview.recipients) {
 				const got = sent.find(
 					(s) => s.kind === kind && s.userId === recipient.userId,
 				);
+
 				expect(recipient.message).toBe(
 					got?.title ? `${got.title}. ${got.body}` : (got?.body ?? ""),
 				);
@@ -650,6 +680,7 @@ describe("the preview names the people the job sends to", () => {
 			"log-reminder",
 			TUESDAY,
 		);
+
 		expect(preview.heldBack.map((p) => [p.userId, p.reason]).sort()).toEqual([
 			[ARCHIVED, "Archived"],
 			[NEVER, "Has never signed in"],
@@ -662,6 +693,7 @@ describe("the preview names the people the job sends to", () => {
 			"compliance-nudge",
 			WEDNESDAY,
 		);
+
 		expect(preview.skipped).toBe("This day is not a nudge day.");
 		expect(preview.recipients).toEqual([]);
 	});
@@ -733,6 +765,7 @@ describe("the limits", () => {
 		const refusal = async (write: () => Promise<void>) => {
 			try {
 				await write();
+
 				return "";
 			} catch (error) {
 				return error instanceof Error
@@ -740,6 +773,7 @@ describe("the limits", () => {
 					: String(error);
 			}
 		};
+
 		expect(
 			await refusal(async () => {
 				await db

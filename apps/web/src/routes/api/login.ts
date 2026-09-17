@@ -26,19 +26,25 @@ export const Route = createFileRoute("/api/login")({
 				// absolute path is accepted — "//evil.com" is a protocol-relative URL,
 				// not a path, which is why the second test is not redundant.
 				const requested = url.searchParams.get("redirect");
+
 				const target =
 					requested?.startsWith("/") && !requested.startsWith("//")
 						? requested
 						: "/";
+
 				// Invite context (org/orgSlug/role/email) rides along as query params
 				// so an invited visitor lands on the same accept-invite screen the
 				// email link would have taken them to, still knowing which org it is.
 				const context = new URLSearchParams();
+
 				for (const key of ["email", "org", "orgSlug", "role"]) {
 					const value = url.searchParams.get(key);
+
 					if (value) context.set(key, value);
 				}
+
 				const query = context.toString();
+
 				const callbackURL = query
 					? `${target}${target.includes("?") ? "&" : "?"}${query}`
 					: target;
@@ -50,6 +56,7 @@ export const Route = createFileRoute("/api/login")({
 				// Already signed in — a stale /login link, or a second tab. Send them
 				// where they were going rather than back through Google.
 				const session = await auth.api.getSession({ headers: request.headers });
+
 				if (session) return Response.redirect(absolute(callbackURL), 302);
 
 				// `asResponse` is what makes this work: the endpoint returns 200 with
@@ -75,8 +82,10 @@ export const Route = createFileRoute("/api/login")({
 					// with a 200 body carrying `url`. `url` is optional and a missing one falls
 					// through to the error redirect below, so a changed shape costs the hop.
 					((await response.json()) as { url?: string }).url;
+
 				if (!location) {
 					console.error("[login] no authorize URL from better-auth");
+
 					return Response.redirect(
 						absolute("/login?error=sign_in_unavailable"),
 						302,
@@ -84,9 +93,11 @@ export const Route = createFileRoute("/api/login")({
 				}
 
 				const headers = new Headers({ Location: location });
+
 				for (const cookie of response.headers.getSetCookie()) {
 					headers.append("Set-Cookie", cookie);
 				}
+
 				return new Response(null, { status: 302, headers });
 			},
 		},

@@ -86,6 +86,7 @@ const claim = async (
 		.values({ organizationId, recipientUserId, kind, dayKey })
 		.onConflictDoNothing()
 		.returning({ id: slackReminderLog.id });
+
 	return rows.length > 0;
 };
 
@@ -99,6 +100,7 @@ export const runSlackRemindersOnce = async (
 	opts: { now?: Date } = {},
 ): Promise<SlackReminderSummary> => {
 	const now = opts.now ?? new Date();
+
 	const orgs = await db
 		.select({
 			id: organization.id,
@@ -119,6 +121,7 @@ export const runSlackRemindersOnce = async (
 		// No Slack workspace connected = nothing this job can do, and no reason to
 		// run the (fairly expensive) compliance queries for that org at all.
 		const installation = await slackService.installationFor(org.id);
+
 		if (!installation) continue;
 		summary.organizations++;
 
@@ -138,16 +141,21 @@ export const runSlackRemindersOnce = async (
 			// month-end day costs a query (the holiday calendar), and it runs
 			// last. Most ticks end here.
 			const due: (typeof SLACK_KINDS)[number][] = [];
+
 			for (const entry of SLACK_KINDS) {
 				if (finishedRuns.get(`${org.id}:${entry.kind}`) === today) continue;
+
 				if (!sendTimeReached(settings, entry.kind, timeKey)) continue;
+
 				if (await reminderDayCheck(ctx, settings, entry.kind, today)) continue;
 				due.push(entry);
 			}
+
 			if (due.length === 0) continue;
 
 			const dashboard = dashboardLoader(ctx, settings, now);
 			const moment = { dayKey: today, timeKey, tz, now, slug: org.slug };
+
 			for (const entry of due) {
 				const recipients = await reminderRecipients(
 					ctx,
@@ -156,6 +164,7 @@ export const runSlackRemindersOnce = async (
 					moment,
 					dashboard,
 				);
+
 				// `notify` applies these gates anyway. Asking first keeps a held-back
 				// person from spending the day's claim, so turning "include people
 				// who never signed in" on still reaches them the same day.
@@ -164,17 +173,22 @@ export const runSlackRemindersOnce = async (
 					recipients.map((r) => r.userId),
 					entry.kind,
 				);
+
 				for (const recipient of recipients) {
 					if (blocks.has(recipient.userId)) continue;
+
 					if (!(await claim(org.id, recipient.userId, entry.claim, today))) {
 						continue;
 					}
+
 					const outcome = await notify(
 						{ organizationId: org.id, userId: recipient.userId },
 						recipient.event,
 					);
+
 					if (wasDelivered(outcome)) summary[entry.counter]++;
 				}
+
 				finishedRuns.set(`${org.id}:${entry.kind}`, today);
 			}
 		} catch (error) {

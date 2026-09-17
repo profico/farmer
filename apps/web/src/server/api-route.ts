@@ -171,9 +171,12 @@ const cookieUser = async (
 	if (request.method !== "GET" || request.headers.has("authorization")) {
 		return null;
 	}
+
 	const { auth } = await import("@farmer/core/auth");
 	const session = await auth.api.getSession({ headers: request.headers });
+
 	if (!session) return null;
+
 	return {
 		id: session.user.id,
 		name: session.user.name,
@@ -211,6 +214,7 @@ const cookieUser = async (
 const failure = async (error: Error): Promise<Response> => {
 	const { AccessError, DayCapacityError } =
 		await import("@farmer/core/services");
+
 	if (error instanceof z.core.$ZodError) {
 		return refuse(422, {
 			error: "The input is not valid.",
@@ -218,18 +222,23 @@ const failure = async (error: Error): Promise<Response> => {
 			issues: issuesOf(error),
 		});
 	}
+
 	if (error instanceof DayCapacityError) {
 		return refuse(422, { error: error.message, code: "invalid_input" });
 	}
+
 	if (error instanceof AccessError) {
 		return refuse(403, { error: error.message, code: "forbidden" });
 	}
+
 	if (error.constructor === Error) {
 		return /not found/i.test(error.message)
 			? refuse(404, { error: error.message, code: "not_found" })
 			: refuse(422, { error: error.message, code: "invalid_input" });
 	}
+
 	console.error("[api] request failed", error);
+
 	return refuse(500, {
 		error: "The server failed. Try again in a moment.",
 		code: "server_error",
@@ -255,8 +264,10 @@ const serve = async <
 	handle: (principal: TPrincipal) => Promise<Response>,
 ): Promise<Response> => {
 	const startedAt = performance.now();
+
 	const { captureApiFailure, captureApiRequest } =
 		await import("#/lib/posthog-api.ts");
+
 	// Filled in as the pipeline learns who is calling, and reported once by
 	// whichever step answers.
 	const report: ApiRequestReport = {
@@ -272,24 +283,29 @@ const serve = async <
 	const finish = (response: Response, error?: Error): Response => {
 		report.status = response.status;
 		report.durationMs = Math.round(performance.now() - startedAt);
+
 		// A 403, a 404 and a 422 are answers this pipeline gives on purpose, and
 		// they are already counted by `api_request`. Only the generic 500 — an
 		// error `failure` could not map — is a fault worth an `$exception`.
 		if (error && response.status >= 500) captureApiFailure(error, report);
 		captureApiRequest(report);
+
 		return response;
 	};
 
 	const { isCliEnabled } = await import("@farmer/core/lib/cli-flag");
+
 	if (!isCliEnabled()) {
 		return finish(refuse(404, { error: "Not found", code: "not_found" }));
 	}
 
 	const address = callerAddress(request);
 	const byAddress = rateLimited(admitCaller("cli", address));
+
 	if (byAddress) return finish(byAddress);
 
 	const version = request.headers.get(CLI_VERSION_HEADER);
+
 	if (version !== null && !isCliVersionSupported(version)) {
 		return finish(
 			refuse(426, {
@@ -301,10 +317,12 @@ const serve = async <
 	}
 
 	const principal = await authenticate();
+
 	// No credential, a bad or expired token, an unknown slug and an ex-member
 	// are one answer on purpose — see `orgContextService.resolveBySlug`.
 	if (!principal) {
 		recordAuthFailure("cli", address);
+
 		return finish(
 			refuse(401, {
 				error: "Not signed in. Run `farmer login`.",
@@ -312,13 +330,17 @@ const serve = async <
 			}),
 		);
 	}
+
 	report.userId = principal.userId;
 	report.organizationId = principal.organizationId ?? null;
 
 	const byUser = rateLimited(admitRequest("cli", principal.userId));
+
 	if (byUser) return finish(byUser);
+
 	if (request.method !== "GET") {
 		const byWrites = rateLimited(admitWrite("cli", principal.userId));
+
 		if (byWrites) return finish(byWrites);
 	}
 
@@ -327,6 +349,7 @@ const serve = async <
 	} catch (error) {
 		if (error instanceof Error) return finish(await failure(error), error);
 		console.error("[api] request failed", error);
+
 		return finish(
 			refuse(500, {
 				error: "The server failed. Try again in a moment.",
@@ -341,9 +364,12 @@ const serve = async <
 const readBody = async (request: Request): Promise<JsonValue | null> => {
 	if (request.method === "GET") return {};
 	const text = await request.text();
+
 	if (!text.trim()) return {};
+
 	try {
 		const body: JsonValue = JSON.parse(text);
+
 		return body;
 	} catch {
 		return null;
@@ -366,27 +392,35 @@ export const apiRoute =
 			request,
 			async () => {
 				const byToken = await resolveCliOrgContext(request, params.orgSlug);
+
 				if (byToken) return byToken;
 				const user = await cookieUser(request);
+
 				if (!user) return null;
 				const { orgContextService } = await import("@farmer/core/services");
+
 				return orgContextService.resolveBySlug(user.id, params.orgSlug);
 			},
 			async (ctx) => {
 				const body = await readBody(request);
+
 				if (body === null) {
 					return refuse(422, {
 						error: "The request body is not JSON.",
 						code: "invalid_input",
 					});
 				}
+
 				const query = new URL(request.url).searchParams;
+
 				const raw = spec.raw
 					? await spec.raw({ ctx, params, query, body })
 					: request.method === "GET"
 						? Object.fromEntries(query)
 						: body;
+
 				const parsed = spec.input.safeParse(raw);
+
 				if (!parsed.success) {
 					return refuse(422, {
 						error: "The input is not valid.",
@@ -394,6 +428,7 @@ export const apiRoute =
 						issues: issuesOf(parsed.error),
 					});
 				}
+
 				return respond(await spec.run(ctx, parsed.data), 200);
 			},
 		);
@@ -410,12 +445,15 @@ export const userApiRoute =
 			request,
 			async (): Promise<ApiUser | null> => {
 				const byToken = await resolveCliUser(request);
+
 				if (byToken) return byToken;
 				const user = await cookieUser(request);
+
 				return user ? { userId: user.id, token: null, user } : null;
 			},
 			async (caller) => {
 				const result = await spec.run(caller);
+
 				return spec.status === 204
 					? new Response(null, {
 							status: 204,
@@ -441,5 +479,6 @@ export const rangeFromQuery = async ({
 	const { ctxTimezone } = await import("@farmer/core/services");
 	const { dayKeyInTz } = await import("@farmer/core/lib/time");
 	const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
+
 	return { from: query.get("from") ?? today, to: query.get("to") ?? today };
 };

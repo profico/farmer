@@ -18,6 +18,7 @@ export function ThemeToggle({
 	const { theme, toggle } = useTheme();
 	const next = theme === "dark" ? "light" : "dark";
 	const Icon = theme === "dark" ? SunIcon : MoonIcon;
+
 	return (
 		<button
 			type="button"

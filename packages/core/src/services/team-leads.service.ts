@@ -16,9 +16,11 @@ export const teamLeadsService = {
 	 *  themselves — a colleague's list is not yours to read. */
 	listPeople: async (ctx: Ctx, leadUserId: string) => {
 		const access = await ctxAccess(ctx);
+
 		if (!access.isAdmin && leadUserId !== ctx.userId) {
 			throw new AccessError("You cannot see another person's people");
 		}
+
 		return db
 			.select({
 				userId: teamLeadPerson.personUserId,
@@ -39,11 +41,13 @@ export const teamLeadsService = {
 	/** How many people each lead has — one number per lead, leads only. */
 	countsByLead: async (ctx: Ctx): Promise<Map<string, number>> => {
 		await requireAdmin(ctx);
+
 		const rows = await db
 			.select({ leadUserId: teamLeadPerson.leadUserId, people: count() })
 			.from(teamLeadPerson)
 			.where(eq(teamLeadPerson.organizationId, ctx.organizationId))
 			.groupBy(teamLeadPerson.leadUserId);
+
 		return new Map(rows.map((r) => [r.leadUserId, Number(r.people)]));
 	},
 
@@ -54,10 +58,13 @@ export const teamLeadsService = {
 	 *  let a re-invited lead silently regain one (see `removeFromAllLists`). */
 	setPeople: async (ctx: Ctx, input: SetTeamLeadPeopleInput) => {
 		await requireAdmin(ctx);
+
 		const personUserIds = [...new Set(input.personUserIds)].filter(
 			(id) => id !== input.leadUserId,
 		);
+
 		const named = [input.leadUserId, ...personUserIds];
+
 		const members = await db
 			.select({ userId: member.userId })
 			.from(member)
@@ -67,13 +74,16 @@ export const teamLeadsService = {
 					inArray(member.userId, named),
 				),
 			);
+
 		const here = new Set(members.map((m) => m.userId));
 		const missing = named.find((id) => !here.has(id));
+
 		if (missing !== undefined) {
 			throw new AccessError(
 				"Everyone on a list must be a member of this workspace",
 			);
 		}
+
 		const archived = await db
 			.select({ userId: memberProfile.userId })
 			.from(memberProfile)
@@ -84,11 +94,13 @@ export const teamLeadsService = {
 					isNotNull(memberProfile.archivedAt),
 				),
 			);
+
 		if (archived.length > 0) {
 			throw new AccessError(
 				"An archived person cannot be on a Team Lead's list",
 			);
 		}
+
 		await db.transaction(async (tx) => {
 			await tx
 				.delete(teamLeadPerson)
@@ -98,6 +110,7 @@ export const teamLeadsService = {
 						eq(teamLeadPerson.leadUserId, input.leadUserId),
 					),
 				);
+
 			if (personUserIds.length > 0) {
 				await tx.insert(teamLeadPerson).values(
 					personUserIds.map((personUserId) => ({
@@ -108,6 +121,7 @@ export const teamLeadsService = {
 				);
 			}
 		});
+
 		return teamLeadsService.listPeople(ctx, input.leadUserId);
 	},
 

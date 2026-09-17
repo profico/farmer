@@ -24,6 +24,7 @@ export const Route = createFileRoute("/accept-invite/$invitationId")({
 	}),
 	beforeLoad: async () => {
 		const session = await getSession();
+
 		return { session };
 	},
 	component: AcceptInvitePage,
@@ -51,14 +52,19 @@ function AcceptInvitePage() {
 
 	const handleAccept = async () => {
 		setAccepting(true);
+
 		const { error } = await authClient.organization.acceptInvitation({
 			invitationId,
 		});
+
 		setAccepting(false);
+
 		if (error) {
 			toast.error(error.message ?? "Could not accept invitation");
+
 			return;
 		}
+
 		await navigate({ to: "/" });
 	};
 

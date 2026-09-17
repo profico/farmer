@@ -22,6 +22,7 @@ export const getNotificationSettings = createServerFn({ method: "POST" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { notificationsService } = await import("@farmer/core/services");
+
 		return notificationsService.getSettings(context.ctx);
 	});
 
@@ -30,6 +31,7 @@ export const updateNotificationSettings = createServerFn({ method: "POST" })
 	.validator(updateNotificationSettingsInput)
 	.handler(async ({ data, context }) => {
 		const { notificationsService } = await import("@farmer/core/services");
+
 		return notificationsService.update(context.ctx, data);
 	});
 
@@ -39,6 +41,7 @@ export const savePushSubscription = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { notificationsService } = await import("@farmer/core/services");
 		await notificationsService.saveSubscription(context.ctx, data);
+
 		return { ok: true };
 	});
 
@@ -48,5 +51,6 @@ export const removePushSubscription = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { notificationsService } = await import("@farmer/core/services");
 		await notificationsService.removeSubscription(context.ctx, data.endpoint);
+
 		return { ok: true };
 	});

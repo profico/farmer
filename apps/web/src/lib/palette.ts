@@ -73,7 +73,9 @@ export const QUICK_SEEDS: readonly { label: string; seed: Seed }[] = [
 ];
 
 const STORAGE_KEY = "farmer-palette";
+
 const ATTRIBUTE = "data-palette";
+
 /** Fired on the window whenever *this* tab changes the choice — `storage` only
  *  reaches the OTHER tabs. */
 const CHANGE_EVENT = "farmer:palette";
@@ -111,22 +113,29 @@ export const supportsCustomPalette = () =>
 
 const parse = (stored: string | null): Seed | null => {
 	const parts = (stored ?? "").split(" ");
+
 	if (parts[0] !== "custom") return null;
 	const h = Number.parseFloat(parts[1] ?? "");
 	const c = Number.parseFloat(parts[2] ?? "");
+
 	if (!(h >= 0 && h <= 360)) return null;
+
 	if (!(c >= 0 && c <= SEED_MAX_CHROMA)) return null;
+
 	return { h, c };
 };
 
 const apply = (seed: Seed | null) => {
 	const root = document.documentElement;
+
 	if (!seed) {
 		root.removeAttribute(ATTRIBUTE);
 		root.style.removeProperty("--seed-h");
 		root.style.removeProperty("--seed-c");
+
 		return;
 	}
+
 	root.style.setProperty("--seed-h", String(seed.h));
 	root.style.setProperty("--seed-c", String(seed.c));
 	root.setAttribute(ATTRIBUTE, "custom");
@@ -140,13 +149,18 @@ let lastSeed: Seed | null = null;
 
 const readSeed = (): Seed | null => {
 	const root = document.documentElement;
+
 	if (root.getAttribute(ATTRIBUTE) !== "custom") {
 		lastSeed = null;
+
 		return null;
 	}
+
 	const h = Number.parseFloat(root.style.getPropertyValue("--seed-h"));
 	const c = Number.parseFloat(root.style.getPropertyValue("--seed-c"));
+
 	if (!lastSeed || lastSeed.h !== h || lastSeed.c !== c) lastSeed = { h, c };
+
 	return lastSeed;
 };
 
@@ -189,6 +203,7 @@ if (!import.meta.env.SSR) {
 
 const subscribe = (onChange: () => void) => {
 	window.addEventListener(CHANGE_EVENT, onChange);
+
 	return () => window.removeEventListener(CHANGE_EVENT, onChange);
 };
 
@@ -201,8 +216,10 @@ export function usePalette() {
 		readSeed,
 		(): Seed | null => null,
 	);
+
 	const setVanilla = useCallback(() => setPaletteSeed(null), []);
 	const setCustom = useCallback((next: Seed) => setPaletteSeed(next), []);
 	const mode: PaletteMode = seed ? "custom" : "vanilla";
+
 	return { mode, seed: seed ?? VANILLA_SEED, setVanilla, setCustom };
 }

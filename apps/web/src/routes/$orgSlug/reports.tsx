@@ -59,6 +59,7 @@ function ReportsPage() {
 	// caller may see (§4 matrix), and a Member's report is their own row.
 	const visibleTabs = TABS;
 	const requested = search.tab ?? "time";
+
 	const tab: TabId = visibleTabs.some((t) => t.id === requested)
 		? requested
 		: "time";

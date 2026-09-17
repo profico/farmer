@@ -27,6 +27,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/whoami")({
 						projectsService,
 						workingHoursService,
 					} = await import("@farmer/core/services");
+
 					const { dayKeyInTz } = await import("@farmer/core/lib/time");
 
 					const [
@@ -46,6 +47,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/whoami")({
 						orgContextService.organizationOf(ctx),
 						projectsService.listMine(ctx),
 					]);
+
 					const me = people.find((person) => person.userId === ctx.userId);
 
 					return {

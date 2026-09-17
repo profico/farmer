@@ -18,6 +18,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/absences/")({
 				run: async (ctx, input): Promise<ApiAbsenceResult> => {
 					const { timeEntriesService } = await import("@farmer/core/services");
 					const result = await timeEntriesService.logAbsenceRange(ctx, input);
+
 					return { booked: result.booked, skipped: result.skipped };
 				},
 			}),

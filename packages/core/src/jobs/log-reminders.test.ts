@@ -41,23 +41,30 @@ import { createTestDb, type TestDb } from "../test/harness";
 import { runLogRemindersOnce } from "./log-reminders";
 
 const ORG = "org-log-rem";
+
 /** Owner. Works the synthesized 09:00–17:00 and logs nothing. */
 const ADMIN = "u-lr-admin";
+
 /** Works 12:00–22:00 on Tuesdays and logs nothing. */
 const LATE = "u-lr-late";
+
 /** Left. Signed in once, logs nothing. */
 const ARCHIVED = "u-lr-archived";
+
 /** Imported: no `account` row, logs nothing. */
 const NEVER = "u-lr-never";
 
 const EVERYONE = [ADMIN, LATE, ARCHIVED, NEVER];
+
 const TUESDAY = "2026-04-14";
 
 let harness: TestDb;
+
 let reached: string[] = [];
 
 const recorder: NotifyAdapter = async (to) => {
 	reached.push(to.userId);
+
 	return true;
 };
 
@@ -94,14 +101,20 @@ beforeAll(async () => {
 		})),
 	);
 	await db.insert(account).values(
-		EVERYONE.filter((id) => id !== NEVER).map((id) => ({
-			id: `acc-${id}`,
-			accountId: id,
-			providerId: "credential",
-			userId: id,
-			createdAt: new Date(),
-			updatedAt: new Date(),
-		})),
+		EVERYONE.flatMap((id) =>
+			id === NEVER
+				? []
+				: [
+						{
+							id: `acc-${id}`,
+							accountId: id,
+							providerId: "credential",
+							userId: id,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+						},
+					],
+		),
 	);
 	await db.insert(memberProfile).values({
 		organizationId: ORG,
@@ -133,6 +146,7 @@ beforeEach(async () => {
 describe("people notify would hold back", () => {
 	test("are dropped before notify, and still get nothing", async () => {
 		const spy = spyOn(notifyModule, "notify");
+
 		try {
 			const summary = await logAt(TUESDAY, "17:00");
 			const asked = spy.mock.calls.map(([to]) => to.userId);

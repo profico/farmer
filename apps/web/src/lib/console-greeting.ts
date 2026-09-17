@@ -57,10 +57,12 @@ let logged = false;
 
 export function logConsoleGreeting() {
 	if (import.meta.env.DEV) return;
+
 	// A module flag rather than trusting the effect to run once: a remount of
 	// the root shell runs it again.
 	if (logged) return;
 	logged = true;
+
 	// `console.info`, not `console.log`: in development the TanStack devtools
 	// plugin rewrites every `console.log(` call to put its own "Go to Source"
 	// format string first, which turns ours into plain text and prints the
@@ -72,5 +74,6 @@ export function logConsoleGreeting() {
 	// widened instead: a bigger font with `line-height: 1`.
 	const style =
 		"color: #6f4ebe; font-weight: bold; font-size: 13px; line-height: 1";
+
 	console.info(`%c${mark}${wordmark}`, style);
 }

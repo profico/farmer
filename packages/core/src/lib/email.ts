@@ -23,13 +23,18 @@ type MailInput = {
  *  Throws on an EMAIL_PROVIDER it does not know, rather than guessing. */
 export const emailProvider = (): EmailProvider | null => {
 	const chosen = process.env.EMAIL_PROVIDER?.trim().toLowerCase();
+
 	if (chosen === "resend" || chosen === "smtp") return chosen;
+
 	if (chosen)
 		throw new Error(
 			`EMAIL_PROVIDER must be "resend" or "smtp", not "${chosen}"`,
 		);
+
 	if (process.env.RESEND_API_KEY) return "resend";
+
 	if (process.env.SMTP_HOST) return "smtp";
+
 	return null;
 };
 
@@ -41,6 +46,7 @@ const fromAddress = () =>
 // Built on first use, not at import: a Resend deployment has no SMTP settings,
 // and nodemailer given none quietly aims at localhost.
 let transporter: Transporter | undefined;
+
 const smtpTransport = () =>
 	(transporter ??= nodemailer.createTransport({
 		host: process.env.SMTP_HOST,
@@ -69,18 +75,22 @@ const resendError = z.object({ message: z.string() });
 const readResendError = (body: string): string => {
 	try {
 		const parsed = resendError.safeParse(JSON.parse(body));
+
 		if (parsed.success) return parsed.data.message;
 	} catch {
 		// Not JSON — a proxy's error page, say. The raw text is all there is.
 	}
+
 	return body.slice(0, 300);
 };
 
 const sendWithResend = async (input: MailInput) => {
 	const key = process.env.RESEND_API_KEY;
+
 	if (!key)
 		throw new Error("EMAIL_PROVIDER is resend but RESEND_API_KEY is unset");
 	const from = fromAddress();
+
 	if (!from)
 		throw new Error(
 			"Set EMAIL_FROM to a sender on a domain verified in Resend",
@@ -100,6 +110,7 @@ const sendWithResend = async (input: MailInput) => {
 			text: input.text,
 		}),
 	});
+
 	if (!res.ok) {
 		throw new Error(
 			`Resend ${res.status}: ${readResendError(await res.text())}`,
@@ -109,7 +120,9 @@ const sendWithResend = async (input: MailInput) => {
 
 export const sendMail = async (input: MailInput) => {
 	const provider = emailProvider();
+
 	if (provider === "resend") return sendWithResend(input);
+
 	if (provider === "smtp") return sendWithSmtp(input);
 	throw new Error(
 		"No email provider configured: set RESEND_API_KEY or SMTP_HOST",

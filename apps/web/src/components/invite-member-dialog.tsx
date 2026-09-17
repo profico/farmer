@@ -40,6 +40,7 @@ import { inviteMember } from "#/server/members.ts";
 const formSchema = inviteMemberInput.extend({
 	email: z.email("Invalid email"),
 });
+
 type FormValues = z.infer<typeof formSchema>;
 
 const ROLE_OPTIONS = [
@@ -51,6 +52,7 @@ export function InviteMemberDialog() {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
+
 	const form = useForm<FormValues>({
 		resolver: zodResolver(formSchema),
 		defaultValues: { email: "", role: "member" },
@@ -70,6 +72,7 @@ export function InviteMemberDialog() {
 		// invitation is not a membership until somebody accepts it.
 		onSuccess: () => {
 			toast.success("Invitation sent");
+
 			return queryClient.invalidateQueries({
 				queryKey: pendingInvitationsQuery(orgSlug).queryKey,
 			});

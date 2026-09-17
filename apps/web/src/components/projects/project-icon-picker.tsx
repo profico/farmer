@@ -64,13 +64,16 @@ export function ProjectIconPicker({
 		from: "/$orgSlug",
 		select: (context) => context.uploadsEnabled,
 	});
+
 	const [open, setOpen] = useState(false);
 	const [tab, setTab] = useState<Tab>("emoji");
 	const [query, setQuery] = useState("");
 	const [category, setCategory] = useState<string | null>(null);
+
 	const [categories, setCategories] = useState<EmojiCategory[] | null>(
 		loadedEmojiCatalogue,
 	);
+
 	const [failed, setFailed] = useState(false);
 	// 0 is the default yellow; 1–5 index into an emoji's `skins`.
 	const [tone, setTone] = useState(0);
@@ -93,13 +96,16 @@ export function ProjectIconPicker({
 			if (file.size > MAX_UPLOAD_BYTES) {
 				throw new Error("The image is larger than 1 MB.");
 			}
+
 			const form = new FormData();
 			form.set("purpose", "project-icon");
 			form.set("file", file);
+
 			return uploadImage({ data: form });
 		},
 		onSuccess: ({ url }) => pick(url),
 	});
+
 	const choose = (file: File | undefined) => {
 		if (file) upload.mutate(file);
 	};
@@ -107,14 +113,18 @@ export function ProjectIconPicker({
 	const imageTab = uploadsEnabled && tab === "image";
 	const searching = query.trim() !== "";
 	const hits = searching && categories ? searchEmoji(categories, query) : [];
+
 	const names = new Map(
 		categories?.flatMap((c) => c.emoji.map((e) => [e.char, e.name] as const)),
 	);
+
 	const recentIcons = recent.filter((c, i, all) => c && all.indexOf(c) === i);
 	const recentImages = recentIcons.filter((c) => isUploadedFile(c));
+
 	const recentEmoji: CatalogueEmoji[] = recentIcons
 		.filter((c) => !isUploadedFile(c))
 		.map((char) => ({ char, name: names.get(char) ?? "", keywords: "" }));
+
 	const shown = category
 		? categories?.filter((c) => c.id === category)
 		: categories;
@@ -123,6 +133,7 @@ export function ProjectIconPicker({
 		<div className="grid grid-cols-9 gap-0.5">
 			{items.map((e) => {
 				const char = (toned && tone > 0 && e.skins?.[tone - 1]) || e.char;
+
 				return (
 					<button
 						key={char}
@@ -303,6 +314,7 @@ export function ProjectIconPicker({
 			open={open}
 			onOpenChange={(next) => {
 				setOpen(next);
+
 				if (next) {
 					load();
 					setTab(isUploadedFile(value) ? "image" : "emoji");

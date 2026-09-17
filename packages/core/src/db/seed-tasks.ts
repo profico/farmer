@@ -88,6 +88,7 @@ export async function ensureSiteTasks() {
 			})),
 		)
 		.onConflictDoNothing();
+
 	return SITE_TASKS.length;
 }
 
@@ -101,7 +102,9 @@ export async function ensureOrgTasks(organizationId: string) {
 		),
 		columns: { name: true, systemKey: true },
 	});
+
 	const knownNames = new Set(existing.map((t) => t.name));
+
 	// Skipping on the system key as well as the name matters now that this runs on
 	// every boot: an org that renamed "Development" to "Engineering" still holds
 	// the `development` key, and matching on name alone would seed a second,
@@ -109,12 +112,14 @@ export async function ensureOrgTasks(organizationId: string) {
 	const knownKeys = new Set(
 		existing.flatMap((t) => (t.systemKey ? [t.systemKey] : [])),
 	);
+
 	// Archived rows count as known, deliberately: archiving a starter task means
 	// "we don't use this", and re-seeding would resurrect it every boot.
 	const missing = DEFAULT_ORG_TASKS.filter(
 		(t) =>
 			!knownNames.has(t.name) && !(t.systemKey && knownKeys.has(t.systemKey)),
 	);
+
 	if (missing.length === 0) return 0;
 
 	await db
@@ -130,6 +135,7 @@ export async function ensureOrgTasks(organizationId: string) {
 			})),
 		)
 		.onConflictDoNothing();
+
 	return missing.length;
 }
 
@@ -142,7 +148,9 @@ export async function ensureOrgTasks(organizationId: string) {
 export async function ensureOrgTasksForAllOrgs() {
 	const orgs = await db.query.organization.findMany({ columns: { id: true } });
 	let seeded = 0;
+
 	for (const o of orgs) seeded += await ensureOrgTasks(o.id);
+
 	return { organizations: orgs.length, seeded };
 }
 

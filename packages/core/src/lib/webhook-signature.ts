@@ -65,6 +65,7 @@ export const webhookSignatureHeader = (
 ): string => {
 	const signedPayload = `${String(timestampSeconds)}.${body}`;
 	const parts = secrets.map((secret) => `v1=${digest(secret, signedPayload)}`);
+
 	return [`t=${String(timestampSeconds)}`, ...parts].join(",");
 };
 
@@ -86,19 +87,25 @@ export const parseWebhookSignature = (
 ): ParsedWebhookSignature | null => {
 	let timestampSeconds: number | null = null;
 	const signatures: string[] = [];
+
 	for (const part of header.split(",")) {
 		const separator = part.indexOf("=");
+
 		if (separator === -1) continue;
 		const key = part.slice(0, separator).trim();
 		const value = part.slice(separator + 1).trim();
+
 		if (key === "t") {
 			const parsed = Number(value);
+
 			if (Number.isInteger(parsed)) timestampSeconds = parsed;
 		} else if (key === "v1" && value.length > 0) {
 			signatures.push(value);
 		}
 	}
+
 	if (timestampSeconds === null || signatures.length === 0) return null;
+
 	return { timestampSeconds, signatures };
 };
 
@@ -107,6 +114,7 @@ export const parseWebhookSignature = (
  *  length is fixed and public. */
 const digestsMatch = (a: string, b: string): boolean => {
 	if (a.length !== b.length) return false;
+
 	return timingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
 };
 
@@ -126,10 +134,12 @@ export const verifyWebhookSignature = (input: {
 	toleranceSeconds?: number;
 }): boolean => {
 	const parsed = parseWebhookSignature(input.header);
+
 	if (!parsed) return false;
 
 	const tolerance =
 		input.toleranceSeconds ?? WEBHOOK_SIGNATURE_TOLERANCE_SECONDS;
+
 	// Both directions: a clock ahead of ours is as much a reason to refuse as a
 	// capture from an hour ago.
 	if (Math.abs(input.now - parsed.timestampSeconds) > tolerance) return false;
@@ -138,6 +148,7 @@ export const verifyWebhookSignature = (input: {
 		input.secret,
 		`${String(parsed.timestampSeconds)}.${input.body}`,
 	);
+
 	return parsed.signatures.some((candidate) =>
 		digestsMatch(candidate, expected),
 	);

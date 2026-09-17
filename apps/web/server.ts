@@ -73,7 +73,9 @@ import type { SchedulerHandle } from "@farmer/core/jobs";
 
 // Configuration
 const SERVER_PORT = Number(process.env.PORT ?? 3000);
+
 const CLIENT_DIRECTORY = "./dist/client";
+
 const SERVER_ENTRY_POINT = "./dist/server/server.js";
 
 // Logging utilities for professional output
@@ -124,7 +126,9 @@ const ENABLE_ETAG =
 // Optional Gzip feature
 const ENABLE_GZIP =
 	(process.env.ASSET_PRELOAD_ENABLE_GZIP ?? "true") === "true";
+
 const GZIP_MIN_BYTES = Number(process.env.ASSET_PRELOAD_GZIP_MIN_SIZE ?? 1024); // 1KB
+
 const GZIP_TYPES = (
 	process.env.ASSET_PRELOAD_GZIP_MIME_TYPES ??
 	"text/,application/javascript,application/json,application/xml,image/svg+xml"
@@ -142,6 +146,7 @@ function convertGlobToRegExp(globPattern: string): RegExp {
 	const escapedPattern = globPattern
 		.replace(/[-/\\^$+?.()|[\]{}]/g, "\\$&")
 		.replace(/\*/g, ".*");
+
 	return new RegExp(`^${escapedPattern}$`, "i");
 }
 
@@ -150,6 +155,7 @@ function convertGlobToRegExp(globPattern: string): RegExp {
  */
 function computeEtag(data: Uint8Array): string {
 	const hash = Bun.hash(data);
+
 	return `W/"${hash.toString(16)}-${data.byteLength.toString()}"`;
 }
 
@@ -221,8 +227,11 @@ function compressDataIfAppropriate(
 	mimeType: string,
 ): Uint8Array | undefined {
 	if (!ENABLE_GZIP) return undefined;
+
 	if (data.byteLength < GZIP_MIN_BYTES) return undefined;
+
 	if (!isMimeTypeCompressible(mimeType)) return undefined;
+
 	try {
 		// SAFETY: these Uint8Arrays come from `Bun.file().bytes()`, which allocates a
 		// plain ArrayBuffer, never a SharedArrayBuffer. The call is inside a try/catch
@@ -275,6 +284,7 @@ function createResponseHandler(
 
 		if (ENABLE_ETAG && asset.etag) {
 			const ifNone = req.headers.get("if-none-match");
+
 			if (ifNone && ifNone === asset.etag) {
 				// A 304 has to repeat Cache-Control. It is what refreshes the stored
 				// freshness lifetime, so omitting it left the client revalidating a
@@ -284,6 +294,7 @@ function createResponseHandler(
 					headers: { ETag: asset.etag, "Cache-Control": cacheControl },
 				});
 			}
+
 			headers.set("ETag", asset.etag);
 		}
 
@@ -295,11 +306,13 @@ function createResponseHandler(
 			headers.set("Content-Encoding", "gzip");
 			headers.set("Content-Length", String(asset.gz.byteLength));
 			const gzCopy = new Uint8Array(asset.gz);
+
 			return new Response(gzCopy, { status: 200, headers });
 		}
 
 		headers.set("Content-Length", String(asset.raw.byteLength));
 		const rawCopy = new Uint8Array(asset.raw);
+
 		return new Response(rawCopy, { status: 200, headers });
 	};
 }
@@ -312,8 +325,11 @@ function createCompositeGlobPattern(): Bun.Glob {
 		.split(",")
 		.map((s) => s.trim())
 		.filter(Boolean);
+
 	if (raw.length === 0) return new Bun.Glob("**/*");
+
 	if (raw.length === 1) return new Bun.Glob(raw[0]);
+
 	return new Bun.Glob(`{${raw.join(",")}}`);
 }
 
@@ -326,19 +342,23 @@ async function initializeStaticRoutes(
 ): Promise<PreloadResult> {
 	const routes: Record<string, (req: Request) => Response | Promise<Response>> =
 		{};
+
 	const loaded: AssetMetadata[] = [];
 	const skipped: AssetMetadata[] = [];
 
 	log.info(`Loading static assets from ${clientDirectory}...`);
+
 	if (VERBOSE) {
 		console.log(
 			`Max preload size: ${(MAX_PRELOAD_BYTES / 1024 / 1024).toFixed(2)} MB`,
 		);
+
 		if (INCLUDE_PATTERNS.length > 0) {
 			console.log(
 				`Include patterns: ${process.env.ASSET_PRELOAD_INCLUDE_PATTERNS ?? ""}`,
 			);
 		}
+
 		if (EXCLUDE_PATTERNS.length > 0) {
 			console.log(
 				`Exclude patterns: ${process.env.ASSET_PRELOAD_EXCLUDE_PATTERNS ?? ""}`,
@@ -350,6 +370,7 @@ async function initializeStaticRoutes(
 
 	try {
 		const glob = createCompositeGlobPattern();
+
 		for await (const relativePath of glob.scan({ cwd: clientDirectory })) {
 			const filepath = path.join(clientDirectory, relativePath);
 			const route = `/${relativePath.split(path.sep).join(path.posix.sep)}`;
@@ -378,6 +399,7 @@ async function initializeStaticRoutes(
 					const bytes = new Uint8Array(await file.arrayBuffer());
 					const gz = compressDataIfAppropriate(bytes, metadata.type);
 					const etag = ENABLE_ETAG ? computeEtag(bytes) : undefined;
+
 					const asset: InMemoryAsset = {
 						raw: bytes,
 						gz,
@@ -386,6 +408,7 @@ async function initializeStaticRoutes(
 						immutable: isImmutableRoute(route),
 						size: bytes.byteLength,
 					};
+
 					routes[route] = createResponseHandler(asset);
 
 					loaded.push({ ...metadata, size: bytes.byteLength });
@@ -394,6 +417,7 @@ async function initializeStaticRoutes(
 					// Serve large or filtered files on-demand
 					routes[route] = () => {
 						const fileOnDemand = Bun.file(filepath);
+
 						return new Response(fileOnDemand, {
 							headers: {
 								"Content-Type": metadata.type,
@@ -411,6 +435,7 @@ async function initializeStaticRoutes(
 				// directory under `dist/client` was reported as a failed asset.
 				const code =
 					error instanceof Error && "code" in error ? error.code : undefined;
+
 				if (error instanceof Error && code !== "EISDIR") {
 					log.error(`Failed to load ${filepath}: ${error.message}`);
 				}
@@ -437,6 +462,7 @@ async function initializeStaticRoutes(
 				if (gzBytes !== undefined) {
 					const gzKb = gzBytes / 1024;
 					const gzStr = gzKb < 100 ? gzKb.toFixed(2) : gzKb.toFixed(1);
+
 					return {
 						size: sizeStr,
 						gzip: gzStr,
@@ -445,6 +471,7 @@ async function initializeStaticRoutes(
 
 				// Rough gzip estimation (typically 30-70% compression) if no actual gzip data
 				const gzipKb = kb * 0.35;
+
 				return {
 					size: sizeStr,
 					gzip: gzipKb < 100 ? gzipKb.toFixed(2) : gzipKb.toFixed(1),
@@ -490,6 +517,7 @@ async function initializeStaticRoutes(
 				const allFiles = [...loaded, ...skipped].sort((a, b) =>
 					a.route.localeCompare(b.route),
 				);
+
 				console.log("\n📊 Detailed file information:");
 				console.log(
 					"Status       │ Path                            │ MIME Type                    │ Reason",
@@ -497,16 +525,19 @@ async function initializeStaticRoutes(
 				allFiles.forEach((file) => {
 					const isPreloaded = loaded.includes(file);
 					const status = isPreloaded ? "MEMORY" : "ON-DEMAND";
+
 					const reason =
 						!isPreloaded && file.size > MAX_PRELOAD_BYTES
 							? "too large"
 							: !isPreloaded
 								? "filtered"
 								: "preloaded";
+
 					const route =
 						file.route.length > 30
 							? `${file.route.substring(0, 27)}...`
 							: file.route;
+
 					console.log(
 						`${status.padEnd(12)} │ ${route.padEnd(30)} │ ${file.type.padEnd(28)} │ ${reason.padEnd(10)}`,
 					);
@@ -518,6 +549,7 @@ async function initializeStaticRoutes(
 
 		// Log summary after the file list
 		console.log(); // Empty line for separation
+
 		if (loaded.length > 0) {
 			log.success(
 				`Preloaded ${String(loaded.length)} files (${(totalPreloadedBytes / 1024 / 1024).toFixed(2)} MB) into memory`,
@@ -550,6 +582,7 @@ async function initializeServer() {
 
 	// Load TanStack Start server handler
 	let handler: { fetch: (request: Request) => Response | Promise<Response> };
+
 	try {
 		// SAFETY: a dynamic import of a path only known at runtime, so there is no
 		// module to type against. The shape is `vite build`'s own output contract for
@@ -557,6 +590,7 @@ async function initializeServer() {
 		const serverModule = (await import(SERVER_ENTRY_POINT)) as {
 			default: { fetch: (request: Request) => Response | Promise<Response> };
 		};
+
 		handler = serverModule.default;
 		log.success("TanStack Start application handler initialized");
 	} catch (error) {
@@ -608,10 +642,12 @@ async function initializeServer() {
 			"/*": async (req: Request) => {
 				try {
 					const res = await handler.fetch(req);
+
 					if (res.headers.has("Cache-Control")) return res;
 					const headers = new Headers(res.headers);
 					headers.set("Cache-Control", "private, no-store, must-revalidate");
 					headers.append("Vary", "Cookie");
+
 					return new Response(res.body, {
 						status: res.status,
 						statusText: res.statusText,
@@ -619,6 +655,7 @@ async function initializeServer() {
 					});
 				} catch (error) {
 					log.error(`Server handler error: ${String(error)}`);
+
 					return new Response("Internal Server Error", { status: 500 });
 				}
 			},
@@ -629,6 +666,7 @@ async function initializeServer() {
 			log.error(
 				`Uncaught server error: ${error instanceof Error ? error.message : String(error)}`,
 			);
+
 			return new Response("Internal Server Error", { status: 500 });
 		},
 	});
@@ -647,6 +685,7 @@ async function initializeServer() {
 	const schedulersHandle = startBackgroundSchedulers().catch(
 		(error: unknown): SchedulerHandle[] => {
 			log.error(`Failed to start background schedulers: ${String(error)}`);
+
 			return [];
 		},
 	);
@@ -662,6 +701,7 @@ async function initializeServer() {
  */
 async function startBackgroundSchedulers(): Promise<SchedulerHandle[]> {
 	const { startSchedulers } = await import("@farmer/core/jobs");
+
 	return startSchedulers({
 		info: log.info,
 		warn: log.warning,

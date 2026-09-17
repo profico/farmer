@@ -44,6 +44,7 @@ export const unfiledTotals = async (
 		.from(timeEntry)
 		.innerJoin(task, eq(timeEntry.taskId, task.id))
 		.where(unfiledWhere(ctx, range, userId));
+
 	return { count: row?.count ?? 0, seconds: Number(row?.seconds ?? 0) };
 };
 
@@ -65,6 +66,7 @@ export const unfiledByUser = async (
 		.innerJoin(task, eq(timeEntry.taskId, task.id))
 		.where(unfiledWhere(ctx, range))
 		.groupBy(timeEntry.userId);
+
 	return new Map(
 		rows.map((r) => [r.userId, { count: r.count, seconds: Number(r.seconds) }]),
 	);

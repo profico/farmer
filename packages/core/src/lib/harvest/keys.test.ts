@@ -82,6 +82,7 @@ describe("keysForPersonDay", () => {
 			fields({ notes: "a" }),
 			fields({ notes: "b" }),
 		]);
+
 		expect(keys[0]).toMatch(/:0$/);
 		expect(keys[1]).toMatch(/:0$/);
 		expect(keys[0]).not.toBe(keys[1]);
@@ -105,6 +106,7 @@ describe("keysForPersonDay", () => {
 			fields({ notes: "b" }),
 			fields({ notes: "a" }),
 		];
+
 		const keys = await keysForPersonDay(rows);
 		expect(keys).toEqual([
 			`${keys[0]?.split(":")[0]}:0`,

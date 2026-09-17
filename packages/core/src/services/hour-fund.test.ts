@@ -32,13 +32,17 @@ import { hourFundService, WORKING_DAY_SECONDS } from "./hour-fund.service";
 import type { Ctx } from "./types";
 
 const ORG = "fund-org";
+
 const ADMIN = "u-fund-admin";
+
 const PLAIN = "u-fund-plain";
+
 const YEAR = 2026;
 
 let harness: TestDb;
 
 const adminCtx: Ctx = { organizationId: ORG, userId: ADMIN };
+
 const plainCtx: Ctx = { organizationId: ORG, userId: PLAIN };
 
 /** A fresh Ctx per call: `requireAdmin` memoizes Access on the object, and a
@@ -216,7 +220,9 @@ describe("getMany", () => {
 			{ year: 2025, month: 12 },
 			{ year: 2026, month: 1 },
 		];
+
 		const funds = await hourFundService.getMany(adminCtx, months);
+
 		for (const m of months) {
 			const key = `${m.year}-${String(m.month).padStart(2, "0")}`;
 			expect(funds.get(key) ?? null).toBe(
@@ -235,9 +241,11 @@ describe("getMany", () => {
 			month: 6,
 			fundSeconds: 7,
 		});
+
 		const funds = await hourFundService.getMany(adminCtx, [
 			{ year: 2026, month: 6 },
 		]);
+
 		expect(funds.size).toBe(0);
 	});
 });
@@ -251,6 +259,7 @@ describe("suggestForMonth", () => {
 			2026,
 			3,
 		);
+
 		expect(workingDays).toBe(22);
 		expect(fundSeconds).toBe(22 * WORKING_DAY_SECONDS);
 	});
@@ -306,9 +315,11 @@ describe("prefillYear", () => {
 		// Before the ON CONFLICT this threw on monthly_hour_fund's unique index and
 		// filled none of the other eleven months.
 		const ctx = freshAdmin();
+
 		const known = new Set(
 			(await hourFundService.listForYear(ctx, YEAR)).map((r) => r.month),
 		);
+
 		expect(known.size).toBe(0);
 
 		await db.insert(monthlyHourFund).values({

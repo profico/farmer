@@ -46,7 +46,9 @@ export const SCALES = [90, 100, 110, 125, 150] as const;
 export const DEFAULT_SCALE = 100;
 
 const STORAGE_KEY = "farmer-scale";
+
 const PROPERTY = "--ui-scale";
+
 /** Fired on the window whenever *this* tab changes it — `storage` only reaches
  *  the OTHER tabs. */
 const CHANGE_EVENT = "farmer:scale";
@@ -63,6 +65,7 @@ document.documentElement.style.setProperty(${JSON.stringify(PROPERTY)},String(v/
 
 const apply = (scale: number) => {
 	const root = document.documentElement;
+
 	// 100% writes nothing, so `zoom: var(--ui-scale, 1)` falls back and the
 	// default costs no property. The same rule every switch here follows.
 	if (scale === DEFAULT_SCALE) root.style.removeProperty(PROPERTY);
@@ -73,7 +76,9 @@ const read = (): number => {
 	const value = Number.parseFloat(
 		document.documentElement.style.getPropertyValue(PROPERTY),
 	);
+
 	const percent = Math.round(value * 100);
+
 	return isScale(percent) ? percent : DEFAULT_SCALE;
 };
 
@@ -86,6 +91,7 @@ export const scaleFactor = (): number =>
 export const setScale = (scale: number) => {
 	if (!isScale(scale)) return;
 	apply(scale);
+
 	try {
 		if (scale === DEFAULT_SCALE) localStorage.removeItem(STORAGE_KEY);
 		else localStorage.setItem(STORAGE_KEY, String(scale));
@@ -93,6 +99,7 @@ export const setScale = (scale: number) => {
 		// Private-mode / blocked storage: the choice still applies to this page,
 		// it just won't be remembered.
 	}
+
 	window.dispatchEvent(new Event(CHANGE_EVENT));
 };
 
@@ -112,6 +119,7 @@ if (!import.meta.env.SSR) {
 
 const subscribe = (onChange: () => void) => {
 	window.addEventListener(CHANGE_EVENT, onChange);
+
 	return () => window.removeEventListener(CHANGE_EVENT, onChange);
 };
 
@@ -121,5 +129,6 @@ const subscribe = (onChange: () => void) => {
 export function useScale() {
 	const scale = useSyncExternalStore(subscribe, read, () => DEFAULT_SCALE);
 	const set = useCallback((next: number) => setScale(next), []);
+
 	return [scale, set] as const;
 }

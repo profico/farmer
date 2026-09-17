@@ -36,6 +36,7 @@ function Dialog({
 			defaultOpen,
 			onOpenChange,
 		});
+
 	const actionsRef = React.useRef<DialogPrimitive.Root.Actions | null>(null);
 	const presence = React.useMemo(() => ({ open: value, actionsRef }), [value]);
 
@@ -100,9 +101,11 @@ function DialogContent({
 	showCloseButton?: boolean;
 }) {
 	const presence = React.useContext(DialogPresenceContext);
+
 	if (!presence) {
 		throw new Error("DialogContent must be used within <Dialog>");
 	}
+
 	const { open, actionsRef } = presence;
 
 	return (

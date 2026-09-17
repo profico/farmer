@@ -37,6 +37,7 @@ export function RowActions({
 }) {
 	const visible = actions.filter((a): a is RowAction => Boolean(a));
 	const [action] = visible;
+
 	if (action === undefined) return null;
 
 	if (visible.length === 1) {

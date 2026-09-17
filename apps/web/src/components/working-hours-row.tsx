@@ -30,6 +30,7 @@ const DAY_LABELS = [
 
 const minutesOf = (time: string): number => {
 	const [h, m] = time.split(":").map(Number);
+
 	return (h ?? 0) * 60 + (m ?? 0);
 };
 

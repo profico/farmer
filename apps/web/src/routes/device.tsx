@@ -61,6 +61,7 @@ const normalizeUserCode = (raw: string | null): string | null => {
 		.toUpperCase()
 		.replace(/[^A-Z0-9]/g, "")
 		.slice(0, 32);
+
 	return code || null;
 };
 
@@ -107,17 +108,22 @@ const outcomeOf = (error: { status: number; message?: string }): Outcome => {
 	const parsed = deviceErrorBody.safeParse(error);
 	const body = parsed.success ? parsed.data : {};
 	const description = body.error_description ?? body.message;
+
 	if (body.error === "expired_token") return { state: "expired" };
+
 	// Another account opened this code first, so it is bound to them.
 	if (body.error === "access_denied" || error.status === 403) {
 		return { state: "not-yours" };
 	}
+
 	if (description === "Device code already processed") return { state: "used" };
+
 	// A 404 is `CLI_ENABLED=false` on the device endpoints: there is no code to
 	// approve on this server, which reads the same as an unknown code.
 	if (description === "Invalid user code" || error.status === 404) {
 		return { state: "invalid" };
 	}
+
 	return { state: "failed", message: description ?? CHECK_FAILED };
 };
 
@@ -127,7 +133,9 @@ export const Route = createFileRoute("/device")({
 			getPublicAppConfig(),
 			getSession(),
 		]);
+
 		if (!config.cliEnabled) throw notFound();
+
 		if (!session) {
 			// Through `/login`, which carries `redirect` through the Google round
 			// trip (and the development password form) and accepts it only as a
@@ -138,6 +146,7 @@ export const Route = createFileRoute("/device")({
 				search: { redirect: devicePath(codeFromSearch(location.searchStr)) },
 			});
 		}
+
 		return { email: session.user.email, brand: config.org };
 	},
 	component: DevicePage,
@@ -145,6 +154,7 @@ export const Route = createFileRoute("/device")({
 
 function DevicePage() {
 	const { brand } = Route.useRouteContext();
+
 	const userCode = useLocation({
 		select: (location) => codeFromSearch(location.searchStr),
 	});
@@ -200,27 +210,35 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 			const { data, error } = await authClient.device({
 				query: { user_code: code },
 			});
+
 			if (error) return outcomeOf(error);
+
 			return data.status === "pending"
 				? { state: "pending" }
 				: { state: "used" };
 		},
 	});
+
 	useEffect(() => {
 		openCode(userCode);
 	}, [openCode, userCode]);
 
 	const act = async (action: "approve" | "deny") => {
 		setBusy(action);
+
 		const { error } =
 			action === "approve"
 				? await authClient.device.approve({ userCode })
 				: await authClient.device.deny({ userCode });
+
 		setBusy(null);
+
 		if (error) {
 			setDecision(outcomeOf(error));
+
 			return;
 		}
+
 		setDecision({ state: action === "approve" ? "approved" : "denied" });
 	};
 
@@ -370,6 +388,7 @@ function UserCodeForm() {
 
 	const submit = async (event: FormEvent) => {
 		event.preventDefault();
+
 		if (!code) return;
 		// `href` rather than `search`, for the reason at the top of this file:
 		// the router would JSON-encode a code that looks like a number.

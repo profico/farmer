@@ -37,19 +37,26 @@ import { orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
 
 const H = 3600;
+
 const ORG = "comp-org";
 
 const ADMIN = "u-comp-admin";
+
 /** Logs plenty, every day. Never flagged. */
 const DILIGENT = "u-comp-diligent";
+
 /** Logs nothing at all. */
 const SILENT = "u-comp-silent";
+
 /** Logs only Vacation — the double-credit case. */
 const ON_LEAVE = "u-comp-leave";
+
 /** Overhead: the CEO, never nagged about a timesheet. */
 const OVERHEAD = "u-comp-overhead";
+
 /** Contractor with no expected-hours override: no fund, so no pace. */
 const CONTRACTOR = "u-comp-contractor";
+
 /** Left the company; cannot act on a nudge. */
 const ARCHIVED = "u-comp-archived";
 
@@ -64,15 +71,21 @@ const EVERYONE = [
 ];
 
 let harness: TestDb;
+
 let devTaskId: string;
+
 let vacationTaskId: string;
+
 let projectId: string;
 
 /** The clock every call below is made against. The org timezone is UTC, so this
  *  instant and the day key the service derives from it cannot disagree. */
 const NOW = new Date("2026-04-16T12:00:00Z");
+
 const AT = { now: NOW };
+
 const today = "2026-04-16";
+
 const monthStart = "2026-04-01";
 
 const adminCtx = (): Ctx => ({ organizationId: ORG, userId: ADMIN });
@@ -100,6 +113,7 @@ const setFund = async (fundSeconds: number) => {
 		year: Number(today.slice(0, 4)),
 		month: Number(today.slice(5, 7)),
 	};
+
 	await db
 		.insert(monthlyHourFund)
 		.values({ organizationId: ORG, year, month, fundSeconds })
@@ -152,6 +166,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG, name: "Acme" })
 		.returning();
+
 	if (!c) throw new Error("Failed to seed client");
 
 	const [p] = await db
@@ -163,6 +178,7 @@ beforeAll(async () => {
 			type: "product_team" as const,
 		})
 		.returning();
+
 	if (!p) throw new Error("Failed to seed project");
 	projectId = p.id;
 
@@ -194,6 +210,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	if (!dev || !vacation) throw new Error("Failed to seed tasks");
 	devTaskId = dev.id;
 	vacationTaskId = vacation.id;
@@ -233,10 +250,13 @@ beforeEach(async () => {
 });
 
 const APRIL = { year: 2026, month: 4 };
+
 const track = (opts = AT) =>
 	complianceService.tracking(adminCtx(), APRIL, opts);
+
 const rowFor = async (userId: string) =>
 	(await track()).rows.find((r) => r.userId === userId);
+
 const setTolerance = (trackingTolerancePct: number) =>
 	orgSettingsService.update(adminCtx(), { trackingTolerancePct });
 
@@ -261,6 +281,7 @@ describe("the cohort", () => {
 			expectedSecondsOverride: 80 * H,
 			effectiveFrom: monthStart,
 		});
+
 		try {
 			const contractor = await rowFor(CONTRACTOR);
 			expect(contractor?.targetSeconds).toBe(40 * H);
@@ -298,11 +319,13 @@ describe("the target", () => {
 			month: 5,
 			fundSeconds: 160 * H,
 		});
+
 		const report = await complianceService.tracking(
 			adminCtx(),
 			{ year: 2026, month: 5 },
 			{ now: new Date("2026-05-27T12:00:00Z") },
 		);
+
 		expect(report.workingDaysInMonth).toBe(20);
 		expect(report.workingDaysElapsed).toBe(17);
 		expect(report.targetSeconds).toBe(136 * H);
@@ -330,6 +353,7 @@ describe("the target", () => {
 		const report = await track();
 		expect(report.fundSeconds).toBeNull();
 		expect(report.targetSeconds).toBeNull();
+
 		for (const row of report.rows) {
 			expect(row.targetSeconds).toBeNull();
 			expect(row.status).toBeNull();
@@ -391,6 +415,7 @@ describe("the verdict", () => {
 		// 16th) are elapsed before it — even at 08:00, before anyone would have
 		// logged a minute of Friday itself.
 		await setFund(176 * H);
+
 		const workingDaysBeforeFriday = [
 			"2026-04-01",
 			"2026-04-02",
@@ -405,9 +430,11 @@ describe("the verdict", () => {
 			"2026-04-15",
 			"2026-04-16",
 		];
+
 		for (const date of workingDaysBeforeFriday) {
 			await logEntry(DILIGENT, date, devTaskId, 8 * H);
 		}
+
 		const report = await track({ now: new Date("2026-04-17T08:00:00Z") });
 		expect(report.workingDaysElapsed).toBe(12);
 		expect(report.targetSeconds).toBe(96 * H);
@@ -430,11 +457,13 @@ describe("authorization", () => {
 		// access check — the whole reason it is a separately named export.
 		await setFund(160 * H);
 		const jobCtx: Ctx = { organizationId: ORG, userId: "" };
+
 		const report = await complianceService.trackingForReminderJob(
 			jobCtx,
 			APRIL,
 			AT,
 		);
+
 		expect(report.rows.map((r) => r.userId)).toContain(SILENT);
 		expect(report.rows.map((r) => r.userId)).toContain(DILIGENT);
 	});
@@ -565,12 +594,14 @@ describe("the tools that carry the rule to the assistant", () => {
 		// answer worse than no answer.
 		await setFund(176 * H);
 		const result = await findTool("my_targets")?.run(ctxOf(CONTRACTOR), {});
+
 		// SAFETY: the projection is fixed in assistant-tools.ts, and every
 		// expectation below fails loudly if its shape ever changed.
 		const mine = result as {
 			fullDayHours: number;
 			month: { targetHours: number | null; status: string | null };
 		};
+
 		expect(mine.month.targetHours).toBeNull();
 		expect(mine.month.status).toBeNull();
 		// The yardstick still comes back, so the model can say what a full day is
@@ -581,6 +612,7 @@ describe("the tools that carry the rule to the assistant", () => {
 	test("hours, not seconds, and the same figures the screens read", async () => {
 		await setFund(176 * H);
 		const result = await findTool("tracking_report")?.run(adminCtx(), APRIL);
+
 		// SAFETY: as above — the projection is this file's own, and the
 		// expectations name every field they read.
 		const report = result as {
@@ -593,6 +625,7 @@ describe("the tools that carry the rule to the assistant", () => {
 				status: string | null;
 			}[];
 		};
+
 		const truth = await complianceService.tracking(adminCtx(), APRIL, AT);
 		expect(report.workingDaysInMonth).toBe(truth.workingDaysInMonth);
 

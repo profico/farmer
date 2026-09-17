@@ -22,7 +22,9 @@ import { createTestDb, type TestDb } from "../test/harness";
 import { slackService } from "./slack.service";
 
 const ORG = "si-org";
+
 const BARE_ORG = "si-bare-org";
+
 const TOKEN = "xoxb-test";
 
 const invite = {
@@ -40,8 +42,11 @@ type SlackCall = {
 };
 
 let harness: TestDb;
+
 let calls: SlackCall[] = [];
+
 const realFetch = globalThis.fetch;
+
 const origin = process.env.BETTER_AUTH_URL;
 
 /** Stand in for Slack. `users` maps an address to a Slack user id; any other
@@ -54,17 +59,21 @@ const stubSlack = (users: Record<string, string>) => {
 			const body = new URLSearchParams(String(init?.body ?? ""));
 			const headers = new Headers(init?.headers);
 			calls.push({ method, token: headers.get("Authorization"), body });
+
 			if (method === "users.lookupByEmail") {
 				const id = users[body.get("email") ?? ""];
+
 				return Response.json(
 					id
 						? { ok: true, user: { id } }
 						: { ok: false, error: "users_not_found" },
 				);
 			}
+
 			if (method === "chat.postMessage") {
 				return Response.json({ ok: true, ts: "1.0" });
 			}
+
 			return Response.json({ ok: false, error: "unknown_method" });
 		},
 		{ preconnect: realFetch.preconnect },

@@ -39,24 +39,34 @@ import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-recurring";
+
 const USER_ID = "user-recurring";
+
 // Fixed and safely in the past, so "does this backfill?" never depends on the
 // day the suite happens to run. It has to be a week nobody's real "today" can
 // fall inside: creating or resuming a rule materializes today's block now (see
 // `materializeNow` in the service), and a fixture week containing today would
 // count that block as a backfill.
 const MONDAY = "2026-03-09";
+
 const TUESDAY = "2026-03-10";
+
 const WEDNESDAY = "2026-03-11";
+
 const FRIDAY = "2026-03-13";
+
 const WEEKDAYS = [1, 2, 3, 4, 5];
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;
+
 let breakTaskId: string;
+
 let devTaskId: string;
+
 let vacationTaskId: string;
+
 let projectId: string;
 
 /** A full day of vacation, booked the way the absence dialog books it. */
@@ -122,6 +132,7 @@ const switchedOnAt = async (ruleId: string, dateKey: string) => {
 const runningBreakRuleSince = async (dateKey: string) => {
 	const rule = await breakRuleFrom();
 	await switchedOnAt(rule.id, dateKey);
+
 	return rule;
 };
 
@@ -155,10 +166,12 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Farmer" })
 		.returning();
+
 	projectId = p?.id ?? "";
 
 	// Break and the two absence built-ins are seeded by the migrations, like every
@@ -168,6 +181,7 @@ beforeAll(async () => {
 		where: and(eq(task.scope, "site"), eq(task.systemKey, "break")),
 		columns: { id: true },
 	});
+
 	breakTaskId = breakTask?.id ?? "";
 
 	const [devTask] = await db
@@ -179,6 +193,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = devTask?.id ?? "";
 
 	// The two absence built-ins, so the project-less task list has something to
@@ -190,6 +205,7 @@ beforeAll(async () => {
 			{ scope: "site" as const, name: "Sick Leave", isAbsence: true },
 		])
 		.returning({ id: task.id });
+
 	vacationTaskId = vacation?.id ?? "";
 });
 
@@ -324,6 +340,7 @@ describe("materializing a recurring block", () => {
 			daysOfWeek: WEEKDAYS,
 			duration: "1h",
 		});
+
 		await switchedOnAt(rule.id, MONDAY);
 		await db.insert(timeEntry).values({
 			organizationId: ORG_ID,
@@ -431,6 +448,7 @@ describe("the break needs no project", () => {
 // apart.
 describe("the assignment gate on a rule that names a project", () => {
 	const OUTSIDER = "user-recurring-outsider";
+
 	const outsiderCtx = (): Ctx => ({
 		organizationId: ORG_ID,
 		userId: OUTSIDER,
@@ -509,6 +527,7 @@ describe("the assignment gate on a rule that names a project", () => {
 			duration: "30m",
 			description: "Break",
 		});
+
 		expect(rule.projectId).toBeNull();
 	});
 });
@@ -521,6 +540,7 @@ describe("the assignment gate on a rule that names a project", () => {
 // than deleted.
 describe("a rule is re-checked on every pass", () => {
 	const ASSIGNED = "user-recurring-assigned";
+
 	const assignedCtx = (): Ctx => ({
 		organizationId: ORG_ID,
 		userId: ASSIGNED,
@@ -545,7 +565,9 @@ describe("a rule is re-checked on every pass", () => {
 			duration: "1h",
 			description: "Retainer",
 		});
+
 		await switchedOnAt(rule.id, MONDAY);
+
 		return rule;
 	};
 
@@ -603,10 +625,12 @@ describe("a rule is re-checked on every pass", () => {
 		);
 
 		expect(await weekEntriesFor(ASSIGNED)).toHaveLength(0);
+
 		// Skipped, not deleted: re-assigning the person brings the rule back.
 		const kept = await db.query.recurringBlockRule.findFirst({
 			where: eq(recurringBlockRule.id, rule.id),
 		});
+
 		expect(kept).toBeDefined();
 	});
 
@@ -616,6 +640,7 @@ describe("a rule is re-checked on every pass", () => {
 			.update(project)
 			.set({ status: "archived" })
 			.where(eq(project.id, projectId));
+
 		try {
 			await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
 
@@ -634,6 +659,7 @@ describe("a rule is re-checked on every pass", () => {
 			.update(task)
 			.set({ archivedAt: new Date() })
 			.where(eq(task.id, devTaskId));
+
 		try {
 			await recurringBlockRulesService.materializeRange(ctx, MONDAY, FRIDAY);
 

@@ -26,8 +26,10 @@ export const Route = createFileRoute("/cli/")({
 		handlers: {
 			GET: async ({ request }) => {
 				const { isCliEnabled } = await import("@farmer/core/lib/cli-flag");
+
 				if (!isCliEnabled()) return plainText("Not found", 404);
 				const origin = installOrigin(request);
+
 				return plainText(
 					wantsPowerShell(request)
 						? psInstallScript(origin)

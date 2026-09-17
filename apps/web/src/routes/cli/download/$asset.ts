@@ -24,9 +24,11 @@ export const Route = createFileRoute("/cli/download/$asset")({
 		handlers: {
 			GET: async ({ params }) => {
 				const { isCliEnabled } = await import("@farmer/core/lib/cli-flag");
+
 				if (!isCliEnabled()) return plainText("Not found", 404);
 
 				const parsed = assetName.safeParse(params.asset);
+
 				if (!parsed.success) {
 					return plainText(
 						`No CLI download is named "${params.asset}". The files are: ${CLI_RELEASE_ASSETS.join(", ")}.`,
@@ -36,6 +38,7 @@ export const Route = createFileRoute("/cli/download/$asset")({
 
 				const { resolveCliDownload } = await import("#/server/cli-releases.ts");
 				const download = await resolveCliDownload(parsed.data);
+
 				switch (download.kind) {
 					case "redirect":
 						return new Response(null, {
@@ -67,6 +70,7 @@ export const Route = createFileRoute("/cli/download/$asset")({
 						);
 					case "upstream-error":
 						console.error("[cli-download]", download.detail);
+
 						return plainText(
 							"This Farmer server could not read the CLI release from GitHub. Try again in a minute; if it keeps happening, ask the person who runs it to check the GitHub App's access to the releases repository.",
 							502,

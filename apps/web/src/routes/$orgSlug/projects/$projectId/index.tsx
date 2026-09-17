@@ -88,11 +88,13 @@ function ProjectPage() {
 
 	const today = dayKeyInTz(new Date(), organization.timezone);
 	const thisMonth = today.slice(0, 7);
+
 	const { from, to } = resolveReportPeriod(
 		search,
 		today,
 		organization.weekStartsOn,
 	);
+
 	const by: EntryGroup = search.by ?? "teammate";
 	const input: TimeReportDetailInput = { from, to, projectId };
 	const archived = project.status === "archived";
@@ -103,14 +105,17 @@ function ProjectPage() {
 		...projectMembersQuery(orgSlug, projectId),
 		enabled: access.canView,
 	}).data;
+
 	const roleOf = members
 		? (userId: string) => {
 				const m = members.find((r) => r.userId === userId && r.active);
+
 				return m ? ROLE_LABEL[m.role] : null;
 			}
 		: undefined;
 
 	const teamSize = project.contributorCount;
+
 	return (
 		<Page>
 			<PageHeader
@@ -298,6 +303,7 @@ function OverviewStrip({
 	projectId: string;
 }) {
 	const { data } = useSuspenseQuery(projectOverviewQuery(orgSlug, projectId));
+
 	return (
 		<StatTiles columns={4}>
 			<StatTile

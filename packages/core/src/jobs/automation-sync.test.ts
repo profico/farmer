@@ -43,11 +43,15 @@ import {
 } from "./automation-sync";
 
 const ORG_ID = "org-sweep";
+
 const TZ = "Europe/Zagreb";
+
 /** Someone whose only automation is a recurring block — no integration switches. */
 const BLOCKS_ONLY = "user-blocks-only";
+
 /** Someone with the same rule who has since been removed from the org. */
 const EX_MEMBER = "user-ex-member";
+
 /** Someone with the same rule who is still a member, but archived. */
 const ARCHIVED = "user-archived";
 
@@ -56,6 +60,7 @@ type PassResult = Awaited<
 >;
 
 let harness: TestDb;
+
 let breakTaskId: string;
 
 const entriesFor = (userId: string) =>
@@ -89,6 +94,7 @@ beforeAll(async () => {
 		createdAt: new Date(),
 		timezone: TZ,
 	});
+
 	for (const id of [BLOCKS_ONLY, EX_MEMBER, ARCHIVED]) {
 		await db.insert(user).values({
 			id,
@@ -99,6 +105,7 @@ beforeAll(async () => {
 			updatedAt: new Date(),
 		});
 	}
+
 	// Only one of them is still a member. The other's rule is left behind exactly
 	// as removal leaves it.
 	await db.insert(member).values({
@@ -129,6 +136,7 @@ beforeAll(async () => {
 		where: eq(task.systemKey, "break"),
 		columns: { id: true },
 	});
+
 	breakTaskId = breakTask?.id ?? "";
 	expect(breakTaskId).not.toBe("");
 
@@ -218,6 +226,7 @@ describe("one pass per person at a time", () => {
 		organizationId: ORG_ID,
 		userId: BLOCKS_ONLY,
 	});
+
 	const noop: PassResult = { ran: [], skipped: [], failed: [], off: [] };
 
 	afterEach(() => {
@@ -227,6 +236,7 @@ describe("one pass per person at a time", () => {
 	test("Sync now joins the sweep's pass for the same person", async () => {
 		await dailyBlockFor(BLOCKS_ONLY);
 		let release: ((result: PassResult) => void) | undefined;
+
 		const pass = spyOn(
 			timeEntriesService,
 			"runAutomationsForUser",
@@ -236,8 +246,10 @@ describe("one pass per person at a time", () => {
 					release = resolve;
 				}),
 		);
+
 		try {
 			const sweep = runAutomationSyncOnce();
+
 			// Wait for the sweep to reach this person, so the button below lands
 			// while the pass is certainly in flight rather than racing it.
 			while (pass.mock.calls.length === 0) await Bun.sleep(1);
@@ -258,7 +270,9 @@ describe("one pass per person at a time", () => {
 			timeEntriesService,
 			"runAutomationsForUser",
 		).mockImplementation(() => new Promise<PassResult>(() => {}));
+
 		setAutomationPassTimeoutForTests(20);
+
 		try {
 			await expect(runAutomationSyncForCtx(personCtx())).rejects.toThrow(
 				/exceeded 20ms/,

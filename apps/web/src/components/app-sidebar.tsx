@@ -163,6 +163,7 @@ export function AppSidebar({
 
 	const inSettings = isNavItemActive(pathname, SETTINGS_ITEM.to, orgSlug);
 	const onAssistant = isNavItemActive(pathname, ASSISTANT_ITEM.to, orgSlug);
+
 	const panel: PanelKind = inSettings
 		? "settings"
 		: onAssistant
@@ -188,6 +189,7 @@ export function AppSidebar({
 	// contents instead of emptying itself first and then shrinking. `panel` is
 	// still what decides whether it is open.
 	const lastPanel = useRef<Exclude<PanelKind, null>>("settings");
+
 	if (panel !== null) lastPanel.current = panel;
 	const shown = panel ?? lastPanel.current;
 
@@ -221,6 +223,7 @@ export function AppSidebar({
 		],
 		orgSlug,
 	);
+
 	// The nav marks the SECTION, which is the settings hub for every page under
 	// it — the panel says which one.
 	const activeSection = inSettings ? SETTINGS_ITEM.to : activeTo;
@@ -232,6 +235,7 @@ export function AppSidebar({
 		[...navItems.map((item) => item.to), SETTINGS_ITEM.to],
 		activeSection,
 	);
+
 	const panelFillFrom = useFillFrom(
 		settingsGroups.flatMap((group) => group.items.map((item) => item.to)),
 		activeTo,
@@ -255,15 +259,18 @@ export function AppSidebar({
 	// was made on, and clearing on `keydown` closes even that: a keyboard
 	// activation always sends keydown before click, a mouse press never does.
 	const pressedRef = useRef<EventTarget | null>(null);
+
 	const pressToNavigate = (item: NavItem, isActive: boolean) => ({
 		onMouseDown: (e: React.MouseEvent) => {
 			pressedRef.current = null;
+
 			// Only fast-path a plain primary-button press. Modifier / middle clicks
 			// fall through so the browser can open a new tab; keyboard activation
 			// has no mousedown and navigates on click below.
 			if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
 				return;
 			pressedRef.current = e.currentTarget;
+
 			if (!isActive) navigate({ to: item.to, params: { orgSlug } });
 		},
 		onKeyDown: () => {
@@ -275,6 +282,7 @@ export function AppSidebar({
 			// normally, except on the active row, which stays a no-op.
 			const pressedHere = pressedRef.current === e.currentTarget;
 			pressedRef.current = null;
+
 			if (pressedHere || isActive) e.preventDefault();
 		},
 	});
@@ -282,6 +290,7 @@ export function AppSidebar({
 	/** A nav row, in whichever of the column's two widths it is being drawn at. */
 	const navRow = (item: NavItem, badge?: number) => {
 		const isActive = activeSection === item.to;
+
 		return (
 			<Tooltip key={item.to}>
 				<TooltipTrigger
@@ -348,6 +357,7 @@ export function AppSidebar({
 
 	const panelLink = (item: NavItem) => {
 		const isActive = activeTo === item.to;
+
 		return (
 			<li key={item.to}>
 				<Link
@@ -648,7 +658,9 @@ function useFillFrom(
 	useEffect(() => {
 		previous.current = index;
 	}, [index]);
+
 	if (previous.current === null || previous.current === index) return null;
+
 	return index > previous.current ? "top" : "bottom";
 }
 
@@ -677,6 +689,7 @@ function ActiveFill({
 	// `MotionGlobalConfig.instantAnimations`; this is the OS preference, which
 	// only `useReducedMotion` can see.
 	const reduced = useReducedMotion();
+
 	return (
 		<motion.span
 			aria-hidden
@@ -742,6 +755,7 @@ function ImpersonationRow({
 	collapsed: boolean;
 }) {
 	const [stopping, setStopping] = useState(false);
+
 	const stop = () => {
 		// No `finally`: on success this navigates the document away, and clearing
 		// the flag would only re-enable a button on a page that is leaving.
@@ -751,6 +765,7 @@ function ImpersonationRow({
 			toast.error(error.message);
 		});
 	};
+
 	return (
 		<Tooltip>
 			<TooltipTrigger
@@ -817,6 +832,7 @@ function CollapseToggle({
 	// what it does rather than what it is: closed, they point right, because that
 	// is where the edge goes when you press it.
 	const Caret = collapsed ? CaretDoubleRightIcon : CaretDoubleLeftIcon;
+
 	return (
 		<Tooltip>
 			<TooltipTrigger

@@ -53,21 +53,26 @@ export const connect = async (
 ): Promise<Session> => {
 	const config = await readConfig(runtime.paths);
 	const origin = currentOrigin(runtime, config);
+
 	if (!origin) {
 		throw new CliError("You are not logged in. Run `farmer login`.");
 	}
+
 	const store = credentialStoreFor(runtime);
 	const token = await store.get(origin);
+
 	if (!token) {
 		throw new CliError(
 			`You are not logged in to ${origin}. Run \`farmer login\`.`,
 		);
 	}
+
 	const api = new ApiClient({
 		transport: transportFor(runtime, origin),
 		token,
 		forgetToken: () => store.delete(origin),
 	});
+
 	return { runtime, out, config, server: serverEntryFor(config, origin), api };
 };
 
@@ -86,6 +91,7 @@ export const refreshOrganizations = async (
 	const { server } = session;
 	server.orgs = me.organizations.map((org) => {
 		const cached = server.orgs.find((entry) => entry.slug === org.slug);
+
 		return {
 			slug: org.slug,
 			name: org.name,
@@ -93,9 +99,11 @@ export const refreshOrganizations = async (
 			weekStartsOn: cached?.weekStartsOn ?? null,
 		};
 	});
+
 	if (server.org && !server.orgs.some((org) => org.slug === server.org)) {
 		server.org = null;
 	}
+
 	return me;
 };
 
@@ -107,17 +115,21 @@ const chooseOrganization = async (
 	me: ApiMe,
 ): Promise<string> => {
 	const [only, ...others] = me.organizations;
+
 	if (!only) {
 		throw new CliError(
 			`Your account is not a member of any organization on ${session.api.origin}. Ask an admin to invite you.`,
 		);
 	}
+
 	if (others.length === 0) return only.slug;
+
 	if (!session.out.interactive) {
 		throw new UsageError(
 			`Pass --org <slug>, or set a default with \`farmer org use <slug>\`. Your organizations: ${slugList(me)}.`,
 		);
 	}
+
 	return pickOne(
 		"Which organization?",
 		me.organizations.map((org) => ({
@@ -159,12 +171,15 @@ export const scopeOrg = async (
 	if (!entry) {
 		const me = await refreshOrganizations(session);
 		changed = true;
+
 		if (!slug) {
 			slug = await chooseOrganization(session, me);
 			server.org = slug;
 		}
+
 		const wanted = slug;
 		entry = server.orgs.find((org) => org.slug === wanted);
+
 		if (!entry) {
 			const problem = `You are not a member of "${wanted}" on ${session.api.origin}. Your organizations: ${slugList(me) || "none"}.`;
 			// A slug from the file must say so, or the person looks for a flag
@@ -178,19 +193,23 @@ export const scopeOrg = async (
 	}
 
 	let { timeZone, weekStartsOn } = entry;
+
 	if (!timeZone || weekStartsOn === null) {
 		const whoami = await session.api.get<ApiWhoami>(
 			orgPath(entry.slug, "/whoami"),
 		);
+
 		timeZone = whoami.timezone;
 		weekStartsOn = whoami.weekStartsOn;
 		entry.timeZone = timeZone;
 		entry.weekStartsOn = weekStartsOn;
 		changed = true;
 	}
+
 	if (changed) await saveConfig(session);
 
 	const resolved = entry.slug;
+
 	return {
 		slug: resolved,
 		name: entry.name,
@@ -216,13 +235,16 @@ export const openOrg = async (
 	// Read before any request, so a broken file costs nothing.
 	const defaults = requested === undefined ? await loadDefaults(runtime) : null;
 	const session = await connect(runtime, out);
+
 	const scope = await scopeOrg(
 		session,
 		requested ?? defaults?.org,
 		defaults?.shown ?? null,
 	);
+
 	if (defaults && announce) {
 		note(defaultsNotice(defaults.shown, [`organization ${scope.slug}`]));
 	}
+
 	return { session, scope, defaults };
 };

@@ -68,6 +68,7 @@ import { workingHoursService } from "./working-hours.service";
 // art. 73: >6h/day → a paid break counted within working time), so the break is
 // carved out of the day's target rather than added on top of it.
 const BREAK_MIN_WORKDAY_SECONDS = 6 * 60 * 60;
+
 const DEFAULT_BREAK_SECONDS = 30 * 60;
 
 export type DaySuggestionCommit = {
@@ -152,6 +153,7 @@ const hasLinkedAccount = async (userId: string, providerId: string) => {
 		where: and(eq(account.userId, userId), eq(account.providerId, providerId)),
 		columns: { id: true },
 	});
+
 	return !!row;
 };
 
@@ -220,18 +222,21 @@ export const dayAssemblyService = {
 				.listEventsForRange(ctx, { from: date, to: date })
 				.catch((error) => {
 					console.error("[day-assembly] calendar read failed", error);
+
 					return null;
 				}),
 			commitSource()
 				.listUserCommitsForDay(ctx, date)
 				.catch((error) => {
 					console.error("[day-assembly] commit read failed", error);
+
 					return [];
 				}),
 			pullRequestSource()
 				.listUserPullRequestActivityForDay(ctx, date)
 				.catch((error) => {
 					console.error("[day-assembly] pull request read failed", error);
+
 					return [];
 				}),
 			// "google-calendar", not "google": the plain Google provider is only a
@@ -256,6 +261,7 @@ export const dayAssemblyService = {
 
 		// ── Meetings: calendar events not already logged ────────────────────────
 		let meetingSeconds = 0;
+
 		if (calendarEvents && calendarEvents.length > 0 && meetingTask) {
 			const tombstones = await db.query.syncedMeetingTombstone.findMany({
 				where: and(
@@ -264,11 +270,13 @@ export const dayAssemblyService = {
 				),
 				columns: { calendarEventId: true },
 			});
+
 			// Two different reasons to leave an event out, and only one of them is a
 			// decision the toggle may override. A tombstoned meeting was deleted; a
 			// meeting already on an entry is simply here, and re-proposing it would
 			// offer a duplicate no matter what the toggle says.
 			const deletedIds = new Set(tombstones.map((t) => t.calendarEventId));
+
 			const loggedIds = new Set(
 				existing
 					.map((e) => e.calendarEventId)
@@ -277,14 +285,18 @@ export const dayAssemblyService = {
 
 			for (const event of calendarEvents) {
 				if (loggedIds.has(event.id)) continue;
+
 				if (deletedIds.has(event.id)) {
 					dismissedCount++;
+
 					if (!includeDismissed) continue;
 				}
+
 				const raw = Math.floor(
 					(new Date(event.end).getTime() - new Date(event.start).getTime()) /
 						1000,
 				);
+
 				if (raw <= 0) continue;
 				const durationSeconds = snapToQuarterHour(raw);
 				meetingSeconds += durationSeconds;
@@ -309,13 +321,16 @@ export const dayAssemblyService = {
 
 		// ── Break: carved out of the day, not added on top ──────────────────────
 		let breakSeconds = 0;
+
 		const preBreakRemaining = remainingSeconds(
 			targetSeconds,
 			spokenFor,
 			meetingSeconds,
 		);
+
 		const alreadyHasBreak =
 			breakTask != null && existing.some((e) => e.taskId === breakTask.id);
+
 		if (
 			breakTask &&
 			!alreadyHasBreak &&
@@ -362,17 +377,21 @@ export const dayAssemblyService = {
 		// suggestion below.
 		let reviewSeconds = 0;
 		const accountedReviews = new Set<string>();
+
 		const reviews = reviewTask
 			? pullRequestEvents.filter((event) => event.kind === "reviewed")
 			: [];
+
 		if (reviewTask && reviews.length > 0) {
 			const byPullRequest = new Map<string, ScannedPullRequestActivity[]>();
+
 			for (const review of reviews) {
 				byPullRequest.set(review.pullRequestUrl, [
 					...(byPullRequest.get(review.pullRequestUrl) ?? []),
 					review,
 				]);
 			}
+
 			const [{ homes, heldBy }, deleted, access, projects] = await Promise.all([
 				reviewsOnDay(ctx, date),
 				deletedReviewsOnDay(ctx, date),
@@ -387,7 +406,9 @@ export const dayAssemblyService = {
 					columns: { id: true, name: true },
 				}),
 			]);
+
 			const nameById = new Map(projects.map((p) => [p.id, p.name]));
+
 			// The engine's step 2 (see `fileReviewBlocks`): another PR's block does
 			// not account for this one.
 			const loggedOn = new Set(
@@ -401,13 +422,17 @@ export const dayAssemblyService = {
 			);
 
 			let room = beforeReviews;
+
 			for (const [pullRequestUrl, events] of byPullRequest) {
 				const [first] = events;
+
 				if (!first) continue;
+
 				if (homes.has(pullRequestUrl) || loggedOn.has(first.projectId)) {
 					for (const event of events) accountedReviews.add(event.eventId);
 					continue;
 				}
+
 				// The same reason as the work branch: a suggestion that `apply`
 				// would refuse is worse than none.
 				if (
@@ -416,18 +441,24 @@ export const dayAssemblyService = {
 				) {
 					continue;
 				}
+
 				const wasDeleted = deleted.has(pullRequestUrl);
+
 				if (wasDeleted) {
 					dismissedCount++;
+
 					if (!includeDismissed) continue;
 				}
+
 				const durationSeconds = Math.min(
 					REVIEW_BLOCK_SECONDS,
 					room - (room % QUARTER_HOUR_SECONDS),
 				);
+
 				if (durationSeconds <= 0) continue;
 				room -= durationSeconds;
 				reviewSeconds += durationSeconds;
+
 				for (const event of events) accountedReviews.add(event.eventId);
 				suggestions.push({
 					key: `review:${pullRequestUrl}`,
@@ -461,25 +492,32 @@ export const dayAssemblyService = {
 		// ── Work: one entry per project with commits or PR activity that day ────
 		let workSeconds = 0;
 		const evidenceByProject = new Map<string, ProjectEvidence>();
+
 		const evidenceFor = (projectId: string): ProjectEvidence => {
 			const existing = evidenceByProject.get(projectId);
+
 			if (existing) return existing;
 			const created: ProjectEvidence = { commits: [], pullRequests: [] };
 			evidenceByProject.set(projectId, created);
+
 			return created;
 		};
+
 		for (const commit of commits) {
 			evidenceFor(commit.projectId).commits.push(commit);
 		}
+
 		// One row per PR, not per event: the dialog and the attach both name a PR.
 		for (const event of pullRequestEvents) {
 			if (accountedReviews.has(event.eventId)) continue;
 			const { pullRequests } = evidenceFor(event.projectId);
+
 			const existing = pullRequests.find(
 				(pr) =>
 					pr.projectGithubRepoId === event.projectGithubRepoId &&
 					pr.number === event.number,
 			);
+
 			if (existing) existing.kinds.push(event.kind);
 			else {
 				pullRequests.push({
@@ -507,6 +545,7 @@ export const dayAssemblyService = {
 			remaining >= QUARTER_HOUR_SECONDS
 		) {
 			const projectIds = [...evidenceByProject.keys()];
+
 			const [access, projects] = await Promise.all([
 				// `listUserCommitsForDay` scans EVERY repo linked anywhere in the org,
 				// so a commit to a repo whose project you are not on is routine rather
@@ -524,11 +563,14 @@ export const dayAssemblyService = {
 					columns: { id: true, name: true },
 				}),
 			]);
+
 			const nameById = new Map(projects.map((p) => [p.id, p.name]));
 
-			const groups = projectIds
-				.filter((id) => nameById.has(id) && access.canTrackOn(id))
-				.map((id) => ({ projectId: id, ...evidenceFor(id) }));
+			const groups = projectIds.flatMap((id) =>
+				nameById.has(id) && access.canTrackOn(id)
+					? [{ projectId: id, ...evidenceFor(id) }]
+					: [],
+			);
 
 			// A pull request somebody opened, merged or reviewed weighs what one
 			// commit does. Neither measures time; the split only needs a ratio
@@ -540,6 +582,7 @@ export const dayAssemblyService = {
 
 			groups.forEach((group, index) => {
 				const share = shares[index] ?? 0;
+
 				if (share <= 0) return;
 				workSeconds += share;
 				suggestions.push({
@@ -593,6 +636,7 @@ export const dayAssemblyService = {
 		// deselecting a meeting above grows this to match instead of leaving a
 		// hole. The number here is the estimate that pairs with the dialog's "~".
 		const unaccounted = remainingSeconds(remaining, workSeconds);
+
 		if (workTask && !hasFillBlock && unaccounted >= QUARTER_HOUR_SECONDS) {
 			// A day whose rest-of-day block the person deleted. The commit engine
 			// honours that tombstone and so does this — the assembler proposing the
@@ -606,6 +650,7 @@ export const dayAssemblyService = {
 				),
 				columns: { id: true },
 			});
+
 			if (deletedFill) dismissedCount++;
 
 			if (!deletedFill || includeDismissed) {
@@ -637,14 +682,17 @@ export const dayAssemblyService = {
 		// its evidence, and a rule keyed on a title does not outrank that.
 		const rules = await filingRulesService.resolve(ctx, [
 			...new Set(
-				suggestions.filter((s) => s.projectId === null).map((s) => s.taskId),
+				suggestions.flatMap((s) => (s.projectId === null ? [s.taskId] : [])),
 			),
 		]);
+
 		const ruled = suggestions.flatMap((s) => {
 			if (s.projectId !== null) return [];
 			const target = rules.get(ruleKeyFor(s.taskId, s.description));
+
 			return target ? [{ suggestion: s, target }] : [];
 		});
+
 		const [ruleProjects, ruleTasks] =
 			ruled.length === 0
 				? [[], []]
@@ -665,12 +713,16 @@ export const dayAssemblyService = {
 							columns: { id: true, name: true },
 						}),
 					]);
+
 		const projectNames = new Map(ruleProjects.map((p) => [p.id, p.name]));
 		const taskNames = new Map(ruleTasks.map((t) => [t.id, t.name]));
 		const targets = new Map(ruled.map((r) => [r.suggestion.key, r.target]));
+
 		const filed = suggestions.map((s) => {
 			const target = targets.get(s.key);
+
 			if (!target) return s;
+
 			return {
 				...s,
 				projectId: target.projectId,
@@ -711,11 +763,13 @@ export const dayAssemblyService = {
 		// calendar event takes the place of that event's synced row (see
 		// `create`), so that row does not count against it.
 		const worked = input.entries.filter((entry) => !entry.fillsDay);
+
 		const replacedEvents = new Set(
 			worked.flatMap((entry) =>
 				entry.calendarEventId ? [entry.calendarEventId] : [],
 			),
 		);
+
 		try {
 			await assertDayHasRoom(
 				ctx,
@@ -729,6 +783,7 @@ export const dayAssemblyService = {
 			);
 		} catch (error) {
 			if (!(error instanceof DayCapacityError)) throw error;
+
 			return { created: 0, errors: [error.message] };
 		}
 
@@ -739,6 +794,7 @@ export const dayAssemblyService = {
 
 		let created = 0;
 		const errors: string[] = [];
+
 		for (const entry of ordered) {
 			try {
 				const row = await timeEntriesService.create(ctx, {
@@ -752,7 +808,9 @@ export const dayAssemblyService = {
 					meetingUrl: entry.meetingUrl,
 					calendarEventId: entry.calendarEventId,
 				});
+
 				created += 1;
+
 				if (entry.commits && entry.commits.length > 0) {
 					// Evidence attachment is decoration — never fail the entry over it.
 					await githubService
@@ -764,6 +822,7 @@ export const dayAssemblyService = {
 							console.error("[day-assembly] attachCommits failed", error),
 						);
 				}
+
 				if (entry.pullRequests && entry.pullRequests.length > 0) {
 					await githubService
 						.attachPullRequests(ctx, {
@@ -780,6 +839,7 @@ export const dayAssemblyService = {
 				);
 			}
 		}
+
 		return { created, errors };
 	},
 };

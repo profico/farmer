@@ -78,6 +78,7 @@ const MAX_CONTRIBUTORS_SHOWN = 5;
 const currentMonthKeysForOrg = async (organizationId: string) => {
 	const tz = await orgTimezone(organizationId);
 	const todayKey = dayKeyInTz(new Date(), tz);
+
 	return { from: startOfMonthKey(todayKey), to: endOfMonthKey(todayKey) };
 };
 
@@ -89,7 +90,9 @@ const loadProjectStats = async (
 	{ ownOnly }: { ownOnly: boolean },
 ): Promise<Map<string, ProjectStats>> => {
 	const stats = new Map<string, ProjectStats>();
+
 	if (projectIds.length === 0) return stats;
+
 	for (const id of projectIds) stats.set(id, emptyStats());
 
 	const { from, to } = await currentMonthKeysForOrg(ctx.organizationId);
@@ -146,22 +149,28 @@ const loadProjectStats = async (
 	for (const row of totals) {
 		if (!row.projectId) continue;
 		const entry = stats.get(row.projectId);
+
 		if (entry) entry.monthlyTotalSeconds = Number(row.totalSeconds);
 	}
+
 	for (const row of allTime) {
 		if (!row.projectId) continue;
 		const entry = stats.get(row.projectId);
+
 		if (entry) entry.allTimeSeconds = Number(row.totalSeconds);
 	}
 
 	const byProject = new Map<string, { id: string; name: string }[]>();
+
 	for (const row of memberRows) {
 		const list = byProject.get(row.projectId) ?? [];
 		list.push({ id: row.userId, name: row.name });
 		byProject.set(row.projectId, list);
 	}
+
 	for (const [projectId, contributors] of byProject) {
 		const entry = stats.get(projectId);
+
 		if (!entry) continue;
 		entry.contributorCount = contributors.length;
 		entry.contributors = contributors.slice(0, MAX_CONTRIBUTORS_SHOWN);
@@ -185,6 +194,7 @@ const redactMoney = <
 	access: Access,
 ): T => {
 	if (access.canViewProjectMoney(row.id)) return row;
+
 	return { ...row, budgetSeconds: null, budgetAmount: null, hourlyPrice: null };
 };
 
@@ -194,6 +204,7 @@ const enrichedProjects = async (
 	projectIds?: string[],
 ) => {
 	if (projectIds && projectIds.length === 0) return [];
+
 	const projects = await db.query.project.findMany({
 		where: projectIds
 			? and(
@@ -215,6 +226,7 @@ const enrichedProjects = async (
 	// serialized and never one refactor away from being sent.
 	const ids = projects.map((p) => p.id);
 	const visible = (id: string) => access.canViewProjectEntries(id);
+
 	const [projectStats, ownStats] = await Promise.all([
 		loadProjectStats(ctx, ids.filter(visible), { ownOnly: false }),
 		loadProjectStats(
@@ -254,6 +266,7 @@ export const projectsService = {
 	list: async (ctx: Ctx) => {
 		const access = await ctxAccess(ctx);
 		const scope = access.scopeFor("member");
+
 		return enrichedProjects(ctx, access, scope ?? undefined);
 	},
 
@@ -263,6 +276,7 @@ export const projectsService = {
 	listMine: async (ctx: Ctx) => {
 		const access = await ctxAccess(ctx);
 		const scope = access.scopeFor("member");
+
 		return enrichedProjects(ctx, access, scope ?? undefined);
 	},
 
@@ -270,7 +284,9 @@ export const projectsService = {
 		const access = await ctxAccess(ctx);
 		const rows = await enrichedProjects(ctx, access, [projectId]);
 		const row = rows[0];
+
 		if (!row) throw new Error("Project not found");
+
 		return row;
 	},
 
@@ -323,7 +339,9 @@ export const projectsService = {
 				)
 				.groupBy(timeEntry.userId),
 		]);
+
 		const byUser = new Map(logged.map((r) => [r.userId, r]));
+
 		return rows.map((r) => ({
 			...r,
 			allTimeSeconds: Number(byUser.get(r.userId)?.seconds ?? 0),
@@ -338,10 +356,12 @@ export const projectsService = {
 		access.assertCanViewProjectEntries(projectId);
 		await assertProjectInOrg(ctx, projectId);
 		const { from, to } = await currentMonthKeysForOrg(ctx.organizationId);
+
 		const onProject = and(
 			eq(timeEntry.organizationId, ctx.organizationId),
 			eq(timeEntry.projectId, projectId),
 		);
+
 		const [[all], [month]] = await Promise.all([
 			db
 				.select({
@@ -364,6 +384,7 @@ export const projectsService = {
 					and(onProject, gte(timeEntry.date, from), lte(timeEntry.date, to)),
 				),
 		]);
+
 		return {
 			allTimeSeconds: Number(all?.seconds ?? 0),
 			entryCount: Number(all?.entries ?? 0),
@@ -397,6 +418,7 @@ export const projectsService = {
 			),
 			columns: { id: true },
 		});
+
 		if (archived) {
 			throw new Error("That person is archived. Restore them to assign them.");
 		}
@@ -416,12 +438,14 @@ export const projectsService = {
 				),
 				columns: { role: true },
 			});
+
 			if (
 				existing &&
 				!access.canActOnProjectRole(input.projectId, existing.role)
 			) {
 				throw new AccessError("You cannot change this person's role");
 			}
+
 			if (!access.canActOnProjectRole(input.projectId, input.role)) {
 				throw new AccessError("You cannot assign that role");
 			}
@@ -463,6 +487,7 @@ export const projectsService = {
 				),
 				columns: { role: true },
 			});
+
 			if (
 				existing &&
 				!access.canActOnProjectRole(input.projectId, existing.role)
@@ -498,6 +523,7 @@ export const projectsService = {
 				),
 				columns: { id: true },
 			});
+
 			if (!ownedClient) throw new Error("Client not found");
 
 			const [row] = await tx
@@ -516,6 +542,7 @@ export const projectsService = {
 					hourlyPrice: input.hourlyPrice ?? null,
 				})
 				.returning();
+
 			if (!row) throw new Error("Failed to create project");
 
 			// The creator becomes the project's PM (PRD §11.1). Without this a PM/TL
@@ -538,6 +565,7 @@ export const projectsService = {
 		await emitEvent(ctx, "project.created", () =>
 			projectWebhookPayload(ctx, created.id),
 		);
+
 		return projectsService.get(ctx, created.id);
 	},
 
@@ -560,17 +588,24 @@ export const projectsService = {
 					),
 					columns: { id: true },
 				});
+
 				if (!ownedClient) throw new Error("Client not found");
 			}
 
 			const patch: Partial<typeof project.$inferInsert> = {
 				updatedAt: new Date(),
 			};
+
 			if (input.name !== undefined) patch.name = input.name;
+
 			if (input.clientId !== undefined) patch.clientId = input.clientId;
+
 			if (input.code !== undefined) patch.code = input.code || null;
+
 			if (input.icon !== undefined) patch.icon = input.icon;
+
 			if (input.openToOrg !== undefined) patch.openToOrg = input.openToOrg;
+
 			// Project type is changeable after creation without history (e.g. a
 			// Fixed Scope engagement rolling into Maintenance). Close sheets render
 			// according to the type at the time of viewing. The type-specific config
@@ -597,6 +632,7 @@ export const projectsService = {
 		await emitEvent(ctx, "project.updated", () =>
 			projectWebhookPayload(ctx, input.projectId),
 		);
+
 		return projectsService.get(ctx, input.projectId);
 	},
 
@@ -642,12 +678,14 @@ export const projectsService = {
 		const access = await ctxAccess(ctx);
 		access.assertCanManageProjectMembers(projectId);
 		const archived = await membersService.archivedUserIds(ctx);
+
 		const rows = await db
 			.select({ userId: user.id, name: user.name, email: user.email })
 			.from(member)
 			.innerJoin(user, eq(member.userId, user.id))
 			.where(eq(member.organizationId, ctx.organizationId))
 			.orderBy(asc(user.name));
+
 		return rows.filter((r) => !archived.has(r.userId));
 	},
 };

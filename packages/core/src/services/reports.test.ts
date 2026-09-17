@@ -43,23 +43,33 @@ import { reportsService } from "./reports.service";
 import type { Ctx } from "./types";
 
 const H = 3600;
+
 const ORG = "rep-org";
+
 const FROM = "2026-05-01";
+
 const TO = "2026-05-31";
 
 const ADMIN = "u-rep-admin";
+
 /** PM on Alpha only. Sees Alpha's money, nothing on Beta. */
 const PM = "u-rep-pm";
+
 /** Team Lead on Alpha only. Sees Alpha's hours, never its money. */
 const LEAD = "u-rep-lead";
+
 /** Assigned to Alpha as a plain member — no report access at all. */
 const WORKER = "u-rep-worker";
+
 /** Works on Beta, so a Lead scoped to Alpha must not see their hours. */
 const OUTSIDER = "u-rep-outsider";
+
 /** Overhead: excluded from org-wide lists. */
 const OVERHEAD = "u-rep-overhead";
+
 /** Contractor with no override. */
 const CONTRACTOR = "u-rep-contractor";
+
 /** Left: archived before the fixture month. */
 const ARCHIVED = "u-rep-archived";
 
@@ -75,9 +85,13 @@ const EVERYONE = [
 ];
 
 let harness: TestDb;
+
 let alphaId: string;
+
 let betaId: string;
+
 let devTaskId: string;
+
 let vacationTaskId: string;
 
 const ctxFor = (userId: string): Ctx => ({ organizationId: ORG, userId });
@@ -141,6 +155,7 @@ beforeAll(async () => {
 			{ organizationId: ORG, name: "Globex" },
 		])
 		.returning();
+
 	if (!acme || !globex) throw new Error("Failed to seed clients");
 
 	const [alpha, beta] = await db
@@ -170,6 +185,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	if (!alpha || !beta) throw new Error("Failed to seed projects");
 	alphaId = alpha.id;
 	betaId = beta.id;
@@ -226,6 +242,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	if (!dev || !vacation) throw new Error("Failed to seed tasks");
 	devTaskId = dev.id;
 	vacationTaskId = vacation.id;
@@ -287,10 +304,12 @@ describe("who may read a report", () => {
 
 	test("somebody assigned nowhere gets an empty report, not an error", async () => {
 		await logEntry({ userId: WORKER, projectId: alphaId, seconds: 5 * H });
+
 		const nothing = await reportsService.timeSummary(
 			ctxFor(CONTRACTOR),
 			summaryInput,
 		);
+
 		expect(nothing.rows).toEqual([]);
 		expect(nothing.totalSeconds).toBe(0);
 	});
@@ -301,6 +320,7 @@ describe("who may read a report", () => {
 			leadUserId: LEAD,
 			personUserId: OUTSIDER,
 		});
+
 		try {
 			await logEntry({ userId: OUTSIDER, projectId: betaId, seconds: 9 * H });
 			await logEntry({ userId: WORKER, projectId: alphaId, seconds: 5 * H });
@@ -332,15 +352,19 @@ describe("who may read a report", () => {
 				durationSeconds: 8 * H,
 			})),
 		);
+
 		const mine = await reportsService.absence(ctxFor(WORKER), {
 			from: FROM,
 			to: TO,
 		});
+
 		expect(mine.rows.map((r) => r.userId)).toEqual([WORKER]);
+
 		const all = await reportsService.absence(ctxFor(ADMIN), {
 			from: FROM,
 			to: TO,
 		});
+
 		expect(all.rows.map((r) => r.userId).sort()).toEqual(
 			[OUTSIDER, WORKER].sort(),
 		);
@@ -369,6 +393,7 @@ describe("who may read a report", () => {
 			...summaryInput,
 			tab: "teammates",
 		});
+
 		const row = lead.rows.find((r) => r.name === "outsider");
 		expect(row?.secondsTotal).toBe(2 * H);
 	});
@@ -385,10 +410,12 @@ describe("who may read a report", () => {
 				durationSeconds: 8 * H,
 			})),
 		);
+
 		const theirs = await reportsService.absence(ctxFor(PM), {
 			from: FROM,
 			to: TO,
 		});
+
 		// WORKER is on Alpha, which PM runs; OUTSIDER is on Beta only.
 		expect(theirs.rows.map((r) => r.userId)).toEqual([WORKER]);
 	});
@@ -405,24 +432,28 @@ describe("the Time report's tabs", () => {
 			.update(project)
 			.set({ status: "archived" })
 			.where(eq(project.id, betaId));
+
 		try {
 			const all = await reportsService.timeSummary(ctxFor(ADMIN), {
 				from: FROM,
 				to: TO,
 				tab: "projects",
 			});
+
 			expect(
 				all.rows.map((r) => [r.name, r.clientName, r.count, r.archived]),
 			).toEqual([
 				["Beta", "Globex", 1, true],
 				["Alpha", "Acme", 2, false],
 			]);
+
 			const active = await reportsService.timeSummary(ctxFor(ADMIN), {
 				from: FROM,
 				to: TO,
 				tab: "projects",
 				activeOnly: true,
 			});
+
 			expect(active.rows.map((r) => r.name)).toEqual(["Alpha"]);
 			expect(active.totalSeconds).toBe(7 * H);
 		} finally {
@@ -445,20 +476,24 @@ describe("the Time report's tabs", () => {
 			description: "",
 			durationSeconds: 8 * H,
 		});
+
 		const clients = await reportsService.timeSummary(ctxFor(ADMIN), {
 			from: FROM,
 			to: TO,
 			tab: "clients",
 		});
+
 		expect(clients.rows.map((r) => [r.name, r.count])).toEqual([
 			["Acme", 1],
 			["Globex", 1],
 		]);
+
 		const team = await reportsService.timeSummary(ctxFor(ADMIN), {
 			from: FROM,
 			to: TO,
 			tab: "teammates",
 		});
+
 		const worker = team.rows.find((r) => r.id === WORKER);
 		// Work only in the hours column: time off is beside it, never in it.
 		expect(worker?.secondsTotal).toBe(6 * H);
@@ -497,6 +532,7 @@ describe("time detail", () => {
 			...detailInput,
 			tab: "projects",
 		});
+
 		// The two agree on attributed time, and the unfiled hours are reported
 		// separately rather than folded into either total.
 		expect(summary.totalSeconds).toBe(detail.totalSeconds);
@@ -512,6 +548,7 @@ describe("time detail", () => {
 		// In chunks: a single 5001-row insert overruns PGLite's bind-parameter
 		// handling and takes the whole instance down with it.
 		const CHUNK = 500;
+
 		for (let start = 0; start < count; start += CHUNK) {
 			const size = Math.min(CHUNK, count - start);
 			await db.insert(timeEntry).values(
@@ -555,10 +592,12 @@ describe("time detail", () => {
 
 		const detail = await reportsService.timeDetail(ctxFor(ADMIN), detailInput);
 		const row = at(detail.rows, 0);
+
 		const stored = await db
 			.select({ id: timeEntry.id })
 			.from(timeEntry)
 			.where(eq(timeEntry.organizationId, ORG));
+
 		expect(row.id).toBe(at(stored, 0).id);
 	});
 });
@@ -578,6 +617,7 @@ describe("searching notes", () => {
 			...may,
 			q: "migra",
 		});
+
 		expect(detail.totalRows).toBe(1);
 		expect(at(detail.rows, 0).description).toBe("Ran the Migration");
 		expect(detail.totalSeconds).toBe(3 * H);
@@ -607,10 +647,12 @@ describe("searching notes", () => {
 			tab: "projects",
 			q: "migration",
 		});
+
 		const detail = await reportsService.timeDetail(ctxFor(ADMIN), {
 			...may,
 			q: "migration",
 		});
+
 		expect(summary.totalSeconds).toBe(5 * H);
 		expect(detail.totalSeconds).toBe(summary.totalSeconds);
 		expect(detail.totalRows).toBe(2);
@@ -634,6 +676,7 @@ describe("searching notes", () => {
 			...may,
 			q: "100% d",
 		});
+
 		// Taken as a wildcard, "100% d" also matches "cut 1000 pages down".
 		expect(detail.totalRows).toBe(1);
 		expect(at(detail.rows, 0).description).toBe("cut 100% down");
@@ -655,6 +698,7 @@ describe("searching notes", () => {
 			...may,
 			q: "day_fill",
 		});
+
 		expect(detail.totalRows).toBe(1);
 		expect(at(detail.rows, 0).description).toBe("fix day_fill");
 	});
@@ -673,6 +717,7 @@ describe("searching notes", () => {
 			...may,
 			q: "migration",
 		});
+
 		expect(detail.totalRows).toBe(0);
 		expect(detail.totalSeconds).toBe(0);
 	});
@@ -754,6 +799,7 @@ describe("absence report", () => {
 			from: "2026-01-01",
 			to: "2026-12-31",
 		});
+
 		expect(year.rows.find((r) => r.userId === WORKER)?.seconds).toBe(24 * H);
 	});
 
@@ -806,6 +852,7 @@ describe("overtime", () => {
 			from: "2026-01-01",
 			to: "2026-12-31",
 		});
+
 		expect(year.rows.find((r) => r.userId === WORKER)?.seconds).toBe(5 * H);
 	});
 
@@ -820,13 +867,16 @@ describe("overtime", () => {
 			.update(project)
 			.set({ status: "archived" })
 			.where(eq(project.id, betaId));
+
 		try {
 			const all = await reportsService.overtime(ctxFor(ADMIN), may);
 			expect(all.rows.map((r) => r.userId)).toEqual([OUTSIDER]);
+
 			const active = await reportsService.overtime(ctxFor(ADMIN), {
 				...may,
 				activeOnly: true,
 			});
+
 			expect(active.rows).toEqual([]);
 			expect(active.totalSeconds).toBe(0);
 		} finally {

@@ -20,13 +20,17 @@
  *  in front, and a figure that rounds to nothing is "0h" rather than "-0h". */
 export const formatHoursLabel = (totalSeconds: number): string => {
 	const totalMinutes = Math.round(Math.abs(totalSeconds) / 60);
+
 	if (totalMinutes === 0) return "0h";
 	const sign = totalSeconds < 0 ? "-" : "";
 	const hours = Math.floor(totalMinutes / 60);
 	const minutes = totalMinutes % 60;
 	const h = hours.toLocaleString("en-US");
+
 	if (minutes === 0) return `${sign}${h}h`;
+
 	if (hours === 0) return `${sign}${minutes}m`;
+
 	return `${sign}${h}h ${minutes}m`;
 };
 
@@ -43,6 +47,7 @@ const HR_HOURS = new Intl.NumberFormat("hr-HR", {
 	minimumFractionDigits: 2,
 	maximumFractionDigits: 2,
 });
+
 export const formatReportHours = (totalSeconds: number): string =>
 	HR_HOURS.format(totalSeconds / 3600);
 

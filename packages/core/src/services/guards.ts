@@ -27,6 +27,7 @@ export const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
 		),
 		columns: { id: true },
 	});
+
 	if (!row) throw new Error("Project not found");
 };
 
@@ -56,6 +57,7 @@ export const assertUserInOrg = async (ctx: Ctx, userId: string) => {
 		),
 		columns: { id: true },
 	});
+
 	if (!row) throw new Error("That person is not a member of this organization");
 };
 
@@ -105,12 +107,14 @@ export const assertTaskAvailable = async (
 			archivedAt: true,
 		},
 	});
+
 	if (!row || row.archivedAt) throw new Error("Task not available");
 
 	if (row.isAbsence) {
 		if (projectId) {
 			throw new Error("Absence is logged without a project");
 		}
+
 		return row;
 	}
 
@@ -140,5 +144,6 @@ export const assertDescribed = (
 	{ fillsDay = false }: { fillsDay?: boolean } = {},
 ) => {
 	if (fillsDay || !descriptionRequiredFor(taskRow)) return;
+
 	if (!description?.trim()) throw new Error("Describe what you worked on");
 };

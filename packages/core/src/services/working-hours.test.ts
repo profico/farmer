@@ -20,13 +20,19 @@ import type { Ctx } from "./types";
 import { workingHoursService } from "./working-hours.service";
 
 const ORG_A = "wh-a";
+
 const ORG_B = "wh-b";
+
 const ME = "u-wh-me";
+
 const COLLEAGUE = "u-wh-colleague";
+
 const FRESH = "u-wh-fresh";
 
 const MONDAY = 1;
+
 const TUESDAY = 2;
+
 const SATURDAY = 6;
 
 let harness: TestDb;
@@ -137,6 +143,7 @@ describe("upsertDay", () => {
 				eq(memberWorkingHoursDay.dayOfWeek, SATURDAY),
 			),
 		});
+
 		expect(rows).toHaveLength(1);
 		expect(await dayOf(ctx(ME), SATURDAY)).toMatchObject({
 			enabled: true,
@@ -170,6 +177,7 @@ describe("listForOrg", () => {
 			ME,
 			FRESH,
 		]);
+
 		expect([...byUser.keys()].sort()).toEqual([FRESH, ME].sort());
 
 		const mine = present(byUser.get(ME), "ME's schedule");

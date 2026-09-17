@@ -129,6 +129,7 @@ function schedulerJobs(): SchedulerConfig[] {
 			defaultIntervalMinutes: 20,
 			run: async (logger) => {
 				const s = await runAutomationSyncOnce(logger);
+
 				return `${String(s.synced)}/${String(s.eligible)} people synced, ${String(s.failed)} failed`;
 			},
 		},
@@ -139,6 +140,7 @@ function schedulerJobs(): SchedulerConfig[] {
 			defaultIntervalMinutes: 30,
 			run: async () => {
 				const s = await runLogRemindersOnce();
+
 				return `${String(s.sent)} sent, ${String(s.skipped)} skipped, ${String(s.failed)} failed (${String(s.eligible)} members)`;
 			},
 		},
@@ -153,6 +155,7 @@ function schedulerJobs(): SchedulerConfig[] {
 			defaultIntervalMinutes: 15,
 			run: async () => {
 				const s = await runSlackRemindersOnce();
+
 				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
 			},
 		},
@@ -165,7 +168,9 @@ function schedulerJobs(): SchedulerConfig[] {
 			defaultIntervalMinutes: 1440,
 			run: async (logger) => {
 				const s = await runUploadSweepOnce({ logger });
+
 				if (!s.enabled) return "no object store configured";
+
 				return `${String(s.deleted)} deleted, ${String(s.failed)} failed (${String(s.listed)} objects)`;
 			},
 		},
@@ -179,7 +184,9 @@ function schedulerJobs(): SchedulerConfig[] {
 			defaultIntervalMinutes: 1,
 			run: async (logger) => {
 				const s = await runWebhookDeliveryOnce({ logger });
+
 				if (!s.enabled) return "disabled";
+
 				return `${String(s.succeeded)} delivered, ${String(s.failed)} failed (${String(s.fannedOut)} queued, ${String(s.disabled)} endpoints given up on)`;
 			},
 		},
@@ -200,29 +207,36 @@ const startIntervalScheduler = (
 ): SchedulerHandle | null => {
 	if ((process.env[config.enabledEnv] ?? "true") !== "true") {
 		logger.info(`${config.name} scheduler disabled (${config.enabledEnv})`);
+
 		return null;
 	}
 
 	const intervalMinutes = Number(
 		process.env[config.intervalEnv] ?? config.defaultIntervalMinutes,
 	);
+
 	if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
 		logger.warn(
 			`Invalid ${config.intervalEnv} (${String(process.env[config.intervalEnv])}); ${config.name} scheduler not started`,
 		);
+
 		return null;
 	}
 
 	let running = false;
 	let idleWaiters: Array<() => void> = [];
+
 	const tick = async () => {
 		if (running) {
 			logger.warn(
 				`${config.name}: previous run still in progress, skipping tick`,
 			);
+
 			return;
 		}
+
 		running = true;
+
 		try {
 			const summary = await config.run(logger);
 			logger.info(`${config.name}: ${summary}`);
@@ -232,6 +246,7 @@ const startIntervalScheduler = (
 			running = false;
 			const waiters = idleWaiters;
 			idleWaiters = [];
+
 			for (const resolve of waiters) resolve();
 		}
 	};
@@ -242,12 +257,15 @@ const startIntervalScheduler = (
 	const startupDelayMs = Number(
 		process.env.SCHEDULER_STARTUP_DELAY_MS ?? 15_000,
 	);
+
 	const startupTimer = setTimeout(() => {
 		void tick();
 	}, startupDelayMs).unref();
+
 	const intervalTimer = setInterval(() => {
 		void tick();
 	}, intervalMinutes * 60_000).unref();
+
 	logger.info(
 		`${config.name} scheduler started (every ${String(intervalMinutes)} min)`,
 	);
@@ -278,16 +296,19 @@ export const stopSchedulers = async (
 	logger: SchedulerLogger = createDefaultLogger(),
 ): Promise<void> => {
 	if (handles.length === 0) return;
+
 	for (const handle of handles) handle.stopTimers();
 	logger.info("Background scheduler timers stopped");
 
 	const graceTimeout = new Promise<void>((resolve) => {
 		setTimeout(resolve, graceMs).unref();
 	});
+
 	await Promise.race([
 		Promise.all(handles.map((h) => h.waitUntilIdle())),
 		graceTimeout,
 	]);
+
 	if (handles.some((h) => h.isRunning())) {
 		logger.warn(
 			"A scheduler tick is still in progress after grace period; continuing shutdown anyway",

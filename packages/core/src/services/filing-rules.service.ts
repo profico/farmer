@@ -98,8 +98,10 @@ export const filingRulesService = {
 			string,
 			{ taskId: string; titleKey: string; title: string }
 		>();
+
 		for (const entry of entries) {
 			const title = entry.description.trim();
+
 			// An empty description is not a rule. The dialog falls back to the task
 			// name for display, so a rule keyed on "" would read as "always file
 			// Meeting to X" and then claim every untitled meeting the sync imports —
@@ -113,6 +115,7 @@ export const filingRulesService = {
 				title,
 			});
 		}
+
 		if (byKey.size === 0) return 0;
 
 		// A target equal to the key's own task is no change, and is stored as
@@ -148,6 +151,7 @@ export const filingRulesService = {
 					updatedAt: new Date(),
 				},
 			});
+
 		return rows.length;
 	},
 
@@ -165,15 +169,18 @@ export const filingRulesService = {
 			),
 			columns: { id: true, taskId: true },
 		});
+
 		if (!existing) throw new Error("Filing rule not found");
 
 		await assertProjectInOrg(ctx, input.projectId);
 		const access = await ctxAccess(ctx);
 		access.assertCanTrackOn(input.projectId);
+
 		const targetTaskId =
 			input.targetTaskId && input.targetTaskId !== existing.taskId
 				? input.targetTaskId
 				: null;
+
 		await assertTaskAvailable(
 			ctx,
 			targetTaskId ?? existing.taskId,
@@ -185,7 +192,9 @@ export const filingRulesService = {
 			.set({ projectId: input.projectId, targetTaskId, updatedAt: new Date() })
 			.where(eq(filingRule.id, existing.id))
 			.returning({ id: filingRule.id });
+
 		if (!updated) throw new Error("Filing rule not found");
+
 		return updated;
 	},
 
@@ -202,7 +211,9 @@ export const filingRulesService = {
 				),
 			)
 			.returning({ id: filingRule.id });
+
 		if (!deleted) throw new Error("Filing rule not found");
+
 		return deleted;
 	},
 
@@ -225,6 +236,7 @@ export const filingRulesService = {
 		taskIds: string[],
 	): Promise<Map<string, FilingTarget>> => {
 		if (taskIds.length === 0) return new Map();
+
 		const rules = await db
 			.select({
 				taskId: filingRule.taskId,
@@ -240,6 +252,7 @@ export const filingRulesService = {
 					inArray(filingRule.taskId, taskIds),
 				),
 			);
+
 		if (rules.length === 0) return new Map();
 
 		const access = await ctxAccess(ctx);
@@ -257,15 +270,19 @@ export const filingRulesService = {
 					inArray(project.id, candidates),
 				),
 			);
+
 		const liveIds = new Set(live.map((p) => p.id));
 
 		// Per (project, task) pair, since a dozen rules usually name two or three.
 		const checked = new Map<string, boolean>();
+
 		const usable = async (projectId: string, fileAs: string) => {
 			const key = `${projectId}|${fileAs}`;
 			const known = checked.get(key);
+
 			if (known !== undefined) return known;
 			let ok = liveIds.has(projectId) && access.canTrackOn(projectId);
+
 			if (ok) {
 				try {
 					await assertProjectInOrg(ctx, projectId);
@@ -274,13 +291,17 @@ export const filingRulesService = {
 					ok = false;
 				}
 			}
+
 			checked.set(key, ok);
+
 			return ok;
 		};
 
 		const resolved = new Map<string, FilingTarget>();
+
 		for (const rule of rules) {
 			const fileAs = rule.targetTaskId ?? rule.taskId;
+
 			if (!(await usable(rule.projectId, fileAs))) continue;
 			// The stored key is already normalized, so the title passes through.
 			resolved.set(ruleKeyFor(rule.taskId, rule.titleKey), {
@@ -288,6 +309,7 @@ export const filingRulesService = {
 				taskId: fileAs,
 			});
 		}
+
 		return resolved;
 	},
 };

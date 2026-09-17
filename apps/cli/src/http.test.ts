@@ -8,6 +8,7 @@ const ORIGIN = "https://farmer.test";
 
 const memoryKeyring = (): Keyring => {
 	const tokens = new Map<string, string>();
+
 	return {
 		get: async (origin) => tokens.get(origin) ?? null,
 		set: async (origin, token) => {
@@ -21,16 +22,20 @@ const memoryKeyring = (): Keyring => {
 
 const clientWith = async (replies: Response[]) => {
 	const server = scriptedServer(replies);
+
 	const store = createCredentialStore(
 		memoryKeyring(),
 		"/nonexistent/credentials.json",
 	);
+
 	await store.set(ORIGIN, "session-token");
+
 	const api = new ApiClient({
 		transport: server.transport,
 		token: "session-token",
 		forgetToken: () => store.delete(ORIGIN),
 	});
+
 	return { ...server, store, api };
 };
 
@@ -61,6 +66,7 @@ describe("ApiClient", () => {
 			unauthorized(),
 			jsonReply(200, { user: {}, organizations: [] }),
 		]);
+
 		await expect(api.get("/api/v1/orgs/acme/whoami")).rejects.toThrow(
 			'no access to the organization "acme"',
 		);
@@ -83,6 +89,7 @@ describe("ApiClient", () => {
 		const { api } = await clientWith([
 			jsonReply(426, { error: "Update", code: "cli_outdated" }),
 		]);
+
 		await expect(api.get("/api/v1/me")).rejects.toThrow(
 			`curl -fsSL ${ORIGIN}/cli | sh`,
 		);
@@ -92,11 +99,13 @@ describe("ApiClient", () => {
 		const server = scriptedServer([
 			jsonReply(426, { error: "Update", code: "cli_outdated" }),
 		]);
+
 		const api = new ApiClient({
 			transport: { ...server.transport, platform: "win32" },
 			token: "t",
 			forgetToken: async () => undefined,
 		});
+
 		await expect(api.get("/api/v1/me")).rejects.toThrow(
 			`irm ${ORIGIN}/cli | iex`,
 		);
@@ -109,6 +118,7 @@ describe("ApiClient", () => {
 			]),
 			jsonReply(200, { id: "e1" }),
 		]);
+
 		expect(await api.get<{ id: string }>("/api/v1/me")).toEqual({ id: "e1" });
 		expect(sleeps).toEqual([7000]);
 		expect(requests).toHaveLength(2);
@@ -120,6 +130,7 @@ describe("ApiClient", () => {
 				["retry-after", "120"],
 			]),
 		]);
+
 		await expect(api.get("/api/v1/me")).rejects.toThrow(
 			"Try again in 120 seconds",
 		);
@@ -134,6 +145,7 @@ describe("ApiClient", () => {
 				issues: [{ path: "durationSeconds", message: "Too long" }],
 			}),
 		]);
+
 		await expect(
 			api.post("/api/v1/orgs/acme/time-entries", {}),
 		).rejects.toThrow(

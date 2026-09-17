@@ -16,6 +16,7 @@
 /** What an upload is for. The key carries it, so a stored file says what it
  *  was uploaded as. */
 export const UPLOAD_PURPOSES = ["project-icon", "org-logo"] as const;
+
 export type UploadPurpose = (typeof UPLOAD_PURPOSES)[number];
 
 /** 1 MB. An icon is drawn at 72px at the most, and a logo in a sidebar. */
@@ -28,6 +29,7 @@ const IMAGE_TYPES = {
 	webp: "image/webp",
 	svg: "image/svg+xml",
 } as const;
+
 export type UploadExtension = keyof typeof IMAGE_TYPES;
 
 /** For a file input's `accept`. */
@@ -58,6 +60,7 @@ export const uploadKeyOf = (
 ): string | null => {
 	if (!value?.startsWith(UPLOAD_PATH_PREFIX)) return null;
 	const key = value.slice(UPLOAD_PATH_PREFIX.length);
+
 	return isUploadKey(key) ? key : null;
 };
 
@@ -76,6 +79,7 @@ export const contentTypeOf = (extension: UploadExtension): string =>
  *  the upload chose from the bytes — never from what the browser claimed. */
 export const uploadContentType = (key: string): string | null => {
 	const extension = KEY.exec(key)?.[2];
+
 	return (
 		new Map<string, string>(Object.entries(IMAGE_TYPES)).get(extension ?? "") ??
 		null
@@ -92,17 +96,23 @@ export const sniffImage = (bytes: Uint8Array): UploadExtension | null => {
 		signature.every((byte, i) => bytes[offset + i] === byte);
 
 	if (at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
+
 	if (at(0, [0xff, 0xd8, 0xff])) return "jpg";
+
 	if (at(0, [0x47, 0x49, 0x46, 0x38])) return "gif";
+
 	if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50])) {
 		return "webp";
 	}
+
 	// SVG is text and has no magic number: the root element within the first
 	// kilobyte, after whatever XML declaration, doctype or comment precedes it.
 	const head = new TextDecoder()
 		.decode(bytes.subarray(0, 1024))
 		.replace(/^﻿/, "")
 		.trimStart();
+
 	if (head.startsWith("<") && /<svg[\s>]/i.test(head)) return "svg";
+
 	return null;
 };

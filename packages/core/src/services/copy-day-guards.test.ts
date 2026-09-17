@@ -37,9 +37,13 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-copy-guards";
+
 const USER_ID = "user-copy-guards";
+
 const MON = "2026-08-10";
+
 const TUE = "2026-08-11";
+
 const HOUR = 3600;
 
 /** Fresh per call — `ctxAccess` memoizes the whole authorization picture on the
@@ -48,8 +52,11 @@ const HOUR = 3600;
 const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 
 let harness: TestDb;
+
 let projectId = "";
+
 let devTaskId = "";
+
 let meetingTaskId = "";
 
 const entriesOn = (date: string) =>
@@ -93,10 +100,12 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Farmer" })
 		.returning({ id: project.id });
+
 	projectId = p?.id ?? "";
 
 	const [dev] = await db
@@ -109,12 +118,14 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = dev?.id ?? "";
 
 	const seededMeeting = await db.query.task.findFirst({
 		where: and(eq(task.scope, "site"), eq(task.systemKey, "meeting")),
 		columns: { id: true },
 	});
+
 	if (!seededMeeting) throw new Error("migrations no longer seed Meeting");
 	meetingTaskId = seededMeeting.id;
 });
@@ -246,6 +257,7 @@ describe("copyDay write guards", () => {
 				fromDate: MON,
 				toDate: TUE,
 			});
+
 			expect(result).toEqual({ copied: 1, skipped: 0 });
 		} finally {
 			await db

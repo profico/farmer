@@ -17,6 +17,7 @@ export const setAssistantSettingsInput = z.object({
 		}),
 	defaultModel: z.string().trim().min(1).max(200),
 });
+
 export type SetAssistantSettingsInput = z.infer<
 	typeof setAssistantSettingsInput
 >;
@@ -45,6 +46,7 @@ export const updateAssistantSettingsInput = z.object({
 		.nullable()
 		.optional(),
 });
+
 export type UpdateAssistantSettingsInput = z.infer<
 	typeof updateAssistantSettingsInput
 >;
@@ -58,15 +60,18 @@ export const createConversationInput = z.object({
 	/** Optional: the composer creates the thread and sends in one gesture. */
 	title: z.string().trim().max(200).optional(),
 });
+
 export type CreateConversationInput = z.infer<typeof createConversationInput>;
 
 export const renameConversationInput = z.object({
 	conversationId: z.uuid(),
 	title: z.string().trim().min(1, "Give it a name").max(200),
 });
+
 export type RenameConversationInput = z.infer<typeof renameConversationInput>;
 
 export const conversationIdInput = z.object({ conversationId: z.uuid() });
+
 export type ConversationIdInput = z.infer<typeof conversationIdInput>;
 
 // One turn. Either a new user message, or the resolution of a write the
@@ -95,4 +100,5 @@ export const runAssistantInput = z
 		message: "Send either a message or an approval decision",
 		path: ["message"],
 	});
+
 export type RunAssistantInput = z.infer<typeof runAssistantInput>;

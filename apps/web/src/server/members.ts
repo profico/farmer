@@ -22,6 +22,7 @@ export const listPeople = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { membersService } = await import("@farmer/core/services");
+
 		return membersService.list(context.ctx);
 	});
 
@@ -33,6 +34,7 @@ export const listDirectory = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { membersService } = await import("@farmer/core/services");
+
 		return membersService.directory(context.ctx);
 	});
 
@@ -44,11 +46,13 @@ export const listMemberTypesForMonth = createServerFn({ method: "GET" })
 	.validator(monthPeriodInput)
 	.handler(async ({ data, context }) => {
 		const { membersService } = await import("@farmer/core/services");
+
 		const types = await membersService.typesForMonth(
 			context.ctx,
 			data.year,
 			data.month,
 		);
+
 		// A Map doesn't survive the server-fn JSON boundary.
 		return Object.fromEntries(types);
 	});
@@ -58,6 +62,7 @@ export const getMemberTypeHistory = createServerFn({ method: "GET" })
 	.validator(memberUserIdInput)
 	.handler(async ({ data: userId, context }) => {
 		const { membersService } = await import("@farmer/core/services");
+
 		return membersService.typeHistory(context.ctx, userId);
 	});
 
@@ -66,6 +71,7 @@ export const setMemberType = createServerFn({ method: "POST" })
 	.validator(setMemberTypeInput)
 	.handler(async ({ data, context }) => {
 		const { membersService } = await import("@farmer/core/services");
+
 		return membersService.setType(context.ctx, data);
 	});
 
@@ -74,6 +80,7 @@ export const setMemberStartDate = createServerFn({ method: "POST" })
 	.validator(setMemberStartDateInput)
 	.handler(async ({ data, context }) => {
 		const { membersService } = await import("@farmer/core/services");
+
 		return membersService.setStartDate(
 			context.ctx,
 			data.userId,
@@ -86,6 +93,7 @@ export const setMemberArchived = createServerFn({ method: "POST" })
 	.validator(setMemberArchivedInput)
 	.handler(async ({ data, context }) => {
 		const { membersService } = await import("@farmer/core/services");
+
 		return membersService.setArchived(context.ctx, data.userId, data.archived);
 	});
 
@@ -96,6 +104,7 @@ export const confirmMemberEmail = createServerFn({ method: "POST" })
 	.validator(memberUserIdInput)
 	.handler(async ({ data: userId, context }) => {
 		const { membersService } = await import("@farmer/core/services");
+
 		return membersService.confirmEmail(context.ctx, userId);
 	});
 
@@ -105,6 +114,7 @@ export const listMembers = createServerFn({ method: "GET" })
 		// Not `auth.api.listMembers`: it throws in an org over 100 people (see
 		// `membersService.roster`).
 		const { membersService } = await import("@farmer/core/services");
+
 		return membersService.roster(context.ctx);
 	});
 
@@ -115,6 +125,7 @@ export const listInvitations = createServerFn({ method: "GET" })
 			import("@farmer/core/auth"),
 			import("@farmer/core/services"),
 		]);
+
 		const [invitations, emails] = await Promise.all([
 			auth.api.listInvitations({
 				query: { organizationId: context.ctx.organizationId },
@@ -122,6 +133,7 @@ export const listInvitations = createServerFn({ method: "GET" })
 			}),
 			membersService.invitationEmails(context.ctx),
 		]);
+
 		// Null for an invitation made before delivery was tracked.
 		return invitations.map((i) => ({
 			...i,
@@ -134,6 +146,7 @@ export const inviteMember = createServerFn({ method: "POST" })
 	.validator(inviteMemberInput)
 	.handler(async ({ data, context }) => {
 		const { auth } = await import("@farmer/core/auth");
+
 		const invitation = await auth.api.createInvitation({
 			body: {
 				email: data.email,
@@ -142,8 +155,10 @@ export const inviteMember = createServerFn({ method: "POST" })
 			},
 			headers: getRequestHeaders(),
 		});
+
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
+
 		if (posthog) {
 			posthog.capture({
 				distinctId: context.ctx.userId,
@@ -156,6 +171,7 @@ export const inviteMember = createServerFn({ method: "POST" })
 			});
 			await posthog.flush();
 		}
+
 		return invitation;
 	});
 
@@ -164,6 +180,7 @@ export const cancelInvitation = createServerFn({ method: "POST" })
 	.validator(cancelInvitationInput)
 	.handler(async ({ data: invitationId }) => {
 		const { auth } = await import("@farmer/core/auth");
+
 		return auth.api.cancelInvitation({
 			body: { invitationId },
 			headers: getRequestHeaders(),
@@ -182,11 +199,14 @@ export const resendInvitation = createServerFn({ method: "POST" })
 			import("@farmer/core/auth"),
 			import("@farmer/core/services"),
 		]);
+
 		const pending = await membersService.pendingInvitation(
 			context.ctx,
 			invitationId,
 		);
+
 		if (!pending) throw new Error("This invitation is no longer pending.");
+
 		return auth.api.createInvitation({
 			body: {
 				email: pending.email,
@@ -206,6 +226,7 @@ export const removeMember = createServerFn({ method: "POST" })
 			import("@farmer/core/auth"),
 			import("@farmer/core/services"),
 		]);
+
 		// Resolved before the removal, since `team_lead_person` is keyed on user
 		// id and the membership row (the only thing that maps memberIdOrEmail to
 		// it) is gone once `removeMember` succeeds.
@@ -213,15 +234,18 @@ export const removeMember = createServerFn({ method: "POST" })
 			context.ctx,
 			memberIdOrEmail,
 		);
+
 		const result = await auth.api.removeMember({
 			body: { memberIdOrEmail, organizationId: context.ctx.organizationId },
 			headers: getRequestHeaders(),
 		});
+
 		// A stale list row is what let a re-invited lead silently regain their
 		// old people, or a returning person silently reappear on one.
 		if (userId) {
 			await teamLeadsService.removeFromAllLists(context.ctx, userId);
 		}
+
 		return result;
 	});
 
@@ -230,6 +254,7 @@ export const updateMemberRole = createServerFn({ method: "POST" })
 	.validator(updateMemberRoleInput)
 	.handler(async ({ data, context }) => {
 		const { auth } = await import("@farmer/core/auth");
+
 		return auth.api.updateMemberRole({
 			body: {
 				memberId: data.memberId,

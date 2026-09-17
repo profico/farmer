@@ -27,19 +27,29 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-description-rule";
+
 const USER_ID = "user-description-rule";
+
 const MON = "2026-08-10";
+
 const TUE = "2026-08-11";
+
 const WED = "2026-08-12";
+
 const THU = "2026-08-13";
 
 const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 
 let harness: TestDb;
+
 let projectId = "";
+
 let devTaskId = "";
+
 let meetingTaskId = "";
+
 let breakTaskId = "";
+
 let paidLeaveTaskId = "";
 
 const siteTask = async (systemKey: "meeting" | "break" | "paid_leave") => {
@@ -47,6 +57,7 @@ const siteTask = async (systemKey: "meeting" | "break" | "paid_leave") => {
 		where: and(eq(task.scope, "site"), eq(task.systemKey, systemKey)),
 		columns: { id: true },
 	});
+
 	return present(row, `site task ${systemKey}`).id;
 };
 
@@ -80,10 +91,12 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Farmer" })
 		.returning({ id: project.id });
+
 	projectId = p?.id ?? "";
 	await db.insert(projectMember).values({
 		organizationId: ORG_ID,
@@ -103,6 +116,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = dev?.id ?? "";
 	meetingTaskId = await siteTask("meeting");
 	breakTaskId = await siteTask("break");
@@ -151,6 +165,7 @@ describe("the description rule follows the task", () => {
 			projectId,
 			taskId: breakTaskId,
 		});
+
 		expect(row.description).toBe("");
 	});
 
@@ -170,6 +185,7 @@ describe("the description rule follows the task", () => {
 			date: TUE,
 			taskId: paidLeaveTaskId,
 		});
+
 		expect(row.description).toBe("");
 	});
 
@@ -181,6 +197,7 @@ describe("the description rule follows the task", () => {
 			taskId: devTaskId,
 			description: "Wrote the thing",
 		});
+
 		await expect(
 			timeEntriesService.update(ctx(), {
 				...baseEntry,
@@ -200,9 +217,11 @@ describe("the description rule follows the task", () => {
 			taskId: devTaskId,
 			durationSeconds: 1800,
 		});
+
 		const row = await db.query.timeEntry.findFirst({
 			where: eq(timeEntry.id, present(entryId, "grid entry")),
 		});
+
 		expect(row?.description).toBe("");
 	});
 });
@@ -226,6 +245,7 @@ describe("a recurring block follows the same rule", () => {
 			daysOfWeek: [1, 2, 3, 4, 5],
 			duration: "30m",
 		});
+
 		expect(rule.description).toBe("");
 		await expect(
 			recurringBlockRulesService.update(ctx(), {
@@ -246,6 +266,7 @@ describe("a recurring block follows the same rule", () => {
 			daysOfWeek: [1, 2, 3, 4, 5],
 			duration: "30m",
 		});
+
 		const updated = await recurringBlockRulesService.update(ctx(), {
 			ruleId: rule.id,
 			taskId: breakTaskId,
@@ -253,6 +274,7 @@ describe("a recurring block follows the same rule", () => {
 			description: "",
 			duration: "45m",
 		});
+
 		expect(updated?.durationSeconds).toBe(45 * 60);
 		expect(updated?.description).toBe("");
 	});

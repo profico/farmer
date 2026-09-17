@@ -21,6 +21,7 @@ export type Table = {
 };
 
 const GAP = "  ";
+
 /** A shrinking column keeps at least this much, or it stops saying anything. */
 const MIN_SHRINK_WIDTH = 12;
 
@@ -29,15 +30,18 @@ const width = (text: string) => Bun.stringWidth(text);
 const truncate = (text: string, max: number): string => {
 	if (width(text) <= max) return text;
 	let out = "";
+
 	for (const char of text) {
 		if (width(`${out}${char}…`) > max) break;
 		out += char;
 	}
+
 	return `${out}…`;
 };
 
 const pad = (text: string, size: number, align: Align) => {
 	const fill = " ".repeat(Math.max(0, size - width(text)));
+
 	return align === "right" ? `${fill}${text}` : `${text}${fill}`;
 };
 
@@ -55,6 +59,7 @@ export const formatTable = (
 		...table.rows,
 		...(table.total ? [table.total] : []),
 	];
+
 	const sizes = table.columns.map((_, index) =>
 		Math.max(...all.map((row) => width(row[index] ?? ""))),
 	);
@@ -63,9 +68,11 @@ export const formatTable = (
 		const used =
 			sizes.reduce((sum, size) => sum + size, 0) +
 			GAP.length * (sizes.length - 1);
+
 		const overflow = used - maxWidth;
 		const shrinkIndex = table.columns.findIndex((column) => column.shrink);
 		const current = sizes[shrinkIndex];
+
 		if (overflow > 0 && current !== undefined) {
 			sizes[shrinkIndex] = Math.max(MIN_SHRINK_WIDTH, current - overflow);
 		}
@@ -75,6 +82,7 @@ export const formatTable = (
 		table.columns
 			.map((column, index) => {
 				const size = sizes[index] ?? 0;
+
 				return pad(
 					truncate(row[index] ?? "", size),
 					size,
@@ -85,11 +93,14 @@ export const formatTable = (
 			.trimEnd();
 
 	const lines = [line(all[0] ?? []), ...table.rows.map(line)];
+
 	if (table.total) {
 		const ruleWidth =
 			sizes.reduce((sum, size) => sum + size, 0) +
 			GAP.length * (sizes.length - 1);
+
 		lines.push("-".repeat(ruleWidth), line(table.total));
 	}
+
 	return lines;
 };

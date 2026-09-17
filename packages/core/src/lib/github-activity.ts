@@ -63,6 +63,7 @@ const within = (
 ): Date | null => {
 	if (!iso) return null;
 	const at = new Date(iso);
+
 	return at >= window.start && at < window.end ? at : null;
 };
 
@@ -76,10 +77,12 @@ export const pullRequestActivity = (
 		title: pr.title,
 		pullRequestUrl: pr.url,
 	};
+
 	const events: PullRequestActivity[] = [];
 	const authored = sameLogin(pr.author?.login, login);
 
 	const openedAt = authored ? within(pr.createdAt, window) : null;
+
 	if (openedAt) {
 		events.push({
 			...base,
@@ -92,6 +95,7 @@ export const pullRequestActivity = (
 	}
 
 	const mergedAt = authored && pr.merged ? within(pr.mergedAt, window) : null;
+
 	if (mergedAt) {
 		events.push({
 			...base,
@@ -107,6 +111,7 @@ export const pullRequestActivity = (
 		authored && !pr.merged && pr.state === "CLOSED"
 			? within(pr.closedAt, window)
 			: null;
+
 	if (closedAt) {
 		events.push({
 			...base,
@@ -123,6 +128,7 @@ export const pullRequestActivity = (
 			if (!review || !sameLogin(review.author?.login, login)) continue;
 			const reviewState = REVIEW_STATES[review.state];
 			const submittedAt = within(review.submittedAt, window);
+
 			if (!reviewState || !submittedAt) continue;
 			events.push({
 				...base,

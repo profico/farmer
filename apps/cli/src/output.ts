@@ -27,6 +27,7 @@ const noColorRequested = (env: NodeJS.ProcessEnv) =>
 
 export const createOutput = (json: boolean, env: NodeJS.ProcessEnv): Output => {
 	const stdoutTty = process.stdout.isTTY === true;
+
 	return {
 		json,
 		color: stdoutTty && !noColorRequested(env) && !json,
@@ -40,9 +41,13 @@ const ansi = (open: number, close: number) => (out: Output, text: string) =>
 	out.color ? `${ESC}[${open}m${text}${ESC}[${close}m` : text;
 
 export const bold = ansi(1, 22);
+
 export const dim = ansi(2, 22);
+
 export const green = ansi(32, 39);
+
 export const yellow = ansi(33, 39);
+
 export const red = ansi(31, 39);
 
 export const print = (text: string) => {
@@ -63,6 +68,7 @@ export const say = (out: Output, text: string) => {
 const toStderr = (label: string, code: number, text: string) => {
 	const colored =
 		process.stderr.isTTY === true && !noColorRequested(process.env);
+
 	const prefix = colored ? `${ESC}[${code}m${label}${ESC}[39m` : label;
 	process.stderr.write(`${prefix} ${text}\n`);
 };

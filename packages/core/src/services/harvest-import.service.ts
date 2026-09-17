@@ -70,9 +70,11 @@ const BATCH = 500;
 
 const inBatches = <T>(items: readonly T[], size = BATCH): T[][] => {
 	const out: T[][] = [];
+
 	for (let i = 0; i < items.length; i += size) {
 		out.push(items.slice(i, i + size));
 	}
+
 	return out;
 };
 
@@ -88,10 +90,12 @@ const assertUniqueKeys = (
 	items: readonly { sourceKey: string }[],
 ) => {
 	const seen = new Set<string>();
+
 	for (const item of items) {
 		if (seen.has(item.sourceKey)) {
 			throw new Error(`The plan names the ${kind} "${item.sourceKey}" twice`);
 		}
+
 		seen.add(item.sourceKey);
 	}
 };
@@ -106,8 +110,10 @@ const mappingsFor = async (
 ): Promise<Map<string, string>> => {
 	const out = new Map<string, string>();
 	const batches = keys ? inBatches(keys) : [undefined];
+
 	for (const batch of batches) {
 		if (batch && batch.length === 0) continue;
+
 		const rows = await client_
 			.select({
 				sourceKey: importMapping.sourceKey,
@@ -121,8 +127,10 @@ const mappingsFor = async (
 					batch ? inArray(importMapping.sourceKey, batch) : undefined,
 				),
 			);
+
 		for (const r of rows) out.set(r.sourceKey, r.localId);
 	}
+
 	return out;
 };
 
@@ -136,6 +144,7 @@ const resolveAll = async (
 ): Promise<Map<string, string>> => {
 	const wanted = [...new Set(keys)];
 	const found = await mappingsFor(tx, ctx, kind, wanted);
+
 	for (const key of wanted) {
 		if (!found.has(key)) {
 			throw new Error(
@@ -143,6 +152,7 @@ const resolveAll = async (
 			);
 		}
 	}
+
 	return found;
 };
 
@@ -153,15 +163,19 @@ const loadRun = async (ctx: Ctx, runId: string) => {
 			eq(importRun.organizationId, ctx.organizationId),
 		),
 	});
+
 	if (!run) throw new Error("Import run not found");
+
 	return run;
 };
 
 const loadStartedRun = async (ctx: Ctx, runId: string) => {
 	const run = await loadRun(ctx, runId);
+
 	if (run.status !== "started") {
 		throw new Error(`This import is ${run.status} and takes no more data`);
 	}
+
 	return run;
 };
 
@@ -173,6 +187,7 @@ const takenEmailsFor = async (
 ): Promise<string[]> => {
 	const wanted = [...new Set(emails.map(normEmail))];
 	const out: string[] = [];
+
 	for (const batch of inBatches(wanted)) {
 		const rows = await db
 			.select({ email: sql<string>`lower(${user.email})` })
@@ -183,8 +198,10 @@ const takenEmailsFor = async (
 					sql`not exists (select 1 from ${member} where ${member.userId} = ${user.id} and ${member.organizationId} = ${ctx.organizationId})`,
 				),
 			);
+
 		for (const r of rows) out.push(r.email);
 	}
+
 	return out;
 };
 
@@ -197,13 +214,16 @@ const usersWithAccount = async (
 	ids: readonly string[],
 ): Promise<Set<string>> => {
 	const out = new Set<string>();
+
 	for (const batch of inBatches([...new Set(ids)])) {
 		const rows = await client_
 			.selectDistinct({ userId: account.userId })
 			.from(account)
 			.where(inArray(account.userId, batch));
+
 		for (const r of rows) out.add(r.userId);
 	}
+
 	return out;
 };
 
@@ -220,12 +240,14 @@ const importedRowsFor = async (
 	days: readonly { userId: string; date: string }[],
 ): Promise<Map<string, ExistingDay>> => {
 	const out = new Map<string, ExistingDay>();
+
 	if (days.length === 0) return out;
 	const wanted = new Set(days.map((d) => `${d.userId}|${d.date}`));
 	const userIds = [...new Set(days.map((d) => d.userId))];
 	const dates = days.map((d) => d.date).sort();
 	const from = dates[0];
 	const to = dates[dates.length - 1];
+
 	if (from === undefined || to === undefined) return out;
 
 	for (const batch of inBatches(userIds)) {
@@ -247,19 +269,25 @@ const importedRowsFor = async (
 					lte(timeEntry.date, to),
 				),
 			);
+
 		for (const r of rows) {
 			const dayKey = `${r.userId}|${r.date}`;
+
 			if (!wanted.has(dayKey) || r.importKey == null) continue;
 			let day = out.get(dayKey);
+
 			if (!day) {
 				day = { ids: [], keys: new Set(), edited: false };
 				out.set(dayKey, day);
 			}
+
 			day.ids.push(r.id);
 			day.keys.add(r.importKey);
+
 			if (r.edited) day.edited = true;
 		}
 	}
+
 	return out;
 };
 
@@ -281,8 +309,10 @@ const createdCounts = async (runId: string): Promise<StartCounts> => {
 		.from(importMapping)
 		.where(and(eq(importMapping.runId, runId), eq(importMapping.created, true)))
 		.groupBy(importMapping.kind);
+
 	const of = (kind: HarvestMappingKind) =>
 		rows.find((r) => r.kind === kind)?.count ?? 0;
+
 	return {
 		clients: of("client"),
 		tasks: of("task"),
@@ -362,6 +392,7 @@ export const harvestImportService = {
 				),
 			)
 			.where(eq(member.organizationId, org));
+
 		const signedIn = await usersWithAccount(
 			db,
 			members.map((m) => m.userId),
@@ -425,12 +456,15 @@ export const harvestImportService = {
 			.groupBy(timeEntry.userId, timeEntry.date);
 
 		const byUser = new Map<string, [string, string, 0 | 1][]>();
+
 		for (const d of digests) {
 			let days = byUser.get(d.userId);
+
 			if (!days) {
 				days = [];
 				byUser.set(d.userId, days);
 			}
+
 			days.push([d.date, d.digest, d.edited ? 1 : 0]);
 		}
 
@@ -480,11 +514,13 @@ export const harvestImportService = {
 	 *  admin typed after the snapshot was taken. */
 	takenEmails: async (ctx: Ctx, input: HarvestEmailsInput) => {
 		await requireAdmin(ctx);
+
 		return takenEmailsFor(ctx, input.emails);
 	},
 
 	listRuns: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
+
 		return db
 			.select({
 				id: importRun.id,
@@ -533,12 +569,14 @@ export const harvestImportService = {
 			),
 			columns: { id: true, status: true },
 		});
+
 		if (earlier) {
 			if (earlier.status !== "started") {
 				throw new Error(
 					`This import is ${earlier.status}. Reload the files to import again.`,
 				);
 			}
+
 			return { runId: earlier.id, created: await createdCounts(earlier.id) };
 		}
 
@@ -547,12 +585,15 @@ export const harvestImportService = {
 		assertUniqueKeys("project", input.projects);
 		assertUniqueKeys("person", input.people);
 		const createdEmails = new Set<string>();
+
 		for (const p of input.people) {
 			if (p.action !== "create") continue;
 			const email = normEmail(p.email);
+
 			if (createdEmails.has(email)) {
 				throw new Error(`Two people in the plan use ${email}`);
 			}
+
 			createdEmails.add(email);
 		}
 
@@ -575,9 +616,11 @@ export const harvestImportService = {
 				})
 				.onConflictDoNothing()
 				.returning({ id: importRun.id });
+
 			if (!run) {
 				throw new Error("This import has started already. Retry to continue.");
 			}
+
 			const runId = run.id;
 
 			const counts: StartCounts = {
@@ -626,10 +669,13 @@ export const harvestImportService = {
 			// ── Clients ──────────────────────────────────────────────────────
 			const knownClients = await mappingsFor(tx, ctx, "client");
 			const clientIds = new Map(knownClients);
+
 			const matchClientIds = input.clients.flatMap((c) =>
 				c.action === "match" ? [c.localId] : [],
 			);
+
 			const orgClientIds = new Set<string>();
+
 			for (const batch of inBatches(matchClientIds)) {
 				const rows = await tx
 					.select({ id: client.id })
@@ -637,15 +683,20 @@ export const harvestImportService = {
 					.where(
 						and(eq(client.organizationId, org), inArray(client.id, batch)),
 					);
+
 				for (const r of rows) orgClientIds.add(r.id);
 			}
+
 			let internalId: string | null = null;
+
 			for (const c of input.clients) {
 				assertNotMapped("client", knownClients, c);
+
 				if (c.action === "match") {
 					if (!orgClientIds.has(c.localId)) {
 						throw new Error(`Client "${c.sourceKey}" matches no client here`);
 					}
+
 					clientIds.set(c.sourceKey, c.localId);
 					await remember("client", c.sourceKey, c.localId, false);
 				} else if (c.action === "internal") {
@@ -665,6 +716,7 @@ export const harvestImportService = {
 							archivedAt: c.archived ? new Date() : null,
 						})
 						.returning({ id: client.id });
+
 					if (!row) throw new Error(`Failed to create client "${c.name}"`);
 					clientIds.set(c.sourceKey, row.id);
 					await remember("client", c.sourceKey, row.id, true);
@@ -676,9 +728,11 @@ export const harvestImportService = {
 			const knownTasks = await mappingsFor(tx, ctx, "task");
 			const taskIds = new Map(knownTasks);
 			const usableTasks = new Map<string, { isAbsence: boolean }>();
+
 			const matchTaskIds = input.tasks.flatMap((t) =>
 				t.action === "match" ? [t.localId] : [],
 			);
+
 			for (const batch of inBatches(matchTaskIds)) {
 				const rows = await tx
 					.select({ id: task.id, isAbsence: task.isAbsence })
@@ -689,11 +743,14 @@ export const harvestImportService = {
 							or(eq(task.organizationId, org), eq(task.scope, "site")),
 						),
 					);
+
 				for (const r of rows) usableTasks.set(r.id, { isAbsence: r.isAbsence });
 			}
+
 			const createNames = input.tasks.flatMap((t) =>
 				t.action === "create" && !t.archived ? [t.name] : [],
 			);
+
 			for (const batch of inBatches(createNames)) {
 				const clash = await tx
 					.select({ name: task.name })
@@ -707,18 +764,22 @@ export const harvestImportService = {
 						),
 					)
 					.limit(1);
+
 				if (clash[0]) {
 					throw new Error(
 						`A task named "${clash[0].name}" exists already. Match it instead.`,
 					);
 				}
 			}
+
 			for (const t of input.tasks) {
 				assertNotMapped("task", knownTasks, t);
+
 				if (t.action === "match") {
 					if (!usableTasks.has(t.localId)) {
 						throw new Error(`Task "${t.sourceKey}" matches no task here`);
 					}
+
 					taskIds.set(t.sourceKey, t.localId);
 					await remember("task", t.sourceKey, t.localId, false);
 				} else {
@@ -732,6 +793,7 @@ export const harvestImportService = {
 							archivedAt: t.archived ? new Date() : null,
 						})
 						.returning({ id: task.id });
+
 					if (!row) throw new Error(`Failed to create task "${t.name}"`);
 					taskIds.set(t.sourceKey, row.id);
 					usableTasks.set(row.id, { isAbsence: false });
@@ -743,10 +805,13 @@ export const harvestImportService = {
 			// ── People ───────────────────────────────────────────────────────
 			const knownPeople = await mappingsFor(tx, ctx, "person");
 			const personIds = new Map(knownPeople);
+
 			const matchUserIds = input.people.flatMap((p) =>
 				p.action === "match" ? [p.localId] : [],
 			);
+
 			const memberIds = new Set<string>();
+
 			for (const batch of inBatches(matchUserIds)) {
 				const rows = await tx
 					.select({ userId: member.userId })
@@ -754,16 +819,20 @@ export const harvestImportService = {
 					.where(
 						and(eq(member.organizationId, org), inArray(member.userId, batch)),
 					);
+
 				for (const r of rows) memberIds.add(r.userId);
 			}
+
 			for (const p of input.people) {
 				// After every person it can point at: see the loop below.
 				if (p.action === "alias") continue;
 				assertNotMapped("person", knownPeople, p);
+
 				if (p.action === "match") {
 					if (!memberIds.has(p.localId)) {
 						throw new Error(`Person "${p.sourceKey}" matches no member here`);
 					}
+
 					if (p.startDate) {
 						await tx
 							.insert(memberProfile)
@@ -779,19 +848,23 @@ export const harvestImportService = {
 								},
 							});
 					}
+
 					personIds.set(p.sourceKey, p.localId);
 					await remember("person", p.sourceKey, p.localId, false);
 					continue;
 				}
 
 				const email = normEmail(p.email);
+
 				const existing = await tx
 					.select({ id: user.id })
 					.from(user)
 					.where(sql`lower(${user.email}) = ${email}`)
 					.limit(1);
+
 				let userId: string;
 				const found = existing[0];
+
 				if (found) {
 					const membership = await tx
 						.select({ id: member.id })
@@ -800,11 +873,13 @@ export const harvestImportService = {
 							and(eq(member.organizationId, org), eq(member.userId, found.id)),
 						)
 						.limit(1);
+
 					if (membership[0]) {
 						throw new Error(
 							`${email} is a member already. Match the person instead.`,
 						);
 					}
+
 					// A guessed address that happens to be somebody's real one must
 					// not hand that person an old account (plan section 3.3).
 					// The same holds for an address the admin typed: it was checked
@@ -815,6 +890,7 @@ export const harvestImportService = {
 							`The ${p.emailConfirmed ? "typed" : "guessed"} address ${email} belongs to another user. Change it.`,
 						);
 					}
+
 					// A listed address of a user with no membership here: attach
 					// that user rather than make a second one. Undo tells the two
 					// apart by the user row's age.
@@ -849,6 +925,7 @@ export const harvestImportService = {
 						target: [memberProfile.organizationId, memberProfile.userId],
 						set: { startDate: p.startDate, archivedAt, updatedAt: new Date() },
 					});
+
 				const hasType = await tx
 					.select({ id: memberTypeHistory.id })
 					.from(memberTypeHistory)
@@ -859,6 +936,7 @@ export const harvestImportService = {
 						),
 					)
 					.limit(1);
+
 				if (!hasType[0]) {
 					await tx.insert(memberTypeHistory).values({
 						organizationId: org,
@@ -867,26 +945,32 @@ export const harvestImportService = {
 						effectiveFrom: p.startDate,
 					});
 				}
+
 				personIds.set(p.sourceKey, userId);
 				await remember("person", p.sourceKey, userId, true);
 				counts.people++;
 			}
+
 			// A second spelling of a person: map it to that person's user. Not
 			// `created`, so undo removes only the mapping, with the run.
 			for (const p of input.people) {
 				if (p.action !== "alias") continue;
 				const localId = personIds.get(p.of);
+
 				if (!localId) {
 					throw new Error(
 						`Person "${p.sourceKey}" is the same as "${p.of}", which the plan does not have`,
 					);
 				}
+
 				const known = knownPeople.get(p.sourceKey);
+
 				if (known !== undefined && known !== localId) {
 					throw new Error(
 						`"${p.sourceKey}" and "${p.of}" were imported before as different people`,
 					);
 				}
+
 				personIds.set(p.sourceKey, localId);
 				await remember("person", p.sourceKey, localId, false);
 			}
@@ -894,10 +978,13 @@ export const harvestImportService = {
 			// ── Projects ─────────────────────────────────────────────────────
 			const knownProjects = await mappingsFor(tx, ctx, "project");
 			const projectIds = new Map(knownProjects);
+
 			const matchProjectIds = input.projects.flatMap((p) =>
 				p.action === "match" ? [p.localId] : [],
 			);
+
 			const orgProjectIds = new Set<string>();
+
 			for (const batch of inBatches(matchProjectIds)) {
 				const rows = await tx
 					.select({ id: project.id })
@@ -905,14 +992,18 @@ export const harvestImportService = {
 					.where(
 						and(eq(project.organizationId, org), inArray(project.id, batch)),
 					);
+
 				for (const r of rows) orgProjectIds.add(r.id);
 			}
+
 			for (const p of input.projects) {
 				assertNotMapped("project", knownProjects, p);
+
 				if (p.action === "match") {
 					if (!orgProjectIds.has(p.localId)) {
 						throw new Error(`Project "${p.sourceKey}" matches no project here`);
 					}
+
 					// The import is the source of truth for the active set (the
 					// projects worked on in the month before the cutoff), so a match
 					// sets the status the way a create does.
@@ -927,12 +1018,15 @@ export const harvestImportService = {
 					await remember("project", p.sourceKey, p.localId, false);
 					continue;
 				}
+
 				const clientId = clientIds.get(p.clientSourceKey);
+
 				if (!clientId) {
 					throw new Error(
 						`Project "${p.name}" names the client "${p.clientSourceKey}", which the plan does not have`,
 					);
 				}
+
 				const [row] = await tx
 					.insert(project)
 					.values({
@@ -947,6 +1041,7 @@ export const harvestImportService = {
 						budgetSeconds: p.type === "fixed_scope" ? p.budgetSeconds : null,
 					})
 					.returning({ id: project.id });
+
 				if (!row) throw new Error(`Failed to create project "${p.name}"`);
 				projectIds.set(p.sourceKey, row.id);
 				await remember("project", p.sourceKey, row.id, true);
@@ -960,15 +1055,19 @@ export const harvestImportService = {
 				key: string,
 			) => {
 				const id = map.get(key);
+
 				if (!id) throw new Error(`The plan names an unknown ${kind} "${key}"`);
+
 				return id;
 			};
+
 			const memberRows = input.projectMembers.map((pm) => ({
 				organizationId: org,
 				projectId: lookup(projectIds, "project", pm.projectSourceKey),
 				userId: lookup(personIds, "person", pm.personSourceKey),
 				active: pm.active,
 			}));
+
 			for (const batch of inBatches(memberRows)) {
 				await tx.insert(projectMember).values(batch).onConflictDoNothing();
 			}
@@ -1003,6 +1102,7 @@ export const harvestImportService = {
 				"person",
 				input.days.map((d) => d.personSourceKey),
 			);
+
 			const projects = await resolveAll(
 				tx,
 				ctx,
@@ -1013,18 +1113,22 @@ export const harvestImportService = {
 					),
 				),
 			);
+
 			const tasks = await resolveAll(
 				tx,
 				ctx,
 				"task",
 				input.days.flatMap((d) => d.rows.map((r) => r.taskSourceKey)),
 			);
+
 			const absenceTasks = new Set<string>();
+
 			for (const batch of inBatches([...new Set(tasks.values())])) {
 				const rows = await tx
 					.select({ id: task.id })
 					.from(task)
 					.where(and(inArray(task.id, batch), eq(task.isAbsence, true)));
+
 				for (const r of rows) absenceTasks.add(r.id);
 			}
 
@@ -1036,12 +1140,16 @@ export const harvestImportService = {
 				personSourceKey: string;
 				rows: (typeof timeEntry.$inferInsert)[];
 			};
+
 			const incoming = new Map<string, Incoming>();
+
 			for (const day of input.days) {
 				const userId = people.get(day.personSourceKey);
+
 				if (!userId) throw new Error("Unresolved person");
 				const dayKey = `${userId}|${day.date}`;
 				let group = incoming.get(dayKey);
+
 				if (!group) {
 					group = {
 						userId,
@@ -1051,14 +1159,19 @@ export const harvestImportService = {
 					};
 					incoming.set(dayKey, group);
 				}
+
 				for (const r of day.rows) {
 					const taskId = tasks.get(r.taskSourceKey);
+
 					if (!taskId) throw new Error("Unresolved task");
+
 					const projectId =
 						r.projectSourceKey == null
 							? null
 							: (projects.get(r.projectSourceKey) ?? null);
+
 					const absence = absenceTasks.has(taskId);
+
 					// The same rule as `assertAbsenceHasNoProject` (guards.ts): an
 					// absence entry has no project, and worked time here always has
 					// one, because the import never writes unfiled time.
@@ -1069,6 +1182,7 @@ export const harvestImportService = {
 								: `Work on ${day.date} names no project`,
 						);
 					}
+
 					group.rows.push({
 						organizationId: org,
 						userId,
@@ -1094,15 +1208,20 @@ export const harvestImportService = {
 				unchangedDays: 0,
 				keptDays: [],
 			};
+
 			const toDelete: string[] = [];
 			const toInsert: (typeof timeEntry.$inferInsert)[] = [];
+
 			for (const [dayKey, group] of incoming) {
 				const before = existing.get(dayKey);
+
 				if (!before) {
 					toInsert.push(...group.rows);
 					continue;
 				}
+
 				const keys = new Set(group.rows.flatMap((r) => r.importKey ?? []));
+
 				if (sameKeys(before.keys, keys)) {
 					result.unchangedDays++;
 				} else if (before.edited) {
@@ -1118,12 +1237,14 @@ export const harvestImportService = {
 
 			await deleteEntries(tx, toDelete);
 			result.deleted = toDelete.length;
+
 			for (const batch of inBatches(toInsert)) {
 				const rows = await tx
 					.insert(timeEntry)
 					.values(batch)
 					.onConflictDoNothing()
 					.returning({ id: timeEntry.id });
+
 				result.inserted += rows.length;
 			}
 
@@ -1135,6 +1256,7 @@ export const harvestImportService = {
 					updatedAt: new Date(),
 				})
 				.where(eq(importRun.id, input.runId));
+
 			return result;
 		});
 	},
@@ -1155,23 +1277,29 @@ export const harvestImportService = {
 				"person",
 				input.days.map((d) => d.personSourceKey),
 			);
+
 			const days = input.days.map((d) => ({
 				userId: people.get(d.personSourceKey) ?? "",
 				date: d.date,
 				personSourceKey: d.personSourceKey,
 			}));
+
 			const existing = await importedRowsFor(tx, ctx, days);
 			const toDelete: string[] = [];
 			const keptDays: { personSourceKey: string; date: string }[] = [];
+
 			for (const d of days) {
 				const before = existing.get(`${d.userId}|${d.date}`);
+
 				if (!before) continue;
+
 				if (before.edited) {
 					keptDays.push({ personSourceKey: d.personSourceKey, date: d.date });
 				} else {
 					toDelete.push(...before.ids);
 				}
 			}
+
 			await deleteEntries(tx, toDelete);
 			await tx
 				.update(importRun)
@@ -1180,6 +1308,7 @@ export const harvestImportService = {
 					updatedAt: new Date(),
 				})
 				.where(eq(importRun.id, input.runId));
+
 			return { deleted: toDelete.length, keptDays };
 		});
 	},
@@ -1204,11 +1333,13 @@ export const harvestImportService = {
 
 		const lockThrough = addDaysToKey(run.cutoffDate, -1);
 		const settings = await orgSettingsService.get(ctx);
+
 		const locked =
 			settings.automationLockedThrough != null &&
 			settings.automationLockedThrough >= lockThrough
 				? settings.automationLockedThrough
 				: lockThrough;
+
 		if (locked !== settings.automationLockedThrough) {
 			await orgSettingsService.update(ctx, { automationLockedThrough: locked });
 		}
@@ -1224,6 +1355,7 @@ export const harvestImportService = {
 			.where(
 				and(eq(timeEntry.organizationId, org), isNotNull(timeEntry.importKey)),
 			);
+
 		for (const y of years) {
 			await hourFundService.prefillYear(ctx, Number(y.year));
 		}
@@ -1258,8 +1390,10 @@ export const harvestImportService = {
 					),
 				)
 				.groupBy(importMapping.kind);
+
 			const countOf = (kind: string) =>
 				created.find((row) => row.kind === kind)?.count ?? 0;
+
 			const [entries] = await db
 				.select({ count: sql<number>`count(*)::int` })
 				.from(timeEntry)
@@ -1269,6 +1403,7 @@ export const harvestImportService = {
 						eq(timeEntry.importRunId, input.runId),
 					),
 				);
+
 			return {
 				import: {
 					id: input.runId,
@@ -1279,6 +1414,7 @@ export const harvestImportService = {
 				},
 			};
 		});
+
 		return result;
 	},
 
@@ -1296,7 +1432,9 @@ export const harvestImportService = {
 		await requireAdmin(ctx);
 		const org = ctx.organizationId;
 		const run = await loadRun(ctx, input.runId);
+
 		if (run.status === "undone") throw new Error("This import is undone");
+
 		const latest = await db
 			.select({ id: importRun.id })
 			.from(importRun)
@@ -1305,6 +1443,7 @@ export const harvestImportService = {
 			)
 			.orderBy(desc(importRun.createdAt))
 			.limit(1);
+
 		if (latest[0]?.id !== run.id) {
 			throw new Error("Only the latest import can be undone");
 		}
@@ -1320,8 +1459,10 @@ export const harvestImportService = {
 				.where(
 					and(eq(importMapping.runId, run.id), eq(importMapping.created, true)),
 				);
+
 			const of = (kind: HarvestMappingKind) =>
 				created.filter((m) => m.kind === kind).map((m) => m.localId);
+
 			const userIds = of("person");
 			const projectIds = of("project");
 			const taskIds = of("task");
@@ -1334,6 +1475,7 @@ export const harvestImportService = {
 			// stored `now()` into it.
 			const madeUsers = new Set<string>();
 			const signedIn = await usersWithAccount(tx, userIds);
+
 			for (const batch of inBatches(userIds)) {
 				const rows = await tx
 					.select({ id: user.id, name: user.name })
@@ -1344,12 +1486,14 @@ export const harvestImportService = {
 							sql`${user.createdAt} >= (select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${run.id})`,
 						),
 					);
+
 				for (const r of rows) {
 					if (signedIn.has(r.id)) {
 						throw new Error(
 							`${r.name} has signed in since the import. Archive them instead.`,
 						);
 					}
+
 					madeUsers.add(r.id);
 				}
 			}
@@ -1359,6 +1503,7 @@ export const harvestImportService = {
 				taskIds.length > 0 ? inArray(timeEntry.taskId, taskIds) : null,
 				userIds.length > 0 ? inArray(timeEntry.userId, userIds) : null,
 			].filter((c) => c != null);
+
 			if (refs.length > 0) {
 				const used = await tx
 					.select({ date: timeEntry.date })
@@ -1374,30 +1519,37 @@ export const harvestImportService = {
 						),
 					)
 					.limit(1);
+
 				if (used[0]) {
 					throw new Error(
 						`An entry made here on ${used[0].date} uses a row this import created`,
 					);
 				}
 			}
+
 			const deleted = await tx
 				.delete(timeEntry)
 				.where(eq(timeEntry.importRunId, run.id))
 				.returning({ id: timeEntry.id });
+
 			for (const batch of inBatches(projectIds)) {
 				await tx.delete(project).where(inArray(project.id, batch));
 			}
+
 			for (const batch of inBatches(clientIds)) {
 				await tx.delete(client).where(inArray(client.id, batch));
 			}
+
 			for (const batch of inBatches(taskIds)) {
 				await tx.delete(task).where(inArray(task.id, batch));
 			}
+
 			for (const userId of userIds) {
 				if (madeUsers.has(userId)) {
 					await tx.delete(user).where(eq(user.id, userId));
 					continue;
 				}
+
 				// An attached user keeps their account; only this org's rows go.
 				await tx
 					.delete(projectMember)
@@ -1429,6 +1581,7 @@ export const harvestImportService = {
 						and(eq(member.organizationId, org), eq(member.userId, userId)),
 					);
 			}
+
 			await tx.delete(importMapping).where(eq(importMapping.runId, run.id));
 			await tx
 				.update(importRun)

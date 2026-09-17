@@ -26,8 +26,10 @@ export type LastPick = z.infer<typeof lastPick>;
 function read<T>(key: string, schema: z.ZodType<T>): T | null {
 	try {
 		const raw = window.localStorage.getItem(key);
+
 		if (raw === null) return null;
 		const parsed = schema.safeParse(JSON.parse(raw));
+
 		return parsed.success ? parsed.data : null;
 	} catch {
 		// Disabled storage or a value that is not JSON: nothing remembered.

@@ -53,6 +53,7 @@ export function useHarvestWorker() {
 					new URL("./harvest.worker.ts", import.meta.url),
 					{ type: "module" },
 				);
+
 				const pending = new Map<number, Pending>();
 				worker.addEventListener(
 					"message",
@@ -70,13 +71,16 @@ export function useHarvestWorker() {
 							new Error(event.message || "The import worker stopped."),
 						);
 					}
+
 					pending.clear();
 				});
 				state.current = { worker, pending, next: 0 };
 			}
+
 			const current = state.current;
 			current.next += 1;
 			const id = current.next;
+
 			return new Promise((resolve, reject) => {
 				current.pending.set(id, { resolve, reject });
 				current.worker.postMessage({ ...body, id });
@@ -89,16 +93,19 @@ export function useHarvestWorker() {
 		function expect<T extends HarvestWorkerResponse["type"]>(type: T) {
 			return (res: HarvestWorkerResponse): Answer<T> => {
 				if (res.type === "error") throw new Error(res.message);
+
 				if (res.type !== type) {
 					throw new Error(
 						`The import worker answered ${res.type}, not ${type}.`,
 					);
 				}
+
 				// SAFETY: `res.type === type` was checked on the line above, and
 				// `type` is the discriminant of exactly one member of the union.
 				return res as Answer<T>;
 			};
 		}
+
 		return {
 			parse: (files: { name: string; text: string }[]) =>
 				send({ type: "parse", files }).then(expect("parsed")),

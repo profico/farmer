@@ -47,6 +47,7 @@ export const clientsService = {
 			),
 			columns: { id: true },
 		});
+
 		if (existing) return existing.id;
 
 		const [created] = await tx
@@ -58,6 +59,7 @@ export const clientsService = {
 			})
 			.onConflictDoNothing()
 			.returning({ id: client.id });
+
 		if (created) return created.id;
 
 		// Lost the race — re-read the winner's row.
@@ -68,7 +70,9 @@ export const clientsService = {
 			),
 			columns: { id: true },
 		});
+
 		if (!winner) throw new Error("Failed to resolve the internal client");
+
 		return winner.id;
 	},
 
@@ -85,15 +89,18 @@ export const clientsService = {
 				name: input.name.trim(),
 			})
 			.returning();
+
 		if (!created) throw new Error("Failed to create client");
 		await emitEvent(ctx, "client.created", () =>
 			clientWebhookPayload(ctx, created.id),
 		);
+
 		return created;
 	},
 
 	update: async (ctx: Ctx, input: UpdateClientInput) => {
 		await requireAdmin(ctx);
+
 		const [updated] = await db
 			.update(client)
 			.set({ name: input.name.trim(), updatedAt: new Date() })
@@ -104,7 +111,9 @@ export const clientsService = {
 				),
 			)
 			.returning();
+
 		if (!updated) throw new Error("Client not found");
+
 		return updated;
 	},
 
@@ -121,7 +130,9 @@ export const clientsService = {
 				eq(client.organizationId, ctx.organizationId),
 			),
 		});
+
 		if (!target) throw new Error("Client not found");
+
 		if (target.isInternal) {
 			throw new Error("The internal client cannot be archived");
 		}
@@ -134,6 +145,7 @@ export const clientsService = {
 			),
 			columns: { id: true },
 		});
+
 		if (activeProjects) {
 			throw new Error("Archive this client's active projects first");
 		}

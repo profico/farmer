@@ -113,12 +113,14 @@ export const listModels = async (
 		{ headers: headers(apiKey) },
 		MODELS_TIMEOUT_MS,
 	);
+
 	if (!response.ok) {
 		throw new OpenRouterError(
 			`OpenRouter returned ${response.status} listing models`,
 			response.status,
 		);
 	}
+
 	// SAFETY: guarded by the non-2xx throw above. Every field below the top level
 	// is optional because OpenRouter's model list is a moving catalogue — a model
 	// missing its pricing is filtered out rather than read.
@@ -131,6 +133,7 @@ export const listModels = async (
 			supported_parameters?: string[];
 		}[];
 	};
+
 	return (body.data ?? [])
 		.map((m) => ({
 			id: m.id,
@@ -152,9 +155,11 @@ export const verifyKey = async (apiKey: string): Promise<void> => {
 		{ headers: headers(apiKey) },
 		MODELS_TIMEOUT_MS,
 	);
+
 	if (response.status === 401 || response.status === 403) {
 		throw new OpenRouterError("OpenRouter rejected that key", response.status);
 	}
+
 	if (!response.ok) {
 		throw new OpenRouterError(
 			`OpenRouter returned ${response.status}`,
@@ -209,15 +214,18 @@ export const streamChatCompletion = async (opts: {
 		// text and only then hopefully parsed.
 		const raw = await response.text().catch(() => "");
 		let detail = raw.slice(0, 300);
+
 		try {
 			// SAFETY: inside a try whose catch keeps the truncated raw body, and every
 			// field is optional — this is a best-effort read of an error body that may
 			// have come from a proxy rather than from OpenRouter at all.
 			const parsed = JSON.parse(raw) as { error?: { message?: string } };
+
 			if (parsed.error?.message) detail = parsed.error.message;
 		} catch {
 			// not JSON; the truncated body is the best message available
 		}
+
 		throw new OpenRouterError(
 			detail || `OpenRouter returned ${response.status}`,
 			response.status,
@@ -225,10 +233,12 @@ export const streamChatCompletion = async (opts: {
 	}
 
 	let content = "";
+
 	const slots = new Map<
 		number,
 		{ id: string; name: string; arguments: string }
 	>();
+
 	let promptTokens: number | null = null;
 	let completionTokens: number | null = null;
 	let costUsd: number | null = null;
@@ -241,6 +251,7 @@ export const streamChatCompletion = async (opts: {
 	try {
 		while (true) {
 			const { done, value } = await reader.read();
+
 			if (done) break;
 			buffer += decoder.decode(value, { stream: true });
 
@@ -253,8 +264,10 @@ export const streamChatCompletion = async (opts: {
 
 			for (const line of lines) {
 				const trimmed = line.trim();
+
 				if (!trimmed.startsWith("data:")) continue;
 				const payload = trimmed.slice(5).trim();
+
 				if (payload === "[DONE]") continue;
 
 				let chunk: {
@@ -276,6 +289,7 @@ export const streamChatCompletion = async (opts: {
 						cost?: number;
 					};
 				};
+
 				try {
 					chunk = JSON.parse(payload);
 				} catch {
@@ -293,10 +307,13 @@ export const streamChatCompletion = async (opts: {
 				}
 
 				const choice = chunk.choices?.[0];
+
 				if (!choice) continue;
+
 				if (choice.finish_reason) finishReason = choice.finish_reason;
 
 				const text = choice.delta?.content;
+
 				if (text) {
 					content += text;
 					opts.onDelta?.(text);
@@ -308,8 +325,11 @@ export const streamChatCompletion = async (opts: {
 						name: "",
 						arguments: "",
 					};
+
 					if (call.id) slot.id = call.id;
+
 					if (call.function?.name) slot.name = call.function.name;
+
 					if (call.function?.arguments)
 						slot.arguments += call.function.arguments;
 					slots.set(call.index, slot);
@@ -333,6 +353,7 @@ export const streamChatCompletion = async (opts: {
 		const aborted =
 			opts.signal?.aborted === true ||
 			(error instanceof Error && error.name === "AbortError");
+
 		if (!aborted) throw error;
 		finishReason = ABORTED;
 	} finally {

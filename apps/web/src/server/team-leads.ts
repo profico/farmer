@@ -14,6 +14,7 @@ export const listTeamLeadPeople = createServerFn({ method: "GET" })
 	.validator(teamLeadUserIdInput)
 	.handler(async ({ data: leadUserId, context }) => {
 		const { teamLeadsService } = await import("@farmer/core/services");
+
 		return teamLeadsService.listPeople(context.ctx, leadUserId);
 	});
 
@@ -22,5 +23,6 @@ export const setTeamLeadPeople = createServerFn({ method: "POST" })
 	.validator(setTeamLeadPeopleInput)
 	.handler(async ({ data, context }) => {
 		const { teamLeadsService } = await import("@farmer/core/services");
+
 		return teamLeadsService.setPeople(context.ctx, data);
 	});

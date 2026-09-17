@@ -9,11 +9,13 @@ export const linkProjectRepoInput = z.object({
 	// used to read its commits later.
 	installationId: z.coerce.number().int(),
 });
+
 export type LinkProjectRepoInput = z.infer<typeof linkProjectRepoInput>;
 
 export const connectInstallationInput = z.object({
 	installationId: z.coerce.number().int(),
 });
+
 export type ConnectInstallationInput = z.infer<typeof connectInstallationInput>;
 
 // Disconnecting takes the installation away from THIS workspace. `uninstall`
@@ -24,6 +26,7 @@ export const disconnectInstallationInput = z.object({
 	installationRowId: z.uuid(),
 	uninstall: z.boolean().default(false),
 });
+
 export type DisconnectInstallationInput = z.infer<
 	typeof disconnectInstallationInput
 >;
@@ -37,12 +40,15 @@ export const githubWebhookPayload = z.object({
 	action: z.string().optional(),
 	installation: z.object({ id: z.number().int() }).optional(),
 });
+
 export type GithubWebhookPayload = z.infer<typeof githubWebhookPayload>;
 
 export const unlinkProjectRepoInput = z.uuid();
+
 export type UnlinkProjectRepoInput = z.infer<typeof unlinkProjectRepoInput>;
 
 export const listProjectReposInput = z.uuid();
+
 export type ListProjectReposInput = z.infer<typeof listProjectReposInput>;
 
 // A GitHub `owner/name`, as `farmer init` reads it off a git remote — never a
@@ -53,18 +59,22 @@ export const repositoryProjectsInput = z.object({
 		.trim()
 		.regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
 });
+
 export type RepositoryProjectsInput = z.infer<typeof repositoryProjectsInput>;
 
 export const listAttachedCommitsInput = z.uuid();
+
 export type ListAttachedCommitsInput = z.infer<typeof listAttachedCommitsInput>;
 
 export const detachCommitInput = z.uuid();
+
 export type DetachCommitInput = z.infer<typeof detachCommitInput>;
 
 export const suggestCommitsInput = z.object({
 	projectId: z.uuid(),
 	date: dateKey,
 });
+
 export type SuggestCommitsInput = z.infer<typeof suggestCommitsInput>;
 
 // The same scan over a span of days.
@@ -91,6 +101,7 @@ export const userCommitsRangeInput = z
 		(data) => {
 			const from = new Date(`${data.from}T00:00:00Z`).getTime();
 			const to = new Date(`${data.to}T00:00:00Z`).getTime();
+
 			return (to - from) / 86_400_000 <= MAX_COMMIT_SCAN_DAYS;
 		},
 		{
@@ -98,6 +109,7 @@ export const userCommitsRangeInput = z
 			path: ["to"],
 		},
 	);
+
 export type UserCommitsRangeInput = z.infer<typeof userCommitsRangeInput>;
 
 // A commit id, abbreviated or full. Constrained because `attachCommits` puts it
@@ -120,23 +132,28 @@ export const attachCommitsInput = z.object({
 		)
 		.min(1),
 });
+
 export type AttachCommitsInput = z.infer<typeof attachCommitsInput>;
 
 // ── Pull requests ──────────────────────────────────────────────────────────
 // Same shapes as the commit reads: one project on one day for the entry
 // dialog, a span of days for the assistant.
 export const suggestPullRequestsInput = suggestCommitsInput;
+
 export type SuggestPullRequestsInput = SuggestCommitsInput;
 
 export const userPullRequestsRangeInput = userCommitsRangeInput;
+
 export type UserPullRequestsRangeInput = UserCommitsRangeInput;
 
 export const listAttachedPullRequestsInput = z.uuid();
+
 export type ListAttachedPullRequestsInput = z.infer<
 	typeof listAttachedPullRequestsInput
 >;
 
 export const detachPullRequestActivityInput = z.uuid();
+
 export type DetachPullRequestActivityInput = z.infer<
 	typeof detachPullRequestActivityInput
 >;
@@ -154,4 +171,5 @@ export const attachPullRequestsInput = z.object({
 	timeEntryId: z.uuid(),
 	pullRequests: z.array(pullRequestRef).min(1).max(50),
 });
+
 export type AttachPullRequestsInput = z.infer<typeof attachPullRequestsInput>;

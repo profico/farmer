@@ -41,16 +41,23 @@ import type { Ctx } from "./types";
 const ORG = "org-projects";
 
 const ADMIN = "u-projects-admin";
+
 const PM = "u-projects-pm";
+
 const LEAD = "u-projects-lead";
+
 const PLAIN = "u-projects-plain";
+
 const OUTSIDER = "u-projects-outsider";
 
 const HOUR = 3600;
 
 let harness: TestDb;
+
 let assignedId: string;
+
 let unassignedId: string;
+
 let clientId: string;
 
 /** A fresh Ctx per call: `Access` is memoized onto the object, and these tests
@@ -103,6 +110,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG, name: "Acme" })
 		.returning();
+
 	if (!c) throw new Error("client");
 	clientId = c.id;
 
@@ -126,6 +134,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	if (!assigned || !unassigned) throw new Error("projects");
 	assignedId = assigned.id;
 	unassignedId = unassigned.id;
@@ -157,6 +166,7 @@ beforeAll(async () => {
 			systemKey: "development",
 		})
 		.returning();
+
 	if (!work) throw new Error("task");
 
 	const today = new Date().toISOString().slice(0, 10);
@@ -306,6 +316,7 @@ describe("assignMember", () => {
 			role: "member",
 			createdAt: new Date(),
 		});
+
 		if (archived) {
 			await db.insert(memberProfile).values({
 				organizationId: ORG,
@@ -375,6 +386,7 @@ describe("project role escalation", () => {
 	beforeAll(async () => {
 		await seedMember(ESC_PM);
 		await seedMember(ESC_LEAD);
+
 		const [p] = await db
 			.insert(project)
 			.values({
@@ -383,6 +395,7 @@ describe("project role escalation", () => {
 				name: "Escalation",
 			})
 			.returning();
+
 		if (!p) throw new Error("project");
 		escProjectId = p.id;
 		await db.insert(projectMember).values([
@@ -530,6 +543,7 @@ describe("the icon", () => {
 			projectId: assignedId,
 			icon: "🍷",
 		});
+
 		expect(updated.icon).toBe("🍷");
 		const seen = await projectsService.get(ctx(LEAD), assignedId);
 		expect(seen.icon).toBe("🍷");
@@ -538,6 +552,7 @@ describe("the icon", () => {
 			projectId: assignedId,
 			icon: null,
 		});
+
 		expect(cleared.icon).toBeNull();
 	});
 
@@ -558,6 +573,7 @@ describe("a plain member's figures with somebody else on the project", () => {
 			.from(timeEntry)
 			.where(eq(timeEntry.projectId, assignedId))
 			.limit(1);
+
 		if (!row) throw new Error("fixture entry");
 		await db.insert(timeEntry).values({
 			organizationId: ORG,
@@ -600,6 +616,7 @@ describe("a project open to the organization", () => {
 			projectId: unassignedId,
 			openToOrg: true,
 		});
+
 		expect(updated.openToOrg).toBe(true);
 
 		expect(names(await projectsService.listMine(ctx(PLAIN)))).toEqual([

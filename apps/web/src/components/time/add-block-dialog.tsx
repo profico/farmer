@@ -154,6 +154,7 @@ const formSchema = z
 				});
 			} else {
 				const parsed = parseDuration(data.duration);
+
 				if (parsed === null) {
 					ctx.addIssue({
 						code: "custom",
@@ -175,6 +176,7 @@ const formSchema = z
 				}
 			}
 		}
+
 		if (data.repeatEnabled && data.daysOfWeek.length < 1) {
 			ctx.addIssue({
 				code: "custom",
@@ -195,6 +197,7 @@ function pullRequestKey(projectGithubRepoId: string, number: number): string {
 }
 
 type ActivityKind = "opened" | "merged" | "closed" | "reviewed";
+
 type ReviewState = "approved" | "changes_requested" | "commented" | "dismissed";
 
 function activityLabel(
@@ -202,8 +205,11 @@ function activityLabel(
 	reviewState: ReviewState | null,
 ): string {
 	if (kind === "opened") return "Opened";
+
 	if (kind === "merged") return "Merged";
+
 	if (kind === "closed") return "Closed";
+
 	switch (reviewState) {
 		case "approved":
 			return "Reviewed (approved)";
@@ -225,10 +231,13 @@ function activitySummary(
 	events: Array<{ kind: ActivityKind; reviewState: ReviewState | null }>,
 ): string {
 	const labels: string[] = [];
+
 	for (const event of events) {
 		const label = activityLabel(event.kind, event.reviewState);
+
 		if (!labels.includes(label)) labels.push(label);
 	}
+
 	return labels.join(" · ");
 }
 
@@ -284,13 +293,17 @@ export function AddBlockDialog({
 	const rememberedPick = (): Partial<FormValues> => {
 		if (entry) return {};
 		const last = readLastPick("entry", orgSlug);
+
 		if (!last) return {};
+
 		if (defaultProjectId) {
 			return last.projectId === defaultProjectId ? { taskId: last.taskId } : {};
 		}
+
 		const live = projects.some(
 			(p) => p.id === last.projectId && p.status === "active",
 		);
+
 		return live ? last : {};
 	};
 
@@ -321,10 +334,12 @@ export function AddBlockDialog({
 		),
 		enabled: open,
 	});
+
 	const { data: recentIds = [] } = useQuery({
 		...recentTasksQuery(orgSlug, projectId),
 		enabled: open && projectId !== TIME_OFF,
 	});
+
 	const isTimeOff = projectId === TIME_OFF;
 	// Under Time-off only the leave kinds are offered; Break and Meeting are
 	// logged on a project like everything else.
@@ -332,6 +347,7 @@ export function AddBlockDialog({
 	const selectedTask = tasks.find((t) => t.id === taskId);
 	useEffect(() => {
 		if (!taskId) return;
+
 		if (
 			pickableTasks.length > 0 &&
 			!pickableTasks.some((t) => t.id === taskId)
@@ -393,10 +409,12 @@ export function AddBlockDialog({
 	const prefilledRef = useRef(false);
 	useEffect(() => {
 		if (entry || !open) return;
+
 		const remembered =
 			!isTimeOff && taskId
 				? readEntryOptions(orgSlug, projectId, taskId)
 				: null;
+
 		if (remembered) {
 			form.setValue("fillsDay", remembered.fillsDay && !dayHasFill);
 			form.setValue("overtime", remembered.overtime);
@@ -412,26 +430,32 @@ export function AddBlockDialog({
 		...githubConnectionStatusQuery(orgSlug),
 		enabled: open,
 	});
+
 	const { data: googleStatus } = useQuery({
 		...googleCalendarStatusQuery(orgSlug),
 		enabled: open,
 	});
+
 	const { data: linkedRepos } = useQuery({
 		...projectGithubReposQuery(orgSlug, projectId),
 		enabled: open && projectId !== TIME_OFF,
 	});
+
 	const { data: attachedCommits } = useQuery({
 		...attachedCommitsQuery(orgSlug, entry?.id ?? ""),
 		enabled: open && !!entry,
 	});
+
 	const { data: attachedPullRequests } = useQuery({
 		...attachedPullRequestsQuery(orgSlug, entry?.id ?? ""),
 		enabled: open && !!entry,
 	});
+
 	const { data: integrationSettings } = useQuery({
 		...integrationSettingsQuery(orgSlug),
 		enabled: open,
 	});
+
 	// One toggle covers both: it auto-loads the day's commits and its pull
 	// request activity into the picker below, no "Find activity" click.
 	const autoLoadCommits = !!integrationSettings?.githubAutoLoadCommits;
@@ -439,15 +463,19 @@ export function AddBlockDialog({
 	const [suggestedCommits, setSuggestedCommits] = useState<
 		Awaited<ReturnType<typeof suggestCommitsForEntry>>
 	>([]);
+
 	const [selectedCommitKeys, setSelectedCommitKeys] = useState<Set<string>>(
 		new Set(),
 	);
+
 	const [suggestedPullRequests, setSuggestedPullRequests] = useState<
 		Awaited<ReturnType<typeof suggestPullRequestsForEntry>>
 	>([]);
+
 	const [selectedPullRequestKeys, setSelectedPullRequestKeys] = useState<
 		Set<string>
 	>(new Set());
+
 	useEffect(() => {
 		if (!open) return;
 		setSuggestedCommits([]);
@@ -470,6 +498,7 @@ export function AddBlockDialog({
 		!!githubStatus?.connected &&
 		!!linkedRepos &&
 		linkedRepos.length > 0;
+
 	const showAttachedCommits =
 		!repeatEnabled && !!attachedCommits && attachedCommits.length > 0;
 
@@ -488,6 +517,7 @@ export function AddBlockDialog({
 		: suggestedCommits;
 
 	const attachedShas = new Set((attachedCommits ?? []).map((c) => c.sha));
+
 	const pickableCommits = effectiveSuggested.filter(
 		(c) => !attachedShas.has(c.sha),
 	);
@@ -500,12 +530,15 @@ export function AddBlockDialog({
 	useEffect(() => {
 		if (open) autoDescriptionRef.current = null;
 	}, [open]);
+
 	const describeSelection = (
 		commitKeys: Set<string>,
 		pullRequestKeys: Set<string>,
 	) => {
 		const current = form.getValues("description");
+
 		if (current.trim() && current !== autoDescriptionRef.current) return;
+
 		const next = summarizeCommitMessages([
 			...effectiveSuggested
 				.filter((c) => commitKeys.has(commitKey(c.projectGithubRepoId, c.sha)))
@@ -526,14 +559,18 @@ export function AddBlockDialog({
 					),
 			),
 		]);
+
 		autoDescriptionRef.current = next;
+
 		if (next === current) return;
 		form.setValue("description", next);
+
 		if (next) form.clearErrors("description");
 	};
 
 	const toggleCommitSelection = (key: string) => {
 		const next = new Set(selectedCommitKeys);
+
 		if (next.has(key)) next.delete(key);
 		else next.add(key);
 		setSelectedCommitKeys(next);
@@ -578,8 +615,10 @@ export function AddBlockDialog({
 				events: Array<{ kind: ActivityKind; reviewState: ReviewState | null }>;
 			}
 		>();
+
 		for (const row of attachedPullRequests ?? []) {
 			const existing = groups.get(row.pullRequestUrl);
+
 			if (existing) {
 				existing.ids.push(row.id);
 				existing.events.push({ kind: row.kind, reviewState: row.reviewState });
@@ -593,8 +632,10 @@ export function AddBlockDialog({
 				});
 			}
 		}
+
 		return [...groups.values()];
 	})();
+
 	const showAttachedPullRequests =
 		!repeatEnabled && attachedPullRequestGroups.length > 0;
 
@@ -613,12 +654,14 @@ export function AddBlockDialog({
 	const attachedPullRequestUrls = new Set(
 		(attachedPullRequests ?? []).map((a) => a.pullRequestUrl),
 	);
+
 	const pickablePullRequests = effectiveSuggestedPullRequests.filter(
 		(pr) => !attachedPullRequestUrls.has(pr.url),
 	);
 
 	const togglePullRequestSelection = (key: string) => {
 		const next = new Set(selectedPullRequestKeys);
+
 		if (next.has(key)) next.delete(key);
 		else next.add(key);
 		setSelectedPullRequestKeys(next);
@@ -669,6 +712,7 @@ export function AddBlockDialog({
 		setCalendarOpen(false);
 		setActivityOpen(false);
 	}, [open]);
+
 	// Only read on the client: the dialog body is never server-rendered, so the
 	// label cannot mismatch, and a wrong guess is a cosmetic one.
 	const [modKey] = useState(() =>
@@ -678,6 +722,7 @@ export function AddBlockDialog({
 	// By systemKey, never by name: an org may rename the built-in Meeting task,
 	// and a name match would then hide the calendar picker without a word.
 	const isMeetingTask = selectedTask?.systemKey === "meeting";
+
 	const showCalendarPicker =
 		!repeatEnabled && !fillsDay && isMeetingTask && !!googleStatus?.connected;
 
@@ -687,6 +732,7 @@ export function AddBlockDialog({
 		...calendarEventsForDayQuery(orgSlug, targetDate),
 		enabled: open && showCalendarPicker,
 	});
+
 	const calendarEvents = calendarEventsQ.data ?? [];
 
 	const pickCalendarEvent = (
@@ -697,15 +743,18 @@ export function AddBlockDialog({
 		// quarter hour.
 		const seconds =
 			(new Date(event.end).getTime() - new Date(event.start).getTime()) / 1000;
+
 		// `snapToQuarterHour` is the whole rule in one call — nearest quarter hour,
 		// floored at one. Flooring alone (what this used to do) put "25m" in the box
 		// and then saved 30m, so the box disagreed with the entry it produced.
 		form.setValue("duration", formatClock(snapToQuarterHour(seconds)), {
 			shouldValidate: true,
 		});
+
 		if (!form.getValues("description")) {
 			form.setValue("description", event.title);
 		}
+
 		setMeetingUrl(event.meetingUrl);
 		setCalendarEventId(event.id);
 	};
@@ -728,8 +777,10 @@ export function AddBlockDialog({
 	// remembered, the year because the stepper can leave this one.
 	const dialogDateLabel = (key: string) => {
 		const parts = key.split("-").map(Number);
+
 		if (parts.length !== 3 || parts.some((p) => Number.isNaN(p))) return key;
 		const [year, month, day] = parts;
+
 		return new Date(
 			Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1),
 		).toLocaleDateString("en-US", {
@@ -756,9 +807,11 @@ export function AddBlockDialog({
 	const setDate = (next: string) => {
 		if (next === form.getValues("date")) return;
 		form.setValue("date", next, { shouldValidate: true });
+
 		if (!form.getValues("repeatEnabled")) {
 			form.setValue("daysOfWeek", [weekdayInTz(next, timezone)]);
 		}
+
 		setSuggestedCommits([]);
 		setSelectedCommitKeys(new Set());
 		setSuggestedPullRequests([]);
@@ -772,6 +825,7 @@ export function AddBlockDialog({
 			// Read from the submitted values rather than the render-time snapshot, so
 			// what is validated is exactly what is sent.
 			const parsed = parseDuration(values.duration);
+
 			const seconds =
 				parsed !== null && parsed > 0 ? snapToQuarterHour(parsed) : undefined;
 
@@ -789,6 +843,7 @@ export function AddBlockDialog({
 					},
 				});
 			}
+
 			const payload = {
 				taskId: values.taskId,
 				projectId: values.projectId === TIME_OFF ? undefined : values.projectId,
@@ -804,6 +859,7 @@ export function AddBlockDialog({
 					? undefined
 					: calendarEventId || undefined,
 			};
+
 			return entry
 				? updateTimeEntry({ data: { ...payload, timeEntryId: entry.id } })
 				: createTimeEntry({ data: payload });
@@ -818,12 +874,14 @@ export function AddBlockDialog({
 						projectGithubRepoId: c.projectGithubRepoId,
 						sha: c.sha,
 					}));
+
 				if (commits.length > 0) {
 					await attachCommitsToEntry({
 						data: { timeEntryId: savedEntry.id, commits },
 					});
 				}
 			}
+
 			if (!values.repeatEnabled && selectedPullRequestKeys.size > 0) {
 				const pullRequests = effectiveSuggestedPullRequests
 					.filter((pr) =>
@@ -835,12 +893,14 @@ export function AddBlockDialog({
 						projectGithubRepoId: pr.projectGithubRepoId,
 						number: pr.number,
 					}));
+
 				if (pullRequests.length > 0) {
 					await attachPullRequestsToEntry({
 						data: { timeEntryId: savedEntry.id, pullRequests },
 					});
 				}
 			}
+
 			// The attached lists sit in the cache under the entry's id, fresh for
 			// the default 30s, so reopening the entry showed the attachments from
 			// before this save until a reload.
@@ -852,6 +912,7 @@ export function AddBlockDialog({
 					queryKey: attachedPullRequestsQuery(orgSlug, savedEntry.id).queryKey,
 				}),
 			]);
+
 			// Time off is never remembered: a day of leave is not what the next
 			// entry is likely to be. An edit does not move the last pick either,
 			// since correcting an old entry says nothing about the next one.
@@ -862,6 +923,7 @@ export function AddBlockDialog({
 						taskId: values.taskId,
 					});
 				}
+
 				if (!values.repeatEnabled) {
 					rememberEntryOptions(orgSlug, values.projectId, values.taskId, {
 						fillsDay: values.fillsDay,
@@ -869,6 +931,7 @@ export function AddBlockDialog({
 					});
 				}
 			}
+
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
@@ -876,16 +939,19 @@ export function AddBlockDialog({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).tasks, "recent"],
 			});
+
 			if (!entry) {
 				await queryClient.invalidateQueries({
 					queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
 				});
 			}
+
 			// Saved to a day other than the one the dialog opened on, which the page
 			// behind it may not show: say where the time went.
 			if (!values.repeatEnabled && values.date !== defaultDate) {
 				toast.success(`Saved to ${formatDateKeyLong(values.date)}`);
 			}
+
 			setOpen(false);
 		},
 		onError: (error) => {
@@ -898,6 +964,7 @@ export function AddBlockDialog({
 	 *  what the day has left, and a repeating entry has no single day to take a
 	 *  remainder from — which is the condition the old switch was hidden by. */
 	const showFillPreset = !isAbsence && !repeatEnabled;
+
 	// What the collapsed disclosure says it is holding. "Fill rest of day" is no
 	// longer one of them: it is a preset beside the lengths now, lit whether or
 	// not this is open.
@@ -907,27 +974,34 @@ export function AddBlockDialog({
 	].flatMap((o) => (o ? [o] : []));
 
 	const { mutate } = mutation;
+
 	const submit = useCallback(
 		(values: FormValues) => {
 			if (needsDescription && !values.fillsDay && !values.description.trim()) {
 				form.setError("description", { message: "Required" });
+
 				return;
 			}
+
 			mutate(values);
 		},
 		[needsDescription, form, mutate],
 	);
+
 	// ⌘↩ / Ctrl+↩ saves from anywhere in the dialog — the textarea, where a
 	// plain Enter is a new line, and the pickers, whose popups are portaled
 	// outside the form and so never see a form-level key handler.
 	useEffect(() => {
 		if (!open) return;
+
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
 			event.preventDefault();
 			void form.handleSubmit(submit)();
 		};
+
 		document.addEventListener("keydown", onKeyDown);
+
 		return () => document.removeEventListener("keydown", onKeyDown);
 	}, [open, form, submit]);
 
@@ -1025,6 +1099,7 @@ export function AddBlockDialog({
 													onValueChange={(next) => {
 														const wasTimeOff = field.value === TIME_OFF;
 														field.onChange(next ?? TIME_OFF);
+
 														// A day off is a whole day until told otherwise;
 														// leaving Time-off takes the prefill back out.
 														if (next === null) {
@@ -1145,6 +1220,7 @@ export function AddBlockDialog({
 															onBlur={(e) => {
 																field.onBlur();
 																const parsed = parseDuration(e.target.value);
+
 																if (parsed !== null && parsed > 0) {
 																	field.onChange(
 																		formatClock(snapToQuarterHour(parsed)),
@@ -1185,6 +1261,7 @@ export function AddBlockDialog({
 								>
 									{QUICK_DURATIONS.map((value) => {
 										const on = !fillsDay && durationValue === value;
+
 										return (
 											<button
 												key={value}
@@ -1291,6 +1368,7 @@ export function AddBlockDialog({
 									<div className="scrollbar-stable max-h-52 overflow-y-auto border-t border-line2">
 										{calendarEvents.map((event) => {
 											const selected = calendarEventId === event.id;
+
 											return (
 												<button
 													key={event.id}
@@ -1455,7 +1533,9 @@ export function AddBlockDialog({
 															commit.projectGithubRepoId,
 															commit.sha,
 														);
+
 														const selected = selectedCommitKeys.has(key);
+
 														return (
 															<label
 																key={key}
@@ -1549,7 +1629,9 @@ export function AddBlockDialog({
 															pr.projectGithubRepoId,
 															pr.number,
 														);
+
 														const selected = selectedPullRequestKeys.has(key);
+
 														return (
 															<label
 																key={key}
@@ -1777,10 +1859,12 @@ export function AddBlockDialog({
 											className="px-0"
 											onClick={() => {
 												setActivityOpen((current) => !current);
+
 												if (!autoLoadCommits) {
 													if (!suggestCommitsMutation.isSuccess) {
 														suggestCommitsMutation.mutate();
 													}
+
 													if (!suggestPullRequestsMutation.isSuccess) {
 														suggestPullRequestsMutation.mutate();
 													}

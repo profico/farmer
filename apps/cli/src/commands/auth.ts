@@ -50,12 +50,16 @@ import { type Command, parseCommandArgs } from "./command";
  *  terminal at least as wide as it is. A wrapped logo is noise. */
 const showBanner = (out: Output, firstRun: boolean) => {
 	if (!firstRun || out.json || !out.stdoutTty) return;
+
 	if ((out.columns ?? 0) >= LOGO_WIDTH) {
 		print("");
+
 		for (const line of logoLines()) print(green(out, line));
 		print("");
+
 		return;
 	}
+
 	print(bold(out, "Farmer"));
 };
 
@@ -78,6 +82,7 @@ export const login: Command = {
 		showBanner(out, !(await configExists(runtime.paths)));
 
 		const config = await readConfig(runtime.paths);
+
 		const typed =
 			positionals[0] ||
 			runtime.env.FARMER_URL ||
@@ -89,10 +94,13 @@ export const login: Command = {
 						"https://farmer.example.com",
 					)
 				: "");
+
 		if (!typed) {
 			throw new UsageError(`Pass the server address.\nUsage: ${LOGIN_USAGE}`);
 		}
+
 		const origin = normalizeOrigin(typed);
+
 		if (new URL(origin).protocol === "http:" && !isLocalOrigin(origin)) {
 			warn(`${origin} is not https, so the sign-in token travels unencrypted.`);
 		}
@@ -101,11 +109,13 @@ export const login: Command = {
 		assertCliSupported(await fetchMeta(transport), transport);
 
 		const code = await requestDeviceCode(transport);
+
 		const opened = await openBrowser(
 			code.verificationUriComplete,
 			runtime.platform,
 			runtime.env,
 		);
+
 		note("");
 		note(`  Your code: ${formatUserCode(code.userCode)}`);
 		note(
@@ -118,6 +128,7 @@ export const login: Command = {
 
 		const progress = startProgress(out, "Waiting for approval");
 		let token: string;
+
 		try {
 			token = await pollForToken(transport, code, () =>
 				runtime.now().getTime(),
@@ -126,15 +137,18 @@ export const login: Command = {
 			progress.fail("The sign-in did not finish.");
 			throw error;
 		}
+
 		progress.stop("Approved.");
 
 		const store = credentialStoreFor(runtime);
 		const location = await store.set(origin, token);
+
 		if (location === "file") {
 			warn(
 				`No system keyring is available, so the token is stored in ${runtime.paths.credentials} (readable only by you).`,
 			);
 		}
+
 		config.lastServer = origin;
 		const server = serverEntryFor(config, origin);
 		await writeConfig(runtime.paths, config);
@@ -150,8 +164,10 @@ export const login: Command = {
 				forgetToken: () => store.delete(origin),
 			}),
 		};
+
 		const me = await refreshOrganizations(session);
 		const slugs = me.organizations.map((org) => org.slug);
+
 		if (values.org !== undefined && !slugs.includes(values.org)) {
 			throw new UsageError(
 				`You are not a member of "${values.org}". Your organizations: ${slugs.join(", ") || "none"}.`,
@@ -160,6 +176,7 @@ export const login: Command = {
 
 		let slug: string | null = null;
 		const [firstOrg, ...otherOrgs] = me.organizations;
+
 		if (values.org !== undefined) slug = values.org;
 		else if (server.org) slug = server.org;
 		else if (firstOrg && otherOrgs.length === 0) slug = firstOrg.slug;
@@ -173,17 +190,21 @@ export const login: Command = {
 				})),
 			);
 		}
+
 		server.org = slug;
 
 		let whoami: ApiWhoami | null = null;
+
 		if (slug) {
 			whoami = await session.api.get<ApiWhoami>(orgPath(slug, "/whoami"));
 			const entry = server.orgs.find((org) => org.slug === slug);
+
 			if (entry) {
 				entry.timeZone = whoami.timezone;
 				entry.weekStartsOn = whoami.weekStartsOn;
 			}
 		}
+
 		await writeConfig(runtime.paths, config);
 
 		if (out.json) {
@@ -193,11 +214,14 @@ export const login: Command = {
 				organization: whoami?.organization ?? null,
 				tokenStorage: location,
 			});
+
 			return;
 		}
+
 		print(
 			`Logged in to ${origin} as ${bold(out, me.user.name)} <${me.user.email}>.`,
 		);
+
 		if (whoami) {
 			print(
 				`Organization: ${whoami.organization.name} (${whoami.organization.slug}).`,
@@ -238,19 +262,23 @@ export const logout: Command = {
 		if (!origin || !token) {
 			if (out.json) printJson({ server: origin, revoked: false });
 			else print("You are not logged in.");
+
 			return;
 		}
 
 		let revoked = false;
 		const fallback = "End the session in Preferences → Signed-in devices.";
+
 		try {
 			const response = await send(transportFor(runtime, origin), {
 				method: "DELETE",
 				path: "/api/v1/session",
 				token,
 			});
+
 			// A 401 means the server had already ended the session.
 			revoked = response.ok || response.status === 401;
+
 			if (!revoked) {
 				warn(`${origin} answered ${response.status}. ${fallback}`);
 			}
@@ -258,6 +286,7 @@ export const logout: Command = {
 			const reason = error instanceof Error ? error.message : String(error);
 			warn(`${reason}. ${fallback}`);
 		}
+
 		await store.delete(origin);
 
 		if (out.json) printJson({ server: origin, revoked });
@@ -266,6 +295,7 @@ export const logout: Command = {
 };
 
 const WHOAMI_USAGE = "farmer whoami [--org <slug>]";
+
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export const whoami: Command = {
@@ -276,6 +306,7 @@ export const whoami: Command = {
 	run: async (args, runtime) => {
 		const { values } = parseCommandArgs(args, {}, 0, WHOAMI_USAGE);
 		const out = createOutput(values.json === true, runtime.env);
+
 		// Not announced: the Defaults line below says the same with the names.
 		const { session, scope, defaults } = await openOrg(
 			runtime,
@@ -283,9 +314,11 @@ export const whoami: Command = {
 			values.org,
 			{ announce: false },
 		);
+
 		const who = await session.api.get<ApiWhoami>(scope.path("/whoami"));
 
 		const entry = session.server.orgs.find((org) => org.slug === scope.slug);
+
 		if (
 			entry &&
 			(entry.timeZone !== who.timezone ||
@@ -298,15 +331,19 @@ export const whoami: Command = {
 
 		if (out.json) {
 			printJson(who);
+
 			return;
 		}
+
 		const role = who.isAdmin ? "admin" : (who.orgRole ?? "member");
+
 		const days = who.workingDays
 			.map(
 				(day) =>
 					`${DAY_NAMES[day.dayOfWeek] ?? day.dayOfWeek} ${day.startTime}-${day.endTime}`,
 			)
 			.join(", ");
+
 		say(out, `${bold(out, who.name ?? "(no name)")} <${who.email ?? ""}>`);
 		say(
 			out,
@@ -321,11 +358,14 @@ export const whoami: Command = {
 		say(out, `Projects      ${who.projects.length}`);
 
 		if (!defaults) return;
+
 		// The file's comments may be stale; these names are the server's.
 		const projectName =
 			who.projects.find((project) => project.id === defaults.project)?.name ??
 			`${defaults.project} (not available)`;
+
 		const names = [defaults.org, projectName];
+
 		if (defaults.task !== undefined) {
 			const taskList = await session.api.get<ApiTaskList>(scope.path("/tasks"));
 			names.push(
@@ -333,6 +373,7 @@ export const whoami: Command = {
 					`${defaults.task} (not available)`,
 			);
 		}
+
 		say(
 			out,
 			`Defaults      ${names.join(", ")} ${dim(out, `(${defaults.shown})`)}`,

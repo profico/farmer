@@ -26,13 +26,21 @@ import type { Ctx } from "./types";
 let harness: TestDb;
 
 let orgAId: string;
+
 let orgBId: string;
+
 let projectInAId: string;
+
 let projectInBId: string;
+
 let taskInAId: string;
+
 let taskInBId: string;
+
 let absenceTaskId: string;
+
 let universalTaskId: string;
+
 let ctxForOrgA: Ctx;
 
 beforeAll(async () => {
@@ -55,6 +63,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	if (!orgA || !orgB) throw new Error("Failed to seed test organizations");
 	orgAId = orgA.id;
 	orgBId = orgB.id;
@@ -67,6 +76,7 @@ beforeAll(async () => {
 			{ organizationId: orgBId, name: "Client B" },
 		])
 		.returning();
+
 	if (!clientInA || !clientInB) throw new Error("Failed to seed test clients");
 
 	const [projectInA, projectInB] = await db
@@ -76,6 +86,7 @@ beforeAll(async () => {
 			{ organizationId: orgBId, clientId: clientInB.id, name: "Org B Project" },
 		])
 		.returning();
+
 	if (!projectInA || !projectInB)
 		throw new Error("Failed to seed test projects");
 	projectInAId = projectInA.id;
@@ -90,6 +101,7 @@ beforeAll(async () => {
 			{ scope: "organization" as const, organizationId: orgBId, name: "Dev B" },
 		])
 		.returning();
+
 	if (!taskInA || !taskInB) throw new Error("Failed to seed test tasks");
 	taskInAId = taskInA.id;
 	taskInBId = taskInB.id;
@@ -100,6 +112,7 @@ beforeAll(async () => {
 		.insert(task)
 		.values({ scope: "site" as const, name: "Test Vacation", isAbsence: true })
 		.returning();
+
 	if (!absenceTask) throw new Error("Failed to seed absence task");
 	absenceTaskId = absenceTask.id;
 
@@ -109,6 +122,7 @@ beforeAll(async () => {
 		.insert(task)
 		.values({ scope: "site" as const, name: "Test Meeting", isAbsence: false })
 		.returning();
+
 	if (!universalTask) throw new Error("Failed to seed universal task");
 	universalTaskId = universalTask.id;
 
@@ -201,6 +215,7 @@ describe("assertTaskAvailable", () => {
 				archivedAt: new Date(),
 			})
 			.returning();
+
 		if (!archived) throw new Error("Failed to seed archived task");
 		await expect(
 			assertTaskAvailable(ctxForOrgA, archived.id, projectInAId),

@@ -42,6 +42,7 @@ const emailSchema = z.email().max(320);
 
 /** What the snapshot call accepts in one request. */
 const SNAPSHOT_EMAILS = 2000;
+
 const CHECK_EMAILS = 500;
 
 type Planned = {
@@ -70,6 +71,7 @@ function ImportPage() {
 	const onFinished = useCallback(() => {
 		void invalidateOrg(queryClient, orgSlug);
 	}, [queryClient, orgSlug]);
+
 	const runner = useImportRunner(worker, onFinished);
 
 	// Re-plan on every change of choices. Only the newest answer is kept, so a
@@ -91,27 +93,36 @@ function ImportPage() {
 
 	const addFiles = async (added: File[]) => {
 		const csv = added.filter((f) => f.name.toLowerCase().endsWith(".csv"));
+
 		if (csv.length === 0) {
 			toast.error("Drop the CSV files that Harvest exports.");
+
 			return;
 		}
+
 		const byName = new Map(files.map((f) => [f.name, f]));
+
 		for (const f of csv) byName.set(f.name, f);
 		const next = [...byName.values()];
 		setFiles(next);
+
 		try {
 			setBusy("Reading the files");
+
 			const texts = await Promise.all(
 				next.map(async (f) => ({ name: f.name, text: await f.text() })),
 			);
+
 			setBusy("Reading the time report. A large one takes a few seconds.");
 			const parsed = await worker.parse(texts);
 			setBusy("Reading what this workspace already holds");
 			const cutoff = choices?.cutoffDate ?? parsed.choices.cutoffDate;
 			const range = parsed.range ?? { from: cutoff, to: cutoff };
+
 			const emails = parsed.candidateEmails
 				.filter((e) => emailSchema.safeParse(e).success)
 				.slice(0, SNAPSHOT_EMAILS);
+
 			const snap = await getHarvestSnapshot({ data: { ...range, emails } });
 			setSnapshot(snap);
 			// A file added later keeps what the admin already chose: every
@@ -134,6 +145,7 @@ function ImportPage() {
 	const startImport = async () => {
 		if (!planned || !choices) return;
 		let current = planned;
+
 		// Addresses the admin typed were not in the snapshot call, so the
 		// server has not said yet whether another user holds them.
 		if (current.plan.emailsToCheck.length > 0) {
@@ -141,6 +153,7 @@ function ImportPage() {
 				setBusy("Checking the addresses you typed");
 				const emails = current.plan.emailsToCheck;
 				const taken: string[] = [];
+
 				for (let i = 0; i < emails.length; i += CHECK_EMAILS) {
 					taken.push(
 						...(await checkHarvestEmails({
@@ -148,12 +161,14 @@ function ImportPage() {
 						})),
 					);
 				}
+
 				const snap = {
 					...current.snapshot,
 					takenEmails: [
 						...new Set([...current.snapshot.takenEmails, ...taken]),
 					],
 				};
+
 				const res = await worker.plan(snap, choices);
 				current = { ...res, choices, snapshot: snap };
 				setSnapshot(snap);
@@ -162,17 +177,21 @@ function ImportPage() {
 				toast.error(
 					err instanceof Error ? err.message : "Could not check the addresses",
 				);
+
 				return;
 			} finally {
 				setBusy(null);
 			}
+
 			if (!current.plan.ready) {
 				toast.error(
 					"An address you typed belongs to a user outside this workspace. Change it.",
 				);
+
 				return;
 			}
 		}
+
 		setImporting(true);
 		runner.run(current.planId, current.plan, current.chunkCount);
 	};

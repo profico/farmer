@@ -47,9 +47,11 @@ export const Route = createFileRoute("/$orgSlug/settings/holidays")({
 	loaderDeps: ({ search }) => ({ year: search.year }),
 	loader: async ({ context, deps, params }) => {
 		const orgSlug = params.orgSlug;
+
 		const year =
 			deps.year ??
 			Number(dayKeyInTz(new Date(), context.organization.timezone).slice(0, 4));
+
 		await context.queryClient.ensureQueryData(
 			holidaysForYearWithStatusQuery(orgSlug, year),
 		);
@@ -82,6 +84,7 @@ function HolidaysSettingsPage() {
 	const todayKey = dayKeyInTz(new Date(), organization.timezone);
 	const currentYear = Number(todayKey.slice(0, 4));
 	const year = search.year ?? currentYear;
+
 	const { data: holidays } = useSuspenseQuery(
 		holidaysForYearWithStatusQuery(orgSlug, year),
 	);
@@ -104,12 +107,14 @@ function HolidaysSettingsPage() {
 					h.name === vars.name ? { ...h, disabled: vars.disabled } : h,
 				),
 			);
+
 			return { queryKey, previous };
 		},
 		onError: (error, _vars, context) => {
 			if (context) {
 				queryClient.setQueryData(context.queryKey, context.previous);
 			}
+
 			toast.error(error.message ?? "Could not update holiday");
 		},
 		// Every other reader of the calendar — the timesheet's week strip, the

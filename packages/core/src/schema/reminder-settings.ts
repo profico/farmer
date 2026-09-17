@@ -15,14 +15,19 @@ export const REMINDER_KINDS = [
 	"month-end",
 	"admin-digest",
 ] as const;
+
 export const reminderKind = z.enum(REMINDER_KINDS);
+
 export type ReminderKind = z.infer<typeof reminderKind>;
 
 /** Nothing goes out between 20:00 and 07:00. */
 export const REMINDER_EARLIEST_TIME = "07:00";
+
 export const REMINDER_LATEST_TIME = "20:00";
+
 /** The Slack nudge goes out on at most this many days a week. */
 export const MAX_NUDGE_DAYS = 3;
+
 export const MAX_MONTH_END_DAYS_BEFORE = 10;
 
 // A quarter hour, because the Slack job ticks every 15 minutes: a 09:10 would
@@ -36,6 +41,7 @@ export const reminderTime = z
 	);
 
 const weekday = z.number().int().min(0).max(6);
+
 const percent = z.number().int().min(1).max(100);
 
 // Overhead employees are never nagged about timesheets, so they are not a
@@ -47,7 +53,9 @@ export const naggableMemberTypeEnum = z.enum([
 	"contractor_full_time",
 	"contractor_hourly",
 ]);
+
 export type NaggableMemberType = z.infer<typeof naggableMemberTypeEnum>;
+
 const memberTypes = z
 	.array(naggableMemberTypeEnum)
 	.min(1, "Pick at least one person type")
@@ -83,6 +91,7 @@ export const reminderSettingsInput = z.object({
 
 	includeNeverSignedIn: z.boolean(),
 });
+
 export type ReminderSettings = z.infer<typeof reminderSettingsInput>;
 
 /** What a missing row means — the behaviour the jobs had before these were
@@ -111,6 +120,7 @@ export const REMINDER_SETTINGS_DEFAULTS: ReminderSettings = {
 // A partial patch, so each card on the page saves its own fields without
 // sending (and so without the power to clobber) another card's.
 export const updateReminderSettingsInput = reminderSettingsInput.partial();
+
 export type UpdateReminderSettingsInput = z.infer<
 	typeof updateReminderSettingsInput
 >;
@@ -119,4 +129,5 @@ export const reminderPreviewInput = z.object({
 	kind: reminderKind,
 	date: z.string().refine(isValidDayKey, "Use a real YYYY-MM-DD date"),
 });
+
 export type ReminderPreviewInput = z.infer<typeof reminderPreviewInput>;

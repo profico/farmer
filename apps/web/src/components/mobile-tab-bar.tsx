@@ -99,6 +99,7 @@ export function MobileTabBar({
 	].filter((group) => group.items.length > 0);
 
 	const moreItems = groups.flatMap((group) => group.items);
+
 	// One resolution over every row the bar can reach, primary and overflow
 	// alike: the Settings hub is a URL prefix of every row listed under it, so
 	// asked row by row it lights two at once. See `activeNavTo`.
@@ -107,6 +108,7 @@ export function MobileTabBar({
 		[...primaryItems, ...moreItems],
 		orgSlug,
 	);
+
 	const isMoreActive = moreItems.some((item) => item.to === activeTo);
 
 	// Unattributed time, on the tab that leads to the screen that files it —
@@ -132,6 +134,7 @@ export function MobileTabBar({
 					{primaryItems.map((item) => {
 						const active = item.to === activeTo;
 						const badge = item.to === "/$orgSlug/time" ? unfiledCount : 0;
+
 						return (
 							<Link
 								key={item.to}
@@ -213,6 +216,7 @@ export function MobileTabBar({
 								<div className="eyebrow px-3 pt-2 pb-1">{group.label}</div>
 								{group.items.map((item) => {
 									const active = item.to === activeTo;
+
 									return (
 										<Link
 											key={item.to}

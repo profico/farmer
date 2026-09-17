@@ -82,7 +82,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 /** The trailing `/word` being typed, if any. */
 const parseCommand = (draft: string) => {
 	const match = /(^|\s)\/([\w-]*)$/.exec(draft);
+
 	if (!match) return null;
+
 	return {
 		query: (match[2] ?? "").toLowerCase(),
 		start: match.index + (match[1]?.length ?? 0),
@@ -112,6 +114,7 @@ export function PromptBar({
 	const [dismissed, setDismissed] = useState(false);
 	const [active, setActive] = useState(0);
 	const [engaged, setEngaged] = useState(false);
+
 	const [rowBox, setRowBox] = useState<{ top: number; height: number } | null>(
 		null,
 	);
@@ -121,11 +124,13 @@ export function PromptBar({
 	const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
 	const token = dismissed ? null : parseCommand(draft);
+
 	const rows = token
 		? SLASH_COMMANDS.filter((command) =>
 				command.name.slice(1).startsWith(token.query),
 			)
 		: [];
+
 	const menuOpen = Boolean(token);
 
 	// Focus imperatively rather than through the `autofocus` attribute. Same
@@ -149,6 +154,7 @@ export function PromptBar({
 	// its own background — the same gesture as the sidebar's active pill.
 	useLayoutEffect(() => {
 		const target = rowRefs.current[active];
+
 		if (target)
 			setRowBox({ top: target.offsetTop, height: target.offsetHeight });
 	}, [active]);
@@ -163,6 +169,7 @@ export function PromptBar({
 	// oxlint-disable-next-line react-hooks/exhaustive-deps -- it re-measures the textarea, and `draft` is what changes its content height
 	useLayoutEffect(() => {
 		const input = inputRef.current;
+
 		if (!input) return;
 		input.style.height = "0px";
 		const contentHeight = input.scrollHeight;
@@ -181,6 +188,7 @@ export function PromptBar({
 	};
 
 	const canSend = draft.trim().length > 0 && !busy && !disabled;
+
 	/**
 	 * Clear on send, and put it back if the send never landed.
 	 *
@@ -308,22 +316,29 @@ export function PromptBar({
 													(event.key === "ArrowDown" ? 1 : rows.length - 1)) %
 												rows.length,
 										);
+
 										return;
 									}
+
 									if (
 										(event.key === "Enter" && !event.shiftKey) ||
 										event.key === "Tab"
 									) {
 										event.preventDefault();
 										const command = rows[active];
+
 										if (command) pick(command);
+
 										return;
 									}
 								}
+
 								if (event.key === "Escape") {
 									setDismissed(true);
+
 									return;
 								}
+
 								if (
 									event.key === "Enter" &&
 									!event.shiftKey &&

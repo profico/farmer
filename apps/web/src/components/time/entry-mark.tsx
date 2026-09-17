@@ -34,6 +34,7 @@ export function EntryMark({
 			/>
 		);
 	}
+
 	return (
 		<span
 			aria-hidden

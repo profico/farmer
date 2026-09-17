@@ -41,6 +41,7 @@ export const hourFundService = {
 			),
 			columns: { fundSeconds: true },
 		});
+
 		return row?.fundSeconds ?? null;
 	},
 
@@ -55,6 +56,7 @@ export const hourFundService = {
 		months: { year: number; month: number }[],
 	): Promise<Map<string, number>> => {
 		if (months.length === 0) return new Map();
+
 		const rows = await db
 			.select({
 				year: monthlyHourFund.year,
@@ -78,6 +80,7 @@ export const hourFundService = {
 					),
 				),
 			);
+
 		return new Map(
 			rows.map((r) => [
 				`${r.year}-${String(r.month).padStart(2, "0")}`,
@@ -156,6 +159,7 @@ export const hourFundService = {
 			// UTC weekday of a bare calendar key — no timezone involved, the key IS
 			// the calendar day.
 			const weekday = new Date(`${key}T00:00:00Z`).getUTCDay();
+
 			return weekday !== 0 && weekday !== 6;
 		}).length;
 
@@ -171,15 +175,19 @@ export const hourFundService = {
 		const known = new Set(existing.map((r) => r.month));
 
 		const rows: { month: number; fundSeconds: number }[] = [];
+
 		for (let month = 1; month <= 12; month++) {
 			if (known.has(month)) continue;
+
 			const { fundSeconds } = await hourFundService.suggestForMonth(
 				ctx,
 				year,
 				month,
 			);
+
 			rows.push({ month, fundSeconds });
 		}
+
 		if (rows.length === 0) return { filled: 0 };
 
 		const inserted = await db
@@ -206,6 +214,7 @@ export const hourFundService = {
 				],
 			})
 			.returning({ month: monthlyHourFund.month });
+
 		return { filled: inserted.length };
 	},
 };

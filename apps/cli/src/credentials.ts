@@ -35,13 +35,17 @@ export type CredentialStore = {
 const credentialsFile = z.object({
 	tokens: z.array(z.object({ origin: z.string(), token: z.string() })),
 });
+
 type CredentialsFile = z.infer<typeof credentialsFile>;
 
 const readTokens = async (path: string): Promise<CredentialsFile> => {
 	const file = Bun.file(path);
+
 	if (!(await file.exists())) return { tokens: [] };
+
 	try {
 		const parsed = credentialsFile.safeParse(JSON.parse(await file.text()));
+
 		// A damaged file costs a new `farmer login`, not a crash on every command.
 		return parsed.success ? parsed.data : { tokens: [] };
 	} catch {
@@ -52,8 +56,10 @@ const readTokens = async (path: string): Promise<CredentialsFile> => {
 const writeTokens = async (path: string, data: CredentialsFile) => {
 	if (data.tokens.length === 0) {
 		await rm(path, { force: true });
+
 		return;
 	}
+
 	await mkdir(dirname(path), { recursive: true, mode: 0o700 });
 	await writeFile(path, `${JSON.stringify(data, null, "\t")}\n`, {
 		mode: 0o600,
@@ -81,6 +87,7 @@ export const createCredentialStore = (
 	const removeFromFile = async (origin: string) => {
 		const data = await readTokens(filePath);
 		const kept = data.tokens.filter((entry) => entry.origin !== origin);
+
 		if (kept.length !== data.tokens.length) {
 			await writeTokens(filePath, { tokens: kept });
 		}
@@ -91,12 +98,15 @@ export const createCredentialStore = (
 			if (keyring) {
 				try {
 					const token = await keyring.get(origin);
+
 					if (token) return token;
 				} catch {
 					// No usable keyring: the file below is the only other place.
 				}
 			}
+
 			const data = await readTokens(filePath);
+
 			return (
 				data.tokens.find((entry) => entry.origin === origin)?.token ?? null
 			);
@@ -106,11 +116,13 @@ export const createCredentialStore = (
 				try {
 					await keyring.set(origin, token);
 					await removeFromFile(origin);
+
 					return "keyring";
 				} catch {
 					// Fall through to the file.
 				}
 			}
+
 			const data = await readTokens(filePath);
 			await writeTokens(filePath, {
 				tokens: [
@@ -118,6 +130,7 @@ export const createCredentialStore = (
 					{ origin, token },
 				],
 			});
+
 			return "file";
 		},
 		delete: async (origin) => {
@@ -128,6 +141,7 @@ export const createCredentialStore = (
 					// Nothing to delete where there is no keyring.
 				}
 			}
+
 			await removeFromFile(origin);
 		},
 	};

@@ -7,6 +7,7 @@ import { z } from "zod";
 export const sendTestSlackMessageInput = z.object({
 	userId: z.string().min(1),
 });
+
 export type SendTestSlackMessageInput = z.infer<
 	typeof sendTestSlackMessageInput
 >;

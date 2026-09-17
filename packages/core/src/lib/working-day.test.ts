@@ -78,6 +78,7 @@ describe("dayForWeekday", () => {
 			{ dayOfWeek: 3, enabled: true, startTime: "09:00", endTime: "17:00" },
 			{ dayOfWeek: 1, enabled: true, startTime: "10:00", endTime: "14:00" },
 		];
+
 		expect(dayForWeekday(partial, 1)?.startTime).toBe("10:00");
 		expect(dayForWeekday(partial, 3)?.startTime).toBe("09:00");
 		expect(dayForWeekday(partial, 2)).toBeUndefined();
@@ -138,6 +139,7 @@ describe("spokenForSeconds", () => {
 			{ durationSeconds: 1800, fillsDay: false },
 			{ durationSeconds: 9999, fillsDay: true },
 		];
+
 		expect(spokenForSeconds(claims)).toBe(5400);
 	});
 
@@ -152,6 +154,7 @@ describe("loggedSeconds", () => {
 			{ durationSeconds: 3600, fillsDay: false },
 			{ durationSeconds: 1800, fillsDay: true },
 		];
+
 		expect(loggedSeconds(claims)).toBe(5400);
 		expect(spokenForSeconds(claims)).toBe(3600);
 	});
@@ -172,10 +175,12 @@ describe("remainingSeconds", () => {
 	test("one call matches successive flooring for non-negative claims", () => {
 		const target = 8 * 3600;
 		const [spokenFor, meetings, breakSeconds] = [3600, 5400, 1800];
+
 		const stepwise = Math.max(
 			0,
 			Math.max(0, target - spokenFor - meetings) - breakSeconds,
 		);
+
 		expect(remainingSeconds(target, spokenFor, meetings, breakSeconds)).toBe(
 			stepwise,
 		);

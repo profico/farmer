@@ -26,9 +26,13 @@ import { DayCapacityError, timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-absence-fill";
+
 const PM = "user-absence-fill-pm";
+
 const PERSON = "user-absence-fill-person";
+
 const DAY = "2026-08-10"; // a Monday
+
 /** The synthesized default working day: Mon-Fri 09:00-17:00. */
 const WORKDAY_SECONDS = 8 * 3600;
 
@@ -36,7 +40,9 @@ const WORKDAY_SECONDS = 8 * 3600;
 const pmCtx = (): Ctx => ({ organizationId: ORG_ID, userId: PM });
 
 let harness: TestDb;
+
 let leaveTaskId = "";
+
 let devTaskId = "";
 
 const fillOf = async () => {
@@ -48,6 +54,7 @@ const fillOf = async () => {
 			eq(timeEntry.fillsDay, true),
 		),
 	});
+
 	return rows[0] ?? null;
 };
 
@@ -81,6 +88,7 @@ beforeAll(async () => {
 		createdAt: new Date(),
 		timezone: "Europe/Zagreb",
 	});
+
 	for (const id of [PM, PERSON]) {
 		await db.insert(user).values({
 			id,
@@ -91,6 +99,7 @@ beforeAll(async () => {
 			updatedAt: new Date(),
 		});
 	}
+
 	// An admin may correct anybody's absence, which keeps this file about the
 	// fill block rather than about the PM matrix (access.test.ts owns that).
 	await db.insert(member).values([
@@ -115,6 +124,7 @@ beforeAll(async () => {
 		where: and(eq(task.scope, "site"), eq(task.systemKey, "paid_leave")),
 		columns: { id: true },
 	});
+
 	leaveTaskId = present(leave, "paid leave task").id;
 
 	const [dev] = await db
@@ -127,6 +137,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = present(dev, "development task").id;
 });
 

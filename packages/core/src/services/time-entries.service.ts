@@ -163,7 +163,9 @@ const meetingIdentityKeys = (row: {
 	const keys = [
 		`t|${row.date}|${row.description.trim().toLowerCase()}|${row.durationSeconds}`,
 	];
+
 	if (row.meetingUrl) keys.push(`u|${row.date}|${row.meetingUrl}`);
+
 	return keys;
 };
 
@@ -185,6 +187,7 @@ const syncMeetingsForRange = async (
 	tz: string,
 ) => {
 	const events = await calendarSource().listEventsForRange(ctx, range);
+
 	// null => couldn't read the calendar (disconnected / revoked token). Bail
 	// without deleting, or we'd wipe synced entries we merely failed to fetch.
 	if (events === null) return;
@@ -193,6 +196,7 @@ const syncMeetingsForRange = async (
 	// org may have relabelled, and the old name match meant a relabel silently
 	// switched this whole engine off.
 	const meetingTask = await tasksService.findBySystemKey(ctx, "meeting");
+
 	if (!meetingTask) return;
 
 	// Standing "always file this one to that project" answers, keyed on the
@@ -208,6 +212,7 @@ const syncMeetingsForRange = async (
 		),
 		columns: { calendarEventId: true },
 	});
+
 	const tombstoned = new Set(tombstones.map((t) => t.calendarEventId));
 
 	// Duplicate guard for REISSUED event ids. Google mints new instance ids when a
@@ -236,11 +241,14 @@ const syncMeetingsForRange = async (
 			meetingUrl: true,
 		},
 	});
+
 	// key -> the event id already holding that slot, so an event never shadows
 	// its own entry (the ordinary case: the row IS this event, already locked).
 	const lockedBy = new Map<string, string>();
+
 	for (const row of lockedRows) {
 		if (!row.calendarEventId) continue;
+
 		for (const key of meetingIdentityKeys(row)) {
 			lockedBy.set(key, row.calendarEventId);
 		}
@@ -251,6 +259,7 @@ const syncMeetingsForRange = async (
 		.map((event) => {
 			const startedAt = new Date(event.start);
 			const stoppedAt = new Date(event.end);
+
 			return {
 				event,
 				startedAt,
@@ -268,6 +277,7 @@ const syncMeetingsForRange = async (
 		.filter(({ rawSeconds }) => rawSeconds > 0)
 		.map(({ event, startedAt, rawSeconds }) => {
 			const rule = filingRules.get(ruleKeyFor(meetingTask.id, event.title));
+
 			return {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
@@ -304,12 +314,14 @@ const syncMeetingsForRange = async (
 			const holder = meetingIdentityKeys(row)
 				.map((key) => lockedBy.get(key))
 				.find((eventId) => eventId != null);
+
 			if (holder == null || holder === row.calendarEventId) return true;
 			console.info("[time-entries] skipping reissued calendar event", {
 				keptEventId: holder,
 				skippedEventId: row.calendarEventId,
 				date: row.date,
 			});
+
 			return false;
 		});
 
@@ -339,6 +351,7 @@ const syncMeetingsForRange = async (
 			),
 			columns: { date: true },
 		});
+
 		for (const row of previous) touched.add(row.date);
 
 		const written = await db
@@ -372,6 +385,7 @@ const syncMeetingsForRange = async (
 			// What actually landed. A conflict the `setWhere` declined returns
 			// nothing, so its day is not touched either.
 			.returning({ date: timeEntry.date });
+
 		for (const row of written) touched.add(row.date);
 	}
 
@@ -380,6 +394,7 @@ const syncMeetingsForRange = async (
 	// a partial scope, and wiping every synced entry on a false empty is
 	// unrecoverable, whereas skipping just leaves a stale row until next sync.
 	const liveIds = events.map((event) => event.id);
+
 	if (liveIds.length > 0) {
 		const removed = await db
 			.delete(timeEntry)
@@ -395,6 +410,7 @@ const syncMeetingsForRange = async (
 				),
 			)
 			.returning({ date: timeEntry.date });
+
 		for (const row of removed) touched.add(row.date);
 	}
 
@@ -474,6 +490,7 @@ const resolveFillProject = async (
 	homelessProjectIds: string[],
 ): Promise<string | null> => {
 	const [projectId] = homelessProjectIds;
+
 	if (!projectId || homelessProjectIds.length !== 1) return null;
 
 	// Belt and braces: `reposForUser` already inner-joins an active projectMember
@@ -481,6 +498,7 @@ const resolveFillProject = async (
 	// because this writes billable project time and that invariant lives three
 	// files away — the memo makes it free.
 	const access = await ctxAccess(ctx);
+
 	if (!access.canTrackOn(projectId)) return null;
 
 	// The project must actually offer Development. `development` is org-scoped,
@@ -488,12 +506,15 @@ const resolveFillProject = async (
 	// cherry-pick check — and writing an entry the person could not have created
 	// by hand is exactly what assertTaskAvailable exists to prevent.
 	const workTask = await tasksService.findBySystemKey(ctx, "development");
+
 	if (!workTask) return null;
+
 	try {
 		await assertTaskAvailable(ctx, workTask.id, projectId);
 	} catch {
 		return null;
 	}
+
 	return projectId;
 };
 
@@ -553,9 +574,11 @@ const fileReviewBlocks = async (
 	day: { workingHours: WorkingHoursDay[]; holidays: HolidayLookup },
 ): Promise<{ placed: Set<string>; created: boolean }> => {
 	const placed = new Set<string>();
+
 	if (reviews.length === 0) return { placed, created: false };
 
 	const byPullRequest = new Map<string, ScannedPullRequestActivity[]>();
+
 	for (const review of reviews) {
 		byPullRequest.set(review.pullRequestUrl, [
 			...(byPullRequest.get(review.pullRequestUrl) ?? []),
@@ -586,9 +609,12 @@ const fileReviewBlocks = async (
 	// Every PR reviewed on its project goes on it, including after the first —
 	// a hand-logged entry that already holds #10 is still the home for #11.
 	const handLogged = new Map<string, (typeof reviewEntries)[number]>();
+
 	for (const entry of reviewEntries) {
 		if (entry.projectId === null) continue;
+
 		if (isReviewBlock(entry.description, heldBy.get(entry.id) ?? [])) continue;
+
 		if (!handLogged.has(entry.projectId)) {
 			handLogged.set(entry.projectId, entry);
 		}
@@ -596,10 +622,13 @@ const fileReviewBlocks = async (
 
 	// The same two gates as `resolveFillProject`: this writes project time.
 	const verdicts = new Map<string, boolean>();
+
 	const mayFileOn = async (projectId: string) => {
 		const cached = verdicts.get(projectId);
+
 		if (cached !== undefined) return cached;
 		let allowed = access.canTrackOn(projectId);
+
 		if (allowed) {
 			try {
 				await assertTaskAvailable(ctx, reviewTaskId, projectId);
@@ -607,22 +636,29 @@ const fileReviewBlocks = async (
 				allowed = false;
 			}
 		}
+
 		verdicts.set(projectId, allowed);
+
 		return allowed;
 	};
 
 	let room = await computeDayFillSeconds(ctx, dayKey, tz, day);
 	let created = false;
 	const attachments = new Map<string, ScannedPullRequestActivity[]>();
+
 	for (const [pullRequestUrl, events] of byPullRequest) {
 		const [first] = events;
+
 		if (!first) continue;
+
 		let target =
 			homes.get(pullRequestUrl) ?? handLogged.get(first.projectId)?.id ?? null;
+
 		const size = Math.min(
 			REVIEW_BLOCK_SECONDS,
 			room - (room % QUARTER_HOUR_SECONDS),
 		);
+
 		if (
 			!target &&
 			size > 0 &&
@@ -641,20 +677,24 @@ const fileReviewBlocks = async (
 					durationSeconds: size,
 				})
 				.returning({ id: timeEntry.id });
+
 			if (row) {
 				target = row.id;
 				room -= size;
 				created = true;
 			}
 		}
+
 		if (!target) continue;
 		attachments.set(target, [...(attachments.get(target) ?? []), ...events]);
+
 		for (const event of events) placed.add(event.eventId);
 	}
 
 	// A hand-logged entry with no description gets one, as the work entries do.
 	for (const entry of handLogged.values()) {
 		const events = attachments.get(entry.id);
+
 		if (!events || entry.description.trim() !== "") continue;
 		await db
 			.update(timeEntry)
@@ -672,6 +712,7 @@ const fileReviewBlocks = async (
 			pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
 		),
 	);
+
 	if (rows.length > 0) {
 		await db
 			.insert(timeEntryGithubPrActivity)
@@ -679,6 +720,7 @@ const fileReviewBlocks = async (
 			// tegpa_entry_event_unq: a re-run attaches the same reviews again.
 			.onConflictDoNothing();
 	}
+
 	return { placed, created };
 };
 
@@ -694,15 +736,19 @@ const syncCommitWorkTimeForRange = async (
 		commitSource().listUserCommitsByDay(ctx, range),
 		pullRequestSource().listUserPullRequestActivityByDay(ctx, range),
 	]);
+
 	const days = new Map<string, DayEvidence>();
+
 	for (const { dayKey, commits } of commitDays) {
 		days.set(dayKey, { commits, pullRequests: [] });
 	}
+
 	for (const { dayKey, activity } of pullRequestDays) {
 		const day = days.get(dayKey) ?? emptyEvidence();
 		day.pullRequests.push(...activity);
 		days.set(dayKey, day);
 	}
+
 	if (days.size === 0) return;
 
 	// Resolved by system key, not by display name. The old lookup matched
@@ -710,6 +756,7 @@ const syncCommitWorkTimeForRange = async (
 	// (or one seeded before the key existed) had this engine silently switched
 	// off — no block, no error.
 	const workTask = await tasksService.findBySystemKey(ctx, "development");
+
 	if (!workTask) return;
 	// Optional. Without it, reviews stay evidence on the day's work.
 	const reviewTask = await tasksService.findBySystemKey(ctx, "code_review");
@@ -722,6 +769,7 @@ const syncCommitWorkTimeForRange = async (
 		// none, via that day being disabled in the person's working hours.
 		holidaysService.holidaySetForRange(ctx, range.from, range.to),
 	]);
+
 	for (const [dayKey, { commits, pullRequests }] of days) {
 		// GitHub filters `since`/`until` on the COMMITTER date, and the source
 		// buckets by AUTHOR date. A rebase rewrites the one and keeps the other, so
@@ -734,6 +782,7 @@ const syncCommitWorkTimeForRange = async (
 		// Review blocks first. Each takes its time from the day's free time, so it
 		// has to exist before the rest-of-day block is sized, or resized.
 		let placed = new Set<string>();
+
 		if (reviewTask) {
 			const filed = await fileReviewBlocks(
 				ctx,
@@ -743,7 +792,9 @@ const syncCommitWorkTimeForRange = async (
 				pullRequests.filter((event) => event.kind === "reviewed"),
 				{ workingHours, holidays },
 			);
+
 			placed = filed.placed;
+
 			if (filed.created) await recomputeDayFill(ctx, dayKey, tz);
 		}
 
@@ -767,11 +818,14 @@ const syncCommitWorkTimeForRange = async (
 		// A loop, not `filter().map()`: only this way does the null check actually
 		// narrow `projectId` into the key type.
 		const byProject = new Map<string, (typeof dayEntries)[number]>();
+
 		for (const entry of dayEntries) {
 			if (entry.projectId === null || entry.fillsDay) continue;
 			byProject.set(entry.projectId, entry);
 		}
+
 		let fill = dayEntries.find((e) => e.fillsDay) ?? null;
+
 		// A project-less Development entry someone logged by hand. Not a fill block,
 		// but it is unmistakably "the work I did that day", so commits with no
 		// better home belong on it rather than on a new block competing with it.
@@ -781,20 +835,26 @@ const syncCommitWorkTimeForRange = async (
 		// Group by project so evidence lands on the entry for the project it
 		// belongs to. A project with no entry falls through to the fill.
 		const evidenceByProject = new Map<string, DayEvidence>();
+
 		const evidenceFor = (projectId: string): DayEvidence => {
 			const existing = evidenceByProject.get(projectId);
+
 			if (existing) return existing;
 			const created = emptyEvidence();
 			evidenceByProject.set(projectId, created);
+
 			return created;
 		};
+
 		for (const commit of commits) {
 			evidenceFor(commit.projectId).commits.push(commit);
 		}
+
 		// A placed review sits on its own block, so it is not evidence for a work
 		// entry. It still says the day was worked, so its project still counts
 		// towards the rest-of-day block below.
 		const reviewedProjectIds = new Set<string>();
+
 		for (const event of pullRequests) {
 			if (placed.has(event.eventId)) reviewedProjectIds.add(event.projectId);
 			else evidenceFor(event.projectId).pullRequests.push(event);
@@ -803,6 +863,7 @@ const syncCommitWorkTimeForRange = async (
 		const homelessProjectIds = [
 			...new Set([...evidenceByProject.keys(), ...reviewedProjectIds]),
 		].filter((projectId) => !byProject.has(projectId));
+
 		const homeless = mergeEvidence(
 			homelessProjectIds.flatMap(
 				(projectId) => evidenceByProject.get(projectId) ?? [],
@@ -817,7 +878,9 @@ const syncCommitWorkTimeForRange = async (
 				workingHours,
 				holidays,
 			});
+
 			const fillProjectId = await resolveFillProject(ctx, homelessProjectIds);
+
 			// A day already accounted for in full gets no block. Inserting a
 			// 0-second one would just park an empty second "Development" row next to
 			// the entries that already filled the day. Note this no longer skips the
@@ -883,14 +946,17 @@ const syncCommitWorkTimeForRange = async (
 		// evidence is simply left for a later run, once there is.
 		const fallback = fill ?? generalEntry;
 		const attachments = new Map<string, DayEvidence>();
+
 		for (const [projectId, group] of evidenceByProject) {
 			const target = byProject.get(projectId) ?? fallback;
+
 			if (!target) continue;
 			attachments.set(
 				target.id,
 				mergeEvidence([attachments.get(target.id) ?? emptyEvidence(), group]),
 			);
 		}
+
 		if (attachments.size === 0) continue;
 
 		// Only ever fill a BLANK description. A person's own wording outranks
@@ -900,10 +966,12 @@ const syncCommitWorkTimeForRange = async (
 		const blankDescribable = dayEntries
 			.concat(fill && !dayEntries.some((e) => e.id === fill.id) ? [fill] : [])
 			.filter((e) => e.description.trim() === "" && attachments.has(e.id));
+
 		for (const entry of blankDescribable) {
 			const description = describeEvidence(
 				attachments.get(entry.id) ?? emptyEvidence(),
 			);
+
 			if (!description) continue;
 			await db
 				.update(timeEntry)
@@ -922,6 +990,7 @@ const syncCommitWorkTimeForRange = async (
 				url: commit.url,
 			})),
 		);
+
 		if (commitRows.length > 0) {
 			await db
 				.insert(timeEntryGithubCommit)
@@ -929,11 +998,13 @@ const syncCommitWorkTimeForRange = async (
 				// tegc_entry_sha_unq: re-running the sync re-attaches the same commits.
 				.onConflictDoNothing();
 		}
+
 		const activityRows = [...attachments].flatMap(([timeEntryId, group]) =>
 			group.pullRequests.map((event) =>
 				pullRequestActivityRow(timeEntryId, event.projectGithubRepoId, event),
 			),
 		);
+
 		if (activityRows.length > 0) {
 			await db
 				.insert(timeEntryGithubPrActivity)
@@ -955,6 +1026,7 @@ const hasCommitFillTombstone = async (ctx: Ctx, dateKey: string) => {
 		),
 		columns: { id: true },
 	});
+
 	return !!row;
 };
 
@@ -1002,10 +1074,13 @@ export const assertDayHasRoom = async (
 			calendarEventId: true,
 		},
 	});
+
 	const current = spokenForSeconds(dayRows);
+
 	const next =
 		spokenForSeconds(dayRows.filter((row) => !opts.replacing?.(row))) +
 		durationSeconds;
+
 	if (next > MAX_DAY_SECONDS && next > current) {
 		throw new DayCapacityError(dateKey);
 	}
@@ -1023,6 +1098,7 @@ export const assertDayHasRoom = async (
 const personCtx = (ctx: Ctx, userId: string): Ctx => {
 	const person: Ctx = { organizationId: ctx.organizationId, userId };
 	const memo = ctx[CTX_MEMO];
+
 	if (memo) {
 		Object.defineProperty(person, CTX_MEMO, {
 			value: { timezone: memo.timezone, tx: memo.tx } satisfies CtxMemo,
@@ -1031,6 +1107,7 @@ const personCtx = (ctx: Ctx, userId: string): Ctx => {
 			configurable: true,
 		});
 	}
+
 	return person;
 };
 
@@ -1047,6 +1124,7 @@ const projectIdsForUser = async (ctx: Ctx, userId: string) => {
 				eq(projectMember.active, true),
 			),
 		);
+
 	return rows.map((r) => r.projectId);
 };
 
@@ -1065,6 +1143,7 @@ const projectIdsForUser = async (ctx: Ctx, userId: string) => {
 const canReadAbsenceOf = async (ctx: Ctx, userId: string): Promise<boolean> => {
 	if (userId === ctx.userId) return true;
 	const access = await ctxAccess(ctx);
+
 	return access.canOverrideAbsenceFor(await projectIdsForUser(ctx, userId));
 };
 
@@ -1133,6 +1212,7 @@ export const timeEntriesService = {
 		// same rule as recomputeDayFill, applied to the entries already in hand.
 		const fills = rows.filter((r) => r.fillsDay);
 		let visible = rows;
+
 		// Only the fill blocks a background job would also have been allowed to
 		// rewrite. `null` means the window is closed entirely (the lock covers
 		// today), in which case a read touches nothing at all.
@@ -1143,30 +1223,38 @@ export const timeEntriesService = {
 							.automationLockedThrough,
 					})
 				: null;
+
 		const stale = writable
 			? fills.filter((f) => f.date >= writable.from && f.date <= writable.to)
 			: [];
+
 		if (writable && stale.length > 0) {
 			const [workingHours, holidays] = await Promise.all([
 				workingHoursService.list(ctx),
 				holidaysService.holidaySetForRange(ctx, writable.from, writable.to),
 			]);
+
 			const claimsByDay = new Map<string, typeof rows>();
+
 			for (const r of rows) {
 				const list = claimsByDay.get(r.date) ?? [];
 				list.push(r);
 				claimsByDay.set(r.date, list);
 			}
+
 			const emptied: string[] = [];
+
 			for (const fill of stale) {
 				const next = remainingSeconds(
 					targetSecondsFor(workingHours, fill.date, tz, holidays),
 					spokenForSeconds(claimsByDay.get(fill.date) ?? []),
 				);
+
 				if (next === 0) {
 					emptied.push(fill.id);
 					continue;
 				}
+
 				if (next === fill.durationSeconds) continue;
 				await db
 					.update(timeEntry)
@@ -1174,6 +1262,7 @@ export const timeEntriesService = {
 					.where(eq(timeEntry.id, fill.id));
 				fill.durationSeconds = next;
 			}
+
 			if (emptied.length > 0) {
 				const dropped = new Set(emptied);
 				await rehomeDroppedFillEvidence(
@@ -1190,8 +1279,10 @@ export const timeEntriesService = {
 		// avoid a domain.ts <-> github.ts import cycle).
 		const commitCountById = new Map<string, number>();
 		const pullRequestCountById = new Map<string, number>();
+
 		if (visible.length > 0) {
 			const ids = visible.map((r) => r.id);
+
 			const commitCounts = await db
 				.select({
 					timeEntryId: timeEntryGithubCommit.timeEntryId,
@@ -1200,6 +1291,7 @@ export const timeEntriesService = {
 				.from(timeEntryGithubCommit)
 				.where(inArray(timeEntryGithubCommit.timeEntryId, ids))
 				.groupBy(timeEntryGithubCommit.timeEntryId);
+
 			for (const c of commitCounts) commitCountById.set(c.timeEntryId, c.count);
 
 			// Pull requests, not events: three review rounds on one PR are one PR
@@ -1212,6 +1304,7 @@ export const timeEntriesService = {
 				.from(timeEntryGithubPrActivity)
 				.where(inArray(timeEntryGithubPrActivity.timeEntryId, ids))
 				.groupBy(timeEntryGithubPrActivity.timeEntryId);
+
 			for (const c of pullRequestCounts) {
 				pullRequestCountById.set(c.timeEntryId, c.count);
 			}
@@ -1304,17 +1397,20 @@ export const timeEntriesService = {
 		// be interpreted as "unlocked", so it fails the whole pass rather than
 		// silently writing into a closed month.
 		let lockedThrough: string | null;
+
 		try {
 			lockedThrough = (await orgSettingsService.get(ctx))
 				.automationLockedThrough;
 		} catch (error) {
 			console.error("[automations] lock read failed", error);
+
 			return { ran, skipped, failed: [...failed, "org-settings"], off };
 		}
 
 		// Recurring blocks carry no integration switch: each rule holds its own
 		// `activeSince`, which materializeRange applies per rule.
 		const blockWindow = automationWriteWindow(todayKey, { lockedThrough });
+
 		if (blockWindow) {
 			await attempt("recurring-blocks", () =>
 				recurringBlockRulesService.materializeRange(
@@ -1328,10 +1424,12 @@ export const timeEntriesService = {
 		}
 
 		let settings: Awaited<ReturnType<typeof integrationSettingsService.get>>;
+
 		try {
 			settings = await integrationSettingsService.get(ctx);
 		} catch (error) {
 			console.error("[automations] settings read failed", error);
+
 			return { ran, skipped, failed: [...failed, "integration-settings"], off };
 		}
 
@@ -1340,6 +1438,7 @@ export const timeEntriesService = {
 				since: enabledSinceKey(settings.googleAutoSyncMeetingsSince, tz),
 				lockedThrough,
 			});
+
 			if (window) {
 				await attempt("meetings", () => syncMeetingsForRange(ctx, window, tz));
 			} else {
@@ -1360,6 +1459,7 @@ export const timeEntriesService = {
 				// same fill without writing it.
 				completeDaysOnly: true,
 			});
+
 			if (window) {
 				await attempt("commit-work-time", () =>
 					syncCommitWorkTimeForRange(ctx, window, tz),
@@ -1407,11 +1507,14 @@ export const timeEntriesService = {
 			),
 			with: { project: { with: { client: true } }, task: true },
 		});
+
 		if (!row) return undefined;
+
 		const [commits] = await db
 			.select({ count: count() })
 			.from(timeEntryGithubCommit)
 			.where(eq(timeEntryGithubCommit.timeEntryId, row.id));
+
 		return { ...row, commitCount: commits?.count ?? 0 };
 	},
 
@@ -1428,16 +1531,19 @@ export const timeEntriesService = {
 			const access = await ctxAccess(ctx);
 			access.assertCanTrackOn(input.projectId);
 		}
+
 		const taskRow = await assertTaskAvailable(
 			ctx,
 			input.taskId,
 			input.projectId,
 		);
+
 		if (!unasked) {
 			assertDescribed(taskRow, input.description, { fillsDay: input.fillsDay });
 		}
 
 		const tz = await ctxTimezone(ctx);
+
 		const durationSeconds = input.fillsDay
 			? await computeDayFillSeconds(ctx, input.date, tz)
 			: (input.durationSeconds ?? 0);
@@ -1470,6 +1576,7 @@ export const timeEntriesService = {
 
 		return withCtxTx(ctx, async (txCtx) => {
 			const tx = ctxDb(txCtx);
+
 			// A fill block is sized from what is left, so it can never overrun. An
 			// entry that attaches a calendar event replaces that event's synced row
 			// (the upsert below), so that row does not count against it.
@@ -1480,7 +1587,9 @@ export const timeEntriesService = {
 						existing.calendarEventId === input.calendarEventId,
 				});
 			}
+
 			let row: typeof timeEntry.$inferSelect | undefined;
+
 			if (input.fillsDay) {
 				[row] = await tx
 					.insert(timeEntry)
@@ -1494,9 +1603,11 @@ export const timeEntriesService = {
 						where: sql`${timeEntry.fillsDay} = true`,
 					})
 					.returning();
+
 				if (!row) {
 					throw new Error("A work-time block already exists for this day");
 				}
+
 				// Deliberately asking for a rest-of-day block retracts an earlier "no"
 				// on this day. Without this, deleting the block once would suppress the
 				// engine on that day forever, including after the person changed their
@@ -1540,6 +1651,7 @@ export const timeEntriesService = {
 			} else {
 				[row] = await tx.insert(timeEntry).values(values).returning();
 			}
+
 			if (!row) throw new Error("Failed to create time entry");
 
 			// Deliberately creating an entry for a calendar event un-tombstones it.
@@ -1570,6 +1682,7 @@ export const timeEntriesService = {
 				taskRow.isAbsence ? "absence.created" : "time_entry.created",
 				() => timeEntryWebhookPayload(txCtx, createdId),
 			);
+
 			return row;
 		});
 	},
@@ -1585,6 +1698,7 @@ export const timeEntriesService = {
 				eq(timeEntry.userId, ctx.userId),
 			),
 		});
+
 		if (!existing) throw new Error("Time entry not found");
 
 		// Commits and pull request events are evidence of work on the day they
@@ -1602,6 +1716,7 @@ export const timeEntriesService = {
 					columns: { id: true },
 				}),
 			]);
+
 			if (commit || pullRequestEvent) {
 				throw new Error(
 					"This entry holds GitHub commits or pull request events, so it stays on the day they happened",
@@ -1614,11 +1729,13 @@ export const timeEntriesService = {
 			const access = await ctxAccess(ctx);
 			access.assertCanTrackOn(input.projectId);
 		}
+
 		const taskRow = await assertTaskAvailable(
 			ctx,
 			input.taskId,
 			input.projectId,
 		);
+
 		assertDescribed(taskRow, input.description, { fillsDay: input.fillsDay });
 
 		// A day holds one fill block (`te_fill_day_uidx`). Asked before the write,
@@ -1635,12 +1752,14 @@ export const timeEntriesService = {
 				),
 				columns: { id: true },
 			});
+
 			if (otherFill) {
 				throw new Error("A work-time block already exists for this day");
 			}
 		}
 
 		const tz = await ctxTimezone(ctx);
+
 		// The entry being edited is excluded from its own claim: converting a 2h
 		// block into the day's fill block must not count that 2h as competing with
 		// the fill it is becoming.
@@ -1664,7 +1783,9 @@ export const timeEntriesService = {
 					replacing: (row) => row.id === input.timeEntryId,
 				});
 			}
+
 			let row: typeof timeEntry.$inferSelect | undefined;
+
 			try {
 				[row] = await ctxDb(txCtx)
 					.update(timeEntry)
@@ -1698,6 +1819,7 @@ export const timeEntriesService = {
 				// failed query in `DrizzleQueryError` and keeps the driver's error in
 				// `cause`, so the constraint is read there, not on `error`.
 				const cause = error instanceof Error ? error.cause : undefined;
+
 				if (
 					cause instanceof postgres.PostgresError &&
 					cause.code === "23505" &&
@@ -1705,21 +1827,27 @@ export const timeEntriesService = {
 				) {
 					throw new Error("A work-time block already exists for this day");
 				}
+
 				throw error;
 			}
 
 			await recomputeDayFill(txCtx, input.date, tz);
+
 			if (existing.date !== input.date) {
 				await recomputeDayFill(txCtx, existing.date, tz);
 			}
+
 			const updatedId = row?.id;
+
 			if (updatedId) {
 				await emitEvent(txCtx, "time_entry.updated", () =>
 					timeEntryWebhookPayload(txCtx, updatedId),
 				);
 			}
+
 			return row;
 		});
+
 		return updated;
 	},
 
@@ -1749,6 +1877,7 @@ export const timeEntriesService = {
 				fillsDay: true,
 			},
 		});
+
 		if (!existing) throw new Error("Time entry not found");
 
 		await assertProjectInOrg(ctx, input.projectId);
@@ -1758,6 +1887,7 @@ export const timeEntriesService = {
 		// entry had been created against that project by hand.
 		const taskId = input.taskId ?? existing.taskId;
 		const taskRow = await assertTaskAvailable(ctx, taskId, input.projectId);
+
 		// A new task brings its own note rule. The entry's own task was already
 		// held to it when the entry was written.
 		if (taskId !== existing.taskId) {
@@ -1778,12 +1908,14 @@ export const timeEntriesService = {
 			})
 			.where(eq(timeEntry.id, input.timeEntryId))
 			.returning();
+
 		if (!updated) throw new Error("Failed to file entry");
 		// Filing changes an entry's project, which is the field a receiver most
 		// often keys on — so it is an update, not a second creation.
 		await emitEvent(ctx, "time_entry.updated", () =>
 			timeEntryWebhookPayload(ctx, updated.id),
 		);
+
 		return { ...updated, filedFromTaskId: existing.taskId };
 	},
 
@@ -1809,6 +1941,7 @@ export const timeEntriesService = {
 		// returned rows rather than from the request, so a rule can only ever be
 		// recorded for an entry that really moved.
 		const succeeded: { taskId: string; description: string }[] = [];
+
 		for (const timeEntryId of input.timeEntryIds) {
 			try {
 				const entry = await timeEntriesService.file(ctx, {
@@ -1816,6 +1949,7 @@ export const timeEntriesService = {
 					projectId: input.projectId,
 					taskId: input.taskId,
 				});
+
 				succeeded.push({
 					// The key is the task the sync wrote, not the one filed under.
 					taskId: entry.filedFromTaskId,
@@ -1836,6 +1970,7 @@ export const timeEntriesService = {
 		// carried a title worth keying on.
 		//
 		let remembered = 0;
+
 		if (input.remember && succeeded.length > 0) {
 			try {
 				remembered = await filingRulesService.rememberFrom(
@@ -1869,6 +2004,7 @@ export const timeEntriesService = {
 			),
 			columns: { id: true, calendarEventId: true },
 		});
+
 		if (!existing) throw new Error("Time entry not found");
 
 		const [updated] = await db
@@ -1880,10 +2016,12 @@ export const timeEntriesService = {
 			})
 			.where(eq(timeEntry.id, input.timeEntryId))
 			.returning();
+
 		if (!updated) throw new Error("Failed to update note");
 		await emitEvent(ctx, "time_entry.updated", () =>
 			timeEntryWebhookPayload(ctx, updated.id),
 		);
+
 		return updated;
 	},
 
@@ -1914,6 +2052,7 @@ export const timeEntriesService = {
 				calendarEventId: true,
 			},
 		});
+
 		if (!existing) throw new Error("Time entry not found");
 
 		// A fill block claims the rest of the working day, so its length is
@@ -1927,10 +2066,12 @@ export const timeEntriesService = {
 		}
 
 		const tz = await ctxTimezone(ctx);
+
 		return withCtxTx(ctx, async (txCtx) => {
 			await assertDayHasRoom(txCtx, existing.date, input.durationSeconds, {
 				replacing: (row) => row.id === existing.id,
 			});
+
 			const [updated] = await ctxDb(txCtx)
 				.update(timeEntry)
 				.set({
@@ -1943,12 +2084,14 @@ export const timeEntriesService = {
 				})
 				.where(eq(timeEntry.id, input.timeEntryId))
 				.returning();
+
 			if (!updated) throw new Error("Failed to update duration");
 
 			await recomputeDayFill(txCtx, existing.date, tz);
 			await emitEvent(txCtx, "time_entry.updated", () =>
 				timeEntryWebhookPayload(txCtx, updated.id),
 			);
+
 			return updated;
 		});
 	},
@@ -1966,10 +2109,12 @@ export const timeEntriesService = {
 				),
 			)
 			.returning();
+
 		if (!updated) throw new Error("Time entry not found");
 		await emitEvent(ctx, "time_entry.updated", () =>
 			timeEntryWebhookPayload(ctx, updated.id),
 		);
+
 		return updated;
 	},
 
@@ -1978,6 +2123,7 @@ export const timeEntriesService = {
 			const tx = ctxDb(txCtx);
 			// Before the delete: the attachments cascade with the row.
 			const heldReviews = await reviewsHeldBy(txCtx, timeEntryId);
+
 			// Also before the delete, and for the same reason: a webhook payload is
 			// a projection over this row's joins, and there is nothing left to
 			// project from once it is gone. Read only when somebody asked for one
@@ -1985,9 +2131,11 @@ export const timeEntriesService = {
 			const wanted =
 				(await webhookWants(txCtx, "time_entry.deleted")) ||
 				(await webhookWants(txCtx, "absence.removed"));
+
 			const deleted = wanted
 				? await timeEntryWebhookPayload(txCtx, timeEntryId)
 				: null;
+
 			const [existing] = await tx
 				.delete(timeEntry)
 				.where(
@@ -2043,6 +2191,7 @@ export const timeEntriesService = {
 			if (existing) {
 				await refuseReviewBlocks(txCtx, existing.date, heldReviews);
 			}
+
 			// Inside the transaction: the deletion and the fill block it resizes
 			// have to land together, or a reader between the two sees a day whose
 			// fill has not yet absorbed the freed time.
@@ -2087,6 +2236,7 @@ export const timeEntriesService = {
 			const access = await ctxAccess(ctx);
 			access.assertCanTrackOn(input.projectId);
 		}
+
 		await assertTaskAvailable(ctx, input.taskId, input.projectId);
 
 		// One transaction for the whole cell write. `remove` and `create` below are
@@ -2096,6 +2246,7 @@ export const timeEntriesService = {
 		// than five independent ones.
 		return withCtxTx(ctx, async (txCtx) => {
 			const tx = ctxDb(txCtx);
+
 			const matches = await tx.query.timeEntry.findMany({
 				where: and(
 					eq(timeEntry.organizationId, ctx.organizationId),
@@ -2117,6 +2268,7 @@ export const timeEntriesService = {
 				for (const row of matches) {
 					await timeEntriesService.remove(txCtx, row.id);
 				}
+
 				return { cleared: matches.length };
 			}
 
@@ -2127,13 +2279,16 @@ export const timeEntriesService = {
 				await assertDayHasRoom(txCtx, input.date, input.durationSeconds, {
 					replacing: (row) => collapsed.has(row.id),
 				});
+
 				const patch: Partial<typeof timeEntry.$inferInsert> = {
 					durationSeconds: input.durationSeconds,
 					updatedAt: new Date(),
 				};
+
 				if (input.description !== undefined) {
 					patch.description = input.description.trim();
 				}
+
 				// Typing into a synced meeting's cell is the person overriding the
 				// calendar, the same act as `update`, `file` and `updateDescription`,
 				// which all take the row out of the sync engine's hands. Without this
@@ -2143,10 +2298,13 @@ export const timeEntriesService = {
 					.update(timeEntry)
 					.set(patch)
 					.where(eq(timeEntry.id, primary.id));
+
 				for (const row of duplicates) {
 					await timeEntriesService.remove(txCtx, row.id);
 				}
+
 				await recomputeDayFill(txCtx, input.date, tz);
+
 				return { entryId: primary.id };
 			}
 
@@ -2156,6 +2314,7 @@ export const timeEntriesService = {
 			// the question (`create` without `unasked`). A spreadsheet cell cannot
 			// answer it.
 			const description = input.description?.trim() ?? "";
+
 			const created = await timeEntriesService.create(
 				txCtx,
 				{
@@ -2169,6 +2328,7 @@ export const timeEntriesService = {
 				},
 				{ unasked: true },
 			);
+
 			return { entryId: created.id };
 		});
 	},
@@ -2203,6 +2363,7 @@ export const timeEntriesService = {
 
 		return withCtxTx(ctx, async (txCtx) => {
 			const tx = ctxDb(txCtx);
+
 			// Fill blocks included, unlike before: they are handled separately below
 			// rather than filtered out of the read, because the target's fill block
 			// is also what decides whether the source's can be recreated at all.
@@ -2219,6 +2380,7 @@ export const timeEntriesService = {
 				dayRows(input.fromDate),
 				dayRows(input.toDate),
 			]);
+
 			if (source.length === 0) return { copied: 0, skipped: 0 };
 
 			// What makes two entries "the same work" for the purpose of not copying
@@ -2235,10 +2397,13 @@ export const timeEntriesService = {
 			const alreadyThere = new Set(
 				target.filter((e) => !e.fillsDay).map(sameWork),
 			);
+
 			const copyable: typeof source = [];
+
 			for (const entry of source) {
 				if (entry.fillsDay) continue;
 				const key = sameWork(entry);
+
 				if (alreadyThere.has(key)) continue;
 				// Guards against a source day that itself holds two identical rows.
 				alreadyThere.add(key);
@@ -2259,19 +2424,23 @@ export const timeEntriesService = {
 			// differ within a pair.
 			const access = await ctxAccess(txCtx);
 			const verdicts = new Map<string, boolean>();
+
 			const mayCopy = async (e: {
 				projectId: string | null;
 				taskId: string;
 			}): Promise<boolean> => {
 				const key = `${e.projectId ?? ""}|${e.taskId}`;
 				const cached = verdicts.get(key);
+
 				if (cached !== undefined) return cached;
 				let allowed = true;
+
 				try {
 					if (e.projectId) {
 						await assertProjectInOrg(txCtx, e.projectId);
 						access.assertCanTrackOn(e.projectId);
 					}
+
 					await assertTaskAvailable(txCtx, e.taskId, e.projectId ?? undefined);
 				} catch (error) {
 					// A guard says no by throwing; anything else is a real failure and
@@ -2279,11 +2448,14 @@ export const timeEntriesService = {
 					if (error instanceof postgres.PostgresError) throw error;
 					allowed = false;
 				}
+
 				verdicts.set(key, allowed);
+
 				return allowed;
 			};
 
 			const permitted: typeof source = [];
+
 			for (const entry of copyable) {
 				if (await mayCopy(entry)) permitted.push(entry);
 			}
@@ -2291,6 +2463,7 @@ export const timeEntriesService = {
 			// A day may hold at most one fill block (`te_fill_day_uidx`), so the
 			// target's own survives and simply resizes around what just landed.
 			const sourceFill = source.find((e) => e.fillsDay);
+
 			const copyFill =
 				sourceFill !== undefined &&
 				!target.some((e) => e.fillsDay) &&
@@ -2298,13 +2471,16 @@ export const timeEntriesService = {
 
 			let copied = permitted.length;
 			let skipped = source.length - copied - (copyFill ? 1 : 0);
+
 			if (copied === 0 && !copyFill) return { copied: 0, skipped };
 
 			const addedSeconds = permitted.reduce(
 				(sum, e) => sum + e.durationSeconds,
 				0,
 			);
+
 			const existingSeconds = spokenForSeconds(target);
+
 			if (existingSeconds + addedSeconds > MAX_DAY_SECONDS) {
 				throw new DayCapacityError(input.toDate);
 			}
@@ -2313,6 +2489,7 @@ export const timeEntriesService = {
 			// and a batch shape would be a second payload for every kind to handle.
 			// A copied week is about forty of them (issue #67, question 1).
 			const copiedIds: string[] = [];
+
 			if (permitted.length > 0) {
 				const rows = await tx
 					.insert(timeEntry)
@@ -2329,10 +2506,12 @@ export const timeEntriesService = {
 						})),
 					)
 					.returning({ id: timeEntry.id });
+
 				copiedIds.push(...rows.map((row) => row.id));
 			}
 
 			const tz = await ctxTimezone(txCtx);
+
 			if (copyFill && sourceFill) {
 				// Sized last, from what the rows just inserted left over. Zero means
 				// the target day is already spoken for and the block would describe
@@ -2343,6 +2522,7 @@ export const timeEntriesService = {
 					input.toDate,
 					tz,
 				);
+
 				if (fillSeconds > 0) {
 					await tx.insert(timeEntry).values({
 						organizationId: ctx.organizationId,
@@ -2368,6 +2548,7 @@ export const timeEntriesService = {
 			// See the header of `services/events.ts`.
 			if (copiedIds.length > 0) {
 				const payloads = await timeEntryWebhookPayloads(txCtx, copiedIds);
+
 				for (const payload of payloads) {
 					await emitEvent(
 						txCtx,
@@ -2378,6 +2559,7 @@ export const timeEntriesService = {
 					);
 				}
 			}
+
 			return { copied, skipped };
 		});
 	},
@@ -2405,11 +2587,13 @@ export const timeEntriesService = {
 			for (let offset = 0; offset < 7; offset++) {
 				const fromDate = addDaysToKey(input.fromWeekStart, offset);
 				const toDate = addDaysToKey(input.toWeekStart, offset);
+
 				try {
 					const result = await timeEntriesService.copyDay(txCtx, {
 						fromDate,
 						toDate,
 					});
+
 					copied += result.copied;
 					skipped += result.skipped;
 				} catch (error) {
@@ -2438,7 +2622,9 @@ export const timeEntriesService = {
 		if (!(await canReadAbsenceOf(ctx, input.userId))) {
 			throw new AccessError("You cannot see this person's absence");
 		}
+
 		const { from, to } = monthBounds(input.year, input.month);
+
 		return db
 			.select({
 				id: timeEntry.id,
@@ -2471,6 +2657,7 @@ export const timeEntriesService = {
 	 *  a person and their PM reading different day counts off the same rows. */
 	absenceTotals: async (ctx: Ctx, input: AbsenceTotalsInput) => {
 		const userId = input.userId ?? ctx.userId;
+
 		if (!(await canReadAbsenceOf(ctx, userId))) {
 			throw new AccessError("You cannot see this person's absence");
 		}
@@ -2496,6 +2683,7 @@ export const timeEntriesService = {
 
 		return rows.map((row) => {
 			const seconds = Number(row.seconds);
+
 			return {
 				taskId: row.taskId,
 				taskName: row.taskName,
@@ -2528,11 +2716,13 @@ export const timeEntriesService = {
 	 */
 	logAbsenceRange: async (ctx: Ctx, input: LogAbsenceRangeInput) => {
 		const absenceIds = await tasksService.absenceTaskIds();
+
 		if (!absenceIds.has(input.taskId)) {
 			throw new Error("Only absence tasks can be logged this way");
 		}
 
 		const range = { from: input.from, to: input.to };
+
 		const [tz, workingHours, holidays, existing] = await Promise.all([
 			ctxTimezone(ctx),
 			workingHoursService.list(ctx),
@@ -2543,6 +2733,7 @@ export const timeEntriesService = {
 				.innerJoin(task, eq(timeEntry.taskId, task.id))
 				.where(ledgerWhere(ctx, range, "absence", { userId: ctx.userId })),
 		]);
+
 		const alreadyOff = new Set(existing.map((row) => row.date));
 
 		const booked: { date: string; durationSeconds: number }[] = [];
@@ -2553,19 +2744,23 @@ export const timeEntriesService = {
 				skipped.push({ date, reason: "public holiday" });
 				continue;
 			}
+
 			// The zero check comes BEFORE the snap, not after: `snapToQuarterHour`
 			// has a 15-minute floor (so a 3-minute meeting becomes a real block
 			// rather than vanishing), which turns "this person does not work
 			// Saturdays" into a quarter hour of vacation booked on a Saturday.
 			const targetSeconds = targetSecondsFor(workingHours, date, tz, holidays);
+
 			if (targetSeconds === 0) {
 				skipped.push({ date, reason: "not a working day for this person" });
 				continue;
 			}
+
 			// Snapped because a schedule is stored as two clock times and can
 			// describe a day that is not a whole number of quarter hours, which
 			// every other duration in the system is.
 			const durationSeconds = snapToQuarterHour(targetSeconds);
+
 			if (alreadyOff.has(date)) {
 				skipped.push({ date, reason: "absence already logged" });
 				continue;
@@ -2601,13 +2796,16 @@ export const timeEntriesService = {
 			),
 			with: { task: true },
 		});
+
 		if (!existing) throw new Error("Time entry not found");
+
 		if (!existing.task.isAbsence) {
 			throw new Error("Only absence entries can be corrected");
 		}
 
 		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, existing.userId);
+
 		if (!access.canOverrideAbsenceFor(shared)) {
 			throw new AccessError("You cannot correct this person's absence");
 		}
@@ -2616,36 +2814,43 @@ export const timeEntriesService = {
 			durationSeconds: input.durationSeconds,
 			updatedAt: new Date(),
 		};
+
 		if (input.description !== undefined) patch.description = input.description;
 
 		const tz = await ctxTimezone(ctx);
+
 		return withCtxTx(ctx, async (txCtx) => {
 			const person = personCtx(txCtx, existing.userId);
 			await assertDayHasRoom(person, existing.date, input.durationSeconds, {
 				replacing: (row) => row.id === existing.id,
 			});
+
 			const [updated] = await ctxDb(txCtx)
 				.update(timeEntry)
 				.set(patch)
 				.where(eq(timeEntry.id, input.timeEntryId))
 				.returning();
+
 			// Absence is a claim on the day like any other entry, so the person's
 			// rest-of-day block has to give way to it (or take back what a shorter
 			// correction frees). Every self-service write already recomputes; the
 			// PM's three did not, so a day corrected by a PM stayed
 			// over-allocated — an 8h block plus 8h of sick leave on an 8h day.
 			await recomputeDayFill(person, existing.date, tz);
+
 			if (updated) {
 				await emitEvent(txCtx, "time_entry.updated", () =>
 					timeEntryWebhookPayload(txCtx, updated.id),
 				);
 			}
+
 			return updated;
 		});
 	},
 
 	createAbsenceForUser: async (ctx: Ctx, input: CreateAbsenceForUserInput) => {
 		const absenceIds = await tasksService.absenceTaskIds();
+
 		if (!absenceIds.has(input.taskId)) {
 			throw new Error("Only absence tasks can be logged this way");
 		}
@@ -2653,14 +2858,17 @@ export const timeEntriesService = {
 		await assertUserInOrg(ctx, input.userId);
 		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, input.userId);
+
 		if (!access.canOverrideAbsenceFor(shared)) {
 			throw new AccessError("You cannot log absence for this person");
 		}
 
 		const tz = await ctxTimezone(ctx);
+
 		return withCtxTx(ctx, async (txCtx) => {
 			const person = personCtx(txCtx, input.userId);
 			await assertDayHasRoom(person, input.date, input.durationSeconds);
+
 			const [created] = await ctxDb(txCtx)
 				.insert(timeEntry)
 				.values({
@@ -2673,12 +2881,14 @@ export const timeEntriesService = {
 					durationSeconds: input.durationSeconds,
 				})
 				.returning();
+
 			if (!created) throw new Error("Failed to log absence");
 			// The person's day, not the caller's: see `overrideAbsence`.
 			await recomputeDayFill(person, input.date, tz);
 			await emitEvent(txCtx, "absence.created", () =>
 				timeEntryWebhookPayload(txCtx, created.id),
 			);
+
 			return created;
 		});
 	},
@@ -2691,13 +2901,16 @@ export const timeEntriesService = {
 			),
 			with: { task: true },
 		});
+
 		if (!existing) throw new Error("Time entry not found");
+
 		if (!existing.task.isAbsence) {
 			throw new Error("Only absence entries can be removed here");
 		}
 
 		const access = await ctxAccess(ctx);
 		const shared = await projectIdsForUser(ctx, existing.userId);
+
 		if (!access.canOverrideAbsenceFor(shared)) {
 			throw new AccessError("You cannot correct this person's absence");
 		}
@@ -2708,10 +2921,13 @@ export const timeEntriesService = {
 			const removed = (await webhookWants(txCtx, "absence.removed"))
 				? await timeEntryWebhookPayload(txCtx, timeEntryId)
 				: null;
+
 			await ctxDb(txCtx).delete(timeEntry).where(eq(timeEntry.id, timeEntryId));
+
 			if (removed) {
 				await emitEvent(txCtx, "absence.removed", () => removed);
 			}
+
 			// The freed hours go back to the person's rest-of-day block, if the day
 			// has one. See `overrideAbsence`.
 			await recomputeDayFill(
@@ -2720,6 +2936,7 @@ export const timeEntriesService = {
 				tz,
 			);
 		});
+
 		return existing;
 	},
 };

@@ -46,19 +46,27 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-attach";
+
 const USER_ID = "user-attach";
+
 /** Yesterday relative to TODAY below — this engine only writes to days that are
  *  over, so every assertion has to land on a complete one. */
 const YESTERDAY = "2026-08-11";
+
 const TODAY = "2026-08-12";
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;
+
 let devTaskId: string;
+
 let projectId: string;
+
 let otherProjectId: string;
+
 let repoId: string;
+
 let otherRepoId: string;
 
 const runAutomations = () =>
@@ -91,10 +99,13 @@ const commitsFor = (entries: { day: string; project: "main" | "other" }[]) => ({
 		const inRange = entries.filter(
 			(e) => e.day >= range.from && e.day <= range.to,
 		);
+
 		const byDay = new Map<string, typeof inRange>();
+
 		for (const entry of inRange) {
 			byDay.set(entry.day, [...(byDay.get(entry.day) ?? []), entry]);
 		}
+
 		return [...byDay].map(([dayKey, group]) => ({
 			dayKey,
 			commits: group.map((g) => ({
@@ -130,7 +141,9 @@ const addEntry = async (values: {
 			fillsDay: values.fillsDay ?? false,
 		})
 		.returning();
+
 	if (!row) throw new Error("fixture insert failed");
+
 	return row;
 };
 
@@ -164,15 +177,19 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Farmer" })
 		.returning();
+
 	projectId = p?.id ?? "";
+
 	const [other] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Other" })
 		.returning();
+
 	otherProjectId = other?.id ?? "";
 
 	for (const [index, pid] of [projectId, otherProjectId].entries()) {
@@ -187,6 +204,7 @@ beforeAll(async () => {
 				fullName: `profico/repo-${String(index)}`,
 			})
 			.returning({ id: projectGithubRepo.id });
+
 		if (index === 0) repoId = repo?.id ?? "";
 		else otherRepoId = repo?.id ?? "";
 	}
@@ -201,6 +219,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = dev?.id ?? "";
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
@@ -253,6 +272,7 @@ describe("where the commit engine attaches", () => {
 			projectId,
 			durationSeconds: 4 * 60 * 60,
 		});
+
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
@@ -269,6 +289,7 @@ describe("where the commit engine attaches", () => {
 			projectId,
 			durationSeconds: 8 * 60 * 60,
 		});
+
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
@@ -284,11 +305,13 @@ describe("where the commit engine attaches", () => {
 			projectId,
 			durationSeconds: 4 * 60 * 60,
 		});
+
 		const other = await addEntry({
 			date: YESTERDAY,
 			projectId: otherProjectId,
 			durationSeconds: 4 * 60 * 60,
 		});
+
 		setCommitSourceForTests(
 			commitsFor([
 				{ day: YESTERDAY, project: "main" },
@@ -313,6 +336,7 @@ describe("where the commit engine attaches", () => {
 			projectId: null,
 			durationSeconds: 6 * 60 * 60,
 		});
+
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
@@ -354,6 +378,7 @@ describe("where the commit engine attaches", () => {
 			durationSeconds: 4 * 60 * 60,
 			description: "",
 		});
+
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
@@ -416,6 +441,7 @@ describe("which project the rest-of-day block is filed against", () => {
 			projectId,
 			durationSeconds: 4 * 60 * 60,
 		});
+
 		setCommitSourceForTests(commitsFor([{ day: YESTERDAY, project: "main" }]));
 
 		await runAutomations();
@@ -453,6 +479,7 @@ describe("a deleted rest-of-day block", () => {
 				eq(commitFillTombstone.userId, USER_ID),
 			),
 		});
+
 		expect(tombstones).toHaveLength(1);
 		expect(tombstones[0]?.date).toBe(YESTERDAY);
 	});
@@ -472,9 +499,11 @@ describe("a deleted rest-of-day block", () => {
 			fillsDay: true,
 			overtime: false,
 		});
+
 		const remaining = await db.query.commitFillTombstone.findMany({
 			where: eq(commitFillTombstone.organizationId, ORG_ID),
 		});
+
 		expect(remaining).toHaveLength(0);
 	});
 
@@ -490,6 +519,7 @@ describe("a deleted rest-of-day block", () => {
 			projectId,
 			durationSeconds: 3 * 60 * 60,
 		});
+
 		await runAutomations();
 
 		expect(await commitsAttachedTo(own.id)).toHaveLength(1);
@@ -541,12 +571,14 @@ describe("a fill block the day squeezes out", () => {
 		// Today, because the read path only rewrites what an automation may, and
 		// `listRange` has no clock of its own to pin.
 		const today = dayKeyInTz(new Date(), "Europe/Zagreb");
+
 		const fill = await addEntry({
 			date: today,
 			fillsDay: true,
 			durationSeconds: 8 * 60 * 60,
 			description: "Rest of day",
 		});
+
 		await db.insert(timeEntryGithubCommit).values({
 			timeEntryId: fill.id,
 			projectGithubRepoId: repoId,
@@ -556,6 +588,7 @@ describe("a fill block the day squeezes out", () => {
 			committedAt: new Date(),
 			url: "https://example.com/squeezed",
 		});
+
 		// The person then logs the whole day against the project by hand.
 		const own = await addEntry({
 			date: today,

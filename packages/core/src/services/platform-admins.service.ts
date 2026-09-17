@@ -80,6 +80,7 @@ export const listPlatformAdmins = async (): Promise<PlatformPerson[]> => {
 		.from(schema.user)
 		.where(eq(schema.user.role, PLATFORM_ADMIN_ROLE))
 		.orderBy(asc(schema.user.createdAt), asc(schema.user.id));
+
 	return rows.map(toPerson);
 };
 
@@ -100,10 +101,12 @@ export const searchPlatformPeople = async (
 	query: string,
 ): Promise<PlatformPerson[]> => {
 	const term = query.trim();
+
 	if (term.length < PLATFORM_SEARCH_MIN_LENGTH) return [];
 	// `%` and `_` are wildcards to `ilike`, so a pasted address with an
 	// underscore would otherwise match more than itself.
 	const pattern = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+
 	const rows = await db
 		.select(PERSON_COLUMNS)
 		.from(schema.user)
@@ -121,6 +124,7 @@ export const searchPlatformPeople = async (
 		)
 		.orderBy(asc(schema.user.name), asc(schema.user.id))
 		.limit(PLATFORM_SEARCH_LIMIT);
+
 	return rows.map(toPerson);
 };
 
@@ -130,6 +134,7 @@ export const countPlatformAdmins = async (): Promise<number> => {
 		.select({ count: sql<number>`count(*)::int` })
 		.from(schema.user)
 		.where(eq(schema.user.role, PLATFORM_ADMIN_ROLE));
+
 	return row?.count ?? 0;
 };
 
@@ -142,6 +147,7 @@ export const findPlatformPerson = async (
 		.from(schema.user)
 		.where(eq(schema.user.id, userId))
 		.limit(1);
+
 	return row ? toPerson(row) : null;
 };
 

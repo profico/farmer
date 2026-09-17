@@ -55,6 +55,7 @@ const PREFS = {
 } as const;
 
 export type DisplayPref = keyof typeof PREFS;
+
 type Pref = (typeof PREFS)[DisplayPref];
 
 /** Fired on the window whenever *this* tab changes one — `storage` only
@@ -104,6 +105,7 @@ if (!import.meta.env.SSR) {
 	// page it shows.
 	window.addEventListener("storage", (event) => {
 		const pref = Object.values(PREFS).find((p) => p.key === event.key);
+
 		if (!pref) return;
 		apply(pref, event.newValue === "1");
 		window.dispatchEvent(new Event(CHANGE_EVENT));
@@ -113,6 +115,7 @@ if (!import.meta.env.SSR) {
 const setDisplayPref = (name: DisplayPref, on: boolean) => {
 	const pref = PREFS[name];
 	apply(pref, on);
+
 	try {
 		if (on) localStorage.setItem(pref.key, "1");
 		else localStorage.removeItem(pref.key);
@@ -120,11 +123,13 @@ const setDisplayPref = (name: DisplayPref, on: boolean) => {
 		// Private-mode / blocked storage: the switch still works for this page,
 		// it just won't be remembered.
 	}
+
 	window.dispatchEvent(new Event(CHANGE_EVENT));
 };
 
 const subscribe = (onChange: () => void) => {
 	window.addEventListener(CHANGE_EVENT, onChange);
+
 	return () => window.removeEventListener(CHANGE_EVENT, onChange);
 };
 
@@ -137,9 +142,11 @@ export function useDisplayPref(name: DisplayPref) {
 		() => read(PREFS[name]),
 		() => false,
 	);
+
 	const set = useCallback(
 		(next: boolean) => setDisplayPref(name, next),
 		[name],
 	);
+
 	return [on, set] as const;
 }

@@ -61,6 +61,7 @@ export function OvertimeTab({
 	const navigate = useNavigate({ from: "/$orgSlug/reports" });
 	const weekStartsOn = useWeekStartsOn();
 	const { from, to } = resolveReportPeriod(search, today, weekStartsOn);
+
 	const input: OvertimeReportInput = {
 		from,
 		to,
@@ -111,6 +112,7 @@ export function OvertimeTab({
 function OvertimeExport({ input }: { input: OvertimeReportInput }) {
 	const orgSlug = useOrgSlug();
 	const { data } = useSuspenseQuery(overtimeReportQuery(orgSlug, input));
+
 	return (
 		<ExportMenu
 			disabled={data.rows.length === 0}
@@ -158,18 +160,23 @@ function OvertimeRows({ input }: { input: OvertimeReportInput }) {
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
 	const [sort, setSort] = useState<Sort<SortKey>>({ key: "hours", dir: -1 });
+
 	const onSort = (key: SortKey, numeric: boolean) =>
 		setSort((current) => toggleSort(current, key, numeric));
+
 	const compare = {
 		name: byText((r: OvertimeRow) => r.name),
 		count: byNumber((r: OvertimeRow) => r.count),
 		hours: byNumber((r: OvertimeRow) => r.seconds),
 	} satisfies Record<SortKey, (a: OvertimeRow, b: OvertimeRow) => number>;
+
 	const toggle = (userId: string) =>
 		setOpen((current) => {
 			const next = new Set(current);
+
 			if (next.has(userId)) next.delete(userId);
 			else next.add(userId);
+
 			return next;
 		});
 
@@ -240,6 +247,7 @@ function OvertimeRows({ input }: { input: OvertimeReportInput }) {
 						) : (
 							shown.map((row) => {
 								const isOpen = open.has(row.userId);
+
 								return (
 									<Fragment key={row.userId}>
 										<TableRow>

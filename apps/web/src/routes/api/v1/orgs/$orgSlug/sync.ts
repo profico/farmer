@@ -40,6 +40,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/sync")({
 						if (error instanceof Error && error.message === "sync-timeout") {
 							return { timedOut: true as const };
 						}
+
 						throw error;
 					});
 
@@ -52,6 +53,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/sync")({
 							off: [],
 						};
 					}
+
 					return {
 						stillRunning: false,
 						ran: outcome.result.ran,

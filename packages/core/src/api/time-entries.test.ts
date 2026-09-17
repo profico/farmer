@@ -72,6 +72,7 @@ describe("toApiTimeEntry", () => {
 	// key, but naming the dropped ones says which leaks this guards against.
 	test("drops the row's bookkeeping and the project's money", () => {
 		const projected = toApiTimeEntry(fullRow());
+
 		for (const key of [
 			"organizationId",
 			"userId",
@@ -84,6 +85,7 @@ describe("toApiTimeEntry", () => {
 		]) {
 			expect(Object.keys(projected)).not.toContain(key);
 		}
+
 		expect(Object.keys(projected.project ?? {})).not.toContain("hourlyRate");
 		expect(Object.keys(projected.project ?? {})).not.toContain("budgetHours");
 	});
@@ -95,6 +97,7 @@ describe("toApiTimeEntry", () => {
 			project: null,
 			commitCount: undefined,
 		};
+
 		const projected = toApiTimeEntry(row);
 		expect(projected.synced).toBe(false);
 		expect(projected.project).toBe(null);
@@ -114,6 +117,7 @@ describe("toApiUnfiledEntry", () => {
 			meetingUrl: null,
 			userId: "u-1",
 		};
+
 		expect(toApiUnfiledEntry(row)).toStrictEqual({
 			id: "e-2",
 			date: "2026-09-13",

@@ -12,11 +12,13 @@ import {
 // Sarajevo (UTC+2 in September). Every case below depends on the org's zone
 // winning over UTC, which is what the laptop of a remote worker may be on.
 const NOW = new Date("2026-09-14T23:30:00Z");
+
 const sarajevo: OrgClock = {
 	timeZone: "Europe/Sarajevo",
 	weekStartsOn: 1,
 	now: NOW,
 };
+
 const utc: OrgClock = { timeZone: "UTC", weekStartsOn: 1, now: NOW };
 
 describe("parseDay", () => {

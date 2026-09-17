@@ -102,16 +102,19 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			import("@farmer/core/lib/dev-auth"),
 			import("@farmer/core/lib/storage"),
 		]);
+
 		const assistantEnabled = isAssistantEnabled();
 		const mcpEnabled = isMcpEnabled();
 		const cliEnabled = isCliEnabled();
 		const devAuth = isDevAuthEnabled();
 		const uploadsEnabled = isStorageEnabled();
+
 		// Parsed rather than passed through, so a trailing path or slash in the
 		// environment cannot end up doubled in the middle of a URL somebody
 		// pastes. An unparseable value is the same answer as a missing one.
 		const appOrigin =
 			URL.parse(process.env.BETTER_AUTH_URL ?? "")?.origin ?? "";
+
 		if (!isSingleOrgMode()) {
 			return {
 				singleOrgMode: false,
@@ -124,7 +127,9 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 				org: null,
 			};
 		}
+
 		const org = await findSingleOrg();
+
 		return {
 			singleOrgMode: true,
 			assistantEnabled,

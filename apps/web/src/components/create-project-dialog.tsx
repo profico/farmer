@@ -116,6 +116,7 @@ const formSchema = z.object({
 			.regex(/^\d+(\.\d+)?$/, "Must be an amount")
 			.refine((v) => {
 				const n = Number(v);
+
 				return n > 0 && n <= 100_000;
 			}, "Must be 1 to 100,000"),
 	]),
@@ -127,6 +128,7 @@ const formSchema = z.object({
 // error — zod's wording for it ("Too big: expected string to have <=16
 // characters") was never meant to be read.
 const NAME_MAX_LENGTH = formSchema.shape.name.maxLength ?? undefined;
+
 const CODE_MAX_LENGTH =
 	createProjectInput.shape.code.unwrap().maxLength ?? undefined;
 
@@ -148,9 +150,11 @@ export function CreateProjectDialog() {
 	const navigate = useNavigate();
 	const { data: clients } = useSuspenseQuery(clientsQuery(orgSlug));
 	const { data: projects } = useSuspenseQuery(projectsQuery(orgSlug));
+
 	const recentIcons = projects
 		.map((p) => p.icon)
 		.filter((i): i is string => i != null);
+
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
 		defaultValues: EMPTY,

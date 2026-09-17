@@ -20,6 +20,7 @@ export type CatalogueEmoji = {
 	/** The five single-tone variants, light to dark, when the emoji has them. */
 	skins?: string[];
 };
+
 export type EmojiCategory = {
 	id: string;
 	label: string;
@@ -66,6 +67,7 @@ type Row = {
 const toneOf = (hexcode: string) => {
 	const tones = hexcode.split("-").filter((part) => SKIN_TONES.includes(part));
 	const first = tones[0];
+
 	return first !== undefined && tones.every((t) => t === first)
 		? SKIN_TONES.indexOf(first)
 		: -1;
@@ -75,6 +77,7 @@ const toEmoji = (row: Row): CatalogueEmoji => {
 	const skins = SKIN_TONES.map(
 		(_, tone) => row.skins?.find((s) => toneOf(s.hexcode) === tone)?.unicode,
 	);
+
 	return {
 		char: row.unicode,
 		name: row.label,
@@ -85,6 +88,7 @@ const toEmoji = (row: Row): CatalogueEmoji => {
 
 const build = (rows: Row[]): EmojiCategory[] => {
 	const sorted = [...rows].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
 	return GROUPS.map(({ group, id, label, glyph }) => ({
 		id,
 		label,
@@ -94,6 +98,7 @@ const build = (rows: Row[]): EmojiCategory[] => {
 };
 
 let loaded: EmojiCategory[] | null = null;
+
 let loading: Promise<EmojiCategory[]> | null = null;
 
 /** The catalogue if it has already arrived, so a reopened picker paints it at once. */
@@ -104,12 +109,14 @@ export const loadEmojiCatalogue = (): Promise<EmojiCategory[]> => {
 	loading ??= import("emojibase-data/en/compact.json")
 		.then(({ default: rows }) => {
 			loaded = build(rows);
+
 			return loaded;
 		})
 		.catch((error) => {
 			loading = null;
 			throw error;
 		});
+
 	return loading;
 };
 
@@ -123,7 +130,9 @@ export const searchEmoji = (
 	query: string,
 ): CatalogueEmoji[] => {
 	const q = query.trim();
+
 	if (q === "") return [];
+
 	return categories.flatMap((c) =>
 		c.emoji.filter((e) => e.char === q || matchesSearch(q, [e.keywords])),
 	);

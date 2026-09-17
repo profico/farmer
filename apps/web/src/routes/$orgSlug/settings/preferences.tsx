@@ -75,6 +75,7 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 			context.queryClient.ensureQueryData(selectableTasksQuery(orgSlug)),
 			context.queryClient.ensureQueryData(hiddenTasksQuery(orgSlug)),
 		]);
+
 		return { devAuth: context.devAuth };
 	},
 	component: PreferencesSettingsPage,
@@ -104,14 +105,17 @@ function GoogleSignInMethod() {
 
 	const disconnect = async () => {
 		setDisconnectOpen(false);
+
 		try {
 			await unlinkGoogleLogin();
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "Could not disconnect Google",
 			);
+
 			return;
 		}
+
 		await queryClient.invalidateQueries({
 			queryKey: signInMethodsQuery(orgSlug).queryKey,
 		});
@@ -229,6 +233,7 @@ type MySession = Awaited<ReturnType<typeof listMySessions>>[number];
  */
 function When({ date }: { date: Date }) {
 	const value = new Date(date);
+
 	return (
 		<time dateTime={value.toISOString()} suppressHydrationWarning>
 			{value.toLocaleString("en-US", {
@@ -364,6 +369,7 @@ function DisplayPrefRow({
 	description: string;
 }) {
 	const [on, setOn] = useDisplayPref(pref);
+
 	return (
 		<SettingRow
 			title={title}
@@ -457,6 +463,7 @@ const subscribeNothing = () => () => {};
  */
 function ColorsRow() {
 	const { mode, seed, setVanilla, setCustom } = usePalette();
+
 	const supported = useSyncExternalStore(
 		subscribeNothing,
 		supportsCustomPalette,
@@ -505,10 +512,12 @@ function ColorsRow() {
 function FaceSelect({ face, label }: { face: FaceRole; label: string }) {
 	const role = face;
 	const [id, setId] = useFace(role);
+
 	const items = FACES[role].map((face) => ({
 		value: face.id,
 		label: face.label,
 	}));
+
 	return (
 		<label className="flex flex-col gap-1.5">
 			<span className="text-sm text-muted-foreground">{label}</span>
@@ -542,6 +551,7 @@ function FaceSelect({ face, label }: { face: FaceRole; label: string }) {
  */
 function FontRow() {
 	const [boring] = useDisplayPref("boringFont");
+
 	return (
 		<SettingBlock
 			labelId="font-label"
@@ -563,6 +573,7 @@ function FontRow() {
  */
 function ScaleRow() {
 	const [scale, setScale] = useScale();
+
 	return (
 		<SettingBlock
 			labelId="scale-label"

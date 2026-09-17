@@ -49,6 +49,7 @@ export const unfiledWindow = (todayKey: string) => ({
 /** The worklist itself, over `unfiledWindow`. */
 export const unfiledWindowQuery = (org: string, todayKey: string) => {
 	const { from, to } = unfiledWindow(todayKey);
+
 	return unfiledEntriesQuery(org, from, to);
 };
 

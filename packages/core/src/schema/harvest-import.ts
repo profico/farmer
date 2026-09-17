@@ -10,7 +10,9 @@ import { projectTypeEnum } from "./projects";
 // request cannot point an entry at a row of another organization.
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use yyyy-MM-dd");
+
 const sourceKey = z.string().min(1).max(500);
+
 const email = z.email().max(320);
 
 /** The widest range a snapshot may read. Far above the 62-day entry cap and
@@ -41,11 +43,13 @@ export const harvestSnapshotInput = z
 			path: ["to"],
 		},
 	);
+
 export type HarvestSnapshotInput = z.infer<typeof harvestSnapshotInput>;
 
 export const harvestEmailsInput = z.object({
 	emails: z.array(email).min(1).max(500),
 });
+
 export type HarvestEmailsInput = z.infer<typeof harvestEmailsInput>;
 
 const clientPlan = z.discriminatedUnion("action", [
@@ -144,10 +148,15 @@ export const harvestStartInput = z.object({
 		)
 		.max(50_000),
 });
+
 export type HarvestStartInput = z.infer<typeof harvestStartInput>;
+
 export type HarvestClientPlan = z.infer<typeof clientPlan>;
+
 export type HarvestTaskPlan = z.infer<typeof taskPlan>;
+
 export type HarvestProjectPlan = z.infer<typeof projectPlan>;
+
 export type HarvestPersonPlan = z.infer<typeof personPlan>;
 
 /** The most rows one `importDays` call may carry. Whole person-days only, so a
@@ -169,6 +178,7 @@ const importRow = z.object({
 		.multipleOf(900),
 	overtime: z.boolean(),
 });
+
 export type HarvestImportRow = z.infer<typeof importRow>;
 
 const importDay = z.object({
@@ -176,6 +186,7 @@ const importDay = z.object({
 	date: dateKey,
 	rows: z.array(importRow).min(1).max(500),
 });
+
 export type HarvestImportDay = z.infer<typeof importDay>;
 
 export const harvestImportDaysInput = z
@@ -188,6 +199,7 @@ export const harvestImportDaysInput = z
 			v.days.reduce((n, d) => n + d.rows.length, 0) <= HARVEST_CHUNK_MAX_ROWS,
 		{ message: `A chunk carries at most ${HARVEST_CHUNK_MAX_ROWS} rows` },
 	);
+
 export type HarvestImportDaysInput = z.infer<typeof harvestImportDaysInput>;
 
 export const harvestRemoveDaysInput = z.object({
@@ -197,12 +209,15 @@ export const harvestRemoveDaysInput = z.object({
 		.min(1)
 		.max(HARVEST_CHUNK_MAX_ROWS),
 });
+
 export type HarvestRemoveDaysInput = z.infer<typeof harvestRemoveDaysInput>;
 
 export const harvestFinishInput = z.object({
 	runId: z.uuid(),
 });
+
 export type HarvestFinishInput = z.infer<typeof harvestFinishInput>;
 
 export const harvestRunIdInput = z.object({ runId: z.uuid() });
+
 export type HarvestRunIdInput = z.infer<typeof harvestRunIdInput>;

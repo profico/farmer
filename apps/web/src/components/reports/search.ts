@@ -32,7 +32,9 @@ export const periodSearch = {
 	from: dateKey.optional(),
 	to: dateKey.optional(),
 };
+
 const periodSearchSchema = z.object(periodSearch);
+
 export type PeriodSearch = z.infer<typeof periodSearchSchema>;
 
 export const searchSchema = z.object({

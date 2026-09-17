@@ -132,7 +132,9 @@ const endpointColumns = {
  *  rules, including a fresh DNS lookup. Throws the refusal's own reason. */
 const assertDeliverable = async (url: string): Promise<string> => {
 	const check = await resolveWebhookTarget(url);
+
 	if (!check.ok) throw new WebhookUrlRefusedError(check.reason);
+
 	// The normalized form, so two registrations of the same endpoint written
 	// differently ("…/hook" and "…/hook?") collide on the unique index instead
 	// of both delivering.
@@ -142,17 +144,20 @@ const assertDeliverable = async (url: string): Promise<string> => {
 export const webhooksService = {
 	list: async (ctx: Ctx): Promise<WebhookEndpointView[]> => {
 		await requireAdmin(ctx);
+
 		const rows = await ctxDb(ctx)
 			.select(endpointColumns)
 			.from(webhookEndpoint)
 			.leftJoin(user, eq(user.id, webhookEndpoint.createdBy))
 			.where(eq(webhookEndpoint.organizationId, ctx.organizationId))
 			.orderBy(desc(webhookEndpoint.createdAt));
+
 		return rows.map(toView);
 	},
 
 	get: async (ctx: Ctx, endpointId: string): Promise<WebhookEndpointView> => {
 		await requireAdmin(ctx);
+
 		const [row] = await ctxDb(ctx)
 			.select(endpointColumns)
 			.from(webhookEndpoint)
@@ -164,7 +169,9 @@ export const webhooksService = {
 				),
 			)
 			.limit(1);
+
 		if (!row) throw new Error("Webhook endpoint not found");
+
 		return toView(row);
 	},
 
@@ -183,6 +190,7 @@ export const webhooksService = {
 			.select({ count: count() })
 			.from(webhookEndpoint)
 			.where(eq(webhookEndpoint.organizationId, ctx.organizationId));
+
 		if ((existing?.count ?? 0) >= MAX_WEBHOOK_ENDPOINTS) {
 			throw new Error(
 				`An organization may have at most ${String(MAX_WEBHOOK_ENDPOINTS)} webhook endpoints`,
@@ -191,6 +199,7 @@ export const webhooksService = {
 
 		const url = await assertDeliverable(input.url);
 		const secret = generateWebhookSecret();
+
 		const [row] = await db
 			.insert(webhookEndpoint)
 			.values({
@@ -202,9 +211,11 @@ export const webhooksService = {
 				createdBy: ctx.userId,
 			})
 			.returning({ id: webhookEndpoint.id });
+
 		if (!row) throw new Error("Could not create the webhook endpoint");
 
 		invalidateWebhookSubscriptions(ctx.organizationId);
+
 		return {
 			endpoint: await webhooksService.get(ctx, row.id),
 			secret,
@@ -223,18 +234,23 @@ export const webhooksService = {
 		const patch: Partial<typeof webhookEndpoint.$inferInsert> = {
 			updatedAt: new Date(),
 		};
+
 		if (input.url !== undefined) patch.url = await assertDeliverable(input.url);
+
 		if (input.description !== undefined) {
 			patch.description = input.description === "" ? null : input.description;
 		}
+
 		if (input.enabledEvents !== undefined) {
 			patch.enabledEvents = input.enabledEvents;
 		}
+
 		if (input.disabled !== undefined) {
 			patch.disabledAt = input.disabled ? new Date() : null;
 			// Switching it back on clears both the reason and the failure run, so
 			// the give-up clock starts again rather than firing on the next failure.
 			patch.disabledReason = input.disabled ? "Turned off by an admin" : null;
+
 			if (!input.disabled) patch.failingSince = null;
 		}
 
@@ -248,6 +264,7 @@ export const webhooksService = {
 				),
 			);
 		invalidateWebhookSubscriptions(ctx.organizationId);
+
 		return webhooksService.get(ctx, input.endpointId);
 	},
 
@@ -279,6 +296,7 @@ export const webhooksService = {
 	): Promise<{ secret: string }> => {
 		await requireAdmin(ctx);
 		const secret = generateWebhookSecret();
+
 		const [row] = await ctxDb(ctx)
 			.update(webhookEndpoint)
 			.set({
@@ -294,7 +312,9 @@ export const webhooksService = {
 				),
 			)
 			.returning({ id: webhookEndpoint.id });
+
 		if (!row) throw new Error("Webhook endpoint not found");
+
 		return { secret };
 	},
 
@@ -312,13 +332,17 @@ export const webhooksService = {
 	): Promise<{ eventId: string }> => {
 		await requireAdmin(ctx);
 		const endpoint = await webhooksService.get(ctx, endpointId);
+
 		if (endpoint.disabledAt) {
 			throw new Error("Turn the endpoint back on before testing it");
 		}
+
 		const eventId = await emitEventToEndpoint(ctx, endpointId, {
 			message: "This is a test event from Farmer. Nothing happened.",
 		});
+
 		if (!eventId) throw new Error("Could not queue the test event");
+
 		return { eventId };
 	},
 
@@ -328,6 +352,7 @@ export const webhooksService = {
 	): Promise<WebhookDeliveryView[]> => {
 		await requireAdmin(ctx);
 		await webhooksService.get(ctx, input.endpointId);
+
 		const rows = await ctxDb(ctx)
 			.select({
 				id: webhookDelivery.id,
@@ -388,6 +413,7 @@ export const webhooksService = {
 	): Promise<{ deliveryId: string }> => {
 		await requireAdmin(ctx);
 		const db = ctxDb(ctx);
+
 		const [source] = await db
 			.select({
 				endpointId: webhookDelivery.endpointId,
@@ -403,7 +429,9 @@ export const webhooksService = {
 				),
 			)
 			.limit(1);
+
 		if (!source) throw new Error("Delivery not found");
+
 		if (source.dataDroppedAt) {
 			throw new Error(
 				"This event's payload has been deleted, so it cannot be sent again",
@@ -419,6 +447,7 @@ export const webhooksService = {
 					eq(webhookDelivery.eventId, source.eventId),
 				),
 			);
+
 		const [row] = await db
 			.insert(webhookDelivery)
 			.values({
@@ -430,7 +459,9 @@ export const webhooksService = {
 				nextAttemptAt: new Date(),
 			})
 			.returning({ id: webhookDelivery.id });
+
 		if (!row) throw new Error("Could not queue the delivery");
+
 		return { deliveryId: row.id };
 	},
 
@@ -438,6 +469,7 @@ export const webhooksService = {
 	 *  retention sweep has cleared it. */
 	eventPayload: async (ctx: Ctx, eventId: string) => {
 		await requireAdmin(ctx);
+
 		const [row] = await ctxDb(ctx)
 			.select({
 				kind: webhookEvent.kind,
@@ -453,7 +485,9 @@ export const webhooksService = {
 				),
 			)
 			.limit(1);
+
 		if (!row) throw new Error("Event not found");
+
 		return row;
 	},
 
@@ -462,6 +496,7 @@ export const webhooksService = {
 	summary: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
 		const db = ctxDb(ctx);
+
 		const [endpoints] = await db
 			.select({
 				total: count(),
@@ -469,6 +504,7 @@ export const webhooksService = {
 			})
 			.from(webhookEndpoint)
 			.where(eq(webhookEndpoint.organizationId, ctx.organizationId));
+
 		const [queued] = await db
 			.select({ count: count() })
 			.from(webhookDelivery)
@@ -478,6 +514,7 @@ export const webhooksService = {
 					isNull(webhookDelivery.attemptedAt),
 				),
 			);
+
 		return {
 			total: endpoints?.total ?? 0,
 			live: endpoints?.live ?? 0,

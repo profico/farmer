@@ -37,6 +37,7 @@ export function WeekStrip({
 		(sum, date) => sum + (secondsByDay.get(date) ?? 0),
 		0,
 	);
+
 	const marks =
 		today == null || dayTargetSeconds == null
 			? null
@@ -55,6 +56,7 @@ export function WeekStrip({
 				const isActive = date === activeDate;
 				const holidayName = holidays.get(date);
 				const mark = marks?.get(date);
+
 				return (
 					<Link
 						key={date}

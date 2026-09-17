@@ -15,12 +15,14 @@ import type { CellDef, Styles } from "jspdf-autotable";
  */
 
 export type PdfColumn = { label: string; align?: "right" };
+
 export type PdfRow = {
 	cells: string[];
 	/** A line under the row, indented past the first column — the entry's
 	 *  description, the way Harvest sets it. */
 	note?: string;
 };
+
 export type PdfGroup = {
 	/** A summary row over the group with its hours — a date, a project. A group
 	 *  without one is the flat table. */
@@ -28,6 +30,7 @@ export type PdfGroup = {
 	hours?: string;
 	rows: PdfRow[];
 };
+
 export type PdfReport = {
 	title: string;
 	org: string;
@@ -48,10 +51,12 @@ export type PdfReport = {
  *  a day. */
 export const formatPdfDate = (key: string): string => {
 	const [y, m, d] = key.split("-");
+
 	return `${d}/${m}/${y}`;
 };
 
 const FONT = "InstrumentSans";
+
 const FONT_FILES = {
 	normal: "InstrumentSans-Regular.ttf",
 	bold: "InstrumentSans-SemiBold.ttf",
@@ -60,15 +65,19 @@ const FONT_FILES = {
 const toBase64 = (buffer: ArrayBuffer): string => {
 	const bytes = new Uint8Array(buffer);
 	let binary = "";
+
 	for (let i = 0; i < bytes.length; i += 0x8000) {
 		binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
 	}
+
 	return btoa(binary);
 };
 
 const fetchFont = async (file: string): Promise<string> => {
 	const response = await fetch(`/fonts/${file}`);
+
 	if (!response.ok) throw new Error(`${file}: ${response.status}`);
+
 	return toBase64(await response.arrayBuffer());
 };
 
@@ -76,6 +85,7 @@ const fetchFont = async (file: string): Promise<string> => {
 // virtual file system takes. A failed fetch is forgotten, so the next click
 // tries again rather than failing forever.
 let fonts: Promise<[string, string]> | null = null;
+
 const loadFonts = () =>
 	(fonts ??= Promise.all([
 		fetchFont(FONT_FILES.normal),
@@ -87,16 +97,25 @@ const loadFonts = () =>
 
 // A4 portrait, millimetres.
 const PAGE_W = 210;
+
 const PAGE_H = 297;
+
 const MARGIN = 14;
+
 const CONTENT_W = PAGE_W - 2 * MARGIN;
+
 const LINE = 5.5;
 
 type Rgb = [number, number, number];
+
 const INK: Rgb = [28, 28, 28];
+
 const MUTED: Rgb = [110, 110, 110];
+
 const RULE: Rgb = [205, 205, 205];
+
 const HEAD_FILL: Rgb = [236, 236, 236];
+
 const GROUP_FILL: Rgb = [246, 246, 246];
 
 const cell = (
@@ -131,6 +150,7 @@ const buildTableBody = (
 		// Holds the heading's row index until its first entry's chain is known,
 		// so the two (and that entry's note) can be merged into one chain.
 		let heading: number | null = null;
+
 		if (group.heading !== undefined) {
 			heading = body.length;
 			body.push([
@@ -138,25 +158,31 @@ const buildTableBody = (
 				cell(group.hours ?? "", { ...tinted, halign: "right" }),
 			]);
 		}
+
 		for (const row of group.rows) {
 			const entryIndex = body.length;
 			// An entry with a note is ruled off under the note, not under itself.
 			body.push(
 				row.cells.map((content, i) => {
 					const styles: Partial<Styles> = { halign: align(i) };
+
 					if (!row.note) styles.lineWidth = under.lineWidth;
+
 					return cell(content, styles);
 				}),
 			);
 			const chain: Chain = [entryIndex];
+
 			if (row.note) {
 				chain.push(body.length);
+
 				const noteStyles: Partial<Styles> = {
 					textColor: MUTED,
 					fontSize: 8.5,
 					halign: "left",
 					...under,
 				};
+
 				// Indented past the first column, the way Harvest sets it — unless
 				// that column is the only one before Hours, where the note takes
 				// the whole row rather than the narrow Hours cell.
@@ -166,6 +192,7 @@ const buildTableBody = (
 						: [cell(row.note, noteStyles, last + 1)],
 				);
 			}
+
 			if (heading !== null) {
 				chains.push([heading, ...chain]);
 				heading = null;
@@ -173,10 +200,12 @@ const buildTableBody = (
 				chains.push(chain);
 			}
 		}
+
 		// A heading with no rows under it — shouldn't happen, but leaves nothing
 		// orphaned if it does.
 		if (heading !== null) chains.push([heading]);
 	}
+
 	return { body, chains };
 };
 
@@ -205,15 +234,19 @@ const paginate = (
 	let remaining = PAGE_H - bottomMargin - (firstPageY + headHeight);
 
 	const chunks: PageChunk[] = [{ rows: [], freshPage: false }];
+
 	for (const chain of chains) {
 		const height = chain.reduce((sum, i) => sum + (rowHeights[i] ?? 0), 0);
+
 		if (height > remaining && height <= continuationCapacity) {
 			chunks.push({ rows: [], freshPage: true });
 			remaining = continuationCapacity;
 		}
+
 		remaining = Math.max(0, remaining - height);
 		chunks[chunks.length - 1]?.rows.push(...chain);
 	}
+
 	return chunks.filter((chunk) => chunk.rows.length > 0);
 };
 
@@ -274,6 +307,7 @@ export async function buildPdf(
 	): number => {
 		doc.setFontSize(10);
 		let dy = 0;
+
 		for (const [label, value] of pairs) {
 			const lines: string[] = doc.splitTextToSize(value, width - labelWidth);
 			doc.setFont(FONT, "normal");
@@ -286,9 +320,12 @@ export async function buildPdf(
 			);
 			dy += lines.length * LINE;
 		}
+
 		return dy;
 	};
+
 	const half = CONTENT_W / 2;
+
 	const leftHeight = block(
 		[
 			[
@@ -301,6 +338,7 @@ export async function buildPdf(
 		24,
 		half,
 	);
+
 	const rightHeight = block(report.facts, MARGIN + half, 26, half);
 	y += Math.max(leftHeight, rightHeight);
 
@@ -315,15 +353,18 @@ export async function buildPdf(
 
 	// ── The table ───────────────────────────────────────────────────────────
 	const last = report.columns.length - 1;
+
 	const align = (i: number): Styles["halign"] =>
 		report.columns[i]?.align ?? "left";
 
 	const { body, chains } = buildTableBody(report, align);
+
 	const totalRow: Partial<Styles> = {
 		halign: "right",
 		fontStyle: "bold",
 		lineWidth: { top: 0.4 },
 	};
+
 	chains.push([body.length]);
 	body.push([cell("Total", totalRow, last), cell(report.total, totalRow)]);
 
@@ -362,6 +403,7 @@ export async function buildPdf(
 		body,
 		columnStyles: { [last]: { cellWidth: 22 } },
 	});
+
 	const headHeight = measured.getHeadHeight(measured.columns);
 	const rowHeights = measured.body.map((row) => row.height);
 	const columnStyles: Record<number, Partial<Styles>> = {};
@@ -381,6 +423,7 @@ export async function buildPdf(
 			// to satisfy `noUncheckedIndexedAccess`.
 			body: chunk.rows.flatMap((i) => {
 				const row = body[i];
+
 				return row ? [row] : [];
 			}),
 		});
@@ -394,6 +437,7 @@ export async function buildPdf(
 	doc.setFontSize(9);
 	doc.setFont(FONT, "normal");
 	doc.setTextColor(...MUTED);
+
 	for (let page = 1; page <= pages; page++) {
 		doc.setPage(page);
 		doc.text(`Page ${page} of ${pages}`, PAGE_W / 2, PAGE_H - 8, {

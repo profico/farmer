@@ -33,6 +33,7 @@ import { cn } from "#/lib/utils.ts";
 export function useScrollFade(ref: React.RefObject<HTMLElement | null>) {
 	const measure = useCallback(() => {
 		const element = ref.current;
+
 		if (!element) return;
 		const { scrollTop, scrollHeight, clientHeight } = element;
 		// A pixel of slack at each end: sub-pixel layout and momentum scrolling
@@ -49,6 +50,7 @@ export function useScrollFade(ref: React.RefObject<HTMLElement | null>) {
 
 	useEffect(() => {
 		const element = ref.current;
+
 		if (!element) return;
 		measure();
 		element.addEventListener("scroll", measure, { passive: true });
@@ -59,15 +61,19 @@ export function useScrollFade(ref: React.RefObject<HTMLElement | null>) {
 		// border box and the scroller's own never moves — it is `flex-1` in a
 		// fixed frame however long the list inside it is.
 		const observer = new ResizeObserver(measure);
+
 		const observeAll = () => {
 			// Rebuilt rather than added to: a swapped panel leaves its predecessor
 			// detached, and a detached target is an observation that can never
 			// report again.
 			observer.disconnect();
 			observer.observe(element);
+
 			for (const child of element.children) observer.observe(child);
 		};
+
 		observeAll();
+
 		// A panel that is REPLACED rather than resized — the sidebar's Browse/Chat
 		// swap, which mounts a new element the original observation cannot follow —
 		// otherwise left the fade measuring the list that had already gone.
@@ -75,7 +81,9 @@ export function useScrollFade(ref: React.RefObject<HTMLElement | null>) {
 			observeAll();
 			measure();
 		});
+
 		children.observe(element, { childList: true });
+
 		return () => {
 			element.removeEventListener("scroll", measure);
 			observer.disconnect();

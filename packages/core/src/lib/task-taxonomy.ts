@@ -14,6 +14,7 @@ export const TASK_GROUPS = [
 	"general",
 	"time_off",
 ] as const;
+
 export type TaskGroup = (typeof TASK_GROUPS)[number];
 
 export const TASK_GROUP_LABELS = {
@@ -125,6 +126,7 @@ const STANDARD_BY_KEY = new Map(
  *  trimmed and unchanged. */
 export const canonicalTaskName = (name: string): string => {
 	const key = normalise(name);
+
 	return ALIAS_BY_KEY.get(key) ?? STANDARD_BY_KEY.get(key)?.name ?? name.trim();
 };
 

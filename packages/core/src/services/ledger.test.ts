@@ -16,17 +16,25 @@ import { ledgerByProject, ledgerByUser, ledgerTotal } from "./ledger";
 import type { Ctx } from "./types";
 
 const ORG = "org-ledger";
+
 const OTHER_ORG = "org-ledger-other";
+
 const ALICE = "user-alice";
+
 const BOB = "user-bob";
+
 const RANGE = { from: "2026-08-01", to: "2026-08-31" };
 
 const ctx: Ctx = { organizationId: ORG, userId: ALICE };
 
 let harness: TestDb;
+
 let projectId: string;
+
 let otherProjectId: string;
+
 let workTaskId: string;
+
 let absenceTaskId: string;
 
 const HOUR = 3600;
@@ -66,6 +74,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG, name: "Client" })
 		.returning();
+
 	if (!c) throw new Error("client");
 
 	const [p, otherP] = await db
@@ -75,6 +84,7 @@ beforeAll(async () => {
 			{ organizationId: ORG, clientId: c.id, name: "Beta" },
 		])
 		.returning();
+
 	if (!p || !otherP) throw new Error("project");
 	projectId = p.id;
 	otherProjectId = otherP.id;
@@ -87,6 +97,7 @@ beforeAll(async () => {
 			name: "Dev",
 		})
 		.returning();
+
 	if (!work) throw new Error("task");
 	workTaskId = work.id;
 
@@ -94,6 +105,7 @@ beforeAll(async () => {
 		where: and(eq(task.scope, "site"), eq(task.isAbsence, true)),
 		columns: { id: true },
 	});
+
 	if (existingAbsence) {
 		absenceTaskId = existingAbsence.id;
 	} else {
@@ -101,6 +113,7 @@ beforeAll(async () => {
 			.insert(task)
 			.values({ scope: "site" as const, name: "Vacation", isAbsence: true })
 			.returning();
+
 		if (!absence) throw new Error("absence task");
 		absenceTaskId = absence.id;
 	}
@@ -193,6 +206,7 @@ describe("scopes partition the ledger", () => {
 			ledgerTotal(ctx, RANGE, "unfiled"),
 			ledgerTotal(ctx, RANGE, "worked"),
 		]);
+
 		expect(p + u).toBe(w);
 	});
 
@@ -202,6 +216,7 @@ describe("scopes partition the ledger", () => {
 			ledgerTotal(ctx, RANGE, "absence"),
 			ledgerTotal(ctx, RANGE, "all"),
 		]);
+
 		expect(w + a).toBe(all);
 	});
 });
@@ -328,6 +343,7 @@ describe("the Break built-in is worked but never unfiled", () => {
 			where: and(eq(task.scope, "site"), eq(task.systemKey, "break")),
 			columns: { id: true },
 		});
+
 		const breakTaskId =
 			existing?.id ??
 			(
@@ -341,6 +357,7 @@ describe("the Break built-in is worked but never unfiled", () => {
 					})
 					.returning()
 			)[0]?.id;
+
 		if (!breakTaskId) throw new Error("break task");
 
 		await db.insert(timeEntry).values([

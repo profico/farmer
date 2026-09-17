@@ -24,10 +24,12 @@ const ID = "popup-layer";
 export const popupLayer = (): HTMLElement | null => {
 	if (import.meta.env.SSR) return null;
 	const existing = document.getElementById(ID);
+
 	if (existing) return existing;
 	const layer = document.createElement("div");
 	layer.id = ID;
 	layer.className = "popup-layer";
 	document.body.appendChild(layer);
+
 	return layer;
 };

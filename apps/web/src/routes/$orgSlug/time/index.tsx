@@ -26,8 +26,10 @@ export const Route = createFileRoute("/$orgSlug/time/")({
 	loaderDeps: ({ search }) => ({ date: search.date }),
 	loader: async ({ context, deps, params }) => {
 		const orgSlug = params.orgSlug;
+
 		const date =
 			deps.date ?? dayKeyInTz(new Date(), context.organization.timezone);
+
 		// The whole week, not just the day: the strip above the list shows every
 		// day's total, and fetching the week once is cheaper than seven day calls.
 		const weekStart = startOfWeekKey(date, context.organization.weekStartsOn);
@@ -64,9 +66,11 @@ function DayRoute() {
 	const date = search.date ?? dayKeyInTz(new Date(), organization.timezone);
 	const weekStart = startOfWeekKey(date, organization.weekStartsOn);
 	const weekEnd = addDaysToKey(weekStart, 6);
+
 	const { data: weekEntries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 	);
+
 	const { data: holidayEntries } = useSuspenseQuery(
 		holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 	);

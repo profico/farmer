@@ -65,10 +65,13 @@ type Snapshot = { at: number; info: DeploymentInfo };
 
 const readSnapshot = (): Snapshot | null => {
 	if (import.meta.env.SSR) return null;
+
 	try {
 		const raw = window.localStorage.getItem(SNAPSHOT_KEY);
+
 		if (raw === null) return null;
 		const parsed = snapshotSchema.safeParse(JSON.parse(raw));
+
 		return parsed.success ? parsed.data : null;
 	} catch {
 		// Blocked storage, or a value that is not JSON. Either way there is no
@@ -79,6 +82,7 @@ const readSnapshot = (): Snapshot | null => {
 
 const writeSnapshot = (info: DeploymentInfo) => {
 	if (import.meta.env.SSR) return;
+
 	try {
 		window.localStorage.setItem(
 			SNAPSHOT_KEY,
@@ -96,11 +100,13 @@ let snapshot: Snapshot | null | undefined;
 
 export const deploymentInfoQuery = () => {
 	if (snapshot === undefined) snapshot = readSnapshot();
+
 	return queryOptions({
 		queryKey: ["deployment-info"] as const,
 		queryFn: async () => {
 			const info = await getDeploymentInfo();
 			writeSnapshot(info);
+
 			return info;
 		},
 		staleTime: MAX_AGE_MS,

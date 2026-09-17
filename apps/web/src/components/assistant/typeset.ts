@@ -64,6 +64,7 @@ const wholeWordEnd = (text: string) => {
 	for (let index = text.length - 1; index >= 0; index -= 1) {
 		if (isSpace(text.charAt(index))) return index;
 	}
+
 	return 0;
 };
 
@@ -73,10 +74,13 @@ const wholeWordEnd = (text: string) => {
 const advanceBy = (text: string, from: number, chars: number) => {
 	const limit = from + chars;
 	let index = from;
+
 	while (index < text.length && index < limit) {
 		while (index < text.length && isSpace(text.charAt(index))) index += 1;
+
 		while (index < text.length && !isSpace(text.charAt(index))) index += 1;
 	}
+
 	return index;
 };
 
@@ -122,6 +126,7 @@ export function useTypeset(text: string, streaming: boolean): string {
 	useEffect(() => {
 		arrived.current = text;
 		live.current = streaming;
+
 		// Movement is turned down, so there is no drain: the whole of what has
 		// arrived is returned below without going through state at all. The
 		// position is still kept current, so switching the setting back ON
@@ -129,8 +134,10 @@ export function useTypeset(text: string, streaming: boolean): string {
 		// what they have already read.
 		if (reduced) {
 			shown.current = text.length;
+
 			return;
 		}
+
 		// A shorter string is the store handing this component a different turn —
 		// a second question in the same thread, or the live copy cleared at
 		// settle. There is nothing to catch up to, and rewinding would play the
@@ -139,37 +146,47 @@ export function useTypeset(text: string, streaming: boolean): string {
 			shown.current = text.length;
 			setVisible(text.length);
 		}
+
 		// Already draining. The refs above are what carry this delta into the loop
 		// that is running; tearing it down and starting another would reset the
 		// frame clock on every token.
 		if (frame.current !== null) return;
 		clock.current = performance.now();
+
 		const step = (now: number) => {
 			const seconds = Math.min((now - clock.current) / 1000, MAX_FRAME);
 			clock.current = now;
 			const source = arrived.current;
 			const end = live.current ? wholeWordEnd(source) : source.length;
 			let from = shown.current;
+
 			if (end - from > MAX_LAG) {
 				from = Math.min(advanceBy(source, from, end - from - MAX_LAG), end);
 			}
+
 			const lag = end - from;
+
 			// Caught up. The loop stops rather than idling at 60fps — the effect
 			// above starts it again on the next delta, and on the one that ends the
 			// turn, which is what releases the word that was being held back.
 			if (lag <= 0) {
 				frame.current = null;
+
 				return;
 			}
+
 			const response = live.current ? RESPONSE_LIVE : RESPONSE_END;
+
 			const next = Math.min(
 				advanceBy(source, from, Math.max(1, (lag / response) * seconds)),
 				end,
 			);
+
 			shown.current = next;
 			setVisible(next);
 			frame.current = requestAnimationFrame(step);
 		};
+
 		frame.current = requestAnimationFrame(step);
 	}, [text, streaming, reduced]);
 

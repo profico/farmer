@@ -55,6 +55,7 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-fillwin";
+
 const USER_ID = "user-fillwin";
 
 /** Fresh per call — `ctxAccess` and the holiday calendar both memoize on the
@@ -64,13 +65,18 @@ const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 // 2026-01-06 (Epiphany) is a Croatian public holiday AND a Tuesday, so the
 // weekday schedule alone would call it a full 8-hour day.
 const HOLIDAY = "2026-01-06";
+
 const DAY_AFTER_HOLIDAY = "2026-01-07";
+
 // Comfortably outside any automation window from "now".
 const LONG_CLOSED_DAY = "2024-03-05";
 
 let harness: TestDb;
+
 let devTaskId = "";
+
 let projectId = "";
+
 let repoId = "";
 
 beforeAll(async () => {
@@ -104,10 +110,12 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Farmer" })
 		.returning();
+
 	projectId = p?.id ?? "";
 	await db.insert(projectMember).values({
 		organizationId: ORG_ID,
@@ -127,6 +135,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = dev?.id ?? "";
 
 	const [repo] = await db
@@ -140,6 +149,7 @@ beforeAll(async () => {
 			fullName: "profico/farmer",
 		})
 		.returning({ id: projectGithubRepo.id });
+
 	repoId = repo?.id ?? "";
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
@@ -252,10 +262,12 @@ describe("a read may only rewrite what an automation may rewrite", () => {
 	test("today's fill block IS still kept in sync — the window is a bound, not an off switch", async () => {
 		const { dayKeyInTz } = await import("../lib/time");
 		const today = dayKeyInTz(new Date(), "Europe/Zagreb");
+
 		const target = await timeEntriesService.listRange(ctx(), {
 			from: today,
 			to: today,
 		});
+
 		expect(target).toHaveLength(0);
 
 		await addFill(today, 8 * 3600);
@@ -274,10 +286,12 @@ describe("a read may only rewrite what an automation may rewrite", () => {
 
 		const rows = await entriesOn(today);
 		const fill = rows.find((r) => r.fillsDay);
+
 		// Only meaningful on a day the schedule calls a working day.
 		const isWorkingDay = ![0, 6].includes(
 			new Date(`${today}T00:00:00Z`).getUTCDay(),
 		);
+
 		if (isWorkingDay) {
 			expect(fill?.durationSeconds).toBe(6 * 3600);
 		}
@@ -331,6 +345,7 @@ describe("a read may only rewrite what an automation may rewrite", () => {
 		// update failed as a driver error, which `PATCH /api/v1/…/time-entries/$id`
 		// (`farmer edit --duration fill`) answered as a 500.
 		await addFill(LONG_CLOSED_DAY, 5 * 3600);
+
 		const entry = await timeEntriesService.create(ctx(), {
 			taskId: devTaskId,
 			projectId,
@@ -365,6 +380,7 @@ describe("a public holiday is a non-working day", () => {
 			HOLIDAY,
 			HOLIDAY,
 		);
+
 		expect(holidays.has(HOLIDAY)).toBe(true);
 	});
 
@@ -408,6 +424,7 @@ describe("a public holiday is a non-working day", () => {
 		const result = await timeEntriesService.runAutomationsForUser(ctx(), {
 			now: new Date(`${DAY_AFTER_HOLIDAY}T12:00:00.000Z`),
 		});
+
 		expect(result.failed).toEqual([]);
 
 		// No block. The day is not a working day, so there is no "rest" of it to
@@ -427,6 +444,7 @@ describe("a public holiday is a non-working day", () => {
 		await timeEntriesService.listRange(ctx(), { from: HOLIDAY, to: today });
 
 		const rows = await entriesOn(HOLIDAY);
+
 		// Either untouched (outside the window, the normal case) or dropped to zero
 		// and removed (inside it) — but never grown to 8 hours.
 		for (const row of rows) {
@@ -447,6 +465,7 @@ describe("a public holiday is a non-working day", () => {
 			HOLIDAY,
 			HOLIDAY,
 		);
+
 		const name = holidays.get(HOLIDAY);
 		expect(name).toBeString();
 

@@ -39,15 +39,19 @@ import { setCalendarSourceForTests, setCommitSourceForTests } from "./ports";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-assembly-access";
+
 const USER_ID = "user-assembly-access";
+
 const MONDAY = "2026-08-10";
 
 /** Fresh per call — the access picture memoizes on the Ctx object. */
 const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 
 let harness: TestDb;
+
 /** Assigned to the user. */
 let minePId = "";
+
 /** Linked to a repo in the same org, but the user is not on it. */
 let theirsPId = "";
 
@@ -74,7 +78,9 @@ const siteTask = async (systemKey: "development" | "break" | "meeting") => {
 		where: and(eq(task.scope, "site"), eq(task.systemKey, systemKey)),
 		columns: { id: true },
 	});
+
 	if (existing) return existing.id;
+
 	const [row] = await db
 		.insert(task)
 		.values({
@@ -84,6 +90,7 @@ const siteTask = async (systemKey: "development" | "break" | "meeting") => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	return row?.id ?? "";
 };
 
@@ -119,6 +126,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [mine, theirs] = await db
 		.insert(project)
 		.values([
@@ -126,6 +134,7 @@ beforeAll(async () => {
 			{ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Theirs" },
 		])
 		.returning({ id: project.id });
+
 	minePId = mine?.id ?? "";
 	theirsPId = theirs?.id ?? "";
 
@@ -171,6 +180,7 @@ beforeEach(async () => {
 
 const workSuggestions = async () => {
 	const assembly = await dayAssemblyService.suggest(ctx(), { date: MONDAY });
+
 	return assembly.suggestions.filter((s) => s.kind === "work");
 };
 
@@ -203,6 +213,7 @@ describe("assemble my day and project access", () => {
 		setCommitSourceForTests(commitsOn([minePId, theirsPId]));
 
 		const assembly = await dayAssemblyService.suggest(ctx(), { date: MONDAY });
+
 		const result = await dayAssemblyService.apply(ctx(), {
 			date: MONDAY,
 			entries: assembly.suggestions.map((s) => ({
@@ -224,10 +235,12 @@ describe("assemble my day and project access", () => {
 		setCommitSourceForTests(commitsOn([theirsPId]));
 
 		const assembly = await dayAssemblyService.suggest(ctx(), { date: MONDAY });
+
 		const total = assembly.suggestions.reduce(
 			(sum, s) => sum + s.durationSeconds,
 			0,
 		);
+
 		expect(total).toBe(assembly.targetSeconds);
 	});
 
@@ -239,6 +252,7 @@ describe("assemble my day and project access", () => {
 			.update(projectMember)
 			.set({ active: false })
 			.where(eq(projectMember.projectId, minePId));
+
 		try {
 			expect(await workSuggestions()).toHaveLength(0);
 		} finally {

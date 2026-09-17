@@ -34,6 +34,7 @@ import {
 } from "#/server/day-assembly.ts";
 
 type DayAssembly = Awaited<ReturnType<typeof suggestDayAssembly>>;
+
 type DaySuggestion = DayAssembly["suggestions"][number];
 
 /** Where an accepted suggestion goes: the proposal, or what the person chose. */
@@ -41,9 +42,13 @@ type Pick = { projectId: string | null; taskId: string };
 
 function suggestionTitle(s: DaySuggestion): string {
 	if (s.kind === "meeting") return s.description || "Meeting";
+
 	if (s.kind === "work") return s.projectName ?? s.taskName;
+
 	if (s.kind === "review") return s.description;
+
 	if (s.kind === "break") return "Break";
+
 	return "Work — rest of day";
 }
 
@@ -64,6 +69,7 @@ function suggestionTitle(s: DaySuggestion): string {
  */
 function suggestionSource(s: DaySuggestion): string {
 	if (s.kind === "meeting") return "From your calendar";
+
 	if (s.kind === "work") {
 		// Only claim one repo when every commit AND every pull request agree on
 		// it — a suggestion backed by a commit in one repo and a PR in another
@@ -74,7 +80,9 @@ function suggestionSource(s: DaySuggestion): string {
 				...s.pullRequests.map((p) => p.repoFullName),
 			]),
 		];
+
 		const where = repos.length === 1 ? ` in ${repos[0]}` : "";
+
 		const parts = [
 			s.commits.length > 0
 				? `${s.commits.length} ${s.commits.length === 1 ? "commit" : "commits"}`
@@ -83,16 +91,21 @@ function suggestionSource(s: DaySuggestion): string {
 				? `${s.pullRequests.length} ${s.pullRequests.length === 1 ? "pull request" : "pull requests"}`
 				: null,
 		].filter((part): part is string => part !== null);
+
 		return `From ${parts.join(" and ")}${where}`;
 	}
+
 	if (s.kind === "review") {
 		const [pr] = s.pullRequests;
+
 		// A review has no length on GitHub, so the time is an estimate — say so.
 		return pr
 			? `From your review of #${pr.number} in ${pr.repoFullName}, estimated`
 			: "From your pull request reviews, estimated";
 	}
+
 	if (s.kind === "break") return "From your recurring blocks";
+
 	return "Assumed from your working hours";
 }
 
@@ -107,6 +120,7 @@ function SuggestionIcon({ kind }: { kind: DaySuggestion["kind"] }) {
 					: kind === "break"
 						? CoffeeIcon
 						: CalendarDotIcon;
+
 	return <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />;
 }
 
@@ -135,6 +149,7 @@ export function AssembleDayDialog({
 		...dayAssemblySuggestionsQuery(orgSlug, date, includeDismissed),
 		enabled: open,
 	});
+
 	const assembly = suggestionsQ.data;
 	const suggestions = assembly?.suggestions ?? [];
 
@@ -143,6 +158,7 @@ export function AssembleDayDialog({
 		...myProjectsQuery(orgSlug),
 		enabled: open,
 	});
+
 	// Every live non-absence task: what may go on a project, and on no project.
 	const { data: tasks } = useQuery({
 		...selectableTasksQuery(orgSlug),
@@ -167,6 +183,7 @@ export function AssembleDayDialog({
 
 	const pickFor = (s: DaySuggestion): Pick =>
 		picks.get(s.key) ?? { projectId: s.projectId, taskId: s.taskId };
+
 	const setPick = (s: DaySuggestion, next: Partial<Pick>) =>
 		setPicks((current) =>
 			new Map(current).set(s.key, { ...pickFor(s), ...next }),
@@ -175,13 +192,16 @@ export function AssembleDayDialog({
 	const toggle = (key: string) => {
 		setSelectedKeys((current) => {
 			const next = new Set(current);
+
 			if (next.has(key)) next.delete(key);
 			else next.add(key);
+
 			return next;
 		});
 	};
 
 	const selected = suggestions.filter((s) => selectedKeys.has(s.key));
+
 	const selectedSeconds = selected.reduce(
 		(sum, s) => sum + s.durationSeconds,
 		0,
@@ -226,6 +246,7 @@ export function AssembleDayDialog({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).dayAssembly],
 			});
+
 			if (errors.length > 0) {
 				toast.error(
 					`Added ${created} ${created === 1 ? "block" : "blocks"}, ${errors.length} failed: ${errors[0]}`,
@@ -233,6 +254,7 @@ export function AssembleDayDialog({
 			} else {
 				toast.success(`Added ${created} ${created === 1 ? "block" : "blocks"}`);
 			}
+
 			setOpen(false);
 		},
 		onError: (error) => {
@@ -241,9 +263,11 @@ export function AssembleDayDialog({
 	});
 
 	const missingSources: string[] = [];
+
 	if (assembly?.sources.calendar === "unavailable") {
 		missingSources.push("Google Calendar");
 	}
+
 	if (assembly?.sources.github === "unavailable") missingSources.push("GitHub");
 
 	return (

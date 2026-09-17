@@ -28,9 +28,11 @@ const holidaysByCountry = new Map<string, Holidays>();
 
 const holidaysForCountry = (country: string): Holidays => {
 	const cached = holidaysByCountry.get(country);
+
 	if (cached) return cached;
 	const created = new Holidays(country, { types: HOLIDAY_TYPES });
 	holidaysByCountry.set(country, created);
+
 	return created;
 };
 
@@ -40,6 +42,7 @@ const holidaysForCountry = (country: string): Holidays => {
 let cachedCountries: { code: string; name: string }[] | null = null;
 
 export type PublicHoliday = { date: string; name: string };
+
 export type HolidayWithStatus = PublicHoliday & { disabled: boolean };
 
 // (country, year) -> the year's holidays.
@@ -63,11 +66,15 @@ const yearCache = new Map<string, PublicHoliday[]>();
 const holidaysForYear = (country: string, year: number): PublicHoliday[] => {
 	const key = `${country}:${String(year)}`;
 	const cached = yearCache.get(key);
+
 	if (cached) return cached;
+
 	const computed = holidaysForCountry(country)
 		.getHolidays(year)
 		.map((h) => ({ date: h.date.slice(0, 10), name: h.name }));
+
 	yearCache.set(key, computed);
+
 	return computed;
 };
 
@@ -85,6 +92,7 @@ const calendarInputs = (
 	const memo = ctxMemo(ctx);
 	memo.holidayCalendar ??= (async () => {
 		const client = ctxDb(ctx);
+
 		const [country, rows] = await Promise.all([
 			orgCountry(ctx.organizationId, client),
 			client
@@ -92,8 +100,10 @@ const calendarInputs = (
 				.from(disabledHoliday)
 				.where(eq(disabledHoliday.organizationId, ctx.organizationId)),
 		]);
+
 		return { country, disabled: new Set(rows.map((r) => r.name)) };
 	})();
+
 	// SAFETY: the line above assigned this exact promise to the memo slot, which is
 	// typed loosely because the Ctx memo holds several unrelated things. This reads
 	// back what it just wrote.
@@ -112,6 +122,7 @@ export const holidaysService = {
 		cachedCountries = Object.entries(countries)
 			.map(([code, name]) => ({ code, name }))
 			.sort((a, b) => a.name.localeCompare(b.name));
+
 		// A copy, so the contract is unchanged from when this built a fresh array
 		// every call and a caller sorting or splicing the result harmed nobody.
 		return [...cachedCountries];
@@ -120,6 +131,7 @@ export const holidaysService = {
 	// Enabled (non-disabled) holidays for the year.
 	listForYear: async (ctx: Ctx, year: number): Promise<PublicHoliday[]> => {
 		const { country, disabled } = await calendarInputs(ctx);
+
 		return holidaysForYear(country, year).filter((h) => !disabled.has(h.name));
 	},
 
@@ -129,6 +141,7 @@ export const holidaysService = {
 		year: number,
 	): Promise<HolidayWithStatus[]> => {
 		const { country, disabled } = await calendarInputs(ctx);
+
 		return holidaysForYear(country, year).map((h) => ({
 			...h,
 			disabled: disabled.has(h.name),
@@ -141,6 +154,7 @@ export const holidaysService = {
 		input: { name: string; disabled: boolean },
 	): Promise<void> => {
 		const client = ctxDb(ctx);
+
 		if (input.disabled) {
 			await client
 				.insert(disabledHoliday)
@@ -156,6 +170,7 @@ export const holidaysService = {
 					),
 				);
 		}
+
 		// The Ctx memo would otherwise answer this same request from the picture
 		// as it was before the toggle.
 		ctxMemo(ctx).holidayCalendar = undefined;
@@ -178,12 +193,15 @@ export const holidaysService = {
 		const toYear = Number(to.slice(0, 4));
 
 		const byDate = new Map<string, string>();
+
 		for (let year = fromYear; year <= toYear; year++) {
 			for (const h of holidaysForYear(country, year)) {
 				if (disabled.has(h.name)) continue;
+
 				if (h.date >= from && h.date <= to) byDate.set(h.date, h.name);
 			}
 		}
+
 		return byDate;
 	},
 };

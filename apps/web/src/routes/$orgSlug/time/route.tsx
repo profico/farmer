@@ -42,6 +42,7 @@ function TimeLayout() {
 					{TABS.map((tab) => {
 						const resolved = tab.to.replace("$orgSlug", organization.slug);
 						const active = pathname === resolved;
+
 						return (
 							<SegmentedControlItem
 								key={tab.to}

@@ -33,6 +33,7 @@ function DropdownMenu({
 			defaultOpen,
 			onOpenChange,
 		});
+
 	const actionsRef = React.useRef<MenuPrimitive.Root.Actions | null>(null);
 	const presence = React.useMemo(() => ({ open: value, actionsRef }), [value]);
 

@@ -38,7 +38,9 @@ export type PullRequestSource = Pick<
 >;
 
 let calendarOverride: CalendarSource | null = null;
+
 let commitOverride: CommitSource | null = null;
+
 let pullRequestOverride: PullRequestSource | null = null;
 
 /** The pull request activity the engines should read. */

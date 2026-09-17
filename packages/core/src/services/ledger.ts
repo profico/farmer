@@ -108,8 +108,10 @@ export type LedgerFilter = {
  *  configuration of it. */
 const notePredicate = (raw: string): SQL | undefined => {
 	const term = raw.trim();
+
 	if (!term) return undefined;
 	const escaped = term.replace(/[\\%_]/g, (match) => `\\${match}`);
+
 	return sql`${timeEntry.description} ilike ${`%${escaped}%`} escape '\\'`;
 };
 
@@ -118,15 +120,20 @@ const notePredicate = (raw: string): SQL | undefined => {
 const accessPredicate = (filter: LedgerFilter): SQL | undefined => {
 	const projects = filter.visibleProjectIds;
 	const people = filter.visibleUserIds;
+
 	if (projects === undefined && people === undefined) return undefined;
+
 	if (projects === null || people === null) return undefined;
+
 	const arms = [
 		projects && projects.length > 0
 			? inArray(timeEntry.projectId, projects)
 			: undefined,
 		people && people.length > 0 ? inArray(timeEntry.userId, people) : undefined,
 	].filter((arm): arm is SQL => arm !== undefined);
+
 	if (arms.length === 0) return sql`false`;
+
 	return arms.length === 1 ? arms[0] : or(...arms);
 };
 
@@ -204,13 +211,17 @@ export const ledgerTotal = async (
 	filter: LedgerFilter = {},
 ): Promise<number> => {
 	let q = db.select({ seconds: SECONDS }).from(timeEntry).$dynamic();
+
 	if (scopeNeedsTaskJoin(scope)) {
 		q = q.innerJoin(task, eq(timeEntry.taskId, task.id));
 	}
+
 	if (filterNeedsProjectJoin(filter)) {
 		q = q.innerJoin(project, eq(timeEntry.projectId, project.id));
 	}
+
 	const [row] = await q.where(ledgerWhere(ctx, range, scope, filter));
+
 	return Number(row?.seconds ?? 0);
 };
 
@@ -229,15 +240,19 @@ export const ledgerByUser = async (
 		.select({ userId: timeEntry.userId, seconds: SECONDS })
 		.from(timeEntry)
 		.$dynamic();
+
 	if (scopeNeedsTaskJoin(scope)) {
 		q = q.innerJoin(task, eq(timeEntry.taskId, task.id));
 	}
+
 	if (filterNeedsProjectJoin(filter)) {
 		q = q.innerJoin(project, eq(timeEntry.projectId, project.id));
 	}
+
 	const rows = await q
 		.where(ledgerWhere(ctx, range, scope, filter))
 		.groupBy(timeEntry.userId);
+
 	return new Map(rows.map((r) => [r.userId, Number(r.seconds)]));
 };
 
@@ -257,19 +272,25 @@ export const ledgerByProject = async (
 		.select({ projectId: timeEntry.projectId, seconds: SECONDS })
 		.from(timeEntry)
 		.$dynamic();
+
 	if (scopeNeedsTaskJoin(scope)) {
 		q = q.innerJoin(task, eq(timeEntry.taskId, task.id));
 	}
+
 	if (filterNeedsProjectJoin(filter)) {
 		q = q.innerJoin(project, eq(timeEntry.projectId, project.id));
 	}
+
 	const rows = await q
 		.where(ledgerWhere(ctx, range, scope, filter))
 		.groupBy(timeEntry.projectId);
+
 	const out = new Map<string, number>();
+
 	for (const r of rows) {
 		if (!r.projectId) continue;
 		out.set(r.projectId, Number(r.seconds));
 	}
+
 	return out;
 };

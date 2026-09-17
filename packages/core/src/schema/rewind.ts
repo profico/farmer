@@ -9,4 +9,5 @@ export const rewindInput = z.object({
 	// production, where the clock is the clock.
 	asOf: dateKey.optional(),
 });
+
 export type RewindInput = z.infer<typeof rewindInput>;

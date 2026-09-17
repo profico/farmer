@@ -35,6 +35,7 @@ function Popover({
 			defaultOpen,
 			onOpenChange,
 		});
+
 	const actionsRef = React.useRef<PopoverPrimitive.Root.Actions | null>(null);
 	const presence = React.useMemo(() => ({ open: value, actionsRef }), [value]);
 

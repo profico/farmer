@@ -26,9 +26,11 @@ const streamingBody = (frames: string[], signal: AbortSignal) =>
 	new ReadableStream<Uint8Array>({
 		start(controller) {
 			const encoder = new TextEncoder();
+
 			for (const frame of frames) {
 				controller.enqueue(encoder.encode(`data: ${frame}\n\n`));
 			}
+
 			signal.addEventListener("abort", () => {
 				controller.error(
 					new DOMException("The operation was aborted", "AbortError"),
@@ -51,6 +53,7 @@ const call = (signal: AbortSignal) =>
 afterEach(() => {
 	globalThis.fetch = realFetch;
 });
+
 afterAll(() => {
 	globalThis.fetch = realFetch;
 });
@@ -83,6 +86,7 @@ describe("a stream the caller stops part-way", () => {
 		// something any caller can run, and returning it would put an
 		// unanswerable `tool_calls` row in the thread.
 		const controller = new AbortController();
+
 		const fragment = JSON.stringify({
 			choices: [
 				{
@@ -98,6 +102,7 @@ describe("a stream the caller stops part-way", () => {
 				},
 			],
 		});
+
 		// SAFETY: as above — a stub that answers one shape.
 		globalThis.fetch = (async (_input: string | URL | Request) =>
 			new Response(streamingBody([fragment], controller.signal), {

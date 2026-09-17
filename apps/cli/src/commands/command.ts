@@ -40,6 +40,7 @@ export const parseCommandArgs = <const O extends ParseArgsOptionsConfig>(
 	usage: string,
 ) => {
 	let parsed;
+
 	try {
 		parsed = parseArgs({
 			args,
@@ -51,8 +52,10 @@ export const parseCommandArgs = <const O extends ParseArgsOptionsConfig>(
 		const reason = error instanceof Error ? error.message : String(error);
 		throw new UsageError(`${reason}\nUsage: ${usage}`);
 	}
+
 	if (parsed.positionals.length > maxPositionals) {
 		throw new UsageError(`Too many arguments.\nUsage: ${usage}`);
 	}
+
 	return parsed;
 };

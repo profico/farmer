@@ -27,6 +27,7 @@ export const uploadImage = createServerFn({ method: "POST" })
 	)
 	.handler(async ({ data, context }) => {
 		const { uploadsService } = await import("@farmer/core/services");
+
 		return uploadsService.uploadImage(context.ctx, {
 			purpose: data.purpose,
 			bytes: new Uint8Array(await data.file.arrayBuffer()),

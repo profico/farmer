@@ -40,14 +40,19 @@ export type CommandMatch = { command: Command; args: string[] };
 /** `org list` before `org`: a two-word command is looked for first. */
 export const findCommand = (tokens: string[]): CommandMatch | null => {
 	const [first, second] = tokens;
+
 	if (first === undefined) return null;
+
 	if (second !== undefined) {
 		const pair = COMMANDS.find(
 			(command) => command.name === `${first} ${second}`,
 		);
+
 		if (pair) return { command: pair, args: tokens.slice(2) };
 	}
+
 	const single = COMMANDS.find((command) => command.name === first);
+
 	return single ? { command: single, args: tokens.slice(1) } : null;
 };
 
@@ -57,6 +62,7 @@ export const subcommandsOf = (group: string): Command[] =>
 
 export const mainHelp = (): string => {
 	const width = Math.max(...COMMANDS.map((command) => command.name.length));
+
 	return [
 		`farmer ${CLI_VERSION} — log and read your time in Farmer.`,
 		"",

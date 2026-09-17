@@ -21,8 +21,11 @@ import { notificationsService } from "./notifications.service";
 import type { Ctx } from "./types";
 
 const ORG_A = "nt-a";
+
 const ORG_B = "nt-b";
+
 const ME = "u-nt-me";
+
 const OTHER = "u-nt-other";
 
 const ENDPOINT = "https://push.example.com/device-1";
@@ -132,6 +135,7 @@ describe("notification settings", () => {
 		const saved = await notificationsService.update(ctx(ME), {
 			logReminders: false,
 		});
+
 		expect(saved.logReminders).toBe(false);
 		expect((await notificationsService.getSettings(ctx(ME))).logReminders).toBe(
 			false,

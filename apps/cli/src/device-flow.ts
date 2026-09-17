@@ -11,9 +11,11 @@ import { CliError } from "./errors";
 import { send, type Transport } from "./http";
 
 const DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
+
 /** RFC 8628 §3.5: on `slow_down`, the interval grows by 5 seconds for this
  *  and every later request. */
 const SLOW_DOWN_STEP_MS = 5_000;
+
 /** RFC 8628 §3.2: the interval a client uses when the server names none. */
 const DEFAULT_INTERVAL_SECONDS = 5;
 
@@ -69,22 +71,28 @@ export const requestDeviceCode = async (
 		token: null,
 		body: JSON.stringify({ client_id: CLI_CLIENT_ID }),
 	});
+
 	const parsed = deviceCodeBody.safeParse(await readBody(response));
+
 	if (!response.ok || !parsed.success) {
 		throw new CliError(
 			`${transport.origin} did not start the sign-in (status ${response.status}).`,
 		);
 	}
+
 	const body = parsed.data;
+
 	// The plugin is configured with a path (`/device`); resolving against the
 	// origin gives a URL a browser can open whichever form it answers with.
 	const verificationUri = new URL(
 		body.verification_uri,
 		transport.origin,
 	).toString();
+
 	const complete = body.verification_uri_complete
 		? new URL(body.verification_uri_complete, transport.origin).toString()
 		: `${verificationUri}?user_code=${encodeURIComponent(body.user_code)}`;
+
 	return {
 		deviceCode: body.device_code,
 		userCode: body.user_code,
@@ -115,6 +123,7 @@ export const pollForToken = async (
 ): Promise<string> => {
 	let intervalMs = code.intervalSeconds * 1000;
 	const deadline = nowMs() + code.expiresInSeconds * 1000;
+
 	const body = JSON.stringify({
 		grant_type: DEVICE_CODE_GRANT,
 		device_code: code.deviceCode,
@@ -123,6 +132,7 @@ export const pollForToken = async (
 
 	for (;;) {
 		await transport.sleep(intervalMs);
+
 		if (nowMs() >= deadline) throw expired();
 
 		const response = await send(transport, {
@@ -131,23 +141,29 @@ export const pollForToken = async (
 			token: null,
 			body,
 		});
+
 		const json = await readBody(response);
+
 		if (response.ok) {
 			const token = tokenBody.safeParse(json);
+
 			if (!token.success) {
 				throw new CliError(
 					`${transport.origin} approved the sign-in but sent no token.`,
 				);
 			}
+
 			return token.data.access_token;
 		}
 
 		const failure = tokenErrorBody.safeParse(json);
+
 		if (!failure.success) {
 			throw new CliError(
 				`${transport.origin} answered ${response.status} while farmer waited for approval.`,
 			);
 		}
+
 		switch (failure.data.error) {
 			case "authorization_pending":
 				break;

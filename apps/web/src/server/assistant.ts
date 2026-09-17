@@ -24,6 +24,7 @@ export const getAssistantSettings = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.settings.get(context.ctx);
 	});
 
@@ -32,6 +33,7 @@ export const setAssistantSettings = createServerFn({ method: "POST" })
 	.validator(setAssistantSettingsInput)
 	.handler(async ({ data, context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.settings.set(context.ctx, data);
 	});
 
@@ -40,6 +42,7 @@ export const updateAssistantSettings = createServerFn({ method: "POST" })
 	.validator(updateAssistantSettingsInput)
 	.handler(async ({ data, context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.settings.update(context.ctx, data);
 	});
 
@@ -47,6 +50,7 @@ export const disconnectAssistant = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.settings.disconnect(context.ctx);
 	});
 
@@ -54,6 +58,7 @@ export const listAssistantModels = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.settings.listModels(context.ctx);
 	});
 
@@ -61,6 +66,7 @@ export const listConversations = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.conversations.list(context.ctx);
 	});
 
@@ -69,6 +75,7 @@ export const getConversation = createServerFn({ method: "GET" })
 	.validator(conversationIdInput)
 	.handler(async ({ data, context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.conversations.get(context.ctx, data.conversationId);
 	});
 
@@ -77,6 +84,7 @@ export const createConversation = createServerFn({ method: "POST" })
 	.validator(createConversationInput)
 	.handler(async ({ data, context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.conversations.create(context.ctx, data);
 	});
 
@@ -85,6 +93,7 @@ export const renameConversation = createServerFn({ method: "POST" })
 	.validator(renameConversationInput)
 	.handler(async ({ data, context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.conversations.rename(context.ctx, data);
 	});
 
@@ -93,6 +102,7 @@ export const deleteConversation = createServerFn({ method: "POST" })
 	.validator(conversationIdInput)
 	.handler(async ({ data, context }) => {
 		const { assistantService } = await import("@farmer/core/services");
+
 		return assistantService.conversations.remove(
 			context.ctx,
 			data.conversationId,

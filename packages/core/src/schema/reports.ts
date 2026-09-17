@@ -1,10 +1,13 @@
 import { z } from "zod";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
+
 const year = z.number().int().min(2000).max(2100);
+
 const month = z.number().int().min(1).max(12);
 
 export const timeReportTab = z.enum(["clients", "projects", "teammates"]);
+
 export type TimeReportTab = z.infer<typeof timeReportTab>;
 
 const range = {
@@ -27,6 +30,7 @@ const MAX_REPORT_SPAN_DAYS = 366;
 const spanWithinLimit = (data: { from: string; to: string }) => {
 	const from = new Date(`${data.from}T00:00:00Z`).getTime();
 	const to = new Date(`${data.to}T00:00:00Z`).getTime();
+
 	return (to - from) / 86_400_000 <= MAX_REPORT_SPAN_DAYS;
 };
 
@@ -63,6 +67,7 @@ const filters = {
 export const timeReportSummaryInput = withRangeLimits(
 	z.object({ ...range, tab: timeReportTab, ...filters }),
 );
+
 export type TimeReportSummaryInput = z.infer<typeof timeReportSummaryInput>;
 
 // No group-by here: the Breakdown groups the rows it has by any of five keys
@@ -71,14 +76,17 @@ export type TimeReportSummaryInput = z.infer<typeof timeReportSummaryInput>;
 export const timeReportDetailInput = withRangeLimits(
 	z.object({ ...range, ...filters }),
 );
+
 export type TimeReportDetailInput = z.infer<typeof timeReportDetailInput>;
 
 // Tracking is the one month-shaped report: its rule is a fraction of the month
 // elapsed against the month's fund, and no other period has a fund.
 export const monthReportInput = z.object({ year, month });
+
 export type MonthReportInput = z.infer<typeof monthReportInput>;
 
 export const yearReportInput = z.object({ year });
+
 export type YearReportInput = z.infer<typeof yearReportInput>;
 
 // Overtime and Absence take the same period as the Time report — every report
@@ -86,7 +94,9 @@ export type YearReportInput = z.infer<typeof yearReportInput>;
 export const overtimeReportInput = withRangeLimits(
 	z.object({ ...range, activeOnly: z.boolean().optional() }),
 );
+
 export type OvertimeReportInput = z.infer<typeof overtimeReportInput>;
 
 export const absenceReportInput = withRangeLimits(z.object({ ...range }));
+
 export type AbsenceReportInput = z.infer<typeof absenceReportInput>;

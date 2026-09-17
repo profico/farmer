@@ -26,11 +26,15 @@ type Search = z.infer<typeof searchSchema>;
 /** `/api/login`, carrying whatever destination and invite context we arrived with. */
 const signInHref = (search: Search) => {
 	const params = new URLSearchParams();
+
 	for (const key of ["redirect", "email", "org", "orgSlug", "role"] as const) {
 		const value = search[key];
+
 		if (value) params.set(key, value);
 	}
+
 	const query = params.toString();
+
 	return `/api/login${query ? `?${query}` : ""}`;
 };
 
@@ -42,14 +46,20 @@ const signInHref = (search: Search) => {
  */
 const destination = (search: Search) => {
 	const requested = search.redirect;
+
 	const target =
 		requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/";
+
 	const context = new URLSearchParams();
+
 	for (const key of ["email", "org", "orgSlug", "role"] as const) {
 		const value = search[key];
+
 		if (value) context.set(key, value);
 	}
+
 	const query = context.toString();
+
 	return query
 		? `${target}${target.includes("?") ? "&" : "?"}${query}`
 		: target;
@@ -84,9 +94,11 @@ export const Route = createFileRoute("/login")({
 	validateSearch: searchSchema,
 	beforeLoad: async ({ search }) => {
 		const config = await getPublicAppConfig();
+
 		if (!search.error && !config.devAuth) {
 			throw redirect({ href: signInHref(search), reloadDocument: true });
 		}
+
 		// Handed to the loader rather than fetched twice.
 		return { appConfig: config };
 	},
@@ -169,6 +181,7 @@ function DevCredentialsForm({ search }: { search: Search }) {
 		setError(null);
 		setPending(true);
 		const callbackURL = destination(search);
+
 		const { error: authError } =
 			mode === "sign-up"
 				? await signUp.email({
@@ -177,11 +190,14 @@ function DevCredentialsForm({ search }: { search: Search }) {
 						password,
 					})
 				: await signIn.email({ email, password });
+
 		if (authError) {
 			setPending(false);
 			setError(authError.message ?? "Sign-in failed.");
+
 			return;
 		}
+
 		// A document request rather than a router navigation. The session lands in
 		// a cookie, and every guard that decides where this person may go
 		// (`$orgSlug`'s beforeLoad, `/`'s loader) reads it server-side — a client

@@ -47,9 +47,11 @@ function MonthRoute() {
 	const month = search.month ?? currentMonthKey(organization.timezone);
 	const monthStart = `${month}-01`;
 	const monthEnd = endOfMonthKey(monthStart);
+
 	const { data: entries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, monthStart, monthEnd),
 	);
+
 	const { data: holidayEntries } = useSuspenseQuery(
 		holidaysForRangeQuery(orgSlug, { from: monthStart, to: monthEnd }),
 	);

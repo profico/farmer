@@ -84,6 +84,7 @@ const GROUPS = [
 	{ id: "projects", label: "Projects", noun: "projects" },
 	{ id: "teammates", label: "Team", noun: "people" },
 ] as const;
+
 type Group = (typeof GROUPS)[number]["id"];
 
 type BreakdownGroup = EntryGroup;
@@ -92,6 +93,7 @@ type BreakdownGroup = EntryGroup;
  *  param. One of them is the drill-down's subject — the row that was clicked
  *  on the summary tab — and the rest are chips. */
 type FilterKind = "client" | "project" | "person" | "task";
+
 const FILTER_KINDS = [
 	{ kind: "client", label: "Client", all: "All clients" },
 	{ kind: "project", label: "Project", all: "All projects" },
@@ -155,6 +157,7 @@ export function TimeTab({
 		tab: group,
 		activeOnly,
 	};
+
 	const detailInput: TimeReportDetailInput = {
 		from,
 		to,
@@ -265,6 +268,7 @@ function SummaryFigure({ input }: { input: TimeReportSummaryInput }) {
 	const { data } = useSuspenseQuery(timeReportSummaryQuery(orgSlug, input));
 	const total = data.rows.reduce((sum, r) => sum + rowHours(r, input.tab), 0);
 	const noun = GROUPS.find((g) => g.id === input.tab)?.noun ?? "rows";
+
 	return (
 		<span className="flex items-baseline gap-2 whitespace-nowrap">
 			<span className="eyebrow">Total hours</span>
@@ -288,6 +292,7 @@ function SummaryExport({
 	const orgSlug = useOrgSlug();
 	const { data } = useSuspenseQuery(timeReportSummaryQuery(orgSlug, input));
 	const group = input.tab;
+
 	const columns: PdfColumn[] =
 		group === "teammates"
 			? [
@@ -309,6 +314,7 @@ function SummaryExport({
 						{ label: "Projects", align: "right" },
 						{ label: "Hours", align: "right" },
 					];
+
 	// The same row for both formats; only how an hour is written differs.
 	const cells = (r: TimeReportRow, hours: (seconds: number) => string) =>
 		group === "teammates"
@@ -327,6 +333,7 @@ function SummaryExport({
 						hours(r.secondsTotal),
 					]
 				: [r.name, String(r.count), hours(r.secondsTotal)];
+
 	return (
 		<ExportMenu
 			disabled={data.rows.length === 0}
@@ -339,7 +346,9 @@ function SummaryExport({
 				const facts: [string, string][] = [
 					["Grouped by", GROUPS.find((g) => g.id === group)?.label ?? group],
 				];
+
 				if (input.activeOnly) facts.push(["Projects", "Active only"]);
+
 				return {
 					title: "Time report",
 					from,
@@ -376,17 +385,23 @@ function BreakdownExport({
 	filename: string;
 }) {
 	const nameOf = useEntityNames(input);
+
 	const facts = FILTER_KINDS.map(({ kind, label, all }): [string, string] => {
 		const id = search[kind];
+
 		// A project has one client, so narrowing to a project names it too.
 		if (!id && kind === "client" && search.project) {
 			return [label, nameOf("project", search.project).hint ?? all];
 		}
+
 		if (!id) return [label, all];
 		const name = nameOf(kind, id);
+
 		return [label, `${name.code ? `[${name.code}] ` : ""}${name.label}`];
 	});
+
 	if (input.activeOnly) facts.push(["Projects", "Active only"]);
+
 	return (
 		<EntriesExport
 			input={input}
@@ -410,6 +425,7 @@ function HoursCell({
 	to: Search;
 }) {
 	const orgSlug = useOrgSlug();
+
 	return (
 		<span className="flex items-center justify-end gap-3">
 			<Link
@@ -450,12 +466,15 @@ function TimeSummaryRows({
 	const group = input.tab;
 	const { data } = useSuspenseQuery(timeReportSummaryQuery(orgSlug, input));
 	const [query, setQuery] = useState("");
+
 	const [sort, setSort] = useState<Sort<SummarySortKey>>({
 		key: "hours",
 		dir: -1,
 	});
+
 	const onSort = (key: SummarySortKey, numeric: boolean) =>
 		setSort((current) => toggleSort(current, key, numeric));
+
 	const compare = {
 		name: byText((r: TimeReportRow) => r.name),
 		client: byText((r: TimeReportRow) => r.clientName),
@@ -475,6 +494,7 @@ function TimeSummaryRows({
 				compare[sort.key](a, b) * sort.dir ||
 				a.name.localeCompare(b.name, "hr"),
 		);
+
 	const max = Math.max(...data.rows.map((r) => rowHours(r, group)), 1);
 	const total = data.rows.reduce((sum, r) => sum + rowHours(r, group), 0);
 
@@ -483,8 +503,10 @@ function TimeSummaryRows({
 	// caller has one (Team Lead and up on it) — and the hours open it by date.
 	// Only this tab's own filter travels: the row IS the subject.
 	const { data: me } = useSuspenseQuery(myAccessQuery(orgSlug));
+
 	const opensPage = (projectId: string) =>
 		projectPageAccess(me.isAdmin, heldRoleFrom(me, projectId)).canView;
+
 	const drill = (id: string, by: BreakdownGroup): Search => ({
 		...search,
 		view: "breakdown",
@@ -495,6 +517,7 @@ function TimeSummaryRows({
 		...filterPatch(SUBJECT_OF[group].kind, id),
 		by,
 	});
+
 	const openBy: BreakdownGroup =
 		group === "clients"
 			? "project"
@@ -748,12 +771,14 @@ function Breakdown({
 	const group: Group = search.group ?? "projects";
 	const subject = SUBJECT_OF[group];
 	const navigate = useNavigate({ from: "/$orgSlug/reports" });
+
 	const go = (patch: Partial<Search>) =>
 		navigate({
 			to: "/$orgSlug/reports",
 			params: { orgSlug },
 			search: { ...search, ...patch },
 		});
+
 	return (
 		<>
 			<div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -837,15 +862,20 @@ function useEntityNames(input: TimeReportDetailInput) {
 		switch (kind) {
 			case "client": {
 				const c = clients.find((c) => c.id === id);
+
 				const label =
 					c?.name ?? (row?.clientId === id ? row.clientName : "Client");
+
 				return { label, code: null, hint: null };
 			}
+
 			case "project": {
 				const p = projects.find((p) => p.id === id);
+
 				if (p) {
 					return { label: p.name, code: p.code, hint: p.client?.name ?? null };
 				}
+
 				if (row?.projectId === id) {
 					return {
 						label: row.projectName,
@@ -853,16 +883,21 @@ function useEntityNames(input: TimeReportDetailInput) {
 						hint: row.clientName,
 					};
 				}
+
 				return { label: "Project", code: null, hint: null };
 			}
+
 			case "person": {
 				const m = people.find((m) => m.userId === id);
 				const label = m?.name ?? (row?.userId === id ? row.userName : "Person");
+
 				return { label, code: null, hint: null };
 			}
+
 			case "task": {
 				const t = tasks.find((t) => t.id === id);
 				const label = t?.name ?? (row?.taskId === id ? row.taskName : "Task");
+
 				return { label, code: null, hint: null };
 			}
 		}
@@ -893,6 +928,7 @@ function DrillHeader({
 	const nameOf = useEntityNames(input);
 	const subjectId = search[subject];
 	const title = subjectId ? nameOf(subject, subjectId) : null;
+
 	const chips = FILTER_KINDS.filter(
 		(k) => k.kind !== subject && search[k.kind],
 	);
@@ -923,8 +959,10 @@ function DrillHeader({
 
 			{chips.map((k) => {
 				const id = search[k.kind];
+
 				if (!id) return null;
 				const name = nameOf(k.kind, id);
+
 				return (
 					<span
 						key={k.kind}

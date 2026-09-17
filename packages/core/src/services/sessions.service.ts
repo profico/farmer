@@ -93,26 +93,32 @@ export type SessionDevice = { kind: SessionKind; label: string };
 
 export const describeUserAgent = (userAgent: string | null): SessionDevice => {
 	const ua = userAgent?.trim() ?? "";
+
 	if (ua.startsWith(CLI_USER_AGENT_PREFIX)) {
 		// "farmer-cli/0.1.0 (linux; x64)" or "farmer-cli/0.1.0 linux-x64": the
 		// version is the first token and the rest, if any, is the platform.
 		const rest = ua.slice(CLI_USER_AGENT_PREFIX.length);
+
 		const platform = rest
 			.replace(/^\S*/, "")
 			.replace(/[()]/g, "")
 			.replace(/\s*;\s*/g, " ")
 			.trim();
+
 		return {
 			kind: "cli",
 			label: platform ? `Farmer CLI (${platform})` : "Farmer CLI",
 		};
 	}
+
 	const browser = firstMatch(BROWSERS, ua);
 	const system = firstMatch(SYSTEMS, ua);
+
 	const label =
 		browser && system
 			? `${browser} on ${system}`
 			: (browser ?? system ?? "Unknown browser");
+
 	return { kind: "browser", label };
 };
 
@@ -175,10 +181,12 @@ export const sessionsService = {
 		currentSessionId: string,
 	): Promise<{ revoked: boolean }> => {
 		if (sessionId === currentSessionId) throw new CurrentSessionRevokeError();
+
 		const deleted = await db
 			.delete(session)
 			.where(and(eq(session.id, sessionId), eq(session.userId, ctx.userId)))
 			.returning({ id: session.id });
+
 		return { revoked: deleted.length > 0 };
 	},
 };

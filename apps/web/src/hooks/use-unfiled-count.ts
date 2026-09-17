@@ -21,5 +21,6 @@ export function useUnfiledCount(orgSlug: string, timezone: string): number {
 		...unfiledWindowQuery(orgSlug, dayKeyInTz(new Date(), timezone)),
 		staleTime: 60_000,
 	});
+
 	return data?.length ?? 0;
 }

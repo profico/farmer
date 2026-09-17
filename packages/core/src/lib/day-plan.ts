@@ -29,14 +29,17 @@ export const splitProportionally = (
 ): number[] => {
 	const totalUnits = Math.floor(totalSeconds / SLOT_SECONDS);
 	const weightSum = weights.reduce((sum, w) => sum + w, 0);
+
 	if (totalUnits <= 0 || weightSum <= 0) return weights.map(() => 0);
 
 	const exact = weights.map((w) => (totalUnits * w) / weightSum);
 	const units = exact.map((value) => Math.floor(value));
 	let leftover = totalUnits - units.reduce((sum, u) => sum + u, 0);
+
 	const byRemainder = exact
 		.map((value, index) => ({ index, remainder: value - Math.floor(value) }))
 		.sort((a, b) => b.remainder - a.remainder);
+
 	for (const { index } of byRemainder) {
 		if (leftover <= 0) break;
 		units[index] = (units[index] ?? 0) + 1;
@@ -46,13 +49,16 @@ export const splitProportionally = (
 	// Visibility guarantee: steal from the largest share so every project with
 	// commits shows up with at least one slot.
 	const nonZeroWeights = weights.filter((w) => w > 0).length;
+
 	if (totalUnits >= nonZeroWeights) {
 		for (let index = 0; index < units.length; index++) {
 			if ((weights[index] ?? 0) <= 0 || (units[index] ?? 0) > 0) continue;
 			let richest = 0;
+
 			for (let j = 1; j < units.length; j++) {
 				if ((units[j] ?? 0) > (units[richest] ?? 0)) richest = j;
 			}
+
 			if ((units[richest] ?? 0) > 1) {
 				units[richest] = (units[richest] ?? 0) - 1;
 				units[index] = 1;
@@ -73,14 +79,20 @@ export const splitProportionally = (
 // subject cut mid-word reads as a typo, and the input schema would refuse the
 // entry the moment somebody saved it by hand.
 export const summarizeCommitMessages = (messages: string[]): string => {
-	const firstLines = messages
-		.map((m) => (m.split("\n")[0] ?? "").trim())
-		.filter((line) => line.length > 0);
+	const firstLines = messages.flatMap((m) => {
+		const line = (m.split("\n")[0] ?? "").trim();
+
+		return line.length > 0 ? [line] : [];
+	});
+
 	let summary = "";
+
 	for (const line of firstLines) {
 		const next = summary ? `${summary}; ${line}` : line;
+
 		if (next.length > DESCRIPTION_MAX_CHARS) break;
 		summary = next;
 	}
+
 	return summary;
 };

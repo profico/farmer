@@ -87,12 +87,14 @@ const outcomeOf = (delivery: {
 }) => {
 	if (!delivery.attemptedAt)
 		return { tone: "warning" as const, label: "Queued" };
+
 	if (!delivery.error) {
 		return {
 			tone: "positive" as const,
 			label: String(delivery.statusCode ?? 200),
 		};
 	}
+
 	// A request that never got a status — DNS, TLS, a timeout, an address the
 	// guard refused — has no number to show, so it says what it was instead.
 	return {
@@ -111,9 +113,11 @@ function WebhookEndpointPage() {
 	const { data: endpoint } = useSuspenseQuery(
 		webhookEndpointQuery(orgSlug, endpointId),
 	);
+
 	const { data: deliveries } = useSuspenseQuery(
 		webhookDeliveriesQuery(orgSlug, endpointId),
 	);
+
 	const [rolledSecret, setRolledSecret] = useState<string | null>(null);
 
 	const refresh = () =>
@@ -251,15 +255,19 @@ function WebhookEndpointPage() {
 					disabled={update.isPending}
 					onToggle={(id) => {
 						const chosen = new Set<string>(endpoint.enabledEvents);
+
 						if (chosen.has(id)) chosen.delete(id);
 						else chosen.add(id);
 						const next = WEBHOOK_EVENT_KINDS.filter((kind) => chosen.has(kind));
+
 						// The database refuses an empty list, so the UI says why rather
 						// than sending a write it knows will fail.
 						if (next.length === 0) {
 							toast.error("Pick at least one event");
+
 							return;
 						}
+
 						update.mutate({ data: { endpointId, enabledEvents: next } });
 					}}
 				/>
@@ -286,6 +294,7 @@ function WebhookEndpointPage() {
 						<TableBody>
 							{deliveries.map((delivery) => {
 								const outcome = outcomeOf(delivery);
+
 								return (
 									<TableRow key={delivery.id}>
 										<TableCell className="tnum text-muted-foreground">

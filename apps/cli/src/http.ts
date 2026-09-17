@@ -32,9 +32,11 @@ export type SendOptions = {
 };
 
 const REQUEST_TIMEOUT_MS = 30_000;
+
 /** A wait up to this long is sat out; a longer one is reported, because a
  *  person at a prompt would rather be told than stare at a frozen terminal. */
 const MAX_RATE_LIMIT_WAIT_SECONDS = 60;
+
 const MAX_RATE_LIMIT_RETRIES = 3;
 
 /**
@@ -57,21 +59,27 @@ export const isLocalOrigin = (origin: string) =>
  */
 export const normalizeOrigin = (input: string): string => {
 	const trimmed = input.trim();
+
 	if (!trimmed) throw new UsageError("Enter the address of the Farmer server.");
 	const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed);
 	const local = /^(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(trimmed);
+
 	const withScheme = hasScheme
 		? trimmed
 		: `${local ? "http" : "https"}://${trimmed}`;
+
 	let url: URL;
+
 	try {
 		url = new URL(withScheme);
 	} catch {
 		throw new UsageError(`"${input}" is not a server address.`);
 	}
+
 	if (url.protocol !== "https:" && url.protocol !== "http:") {
 		throw new UsageError(`"${input}" is not an http or https address.`);
 	}
+
 	return url.origin;
 };
 
@@ -91,8 +99,10 @@ export const retryAfterSeconds = (
 ): number | null => {
 	if (!header) return null;
 	const trimmed = header.trim();
+
 	if (/^\d+$/.test(trimmed)) return Number(trimmed);
 	const at = Date.parse(trimmed);
+
 	return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - nowMs) / 1000));
 };
 
@@ -110,13 +120,16 @@ export const send = async (
 		"user-agent": userAgent(transport),
 		[CLI_VERSION_HEADER]: transport.version,
 	});
+
 	if (options.token) headers.set("authorization", `Bearer ${options.token}`);
+
 	if (options.body !== undefined) {
 		headers.set("content-type", "application/json");
 	}
 
 	for (let attempt = 0; ; attempt++) {
 		let response: Response;
+
 		try {
 			response = await transport.fetch(`${transport.origin}${options.path}`, {
 				method: options.method,
@@ -128,12 +141,14 @@ export const send = async (
 			const reason = error instanceof Error ? error.message : String(error);
 			throw new CliError(`Cannot reach ${transport.origin}: ${reason}`);
 		}
+
 		if (response.status !== 429) return response;
 
 		const wait = retryAfterSeconds(
 			response.headers.get("retry-after"),
 			Date.now(),
 		);
+
 		if (
 			wait === null ||
 			wait > MAX_RATE_LIMIT_WAIT_SECONDS ||
@@ -145,6 +160,7 @@ export const send = async (
 					: `${transport.origin} is limiting requests. Try again in ${wait} seconds.`,
 			);
 		}
+
 		await transport.sleep(wait * 1000);
 	}
 };
@@ -161,17 +177,21 @@ const apiErrorBody = z.object({
  *  the body is not one (a proxy's HTML error page). */
 const failureMessage = async (response: Response, origin: string) => {
 	let parsed: ReturnType<typeof apiErrorBody.safeParse> | null = null;
+
 	try {
 		parsed = apiErrorBody.safeParse(await response.json());
 	} catch {
 		parsed = null;
 	}
+
 	if (!parsed?.success) {
 		return `${origin} answered ${response.status} ${response.statusText}`.trim();
 	}
+
 	const issues = (parsed.data.issues ?? []).map(
 		(issue) => `  ${issue.path ? `${issue.path}: ` : ""}${issue.message}`,
 	);
+
 	return [parsed.data.error, ...issues].join("\n");
 };
 
@@ -223,6 +243,7 @@ export class ApiClient {
 		timeoutMs: number | undefined,
 	): Promise<T> {
 		const { transport, token } = this.#options;
+
 		const response = await send(transport, {
 			method,
 			path,
@@ -230,6 +251,7 @@ export class ApiClient {
 			body,
 			timeoutMs,
 		});
+
 		if (response.ok) {
 			// SAFETY: every `/api/v1` route answers the projection declared for it
 			// in `@farmer/core/api`, and a 2xx status says this is that answer
@@ -237,11 +259,13 @@ export class ApiClient {
 			// cannot read answers 426 first, through `minCliVersion`.
 			return (await response.json()) as T;
 		}
+
 		throw await this.#failure(response, path);
 	}
 
 	async #failure(response: Response, path: string): Promise<CliError> {
 		const { transport } = this.#options;
+
 		if (response.status === 401) {
 			// An org route answers 401 for a slug the caller is not in as well as
 			// for a dead token — one answer on purpose, so a token cannot probe
@@ -254,20 +278,25 @@ export class ApiClient {
 				const slug = decodeURIComponent(
 					path.slice(ORG_ROUTE_PREFIX.length).split("/")[0] ?? "",
 				);
+
 				return new CliError(
 					`You have no access to the organization "${slug}" on ${transport.origin}. Run \`farmer org list\` to see yours.`,
 				);
 			}
+
 			await this.#options.forgetToken();
+
 			return new CliError(
 				`Your session on ${transport.origin} has ended. Run \`farmer login\` to sign in again.`,
 			);
 		}
+
 		if (response.status === 426) {
 			return new CliError(
 				outdatedMessage(transport.origin, transport.platform),
 			);
 		}
+
 		return new CliError(await failureMessage(response, transport.origin));
 	}
 
@@ -277,6 +306,7 @@ export class ApiClient {
 			path: "/api/v1/me",
 			token: this.#options.token,
 		});
+
 		return response.ok;
 	}
 }
@@ -293,19 +323,24 @@ export const fetchMeta = async (transport: Transport): Promise<ApiMeta> => {
 	const notFarmer = new CliError(
 		`${transport.origin} does not look like a Farmer server. Check the address.`,
 	);
+
 	const response = await send(transport, {
 		method: "GET",
 		path: "/api/v1/meta",
 		token: null,
 	});
+
 	if (!response.ok) throw notFarmer;
 	let parsed: ReturnType<typeof metaBody.safeParse>;
+
 	try {
 		parsed = metaBody.safeParse(await response.json());
 	} catch {
 		throw notFarmer;
 	}
+
 	if (!parsed.success) throw notFarmer;
+
 	return parsed.data;
 };
 
@@ -315,6 +350,7 @@ export const assertCliSupported = (meta: ApiMeta, transport: Transport) => {
 			`The command-line tool is switched off on ${transport.origin}. Ask the administrator of that server.`,
 		);
 	}
+
 	if (!isCliVersionSupported(transport.version, meta.minCliVersion)) {
 		throw new CliError(outdatedMessage(transport.origin, transport.platform));
 	}

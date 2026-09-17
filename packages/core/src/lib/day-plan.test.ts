@@ -15,6 +15,7 @@ describe("splitProportionally", () => {
 
 	test("every non-zero weight gets at least one slot", () => {
 		const shares = splitProportionally(3600, [10, 1, 1]);
+
 		for (const share of shares) expect(share).toBeGreaterThanOrEqual(900);
 		expect(shares.reduce((a, b) => a + b, 0)).toBe(3600);
 	});

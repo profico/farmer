@@ -55,10 +55,13 @@ import { projectsQuery } from "#/queries/projects.ts";
 // which put a project's team and settings in a panel and its hours nowhere.
 
 const MAX_AVATARS_SHOWN = 4;
+
 const COLUMNS = 5;
 
 type SortKey = "name" | "month";
+
 type ProjectRow = { name: string; monthlyTotalSeconds: number };
+
 const COMPARE = {
 	name: byText((p: ProjectRow) => p.name),
 	month: byNumber((p: ProjectRow) => p.monthlyTotalSeconds),
@@ -89,10 +92,13 @@ function ProjectsPage() {
 	const noClients = clients.length === 0;
 	const [search, setSearch] = useState("");
 	const [sort, setSort] = useState<Sort<SortKey>>({ key: "month", dir: -1 });
+
 	const onSort = (key: SortKey, numeric: boolean) =>
 		setSort((current) => toggleSort(current, key, numeric));
+
 	const compare = (a: ProjectRow, b: ProjectRow) =>
 		COMPARE[sort.key](a, b) * sort.dir || a.name.localeCompare(b.name, "hr");
+
 	const routeSearch = Route.useSearch();
 	const navigate = useNavigate();
 
@@ -105,9 +111,12 @@ function ProjectsPage() {
 	);
 
 	const searching = search.trim() !== "";
+
 	const matches = (p: (typeof projects)[number]) =>
 		matchesSearch(search, [p.name, p.code, p.client?.name]);
+
 	const active = projects.filter((p) => p.status === "active" && matches(p));
+
 	const archived = projects.filter(
 		(p) => p.status === "archived" && matches(p),
 	);
@@ -125,18 +134,22 @@ function ProjectsPage() {
 				rows: typeof active;
 			}
 		>();
+
 		for (const p of active) {
 			const key = p.clientId;
+
 			const g = groups.get(key) ?? {
 				name: p.client?.name ?? "—",
 				internal: p.client?.isInternal ?? false,
 				monthlyTotalSeconds: 0,
 				rows: [],
 			};
+
 			g.rows.push(p);
 			g.monthlyTotalSeconds += p.monthlyTotalSeconds;
 			groups.set(key, g);
 		}
+
 		return [...groups.values()]
 			.sort((a, b) =>
 				sort.key === "name"
@@ -158,6 +171,7 @@ function ProjectsPage() {
 		const shown = project.contributors.slice(0, MAX_AVATARS_SHOWN);
 		const overflow = project.contributorCount - shown.length;
 		const opens = projectPageAccess(isAdmin, project.myRole).canView;
+
 		const name = (
 			<span className="flex items-center gap-2.5">
 				<ProjectIcon icon={project.icon} name={project.name} size="sm" />
@@ -176,6 +190,7 @@ function ProjectsPage() {
 				)}
 			</span>
 		);
+
 		return (
 			<TableRow
 				key={project.id}

@@ -36,7 +36,9 @@ import type { CliReleaseAsset } from "./cli-install";
  */
 
 const RELEASE_TAG_PREFIX = "cli-v";
+
 const RELEASE_CACHE_MS = 5 * 60 * 1000;
+
 const GITHUB_API = "https://api.github.com";
 
 const releaseList = z.array(
@@ -87,6 +89,7 @@ const newestCliRelease = async (
 	) {
 		return cache.release;
 	}
+
 	// The list is newest-first, and 30 releases is far more history than a
 	// single cli-v line needs to find its latest in, even with app releases
 	// interleaved.
@@ -94,10 +97,13 @@ const newestCliRelease = async (
 		`${GITHUB_API}/repos/${repo}/releases?per_page=30`,
 		{ headers: githubHeaders(token, "application/vnd.github+json") },
 	);
+
 	if (!response.ok) {
 		throw new Error(`GitHub answered ${response.status} for the release list`);
 	}
+
 	const releases = releaseList.parse(await response.json());
+
 	const release =
 		releases
 			.filter(
@@ -111,7 +117,9 @@ const newestCliRelease = async (
 			.sort((a, b) =>
 				(b.published_at ?? "").localeCompare(a.published_at ?? ""),
 			)[0] ?? null;
+
 	cache = { repo, fetchedAt: Date.now(), release };
+
 	return release;
 };
 
@@ -121,6 +129,7 @@ export const resolveCliDownload = async (
 	if (!isGithubAppConfigured()) return { kind: "unconfigured" };
 	const repo = process.env.CLI_RELEASES_REPO?.trim() || "profico/farmer";
 	const [owner, name] = repo.split("/");
+
 	if (!owner || !name) {
 		return {
 			kind: "upstream-error",
@@ -130,11 +139,14 @@ export const resolveCliDownload = async (
 
 	try {
 		const token = await getRepoContentsReadToken(owner, name);
+
 		if (!token) return { kind: "not-installed", repo };
 
 		const release = await newestCliRelease(repo, token);
+
 		if (!release) return { kind: "no-release" };
 		const file = release.assets.find((candidate) => candidate.name === asset);
+
 		if (!file) return { kind: "missing-asset", tag: release.tag_name };
 
 		// `redirect: "manual"` is the point: followed, this request would
@@ -144,13 +156,17 @@ export const resolveCliDownload = async (
 			headers: githubHeaders(token, "application/octet-stream"),
 			redirect: "manual",
 		});
+
 		const location = response.headers.get("location");
+
 		if (response.status >= 300 && response.status < 400 && location) {
 			return { kind: "redirect", location };
 		}
+
 		// Do not fall back to streaming a 200 body: that is exactly the proxying
 		// this module exists to avoid. It has never been GitHub's answer.
 		await response.body?.cancel();
+
 		return {
 			kind: "upstream-error",
 			detail: `GitHub answered ${response.status} for asset ${asset} of ${release.tag_name}`,

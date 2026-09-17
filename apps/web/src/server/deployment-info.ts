@@ -92,6 +92,7 @@ export const sourceRepo = (): string =>
 const readContributors = async (): Promise<Contributor[]> => {
 	if (!isGithubAppConfigured()) return [];
 	const repo = sourceRepo();
+
 	if (
 		cache &&
 		cache.repo === repo &&
@@ -101,20 +102,24 @@ const readContributors = async (): Promise<Contributor[]> => {
 	}
 
 	const [owner, name] = repo.split("/");
+
 	if (!owner || !name) return [];
 
 	const token = await getRepoContentsReadToken(owner, name);
+
 	if (!token) return [];
 
 	const response = await externalFetch(
 		`${GITHUB_API}/repos/${repo}/contributors?per_page=100`,
 		{ headers: githubHeaders(token) },
 	);
+
 	if (!response.ok) {
 		throw new Error(
 			`GitHub answered ${response.status} for the contributor list`,
 		);
 	}
+
 	const people = contributorList
 		.parse(await response.json())
 		// Dependabot and the release workflow commit like anybody else, and a
@@ -139,15 +144,19 @@ const readContributors = async (): Promise<Contributor[]> => {
 				`${GITHUB_API}/users/${person.login}`,
 				{ headers: githubHeaders(token) },
 			);
+
 			if (!profile.ok) return null;
+
 			return userProfile.parse(await profile.json()).name;
 		}),
 	);
 
 	const rows = people.map((person, index) => {
 		const resolved = names[index];
+
 		const displayName =
 			resolved?.status === "fulfilled" ? resolved.value : null;
+
 		return {
 			login: person.login,
 			name: displayName || person.login,
@@ -156,7 +165,9 @@ const readContributors = async (): Promise<Contributor[]> => {
 			contributions: person.contributions,
 		};
 	});
+
 	cache = { repo, fetchedAt: Date.now(), rows };
+
 	return rows;
 };
 
@@ -196,10 +207,12 @@ const ENV_SHA = /^[0-9a-f]{7,40}$/;
 const shaFromEnvironment = (): string | null => {
 	for (const name of ["GIT_SHA", "SOURCE_COMMIT"]) {
 		const value = process.env[name]?.trim().toLowerCase();
+
 		// Tested rather than taken: a platform that sets the variable to a branch
 		// name or to an empty string would otherwise put that in the link.
 		if (value && ENV_SHA.test(value)) return value;
 	}
+
 	return null;
 };
 
@@ -215,29 +228,38 @@ const readShaFromGit = async (): Promise<string | null> => {
 		// says so.
 		let dir = resolve(process.cwd());
 		let gitDir: string | null = null;
+
 		for (;;) {
 			const candidate = join(dir, ".git");
+
 			// A worktree's `.git` is a FILE naming the real directory, not the
 			// directory itself. One read tells the two apart.
 			const head = await readFile(join(candidate, "HEAD"), "utf8").catch(
 				async () => {
 					const pointer = await readFile(candidate, "utf8").catch(() => null);
 					const named = pointer?.match(/^gitdir: (.+)$/m)?.[1]?.trim();
+
 					if (!named) return null;
 					gitDir = isAbsolute(named) ? named : join(dir, named);
+
 					return readFile(join(gitDir, "HEAD"), "utf8").catch(() => null);
 				},
 			);
+
 			if (head !== null && head !== undefined) {
 				gitDir ??= candidate;
 				const trimmed = head.trim();
 				const ref = trimmed.startsWith("ref: ") ? trimmed.slice(5) : null;
+
 				// A detached HEAD holds the sha outright.
 				if (!ref) return SHA.test(trimmed) ? trimmed : null;
 				const sha = (await readFile(join(gitDir, ref), "utf8")).trim();
+
 				return SHA.test(sha) ? sha : null;
 			}
+
 			const parent = dirname(dir);
+
 			if (parent === dir) return null;
 			dir = parent;
 		}
@@ -254,7 +276,9 @@ const readCommit = async (): Promise<DeploymentInfo["commit"]> => {
 			shaFromEnvironment() ??
 			(process.env.NODE_ENV === "production" ? null : await readShaFromGit());
 	}
+
 	if (!resolvedSha) return null;
+
 	return {
 		sha: resolvedSha,
 		shortSha: resolvedSha.slice(0, 7),
@@ -267,5 +291,6 @@ export const readDeploymentInfo = async (): Promise<DeploymentInfo> => {
 		readContributors().catch(() => []),
 		readCommit(),
 	]);
+
 	return { contributors, commit };
 };

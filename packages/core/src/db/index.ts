@@ -77,6 +77,7 @@ export const createDb = (connectionString: string): Db =>
 	drizzle(postgres(connectionString, poolOptions()), { schema });
 
 let ambient: Db | null = null;
+
 let override: Db | null = null;
 
 /** Point every `db` consumer at another handle — a PGLite instance in tests.
@@ -90,15 +91,19 @@ export const setDbForTests = (handle: AnyDb | null): void => {
 
 const resolve = (): Db => {
 	if (override) return override;
+
 	if (!ambient) {
 		const url = process.env.DATABASE_URL;
+
 		if (!url) {
 			throw new Error(
 				"DATABASE_URL is not set. Set it, or call setDbForTests() with a test handle.",
 			);
 		}
+
 		ambient = createDb(url);
 	}
+
 	return ambient;
 };
 

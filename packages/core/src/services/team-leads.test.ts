@@ -13,11 +13,17 @@ import { teamLeadsService } from "./team-leads.service";
 import type { Ctx } from "./types";
 
 const ORG = "org-team-leads";
+
 const OTHER_ORG = "org-team-leads-other";
+
 const ADMIN = "u-tl-admin";
+
 const LEAD = "u-tl-lead";
+
 const ANA = "u-tl-ana";
+
 const BOB = "u-tl-bob";
+
 const STRANGER = "u-tl-stranger";
 
 const ctx = (userId: string): Ctx => ({ organizationId: ORG, userId });
@@ -69,6 +75,7 @@ describe("team lead people lists", () => {
 			// The lead's own id and a duplicate are dropped rather than refused.
 			personUserIds: [BOB, ANA, LEAD, ANA],
 		});
+
 		expect(set.map((p) => p.userId)).toEqual([ANA, BOB]);
 		expect(
 			(await teamLeadsService.listPeople(ctx(LEAD), LEAD)).map((p) => p.name),
@@ -291,11 +298,14 @@ describe("a people list widens PM rank only on a team_lead assignment", () => {
 				createdAt: new Date(),
 			})),
 		);
+
 		const [rankClient] = await db
 			.insert(client)
 			.values({ organizationId: ORG, name: "Rank Client" })
 			.returning();
+
 		if (!rankClient) throw new Error("Failed to seed client");
+
 		const [teamLeadProject, memberProject] = await db
 			.insert(project)
 			.values([
@@ -303,9 +313,11 @@ describe("a people list widens PM rank only on a team_lead assignment", () => {
 				{ organizationId: ORG, clientId: rankClient.id, name: "Rank Member" },
 			])
 			.returning();
+
 		if (!teamLeadProject || !memberProject) {
 			throw new Error("Failed to seed projects");
 		}
+
 		teamLeadProjectId = teamLeadProject.id;
 		memberProjectId = memberProject.id;
 		await db.insert(projectMember).values([
@@ -353,6 +365,7 @@ describe("a people list widens PM rank only on a team_lead assignment", () => {
 		const access = await accessService.resolve(c);
 		const people = await accessService.peopleScope(c, access);
 		expect(people).not.toBeNull();
+
 		if (!people) throw new Error("expected a scoped, non-admin answer");
 		expect(people.has(RANK_PERSON)).toBe(true);
 		expect(people.has(RANK_COWORKER)).toBe(false);

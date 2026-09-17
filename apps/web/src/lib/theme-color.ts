@@ -66,20 +66,25 @@ let ctx: CanvasRenderingContext2D | null | undefined;
  *  compositing care; an alpha would come back premultiplied. */
 function toSrgbHex(color: string): string | null {
 	if (!color) return null;
+
 	if (ctx === undefined)
 		ctx =
 			document.createElement("canvas").getContext("2d", {
 				willReadFrequently: true,
 			}) ?? null;
+
 	if (!ctx) return null;
 	const SENTINEL = "#010203";
 	ctx.fillStyle = SENTINEL;
 	ctx.fillStyle = color;
+
 	if (ctx.fillStyle === SENTINEL) return null;
 	ctx.clearRect(0, 0, 1, 1);
 	ctx.fillRect(0, 0, 1, 1);
 	const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+
 	if (r === undefined || g === undefined || b === undefined) return null;
+
 	return `#${[r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 }
 
@@ -87,16 +92,20 @@ function toSrgbHex(color: string): string | null {
  *  stop function, for a `useEffect` cleanup. */
 export function startThemeColorSync(): () => void {
 	const meta = document.head.querySelector<HTMLMetaElement>(SELECTOR);
+
 	if (!meta) return () => {};
 
 	const sync = () => {
 		const ground = getComputedStyle(document.documentElement)
 			.getPropertyValue("--ground")
 			.trim();
+
 		const hex = toSrgbHex(ground);
+
 		// No stylesheet yet, or a value this browser cannot parse: the
 		// before-paint guess is better than clearing the meta.
 		if (!hex) return;
+
 		if (meta.content !== hex) meta.content = hex;
 	};
 

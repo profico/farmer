@@ -48,12 +48,14 @@ type Item = {
  *  null and the trigger simply shows one line. */
 const groupLabelOf = (group: string): string | null => {
 	const known = TASK_GROUPS.find((candidate) => candidate === group);
+
 	return known ? TASK_GROUP_LABELS[known] : null;
 };
 
 type Group = { value: string; label: string | null; items: Item[] };
 
 const RECENT = "recent";
+
 const NONE = "__none__";
 
 /**
@@ -114,6 +116,7 @@ export function TaskPicker({
 
 	const groups = useMemo<Group[]>(() => {
 		const offered = tasks.filter((t) => !hidden.has(t.id) || t.id === value);
+
 		const item = (t: PickableTask, recent = false): Item => ({
 			value: recent ? `${RECENT}:${t.id}` : t.id,
 			id: t.id,
@@ -121,6 +124,7 @@ export function TaskPicker({
 			groupLabel: groupLabelOf(t.group),
 			recent,
 		});
+
 		// First and above everything, like the project picker's "no project" row.
 		const none: Group[] = noTask
 			? [
@@ -139,22 +143,27 @@ export function TaskPicker({
 					},
 				]
 			: [];
+
 		if (!grouped) {
 			return [
 				...none,
 				{ value: "all", label: null, items: offered.map((t) => item(t)) },
 			];
 		}
+
 		const byId = new Map(tasks.map((t) => [t.id, t]));
+
 		const recent = recentIds
 			.map((id) => byId.get(id))
 			.filter((t): t is PickableTask => t !== undefined)
 			.map((t) => item(t, true));
+
 		const grouped_ = TASK_GROUPS.map((g) => ({
 			value: g,
 			label: TASK_GROUP_LABELS[g],
 			items: offered.filter((t) => t.group === g).map((t) => item(t)),
 		})).filter((g) => g.items.length > 0);
+
 		return recent.length > 0
 			? [
 					...none,
@@ -171,8 +180,10 @@ export function TaskPicker({
 	).length;
 
 	const [query, setQuery] = useState("");
+
 	const filtered = useMemo(() => {
 		if (query.trim() === "") return groups;
+
 		return groups
 			.filter((g) => g.value !== RECENT && g.value !== NONE)
 			.map((g) => ({
@@ -209,6 +220,7 @@ export function TaskPicker({
 				onInputValueChange={setQuery}
 				onOpenChange={(next) => {
 					setOpen(next);
+
 					if (!next) setQuery("");
 				}}
 				autoHighlight
@@ -297,6 +309,7 @@ export function TaskPicker({
 					open={editing}
 					onOpenChange={(next) => {
 						setEditing(next);
+
 						// Back to the list the dialog was opened from, now without what
 						// was just switched off.
 						if (!next) setOpen(true);

@@ -22,7 +22,9 @@ export function matchesSearch(
 	fields: readonly (string | null | undefined)[],
 ): boolean {
 	const terms = foldForSearch(query).split(/\s+/).filter(Boolean);
+
 	if (terms.length === 0) return true;
 	const haystack = foldForSearch(fields.filter(Boolean).join(" "));
+
 	return terms.every((term) => haystack.includes(term));
 }

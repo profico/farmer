@@ -15,6 +15,7 @@ export const listClients = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { clientsService } = await import("@farmer/core/services");
+
 		return clientsService.list(context.ctx);
 	});
 
@@ -23,6 +24,7 @@ export const listAllClients = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { clientsService } = await import("@farmer/core/services");
+
 		return clientsService.listAll(context.ctx);
 	});
 
@@ -34,6 +36,7 @@ export const createClient = createServerFn({ method: "POST" })
 		const client = await clientsService.create(context.ctx, data);
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
+
 		if (posthog) {
 			posthog.capture({
 				distinctId: context.ctx.userId,
@@ -45,6 +48,7 @@ export const createClient = createServerFn({ method: "POST" })
 			});
 			await posthog.flush();
 		}
+
 		return client;
 	});
 
@@ -53,6 +57,7 @@ export const updateClient = createServerFn({ method: "POST" })
 	.validator(updateClientInput)
 	.handler(async ({ data, context }) => {
 		const { clientsService } = await import("@farmer/core/services");
+
 		return clientsService.update(context.ctx, data);
 	});
 
@@ -61,6 +66,7 @@ export const archiveClient = createServerFn({ method: "POST" })
 	.validator(clientIdInput)
 	.handler(async ({ data: clientId, context }) => {
 		const { clientsService } = await import("@farmer/core/services");
+
 		return clientsService.archive(context.ctx, clientId);
 	});
 
@@ -69,5 +75,6 @@ export const unarchiveClient = createServerFn({ method: "POST" })
 	.validator(clientIdInput)
 	.handler(async ({ data: clientId, context }) => {
 		const { clientsService } = await import("@farmer/core/services");
+
 		return clientsService.unarchive(context.ctx, clientId);
 	});

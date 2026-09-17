@@ -36,10 +36,12 @@ export function FilingRulesSettings() {
 	const queryClient = useQueryClient();
 	const { data: rules } = useQuery(filingRulesQuery(orgSlug));
 	const hasRules = (rules?.length ?? 0) > 0;
+
 	const { data: projects } = useQuery({
 		...myProjectsQuery(orgSlug),
 		enabled: hasRules,
 	});
+
 	const { data: tasks } = useQuery({
 		...selectableTasksQuery(orgSlug),
 		enabled: hasRules,
@@ -110,6 +112,7 @@ export function FilingRulesSettings() {
 									value={rule.targetTaskId ?? ""}
 									onValueChange={(taskId) => {
 										const targetTaskId = taskId || null;
+
 										if (targetTaskId === rule.targetTaskId) return;
 										updateMutation.mutate({
 											id: rule.id,

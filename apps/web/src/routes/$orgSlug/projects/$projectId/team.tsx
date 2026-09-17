@@ -104,11 +104,13 @@ type Person = { value: string; label: string; email: string };
 // most recent first. A date key sorts as text, and a person who never logged
 // here has no last entry, so they sit at the bottom of the recent-first order.
 type SortKey = "name" | "hours" | "last";
+
 type RosterRow = {
 	name: string;
 	allTimeSeconds: number;
 	lastEntry: string | null;
 };
+
 const COMPARE = {
 	name: byText((m: RosterRow) => m.name),
 	hours: byNumber((m: RosterRow) => m.allTimeSeconds),
@@ -133,6 +135,7 @@ function TeamPage() {
 			{project.name}
 		</Link>
 	);
+
 	const title = (
 		<span className="flex items-center gap-3">
 			<ProjectIcon icon={project.icon} name={project.name} size="sm" />
@@ -191,6 +194,7 @@ function OpenToOrg({
 	canChange: boolean;
 }) {
 	const queryClient = useQueryClient();
+
 	const toggle = useMutation({
 		mutationFn: (openToOrg: boolean) =>
 			updateProject({ data: { projectId, openToOrg } }),
@@ -214,6 +218,7 @@ function OpenToOrg({
 		},
 		onError: (error) => toast.error(error.message ?? "Could not save"),
 	});
+
 	// No bleed: this list is capped at `max-w-2xl`, and a bleed resolves against
 	// its parent — the rules would overhang the cap rather than reach the island.
 	return (
@@ -250,15 +255,20 @@ function Roster({
 	heldRole: ProjectRoleValue | null;
 }) {
 	const queryClient = useQueryClient();
+
 	const { data: members } = useSuspenseQuery(
 		projectMembersQuery(orgSlug, projectId),
 	);
+
 	const { data: assignable } = useSuspenseQuery(
 		assignableMembersQuery(orgSlug, projectId),
 	);
+
 	const [sort, setSort] = useState<Sort<SortKey>>({ key: "name", dir: 1 });
+
 	const onSort = (key: SortKey, numeric: boolean) =>
 		setSort((current) => toggleSort(current, key, numeric));
+
 	const onTeam = members
 		.filter((m) => m.active)
 		.sort(
@@ -266,7 +276,9 @@ function Roster({
 				COMPARE[sort.key](a, b) * sort.dir ||
 				a.name.localeCompare(b.name, "hr"),
 		);
+
 	const onTeamIds = new Set(onTeam.map((m) => m.userId));
+
 	const free: Person[] = assignable
 		.filter((p) => !onTeamIds.has(p.userId))
 		.map((p) => ({ value: p.userId, label: p.name, email: p.email }));
@@ -280,6 +292,7 @@ function Roster({
 	const assignableRoles = ROLES.filter((r) =>
 		canActOnProjectRole(isAdmin, heldRole, r.value),
 	);
+
 	const canManageRow = (m: { role: ProjectRoleValue }) =>
 		canActOnProjectRole(isAdmin, heldRole, m.role);
 
@@ -308,12 +321,14 @@ function Roster({
 		onSuccess: refresh,
 		onError: (error) => toast.error(error.message ?? "Could not save"),
 	});
+
 	const remove = useMutation({
 		mutationFn: (input: { userId: string }) =>
 			removeProjectMember({ data: { projectId, userId: input.userId } }),
 		onSuccess: refresh,
 		onError: (error) => toast.error(error.message ?? "Could not remove"),
 	});
+
 	const undoable = (message: string, undo: () => void) =>
 		toast.success(message, { action: { label: "Undo", onClick: undo } });
 
@@ -330,6 +345,7 @@ function Roster({
 			},
 		);
 	};
+
 	const removePerson = (m: (typeof onTeam)[number]) =>
 		remove.mutate(
 			{ userId: m.userId },
@@ -340,6 +356,7 @@ function Roster({
 					),
 			},
 		);
+
 	const addPerson = (p: Person) =>
 		assign.mutate(
 			{ userId: p.value, role: "member" },
@@ -396,6 +413,7 @@ function Roster({
 							// resolved label — a PM's row read as "pm" once a Team Lead's
 							// options no longer included it.
 							const rowRoles = manageable ? assignableRoles : ROLES;
+
 							return (
 								<TableRow key={m.userId}>
 									<TableCell>
@@ -419,6 +437,7 @@ function Roster({
 											disabled={!manageable}
 											onValueChange={(next: string | null) => {
 												const picked = rowRoles.find((r) => r.value === next);
+
 												if (picked) setRole(m, picked.value);
 											}}
 										>
@@ -497,6 +516,7 @@ function AddPerson({
 	pending: boolean;
 }) {
 	const [query, setQuery] = useState("");
+
 	const filtered = useMemo(
 		() =>
 			query.trim() === ""
@@ -504,6 +524,7 @@ function AddPerson({
 				: people.filter((p) => matchesSearch(query, [p.label, p.email])),
 		[people, query],
 	);
+
 	return (
 		<Combobox
 			items={people}

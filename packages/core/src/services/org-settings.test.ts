@@ -29,7 +29,9 @@ import { orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-settings";
+
 const USER_ID = "user-settings";
+
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;

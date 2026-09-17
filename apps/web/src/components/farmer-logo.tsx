@@ -26,6 +26,7 @@ export function FarmerLogo({
 	className?: string;
 }) {
 	const gradientId = useId();
+
 	return (
 		<svg
 			viewBox="0 0 367 82"

@@ -38,6 +38,7 @@ export const createRecurringBlockRuleInput = z.object({
 	effectiveFrom: dateKey.optional(),
 	effectiveUntil: dateKey.optional(),
 });
+
 export type CreateRecurringBlockRuleInput = z.infer<
 	typeof createRecurringBlockRuleInput
 >;
@@ -60,11 +61,13 @@ export const updateRecurringBlockRuleInput = z.object({
 	effectiveUntil: dateKey.optional(),
 	active: z.boolean().optional(),
 });
+
 export type UpdateRecurringBlockRuleInput = z.infer<
 	typeof updateRecurringBlockRuleInput
 >;
 
 export const deleteRecurringBlockRuleInput = z.uuid();
+
 export type DeleteRecurringBlockRuleInput = z.infer<
 	typeof deleteRecurringBlockRuleInput
 >;

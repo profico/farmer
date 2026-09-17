@@ -59,6 +59,7 @@ const VIEWS = [
 	{ id: "paid", label: "Paid Leave" },
 	{ id: "other", label: "Non-vacation leave" },
 ] as const;
+
 type View = (typeof VIEWS)[number]["id"];
 
 const VIEW_KEY = {
@@ -70,8 +71,11 @@ const VIEW_KEY = {
 /** The column keys a view counts. */
 const keysFor = (view: View, columns: { key: string }[]): Set<string> => {
 	const all = columns.map((c) => c.key);
+
 	if (view === "all") return new Set(all);
+
 	if (view === "other") return new Set(all.filter((k) => k !== "vacation"));
+
 	return new Set([VIEW_KEY[view]]);
 };
 
@@ -152,9 +156,11 @@ function useView(input: AbsenceReportInput, view: View) {
 	const orgSlug = useOrgSlug();
 	const { data } = useSuspenseQuery(absenceReportQuery(orgSlug, input));
 	const keys = keysFor(view, data.columns);
+
 	const rows: ViewRow[] = data.rows
 		.map((row) => {
 			const entries = row.entries.filter((e) => keys.has(e.taskKey));
+
 			return {
 				userId: row.userId,
 				name: row.name,
@@ -163,7 +169,9 @@ function useView(input: AbsenceReportInput, view: View) {
 			};
 		})
 		.filter((row) => row.entries.length > 0);
+
 	const label = VIEWS.find((v) => v.id === view)?.label ?? "Time-off";
+
 	return { rows, workingDaySeconds: data.workingDaySeconds, label };
 }
 
@@ -176,6 +184,7 @@ function AbsenceFigure({
 }) {
 	const { rows, workingDaySeconds } = useView(input, view);
 	const total = rows.reduce((sum, r) => sum + r.seconds, 0);
+
 	return (
 		<span className="flex items-baseline gap-2 whitespace-nowrap">
 			<span className="eyebrow">Total hours</span>
@@ -196,6 +205,7 @@ function AbsenceExport({
 	view: View;
 }) {
 	const { rows, workingDaySeconds, label } = useView(input, view);
+
 	return (
 		<ExportMenu
 			disabled={rows.length === 0}
@@ -250,17 +260,22 @@ function AbsenceRows({
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
 	const [sort, setSort] = useState<Sort<SortKey>>({ key: "hours", dir: -1 });
+
 	const onSort = (key: SortKey, numeric: boolean) =>
 		setSort((current) => toggleSort(current, key, numeric));
+
 	const compare = {
 		name: byText((r: ViewRow) => r.name),
 		hours: byNumber((r: ViewRow) => r.seconds),
 	} satisfies Record<SortKey, (a: ViewRow, b: ViewRow) => number>;
+
 	const toggle = (userId: string) =>
 		setOpen((current) => {
 			const next = new Set(current);
+
 			if (next.has(userId)) next.delete(userId);
 			else next.add(userId);
+
 			return next;
 		});
 
@@ -271,6 +286,7 @@ function AbsenceRows({
 				compare[sort.key](a, b) * sort.dir ||
 				a.name.localeCompare(b.name, "hr"),
 		);
+
 	// Over every row, not whatever the search box narrows to.
 	const total = rows.reduce((sum, r) => sum + r.seconds, 0);
 
@@ -320,6 +336,7 @@ function AbsenceRows({
 							) : (
 								shown.map((row) => {
 									const isOpen = open.has(row.userId);
+
 									return (
 										<Fragment key={row.userId}>
 											<TableRow>

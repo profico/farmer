@@ -46,11 +46,13 @@ export function PersonAvatar({
 	className?: string;
 }) {
 	const orgSlug = useOrgSlug();
+
 	const { data } = useQuery({
 		...directoryQuery(orgSlug),
 		select: imageByUserId,
 		enabled: image === undefined && userId !== undefined,
 	});
+
 	const src = image ?? (userId ? (data?.get(userId) ?? null) : null);
 
 	return (

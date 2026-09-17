@@ -76,16 +76,20 @@ function FadeSwap({
 	}, [activeKey]);
 
 	let resolved = direction;
+
 	if (order) {
 		const from =
 			previous.current === null ? -1 : order.indexOf(previous.current);
+
 		const to = order.indexOf(activeKey);
 		// Pressing the segment to the RIGHT sends the content left, the same
 		// relationship a paged view has. A first paint does not animate at all
 		// (`initial={false}` below), so its arbitrary answer is never seen.
 		resolved = from !== -1 && to !== -1 && to < from ? "right" : "left";
 	}
+
 	const travel = TRAVEL[resolved];
+
 	return (
 		<AnimatePresence mode="wait" initial={false}>
 			<motion.div

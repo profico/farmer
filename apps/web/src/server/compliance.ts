@@ -14,6 +14,7 @@ export const getTrackingReport = createServerFn({ method: "GET" })
 	.validator(monthReportInput)
 	.handler(async ({ data, context }) => {
 		const { complianceService } = await import("@farmer/core/services");
+
 		return complianceService.tracking(context.ctx, data);
 	});
 
@@ -23,5 +24,6 @@ export const getMyTargets = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { complianceService } = await import("@farmer/core/services");
+
 		return complianceService.myTargets(context.ctx);
 	});

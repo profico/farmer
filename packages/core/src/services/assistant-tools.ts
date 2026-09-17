@@ -239,6 +239,7 @@ export type AssistantTool = {
  *  has run, and "?" is the honest rendering of an argument the model got wrong. */
 const hours = (seconds: JsonValue | undefined) => {
 	const parsed = z.number().safeParse(seconds);
+
 	return parsed.success ? `${(parsed.data / 3600).toFixed(2)}h` : "?";
 };
 
@@ -314,6 +315,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				workingHoursService.list(ctx),
 				ctxTimezone(ctx),
 			]);
+
 			const me = people.find((person) => person.userId === ctx.userId);
 			const myProjects = await projectsService.listMine(ctx);
 
@@ -357,6 +359,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = listTimeEntriesRangeInput.parse(args);
 			const rows = await timeEntriesService.listRange(ctx, input);
+
 			// Projected rather than passed through: the raw row carries ids, sync
 			// bookkeeping and commit counts that cost tokens and tell the model
 			// nothing it can use.
@@ -381,6 +384,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = listTimeEntriesRangeInput.parse(args);
 			const rows = await listUnfiledForUser(ctx, input);
+
 			return rows.map((row) => ({
 				id: row.id,
 				date: row.date,
@@ -399,6 +403,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: z.object({}),
 		run: async (ctx) => {
 			const rows = await projectsService.listMine(ctx);
+
 			return rows.map((row) => ({
 				id: row.id,
 				name: row.name,
@@ -422,6 +427,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				tasksService.listSelectable(ctx),
 				tasksService.listAbsenceTasks(),
 			]);
+
 			return [
 				...selectable.map((row) => ({
 					id: row.id,
@@ -444,6 +450,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: z.object({}),
 		run: async (ctx) => {
 			const rows = await clientsService.list(ctx);
+
 			return rows.map((row) => ({ id: row.id, name: row.name }));
 		},
 	},
@@ -458,6 +465,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				ctxAccess(ctx),
 				membersService.list(ctx),
 			]);
+
 			return rows.map((row) => ({
 				userId: row.userId,
 				name: row.name,
@@ -483,6 +491,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const { projectId } = z.object({ projectId: projectIdInput }).parse(args);
 			const rows = await projectsService.listMembers(ctx, projectId);
+
 			return rows.map((row) => ({
 				userId: row.userId,
 				name: row.name,
@@ -499,6 +508,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: yearReportInput,
 		run: async (ctx, args) => {
 			const { year } = yearReportInput.parse(args);
+
 			return holidaysService.listForYear(ctx, year);
 		},
 	},
@@ -510,6 +520,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: z.object({}),
 		run: async (ctx) => {
 			const rows = await recurringBlockRulesService.list(ctx);
+
 			return rows.map((row) => ({
 				id: row.id,
 				task: row.task?.name ?? null,
@@ -546,6 +557,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				githubService.connectionStatus(ctx),
 				orgSettingsService.get(ctx),
 			]);
+
 			return {
 				googleCalendar: {
 					connected: google.connected,
@@ -579,6 +591,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: z.object({}),
 		run: async (ctx) => {
 			const rows = await filingRulesService.list(ctx);
+
 			return rows.map((row) => ({
 				id: row.id,
 				meetingTitle: row.title,
@@ -604,6 +617,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			// model gets "no evidence" instead of an error it will try to work
 			// around — matching how day-assembly degrades.
 			const days = await githubService.listUserCommitsByDay(ctx, input);
+
 			return days.map((day) => ({
 				date: day.dayKey,
 				commits: day.commits.map((commit) => ({
@@ -628,10 +642,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: userPullRequestsRangeInput,
 		run: async (ctx, args) => {
 			const input = userPullRequestsRangeInput.parse(args);
+
 			const days = await githubService.listUserPullRequestActivityByDay(
 				ctx,
 				input,
 			);
+
 			return days.map((day) => ({
 				date: day.dayKey,
 				activity: day.activity.map((event) => ({
@@ -656,6 +672,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = suggestDayAssemblyInput.parse(args);
 			const assembly = await dayAssemblyService.suggest(ctx, input);
+
 			return {
 				date: assembly.date,
 				targetHours: assembly.targetSeconds / 3600,
@@ -707,6 +724,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = timeReportSummaryInput.parse(args);
 			const result = await reportsService.timeSummary(ctx, input);
+
 			return {
 				rows: result.rows.map((row) => ({
 					name: row.name,
@@ -733,6 +751,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = timeReportDetailInput.parse(args);
 			const result = await reportsService.timeDetail(ctx, input);
+
 			return {
 				rows: result.rows.map((row) => ({
 					id: row.id,
@@ -772,6 +791,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		available: anyone,
 		run: async (ctx) => {
 			const targets = await complianceService.myTargets(ctx);
+
 			const period = (p: PeriodTarget) => ({
 				from: p.from,
 				to: p.to,
@@ -787,6 +807,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				totalSoFarHours: p.totalSoFarSeconds / 3600,
 				status: p.status,
 			});
+
 			return {
 				today: targets.today,
 				// What one working day is worth for THIS person this month. It is 8
@@ -808,6 +829,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = monthReportInput.parse(args);
 			const report = await complianceService.tracking(ctx, input);
+
 			return {
 				year: report.year,
 				month: report.month,
@@ -844,6 +866,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = overtimeReportInput.parse(args);
 			const report = await reportsService.overtime(ctx, input);
+
 			return {
 				rows: report.rows.map((row) => ({
 					userId: row.userId,
@@ -864,6 +887,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = listTimeEntriesRangeInput.parse(args);
 			const totals = await unfiledTotals(ctx, input, ctx.userId);
+
 			return { entries: totals.count, hours: totals.seconds / 3600 };
 		},
 	},
@@ -885,6 +909,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		run: async (ctx, args) => {
 			const input = listAbsenceForUserInput.parse(args);
 			const rows = await timeEntriesService.listAbsenceForUser(ctx, input);
+
 			return rows.map((row) => ({
 				id: row.id,
 				date: row.date,
@@ -906,6 +931,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				ctx,
 				absenceReportInput.parse(args),
 			);
+
 			return {
 				rows: report.rows.map((row) => ({
 					userId: row.userId,
@@ -985,10 +1011,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			const count = Array.isArray(args.timeEntryIds)
 				? args.timeEntryIds.length
 				: 0;
+
 			const project = await nameOr(
 				() => projectsService.get(ctx, String(args.projectId ?? "")),
 				"a project",
 			);
+
 			return `File ${count === 1 ? "1 entry" : `${count} entries`} to ${project}`;
 		},
 		// The rows are the entries themselves, read back one by one through the
@@ -997,11 +1025,14 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		// card down with it.
 		preview: async (ctx, args) => {
 			const ids = entryIdList.parse(args.timeEntryIds);
+
 			if (ids.length === 0) return null;
 			const shown = ids.slice(0, MAX_PREVIEW_ROWS);
 			const rows: ApprovalPreview["rows"] = [];
+
 			for (const id of shown) {
 				const entry = await timeEntriesService.getOwn(ctx, id);
+
 				if (!entry) continue;
 				rows.push({
 					id,
@@ -1012,7 +1043,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 					],
 				});
 			}
+
 			if (rows.length === 0) return null;
+
 			return {
 				columns: ["Date", "Hours", "What"],
 				rows,
@@ -1040,6 +1073,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		schema: z.object({}),
 		run: async (ctx) => {
 			const result = await runAutomationSyncForCtx(ctx);
+
 			return {
 				ran: result.ran,
 				skipped: result.skipped,
@@ -1092,23 +1126,30 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		// stored on the message, and `withSelection` filters that same array.
 		preview: async (ctx, args) => {
 			const entries = Array.isArray(args.entries) ? args.entries : [];
+
 			if (entries.length === 0) return null;
+
 			// One list each rather than a lookup per row: fifty assembled entries
 			// naming five tasks would otherwise be fifty queries for five answers.
 			const [tasks, projects] = await Promise.all([
 				tasksService.listSelectable(ctx).catch(() => []),
 				projectsService.listMine(ctx).catch(() => []),
 			]);
+
 			const taskName = new Map(tasks.map((task) => [task.id, task.name]));
+
 			const projectName = new Map(
 				projects.map((project) => [project.id, project.name]),
 			);
+
 			const shown = entries.slice(0, MAX_PREVIEW_ROWS);
+
 			return {
 				columns: ["Task", "Project", "Hours", "Description"],
 				rows: shown.map((entry, index) => {
 					const row = assemblyRow.parse(entry);
 					const seconds = row.durationSeconds;
+
 					return {
 						id: String(index),
 						cells: [
@@ -1253,8 +1294,11 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			const { kind, id } = z
 				.object({ kind: z.enum(["project", "client", "task"]), id: z.uuid() })
 				.parse(args);
+
 			if (kind === "project") return projectsService.unarchive(ctx, id);
+
 			if (kind === "client") return clientsService.unarchive(ctx, id);
+
 			return tasksService.unarchive(ctx, id);
 		},
 	},
@@ -1267,23 +1311,28 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			const row = await timeEntriesService
 				.getOwn(ctx, String(args.timeEntryId))
 				.catch(() => null);
+
 			if (!row) return "Delete a time entry";
 			const what = row.description?.trim() || row.task?.name || "entry";
+
 			return `Delete ${hours(row.durationSeconds)} on ${row.date} — ${what.slice(0, 60)}`;
 		},
 		run: async (ctx, args) => {
 			const { timeEntryId } = z
 				.object({ timeEntryId: deleteTimeEntryInput })
 				.parse(args);
+
 			// `remove` is a delete-where-owned: an entry belonging to somebody else
 			// (or already gone) is a no-op returning null, not a throw. Reporting a
 			// flat `{deleted: true}` would have the model tell the user it deleted
 			// something it did not touch, which is the one failure mode a write tool
 			// must not have.
 			const removed = await timeEntriesService.remove(ctx, timeEntryId);
+
 			if (!removed) {
 				throw new Error("No entry of yours with that id — nothing was deleted");
 			}
+
 			return { deleted: true, date: removed.date };
 		},
 	},
@@ -1299,6 +1348,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			const row = await timeEntriesService
 				.getOwn(ctx, String(args.timeEntryId))
 				.catch(() => null);
+
 			return row
 				? `Delete ${row.task?.name ?? "absence"} on ${row.date}`
 				: "Delete an absence entry";
@@ -1307,7 +1357,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			const { timeEntryId } = z
 				.object({ timeEntryId: deleteTimeEntryInput })
 				.parse(args);
+
 			const removed = await timeEntriesService.removeAbsence(ctx, timeEntryId);
+
 			return { deleted: true, date: removed.date };
 		},
 	},
@@ -1320,14 +1372,17 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		summarize: async (ctx, args) => {
 			const rules = await recurringBlockRulesService.list(ctx).catch(() => []);
 			const rule = rules.find((row) => row.id === args.ruleId);
+
 			if (!rule) return "Delete a recurring block rule";
 			const what = rule.description?.trim() || rule.task?.name || "block";
+
 			return `Stop the recurring ${what.slice(0, 60)}`;
 		},
 		run: async (ctx, args) => {
 			const { ruleId } = z
 				.object({ ruleId: deleteRecurringBlockRuleInput })
 				.parse(args);
+
 			return recurringBlockRulesService.remove(ctx, ruleId);
 		},
 	},
@@ -1341,7 +1396,9 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			const id = String(args.id ?? "");
 			const rules = await filingRulesService.list(ctx).catch(() => []);
 			const rule = rules.find((row) => row.id === id);
+
 			if (!rule) return "Remove a filing rule";
+
 			return `Stop filing "${rule.title}" to ${rule.projectName}`;
 		},
 		run: async (ctx, args) =>
@@ -1360,6 +1417,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			)}`,
 		run: async (ctx, args) => {
 			const { projectId } = z.object({ projectId: projectIdInput }).parse(args);
+
 			return projectsService.archive(ctx, projectId);
 		},
 	},
@@ -1372,10 +1430,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		summarize: async (ctx, args) =>
 			`Archive ${await nameOr(async () => {
 				const clients = await clientsService.list(ctx);
+
 				return clients.find((row) => row.id === args.clientId);
 			}, "a client")} and its projects`,
 		run: async (ctx, args) => {
 			const { clientId } = z.object({ clientId: clientIdInput }).parse(args);
+
 			return clientsService.archive(ctx, clientId);
 		},
 	},
@@ -1389,10 +1449,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		summarize: async (ctx, args) =>
 			`Archive the ${await nameOr(async () => {
 				const tasks = await tasksService.listSelectable(ctx);
+
 				return tasks.find((row) => row.id === args.taskId);
 			}, "selected")} task type`,
 		run: async (ctx, args) => {
 			const { taskId } = z.object({ taskId: taskIdInput }).parse(args);
+
 			return tasksService.archive(ctx, taskId);
 		},
 	},
@@ -1495,7 +1557,9 @@ const callerCard = async (ctx: Ctx): Promise<string> => {
 			)
 			.limit(1),
 	]);
+
 	const me = rows[0];
+
 	// `orgMiddleware` and `resolveApiOrgContext` both refuse a caller with no
 	// membership row long before a turn starts, so this is unreachable rather
 	// than a case to describe — but a prompt claiming the reader is nobody is
@@ -1528,6 +1592,7 @@ export const systemPrompt = async (
 		ctxWeekStartsOn(ctx),
 		callerCard(ctx),
 	]);
+
 	const base = [
 		"You are the assistant inside Farmer, a time-tracking app for a software agency.",
 		`Today is ${today} in the organization's timezone (${tz}). Resolve every relative date against that.`,
@@ -1612,6 +1677,7 @@ export const systemPrompt = async (
 	];
 
 	const rules = houseRules?.trim();
+
 	if (!rules) return base.join("\n");
 
 	return [

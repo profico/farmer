@@ -11,6 +11,7 @@ export const getGoogleCalendarStatus = createServerFn({
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { googleCalendarService } = await import("@farmer/core/services");
+
 		return googleCalendarService.connectionStatus(context.ctx);
 	});
 
@@ -19,6 +20,7 @@ export const listCalendarEventsForDay = createServerFn({ method: "POST" })
 	.validator(listCalendarEventsInput)
 	.handler(async ({ data, context }) => {
 		const { googleCalendarService } = await import("@farmer/core/services");
+
 		return googleCalendarService.listEventsForDay(context.ctx, data);
 	});
 
@@ -73,6 +75,7 @@ export const syncGoogleMeetings = createServerFn({ method: "POST" })
 			if (error instanceof Error && error.message === "sync-now-timeout") {
 				return { timedOut: true as const };
 			}
+
 			throw error;
 		});
 
@@ -86,6 +89,7 @@ export const syncGoogleMeetings = createServerFn({ method: "POST" })
 				off: [],
 			};
 		}
+
 		return {
 			ok: outcome.result.failed.length === 0,
 			stillRunning: false,

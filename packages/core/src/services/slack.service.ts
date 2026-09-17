@@ -20,10 +20,12 @@ export const slackService = {
 	 *  it is a workspace-wide credential and no client has any use for it. */
 	status: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
+
 		const row = await db.query.slackInstallation.findFirst({
 			where: eq(slackInstallation.organizationId, ctx.organizationId),
 			columns: { teamId: true, teamName: true, createdAt: true },
 		});
+
 		if (!row) return { connected: false as const };
 
 		const identities = await db
@@ -49,6 +51,7 @@ export const slackService = {
 	installUrl: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
 		const clientId = process.env.SLACK_CLIENT_ID;
+
 		if (!clientId) throw new Error("SLACK_CLIENT_ID not configured");
 
 		const url = new URL("https://slack.com/oauth/v2/authorize");
@@ -56,6 +59,7 @@ export const slackService = {
 		url.searchParams.set("scope", SLACK_BOT_SCOPES.join(","));
 		url.searchParams.set("redirect_uri", slackRedirectUri());
 		url.searchParams.set("state", signOrgState(ctx.organizationId, ctx.userId));
+
 		return { url: url.toString() };
 	},
 
@@ -97,6 +101,7 @@ export const slackService = {
 			});
 
 		const mapped = await slackService.syncIdentities(ctx);
+
 		return { teamName, mapped };
 	},
 
@@ -129,18 +134,21 @@ export const slackService = {
 	): Promise<boolean> => {
 		try {
 			const installation = await slackService.installationFor(organizationId);
+
 			if (!installation) return false;
 
 			const person = await db.query.user.findFirst({
 				where: eq(user.id, userId),
 				columns: { email: true },
 			});
+
 			if (!person) return false;
 
 			const slackUserId = await slackClient.lookupUserByEmail(
 				installation.botToken,
 				person.email,
 			);
+
 			if (!slackUserId) return false;
 
 			await db
@@ -153,6 +161,7 @@ export const slackService = {
 					],
 					set: { slackUserId, updatedAt: new Date() },
 				});
+
 			return true;
 		} catch (error) {
 			console.error("[slack] could not match new member", {
@@ -160,6 +169,7 @@ export const slackService = {
 				userId,
 				error,
 			});
+
 			return false;
 		}
 	},
@@ -180,6 +190,7 @@ export const slackService = {
 	 *  re-match unless their Slack account changed. */
 	syncIdentities: async (ctx: Ctx): Promise<number> => {
 		const installation = await slackService.installationFor(ctx.organizationId);
+
 		if (!installation) return 0;
 
 		const people = await db
@@ -201,11 +212,13 @@ export const slackService = {
 			);
 
 		let mapped = 0;
+
 		for (const person of people) {
 			const slackUserId = await slackClient.lookupUserByEmail(
 				installation.botToken,
 				person.email,
 			);
+
 			if (!slackUserId) continue;
 			await db
 				.insert(memberSlackIdentity)
@@ -223,9 +236,11 @@ export const slackService = {
 				});
 			mapped++;
 		}
+
 		console.info(
 			`[slack] matched ${String(mapped)} of ${String(people.length)} active people by email`,
 		);
+
 		return mapped;
 	},
 
@@ -248,6 +263,7 @@ export const slackService = {
 			),
 			columns: { slackUserId: true },
 		});
+
 		return row?.slackUserId ?? null;
 	},
 
@@ -259,6 +275,7 @@ export const slackService = {
 		userIds: string[],
 	): Promise<Map<string, string>> => {
 		if (userIds.length === 0) return new Map();
+
 		const rows = await db
 			.select({
 				userId: memberSlackIdentity.userId,
@@ -271,6 +288,7 @@ export const slackService = {
 					inArray(memberSlackIdentity.userId, userIds),
 				),
 			);
+
 		return new Map(rows.map((r) => [r.userId, r.slackUserId]));
 	},
 
@@ -283,9 +301,12 @@ export const slackService = {
 		text: string,
 	): Promise<boolean> => {
 		const installation = await slackService.installationFor(organizationId);
+
 		if (!installation) return false;
 		const slackUserId = await slackService.slackIdFor(organizationId, userId);
+
 		if (!slackUserId) return false;
+
 		return slackClient.postMessage(installation.botToken, slackUserId, text);
 	},
 
@@ -311,14 +332,18 @@ export const slackService = {
 	): Promise<boolean> => {
 		try {
 			const installation = await slackService.installationFor(organizationId);
+
 			if (!installation) return false;
+
 			const slackUserId = await slackClient.lookupUserByEmail(
 				installation.botToken,
 				invite.email,
 			);
+
 			if (!slackUserId) return false;
 			const link = slackLink(invite.path, "Accept the invitation");
 			const text = `*${slackEscape(invite.inviterName)} invited you to join ${slackEscape(invite.organizationName)}* as ${slackEscape(invite.role)}.${link ? `\n${link}` : ""}`;
+
 			return await slackClient.postMessage(
 				installation.botToken,
 				slackUserId,
@@ -329,6 +354,7 @@ export const slackService = {
 				organizationId,
 				error,
 			});
+
 			return false;
 		}
 	},
@@ -341,6 +367,7 @@ export const slackService = {
 		// Slack adapter, and a static cycle would leave one of the two consts in
 		// its temporal dead zone at call time.
 		const { notify, wasDelivered } = await import("./notify");
+
 		const sent = wasDelivered(
 			await notify(
 				{ organizationId: ctx.organizationId, userId },
@@ -350,6 +377,7 @@ export const slackService = {
 				},
 			),
 		);
+
 		if (!sent) {
 			throw new Error(
 				"Couldn't send. Check that Slack is connected and that this person is in the workspace.",

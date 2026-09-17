@@ -26,11 +26,15 @@ import {
 // The real header lines, from `~/Downloads/harvest/*.csv` (2026-09-11).
 const TIME_HEADER =
 	"Date,Client,Project,Project Code,Task,Notes,Hours,Billable?,Invoiced?,Approved?,First Name,Last Name,Employee Id,Roles,Teams,Employee?,Billable Rate,Billable Amount,Cost Rate,Cost Amount,Currency,External Reference URL";
+
 const PEOPLE_HEADER =
 	"First Name,Last Name,Email,Employee Id,Roles,Billable Rate,Cost Rate,Admin,Permissions,Employee,Capacity";
+
 const PROJECTS_HEADER =
 	"Client,Project,Project Code,Start Date,End Date,Project Notes,Total Hours,Billable Hours,Billable Amount,Budget By,Budget,Budget Spent,Budget Remaining,Total Costs,Team Costs,Expenses,Invoiced Amount";
+
 const TASKS_HEADER = "Task name,Billable rate,Billable,Active?";
+
 const CLIENTS_HEADER = "Client Name,Address";
 
 function csvCell(value: string): string {
@@ -272,6 +276,7 @@ function appEntry(
 /** Ana Horvat as an existing member, with Acme :: Website and Frontend. */
 function anaSnapshot(overrides: Partial<HarvestSnapshot> = {}) {
 	const base = snapshot();
+
 	return snapshot({
 		clients: [
 			...base.clients,
@@ -316,6 +321,7 @@ async function planFor(
 	overrides: Partial<HarvestChoices> = {},
 ): Promise<{ parsed: ParsedHarvest; plan: HarvestPlan }> {
 	const parsed = await parseHarvestFiles(files);
+
 	return {
 		parsed,
 		plan: planHarvestImport(parsed, snap, choices(parsed, overrides)),
@@ -330,6 +336,7 @@ function allRows(plan: HarvestPlan) {
 
 function present<T>(value: T | undefined | null, what: string): T {
 	if (value === undefined || value === null) throw new Error(`missing ${what}`);
+
 	return value;
 }
 
@@ -338,6 +345,7 @@ const RUN_ID = "00000000-0000-4000-8000-0000000000ff";
 /** The plan's outputs parse against the Zod inputs the server accepts. */
 function expectServerAccepts(plan: HarvestPlan) {
 	harvestStartInput.parse({ ...plan.start, runId: RUN_ID });
+
 	for (const chunk of chunkDays(plan.days)) {
 		harvestImportDaysInput.parse({ runId: RUN_ID, days: chunk });
 	}
@@ -379,6 +387,7 @@ describe("parseHarvestFiles", () => {
 			{ name: "empty.csv", text: "" },
 			clientList(["Acme"]),
 		]);
+
 		expect(parsed.files.map((f) => [f.kind, f.rows, f.used])).toEqual([
 			["time_report", 2, true],
 			["time_report", 1, false],
@@ -395,6 +404,7 @@ describe("parseHarvestFiles", () => {
 			timeReport([{}, { first: "Marko", last: "Kovač" }]),
 			peopleList([{ first: "Ana", last: "Horvat", email: "Ana@Profico.hr" }]),
 		]);
+
 		expect(parsed.candidateEmails).toEqual([
 			"ana@profico.hr",
 			"mkovac@profico.hr",
@@ -449,6 +459,7 @@ describe("absence mapping", () => {
 				},
 			]),
 		]);
+
 		const rows = allRows(plan);
 		expect(
 			rows.map((r) => [r.date, r.projectSourceKey, r.taskSourceKey]),
@@ -471,10 +482,12 @@ describe("absence mapping", () => {
 	test("a missing built-in absence task blocks the plan", async () => {
 		const snap = snapshot();
 		snap.tasks = snap.tasks.filter((t) => t.systemKey !== "paid_leave");
+
 		const { plan } = await planFor(
 			[timeReport([{ code: "PPL", task: "Paid leave" }])],
 			snap,
 		);
+
 		expect(plan.ready).toBe(false);
 		expect(plan.blocked.map((b) => b.kind)).toEqual(["task"]);
 	});
@@ -495,6 +508,7 @@ describe("tasks", () => {
 				["Design", false],
 			]),
 		]);
+
 		expect(allRows(plan).map((r) => [r.taskSourceKey, r.overtime])).toEqual([
 			["design", true],
 			["framer", true],
@@ -521,6 +535,7 @@ describe("tasks", () => {
 				{ task: "Frontend" },
 			]),
 		]);
+
 		expect(plan.start.tasks).toContainEqual({
 			action: "match",
 			sourceKey: "break",
@@ -544,6 +559,7 @@ describe("tasks", () => {
 				["Idle Old", false],
 			]),
 		]);
+
 		expect(plan.start.tasks.map((t) => t.sourceKey)).toEqual([
 			"frontend",
 			"motion design",
@@ -561,6 +577,7 @@ describe("rounding and attention rows", () => {
 				{ hours: "1,38", date: "2026-08-06" },
 			]),
 		]);
+
 		// 0.1 h = 360 s, 1.13 h = 4068 s, 0 s, 1.38 h = 4968 s.
 		expect(allRows(plan).map((r) => r.durationSeconds)).toEqual([
 			900, 4500, 900, 5400,
@@ -583,6 +600,7 @@ describe("rounding and attention rows", () => {
 				{ hours: "2,0", date: "2026-08-05" },
 			]),
 		]);
+
 		expect(allRows(plan).map((r) => r.durationSeconds)).toEqual([7200]);
 		expect(plan.review.attention.map((a) => [a.record, a.reason])).toEqual([
 			[1, "Longer than 24 hours"],
@@ -614,11 +632,13 @@ describe("projects", () => {
 				{ client: "Acme", project: "Pitch", code: "" },
 			]),
 		]);
+
 		const byName = new Map(
 			plan.start.projects.flatMap((p) =>
 				p.action === "create" ? [[p.name, p] as const] : [],
 			),
 		);
+
 		expect(byName.get("Website")).toMatchObject({
 			type: "fixed_scope",
 			budgetSeconds: 80 * 3600,
@@ -668,9 +688,12 @@ describe("projects", () => {
 				],
 			}),
 		);
+
 		const byKey = new Map(plan.start.projects.map((p) => [p.sourceKey, p]));
+
 		const key = (name: string, code: string) =>
 			JSON.stringify(["acme", name.toLowerCase(), code]);
+
 		expect(byKey.get(key("Fresh", "FR"))).toMatchObject({ archived: false });
 		expect(byKey.get(key("Stale", "ST"))).toMatchObject({ archived: true });
 		expect(byKey.get(key("Website", "ACW"))).toMatchObject({ archived: false });
@@ -701,14 +724,17 @@ describe("projects", () => {
 				},
 			]),
 		];
+
 		const parsed = await parseHarvestFiles(files);
 		const key = present(parsed.projects[0], "project").sourceKey;
 		expect(key).toBe(JSON.stringify(["acme", "website", "ACW"]));
+
 		const plan = planHarvestImport(
 			parsed,
 			snapshot(),
 			choices(parsed, { projectTypes: { [key]: "hourly" } }),
 		);
+
 		expect(plan.start.projects[0]).toMatchObject({
 			type: "hourly",
 			budgetSeconds: null,
@@ -728,6 +754,7 @@ describe("clients", () => {
 			clientList(["Old Client"]),
 			projectList([{ client: "Acme", project: "Website", code: "ACW" }]),
 		]);
+
 		expect(plan.start.clients).toEqual([
 			{ action: "create", sourceKey: "acme", name: "Acme", archived: false },
 			{ action: "internal", sourceKey: "internal" },
@@ -745,12 +772,15 @@ describe("clients", () => {
 		const files = [
 			timeReport([{ client: "Profico", project: "Internal", code: "PRINT" }]),
 		];
+
 		const parsed = await parseHarvestFiles(files);
+
 		const plan = planHarvestImport(
 			parsed,
 			snapshot(),
 			choices(parsed, { clients: { profico: { action: "create" } } }),
 		);
+
 		// Created rather than mapped to the internal client — and active, since
 		// its one project was worked on in the month before the cutoff.
 		expect(plan.start.clients).toEqual([
@@ -767,6 +797,7 @@ describe("clients", () => {
 	test("a match override to an unknown client blocks", async () => {
 		const files = [timeReport([{}])];
 		const parsed = await parseHarvestFiles(files);
+
 		const plan = planHarvestImport(
 			parsed,
 			snapshot(),
@@ -774,6 +805,7 @@ describe("clients", () => {
 				clients: { acme: { action: "match", localId: ID.other } },
 			}),
 		);
+
 		expect(plan.ready).toBe(false);
 		expect(plan.blocked[0]?.kind).toBe("client");
 	});
@@ -795,6 +827,7 @@ describe("matching existing rows", () => {
 			],
 			anaSnapshot(),
 		);
+
 		expect(plan.start.clients).toEqual([
 			{ action: "match", sourceKey: "acme", localId: ID.acme },
 		]);
@@ -824,10 +857,12 @@ describe("matching existing rows", () => {
 		const snap = anaSnapshot({
 			members: [member("u-ana", "Ana  Horvat", "a.h@elsewhere.com", null)],
 		});
+
 		const { plan } = await planFor(
 			[timeReport([{ date: "2019-03-01" }, { date: "2020-05-05" }])],
 			snap,
 		);
+
 		expect(plan.start.people).toEqual([
 			{
 				action: "match",
@@ -859,6 +894,7 @@ describe("matching existing rows", () => {
 				{ kind: "person", sourceKey: "ana horvat", localId: "u-ana-2" },
 			],
 		});
+
 		const { plan } = await planFor([timeReport([{}])], snap);
 		expect(plan.start.clients).toEqual([
 			{ action: "match", sourceKey: "acme", localId: ID.other },
@@ -897,6 +933,7 @@ describe("people", () => {
 				},
 			]),
 		]);
+
 		expect(plan.start.people).toEqual([
 			{
 				action: "create",
@@ -932,6 +969,7 @@ describe("people", () => {
 				{ first: "Đuro", last: "Šimić", date: "2019-12-31", employee: false },
 			]),
 		]);
+
 		expect(plan.start.people).toEqual([
 			{
 				action: "create",
@@ -965,15 +1003,19 @@ describe("people", () => {
 				{ first: "Pero", last: "Novak", email: "pnovak@profico.hr" },
 			]),
 		];
+
 		const snap = snapshot({
 			members: [member("u-x", "Ivana Horvat-Old", "ihorvat@profico.hr")],
 			takenEmails: ["ikos@profico.hr"],
 		});
+
 		const { plan } = await planFor(files, snap);
 		expect(plan.ready).toBe(false);
+
 		const blocked = new Map(
 			plan.review.people.map((p) => [p.sourceKey, p.blocked]),
 		);
+
 		expect(blocked.get("ivan horvat")).toContain("belongs to the member");
 		expect(blocked.get("ivo kos")).toContain("outside this organization");
 		expect(blocked.get("petra novak")).toContain("people-list address");
@@ -992,6 +1034,7 @@ describe("people", () => {
 				{ first: "Iva", last: "Horvat", email: "team@profico.hr" },
 			]),
 		]);
+
 		expect(plan.blocked.map((b) => b.sourceKey)).toEqual([
 			"ana horvat",
 			"iva horvat",
@@ -1006,10 +1049,12 @@ describe("people", () => {
 			]),
 			peopleList([{ first: "Ana", last: "Kos", email: "akos@profico.hr" }]),
 		];
+
 		const snap = snapshot({
 			members: [member("u-x", "Other", "ihorvat@profico.hr")],
 			takenEmails: ["akos@profico.hr"],
 		});
+
 		const parsed = await parseHarvestFiles(files);
 		const blockedPlan = planHarvestImport(parsed, snap, choices(parsed));
 		expect(blockedPlan.blocked.map((b) => b.sourceKey)).toEqual([
@@ -1029,6 +1074,7 @@ describe("people", () => {
 				},
 			}),
 		);
+
 		expect(plan.ready).toBe(true);
 		expect(
 			plan.start.people.find((p) => p.sourceKey === "ivan horvat"),
@@ -1054,7 +1100,9 @@ describe("people", () => {
 				{ first: "Lana", last: "Ok" },
 			]),
 		];
+
 		const parsed = await parseHarvestFiles(files);
+
 		const plan = planHarvestImport(
 			parsed,
 			snapshot(),
@@ -1062,9 +1110,11 @@ describe("people", () => {
 				people: { "ivan horvat": { email: "ivan@elsewhere.com" } },
 			}),
 		);
+
 		const bySource = new Map(
 			plan.start.people.map((p) => [p.sourceKey, p] as const),
 		);
+
 		expect(bySource.get("ivan horvat")).toMatchObject({
 			emailListed: false,
 			emailConfirmed: true,
@@ -1092,6 +1142,7 @@ describe("project members", () => {
 			]),
 			peopleList([{ first: "Ana", last: "Horvat", email: "ana@profico.hr" }]),
 		]);
+
 		const website = JSON.stringify(["acme", "website", "ACW"]);
 		const old = JSON.stringify(["acme", "old", "OLD"]);
 		expect(plan.start.projectMembers).toEqual([
@@ -1122,6 +1173,7 @@ describe("cutoff (5.1)", () => {
 				{ date: "2026-12-24", code: "PVC", task: "Vacation", hours: "8,0" },
 			]),
 		]);
+
 		expect(allRows(plan).map((r) => r.date)).toEqual([
 			"2026-08-31",
 			"2026-12-24",
@@ -1159,6 +1211,7 @@ describe("dedupe against this app (5.2)", () => {
 				],
 			}),
 		);
+
 		expect(allRows(plan).map((r) => r.date)).toEqual(["2026-08-05"]);
 		expect(plan.review.summary.skippedDuplicate).toBe(2);
 		expect(plan.review.absenceConflicts).toEqual([
@@ -1177,6 +1230,7 @@ describe("dedupe against this app (5.2)", () => {
 			[timeReport([{ hours: "1,0" }, { hours: "1,0" }])],
 			anaSnapshot({ appEntries: [appEntry({})] }),
 		);
+
 		expect(allRows(plan)).toHaveLength(1);
 		expect(plan.review.summary.skippedDuplicate).toBe(1);
 		expect(plan.review.overlapDays).toEqual([]);
@@ -1191,6 +1245,7 @@ describe("dedupe against this app (5.2)", () => {
 				],
 			}),
 		);
+
 		expect(plan.days).toEqual([]);
 		expect(plan.review.summary.skippedOverlap).toBe(2);
 		expect(plan.review.overlapDays).toEqual([
@@ -1211,18 +1266,22 @@ describe("dedupe against this app (5.2)", () => {
 		const files = [
 			timeReport([{ hours: "2,0" }, { hours: "2,0", date: "2026-08-04" }]),
 		];
+
 		const snap = anaSnapshot({
 			appEntries: [
 				appEntry({ date: "2026-08-03", taskId: ID.meeting, automation: true }),
 				appEntry({ date: "2026-08-04", taskId: ID.meeting, automation: false }),
 			],
 		});
+
 		const parsed = await parseHarvestFiles(files);
+
 		const all = planHarvestImport(
 			parsed,
 			snap,
 			choices(parsed, { overlap: { default: "keep_both", days: {} } }),
 		);
+
 		expect(all.days.map((d) => d.date)).toEqual(["2026-08-03", "2026-08-04"]);
 		expect(all.review.overlapDays.map((d) => d.automationOnly)).toEqual([
 			true,
@@ -1241,6 +1300,7 @@ describe("dedupe against this app (5.2)", () => {
 				},
 			}),
 		);
+
 		expect(oneDay.days.map((d) => d.date)).toEqual(["2026-08-03"]);
 		expect(oneDay.review.summary.skippedOverlap).toBe(1);
 	});
@@ -1250,6 +1310,7 @@ describe("dedupe against this app (5.2)", () => {
 			[timeReport([{ first: "New", last: "Person" }])],
 			anaSnapshot({ appEntries: [appEntry({})] }),
 		);
+
 		expect(allRows(plan)).toHaveLength(1);
 	});
 });
@@ -1260,10 +1321,12 @@ describe("a second import (5.3)", () => {
 		date: string,
 	) {
 		const parsed = await parseHarvestFiles(files);
+
 		const day = present(
 			parsed.days.find((d) => d.date === date),
 			`day ${date}`,
 		);
+
 		return dayDigest(day.rows.map((i) => present(parsed.rows[i], "row").key));
 	}
 
@@ -1275,9 +1338,11 @@ describe("a second import (5.3)", () => {
 				{ date: "2026-08-05" },
 			]),
 		];
+
 		const d3 = await firstRunDigest(first, "2026-08-03");
 		const d4 = await firstRunDigest(first, "2026-08-04");
 		const d5 = await firstRunDigest(first, "2026-08-05");
+
 		const second = [
 			timeReport([
 				{ date: "2026-08-03" },
@@ -1286,6 +1351,7 @@ describe("a second import (5.3)", () => {
 				{ date: "2026-08-06" },
 			]),
 		];
+
 		const snap = anaSnapshot({
 			mappings: [{ kind: "person", sourceKey: "ana horvat", localId: "u-ana" }],
 			importedDays: [
@@ -1299,6 +1365,7 @@ describe("a second import (5.3)", () => {
 				},
 			],
 		});
+
 		const { plan } = await planFor(second, snap);
 		expect(plan.days.map((d) => d.date)).toEqual(["2026-08-04", "2026-08-06"]);
 		expect(plan.review.summary).toMatchObject({
@@ -1323,6 +1390,7 @@ describe("a second import (5.3)", () => {
 		const parsed = await parseHarvestFiles(files);
 		// The first run sent only the 2h row: the 1h row matched an entry here.
 		const sentKey = present(parsed.rows[1], "row").key;
+
 		const snap = anaSnapshot({
 			appEntries: [appEntry({})],
 			importedDays: [
@@ -1332,6 +1400,7 @@ describe("a second import (5.3)", () => {
 				},
 			],
 		});
+
 		const plan = planHarvestImport(parsed, snap, choices(parsed));
 		expect(plan.days).toEqual([]);
 		expect(plan.review.summary.unchangedDays).toBe(1);
@@ -1342,8 +1411,10 @@ describe("a second import (5.3)", () => {
 		const files = [
 			timeReport([{ date: "2026-08-03" }, { date: "2026-08-10" }]),
 		];
+
 		const parsed = await parseHarvestFiles(files);
 		const d3 = await firstRunDigest(files, "2026-08-03");
+
 		const snap = anaSnapshot({
 			mappings: [{ kind: "person", sourceKey: "ana horvat", localId: "u-ana" }],
 			importedDays: [
@@ -1357,6 +1428,7 @@ describe("a second import (5.3)", () => {
 				},
 			],
 		});
+
 		const unconfirmed = planHarvestImport(parsed, snap, choices(parsed));
 		const removed = [{ personSourceKey: "ana horvat", date: "2026-08-05" }];
 		expect(unconfirmed.review.secondImport.removedDays).toEqual(removed);
@@ -1368,6 +1440,7 @@ describe("a second import (5.3)", () => {
 			snap,
 			choices(parsed, { confirmFullExport: true }),
 		);
+
 		expect(confirmed.removedDays).toEqual(removed);
 	});
 });
@@ -1385,11 +1458,13 @@ describe("two spellings of one name", () => {
 		]),
 		peopleList([{ first: "Ive", last: "Vasiljevic", email: "ive@profico.hr" }]),
 	];
+
 	const LISTED = "ive vasiljevic";
 	const OLD = "ive vasiljević";
 
 	async function groupKey() {
 		const { plan } = await planFor(files());
+
 		return present(plan.review.duplicates[0], "duplicate group").key;
 	}
 
@@ -1427,9 +1502,11 @@ describe("two spellings of one name", () => {
 
 	test("one person: one create, an alias, and one day for the shared date", async () => {
 		const key = await groupKey();
+
 		const { parsed, plan } = await planFor(files(), snapshot(), {
 			duplicates: { [key]: LISTED },
 		});
+
 		expect(plan.ready).toBe(true);
 		expect(plan.start.people).toEqual([
 			expect.objectContaining({
@@ -1462,9 +1539,11 @@ describe("two spellings of one name", () => {
 
 	test("different people: two creates, no alias", async () => {
 		const key = await groupKey();
+
 		const { plan } = await planFor(files(), snapshot(), {
 			duplicates: { [key]: "separate" },
 		});
+
 		expect(plan.ready).toBe(true);
 		expect(plan.start.people.map((p) => [p.action, p.sourceKey])).toEqual([
 			["create", LISTED],
@@ -1479,9 +1558,11 @@ describe("two spellings of one name", () => {
 
 	test("an answer that names nobody in the group still blocks", async () => {
 		const key = await groupKey();
+
 		const { plan } = await planFor(files(), snapshot(), {
 			duplicates: { [key]: "someone else" },
 		});
+
 		expect(plan.ready).toBe(false);
 		expect(plan.review.duplicates[0]?.decision).toBeNull();
 	});
@@ -1494,9 +1575,11 @@ describe("two spellings of one name", () => {
 
 		test("both spellings on one user: no question, and the merged day reads as unchanged", async () => {
 			const parsed = await parseHarvestFiles(files());
+
 			const shared = parsed.days
 				.filter((d) => d.date === "2019-02-11")
 				.flatMap((d) => d.rows.map((i) => present(parsed.rows[i], "row").key));
+
 			const snap = snapshot({
 				...ive(),
 				mappings: [
@@ -1510,6 +1593,7 @@ describe("two spellings of one name", () => {
 					},
 				],
 			});
+
 			const plan = planHarvestImport(parsed, snap, choices(parsed));
 			expect(plan.ready).toBe(true);
 			expect(plan.review.duplicates).toEqual([]);
@@ -1528,6 +1612,7 @@ describe("two spellings of one name", () => {
 
 		test("two users cannot become one person", async () => {
 			const key = await groupKey();
+
 			const snap = snapshot({
 				members: [
 					member("u-ive", "Ive Vasiljevic", "ive@profico.hr"),
@@ -1538,6 +1623,7 @@ describe("two spellings of one name", () => {
 					{ kind: "person", sourceKey: OLD, localId: "u-ive-2" },
 				],
 			});
+
 			const both = await planFor(files(), snap);
 			expect(both.plan.review.duplicates).toEqual([]);
 			expect(both.plan.ready).toBe(true);
@@ -1546,9 +1632,11 @@ describe("two spellings of one name", () => {
 				...ive(),
 				mappings: [{ kind: "person", sourceKey: LISTED, localId: "u-ive" }],
 			});
+
 			const merged = await planFor(files(), oneMapped, {
 				duplicates: { [key]: OLD },
 			});
+
 			// The mapped spelling's user becomes the person. That spelling has
 			// its mapping already, so it needs no alias plan.
 			expect(merged.plan.start.people).toEqual([
@@ -1594,6 +1682,7 @@ describe("negative correction rows", () => {
 		const { plan } = await planFor(files(), snapshot(), {
 			negativeRows: "subtract",
 		});
+
 		expect(plan.ready).toBe(true);
 		const rows = allRows(plan);
 		expect(
@@ -1621,6 +1710,7 @@ describe("negative correction rows", () => {
 		const { parsed, plan } = await planFor(files(), snapshot(), {
 			negativeRows: "leave_out",
 		});
+
 		expect(plan.ready).toBe(true);
 		const rows = allRows(plan);
 		expect(rows.map((r) => [r.date, r.durationSeconds])).toEqual([
@@ -1639,15 +1729,18 @@ describe("negative correction rows", () => {
 
 	test("changing the answer changes the day, so a second run replaces it", async () => {
 		const parsed = await parseHarvestFiles(files());
+
 		const leftOut = planHarvestImport(
 			parsed,
 			snapshot(),
 			choices(parsed, { negativeRows: "leave_out" }),
 		);
+
 		const day4 = present(
 			leftOut.days.find((d) => d.date === "2026-08-04"),
 			"2026-08-04",
 		);
+
 		const snap = anaSnapshot({
 			mappings: [{ kind: "person", sourceKey: "ana horvat", localId: "u-ana" }],
 			importedDays: [
@@ -1659,17 +1752,21 @@ describe("negative correction rows", () => {
 				},
 			],
 		});
+
 		const again = planHarvestImport(
 			parsed,
 			snap,
 			choices(parsed, { negativeRows: "leave_out" }),
 		);
+
 		expect(again.review.secondImport.changedDays).toEqual([]);
+
 		const subtracted = planHarvestImport(
 			parsed,
 			snap,
 			choices(parsed, { negativeRows: "subtract" }),
 		);
+
 		expect(subtracted.review.secondImport.changedDays).toEqual([
 			{ personSourceKey: "ana horvat", date: "2026-08-04" },
 		]);
@@ -1682,6 +1779,7 @@ describe("negative correction rows", () => {
 			snapshot(),
 			{ negativeRows: "subtract" },
 		);
+
 		expect(allRows(plan).map((r) => r.durationSeconds)).toEqual([1800]);
 		expect(plan.review.attention).toEqual([]);
 		expect(plan.review.negativeRows[0]?.against).toBe("40,0");
@@ -1693,6 +1791,7 @@ describe("negative correction rows", () => {
 			snapshot(),
 			{ negativeRows: "subtract" },
 		);
+
 		expect(allRows(plan).map((r) => r.durationSeconds)).toEqual([3600]);
 		expect(plan.review.negativeRows[0]?.against).toBeNull();
 	});
@@ -1703,6 +1802,7 @@ describe("purity", () => {
 		const files = [
 			timeReport([{}, { date: "2026-08-04", task: "Daily Break" }]),
 		];
+
 		const parsed = await parseHarvestFiles(files);
 		const a = planHarvestImport(parsed, anaSnapshot(), choices(parsed));
 		const b = planHarvestImport(parsed, anaSnapshot(), choices(parsed));
@@ -1736,6 +1836,7 @@ describe("chunkDays", () => {
 			day("d", 7),
 			day("e", 1),
 		];
+
 		const chunks = chunkDays(days, 7);
 		expect(chunks.map((c) => c.map((d) => d.date))).toEqual([
 			["a", "b"],
@@ -1743,11 +1844,13 @@ describe("chunkDays", () => {
 			["d"],
 			["e"],
 		]);
+
 		for (const chunk of chunks) {
 			expect(chunk.reduce((n, d) => n + d.rows.length, 0)).toBeLessThanOrEqual(
 				7,
 			);
 		}
+
 		expect(chunks.flat()).toEqual(days);
 	});
 

@@ -19,8 +19,11 @@ const WINDOW = {
 	start: new Date("2026-09-01T00:00:00Z"),
 	end: new Date("2026-09-02T00:00:00Z"),
 };
+
 const INSIDE = "2026-09-01T10:00:00Z";
+
 const BEFORE = "2026-08-31T23:59:59Z";
+
 /** The first instant of the NEXT day — outside, since the window is half-open. */
 const AT_END = "2026-09-02T00:00:00Z";
 
@@ -62,6 +65,7 @@ describe("pullRequestActivity", () => {
 			merged: true,
 			state: "MERGED" as const,
 		};
+
 		expect(
 			kindsFor(pullRequest({ ...mine, createdAt: INSIDE, mergedAt: AT_END })),
 		).toEqual(["opened"]);
@@ -119,6 +123,7 @@ describe("pullRequestActivity", () => {
 			"me",
 			WINDOW,
 		);
+
 		expect(events.map((event) => [event.eventId, event.reviewState])).toEqual([
 			["PRR_1", "changes_requested"],
 			["PRR_2", "approved"],
@@ -140,6 +145,7 @@ describe("pullRequestActivity", () => {
 		const reviewedBySomeoneElse = pullRequest({
 			reviews: { nodes: [review({ author: { login: "other" } })] },
 		});
+
 		expect(kindsFor(reviewedBySomeoneElse)).toEqual([]);
 
 		const reviewedByMe = pullRequest({ reviews: { nodes: [review()] } });
@@ -165,6 +171,7 @@ describe("pullRequestActivity", () => {
 			state: "MERGED",
 			mergedAt: INSIDE,
 		});
+
 		expect(
 			pullRequestActivity(pr, "me", WINDOW).map((event) => event.eventId),
 		).toEqual(["PR_1:opened", "PR_1:merged"]);

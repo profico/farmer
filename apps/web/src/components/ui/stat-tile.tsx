@@ -101,6 +101,7 @@ export function StatTile({
 	// same height), and a figure that is a fraction of nothing — a date, a count,
 	// a project's all-time hours — draws no meter at all.
 	const shown = percent == null ? null : Math.max(0, Math.min(100, percent));
+
 	return (
 		<div
 			data-slot="stat-tile"

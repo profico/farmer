@@ -37,16 +37,23 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-filing-rules";
+
 const USER_ID = "user-filing-rules";
+
 const DATE = "2026-08-10"; // a Monday
+
 const RANGE = { from: DATE, to: DATE };
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;
+
 let meetingTaskId: string;
+
 let designTaskId: string;
+
 let projectId: string;
+
 let otherProjectId: string;
 
 type Event = {
@@ -131,15 +138,19 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Farmer" })
 		.returning();
+
 	projectId = present(p, "project").id;
+
 	const [other] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c?.id ?? "", name: "Other" })
 		.returning();
+
 	otherProjectId = present(other, "other project").id;
 
 	await db.insert(projectMember).values({
@@ -155,6 +166,7 @@ beforeAll(async () => {
 		where: and(eq(task.scope, "site"), eq(task.systemKey, "meeting")),
 		columns: { id: true },
 	});
+
 	meetingTaskId = present(meeting, "site Meeting task").id;
 
 	const [design] = await db
@@ -166,6 +178,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	designTaskId = present(design, "Design task").id;
 });
 
@@ -497,6 +510,7 @@ describe("the tools that carry the rules to the assistant", () => {
 		await ruleFor("Design review", projectId, designTaskId);
 
 		const result = await findTool("list_filing_rules")?.run(ctx, {});
+
 		// SAFETY: the projection is fixed in assistant-tools.ts, and the
 		// expectation below names every field it reads.
 		const rows = result as {
@@ -506,6 +520,7 @@ describe("the tools that carry the rules to the assistant", () => {
 			filesToProject: string;
 			andChangesTaskTo: string | null;
 		}[];
+
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).toMatchObject({
 			meetingTitle: "Design review",

@@ -50,7 +50,9 @@ const write = async (
 	entry: ImpersonationLedgerEntry,
 ): Promise<void> => {
 	const posthog = getPostHogClient();
+
 	if (!posthog) return;
+
 	try {
 		posthog.capture({
 			distinctId: entry.operatorId,

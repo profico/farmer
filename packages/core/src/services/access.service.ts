@@ -110,7 +110,9 @@ export class Access {
 	 *  is what the assignment row says. */
 	heldAs(projectId: string): ProjectRole | null {
 		const mine = this.roleByProject.get(projectId);
+
 		if (mine == null) return null;
+
 		return this.isTeamLead && mine === "team_lead" ? "pm" : mine;
 	}
 
@@ -132,6 +134,7 @@ export class Access {
 	private atLeast(projectId: string, role: ProjectRole): boolean {
 		if (this.isAdmin) return true;
 		const mine = this.roleByProject.get(projectId);
+
 		return mine != null && this.rankOf(mine) >= RANK[role];
 	}
 
@@ -140,10 +143,14 @@ export class Access {
 	 *  project filter in the WHERE clause" rather than a 200-id IN list. */
 	scopeFor(role: ProjectRole): string[] | null {
 		if (this.isAdmin) return null;
-		const ids = [...this.roleByProject.entries()]
-			.filter(([, mine]) => this.rankOf(mine) >= RANK[role])
-			.map(([projectId]) => projectId);
+
+		const ids = [...this.roleByProject.entries()].flatMap(
+			([projectId, mine]) =>
+				this.rankOf(mine) >= RANK[role] ? [projectId] : [],
+		);
+
 		if (role !== "member") return ids;
+
 		// An open project holds everyone at Member rank, and at no rank above.
 		return [...new Set([...ids, ...this.openProjects])];
 	}
@@ -182,6 +189,7 @@ export class Access {
 	canActOnProjectRole(projectId: string, role: ProjectRole): boolean {
 		if (this.isAdmin) return true;
 		const held = this.heldAs(projectId);
+
 		return held != null && RANK[role] <= RANK[held];
 	}
 
@@ -202,6 +210,7 @@ export class Access {
 	 *  worked-time entries.) */
 	canOverrideAbsenceFor(projectIds: string[]): boolean {
 		if (this.isAdmin) return true;
+
 		return projectIds.some((id) => this.atLeast(id, "pm"));
 	}
 
@@ -209,6 +218,7 @@ export class Access {
 	 *  one project, plus Admins. */
 	canCreateProjects(): boolean {
 		if (this.isAdmin) return true;
+
 		return [...this.roleByProject.values()].some(
 			(role) => this.rankOf(role) >= RANK.team_lead,
 		);
@@ -270,6 +280,7 @@ export const accessService = {
 	 *  `setWeekCell` reaches this via `create(txCtx, …)`. See ./db-ctx. */
 	resolve: async (ctx: Ctx): Promise<Access> => {
 		const client = ctxDb(ctx);
+
 		const [membership, assignments, led, open] = await Promise.all([
 			client.query.member.findFirst({
 				where: and(
@@ -344,6 +355,7 @@ export const accessService = {
 		if (access.isAdmin) return null;
 		const people = new Set<string>([access.userId, ...access.peopleLed()]);
 		const managed = access.scopeFor("pm") ?? [];
+
 		if (managed.length > 0) {
 			const rows = await ctxDb(ctx)
 				.select({ userId: projectMember.userId })
@@ -355,8 +367,10 @@ export const accessService = {
 						eq(projectMember.active, true),
 					),
 				);
+
 			for (const r of rows) people.add(r.userId);
 		}
+
 		return people;
 	},
 
@@ -364,6 +378,7 @@ export const accessService = {
 	requireAdmin: async (ctx: Ctx): Promise<Access> => {
 		const access = await accessService.resolve(ctx);
 		access.assertAdmin();
+
 		return access;
 	},
 };

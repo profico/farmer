@@ -22,12 +22,16 @@ export const orgList: Command = {
 
 		if (out.json) {
 			printJson(me.organizations);
+
 			return;
 		}
+
 		if (me.organizations.length === 0) {
 			print("Your account is not a member of any organization yet.");
+
 			return;
 		}
+
 		printTable(out, {
 			columns: [{ header: "" }, { header: "Slug" }, { header: "Name" }],
 			rows: me.organizations.map((org) => [
@@ -51,16 +55,19 @@ export const orgUse: Command = {
 		const { values, positionals } = parseCommandArgs(args, {}, 1, USE_USAGE);
 		const out = createOutput(values.json === true, runtime.env);
 		const slug = positionals[0] ?? values.org;
+
 		if (!slug) throw new UsageError(`Pass the slug.\nUsage: ${USE_USAGE}`);
 
 		const session = await connect(runtime, out);
 		const me = await refreshOrganizations(session);
 		const entry = session.server.orgs.find((org) => org.slug === slug);
+
 		if (!entry) {
 			throw new UsageError(
 				`You are not a member of "${slug}". Your organizations: ${me.organizations.map((org) => org.slug).join(", ") || "none"}.`,
 			);
 		}
+
 		const who = await session.api.get<ApiWhoami>(orgPath(slug, "/whoami"));
 		entry.timeZone = who.timezone;
 		entry.weekStartsOn = who.weekStartsOn;

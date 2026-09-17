@@ -16,16 +16,19 @@ type Cancel = typeof clack.CANCEL_SYMBOL;
 // concrete union, but not from a generic `T | symbol`.
 const textAnswer = (value: string | Cancel): string => {
 	if (clack.isCancel(value)) throw new CancelledError();
+
 	return value;
 };
 
 const listAnswer = (value: string[] | Cancel): string[] => {
 	if (clack.isCancel(value)) throw new CancelledError();
+
 	return value;
 };
 
 const yesNoAnswer = (value: boolean | Cancel): boolean => {
 	if (clack.isCancel(value)) throw new CancelledError();
+
 	return value;
 };
 
@@ -93,10 +96,13 @@ export type Progress = {
 export const startProgress = (out: Output, message: string): Progress => {
 	if (!out.interactive) {
 		process.stderr.write(`${message}\n`);
+
 		return { stop: () => undefined, fail: () => undefined };
 	}
+
 	const spin = clack.spinner({ output });
 	spin.start(message);
+
 	return {
 		stop: (text) => spin.stop(text),
 		fail: (text) => spin.error(text),

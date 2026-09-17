@@ -35,6 +35,7 @@ export const externalFetch = (
 	timeoutMs: number = EXTERNAL_FETCH_TIMEOUT_MS,
 ): Promise<Response> => {
 	const deadline = AbortSignal.timeout(timeoutMs);
+
 	return fetch(input, {
 		...init,
 		signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
@@ -59,6 +60,7 @@ export const withTimeout = async <T>(
 	onTimeout: () => Error,
 ): Promise<T> => {
 	let timer: ReturnType<typeof setTimeout> | undefined;
+
 	try {
 		return await Promise.race([
 			work,

@@ -41,11 +41,17 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-meeting-sync";
+
 const USER_ID = "user-meeting-sync";
+
 const DATE = "2026-08-10"; // a Monday
+
 const NEXT_DATE = "2026-08-11"; // the Tuesday after it
+
 const RANGE = { from: DATE, to: DATE };
+
 const TWO_DAY_RANGE = { from: DATE, to: NEXT_DATE };
+
 /** The synthesized default working day: Mon-Fri 09:00-17:00. */
 const WORKDAY_SECONDS = 8 * 3600;
 
@@ -108,6 +114,7 @@ const calendarReturning = (events: Event[] | null) => ({
 });
 
 let harness: TestDb;
+
 let devTaskId: string;
 
 const meetingRows = () =>
@@ -136,6 +143,7 @@ beforeAll(async () => {
 		createdAt: new Date(),
 		updatedAt: new Date(),
 	});
+
 	// The engine resolves its task by system key, not by name. The migrations
 	// already seed the site built-ins, so this only fills the gap if that ever
 	// stops being true rather than assuming either way.
@@ -143,6 +151,7 @@ beforeAll(async () => {
 		where: and(eq(task.scope, "site"), eq(task.systemKey, "meeting")),
 		columns: { id: true },
 	});
+
 	if (!existing) {
 		await db.insert(task).values({
 			scope: "site" as const,
@@ -165,6 +174,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = present(dev, "development task").id;
 });
 
@@ -213,9 +223,11 @@ describe("meeting sync", () => {
 
 	test("a third and fourth run are still stable", async () => {
 		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+
 		for (let i = 0; i < 4; i++) {
 			await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		}
+
 		expect(await meetingRows()).toHaveLength(1);
 	});
 
@@ -265,6 +277,7 @@ describe("meeting sync", () => {
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		const [row] = await meetingRows();
+
 		if (!row) throw new Error("expected a synced row");
 
 		// Deleting a synced meeting writes the tombstone.
@@ -284,6 +297,7 @@ describe("meeting sync", () => {
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		const [row] = await meetingRows();
+
 		if (!row) throw new Error("expected a synced row");
 
 		// Filing a meeting locks it against the sync engine.
@@ -388,6 +402,7 @@ describe("a synced meeting resizes the day's fill block", () => {
 				eq(timeEntry.fillsDay, true),
 			),
 		});
+
 		return rows[0] ?? null;
 	};
 
@@ -509,6 +524,7 @@ describe("the meeting engine and the automation window", () => {
 			where: and(eq(task.scope, "site"), eq(task.systemKey, "meeting")),
 			columns: { id: true },
 		});
+
 		meetingTaskId = present(meeting, "meeting task").id;
 		// Switched on well before the lock, so the lock is the bound under test.
 		await db.insert(integrationSettings).values({

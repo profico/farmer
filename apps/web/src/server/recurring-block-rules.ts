@@ -14,6 +14,7 @@ export const listRecurringBlockRules = createServerFn({
 	.handler(async ({ context }) => {
 		const { recurringBlockRulesService } =
 			await import("@farmer/core/services");
+
 		return recurringBlockRulesService.list(context.ctx);
 	});
 
@@ -23,6 +24,7 @@ export const createRecurringBlockRule = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { recurringBlockRulesService } =
 			await import("@farmer/core/services");
+
 		return recurringBlockRulesService.create(context.ctx, data);
 	});
 
@@ -34,6 +36,7 @@ export const enableDefaultBreakBlock = createServerFn({ method: "POST" })
 	.handler(async ({ context }) => {
 		const { recurringBlockRulesService } =
 			await import("@farmer/core/services");
+
 		return recurringBlockRulesService.enableBreak(context.ctx);
 	});
 
@@ -43,6 +46,7 @@ export const updateRecurringBlockRule = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { recurringBlockRulesService } =
 			await import("@farmer/core/services");
+
 		return recurringBlockRulesService.update(context.ctx, data);
 	});
 
@@ -52,5 +56,6 @@ export const deleteRecurringBlockRule = createServerFn({ method: "POST" })
 	.handler(async ({ data: ruleId, context }) => {
 		const { recurringBlockRulesService } =
 			await import("@farmer/core/services");
+
 		return recurringBlockRulesService.remove(context.ctx, ruleId);
 	});

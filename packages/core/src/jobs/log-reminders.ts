@@ -53,6 +53,7 @@ export type LogReminderSummary = {
  *  the same reason: nothing else bounds a pass, and one wedged send must
  *  degrade the sweep rather than end it. */
 const SWEEP_CONCURRENCY = Number(process.env.LOG_REMINDERS_CONCURRENCY ?? 4);
+
 const PER_USER_TIMEOUT_MS = Number(
 	process.env.LOG_REMINDERS_USER_TIMEOUT_MS ?? 30_000,
 );
@@ -84,6 +85,7 @@ export const runLogRemindersOnce = async (
 		.innerJoin(organization, eq(organization.id, member.organizationId));
 
 	const orgs = new Map<string, OrgRun>();
+
 	for (const row of rows) {
 		const run = orgs.get(row.organizationId) ?? {
 			organizationId: row.organizationId,
@@ -91,6 +93,7 @@ export const runLogRemindersOnce = async (
 			tz: row.timezone ?? "UTC",
 			userIds: [],
 		};
+
 		run.userIds.push(row.userId);
 		orgs.set(row.organizationId, run);
 	}
@@ -109,14 +112,17 @@ export const runLogRemindersOnce = async (
 				{ organizationId: run.organizationId, userId: recipient.userId },
 				recipient.event,
 			);
+
 			// Claim the day only after a successful send, so a send failure can be
 			// retried on the next tick rather than being silently swallowed. A
 			// person `notify` held back delivers nothing and is skipped, not
 			// claimed — turning reminders back on the same day still reminds them.
 			if (!wasDelivered(outcome)) {
 				skipped++;
+
 				return;
 			}
+
 			await notificationsService.markLogReminded(
 				run.organizationId,
 				recipient.userId,
@@ -139,8 +145,10 @@ export const runLogRemindersOnce = async (
 		const timeKey = timeKeyInTz(now, run.tz);
 
 		let recipients: ReminderRecipient[];
+
 		try {
 			const settings = await reminderSettingsService.get(ctx);
+
 			if (
 				!settings.logEnabled ||
 				!sendTimeReached(settings, "log-reminder", timeKey)
@@ -159,6 +167,7 @@ export const runLogRemindersOnce = async (
 						eq(notificationSettings.lastLogReminderDay, todayKey),
 					),
 				);
+
 			const remindedIds = new Set(reminded.map((r) => r.userId));
 			const unreminded = run.userIds.filter((id) => !remindedIds.has(id));
 
@@ -169,15 +178,19 @@ export const runLogRemindersOnce = async (
 			// history import that is dozens of archived people. The preview drops
 			// the same people with the same function, so the two still agree.
 			const blocked = new Set<string>();
+
 			for (let i = 0; i < unreminded.length; i += GATE_BATCH) {
 				const blocks = await deliveryBlocks(
 					run.organizationId,
 					unreminded.slice(i, i + GATE_BATCH),
 					"log-reminder",
 				);
+
 				for (const userId of blocks.keys()) blocked.add(userId);
 			}
+
 			const pending = unreminded.filter((id) => !blocked.has(id));
+
 			if (pending.length === 0) {
 				skipped += run.userIds.length;
 				continue;
@@ -204,12 +217,15 @@ export const runLogRemindersOnce = async (
 		// A fixed pool pulling from one cursor, not chunked batches: a batch runs
 		// at the speed of its slowest member and leaves the rest of the pool idle.
 		let cursor = 0;
+
 		const workers = Array.from(
 			{ length: Math.max(1, Math.min(SWEEP_CONCURRENCY, recipients.length)) },
 			async () => {
 				while (cursor < recipients.length) {
 					const recipient = recipients[cursor++];
+
 					if (!recipient) continue;
+
 					try {
 						await withTimeout(
 							sendOne(run, todayKey, recipient),
@@ -233,6 +249,7 @@ export const runLogRemindersOnce = async (
 				}
 			},
 		);
+
 		await Promise.all(workers);
 	}
 

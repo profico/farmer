@@ -26,10 +26,15 @@ import { DayCapacityError, timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-inline-duration";
+
 const USER_ID = "user-inline-duration";
+
 const OTHER_ID = "user-inline-duration-other";
+
 const DAY = "2026-08-10"; // a Monday
+
 const HOUR = 3600;
+
 /** The synthesized default working day: Mon-Fri 09:00-17:00. */
 const WORKDAY_SECONDS = 8 * HOUR;
 
@@ -37,7 +42,9 @@ const WORKDAY_SECONDS = 8 * HOUR;
 const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 
 let harness: TestDb;
+
 let projectId = "";
+
 let devTaskId = "";
 
 /** Straight into the table, so a fixture can build a day — or a fill block —
@@ -62,6 +69,7 @@ const addEntry = async (values: {
 			calendarEventId: values.calendarEventId,
 		})
 		.returning();
+
 	return present(row, "fixture entry");
 };
 
@@ -73,6 +81,7 @@ const fillOf = async () => {
 			eq(timeEntry.fillsDay, true),
 		),
 	});
+
 	return rows[0] ?? null;
 };
 
@@ -92,6 +101,7 @@ beforeAll(async () => {
 		createdAt: new Date(),
 		timezone: "Europe/Zagreb",
 	});
+
 	for (const id of [USER_ID, OTHER_ID]) {
 		await db.insert(user).values({
 			id,
@@ -114,6 +124,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({
@@ -122,6 +133,7 @@ beforeAll(async () => {
 			name: "Farmer",
 		})
 		.returning();
+
 	projectId = present(p, "project").id;
 
 	const [dev] = await db
@@ -134,6 +146,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = present(dev, "development task").id;
 });
 

@@ -17,7 +17,9 @@ import type {
 // and the plan is rebuilt on every choice the admin makes.
 
 let parsed: ParsedHarvest | null = null;
+
 let planId = 0;
+
 let chunks: HarvestImportDay[][] = [];
 
 const reply = (message: HarvestWorkerResponse) => self.postMessage(message);
@@ -28,6 +30,7 @@ async function handle(
 	switch (req.type) {
 		case "parse": {
 			parsed = await parseHarvestFiles(req.files);
+
 			return {
 				id: req.id,
 				type: "parsed",
@@ -37,15 +40,19 @@ async function handle(
 				choices: defaultHarvestChoices(parsed),
 			};
 		}
+
 		case "plan": {
 			if (!parsed) throw new Error("Drop the files again.");
+
 			const { days, ...plan } = planHarvestImport(
 				parsed,
 				req.snapshot,
 				req.choices,
 			);
+
 			planId += 1;
 			chunks = chunkDays(days);
+
 			return {
 				id: req.id,
 				type: "plan",
@@ -55,14 +62,18 @@ async function handle(
 				rowsToSend: days.reduce((n, d) => n + d.rows.length, 0),
 			};
 		}
+
 		case "chunk": {
 			// A newer plan replaced the chunks this one asked for: sending them
 			// would import days the admin has since changed their mind about.
 			if (req.planId !== planId) {
 				throw new Error("The plan changed during the import. Start again.");
 			}
+
 			const days = chunks[req.index];
+
 			if (!days) throw new Error(`The plan has no chunk ${req.index + 1}.`);
+
 			return { id: req.id, type: "chunk", days };
 		}
 	}

@@ -109,6 +109,7 @@ export type AssistantRun = {
  *  look. Two seconds all told: long enough for one insert on a busy database,
  *  short enough that nobody reads it as the answer having frozen. */
 const SETTLE_TRIES = 8;
+
 const SETTLE_WAIT_MS = 250;
 
 const IDLE: AssistantRun = {
@@ -163,7 +164,9 @@ type Actions = {
  * re-rendered by somebody else's answer arriving.
  */
 const RunsContext = createContext<Record<string, AssistantRun>>({});
+
 const RunningContext = createContext<readonly string[]>([]);
+
 const ActionsContext = createContext<Actions | null>(null);
 
 /**
@@ -229,12 +232,16 @@ export function AssistantRunsProvider({
 	const dropLiveTurn = useCallback((conversationId: string) => {
 		setRuns((state) => {
 			const held = state[conversationId];
+
 			if (!held) return state;
+
 			if (!held.pending && !held.error) {
 				const rest = { ...state };
 				delete rest[conversationId];
+
 				return rest;
 			}
+
 			return {
 				...state,
 				[conversationId]: {
@@ -277,6 +284,7 @@ export function AssistantRunsProvider({
 				// cannot drift from what `createTimeEntry` invalidates.
 				queryClient.invalidateQueries({ queryKey: keys.timeEntries }),
 			]);
+
 			// Bounded, because waiting forever for a row that may never come is a
 			// thread frozen mid-answer. Every ending other than the one it is for
 			// either has its row already or has no row to wait for, and that is
@@ -285,10 +293,12 @@ export function AssistantRunsProvider({
 			for (let tries = 0; awaitAnswer && tries < SETTLE_TRIES; tries++) {
 				const thread = queryClient.getQueryData(query.queryKey);
 				const last = thread?.messages.at(-1);
+
 				if (last?.role === "assistant" && last.content.trim()) break;
 				await new Promise((resolve) => setTimeout(resolve, SETTLE_WAIT_MS));
 				await queryClient.refetchQueries({ queryKey: query.queryKey });
 			}
+
 			// Only after the server's copy has landed, or the answer would show
 			// twice — once live, once persisted — for a frame. `pending` and
 			// `error` stay: a suspended write outlives the connection that
@@ -306,6 +316,7 @@ export function AssistantRunsProvider({
 			controllers.current.get(conversationId)?.abort();
 			const controller = new AbortController();
 			controllers.current.set(conversationId, controller);
+
 			/** Whether this call still owns the thread, or a newer one has taken it
 			 *  over. Every write below asks first, so an aborted turn finishing its
 			 *  teardown cannot wipe the turn that replaced it. */
@@ -350,10 +361,13 @@ export function AssistantRunsProvider({
 					const detail = (await response.json().catch(() => null)) as {
 						error?: string;
 					} | null;
+
 					const message =
 						detail?.error ?? `The assistant failed (${response.status})`;
+
 					if (current())
 						patch(conversationId, (state) => ({ ...state, error: message }));
+
 					return false;
 				}
 
@@ -363,6 +377,7 @@ export function AssistantRunsProvider({
 
 				while (true) {
 					const { done, value } = await reader.read();
+
 					if (done) break;
 					buffer += decoder.decode(value, { stream: true });
 
@@ -374,11 +389,13 @@ export function AssistantRunsProvider({
 					for (const line of lines) {
 						if (!line.startsWith("data:")) continue;
 						let event: AssistantEvent;
+
 						try {
 							event = JSON.parse(line.slice(5).trim());
 						} catch {
 							continue;
 						}
+
 						if (!current()) continue;
 
 						switch (event.type) {
@@ -446,6 +463,7 @@ export function AssistantRunsProvider({
 				}
 
 				if (current()) await settle(conversationId);
+
 				return delivered;
 			} catch (caught) {
 				// An abort is the user's own doing (they stopped it, or typed over
@@ -463,13 +481,17 @@ export function AssistantRunsProvider({
 					// the server stores nothing for a turn stopped before the model
 					// said a word.
 					if (current()) await settle(conversationId, streamed);
+
 					return true;
 				}
+
 				if (current()) {
 					const message =
 						caught instanceof Error ? caught.message : "The assistant failed";
+
 					patch(conversationId, (state) => ({ ...state, error: message }));
 				}
+
 				return delivered;
 			} finally {
 				if (current()) {
@@ -477,7 +499,9 @@ export function AssistantRunsProvider({
 					setRunning((state) => state.filter((id) => id !== conversationId));
 					setRuns((state) => {
 						const held = state[conversationId];
+
 						if (!held?.isStreaming) return state;
+
 						return {
 							...state,
 							[conversationId]: { ...held, isStreaming: false },
@@ -520,6 +544,7 @@ export function AssistantRunsProvider({
  *  unsaved "new chat", which has no id yet and therefore nothing running. */
 export function useAssistantRun(conversationId: string | null): AssistantRun {
 	const runs = useContext(RunsContext);
+
 	return (conversationId ? runs[conversationId] : null) ?? IDLE;
 }
 
@@ -530,8 +555,10 @@ export function useAssistantRunning(): readonly string[] {
 
 export function useAssistantActions(): Actions {
 	const actions = useContext(ActionsContext);
+
 	if (!actions) {
 		throw new Error("useAssistantActions outside AssistantRunsProvider");
 	}
+
 	return actions;
 }

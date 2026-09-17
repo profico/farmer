@@ -4,21 +4,25 @@ export const inviteMemberInput = z.object({
 	email: z.email(),
 	role: z.enum(["admin", "member"]),
 });
+
 export type InviteMemberInput = z.infer<typeof inviteMemberInput>;
 
 // better-auth owns the invitation row and generates its id with its own
 // generator, not as a UUID — the column is `text`, so anything narrower than a
 // non-empty string rejects a valid id.
 export const cancelInvitationInput = z.string().min(1);
+
 export type CancelInvitationInput = z.infer<typeof cancelInvitationInput>;
 
 // The same better-auth invitation id.
 export const resendInvitationInput = z.string().min(1);
+
 export type ResendInvitationInput = z.infer<typeof resendInvitationInput>;
 
 // better-auth's removeMember accepts either the member row id or the
 // member's email — can't narrow further than "non-empty string".
 export const removeMemberInput = z.string().min(1);
+
 export type RemoveMemberInput = z.infer<typeof removeMemberInput>;
 
 export const updateMemberRoleInput = z.object({
@@ -26,6 +30,7 @@ export const updateMemberRoleInput = z.object({
 	memberId: z.string().min(1),
 	role: z.enum(["admin", "member"]),
 });
+
 export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleInput>;
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
@@ -43,6 +48,7 @@ export const memberTypeEnum = z.enum([
 	"contractor_full_time",
 	"contractor_hourly",
 ]);
+
 export type MemberTypeValue = z.infer<typeof memberTypeEnum>;
 
 /** Hourly people have no monthly fund; an explicit override is their only
@@ -85,17 +91,20 @@ export const setMemberTypeInput = z
 			path: ["expectedSecondsOverride"],
 		},
 	);
+
 export type SetMemberTypeInput = z.infer<typeof setMemberTypeInput>;
 
 /** A member's user id on its own — for the read endpoints that take nothing
  *  else. Not a uuid: better-auth mints its own user id format. */
 export const memberUserIdInput = z.string().min(1);
+
 export type MemberUserIdInput = z.infer<typeof memberUserIdInput>;
 
 export const setMemberStartDateInput = z.object({
 	userId: z.string().min(1),
 	startDate: dateKey.nullable(),
 });
+
 export type SetMemberStartDateInput = z.infer<typeof setMemberStartDateInput>;
 
 /** Archive or restore a person (PRD 3.1). Never a delete — history has to
@@ -104,4 +113,5 @@ export const setMemberArchivedInput = z.object({
 	userId: z.string().min(1),
 	archived: z.boolean(),
 });
+
 export type SetMemberArchivedInput = z.infer<typeof setMemberArchivedInput>;

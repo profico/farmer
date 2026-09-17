@@ -66,6 +66,7 @@ export const Route = createFileRoute("/$orgSlug/settings/recurring-blocks")({
 
 function DayPills({ daysOfWeek }: { daysOfWeek: number[] }) {
 	const weekdays = useWeekdays();
+
 	return (
 		<div className="flex gap-1">
 			{weekdays.map(({ day, initial }) => (
@@ -108,9 +109,11 @@ function RecurringBlocksPage() {
 	const hasBreakRule = rules.some((rule) => rule.task.systemKey === "break");
 
 	const [query, setQuery] = useState("");
+
 	const shownRules = rules.filter((rule) =>
 		matchesSearch(query, [rule.task.name, rule.project?.name]),
 	);
+
 	const showSuggestedBreak = !hasBreakRule && matchesSearch(query, ["Break"]);
 
 	const enableBreakMutation = useMutation({
@@ -208,6 +211,7 @@ function RecurringBlocksPage() {
 					)}
 					{shownRules.map((rule) => {
 						const category = resolveCategoryColor(rule.task.color);
+
 						return (
 							<TableRow
 								key={rule.id}

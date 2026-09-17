@@ -33,7 +33,9 @@ const CLOCK_SKEW_SECONDS = 60;
 
 const secret = () => {
 	const s = process.env.BETTER_AUTH_SECRET;
+
 	if (!s) throw new Error("BETTER_AUTH_SECRET not configured");
+
 	return s;
 };
 
@@ -68,24 +70,30 @@ export const verifyOrgState = (
 ): string | null => {
 	// Parsed from the right, so an org id containing a dot still round-trips.
 	const macDot = state.lastIndexOf(".");
+
 	if (macDot < 0) return null;
 	const iatDot = state.lastIndexOf(".", macDot - 1);
+
 	if (iatDot < 0) return null;
 
 	const orgId = state.slice(0, iatDot);
 	const issuedAtRaw = state.slice(iatDot + 1, macDot);
 	const provided = state.slice(macDot + 1);
+
 	if (!orgId || !/^\d{1,12}$/.test(issuedAtRaw)) return null;
 	const issuedAt = Number(issuedAtRaw);
 
 	const expected = mac(orgId, userId, issuedAt);
 	const a = Buffer.from(provided);
 	const b = Buffer.from(expected);
+
 	if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
 
 	// Checked after the signature, so an expired state and a forged one are the
 	// same answer to anybody probing.
 	if (issuedAt > now + CLOCK_SKEW_SECONDS) return null;
+
 	if (now - issuedAt > OAUTH_STATE_MAX_AGE_SECONDS) return null;
+
 	return orgId;
 };

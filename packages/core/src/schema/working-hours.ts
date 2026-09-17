@@ -8,6 +8,7 @@ export const upsertWorkingHoursDayInput = z.object({
 	startTime: hhmm.optional(),
 	endTime: hhmm.optional(),
 });
+
 export type UpsertWorkingHoursDayInput = z.infer<
 	typeof upsertWorkingHoursDayInput
 >;

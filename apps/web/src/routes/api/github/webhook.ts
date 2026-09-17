@@ -56,6 +56,7 @@ export const Route = createFileRoute("/api/github/webhook")({
 				// The RAW body, never a re-serialized parse: key order and whitespace
 				// are part of what GitHub signed.
 				const body = await request.text();
+
 				if (
 					!verifyWebhookSignature(
 						body,
@@ -68,15 +69,18 @@ export const Route = createFileRoute("/api/github/webhook")({
 				const event = request.headers.get("x-github-event");
 				const { githubWebhookPayload } = await import("@farmer/core/schema");
 				const parsed = githubWebhookPayload.safeParse(readJson(body));
+
 				const installationId = parsed.success
 					? parsed.data.installation?.id
 					: undefined;
+
 				if (installationId === undefined) {
 					// Verified, but not about an installation — a ping, or an event
 					// somebody subscribed the App to later. Accepted, so GitHub does not
 					// retry it or mark the endpoint as failing.
 					return Response.json({ ok: true, handled: false });
 				}
+
 				const action = parsed.success ? parsed.data.action : undefined;
 
 				const { githubService } = await import("@farmer/core/services");
@@ -93,14 +97,17 @@ export const Route = createFileRoute("/api/github/webhook")({
 				) {
 					const forgotten =
 						await githubService.forgetInstallation(installationId);
+
 					console.info(
 						`[github] installation ${installationId} ${action}: forgot ${forgotten} connection(s)`,
 					);
+
 					return Response.json({ ok: true, handled: true, forgotten });
 				}
 
 				if (event === "installation_repositories") {
 					githubService.forgetRepoList(installationId);
+
 					return Response.json({ ok: true, handled: true });
 				}
 

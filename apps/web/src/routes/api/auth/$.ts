@@ -8,6 +8,7 @@ const DEVICE_PATH = /^\/api\/auth\/device(?:\/|$)/;
 
 /** The two impersonation endpoints, as the browser reaches them. */
 const IMPERSONATE_PATH = "/api/auth/admin/impersonate-user";
+
 const STOP_IMPERSONATING_PATH = "/api/auth/admin/stop-impersonating";
 
 /** The one field of `impersonate-user`'s answer the ledger reads: the person
@@ -41,11 +42,13 @@ const writeLedgerEntry = async (
 		// Read BEFORE the handler answered, because on Stop this session is the
 		// impersonated one and the endpoint deletes it.
 		const operatorId = before.session.impersonatedBy;
+
 		if (!operatorId) return;
 		await ledger.captureImpersonationStopped({
 			operatorId,
 			impersonatedUserId: before.user.id,
 		});
+
 		return;
 	}
 
@@ -53,7 +56,9 @@ const writeLedgerEntry = async (
 		.clone()
 		.json()
 		.catch(() => null);
+
 	const parsed = impersonateResult.safeParse(body);
+
 	if (!parsed.success) return;
 	await ledger.captureImpersonationStarted({
 		operatorId: before.user.id,
@@ -76,16 +81,20 @@ const writeLedgerEntry = async (
  */
 const handle = async (request: Request) => {
 	const { pathname } = new URL(request.url);
+
 	if (DEVICE_PATH.test(pathname)) {
 		const { isCliEnabled } = await import("@farmer/core/lib/cli-flag");
+
 		if (!isCliEnabled()) {
 			return Response.json({ error: "Not found" }, { status: 404 });
 		}
 	}
+
 	const { auth } = await import("@farmer/core/auth");
 
 	const impersonation =
 		pathname === IMPERSONATE_PATH || pathname === STOP_IMPERSONATING_PATH;
+
 	const before = impersonation
 		? await auth.api.getSession({ headers: request.headers })
 		: null;
@@ -96,6 +105,7 @@ const handle = async (request: Request) => {
 	// session, and a ledger that records attempts as events would read as
 	// impersonations that never happened.
 	if (before && response.ok) await writeLedgerEntry(pathname, before, response);
+
 	return response;
 };
 

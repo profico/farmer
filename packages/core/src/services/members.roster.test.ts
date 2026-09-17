@@ -22,19 +22,28 @@ import { membersService } from "./members.service";
 import type { Ctx } from "./types";
 
 const ORG_A = "mr-a";
+
 const ORG_B = "mr-b";
+
 const ADMIN = "u-mr-admin";
+
 const B_ONLY = "u-mr-b-only";
+
 const UNVERIFIED_NEVER = "u-mr-unverified-never";
+
 const UNVERIFIED_SIGNED_IN = "u-mr-unverified-signed-in";
+
 const FUTURE_CONTRACTOR = "u-mr-future";
+
 const PAST_CONTRACTOR = "u-mr-past";
 
 const CROWD_SIZE = 150;
+
 const crowd = Array.from(
 	{ length: CROWD_SIZE },
 	(_, i) => `u-mr-p${String(i).padStart(3, "0")}`,
 );
+
 const PLAIN = at(crowd, 0);
 
 /** Everyone in org A: the admin, the crowd and the four special cases. */
@@ -179,9 +188,11 @@ describe("directory", () => {
 	test("names and faces for the whole org, and nothing a personnel record owns", async () => {
 		const entries = await membersService.directory(ctx(PLAIN));
 		expect(entries).toHaveLength(ORG_A_PEOPLE.length);
+
 		for (const entry of entries) {
 			expect(Object.keys(entry).sort()).toEqual(["image", "name", "userId"]);
 		}
+
 		expect(entries.map((e) => e.userId)).not.toContain(B_ONLY);
 	});
 });
@@ -190,10 +201,12 @@ describe("list", () => {
 	test("every member of an org over 100 people, with the default type", async () => {
 		const rows = await membersService.list(ctx(ADMIN));
 		expect(rows).toHaveLength(ORG_A_PEOPLE.length);
+
 		const plain = present(
 			rows.find((r) => r.userId === PLAIN),
 			"plain member",
 		);
+
 		expect(plain).toMatchObject({
 			type: "employee_billable",
 			expectedSecondsOverride: null,
@@ -284,12 +297,14 @@ describe("setStartDate", () => {
 		await expect(
 			membersService.setStartDate(ctx(ADMIN), B_ONLY, "2024-01-01"),
 		).rejects.toThrow("That person is not a member of this organization");
+
 		const rows = await db.query.memberProfile.findMany({
 			where: and(
 				eq(memberProfile.organizationId, ORG_A),
 				eq(memberProfile.userId, B_ONLY),
 			),
 		});
+
 		expect(rows).toHaveLength(0);
 	});
 });

@@ -81,12 +81,15 @@ export const WEBHOOK_GIVE_UP_DAYS = 3;
  *  attempt rows — status codes and timings, which say nothing about anybody —
  *  are kept a while longer. */
 export const WEBHOOK_PAYLOAD_RETENTION_DAYS = 3;
+
 export const WEBHOOK_LOG_RETENTION_DAYS = 14;
 
 /** Events turned into deliveries per tick, and deliveries attempted per tick.
  *  A ceiling rather than a target: the tick ends and the next one continues. */
 const FAN_OUT_BATCH = 500;
+
 const SEND_BATCH = 200;
+
 /** POSTs in flight at once. Enough that one slow receiver does not hold up
  *  another organization's events, small enough not to look like a flood. */
 const SEND_CONCURRENCY = 5;
@@ -137,9 +140,11 @@ const readSample = async (response: Response): Promise<string | null> => {
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
 	let text = "";
+
 	try {
 		while (text.length < RESPONSE_SAMPLE_LIMIT) {
 			const { done, value } = await reader.read();
+
 			if (done) break;
 			text += decoder.decode(value, { stream: true });
 		}
@@ -149,7 +154,9 @@ const readSample = async (response: Response): Promise<string | null> => {
 	} finally {
 		await reader.cancel().catch(() => undefined);
 	}
+
 	const sample = text.slice(0, RESPONSE_SAMPLE_LIMIT).trim();
+
 	return sample.length > 0 ? sample : null;
 };
 
@@ -158,6 +165,7 @@ const httpSender: WebhookSender = async (request) => {
 	// Resolved again, on every attempt: a name that was public when the endpoint
 	// was registered can answer 127.0.0.1 an hour later. See lib/webhook-url.ts.
 	const target = await resolveWebhookTarget(request.url);
+
 	if (!target.ok) {
 		return {
 			statusCode: null,
@@ -180,8 +188,10 @@ const httpSender: WebhookSender = async (request) => {
 			},
 			timeoutMs(),
 		);
+
 		const responseSample = await readSample(response);
 		const ok = response.status >= 200 && response.status < 300;
+
 		return {
 			statusCode: response.status,
 			error: ok
@@ -227,9 +237,11 @@ const fanOut = async (now: Date): Promise<number> => {
 		.where(isNull(webhookEvent.fannedOutAt))
 		.orderBy(asc(webhookEvent.occurredAt))
 		.limit(FAN_OUT_BATCH);
+
 	if (events.length === 0) return 0;
 
 	const organizationIds = [...new Set(events.map((e) => e.organizationId))];
+
 	const endpoints = await db
 		.select({
 			id: webhookEndpoint.id,
@@ -243,7 +255,9 @@ const fanOut = async (now: Date): Promise<number> => {
 				isNull(webhookEndpoint.disabledAt),
 			),
 		);
+
 	const byOrg = new Map<string, typeof endpoints>();
+
 	for (const endpoint of endpoints) {
 		const list = byOrg.get(endpoint.organizationId) ?? [];
 		list.push(endpoint);
@@ -251,6 +265,7 @@ const fanOut = async (now: Date): Promise<number> => {
 	}
 
 	const rows: (typeof webhookDelivery.$inferInsert)[] = [];
+
 	for (const event of events) {
 		const candidates = (byOrg.get(event.organizationId) ?? []).filter(
 			(endpoint) =>
@@ -260,6 +275,7 @@ const fanOut = async (now: Date): Promise<number> => {
 						endpoint.id === event.endpointId
 					: endpoint.enabledEvents.includes(event.kind),
 		);
+
 		for (const endpoint of candidates) {
 			rows.push({
 				organizationId: event.organizationId,
@@ -294,6 +310,7 @@ const fanOut = async (now: Date): Promise<number> => {
 				events.map((event) => event.id),
 			),
 		);
+
 	return rows.length;
 };
 
@@ -319,6 +336,7 @@ const claimDue = async (now: Date): Promise<ClaimedDelivery[]> => {
 		)
 		.orderBy(asc(webhookDelivery.nextAttemptAt))
 		.limit(SEND_BATCH);
+
 	if (due.length === 0) return [];
 
 	// `claimed_at is null` is re-evaluated after the row lock is taken, so a
@@ -366,6 +384,7 @@ const liveSecrets = (
 	now: Date,
 ): string[] => {
 	const secrets = [endpoint.secret];
+
 	if (
 		endpoint.previousSecret &&
 		endpoint.previousSecretExpiresAt &&
@@ -373,6 +392,7 @@ const liveSecrets = (
 	) {
 		secrets.push(endpoint.previousSecret);
 	}
+
 	return secrets;
 };
 
@@ -383,6 +403,7 @@ const giveUpOnDeadEndpoints = async (
 	logger: Logger,
 ): Promise<number> => {
 	const cutoff = new Date(now.getTime() - WEBHOOK_GIVE_UP_DAYS * DAY_MS);
+
 	const dead = await db
 		.update(webhookEndpoint)
 		.set({
@@ -401,6 +422,7 @@ const giveUpOnDeadEndpoints = async (
 			organizationId: webhookEndpoint.organizationId,
 			url: webhookEndpoint.url,
 		});
+
 	if (dead.length === 0) return 0;
 
 	const slugs = await db
@@ -411,6 +433,7 @@ const giveUpOnDeadEndpoints = async (
 				...new Set(dead.map((endpoint) => endpoint.organizationId)),
 			]),
 		);
+
 	const slugById = new Map(slugs.map((row) => [row.id, row.slug]));
 
 	for (const endpoint of dead) {
@@ -423,7 +446,9 @@ const giveUpOnDeadEndpoints = async (
 					inArray(member.role, ["owner", "admin"]),
 				),
 			);
+
 		const slug = slugById.get(endpoint.organizationId);
+
 		for (const admin of admins) {
 			await notify(
 				{ organizationId: endpoint.organizationId, userId: admin.userId },
@@ -436,16 +461,19 @@ const giveUpOnDeadEndpoints = async (
 				},
 			);
 		}
+
 		logger.warn(
 			`Webhook endpoint disabled after repeated failures: ${endpoint.url}`,
 		);
 	}
+
 	return dead.length;
 };
 
 /** When the sweep last ran, so a one-minute tick does not scan two tables every
  *  minute for rows that age by the day. */
 let lastSweepAt = 0;
+
 const SWEEP_EVERY_MS = 60 * 60_000;
 
 /** For a test that wants the sweep to run on its own tick. */
@@ -473,6 +501,7 @@ const sweepRetention = async (now: Date): Promise<void> => {
 	const logCutoff = new Date(
 		now.getTime() - WEBHOOK_LOG_RETENTION_DAYS * DAY_MS,
 	);
+
 	await db
 		.delete(webhookDelivery)
 		.where(lt(webhookDelivery.createdAt, logCutoff));
@@ -499,6 +528,7 @@ export const runWebhookDeliveryOnce = async (
 		failed: 0,
 		disabled: 0,
 	};
+
 	if (process.env.WEBHOOK_DELIVERY_ENABLED === "false") return idle;
 
 	const now = options.now ?? new Date();
@@ -526,6 +556,7 @@ export const runWebhookDeliveryOnce = async (
 					...new Set(claimed.map((row) => row.endpointId)),
 				]),
 			);
+
 		const events = await db
 			.select({
 				id: webhookEvent.id,
@@ -539,6 +570,7 @@ export const runWebhookDeliveryOnce = async (
 					...new Set(claimed.map((row) => row.eventId)),
 				]),
 			);
+
 		const organizations = await db
 			.select({
 				id: organization.id,
@@ -571,14 +603,19 @@ export const runWebhookDeliveryOnce = async (
 
 			if (!endpoint || !event || !org) {
 				await refuse("The endpoint or the event is gone");
+
 				return;
 			}
+
 			if (endpoint.disabledAt) {
 				await refuse("The endpoint was switched off before this was sent");
+
 				return;
 			}
+
 			if (!event.data) {
 				await refuse("The payload had already been deleted");
+
 				return;
 			}
 
@@ -587,6 +624,7 @@ export const runWebhookDeliveryOnce = async (
 			// The column is text because Postgres has no enum of these twelve.
 			const kind = event.kind as WebhookEventKind;
 			const { kind: _tag, ...data } = event.data;
+
 			const envelope: WebhookEnvelope = {
 				id: event.id,
 				version: WEBHOOK_PAYLOAD_VERSION,
@@ -595,6 +633,7 @@ export const runWebhookDeliveryOnce = async (
 				organization: { id: org.id, slug: org.slug, name: org.name },
 				data,
 			};
+
 			const body = JSON.stringify(envelope);
 			const timestampSeconds = Math.floor(now.getTime() / 1000);
 
@@ -634,6 +673,7 @@ export const runWebhookDeliveryOnce = async (
 					.update(webhookEndpoint)
 					.set({ lastSuccessAt: now, failingSince: null, updatedAt: now })
 					.where(eq(webhookEndpoint.id, endpoint.id));
+
 				return;
 			}
 
@@ -649,6 +689,7 @@ export const runWebhookDeliveryOnce = async (
 				.where(eq(webhookEndpoint.id, endpoint.id));
 
 			const delay = WEBHOOK_RETRY_DELAYS_MS[delivery.attempt - 1];
+
 			if (delay === undefined) return;
 			await db
 				.insert(webhookDelivery)

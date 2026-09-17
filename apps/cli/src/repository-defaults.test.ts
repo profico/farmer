@@ -15,6 +15,7 @@ import {
 } from "./repository-defaults";
 
 const PROJECT = "0b6f2c1e-1f7a-4c3e-9a2b-1d2e3f4a5b6c";
+
 const TASK = "9c1d4e2f-3a5b-4c6d-8e7f-0a1b2c3d4e5f";
 
 describe("parseDefaults", () => {
@@ -33,6 +34,7 @@ describe("parseDefaults", () => {
 			`{ "org": "acme", "project": "${PROJECT}" }`,
 			DEFAULTS_FILE,
 		);
+
 		expect(parsed.task).toBeUndefined();
 	});
 
@@ -65,6 +67,7 @@ describe("formatDefaults", () => {
 			project: { id: PROJECT, name: "VINApps" },
 			task: { id: TASK, name: "Frontend" },
 		});
+
 		expect(text).toContain(`"project": "${PROJECT}", // VINApps`);
 		expect(text).toContain(`"task": "${TASK}" // Frontend`);
 		expect(parseDefaults(text, DEFAULTS_FILE)).toEqual({
@@ -81,6 +84,7 @@ describe("formatDefaults", () => {
 			project: { id: PROJECT, name: "Web\nShop" },
 			task: null,
 		});
+
 		expect(text).not.toContain('"task"');
 		expect(text).toContain("// Web Shop");
 		expect(parseDefaults(text, DEFAULTS_FILE).task).toBeUndefined();
@@ -179,6 +183,7 @@ describe("parseGithubRemote", () => {
 		]) {
 			expect(parseGithubRemote(url)).toBe("profico/farmer");
 		}
+
 		expect(parseGithubRemote("git@github.com:acme/web.app.git")).toBe(
 			"acme/web.app",
 		);

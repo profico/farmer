@@ -25,7 +25,9 @@ export const accountService = {
 			where: eq(account.userId, ctx.userId),
 			columns: { providerId: true },
 		});
+
 		const providers = new Set(rows.map((row) => row.providerId));
+
 		return {
 			hasPassword: providers.has("credential"),
 			google: { linked: providers.has("google") },
@@ -41,13 +43,17 @@ export const accountService = {
 			where: eq(account.userId, ctx.userId),
 			columns: { providerId: true },
 		});
+
 		const providers = new Set(rows.map((row) => row.providerId));
+
 		if (!providers.has("google")) return;
+
 		if (!providers.has("credential")) {
 			throw new Error(
 				"Set a password before disconnecting Google — it's your only way to sign in.",
 			);
 		}
+
 		await db
 			.delete(account)
 			.where(

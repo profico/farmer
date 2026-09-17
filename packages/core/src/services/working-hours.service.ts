@@ -28,10 +28,12 @@ export const workingHoursService = {
 				eq(memberWorkingHoursDay.userId, ctx.userId),
 			),
 		});
+
 		const byDay = new Map(rows.map((r) => [r.dayOfWeek, r]));
 
 		return Array.from({ length: 7 }, (_, dayOfWeek) => {
 			const existing = byDay.get(dayOfWeek);
+
 			return existing
 				? {
 						dayOfWeek: existing.dayOfWeek,
@@ -52,13 +54,16 @@ export const workingHoursService = {
 		const rows = await db.query.memberWorkingHoursDay.findMany({
 			where: eq(memberWorkingHoursDay.organizationId, ctx.organizationId),
 		});
+
 		const byUser = new Map<string, Map<number, WorkingHoursDay>>();
+
 		for (const r of rows) {
 			if (!byUser.has(r.userId)) byUser.set(r.userId, new Map());
 			byUser.get(r.userId)?.set(r.dayOfWeek, r);
 		}
 
 		const result = new Map<string, WorkingHoursDay[]>();
+
 		for (const userId of userIds) {
 			const byDay = byUser.get(userId);
 			result.set(
@@ -69,6 +74,7 @@ export const workingHoursService = {
 				),
 			);
 		}
+
 		return result;
 	},
 
@@ -97,7 +103,9 @@ export const workingHoursService = {
 				},
 			})
 			.returning();
+
 		if (!row) throw new Error("Failed to save working hours");
+
 		return row;
 	},
 };

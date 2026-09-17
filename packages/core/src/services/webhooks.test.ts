@@ -48,13 +48,19 @@ import type { Ctx } from "./types";
 import { webhooksService } from "./webhooks.service";
 
 const ORG = "org-hooks";
+
 const OTHER_ORG = "org-hooks-other";
+
 const ADMIN = "user-hooks-admin";
+
 const PLAIN = "user-hooks-member";
+
 const OTHER_ADMIN = "user-hooks-other-admin";
 
 const adminCtx: Ctx = { organizationId: ORG, userId: ADMIN };
+
 const plainCtx: Ctx = { organizationId: ORG, userId: PLAIN };
+
 const otherCtx: Ctx = { organizationId: OTHER_ORG, userId: OTHER_ADMIN };
 
 let harness: TestDb;
@@ -65,6 +71,7 @@ const recorder = (status = 200) => {
 	setWebhookSenderForTests(async (request) => {
 		sent.push(request);
 		const ok = status >= 200 && status < 300;
+
 		return Promise.resolve({
 			statusCode: status,
 			error: ok ? null : `The endpoint answered ${String(status)}`,
@@ -72,6 +79,7 @@ const recorder = (status = 200) => {
 			durationMs: 3,
 		});
 	});
+
 	return sent;
 };
 
@@ -94,6 +102,7 @@ beforeAll(async () => {
 		{ id: ORG, name: "Hooks", slug: ORG, createdAt: new Date() },
 		{ id: OTHER_ORG, name: "Other", slug: OTHER_ORG, createdAt: new Date() },
 	]);
+
 	const person = (id: string, email: string) => ({
 		id,
 		name: id,
@@ -102,6 +111,7 @@ beforeAll(async () => {
 		createdAt: new Date(),
 		updatedAt: new Date(),
 	});
+
 	await db
 		.insert(user)
 		.values([
@@ -176,6 +186,7 @@ describe("the secret", () => {
 			adminCtx,
 			"https://8.8.8.8/hook",
 		);
+
 		expect(secret.startsWith("whsec_")).toBe(true);
 		expect(endpoint.secretHint).toBe(secret.slice(-4));
 
@@ -191,6 +202,7 @@ describe("the secret", () => {
 			adminCtx,
 			"https://8.8.8.8/hook",
 		);
+
 		const rolled = await webhooksService.rollSecret(adminCtx, endpoint.id);
 		expect(rolled.secret).not.toBe(secret);
 
@@ -202,8 +214,10 @@ describe("the secret", () => {
 			at(sent, 0).headers["Farmer-Signature"],
 			"the signature header",
 		);
+
 		expect(parseWebhookSignature(header)?.signatures).toHaveLength(2);
 		const now = Math.floor(Date.now() / 1000);
+
 		for (const candidate of [secret, rolled.secret]) {
 			expect(
 				verifyWebhookSignature({
@@ -231,6 +245,7 @@ describe("the URL rules reach the service", () => {
 		for (let index = 0; index < 5; index += 1) {
 			await anEndpoint(adminCtx, `https://8.8.8.${String(index)}/hook`);
 		}
+
 		expect(anEndpoint(adminCtx, "https://8.8.8.9/hook")).rejects.toThrow(
 			/at most/,
 		);
@@ -243,6 +258,7 @@ describe("what reaches the wire", () => {
 			adminCtx,
 			"https://8.8.8.8/hook",
 		);
+
 		const sent = recorder();
 		await emitEvent(adminCtx, "client.created", () => ({
 			client: { id: "client-1", name: "Acme" },
@@ -251,6 +267,7 @@ describe("what reaches the wire", () => {
 
 		expect(summary.succeeded).toBe(1);
 		const request = at(sent, 0);
+
 		// SAFETY: the body is what the delivery job just serialized from a
 		// `WebhookEnvelope`, so its shape is this file's own fixture read back.
 		const envelope = JSON.parse(request.body) as {
@@ -260,6 +277,7 @@ describe("what reaches the wire", () => {
 			organization: { slug: string };
 			data: { client: { name: string } };
 		};
+
 		expect(envelope.kind).toBe("client.created");
 		expect(envelope.organization.slug).toBe(ORG);
 		expect(envelope.data.client.name).toBe("Acme");
@@ -294,6 +312,7 @@ describe("what reaches the wire", () => {
 		const { endpoint } = await anEndpoint(adminCtx, "https://8.8.8.8/hook", [
 			"project.created",
 		]);
+
 		const sent = recorder();
 		await emitEvent(adminCtx, "client.created", () => ({
 			client: { id: "client-3", name: "Acme" },
@@ -309,6 +328,7 @@ describe("what reaches the wire", () => {
 		let built = 0;
 		await emitEvent(adminCtx, "client.created", () => {
 			built += 1;
+
 			return { client: { id: "client-4", name: "Acme" } };
 		});
 		expect(built).toBe(0);
@@ -327,9 +347,11 @@ describe("the retry schedule", () => {
 		// Each tick sends whatever is due and queues the next try; the clock is a
 		// parameter so the schedule is checked rather than slept through.
 		let now = new Date("2026-09-17T09:00:00Z");
+
 		for (let attempt = 1; attempt <= WEBHOOK_MAX_ATTEMPTS; attempt += 1) {
 			await runWebhookDeliveryOnce({ now });
 			const rows = await deliveriesFor(endpoint.id);
+
 			if (attempt < WEBHOOK_MAX_ATTEMPTS) {
 				expect(rows).toHaveLength(attempt + 1);
 				now = present(at(rows, attempt).nextAttemptAt, "the next attempt");
@@ -341,10 +363,12 @@ describe("the retry schedule", () => {
 		}
 
 		const rows = await deliveriesFor(endpoint.id);
+
 		const gapMinutes = (index: number) =>
 			(at(rows, index).nextAttemptAt.getTime() -
 				at(rows, index - 1).nextAttemptAt.getTime()) /
 			60_000;
+
 		expect(gapMinutes(1)).toBe(1);
 		expect(gapMinutes(2)).toBe(5);
 		expect(gapMinutes(3)).toBe(30);
@@ -393,6 +417,7 @@ describe("the retry schedule", () => {
 			client: { id: "client-8", name: "Acme" },
 		}));
 		await runWebhookDeliveryOnce();
+
 		const after = at(
 			await db
 				.select()
@@ -400,6 +425,7 @@ describe("the retry schedule", () => {
 				.where(eq(webhookEndpoint.id, endpoint.id)),
 			0,
 		);
+
 		expect(after.failingSince).toBeNull();
 		expect(after.lastSuccessAt).not.toBeNull();
 	});
@@ -412,6 +438,7 @@ describe("giving up on an endpoint", () => {
 		setNotifyAdaptersForTests({
 			slack: (to) => {
 				told.push(to.userId);
+
 				return Promise.resolve(true);
 			},
 			push: () => Promise.resolve(true),
@@ -421,6 +448,7 @@ describe("giving up on an endpoint", () => {
 		const longAgo = new Date(
 			Date.now() - (WEBHOOK_GIVE_UP_DAYS + 1) * 24 * 60 * 60 * 1000,
 		);
+
 		await db
 			.update(webhookEndpoint)
 			.set({ failingSince: longAgo })
@@ -455,6 +483,7 @@ describe("giving up on an endpoint", () => {
 			endpointId: endpoint.id,
 			disabled: false,
 		});
+
 		expect(back.disabledAt).toBeNull();
 		expect(back.failingSince).toBeNull();
 	});
@@ -477,14 +506,17 @@ describe("retention", () => {
 		await runWebhookDeliveryOnce({
 			now: new Date(Date.now() + (WEBHOOK_PAYLOAD_RETENTION_DAYS + 1) * day),
 		});
+
 		const swept = at(
 			await db.select().from(webhookEvent).where(eq(webhookEvent.id, eventId)),
 			0,
 		);
+
 		expect(swept.data).toBeNull();
 		expect(swept.dataDroppedAt).not.toBeNull();
 		// The attempt is still there to read, with its status code.
 		expect(await deliveriesFor(endpoint.id)).toHaveLength(1);
+
 		// And Resend now refuses rather than sending an empty body.
 		const logged = at(
 			await webhooksService.deliveries(adminCtx, {
@@ -493,6 +525,7 @@ describe("retention", () => {
 			}),
 			0,
 		);
+
 		expect(logged.canResend).toBe(false);
 		expect(
 			webhooksService.resend(adminCtx, { deliveryId: logged.id }),
@@ -519,6 +552,7 @@ describe("resend", () => {
 
 		const first = at(await deliveriesFor(endpoint.id), 0);
 		await webhooksService.resend(adminCtx, { deliveryId: first.id });
+
 		const queued = await db
 			.select()
 			.from(webhookDelivery)
@@ -528,6 +562,7 @@ describe("resend", () => {
 					eq(webhookDelivery.manual, true),
 				),
 			);
+
 		expect(queued).toHaveLength(1);
 
 		await runWebhookDeliveryOnce();

@@ -25,14 +25,19 @@ import type { Ctx } from "./types";
 import { UploadRejectedError, uploadsService } from "./uploads.service";
 
 const ORG_A = "up-a";
+
 const ORG_B = "up-b";
+
 const ADMIN = "u-up-admin";
+
 const MEM = "u-up-member";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]);
 
 let harness: TestDb;
+
 const stored = new Map<string, { bytes: Uint8Array; contentType: string }>();
+
 const memoryStore: ObjectStore = {
 	put: async (key, bytes, contentType) => {
 		stored.set(key, { bytes, contentType });
@@ -105,6 +110,7 @@ describe("uploadImage", () => {
 			purpose: "org-logo",
 			bytes: PNG,
 		});
+
 		expect(isUploadedFile(url)).toBe(true);
 		const key = present(uploadKeyOf(url), "upload key");
 		expect(uploadOrganizationOf(key)).toBe(ORG_A);
@@ -144,6 +150,7 @@ describe("uploadImage", () => {
 
 	test("a deployment with no store refuses", async () => {
 		setObjectStoreForTests(null);
+
 		try {
 			await expect(
 				uploadsService.uploadImage(ctx(ADMIN), {
@@ -163,6 +170,7 @@ describe("uploadImage", () => {
 				throw new ObjectStoreFullError("quota");
 			},
 		});
+
 		try {
 			await expect(
 				uploadsService.uploadImage(ctx(ADMIN), {
@@ -182,9 +190,11 @@ describe("saving an upload", () => {
 			purpose: "org-logo",
 			bytes: PNG,
 		});
+
 		const saved = await organizationService.updateSettings(ctx(ADMIN), {
 			logo: url,
 		});
+
 		expect(saved.logo).toBe(url);
 	});
 
@@ -193,6 +203,7 @@ describe("saving an upload", () => {
 			purpose: "org-logo",
 			bytes: PNG,
 		});
+
 		await expect(
 			organizationService.updateSettings(ctx(ADMIN), { logo: url }),
 		).rejects.toThrow(UploadRejectedError);

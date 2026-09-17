@@ -124,15 +124,18 @@ export function WeekView({
 	// in an effect: the route reuses this component across weeks, so an effect
 	// would paint the new week once with the old week's rows still in it.
 	const [draftWeek, setDraftWeek] = useState(weekStart);
+
 	if (draftWeek !== weekStart) {
 		setDraftWeek(weekStart);
 		setDraftRows([]);
 	}
 
 	const rowsByKey = new Map<string, GridRow>();
+
 	for (const entry of entries) {
 		const key = rowKey(entry.projectId, entry.taskId);
 		let row = rowsByKey.get(key);
+
 		if (!row) {
 			row = {
 				key,
@@ -147,11 +150,14 @@ export function WeekView({
 			};
 			rowsByKey.set(key, row);
 		}
+
 		if (entry.fillsDay || entry.generatedFromRuleId) row.locked = true;
 		const cell = row.byDate.get(entry.date);
+
 		if (cell) cell.push(entry);
 		else row.byDate.set(entry.date, [entry]);
 	}
+
 	for (const draft of draftRows) {
 		if (rowsByKey.has(draft.key)) continue;
 		rowsByKey.set(draft.key, {
@@ -166,6 +172,7 @@ export function WeekView({
 			locked: false,
 		});
 	}
+
 	const rows = [...rowsByKey.values()].sort((a, b) =>
 		a.heading.localeCompare(b.heading),
 	);
@@ -181,6 +188,7 @@ export function WeekView({
 				.reduce((sum, e) => sum + e.durationSeconds, 0),
 		]),
 	);
+
 	const weekTotal = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
 	const invalidate = () =>
@@ -193,6 +201,7 @@ export function WeekView({
 	// resolved by query at the moment of the move: rows re-sort as work is logged,
 	// so a map of refs built at render time would be stale by the time it is read.
 	const gridRef = useRef<HTMLTableElement>(null);
+
 	const moveFocus = (fromRow: number, colIndex: number, step: 1 | -1) => {
 		// A derived row's cells are disabled and cannot take focus, so step over
 		// them in the direction of travel rather than stalling on one. Bounded by
@@ -202,9 +211,11 @@ export function WeekView({
 			const cell = gridRef.current?.querySelector<HTMLInputElement>(
 				`[data-grid-cell="${i}:${colIndex}"]`,
 			);
+
 			if (cell && !cell.disabled) {
 				cell.focus();
 				cell.select();
+
 				return;
 			}
 		}
@@ -245,12 +256,15 @@ export function WeekView({
 			// already here (a second click), and some days refused because copying
 			// would have pushed them past 24 hours.
 			const parts: string[] = [];
+
 			if (result.copied > 0) {
 				parts.push(
 					`Copied ${result.copied} ${result.copied === 1 ? "entry" : "entries"}`,
 				);
 			}
+
 			if (result.skipped > 0) parts.push(`${result.skipped} already here`);
+
 			if (result.blockedDays.length > 0) {
 				parts.push(
 					`${result.blockedDays.length} ${
@@ -258,6 +272,7 @@ export function WeekView({
 					} would exceed 24 hours`,
 				);
 			}
+
 			if (parts.length === 0) {
 				toast.success("Nothing to copy from last week");
 			} else if (result.blockedDays.length > 0) {
@@ -368,6 +383,7 @@ export function WeekView({
 							<th className="w-10" />
 							{dates.map((date) => {
 								const holidayName = holidays.get(date);
+
 								return (
 									<th key={date} className="px-1 py-2 text-center font-normal">
 										<Link
@@ -406,6 +422,7 @@ export function WeekView({
 								(sum, date) => sum + cellSeconds(row, date),
 								0,
 							);
+
 							const saveRowNotes = async (notesByDate: Map<string, string>) => {
 								// Each day's note goes onto that day's entries only.
 								for (const [date, description] of notesByDate) {
@@ -415,8 +432,10 @@ export function WeekView({
 										});
 									}
 								}
+
 								await invalidate();
 							};
+
 							return (
 								<tr
 									key={row.key}
@@ -466,6 +485,7 @@ export function WeekView({
 									{dates.map((date, colIndex) => {
 										const dayEntries = row.byDate.get(date) ?? [];
 										const cellHasNote = dayEntries.some((e) => e.description);
+
 										return (
 											<td key={date} className="px-1 py-2">
 												<div className="relative">
@@ -660,26 +680,35 @@ function GridCell({
 	const commit = () => {
 		setFocused(false);
 		const trimmed = text.trim();
+
 		if (trimmed === "") {
 			// An emptied box means "remove this", not "leave it alone".
 			if (seconds > 0) onCommit(0);
 			else setText("");
+
 			return;
 		}
+
 		const parsed = parseDuration(trimmed);
+
 		if (parsed == null || parsed < 0) {
 			setText(seconds > 0 ? formatClock(seconds) : "");
+
 			return;
 		}
+
 		// A literal "0" is the other way to clear a cell, so it stays 0. Anything
 		// else goes through the shared snap, which floors at 15 minutes — the local
 		// `Math.round(parsed / 900) * 900` this replaces turned a typed "0.1" into
 		// 0, which the cell then read as "delete this row".
 		const snapped = parsed === 0 ? 0 : snapToQuarterHour(parsed);
+
 		if (snapped === seconds) {
 			setText(seconds > 0 ? formatClock(seconds) : "");
+
 			return;
 		}
+
 		onCommit(snapped);
 	};
 
@@ -711,8 +740,10 @@ function GridCell({
 				if (e.key === "Enter") {
 					e.currentTarget.blur();
 					onMove(rowIndex, colIndex, 1);
+
 					return;
 				}
+
 				// Up/Down only. Left/Right stay bound to the caret, which is what
 				// anyone typing into a text box expects them to do.
 				//
@@ -723,8 +754,10 @@ function GridCell({
 				if (e.key === "ArrowUp" || e.key === "ArrowDown") {
 					e.preventDefault();
 					onMove(rowIndex, colIndex, e.key === "ArrowDown" ? 1 : -1);
+
 					return;
 				}
+
 				if (e.key === "Escape") {
 					setFocused(false);
 					setText(seconds > 0 ? formatClock(seconds) : "");
@@ -806,8 +839,10 @@ function RowNoteDialog({
 	// Reset the draft state each time the dialog opens, so a cancelled edit
 	// doesn't survive into the next open.
 	const [wasOpen, setWasOpen] = useState(false);
+
 	if (open !== wasOpen) {
 		setWasOpen(open);
+
 		if (open) {
 			setDrafts(Object.fromEntries(loggedDates.map((d) => [d, storedNote(d)])));
 		}
@@ -848,6 +883,7 @@ function RowNoteDialog({
 								(sum, e) => sum + e.durationSeconds,
 								0,
 							);
+
 							return (
 								<div key={date}>
 									<label
@@ -893,14 +929,18 @@ function RowNoteDialog({
 						disabled={saving || loggedDates.length === 0}
 						onClick={async () => {
 							setSaving(true);
+
 							try {
 								// Only send the days whose text actually changed, so opening
 								// and saving the dialog doesn't rewrite every entry in the row.
 								const changed = new Map<string, string>();
+
 								for (const date of loggedDates) {
 									const next = (drafts[date] ?? "").trim();
+
 									if (next !== storedNote(date)) changed.set(date, next);
 								}
+
 								if (changed.size > 0) await onSave(changed);
 								setOpen(false);
 							} finally {
@@ -949,8 +989,10 @@ function DayNoteDialog({
 	const seconds = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
 	const [wasOpen, setWasOpen] = useState(false);
+
 	if (open !== wasOpen) {
 		setWasOpen(open);
+
 		if (open) setDraft(storedNote);
 	}
 
@@ -1027,6 +1069,7 @@ function DayNoteDialog({
 						}
 						onClick={async () => {
 							setSaving(true);
+
 							try {
 								await onSave(draft.trimEnd());
 								setOpen(false);
@@ -1047,5 +1090,6 @@ function DayNoteDialog({
 function shiftWeek(weekStart: string, days: number): string {
 	const date = new Date(`${weekStart}T00:00:00Z`);
 	date.setUTCDate(date.getUTCDate() + days);
+
 	return date.toISOString().slice(0, 10);
 }

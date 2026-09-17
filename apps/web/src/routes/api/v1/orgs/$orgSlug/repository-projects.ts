@@ -23,10 +23,12 @@ export const Route = createFileRoute(
 				input: repositoryProjectsInput,
 				run: async (ctx, input) => {
 					const { githubService } = await import("@farmer/core/services");
+
 					const rows = await githubService.projectsForRepository(
 						ctx,
 						input.repository,
 					);
+
 					return rows.map(toApiProject);
 				},
 			}),

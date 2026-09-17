@@ -31,8 +31,11 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-copy-day";
+
 const USER_ID = "user-copy-day";
+
 const MON = "2026-08-10"; // 8h working day under the synthesized Mon-Fri default
+
 const TUE = "2026-08-11";
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
@@ -40,6 +43,7 @@ const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 const HOUR = 3600;
 
 let harness: TestDb;
+
 let taskId: string;
 
 const entriesOn = (date: string) =>
@@ -96,6 +100,7 @@ beforeAll(async () => {
 		where: and(eq(task.scope, "site"), eq(task.systemKey, "meeting")),
 		columns: { id: true },
 	});
+
 	if (!meeting) throw new Error("migrations no longer seed the Meeting task");
 	taskId = meeting.id;
 });
@@ -146,12 +151,14 @@ describe("copyDay", () => {
 			fromDate: MON,
 			toDate: TUE,
 		});
+
 		expect(first).toEqual({ copied: 2, skipped: 0 });
 
 		const second = await timeEntriesService.copyDay(ctx, {
 			fromDate: MON,
 			toDate: TUE,
 		});
+
 		expect(second).toEqual({ copied: 0, skipped: 2 });
 		expect(await entriesOn(TUE)).toHaveLength(2);
 	});
@@ -244,6 +251,7 @@ describe("copyWeek", () => {
 			fromWeekStart: LAST_MON,
 			toWeekStart: THIS_MON,
 		});
+
 		expect(second.copied).toBe(0);
 		expect(second.skipped).toBe(1);
 		expect(await entriesOn(THIS_MON)).toHaveLength(1);

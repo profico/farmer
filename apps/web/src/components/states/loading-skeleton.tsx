@@ -26,6 +26,7 @@ const ROW_WIDTHS = [70, 58, 46, 34, 62, 40] as const;
  */
 export function ListLoadingSkeleton({ rows = 4 }: { rows?: number }) {
 	const widths = ROW_WIDTHS.slice(0, rows);
+
 	return (
 		<div>
 			{widths.map((width) => (
@@ -58,6 +59,7 @@ export function TableLoadingSkeleton({
 }) {
 	const widths = ROW_WIDTHS.slice(0, rows);
 	const figures = Array.from({ length: cols }, (_, i) => i);
+
 	return (
 		<div className="w-full">
 			{/* The header rule, at the weight `TableHead` renders — without it the

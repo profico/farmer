@@ -54,6 +54,7 @@ export const Route = createFileRoute("/$orgSlug/settings/hour-fund")({
 });
 
 const MONTH_NUMBERS = Array.from({ length: 12 }, (_, i) => i + 1);
+
 const MONTHS = Array.from({ length: 12 }, (_, i) =>
 	new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(
 		new Date(Date.UTC(2000, i, 15)),
@@ -83,6 +84,7 @@ function MonthRow({
 	// The store-the-previous-prop form rather than an effect, so the corrected
 	// value is in the same render as the new prop instead of a frame behind it.
 	const [lastFundSeconds, setLastFundSeconds] = useState(fundSeconds);
+
 	if (fundSeconds !== lastFundSeconds) {
 		setLastFundSeconds(fundSeconds);
 		setText(asText);
@@ -118,19 +120,25 @@ function MonthRow({
 					onChange={(e) => setText(e.target.value)}
 					onBlur={() => {
 						const trimmed = text.trim();
+
 						// Emptying the field clears the month. This used to be a silent
 						// no-op — the input went blank, nothing was sent, and the old fund
 						// was still there on the next load. It also left `prefillYear`
 						// with nothing to fill, since it skips months that have a row.
 						if (trimmed === "") {
 							if (fundSeconds != null) mutation.mutate(null);
+
 							return;
 						}
+
 						const hours = Number(trimmed);
+
 						if (Number.isNaN(hours) || hours < 0) {
 							setText(asText);
+
 							return;
 						}
+
 						if (fundSeconds != null && Math.round(hours * 3600) === fundSeconds)
 							return;
 						mutation.mutate(hours);

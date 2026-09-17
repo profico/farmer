@@ -71,8 +71,10 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 
 	const advance = useCallback(async () => {
 		const j = job.current;
+
 		if (!j) return;
 		const total = 1 + j.chunkCount + j.removeChunks.length + 1;
+
 		const progress = (step: string) =>
 			setState((s) => ({
 				...s,
@@ -82,16 +84,21 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 				done: (j.runId ? 1 : 0) + j.next + j.removeNext,
 				total,
 			}));
+
 		try {
 			if (!j.runId) {
 				progress("Writing the clients, tasks, people and projects");
+
 				const started = await startHarvestImport({
 					data: { ...j.plan.start, runId: j.runToken },
 				});
+
 				j.runId = started.runId;
 				setState((s) => ({ ...s, created: started.created }));
 			}
+
 			const runId = j.runId;
+
 			while (j.next < j.chunkCount) {
 				progress(`Importing days: part ${j.next + 1} of ${j.chunkCount}`);
 				const { days } = await worker.chunk(j.planId, j.next);
@@ -105,8 +112,10 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 					keptDays: [...s.keptDays, ...res.keptDays],
 				}));
 			}
+
 			while (j.removeNext < j.removeChunks.length) {
 				const days = j.removeChunks[j.removeNext];
+
 				if (!days) break;
 				progress("Removing the days that the file no longer has");
 				const res = await removeHarvestDays({ data: { runId, days } });
@@ -117,10 +126,13 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 					keptDays: [...s.keptDays, ...res.keptDays],
 				}));
 			}
+
 			progress("Closing the history months");
+
 			const finish = await finishHarvestImport({
 				data: { runId },
 			});
+
 			job.current = null;
 			setState((s) => ({
 				...s,
@@ -146,6 +158,7 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 	const run = useCallback(
 		(planId: number, plan: HarvestPlanView, chunkCount: number) => {
 			const removeChunks: HarvestDayRef[][] = [];
+
 			for (
 				let i = 0;
 				i < plan.removedDays.length;
@@ -155,6 +168,7 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 					plan.removedDays.slice(i, i + HARVEST_CHUNK_MAX_ROWS),
 				);
 			}
+
 			job.current = {
 				planId,
 				runToken: crypto.randomUUID(),

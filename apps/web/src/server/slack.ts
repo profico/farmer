@@ -12,6 +12,7 @@ export const getSlackStatus = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { slackService } = await import("@farmer/core/services");
+
 		return slackService.status(context.ctx);
 	});
 
@@ -19,6 +20,7 @@ export const getSlackInstallUrl = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { slackService } = await import("@farmer/core/services");
+
 		return slackService.installUrl(context.ctx);
 	});
 
@@ -26,6 +28,7 @@ export const disconnectSlack = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { slackService } = await import("@farmer/core/services");
+
 		return slackService.disconnect(context.ctx);
 	});
 
@@ -33,6 +36,7 @@ export const syncSlackIdentities = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { slackService } = await import("@farmer/core/services");
+
 		return slackService.syncIdentities(context.ctx);
 	});
 
@@ -41,5 +45,6 @@ export const sendTestSlackMessage = createServerFn({ method: "POST" })
 	.validator(sendTestSlackMessageInput)
 	.handler(async ({ data, context }) => {
 		const { slackService } = await import("@farmer/core/services");
+
 		return slackService.sendTest(context.ctx, data.userId);
 	});

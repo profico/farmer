@@ -55,6 +55,7 @@ export const Route = createFileRoute("/$orgSlug/settings/")({
  */
 function SettingsRowLink({ item, description }: SettingsEntry) {
 	const orgSlug = useOrgSlug();
+
 	return (
 		<Link
 			to={item.to}
@@ -95,8 +96,10 @@ function SettingsIndex() {
 		canManageClients,
 		isPlatformAdmin,
 	});
+
 	const account = entries.filter((entry) => entry.group === "account");
 	const workspace = entries.filter((entry) => entry.group === "workspace");
+
 	const infrastructure = entries.filter(
 		(entry) => entry.group === "infrastructure",
 	);

@@ -38,15 +38,18 @@ export const Route = createFileRoute("/$orgSlug/rewind")({
 	loader: async ({ context, params, deps }) => {
 		const today =
 			deps.asOf ?? dayKeyInTz(new Date(), context.organization.timezone);
+
 		const year = deps.year ?? defaultRewindYear(today);
 		// Asked here as well as on the server, so a Rewind that has not opened
 		// yet is a screen that says when it does rather than an error.
 		const open = isRewindOpen(year, today);
+
 		if (open) {
 			await context.queryClient.ensureQueryData(
 				myRewindQuery(params.orgSlug, { year, asOf: deps.asOf }),
 			);
 		}
+
 		return { year, open, today };
 	},
 	pendingComponent: () => <RewindMessage title="Rewinding your year…" />,
@@ -61,6 +64,7 @@ function useClose() {
 	const router = useRouter();
 	const canGoBack = useCanGoBack();
 	const navigate = useNavigate();
+
 	return () => {
 		if (canGoBack) router.history.back();
 		else void navigate({ to: "/$orgSlug", params: { orgSlug } });
@@ -75,6 +79,7 @@ function RewindPage() {
 
 	if (!open) {
 		const lastYear = Number(today.slice(0, 4)) - 1;
+
 		return (
 			<RewindMessage
 				title={`Your ${year} Rewind opens on 1 December.`}
@@ -103,6 +108,7 @@ function RewindPage() {
 			/>
 		);
 	}
+
 	return <OpenRewind key={year} year={year} asOf={asOf} onClose={close} />;
 }
 
@@ -117,9 +123,11 @@ function OpenRewind({
 }) {
 	const orgSlug = useOrgSlug();
 	const { session } = Route.useRouteContext();
+
 	const { data: rewind } = useSuspenseQuery(
 		myRewindQuery(orgSlug, { year, asOf }),
 	);
+
 	return (
 		<RewindStory
 			rewind={rewind}

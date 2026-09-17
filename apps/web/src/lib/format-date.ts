@@ -5,11 +5,13 @@
 
 const parseDateKey = (key: string): Date => {
 	const [year, month, day] = key.split("-").map(Number);
+
 	return new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1);
 };
 
 const parseMonthKey = (key: string): Date => {
 	const [year, month] = key.split("-").map(Number);
+
 	return new Date(year ?? 1970, (month ?? 1) - 1, 1);
 };
 
@@ -38,18 +40,23 @@ export const formatWeekRange = (startKey: string, endKey: string): string => {
 
 	if (sameMonth) {
 		const month = start.toLocaleDateString("en-US", { month: "long" });
+
 		return `${month} ${start.getDate()} – ${end.getDate()}, ${end.getFullYear()}`;
 	}
+
 	if (sameYear) {
 		const left = start.toLocaleDateString("en-US", {
 			month: "short",
 			day: "numeric",
 		});
+
 		const right = end.toLocaleDateString("en-US", {
 			month: "short",
 			day: "numeric",
 		});
+
 		return `${left} – ${right}, ${end.getFullYear()}`;
 	}
+
 	return `${formatDateKeyLong(startKey)} – ${formatDateKeyLong(endKey)}`;
 };

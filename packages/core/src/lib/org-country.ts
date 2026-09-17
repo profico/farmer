@@ -16,5 +16,6 @@ export const orgCountry = async (
 	const org = await client.query.organization.findFirst({
 		where: eq(organization.id, organizationId),
 	});
+
 	return org?.country ?? "US";
 };

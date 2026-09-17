@@ -24,6 +24,7 @@ export const suggestDayAssemblyInput = z.object({
 	 */
 	includeDismissed: z.boolean().optional(),
 });
+
 export type SuggestDayAssemblyInput = z.infer<typeof suggestDayAssemblyInput>;
 
 // One accepted suggestion, shaped like a createTimeEntryInput plus the commits
@@ -53,4 +54,5 @@ export const applyDayAssemblyInput = z.object({
 	date: dateKey,
 	entries: z.array(assembledEntry).min(1).max(50),
 });
+
 export type ApplyDayAssemblyInput = z.infer<typeof applyDayAssemblyInput>;

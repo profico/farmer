@@ -22,11 +22,14 @@ import {
 import type { Ctx } from "./types";
 
 const ORG = "se-org";
+
 const ALICE = "u-se-alice";
+
 const BOB = "u-se-bob";
 
 const CHROME_MAC =
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+
 const CLI = `${CLI_USER_AGENT_PREFIX}0.1.0 (linux; x64)`;
 
 let harness: TestDb;
@@ -128,6 +131,7 @@ describe("sessionsService.listMine", () => {
 			kind: "cli",
 			label: "Farmer CLI (linux x64)",
 		});
+
 		for (const row of rows) {
 			expect(Object.keys(row)).not.toContain("token");
 			expect(Object.keys(row)).not.toContain("userAgent");
@@ -157,6 +161,7 @@ describe("sessionsService.revoke", () => {
 			"s-bob-browser",
 			"s-alice-browser",
 		);
+
 		const madeUp = await sessionsService.revoke(
 			ctx(ALICE),
 			"s-does-not-exist",

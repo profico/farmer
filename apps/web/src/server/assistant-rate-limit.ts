@@ -36,10 +36,13 @@ const bucketFor = (userId: string, now: number): Bucket => {
 			if (now - bucket.windowStartedAt >= WINDOW_MS) buckets.delete(key);
 		}
 	}
+
 	const existing = buckets.get(userId);
+
 	if (existing && now - existing.windowStartedAt < WINDOW_MS) return existing;
 	const fresh = { windowStartedAt: now, turns: 0 };
 	buckets.set(userId, fresh);
+
 	return fresh;
 };
 
@@ -55,7 +58,9 @@ export const admitAssistantTurn = (
 	const now = Date.now();
 	const bucket = bucketFor(userId, now);
 	bucket.turns += 1;
+
 	if (bucket.turns <= MAX_TURNS) return { ok: true };
+
 	return {
 		ok: false,
 		retryAfterSeconds: Math.max(

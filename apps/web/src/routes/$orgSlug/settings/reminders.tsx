@@ -93,6 +93,7 @@ const MEMBER_TYPES = [
 	"contractor_full_time",
 	"contractor_hourly",
 ] as const;
+
 const MEMBER_TYPE_ITEMS = [
 	{ id: "employee_billable", label: "Employees" },
 	{ id: "student_full_time", label: "Students · full-time" },
@@ -109,6 +110,7 @@ const TIME_HINT = `${REMINDER_EARLIEST_TIME}–${REMINDER_LATEST_TIME}, on the q
 function useSaveReminders() {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
+
 	return useMutation({
 		mutationFn: (patch: UpdateReminderSettingsInput) =>
 			updateReminderSettings({ data: patch }),
@@ -352,17 +354,20 @@ const logDraft = (s: ReminderSettings) => ({
 	logTime: s.logTime,
 	logBelowPct: s.logBelowPct,
 });
+
 const nudgeDraft = (s: ReminderSettings) => ({
 	nudgeWeekdays: s.nudgeWeekdays,
 	nudgeTime: s.nudgeTime,
 	nudgeMemberTypes: s.nudgeMemberTypes,
 });
+
 const monthEndDraft = (s: ReminderSettings) => ({
 	monthEndDaysBefore: s.monthEndDaysBefore,
 	monthEndTime: s.monthEndTime,
 	monthEndOnlyBehind: s.monthEndOnlyBehind,
 	monthEndMemberTypes: s.monthEndMemberTypes,
 });
+
 const digestDraft = (s: ReminderSettings) => ({
 	digestWeekday: s.digestWeekday,
 	digestTime: s.digestTime,
@@ -423,6 +428,7 @@ function ReminderCard<T extends UpdateReminderSettingsInput>({
 				className="flex max-w-2xl flex-col gap-5"
 				onSubmit={(e) => {
 					e.preventDefault();
+
 					if (!changed || problem) return;
 					save.mutate(draft, {
 						onSuccess: () => toast.success(`${title} saved`),
@@ -489,6 +495,7 @@ function TimeField({
 	onChange: (time: string) => void;
 }) {
 	const id = useId();
+
 	return (
 		<FieldRow label={label} htmlFor={id} hint={TIME_HINT}>
 			<Input
@@ -546,6 +553,7 @@ function NumberField({
 	hint: string;
 }) {
 	const id = useId();
+
 	return (
 		<FieldRow label={label} htmlFor={id} hint={hint}>
 			<div className="flex items-center gap-2">
@@ -625,14 +633,18 @@ function PreviewDialog({ kind, title }: { kind: ReminderKind; title: string }) {
 	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const [open, setOpen] = useState(false);
+
 	const [date, setDate] = useState(() =>
 		dayKeyInTz(new Date(), organization.timezone),
 	);
+
 	const valid = isValidDayKey(date);
+
 	const preview = useQuery({
 		...reminderPreviewQuery(orgSlug, kind, date),
 		enabled: open && valid,
 	});
+
 	const dateId = useId();
 
 	return (
@@ -680,7 +692,9 @@ function PreviewBody({ preview }: { preview: ReminderPreview }) {
 	if (preview.skipped) {
 		return <p className="text-sm text-muted-foreground">{preview.skipped}</p>;
 	}
+
 	const count = preview.recipients.length;
+
 	return (
 		<div className="flex flex-col gap-5 text-sm">
 			<p className="text-muted-foreground">

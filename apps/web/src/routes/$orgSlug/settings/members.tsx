@@ -114,9 +114,11 @@ function MembersSettingsPage() {
 	const { data: membersData } = useSuspenseQuery(membersQuery(orgSlug));
 	const { data: people } = useSuspenseQuery(peopleQuery(orgSlug));
 	const personByUserId = new Map(people.map((p) => [p.userId, p]));
+
 	const { data: invitations } = useSuspenseQuery(
 		pendingInvitationsQuery(orgSlug),
 	);
+
 	const queryClient = useQueryClient();
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
@@ -178,6 +180,7 @@ function MembersSettingsPage() {
 			setMemberArchived({ data: vars }),
 		onSuccess: (result) => {
 			if (result.emailConfirmed) toast.success("Restored, address confirmed");
+
 			return invalidate();
 		},
 		onError: (error) => toast.error(error.message ?? "Could not archive"),
@@ -190,6 +193,7 @@ function MembersSettingsPage() {
 		mutationFn: (userId: string) => confirmMemberEmail({ data: userId }),
 		onSuccess: () => {
 			toast.success("Address confirmed");
+
 			return invalidate();
 		},
 		onError: (error) =>
@@ -244,6 +248,7 @@ function MembersSettingsPage() {
 			resendInvitation({ data: invitationId }),
 		onSuccess: () => {
 			toast.success("Invitation sent again");
+
 			return invalidate();
 		},
 		onError: (error) =>
@@ -255,20 +260,25 @@ function MembersSettingsPage() {
 	// the section keeps Restore one click away.
 	const [query, setQuery] = useState("");
 	const searching = query.trim() !== "";
+
 	const matching = membersData.members.filter((m) =>
 		matchesSearch(query, [m.user.name, m.user.email]),
 	);
+
 	const activeMembers = matching.filter(
 		(m) => personByUserId.get(m.userId)?.archivedAt == null,
 	);
+
 	const archivedMembers = matching.filter(
 		(m) => personByUserId.get(m.userId)?.archivedAt != null,
 	);
+
 	// A search that only turns up archived people opens their section rather
 	// than reading as no result at all — the same rule as Projects.
 	const archivedOpen =
 		search.archived === "1" ||
 		(searching && activeMembers.length === 0 && archivedMembers.length > 0);
+
 	// One box for the page, so it narrows the invitations too: somebody looking
 	// for an address should find it whether or not the person has accepted yet.
 	const shownInvitations = invitations.filter((inv) =>
@@ -287,6 +297,7 @@ function MembersSettingsPage() {
 		const person = personByUserId.get(m.userId);
 		const type = person?.type ?? "employee_billable";
 		const archived = person?.archivedAt != null;
+
 		return (
 			<TableRow key={m.id}>
 				<TableCell>
@@ -307,6 +318,7 @@ function MembersSettingsPage() {
 							// so the union comes from the options rather than from
 							// an assertion about what the widget handed back.
 							const picked = TYPE_ITEMS.find((option) => option.value === next);
+
 							if (!picked) return;
 							typeMutation.mutate({
 								userId: m.userId,
@@ -385,6 +397,7 @@ function MembersSettingsPage() {
 								const picked = ROLE_ITEMS.find(
 									(option) => option.value === role,
 								);
+
 								if (!picked) return;
 								roleMutation.mutate({
 									memberId: m.id,
@@ -467,8 +480,10 @@ function MembersSettingsPage() {
 												email: m.user.email,
 												restore: true,
 											});
+
 											return;
 										}
+
 										archiveMutation.mutate({
 											userId: m.userId,
 											archived: !archived,
@@ -631,6 +646,7 @@ function MembersSettingsPage() {
 							onClick={() => {
 								if (!confirmEmail) return;
 								const done = { onSettled: () => setConfirmEmail(null) };
+
 								if (confirmEmail.restore) {
 									archiveMutation.mutate(
 										{ userId: confirmEmail.userId, archived: false },
@@ -663,10 +679,13 @@ function InvitationEmailBadge({
 	delivery: PendingInvitation["emailDelivery"];
 }) {
 	if (!delivery) return null;
+
 	if (delivery.status === "sending")
 		return <Badge variant="outline">Sending…</Badge>;
+
 	if (delivery.status === "sent")
 		return <Badge variant="secondary">Email sent</Badge>;
+
 	return (
 		<Badge variant="destructive" title={delivery.error ?? undefined}>
 			Email failed
@@ -697,6 +716,7 @@ function ExpectedHoursCell({
 		expectedSecondsOverride == null
 			? ""
 			: String(Math.round((expectedSecondsOverride / 3600) * 100) / 100);
+
 	const [value, setValue] = useState(asHours);
 	useEffect(() => {
 		setValue(asHours);
@@ -718,11 +738,15 @@ function ExpectedHoursCell({
 			onBlur={() => {
 				const trimmed = value.trim();
 				const parsed = trimmed === "" ? null : Number(trimmed);
+
 				if (parsed != null && (!Number.isFinite(parsed) || parsed < 0)) {
 					setValue(asHours);
+
 					return;
 				}
+
 				const seconds = parsed == null ? null : Math.round(parsed * 3600);
+
 				if (seconds === expectedSecondsOverride) return;
 				onCommit(seconds);
 			}}

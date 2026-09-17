@@ -112,6 +112,7 @@ export const aiTelemetryEnabled = (): boolean => sink !== null;
 
 export const reportGeneration = (event: AiGeneration): void => {
 	if (!sink) return;
+
 	try {
 		sink.generation(event);
 	} catch (error) {
@@ -124,6 +125,7 @@ export const reportGeneration = (event: AiGeneration): void => {
 
 export const reportSpan = (event: AiSpan): void => {
 	if (!sink) return;
+
 	try {
 		sink.span(event);
 	} catch (error) {

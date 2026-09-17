@@ -11,6 +11,7 @@ export const savePushSubscriptionInput = z.object({
 	}),
 	userAgent: z.string().optional(),
 });
+
 export type SavePushSubscriptionInput = z.infer<
 	typeof savePushSubscriptionInput
 >;
@@ -18,6 +19,7 @@ export type SavePushSubscriptionInput = z.infer<
 export const removePushSubscriptionInput = z.object({
 	endpoint: z.url(),
 });
+
 export type RemovePushSubscriptionInput = z.infer<
 	typeof removePushSubscriptionInput
 >;
@@ -27,6 +29,7 @@ export type RemovePushSubscriptionInput = z.infer<
 export const updateNotificationSettingsInput = z.object({
 	logReminders: z.boolean().optional(),
 });
+
 export type UpdateNotificationSettingsInput = z.infer<
 	typeof updateNotificationSettingsInput
 >;

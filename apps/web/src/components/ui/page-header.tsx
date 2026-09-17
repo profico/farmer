@@ -159,6 +159,7 @@ export function PageHeader({
 	className?: string;
 }) {
 	const hasRow = eyebrow != null || action != null;
+
 	return (
 		<header className={cn("mb-7", className)}>
 			{/* min-h holds the row open on screens with no action, so a missing

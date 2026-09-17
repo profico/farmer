@@ -57,20 +57,27 @@ export const ENTRY_GROUPS = [
 	{ id: "teammate", label: "Teammate" },
 	{ id: "date", label: "Date" },
 ] as const;
+
 export type EntryGroup = (typeof ENTRY_GROUPS)[number]["id"];
 
 /** Which groups are open: closed except a few (the default), or open except a
  *  few (after "Expand all"). Named by exception so "all" needs no list of
  *  keys, which only the table knows. */
 type Expand = { mode: "closed" | "open"; except: ReadonlySet<string> };
+
 const ALL_CLOSED: Expand = { mode: "closed", except: new Set() };
+
 const ALL_OPEN: Expand = { mode: "open", except: new Set() };
+
 const isOpen = (expand: Expand, key: string) =>
 	(expand.mode === "open") !== expand.except.has(key);
+
 const toggled = (expand: Expand, key: string): Expand => {
 	const except = new Set(expand.except);
+
 	if (except.has(key)) except.delete(key);
 	else except.add(key);
+
 	return { mode: expand.mode, except };
 };
 
@@ -99,6 +106,7 @@ export function EntriesDrilldown<G extends EntryGroup>({
 }) {
 	const [query, setQuery] = useState("");
 	const [expand, setExpand] = useState<Expand>(ALL_CLOSED);
+
 	const options = groups.map((id) => ({
 		id,
 		label: ENTRY_GROUPS.find((g) => g.id === id)?.label ?? id,
@@ -114,6 +122,7 @@ export function EntriesDrilldown<G extends EntryGroup>({
 						value={by}
 						onValueChange={(next: string | null) => {
 							const picked = options.find((g) => g.id === next);
+
 							if (!picked) return;
 							// New groups, so the old open set means nothing.
 							setExpand(ALL_CLOSED);
@@ -175,10 +184,13 @@ export function EntriesFigure({
 	className?: string;
 }) {
 	const orgSlug = useOrgSlug();
+
 	const { data: detail } = useSuspenseQuery(
 		timeReportDetailQuery(orgSlug, input),
 	);
+
 	const people = new Set(detail.rows.map((r) => r.userId)).size;
+
 	return (
 		<span
 			className={cn("flex items-baseline gap-2 whitespace-nowrap", className)}
@@ -217,10 +229,13 @@ export function EntriesExport({
 	facts: [string, string][];
 }) {
 	const orgSlug = useOrgSlug();
+
 	const { data: detail } = useSuspenseQuery(
 		timeReportDetailQuery(orgSlug, input),
 	);
+
 	const rows = detail.rows;
+
 	return (
 		<ExportMenu
 			disabled={rows.length === 0}
@@ -251,9 +266,11 @@ export function EntriesExport({
 			})}
 			pdf={() => {
 				const columns = visibleColumns(input, by);
+
 				// The PDF writes a day as 12/08/2026; the screen as "Wed, Aug 12".
 				const cellFor = (row: DetailRow, column: EntryGroup) =>
 					column === "date" ? formatPdfDate(row.date) : cellOf(row, column);
+
 				return {
 					title,
 					from: input.from,
@@ -305,6 +322,7 @@ const COLUMNS: { id: EntryGroup; label: string; muted?: boolean }[] = [
 ];
 
 type DetailRow = TimeReportDetailRow;
+
 type EntrySortKey = EntryGroup | "hours";
 
 type DetailGroup = {
@@ -331,6 +349,7 @@ const groupEntries = (rows: DetailRow[], by: EntryGroup): DetailGroup[] => {
 					: by === "teammate"
 						? row.userId
 						: row.date;
+
 	const labelOf = (row: DetailRow) =>
 		by === "client"
 			? row.clientName
@@ -341,9 +360,12 @@ const groupEntries = (rows: DetailRow[], by: EntryGroup): DetailGroup[] => {
 					: by === "teammate"
 						? row.userName
 						: formatDateHeading(row.date);
+
 	const groups = new Map<string, DetailGroup>();
+
 	for (const row of rows) {
 		const key = keyOf(row);
+
 		const group = groups.get(key) ?? {
 			key,
 			label: labelOf(row),
@@ -353,11 +375,13 @@ const groupEntries = (rows: DetailRow[], by: EntryGroup): DetailGroup[] => {
 			seconds: 0,
 			people: new Set<string>(),
 		};
+
 		group.rows.push(row);
 		group.seconds += row.durationSeconds;
 		group.people.add(row.userId);
 		groups.set(key, group);
 	}
+
 	return [...groups.values()];
 };
 
@@ -378,6 +402,7 @@ const visibleColumns = (input: TimeReportDetailInput, by: EntryGroup) => {
 		...(input.projectId ? ["project" as const] : []),
 		...(input.userId ? ["teammate" as const] : []),
 	]);
+
 	return COLUMNS.filter((c) => c.id !== by && !fixed.has(c.id));
 };
 
@@ -412,13 +437,17 @@ function EntriesTable({
 	empty: string;
 }) {
 	const orgSlug = useOrgSlug();
+
 	const { data: detail } = useSuspenseQuery(
 		timeReportDetailQuery(orgSlug, input),
 	);
+
 	const rows = detail.rows;
 	const [sort, setSort] = useState<Sort<EntrySortKey>>({ key: "date", dir: 1 });
+
 	const onSort = (key: EntrySortKey, numeric: boolean) =>
 		setSort((current) => toggleSort(current, key, numeric));
+
 	const compare = {
 		client: byText((r: DetailRow) => r.clientName),
 		project: byText((r: DetailRow) => r.projectName),
@@ -427,6 +456,7 @@ function EntriesTable({
 		date: byText((r: DetailRow) => r.date),
 		hours: byNumber((r: DetailRow) => r.durationSeconds),
 	} satisfies Record<EntrySortKey, (a: DetailRow, b: DetailRow) => number>;
+
 	// The search box only ever narrows what's already loaded — when the server
 	// truncated the entries, a search finds nothing past that cutoff, same as
 	// the CSV export.
@@ -443,6 +473,7 @@ function EntriesTable({
 
 	const groups = groupEntries(filteredRows, by);
 	const columns = visibleColumns(input, by);
+
 	// A sort on a column no longer shown — it became the grouping, or a link
 	// fixed it — falls back to the order the entries arrived in.
 	const active: Sort<EntrySortKey> =
@@ -457,6 +488,7 @@ function EntriesTable({
 			? (a.seconds - b.seconds) * active.dir
 			: groupOrder(by)(a, b),
 	);
+
 	const max = Math.max(...ordered.map((g) => g.seconds), 1);
 
 	if (rows.length === 0) {
@@ -508,9 +540,12 @@ function EntriesTable({
 					) : (
 						ordered.map((group) => {
 							const open = isOpen(expand, group.key);
+
 							const role =
 								roleOf && by === "teammate" ? roleOf(group.userId) : null;
+
 							const narrowed = narrow?.(by, group.key) ?? null;
+
 							return (
 								<Fragment key={group.key}>
 									{/* The summary row: a disclosure, the same one the

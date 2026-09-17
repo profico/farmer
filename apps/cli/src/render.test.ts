@@ -34,6 +34,7 @@ describe("entriesTable", () => {
 			],
 			false,
 		);
+
 		expect(table.columns[0]).toEqual({ header: "#", align: "right" });
 		expect(numbers(table.rows)).toEqual(["1", "2"]);
 		expect(table.rows[0]?.[1]).toBe("aaaa1111");
@@ -49,6 +50,7 @@ describe("entriesTable", () => {
 			],
 			true,
 		);
+
 		// Sorted by day, each day in the order the server answered it.
 		expect(table.rows.map((row) => row[1])).toEqual([
 			"aaaa1111",
@@ -64,6 +66,7 @@ describe("entriesTable", () => {
 			[entry("aaaa1111", "2026-09-14", 3600, "First")],
 			false,
 		);
+
 		expect(table.total?.[0]).toBe("");
 		expect(table.total?.[1]).toBe("Total");
 	});

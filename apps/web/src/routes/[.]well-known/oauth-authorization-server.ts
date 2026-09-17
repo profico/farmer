@@ -31,6 +31,7 @@ export const Route = createFileRoute("/.well-known/oauth-authorization-server")(
 						import("@farmer/core/auth"),
 						import("better-auth/plugins"),
 					]);
+
 					return oAuthDiscoveryMetadata(auth)(request);
 				},
 			},

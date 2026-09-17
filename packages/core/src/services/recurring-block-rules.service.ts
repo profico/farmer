@@ -53,11 +53,15 @@ import type { Ctx } from "./types";
 // materialization — is unchanged.
 const parseRuleDuration = (input: string): number => {
 	const seconds = parseDuration(input);
+
 	if (seconds === null) throw new Error("Could not understand that duration");
+
 	if (seconds <= 0) throw new Error("Duration must be greater than zero");
+
 	if (seconds % QUARTER_HOUR_SECONDS !== 0) {
 		throw new Error("Duration must be in 15-minute steps");
 	}
+
 	return seconds;
 };
 
@@ -78,9 +82,11 @@ const materializeNow = async (ctx: Ctx) => {
 	try {
 		const tz = await ctxTimezone(ctx);
 		const { automationLockedThrough } = await orgSettingsService.get(ctx);
+
 		const window = automationWriteWindow(dayKeyInTz(new Date(), tz), {
 			lockedThrough: automationLockedThrough,
 		});
+
 		if (!window) return;
 		await recurringBlockRulesService.materializeRange(
 			ctx,
@@ -137,6 +143,7 @@ const rulesStillWritable = async (
 	const projectIds = [
 		...new Set(rules.flatMap((r) => (r.projectId ? [r.projectId] : []))),
 	];
+
 	// Archived projects are dormant: every picker excludes them, and a rule must
 	// not keep writing to one behind the person's back. The org predicate is the
 	// tenancy half of `assertProjectInOrg`, in the WHERE.
@@ -156,17 +163,21 @@ const rulesStillWritable = async (
 				).map((p) => p.id)
 			: [],
 	);
+
 	const access = projectIds.length > 0 ? await ctxAccess(ctx) : null;
 
 	const verdicts = new Map<string, boolean>();
+
 	const mayWrite = async (rule: {
 		taskId: string;
 		projectId: string | null;
 	}): Promise<boolean> => {
 		if (rule.projectId) {
 			if (!liveProjectIds.has(rule.projectId)) return false;
+
 			if (!access?.canTrackOn(rule.projectId)) return false;
 		}
+
 		try {
 			// Also what catches an archived task: the guard refuses one outright.
 			await assertTaskAvailable(ctx, rule.taskId, rule.projectId ?? undefined);
@@ -174,21 +185,27 @@ const rulesStillWritable = async (
 			// The guard says no by throwing. A database failure is not a "no" and
 			// must fail the pass rather than quietly skip every rule.
 			if (error instanceof postgres.PostgresError) throw error;
+
 			return false;
 		}
+
 		return true;
 	};
 
 	const usable = new Set<string>();
+
 	for (const rule of rules) {
 		const key = `${rule.projectId ?? ""}|${rule.taskId}`;
 		let allowed = verdicts.get(key);
+
 		if (allowed === undefined) {
 			allowed = await mayWrite(rule);
 			verdicts.set(key, allowed);
 		}
+
 		if (allowed) usable.add(rule.id);
 	}
+
 	return usable;
 };
 
@@ -208,11 +225,13 @@ export const recurringBlockRulesService = {
 		// produce entries the user could have created themselves, which takes
 		// both the assignment check and the taxonomy one.
 		await assertMayScheduleOn(ctx, input.projectId ?? null);
+
 		const taskRow = await assertTaskAvailable(
 			ctx,
 			input.taskId,
 			input.projectId,
 		);
+
 		assertDescribed(taskRow, input.description);
 		const durationSeconds = parseRuleDuration(input.duration);
 
@@ -230,8 +249,10 @@ export const recurringBlockRulesService = {
 				effectiveUntil: input.effectiveUntil,
 			})
 			.returning();
+
 		if (!created) throw new Error("Failed to create recurring block rule");
 		await materializeNow(ctx);
+
 		return created;
 	},
 
@@ -249,6 +270,7 @@ export const recurringBlockRulesService = {
 	 *  so an existing rule is resumed instead of duplicated. */
 	enableBreak: async (ctx: Ctx) => {
 		const breakTask = await tasksService.findBySystemKey(ctx, "break");
+
 		if (!breakTask) throw new Error("The Break task is missing");
 
 		const existing = await db.query.recurringBlockRule.findFirst({
@@ -258,15 +280,19 @@ export const recurringBlockRulesService = {
 				eq(recurringBlockRule.taskId, breakTask.id),
 			),
 		});
+
 		if (existing) {
 			if (existing.active) return existing;
 			const now = new Date();
+
 			const [resumed] = await db
 				.update(recurringBlockRule)
 				.set({ active: true, activeSince: now, updatedAt: now })
 				.where(eq(recurringBlockRule.id, existing.id))
 				.returning();
+
 			await materializeNow(ctx);
+
 			return resumed ?? existing;
 		}
 
@@ -283,8 +309,10 @@ export const recurringBlockRulesService = {
 				durationSeconds: DEFAULT_BREAK_BLOCK.durationSeconds,
 			})
 			.returning();
+
 		if (!created) throw new Error("Failed to create the break block");
 		await materializeNow(ctx);
+
 		return created;
 	},
 
@@ -296,23 +324,28 @@ export const recurringBlockRulesService = {
 				eq(recurringBlockRule.userId, ctx.userId),
 			),
 		});
+
 		if (!existing) throw new Error("Recurring block rule not found");
 
 		const retargeted =
 			input.taskId !== undefined || input.projectId !== undefined;
+
 		if (retargeted || input.description !== undefined) {
 			const nextProjectId =
 				(input.projectId !== undefined
 					? input.projectId
 					: existing.projectId) ?? null;
+
 			// Re-checked on update, not just on create: repointing an existing rule
 			// at another project is the same write by a slower route.
 			if (retargeted) await assertMayScheduleOn(ctx, nextProjectId);
+
 			const taskRow = await assertTaskAvailable(
 				ctx,
 				input.taskId ?? existing.taskId,
 				nextProjectId ?? undefined,
 			);
+
 			// The note rule follows the task, so a task change and a note change
 			// are both occasions to re-ask it. Asked against the MERGED rule —
 			// `update` is partial and either half may be absent — and this is the
@@ -327,21 +360,30 @@ export const recurringBlockRulesService = {
 		const patch: Partial<typeof recurringBlockRule.$inferInsert> = {
 			updatedAt: new Date(),
 		};
+
 		if (input.taskId !== undefined) patch.taskId = input.taskId;
+
 		if (input.projectId !== undefined) patch.projectId = input.projectId;
+
 		if (input.description !== undefined) patch.description = input.description;
+
 		if (input.daysOfWeek !== undefined) patch.daysOfWeek = input.daysOfWeek;
+
 		if (input.duration !== undefined) {
 			patch.durationSeconds = parseRuleDuration(input.duration);
 		}
+
 		if (input.effectiveFrom !== undefined) {
 			patch.effectiveFrom = input.effectiveFrom;
 		}
+
 		if (input.effectiveUntil !== undefined) {
 			patch.effectiveUntil = input.effectiveUntil;
 		}
+
 		if (input.active !== undefined) {
 			patch.active = input.active;
+
 			// Resuming is switching on: the floor moves to today rather than
 			// refilling every day the rule spent paused.
 			if (input.active && !existing.active) patch.activeSince = new Date();
@@ -352,10 +394,12 @@ export const recurringBlockRulesService = {
 			.set(patch)
 			.where(eq(recurringBlockRule.id, input.ruleId))
 			.returning();
+
 		// Only on the resume: an edit to shape or duration doesn't retroactively
 		// rewrite blocks already on the calendar, and materializeRange skips any
 		// day that already holds this rule's block.
 		if (input.active && !existing.active) await materializeNow(ctx);
+
 		return updated;
 	},
 
@@ -389,6 +433,7 @@ export const recurringBlockRulesService = {
 				),
 			),
 		});
+
 		if (rules.length === 0) return;
 		const writable = await rulesStillWritable(ctx, rules);
 
@@ -398,6 +443,7 @@ export const recurringBlockRulesService = {
 				rules.map((r) => r.id),
 			),
 		});
+
 		const skipSet = new Set(skips.map((s) => `${s.ruleId}:${s.date}`));
 
 		const tz = await ctxTimezone(ctx);
@@ -438,6 +484,7 @@ export const recurringBlockRulesService = {
 		const daysOff = [
 			...new Set(existing.filter((e) => e.task.isAbsence).map((e) => e.date)),
 		];
+
 		const takenBack =
 			daysOff.length === 0
 				? []
@@ -469,7 +516,9 @@ export const recurringBlockRulesService = {
 							),
 						)
 						.returning({ date: timeEntry.date });
+
 		const isDayOff = new Set(daysOff);
+
 		// Two keys, because "is this block already here?" has two answers depending
 		// on whether the rule names a project.
 		//
@@ -486,13 +535,16 @@ export const recurringBlockRulesService = {
 		// materializer's own guard was added to prevent.
 		const taskKey = (e: { date: string; taskId: string }) =>
 			`${e.date}|${e.taskId}`;
+
 		const projectKey = (e: {
 			date: string;
 			taskId: string;
 			projectId: string | null;
 		}) => `${taskKey(e)}|${e.projectId ?? ""}`;
+
 		const dayHasTask = new Set(existing.map(taskKey));
 		const dayHasTaskOnProject = new Set(existing.map(projectKey));
+
 		const dayAlreadyHas = (
 			rule: {
 				taskId: string;
@@ -505,6 +557,7 @@ export const recurringBlockRulesService = {
 				: dayHasTask.has(taskKey({ ...rule, date }));
 
 		const rows: (typeof timeEntry.$inferInsert)[] = [];
+
 		for (const rule of rules) {
 			if (!writable.has(rule.id)) continue;
 			// A rule never writes to a day before it was switched on. Without this
@@ -516,16 +569,23 @@ export const recurringBlockRulesService = {
 			// "start next month", not a way back into the past. Nothing offers
 			// backfill, because nobody asked for their history to be rewritten.
 			const activeSince = dayKeyInTz(rule.activeSince, tz);
+
 			const startsOn =
 				rule.effectiveFrom && rule.effectiveFrom > activeSince
 					? rule.effectiveFrom
 					: activeSince;
+
 			for (const date of dates) {
 				if (date < startsOn) continue;
+
 				if (rule.effectiveUntil && date > rule.effectiveUntil) continue;
+
 				if (!rule.daysOfWeek.includes(weekdayByDate.get(date) ?? -1)) continue;
+
 				if (skipSet.has(`${rule.id}:${date}`)) continue;
+
 				if (isDayOff.has(date)) continue;
+
 				if (dayAlreadyHas(rule, date)) continue;
 
 				// Claimed as this batch goes, so two rules for the same block on the
@@ -548,6 +608,7 @@ export const recurringBlockRulesService = {
 				});
 			}
 		}
+
 		const inserted =
 			rows.length === 0
 				? []
@@ -582,6 +643,7 @@ export const recurringBlockRulesService = {
 		const touched = [
 			...new Set([...takenBack, ...inserted].map((row) => row.date)),
 		];
+
 		for (const date of touched) {
 			try {
 				await recomputeDayFill(ctx, date, tz);

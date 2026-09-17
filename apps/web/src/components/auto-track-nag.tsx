@@ -13,6 +13,7 @@ import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
 // "a", "a and b", "a, b and c" — for stitching the gap phrases into one sentence.
 function joinAnd(parts: string[]): string {
 	if (parts.length <= 1) return parts[0] ?? "";
+
 	return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
@@ -42,11 +43,13 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 		enabled: !dismissed,
 		staleTime: 5 * 60_000,
 	});
+
 	const google = useQuery({
 		...googleCalendarStatusQuery(orgSlug),
 		enabled: !dismissed,
 		staleTime: 5 * 60_000,
 	});
+
 	const settings = useQuery({
 		...integrationSettingsQuery(orgSlug),
 		enabled: !dismissed,
@@ -59,6 +62,7 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 	// of vanishing the instant `message` becomes null.
 	const message = ((): { title: string; body: string } | null => {
 		if (dismissed) return null;
+
 		// Decide only once we actually know the state — no flash of an empty nag.
 		if (!github.data || !google.data || !settings.data) return null;
 
@@ -80,19 +84,24 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 		// copy never reads "connect GitHub and connect …".
 		const toConnect: string[] = [];
 		const toEnable: string[] = [];
+
 		if (!githubConnected) toConnect.push("GitHub");
 		else if (!settings.data.githubSyncCommitsAsWorkTime)
 			toEnable.push("auto-log your commits");
+
 		if (!googleConnected) toConnect.push("Google Calendar");
 		else if (!settings.data.googleAutoSyncMeetings)
 			toEnable.push("sync your meetings");
 
 		const clauses: string[] = [];
+
 		if (toConnect.length > 0) clauses.push(`connect ${joinAnd(toConnect)}`);
 		clauses.push(...toEnable);
+
 		if (clauses.length === 0) return null;
 
 		const sentence = joinAnd(clauses);
+
 		return {
 			title: "Automate your time tracking",
 			body: `${sentence.charAt(0).toUpperCase() + sentence.slice(1)} so your meetings and commits log themselves.`,
@@ -101,6 +110,7 @@ export function AutoTrackNag({ orgSlug }: { orgSlug: string }) {
 
 	const handleDismiss = () => {
 		setDismissed(true);
+
 		try {
 			window.localStorage.setItem(storageKey, "1");
 		} catch {

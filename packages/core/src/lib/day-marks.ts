@@ -33,6 +33,7 @@ export type DayMark = "done" | "covered" | "short";
 // day, so its UTC weekday is the day's weekday.
 const isWeekday = (dateKey: string) => {
 	const weekday = new Date(`${dateKey}T00:00:00Z`).getUTCDay();
+
 	return weekday !== 0 && weekday !== 6;
 };
 
@@ -58,13 +59,16 @@ export const weekDayMarks = ({
 	const loggedSoFar = dates
 		.filter((date) => date <= today)
 		.reduce((sum, date) => sum + (secondsByDay.get(date) ?? 0), 0);
+
 	const judged = dates.filter(
 		(date) => date <= today && isWeekday(date) && !holidays.has(date),
 	);
+
 	const pastTarget = judged.filter((date) => date < today).length * daySeconds;
 	const todayTarget = pastTarget + daySeconds;
 
 	const marks = new Map<string, DayMark>();
+
 	for (const date of judged) {
 		const target = date === today ? todayTarget : pastTarget;
 		marks.set(
@@ -76,5 +80,6 @@ export const weekDayMarks = ({
 					: "short",
 		);
 	}
+
 	return marks;
 };

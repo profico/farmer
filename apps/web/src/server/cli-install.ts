@@ -59,7 +59,9 @@ export type CliReleaseAsset = (typeof CLI_RELEASE_ASSETS)[number];
  */
 export const installOrigin = (request: Request): string => {
 	const configured = URL.parse(process.env.BETTER_AUTH_URL ?? "");
+
 	if (configured && isWebUrl(configured)) return configured.origin;
+
 	return new URL(request.url).origin;
 };
 

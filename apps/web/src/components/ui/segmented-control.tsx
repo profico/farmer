@@ -30,6 +30,7 @@ function SegmentedControl({
 	// Unique per instance so multiple controls on one page never share (and
 	// fight over) the same layout animation.
 	const layoutId = useId();
+
 	return (
 		<SegmentedControlContext.Provider value={{ layoutId }}>
 			<div

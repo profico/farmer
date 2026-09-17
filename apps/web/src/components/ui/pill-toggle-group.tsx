@@ -33,6 +33,7 @@ export function PillToggleGroup({
 		<div className={cn("flex flex-wrap gap-1.5", className)}>
 			{items.map((item) => {
 				const on = selected.has(item.id);
+
 				return (
 					<button
 						key={item.id}

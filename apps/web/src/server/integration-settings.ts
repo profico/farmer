@@ -12,6 +12,7 @@ export const getIntegrationSettings = createServerFn({
 	.handler(async ({ context }) => {
 		const { integrationSettingsService } =
 			await import("@farmer/core/services");
+
 		return integrationSettingsService.get(context.ctx);
 	});
 
@@ -21,6 +22,7 @@ export const updateIntegrationSettings = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { integrationSettingsService } =
 			await import("@farmer/core/services");
+
 		const before = await integrationSettingsService.get(context.ctx);
 		const after = await integrationSettingsService.update(context.ctx, data);
 
@@ -45,10 +47,12 @@ export const updateIntegrationSettings = createServerFn({ method: "POST" })
 			(!before.googleAutoSyncMeetings && after.googleAutoSyncMeetings) ||
 			(!before.githubSyncCommitsAsWorkTime &&
 				after.githubSyncCommitsAsWorkTime);
+
 		if (!switchedOn) return { ...after, synced: false as const };
 
 		const { runAutomationSyncForCtx } = await import("@farmer/core/jobs");
 		const { withTimeout } = await import("@farmer/core/lib/http");
+
 		// Short: this is a save, and the person is watching a checkbox, not a sync.
 		// Anything slower than this should stop being their problem.
 		const synced = await withTimeout(

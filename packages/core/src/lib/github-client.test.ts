@@ -49,8 +49,10 @@ const respondWith = (replies: Reply[]) => {
 	// call outside that shape fails the test loudly instead of silently passing.
 	globalThis.fetch = (async (input: string | URL | Request) => {
 		requested.push(String(input instanceof Request ? input.url : input));
+
 		const reply =
 			replies[Math.min(requested.length - 1, replies.length - 1)] ?? {};
+
 		return new Response(JSON.stringify(reply.body ?? []), {
 			status: reply.status ?? 200,
 			headers: { "content-type": "application/json", ...reply.headers },
@@ -236,6 +238,7 @@ describe("getRepoContentsReadToken", () => {
 			init?: RequestInit,
 		) => {
 			if (init?.method === "POST") posted.push(String(init.body));
+
 			return answer(input, init);
 		}) as typeof fetch;
 	};
@@ -246,6 +249,7 @@ describe("getRepoContentsReadToken", () => {
 			privateKeyEncoding: { type: "pkcs8", format: "pem" },
 			publicKeyEncoding: { type: "spki", format: "pem" },
 		});
+
 		process.env.GITHUB_APP_ID = "12345";
 		process.env.GITHUB_APP_PRIVATE_KEY =
 			Buffer.from(privateKey).toString("base64");
@@ -255,6 +259,7 @@ describe("getRepoContentsReadToken", () => {
 		// Assigning `undefined` would store the string "undefined".
 		if (savedAppId === undefined) delete process.env.GITHUB_APP_ID;
 		else process.env.GITHUB_APP_ID = savedAppId;
+
 		if (savedKey === undefined) delete process.env.GITHUB_APP_PRIVATE_KEY;
 		else process.env.GITHUB_APP_PRIVATE_KEY = savedKey;
 	});

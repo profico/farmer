@@ -19,7 +19,9 @@ export const Route = createFileRoute("/cli/install.sh")({
 		handlers: {
 			GET: async ({ request }) => {
 				const { isCliEnabled } = await import("@farmer/core/lib/cli-flag");
+
 				if (!isCliEnabled()) return plainText("Not found", 404);
+
 				return plainText(shInstallScript(installOrigin(request)));
 			},
 		},

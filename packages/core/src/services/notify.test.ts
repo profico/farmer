@@ -30,8 +30,11 @@ import {
 } from "./notify";
 
 const ORG = "org-notify";
+
 const OTHER_ORG = "org-notify-other";
+
 const MEMBER = "user-member";
+
 const OUTSIDER = "user-outsider";
 
 let harness: TestDb;
@@ -39,6 +42,7 @@ let harness: TestDb;
 /** Records every send instead of making one, and can be told to fail. */
 const recorder = () => {
 	const calls: { channel: NotifyChannel; text: string }[] = [];
+
 	const adapter =
 		(
 			channel: NotifyChannel,
@@ -46,9 +50,12 @@ const recorder = () => {
 		): NotifyAdapter =>
 		async (_to, event) => {
 			calls.push({ channel, text: `${event.title ?? ""}|${event.body}` });
+
 			if (behaviour === "throw") throw new Error(`${channel} exploded`);
+
 			return behaviour === "ok";
 		};
+
 	return { calls, adapter };
 };
 
@@ -123,10 +130,12 @@ describe("the membership rule", () => {
 	test("a member is reached", async () => {
 		const r = recorder();
 		setNotifyAdaptersForTests({ slack: r.adapter("slack") });
+
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "compliance-nudge", body: "log your hours" },
 		);
+
 		expect(outcome.slack).toBe(true);
 		expect(r.calls).toHaveLength(1);
 	});
@@ -139,10 +148,12 @@ describe("the membership rule", () => {
 			slack: r.adapter("slack"),
 			push: r.adapter("push"),
 		});
+
 		const outcome = await notify(
 			{ organizationId: ORG, userId: OUTSIDER },
 			{ kind: "test", title: "Heads up", body: "detail" },
 		);
+
 		expect(outcome).toEqual({ push: false, slack: false });
 		expect(r.calls).toHaveLength(0);
 	});
@@ -173,10 +184,12 @@ describe("the preference gate", () => {
 	test("log reminders default to on", async () => {
 		const r = recorder();
 		setNotifyAdaptersForTests({ push: r.adapter("push") });
+
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "log-reminder", title: "Log your hours", body: "x" },
 		);
+
 		expect(outcome.push).toBe(true);
 	});
 
@@ -191,10 +204,12 @@ describe("the preference gate", () => {
 			push: r.adapter("push"),
 			slack: r.adapter("slack"),
 		});
+
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "log-reminder", title: "Log your hours", body: "x" },
 		);
+
 		expect(wasDelivered(outcome)).toBe(false);
 		expect(r.calls).toHaveLength(0);
 	});
@@ -212,10 +227,12 @@ describe("the preference gate", () => {
 			push: r.adapter("push"),
 			slack: r.adapter("slack"),
 		});
+
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "test", title: "Heads up", body: "detail" },
 		);
+
 		expect(wasDelivered(outcome)).toBe(true);
 	});
 });
@@ -227,10 +244,12 @@ describe("the fan-out", () => {
 			push: r.adapter("push"),
 			slack: r.adapter("slack"),
 		});
+
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "log-reminder", title: "Log your hours", body: "x" },
 		);
+
 		expect(outcome).toEqual({ push: true, slack: false });
 		expect(r.calls.map((c) => c.channel)).toEqual(["push"]);
 	});
@@ -243,10 +262,12 @@ describe("the fan-out", () => {
 			push: r.adapter("push", "throw"),
 			slack: r.adapter("slack"),
 		});
+
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "test", title: "Heads up", body: "detail" },
 		);
+
 		expect(outcome).toEqual({ push: false, slack: true });
 		expect(wasDelivered(outcome)).toBe(true);
 	});
@@ -257,10 +278,12 @@ describe("the fan-out", () => {
 			push: r.adapter("push", "throw"),
 			slack: r.adapter("slack", "false"),
 		});
+
 		const outcome = await notify(
 			{ organizationId: ORG, userId: MEMBER },
 			{ kind: "test", title: "Heads up", body: "detail" },
 		);
+
 		expect(outcome).toEqual({ push: false, slack: false });
 		expect(wasDelivered(outcome)).toBe(false);
 	});
@@ -355,12 +378,14 @@ describe("settings are scoped to the organization", () => {
 			userId: MEMBER,
 			logReminders: false,
 		});
+
 		const row = await db.query.notificationSettings.findFirst({
 			where: and(
 				eq(notificationSettings.organizationId, ORG),
 				eq(notificationSettings.userId, MEMBER),
 			),
 		});
+
 		expect(row?.logReminders).toBe(false);
 
 		// Same person, other org, no row: the default still applies there.
@@ -370,6 +395,7 @@ describe("settings are scoped to the organization", () => {
 				eq(notificationSettings.userId, MEMBER),
 			),
 		});
+
 		expect(other).toBeUndefined();
 	});
 });

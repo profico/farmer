@@ -9,9 +9,13 @@
 // trailing newline (no spurious empty row), and empty fields.
 
 const COMMA = 44;
+
 const CR = 13;
+
 const LF = 10;
+
 const QUOTE = 34;
+
 const BOM = 0xfeff;
 
 interface FieldResult {
@@ -26,13 +30,17 @@ function readField(text: string, start: number, len: number): FieldResult {
 		let i = start + 1;
 		let segmentStart = i;
 		let parts: string[] | null = null;
+
 		for (;;) {
 			if (i >= len) {
 				// Unterminated quote at end of file: take the rest as content.
 				const tail = text.slice(segmentStart, i);
+
 				return { value: parts ? parts.join("") + tail : tail, next: i };
 			}
+
 			const code = text.charCodeAt(i);
+
 			if (code === QUOTE) {
 				if (i + 1 < len && text.charCodeAt(i + 1) === QUOTE) {
 					// `""` inside a quoted field is one literal quote character.
@@ -41,18 +49,25 @@ function readField(text: string, start: number, len: number): FieldResult {
 					segmentStart = i;
 					continue;
 				}
+
 				const tail = text.slice(segmentStart, i);
+
 				return { value: parts ? parts.join("") + tail : tail, next: i + 1 };
 			}
+
 			i += 1;
 		}
 	}
+
 	let i = start;
+
 	while (i < len) {
 		const code = text.charCodeAt(i);
+
 		if (code === COMMA || code === CR || code === LF) break;
 		i += 1;
 	}
+
 	return { value: text.slice(start, i), next: i };
 }
 
@@ -64,37 +79,49 @@ function readField(text: string, start: number, len: number): FieldResult {
 export function* iterateCsv(text: string): Generator<string[]> {
 	const len = text.length;
 	let pos = len > 0 && text.charCodeAt(0) === BOM ? 1 : 0;
+
 	if (pos >= len) return;
 
 	while (true) {
 		const row: string[] = [];
+
 		for (;;) {
 			const field = readField(text, pos, len);
 			row.push(field.value);
 			pos = field.next;
+
 			if (pos >= len) {
 				yield row;
+
 				return;
 			}
+
 			const code = text.charCodeAt(pos);
+
 			if (code === COMMA) {
 				pos += 1;
 				continue;
 			}
+
 			if (code === CR) {
 				pos += 1;
+
 				if (pos < len && text.charCodeAt(pos) === LF) pos += 1;
 				break;
 			}
+
 			if (code === LF) {
 				pos += 1;
 				break;
 			}
+
 			// A field always ends at a comma, CR, LF or end of text — readField
 			// never stops anywhere else, so this is unreachable.
 			break;
 		}
+
 		yield row;
+
 		if (pos >= len) return;
 	}
 }
@@ -116,13 +143,17 @@ export function* iterateCsvRecords(
 ): Generator<ReadonlyMap<string, string>> {
 	const rows = iterateCsv(text);
 	const first = rows.next();
+
 	if (first.done) return;
 	const header = first.value;
+
 	for (const row of rows) {
 		const record = new Map<string, string>();
+
 		for (let i = 0; i < header.length; i++) {
 			record.set(header[i] ?? "", row[i] ?? "");
 		}
+
 		yield record;
 	}
 }
@@ -131,5 +162,6 @@ export function* iterateCsvRecords(
 export function readCsvHeader(text: string): string[] {
 	const rows = iterateCsv(text);
 	const first = rows.next();
+
 	return first.done ? [] : first.value;
 }

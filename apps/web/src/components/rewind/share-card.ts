@@ -8,15 +8,20 @@ import { summaryTiles, THEMES } from "./slides.tsx";
 // whatever window it is in.
 
 const W = 1080;
+
 const H = 1920;
+
 const PAD = 90;
 
 const SERIF = '"Instrument Serif", ui-serif, Georgia, serif';
+
 const SANS = '"Instrument Sans", ui-sans-serif, system-ui, sans-serif';
+
 const MONO = '"Geist Mono", ui-monospace, monospace';
 
 const rgba = (hex: string, alpha: number): string => {
 	const n = Number.parseInt(hex.slice(1), 16);
+
 	return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 };
 
@@ -33,18 +38,23 @@ const fitText = (
 ) => {
 	let size = max;
 	ctx.font = `400 ${size}px ${SERIF}`;
+
 	while (size > min && ctx.measureText(text).width > width) {
 		size -= 4;
 		ctx.font = `400 ${size}px ${SERIF}`;
 	}
+
 	let shown = text;
+
 	while (shown.length > 1 && ctx.measureText(shown).width > width) {
 		shown = shown.slice(0, -1);
+
 		if (ctx.measureText(`${shown}…`).width <= width) {
 			shown = `${shown}…`;
 			break;
 		}
 	}
+
 	ctx.fillText(shown, x, y);
 };
 
@@ -80,6 +90,7 @@ export async function drawShareCard(
 	canvas.width = W;
 	canvas.height = H;
 	const ctx = canvas.getContext("2d");
+
 	if (!ctx) throw new Error("Canvas is not available.");
 
 	ctx.fillStyle = theme.bg;
@@ -128,10 +139,12 @@ export async function drawShareCard(
 	ctx.beginPath();
 	ctx.moveTo(PAD + tileW, top);
 	ctx.lineTo(PAD + tileW, top + tileH * rows);
+
 	for (let row = 1; row < rows; row++) {
 		ctx.moveTo(PAD, top + tileH * row);
 		ctx.lineTo(PAD + gridW, top + tileH * row);
 	}
+
 	ctx.stroke();
 
 	tiles.forEach((tile, i) => {
@@ -176,12 +189,14 @@ export async function shareRewindCard(
 				files: [file],
 				title: `My ${rewind.year} Farmer Rewind`,
 			});
+
 			return "shared";
 		} catch (error) {
 			// Closing the share sheet is a choice, not a failure.
 			if (error instanceof DOMException && error.name === "AbortError") {
 				return "cancelled";
 			}
+
 			throw error;
 		}
 	}
@@ -193,5 +208,6 @@ export async function shareRewindCard(
 	link.click();
 	// The click has started the download; the URL is no longer needed.
 	setTimeout(() => URL.revokeObjectURL(url), 1000);
+
 	return "downloaded";
 }

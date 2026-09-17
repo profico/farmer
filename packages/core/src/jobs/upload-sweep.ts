@@ -53,6 +53,7 @@ export type UploadSweepSummary = {
 
 const referencedKeys = async (): Promise<Set<string>> => {
 	const prefix = `${UPLOAD_PATH_PREFIX}%`;
+
 	const [icons, logos] = await Promise.all([
 		db
 			.select({ value: project.icon })
@@ -63,11 +64,15 @@ const referencedKeys = async (): Promise<Set<string>> => {
 			.from(organization)
 			.where(like(organization.logo, prefix)),
 	]);
+
 	const keys = new Set<string>();
+
 	for (const { value } of [...icons, ...logos]) {
 		const key = uploadKeyOf(value);
+
 		if (key) keys.add(key);
 	}
+
 	return keys;
 };
 
@@ -78,20 +83,25 @@ export const runUploadSweepOnce = async (
 	} = {},
 ): Promise<UploadSweepSummary> => {
 	const store = objectStore();
+
 	if (!store) return { enabled: false, listed: 0, deleted: 0, failed: 0 };
 
 	const cutoff = (options.now ?? new Date()).getTime() - UPLOAD_SWEEP_GRACE_MS;
 	let listed = 0;
 	const old = new Map<string, string>();
+
 	for await (const object of store.list("orgs/")) {
 		listed += 1;
+
 		const organizationId = isUploadKey(object.key)
 			? uploadOrganizationOf(object.key)
 			: null;
+
 		if (organizationId && object.lastModified.getTime() < cutoff) {
 			old.set(object.key, organizationId);
 		}
 	}
+
 	if (old.size === 0) return { enabled: true, listed, deleted: 0, failed: 0 };
 
 	const [referenced, known] = await Promise.all([
@@ -101,12 +111,15 @@ export const runUploadSweepOnce = async (
 			.from(organization)
 			.where(inArray(organization.id, [...new Set(old.values())])),
 	]);
+
 	const knownIds = new Set(known.map((row) => row.id));
 
 	let deleted = 0;
 	let failed = 0;
+
 	for (const [key, organizationId] of old) {
 		if (referenced.has(key) || !knownIds.has(organizationId)) continue;
+
 		try {
 			// One at a time on purpose: a daily pass over a few files has no
 			// deadline to meet.
@@ -117,5 +130,6 @@ export const runUploadSweepOnce = async (
 			options.logger?.warn(`Upload sweep: ${String(error)}`);
 		}
 	}
+
 	return { enabled: true, listed, deleted, failed };
 };

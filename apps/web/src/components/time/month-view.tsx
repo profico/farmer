@@ -33,6 +33,7 @@ function shiftMonthKey(monthKey: string, delta: number): string {
 	const total = (year ?? 1970) * 12 + ((month ?? 1) - 1) + delta;
 	const newYear = Math.floor(total / 12);
 	const newMonth = ((total % 12) + 12) % 12;
+
 	return `${newYear}-${String(newMonth + 1).padStart(2, "0")}`;
 }
 
@@ -56,8 +57,10 @@ export function MonthView({
 	// The org's week start, like the week strip and the week grid, so the weekend
 	// pair sits in the same columns as you move between the three views.
 	const weekStartsOn = useWeekStartsOn();
+
 	const leadingBlanks =
 		(weekdayInTz(monthStart, timezone) - weekStartsOn + 7) % 7;
+
 	const byDay = new Map(groupByDay(entries));
 	const today = dayKeyInTz(new Date(), timezone);
 	const weekRows = Math.ceil((leadingBlanks + days.length) / 7);
@@ -159,10 +162,12 @@ export function MonthView({
 					))}
 					{days.map((date, i) => {
 						const dayEntries = byDay.get(date) ?? [];
+
 						const dayTotal = dayEntries.reduce(
 							(sum, e) => sum + e.durationSeconds,
 							0,
 						);
+
 						const shown = dayEntries.slice(0, MAX_CHIPS_PER_DAY);
 						const extra = dayEntries.length - shown.length;
 						const isToday = date === today;

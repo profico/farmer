@@ -7,11 +7,14 @@ export const Route = createFileRoute("/api/v1/projects")({
 		handlers: {
 			GET: async ({ request }) => {
 				const ctx = await resolveApiOrgContext(request);
+
 				if (!ctx) {
 					return Response.json({ error: "Unauthorized" }, { status: 401 });
 				}
+
 				const { projectsService } = await import("@farmer/core/services");
 				const projects = await projectsService.list(ctx);
+
 				return Response.json(projects);
 			},
 		},

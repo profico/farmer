@@ -62,15 +62,19 @@ const bucketFor = (
 	now: number,
 ): Bucket => {
 	const buckets = userBuckets[surface];
+
 	if (buckets.size >= SWEEP_AT) {
 		for (const [key, bucket] of buckets) {
 			if (now - bucket.windowStartedAt >= WINDOW_MS) buckets.delete(key);
 		}
 	}
+
 	const existing = buckets.get(userId);
+
 	if (existing && now - existing.windowStartedAt < WINDOW_MS) return existing;
 	const fresh = { windowStartedAt: now, requests: 0, writes: 0 };
 	buckets.set(userId, fresh);
+
 	return fresh;
 };
 
@@ -92,6 +96,7 @@ export const admitRequest = (
 	const now = Date.now();
 	const bucket = bucketFor(surface, userId, now);
 	bucket.requests += 1;
+
 	return bucket.requests > MAX_REQUESTS
 		? { ok: false, retryAfterSeconds: retryAfter(bucket, now) }
 		: { ok: true };
@@ -110,6 +115,7 @@ export const admitWrite = (
 	const now = Date.now();
 	const bucket = bucketFor(surface, userId, now);
 	bucket.writes += 1;
+
 	return bucket.writes > MAX_WRITES
 		? { ok: false, retryAfterSeconds: retryAfter(bucket, now) }
 		: { ok: true };
@@ -165,22 +171,28 @@ const addressBucketFor = (
 ): AddressBucket => {
 	const buckets = addressBuckets[surface];
 	const existing = buckets.get(address);
+
 	if (existing && now - existing.windowStartedAt < WINDOW_MS) return existing;
+
 	if (buckets.size >= SWEEP_AT) {
 		for (const [key, bucket] of buckets) {
 			if (now - bucket.windowStartedAt >= WINDOW_MS) buckets.delete(key);
 		}
 	}
+
 	// Map iteration is insertion order, so the first key is the oldest window.
 	while (buckets.size >= MAX_TRACKED_ADDRESSES) {
 		const oldest = buckets.keys().next();
+
 		if (oldest.done) break;
 		buckets.delete(oldest.value);
 	}
+
 	const fresh = { windowStartedAt: now, requests: 0, authFailures: 0 };
 	// Delete first so a renewed window moves to the back of the eviction order.
 	buckets.delete(address);
 	buckets.set(address, fresh);
+
 	return fresh;
 };
 
@@ -190,10 +202,13 @@ const addressBucketFor = (
  *  that carry none share one bucket, which is the conservative answer. */
 export const callerAddress = (request: Request): string => {
 	const headers = request.headers;
+
 	const direct =
 		headers.get("cf-connecting-ip") ?? headers.get("x-real-ip") ?? null;
+
 	if (direct?.trim()) return direct.trim();
 	const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+
 	return forwarded || "unknown";
 };
 
@@ -208,9 +223,11 @@ export const admitCaller = (
 	const now = Date.now();
 	const bucket = addressBucketFor(surface, address, now);
 	bucket.requests += 1;
+
 	const over =
 		bucket.requests > MAX_REQUESTS_PER_ADDRESS ||
 		bucket.authFailures >= MAX_AUTH_FAILURES_PER_ADDRESS;
+
 	return over
 		? { ok: false, retryAfterSeconds: retryAfter(bucket, now) }
 		: { ok: true };

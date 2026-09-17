@@ -67,14 +67,18 @@ export const reviewsOnDay = async (
 			),
 		)
 		.orderBy(asc(timeEntryGithubPrActivity.createdAt));
+
 	const homes = new Map<string, string>();
 	const heldBy = new Map<string, HeldReview[]>();
+
 	for (const row of rows) {
 		if (!homes.has(row.pullRequestUrl)) {
 			homes.set(row.pullRequestUrl, row.timeEntryId);
 		}
+
 		heldBy.set(row.timeEntryId, [...(heldBy.get(row.timeEntryId) ?? []), row]);
 	}
+
 	return { homes, heldBy };
 };
 
@@ -114,6 +118,7 @@ export const deletedReviewsOnDay = async (
 		),
 		columns: { pullRequestUrl: true },
 	});
+
 	return new Set(rows.map((row) => row.pullRequestUrl));
 };
 
@@ -149,6 +154,7 @@ export const reviewsHeldBy = async (
 				eq(timeEntryGithubPrActivity.kind, "reviewed"),
 			),
 		);
+
 	return rows.map((row) => row.pullRequestUrl);
 };
 

@@ -30,6 +30,7 @@ const accessWith = (isAdmin: boolean) =>
 	new Access("u-1", "org-1", isAdmin, new Map());
 
 const PLAIN = accessWith(false);
+
 const ADMIN = accessWith(true);
 
 const named = (name: string) =>
@@ -56,6 +57,7 @@ describe("mcpToolDefinitions", () => {
 		const admin = mcpToolDefinitions(ADMIN).map((tool) => tool.name);
 
 		expect(plain.length).toBeLessThan(admin.length);
+
 		for (const name of plain) expect(admin).toContain(name);
 
 		// One anchor from each predicate, so a tool losing its `available` shows
@@ -113,6 +115,7 @@ describe("mcpToolDefinitions", () => {
 				tool.function.parameters,
 			]),
 		);
+
 		for (const tool of mcpToolDefinitions(ADMIN)) {
 			expect(tool.inputSchema).toEqual(
 				present(assistant.get(tool.name), `assistant schema for ${tool.name}`),

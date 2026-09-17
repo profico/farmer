@@ -35,6 +35,7 @@ import postgres from "postgres";
 const MIGRATION_LOCK_KEY = 7_924_611_305_198_542;
 
 const databaseUrl = process.env.DATABASE_URL;
+
 if (!databaseUrl) {
 	console.error("[migrate] DATABASE_URL is not set");
 	process.exit(1);
@@ -44,6 +45,7 @@ if (!databaseUrl) {
 // share the app's pool, and the advisory lock below is connection-scoped so
 // it must be acquired/held/released on this exact connection.
 const client = postgres(databaseUrl, { max: 1 });
+
 const db = drizzle(client);
 
 // Default: the `drizzle/` folder two levels up from this source file

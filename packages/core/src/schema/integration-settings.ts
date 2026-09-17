@@ -7,6 +7,7 @@ export const updateIntegrationSettingsInput = z.object({
 	githubAutoLoadCommits: z.boolean().optional(),
 	githubSyncCommitsAsWorkTime: z.boolean().optional(),
 });
+
 export type UpdateIntegrationSettingsInput = z.infer<
 	typeof updateIntegrationSettingsInput
 >;

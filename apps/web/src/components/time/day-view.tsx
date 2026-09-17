@@ -59,16 +59,19 @@ export function DayView({
 	// day must never wait on them.
 	const { data: targets } = useQuery(myTargetsQuery(orgSlug));
 	const total = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
+
 	// A fill ("rest of day") block is a catch-all, so it always sorts last; the
 	// stable sort otherwise preserves the server's insertion ordering.
 	const sortedEntries = [...entries].sort(
 		(a, b) => Number(a.fillsDay) - Number(b.fillsDay),
 	);
+
 	const today = dayKeyInTz(new Date(), timezone);
 	const isToday = date === today;
 	const holidayName = holidays.get(date);
 
 	const secondsByDay = new Map<string, number>();
+
 	for (const entry of weekEntries) {
 		secondsByDay.set(
 			entry.date,
@@ -79,6 +82,7 @@ export function DayView({
 	// "Copy from previous day" — Harvest's backfill affordance, and the closest
 	// honest equivalent to a start/stop timer in a duration-only model.
 	const previousDay = addDaysToKey(date, -1);
+
 	const copy = useMutation({
 		mutationFn: () =>
 			copyTimeEntriesDay({ data: { fromDate: previousDay, toDate: date } }),
@@ -86,6 +90,7 @@ export function DayView({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
+
 			// `skipped` is what the copy already found here — say so rather than
 			// reporting "Copied 0" for a second click, which reads like a failure.
 			if (result.copied === 0) {
@@ -94,8 +99,10 @@ export function DayView({
 						? "Already copied — the previous day's entries are all here"
 						: "Nothing to copy from the previous day",
 				);
+
 				return;
 			}
+
 			const noun = result.copied === 1 ? "entry" : "entries";
 			toast.success(
 				result.skipped > 0

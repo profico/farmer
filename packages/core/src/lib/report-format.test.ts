@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { formatHoursLabel } from "./report-format";
 
 const H = 3600;
+
 const M = 60;
 
 describe("formatHoursLabel", () => {

@@ -39,12 +39,14 @@ export const enterOrganization = createServerFn({ method: "POST" })
 		const { organization } = await import("@farmer/core/schema/auth");
 		const { membersService } = await import("@farmer/core/services");
 		const { toWeekStartsOn } = await import("@farmer/core/lib/time");
+
 		const { isPlatformAdminRole } =
 			await import("@farmer/core/lib/platform-admin");
 
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.slug, slug),
 		});
+
 		if (!org) return null;
 
 		// Membership before anything else: this is what decides whether the
@@ -54,6 +56,7 @@ export const enterOrganization = createServerFn({ method: "POST" })
 			organizationId: org.id,
 			userId: context.session.user.id,
 		});
+
 		if (!role) return null;
 
 		if (context.session.session.activeOrganizationId !== org.id) {
@@ -125,16 +128,21 @@ export const getDefaultOrgSlugForSession = createServerFn({
 				)
 				.where(eq(organization.id, activeOrganizationId))
 				.limit(1);
+
 			if (active) return active.slug;
 		}
+
 		const membership = await db.query.member.findFirst({
 			where: eq(member.userId, userId),
 			orderBy: (m, { asc }) => asc(m.createdAt),
 		});
+
 		if (!membership) return null;
+
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.id, membership.organizationId),
 		});
+
 		return org?.slug ?? null;
 	});
 
@@ -150,8 +158,10 @@ export const listMyPendingInvitations = createServerFn({ method: "GET" })
 	.handler(async ({ context }) => {
 		const email = context.session.user.email.toLowerCase();
 		const { db } = await import("@farmer/core/db");
+
 		const { invitation, organization } =
 			await import("@farmer/core/schema/auth");
+
 		return db
 			.select({
 				id: invitation.id,
@@ -173,6 +183,7 @@ export const getOrgSettings = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { organizationService } = await import("@farmer/core/services");
+
 		return organizationService.getSettings(context.ctx);
 	});
 
@@ -181,6 +192,7 @@ export const updateOrgSettings = createServerFn({ method: "POST" })
 	.validator(updateOrganizationSettingsInput)
 	.handler(async ({ data, context }) => {
 		const { organizationService } = await import("@farmer/core/services");
+
 		return organizationService.updateSettings(context.ctx, data);
 	});
 
@@ -190,6 +202,7 @@ export const getOrgPolicySettings = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
 		const { orgSettingsService } = await import("@farmer/core/services");
+
 		return orgSettingsService.get(context.ctx);
 	});
 
@@ -198,5 +211,6 @@ export const updateOrgPolicySettings = createServerFn({ method: "POST" })
 	.validator(updateOrgSettingsInput)
 	.handler(async ({ data, context }) => {
 		const { orgSettingsService } = await import("@farmer/core/services");
+
 		return orgSettingsService.update(context.ctx, data);
 	});

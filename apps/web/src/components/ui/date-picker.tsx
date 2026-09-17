@@ -57,6 +57,7 @@ export function DatePicker({
 	// Base UI focuses the popup itself by default, which leaves the calendar's
 	// roving tabstop unfocused and the arrow keys dead. Hand it the cell.
 	const gridRef = React.useRef<HTMLDivElement>(null);
+
 	const focusSelectedDay = () =>
 		gridRef.current?.querySelector<HTMLButtonElement>(
 			'[data-day][tabindex="0"]',

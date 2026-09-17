@@ -33,6 +33,7 @@ export const isSingleOrgMode = () => SINGLE_ORG_SLUG !== null;
  */
 export const findSingleOrg = async () => {
 	if (!SINGLE_ORG_SLUG) return null;
+
 	return (
 		(await db.query.organization.findFirst({
 			where: eq(organization.slug, SINGLE_ORG_SLUG),
@@ -70,6 +71,7 @@ export const findPendingInvitation = async (
  */
 export const bootstrapSingleOrg = async (userId: string): Promise<boolean> => {
 	if (!SINGLE_ORG_SLUG) return false;
+
 	const [created] = await db
 		.insert(organization)
 		.values({
@@ -87,6 +89,7 @@ export const bootstrapSingleOrg = async (userId: string): Promise<boolean> => {
 		})
 		.onConflictDoNothing({ target: organization.slug })
 		.returning();
+
 	if (!created) return false;
 
 	await db.insert(member).values({
@@ -100,5 +103,6 @@ export const bootstrapSingleOrg = async (userId: string): Promise<boolean> => {
 	// instance comes up with no tasks at all, which means no entry can be logged
 	// and the calendar/day-assembly engines have nothing to resolve.
 	await ensureOrgTasks(created.id);
+
 	return true;
 };

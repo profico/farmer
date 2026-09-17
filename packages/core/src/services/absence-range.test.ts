@@ -31,10 +31,13 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG = "abs-org";
+
 const ME = "u-abs-me";
+
 const OTHER = "u-abs-other";
 
 let harness: TestDb;
+
 let vacationTaskId: string;
 
 const ctx = (userId: string): Ctx => ({ organizationId: ORG, userId });
@@ -91,6 +94,7 @@ beforeAll(async () => {
 			isAbsence: true,
 		})
 		.returning();
+
 	if (!vacation) throw new Error("Failed to seed the Vacation task");
 	vacationTaskId = vacation.id;
 
@@ -146,6 +150,7 @@ describe("logAbsenceRange", () => {
 		const stored = await db.query.timeEntry.findMany({
 			where: eq(timeEntry.userId, ME),
 		});
+
 		expect(stored).toHaveLength(4);
 		// Absence carries no project by definition.
 		expect(stored.every((row) => row.projectId === null)).toBe(true);
@@ -157,6 +162,7 @@ describe("logAbsenceRange", () => {
 			from: "2026-05-26",
 			to: "2026-05-27",
 		};
+
 		await timeEntriesService.logAbsenceRange(ctx(ME), input);
 		const again = await timeEntriesService.logAbsenceRange(ctx(ME), input);
 
@@ -167,6 +173,7 @@ describe("logAbsenceRange", () => {
 		const stored = await db.query.timeEntry.findMany({
 			where: eq(timeEntry.userId, ME),
 		});
+
 		expect(stored).toHaveLength(2);
 	});
 
@@ -178,6 +185,7 @@ describe("logAbsenceRange", () => {
 			from: "2026-05-23",
 			to: "2026-05-24",
 		});
+
 		expect(result.booked).toHaveLength(0);
 		expect(result.skipped).toHaveLength(2);
 	});
@@ -194,6 +202,7 @@ describe("logAbsenceRange", () => {
 				scope: "organization" as const,
 			})
 			.returning();
+
 		if (!development) throw new Error("Failed to seed the Development task");
 
 		await expect(
@@ -217,6 +226,7 @@ describe("absenceTotals", () => {
 		const totals = await timeEntriesService.absenceTotals(ctx(ME), {
 			year: 2026,
 		});
+
 		expect(totals).toHaveLength(1);
 		expect(totals[0]?.taskName).toBe("Vacation");
 		expect(totals[0]?.seconds).toBe(4 * 8 * 3600);

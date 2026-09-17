@@ -51,8 +51,10 @@ import {
 // the `/$orgSlug` guard still stands in front of it.
 
 const SLIDE_MS = 7000;
+
 /** How long a press must last to read as "hold to pause" rather than a tap. */
 const HOLD_MS = 220;
+
 const EASE = easeOut;
 
 type Slide = {
@@ -75,6 +77,7 @@ const buildSlides = (
 			<IntroSlide rewind={rewind} firstName={firstName} theme={THEMES.violet} />
 		),
 	};
+
 	if (rewind.workedSeconds === 0) {
 		return [
 			intro,
@@ -113,6 +116,7 @@ const buildSlides = (
 			content: <MonthsSlide rewind={rewind} theme={THEMES.amber} />,
 		},
 	];
+
 	if (rewind.busiestDay) {
 		slides.push({
 			key: "big-day",
@@ -120,6 +124,7 @@ const buildSlides = (
 			content: <BigDaySlide rewind={rewind} theme={THEMES.coral} />,
 		});
 	}
+
 	if (rewind.projects.length > 0) {
 		slides.push({
 			key: "projects",
@@ -128,6 +133,7 @@ const buildSlides = (
 			content: <ProjectsSlide rewind={rewind} theme={THEMES.cobalt} />,
 		});
 	}
+
 	if (rewind.tasks.length > 0) {
 		slides.push({
 			key: "tasks",
@@ -136,6 +142,7 @@ const buildSlides = (
 			content: <TasksSlide rewind={rewind} theme={THEMES.paper} />,
 		});
 	}
+
 	if (rewind.words.length >= 3) {
 		slides.push({
 			key: "words",
@@ -143,7 +150,9 @@ const buildSlides = (
 			content: <WordsSlide rewind={rewind} theme={THEMES.violet} />,
 		});
 	}
+
 	const { pullRequests } = rewind;
+
 	if (
 		rewind.commits +
 			pullRequests.opened +
@@ -157,7 +166,9 @@ const buildSlides = (
 			content: <GithubSlide rewind={rewind} theme={THEMES.ink} />,
 		});
 	}
+
 	const { vacationDays, sickDays, otherDays } = rewind.timeOff;
+
 	if (vacationDays + sickDays + otherDays > 0) {
 		slides.push({
 			key: "time-off",
@@ -165,6 +176,7 @@ const buildSlides = (
 			content: <TimeOffSlide rewind={rewind} theme={THEMES.moss} />,
 		});
 	}
+
 	slides.push(
 		{
 			key: "persona",
@@ -180,6 +192,7 @@ const buildSlides = (
 			),
 		},
 	);
+
 	return slides;
 };
 
@@ -201,25 +214,34 @@ function useSlideClock(
 	useEffect(() => {
 		if (ms === null) {
 			progress.set(1);
+
 			return;
 		}
+
 		progress.set(0);
 		let elapsed = 0;
 		let last = performance.now();
 		let frame = 0;
+
 		const tick = (now: number) => {
 			if (!pausedRef.current) elapsed += now - last;
 			last = now;
 			progress.set(Math.min(1, elapsed / ms));
+
 			if (elapsed >= ms) {
 				doneRef.current();
+
 				return;
 			}
+
 			frame = requestAnimationFrame(tick);
 		};
+
 		frame = requestAnimationFrame(tick);
+
 		return () => cancelAnimationFrame(frame);
 	}, [slideKey, ms, progress]);
+
 	return progress;
 }
 
@@ -249,10 +271,12 @@ export function RewindFrame({
 		const root = document.documentElement;
 		const previous = root.style.overflow;
 		root.style.overflow = "hidden";
+
 		return () => {
 			root.style.overflow = previous;
 		};
 	}, []);
+
 	return (
 		<MotionConfig reducedMotion="user">
 			{/* Rendered open rather than through showModal(), so the server
@@ -319,6 +343,7 @@ export function RewindMessage({
 	actions?: ReactNode;
 }) {
 	const theme = THEMES.violet;
+
 	return (
 		<RewindFrame theme={theme} label={title}>
 			<div className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-6 px-5 sm:px-8">
@@ -357,9 +382,11 @@ export function RewindStory({
 
 	const share = async () => {
 		setSharing(true);
+
 		try {
 			const { shareRewindCard } = await import("./share-card.ts");
 			const outcome = await shareRewindCard(rewind, firstName);
+
 			if (outcome === "downloaded")
 				toast.success("Saved your Rewind as an image.");
 		} catch {
@@ -400,6 +427,7 @@ export function RewindStory({
 			</button>
 		</>
 	);
+
 	const slides = buildSlides(rewind, firstName, actions);
 	const last = slides.length - 1;
 	const current = Math.min(index, last);
@@ -433,9 +461,11 @@ export function RewindStory({
 				setUserPaused((p) => !p);
 			}
 		};
+
 		const onVisibility = () => setHidden(document.visibilityState === "hidden");
 		window.addEventListener("keydown", onKey);
 		document.addEventListener("visibilitychange", onVisibility);
+
 		return () => {
 			window.removeEventListener("keydown", onKey);
 			document.removeEventListener("visibilitychange", onVisibility);
@@ -465,8 +495,10 @@ export function RewindStory({
 		onClick: () => {
 			if (heldRef.current) {
 				heldRef.current = false;
+
 				return;
 			}
+
 			go();
 		},
 	});

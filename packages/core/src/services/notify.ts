@@ -136,6 +136,7 @@ export const deliveryBlocks = async (
 	kind: NotifyKind,
 ): Promise<Map<string, DeliveryBlock>> => {
 	const blocks = new Map<string, DeliveryBlock>();
+
 	if (userIds.length === 0) return blocks;
 	const policy = KINDS[kind];
 
@@ -208,6 +209,7 @@ export const deliveryBlocks = async (
 			blocks.set(userId, "never-signed-in");
 		} else if (optedOutIds.has(userId)) blocks.set(userId, "opted-out");
 	}
+
 	return blocks;
 };
 
@@ -226,6 +228,7 @@ const pushAdapter: NotifyAdapter = async (to, event) => {
 		url: event.url,
 		tag: event.tag,
 	});
+
 	// The push transport prunes dead endpoints and swallows the rest, so it can
 	// report that it ran but not how many devices woke up. Reporting "sent"
 	// here would be a claim it cannot support.
@@ -242,9 +245,11 @@ export const slackText = (event: NotifyEvent): string => {
 		(event.title
 			? `*${slackEscape(event.title)}*\n${slackEscape(event.body)}`
 			: slackEscape(event.body));
+
 	const link = event.url
 		? slackLink(event.url, event.linkLabel ?? "Open Farmer")
 		: null;
+
 	return link ? `${text}\n${link}` : text;
 };
 
@@ -287,6 +292,7 @@ export const notify = async (
 		[to.userId],
 		event.kind,
 	);
+
 	if (blocks.has(to.userId)) return { ...NOTHING_SENT };
 
 	const results = await Promise.all(
@@ -301,6 +307,7 @@ export const notify = async (
 					userId: to.userId,
 					error,
 				});
+
 				return [channel, false] as const;
 			}
 		}),

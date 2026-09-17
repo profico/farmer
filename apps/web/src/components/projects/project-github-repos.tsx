@@ -29,6 +29,7 @@ import {
 type AvailableRepo = Awaited<
 	ReturnType<typeof listAvailableGithubRepos>
 >["repos"][number];
+
 type LinkedRepo = Awaited<ReturnType<typeof listProjectGithubRepos>>[number];
 
 /** A link the server has not answered yet — enough to draw its row. */
@@ -47,10 +48,14 @@ const LIST_CLASS =
 /** How old the repo list is: "just now", "12 min ago", "3 h ago", "2 d ago". */
 const formatAge = (fetchedAt: Date, now: number) => {
 	const minutes = Math.floor((now - fetchedAt.getTime()) / 60_000);
+
 	if (minutes < 1) return "just now";
+
 	if (minutes < 60) return `${minutes} min ago`;
 	const hours = Math.floor(minutes / 60);
+
 	if (hours < 24) return `${hours} h ago`;
+
 	return `${Math.floor(hours / 24)} d ago`;
 };
 
@@ -97,20 +102,24 @@ export function ProjectGithubRepos({
 		...githubConnectionStatusQuery(orgSlug),
 		enabled: active,
 	});
+
 	const { data: linkedRepos } = useQuery({
 		...projectGithubReposQuery(orgSlug, projectId ?? ""),
 		enabled: active,
 	});
+
 	const { data: available } = useQuery({
 		...availableGithubReposQuery(orgSlug),
 		enabled: active && !!status?.connected,
 	});
+
 	const availableRepos = available?.repos;
 
 	// Re-render once a minute, so "Updated 3 min ago" keeps counting.
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => {
 		const timer = setInterval(() => setNow(Date.now()), 60_000);
+
 		return () => clearInterval(timer);
 	}, []);
 
@@ -194,6 +203,7 @@ export function ProjectGithubRepos({
 				orgSlug,
 				repo.projectId,
 			).queryKey;
+
 			await Promise.all([
 				queryClient.cancelQueries({ queryKey: linkedKey }),
 				queryClient.cancelQueries({
@@ -232,7 +242,9 @@ export function ProjectGithubRepos({
 					const pending = pendingLinks.find(
 						(p) => p.githubRepoId === r.githubRepoId,
 					);
+
 					if (!pending) return r;
+
 					return {
 						...r,
 						linkedTo: {
@@ -253,15 +265,18 @@ export function ProjectGithubRepos({
 	const visibleLinkedRepos = (linkedRepos ?? []).filter((r) =>
 		matches(r.fullName),
 	);
+
 	const visiblePendingLinks = pendingLinks.filter(
 		(p) => p.projectId === projectId && matches(p.fullName),
 	);
+
 	// Everything this project doesn't already hold, held-elsewhere rows included
 	// — they are the answer to "why can't I find it?", so hiding them turns a
 	// stated rule back into a mystery.
 	const linkableRepos = (availableRepos ?? []).filter(
 		(r) => r.linkedTo?.projectId !== projectId && matches(r.fullName),
 	);
+
 	// An installation that reaches a whole organization lists hundreds of repos,
 	// and nobody scrolls those for the one they know the name of — so past a
 	// handful the list waits for a search instead of drawing all of them.

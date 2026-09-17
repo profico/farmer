@@ -19,7 +19,9 @@ import {
 } from "./webhook-signature";
 
 const SECRET = "whsec_test_secret";
+
 const BODY = '{"id":"evt_1","kind":"webhook.test"}';
+
 const T = 1_758_096_662;
 
 describe("the signed string", () => {
@@ -28,6 +30,7 @@ describe("the signed string", () => {
 		const expected = createHmac("sha256", SECRET)
 			.update(`${String(T)}.${BODY}`, "utf8")
 			.digest("hex");
+
 		expect(webhookSignatureHeader([SECRET], BODY, T)).toBe(
 			`t=${String(T)},v1=${expected}`,
 		);

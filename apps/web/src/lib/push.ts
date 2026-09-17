@@ -24,6 +24,7 @@ export function pushSupported(): boolean {
 
 export function currentPermission(): NotificationPermission | "unsupported" {
 	if (!pushSupported()) return "unsupported";
+
 	return Notification.permission;
 }
 
@@ -36,13 +37,17 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 	// result satisfies BufferSource for pushManager.subscribe under lib.dom.
 	const buffer = new ArrayBuffer(raw.length);
 	const output = new Uint8Array(buffer);
+
 	for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+
 	return output;
 }
 
 async function ensureRegistration(): Promise<ServiceWorkerRegistration> {
 	const existing = await navigator.serviceWorker.getRegistration(SW_URL);
+
 	if (existing) return existing;
+
 	return navigator.serviceWorker.register(SW_URL, { scope: "/" });
 }
 
@@ -55,15 +60,18 @@ export async function enablePush(): Promise<
 	if (!pushSupported()) return "unsupported";
 
 	const { key } = await getVapidPublicKey();
+
 	if (!key) return "unconfigured";
 
 	const permission = await Notification.requestPermission();
+
 	if (permission !== "granted") return "denied";
 
 	const registration = await ensureRegistration();
 	await navigator.serviceWorker.ready;
 
 	let subscription = await registration.pushManager.getSubscription();
+
 	if (!subscription) {
 		subscription = await registration.pushManager.subscribe({
 			userVisibleOnly: true,
@@ -72,9 +80,11 @@ export async function enablePush(): Promise<
 	}
 
 	const json = subscription.toJSON();
+
 	if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
 		throw new Error("Push subscription is missing required keys");
 	}
+
 	await savePushSubscription({
 		data: {
 			endpoint: json.endpoint,
@@ -82,6 +92,7 @@ export async function enablePush(): Promise<
 			userAgent: navigator.userAgent,
 		},
 	});
+
 	return "subscribed";
 }
 
@@ -89,8 +100,10 @@ export async function enablePush(): Promise<
 export async function isSubscribed(): Promise<boolean> {
 	if (!pushSupported() || Notification.permission !== "granted") return false;
 	const registration = await navigator.serviceWorker.getRegistration(SW_URL);
+
 	if (!registration) return false;
 	const subscription = await registration.pushManager.getSubscription();
+
 	return !!subscription;
 }
 
@@ -98,8 +111,10 @@ export async function isSubscribed(): Promise<boolean> {
 export async function disablePush(): Promise<void> {
 	if (!pushSupported()) return;
 	const registration = await navigator.serviceWorker.getRegistration(SW_URL);
+
 	if (!registration) return;
 	const subscription = await registration.pushManager.getSubscription();
+
 	if (!subscription) return;
 	const endpoint = subscription.endpoint;
 	await subscription.unsubscribe().catch(() => {});

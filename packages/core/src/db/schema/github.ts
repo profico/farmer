@@ -20,10 +20,12 @@ import { project, timeEntry } from "./domain";
 
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });
+
 const org = () =>
 	text("organization_id")
 		.notNull()
 		.references(() => organization.id, { onDelete: "cascade" });
+
 const stamps = {
 	createdAt: ts("created_at").notNull().defaultNow(),
 	updatedAt: ts("updated_at").notNull().defaultNow(),

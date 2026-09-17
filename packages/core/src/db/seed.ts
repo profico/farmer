@@ -25,6 +25,7 @@ if (!org) {
 }
 
 await ensureSiteTasks();
+
 await ensureOrgTasks(org.id);
 
 // Every project belongs to a client, and internal work goes to the org's own
@@ -39,6 +40,7 @@ const [seedClient] = await db
 	.insert(client)
 	.values({ organizationId: org.id, name: "Acme Inc." })
 	.returning();
+
 if (!seedClient) throw new Error("Failed to insert seed client");
 
 // One project per type that behaves differently, so each type's behaviour is
@@ -53,6 +55,7 @@ const [productTeam] = await db
 		type: "product_team",
 	})
 	.returning();
+
 if (!productTeam) throw new Error("Failed to insert seed project");
 
 await db.insert(project).values({
@@ -87,6 +90,7 @@ const members = await db.query.member.findMany({
 	where: eq(member.organizationId, org.id),
 	columns: { userId: true },
 });
+
 if (members.length > 0) {
 	await db
 		.insert(projectMember)
@@ -120,6 +124,7 @@ if (members.length > 0) {
 // compute from. In production these come from the official calendar (or are
 // typed in by an admin); 160h is the common Croatian month.
 const now = new Date();
+
 await db
 	.insert(monthlyHourFund)
 	.values({
@@ -133,4 +138,5 @@ await db
 console.log(
 	`Seeded clients, projects, assignments and an hour fund for "${org.name}" (${org.slug}).`,
 );
+
 process.exit(0);

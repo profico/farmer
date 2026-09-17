@@ -30,6 +30,7 @@ import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-rbfill";
+
 const USER_ID = "user-rbfill";
 
 /** Fresh per call — the timezone and holiday memos both hang off the object. */
@@ -39,11 +40,15 @@ const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 // point being that `materializeRange` is called with an explicit range here, so
 // the result must not depend on today's date.
 const DAY = "2026-02-04";
+
 const HOURS_8 = 28800;
+
 const HALF_HOUR = 1800;
 
 let harness: TestDb;
+
 let devTaskId = "";
+
 let breakTaskId = "";
 
 beforeAll(async () => {
@@ -82,12 +87,14 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = dev?.id ?? "";
 
 	// The Break task is site-scoped and seeded by the migrations.
 	const seededBreak = await db.query.task.findFirst({
 		where: eq(task.systemKey, "break"),
 	});
+
 	breakTaskId = seededBreak?.id ?? "";
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {

@@ -52,23 +52,31 @@ export const unfiled: Command = {
 			0,
 			UNFILED_USAGE,
 		);
+
 		const out = createOutput(values.json === true, runtime.env);
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const day = parseDay(values.date ?? "today", scope.clock);
+
 		const span = values.week
 			? weekAround(day, scope.clock.weekStartsOn)
 			: { from: day, to: day };
+
 		const items = await listUnfiled(session, scope, span);
 
 		if (out.json) {
 			printJson(items);
+
 			return;
 		}
+
 		print(bold(out, `Unfiled, ${spanTitle(span)}`));
+
 		if (items.length === 0) {
 			print("Nothing to file.");
+
 			return;
 		}
+
 		const total = items.reduce((sum, item) => sum + item.durationSeconds, 0);
 		printTable(out, {
 			columns: [
@@ -120,19 +128,25 @@ export const file: Command = {
 			Number.POSITIVE_INFINITY,
 			FILE_USAGE,
 		);
+
 		const out = createOutput(values.json === true, runtime.env);
 		const { session, scope } = await openOrg(runtime, out, values.org);
+
 		const span = weekAround(
 			parseDay(values.date ?? "today", scope.clock),
 			scope.clock.weekStartsOn,
 		);
+
 		const candidates = await listUnfiled(session, scope, span);
 
 		let ids: string[];
+
 		if (positionals.length > 0) {
 			ids = positionals.map((typed) => {
 				const found = findByIdPrefix(candidates, typed);
+
 				if (found) return found.id;
+
 				if (isUuid(typed)) return typed.toLowerCase();
 				throw new UsageError(
 					`No unfiled entry in the week of ${span.from} has an id that starts with "${typed}".`,
@@ -142,8 +156,10 @@ export const file: Command = {
 			if (candidates.length === 0) {
 				if (out.json) printJson({ filed: 0, failed: 0, firstError: null });
 				else print(`Nothing to file in the week of ${span.from}.`);
+
 				return;
 			}
+
 			requireInteractive(
 				out,
 				"Pass the ids to file. `farmer unfiled --week` shows them.",
@@ -161,7 +177,9 @@ export const file: Command = {
 		const projects = await session.api.get<ApiProject[]>(
 			scope.path("/projects"),
 		);
+
 		const project = await chooseProject(out, projects, values.project);
+
 		const result = await session.api.post<ApiFileResult, FileTimeEntriesInput>(
 			scope.path("/time-entries/file"),
 			{
@@ -173,11 +191,14 @@ export const file: Command = {
 
 		if (out.json) {
 			printJson(result);
+
 			return;
 		}
+
 		print(
 			`Filed ${plural(result.filed, "entry", "entries")} on ${project.name}.`,
 		);
+
 		if (result.failed > 0) {
 			warn(
 				`${plural(result.failed, "entry", "entries")} could not be filed${result.firstError ? `: ${result.firstError}` : "."}`,
@@ -190,15 +211,19 @@ export const file: Command = {
 const reportCopy = (json: boolean, result: ApiCopyResult, what: string) => {
 	if (json) {
 		printJson(result);
+
 		return;
 	}
+
 	const skipped =
 		result.skipped > 0
 			? ` ${plural(result.skipped, "entry", "entries")} skipped.`
 			: "";
+
 	print(
 		`Copied ${plural(result.copied, "entry", "entries")} ${what}.${skipped}`,
 	);
+
 	if (result.blockedDays.length > 0) {
 		warn(
 			`Not copied onto ${result.blockedDays.join(", ")}: the day would pass 24 hours.`,
@@ -221,21 +246,27 @@ export const copyDay: Command = {
 			2,
 			COPY_DAY_USAGE,
 		);
+
 		const out = createOutput(values.json === true, runtime.env);
 		const [fromText, toText] = positionals;
+
 		if (fromText === undefined) {
 			throw new UsageError(`Say which day to copy.\nUsage: ${COPY_DAY_USAGE}`);
 		}
+
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const fromDate = parseDay(fromText, scope.clock);
 		const toDate = parseDay(toText ?? "today", scope.clock);
+
 		if (fromDate === toDate) {
 			throw new UsageError("A day cannot be copied onto itself.");
 		}
+
 		const result = await session.api.post<ApiCopyResult, CopyTimeEntriesInput>(
 			scope.path("/time-entries/copy-day"),
 			{ fromDate, toDate },
 		);
+
 		reportCopy(
 			out.json,
 			result,
@@ -265,17 +296,21 @@ export const copyWeek: Command = {
 			2,
 			COPY_WEEK_USAGE,
 		);
+
 		const out = createOutput(values.json === true, runtime.env);
 		const [fromText, toText] = positionals;
+
 		if (values.last && fromText !== undefined) {
 			throw new UsageError("Pass --last or the weeks, not both.");
 		}
+
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const weekStartsOn = scope.clock.weekStartsOn;
 		const thisWeek = startOfWeekKey(todayKey(scope.clock), weekStartsOn);
 
 		let toWeekStart = values.last ? addDaysToKey(thisWeek, -7) : thisWeek;
 		let fromWeekStart = addDaysToKey(toWeekStart, -7);
+
 		if (fromText !== undefined) {
 			fromWeekStart = startOfWeekKey(
 				parseDay(fromText, scope.clock),
@@ -285,13 +320,16 @@ export const copyWeek: Command = {
 				? startOfWeekKey(parseDay(toText, scope.clock), weekStartsOn)
 				: thisWeek;
 		}
+
 		if (fromWeekStart === toWeekStart) {
 			throw new UsageError("A week cannot be copied onto itself.");
 		}
+
 		const result = await session.api.post<ApiCopyResult, CopyWeekEntriesInput>(
 			scope.path("/time-entries/copy-week"),
 			{ fromWeekStart, toWeekStart },
 		);
+
 		reportCopy(
 			out.json,
 			result,
@@ -320,11 +358,13 @@ export const off: Command = {
 			2,
 			OFF_USAGE,
 		);
+
 		const out = createOutput(values.json === true, runtime.env);
 		const [taskQuery, spanText] = positionals;
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const span = parseDaySpan(spanText ?? "today", scope.clock);
 		const taskList = await session.api.get<ApiTaskList>(scope.path("/tasks"));
+
 		const task = await chooseTask(
 			out,
 			taskList.absenceTasks,
@@ -337,7 +377,9 @@ export const off: Command = {
 			from: span.from,
 			to: span.to,
 		};
+
 		if (values.message) body.description = values.message;
+
 		const result = await session.api.post<
 			ApiAbsenceResult,
 			LogAbsenceRangeInput
@@ -345,15 +387,19 @@ export const off: Command = {
 
 		if (out.json) {
 			printJson(result);
+
 			return;
 		}
+
 		if (result.booked.length === 0 && result.skipped.length === 0) {
 			throw new CliError("The server booked nothing.");
 		}
+
 		const bookedSeconds = result.booked.reduce(
 			(sum, day) => sum + day.durationSeconds,
 			0,
 		);
+
 		print(bold(out, `${task.name}, ${spanTitle(span)}`));
 		printTable(out, {
 			columns: [

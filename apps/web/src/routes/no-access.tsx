@@ -31,10 +31,12 @@ import { listMyPendingInvitations } from "#/server/organization.ts";
 export const Route = createFileRoute("/no-access")({
 	loader: async () => {
 		await requireSession();
+
 		const [config, invitations] = await Promise.all([
 			getPublicAppConfig(),
 			listMyPendingInvitations(),
 		]);
+
 		return { config, invitations };
 	},
 	component: NoAccessPage,
@@ -50,14 +52,19 @@ function NoAccessPage() {
 
 	const handleAccept = async (invitationId: string) => {
 		setBusyId(invitationId);
+
 		const { error } = await authClient.organization.acceptInvitation({
 			invitationId,
 		});
+
 		setBusyId(null);
+
 		if (error) {
 			toast.error(error.message ?? "Could not accept invitation");
+
 			return;
 		}
+
 		await navigate({ to: "/" });
 	};
 

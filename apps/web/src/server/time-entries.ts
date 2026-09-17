@@ -24,6 +24,7 @@ export const listTimeEntriesRange = createServerFn({ method: "GET" })
 	.validator(listTimeEntriesRangeInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.listRange(context.ctx, data);
 	});
 
@@ -35,6 +36,7 @@ export const createTimeEntry = createServerFn({ method: "POST" })
 		const entry = await timeEntriesService.create(context.ctx, data);
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
+
 		if (posthog) {
 			posthog.capture({
 				distinctId: context.ctx.userId,
@@ -50,6 +52,7 @@ export const createTimeEntry = createServerFn({ method: "POST" })
 			});
 			await posthog.flush();
 		}
+
 		return entry;
 	});
 
@@ -61,6 +64,7 @@ export const updateTimeEntry = createServerFn({ method: "POST" })
 		const entry = await timeEntriesService.update(context.ctx, data);
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
+
 		if (posthog) {
 			posthog.capture({
 				distinctId: context.ctx.userId,
@@ -76,6 +80,7 @@ export const updateTimeEntry = createServerFn({ method: "POST" })
 			});
 			await posthog.flush();
 		}
+
 		return entry;
 	});
 
@@ -84,6 +89,7 @@ export const updateTimeEntryDescription = createServerFn({ method: "POST" })
 	.validator(updateTimeEntryDescriptionInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.updateDescription(context.ctx, data);
 	});
 
@@ -92,6 +98,7 @@ export const updateTimeEntryDuration = createServerFn({ method: "POST" })
 	.validator(updateTimeEntryDurationInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.updateDuration(context.ctx, data);
 	});
 
@@ -103,6 +110,7 @@ export const listUnfiledEntries = createServerFn({ method: "GET" })
 	.validator(listTimeEntriesRangeInput)
 	.handler(async ({ data, context }) => {
 		const { listUnfiledForUser } = await import("@farmer/core/services");
+
 		return listUnfiledForUser(context.ctx, data);
 	});
 
@@ -114,6 +122,7 @@ export const fileTimeEntries = createServerFn({ method: "POST" })
 		const entries = await timeEntriesService.fileMany(context.ctx, data);
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
+
 		if (posthog) {
 			posthog.capture({
 				distinctId: context.ctx.userId,
@@ -124,6 +133,7 @@ export const fileTimeEntries = createServerFn({ method: "POST" })
 			});
 			await posthog.flush();
 		}
+
 		return entries;
 	});
 
@@ -135,6 +145,7 @@ export const copyTimeEntriesWeek = createServerFn({ method: "POST" })
 		const entries = await timeEntriesService.copyWeek(context.ctx, data);
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
+
 		if (posthog) {
 			posthog.capture({
 				distinctId: context.ctx.userId,
@@ -145,6 +156,7 @@ export const copyTimeEntriesWeek = createServerFn({ method: "POST" })
 			});
 			await posthog.flush();
 		}
+
 		return entries;
 	});
 
@@ -153,6 +165,7 @@ export const setTimeEntryOvertime = createServerFn({ method: "POST" })
 	.validator(setTimeEntryOvertimeInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.setOvertime(context.ctx, data);
 	});
 
@@ -161,6 +174,7 @@ export const deleteTimeEntry = createServerFn({ method: "POST" })
 	.validator(deleteTimeEntryInput)
 	.handler(async ({ data: timeEntryId, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.remove(context.ctx, timeEntryId);
 	});
 
@@ -174,6 +188,7 @@ export const setWeekCell = createServerFn({ method: "POST" })
 	.validator(setWeekCellInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.setWeekCell(context.ctx, data);
 	});
 
@@ -182,6 +197,7 @@ export const copyTimeEntriesDay = createServerFn({ method: "POST" })
 	.validator(copyTimeEntriesInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.copyDay(context.ctx, data);
 	});
 
@@ -196,6 +212,7 @@ export const logAbsenceRange = createServerFn({ method: "POST" })
 	.validator(logAbsenceRangeInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.logAbsenceRange(context.ctx, data);
 	});
 
@@ -208,6 +225,7 @@ export const overrideAbsenceEntry = createServerFn({ method: "POST" })
 	.validator(overrideAbsenceEntryInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.overrideAbsence(context.ctx, data);
 	});
 
@@ -216,6 +234,7 @@ export const listAbsenceForUser = createServerFn({ method: "GET" })
 	.validator(listAbsenceForUserInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.listAbsenceForUser(context.ctx, data);
 	});
 
@@ -224,6 +243,7 @@ export const createAbsenceForUser = createServerFn({ method: "POST" })
 	.validator(createAbsenceForUserInput)
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.createAbsenceForUser(context.ctx, data);
 	});
 
@@ -232,5 +252,6 @@ export const removeAbsenceEntry = createServerFn({ method: "POST" })
 	.validator(deleteTimeEntryInput)
 	.handler(async ({ data: timeEntryId, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
+
 		return timeEntriesService.removeAbsence(context.ctx, timeEntryId);
 	});

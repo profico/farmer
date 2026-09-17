@@ -33,14 +33,17 @@ export type PushPayload = {
 // fine without push (sendPush becomes a no-op) so a dev without VAPID keys
 // isn't blocked. Guarded so we only call setVapidDetails when fully configured.
 let vapidReady = false;
+
 const configureVapid = (): boolean => {
 	if (vapidReady) return true;
 	const publicKey = process.env.VAPID_PUBLIC_KEY;
 	const privateKey = process.env.VAPID_PRIVATE_KEY;
 	const subject = process.env.VAPID_SUBJECT ?? "mailto:admin@example.com";
+
 	if (!publicKey || !privateKey) return false;
 	webpush.setVapidDetails(subject, publicKey, privateKey);
 	vapidReady = true;
+
 	return true;
 };
 
@@ -54,7 +57,9 @@ const settingsFor = async (
 			eq(notificationSettings.userId, userId),
 		),
 	});
+
 	if (!row) return { ...DEFAULTS };
+
 	return {
 		logReminders: row.logReminders,
 	};
@@ -129,7 +134,9 @@ export const notificationsService = {
 				},
 			})
 			.returning();
+
 		if (!row) throw new Error("Failed to save notification settings");
+
 		return {
 			logReminders: row.logReminders,
 		};
@@ -148,6 +155,7 @@ export const notificationsService = {
 				eq(notificationSettings.userId, userId),
 			),
 		});
+
 		return row?.lastLogReminderDay ?? null;
 	},
 
@@ -184,6 +192,7 @@ export const notificationsService = {
 	sendPush: async (userId: string, payload: PushPayload): Promise<void> => {
 		if (!configureVapid()) return;
 		let subs: (typeof pushSubscription.$inferSelect)[];
+
 		try {
 			subs = await db.query.pushSubscription.findMany({
 				where: eq(pushSubscription.userId, userId),
@@ -193,8 +202,10 @@ export const notificationsService = {
 				userId,
 				error,
 			});
+
 			return;
 		}
+
 		const body = JSON.stringify(payload);
 		await Promise.all(
 			subs.map(async (sub) => {
@@ -211,14 +222,17 @@ export const notificationsService = {
 					// code. The field is read as optional and compared to two literals, so an error
 					// from anywhere else simply fails both checks and is logged rather than acted on.
 					const status = (error as { statusCode?: number }).statusCode;
+
 					if (status === 404 || status === 410) {
 						// Subscription expired/unsubscribed — drop it.
 						await db
 							.delete(pushSubscription)
 							.where(eq(pushSubscription.endpoint, sub.endpoint))
 							.catch(() => {});
+
 						return;
 					}
+
 					console.error("[notifications] push send failed", {
 						userId,
 						endpoint: sub.endpoint,

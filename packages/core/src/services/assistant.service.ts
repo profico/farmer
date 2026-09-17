@@ -201,7 +201,9 @@ const loadSettings = async (ctx: Ctx) =>
 const requireKey = async (ctx: Ctx) => {
 	if (!isAssistantEnabled()) throw new AssistantDisabledError();
 	const row = await loadSettings(ctx);
+
 	if (!row || !row.enabled) throw new AssistantNotConfiguredError();
+
 	return row;
 };
 
@@ -247,6 +249,7 @@ const settings = {
 	 *  writes below are admin-gated. */
 	get: async (ctx: Ctx): Promise<AssistantSettingsView> => {
 		const row = await loadSettings(ctx);
+
 		if (!row) {
 			return {
 				configured: false,
@@ -257,6 +260,7 @@ const settings = {
 				connectedAt: null,
 			};
 		}
+
 		return {
 			configured: true,
 			enabled: row.enabled,
@@ -271,6 +275,7 @@ const settings = {
 
 	set: async (ctx: Ctx, input: SetAssistantSettingsInput) => {
 		await requireAdmin(ctx);
+
 		// Refused rather than stored when the deployment flag is off: an admin
 		// pasting a key into a switched-off feature and being told "connected"
 		// would be told something untrue about what happens next.
@@ -281,6 +286,7 @@ const settings = {
 		await chatModel().verifyKey(input.apiKey);
 
 		const existing = await loadSettings(ctx);
+
 		if (existing) {
 			await db
 				.update(assistantSettings)
@@ -292,27 +298,36 @@ const settings = {
 					updatedAt: new Date(),
 				})
 				.where(eq(assistantSettings.id, existing.id));
+
 			return { configured: true };
 		}
+
 		await db.insert(assistantSettings).values({
 			organizationId: ctx.organizationId,
 			apiKey: input.apiKey,
 			defaultModel: input.defaultModel,
 			connectedByUserId: ctx.userId,
 		});
+
 		return { configured: true };
 	},
 
 	update: async (ctx: Ctx, input: UpdateAssistantSettingsInput) => {
 		await requireAdmin(ctx);
+
 		if (!isAssistantEnabled()) throw new AssistantDisabledError();
 		const existing = await loadSettings(ctx);
+
 		if (!existing) throw new AssistantNotConfiguredError();
+
 		const patch: Partial<typeof assistantSettings.$inferInsert> = {
 			updatedAt: new Date(),
 		};
+
 		if (input.defaultModel) patch.defaultModel = input.defaultModel;
+
 		if (input.enabled !== undefined) patch.enabled = input.enabled;
+
 		// `undefined` leaves the rules alone; an explicit null clears them.
 		if (input.systemPrompt !== undefined) {
 			patch.systemPrompt = input.systemPrompt || null;
@@ -322,6 +337,7 @@ const settings = {
 			.update(assistantSettings)
 			.set(patch)
 			.where(eq(assistantSettings.id, existing.id));
+
 		return { ok: true };
 	},
 
@@ -339,6 +355,7 @@ const settings = {
 		await db
 			.delete(assistantSettings)
 			.where(eq(assistantSettings.organizationId, ctx.organizationId));
+
 		return { ok: true };
 	},
 
@@ -346,10 +363,13 @@ const settings = {
 	 *  call that needs the key without a conversation behind it. */
 	listModels: async (ctx: Ctx): Promise<OpenRouterModel[]> => {
 		await requireAdmin(ctx);
+
 		// A switched-off feature makes no outbound calls, catalogue included.
 		if (!isAssistantEnabled()) throw new AssistantDisabledError();
 		const row = await loadSettings(ctx);
+
 		if (!row) throw new AssistantNotConfiguredError();
+
 		return chatModel().listModels(row.apiKey);
 	},
 };
@@ -369,7 +389,9 @@ const requireConversation = async (ctx: Ctx, conversationId: string) => {
 	const row = await db.query.assistantConversation.findFirst({
 		where: conversationWhere(ctx, conversationId),
 	});
+
 	if (!row) throw new AssistantError("Conversation not found");
+
 	return row;
 };
 
@@ -394,6 +416,7 @@ const conversations = {
 
 	create: async (ctx: Ctx, input: CreateConversationInput = {}) => {
 		const config = await requireKey(ctx);
+
 		const [row] = await db
 			.insert(assistantConversation)
 			.values({
@@ -406,16 +429,20 @@ const conversations = {
 				model: config.defaultModel,
 			})
 			.returning();
+
 		if (!row) throw new AssistantError("Could not start a conversation");
+
 		return row;
 	},
 
 	get: async (ctx: Ctx, conversationId: string) => {
 		const conversation = await requireConversation(ctx, conversationId);
+
 		const messages = await db.query.assistantMessage.findMany({
 			where: eq(assistantMessage.conversationId, conversation.id),
 			orderBy: asc(assistantMessage.createdAt),
 		});
+
 		return { conversation, messages };
 	},
 
@@ -425,6 +452,7 @@ const conversations = {
 			.update(assistantConversation)
 			.set({ title: input.title, updatedAt: new Date() })
 			.where(conversationWhere(ctx, input.conversationId));
+
 		return { ok: true };
 	},
 
@@ -434,6 +462,7 @@ const conversations = {
 		await db
 			.delete(assistantConversation)
 			.where(conversationWhere(ctx, conversationId));
+
 		return { ok: true };
 	},
 };
@@ -459,6 +488,7 @@ type DbClient = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 const turnRows = (history: StoredMessage[], index: number) => {
 	const rest = history.slice(index + 1);
 	const next = rest.findIndex((row) => row.role === "assistant");
+
 	return next === -1 ? rest : rest.slice(0, next);
 };
 
@@ -491,18 +521,24 @@ const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
 	rows.forEach((row, index) => {
 		// Emitted beside its call, below — never where it happens to sit.
 		if (row.role === "tool") return;
+
 		if (row.role === "user") {
 			wire.push({ role: "user", content: row.content });
+
 			return;
 		}
+
 		const message: ChatMessage = { role: "assistant", content: row.content };
+
 		// Only when there are calls: an assistant message carrying an EMPTY
 		// `tool_calls` array is not the same request as one carrying none, and
 		// the API rejects the former.
 		if (!row.toolCalls?.length) {
 			wire.push(message);
+
 			return;
 		}
+
 		message.tool_calls = row.toolCalls.map((call) => ({
 			id: call.id,
 			type: "function" as const,
@@ -510,6 +546,7 @@ const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
 		}));
 		wire.push(message);
 		const answers = turnRows(rows, index).filter((r) => r.role === "tool");
+
 		for (const call of row.toolCalls) {
 			const answer = answers.find((r) => r.toolCallId === call.id);
 			wire.push({
@@ -519,6 +556,7 @@ const toWireMessages = (rows: StoredMessage[]): ChatMessage[] => {
 			});
 		}
 	});
+
 	return wire;
 };
 
@@ -535,12 +573,15 @@ const unresolvedCalls = (
 	history: StoredMessage[],
 ): AssistantToolCall[] => {
 	const index = history.findIndex((row) => row.id === assistant.id);
+
 	if (index === -1) return [];
+
 	const answered = new Set(
 		turnRows(history, index)
 			.filter((row) => row.role === "tool")
 			.map((row) => row.toolCallId),
 	);
+
 	return (assistant.toolCalls ?? []).filter((call) => !answered.has(call.id));
 };
 
@@ -563,16 +604,20 @@ const insertMessage = async (
 		content: "",
 		...values,
 	};
+
 	// Inside a transaction the column default, `now()`, is the transaction's
 	// START — every row it writes shares one timestamp, and the history's order
 	// among them is then whatever the planner returns. `clock_timestamp()` keeps
 	// rows written together in the order written.
 	if (opts.sequenced) insert.createdAt = sql`clock_timestamp()`;
+
 	const [row] = await (opts.client ?? db)
 		.insert(assistantMessage)
 		.values(insert)
 		.returning();
+
 	if (!row) throw new AssistantError("Could not save the message");
+
 	return row;
 };
 
@@ -607,16 +652,20 @@ const claimCalls = async (
 			.for("update");
 		const history = await loadHistory(conversationId, tx);
 		const assistant = history.find((row) => row.id === assistantId);
+
 		if (!assistant) return null;
 		// The batch must be exactly the LEADING run of what is still unanswered.
 		// One call is the old rule ("only the first") spelled for a list; several
 		// is a run of reads taken together, and either way a second tab asking for
 		// the same ground finds the first of them already answered and gets null.
 		const unresolved = unresolvedCalls(assistant, history);
+
 		if (calls.some((call, index) => unresolved[index]?.id !== call.id)) {
 			return null;
 		}
+
 		const claimed: { call: AssistantToolCall; rowId: string }[] = [];
+
 		// In order, and `sequenced` so `clock_timestamp()` keeps them in it — the
 		// wire history pairs by id, but the transcript is read by a person.
 		for (const call of calls) {
@@ -626,8 +675,10 @@ const claimCalls = async (
 				{ role: "tool", content, toolCallId: call.id, toolName: call.name },
 				{ client: tx, sequenced: true },
 			);
+
 			claimed.push({ call, rowId: row.id });
 		}
+
 		return claimed;
 	});
 
@@ -674,18 +725,23 @@ const CUT_SHORT =
  */
 const stringifyResult = (value: Serializable | void) => {
 	const text = JSON.stringify(value ?? null);
+
 	if (text.length <= MAX_TOOL_RESULT_CHARS) return text;
+
 	if (Array.isArray(value)) {
 		const kept: Serializable[] = [];
 		// The two brackets. Each row below adds itself plus the comma joining it
 		// to the row before, so the running total is the real encoded length.
 		let size = 2;
+
 		for (const row of value) {
 			const encoded = JSON.stringify(row ?? null).length + 1;
+
 			if (size + encoded > MAX_TOOL_RESULT_CHARS) break;
 			size += encoded;
 			kept.push(row);
 		}
+
 		// A single row bigger than the whole cap keeps nothing, and an empty list
 		// under a note about dropped rows tells the model the tool found nothing.
 		// The character cut at least hands it the beginning of the one row.
@@ -693,6 +749,7 @@ const stringifyResult = (value: Serializable | void) => {
 			return `${JSON.stringify(kept)}\n${droppedRowsNote(kept.length, value.length)}`;
 		}
 	}
+
 	return `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n${CUT_SHORT}`;
 };
 
@@ -701,9 +758,11 @@ const stringifyResult = (value: Serializable | void) => {
  *  ("you aren't assigned to that project"), not a reason to end the turn. */
 const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 	const tool = findTool(call.name);
+
 	if (!tool) {
 		return { ok: false, content: `Unknown tool "${call.name}".` };
 	}
+
 	// A tool the caller was never offered. Not a security check — the service
 	// behind it would refuse anyway — but the model can name a tool it saw in an
 	// earlier turn, and a stored conversation outlives the role its owner held
@@ -715,20 +774,25 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 			content: `"${call.name}" is not available to this user.`,
 		};
 	}
+
 	// Two failures, not one. Text that isn't JSON and JSON that isn't an object
 	// are different mistakes, and telling the model which it made is the
 	// difference between it correcting the call and it repeating the call.
 	let args: JsonRecord;
+
 	try {
 		const decoded = call.arguments.trim() ? JSON.parse(call.arguments) : {};
 		const parsed = argumentsPayload.safeParse(decoded);
+
 		if (!parsed.success) {
 			return { ok: false, content: "The arguments were not a JSON object." };
 		}
+
 		args = parsed.data;
 	} catch {
 		return { ok: false, content: "The arguments were not valid JSON." };
 	}
+
 	try {
 		return { ok: true, content: stringifyResult(await tool.run(ctx, args)) };
 	} catch (error) {
@@ -749,7 +813,9 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 const describeCall = async (ctx: Ctx, call: AssistantToolCall) => {
 	const tool = findTool(call.name);
 	const fallback = call.name.replaceAll("_", " ");
+
 	if (!tool?.summarize) return fallback;
+
 	try {
 		return await tool.summarize(ctx, JSON.parse(call.arguments || "{}"));
 	} catch {
@@ -765,7 +831,9 @@ const previewCall = async (
 	call: AssistantToolCall,
 ): Promise<ApprovalPreview | null> => {
 	const tool = findTool(call.name);
+
 	if (!tool?.preview) return null;
+
 	try {
 		return await tool.preview(ctx, JSON.parse(call.arguments || "{}"));
 	} catch {
@@ -778,6 +846,7 @@ const previewCall = async (
  *  fifteen dialogs the `write` tier exists to avoid — see `ApprovalPreview`. */
 const needsApproval = (name: string) => {
 	const tool = findTool(name);
+
 	return tool?.kind === "destructive" || Boolean(tool?.preview);
 };
 
@@ -787,11 +856,14 @@ const needsApproval = (name: string) => {
  *  collapsed. */
 const concurrentRun = (queue: AssistantToolCall[]): AssistantToolCall[] => {
 	const run: AssistantToolCall[] = [];
+
 	for (const call of queue) {
 		const tool = findTool(call.name);
+
 		if (!tool || tool.kind !== "read" || tool.serial) break;
 		run.push(call);
 	}
+
 	return run;
 };
 
@@ -810,16 +882,22 @@ const applySelection = (
 	shown: { rows: { id: string }[] } | null,
 ): AssistantToolCall | null => {
 	if (!selectedRowIds) return call;
+
 	if (selectedRowIds.length === 0) return null;
 	const tool = findTool(call.name);
+
 	if (!tool?.withSelection || !shown) return call;
 	const ticked = new Set(selectedRowIds);
+
 	const unticked = new Set(
 		shown.rows.map((row) => row.id).filter((id) => !ticked.has(id)),
 	);
+
 	if (unticked.size === 0) return call;
+
 	try {
 		const args = JSON.parse(call.arguments || "{}");
+
 		return {
 			...call,
 			arguments: JSON.stringify(tool.withSelection(args, unticked)),
@@ -835,6 +913,7 @@ const applySelection = (
  *  `generateTitle`. */
 const truncatedTitle = (message: string) => {
 	const line = message.replace(/\s+/g, " ").trim();
+
 	return line.length <= 60 ? line : `${line.slice(0, 57)}…`;
 };
 
@@ -896,6 +975,7 @@ const generate = async (
 	const spanId = crypto.randomUUID();
 	trace.generationId = spanId;
 	const startedAt = Date.now();
+
 	const common = {
 		organizationId: ctx.organizationId,
 		userId: ctx.userId,
@@ -907,6 +987,7 @@ const generate = async (
 		input: opts.messages,
 		tools: opts.tools ?? [],
 	};
+
 	try {
 		const turn = await chatModel().streamChatCompletion({
 			apiKey: opts.apiKey,
@@ -916,6 +997,7 @@ const generate = async (
 			signal: opts.signal,
 			onDelta: opts.onDelta,
 		});
+
 		reportGeneration({
 			...common,
 			latencySeconds: (Date.now() - startedAt) / 1000,
@@ -927,6 +1009,7 @@ const generate = async (
 			outputText: turn.content,
 			error: null,
 		});
+
 		return turn;
 	} catch (error) {
 		reportGeneration({
@@ -970,14 +1053,17 @@ const generateTitle = async (
 				{ role: "user", content: message.slice(0, 500) },
 			],
 		});
+
 		const title = turn.content
 			.trim()
 			.replace(/^["“‘']+|["”’'.]+$/g, "")
 			.replace(/\s+/g, " ")
 			.trim();
+
 		// A model that ignored the instruction and wrote prose is worse than the
 		// placeholder, so it is rejected rather than truncated into nonsense.
 		if (!title || title.length > 70) return null;
+
 		return title;
 	} catch {
 		return null;
@@ -1007,6 +1093,7 @@ const run = async (
 	const conversation = await db.query.assistantConversation.findFirst({
 		where: conversationWhere(ctx, input.conversationId),
 	});
+
 	// Read BEFORE the turn: `runTurn` writes the placeholder, so asking
 	// afterwards would never see "New chat" and no thread would ever be named.
 	const needsTitle =
@@ -1025,10 +1112,13 @@ const run = async (
 		},
 		signal,
 	);
+
 	if (failed || signal?.aborted) return;
+
 	if (!needsTitle || !conversation || !input.message) return;
 
 	const settings = await loadSettings(ctx);
+
 	const title = settings
 		? await generateTitle(
 				ctx,
@@ -1046,6 +1136,7 @@ const run = async (
 				signal,
 			)
 		: null;
+
 	if (title) {
 		await db
 			.update(assistantConversation)
@@ -1159,7 +1250,9 @@ const runClaimed = async (
 		[call],
 		RESULT_PENDING,
 	);
+
 	const first = claimed?.[0];
+
 	if (!first) return false;
 	onEvent({
 		type: "tool_start",
@@ -1168,6 +1261,7 @@ const runClaimed = async (
 		arguments: call.arguments,
 	});
 	await executeClaimed(ctx, trace, first, toRun, onEvent);
+
 	return true;
 };
 
@@ -1199,7 +1293,9 @@ const runClaimedBatch = async (
 		calls,
 		RESULT_PENDING,
 	);
+
 	if (!claimed) return false;
+
 	// Every step announced before any of them runs, so the trace shows the four
 	// spinners the person is actually waiting on rather than one at a time.
 	for (const { call } of claimed) {
@@ -1210,11 +1306,13 @@ const runClaimedBatch = async (
 			arguments: call.arguments,
 		});
 	}
+
 	await Promise.all(
 		claimed.map((entry) =>
 			executeClaimed(ctx, trace, entry, entry.call, onEvent),
 		),
 	);
+
 	return true;
 };
 
@@ -1239,9 +1337,12 @@ const runPendingCalls = async (
 ): Promise<boolean> => {
 	const history = await loadHistory(conversationId);
 	let queue = unresolvedCalls(assistant, history);
+
 	while (queue.length > 0) {
 		const head = queue[0];
+
 		if (!head) break;
+
 		// Destructive tools stop the turn, and so does a batch write that can
 		// show its rows. Single creates and corrections still run inline: asking
 		// before each one turns "reconstruct my week from my commits" into
@@ -1251,11 +1352,14 @@ const runPendingCalls = async (
 		// assistant-tools.ts for where the line sits and why.
 		if (needsApproval(head.name)) {
 			await suspendOn(ctx, assistant.id, head, onEvent);
+
 			return true;
 		}
+
 		// A leading run of independent reads goes out together; everything else
 		// keeps its place in the queue. See `runClaimedBatch`.
 		const together = concurrentRun(queue);
+
 		const ran =
 			together.length > 1
 				? await runClaimedBatch(
@@ -1275,17 +1379,20 @@ const runPendingCalls = async (
 						head,
 						onEvent,
 					);
+
 		// Lost the claim: a new message answered this turn's calls while the
 		// approved one ran (`abandonPendingCalls`), and cleared the flag itself.
 		if (!ran) return false;
 		queue = queue.slice(together.length > 1 ? together.length : 1);
 	}
+
 	if (assistant.pendingApproval) {
 		await db
 			.update(assistantMessage)
 			.set({ pendingApproval: false })
 			.where(eq(assistantMessage.id, assistant.id));
 	}
+
 	return false;
 };
 
@@ -1316,12 +1423,16 @@ const abandonPendingCalls = async (ctx: Ctx, conversationId: string) =>
 				),
 			)
 			.for("update");
+
 		if (locked.length === 0) return;
 		const history = await loadHistory(conversationId, tx);
+
 		for (const { id } of locked) {
 			const assistant = history.find((row) => row.id === id);
+
 			if (!assistant) continue;
 			const calls = unresolvedCalls(assistant, history);
+
 			for (const [index, call] of calls.entries()) {
 				await insertMessage(
 					ctx,
@@ -1337,6 +1448,7 @@ const abandonPendingCalls = async (ctx: Ctx, conversationId: string) =>
 					{ client: tx, sequenced: true },
 				);
 			}
+
 			await tx
 				.update(assistantMessage)
 				.set({
@@ -1356,6 +1468,7 @@ const runTurn = async (
 ): Promise<void> => {
 	const config = await requireKey(ctx);
 	const conversation = await requireConversation(ctx, input.conversationId);
+
 	// One trace for the whole question, so the steps it took and the tools they
 	// ran are one thing somebody can read a cost off — see `ai-telemetry.ts`.
 	// An approval resume is a second `run` call and therefore a second trace,
@@ -1373,10 +1486,12 @@ const runTurn = async (
 	if (input.message) {
 		// Before the message, never after: see `abandonPendingCalls`.
 		await abandonPendingCalls(ctx, conversation.id);
+
 		const row = await insertMessage(ctx, conversation.id, {
 			role: "user",
 			content: input.message,
 		});
+
 		onEvent({ type: "message", messageId: row.id, role: "user" });
 
 		// A placeholder, so the rail is never blank while the real title is being
@@ -1394,6 +1509,7 @@ const runTurn = async (
 
 	if (input.resolve) {
 		const history = await loadHistory(conversation.id);
+
 		const pending = history.find(
 			(row) =>
 				row.pendingApproval &&
@@ -1401,9 +1517,11 @@ const runTurn = async (
 					(call) => call.id === input.resolve?.toolCallId,
 				),
 		);
+
 		const call = pending?.toolCalls?.find(
 			(candidate) => candidate.id === input.resolve?.toolCallId,
 		);
+
 		// Already resolved, never pending, or not the call the turn is waiting
 		// on. Not an error worth a red toast: the usual cause is the same card
 		// being approved twice (two tabs, or a double click), and the second one
@@ -1415,12 +1533,14 @@ const runTurn = async (
 			firstUnresolvedCall(pending, history)?.id !== call.id
 		) {
 			onEvent({ type: "done" });
+
 			return;
 		}
 
 		// A batch approved with some rows unticked runs as the narrowed call; one
 		// with none ticked is a refusal, whatever the button said.
 		const { decision, selectedRowIds } = input.resolve;
+
 		const narrowed =
 			decision === "approved"
 				? applySelection(call, selectedRowIds, pending.approvalPreview)
@@ -1443,10 +1563,13 @@ const runTurn = async (
 					[call],
 					decision === "approved" ? NONE_SELECTED : DECLINED,
 				)) !== null;
+
 		if (!answered) {
 			onEvent({ type: "done" });
+
 			return;
 		}
+
 		if (!narrowed) {
 			onEvent({
 				type: "tool_result",
@@ -1481,8 +1604,10 @@ const runTurn = async (
 		// message nor a resolve reaches here with a card still up, so this is the
 		// net under everything else — a row left pending by a process that died.
 		const suspended = history.find((row) => row.pendingApproval);
+
 		if (suspended) {
 			const call = firstUnresolvedCall(suspended, history);
+
 			if (call) {
 				onEvent({
 					type: "approval_required",
@@ -1498,8 +1623,10 @@ const runTurn = async (
 					selectable: Boolean(findTool(call.name)?.withSelection),
 				});
 				onEvent({ type: "done" });
+
 				return;
 			}
+
 			await db
 				.update(assistantMessage)
 				.set({ pendingApproval: false })
@@ -1507,6 +1634,7 @@ const runTurn = async (
 		}
 
 		let turn: ChatTurn;
+
 		try {
 			turn = await generate(ctx, trace, step + 1, {
 				apiKey: config.apiKey,
@@ -1521,8 +1649,10 @@ const runTurn = async (
 		} catch (error) {
 			if (error instanceof OpenRouterError) {
 				onEvent({ type: "error", message: error.message });
+
 				return;
 			}
+
 			throw error;
 		}
 
@@ -1551,6 +1681,7 @@ const runTurn = async (
 					.set({ updatedAt: new Date() })
 					.where(eq(assistantConversation.id, conversation.id));
 			}
+
 			return;
 		}
 
@@ -1565,6 +1696,7 @@ const runTurn = async (
 		// failures are the same failure.
 		if (turn.toolCalls.length === 0 && !turn.content.trim()) {
 			onEvent({ type: "error", message: NO_ANSWER });
+
 			return;
 		}
 
@@ -1587,6 +1719,7 @@ const runTurn = async (
 
 		if (turn.toolCalls.length === 0) {
 			onEvent({ type: "done" });
+
 			return;
 		}
 
@@ -1609,6 +1742,7 @@ const runTurn = async (
 	if (signal?.aborted) return;
 
 	let closing: ChatTurn | null = null;
+
 	try {
 		closing = await generate(ctx, trace, null, {
 			apiKey: config.apiKey,
@@ -1644,6 +1778,7 @@ const runTurn = async (
 			.set({ updatedAt: new Date() })
 			.where(eq(assistantConversation.id, conversation.id));
 		onEvent({ type: "done" });
+
 		return;
 	}
 

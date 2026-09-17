@@ -11,6 +11,7 @@ const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  *  calendar arithmetic with no timezone in it. */
 export const dayTitle = (key: string): string => {
 	const weekday = WEEKDAY_NAMES[new Date(`${key}T00:00:00Z`).getUTCDay()];
+
 	return weekday ? `${weekday} ${key}` : key;
 };
 
@@ -33,9 +34,13 @@ export const entryWhat = (entry: ApiTimeEntry): string =>
 
 const entryFlags = (entry: ApiTimeEntry): string => {
 	const flags: string[] = [];
+
 	if (entry.fillsDay) flags.push("fill");
+
 	if (entry.overtime) flags.push("overtime");
+
 	if (entry.synced) flags.push("synced");
+
 	return flags.join(", ");
 };
 
@@ -59,9 +64,11 @@ export const sortEntries = (entries: ApiTimeEntry[]): ApiTimeEntry[] =>
  */
 const dayNumbers = (sorted: ApiTimeEntry[]): string[] => {
 	const counted = new Map<string, number>();
+
 	return sorted.map((entry) => {
 		const next = (counted.get(entry.date) ?? 0) + 1;
 		counted.set(entry.date, next);
+
 		return String(next);
 	});
 };
@@ -72,12 +79,14 @@ export const entriesTable = (
 ): Table => {
 	const withFlags = entries.some((entry) => entryFlags(entry) !== "");
 	const columns: Column[] = [{ header: "#", align: "right" }, { header: "ID" }];
+
 	if (withDate) columns.push({ header: "Date" });
 	columns.push(
 		{ header: "Time", align: "right" },
 		{ header: "Project" },
 		{ header: "Task" },
 	);
+
 	if (withFlags) columns.push({ header: "Flags" });
 	columns.push({ header: "Description", shrink: true });
 
@@ -92,19 +101,24 @@ export const entriesTable = (
 		description: string,
 	) => {
 		const row = [number, id];
+
 		if (withDate) row.push(date);
 		row.push(time, project, task);
+
 		if (withFlags) row.push(flags);
 		row.push(description);
+
 		return row;
 	};
 
 	const sorted = sortEntries(entries);
 	const numbers = dayNumbers(sorted);
+
 	const totalSeconds = sorted.reduce(
 		(sum, entry) => sum + entry.durationSeconds,
 		0,
 	);
+
 	return {
 		columns,
 		rows: sorted.map((entry, index) =>
@@ -137,6 +151,7 @@ export const printTable = (out: Output, table: Table) => {
 	lines.forEach((text, index) => {
 		const emphasise =
 			index === 0 || (table.total !== null && index === lines.length - 1);
+
 		print(emphasise ? bold(out, text) : text);
 	});
 };

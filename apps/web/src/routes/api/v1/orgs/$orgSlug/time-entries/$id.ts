@@ -37,11 +37,14 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/time-entries/$id")({
 				raw: async ({ ctx, params, body }: ApiRequest<OrgRowParams>) => {
 					const { timeEntriesService } = await import("@farmer/core/services");
 					const existing = await timeEntriesService.getOwn(ctx, params.id);
+
 					if (!existing) throw new Error("Time entry not found");
 					const patch = patchBody.safeParse(body);
+
 					if (!patch.success) {
 						throw new Error("The request body must be a JSON object.");
 					}
+
 					const merged = {
 						date: existing.date,
 						projectId: existing.projectId,
@@ -56,6 +59,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/time-entries/$id")({
 						// Last, so a body cannot point the patch at another entry.
 						timeEntryId: params.id,
 					};
+
 					return Object.fromEntries(
 						Object.entries(merged).filter(([, value]) => value !== null),
 					);
@@ -63,11 +67,14 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/time-entries/$id")({
 				run: async (ctx, input) => {
 					const { timeEntriesService } = await import("@farmer/core/services");
 					await timeEntriesService.update(ctx, input);
+
 					const entry = await timeEntriesService.getOwnDetailed(
 						ctx,
 						input.timeEntryId,
 					);
+
 					if (!entry) throw new Error("Time entry not found");
+
 					return toApiTimeEntry(entry);
 				},
 			}),
@@ -82,7 +89,9 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/time-entries/$id")({
 				run: async (ctx, { timeEntryId }) => {
 					const { timeEntriesService } = await import("@farmer/core/services");
 					const removed = await timeEntriesService.remove(ctx, timeEntryId);
+
 					if (!removed) throw new Error("Time entry not found");
+
 					return { id: removed.id };
 				},
 			}),

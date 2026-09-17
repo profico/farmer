@@ -36,10 +36,13 @@ export const projects: Command = {
 		const out = createOutput(values.json === true, runtime.env);
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const rows = await session.api.get<ApiProject[]>(scope.path("/projects"));
+
 		if (out.json) {
 			printJson(rows);
+
 			return;
 		}
+
 		printTable(out, {
 			columns: [
 				{ header: "Name", shrink: true },
@@ -72,10 +75,13 @@ export const tasks: Command = {
 		const out = createOutput(values.json === true, runtime.env);
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const list = await session.api.get<ApiTaskList>(scope.path("/tasks"));
+
 		if (out.json) {
 			printJson(list);
+
 			return;
 		}
+
 		const all = [...list.tasks, ...list.absenceTasks];
 		printTable(out, {
 			columns: [
@@ -104,8 +110,11 @@ const STATUS_LABELS = {
 const statusText = (out: Output, period: ApiPeriod): string => {
 	if (period.status === null) return "no target";
 	const label = STATUS_LABELS[period.status];
+
 	if (period.status === "on_track") return green(out, label);
+
 	if (period.status === "slightly_behind") return yellow(out, label);
+
 	return red(out, label);
 };
 
@@ -126,11 +135,14 @@ export const status: Command = {
 		const { values } = parseCommandArgs(args, {}, 0, STATUS_USAGE);
 		const out = createOutput(values.json === true, runtime.env);
 		const { session, scope } = await openOrg(runtime, out, values.org);
+
 		const tracking = await session.api.get<ApiTracking>(
 			scope.path("/tracking"),
 		);
+
 		if (out.json) {
 			printJson(tracking);
+
 			return;
 		}
 
@@ -146,6 +158,7 @@ export const status: Command = {
 			period.targetSeconds === null ? "-" : formatHours(period.targetSeconds),
 			statusText(out, period),
 		];
+
 		printTable(out, {
 			columns: [
 				{ header: "" },
@@ -161,6 +174,7 @@ export const status: Command = {
 
 		const { month } = tracking;
 		print("");
+
 		if (month.status === null || month.targetSoFarSeconds === null) {
 			print("No monthly target applies to you.");
 		} else if (month.status === "on_track") {
@@ -175,6 +189,7 @@ export const status: Command = {
 };
 
 const SYNC_TIMEOUT_MS = 120_000;
+
 const SYNC_USAGE = "farmer sync";
 
 export const sync: Command = {
@@ -188,6 +203,7 @@ export const sync: Command = {
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const progress = startProgress(out, "Syncing");
 		let result: ApiSyncResult;
+
 		try {
 			result = await session.api.post<ApiSyncResult>(
 				scope.path("/sync"),
@@ -204,25 +220,35 @@ export const sync: Command = {
 		// nothing ran, so they must not be reported as a result.
 		if (result.stillRunning) {
 			progress.stop("The sync is still running on the server.");
+
 			if (out.json) printJson(result);
 			else print("Run `farmer today` in a minute to see what it added.");
+
 			return;
 		}
+
 		progress.stop(
 			result.failed.length > 0 ? "Sync finished with errors." : "Synced.",
 		);
+
 		if (result.failed.length > 0) process.exitCode = 1;
+
 		if (out.json) {
 			printJson(result);
+
 			return;
 		}
+
 		const line = (label: string, names: string[]) => {
 			if (names.length > 0) print(`${label} ${names.join(", ")}`);
 		};
+
 		line("Ran:     ", result.ran);
 		line("Skipped: ", result.skipped);
 		line("Off:     ", result.off);
+
 		if (result.failed.length > 0) warn(`Failed: ${result.failed.join(", ")}`);
+
 		if (
 			result.ran.length + result.skipped.length + result.failed.length ===
 			0
@@ -247,6 +273,7 @@ export const open: Command = {
 		const { session, scope } = await openOrg(runtime, out, values.org);
 		const url = `${session.api.origin}/${encodeURIComponent(scope.slug)}/time`;
 		const opened = await openBrowser(url, runtime.platform, runtime.env);
+
 		if (out.json) printJson({ url, opened });
 		else print(opened ? `Opened ${url}` : url);
 	},

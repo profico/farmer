@@ -29,17 +29,21 @@ const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
 		),
 		columns: { id: true },
 	});
+
 	if (!linked) return null;
+
 	try {
 		const result = await auth.api.getAccessToken({
 			body: { providerId: "google-calendar", userId: ctx.userId },
 		});
+
 		return result.accessToken ?? null;
 	} catch (error) {
 		console.error("[google-calendar] getAccessToken failed", {
 			userId: ctx.userId,
 			error,
 		});
+
 		return null;
 	}
 };
@@ -75,11 +79,13 @@ export const googleCalendarService = {
 				eq(account.providerId, "google-calendar"),
 			),
 		});
+
 		if (!linkedAccount) {
 			return { connected: false, email: null, unreachable: false };
 		}
 
 		const token = await getAccessToken(ctx);
+
 		if (!token) return { connected: true, email: null, unreachable: false };
 
 		// The linked account is a local fact; the email is a nicety fetched from
@@ -88,6 +94,7 @@ export const googleCalendarService = {
 		// Integrations page down on a slow network, not just a Google outage.
 		try {
 			const info = await getGoogleUserInfo(token);
+
 			return {
 				connected: true,
 				email: info?.email ?? null,
@@ -98,6 +105,7 @@ export const googleCalendarService = {
 				userId: ctx.userId,
 				error,
 			});
+
 			return { connected: true, email: null, unreachable: true };
 		}
 	},
@@ -107,10 +115,12 @@ export const googleCalendarService = {
 		input: ListCalendarEventsInput,
 	): Promise<CalendarEventOption[]> => {
 		const token = await getAccessToken(ctx);
+
 		if (!token) throw new Error("Google Calendar not connected");
 
 		const tz = await ctxTimezone(ctx);
 		const { start, end } = dayBoundsInTz(input.date, tz);
+
 		return fetchTimedEvents(token, start, end);
 	},
 
@@ -124,11 +134,13 @@ export const googleCalendarService = {
 		input: { from: string; to: string },
 	): Promise<CalendarEventOption[] | null> => {
 		const token = await getAccessToken(ctx);
+
 		if (!token) return null;
 
 		const tz = await ctxTimezone(ctx);
 		const start = dayBoundsInTz(input.from, tz).start;
 		const end = dayBoundsInTz(input.to, tz).end;
+
 		return fetchTimedEvents(token, start, end);
 	},
 
@@ -141,7 +153,9 @@ export const googleCalendarService = {
 		input: { startDate: string; endDate: string; label: string | null },
 	): Promise<string | null> => {
 		const token = await getAccessToken(ctx);
+
 		if (!token) return null;
+
 		return insertAllDayEvent(token, {
 			summary: input.label?.trim() || "Time off",
 			startDate: input.startDate,
@@ -160,6 +174,7 @@ const fetchTimedEvents = async (
 	timeMax: Date,
 ): Promise<CalendarEventOption[]> => {
 	const events = await listCalendarEvents(token, { timeMin, timeMax });
+
 	return events.filter(isImportableEvent).map((event) => ({
 		id: event.id,
 		title: event.summary?.trim() || "(no title)",

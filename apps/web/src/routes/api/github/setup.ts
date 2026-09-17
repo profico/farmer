@@ -19,6 +19,7 @@ export const Route = createFileRoute("/api/github/setup")({
 
 				const { auth } = await import("@farmer/core/auth");
 				const session = await auth.api.getSession({ headers: request.headers });
+
 				if (!session) return redirectTo("/login");
 
 				// A state that is present must verify: signed by us, for THIS user,
@@ -38,16 +39,20 @@ export const Route = createFileRoute("/api/github/setup")({
 				// which is not a thing an attacker gains from. The Slack callback has
 				// no such second check and is strict.
 				const { verifyOrgState } = await import("@farmer/core/lib/oauth-state");
+
 				const orgId = state
 					? verifyOrgState(state, session.user.id)
 					: session.session.activeOrganizationId;
+
 				if (!orgId) return redirectTo("/");
 
 				const { db } = await import("@farmer/core/db");
+
 				const membership = await db.query.member.findFirst({
 					where: (m, { and, eq }) =>
 						and(eq(m.userId, session.user.id), eq(m.organizationId, orgId)),
 				});
+
 				if (
 					!membership ||
 					(membership.role !== "owner" && membership.role !== "admin")
@@ -60,6 +65,7 @@ export const Route = createFileRoute("/api/github/setup")({
 					(setupAction === "install" || setupAction === "update")
 				) {
 					const { githubService } = await import("@farmer/core/services");
+
 					try {
 						await githubService.connectInstallation(
 							{ organizationId: orgId, userId: session.user.id },
@@ -73,6 +79,7 @@ export const Route = createFileRoute("/api/github/setup")({
 				const org = await db.query.organization.findFirst({
 					where: (o, { eq }) => eq(o.id, orgId),
 				});
+
 				return redirectTo(
 					org ? `/${org.slug}/settings/workspace-integrations` : "/",
 				);

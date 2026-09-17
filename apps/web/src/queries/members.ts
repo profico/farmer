@@ -22,6 +22,7 @@ export const pendingInvitationsQuery = (org: string) =>
 		queryKey: [...queryKeys(org).members, "invitations"],
 		queryFn: async () => {
 			const invitations = await listInvitations();
+
 			return invitations.filter((i) => i.status === "pending");
 		},
 		// Polls only while an email is in flight. Its status changes a few

@@ -49,9 +49,11 @@ async function sha256Hex(input: string): Promise<string> {
 	const digest = await crypto.subtle.digest("SHA-256", bytes);
 	const view = new Uint8Array(digest);
 	let hex = "";
+
 	for (let i = 0; i < view.length; i++) {
 		hex += view[i]?.toString(16).padStart(2, "0");
 	}
+
 	return hex;
 }
 
@@ -70,6 +72,7 @@ export async function importRowKey(
 	n: number,
 ): Promise<string> {
 	const hash = await hashImportKeyFields(fields);
+
 	return `${hash}:${n}`;
 }
 
@@ -89,9 +92,11 @@ export async function keysForPersonDay(
 ): Promise<string[]> {
 	const hashes = await Promise.all(rows.map(hashImportKeyFields));
 	const counts = new Map<string, number>();
+
 	return hashes.map((hash) => {
 		const n = counts.get(hash) ?? 0;
 		counts.set(hash, n + 1);
+
 		return `${hash}:${n}`;
 	});
 }
@@ -107,5 +112,6 @@ export const DAY_DIGEST_LENGTH = 16;
  * colon and a counter), so a JS sort and Postgres's `collate "C"` agree. */
 export async function dayDigest(keys: readonly string[]): Promise<string> {
 	const joined = [...keys].sort().join(",");
+
 	return (await sha256Hex(joined)).slice(0, DAY_DIGEST_LENGTH);
 }

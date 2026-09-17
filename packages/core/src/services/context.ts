@@ -29,6 +29,7 @@ const memoOf = (ctx: Ctx): CtxMemo => {
 	// Ctx objects arrive as plain literals from middleware, jobs and REST
 	// routes, so the slot is created on first use rather than at construction.
 	let memo = ctx[CTX_MEMO];
+
 	if (!memo) {
 		memo = {};
 		Object.defineProperty(ctx, CTX_MEMO, {
@@ -38,6 +39,7 @@ const memoOf = (ctx: Ctx): CtxMemo => {
 			configurable: true,
 		});
 	}
+
 	return memo;
 };
 
@@ -62,6 +64,7 @@ const memoOf = (ctx: Ctx): CtxMemo => {
 export const ctxTimezone = (ctx: Ctx): Promise<string> => {
 	const memo = memoOf(ctx);
 	memo.timezone ??= orgTimezone(ctx.organizationId, ctxDb(ctx));
+
 	return memo.timezone;
 };
 
@@ -70,6 +73,7 @@ export const ctxTimezone = (ctx: Ctx): Promise<string> => {
 export const ctxWeekStartsOn = (ctx: Ctx): Promise<WeekStartsOn> => {
 	const memo = memoOf(ctx);
 	memo.weekStartsOn ??= orgWeekStartsOn(ctx.organizationId, ctxDb(ctx));
+
 	return memo.weekStartsOn;
 };
 
@@ -78,6 +82,7 @@ export const ctxWeekStartsOn = (ctx: Ctx): Promise<WeekStartsOn> => {
 export const ctxAccess = (ctx: Ctx): Promise<Access> => {
 	const memo = memoOf(ctx);
 	memo.access ??= accessService.resolve(ctx);
+
 	return memo.access;
 };
 
@@ -86,6 +91,7 @@ export const ctxAccess = (ctx: Ctx): Promise<Access> => {
 export const requireAdmin = async (ctx: Ctx): Promise<Access> => {
 	const access = await ctxAccess(ctx);
 	access.assertAdmin();
+
 	return access;
 };
 
@@ -102,6 +108,7 @@ export const ctxMemo = (ctx: Ctx): CtxMemo => memoOf(ctx);
  *  writes go through `organization.service`, which does it itself. */
 export const invalidateCtxAccess = (ctx: Ctx): void => {
 	const memo = ctx[CTX_MEMO];
+
 	if (memo) memo.access = undefined;
 };
 
@@ -109,6 +116,7 @@ export const invalidateCtxAccess = (ctx: Ctx): void => {
  *  changed either. */
 export const invalidateCtxOrgCalendar = (ctx: Ctx): void => {
 	const memo = ctx[CTX_MEMO];
+
 	if (!memo) return;
 	memo.timezone = undefined;
 	memo.weekStartsOn = undefined;
@@ -129,10 +137,12 @@ export const withCtxTx = async <T>(
 
 	return db.transaction(async (tx) => {
 		const parent = memoOf(ctx);
+
 		const txCtx: Ctx = {
 			organizationId: ctx.organizationId,
 			userId: ctx.userId,
 		};
+
 		Object.defineProperty(txCtx, CTX_MEMO, {
 			value: {
 				timezone: parent.timezone,
@@ -144,6 +154,7 @@ export const withCtxTx = async <T>(
 			writable: true,
 			configurable: true,
 		});
+
 		return fn(txCtx);
 	});
 };

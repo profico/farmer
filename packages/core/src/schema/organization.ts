@@ -4,6 +4,7 @@ import { isValidDayKey } from "../lib/time";
 import { uploadedFilePath } from "./uploads";
 
 export const setActiveOrgBySlugInput = z.string().min(1);
+
 export type SetActiveOrgBySlugInput = z.infer<typeof setActiveOrgBySlugInput>;
 
 export const updateOrganizationSettingsInput = z.object({
@@ -21,6 +22,7 @@ export const updateOrganizationSettingsInput = z.object({
 	// empty string clears it (→ null).
 	logo: z.url().max(2048).or(uploadedFilePath).or(z.literal("")).nullish(),
 });
+
 export type UpdateOrganizationSettingsInput = z.infer<
 	typeof updateOrganizationSettingsInput
 >;
@@ -47,4 +49,5 @@ export const updateOrgSettingsInput = z.object({
 		.nullable()
 		.optional(),
 });
+
 export type UpdateOrgSettingsInput = z.infer<typeof updateOrgSettingsInput>;

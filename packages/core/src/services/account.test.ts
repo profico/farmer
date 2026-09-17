@@ -18,9 +18,13 @@ import { accountService } from "./account.service";
 import type { Ctx } from "./types";
 
 const ORG = "ac-org";
+
 const GOOGLE_ONLY = "u-ac-google-only";
+
 const BOTH = "u-ac-both";
+
 const INTEGRATIONS_ONLY = "u-ac-integrations";
+
 const OTHER = "u-ac-other";
 
 let harness: TestDb;
@@ -63,6 +67,7 @@ beforeAll(async () => {
 		[INTEGRATIONS_ONLY, "google-calendar"],
 		[OTHER, "google"],
 	];
+
 	await db.insert(account).values(
 		rows.map(([userId, providerId]) => ({
 			id: `acc-${userId}-${providerId}`,

@@ -65,6 +65,7 @@ export const computeDayFillSeconds = async (
 		opts.workingHours ?? workingHoursService.list(ctx),
 		opts.holidays ?? holidaysService.holidaySetForRange(ctx, dateKey, dateKey),
 	]);
+
 	return remainingSeconds(
 		targetSecondsFor(hours, dateKey, tz, holidays),
 		spokenForSeconds(dayEntries.filter((e) => e.id !== opts.excludeEntryId)),
@@ -104,6 +105,7 @@ export const rehomeDroppedFillEvidence = async (
 	if (dropped.length === 0) return;
 	const client = ctxDb(ctx);
 	const droppedIds = dropped.map((fill) => fill.id);
+
 	// One after the other, not in parallel: inside `withCtxTx` both reads share
 	// the transaction's one connection.
 	const attached = await client
@@ -123,6 +125,7 @@ export const rehomeDroppedFillEvidence = async (
 			eq(projectGithubRepo.id, timeEntryGithubCommit.projectGithubRepoId),
 		)
 		.where(inArray(timeEntryGithubCommit.timeEntryId, droppedIds));
+
 	const attachedActivity = await client
 		.select({
 			timeEntryId: timeEntryGithubPrActivity.timeEntryId,
@@ -143,6 +146,7 @@ export const rehomeDroppedFillEvidence = async (
 			eq(projectGithubRepo.id, timeEntryGithubPrActivity.projectGithubRepoId),
 		)
 		.where(inArray(timeEntryGithubPrActivity.timeEntryId, droppedIds));
+
 	if (attached.length === 0 && attachedActivity.length === 0) return;
 
 	// The same candidates the commit engine considers: Development entries that
@@ -167,8 +171,10 @@ export const rehomeDroppedFillEvidence = async (
 		.orderBy(asc(timeEntry.createdAt));
 
 	const dateOf = new Map(dropped.map((fill) => [fill.id, fill.date]));
+
 	const targetFor = (timeEntryId: string, projectId: string | null) => {
 		const onDay = work.filter((row) => row.date === dateOf.get(timeEntryId));
+
 		return (
 			(projectId ? onDay.find((row) => row.projectId === projectId) : null) ??
 			onDay.find((row) => row.projectId === null)
@@ -176,15 +182,21 @@ export const rehomeDroppedFillEvidence = async (
 	};
 
 	const moved: (typeof timeEntryGithubCommit.$inferInsert)[] = [];
+
 	for (const { timeEntryId, projectId, ...commit } of attached) {
 		const target = targetFor(timeEntryId, projectId);
+
 		if (target) moved.push({ ...commit, timeEntryId: target.id });
 	}
+
 	const movedActivity: (typeof timeEntryGithubPrActivity.$inferInsert)[] = [];
+
 	for (const { timeEntryId, projectId, ...event } of attachedActivity) {
 		const target = targetFor(timeEntryId, projectId);
+
 		if (target) movedActivity.push({ ...event, timeEntryId: target.id });
 	}
+
 	// The unique keys: the target may already hold the same commit or event.
 	if (moved.length > 0) {
 		await client
@@ -192,6 +204,7 @@ export const rehomeDroppedFillEvidence = async (
 			.values(moved)
 			.onConflictDoNothing();
 	}
+
 	if (movedActivity.length > 0) {
 		await client
 			.insert(timeEntryGithubPrActivity)
@@ -224,6 +237,7 @@ export const recomputeDayFill = async (
 	tz: string,
 ) => {
 	const client = ctxDb(ctx);
+
 	const fill = await client.query.timeEntry.findFirst({
 		where: and(
 			eq(timeEntry.organizationId, ctx.organizationId),
@@ -233,14 +247,18 @@ export const recomputeDayFill = async (
 		),
 		columns: { id: true, durationSeconds: true },
 	});
+
 	if (!fill) return;
 	const next = await computeDayFillSeconds(ctx, dateKey, tz);
+
 	if (next === 0) {
 		// Its evidence would cascade with it. See `rehomeDroppedFillEvidence`.
 		await rehomeDroppedFillEvidence(ctx, [{ id: fill.id, date: dateKey }]);
 		await client.delete(timeEntry).where(eq(timeEntry.id, fill.id));
+
 		return;
 	}
+
 	if (next === fill.durationSeconds) return;
 	await client
 		.update(timeEntry)

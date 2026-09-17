@@ -27,6 +27,7 @@ function MySchedulePage() {
 	const orderedDays = weekdays.map(({ day }) =>
 		days.find((d) => d.dayOfWeek === day),
 	);
+
 	return (
 		<Page>
 			<PageHeader

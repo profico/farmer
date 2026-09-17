@@ -36,22 +36,34 @@ import { orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
 
 const H = 3600;
+
 const ORG = "hi-org";
+
 const OTHER_ORG = "hi-other";
+
 const ADMIN = "u-hi-admin";
+
 const WORKER = "u-hi-worker";
+
 /** A user of another org, whose address the people list happens to hold. */
 const OUTSIDER = "u-hi-outsider";
+
 const OUTSIDER_EMAIL = "outsider@example.com";
 
 const admin: Ctx = { organizationId: ORG, userId: ADMIN };
+
 const worker: Ctx = { organizationId: ORG, userId: WORKER };
 
 let harness: TestDb;
+
 let acmeId: string;
+
 let alphaId: string;
+
 let devTaskId: string;
+
 let paidLeaveId: string;
+
 let foreignClientId: string;
 
 const K = {
@@ -277,6 +289,7 @@ beforeAll(async () => {
 			{ organizationId: OTHER_ORG, name: "Foreign" },
 		])
 		.returning();
+
 	acmeId = present(acme, "acme").id;
 	foreignClientId = present(foreign, "foreign client").id;
 
@@ -289,6 +302,7 @@ beforeAll(async () => {
 			type: "product_team",
 		})
 		.returning();
+
 	alphaId = present(alpha, "alpha").id;
 
 	const [dev] = await db
@@ -299,11 +313,13 @@ beforeAll(async () => {
 			name: "Development",
 		})
 		.returning();
+
 	devTaskId = present(dev, "development").id;
 
 	const paid = await db.query.task.findFirst({
 		where: eq(task.systemKey, "paid_leave"),
 	});
+
 	paidLeaveId = present(paid, "Paid Leave (migration 0038)").id;
 });
 
@@ -337,10 +353,12 @@ describe("harvest import", () => {
 		await expect(harvestImportService.start(admin, bad)).rejects.toThrow(
 			"matches no client",
 		);
+
 		const runs = await db
 			.select()
 			.from(importRun)
 			.where(eq(importRun.organizationId, ORG));
+
 		expect(runs).toHaveLength(0);
 	});
 
@@ -373,6 +391,7 @@ describe("harvest import", () => {
 			to: "2025-12-31",
 			emails: [OUTSIDER_EMAIL.toUpperCase(), `${WORKER}@example.com`],
 		});
+
 		expect(snap.takenEmails).toEqual([OUTSIDER_EMAIL]);
 		expect(snap.tasks.some((t) => t.id === paidLeaveId)).toBe(true);
 	});
@@ -382,6 +401,7 @@ describe("harvest import", () => {
 			await db.query.user.findFirst({ where: eq(user.id, WORKER) }),
 			"worker",
 		);
+
 		const result = await harvestImportService.start(admin, plan());
 		runId = result.runId;
 		expect(result.created).toEqual({
@@ -405,6 +425,7 @@ describe("harvest import", () => {
 			}),
 			"bo profile",
 		);
+
 		expect(boProfile.archivedAt?.toISOString()).toBe(
 			"2025-06-30T12:00:00.000Z",
 		);
@@ -415,40 +436,50 @@ describe("harvest import", () => {
 			await db.query.user.findFirst({ where: eq(user.id, WORKER) }),
 			"worker",
 		);
+
 		expect(workerAfter.name).toBe(workerBefore.name);
 		expect(workerAfter.email).toBe(workerBefore.email);
+
 		const workerProfile = await db.query.memberProfile.findFirst({
 			where: and(
 				eq(memberProfile.organizationId, ORG),
 				eq(memberProfile.userId, WORKER),
 			),
 		});
+
 		expect(workerProfile?.startDate).toBe("2020-01-01");
 
 		// The listed address of a user in another org attaches that user.
 		const outsiderMember = await db.query.member.findFirst({
 			where: and(eq(member.organizationId, ORG), eq(member.userId, OUTSIDER)),
 		});
+
 		expect(outsiderMember).toBeDefined();
 
 		const gamma = present(
 			await db.query.project.findFirst({ where: eq(project.name, "Gamma") }),
 			"gamma",
 		);
+
 		const ops = present(
 			await db.query.project.findFirst({ where: eq(project.name, "Ops") }),
 			"ops",
 		);
+
 		expect(ops.status).toBe("archived");
+
 		const internal = present(
 			await db.query.client.findFirst({ where: eq(client.id, ops.clientId) }),
 			"internal client",
 		);
+
 		expect(internal.isInternal).toBe(true);
+
 		const assigned = await db
 			.select()
 			.from(projectMember)
 			.where(eq(projectMember.projectId, gamma.id));
+
 		expect(assigned.map((a) => a.userId)).toEqual([ana.id]);
 	});
 
@@ -460,14 +491,17 @@ describe("harvest import", () => {
 			...plan(),
 			runId,
 		});
+
 		expect(again).toEqual({
 			runId,
 			created: { clients: 1, tasks: 1, people: 3, projects: 2 },
 		});
+
 		const runs = await db
 			.select({ id: importRun.id })
 			.from(importRun)
 			.where(eq(importRun.organizationId, ORG));
+
 		expect(runs.map((r) => r.id)).toEqual([runId]);
 	});
 
@@ -482,6 +516,7 @@ describe("harvest import", () => {
 			runId,
 			days: firstDays(),
 		});
+
 		expect(first).toEqual({
 			inserted: 5,
 			deleted: 0,
@@ -493,6 +528,7 @@ describe("harvest import", () => {
 			runId,
 			days: firstDays(),
 		});
+
 		expect(again).toEqual({
 			inserted: 0,
 			deleted: 0,
@@ -507,26 +543,32 @@ describe("harvest import", () => {
 			}),
 			"paid leave row",
 		);
+
 		expect(leave.projectId).toBeNull();
 		expect(leave.syncLocked).toBe(true);
 	});
 
 	test("the snapshot digests each imported day like the browser", async () => {
 		const { dayDigest } = await import("../lib/harvest/keys");
+
 		const snap = await harvestImportService.snapshot(admin, {
 			from: "2025-03-01",
 			to: "2025-03-31",
 			emails: [],
 		});
+
 		const ana = present(await userByEmail("ana@example.com"), "ana");
+
 		const days = present(
 			snap.importedDays.find((d) => d.userId === ana.id),
 			"ana's days",
 		);
+
 		const march3 = present(
 			days.days.find((d) => d[0] === "2025-03-03"),
 			"2025-03-03",
 		);
+
 		expect(march3[1]).toBe(await dayDigest(["a2", "a1"]));
 		expect(march3[2]).toBe(0);
 	});
@@ -588,6 +630,7 @@ describe("harvest import", () => {
 			runId,
 			days,
 		});
+
 		expect(result.inserted).toBe(1);
 		expect(result.deleted).toBe(2);
 		expect(result.unchangedDays).toBe(2);
@@ -604,6 +647,7 @@ describe("harvest import", () => {
 			.where(
 				and(eq(timeEntry.userId, WORKER), eq(timeEntry.date, "2025-03-03")),
 			);
+
 		expect(workerRows.map((r) => r.importKey ?? "own").sort()).toEqual([
 			"own",
 			"w1",
@@ -618,6 +662,7 @@ describe("harvest import", () => {
 				{ personSourceKey: K.worker, date: "2025-03-03" },
 			],
 		});
+
 		expect(result).toEqual({
 			deleted: 1,
 			keptDays: [{ personSourceKey: K.worker, date: "2025-03-03" }],
@@ -634,6 +679,7 @@ describe("harvest import", () => {
 			await db.query.importRun.findFirst({ where: eq(importRun.id, runId) }),
 			"run",
 		);
+
 		expect(run.status).toBe("finished");
 	});
 
@@ -675,6 +721,7 @@ describe("harvest import", () => {
 				admin,
 				emptyPlan(),
 			);
+
 			secondRunId = id;
 			const result = await harvestImportService.finish(admin, { runId: id });
 			expect(result.automationLockedThrough).toBe("2025-03-31");
@@ -684,9 +731,11 @@ describe("harvest import", () => {
 			await expect(harvestImportService.undo(admin, { runId })).rejects.toThrow(
 				"Only the latest import",
 			);
+
 			const result = await harvestImportService.undo(admin, {
 				runId: secondRunId,
 			});
+
 			expect(result.entriesDeleted).toBe(0);
 		});
 	});
@@ -694,10 +743,12 @@ describe("harvest import", () => {
 	describe("undo", () => {
 		test("refuses while an entry made here uses a created row", async () => {
 			const ana = present(await userByEmail("ana@example.com"), "ana");
+
 			const gamma = present(
 				await db.query.project.findFirst({ where: eq(project.name, "Gamma") }),
 				"gamma",
 			);
+
 			const [own] = await db
 				.insert(timeEntry)
 				.values({
@@ -710,6 +761,7 @@ describe("harvest import", () => {
 					durationSeconds: H,
 				})
 				.returning();
+
 			await expect(harvestImportService.undo(admin, { runId })).rejects.toThrow(
 				"uses a row this import created",
 			);
@@ -758,10 +810,12 @@ describe("harvest import", () => {
 					where: and(eq(member.organizationId, ORG), eq(member.userId, WORKER)),
 				}),
 			).toBeDefined();
+
 			const own = await db
 				.select()
 				.from(timeEntry)
 				.where(and(eq(timeEntry.userId, WORKER), isNull(timeEntry.importKey)));
+
 			expect(own).toHaveLength(1);
 			expect(
 				await db.query.project.findFirst({ where: eq(project.id, alphaId) }),
@@ -771,16 +825,19 @@ describe("harvest import", () => {
 			expect(
 				await db.query.user.findFirst({ where: eq(user.id, OUTSIDER) }),
 			).toBeDefined();
+
 			const outsiderOrgs = await db
 				.select({ org: member.organizationId })
 				.from(member)
 				.where(eq(member.userId, OUTSIDER));
+
 			expect(outsiderOrgs).toEqual([{ org: OTHER_ORG }]);
 
 			const run = present(
 				await db.query.importRun.findFirst({ where: eq(importRun.id, runId) }),
 				"run",
 			);
+
 			expect(run.status).toBe("undone");
 		});
 
@@ -793,6 +850,7 @@ describe("harvest import", () => {
 
 	describe("a second spelling of a person", () => {
 		const ALIAS = "worker 1";
+
 		const aliasPlan = (of: string): HarvestStartInput => ({
 			...emptyPlan(),
 			tasks: [{ action: "match", sourceKey: K.dev, localId: devTaskId }],
@@ -826,6 +884,7 @@ describe("harvest import", () => {
 				admin,
 				aliasPlan(K.worker),
 			);
+
 			const result = await harvestImportService.importDays(admin, {
 				runId: id,
 				days: [
@@ -841,7 +900,9 @@ describe("harvest import", () => {
 					},
 				],
 			});
+
 			expect(result).toMatchObject({ inserted: 2, deleted: 0 });
+
 			const rows = await db
 				.select({ userId: timeEntry.userId, key: timeEntry.importKey })
 				.from(timeEntry)
@@ -851,6 +912,7 @@ describe("harvest import", () => {
 						isNotNull(timeEntry.importKey),
 					),
 				);
+
 			expect(rows.map((r) => r.userId)).toEqual([WORKER, WORKER]);
 
 			// Undo removes the mapping and the rows, and never the person.

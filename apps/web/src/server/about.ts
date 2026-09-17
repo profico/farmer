@@ -19,5 +19,6 @@ export const getDeploymentInfo = createServerFn({ method: "GET" })
 	.middleware([sessionMiddleware])
 	.handler(async (): Promise<DeploymentInfo> => {
 		const { readDeploymentInfo } = await import("./deployment-info");
+
 		return readDeploymentInfo();
 	});

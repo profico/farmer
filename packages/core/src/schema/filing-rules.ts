@@ -7,6 +7,7 @@ import { z } from "zod";
 // own payload.
 
 export const deleteFilingRuleInput = z.object({ id: z.uuid() });
+
 export type DeleteFilingRuleInput = z.infer<typeof deleteFilingRuleInput>;
 
 // Only the answer is editable, never the key. The title and the meeting task
@@ -18,4 +19,5 @@ export const updateFilingRuleInput = z.object({
 	/** Null keeps the meeting's own task. */
 	targetTaskId: z.uuid().nullable(),
 });
+
 export type UpdateFilingRuleInput = z.infer<typeof updateFilingRuleInput>;

@@ -11,6 +11,7 @@ import { useTheme } from "#/lib/theme.ts";
 
 const Toaster = ({ ...props }: ToasterProps) => {
 	const { theme } = useTheme();
+
 	return (
 		<Sonner
 			// Every color below is a token that already flips with `data-theme`,

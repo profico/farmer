@@ -24,6 +24,7 @@ export const Route = createFileRoute("/api/slack/callback")({
 
 				const { auth } = await import("@farmer/core/auth");
 				const session = await auth.api.getSession({ headers: request.headers });
+
 				if (!session) return redirectTo("/login");
 
 				// No valid state, no install — and in particular no falling back to the
@@ -37,13 +38,16 @@ export const Route = createFileRoute("/api/slack/callback")({
 				// admin started this round trip.
 				const { verifyOrgState } = await import("@farmer/core/lib/oauth-state");
 				const orgId = state ? verifyOrgState(state, session.user.id) : null;
+
 				if (!orgId) return redirectTo("/");
 
 				const { db } = await import("@farmer/core/db");
+
 				const membership = await db.query.member.findFirst({
 					where: (m, { and, eq }) =>
 						and(eq(m.userId, session.user.id), eq(m.organizationId, orgId)),
 				});
+
 				if (
 					!membership ||
 					(membership.role !== "owner" && membership.role !== "admin")
@@ -54,6 +58,7 @@ export const Route = createFileRoute("/api/slack/callback")({
 				const org = await db.query.organization.findFirst({
 					where: (o, { eq }) => eq(o.id, orgId),
 				});
+
 				const back = org ? `/${org.slug}/settings/workspace-integrations` : "/";
 
 				// Cancelled at Slack's consent screen, or no code came back. Nothing to
@@ -61,6 +66,7 @@ export const Route = createFileRoute("/api/slack/callback")({
 				if (!code) return redirectTo(back);
 
 				const { slackService } = await import("@farmer/core/services");
+
 				try {
 					await slackService.completeInstall(
 						{ organizationId: orgId, userId: session.user.id },
@@ -68,6 +74,7 @@ export const Route = createFileRoute("/api/slack/callback")({
 					);
 				} catch (error) {
 					console.error("[slack] oauth callback failed", error);
+
 					return redirectTo(`${back}?slack=failed`);
 				}
 

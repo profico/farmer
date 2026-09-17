@@ -28,16 +28,23 @@ import { DayCapacityError, timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-day-capacity";
+
 const USER_ID = "user-day-capacity";
+
 const DAY = "2026-08-10";
+
 const OTHER_DAY = "2026-08-11";
+
 const HOUR = 3600;
 
 const ctx = (): Ctx => ({ organizationId: ORG_ID, userId: USER_ID });
 
 let harness: TestDb;
+
 let projectId = "";
+
 let devTaskId = "";
+
 let reviewTaskId = "";
 
 /** Straight into the table, so the fixture can build a day the checks under
@@ -59,6 +66,7 @@ const addEntry = async (values: {
 			durationSeconds: values.durationSeconds,
 		})
 		.returning();
+
 	return present(row, "fixture entry");
 };
 
@@ -81,6 +89,7 @@ const secondsOn = async (date: string) => {
 	const rows = await db.query.timeEntry.findMany({
 		where: and(eq(timeEntry.userId, USER_ID), eq(timeEntry.date, date)),
 	});
+
 	return rows.reduce((sum, row) => sum + row.durationSeconds, 0);
 };
 
@@ -114,6 +123,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({
@@ -122,6 +132,7 @@ beforeAll(async () => {
 			name: "Farmer",
 		})
 		.returning();
+
 	projectId = present(p, "project").id;
 
 	const tasks = await db
@@ -141,6 +152,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning({ id: task.id, name: task.name });
+
 	devTaskId = present(
 		tasks.find((t) => t.name === "Development"),
 		"development task",
@@ -195,6 +207,7 @@ describe("the 24-hour ceiling on hand-made writes", () => {
 
 	test("lengthening an entry past it is refused", async () => {
 		await addEntry({ durationSeconds: 20 * HOUR });
+
 		const short = await addEntry({
 			taskId: reviewTaskId,
 			durationSeconds: HOUR,
@@ -207,6 +220,7 @@ describe("the 24-hour ceiling on hand-made writes", () => {
 
 	test("moving an entry onto a day it would overfill is refused", async () => {
 		await addEntry({ durationSeconds: 20 * HOUR });
+
 		const elsewhere = await addEntry({
 			date: OTHER_DAY,
 			taskId: reviewTaskId,
@@ -250,6 +264,7 @@ describe("the 24-hour ceiling on hand-made writes", () => {
 describe("what the ceiling must still allow", () => {
 	test("an edit that keeps a full day's length", async () => {
 		await addEntry({ durationSeconds: 16 * HOUR });
+
 		const review = await addEntry({
 			taskId: reviewTaskId,
 			durationSeconds: 8 * HOUR,
@@ -273,6 +288,7 @@ describe("what the ceiling must still allow", () => {
 		// 28 hours: only reachable by writing around the checks, which is what an
 		// import or an older row looks like.
 		await addEntry({ durationSeconds: 20 * HOUR });
+
 		const review = await addEntry({
 			taskId: reviewTaskId,
 			durationSeconds: 8 * HOUR,

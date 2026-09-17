@@ -112,9 +112,12 @@ const isTableRow = (line: string) => line.includes("|");
  *  `---` is a horizontal rule. */
 const isTableDelimiter = (line: string) => {
 	const trimmed = line.trim();
+
 	if (/^\|(\s*:?-{2,}:?\s*\|)+$/.test(trimmed)) return true;
 	const inner = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+
 	if (!inner.includes("|")) return false;
+
 	return /^\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+$/.test(inner);
 };
 
@@ -132,9 +135,13 @@ const splitRow = (line: string) =>
 
 const alignOf = (spec: string): Align | null => {
 	const trimmed = spec.trim();
+
 	if (trimmed.startsWith(":") && trimmed.endsWith(":")) return "center";
+
 	if (trimmed.endsWith(":")) return "right";
+
 	if (trimmed.startsWith(":")) return "left";
+
 	return null;
 };
 
@@ -144,11 +151,14 @@ const takeTable = (lines: string[], start: number) => {
 	const align = splitRow(lines[start + 1] ?? "").map(alignOf);
 	let index = start + 2;
 	const rows: string[][] = [];
+
 	while (index < lines.length && isTableRow(lines[index] ?? "")) {
 		rows.push(splitRow(lines[index] ?? ""));
 		index += 1;
 	}
+
 	const block: Block = { kind: "table", head, rows, align };
+
 	return { block, next: index };
 };
 
@@ -164,9 +174,13 @@ const takeTable = (lines: string[], start: number) => {
  */
 const fencedTable = (body: string[]): Block | null => {
 	const lines = body.filter((line) => line.trim() !== "");
+
 	if (lines.length < 2) return null;
+
 	if (!startsTable(lines[0] ?? "", lines[1] ?? "")) return null;
+
 	if (!lines.every(isTableRow)) return null;
+
 	return takeTable(lines, 0).block;
 };
 
@@ -200,14 +214,17 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 		// the end of what has arrived so far, which is what makes code stream
 		// legibly instead of appearing all at once when the closing fence lands.
 		const fence = /^```([\w-]*)\s*$/.exec(line.trim());
+
 		if (fence) {
 			const lang = fence[1] || null;
 			const body: string[] = [];
 			index += 1;
+
 			while (index < lines.length && !/^```/.test(lines[index] ?? "")) {
 				body.push(lines[index] ?? "");
 				index += 1;
 			}
+
 			const closed = index < lines.length;
 			index += 1;
 			const text = body.join("\n");
@@ -228,6 +245,7 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 			// added — it cannot invent a chart from something that is not one.
 			if (closed) {
 				const spec = parseChartSpec(text);
+
 				// Malformed on purpose falls through to the code block below: the
 				// numbers are in there, and a chart that silently vanishes takes them
 				// with it.
@@ -236,6 +254,7 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 					continue;
 				}
 			}
+
 			// A chart that is still arriving, as a box the size of the chart it is
 			// going to be. Only while the turn is running, and only for the TAGGED
 			// fence: a stopped turn holding half a chart still shows its numbers as
@@ -250,6 +269,7 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 				});
 				continue;
 			}
+
 			// Chips do NOT wait for the closing fence, and the asymmetry with the
 			// chart above is deliberate: every line here stands on its own, so half
 			// of one is a chip that grows rather than a parse that fails. It is also
@@ -274,6 +294,7 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 			}
 
 			const table = fencedTable(body);
+
 			if (table) {
 				blocks.push(table);
 				continue;
@@ -294,6 +315,7 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 		}
 
 		const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+
 		if (heading) {
 			blocks.push({
 				kind: "h",
@@ -314,6 +336,7 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 
 		if (/^\s*\d+[.)]\s+/.test(line)) {
 			const items: string[] = [];
+
 			while (
 				index < lines.length &&
 				/^\s*\d+[.)]\s+/.test(lines[index] ?? "")
@@ -321,16 +344,19 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 				items.push((lines[index] ?? "").replace(/^\s*\d+[.)]\s+/, ""));
 				index += 1;
 			}
+
 			blocks.push({ kind: "ol", items });
 			continue;
 		}
 
 		if (/^\s*[-*]\s+/.test(line)) {
 			const items: string[] = [];
+
 			while (index < lines.length && /^\s*[-*]\s+/.test(lines[index] ?? "")) {
 				items.push((lines[index] ?? "").replace(/^\s*[-*]\s+/, ""));
 				index += 1;
 			}
+
 			blocks.push({ kind: "ul", items });
 			continue;
 		}
@@ -341,6 +367,7 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 		}
 
 		const paragraph: string[] = [];
+
 		while (
 			index < lines.length &&
 			(lines[index] ?? "").trim() !== "" &&
@@ -354,12 +381,14 @@ const parseBlocks = (source: string, streaming: boolean): Block[] => {
 			paragraph.push(lines[index] ?? "");
 			index += 1;
 		}
+
 		// A lone table header mid-stream matches nothing above and nothing here,
 		// which would spin forever — take the line as its own paragraph.
 		if (paragraph.length === 0) {
 			paragraph.push(line);
 			index += 1;
 		}
+
 		blocks.push({ kind: "p", text: paragraph.join("\n") });
 	}
 
@@ -397,10 +426,13 @@ export const MONTHS = [
  *  timezone bug worth never having is the one that renders the wrong date. */
 export const printDayKey = (day: string) => {
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+
 	if (!match) return null;
 	const month = Number(match[2]);
 	const date = Number(match[3]);
+
 	if (month < 1 || month > 12 || date < 1 || date > 31) return null;
+
 	return `${date} ${MONTHS[month - 1]}`;
 };
 
@@ -420,7 +452,9 @@ export const printDayKey = (day: string) => {
 function DayCitation({ day, reveal }: { day: string; reveal: boolean }) {
 	const orgSlug = useOrgSlug();
 	const label = printDayKey(day);
+
 	if (!label) return <>{day}</>;
+
 	return (
 		<Link
 			to="/$orgSlug/time"
@@ -451,7 +485,9 @@ const word = (reveal: boolean, base: string) =>
  *  element per word is half the nodes of a word plus a separate text node. */
 const revealWords = (part: string, at: number) => {
 	const words = part.match(/\s*\S+\s*/g);
+
 	if (!words) return part;
+
 	return words.map((token, offset) => (
 		<span key={`w${at + offset}`} className="answer-word">
 			{token}
@@ -473,11 +509,14 @@ const renderInline = (text: string, reveal = false) => {
 	const parts = text.split(
 		/(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[\[\d{4}-\d{2}-\d{2}\]\]|\[[^\]\n]+\]\([^)\s]+\))/g,
 	);
+
 	let cursor = 0;
+
 	return parts.map((part, index) => {
 		const at = cursor;
 		cursor += countWords(part);
 		const key = reveal ? `w${at}` : `${index}-${part.slice(0, 8)}`;
+
 		if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
 			return (
 				<code
@@ -491,6 +530,7 @@ const renderInline = (text: string, reveal = false) => {
 				</code>
 			);
 		}
+
 		if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
 			return (
 				<strong key={key} className={word(reveal, "font-medium text-ink")}>
@@ -498,6 +538,7 @@ const renderInline = (text: string, reveal = false) => {
 				</strong>
 			);
 		}
+
 		if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
 			return (
 				<em key={key} className={reveal ? "answer-word" : undefined}>
@@ -505,14 +546,20 @@ const renderInline = (text: string, reveal = false) => {
 				</em>
 			);
 		}
+
 		const citation = /^\[\[(\d{4}-\d{2}-\d{2})\]\]$/.exec(part);
+
 		if (citation?.[1]) {
 			return <DayCitation key={key} day={citation[1]} reveal={reveal} />;
 		}
+
 		const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
+
 		if (link) {
 			const href = safeHref(link[2] ?? "");
+
 			if (!href) return <Fragment key={key}>{link[1]}</Fragment>;
+
 			return (
 				<a
 					key={key}
@@ -525,6 +572,7 @@ const renderInline = (text: string, reveal = false) => {
 				</a>
 			);
 		}
+
 		return (
 			<Fragment key={key}>{reveal ? revealWords(part, at) : part}</Fragment>
 		);
@@ -575,12 +623,17 @@ const measureColumns = (
 		(widest, row) => Math.max(widest, row.length),
 		head.length,
 	);
+
 	const lengths: number[] = [];
 	const numerics: boolean[] = [];
+
 	for (let column = 0; column < count; column += 1) {
-		const cells = rows
-			.map((row) => row[column]?.trim() ?? "")
-			.filter((cell) => cell !== "");
+		const cells = rows.flatMap((row) => {
+			const cell = row[column]?.trim() ?? "";
+
+			return cell === "" ? [] : [cell];
+		});
+
 		lengths.push(
 			cells.reduce(
 				(widest, cell) => Math.max(widest, cell.length),
@@ -589,7 +642,9 @@ const measureColumns = (
 		);
 		numerics.push(cells.length > 0 && cells.every(isNumeric));
 	}
+
 	const hasProse = lengths.some((length) => length > PROSE_AT);
+
 	return lengths.map((length, column) => ({
 		align: align[column] ?? (numerics[column] ? "right" : "left"),
 		numeric: numerics[column] === true,
@@ -612,8 +667,10 @@ function AnswerTable({
 	align: (Align | null)[];
 }) {
 	const columns = measureColumns(head, rows, align);
+
 	const cellClass = (index: number) => {
 		const column = columns[index];
+
 		return [
 			alignClass[column?.align ?? "left"],
 			column?.numeric === true ? "tabular-nums" : "",
@@ -627,6 +684,7 @@ function AnswerTable({
 			column?.prose === true ? "min-w-[22ch]" : "",
 		].join(" ");
 	};
+
 	return (
 		// `answer-wide` (styles.css) is what lets a table with a description
 		// column leave the reading column instead of being folded into a
@@ -695,6 +753,7 @@ export function AnswerActions({ text }: { text: string }) {
 	useEffect(() => {
 		if (!copied) return;
 		const timer = setTimeout(() => setCopied(false), 1600);
+
 		return () => clearTimeout(timer);
 	}, [copied]);
 
@@ -748,6 +807,7 @@ export function Answer({
 	streaming?: boolean;
 }) {
 	if (!text.trim()) return null;
+
 	// A block that arrives whole rather than word by word: a table, a chart, a
 	// code block. One fade for the whole thing, because its parts are laid out
 	// against each other — a table whose cells blurred in one at a time while its
@@ -757,10 +817,12 @@ export function Answer({
 	const blockIn = reveal
 		? { animation: "fade-up var(--dur-slow) var(--ease-out) both" }
 		: undefined;
+
 	return (
 		<div className="flex flex-col gap-2.5 text-[13.5px] leading-relaxed text-ink">
 			{parseBlocks(text, streaming).map((block, index) => {
 				const key = `${block.kind}-${index}`;
+
 				if (block.kind === "code") {
 					return (
 						<pre
@@ -772,6 +834,7 @@ export function Answer({
 						</pre>
 					);
 				}
+
 				if (block.kind === "table") {
 					return (
 						<div key={key} style={blockIn}>
@@ -783,6 +846,7 @@ export function Answer({
 						</div>
 					);
 				}
+
 				if (block.kind === "chart") {
 					// Same escape as the table's, and the case it exists for is the
 					// forty-column trend: at the reading column's width its columns are
@@ -806,6 +870,7 @@ export function Answer({
 						</div>
 					);
 				}
+
 				if (block.kind === "next") {
 					// No handler means the turn is still running: render them so the
 					// answer doesn't reflow when it settles, but don't offer a click
@@ -816,6 +881,7 @@ export function Answer({
 					// arrived would have nothing on screen to swap FROM, and the chips
 					// would appear rather than cross in.
 					if (block.ready && block.prompts.length === 0) return null;
+
 					return (
 						<div key={key} className="mt-0.5" style={blockIn}>
 							<FadeSwap
@@ -841,9 +907,11 @@ export function Answer({
 						</div>
 					);
 				}
+
 				if (block.kind === "hr") {
 					return <hr key={key} className="border-line2" />;
 				}
+
 				if (block.kind === "h") {
 					// One step of emphasis for all three levels: an answer is a few
 					// hundred words, so a heading here separates sections — it doesn't
@@ -857,6 +925,7 @@ export function Answer({
 						</div>
 					);
 				}
+
 				if (block.kind === "ol") {
 					return (
 						<ol key={key} className="flex flex-col gap-1 pl-1">
@@ -875,6 +944,7 @@ export function Answer({
 						</ol>
 					);
 				}
+
 				if (block.kind === "ul") {
 					return (
 						<ul key={key} className="flex flex-col gap-1 pl-1">
@@ -894,6 +964,7 @@ export function Answer({
 						</ul>
 					);
 				}
+
 				return (
 					<p key={key} className="whitespace-pre-wrap">
 						{renderInline(block.text, reveal)}
@@ -925,6 +996,7 @@ export function StreamingAnswer({
 	streaming: boolean;
 }) {
 	const visible = useTypeset(text, streaming);
+
 	return (
 		<div className="assistant-motion">
 			<Answer text={visible} reveal streaming={streaming} />

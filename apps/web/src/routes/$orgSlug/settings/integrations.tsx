@@ -73,6 +73,7 @@ function SettingToggleRow({
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
+
 	const mutation = useMutation({
 		mutationFn: (value: boolean) =>
 			updateIntegrationSettings({ data: patch(value) }),
@@ -85,6 +86,7 @@ function SettingToggleRow({
 			toast.error(error.message ?? "Could not update setting");
 		},
 	});
+
 	return (
 		<SettingRow
 			title={title}
@@ -103,15 +105,19 @@ function SettingToggleRow({
 function IntegrationsSettingsPage() {
 	const orgSlug = useOrgSlug();
 	const { mcpEnabled, cliEnabled, appOrigin } = Route.useRouteContext();
+
 	const { data: status } = useSuspenseQuery(
 		githubConnectionStatusQuery(orgSlug),
 	);
+
 	const { data: googleStatus } = useSuspenseQuery(
 		googleCalendarStatusQuery(orgSlug),
 	);
+
 	const { data: settings } = useSuspenseQuery(
 		integrationSettingsQuery(orgSlug),
 	);
+
 	const queryClient = useQueryClient();
 	const [disconnectOpen, setDisconnectOpen] = useState(false);
 	const [googleDisconnectOpen, setGoogleDisconnectOpen] = useState(false);
@@ -128,11 +134,15 @@ function IntegrationsSettingsPage() {
 		const { error } = await authClient.unlinkAccount({
 			providerId: "github",
 		});
+
 		setDisconnectOpen(false);
+
 		if (error) {
 			toast.error(error.message ?? "Could not disconnect GitHub");
+
 			return;
 		}
+
 		await queryClient.invalidateQueries({
 			queryKey: githubConnectionStatusQuery(orgSlug).queryKey,
 		});
@@ -153,11 +163,15 @@ function IntegrationsSettingsPage() {
 		const { error } = await authClient.unlinkAccount({
 			providerId: "google-calendar",
 		});
+
 		setGoogleDisconnectOpen(false);
+
 		if (error) {
 			toast.error(error.message ?? "Could not disconnect Google Calendar");
+
 			return;
 		}
+
 		await queryClient.invalidateQueries({
 			queryKey: googleCalendarStatusQuery(orgSlug).queryKey,
 		});
@@ -178,6 +192,7 @@ function IntegrationsSettingsPage() {
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
+
 			// Five real outcomes, and only one of them is "Synced". Each engine is
 			// independently best-effort, each can be out of window, and each can
 			// simply be switched off — so collapsing the rest into a success tick

@@ -236,15 +236,18 @@ export const settingsNavGroups = (
 	items: NavItem[];
 }[] => {
 	const entries = settingsEntriesFor(audience);
-	return (["account", "workspace", "infrastructure"] as const)
-		.map((key) => ({
-			key,
-			label: SETTINGS_GROUP_LABEL[key],
-			items: entries
-				.filter((entry) => entry.group === key)
-				.map((entry) => entry.item),
-		}))
-		.filter((group) => group.items.length > 0);
+
+	return (["account", "workspace", "infrastructure"] as const).flatMap(
+		(key) => {
+			const items = entries.flatMap((entry) =>
+				entry.group === key ? [entry.item] : [],
+			);
+
+			return items.length > 0
+				? [{ key, label: SETTINGS_GROUP_LABEL[key], items }]
+				: [];
+		},
+	);
 };
 
 /**
@@ -269,6 +272,7 @@ export const settingsNavGroups = (
  */
 export function SettingsEyebrow({ back = SETTINGS_ITEM }: { back?: NavItem }) {
 	const orgSlug = useOrgSlug();
+
 	return (
 		<Link
 			to={back.to}

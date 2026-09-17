@@ -8,26 +8,32 @@ import {
 export const getSession = createServerFn({ method: "GET" }).handler(
 	async () => {
 		const { auth } = await import("@farmer/core/auth");
+
 		const session = await auth.api.getSession({
 			headers: getRequestHeaders(),
 		});
+
 		return session;
 	},
 );
 
 export const requireSession = async () => {
 	const session = await getSession();
+
 	if (!session) {
 		throw redirect({ to: "/login" });
 	}
+
 	return session;
 };
 
 export const requireOrgContext = async () => {
 	const session = await requireSession();
+
 	if (!session.session.activeOrganizationId) {
 		throw redirect({ to: "/" });
 	}
+
 	return {
 		organizationId: session.session.activeOrganizationId,
 		userId: session.user.id,
@@ -37,6 +43,7 @@ export const requireOrgContext = async () => {
 export const getMyRole = createServerFn({ method: "GET" }).handler(async () => {
 	const ctx = await requireOrgContext();
 	const { membersService } = await import("@farmer/core/services");
+
 	return membersService.getRole(ctx);
 });
 
@@ -90,9 +97,11 @@ export const getMyAccess = createServerFn({ method: "GET" }).handler(
 export const requireOrgAdmin = async () => {
 	const ctx = await requireOrgContext();
 	const role = await getMyRole();
+
 	if (role !== "owner" && role !== "admin") {
 		throw redirect({ to: "/" });
 	}
+
 	return ctx;
 };
 
@@ -149,6 +158,7 @@ const withAccessStatus = async <T>(
 export const sessionMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const session = await requireSession();
+
 		return next({ context: { session } });
 	},
 );
@@ -182,8 +192,10 @@ export const sessionMiddleware = createMiddleware({ type: "function" }).server(
 export const orgMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const ctx = await requireOrgContext();
+
 		const { AccessError, ctxAccess, NotAMemberError } =
 			await import("@farmer/core/services");
+
 		try {
 			// Also warms the memo: this Ctx object is the one the handler receives.
 			await ctxAccess(ctx);
@@ -193,6 +205,7 @@ export const orgMiddleware = createMiddleware({ type: "function" }).server(
 			if (error instanceof NotAMemberError) throw redirect({ to: "/" });
 			throw error;
 		}
+
 		return withAccessStatus(AccessError, () => next({ context: { ctx } }));
 	},
 );
@@ -216,19 +229,24 @@ export const orgMiddleware = createMiddleware({ type: "function" }).server(
 export const orgAdminMiddleware = createMiddleware({ type: "function" }).server(
 	async ({ next }) => {
 		const ctx = await requireOrgContext();
+
 		const { AccessError, ctxAccess, NotAMemberError } =
 			await import("@farmer/core/services");
+
 		let access: Awaited<ReturnType<typeof ctxAccess>>;
+
 		try {
 			access = await ctxAccess(ctx);
 		} catch (error) {
 			if (error instanceof NotAMemberError) throw redirect({ to: "/" });
 			throw error;
 		}
+
 		// Matches `requireOrgAdmin`'s behaviour: a non-admin member is sent home
 		// rather than shown an error, because every caller of this middleware backs
 		// a screen they should not have reached.
 		if (!access.isAdmin) throw redirect({ to: "/" });
+
 		return withAccessStatus(AccessError, () => next({ context: { ctx } }));
 	},
 );
@@ -254,8 +272,11 @@ export const platformAdminMiddleware = createMiddleware({
 	type: "function",
 }).server(async ({ next }) => {
 	const session = await requireSession();
+
 	const { isPlatformAdminRole } =
 		await import("@farmer/core/lib/platform-admin");
+
 	if (!isPlatformAdminRole(session.user.role)) throw redirect({ to: "/" });
+
 	return next({ context: { session } });
 });

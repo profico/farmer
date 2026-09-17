@@ -17,8 +17,11 @@ import { organizationService } from "./organization.service";
 import type { Ctx } from "./types";
 
 const ORG_A = "og-a";
+
 const ORG_B = "og-b";
+
 const ADMIN = "u-og-admin";
+
 const MEM = "u-og-member";
 
 let harness: TestDb;
@@ -96,6 +99,7 @@ describe("updateSettings", () => {
 		const updated = await organizationService.updateSettings(ctx(ADMIN), {
 			name: "Org A Renamed",
 		});
+
 		expect(updated).toMatchObject({
 			name: "Org A Renamed",
 			country: "US",
@@ -123,6 +127,7 @@ describe("updateSettings", () => {
 		const updated = await organizationService.updateSettings(ctx(ADMIN), {
 			weekStartsOn: 0,
 		});
+
 		expect(updated.weekStartsOn).toBe(0);
 		expect((await orgRow(ORG_A)).weekStartsOn).toBe(0);
 		expect((await orgRow(ORG_B)).weekStartsOn).toBe(1);

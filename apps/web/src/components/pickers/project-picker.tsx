@@ -80,6 +80,7 @@ export function ProjectPicker({
 >) {
 	const groups = useMemo<Group[]>(() => {
 		const byClient = new Map<string, Item[]>();
+
 		for (const p of projects) {
 			if (p.status !== "active" && p.id !== value) continue;
 			const clientName = p.client?.name ?? "";
@@ -94,6 +95,7 @@ export function ProjectPicker({
 			});
 			byClient.set(clientName, items);
 		}
+
 		const clients = [...byClient.entries()]
 			.sort(([a], [b]) => a.localeCompare(b))
 			.map(([clientName, items]) => ({
@@ -101,7 +103,9 @@ export function ProjectPicker({
 				label: clientName || null,
 				items: items.sort((a, b) => a.label.localeCompare(b.label)),
 			}));
+
 		if (!noProject) return clients;
+
 		return [
 			{
 				value: NONE,
@@ -122,8 +126,10 @@ export function ProjectPicker({
 	}, [projects, value, noProject]);
 
 	const [query, setQuery] = useState("");
+
 	const filtered = useMemo(() => {
 		if (query.trim() === "") return groups;
+
 		return groups
 			.map((g) => ({
 				...g,

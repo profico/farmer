@@ -11,6 +11,7 @@ import {
 describe("the task taxonomy", () => {
 	test("every alias folds into a standard task", () => {
 		const names = new Set<string>(STANDARD_TASKS.map((t) => t.name));
+
 		for (const target of Object.values(TASK_ALIASES)) {
 			expect(names.has(target)).toBe(true);
 		}
@@ -19,6 +20,7 @@ describe("the task taxonomy", () => {
 	test("standard names are unique and grouped", () => {
 		const names = STANDARD_TASKS.map((t) => t.name);
 		expect(new Set(names).size).toBe(names.length);
+
 		for (const t of STANDARD_TASKS) expect(TASK_GROUPS).toContain(t.group);
 	});
 

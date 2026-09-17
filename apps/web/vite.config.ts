@@ -88,6 +88,7 @@ function devWorker(): Plugin {
 		apply: "serve",
 		configureServer(server) {
 			if (process.env.DEV_WORKER === "false") return;
+
 			const proc = spawn("bun", ["run", WORKER_SCRIPT], {
 				stdio: "inherit",
 				env: {
@@ -101,6 +102,7 @@ function devWorker(): Plugin {
 					SCHEDULER_STARTUP_DELAY_MS: "2000",
 				},
 			});
+
 			proc.on("error", (err) => {
 				console.warn(`[dev] could not start task worker: ${err.message}`);
 			});

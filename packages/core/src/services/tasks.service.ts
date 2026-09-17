@@ -18,8 +18,11 @@ import type { Ctx } from "./types";
 // third kind (a wedding, a move, a funeral): time off that is neither the
 // annual allowance nor illness.
 export const VACATION_TASK_NAME = "Vacation";
+
 export const SICK_LEAVE_TASK_NAME = "Sick Leave";
+
 export const PAID_LEAVE_TASK_NAME = "Paid Leave";
+
 export const ABSENCE_TASK_NAMES = [
 	VACATION_TASK_NAME,
 	SICK_LEAVE_TASK_NAME,
@@ -35,6 +38,7 @@ export const tasksService = {
 			where: and(eq(task.isAbsence, true), isNull(task.archivedAt)),
 			orderBy: asc(task.name),
 		});
+
 		return rows;
 	},
 
@@ -45,6 +49,7 @@ export const tasksService = {
 			where: eq(task.isAbsence, true),
 			columns: { id: true },
 		});
+
 		return new Set(rows.map((r) => r.id));
 	},
 
@@ -95,6 +100,7 @@ export const tasksService = {
 						),
 					),
 				);
+
 			return rows.sort((a, b) => a.name.localeCompare(b.name));
 		}
 
@@ -116,6 +122,7 @@ export const tasksService = {
 					),
 				),
 			);
+
 		return rows.sort((a, b) => a.name.localeCompare(b.name));
 	},
 
@@ -126,6 +133,7 @@ export const tasksService = {
 	recentForProject: async (ctx: Ctx, projectId: string): Promise<string[]> => {
 		const recent = async (onProject: boolean) => {
 			const last = max(timeEntry.date);
+
 			const rows = await db
 				.select({ taskId: timeEntry.taskId, last })
 				.from(timeEntry)
@@ -142,9 +150,12 @@ export const tasksService = {
 				.groupBy(timeEntry.taskId)
 				.orderBy(desc(last))
 				.limit(3);
+
 			return rows.map((r) => r.taskId);
 		};
+
 		const onProject = await recent(true);
+
 		return onProject.length > 0 ? onProject : recent(false);
 	},
 
@@ -153,6 +164,7 @@ export const tasksService = {
 	 *  itself so the task an entry already has can stay on offer. */
 	hiddenIds: async (ctx: Ctx): Promise<string[]> => {
 		await ctxAccess(ctx);
+
 		const rows = await db
 			.select({ taskId: hiddenTask.taskId })
 			.from(hiddenTask)
@@ -162,6 +174,7 @@ export const tasksService = {
 					eq(hiddenTask.userId, ctx.userId),
 				),
 			);
+
 		return rows.map((r) => r.taskId);
 	},
 
@@ -171,6 +184,7 @@ export const tasksService = {
 	 *  which reads as not found. Idempotent both ways. */
 	setHidden: async (ctx: Ctx, input: SetTaskHiddenInput) => {
 		await ctxAccess(ctx);
+
 		const target = await db.query.task.findFirst({
 			where: and(
 				eq(task.id, input.taskId),
@@ -185,6 +199,7 @@ export const tasksService = {
 			),
 			columns: { id: true },
 		});
+
 		if (!target) throw new Error("Task not found");
 
 		if (input.hidden) {
@@ -196,8 +211,10 @@ export const tasksService = {
 					taskId: target.id,
 				})
 				.onConflictDoNothing();
+
 			return;
 		}
+
 		await db
 			.delete(hiddenTask)
 			.where(
@@ -255,6 +272,7 @@ export const tasksService = {
 			),
 			columns: { id: true, name: true, scope: true },
 		});
+
 		return rows.find((r) => r.scope === "site") ?? rows[0] ?? null;
 	},
 
@@ -298,6 +316,7 @@ export const tasksService = {
 			.from(timeEntry)
 			.where(eq(timeEntry.organizationId, ctx.organizationId))
 			.groupBy(timeEntry.taskId);
+
 		const countByTask = new Map(counts.map((c) => [c.taskId, c.count]));
 
 		return tasks.map((t) => ({
@@ -324,6 +343,7 @@ export const tasksService = {
 			),
 			columns: { id: true, archivedAt: true },
 		});
+
 		if (clash) {
 			throw new Error(
 				clash.archivedAt
@@ -345,7 +365,9 @@ export const tasksService = {
 				description: input.description,
 			})
 			.returning();
+
 		if (!created) throw new Error("Failed to create task");
+
 		return created;
 	},
 
@@ -355,6 +377,7 @@ export const tasksService = {
 	 *  which strands all of that on a dead row. */
 	unarchive: async (ctx: Ctx, taskId: string) => {
 		await requireAdmin(ctx);
+
 		const existing = await db.query.task.findFirst({
 			where: and(
 				eq(task.id, taskId),
@@ -363,7 +386,9 @@ export const tasksService = {
 			),
 			columns: { id: true, name: true, archivedAt: true, systemKey: true },
 		});
+
 		if (!existing) throw new Error("Task not found");
+
 		if (!existing.archivedAt) return;
 
 		// Both partial unique indexes ignore archived rows, so a live task may have
@@ -383,6 +408,7 @@ export const tasksService = {
 			),
 			columns: { id: true },
 		});
+
 		if (blocker) {
 			throw new Error(
 				`Another live task already uses the name "${existing.name}". Rename or archive it first.`,
@@ -397,6 +423,7 @@ export const tasksService = {
 
 	update: async (ctx: Ctx, input: UpdateTaskInput) => {
 		await requireAdmin(ctx);
+
 		// Site tasks are matched too, so the rejection below is the one the caller
 		// sees. Looking up on organization_id alone silently excluded them — a site
 		// row's organization_id is NULL, so the comparison is never true — and the
@@ -407,7 +434,9 @@ export const tasksService = {
 				or(eq(task.scope, "site"), eq(task.organizationId, ctx.organizationId)),
 			),
 		});
+
 		if (!existing) throw new Error("Task not found");
+
 		if (existing.scope === "site") {
 			throw new Error("Built-in tasks cannot be edited");
 		}
@@ -415,9 +444,13 @@ export const tasksService = {
 		// An absent field and a field set to null are different edits: drizzle's
 		// `.set()` skips `undefined` keys, which is what makes the distinction work.
 		const patch: Partial<typeof task.$inferInsert> = { updatedAt: new Date() };
+
 		if (input.name !== undefined) patch.name = input.name.trim();
+
 		if (input.group !== undefined) patch.group = input.group;
+
 		if (input.color !== undefined) patch.color = input.color;
+
 		if (input.description !== undefined) patch.description = input.description;
 
 		const [updated] = await db
@@ -425,11 +458,13 @@ export const tasksService = {
 			.set(patch)
 			.where(eq(task.id, input.taskId))
 			.returning();
+
 		return updated;
 	},
 
 	archive: async (ctx: Ctx, taskId: string) => {
 		await requireAdmin(ctx);
+
 		// Site rows matched here for the same reason as in `update` above: so the
 		// caller gets the real reason rather than "Task not found".
 		const existing = await db.query.task.findFirst({
@@ -438,7 +473,9 @@ export const tasksService = {
 				or(eq(task.scope, "site"), eq(task.organizationId, ctx.organizationId)),
 			),
 		});
+
 		if (!existing) throw new Error("Task not found");
+
 		// Vacation, Sick Leave, Meeting and Break are built-ins and cannot be
 		// removed (PRD §8). For Meeting and Break that unarchivability is the whole
 		// point of their being site-scoped: the calendar sync and the day assembler

@@ -24,7 +24,9 @@ export const SLACK_BOT_SCOPES = [
  */
 export const slackRedirectUri = (): string => {
 	const base = process.env.BETTER_AUTH_URL;
+
 	if (!base) throw new Error("BETTER_AUTH_URL not configured");
+
 	return new URL("/api/slack/callback", base).toString();
 };
 
@@ -40,11 +42,14 @@ export const slackEscape = (text: string): string =>
  *  it is not worth failing a send over. */
 export const slackLink = (path: string, label: string): string | null => {
 	const base = process.env.BETTER_AUTH_URL;
+
 	if (!base) return null;
+
 	return `<${new URL(path, base).toString()}|${slackEscape(label)}>`;
 };
 
 type SlackResponse<T> = { ok: true } & T;
+
 type SlackError = { ok: false; error: string };
 
 /**
@@ -70,6 +75,7 @@ const call = async <T>(
 	body: SlackFormBody,
 ): Promise<SlackResponse<T> | SlackError> => {
 	const form = new URLSearchParams();
+
 	for (const [key, value] of Object.entries(body)) {
 		if (value === undefined) continue;
 		// Discriminating a declared union, not narrowing an unparsed value: a
@@ -78,6 +84,7 @@ const call = async <T>(
 		// oxlint-disable-next-line anti-slop/no-runtime-typeof -- see above
 		form.set(key, typeof value === "string" ? value : JSON.stringify(value));
 	}
+
 	const response = await externalFetch(`${SLACK_API}/${method}`, {
 		method: "POST",
 		headers: {
@@ -86,9 +93,11 @@ const call = async <T>(
 		},
 		body: form.toString(),
 	});
+
 	if (!response.ok) {
 		return { ok: false, error: `http_${response.status}` };
 	}
+
 	// SAFETY: an HTTP failure already returned a SlackError above, so this is a
 	// 200 — and Slack answers 200 for its own failures too, which is exactly why
 	// the type is a union the caller must discriminate on `ok` before reading.
@@ -119,6 +128,7 @@ export const slackClient = {
 	exchangeOAuthCode: async (code: string): Promise<SlackOAuthResult> => {
 		const clientId = process.env.SLACK_CLIENT_ID;
 		const clientSecret = process.env.SLACK_CLIENT_SECRET;
+
 		if (!clientId || !clientSecret) {
 			throw new Error("SLACK_CLIENT_ID / SLACK_CLIENT_SECRET not configured");
 		}
@@ -133,22 +143,27 @@ export const slackClient = {
 				redirect_uri: slackRedirectUri(),
 			}),
 		});
+
 		// SAFETY: oauth.v2.access answers 200 for both outcomes and signals which one
 		// with `ok`, so the union is the contract and the check below is the narrowing.
 		const result = (await response.json()) as
 			| ({ ok: true } & SlackOAuthResult)
 			| SlackError;
+
 		if (!result.ok) {
 			throw new Error(`Slack rejected the install: ${result.error}`);
 		}
+
 		return result;
 	},
 
 	/** Verifies a bot token and returns the workspace it belongs to. */
 	authTest: async (botToken: string) => {
 		const result = await call<SlackAuth>(botToken, "auth.test", {});
+
 		if (!result.ok)
 			throw new Error(`Slack rejected the token: ${result.error}`);
+
 		return result;
 	},
 
@@ -169,6 +184,7 @@ export const slackClient = {
 			"users.lookupByEmail",
 			{ email },
 		);
+
 		if (!result.ok) {
 			// Not being in the workspace is an answer, not a failure: a re-match of
 			// a large organization used to log one error per such person.
@@ -177,8 +193,10 @@ export const slackClient = {
 					`[slack] lookupByEmail(${email}) failed: ${result.error}`,
 				);
 			}
+
 			return null;
 		}
+
 		return result.user.id;
 	},
 
@@ -197,10 +215,13 @@ export const slackClient = {
 			"chat.postMessage",
 			blocks?.length ? { channel, text, blocks } : { channel, text },
 		);
+
 		if (!result.ok) {
 			console.error(`[slack] postMessage failed: ${result.error}`);
+
 			return false;
 		}
+
 		return true;
 	},
 };

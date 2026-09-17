@@ -45,6 +45,7 @@ export function entryHeading(entry: EntryBlockRowEntry): string {
 	if (!entry.project) return entry.task.name;
 	const code = entry.project.code ? `[${entry.project.code}] ` : "";
 	const client = entry.project.client ? ` (${entry.project.client.name})` : "";
+
 	return `${code}${entry.project.name}${client}`;
 }
 
@@ -95,6 +96,7 @@ export function EntryBlockRow({
 
 	const saveNote = () => {
 		const trimmed = note.trimEnd();
+
 		if (trimmed === (entry.description ?? "")) return;
 		noteMutation.mutate(trimmed);
 	};
@@ -127,14 +129,18 @@ export function EntryBlockRow({
 	const saveDuration = () => {
 		setEditingDuration(false);
 		const trimmed = duration.trim();
+
 		// An emptied box is an abandoned edit, not a request to log nothing —
 		// deleting an entry is the Delete button, and a zero-length one cannot
 		// exist. Same for a cleared-then-retyped value that comes back unchanged.
 		if (trimmed === "") {
 			setDuration(formatClock(entry.durationSeconds));
+
 			return;
 		}
+
 		const parsed = parseDuration(trimmed);
+
 		if (parsed == null || parsed <= 0) {
 			// Said out loud rather than reverted in silence. The grid cell next door
 			// can revert quietly because a wrong cell sits in a field of right ones;
@@ -142,12 +148,15 @@ export function EntryBlockRow({
 			// edit. The hint is the dialog's, word for word.
 			toast.error("Could not read that duration — try 1.5, 1h30m or 1:30");
 			setDuration(formatClock(entry.durationSeconds));
+
 			return;
 		}
+
 		const snapped = snapToQuarterHour(parsed);
 		// Show the snap even when the length did not change, so typing "1h20m"
 		// against an hour and a half does not look like nothing happened.
 		setDuration(formatClock(snapped));
+
 		if (snapped === entry.durationSeconds) return;
 		durationMutation.mutate(snapped);
 	};
@@ -226,6 +235,7 @@ export function EntryBlockRow({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
+
 			// Fill blocks are derived, and a rule-generated entry leaves a skip behind
 			// (re-creating it as a manual copy would double up) — neither can be
 			// restored by re-creating a row, so neither offers undo.
@@ -237,6 +247,7 @@ export function EntryBlockRow({
 			// not lost to one misclick.
 			const undoable =
 				deleted && !deleted.fillsDay && !deleted.generatedFromRuleId;
+
 			if (undoable) {
 				toast("Entry deleted", {
 					action: { label: "Undo", onClick: () => restore(deleted) },
@@ -377,8 +388,10 @@ export function EntryBlockRow({
 							if (event.key === "Enter") {
 								event.preventDefault();
 								event.currentTarget.blur();
+
 								return;
 							}
+
 							if (event.key === "Escape") {
 								setEditingDuration(false);
 								setDuration(formatClock(entry.durationSeconds));

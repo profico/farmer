@@ -25,6 +25,7 @@ export const Route = createFileRoute("/.well-known/oauth-protected-resource")({
 						import("@farmer/core/auth"),
 						import("better-auth/plugins"),
 					]);
+
 				return oAuthProtectedResourceMetadata(auth)(request);
 			},
 		},

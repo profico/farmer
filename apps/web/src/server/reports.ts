@@ -19,6 +19,7 @@ export const getTimeReportSummary = createServerFn({ method: "GET" })
 	.validator(timeReportSummaryInput)
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
+
 		return reportsService.timeSummary(context.ctx, data);
 	});
 
@@ -27,6 +28,7 @@ export const getTimeReportDetail = createServerFn({ method: "GET" })
 	.validator(timeReportDetailInput)
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
+
 		return reportsService.timeDetail(context.ctx, data);
 	});
 
@@ -38,6 +40,7 @@ export const getOvertimeReport = createServerFn({ method: "GET" })
 	.validator(overtimeReportInput)
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
+
 		return reportsService.overtime(context.ctx, data);
 	});
 
@@ -48,5 +51,6 @@ export const getAbsenceReport = createServerFn({ method: "GET" })
 	.validator(absenceReportInput)
 	.handler(async ({ data, context }) => {
 		const { reportsService } = await import("@farmer/core/services");
+
 		return reportsService.absence(context.ctx, data);
 	});

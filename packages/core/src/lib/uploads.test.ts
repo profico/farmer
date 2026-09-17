@@ -11,7 +11,9 @@ import {
 } from "./uploads";
 
 const ID = "3f2a9b1c-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+
 const bytes = (...values: number[]) => new Uint8Array(values);
+
 const text = (value: string) => new TextEncoder().encode(value);
 
 describe("sniffImage", () => {

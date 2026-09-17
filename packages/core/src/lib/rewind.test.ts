@@ -12,6 +12,7 @@ import {
 import { datesBetween } from "./time";
 
 const H = 3600;
+
 const weekday = (day: string) => !isWeekendKey(day);
 
 describe("when a Rewind opens", () => {
@@ -59,6 +60,7 @@ describe("projectRestOfYear", () => {
 				.filter(weekday)
 				.map((day) => [day, 6 * H] as const),
 		);
+
 		const projection = projectRestOfYear({
 			...base,
 			today: "2025-12-24",
@@ -66,6 +68,7 @@ describe("projectRestOfYear", () => {
 			workedByDay: worked,
 			absenceByDay: new Map(),
 		});
+
 		expect(projection?.paceSeconds).toBe(6 * H);
 		expect(projection?.totalSeconds).toBe(6 * 6 * H);
 		expect(projection?.byMonth.get(12)).toBe(6 * 6 * H);
@@ -77,6 +80,7 @@ describe("projectRestOfYear", () => {
 			["2025-12-23", 8 * H],
 			["2025-12-24", 3 * H],
 		]);
+
 		const projection = projectRestOfYear({
 			...base,
 			today: "2025-12-24",
@@ -91,6 +95,7 @@ describe("projectRestOfYear", () => {
 				),
 			]),
 		});
+
 		// Today: 8h pace minus the 3h already logged. Friday: half a day.
 		expect(projection?.totalSeconds).toBe(5 * H + 4 * H);
 	});
@@ -102,6 +107,7 @@ describe("projectRestOfYear", () => {
 			workedByDay: new Map([["2025-12-01", 8 * H]]),
 			absenceByDay: new Map<string, number>(),
 		};
+
 		expect(projectRestOfYear({ ...input, today: "2026-01-01" })).toBeNull();
 		expect(projectRestOfYear({ ...input, today: "2025-12-01" })).toBeNull();
 	});
@@ -115,6 +121,7 @@ describe("topWords", () => {
 			"Fixes to the invoice export",
 			"Invoice",
 		]);
+
 		expect(words).toEqual([
 			{ word: "checkout", count: 2 },
 			{ word: "fixes", count: 2 },

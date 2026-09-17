@@ -28,6 +28,7 @@ describe("isCliEnabled", () => {
 			process.env.CLI_ENABLED = value;
 			expect(isCliEnabled()).toBe(false);
 		}
+
 		process.env.CLI_ENABLED = "true";
 		expect(isCliEnabled()).toBe(true);
 	});

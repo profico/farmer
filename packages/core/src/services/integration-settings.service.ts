@@ -34,7 +34,9 @@ export const integrationSettingsService = {
 				eq(integrationSettings.userId, ctx.userId),
 			),
 		});
+
 		if (!row) return { ...DEFAULTS };
+
 		return {
 			googleAutoSyncMeetings: row.googleAutoSyncMeetings,
 			githubAutoLoadCommits: row.githubAutoLoadCommits,
@@ -68,6 +70,7 @@ export const integrationSettingsService = {
 			was: boolean,
 		): Date | null | undefined => {
 			if (next === undefined || next === was) return undefined;
+
 			return next ? now : null;
 		};
 
@@ -75,6 +78,7 @@ export const integrationSettingsService = {
 			input.googleAutoSyncMeetings,
 			current.googleAutoSyncMeetings,
 		);
+
 		const commitsSince = sinceAfter(
 			input.githubSyncCommitsAsWorkTime,
 			current.githubSyncCommitsAsWorkTime,
@@ -107,7 +111,9 @@ export const integrationSettingsService = {
 				},
 			})
 			.returning();
+
 		if (!row) throw new Error("Failed to save integration settings");
+
 		return {
 			googleAutoSyncMeetings: row.googleAutoSyncMeetings,
 			githubAutoLoadCommits: row.githubAutoLoadCommits,

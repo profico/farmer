@@ -6,6 +6,7 @@ export const getSignInMethods = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { accountService } = await import("@farmer/core/services");
+
 		return accountService.signInMethods(context.ctx);
 	});
 
@@ -14,5 +15,6 @@ export const unlinkGoogleLogin = createServerFn({ method: "POST" })
 	.handler(async ({ context }) => {
 		const { accountService } = await import("@farmer/core/services");
 		await accountService.unlinkGoogle(context.ctx);
+
 		return { ok: true };
 	});

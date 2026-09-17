@@ -30,6 +30,7 @@ export const orgSettingsService = {
 		const row = await db.query.orgSettings.findFirst({
 			where: eq(orgSettings.organizationId, ctx.organizationId),
 		});
+
 		return {
 			trackingTolerancePct:
 				row?.trackingTolerancePct ?? DEFAULTS.trackingTolerancePct,
@@ -40,14 +41,17 @@ export const orgSettingsService = {
 
 	update: async (ctx: Ctx, patch: Partial<OrgSettings>) => {
 		await requireAdmin(ctx);
+
 		// `undefined` means "not in this patch"; `null` is a real value here and
 		// means "clear the lock", so the two cannot be collapsed.
 		const updateSet: Partial<typeof orgSettings.$inferInsert> = {
 			updatedAt: new Date(),
 		};
+
 		if (patch.trackingTolerancePct !== undefined) {
 			updateSet.trackingTolerancePct = patch.trackingTolerancePct;
 		}
+
 		if (patch.automationLockedThrough !== undefined) {
 			updateSet.automationLockedThrough = patch.automationLockedThrough;
 		}

@@ -58,6 +58,7 @@ type SortKey =
 // three columns they sit at the bottom whichever way the column is sorted — a
 // dash is not a small number.
 const hasTarget = (r: TrackingRow) => r.targetSeconds != null;
+
 const nullsLast = (a: TrackingRow, b: TrackingRow) =>
 	Number(!hasTarget(a)) - Number(!hasTarget(b));
 
@@ -80,6 +81,7 @@ const Delta = ({ seconds }: { seconds: number }) => {
 			<span className="text-muted-foreground">{formatReportHours(0)}</span>
 		);
 	}
+
 	return (
 		<span className={seconds > 0 ? "text-ok" : "text-bad"}>
 			{seconds > 0 ? "+" : "−"}
@@ -96,15 +98,19 @@ export function ComplianceTab({
 	month: number;
 }) {
 	const orgSlug = useOrgSlug();
+
 	const { data } = useSuspenseQuery(
 		trackingReportQuery(orgSlug, { year, month }),
 	);
+
 	// The report arrives worst first (status, then the biggest shortfall);
 	// that stays the default, and any column can take over — the delta column
 	// is the one people asked for, to find who is furthest ahead or behind.
 	const [sort, setSort] = useState<Sort<SortKey>>({ key: "status", dir: 1 });
+
 	const onSort = (key: SortKey, numeric: boolean) =>
 		setSort((current) => toggleSort(current, key, numeric));
+
 	const rows = [...data.rows].sort(
 		(a, b) =>
 			(sort.key === "target" || sort.key === "delta" || sort.key === "status"
@@ -116,6 +122,7 @@ export function ComplianceTab({
 	);
 
 	const counts = { behind: 0, slightly_behind: 0, on_track: 0 };
+
 	for (const r of data.rows) if (r.status) counts[r.status] += 1;
 
 	return (
@@ -175,6 +182,7 @@ export function ComplianceTab({
 				onSort={onSort}
 				rows={rows.map((r) => {
 					const label = r.status ? STATUS_LABEL[r.status] : null;
+
 					return {
 						key: r.userId,
 						className: label?.row,

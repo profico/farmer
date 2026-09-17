@@ -32,6 +32,7 @@ export function ColorPicker({
 			<div className="flex flex-wrap gap-2">
 				{PRESET_SWATCHES.map((swatch) => {
 					const selected = value?.toLowerCase() === swatch.toLowerCase();
+
 					return (
 						<button
 							key={swatch}

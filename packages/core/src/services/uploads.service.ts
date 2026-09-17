@@ -42,18 +42,23 @@ export const uploadsService = {
 		}
 
 		const store = objectStore();
+
 		if (!store) {
 			throw new UploadRejectedError(
 				"File uploads are not set up on this deployment.",
 			);
 		}
+
 		if (input.bytes.byteLength === 0) {
 			throw new UploadRejectedError("The file is empty.");
 		}
+
 		if (input.bytes.byteLength > MAX_UPLOAD_BYTES) {
 			throw new UploadRejectedError("The image is larger than 1 MB.");
 		}
+
 		const extension = sniffImage(input.bytes);
+
 		if (!extension) {
 			throw new UploadRejectedError(
 				"Upload a PNG, JPEG, GIF, WebP or SVG image.",
@@ -66,6 +71,7 @@ export const uploadsService = {
 			crypto.randomUUID(),
 			extension,
 		);
+
 		try {
 			await store.put(key, input.bytes, contentTypeOf(extension));
 		} catch (error) {
@@ -76,8 +82,10 @@ export const uploadsService = {
 					"There is no space left for uploads. Ask an admin to raise the storage limit.",
 				);
 			}
+
 			throw error;
 		}
+
 		return { url: uploadPath(key) };
 	},
 };
@@ -92,6 +100,7 @@ export const uploadsService = {
  */
 export const assertOwnUpload = (ctx: Ctx, value: string | null | undefined) => {
 	const key = uploadKeyOf(value);
+
 	if (key && uploadOrganizationOf(key) !== ctx.organizationId) {
 		throw new UploadRejectedError(
 			"That image was uploaded to another organization.",

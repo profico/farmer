@@ -17,6 +17,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/projects")({
 				run: async (ctx) => {
 					const { projectsService } = await import("@farmer/core/services");
 					const rows = await projectsService.listMine(ctx);
+
 					return rows.map(toApiProject);
 				},
 			}),

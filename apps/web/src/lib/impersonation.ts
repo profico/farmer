@@ -44,12 +44,14 @@ const leaveFor = async () => {
 
 export const startImpersonating = async (userId: string) => {
 	const { error } = await authClient.admin.impersonateUser({ userId });
+
 	if (error) throw new Error(error.message ?? "Could not impersonate");
 	await leaveFor();
 };
 
 export const stopImpersonating = async () => {
 	const { error } = await authClient.admin.stopImpersonating();
+
 	if (error) throw new Error(error.message ?? "Could not stop impersonating");
 	await leaveFor();
 };

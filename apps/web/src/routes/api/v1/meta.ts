@@ -18,11 +18,13 @@ export const Route = createFileRoute("/api/v1/meta")({
 		handlers: {
 			GET: async () => {
 				const { isCliEnabled } = await import("@farmer/core/lib/cli-flag");
+
 				const meta: ApiMeta = {
 					app: "farmer",
 					cliEnabled: isCliEnabled(),
 					minCliVersion: MIN_CLI_VERSION,
 				};
+
 				return Response.json(meta, {
 					headers: { "Cache-Control": "no-store" },
 				});

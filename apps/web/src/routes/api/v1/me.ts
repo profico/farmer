@@ -18,6 +18,7 @@ export const Route = createFileRoute("/api/v1/me")({
 			GET: userApiRoute({
 				run: async (caller): Promise<ApiMe> => {
 					const { orgContextService } = await import("@farmer/core/services");
+
 					return {
 						user: caller.user,
 						organizations: await orgContextService.organizationsFor(

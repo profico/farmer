@@ -50,17 +50,24 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-pr-activity";
+
 const USER_ID = "user-pr-activity";
+
 /** The engine writes only to days that are over; see commit-attach.test.ts. */
 const YESTERDAY = "2026-08-11";
+
 const TODAY = "2026-08-12";
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;
+
 let devTaskId: string;
+
 let reviewTaskId: string;
+
 let projectId: string;
+
 let repoId: string;
 
 const runAutomations = () =>
@@ -113,10 +120,12 @@ const pullRequestsFor = (events: FakeEvent[]): PullRequestSource => ({
 	listUserPullRequestActivityForDay: async () => [],
 	listUserPullRequestActivityByDay: async (_ctx, range) => {
 		const byDay = new Map<string, ScannedPullRequestActivity[]>();
+
 		for (const fake of events) {
 			if (fake.day < range.from || fake.day > range.to) continue;
 			byDay.set(fake.day, [...(byDay.get(fake.day) ?? []), event(fake)]);
 		}
+
 		return [...byDay].map(([dayKey, activity]) => ({ dayKey, activity }));
 	},
 });
@@ -152,6 +161,7 @@ const addEntry = async (values: {
 			description: values.description ?? "",
 		})
 		.returning();
+
 	return present(row, "the fixture entry");
 };
 
@@ -185,6 +195,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [farmer] = await db
 		.insert(project)
 		.values({
@@ -193,6 +204,7 @@ beforeAll(async () => {
 			name: "Farmer",
 		})
 		.returning();
+
 	projectId = present(farmer, "the project").id;
 
 	const [repo] = await db
@@ -206,6 +218,7 @@ beforeAll(async () => {
 			fullName: "profico/repo",
 		})
 		.returning({ id: projectGithubRepo.id });
+
 	repoId = present(repo, "the repo").id;
 
 	const [dev] = await db
@@ -218,6 +231,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	devTaskId = present(dev, "the Development task").id;
 
 	const [review] = await db
@@ -230,6 +244,7 @@ beforeAll(async () => {
 			isAbsence: false,
 		})
 		.returning({ id: task.id });
+
 	reviewTaskId = present(review, "the Code Review task").id;
 
 	for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
@@ -306,6 +321,7 @@ describe("pull request events in the commit engine", () => {
 			durationSeconds: 4 * 60 * 60,
 			description: "Importer",
 		});
+
 		setCommitSourceForTests({
 			listUserCommitsForDay: async () => [],
 			listUserCommitsByDay: async () => [
@@ -347,6 +363,7 @@ describe("pull request events in the commit engine", () => {
 			durationSeconds: 8 * 60 * 60,
 			description: "Importer",
 		});
+
 		setPullRequestSourceForTests(
 			pullRequestsFor([
 				{ day: YESTERDAY, number: 7, kind: "opened" },
@@ -358,10 +375,12 @@ describe("pull request events in the commit engine", () => {
 		await runAutomations();
 
 		expect(await activityOn(entry.id)).toHaveLength(2);
+
 		const [listed] = await timeEntriesService.listRange(ctx, {
 			from: YESTERDAY,
 			to: YESTERDAY,
 		});
+
 		// Two events on one pull request are one pull request on the badge.
 		expect(listed?.pullRequestCount).toBe(1);
 	});
@@ -477,6 +496,7 @@ describe("review blocks", () => {
 			durationSeconds: 8 * 3600,
 			description: "Importer",
 		});
+
 		setPullRequestSourceForTests(
 			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
 		);
@@ -498,6 +518,7 @@ describe("review blocks", () => {
 			taskId: reviewTaskId,
 			durationSeconds: 3600,
 		});
+
 		setPullRequestSourceForTests(
 			pullRequestsFor([
 				{ day: YESTERDAY, number: 7, kind: "reviewed" },
@@ -522,6 +543,7 @@ describe("review blocks", () => {
 			durationSeconds: 2 * 3600,
 			description: "Reviews",
 		});
+
 		await db
 			.insert(timeEntryGithubPrActivity)
 			.values(
@@ -567,6 +589,7 @@ describe("review blocks", () => {
 			"PR review: Change 7",
 			"PR review: Change 9",
 		]);
+
 		for (const block of blocks) {
 			expect(await activityOn(block.id)).toHaveLength(1);
 		}
@@ -577,10 +600,12 @@ describe("review blocks", () => {
 			pullRequestsFor([{ day: YESTERDAY, number: 7, kind: "reviewed" }]),
 		);
 		await runAutomations();
+
 		const block = present(
 			(await reviewBlocksOn(YESTERDAY))[0],
 			"the review block",
 		);
+
 		const [review] = await activityOn(block.id);
 
 		await githubService.detachPullRequestActivity(
@@ -600,6 +625,7 @@ describe("review blocks", () => {
 			durationSeconds: 4 * 3600,
 			description: "Importer",
 		});
+
 		await db
 			.insert(timeEntryGithubPrActivity)
 			.values(

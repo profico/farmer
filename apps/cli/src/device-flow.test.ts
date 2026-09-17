@@ -35,6 +35,7 @@ describe("pollForToken", () => {
 				expires_in: 604800,
 			}),
 		]);
+
 		const token = await pollForToken(transport, CODE, () => 0);
 
 		expect(token).toBe("session-token");
@@ -57,6 +58,7 @@ describe("pollForToken", () => {
 		const { transport } = scriptedServer([
 			jsonReply(400, { error: "expired_token" }),
 		]);
+
 		await expect(pollForToken(transport, CODE, () => 0)).rejects.toThrow(
 			"The code expired",
 		);
@@ -66,6 +68,7 @@ describe("pollForToken", () => {
 		const { transport } = scriptedServer([
 			jsonReply(400, { error: "access_denied" }),
 		]);
+
 		await expect(pollForToken(transport, CODE, () => 0)).rejects.toThrow(
 			"denied in the browser",
 		);
@@ -74,11 +77,14 @@ describe("pollForToken", () => {
 	test("stops without a request once the code lifetime has passed", async () => {
 		const { transport, requests } = scriptedServer([]);
 		let now = 0;
+
 		const clock = () => {
 			const current = now;
 			now += 601_000;
+
 			return current;
 		};
+
 		await expect(pollForToken(transport, CODE, clock)).rejects.toThrow(
 			"The code expired",
 		);
@@ -107,6 +113,7 @@ describe("requestDeviceCode", () => {
 				interval: 5,
 			}),
 		]);
+
 		const code = await requestDeviceCode(transport);
 
 		expect(JSON.parse(requests[0]?.body ?? "null")).toEqual({

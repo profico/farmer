@@ -58,11 +58,13 @@ const entryRefinement = <
 export const createTimeEntryInput = z
 	.object(entryBody)
 	.superRefine(entryRefinement);
+
 export type CreateTimeEntryInput = z.infer<typeof createTimeEntryInput>;
 
 export const updateTimeEntryInput = z
 	.object({ timeEntryId: z.uuid(), ...entryBody })
 	.superRefine(entryRefinement);
+
 export type UpdateTimeEntryInput = z.infer<typeof updateTimeEntryInput>;
 
 // Patches only the note of an entry — used by inline editing, so it deliberately
@@ -71,6 +73,7 @@ export const updateTimeEntryDescriptionInput = z.object({
 	timeEntryId: z.uuid(),
 	description: z.string().max(10_000),
 });
+
 export type UpdateTimeEntryDescriptionInput = z.infer<
 	typeof updateTimeEntryDescriptionInput
 >;
@@ -83,6 +86,7 @@ export const updateTimeEntryDurationInput = z.object({
 	timeEntryId: z.uuid(),
 	durationSeconds: duration,
 });
+
 export type UpdateTimeEntryDurationInput = z.infer<
 	typeof updateTimeEntryDurationInput
 >;
@@ -96,6 +100,7 @@ export const fileTimeEntryInput = z.object({
 	projectId: z.uuid(),
 	taskId: z.uuid().optional(),
 });
+
 export type FileTimeEntryInput = z.infer<typeof fileTimeEntryInput>;
 
 // Filing several entries at once. The calendar sync imports one unfiled entry
@@ -113,6 +118,7 @@ export const fileTimeEntriesInput = z.object({
 	// filingRulesService.rememberFrom.
 	remember: z.boolean().default(false),
 });
+
 export type FileTimeEntriesInput = z.infer<typeof fileTimeEntriesInput>;
 
 // Toggling overtime is a one-field mutation from the week grid.
@@ -120,6 +126,7 @@ export const setTimeEntryOvertimeInput = z.object({
 	timeEntryId: z.uuid(),
 	overtime: z.boolean(),
 });
+
 export type SetTimeEntryOvertimeInput = z.infer<
 	typeof setTimeEntryOvertimeInput
 >;
@@ -134,10 +141,12 @@ export const listTimeEntriesRangeInput = z
 		(data) => {
 			const from = new Date(`${data.from}T00:00:00Z`);
 			const to = new Date(`${data.to}T00:00:00Z`);
+
 			return (to.getTime() - from.getTime()) / 86_400_000 <= 62;
 		},
 		{ message: "Range too large (max 62 days)", path: ["to"] },
 	);
+
 export type ListTimeEntriesRangeInput = z.infer<
 	typeof listTimeEntriesRangeInput
 >;
@@ -168,9 +177,11 @@ export const setWeekCellInput = z.object({
 	// dialog's createTimeEntry), not on a spreadsheet cell.
 	description: z.string().max(10_000).optional(),
 });
+
 export type SetWeekCellInput = z.infer<typeof setWeekCellInput>;
 
 export const deleteTimeEntryInput = z.uuid();
+
 export type DeleteTimeEntryInput = z.infer<typeof deleteTimeEntryInput>;
 
 // Copy a whole day's entries onto another day — the backfill affordance that
@@ -179,6 +190,7 @@ export const copyTimeEntriesInput = z.object({
 	fromDate: dateKey,
 	toDate: dateKey,
 });
+
 export type CopyTimeEntriesInput = z.infer<typeof copyTimeEntriesInput>;
 
 // The same affordance a week at a time, which is how Harvest offers it and how
@@ -189,6 +201,7 @@ export const copyWeekEntriesInput = z.object({
 	fromWeekStart: dateKey,
 	toWeekStart: dateKey,
 });
+
 export type CopyWeekEntriesInput = z.infer<typeof copyWeekEntriesInput>;
 
 // PMs may correct the Vacation/Sick entries of people on their projects, and
@@ -198,6 +211,7 @@ export const overrideAbsenceEntryInput = z.object({
 	durationSeconds: duration,
 	description: z.string().max(10_000).optional(),
 });
+
 export type OverrideAbsenceEntryInput = z.infer<
 	typeof overrideAbsenceEntryInput
 >;
@@ -228,10 +242,12 @@ export const logAbsenceRangeInput = z
 		(data) => {
 			const from = new Date(`${data.from}T00:00:00Z`).getTime();
 			const to = new Date(`${data.to}T00:00:00Z`).getTime();
+
 			return (to - from) / 86_400_000 <= 62;
 		},
 		{ message: "Range too large (max 62 days)", path: ["to"] },
 	);
+
 export type LogAbsenceRangeInput = z.infer<typeof logAbsenceRangeInput>;
 
 export const listAbsenceForUserInput = z.object({
@@ -239,6 +255,7 @@ export const listAbsenceForUserInput = z.object({
 	year: z.number().int().min(2000).max(2100),
 	month: z.number().int().min(1).max(12),
 });
+
 export type ListAbsenceForUserInput = z.infer<typeof listAbsenceForUserInput>;
 
 // "How much vacation have I taken this year" — a whole year, grouped by task,
@@ -248,6 +265,7 @@ export const absenceTotalsInput = z.object({
 	userId: z.string().min(1).optional(),
 	year: z.number().int().min(2000).max(2100),
 });
+
 export type AbsenceTotalsInput = z.infer<typeof absenceTotalsInput>;
 
 export const createAbsenceForUserInput = z.object({
@@ -257,6 +275,7 @@ export const createAbsenceForUserInput = z.object({
 	durationSeconds: duration,
 	description: z.string().max(10_000).optional(),
 });
+
 export type CreateAbsenceForUserInput = z.infer<
 	typeof createAbsenceForUserInput
 >;

@@ -47,6 +47,7 @@ export const routeTemplate = (pathname: string): string =>
 		.split("/")
 		.map((segment, index, segments) => {
 			if (segments[index - 1] === "orgs") return ":orgSlug";
+
 			return UUID.test(segment) ? ":id" : segment;
 		})
 		.join("/");
@@ -79,11 +80,13 @@ const propertiesOf = (report: ApiRequestReport) => {
 		api_caller: report.cliVersion === null ? "browser" : "cli",
 		cli_version: report.cliVersion,
 	};
+
 	// A refused request must not mint a person. `cli-anonymous` is a bucket
 	// rather than somebody, and a person profile per unauthenticated caller
 	// would be a directory of noise nobody can act on. A real user is left to
 	// get their profile as usual.
 	if (report.userId) return properties;
+
 	return { ...properties, $process_person_profile: false };
 };
 
@@ -99,6 +102,7 @@ const propertiesOf = (report: ApiRequestReport) => {
  */
 export const captureApiRequest = (report: ApiRequestReport): void => {
 	const posthog = getPostHogClient();
+
 	if (!posthog) return;
 	posthog.capture({
 		distinctId: report.userId ?? ANONYMOUS,
@@ -126,6 +130,7 @@ export const captureApiFailure = (
 	report: ApiRequestReport,
 ): void => {
 	const posthog = getPostHogClient();
+
 	if (!posthog) return;
 	posthog.captureException(error, report.userId ?? ANONYMOUS, {
 		...propertiesOf(report),

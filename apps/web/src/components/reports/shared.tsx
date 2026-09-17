@@ -154,6 +154,7 @@ export const periodLabel = (
 ) => {
 	const { preset, from, to } = resolveReportPeriod(search, today, weekStartsOn);
 	const month = search.month ?? today.slice(0, 7);
+
 	return preset === "month"
 		? formatMonthKey(month)
 		: preset === "quarter"
@@ -214,10 +215,12 @@ export function PeriodPicker<S extends PeriodSearch>({
 		if (preset === "week") {
 			return withSearch({ from: addDaysToKey(from, 7 * delta), to: undefined });
 		}
+
 		return withSearch({
 			month: shiftMonthKey(month, delta * monthsPerStep(preset)),
 		});
 	};
+
 	const stepLink = (delta: number) =>
 		cloneElement(link(step(delta)), {
 			className: stepperClass,
@@ -240,6 +243,7 @@ export function PeriodPicker<S extends PeriodSearch>({
 				value={preset}
 				onValueChange={(next: string | null) => {
 					const picked = PERIOD_PRESETS.find((p) => p.id === next);
+
 					if (!picked) return;
 					navigateTo(
 						withSearch({
@@ -410,6 +414,7 @@ export function ReportTable<K extends string>({
 	// as before.
 	const searchable = rows.some((r) => r.searchFields);
 	const [query, setQuery] = useState("");
+
 	const filteredRows = searchable
 		? rows.filter((r) => matchesSearch(query, r.searchFields ?? []))
 		: rows;
@@ -423,6 +428,7 @@ export function ReportTable<K extends string>({
 			</p>
 		);
 	}
+
 	return (
 		<>
 			{searchable && (
@@ -519,6 +525,7 @@ export function ActiveOnlyToggle({
 }) {
 	const navigate = useNavigate({ from: "/$orgSlug/reports" });
 	const on = search.active === "1";
+
 	return (
 		<span className="flex items-center gap-2 text-sm text-muted-foreground">
 			<Switch
@@ -561,6 +568,7 @@ export function QuietTabs<T extends string>({
 		<nav aria-label={label} className="flex flex-wrap gap-x-5 gap-y-1">
 			{items.map((item) => {
 				const on = item.id === active;
+
 				return (
 					<Link
 						key={item.id}
@@ -634,6 +642,7 @@ export function ExportMenu({
 		from: "/$orgSlug",
 		select: (context) => context.organization.name,
 	});
+
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
@@ -671,6 +680,7 @@ export function ExportMenu({
  *  starts biggest first — "who has the most hours" is the question a Hours
  *  column gets asked. */
 export type Sort<K extends string> = { key: K; dir: 1 | -1 };
+
 export const toggleSort = <K extends string>(
 	current: Sort<K>,
 	key: K,
@@ -679,10 +689,12 @@ export const toggleSort = <K extends string>(
 	current.key === key
 		? { key, dir: current.dir > 0 ? -1 : 1 }
 		: { key, dir: numeric ? -1 : 1 };
+
 export const byText =
 	<R,>(pick: (row: R) => string | null) =>
 	(a: R, b: R) =>
 		(pick(a) ?? "").localeCompare(pick(b) ?? "", "hr");
+
 export const byNumber =
 	<R,>(pick: (row: R) => number) =>
 	(a: R, b: R) =>
@@ -708,6 +720,7 @@ export function SortHead<K extends string>({
 	className?: string;
 }) {
 	const active = sort.key === sortKey;
+
 	return (
 		<TableHead
 			className={className}

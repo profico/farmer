@@ -104,6 +104,7 @@ function PlatformAdminsPage() {
 	const { data: admins } = useSuspenseQuery(platformAdminsQuery());
 
 	const [term, setTerm] = useState("");
+
 	const { data: results = [], isFetching } = useQuery(
 		platformPeopleSearchQuery(term),
 	);

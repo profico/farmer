@@ -22,6 +22,7 @@ export const listPlatformAdmins = createServerFn({ method: "GET" })
 	.middleware([platformAdminMiddleware])
 	.handler(async () => {
 		const { platformAdminsService } = await import("@farmer/core/services");
+
 		return platformAdminsService.list();
 	});
 
@@ -30,6 +31,7 @@ export const searchPlatformPeople = createServerFn({ method: "GET" })
 	.validator(z.string())
 	.handler(async ({ data }) => {
 		const { platformAdminsService } = await import("@farmer/core/services");
+
 		return platformAdminsService.search(data);
 	});
 
@@ -71,7 +73,9 @@ export const setPlatformAdmin = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { platformAdminsService } = await import("@farmer/core/services");
 		const person = await platformAdminsService.find(data.userId);
+
 		if (!person) throw new Error("That account no longer exists.");
+
 		if (person.isPlatformAdmin === data.isPlatformAdmin) return person;
 
 		if (!data.isPlatformAdmin) {
@@ -80,6 +84,7 @@ export const setPlatformAdmin = createServerFn({ method: "POST" })
 					"You cannot remove your own platform admin role. Ask another platform admin to do it.",
 				);
 			}
+
 			if ((await platformAdminsService.count()) <= 1) {
 				throw new Error(
 					"This is the only platform admin. Give somebody else the role first.",
@@ -95,5 +100,6 @@ export const setPlatformAdmin = createServerFn({ method: "POST" })
 			},
 			headers: getRequestHeaders(),
 		});
+
 		return { ...person, isPlatformAdmin: data.isPlatformAdmin };
 	});

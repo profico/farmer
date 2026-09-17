@@ -33,25 +33,32 @@
 // the rule above is `null` — the caller decides whether that is an error.
 export function parseHarvestNumber(raw: string): number | null {
 	const trimmed = raw.trim();
+
 	if (trimmed === "") return null;
 
 	let sign = 1;
 	let body = trimmed;
+
 	if (body.startsWith("-")) {
 		sign = -1;
 		body = body.slice(1);
 	} else if (body.startsWith("+")) {
 		body = body.slice(1);
 	}
+
 	if (body === "") return null;
 
 	const split = splitIntegerAndFraction(body);
+
 	if (!split) return null;
 	const { integerPart, fractionPart } = split;
+
 	if (!/^\d+$/.test(integerPart)) return null;
+
 	if (fractionPart !== "" && !/^\d+$/.test(fractionPart)) return null;
 
 	const numeric = Number(`${integerPart}.${fractionPart || "0"}`);
+
 	return sign * numeric;
 }
 
@@ -70,6 +77,7 @@ function splitIntegerAndFraction(body: string): Split | null {
 		const decimalChar = decimalIsComma ? "," : ".";
 		const cleaned = body.split(thousandsChar).join("");
 		const decIndex = cleaned.lastIndexOf(decimalChar);
+
 		return {
 			integerPart: cleaned.slice(0, decIndex) || "0",
 			fractionPart: cleaned.slice(decIndex + 1),
@@ -78,9 +86,11 @@ function splitIntegerAndFraction(body: string): Split | null {
 
 	if (lastComma !== -1) {
 		const trailing = trailingDigitRun(body, lastComma + 1);
+
 		if (trailing.count === 3 && trailing.toEnd) {
 			return { integerPart: body.split(",").join(""), fractionPart: "" };
 		}
+
 		return {
 			integerPart: body.slice(0, lastComma).split(",").join("") || "0",
 			fractionPart: body.slice(lastComma + 1),
@@ -90,9 +100,11 @@ function splitIntegerAndFraction(body: string): Split | null {
 	if (lastDot !== -1) {
 		const trailing = trailingDigitRun(body, lastDot + 1);
 		const dotCount = countChar(body, ".");
+
 		if (trailing.count === 3 && trailing.toEnd && dotCount > 1) {
 			return { integerPart: body.split(".").join(""), fractionPart: "" };
 		}
+
 		return {
 			integerPart: body.slice(0, lastDot).split(".").join("") || "0",
 			fractionPart: body.slice(lastDot + 1),
@@ -109,17 +121,22 @@ interface TrailingDigitRun {
 
 function trailingDigitRun(s: string, from: number): TrailingDigitRun {
 	let i = from;
+
 	while (i < s.length) {
 		const code = s.charCodeAt(i);
+
 		if (code < 48 || code > 57) break;
 		i += 1;
 	}
+
 	return { count: i - from, toEnd: i === s.length };
 }
 
 function countChar(s: string, ch: string): number {
 	let count = 0;
+
 	for (let i = 0; i < s.length; i++) if (s[i] === ch) count += 1;
+
 	return count;
 }
 
@@ -136,5 +153,6 @@ export function hoursToSeconds(hours: number): number {
  */
 export function roundToQuarterHour(seconds: number): number {
 	const rounded = Math.round(seconds / 900) * 900;
+
 	return rounded < 900 ? 900 : rounded;
 }

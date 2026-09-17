@@ -34,6 +34,7 @@ import { scaleFactor } from "#/lib/scale.ts";
  * Import these instead, and change the curve in two places rather than nine.
  */
 export const easeOut = [0.23, 1, 0.32, 1] as const;
+
 export const easeInOut = [0.77, 0, 0.175, 1] as const;
 
 /** Crisp, no overshoot — backdrops, menus, small state changes. */
@@ -84,7 +85,9 @@ export const springLayout: Transition = {
  */
 export function useHeightTransition(): Transition {
 	const reduced = useReducedMotion();
+
 	if (!reduced) return springProductive;
+
 	return {
 		duration: 0.15,
 		height: { duration: 0 },
@@ -125,7 +128,9 @@ export type PagePoint = { x: number; y: number };
  */
 export function unzoomPagePoint(point: PagePoint): PagePoint {
 	const scale = scaleFactor();
+
 	if (scale === 1) return point;
+
 	return { x: point.x / scale, y: point.y / scale };
 }
 
@@ -192,6 +197,7 @@ export function useControllableOpen<Details>(params: {
 	const [uncontrolled, setUncontrolled] = React.useState(defaultOpen ?? false);
 	const isControlled = open !== undefined;
 	const value = open ?? uncontrolled;
+
 	const setOpen = React.useCallback(
 		(next: boolean, details: Details) => {
 			if (!isControlled) setUncontrolled(next);
@@ -199,5 +205,6 @@ export function useControllableOpen<Details>(params: {
 		},
 		[isControlled, onOpenChange],
 	);
+
 	return [value, setOpen] as const;
 }

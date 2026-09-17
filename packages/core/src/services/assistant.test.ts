@@ -63,16 +63,23 @@ import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
 
 const ORG = "ai-org";
+
 const OTHER_ORG = "ai-org-2";
+
 const ADMIN = "u-ai-admin";
+
 const WORKER = "u-ai-worker";
+
 const STRANGER = "u-ai-stranger";
+
 // Deliberately non-repeating: the mask test asserts the TAIL never appears, and
 // a key like "…testkeytestkey" would satisfy that by coincidence.
 const KEY = "sk-or-v1-abc123def456ghi789xyz";
 
 let harness: TestDb;
+
 let projectId: string;
+
 let devTaskId: string;
 
 const ctxFor = (userId: string, organizationId = ORG): Ctx => ({
@@ -87,7 +94,9 @@ const ctxFor = (userId: string, organizationId = ORG): Ctx => ({
 // the model was actually shown — which is the only way to check property 4.
 
 let script: ChatTurn[] = [];
+
 let seen: ChatMessage[][] = [];
+
 /** The tool list each call was sent, so a call made deliberately WITHOUT tools
  *  can be told from one that simply had none to offer. */
 let seenTools: (ChatTool[] | undefined)[] = [];
@@ -108,6 +117,7 @@ const collect = async (
 ) => {
 	const events: AssistantEvent[] = [];
 	await assistantService.run(ctx, input, (event) => events.push(event));
+
 	return events;
 };
 
@@ -119,8 +129,11 @@ beforeAll(async () => {
 			seen.push(opts.messages);
 			seenTools.push(opts.tools);
 			const next = script.shift();
+
 			if (!next) throw new Error("scripted model ran out of turns");
+
 			if (next.content) opts.onDelta?.(next.content);
+
 			return next;
 		},
 		listModels: async () => [
@@ -184,6 +197,7 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG, name: "Acme" })
 		.returning();
+
 	if (!c) throw new Error("Failed to seed client");
 
 	const [p] = await db
@@ -195,6 +209,7 @@ beforeAll(async () => {
 			type: "product_team" as const,
 		})
 		.returning();
+
 	if (!p) throw new Error("Failed to seed project");
 	projectId = p.id;
 
@@ -227,6 +242,7 @@ beforeAll(async () => {
 			systemKey: "development" as const,
 		})
 		.returning();
+
 	if (!t) throw new Error("Failed to seed task");
 	devTaskId = t.id;
 });
@@ -262,6 +278,7 @@ const startChat = async (ctx: Ctx) => {
 		conversationId: conversation.id,
 		title: "Test chat",
 	});
+
 	return conversation;
 };
 
@@ -320,6 +337,7 @@ describe("the ASSISTANT_ENABLED switch", () => {
 		<T>(work: () => Promise<T>) =>
 		async () => {
 			process.env.ASSISTANT_ENABLED = "false";
+
 			try {
 				return await work();
 			} finally {
@@ -374,10 +392,12 @@ describe("the ASSISTANT_ENABLED switch", () => {
 		expect(process.env.ASSISTANT_ENABLED).toBeUndefined();
 		const chat = await startChat(ctxFor(WORKER));
 		script = [turn({ content: "still here" })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "hello",
 		});
+
 		expect(events.at(-1)).toEqual({ type: "done" });
 	});
 });
@@ -453,10 +473,12 @@ describe("thread titles", () => {
 	test("a placeholder stands in until it lands", async () => {
 		const chat = await assistantService.conversations.create(ctxFor(WORKER));
 		script = [turn({ content: "ok" }), turn({ content: "Unfiled time" })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "what is not filed yet?",
 		});
+
 		// Two title events: the truncation first, so the rail is never blank, then
 		// the real one.
 		const titles = events.filter((e) => e.type === "title");
@@ -496,10 +518,12 @@ describe("thread titles", () => {
 	test("the turn still completes when naming the thread fails", async () => {
 		const chat = await assistantService.conversations.create(ctxFor(WORKER));
 		script = [turn({ content: "Here is your answer." })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "anything",
 		});
+
 		expect(events.some((e) => e.type === "delta")).toBe(true);
 		expect(events.some((e) => e.type === "done")).toBe(true);
 	});
@@ -546,9 +570,11 @@ describe("read tools", () => {
 				description: "synced standup",
 			})
 			.returning();
+
 		if (!unfiled) throw new Error("Failed to seed unfiled entry");
 
 		const range = { from: "2026-03-01", to: "2026-03-31" };
+
 		// SAFETY: `list_unfiled_entries` is asserted to exist by the `?.run` returning
 		// a value at all, and its projection is fixed in assistant-tools.ts. Only `id`
 		// is read, and the expectation below fails loudly if the shape ever changed.
@@ -590,6 +616,7 @@ describe("read tools", () => {
 			conversationId: chat.id,
 			message: "what did I log in March?",
 		});
+
 		expect(events.some((e) => e.type === "tool_start")).toBe(true);
 		expect(events.at(-1)).toEqual({ type: "done" });
 
@@ -600,6 +627,7 @@ describe("read tools", () => {
 				where: eq(assistantMessage.conversationId, chat.id),
 			})
 		).find((row) => row.role === "tool");
+
 		expect(toolRow?.content).toContain("worker's own work");
 		expect(toolRow?.content).not.toContain("somebody else's work");
 	});
@@ -629,6 +657,7 @@ describe("read tools", () => {
 				where: eq(assistantMessage.conversationId, chat.id),
 			})
 		).find((row) => row.role === "tool");
+
 		expect(toolRow?.content).toMatch(/Error/);
 		expect(toolRow?.content).toMatch(/62 days/);
 	});
@@ -669,6 +698,7 @@ describe("read tools", () => {
 				where: eq(assistantMessage.conversationId, chat.id),
 			})
 		).find((row) => row.role === "tool");
+
 		// The tool answered — and no colleague's hours reached the model.
 		expect(toolRow?.content).not.toMatch(/not available to this user/i);
 		expect(toolRow?.content).not.toContain("somebody else's work");
@@ -683,6 +713,7 @@ describe("read tools", () => {
 			accessService.resolve(ctxFor(WORKER)),
 			accessService.resolve(ctxFor(ADMIN)),
 		]);
+
 		const names = (access: Access) => toolsFor(access).map((tool) => tool.name);
 
 		const worker = names(workerAccess);
@@ -702,6 +733,7 @@ describe("read tools", () => {
 		]) {
 			expect(worker).toContain(own);
 		}
+
 		// ...and is offered nothing that manages other people or the org.
 		for (const theirs of [
 			"list_project_members",
@@ -719,6 +751,7 @@ describe("read tools", () => {
 		// answer somebody who came looking for their meetings needs is "your
 		// calendar sync is off", and that is a different sentence.
 		const result = await findTool("sync_now")?.run(ctxFor(WORKER), {});
+
 		// SAFETY: the four lists are `runAutomationsForUser`'s own contract, and
 		// every expectation below names the list it reads.
 		const pass = result as {
@@ -727,6 +760,7 @@ describe("read tools", () => {
 			failed: string[];
 			off: string[];
 		};
+
 		// Neither integration is switched on in this org, and both say so by name
 		// rather than by being missing.
 		expect(pass.off.sort()).toEqual(["commit-work-time", "meetings"]);
@@ -740,6 +774,7 @@ describe("read tools", () => {
 			ctxFor(WORKER),
 			{},
 		);
+
 		// SAFETY: the projection is fixed in assistant-tools.ts; the expectations
 		// below name every field they read.
 		const status = result as {
@@ -747,6 +782,7 @@ describe("read tools", () => {
 			github: { connected: boolean; needsReconnect: boolean };
 			automationsLockedThrough: string | null;
 		};
+
 		// Nothing linked and nothing switched on — the two halves of "where are my
 		// meetings", and each is a different thing to tell the person.
 		expect(status.googleCalendar.connected).toBe(false);
@@ -763,6 +799,7 @@ describe("read tools", () => {
 		// places, and a tool present in one and absent from the other fails only at
 		// the moment somebody asks for it.
 		const access = await accessService.resolve(ctxFor(ADMIN));
+
 		for (const definition of toolDefinitions(access)) {
 			expect(findTool(definition.function.name)).toBeDefined();
 		}
@@ -783,6 +820,7 @@ describe("read tools", () => {
 			conversationId: chat.id,
 			message: "hmm",
 		});
+
 		expect(events.some((e) => e.type === "error")).toBe(false);
 		expect(events.some((e) => e.type === "tool_result" && e.ok === false)).toBe(
 			true,
@@ -807,7 +845,9 @@ describe("approval, on the tier that asks for it", () => {
 				description: "code review",
 			})
 			.returning();
+
 		if (!row) throw new Error("Failed to seed entry");
+
 		return row;
 	};
 
@@ -849,6 +889,7 @@ describe("approval, on the tier that asks for it", () => {
 			conversationId: chat.id,
 			message: "delete something that isn't there",
 		});
+
 		expect(events.find((e) => e.type === "approval_required")?.summary).toMatch(
 			/delete a time entry/i,
 		);
@@ -880,10 +921,12 @@ describe("approval, on the tier that asks for it", () => {
 		});
 
 		script = [turn({ content: "Deleted." })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-del", decision: "approved" },
 		});
+
 		expect(await db.select().from(timeEntry)).toHaveLength(0);
 		expect(events.at(-1)).toEqual({ type: "done" });
 
@@ -917,14 +960,17 @@ describe("approval, on the tier that asks for it", () => {
 		// a tool result, so the next request is well-formed even though the user
 		// said no.
 		const last = seen.at(-1) ?? [];
+
 		const calls = last.flatMap((m) =>
 			m.role === "assistant" && m.tool_calls
 				? m.tool_calls.map((c) => c.id)
 				: [],
 		);
+
 		const results = last.flatMap((m) =>
 			m.role === "tool" ? [m.tool_call_id] : [],
 		);
+
 		expect(calls).toEqual(["call-del"]);
 		expect(results).toEqual(["call-del"]);
 	});
@@ -943,6 +989,7 @@ describe("approval, on the tier that asks for it", () => {
 			ctxFor(WORKER),
 			chat.id,
 		);
+
 		const pending = messages.find((row) => row.pendingApproval);
 		expect(pending?.toolCalls?.[0]?.id).toBe("call-del");
 		expect(pending?.approvalDecision).toBeNull();
@@ -953,10 +1000,12 @@ describe("approval, on the tier that asks for it", () => {
 		// And the resume path re-offers it, so a page that rebuilt the card from
 		// that row can act on it.
 		script = [turn({ content: "Done." })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-del", decision: "approved" },
 		});
+
 		expect(events.some((e) => e.type === "tool_result" && e.ok)).toBe(true);
 		expect(await db.select().from(timeEntry)).toHaveLength(0);
 	});
@@ -974,6 +1023,7 @@ describe("approval, on the tier that asks for it", () => {
 		});
 
 		script = [turn({ content: "I couldn't delete it." })];
+
 		const events = await collect(ctxFor(STRANGER), {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-del", decision: "approved" },
@@ -983,11 +1033,13 @@ describe("approval, on the tier that asks for it", () => {
 			true,
 		);
 		expect(await db.select().from(timeEntry)).toHaveLength(1);
+
 		const toolRow = (
 			await db.query.assistantMessage.findMany({
 				where: eq(assistantMessage.conversationId, chat.id),
 			})
 		).find((row) => row.role === "tool");
+
 		expect(toolRow?.content).toMatch(/nothing was deleted/i);
 	});
 });
@@ -1013,6 +1065,7 @@ describe("approval tiers", () => {
 			conversationId: chat.id,
 			message: "make a client called Northwind",
 		});
+
 		expect(events.some((e) => e.type === "approval_required")).toBe(false);
 		expect(events.some((e) => e.type === "tool_result" && e.ok)).toBe(true);
 
@@ -1038,12 +1091,14 @@ describe("approval tiers", () => {
 			conversationId: chat.id,
 			message: "archive the Product project",
 		});
+
 		expect(events.some((e) => e.type === "approval_required")).toBe(true);
 
 		const [before] = await db
 			.select()
 			.from(project)
 			.where(eq(project.id, projectId));
+
 		expect(before?.status).toBe("active");
 
 		script = [turn({ content: "Archived." })];
@@ -1051,10 +1106,12 @@ describe("approval tiers", () => {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-arch", decision: "approved" },
 		});
+
 		const [after] = await db
 			.select()
 			.from(project)
 			.where(eq(project.id, projectId));
+
 		expect(after?.status).toBe("archived");
 
 		// Put it back for the tests that follow.
@@ -1083,15 +1140,19 @@ describe("approval tiers", () => {
 			}),
 			turn({ content: "You aren't allowed to create projects." }),
 		];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "make a project",
 		});
+
 		expect(events.some((e) => e.type === "tool_result" && !e.ok)).toBe(true);
+
 		const made = await db
 			.select()
 			.from(project)
 			.where(eq(project.name, "Sneaky"));
+
 		expect(made).toHaveLength(0);
 	});
 });
@@ -1116,6 +1177,7 @@ describe("a batch write, approved row by row", () => {
 				})),
 			)
 			.returning();
+
 		return rows;
 	};
 
@@ -1149,6 +1211,7 @@ describe("a batch write, approved row by row", () => {
 			.select()
 			.from(timeEntry)
 			.where(eq(timeEntry.userId, WORKER));
+
 		expect(
 			after
 				.filter((row) => row.description?.startsWith("unfiled"))
@@ -1181,6 +1244,7 @@ describe("a batch write, approved row by row", () => {
 			.select()
 			.from(timeEntry)
 			.where(eq(timeEntry.userId, WORKER));
+
 		const byId = new Map(rows.map((row) => [row.id, row]));
 		expect(byId.get(at(ids, 0))?.projectId).toBe(projectId);
 		expect(byId.get(at(ids, 2))?.projectId).toBe(projectId);
@@ -1215,6 +1279,7 @@ describe("a batch write, approved row by row", () => {
 			.select()
 			.from(timeEntry)
 			.where(eq(timeEntry.userId, WORKER));
+
 		const byId = new Map(rows.map((row) => [row.id, row]));
 		expect(byId.get(at(ids, 0))?.projectId).toBeNull();
 		expect(byId.get(at(ids, 1))?.projectId).toBeNull();
@@ -1223,6 +1288,7 @@ describe("a batch write, approved row by row", () => {
 			.select()
 			.from(assistantMessage)
 			.where(eq(assistantMessage.conversationId, chat.id));
+
 		const result = messages.find((row) => row.toolCallId === "call-file");
 		expect(result?.role).toBe("tool");
 		expect(result?.content).toMatch(/selected none/i);
@@ -1241,6 +1307,7 @@ describe("a batch write, approved row by row", () => {
 			.select()
 			.from(assistantMessage)
 			.where(eq(assistantMessage.pendingApproval, true));
+
 		expect(pending?.approvalPreview?.rows).toHaveLength(2);
 		expect(pending?.approvalPreview?.selectable).toBe(true);
 	});
@@ -1315,6 +1382,7 @@ describe("the domain the model is given by default", () => {
 			.update(organization)
 			.set({ weekStartsOn: 0 })
 			.where(eq(organization.id, ORG));
+
 		try {
 			const chat = await startChat(ctxFor(WORKER));
 			script = [turn({ content: "ok" })];
@@ -1386,6 +1454,7 @@ describe("a turn the person stopped", () => {
 			{ conversationId: chat.id, message: "how was March?" },
 			(event) => {
 				events.push(event);
+
 				// The model is mid-answer when the person gives up on it.
 				if (event.type === "delta") stop.abort();
 			},
@@ -1399,6 +1468,7 @@ describe("a turn the person stopped", () => {
 		const rows = await db.query.assistantMessage.findMany({
 			where: eq(assistantMessage.conversationId, chat.id),
 		});
+
 		const answer = rows.find((row) => row.role === "assistant");
 		expect(answer?.content).toBe("Your March looks like ");
 		// And the loop stopped there. Without this it ran the tool the aborted
@@ -1436,6 +1506,7 @@ describe("a turn the person stopped", () => {
 		const rows = await db.query.assistantMessage.findMany({
 			where: eq(assistantMessage.conversationId, chat.id),
 		});
+
 		const answer = rows.find((row) => row.role === "assistant");
 		expect(answer?.content).toBe("Let me check. ");
 		expect(answer?.toolCalls).toBeNull();
@@ -1458,9 +1529,11 @@ describe("a turn the person stopped", () => {
 		// An empty stopped turn is not the empty ANSWER the loop reports — nobody
 		// is waiting for a verdict on a turn they cancelled.
 		expect(events.some((e) => e.type === "error")).toBe(false);
+
 		const rows = await db.query.assistantMessage.findMany({
 			where: eq(assistantMessage.conversationId, chat.id),
 		});
+
 		expect(rows.some((row) => row.role === "assistant")).toBe(false);
 	});
 });
@@ -1473,6 +1546,7 @@ describe("an empty answer", () => {
 		// which the transcript then skipped — leaving the question on screen with
 		// nothing under it and no error to explain the gap.
 		script = [turn({ content: "   " })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "let me see it",
@@ -1486,6 +1560,7 @@ describe("an empty answer", () => {
 			.select()
 			.from(assistantMessage)
 			.where(eq(assistantMessage.conversationId, chat.id));
+
 		// The question is kept — it is what the person said — and nothing else.
 		expect(rows.map((row) => row.role)).toEqual(["user"]);
 	});
@@ -1501,6 +1576,7 @@ describe("an empty answer", () => {
 			}),
 			turn({ content: "One project." }),
 		];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "what projects are there",
@@ -1599,10 +1675,12 @@ describe("the loop's ceiling", () => {
 		// in the thread, and the person is not told their question failed.
 		expect(events.find((e) => e.type === "error")).toBeUndefined();
 		expect(events.at(-1)?.type).toBe("done");
+
 		const { messages } = await assistantService.conversations.get(
 			ctxFor(WORKER),
 			chat.id,
 		);
+
 		expect(messages.at(-1)?.content).toBe("Partly answered.");
 
 		// And it could not have asked for a ninth step: the closing call is the
@@ -1619,6 +1697,7 @@ describe("the loop's ceiling", () => {
 			conversationId: chat.id,
 			message: "go forever",
 		});
+
 		const error = events.find((e) => e.type === "error");
 		expect(error).toBeDefined();
 		// It points at the thread rather than blaming the question.
@@ -1631,11 +1710,13 @@ describe("the loop's ceiling", () => {
 describe("a step that asks for several reads", () => {
 	/** The tool steps, flattened to `type:name` in the order they arrived. */
 	const stepOrder = (events: AssistantEvent[]) =>
-		events
-			.filter((e) => e.type === "tool_start" || e.type === "tool_result")
-			.map((e) =>
-				e.type === "tool_start" ? `start:${e.name}` : `result:${e.name}`,
-			);
+		events.flatMap((e) => {
+			if (e.type === "tool_start") return [`start:${e.name}`];
+
+			if (e.type === "tool_result") return [`result:${e.name}`];
+
+			return [];
+		});
 
 	test("runs the independent ones together", async () => {
 		const chat = await startChat(ctxFor(WORKER));
@@ -1718,6 +1799,7 @@ describe("a step that asks for several reads", () => {
 			conversationId: chat.id,
 			message: "that week?",
 		});
+
 		const start = events.find((e) => e.type === "tool_start");
 		expect(start?.type === "tool_start" && start.arguments).toBe(range);
 	});
@@ -1795,6 +1877,7 @@ const seedOwn = async (description: string, date = "2026-03-03") => {
 			description,
 		})
 		.returning();
+
 	return present(row, "seeded entry");
 };
 
@@ -1811,9 +1894,11 @@ const expectPaired = (messages: ChatMessage[]) => {
 	messages.forEach((message, index) => {
 		if (message.role !== "assistant" || !message.tool_calls) return;
 		const ids = message.tool_calls.map((call) => call.id);
+
 		const following = messages
 			.slice(index + 1, index + 1 + ids.length)
 			.map((next) => (next.role === "tool" ? next.tool_call_id : null));
+
 		expect(following).toEqual(ids);
 	});
 };
@@ -1838,18 +1923,22 @@ describe("a message typed past an approval card", () => {
 		});
 
 		script = [turn({ content: "OK, leaving it." })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "actually, never mind",
 		});
+
 		expect(events.some((e) => e.type === "approval_required")).toBe(false);
 
 		// Nothing was deleted, and nothing is still waiting.
 		expect(await db.select().from(timeEntry)).toHaveLength(1);
+
 		const rows = await db
 			.select()
 			.from(assistantMessage)
 			.where(eq(assistantMessage.conversationId, chat.id));
+
 		expect(rows.some((row) => row.pendingApproval)).toBe(false);
 		const [answer] = await toolRowsFor(chat.id, "call-del");
 		expect(answer?.content).toMatch(/new message/i);
@@ -1857,12 +1946,15 @@ describe("a message typed past an approval card", () => {
 		// The call's result sits between the call and the new message.
 		const wire = seen.at(-1) ?? [];
 		expectPaired(wire);
+
 		const resultAt = wire.findIndex(
 			(m) => m.role === "tool" && m.tool_call_id === "call-del",
 		);
+
 		const messageAt = wire.findIndex(
 			(m) => m.role === "user" && m.content === "actually, never mind",
 		);
+
 		expect(resultAt).toBeGreaterThan(-1);
 		expect(resultAt).toBeLessThan(messageAt);
 	});
@@ -1911,25 +2003,32 @@ describe("a message typed past an approval card", () => {
 		]);
 
 		script = [turn({ content: "Hello again." })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "hello",
 		});
+
 		expect(events.at(-1)).toEqual({ type: "done" });
 
 		const wire = (seen.at(-1) ?? []).slice(1);
 		expectPaired(wire);
+
 		const missing = wire.find(
 			(m) => m.role === "tool" && m.tool_call_id === "call-b",
 		);
+
 		expect(missing?.content).toMatch(/no result was recorded/i);
+
 		// The stray message keeps its place in the conversation, after the result.
 		const resultAt = wire.findIndex(
 			(m) => m.role === "tool" && m.tool_call_id === "call-a",
 		);
+
 		const strayAt = wire.findIndex(
 			(m) => m.role === "user" && m.content === "wait, also this",
 		);
+
 		expect(strayAt).toBeGreaterThan(resultAt);
 	});
 });
@@ -1944,10 +2043,12 @@ describe("a turn that asks for more than one thing", () => {
 				toolCalls: [del("call-a", first.id), del("call-b", second.id)],
 			}),
 		];
+
 		const opening = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "delete both",
 		});
+
 		expect(
 			opening.find((e) => e.type === "approval_required")?.summary,
 		).toContain("code review");
@@ -1956,6 +2057,7 @@ describe("a turn that asks for more than one thing", () => {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-a", decision: "approved" },
 		});
+
 		const card = events.find((e) => e.type === "approval_required");
 		expect(card?.toolCallId).toBe("call-b");
 		expect(card?.summary).toContain("standup notes");
@@ -1966,6 +2068,7 @@ describe("a turn that asks for more than one thing", () => {
 			.select()
 			.from(assistantMessage)
 			.where(eq(assistantMessage.pendingApproval, true));
+
 		expect(pending?.approvalSummary).toContain("standup notes");
 		expect(pending?.approvalDecision).toBeNull();
 
@@ -1975,6 +2078,7 @@ describe("a turn that asks for more than one thing", () => {
 
 	test("a batch behind a delete gets its own rows, and its ticks apply to it", async () => {
 		const doomed = await seedOwn("code review");
+
 		const unfiled = await db
 			.insert(timeEntry)
 			.values(
@@ -1989,6 +2093,7 @@ describe("a turn that asks for more than one thing", () => {
 				})),
 			)
 			.returning();
+
 		const ids = unfiled.map((entry) => entry.id);
 		const chat = await startChat(ctxFor(WORKER));
 		script = [
@@ -2012,6 +2117,7 @@ describe("a turn that asks for more than one thing", () => {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-del", decision: "approved" },
 		});
+
 		const card = events.find((e) => e.type === "approval_required");
 		expect(card?.toolCallId).toBe("call-file");
 		expect(card?.preview?.rows.map((row) => row.id)).toEqual(ids);
@@ -2025,9 +2131,11 @@ describe("a turn that asks for more than one thing", () => {
 				selectedRowIds: [at(ids, 0), at(ids, 2)],
 			},
 		});
+
 		const byId = new Map(
 			(await db.select().from(timeEntry)).map((entry) => [entry.id, entry]),
 		);
+
 		expect(byId.get(at(ids, 0))?.projectId).toBe(projectId);
 		expect(byId.get(at(ids, 1))?.projectId).toBeNull();
 		expect(byId.get(at(ids, 2))?.projectId).toBe(projectId);
@@ -2050,10 +2158,12 @@ describe("a turn that asks for more than one thing", () => {
 		});
 
 		script = [turn({ content: "Deleted. Here are your projects." })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-del", decision: "approved" },
 		});
+
 		expect(events.some((e) => e.type === "approval_required")).toBe(false);
 		expect(events).toContainEqual({
 			type: "tool_result",
@@ -2084,6 +2194,7 @@ describe("a batch larger than its card", () => {
 				})),
 			)
 			.returning();
+
 		const ids = entries.map((entry) => entry.id);
 		const chat = await startChat(ctxFor(WORKER));
 		script = [
@@ -2097,10 +2208,12 @@ describe("a batch larger than its card", () => {
 				],
 			}),
 		];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "file all of it",
 		});
+
 		const card = events.find((e) => e.type === "approval_required");
 		const shown = (card?.preview?.rows ?? []).map((row) => row.id);
 		expect(shown).toHaveLength(25);
@@ -2118,10 +2231,12 @@ describe("a batch larger than its card", () => {
 				selectedRowIds: shown.slice(1),
 			},
 		});
+
 		const rows = await db
 			.select()
 			.from(timeEntry)
 			.where(eq(timeEntry.userId, WORKER));
+
 		const filed = rows.filter((row) => row.projectId === projectId);
 		expect(filed).toHaveLength(39);
 		expect(rows.find((row) => row.id === at(ids, 0))?.projectId).toBeNull();
@@ -2143,10 +2258,12 @@ describe("two answers to one card at once", () => {
 			turn({ content: "Deleted." }),
 			turn({ content: "Deleted again." }),
 		];
+
 		const resolve = {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-del", decision: "approved" as const },
 		};
+
 		await Promise.all([
 			collect(ctxFor(WORKER), resolve),
 			collect(ctxFor(WORKER), resolve),
@@ -2179,17 +2296,21 @@ describe("call ids reused across turns", () => {
 		});
 
 		script = [turn({ toolCalls: [del("call-0", entry.id)] })];
+
 		const asked = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			message: "delete my code review entry",
 		});
+
 		expect(asked.some((e) => e.type === "approval_required")).toBe(true);
 
 		script = [turn({ content: "Deleted." })];
+
 		const events = await collect(ctxFor(WORKER), {
 			conversationId: chat.id,
 			resolve: { toolCallId: "call-0", decision: "approved" },
 		});
+
 		expect(events.some((e) => e.type === "tool_result" && e.ok)).toBe(true);
 		expect(await db.select().from(timeEntry)).toHaveLength(0);
 	});

@@ -31,11 +31,14 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/absences/$id")({
 				run: async (ctx, { timeEntryId }) => {
 					const { timeEntriesService } = await import("@farmer/core/services");
 					const own = await timeEntriesService.getOwn(ctx, timeEntryId);
+
 					if (!own) throw new Error("Time entry not found");
+
 					const removed = await timeEntriesService.removeAbsence(
 						ctx,
 						timeEntryId,
 					);
+
 					return { id: removed.id };
 				},
 			}),

@@ -64,6 +64,7 @@ const capturedResponse = z.looseObject({
 const rowsIn = (text: string): number | null => {
 	try {
 		const parsed = z.array(z.json()).safeParse(JSON.parse(text));
+
 		return parsed.success ? parsed.data.length : null;
 	} catch {
 		// Not JSON at all. A refusal's "Error: …" lands here, and so would a tool
@@ -91,14 +92,17 @@ const rowsIn = (text: string): number | null => {
  */
 const annotateResult = (event: Parameters<BeforeSendFn>[0]): void => {
 	const response = event.properties[PostHogMCPAnalyticsProperty.Response];
+
 	if (response === undefined) return;
 	const parsed = capturedResponse.safeParse(response);
+
 	if (!parsed.success) return;
 
 	const body = (parsed.data.content ?? [])
 		.map((part) => part.text ?? "")
 		.join("")
 		.trim();
+
 	const rows = rowsIn(body);
 	event.properties.mcp_result_rows = rows;
 	// Three ways a call answers nothing: no body at all, a literal null, or a
@@ -124,6 +128,7 @@ const redactContent: BeforeSendFn = (event) => {
 	if (captureContent()) return event;
 
 	const parameters = event.properties[PostHogMCPAnalyticsProperty.Parameters];
+
 	if (parameters !== undefined) {
 		// Only the argument VALUES go. The keys are this app's own schema — `from`,
 		// `to`, `projectId` — and say which filters a client used, which is what
@@ -132,6 +137,7 @@ const redactContent: BeforeSendFn = (event) => {
 		// called with no arguments at all.
 		const parsed = capturedParameters.safeParse(parameters);
 		const args = parsed.data?.request.params?.arguments;
+
 		if (!parsed.success) {
 			event.properties[PostHogMCPAnalyticsProperty.Parameters] = REDACTED;
 		} else if (args) {
@@ -152,6 +158,7 @@ const redactContent: BeforeSendFn = (event) => {
 	}
 
 	const response = event.properties[PostHogMCPAnalyticsProperty.Response];
+
 	if (response !== undefined) {
 		event.properties[PostHogMCPAnalyticsProperty.Response] =
 			`[redacted, ${String(JSON.stringify(response)?.length ?? 0)} characters]`;
@@ -195,6 +202,7 @@ const redactContent: BeforeSendFn = (event) => {
  */
 export const instrumentMcpAnalytics = (server: Server, ctx: Ctx): void => {
 	const posthog = getPostHogClient();
+
 	if (!posthog) return;
 
 	instrument(server, posthog, {

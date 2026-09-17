@@ -39,6 +39,7 @@ export const todayKey = (clock: OrgClock): string =>
 
 const weekdayIndex = (word: string): number => {
 	if (word.length < 3) return -1;
+
 	return WEEKDAYS.findIndex((day) => day.startsWith(word));
 };
 
@@ -53,13 +54,18 @@ const weekdayIndex = (word: string): number => {
 export const parseDay = (input: string, clock: OrgClock): string => {
 	const word = input.trim().toLowerCase();
 	const today = todayKey(clock);
+
 	if (word === "today") return today;
+
 	if (word === "yesterday") return addDaysToKey(today, -1);
+
 	if (word === "tomorrow") return addDaysToKey(today, 1);
 
 	const weekday = weekdayIndex(word);
+
 	if (weekday !== -1) {
 		const back = (weekdayInTz(today, clock.timeZone) - weekday + 7) % 7;
+
 		return addDaysToKey(today, -back);
 	}
 
@@ -72,14 +78,18 @@ export const parseDay = (input: string, clock: OrgClock): string => {
 /** `<from>` or `<from>..<to>`, as `farmer off` takes it. */
 export const parseDaySpan = (input: string, clock: OrgClock): DaySpan => {
 	const [fromText, toText, extra] = input.split("..");
+
 	if (extra !== undefined || !fromText) {
 		throw new UsageError(`Cannot read "${input}" as a date or a range.`);
 	}
+
 	const from = parseDay(fromText, clock);
 	const to = toText ? parseDay(toText, clock) : from;
+
 	if (to < from) {
 		throw new UsageError(`The range ${from}..${to} ends before it starts.`);
 	}
+
 	return { from, to };
 };
 
@@ -89,5 +99,6 @@ export const weekAround = (
 	weekStartsOn: WeekStartsOn,
 ): DaySpan => {
 	const from = startOfWeekKey(day, weekStartsOn);
+
 	return { from, to: addDaysToKey(from, 6) };
 };

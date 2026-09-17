@@ -18,6 +18,7 @@ import { orgContextService } from "./org-context.service";
 let harness: TestDb;
 
 const ORG = "ctx-org";
+
 const OTHER_ORG = "ctx-org-other";
 
 beforeAll(async () => {
@@ -125,10 +126,12 @@ describe("orgContextService.resolveBySlug", () => {
 			"u-member",
 			"no-such-org",
 		);
+
 		const forbidden = await orgContextService.resolveBySlug(
 			"u-member",
 			"ctx-org-other",
 		);
+
 		expect(missing).toBe(null);
 		expect(forbidden).toBe(null);
 	});

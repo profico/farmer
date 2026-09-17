@@ -34,6 +34,7 @@ import { setTaskHidden, showAllTasks } from "#/server/tasks.ts";
 export function useHiddenTaskIds(): ReadonlySet<string> {
 	const orgSlug = useOrgSlug();
 	const { data } = useQuery(hiddenTasksQuery(orgSlug));
+
 	return useMemo(() => new Set(data), [data]);
 }
 
@@ -84,6 +85,7 @@ function useYourTasks() {
 					? [...ids.filter((id) => id !== taskId), taskId]
 					: ids.filter((id) => id !== taskId),
 			);
+
 			return { previous };
 		},
 		onError: (error: Error, _data, context) => {
@@ -100,6 +102,7 @@ function useYourTasks() {
 			await queryClient.cancelQueries({ queryKey });
 			const previous = queryClient.getQueryData(queryKey);
 			queryClient.setQueryData(queryKey, []);
+
 			return { previous };
 		},
 		onError: (error: Error, _data, context) => {
@@ -150,6 +153,7 @@ function TaskChips({
 					<div className="flex flex-wrap gap-1.5">
 						{inGroup.map((task) => {
 							const on = !hidden.has(task.id);
+
 							return (
 								<button
 									key={task.id}
@@ -187,6 +191,7 @@ const DESCRIPTION =
 /** Preferences → Your tasks. */
 export function YourTasksSection() {
 	const { tasks, hidden, offCount, setHidden, showAll } = useYourTasks();
+
 	if (tasks.length === 0) return null;
 
 	return (

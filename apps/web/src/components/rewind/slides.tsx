@@ -27,18 +27,22 @@ const EASE = easeOut;
 // ── Formatting ──────────────────────────────────────────────────────────────
 
 const numbers = new Intl.NumberFormat("en");
+
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
+
 const LONG_DAY = new Intl.DateTimeFormat("en", {
 	weekday: "long",
 	day: "numeric",
 	month: "long",
 	timeZone: "UTC",
 });
+
 const SHORT_DAY = new Intl.DateTimeFormat("en", {
 	day: "numeric",
 	month: "short",
 	timeZone: "UTC",
 });
+
 const WEEKDAY = new Intl.DateTimeFormat("en", {
 	weekday: "long",
 	timeZone: "UTC",
@@ -46,18 +50,24 @@ const WEEKDAY = new Intl.DateTimeFormat("en", {
 
 export const wholeHours = (seconds: number): string =>
 	numbers.format(Math.round(seconds / 3600));
+
 const tenthHours = (seconds: number): string =>
 	numbers.format(Math.round(seconds / 360) / 10);
+
 export const monthName = (month: number): string =>
 	MONTH.format(new Date(Date.UTC(2000, month - 1, 1)));
+
 const dayOf = (key: string) => new Date(`${key}T00:00:00Z`);
+
 // 1 January 2023 was a Sunday, so day `d` of that week is weekday `d`.
 const weekdayName = (weekday: number): string =>
 	WEEKDAY.format(new Date(Date.UTC(2023, 0, 1 + weekday)));
+
 /** A share of the year as a whole percent. A sliver that rounds to nothing
  *  still reads as a sliver, not as "0%". */
 const sharePercent = (seconds: number, total: number): string => {
 	const percent = Math.round((seconds / total) * 100);
+
 	return percent === 0 && seconds > 0 ? "<1%" : `${percent}%`;
 };
 
@@ -128,13 +138,18 @@ function CountUp({
 	const reduce = useReducedMotion();
 	useEffect(() => {
 		const node = ref.current;
+
 		if (!node) return;
+
 		const format = (n: number) =>
 			unit === "hours" ? wholeHours(n) : numbers.format(Math.round(n));
+
 		if (reduce) {
 			node.textContent = format(value);
+
 			return;
 		}
+
 		const controls = animate(0, value, {
 			delay,
 			duration: 1.6,
@@ -143,8 +158,10 @@ function CountUp({
 				node.textContent = format(n);
 			},
 		});
+
 		return () => controls.stop();
 	}, [value, unit, delay, reduce]);
+
 	return <span ref={ref}>0</span>;
 }
 
@@ -263,10 +280,12 @@ export function HoursSlide({
 	theme: RewindTheme;
 }) {
 	const previous = rewind.previousYearWorkedSeconds;
+
 	const change =
 		previous != null
 			? Math.round(((rewind.workedSeconds - previous) / previous) * 100)
 			: null;
+
 	return (
 		<Stagger className="flex flex-col gap-5">
 			<Eyebrow>You logged</Eyebrow>
@@ -306,6 +325,7 @@ export function DaysSlide({
 	theme: RewindTheme;
 }) {
 	const streak = rewind.longestStreak;
+
 	return (
 		<Stagger className="flex flex-col gap-5">
 			<Eyebrow>You showed up on</Eyebrow>
@@ -345,11 +365,14 @@ export function MonthsSlide({
 		1,
 		...rewind.months.map((m) => m.seconds + m.projectedSeconds),
 	);
+
 	const busiest = rewind.months.reduce((best, m) =>
 		m.seconds > best.seconds ? m : best,
 	);
+
 	const projected = rewind.months.some((m) => m.projectedSeconds > 0);
 	const px = (seconds: number) => Math.round((seconds / max) * CHART_PX);
+
 	return (
 		<Stagger className="flex flex-col gap-8">
 			<Eyebrow>Month by month</Eyebrow>
@@ -424,6 +447,7 @@ export function BigDaySlide({
 }) {
 	const day = rewind.busiestDay;
 	const strongest = rewind.weekdays.indexOf(Math.max(...rewind.weekdays));
+
 	return (
 		<Stagger className="flex flex-col gap-6">
 			<Eyebrow>Your biggest day</Eyebrow>
@@ -456,6 +480,7 @@ export function ProjectsSlide({
 	theme: RewindTheme;
 }) {
 	const top = rewind.projects[0]?.seconds ?? 1;
+
 	return (
 		<Stagger className="flex flex-col gap-7">
 			<Eyebrow>Where your hours went</Eyebrow>
@@ -524,6 +549,7 @@ export function TasksSlide({
 	theme: RewindTheme;
 }) {
 	const total = Math.max(1, rewind.workedSeconds);
+
 	return (
 		<Stagger className="flex flex-col gap-7">
 			<Eyebrow>How you spent it</Eyebrow>
@@ -588,6 +614,7 @@ export function WordsSlide({
 	theme: RewindTheme;
 }) {
 	const most = rewind.words[0]?.count ?? 1;
+
 	return (
 		<Stagger className="flex flex-col gap-6">
 			<Eyebrow>Your year in {rewind.words.length} words</Eyebrow>
@@ -625,6 +652,7 @@ export function GithubSlide({
 		{ label: "merged", value: rewind.pullRequests.merged },
 		{ label: "reviews", value: rewind.pullRequests.reviewed },
 	].filter((f) => f.value > 0);
+
 	return (
 		<Stagger className="flex flex-col gap-8">
 			<Eyebrow>From GitHub</Eyebrow>
@@ -657,8 +685,10 @@ export function TimeOffSlide({
 	theme: RewindTheme;
 }) {
 	const { vacationDays, sickDays, otherDays, aheadDays } = rewind.timeOff;
+
 	const days = (n: number) =>
 		`${numbers.format(n)} ${n === 1 ? "day" : "days"}`;
+
 	return (
 		<Stagger className="flex flex-col gap-6">
 			<Eyebrow>Time away</Eyebrow>
@@ -715,7 +745,9 @@ export const personaFor = (rewind: Rewind) => {
 			line: "A third of your year was meetings. The calendar knows you well.",
 		};
 	}
+
 	const group = rewind.groups[0]?.group ?? "general";
+
 	return PERSONAS[group];
 };
 
@@ -727,6 +759,7 @@ export function PersonaSlide({
 	theme: RewindTheme;
 }) {
 	const persona = personaFor(rewind);
+
 	return (
 		<Stagger className="flex flex-col gap-6">
 			<Eyebrow>Your {rewind.year}, in one name</Eyebrow>
@@ -752,6 +785,7 @@ export const summaryTiles = (rewind: Rewind) => {
 	const busiest = rewind.months.reduce((best, m) =>
 		m.seconds > best.seconds ? m : best,
 	);
+
 	return [
 		{ label: "Hours", value: wholeHours(rewind.workedSeconds) },
 		{ label: "Days", value: numbers.format(rewind.daysWorked) },
@@ -777,6 +811,7 @@ export function SummarySlide({
 	actions: ReactNode;
 }) {
 	const tiles = summaryTiles(rewind);
+
 	return (
 		<Stagger className="flex flex-col gap-8">
 			<Eyebrow>Farmer Rewind {rewind.year}</Eyebrow>

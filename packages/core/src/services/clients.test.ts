@@ -20,20 +20,29 @@ import { clientsService } from "./clients.service";
 import type { Ctx } from "./types";
 
 const ORG_A = "cl-a";
+
 const ORG_B = "cl-b";
 
 const ADMIN = "u-cl-admin";
+
 const PM = "u-cl-pm";
+
 const TL = "u-cl-tl";
+
 const MEM = "u-cl-member";
+
 const NOBODY = "u-cl-unassigned";
+
 const ADMIN_B = "u-cl-admin-b";
 
 let harness: TestDb;
 
 let clientA: string;
+
 let clientB: string;
+
 let archivedB: string;
+
 let projectA: string;
 
 /** A fresh Ctx per call: `ctxAccess` memoizes Access on the object. */
@@ -85,6 +94,7 @@ beforeAll(async () => {
 			{ organizationId: ORG_B, name: "Gone", archivedAt: new Date() },
 		])
 		.returning();
+
 	clientA = at(clients, 0).id;
 	clientB = at(clients, 1).id;
 	archivedB = at(clients, 2).id;
@@ -93,6 +103,7 @@ beforeAll(async () => {
 		.insert(project)
 		.values({ organizationId: ORG_A, clientId: clientA, name: "Acme Web" })
 		.returning();
+
 	projectA = present(p, "project").id;
 
 	await db.insert(projectMember).values([
@@ -117,6 +128,7 @@ describe("create", () => {
 			const created = await clientsService.create(ctx(who), {
 				name: `  By ${who}  `,
 			});
+
 			expect(created.organizationId).toBe(ORG_A);
 			expect(created.name).toBe(`By ${who}`);
 			expect(created.isInternal).toBe(false);
@@ -129,9 +141,11 @@ describe("create", () => {
 				clientsService.create(ctx(who), { name: `By ${who}` }),
 			).rejects.toThrow(AccessError);
 		}
+
 		const leaked = await db.query.client.findMany({
 			where: eq(client.name, `By ${MEM}`),
 		});
+
 		expect(leaked).toHaveLength(0);
 	});
 });
@@ -142,6 +156,7 @@ describe("update", () => {
 			clientId: clientA,
 			name: " Acme Corp ",
 		});
+
 		expect(updated.name).toBe("Acme Corp");
 	});
 
@@ -151,6 +166,7 @@ describe("update", () => {
 				clientsService.update(ctx(who), { clientId: clientA, name: "Nope" }),
 			).rejects.toThrow(AccessError);
 		}
+
 		expect((await clientRow(clientA)).name).toBe("Acme Corp");
 	});
 
@@ -230,6 +246,7 @@ describe("list", () => {
 		const all = (await clientsService.listAll(ctx(ADMIN_B, ORG_B))).map(
 			(c) => c.id,
 		);
+
 		expect(all.sort()).toEqual([clientB, archivedB].sort());
 	});
 
@@ -246,11 +263,13 @@ describe("ensureInternal", () => {
 			clientsService.ensureInternal(ctx(ADMIN_B, ORG_B), "Other Name"),
 			clientsService.ensureInternal(ctx(ADMIN_B, ORG_B)),
 		]);
+
 		expect(new Set(ids).size).toBe(1);
 
 		const rows = await db.query.client.findMany({
 			where: and(eq(client.organizationId, ORG_B), eq(client.isInternal, true)),
 		});
+
 		expect(rows).toHaveLength(1);
 		// A later call never renames the row the first one made.
 		expect(await clientsService.ensureInternal(ctx(ADMIN_B, ORG_B), "X")).toBe(

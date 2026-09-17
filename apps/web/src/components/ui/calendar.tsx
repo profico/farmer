@@ -36,6 +36,7 @@ const shiftMonth = (monthKey: string, by: number) => {
 	const [year, month] = monthKey.split("-").map(Number);
 	// Day 1 of a shifted month, via UTC so the local zone can't slip it.
 	const shifted = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1 + by, 1));
+
 	return shifted.toISOString().slice(0, 7);
 };
 
@@ -66,9 +67,12 @@ export function Calendar({
 	const [month, setMonth] = React.useState(() =>
 		monthOf(value || today || new Date().toISOString().slice(0, 10)),
 	);
+
 	const [lastValue, setLastValue] = React.useState(value);
+
 	if (value !== lastValue) {
 		setLastValue(value);
+
 		if (value) setMonth(monthOf(value));
 	}
 
@@ -80,6 +84,7 @@ export function Calendar({
 
 	const firstOfMonth = `${month}-01`;
 	const gridStart = startOfWeekKey(firstOfMonth, weekStartsOn);
+
 	const days = Array.from({ length: WEEKS * 7 }, (_, i) =>
 		addDaysToKey(gridStart, i),
 	);
@@ -126,22 +131,30 @@ export function Calendar({
 			["ArrowUp", -7],
 			["ArrowDown", 7],
 		]);
+
 		const delta = step.get(event.key);
+
 		if (delta !== undefined) {
 			event.preventDefault();
 			moveTo(addDaysToKey(day, delta));
+
 			return;
 		}
+
 		if (event.key === "Home") {
 			event.preventDefault();
 			moveTo(startOfWeekKey(day, weekStartsOn));
+
 			return;
 		}
+
 		if (event.key === "End") {
 			event.preventDefault();
 			moveTo(addDaysToKey(startOfWeekKey(day, weekStartsOn), 6));
+
 			return;
 		}
+
 		if (event.key === "PageUp" || event.key === "PageDown") {
 			event.preventDefault();
 			const next = shiftMonth(month, event.key === "PageUp" ? -1 : 1);
@@ -158,8 +171,10 @@ export function Calendar({
 		// A month is reachable if any of its days are in range.
 		const first = `${target}-01`;
 		const last = endOfMonthKey(first);
+
 		return !(max != null && first > max) && !(min != null && last < min);
 	};
+
 	const prevMonth = shiftMonth(month, -1);
 	const nextMonth = shiftMonth(month, 1);
 
@@ -215,6 +230,7 @@ export function Calendar({
 					const disabled = outOfRange(day);
 					const selected = value === day;
 					const isToday = today === day;
+
 					return (
 						<button
 							key={day}

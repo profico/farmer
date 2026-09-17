@@ -86,15 +86,18 @@ export const dashboardLoader = (
 	now: Date,
 ): (() => Promise<ComplianceDashboard>) => {
 	let loaded: Promise<ComplianceDashboard> | undefined;
+
 	return () => {
 		loaded ??= (async () => {
 			const today = dayKeyInTz(now, await ctxTimezone(ctx));
+
 			return complianceService.trackingForReminderJob(
 				ctx,
 				{ year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) },
 				{ now },
 			);
 		})();
+
 		return loaded;
 	};
 };
@@ -138,6 +141,7 @@ export const isMonthEndDay = async (
 	daysBefore: number,
 ): Promise<boolean> => {
 	const month = dayKey.slice(0, 7);
+
 	// To the end of the month rather than a fixed lookahead: the answer depends
 	// on every remaining day, not the next ten.
 	const holidays = await holidaysService.holidaySetForRange(
@@ -145,23 +149,28 @@ export const isMonthEndDay = async (
 		dayKey,
 		endOfMonthKey(dayKey),
 	);
+
 	const isWorkingDay = (key: string) => {
 		if (holidays.has(key)) return false;
 		const weekday = weekdayOf(key);
+
 		return weekday !== 0 && weekday !== 6;
 	};
 
 	if (!isWorkingDay(dayKey)) return false;
 
 	let workingDaysAfter = 0;
+
 	for (
 		let cursor = addDaysToKey(dayKey, 1);
 		cursor.slice(0, 7) === month;
 		cursor = addDaysToKey(cursor, 1)
 	) {
 		if (isWorkingDay(cursor)) workingDaysAfter++;
+
 		if (workingDaysAfter > daysBefore) return false;
 	}
+
 	return workingDaysAfter === daysBefore;
 };
 
@@ -179,30 +188,39 @@ export const reminderDayCheck = async (
 			return settings.logEnabled ? null : "The log reminder is off.";
 		case "compliance-nudge": {
 			if (!settings.nudgeEnabled) return "The Slack nudge is off.";
+
 			if (!settings.nudgeWeekdays.includes(weekdayOf(dayKey))) {
 				return "This day is not a nudge day.";
 			}
+
 			// Never on a weekend or a public holiday: nobody is expected to log
 			// anything on a day off, so nobody is chased about it either.
 			const weekday = weekdayOf(dayKey);
+
 			if (weekday === 0 || weekday === 6) return "This day is a weekend.";
+
 			const holidays = await holidaysService.holidaySetForRange(
 				ctx,
 				dayKey,
 				dayKey,
 			);
+
 			return holidays.has(dayKey) ? "This day is a public holiday." : null;
 		}
+
 		case "month-end":
 			if (!settings.monthEndEnabled) return "The month-end reminder is off.";
+
 			if (await isMonthEndDay(ctx, dayKey, settings.monthEndDaysBefore)) {
 				return null;
 			}
+
 			return settings.monthEndDaysBefore === 0
 				? "This day is not the last working day of the month."
 				: `This day is not ${plural(settings.monthEndDaysBefore, "working day", "working days")} before the last working day of the month.`;
 		case "admin-digest":
 			if (!settings.digestEnabled) return "The admin digest is off.";
+
 			return weekdayOf(dayKey) === settings.digestWeekday
 				? null
 				: "This day is not the digest day.";
@@ -248,6 +266,7 @@ export const sendTimeReached = (
 ): boolean => {
 	if (!withinSendHours(timeKey)) return false;
 	const time = sendTimeOf(settings, kind);
+
 	return time === null || timeKey >= time;
 };
 
@@ -267,6 +286,7 @@ const logReminders = async (
 		dayKey,
 		dayKey,
 	);
+
 	if (holidays.has(dayKey)) return [];
 
 	const people = await db
@@ -281,6 +301,7 @@ const logReminders = async (
 					)
 				: eq(member.organizationId, ctx.organizationId),
 		);
+
 	if (people.length === 0) return [];
 	const userIds = people.map((p) => p.userId);
 
@@ -305,14 +326,17 @@ const logReminders = async (
 			)
 			.groupBy(timeEntry.userId),
 	]);
+
 	const loggedByUser = new Map(logged.map((r) => [r.userId, r.seconds]));
 	const weekday = weekdayInTz(dayKey, tz);
 
 	const recipients: ReminderRecipient[] = [];
+
 	for (const person of people) {
 		// A scheduled working day with a defined end time.
 		const day = dayForWeekday(schedules.get(person.userId) ?? [], weekday);
 		const expectedSeconds = day ? dayDurationSeconds(day) : 0;
+
 		if (expectedSeconds <= 0 || !day?.endTime) continue;
 
 		// Only once the send time has come: the end of THEIR workday, or the
@@ -322,16 +346,19 @@ const logReminders = async (
 		// leave a late shift with no reminder at all.
 		if (timeKey !== null) {
 			if (!withinSendHours(timeKey)) continue;
+
 			const sendAt =
 				settings.logMode === "fixed"
 					? settings.logTime
 					: day.endTime > REMINDER_LATEST_TIME
 						? REMINDER_LATEST_TIME
 						: day.endTime;
+
 			if (timeKey < sendAt) continue;
 		}
 
 		const loggedSeconds = loggedByUser.get(person.userId) ?? 0;
+
 		// Below the configured share of the day's target. 100% is "anything
 		// short of the full day", which is what the job always asked.
 		if (loggedSeconds * 100 >= expectedSeconds * settings.logBelowPct) continue;
@@ -350,6 +377,7 @@ const logReminders = async (
 			},
 		});
 	}
+
 	return recipients;
 };
 
@@ -363,8 +391,10 @@ const nudges = (
 	// they are behind — below the target so far by more than the tolerance —
 	// and the numbers in the message are the report's own.
 	const recipients: ReminderRecipient[] = [];
+
 	for (const row of behindRows(report)) {
 		if (!types.has(row.memberType)) continue;
+
 		if (row.targetSeconds == null) continue;
 		const shortBy = row.targetSeconds - row.totalSeconds;
 		const nothingYet = row.totalSeconds === 0;
@@ -393,6 +423,7 @@ const nudges = (
 			},
 		});
 	}
+
 	return recipients;
 };
 
@@ -426,17 +457,21 @@ const monthEnd = async (
 		}),
 		dashboard(),
 	]);
+
 	const types = new Set<string>(settings.monthEndMemberTypes);
 	const byUser = new Map(report.rows.map((r) => [r.userId, r]));
 
 	const title = monthEndTitle(settings.monthEndDaysBefore);
 	const ask = monthEndAsk(settings.monthEndDaysBefore);
 	const recipients: ReminderRecipient[] = [];
+
 	for (const person of cohort) {
 		if (!types.has(person.memberType.type)) continue;
 		const row = byUser.get(person.userId);
 		const behind = row?.status === "behind";
+
 		if (settings.monthEndOnlyBehind && !behind) continue;
+
 		// The person's own numbers when something is missing. On this day the
 		// nudge stands down for everyone this message reaches (see
 		// `reminderRecipients`), so this is the one that has to say it.
@@ -448,6 +483,7 @@ const monthEnd = async (
 							row.targetSeconds,
 						)} expected so far.`
 				: null;
+
 		recipients.push({
 			userId: person.userId,
 			name: person.name,
@@ -466,6 +502,7 @@ const monthEnd = async (
 			},
 		});
 	}
+
 	return recipients;
 };
 
@@ -485,6 +522,7 @@ const digestLines = (
 ): string[] => {
 	const behind = behindRows(report);
 	const slightly = report.rows.filter((r) => r.status === "slightly_behind");
+
 	if (behind.length === 0 && slightly.length === 0) {
 		// No fund means no target for anyone, which means no verdict for anyone —
 		// not that everyone met one. Saying "on track" here read as an all-clear
@@ -496,15 +534,19 @@ const digestLines = (
 				]
 			: ["Everyone is on track."];
 	}
+
 	const more = (total: number) =>
 		total > DIGEST_LIST_LIMIT
 			? [`• and ${String(total - DIGEST_LIST_LIMIT)} more`]
 			: [];
+
 	const line = (r: TrackingRow) =>
 		`• ${name(r)} — ${short(r.totalSeconds)} of ${short(r.targetSeconds ?? 0)} (${short(
 			(r.targetSeconds ?? 0) - r.totalSeconds,
 		)} short)`;
+
 	const lines: string[] = [];
+
 	if (behind.length > 0) {
 		lines.push(
 			`${bold(plural(behind.length, "person", "people"))} ${
@@ -514,6 +556,7 @@ const digestLines = (
 			...more(behind.length),
 		);
 	}
+
 	if (slightly.length > 0) {
 		if (lines.length > 0) lines.push("");
 		lines.push(
@@ -524,6 +567,7 @@ const digestLines = (
 			...more(slightly.length),
 		);
 	}
+
 	return lines;
 };
 
@@ -560,8 +604,10 @@ const digest = async (
 				.map((r) => r.userId),
 		),
 	]);
+
 	const mention = (person: DigestPerson) => {
 		const id = slackIds.get(person.userId);
+
 		return id ? `<@${id}>` : slackEscape(person.name);
 	};
 
@@ -572,6 +618,7 @@ const digest = async (
 		(p) => p.name,
 		(t) => t,
 	).join("\n");
+
 	const slack = [
 		`*${DIGEST_TITLE}*`,
 		...digestLines(
@@ -622,6 +669,7 @@ export const reminderRecipients = async (
 			return logReminders(ctx, settings, moment, onlyUserIds);
 		case "compliance-nudge": {
 			const picked = nudges(settings, moment, await dashboard());
+
 			// On a day the month-end reminder goes out, it carries the same
 			// numbers, so the nudge stands down for everyone it reaches. Two DMs
 			// about one timesheet within the hour is the nag this avoids. Asked
@@ -633,11 +681,14 @@ export const reminderRecipients = async (
 			) {
 				return picked;
 			}
+
 			const monthEndIds = new Set(
 				(await monthEnd(ctx, settings, moment, dashboard)).map((r) => r.userId),
 			);
+
 			return picked.filter((r) => !monthEndIds.has(r.userId));
 		}
+
 		case "month-end":
 			return monthEnd(ctx, settings, moment, dashboard);
 		case "admin-digest":

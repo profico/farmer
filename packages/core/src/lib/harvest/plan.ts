@@ -51,18 +51,24 @@ import { hoursToSeconds, roundToQuarterHour } from "./number";
 /** The first day people log in this app: September 2026. Work rows on or
  *  after it are skipped; everything before comes from Harvest. */
 export const HARVEST_DEFAULT_CUTOFF = "2026-09-01";
+
 export const HARVEST_GUESS_DOMAIN = "profico.hr";
+
 /** A project-person pair with a row this many days before the cutoff (or
  *  later) is an active assignment. */
 export const HARVEST_ACTIVE_WINDOW_DAYS = 90;
+
 /** A project with a work row this many days before the cutoff is active,
  *  whether or not the project list names it — the list can only add to that
  *  set (and supplies codes). Everything else is created archived. */
 export const HARVEST_ACTIVE_PROJECT_WINDOW_DAYS = 31;
 
 const DAY_SECONDS = 24 * 3600;
+
 const MAX_ROWS_PER_DAY = 500;
+
 const MAX_DESCRIPTION = 10_000;
+
 const MAX_CODE = 16;
 
 /** Client names that map to the org's internal client by default. */
@@ -125,9 +131,11 @@ const TRANSLITERATE = new Map<string, string>([
 
 function asciiFold(s: string): string {
 	let out = "";
+
 	for (const ch of s.normalize("NFC").toLowerCase()) {
 		out += TRANSLITERATE.get(ch) ?? ch;
 	}
+
 	return out
 		.normalize("NFD")
 		.replace(/\p{M}/gu, "")
@@ -139,6 +147,7 @@ function asciiFold(s: string): string {
  *  "Ivan Horvat" gives "ihorvat@profico.hr". */
 export function guessEmail(first: string, last: string): string {
 	const initial = asciiFold(first).slice(0, 1);
+
 	return `${initial}${asciiFold(last)}@${HARVEST_GUESS_DOMAIN}`;
 }
 
@@ -153,6 +162,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function addDays(date: string, days: number): string {
 	const [y, m, d] = date.split("-").map(Number);
 	const t = Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1) + days * 86_400_000;
+
 	return new Date(t).toISOString().slice(0, 10);
 }
 
@@ -204,9 +214,12 @@ function sha256HexSync(input: string): string {
 		0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c,
 		0x1f83d9ab, 0x5be0cd19,
 	];
+
 	const w = new Array<number>(64).fill(0);
+
 	for (let offset = 0; offset < padded.length; offset += 64) {
 		for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4);
+
 		for (let i = 16; i < 64; i++) {
 			const a = w[i - 15] ?? 0;
 			const b = w[i - 2] ?? 0;
@@ -214,6 +227,7 @@ function sha256HexSync(input: string): string {
 			const s1 = rotr(b, 17) ^ rotr(b, 19) ^ (b >>> 10);
 			w[i] = ((w[i - 16] ?? 0) + s0 + (w[i - 7] ?? 0) + s1) | 0;
 		}
+
 		let a = h[0] ?? 0;
 		let b = h[1] ?? 0;
 		let c = h[2] ?? 0;
@@ -222,6 +236,7 @@ function sha256HexSync(input: string): string {
 		let f = h[5] ?? 0;
 		let g = h[6] ?? 0;
 		let hh = h[7] ?? 0;
+
 		for (let i = 0; i < 64; i++) {
 			const s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
 			const ch = (e & f) ^ (~e & g);
@@ -238,9 +253,12 @@ function sha256HexSync(input: string): string {
 			b = a;
 			a = (t1 + t2) | 0;
 		}
+
 		const next = [a, b, c, d, e, f, g, hh];
+
 		for (let i = 0; i < 8; i++) h[i] = ((h[i] ?? 0) + (next[i] ?? 0)) | 0;
 	}
+
 	return h.map((v) => (v >>> 0).toString(16).padStart(8, "0")).join("");
 }
 
@@ -387,12 +405,16 @@ function canonicalTask(taskName: string, projectCode: string): CanonicalTask {
 	const byCode = ABSENCE_BY_CODE.get(projectCode.trim().toUpperCase());
 	const name = normName(taskName);
 	const absence = byCode ?? ABSENCE_BY_TASK.get(name) ?? null;
+
 	if (absence) {
 		return { key: ABSENCE_TASK_KEY[absence], absence, overtime: false };
 	}
+
 	const alias = TASK_ALIASES.get(name);
+
 	if (alias)
 		return { key: alias.task, absence: null, overtime: alias.overtime };
+
 	return { key: name, absence: null, overtime: false };
 }
 
@@ -402,12 +424,16 @@ function rowProblem(
 	notes: string,
 ): string | null {
 	if (rawSeconds === null) return "Hours is not a number";
+
 	if (rawSeconds < 0 || seconds === null) return "Hours is negative";
+
 	// The rounded value decides, as the Zod input and the edit dialog do.
 	if (seconds > DAY_SECONDS) return "Longer than 24 hours";
+
 	if (notes.length > MAX_DESCRIPTION) {
 		return `Notes longer than ${MAX_DESCRIPTION} characters`;
 	}
+
 	return null;
 }
 
@@ -464,10 +490,12 @@ export async function parseHarvestFiles(
 
 	for (const file of files) {
 		const header = readCsvHeader(file.text);
+
 		const detected =
 			header.length === 0
 				? { kind: "unknown" as const, reason: "the file is empty" }
 				: detectHarvestFile(header);
+
 		const info: HarvestFileInfo = {
 			name: file.name,
 			kind: detected.kind,
@@ -475,25 +503,33 @@ export async function parseHarvestFiles(
 			used: false,
 			reason: detected.reason,
 		};
+
 		infos.push(info);
+
 		if (detected.kind === "unknown") {
 			info.reason = `Not used: ${detected.reason}`;
 			continue;
 		}
+
 		if (seenKinds.has(detected.kind)) {
 			info.reason = `Not used: an earlier file is already the ${detected.kind} export`;
+
 			for (const _ of iterateCsvRecords(file.text)) info.rows += 1;
 			continue;
 		}
+
 		seenKinds.add(detected.kind);
 		info.used = true;
 		info.reason = "Used";
+
 		if (detected.kind === "time_report") {
 			timeReport = file.text;
 			continue;
 		}
+
 		for (const record of iterateCsvRecords(file.text)) {
 			info.rows += 1;
+
 			if (detected.kind === "people") people.push(toPeopleRow(record));
 			else if (detected.kind === "projects") {
 				projectList.push(toProjectRow(record));
@@ -515,11 +551,13 @@ export async function parseHarvestFiles(
 	if (timeReport !== null) {
 		const info = infos.find((i) => i.kind === "time_report" && i.used);
 		let record = 0;
+
 		for (const rec of iterateCsvRecords(timeReport)) {
 			record += 1;
 			const t = toTimeReportRow(rec);
 			const person = `${t.firstName} ${t.lastName}`.trim();
 			const personSourceKey = normName(person);
+
 			const missing = !t.date
 				? "Date is not a date"
 				: personSourceKey === ""
@@ -531,6 +569,7 @@ export async function parseHarvestFiles(
 							: normName(t.task) === ""
 								? "No task"
 								: null;
+
 			if (missing !== null || !t.date) {
 				invalidRows.push({
 					record,
@@ -544,11 +583,15 @@ export async function parseHarvestFiles(
 				});
 				continue;
 			}
+
 			const date = t.date;
+
 			if (from === null || date < from) from = date;
+
 			if (to === null || date > to) to = date;
 
 			let p = persons.get(personSourceKey);
+
 			if (!p) {
 				p = {
 					firstName: t.firstName.trim(),
@@ -560,8 +603,11 @@ export async function parseHarvestFiles(
 				};
 				persons.set(personSourceKey, p);
 			}
+
 			p.rows += 1;
+
 			if (p.firstDate === null || date < p.firstDate) p.firstDate = date;
+
 			if (p.lastDate === null || date >= p.lastDate) {
 				p.lastDate = date;
 				p.employeeInReport = t.employee;
@@ -569,10 +615,13 @@ export async function parseHarvestFiles(
 
 			const task = canonicalTask(t.task, t.projectCode);
 			const clientSourceKey = normName(t.client);
+
 			if (!clients.has(clientSourceKey)) {
 				clients.set(clientSourceKey, t.client.trim());
 			}
+
 			let projectSourceKey: string | null = null;
+
 			if (!task.absence) {
 				projectSourceKey = projectSourceKeyOf(
 					t.client,
@@ -580,6 +629,7 @@ export async function parseHarvestFiles(
 					t.projectCode,
 				);
 				let acc = projects.get(projectSourceKey);
+
 				if (!acc) {
 					acc = {
 						clientSourceKey,
@@ -592,29 +642,38 @@ export async function parseHarvestFiles(
 					};
 					projects.set(projectSourceKey, acc);
 				}
+
 				acc.workRows += 1;
 				acc.workDates.add(date);
+
 				if (t.billable) acc.billableRows += 1;
 			}
+
 			let taskAcc = tasks.get(task.key);
+
 			if (!taskAcc) {
 				taskAcc = { name: t.task.trim(), harvestNames: new Set(), rows: 0 };
 				tasks.set(task.key, taskAcc);
 			}
+
 			taskAcc.harvestNames.add(t.task.trim());
 			taskAcc.rows += 1;
 
 			const rawSeconds = t.hours === null ? null : hoursToSeconds(t.hours);
+
 			const seconds =
 				rawSeconds === null || rawSeconds < 0
 					? null
 					: roundToQuarterHour(rawSeconds);
+
 			const dayKey = personDayKey(date, p.firstName, p.lastName);
 			let day = days.get(dayKey);
+
 			if (!day) {
 				day = { personSourceKey, date, rows: [], fields: [] };
 				days.set(dayKey, day);
 			}
+
 			day.rows.push(rows.length);
 			day.fields.push({
 				date,
@@ -650,6 +709,7 @@ export async function parseHarvestFiles(
 				key: "",
 			});
 		}
+
 		if (info) info.rows = record;
 	}
 
@@ -657,16 +717,22 @@ export async function parseHarvestFiles(
 	// `Promise.all`, so 240k rows do not wait on 240k sequential awaits.
 	const dayEntries = [...days.entries()];
 	const parsedDays: ParsedDay[] = [];
+
 	for (let start = 0; start < dayEntries.length; start += HASH_BATCH_DAYS) {
 		const batch = dayEntries.slice(start, start + HASH_BATCH_DAYS);
+
 		const hashed = await Promise.all(
 			batch.map(async ([dayKey, day]) => {
 				const keys = await keysForPersonDay(day.fields);
+
 				for (let i = 0; i < keys.length; i++) {
 					const row = rows[day.rows[i] ?? -1];
+
 					if (row) row.key = keys[i] ?? "";
 				}
+
 				const digest = await dayDigest(keys);
+
 				return {
 					dayKey,
 					personSourceKey: day.personSourceKey,
@@ -676,8 +742,10 @@ export async function parseHarvestFiles(
 				};
 			}),
 		);
+
 		parsedDays.push(...hashed);
 	}
+
 	parsedDays.sort((a, b) =>
 		a.date === b.date
 			? compareStrings(a.personSourceKey, b.personSourceKey)
@@ -687,8 +755,10 @@ export async function parseHarvestFiles(
 	// People: the people list, plus everyone only in the time report.
 	const parsedPersons: ParsedPerson[] = [];
 	const listedKeys = new Set<string>();
+
 	for (const listed of people) {
 		const sourceKey = normName(`${listed.firstName} ${listed.lastName}`);
+
 		if (sourceKey === "" || listedKeys.has(sourceKey)) continue;
 		listedKeys.add(sourceKey);
 		const acc = persons.get(sourceKey);
@@ -703,21 +773,28 @@ export async function parseHarvestFiles(
 			rows: acc?.rows ?? 0,
 		});
 	}
+
 	for (const [sourceKey, acc] of persons) {
 		if (listedKeys.has(sourceKey)) continue;
 		parsedPersons.push({ sourceKey, listed: null, ...acc });
 	}
+
 	parsedPersons.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
 
 	// Projects: the time report, plus any listed project with no rows yet.
 	const listedProjects = new Map<string, ProjectRow>();
+
 	for (const listed of projectList) {
 		const key = projectSourceKeyOf(listed.client, listed.name, listed.code);
+
 		if (ABSENCE_BY_CODE.has(listed.code.trim().toUpperCase())) continue;
+
 		if (normName(listed.client) === "" || normName(listed.name) === "") {
 			continue;
 		}
+
 		listedProjects.set(key, listed);
+
 		if (!projects.has(key)) {
 			projects.set(key, {
 				clientSourceKey: normName(listed.client),
@@ -730,6 +807,7 @@ export async function parseHarvestFiles(
 			});
 		}
 	}
+
 	const parsedProjects: ParsedProject[] = [...projects.entries()]
 		.map(([sourceKey, acc]) => ({
 			sourceKey,
@@ -743,13 +821,16 @@ export async function parseHarvestFiles(
 	// Clients: the time report, the client list and the project list.
 	for (const listed of clientList) {
 		const key = normName(listed.name);
+
 		if (key !== "" && !clients.has(key)) clients.set(key, listed.name.trim());
 	}
+
 	for (const project of parsedProjects) {
 		if (!clients.has(project.clientSourceKey)) {
 			clients.set(project.clientSourceKey, project.clientName);
 		}
 	}
+
 	const parsedClients: ParsedClient[] = [...clients.entries()]
 		.map(([sourceKey, name]) => ({ sourceKey, name }))
 		.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
@@ -758,12 +839,16 @@ export async function parseHarvestFiles(
 	// An inactive task nobody used is left out, and the overtime and absence
 	// tasks canonicalize onto their base task and so are never created.
 	const listedTasks = new Map<string, TaskRow>();
+
 	for (const listed of taskList) {
 		const canonical = canonicalTask(listed.name, "");
 		const direct = normName(listed.name);
+
 		if (direct === "") continue;
+
 		// The base task's own row decides "archived"; an alias's row does not.
 		if (canonical.key === direct) listedTasks.set(direct, listed);
+
 		if (!tasks.has(canonical.key) && listed.active) {
 			tasks.set(canonical.key, {
 				name: listed.name.trim(),
@@ -772,9 +857,11 @@ export async function parseHarvestFiles(
 			});
 		}
 	}
+
 	const parsedTasks: ParsedTask[] = [...tasks.entries()]
 		.map(([sourceKey, acc]) => {
 			const listed = listedTasks.get(sourceKey) ?? null;
+
 			return {
 				sourceKey,
 				// An aliased task ("framer") takes the base task's own name when a
@@ -788,8 +875,10 @@ export async function parseHarvestFiles(
 		.sort((a, b) => compareStrings(a.sourceKey, b.sourceKey));
 
 	const candidateEmails = new Set<string>();
+
 	for (const person of parsedPersons) {
 		const listed = person.listed?.email.trim().toLowerCase() ?? "";
+
 		if (listed !== "") candidateEmails.add(listed);
 		else candidateEmails.add(guessEmail(person.firstName, person.lastName));
 	}
@@ -812,6 +901,7 @@ function baseTaskName(sourceKey: string, acc: TaskAcc): string {
 	for (const name of acc.harvestNames) {
 		if (normName(name) === sourceKey) return name;
 	}
+
 	// Only aliased names were seen ("Framer Overtime"): title-case the key.
 	return sourceKey.replace(/(^|\s)\S/g, (s) => s.toUpperCase());
 }
@@ -1096,6 +1186,7 @@ export function planHarvestImport(
 ): HarvestPlan {
 	const blocked: HarvestBlocked[] = [];
 	const cutoff = choices.cutoffDate;
+
 	if (!DATE_RE.test(cutoff)) {
 		blocked.push({
 			kind: "choices",
@@ -1103,10 +1194,12 @@ export function planHarvestImport(
 			message: `The cutoff "${cutoff}" is not a yyyy-MM-dd date`,
 		});
 	}
+
 	const negativeCount = parsed.rows.reduce(
 		(n, r) => n + (r.rawSeconds !== null && r.rawSeconds < 0 ? 1 : 0),
 		0,
 	);
+
 	if (negativeCount > 0 && choices.negativeRows === null) {
 		blocked.push({
 			kind: "choices",
@@ -1117,29 +1210,37 @@ export function planHarvestImport(
 
 	const mappings = new Map<string, string>();
 	const personByLocalId = new Map<string, string>();
+
 	for (const m of snapshot.mappings) {
 		mappings.set(mappingKey(m.kind, m.sourceKey), m.localId);
+
 		if (m.kind === "person") personByLocalId.set(m.localId, m.sourceKey);
 	}
 
 	// Clients -----------------------------------------------------------------
 	const clientById = new Map(snapshot.clients.map((c) => [c.id, c]));
 	const clientByName = new Map<string, string>();
+
 	for (const c of snapshot.clients) {
 		const key = normName(c.name);
+
 		if (!clientByName.has(key)) clientByName.set(key, c.id);
 	}
+
 	// Active: a work row in the window before the cutoff, or named by the
 	// project list. The list adds to the set; it never archives a project that
 	// was worked on last month.
 	const projectActiveFrom = DATE_RE.test(cutoff)
 		? addDays(cutoff, -HARVEST_ACTIVE_PROJECT_WINDOW_DAYS)
 		: cutoff;
+
 	const isActiveProject = (p: ParsedProject) =>
 		p.listed !== null ||
 		p.workDates.some((d) => d >= projectActiveFrom && d < cutoff);
+
 	const activeClientKeys = new Set<string>();
 	const projectsPerClient = new Map<string, number>();
+
 	for (const p of parsed.projects) {
 		if (isActiveProject(p)) activeClientKeys.add(p.clientSourceKey);
 		projectsPerClient.set(
@@ -1147,11 +1248,13 @@ export function planHarvestImport(
 			(projectsPerClient.get(p.clientSourceKey) ?? 0) + 1,
 		);
 	}
+
 	const clientPlans: HarvestClientPlan[] = [];
 	const clientReview: HarvestClientReview[] = [];
 	/** The local client id a project would sit under, when it is known. */
 	const clientLocal = new Map<string, string | null>();
 	const clientIsInternal = new Map<string, boolean>();
+
 	for (const c of parsed.clients) {
 		const review: HarvestClientReview = {
 			sourceKey: c.sourceKey,
@@ -1162,10 +1265,12 @@ export function planHarvestImport(
 			archived: false,
 			projects: projectsPerClient.get(c.sourceKey) ?? 0,
 		};
+
 		const mapped = mappings.get(mappingKey("client", c.sourceKey));
 		const choice = choices.clients[c.sourceKey];
 		const byName = clientByName.get(c.sourceKey);
 		let plan: HarvestClientPlan;
+
 		if (mapped !== undefined) {
 			plan = { action: "match", sourceKey: c.sourceKey, localId: mapped };
 			review.matchedBy = "earlier_import";
@@ -1175,6 +1280,7 @@ export function planHarvestImport(
 				sourceKey: c.sourceKey,
 				localId: choice.localId,
 			};
+
 			if (!clientById.has(choice.localId)) {
 				blocked.push({
 					kind: "client",
@@ -1199,8 +1305,10 @@ export function planHarvestImport(
 				archived,
 			};
 		}
+
 		clientPlans.push(plan);
 		review.action = plan.action;
+
 		if (plan.action === "match") {
 			const local = clientById.get(plan.localId);
 			review.localId = plan.localId;
@@ -1216,6 +1324,7 @@ export function planHarvestImport(
 			clientLocal.set(c.sourceKey, null);
 			clientIsInternal.set(c.sourceKey, false);
 		}
+
 		if (mapped !== undefined && !clientById.has(mapped)) {
 			blocked.push({
 				kind: "client",
@@ -1223,36 +1332,45 @@ export function planHarvestImport(
 				message: `An earlier import mapped "${c.name}" to a client that no longer exists`,
 			});
 		}
+
 		clientReview.push(review);
 	}
 
 	// Tasks -------------------------------------------------------------------
 	const taskById = new Map(snapshot.tasks.map((t) => [t.id, t]));
 	const taskBySystemKey = new Map<string, string>();
+
 	for (const t of snapshot.tasks) {
 		if (t.systemKey !== null && !taskBySystemKey.has(t.systemKey)) {
 			taskBySystemKey.set(t.systemKey, t.id);
 		}
 	}
+
 	const taskByName = new Map<string, string>();
+
 	// Org tasks first, then site tasks; unarchived first within each.
 	const tasksByPreference = [...snapshot.tasks].sort(
 		(a, b) =>
 			Number(a.scope === "site") - Number(b.scope === "site") ||
 			Number(a.archived) - Number(b.archived),
 	);
+
 	for (const t of tasksByPreference) {
 		const key = normName(t.name);
+
 		if (!taskByName.has(key)) taskByName.set(key, t.id);
 	}
+
 	const taskPlans: HarvestTaskPlan[] = [];
 	const taskReview: HarvestTaskReview[] = [];
 	const taskLocal = new Map<string, string | null>();
+
 	for (const t of parsed.tasks) {
 		const mapped = mappings.get(mappingKey("task", t.sourceKey));
 		const systemKey = SYSTEM_KEY_BY_TASK.get(t.sourceKey);
 		let localId: string | null = null;
 		let matchedBy: HarvestMatchSource | null = null;
+
 		if (mapped !== undefined) {
 			localId = mapped;
 			matchedBy = "earlier_import";
@@ -1260,15 +1378,19 @@ export function planHarvestImport(
 			localId = taskBySystemKey.get(systemKey) ?? null;
 			matchedBy = localId ? "system" : null;
 		}
+
 		if (localId === null && t.sourceKey === "development") {
 			localId = taskBySystemKey.get("development") ?? null;
 			matchedBy = localId ? "system" : null;
 		}
+
 		if (localId === null) {
 			localId = taskByName.get(t.sourceKey) ?? null;
 			matchedBy = localId ? "name" : null;
 		}
+
 		const isAbsence = ABSENCE_BY_TASK.has(t.sourceKey);
+
 		if (isAbsence && localId === null) {
 			blocked.push({
 				kind: "task",
@@ -1276,7 +1398,9 @@ export function planHarvestImport(
 				message: `The built-in absence task "${t.name}" is missing; run the migrations first`,
 			});
 		}
+
 		const local = localId === null ? undefined : taskById.get(localId);
+
 		if (localId !== null && !local) {
 			blocked.push({
 				kind: "task",
@@ -1284,12 +1408,14 @@ export function planHarvestImport(
 				message: `An earlier import mapped "${t.name}" to a task that no longer exists`,
 			});
 		}
+
 		const archived =
 			localId !== null
 				? (local?.archived ?? false)
 				: t.listed
 					? !t.listed.active
 					: false;
+
 		if (localId !== null) {
 			taskPlans.push({ action: "match", sourceKey: t.sourceKey, localId });
 		} else {
@@ -1300,6 +1426,7 @@ export function planHarvestImport(
 				archived,
 			});
 		}
+
 		taskLocal.set(t.sourceKey, localId);
 		taskReview.push({
 			sourceKey: t.sourceKey,
@@ -1319,9 +1446,11 @@ export function planHarvestImport(
 	const projectReviewByKey = new Map<string, HarvestProjectReview>();
 	const projectLocal = new Map<string, string | null>();
 	const projectActive = new Map<string, boolean>();
+
 	for (const p of parsed.projects) {
 		const mapped = mappings.get(mappingKey("project", p.sourceKey));
 		const underClient = clientLocal.get(p.clientSourceKey) ?? null;
+
 		const suggestedType: ProjectTypeValue = clientIsInternal.get(
 			p.clientSourceKey,
 		)
@@ -1331,27 +1460,34 @@ export function planHarvestImport(
 				: isHourBudget(p.listed)
 					? "fixed_scope"
 					: "product_team";
+
 		let localId: string | null = null;
 		let matchedBy: HarvestMatchSource | null = null;
+
 		if (mapped !== undefined) {
 			localId = mapped;
 			matchedBy = "earlier_import";
 		} else if (underClient !== null) {
 			const name = normName(p.name);
+
 			const candidates = snapshot.projects.filter(
 				(sp) => sp.clientId === underClient && normName(sp.name) === name,
 			);
+
 			const best =
 				candidates.find(
 					(sp) => (sp.code ?? "") === p.code.slice(0, MAX_CODE),
 				) ?? candidates[0];
+
 			if (best) {
 				localId = best.id;
 				matchedBy = "name";
 			}
 		}
+
 		const code = p.code.slice(0, MAX_CODE).trim() || null;
 		const active = isActiveProject(p);
+
 		const review: HarvestProjectReview = {
 			sourceKey: p.sourceKey,
 			client: p.clientName,
@@ -1368,8 +1504,10 @@ export function planHarvestImport(
 			billableSeconds: 0,
 			nonBillableSeconds: 0,
 		};
+
 		if (localId !== null) {
 			const local = projectById.get(localId);
+
 			if (!local) {
 				blocked.push({
 					kind: "project",
@@ -1377,6 +1515,7 @@ export function planHarvestImport(
 					message: `An earlier import mapped "${p.clientName} :: ${p.name}" to a project that no longer exists`,
 				});
 			}
+
 			// The file decides the status on a re-import too: the project set
 			// that was worked on last month is the active set, however an earlier
 			// run or an admin left the row.
@@ -1392,10 +1531,12 @@ export function planHarvestImport(
 			projectActive.set(p.sourceKey, active);
 		} else {
 			const type = choices.projectTypes[p.sourceKey] ?? suggestedType;
+
 			const budgetSeconds =
 				type === "fixed_scope" && isHourBudget(p.listed) && p.listed?.budget
 					? Math.round(p.listed.budget * 3600)
 					: null;
+
 			const archived = !active;
 			projectPlans.push({
 				action: "create",
@@ -1413,33 +1554,43 @@ export function planHarvestImport(
 				budgetSeconds !== null && budgetSeconds > 0 ? budgetSeconds : null;
 			projectActive.set(p.sourceKey, !archived);
 		}
+
 		projectLocal.set(p.sourceKey, localId);
 		projectReviewByKey.set(p.sourceKey, review);
 	}
 
 	// People ------------------------------------------------------------------
 	const memberById = new Map(snapshot.members.map((m) => [m.userId, m]));
+
 	const memberByEmail = new Map(
 		snapshot.members.map((m) => [m.email.trim().toLowerCase(), m]),
 	);
+
 	const memberNameCount = new Map<string, number>();
+
 	for (const m of snapshot.members) {
 		const key = normName(m.name);
 		memberNameCount.set(key, (memberNameCount.get(key) ?? 0) + 1);
 	}
+
 	const memberByName = new Map(
 		snapshot.members
 			.filter((m) => memberNameCount.get(normName(m.name)) === 1)
 			.map((m) => [normName(m.name), m]),
 	);
+
 	const taken = new Set(
 		snapshot.takenEmails.map((e) => e.trim().toLowerCase()),
 	);
+
 	const listedEmails = new Set<string>();
+
 	for (const p of parsed.persons) {
 		const email = p.listed?.email.trim().toLowerCase() ?? "";
+
 		if (email !== "") listedEmails.add(email);
 	}
+
 	const candidateEmails = new Set(parsed.candidateEmails);
 
 	// Names that differ only in accents or punctuation ("Ive Vasiljević" and
@@ -1448,25 +1599,34 @@ export function planHarvestImport(
 	// answered then: one user is one person, two users are two.
 	const personMapped = (sourceKey: string) =>
 		mappings.get(mappingKey("person", sourceKey));
+
 	const byFold = new Map<string, ParsedPerson[]>();
+
 	for (const p of parsed.persons) {
 		const fold = asciiFold(`${p.firstName} ${p.lastName}`);
+
 		if (fold === "") continue;
 		const list = byFold.get(fold);
+
 		if (list) list.push(p);
 		else byFold.set(fold, [p]);
 	}
+
 	/** A second spelling's source key, to the person it is merged into. */
 	const aliasOf = new Map<string, string>();
 	const aliasesOf = new Map<string, ParsedPerson[]>();
 	const duplicateGroups: HarvestDuplicateGroup[] = [];
+
 	for (const [key, members] of byFold) {
 		if (members.length < 2) continue;
 		const names = members.map(displayName).join(" and ");
+
 		const localIds = new Set(
 			members.flatMap((m) => personMapped(m.sourceKey) ?? []),
 		);
+
 		let decision: HarvestDuplicateDecision | null;
+
 		if (members.every((m) => personMapped(m.sourceKey) !== undefined)) {
 			if (localIds.size > 1) continue;
 			decision = (members.find((m) => m.listed) ?? members[0])?.sourceKey ?? "";
@@ -1488,6 +1648,7 @@ export function planHarvestImport(
 				})),
 				decision,
 			});
+
 			if (decision === null) {
 				blocked.push({
 					kind: "person",
@@ -1496,7 +1657,9 @@ export function planHarvestImport(
 				});
 				continue;
 			}
+
 			if (decision === "separate") continue;
+
 			if (localIds.size > 1) {
 				blocked.push({
 					kind: "person",
@@ -1506,13 +1669,17 @@ export function planHarvestImport(
 				continue;
 			}
 		}
+
 		const aliases = members.filter((m) => m.sourceKey !== decision);
+
 		for (const a of aliases) aliasOf.set(a.sourceKey, decision);
 		aliasesOf.set(decision, aliases);
 	}
+
 	const persons = parsed.persons.flatMap((p): ParsedPerson[] => {
 		if (aliasOf.has(p.sourceKey)) return [];
 		const aliases = aliasesOf.get(p.sourceKey);
+
 		return aliases ? [mergePersons(p, aliases)] : [p];
 	});
 
@@ -1521,31 +1688,41 @@ export function planHarvestImport(
 		review: HarvestPersonReview;
 		plan: HarvestPersonPlan;
 	}
+
 	const drafts: PersonDraft[] = [];
 	const personUserId = new Map<string, string | null>();
 	const personActive = new Map<string, boolean>();
 	const personName = new Map<string, string>();
+
 	for (const p of persons) {
 		const name = displayName(p);
 		personName.set(p.sourceKey, name);
 		const aliases = aliasesOf.get(p.sourceKey) ?? [];
 		const spellings = [p, ...aliases];
 		const listedEmail = p.listed?.email.trim().toLowerCase() || null;
+
 		const mapped = spellings
 			.map((s) => personMapped(s.sourceKey))
 			.find((id) => id !== undefined);
+
 		let member = mapped === undefined ? undefined : memberById.get(mapped);
+
 		let matchedBy: HarvestMatchSource | null =
 			mapped !== undefined ? "earlier_import" : null;
+
 		if (mapped === undefined && listedEmail !== null) {
 			member = memberByEmail.get(listedEmail);
+
 			if (member) matchedBy = "email";
 		}
+
 		for (const s of spellings) {
 			if (mapped !== undefined || member) break;
 			member = memberByName.get(s.sourceKey);
+
 			if (member) matchedBy = "name";
 		}
+
 		const review: HarvestPersonReview = {
 			sourceKey: p.sourceKey,
 			name,
@@ -1563,8 +1740,10 @@ export function planHarvestImport(
 			blocked: null,
 			aliases: aliases.map(displayName),
 		};
+
 		if (mapped !== undefined || member) {
 			const localId = mapped ?? member?.userId ?? "";
+
 			if (!member) {
 				review.blocked =
 					"An earlier import mapped this person to a user who is no longer a member";
@@ -1574,14 +1753,17 @@ export function planHarvestImport(
 					message: `${name}: ${review.blocked}`,
 				});
 			}
+
 			const startDate =
 				member && member.startDate === null ? p.firstDate : null;
+
 			const plan: HarvestPersonPlan = {
 				action: "match",
 				sourceKey: p.sourceKey,
 				localId,
 				startDate,
 			};
+
 			review.action = "match";
 			review.localId = localId;
 			review.email = member?.email ?? "";
@@ -1597,27 +1779,35 @@ export function planHarvestImport(
 			personActive.set(p.sourceKey, !(member?.archived ?? false));
 			continue;
 		}
+
 		const choice = choices.people[p.sourceKey];
 		const override = choice?.email?.trim().toLowerCase() || null;
+
 		const email =
 			override ?? listedEmail ?? guessEmail(p.firstName, p.lastName);
+
 		const emailListed = listedEmail !== null && email === listedEmail;
 		// An address the admin typed is not a guess: they vouch for it, as the
 		// people list does (plan section 3.3 keeps only a GUESS unverified).
 		// Leaving it unverified made the person active but unable to sign in,
 		// with Restore on an archived row as the only way to confirm it.
 		const emailConfirmed = emailListed || override !== null;
+
 		const employee = p.listed
 			? p.listed.employee
 			: (p.employeeInReport ?? true);
+
 		const role = choice?.role ?? (p.listed?.admin ? "admin" : "member");
+
 		const type: MemberTypeValue =
 			choice?.type ?? (employee ? "employee_billable" : "contractor_hourly");
+
 		const archivedOn = p.listed
 			? null
 			: p.lastDate
 				? addDays(p.lastDate, 1)
 				: cutoff;
+
 		const plan: HarvestPersonPlan = {
 			action: "create",
 			sourceKey: p.sourceKey,
@@ -1630,6 +1820,7 @@ export function planHarvestImport(
 			startDate: p.firstDate ?? cutoff,
 			archivedOn,
 		};
+
 		review.email = email;
 		review.emailGuessed = !emailConfirmed;
 		review.role = role;
@@ -1643,11 +1834,13 @@ export function planHarvestImport(
 	// A second spelling takes its person's user. It needs a plan only when
 	// no earlier run mapped it: `start` then maps it to that user.
 	const aliasPlans: HarvestPersonPlan[] = [];
+
 	for (const [alias, of] of aliasOf) {
 		const person = parsed.persons.find((p) => p.sourceKey === alias);
 		personName.set(alias, person ? displayName(person) : alias);
 		personUserId.set(alias, personUserId.get(of) ?? null);
 		personActive.set(alias, personActive.get(of) ?? false);
+
 		if (personMapped(alias) === undefined) {
 			aliasPlans.push({ action: "alias", sourceKey: alias, of });
 		}
@@ -1659,14 +1852,18 @@ export function planHarvestImport(
 	// compares covers the same rows as the one stored.
 	const ownerOf = new Map<string, string>();
 	const ownerByUser = new Map<string, string>();
+
 	for (const d of drafts) {
 		const sourceKey = d.person.sourceKey;
 		const userId = personUserId.get(sourceKey) ?? null;
+
 		const owner =
 			userId === null ? sourceKey : (ownerByUser.get(userId) ?? sourceKey);
+
 		if (userId !== null) ownerByUser.set(userId, owner);
 		ownerOf.set(sourceKey, owner);
 	}
+
 	for (const [alias, of] of aliasOf) ownerOf.set(alias, ownerOf.get(of) ?? of);
 	const ownerKey = (sourceKey: string) => ownerOf.get(sourceKey) ?? sourceKey;
 
@@ -1675,23 +1872,29 @@ export function planHarvestImport(
 	// it blocks the guesser only, so `listedUse` counts listed addresses apart.
 	const emailUse = new Map<string, number>();
 	const listedUse = new Map<string, number>();
+
 	for (const d of drafts) {
 		if (d.plan.action !== "create") continue;
 		const uses = d.plan.emailListed ? listedUse : emailUse;
 		uses.set(d.plan.email, (uses.get(d.plan.email) ?? 0) + 1);
 	}
+
 	const emailsToCheck: string[] = [];
+
 	for (const d of drafts) {
 		if (d.plan.action !== "create") continue;
 		const { email, emailListed } = d.plan;
+
 		if (!candidateEmails.has(email)) emailsToCheck.push(email);
 		const duplicate = `${email} is also the address of another imported person`;
 		let reason: string | null = null;
+
 		if (!looksLikeEmail(email)) reason = `"${email}" is not an email address`;
 		else if (emailListed) {
 			if ((listedUse.get(email) ?? 0) > 1) reason = duplicate;
 		} else {
 			const member = memberByEmail.get(email);
+
 			if (member) reason = `${email} belongs to the member ${member.name}`;
 			else if (taken.has(email))
 				reason = `${email} belongs to a user outside this organization`;
@@ -1699,6 +1902,7 @@ export function planHarvestImport(
 				reason = `${email} is a people-list address of another person`;
 			else if ((emailUse.get(email) ?? 0) > 1) reason = duplicate;
 		}
+
 		if (reason !== null) {
 			d.review.blocked = reason;
 			blocked.push({
@@ -1711,19 +1915,25 @@ export function planHarvestImport(
 
 	// Rows, dedupe and days ----------------------------------------------------
 	const appByDay = new Map<string, AppEntry[]>();
+
 	for (const e of snapshot.appEntries) {
 		const key = pairKey(e.userId, e.date);
 		const list = appByDay.get(key);
+
 		if (list) list.push(e);
 		else appByDay.set(key, [e]);
 	}
+
 	const importedByUser = new Map<string, Map<string, [string, 0 | 1]>>();
+
 	for (const u of snapshot.importedDays) {
 		const byDate = new Map<string, [string, 0 | 1]>();
+
 		for (const [date, digest, edited] of u.days)
 			byDate.set(date, [digest, edited]);
 		importedByUser.set(u.userId, byDate);
 	}
+
 	const activeFrom = DATE_RE.test(cutoff)
 		? addDays(cutoff, -HARVEST_ACTIVE_WINDOW_DAYS)
 		: cutoff;
@@ -1734,10 +1944,12 @@ export function planHarvestImport(
 	const changedDays: HarvestDayRef[] = [];
 	const keptDays: HarvestDayRef[] = [];
 	const days: HarvestImportDay[] = [];
+
 	const memberPairs = new Map<
 		string,
 		{ project: string; person: string; last: string }
 	>();
+
 	const secondsPerYear = new Map<string, number>();
 	let roundingDelta = 0;
 	let skippedDuplicate = 0;
@@ -1748,10 +1960,12 @@ export function planHarvestImport(
 	let unchangedDays = 0;
 
 	const groupByKey = new Map<string, DayGroup>();
+
 	for (const day of parsed.days) {
 		const owner = ownerKey(day.personSourceKey);
 		const key = pairKey(owner, day.date);
 		const group = groupByKey.get(key);
+
 		if (group) group.days.push(day);
 		else {
 			groupByKey.set(key, {
@@ -1762,42 +1976,52 @@ export function planHarvestImport(
 			});
 		}
 	}
+
 	const dayGroups = [...groupByKey.values()].sort((a, b) =>
 		a.date === b.date
 			? compareStrings(a.owner, b.owner)
 			: compareStrings(a.date, b.date),
 	);
+
 	const negativeRows: HarvestNegativeRow[] = [];
 
 	for (const group of dayGroups) {
 		const { owner, date } = group;
 		const userId = personUserId.get(owner) ?? null;
+
 		const app =
 			userId === null ? [] : (appByDay.get(pairKey(userId, date)) ?? []);
+
 		const appAbsence = app.filter((e) => e.absence);
 		const appWork = app.filter((e) => !e.absence);
 		const multiset = new Map<string, number>();
+
 		for (const e of appWork) {
 			if (e.projectId === null) continue;
 			const k = `${e.projectId}|${e.taskId}|${e.durationSeconds}`;
 			multiset.set(k, (multiset.get(k) ?? 0) + 1);
 		}
+
 		let consumed = 0;
 		const kept: ParsedTimeRow[] = [];
 		const work: ParsedTimeRow[] = [];
 
 		const source: ParsedTimeRow[] = [];
+
 		for (const day of group.days) {
 			for (const index of day.rows) {
 				const row = parsed.rows[index];
+
 				if (row) source.push(row);
 			}
 		}
+
 		// Assignments come from every row, whatever the choices drop below.
 		for (const row of source) {
 			if (row.projectSourceKey === null) continue;
 			const mk = pairKey(row.projectSourceKey, owner);
 			const pair = memberPairs.get(mk);
+
 			if (!pair)
 				memberPairs.set(mk, {
 					project: row.projectSourceKey,
@@ -1806,13 +2030,16 @@ export function planHarvestImport(
 				});
 			else if (row.date > pair.last) pair.last = row.date;
 		}
+
 		const netting = subtractNegativeRows(source);
+
 		for (const n of netting.negatives) {
 			negativeRows.push({
 				...attentionOf(n.row, personName, "Hours is negative"),
 				against: n.against?.hoursRaw ?? null,
 			});
 		}
+
 		const rows = choices.negativeRows === "subtract" ? netting.rows : source;
 
 		for (const row of rows) {
@@ -1822,11 +2049,13 @@ export function planHarvestImport(
 				);
 				continue;
 			}
+
 			if (row.absence) {
 				if (appAbsence.length > 0) {
 					skippedDuplicate += 1;
 					const harvestTaskId = taskLocal.get(row.taskSourceKey) ?? null;
 					const other = appAbsence.find((e) => e.taskId !== harvestTaskId);
+
 					if (other) {
 						absenceConflicts.push({
 							personSourceKey: owner,
@@ -1836,20 +2065,26 @@ export function planHarvestImport(
 							appTask: taskById.get(other.taskId)?.name ?? other.taskId,
 						});
 					}
+
 					continue;
 				}
+
 				kept.push(row);
 				continue;
 			}
+
 			if (row.date >= cutoff) {
 				skippedByCutoff += 1;
 				continue;
 			}
+
 			const projectId = projectLocal.get(row.projectSourceKey ?? "") ?? null;
 			const taskId = taskLocal.get(row.taskSourceKey) ?? null;
+
 			if (projectId !== null && taskId !== null) {
 				const k = `${projectId}|${taskId}|${row.seconds}`;
 				const n = multiset.get(k) ?? 0;
+
 				if (n > 0) {
 					multiset.set(k, n - 1);
 					consumed += 1;
@@ -1857,6 +2092,7 @@ export function planHarvestImport(
 					continue;
 				}
 			}
+
 			work.push(row);
 		}
 
@@ -1867,6 +2103,7 @@ export function planHarvestImport(
 		if (work.length > 0 && appWork.length - consumed > 0) {
 			const decision =
 				choices.overlap.days[group.dayKey] ?? choices.overlap.default;
+
 			overlapDays.push({
 				dayKey: group.dayKey,
 				personSourceKey: owner,
@@ -1877,11 +2114,13 @@ export function planHarvestImport(
 				automationOnly: appWork.every((e) => e.automation),
 				decision,
 			});
+
 			if (decision === "keep_app") skippedOverlap += work.length;
 			else kept.push(...work);
 		} else {
 			kept.push(...work);
 		}
+
 		if (kept.length === 0) continue;
 		// File order within the day, whatever the branches above did.
 		kept.sort((a, b) => a.record - b.record);
@@ -1891,10 +2130,13 @@ export function planHarvestImport(
 			const year = row.date.slice(0, 4);
 			secondsPerYear.set(year, (secondsPerYear.get(year) ?? 0) + seconds);
 			roundingDelta += seconds - (row.rawSeconds ?? 0);
+
 			if (row.projectSourceKey === null) continue;
 			const review = projectReviewByKey.get(row.projectSourceKey);
+
 			if (review) {
 				review.seconds += seconds;
+
 				if (row.billable) review.billableSeconds += seconds;
 				else review.nonBillableSeconds += seconds;
 			}
@@ -1902,29 +2144,36 @@ export function planHarvestImport(
 
 		const stored =
 			userId === null ? undefined : importedByUser.get(userId)?.get(date);
+
 		const ref = { personSourceKey: owner, date };
+
 		if (stored) {
 			// Every row of one file day, as the file has it: the parse's digest.
 			// A negative row is never sent, so a subtracted day hashes here.
 			const single = group.days.length === 1 ? group.days[0] : undefined;
+
 			const digest =
 				single && kept.length === single.rows.length
 					? single.digest
 					: dayDigestSync(kept.map((r) => r.key));
+
 			if (digest === stored[0]) {
 				unchangedDays += 1;
 				rowsAlreadyImported += kept.length;
 				continue;
 			}
+
 			if (stored[1] === 1) {
 				keptDays.push(ref);
 				rowsAlreadyImported += kept.length;
 				continue;
 			}
+
 			changedDays.push(ref);
 		} else {
 			newDays += 1;
 		}
+
 		if (kept.length > MAX_ROWS_PER_DAY) {
 			blocked.push({
 				kind: "day",
@@ -1932,6 +2181,7 @@ export function planHarvestImport(
 				message: `${ref.personSourceKey} has ${kept.length} rows on ${date}; a day carries at most ${MAX_ROWS_PER_DAY}`,
 			});
 		}
+
 		days.push({
 			personSourceKey: owner,
 			date,
@@ -1950,24 +2200,32 @@ export function planHarvestImport(
 	const fileDays = new Set(
 		parsed.days.map((d) => pairKey(ownerKey(d.personSourceKey), d.date)),
 	);
+
 	for (const [sourceKey, userId] of personUserId) {
 		if (userId !== null && !personByLocalId.has(userId))
 			personByLocalId.set(userId, sourceKey);
 	}
+
 	const removed: HarvestDayRef[] = [];
+
 	if (parsed.range) {
 		const { from, to } = parsed.range;
+
 		for (const u of snapshot.importedDays) {
 			const mappedKey = personByLocalId.get(u.userId);
+
 			if (mappedKey === undefined) continue;
 			const sourceKey = ownerKey(mappedKey);
+
 			for (const [date] of u.days) {
 				if (date < from || date > to) continue;
+
 				if (!fileDays.has(pairKey(sourceKey, date)))
 					removed.push({ personSourceKey: sourceKey, date });
 			}
 		}
 	}
+
 	removed.sort((a, b) =>
 		a.date === b.date
 			? compareStrings(a.personSourceKey, b.personSourceKey)
@@ -1991,6 +2249,7 @@ export function planHarvestImport(
 		);
 
 	const rowsImported = days.reduce((n, d) => n + d.rows.length, 0);
+
 	const summary: HarvestPlanSummary = {
 		rowsInFile: parsed.rows.length + parsed.invalidRows.length,
 		rowsImported,
@@ -2097,15 +2356,18 @@ function mergePersons(
 	aliases: readonly ParsedPerson[],
 ): ParsedPerson {
 	const merged: ParsedPerson = { ...p };
+
 	for (const a of aliases) {
 		merged.listed ??= a.listed;
 		merged.rows += a.rows;
+
 		if (
 			a.firstDate !== null &&
 			(merged.firstDate === null || a.firstDate < merged.firstDate)
 		) {
 			merged.firstDate = a.firstDate;
 		}
+
 		if (
 			a.lastDate !== null &&
 			(merged.lastDate === null || a.lastDate > merged.lastDate)
@@ -2114,6 +2376,7 @@ function mergePersons(
 			merged.employeeInReport = a.employeeInReport;
 		}
 	}
+
 	return merged;
 }
 
@@ -2138,20 +2401,25 @@ function subtractNegativeRows(rows: readonly ParsedTimeRow[]): Netting {
 	const negatives = rows.filter(
 		(r) => r.rawSeconds !== null && r.rawSeconds < 0,
 	);
+
 	if (negatives.length === 0) return { negatives: [], rows };
 	// A row with a problem counts too: a correction is often what fixes it
 	// ("40,0" and "-40,0" on one day). What is left gets checked again below.
 	const remaining = new Map<ParsedTimeRow, number>();
+
 	for (const r of rows) {
 		if (r.rawSeconds !== null && r.rawSeconds > 0) {
 			remaining.set(r, r.rawSeconds);
 		}
 	}
+
 	const takenBy = new Map<ParsedTimeRow, string[]>();
 	const subtracted = new Set<ParsedTimeRow>();
 	const result: Netting["negatives"] = [];
+
 	for (const neg of negatives) {
 		const need = -(neg.rawSeconds ?? 0);
+
 		const candidates = [...remaining.entries()].filter(
 			([r, left]) =>
 				left > 0 &&
@@ -2159,14 +2427,18 @@ function subtractNegativeRows(rows: readonly ParsedTimeRow[]): Netting {
 				r.taskSourceKey === neg.taskSourceKey &&
 				r.overtime === neg.overtime,
 		);
+
 		const total = candidates.reduce((n, [, left]) => n + left, 0);
+
 		if (total < need) {
 			result.push({ row: neg, against: null });
 			continue;
 		}
+
 		const exact = candidates.find(([, left]) => left === need);
 		const order = exact ? [exact] : candidates.sort(([, a], [, b]) => b - a);
 		let left = need;
+
 		for (const [r, has] of order) {
 			if (left === 0) break;
 			const take = Math.min(has, left);
@@ -2174,12 +2446,16 @@ function subtractNegativeRows(rows: readonly ParsedTimeRow[]): Netting {
 			left -= take;
 			takenBy.set(r, [...(takenBy.get(r) ?? []), neg.key]);
 		}
+
 		subtracted.add(neg);
 		result.push({ row: neg, against: order[0]?.[0] ?? null });
 	}
+
 	const out: ParsedTimeRow[] = [];
+
 	for (const r of rows) {
 		if (subtracted.has(r)) continue;
+
 		if (r.rawSeconds !== null && r.rawSeconds < 0) {
 			out.push({
 				...r,
@@ -2188,12 +2464,16 @@ function subtractNegativeRows(rows: readonly ParsedTimeRow[]): Netting {
 			});
 			continue;
 		}
+
 		const keys = takenBy.get(r);
+
 		if (!keys) {
 			out.push(r);
 			continue;
 		}
+
 		const rawSeconds = remaining.get(r) ?? 0;
+
 		if (rawSeconds <= 0) continue;
 		const seconds = roundToQuarterHour(rawSeconds);
 		out.push({
@@ -2204,6 +2484,7 @@ function subtractNegativeRows(rows: readonly ParsedTimeRow[]): Netting {
 			key: `${sha256HexSync(JSON.stringify([r.key, ...keys]))}:net`,
 		});
 	}
+
 	return { negatives: result, rows: out };
 }
 
@@ -2219,15 +2500,19 @@ export function chunkDays(
 	const chunks: HarvestImportDay[][] = [];
 	let current: HarvestImportDay[] = [];
 	let rows = 0;
+
 	for (const day of days) {
 		if (current.length > 0 && rows + day.rows.length > maxRows) {
 			chunks.push(current);
 			current = [];
 			rows = 0;
 		}
+
 		current.push(day);
 		rows += day.rows.length;
 	}
+
 	if (current.length > 0) chunks.push(current);
+
 	return chunks;
 }

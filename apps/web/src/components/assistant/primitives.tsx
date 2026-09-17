@@ -33,6 +33,7 @@ import type { PendingApproval, ToolTrace } from "./assistant-runs.tsx";
 const CHEVRON = Array.from({ length: 9 }, (_, i) => {
 	const row = Math.floor(i / 3);
 	const column = i % 3;
+
 	return (column + Math.abs(row - 1)) * 90;
 });
 
@@ -64,10 +65,13 @@ function useElapsed(active: boolean) {
 		if (!active) return;
 		setTenths(0);
 		const timer = setInterval(() => setTenths((current) => current + 1), 100);
+
 		return () => clearInterval(timer);
 	}, [active]);
 	const total = tenths / 10;
+
 	if (total < 60) return `${total.toFixed(1)}s`;
+
 	return `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;
 }
 
@@ -86,6 +90,7 @@ function ShimmerLabel({ children }: { children: React.ReactNode }) {
 
 export function AssistantLoader({ label = "Thinking" }: { label?: string }) {
 	const elapsed = useElapsed(true);
+
 	// `<output>` rather than a div with role="status": it carries the live region
 	// natively, so a screen reader announces the label without the role having to
 	// be maintained by hand.
@@ -280,13 +285,17 @@ export const toolDetail = (
 	].filter((part): part is string => Boolean(part));
 
 	const when = whenOf(args);
+
 	if (when) parts.push(when);
+
 	if (args.tab) {
 		const wording = TAB_WORDING.get(args.tab);
+
 		if (wording) parts.push(wording);
 	}
 
 	if (!person && parts.length === 0) return EMPTY_DETAIL;
+
 	return { person, text: parts.length > 0 ? parts.join(" · ") : null };
 };
 
@@ -294,12 +303,16 @@ export const toolDetail = (
 const whenOf = (args: DetailArgs): string | null => {
 	const from = args.from ? printDayKey(args.from) : null;
 	const to = args.to ? printDayKey(args.to) : null;
+
 	if (from && to) return from === to ? from : `${from} – ${to}`;
 	const day = args.date ? printDayKey(args.date) : null;
+
 	if (day) return day;
+
 	if (args.year && args.month) {
 		return `${MONTHS[args.month - 1] ?? args.month} ${args.year}`;
 	}
+
 	return args.year ? String(args.year) : null;
 };
 
@@ -307,6 +320,7 @@ const whenOf = (args: DetailArgs): string | null => {
 // function's identity changes (see `person-avatar.tsx` for the same reason).
 const byUserId = (rows: { userId: string; name: string }[]) =>
 	new Map(rows.map((row) => [row.userId, row.name]));
+
 const byId = (rows: { id: string; name: string }[]) =>
 	new Map(rows.map((row) => [row.id, row.name]));
 
@@ -320,6 +334,7 @@ const byId = (rows: { id: string; name: string }[]) =>
  */
 const useTraceNames = (args: DetailArgs[]): TraceNames => {
 	const orgSlug = useOrgSlug();
+
 	const wants = {
 		people: args.some((a) => a.userId),
 		projects: args.some((a) => a.projectId),
@@ -332,16 +347,19 @@ const useTraceNames = (args: DetailArgs[]): TraceNames => {
 		select: byUserId,
 		enabled: wants.people,
 	});
+
 	const projects = useQuery({
 		...projectsQuery(orgSlug),
 		select: byId,
 		enabled: wants.projects,
 	});
+
 	const clients = useQuery({
 		...clientsQuery(orgSlug),
 		select: byId,
 		enabled: wants.clients,
 	});
+
 	const tasks = useQuery({
 		...selectableTasksQuery(orgSlug),
 		select: byId,
@@ -372,12 +390,14 @@ export function ToolTraceList({
 }) {
 	const [manual, setManual] = useState<boolean | null>(null);
 	const expanded = manual ?? working;
+
 	// Parsed once per trace rather than once per render of each row: the maps
 	// below are chosen from these, and the rows are drawn from them again.
 	const args = useMemo(
 		() => traces.map((trace) => parseDetailArgs(trace.arguments)),
 		[traces],
 	);
+
 	const names = useTraceNames(args);
 	const traceRef = useRef<HTMLDivElement>(null);
 	const [lineHeight, setLineHeight] = useState(0);
@@ -465,6 +485,7 @@ export function ToolTraceList({
 						<div ref={traceRef} className="flex flex-col gap-1 py-1">
 							{traces.map((trace, index) => {
 								const detail = toolDetail(args[index] ?? {}, names);
+
 								return (
 									<div
 										key={trace.toolCallId}
@@ -591,17 +612,21 @@ export function ApprovalCard({
 	// the rows, so a re-render can't quietly re-tick something the person just
 	// unticked.
 	const armedFor = useRef(pending.toolCallId);
+
 	if (armedFor.current !== pending.toolCallId) {
 		armedFor.current = pending.toolCallId;
 		setExcluded(new Set());
 	}
 
 	const selected = rows.map((row) => row.id).filter((id) => !excluded.has(id));
+
 	const toggle = (id: string) =>
 		setExcluded((current) => {
 			const next = new Set(current);
+
 			if (next.has(id)) next.delete(id);
 			else next.add(id);
+
 			return next;
 		});
 
@@ -650,6 +675,7 @@ export function ApprovalCard({
 							<tbody>
 								{rows.map((row) => {
 									const on = !excluded.has(row.id);
+
 									return (
 										<tr
 											key={row.id}

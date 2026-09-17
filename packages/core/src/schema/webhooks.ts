@@ -19,6 +19,7 @@ import { MAX_WEBHOOK_URL_LENGTH, WEBHOOK_EVENT_KINDS } from "../api/webhooks";
 export const MAX_WEBHOOK_ENDPOINTS = 5;
 
 export const webhookEventKind = z.enum(WEBHOOK_EVENT_KINDS);
+
 export type WebhookEventKindInput = z.infer<typeof webhookEventKind>;
 
 /** `new URL` in a try, not `URL.parse`: this module is bundled into the browser
@@ -39,6 +40,7 @@ const webhookUrl = z
 	.refine((value) => parseUrl(value) !== null, "That is not a valid URL")
 	.refine((value) => {
 		const parsed = parseUrl(value);
+
 		return parsed !== null && parsed.username === "" && parsed.password === "";
 	}, "Remove the username and password from the URL");
 
@@ -52,6 +54,7 @@ export const createWebhookEndpointInput = z.object({
 	description: z.string().trim().max(200).optional(),
 	enabledEvents,
 });
+
 export type CreateWebhookEndpointInput = z.infer<
 	typeof createWebhookEndpointInput
 >;
@@ -66,11 +69,13 @@ export const updateWebhookEndpointInput = z.object({
 	 *  after it gives up — see `WEBHOOK_GIVE_UP_DAYS`. */
 	disabled: z.boolean().optional(),
 });
+
 export type UpdateWebhookEndpointInput = z.infer<
 	typeof updateWebhookEndpointInput
 >;
 
 export const webhookEndpointIdInput = z.uuid();
+
 export type WebhookEndpointIdInput = z.infer<typeof webhookEndpointIdInput>;
 
 export const listWebhookDeliveriesInput = z.object({
@@ -79,6 +84,7 @@ export const listWebhookDeliveriesInput = z.object({
 	 *  anything older than a fortnight anyway. */
 	limit: z.number().int().min(1).max(200).default(50),
 });
+
 export type ListWebhookDeliveriesInput = z.infer<
 	typeof listWebhookDeliveriesInput
 >;
@@ -88,6 +94,7 @@ export const resendWebhookDeliveryInput = z.object({
 	 *  actually re-sent, to the endpoint that attempt belonged to. */
 	deliveryId: z.uuid(),
 });
+
 export type ResendWebhookDeliveryInput = z.infer<
 	typeof resendWebhookDeliveryInput
 >;

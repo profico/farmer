@@ -23,7 +23,9 @@ export type ApiMeta = {
 
 const parts = (version: string): [number, number, number] | null => {
 	const match = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+
 	if (!match) return null;
+
 	return [Number(match[1]), Number(match[2]), Number(match[3])];
 };
 
@@ -40,11 +42,15 @@ export const isCliVersionSupported = (
 ): boolean => {
 	const have = parts(version);
 	const need = parts(minimum);
+
 	if (!have || !need) return false;
+
 	for (let i = 0; i < 3; i++) {
 		const a = have[i] ?? 0;
 		const b = need[i] ?? 0;
+
 		if (a !== b) return a > b;
 	}
+
 	return true;
 };

@@ -85,10 +85,12 @@ const LAYERS: Layer[] = [
 /** Seeded so a re-run reproduces the committed files byte for byte. */
 const mulberry32 = (seed: number) => {
 	let state = seed;
+
 	return () => {
 		state = (state + 0x6d2b79f5) | 0;
 		let t = Math.imul(state ^ (state >>> 15), 1 | state);
 		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+
 		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 	};
 };
@@ -111,6 +113,7 @@ const stem = (
 	const tipWidth = width * 0.28;
 	const bowX = x + lean * 0.3;
 	const bowY = tileHeight - height * 0.5;
+
 	return [
 		`M${round(x - width)},${round(tileHeight)}`,
 		`Q${round(bowX - width * 0.75)},${round(bowY)}`,
@@ -138,6 +141,7 @@ const ear = (
 	const centreX = x + lean * 0.96;
 	const centreY = tileHeight - height + along * 0.8;
 	const degrees = round((Math.atan2(lean, height) * 180) / Math.PI);
+
 	return (
 		`<ellipse cx="${round(centreX)}" cy="${round(centreY)}" ` +
 		`rx="${round(width * 1.7)}" ry="${round(along)}" ` +
@@ -161,13 +165,16 @@ const render = (layer: Layer): string => {
 		// read as a planted field, irregular enough not to read as a comb.
 		const slot = span / layer.stalks;
 		const x = margin + slot * (index + 0.5) + (random() - 0.5) * slot * 0.9;
+
 		const height =
 			layer.height *
 			(layer.minHeight + random() * (layer.maxHeight - layer.minHeight));
+
 		const lean = height * layer.lean * (random() * 2 - 1);
 		const width = layer.stemWidth * (0.75 + random() * 0.5);
 
 		crop.push(`<path d="${stem(x, height, lean, width, layer.height)}"/>`);
+
 		// Not every stalk in a wheat field is in ear; skipping some is what stops
 		// the top edge reading as a dotted line.
 		if (layer.ears && random() > 0.18) {
@@ -184,6 +191,7 @@ const render = (layer: Layer): string => {
 };
 
 const outDir = new URL("../public/field/", import.meta.url);
+
 for (const layer of LAYERS) {
 	const path = new URL(layer.file, outDir);
 	await Bun.write(path, render(layer));

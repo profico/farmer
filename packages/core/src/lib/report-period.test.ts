@@ -10,7 +10,9 @@ import type { WeekStartsOn } from "./time";
 
 // 2026-08-11 is a Tuesday.
 const TODAY = "2026-08-11";
+
 const MONDAY: WeekStartsOn = 1;
+
 const SUNDAY: WeekStartsOn = 0;
 
 describe("month keys", () => {
@@ -91,6 +93,7 @@ describe("resolving a period", () => {
 			TODAY,
 			MONDAY,
 		);
+
 		expect(period).toEqual({
 			preset: "week",
 			from: "2026-07-06",

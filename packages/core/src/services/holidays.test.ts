@@ -28,7 +28,9 @@ import type { Ctx } from "./types";
 let harness: TestDb;
 
 const HR_ORG = "hol-hr";
+
 const HR_ORG_2 = "hol-hr-2";
+
 const US_ORG = "hol-us";
 
 const ctx = (organizationId: string): Ctx => ({
@@ -101,6 +103,7 @@ describe("the per-country instance cache", () => {
 	test("two orgs in the same country keep separate opt-outs", async () => {
 		const baseline = await holidaysService.listForYear(ctx(HR_ORG), 2026);
 		const target = baseline[0];
+
 		if (!target) throw new Error("expected at least one holiday to disable");
 
 		await holidaysService.setHolidayDisabled(ctx(HR_ORG), {
@@ -127,6 +130,7 @@ describe("the per-country instance cache", () => {
 	test("listForYearWithStatus reports the org's own disabled flags", async () => {
 		const all = await holidaysService.listForYearWithStatus(ctx(HR_ORG), 2026);
 		const target = all[0];
+
 		if (!target) throw new Error("expected at least one holiday");
 		expect(target.disabled).toBe(false);
 
@@ -134,10 +138,12 @@ describe("the per-country instance cache", () => {
 			name: target.name,
 			disabled: true,
 		});
+
 		const after = await holidaysService.listForYearWithStatus(
 			ctx(HR_ORG),
 			2026,
 		);
+
 		expect(after.find((h) => h.name === target.name)?.disabled).toBe(true);
 		// Every holiday is still listed — status view, not a filter.
 		expect(after.length).toBe(all.length);

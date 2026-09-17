@@ -20,6 +20,7 @@ import { type Command, parseCommandArgs } from "./command";
  */
 
 const UPDATE_USAGE = "farmer update [url]";
+
 const SCRIPT_TIMEOUT_MS = 30_000;
 
 /** The directory the install script writes into. The script always names the
@@ -33,13 +34,16 @@ export const installDirFor = (
 	const path = platform === "win32" ? win32 : posix;
 	const expected = platform === "win32" ? "farmer.exe" : "farmer";
 	const name = path.basename(executable);
+
 	const matches =
 		platform === "win32" ? name.toLowerCase() === expected : name === expected;
+
 	if (!matches) {
 		throw new CliError(
 			`farmer update installs ${expected}, and this binary is named ${name}. Rename it to ${expected}, or install again with:\n  ${updateCommand(origin, platform)}`,
 		);
 	}
+
 	return path.dirname(executable);
 };
 
@@ -85,6 +89,7 @@ const fetchInstallScript = async (
 ): Promise<string> => {
 	const url = `${origin}/cli/${installScriptName(runtime.platform)}`;
 	let response: Response;
+
 	try {
 		response = await runtime.fetch(url, {
 			headers: { "User-Agent": userAgent(transportFor(runtime, origin)) },
@@ -94,13 +99,16 @@ const fetchInstallScript = async (
 		const reason = error instanceof Error ? error.message : String(error);
 		throw new CliError(`Could not reach ${origin}: ${reason}`);
 	}
+
 	const body = await response.text();
+
 	if (!response.ok) {
 		const detail = body.trim();
 		throw new CliError(
 			`${origin} answered ${response.status} for ${url}.${detail ? `\n${detail}` : ""}`,
 		);
 	}
+
 	return body;
 };
 
@@ -110,6 +118,7 @@ const runInstaller = async (
 	installDir: string,
 ): Promise<SpawnResult> => {
 	const command = installerCommand(runtime.platform, scriptPath);
+
 	try {
 		return await runtime.spawn(command, {
 			env: installerEnv(runtime.env, installDir),
@@ -136,23 +145,29 @@ export const update: Command = {
 		const { values, positionals } = parseCommandArgs(args, {}, 1, UPDATE_USAGE);
 		const out = createOutput(values.json === true, runtime.env);
 		const config = await readConfig(runtime.paths);
+
 		const origin = positionals[0]
 			? normalizeOrigin(positionals[0])
 			: currentOrigin(runtime, config);
+
 		if (!origin) {
 			throw new UsageError(`Pass the server address.\nUsage: ${UPDATE_USAGE}`);
 		}
+
 		const { executable } = runtime;
+
 		if (!executable) {
 			throw new CliError(
 				"This farmer runs from source, so there is no binary to replace. Update the checkout instead.",
 			);
 		}
+
 		const installDir = installDirFor(executable, runtime.platform, origin);
 
 		const script = await fetchInstallScript(runtime, origin);
 		const dir = await mkdtemp(join(tmpdir(), "farmer-update-"));
 		let result: SpawnResult;
+
 		try {
 			const scriptPath = join(dir, installScriptName(runtime.platform));
 			await Bun.write(scriptPath, script);
@@ -160,6 +175,7 @@ export const update: Command = {
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
+
 		if (result.exitCode !== 0) {
 			throw new CliError(
 				`The update did not finish, so farmer ${CLI_VERSION} is still installed.`,
@@ -170,6 +186,7 @@ export const update: Command = {
 		const after = await runtime
 			.spawn([executable, "--version"], { env: runtime.env, capture: true })
 			.catch(() => null);
+
 		const version =
 			after?.exitCode === 0 ? parseVersionOutput(after.stdout) : null;
 
@@ -180,8 +197,10 @@ export const update: Command = {
 				previousVersion: CLI_VERSION,
 				version,
 			});
+
 			return;
 		}
+
 		if (version === CLI_VERSION) {
 			print(`farmer ${CLI_VERSION} is the newest release on ${origin}.`);
 		} else if (version) {

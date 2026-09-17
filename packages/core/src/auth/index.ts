@@ -34,6 +34,7 @@ const uniqueSlugFor = async (name: string) => {
 	const base = slugify(name);
 	let slug = base;
 	let suffix = 1;
+
 	while (
 		await db.query.organization.findFirst({
 			where: eq(schema.organization.slug, slug),
@@ -41,6 +42,7 @@ const uniqueSlugFor = async (name: string) => {
 	) {
 		slug = `${base}-${suffix++}`;
 	}
+
 	return slug;
 };
 
@@ -78,11 +80,14 @@ const PLATFORM_ADMIN_LOCK = 8_531_207;
 const claimPlatformAdmin = async (userId: string) => {
 	await db.transaction(async (tx) => {
 		await tx.execute(sql`select pg_advisory_xact_lock(${PLATFORM_ADMIN_LOCK})`);
+
 		const held = await tx.query.user.findFirst({
 			where: eq(schema.user.role, PLATFORM_ADMIN_ROLE),
 			columns: { id: true },
 		});
+
 		if (held) return;
+
 		const oldest = await tx.query.user.findFirst({
 			// `createdAt` alone is not a total order — two rows written in the same
 			// millisecond would tie, and the answer has to be the same one every
@@ -90,6 +95,7 @@ const claimPlatformAdmin = async (userId: string) => {
 			orderBy: [asc(schema.user.createdAt), asc(schema.user.id)],
 			columns: { id: true },
 		});
+
 		if (oldest?.id !== userId) return;
 		await tx
 			.update(schema.user)
@@ -115,8 +121,10 @@ const announceNewMember = async (newMember: {
 		organizationId: newMember.organizationId,
 		userId: newMember.userId,
 	};
+
 	await emitEvent(ctx, "member.added", async () => {
 		const payload = await memberWebhookPayload(ctx, newMember.userId);
+
 		return payload ? { ...payload, role: newMember.role } : null;
 	});
 };
@@ -246,11 +254,13 @@ export const auth = betterAuth({
 				before: async (user) => {
 					if (!isSingleOrgMode()) return;
 					const org = await findSingleOrg();
+
 					// Instance not claimed yet — this signup bootstraps it (see the
 					// `after` hook). Deliberately open: whoever reaches a fresh
 					// deployment first becomes its owner, so deploy and sign up in the
 					// same sitting.
 					if (!org) return;
+
 					if (await findPendingInvitation(org.id, user.email)) return;
 					// `code` is load-bearing, not decoration: the OAuth callback only
 					// converts a thrown APIError into a redirect back to
@@ -275,8 +285,10 @@ export const auth = betterAuth({
 						// and their membership comes from accepting the invitation — not
 						// from signing up. Never a second organization.
 						await bootstrapSingleOrg(user.id);
+
 						return;
 					}
+
 					const organizationId = crypto.randomUUID();
 					await db.insert(schema.organization).values({
 						id: organizationId,
@@ -310,6 +322,7 @@ export const auth = betterAuth({
 					// mode was switched on — but that's exactly when picking the wrong
 					// one would be hardest to notice.
 					const singleOrg = isSingleOrgMode() ? await findSingleOrg() : null;
+
 					const membership = await db.query.member.findFirst({
 						where: singleOrg
 							? and(
@@ -325,7 +338,9 @@ export const auth = betterAuth({
 						// `getDefaultOrgSlugForSession` picks its fallback.
 						orderBy: (m, { asc }) => asc(m.createdAt),
 					});
+
 					if (!membership) return;
+
 					return { data: { activeOrganizationId: membership.organizationId } };
 				},
 			},
@@ -405,6 +420,7 @@ export const auth = betterAuth({
 					`/accept-invite/${data.invitation.id}`,
 					process.env.BETTER_AUTH_URL,
 				);
+
 				url.searchParams.set("email", data.email);
 				url.searchParams.set("org", data.organization.name);
 				url.searchParams.set("orgSlug", data.organization.slug);
@@ -445,6 +461,7 @@ export const auth = betterAuth({
 							invitationId,
 							error,
 						});
+
 						return membersService.recordInvitationEmail(
 							organizationId,
 							invitationId,

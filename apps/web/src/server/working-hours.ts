@@ -7,6 +7,7 @@ export const listWorkingHours = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware])
 	.handler(async ({ context }) => {
 		const { workingHoursService } = await import("@farmer/core/services");
+
 		return workingHoursService.list(context.ctx);
 	});
 
@@ -15,5 +16,6 @@ export const upsertWorkingHoursDay = createServerFn({ method: "POST" })
 	.validator(upsertWorkingHoursDayInput)
 	.handler(async ({ data, context }) => {
 		const { workingHoursService } = await import("@farmer/core/services");
+
 		return workingHoursService.upsertDay(context.ctx, data);
 	});

@@ -16,6 +16,7 @@ export const listMySessions = createServerFn({ method: "GET" })
 	.middleware([orgMiddleware, sessionMiddleware])
 	.handler(async ({ context }) => {
 		const { sessionsService } = await import("@farmer/core/services");
+
 		return sessionsService.listMine(context.ctx, context.session.session.id);
 	});
 
@@ -24,6 +25,7 @@ export const revokeMySession = createServerFn({ method: "POST" })
 	.validator(sessionIdInput)
 	.handler(async ({ data: sessionId, context }) => {
 		const { sessionsService } = await import("@farmer/core/services");
+
 		return sessionsService.revoke(
 			context.ctx,
 			sessionId,

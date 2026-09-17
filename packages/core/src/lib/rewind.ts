@@ -11,6 +11,7 @@ import { addDaysToKey, datesBetween } from "./time";
 export const REWIND_OPENS_MONTH = 12;
 
 const yearOf = (day: string): number => Number(day.slice(0, 4));
+
 const monthOf = (day: string): number => Number(day.slice(5, 7));
 
 /** Whether the Rewind for `year` may be opened on `today`: any year already
@@ -24,8 +25,11 @@ export const isRewindOpen = (year: number, today: string): boolean =>
  *  holidays still finds it. */
 export const featuredRewindYear = (today: string): number | null => {
 	const month = monthOf(today);
+
 	if (month === REWIND_OPENS_MONTH) return yearOf(today);
+
 	if (month === 1) return yearOf(today) - 1;
+
 	return null;
 };
 
@@ -37,6 +41,7 @@ export const defaultRewindYear = (today: string): number =>
  *  calendar day (the same reading as `workingDaysIn`). */
 export const isWeekendKey = (day: string): boolean => {
 	const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+
 	return weekday === 0 || weekday === 6;
 };
 
@@ -52,17 +57,22 @@ export const longestStreak = (
 ): RewindStreak | null => {
 	let best: RewindStreak | null = null;
 	let current: RewindStreak | null = null;
+
 	for (const day of days) {
 		if (!isWorkingDay(day)) continue;
+
 		if (!worked(day)) {
 			current = null;
 			continue;
 		}
+
 		current = current
 			? { days: current.days + 1, from: current.from, to: day }
 			: { days: 1, from: day, to: day };
+
 		if (!best || current.days > best.days) best = current;
 	}
+
 	return best;
 };
 
@@ -106,36 +116,46 @@ export const projectRestOfYear = (
 	input: RewindProjectionInput,
 ): RewindProjection | null => {
 	const { today, yearEnd, firstDay, isWorkingDay } = input;
+
 	if (today > yearEnd) return null;
 	const yesterday = addDaysToKey(today, -1);
+
 	if (firstDay > yesterday) return null;
 
 	let workedBefore = 0;
 	let workingDaysBefore = 0;
+
 	for (const day of datesBetween(firstDay, yesterday)) {
 		workedBefore += input.workedByDay.get(day) ?? 0;
+
 		if (isWorkingDay(day)) workingDaysBefore += 1;
 	}
+
 	if (workingDaysBefore === 0) return null;
 	const pace = workedBefore / workingDaysBefore;
 
 	const byMonth = new Map<number, number>();
 	let total = 0;
+
 	for (const day of datesBetween(today, yearEnd)) {
 		if (!isWorkingDay(day)) continue;
 		const away = (input.absenceByDay.get(day) ?? 0) / input.daySeconds;
 		let seconds = pace * Math.max(0, 1 - away);
+
 		if (day === today) {
 			seconds = Math.max(0, seconds - (input.workedByDay.get(day) ?? 0));
 		}
+
 		if (seconds <= 0) continue;
 		const month = monthOf(day);
 		byMonth.set(month, (byMonth.get(month) ?? 0) + seconds);
 		total += seconds;
 	}
+
 	for (const [month, seconds] of byMonth) {
 		byMonth.set(month, Math.round(seconds));
 	}
+
 	return {
 		paceSeconds: Math.round(pace),
 		byMonth,
@@ -243,6 +263,7 @@ const STOP_WORDS = new Set([
 ]);
 
 const URL_RE = /\bhttps?:\/\/\S+/gu;
+
 const WORD_RE = /\p{L}[\p{L}'-]*\p{L}/gu;
 
 export type RewindWord = { word: string; count: number };
@@ -252,15 +273,18 @@ export type RewindWord = { word: string; count: number };
  *  at least two notes to count at all. */
 export const topWords = (notes: readonly string[], limit = 5): RewindWord[] => {
 	const counts = new Map<string, number>();
+
 	for (const note of notes) {
 		const words = new Set(
 			note.replace(URL_RE, " ").toLocaleLowerCase().match(WORD_RE) ?? [],
 		);
+
 		for (const word of words) {
 			if (word.length < 4 || STOP_WORDS.has(word)) continue;
 			counts.set(word, (counts.get(word) ?? 0) + 1);
 		}
 	}
+
 	return [...counts]
 		.filter(([, count]) => count >= 2)
 		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))

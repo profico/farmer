@@ -37,24 +37,30 @@ const resolvePick = async (
 	none: NoneChoice | null,
 ): Promise<string> => {
 	let initialSearch: string | undefined;
+
 	if (query !== undefined) {
 		const folded = foldForSearch(query);
+
 		if (none && folded === NONE) return NONE;
 		const byId = items.find((item) => item.id === query);
+
 		if (byId) return byId.id;
 
 		const matches = items.filter((item) =>
 			matchesSearch(query, [item.label, item.hint]),
 		);
+
 		const exact = matches.filter((item) =>
 			item.exact.some((word) => foldForSearch(word) === folded),
 		);
+
 		const only =
 			matches.length === 1
 				? matches[0]
 				: exact.length === 1
 					? exact[0]
 					: undefined;
+
 		if (only) return only.id;
 
 		if (!out.interactive) {
@@ -65,6 +71,7 @@ const resolvePick = async (
 					: `"${query}" matches ${matches.length} ${noun}s (${names.join(", ")}${matches.length > 5 ? ", …" : ""}). Be more specific.`,
 			);
 		}
+
 		if (matches.length > 0) initialSearch = query;
 	} else {
 		requireInteractive(
@@ -76,12 +83,15 @@ const resolvePick = async (
 	if (items.length === 0 && !none) {
 		throw new CliError(`There is no ${noun} you can use.`);
 	}
+
 	const choices: Choice[] = items.map((item) => ({
 		value: item.id,
 		label: item.label,
 		hint: item.hint || undefined,
 	}));
+
 	if (none) choices.unshift({ value: NONE, ...none });
+
 	return pickOne(`Choose a ${noun}`, choices, initialSearch);
 };
 
@@ -96,6 +106,7 @@ const projectPickables = (
 			const hint = project.code
 				? `${project.code} · ${project.client.name}`
 				: project.client.name;
+
 			return {
 				id: project.id,
 				label: project.name,
@@ -109,7 +120,9 @@ const projectPickables = (
 
 const byId = <T extends { id: string }>(rows: T[], id: string): T => {
 	const found = rows.find((row) => row.id === id);
+
 	if (!found) throw new CliError(`Nothing has the id ${id}.`);
+
 	return found;
 };
 
@@ -146,6 +159,7 @@ export const chooseProjectOrNone = async (
 		query,
 		{ label: "No project", hint: "a Break, or time to file later" },
 	);
+
 	return id === NONE ? null : byId(projects, id);
 };
 
@@ -179,6 +193,7 @@ export const chooseTaskOrNone = async (
 		label: "No default task",
 		hint: "pass -t on each farmer log",
 	});
+
 	return id === NONE ? null : byId(tasks, id);
 };
 
@@ -194,11 +209,13 @@ export const findByIdPrefix = <T extends { id: string }>(
 ): T | null => {
 	const needle = idOrPrefix.toLowerCase();
 	const matches = rows.filter((row) => row.id.startsWith(needle));
+
 	if (matches.length > 1 && !matches.some((row) => row.id === needle)) {
 		throw new UsageError(
 			`"${idOrPrefix}" matches ${matches.length} entries. Type more of the id.`,
 		);
 	}
+
 	return matches.find((row) => row.id === needle) ?? matches[0] ?? null;
 };
 
@@ -232,10 +249,13 @@ export const selectEntry = async (
 	// The same order the tables number, so row 3 here is the row 3 the person
 	// read. For one day the server's order already is it.
 	const ordered = sortEntries(entries);
+
 	if (id !== undefined) {
 		const number = rowNumber(id);
+
 		if (number !== null) {
 			const row = ordered[number - 1];
+
 			if (row) return { id: row.id, entry: row };
 			throw new UsageError(
 				ordered.length === 0
@@ -243,20 +263,26 @@ export const selectEntry = async (
 					: `${day} has ${plural(ordered.length, "entry", "entries")}, so there is no ${number}.`,
 			);
 		}
+
 		const found = findByIdPrefix(ordered, id);
+
 		if (found) return { id: found.id, entry: found };
+
 		if (isUuid(id)) return { id: id.toLowerCase(), entry: null };
 		throw new UsageError(
 			`No entry on ${day} has an id that starts with "${id}". Pass -d <date> for another day.`,
 		);
 	}
+
 	if (ordered.length === 0) {
 		throw new CliError(`There are no entries on ${day} to ${verb}.`);
 	}
+
 	requireInteractive(
 		out,
 		`Pass the row number or the id of the entry to ${verb}. \`farmer ls\` shows both.`,
 	);
+
 	const picked = await pickOne(
 		`Which entry do you want to ${verb}?`,
 		ordered.map((entry, index) => ({
@@ -265,6 +291,7 @@ export const selectEntry = async (
 			hint: entry.description || undefined,
 		})),
 	);
+
 	return {
 		id: picked,
 		entry: ordered.find((entry) => entry.id === picked) ?? null,

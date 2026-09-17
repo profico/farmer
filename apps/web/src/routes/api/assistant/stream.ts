@@ -36,13 +36,16 @@ let aiTelemetryInstalled = false;
 const installAiTelemetry = async () => {
 	if (aiTelemetryInstalled) return;
 	aiTelemetryInstalled = true;
+
 	const [{ setAiTelemetrySink }, { posthogAiSink }] = await Promise.all([
 		import("@farmer/core/services"),
 		import("#/lib/posthog-ai.ts"),
 	]);
+
 	// A deployment with no PostHog credentials installs nothing, so the loop
 	// keeps the no-op sink and never builds an event.
 	const { posthogServerConfig } = await import("#/lib/posthog-server.ts");
+
 	if (!posthogServerConfig()) return;
 	setAiTelemetrySink(posthogAiSink);
 };
@@ -63,11 +66,13 @@ export const Route = createFileRoute("/api/assistant/stream")({
 				// authorized for.
 				const { isAssistantEnabled } =
 					await import("@farmer/core/lib/assistant-flag");
+
 				if (!isAssistantEnabled()) {
 					return Response.json({ error: "Not found" }, { status: 404 });
 				}
 
 				const ctx = await resolveApiOrgContext(request);
+
 				if (!ctx) {
 					return Response.json({ error: "Unauthorized" }, { status: 401 });
 				}
@@ -75,6 +80,7 @@ export const Route = createFileRoute("/api/assistant/stream")({
 				const parsed = runAssistantInput.safeParse(
 					await request.json().catch(() => null),
 				);
+
 				if (!parsed.success) {
 					return Response.json(
 						{ error: parsed.error.issues[0]?.message ?? "Bad request" },
@@ -87,6 +93,7 @@ export const Route = createFileRoute("/api/assistant/stream")({
 				// retry loop in a tab would otherwise spend it as fast as the model
 				// answers. The client shows `error` as it is.
 				const admitted = admitAssistantTurn(ctx.userId);
+
 				if (!admitted.ok) {
 					return Response.json(
 						{
@@ -101,6 +108,7 @@ export const Route = createFileRoute("/api/assistant/stream")({
 
 				const { assistantService, userFacingAssistantError } =
 					await import("@farmer/core/services");
+
 				await installAiTelemetry();
 
 				const stream = new ReadableStream({
@@ -112,8 +120,10 @@ export const Route = createFileRoute("/api/assistant/stream")({
 						request.signal.addEventListener("abort", () => abort.abort());
 
 						let closed = false;
+
 						const send = (event: AssistantEvent) => {
 							if (closed) return;
+
 							try {
 								controller.enqueue(frame(event));
 							} catch {
@@ -134,6 +144,7 @@ export const Route = createFileRoute("/api/assistant/stream")({
 							// here and the person gets a generic line.
 							const message =
 								error instanceof Error ? userFacingAssistantError(error) : null;
+
 							if (!message) console.error("[assistant] turn failed", error);
 							send({
 								type: "error",

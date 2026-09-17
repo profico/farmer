@@ -51,17 +51,25 @@ import {
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-github";
+
 const MEMBER_ID = "user-github-member";
+
 const ADMIN_ID = "user-github-admin";
+
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 
 const memberCtx = (): Ctx => ({ organizationId: ORG_ID, userId: MEMBER_ID });
+
 const adminCtx = (): Ctx => ({ organizationId: ORG_ID, userId: ADMIN_ID });
 
 let harness: TestDb;
+
 let ownRepoId: string;
+
 let otherRepoId: string;
+
 let entryId: string;
+
 /** Every sha `getCommit` was asked for — a refused call must not reach it. */
 let fetched: string[] = [];
 
@@ -84,6 +92,7 @@ beforeAll(async () => {
 		slug: ORG_ID,
 		createdAt: new Date(),
 	});
+
 	for (const [id, role] of [
 		[MEMBER_ID, "member"],
 		[ADMIN_ID, "owner"],
@@ -112,6 +121,7 @@ beforeAll(async () => {
 			.returning(),
 		0,
 	);
+
 	const projects = await db
 		.insert(project)
 		.values([
@@ -119,6 +129,7 @@ beforeAll(async () => {
 			{ organizationId: ORG_ID, clientId: acme.id, name: "Not mine" },
 		])
 		.returning();
+
 	const mine = at(projects, 0);
 	const notMine = at(projects, 1);
 
@@ -153,6 +164,7 @@ beforeAll(async () => {
 			},
 		])
 		.returning();
+
 	ownRepoId = at(repos, 0).id;
 	otherRepoId = at(repos, 1).id;
 
@@ -168,6 +180,7 @@ beforeAll(async () => {
 			.returning(),
 		0,
 	);
+
 	entryId = at(
 		await db
 			.insert(timeEntry)
@@ -192,6 +205,7 @@ beforeEach(async () => {
 		getInstallationToken: async () => "installation-token",
 		getCommit: async (_token, _owner, _repo, sha) => {
 			fetched.push(sha);
+
 			return fakeCommit(sha);
 		},
 		listInstallationRepos: async () => [],
@@ -209,6 +223,7 @@ describe("attachCommits", () => {
 			timeEntryId: entryId,
 			commits: [{ projectGithubRepoId: ownRepoId, sha: SHA }],
 		});
+
 		expect(attached.map((row) => row.sha)).toEqual([SHA]);
 	});
 
@@ -248,6 +263,7 @@ describe("attachCommits", () => {
 				timeEntryId: entryId,
 				commits: [{ projectGithubRepoId: ownRepoId, sha }],
 			});
+
 			expect(parsed.success).toBe(sha === "0123456");
 		}
 
@@ -275,10 +291,12 @@ describe("attachPullRequests", () => {
 			getInstallationToken: async () => "installation-token",
 			getAuthenticatedUser: async () => {
 				asked.push("user");
+
 				return { login: "tester" };
 			},
 			getPullRequest: async (_token, _owner, _repo, number) => {
 				asked.push(`pr-${number}`);
+
 				return null;
 			},
 			listInstallationRepos: async () => [],
@@ -330,6 +348,7 @@ describe("projectsForRepository", () => {
 				.returning(),
 			0,
 		);
+
 		const alsoMine = at(
 			await db
 				.insert(project)
@@ -341,6 +360,7 @@ describe("projectsForRepository", () => {
 				.returning(),
 			0,
 		);
+
 		await db.insert(projectMember).values({
 			organizationId: ORG_ID,
 			projectId: alsoMine.id,
@@ -379,6 +399,7 @@ describe("projectsForRepository", () => {
 			role: "owner",
 			createdAt: new Date(),
 		});
+
 		const otherClient = at(
 			await db
 				.insert(client)
@@ -386,6 +407,7 @@ describe("projectsForRepository", () => {
 				.returning(),
 			0,
 		);
+
 		const otherProject = at(
 			await db
 				.insert(project)
@@ -397,6 +419,7 @@ describe("projectsForRepository", () => {
 				.returning(),
 			0,
 		);
+
 		await db.insert(projectGithubRepo).values({
 			organizationId: OTHER_ORG_ID,
 			projectId: otherProject.id,
@@ -413,6 +436,7 @@ describe("projectsForRepository", () => {
 			memberCtx(),
 			"PROFICO/Mine",
 		);
+
 		expect(rows.some((r) => r.name === "Mine")).toBe(true);
 	});
 
@@ -421,6 +445,7 @@ describe("projectsForRepository", () => {
 			memberCtx(),
 			"profico/mine",
 		);
+
 		expect(rows.every((r) => r.name !== "Other org's project")).toBe(true);
 	});
 
@@ -429,6 +454,7 @@ describe("projectsForRepository", () => {
 			memberCtx(),
 			"profico/secret",
 		);
+
 		expect(rows).toEqual([]);
 	});
 
@@ -437,6 +463,7 @@ describe("projectsForRepository", () => {
 			memberCtx(),
 			"profico/mine",
 		);
+
 		expect(rows.map((r) => r.name).sort()).toEqual(["Also mine", "Mine"]);
 	});
 });
@@ -462,8 +489,10 @@ describe("listAvailableRepos", () => {
 // than the last good answer while it is being asked again.
 describe("the repo list cache", () => {
 	const T0 = new Date("2026-09-14T09:00:00Z");
+
 	const minutesIn = (minutes: number) =>
 		new Date(T0.getTime() + minutes * 60_000);
+
 	const DAY = 24 * 60;
 
 	let reads = 0;
@@ -475,6 +504,7 @@ describe("the repo list cache", () => {
 			now: minutesIn(minutes),
 			refresh,
 		});
+
 	const namesAt = async (minutes: number, refresh = false) =>
 		(await list(minutes, refresh)).repos.map((r) => r.fullName);
 
@@ -499,7 +529,9 @@ describe("the repo list cache", () => {
 			getInstallationToken: async () => "installation-token",
 			listInstallationRepos: async () => {
 				reads++;
+
 				if (failing) throw new Error("GitHub is down");
+
 				return names.map((fullName, i) => ({
 					id: 1000 + i,
 					name: fullName,
@@ -567,12 +599,14 @@ describe("the repo list cache", () => {
 	test("forgets an installation's list when it is disconnected", async () => {
 		await namesAt(0);
 		names = ["profico/two"];
+
 		const row = present(
 			await db.query.orgGithubInstallation.findFirst({
 				where: eq(orgGithubInstallation.organizationId, ORG_ID),
 			}),
 			"the connected installation",
 		);
+
 		await githubService.disconnectInstallation(adminCtx(), {
 			installationRowId: row.id,
 			uninstall: false,
@@ -679,6 +713,7 @@ describe("disconnecting an installation", () => {
 				accountType: "Organization",
 			})
 			.returning({ id: orgGithubInstallation.id });
+
 		return present(row, "the connected installation").id;
 	};
 
@@ -712,6 +747,7 @@ describe("disconnecting an installation", () => {
 			deleteInstallation: async (installationId: number) => {
 				if (failing) throw new Error("GitHub is down");
 				uninstalled.push(installationId);
+
 				return true;
 			},
 		});
@@ -719,20 +755,24 @@ describe("disconnecting an installation", () => {
 
 	test("leaves the app installed when nobody asked for it", async () => {
 		const rowId = await connect(ORG_ID, 200);
+
 		const result = await githubService.disconnectInstallation(adminCtx(), {
 			installationRowId: rowId,
 			uninstall: false,
 		});
+
 		expect(result.uninstall).toBe("not-requested");
 		expect(uninstalled).toEqual([]);
 	});
 
 	test("uninstalls from GitHub when it is asked for", async () => {
 		const rowId = await connect(ORG_ID, 201);
+
 		const result = await githubService.disconnectInstallation(adminCtx(), {
 			installationRowId: rowId,
 			uninstall: true,
 		});
+
 		expect(result.uninstall).toBe("uninstalled");
 		expect(uninstalled).toEqual([201]);
 		expect(
@@ -750,12 +790,15 @@ describe("disconnecting an installation", () => {
 			installationRowId: rowId,
 			uninstall: true,
 		});
+
 		expect(result.uninstall).toBe("shared");
 		expect(uninstalled).toEqual([]);
+
 		// This workspace is still disconnected — the other one is untouched.
 		const left = await db.query.orgGithubInstallation.findMany({
 			where: eq(orgGithubInstallation.installationId, 202),
 		});
+
 		expect(left.map((r) => r.organizationId)).toEqual([SECOND_ORG_ID]);
 	});
 
@@ -767,6 +810,7 @@ describe("disconnecting an installation", () => {
 			installationRowId: rowId,
 			uninstall: true,
 		});
+
 		expect(result.uninstall).toBe("failed");
 		expect(
 			await db.query.orgGithubInstallation.findFirst({
@@ -788,10 +832,12 @@ describe("disconnecting an installation", () => {
 
 	test("another org's row is not this admin's to disconnect", async () => {
 		const rowId = await connect(SECOND_ORG_ID, 205);
+
 		const result = await githubService.disconnectInstallation(adminCtx(), {
 			installationRowId: rowId,
 			uninstall: true,
 		});
+
 		expect(result.uninstall).toBe("not-requested");
 		expect(uninstalled).toEqual([]);
 		expect(
@@ -914,6 +960,7 @@ describe("a repo left naming a dead installation", () => {
 				if (installationId === DEAD) {
 					throw new GithubInstallationGoneError(DEAD);
 				}
+
 				return "installation-token";
 			},
 			listCommits: async () => [],

@@ -89,6 +89,7 @@ describe("last working day of the month", () => {
 			organizationId: ORG_ID,
 			name: "Dan državnosti",
 		});
+
 		try {
 			expect(await isLast("2025-05-30")).toBe(true);
 			expect(await isLast("2025-05-29")).toBe(false);

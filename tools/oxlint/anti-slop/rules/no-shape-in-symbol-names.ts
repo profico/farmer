@@ -7,6 +7,13 @@ function containsForbiddenSymbolName(name: string): boolean {
   return name.toLowerCase().includes(FORBIDDEN_SYMBOL_NAME);
 }
 
+/** Return whether an identifier names a statically accessed member owned by another value. */
+function isBorrowedMemberName(node: ESTree.Node): boolean {
+  const parent = node.parent;
+  if (parent === null || parent.type !== "MemberExpression") return false;
+  return parent.property === node && parent.computed === false;
+}
+
 /** Ban the case-insensitive substring "shape" in every JavaScript and TypeScript symbol name. */
 export const noForbiddenTermInSymbolNamesRule = defineRule({
   meta: {
@@ -22,19 +29,7 @@ export const noForbiddenTermInSymbolNamesRule = defineRule({
   },
   createOnce(context) {
     const reportForbiddenSymbolName = (node: ESTree.Node & { name: string }) => {
-      if (!containsForbiddenSymbolName(node.name)) return;
-      // Local amendment to the upstream rule: only symbols this repository
-      // DECLARES are its own to name. `zodObject.shape.field` is Zod's public
-      // API — reading it is not a naming choice, and flagging it made the rule
-      // unusable in a codebase whose form schemas are built from `.shape`.
-      const parent = node.parent;
-      if (
-        parent?.type === "MemberExpression" &&
-        !parent.computed &&
-        parent.property === node
-      ) {
-        return;
-      }
+      if (!containsForbiddenSymbolName(node.name) || isBorrowedMemberName(node)) return;
       context.report({
         node,
         messageId: "forbiddenSymbolName",

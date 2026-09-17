@@ -23,6 +23,7 @@ export const orgTimezone = async (
 	const org = await client.query.organization.findFirst({
 		where: eq(organization.id, organizationId),
 	});
+
 	return org?.timezone ?? "UTC";
 };
 
@@ -35,5 +36,6 @@ export const orgWeekStartsOn = async (
 	const org = await client.query.organization.findFirst({
 		where: eq(organization.id, organizationId),
 	});
+
 	return org ? toWeekStartsOn(org.weekStartsOn) : DEFAULT_WEEK_STARTS_ON;
 };

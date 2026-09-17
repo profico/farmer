@@ -36,6 +36,7 @@ function Sheet({
 			defaultOpen,
 			onOpenChange,
 		});
+
 	const actionsRef = React.useRef<SheetPrimitive.Root.Actions | null>(null);
 	const presence = React.useMemo(() => ({ open: value, actionsRef }), [value]);
 
@@ -99,9 +100,11 @@ function SheetContent({
 	showCloseButton?: boolean;
 }) {
 	const presence = React.useContext(SheetPresenceContext);
+
 	if (!presence) {
 		throw new Error("SheetContent must be used within <Sheet>");
 	}
+
 	const { open, actionsRef } = presence;
 
 	return (

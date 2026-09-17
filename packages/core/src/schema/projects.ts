@@ -9,9 +9,11 @@ export const projectTypeEnum = z.enum([
 	"maintenance",
 	"internal",
 ]);
+
 export type ProjectTypeValue = z.infer<typeof projectTypeEnum>;
 
 export const projectRoleEnum = z.enum(["member", "team_lead", "pm"]);
+
 export type ProjectRoleValue = z.infer<typeof projectRoleEnum>;
 
 // Money is display-only and never computed against, so it stays a decimal string
@@ -82,8 +84,10 @@ const typeConfigRefinement = <
 				});
 			}
 		}
+
 		return;
 	}
+
 	if (data.type !== "fixed_scope") {
 		if (data.budgetHours != null) {
 			ctx.addIssue({
@@ -92,6 +96,7 @@ const typeConfigRefinement = <
 				message: "Only Fixed Scope projects carry an hour budget",
 			});
 		}
+
 		if (data.budgetAmount != null) {
 			ctx.addIssue({
 				code: "custom",
@@ -100,6 +105,7 @@ const typeConfigRefinement = <
 			});
 		}
 	}
+
 	if (data.type !== "hourly" && data.hourlyPrice != null) {
 		ctx.addIssue({
 			code: "custom",
@@ -112,6 +118,7 @@ const typeConfigRefinement = <
 export const createProjectInput = z
 	.object(baseProject)
 	.superRefine(typeConfigRefinement);
+
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
 // A partial patch, matching updateTaskInput: an edit form that only owns the
@@ -133,12 +140,15 @@ export const updateProjectInput = z
 		hourlyPrice: baseProject.hourlyPrice,
 	})
 	.superRefine(typeConfigRefinement);
+
 export type UpdateProjectInput = z.infer<typeof updateProjectInput>;
 
 export const projectIdInput = z.uuid();
+
 export type ProjectIdInput = z.infer<typeof projectIdInput>;
 
 export const listProjectMembersInput = z.uuid();
+
 export type ListProjectMembersInput = z.infer<typeof listProjectMembersInput>;
 
 export const assignProjectMemberInput = z.object({
@@ -146,10 +156,12 @@ export const assignProjectMemberInput = z.object({
 	userId: z.string().min(1),
 	role: projectRoleEnum.default("member"),
 });
+
 export type AssignProjectMemberInput = z.infer<typeof assignProjectMemberInput>;
 
 export const removeProjectMemberInput = z.object({
 	projectId: z.uuid(),
 	userId: z.string().min(1),
 });
+
 export type RemoveProjectMemberInput = z.infer<typeof removeProjectMemberInput>;

@@ -12,42 +12,55 @@ import { CLI_VERSION } from "./version";
 const splitLeadingFlags = (argv: string[]) => {
 	const leading: string[] = [];
 	let index = 0;
+
 	while (index < argv.length && argv[index]?.startsWith("-")) {
 		const token = argv[index] ?? "";
 		leading.push(token);
+
 		if (token === "--org" && index + 1 < argv.length) {
 			leading.push(argv[index + 1] ?? "");
 			index++;
 		}
+
 		index++;
 	}
+
 	return { leading, rest: argv.slice(index) };
 };
 
 const run = async (argv: string[]) => {
 	const { leading, rest } = splitLeadingFlags(argv);
+
 	if (leading.includes("--version") || leading.includes("-v")) {
 		print(`farmer ${CLI_VERSION}`);
+
 		return;
 	}
 
 	const [first, ...afterFirst] = rest;
+
 	if (first === "version") {
 		print(`farmer ${CLI_VERSION}`);
+
 		return;
 	}
+
 	if (first === undefined || first === "help") {
 		const topic = first === "help" ? findCommand(afterFirst) : null;
+
 		if (first === "help" && afterFirst.length > 0 && !topic) {
 			throw new UsageError(
 				`Unknown command "${afterFirst.join(" ")}". Run \`farmer help\`.`,
 			);
 		}
+
 		print(topic ? commandHelp(topic.command) : mainHelp());
+
 		return;
 	}
 
 	const match = findCommand(rest);
+
 	if (!match) {
 		const group = subcommandsOf(first);
 		throw new UsageError(
@@ -56,11 +69,15 @@ const run = async (argv: string[]) => {
 				: `Unknown command "${first}". Run \`farmer help\`.`,
 		);
 	}
+
 	const args = [...leading, ...match.args];
+
 	if (args.includes("--help") || args.includes("-h")) {
 		print(commandHelp(match.command));
+
 		return;
 	}
+
 	await match.command.run(args, systemRuntime());
 };
 
@@ -78,6 +95,7 @@ try {
 	await run(process.argv.slice(2));
 } catch (error) {
 	if (brokenPipe.safeParse(error).success) process.exit(0);
+
 	if (!(error instanceof CliError)) throw error;
 	printError(error.message);
 	process.exitCode = error.exitCode;

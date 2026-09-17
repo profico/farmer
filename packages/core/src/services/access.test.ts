@@ -58,6 +58,7 @@ const accessWith = (
 	);
 
 const P = "project-1";
+
 const OTHER = "project-2";
 
 describe("Access — the §4.1 capability matrix", () => {
@@ -174,13 +175,17 @@ describe("Access.scopeFor", () => {
 			b: "team_lead",
 			c: "pm",
 		});
+
 		// Sorted copy, and null treated as a failure rather than an empty list:
 		// null here would mean the admin override leaked into a non-admin.
 		const scope = (role: "member" | "team_lead" | "pm") => {
 			const ids = access.scopeFor(role);
+
 			if (ids === null) throw new Error("expected a scoped, non-admin answer");
+
 			return [...ids].sort();
 		};
+
 		expect(scope("member")).toEqual(["a", "b", "c"]);
 		expect(scope("team_lead")).toEqual(["b", "c"]);
 		expect(scope("pm")).toEqual(["c"]);
@@ -304,9 +309,13 @@ describe("Access assertions", () => {
 let harness: TestDb;
 
 const ORG = "acc-org";
+
 const OTHER_ORG = "acc-org-other";
+
 let projectAId: string;
+
 let projectBId: string;
+
 let projectOtherOrgId: string;
 
 beforeAll(async () => {
@@ -379,6 +388,7 @@ beforeAll(async () => {
 			{ organizationId: OTHER_ORG, name: "Client Other" },
 		])
 		.returning();
+
 	if (!clientA || !clientOther) throw new Error("Failed to seed clients");
 
 	const [projectA, projectB, projectOther] = await db
@@ -389,9 +399,11 @@ beforeAll(async () => {
 			{ organizationId: OTHER_ORG, clientId: clientOther.id, name: "Other" },
 		])
 		.returning();
+
 	if (!projectA || !projectB || !projectOther) {
 		throw new Error("Failed to seed projects");
 	}
+
 	projectAId = projectA.id;
 	projectBId = projectB.id;
 	projectOtherOrgId = projectOther.id;
@@ -442,6 +454,7 @@ describe("accessService.resolve", () => {
 			organizationId: ORG,
 			userId: "u-owner",
 		});
+
 		expect(access.isAdmin).toBe(true);
 	});
 
@@ -450,6 +463,7 @@ describe("accessService.resolve", () => {
 			organizationId: ORG,
 			userId: "u-admin",
 		});
+
 		expect(access.isAdmin).toBe(true);
 	});
 
@@ -458,6 +472,7 @@ describe("accessService.resolve", () => {
 			organizationId: ORG,
 			userId: "u-plain",
 		});
+
 		expect(access.isAdmin).toBe(false);
 	});
 
@@ -511,6 +526,7 @@ describe("accessService.resolve", () => {
 			organizationId: ORG,
 			userId: "u-lead",
 		});
+
 		expect(access.roleOn(projectAId)).toBe("pm");
 		expect(access.roleOn(projectBId)).toBeNull();
 		expect(access.canManageProject(projectBId)).toBe(false);
@@ -524,6 +540,7 @@ describe("accessService.resolve", () => {
 			organizationId: ORG,
 			userId: "u-plain",
 		});
+
 		expect(access.roleOn(projectAId)).toBe("member");
 		expect(access.roleOn(projectOtherOrgId)).toBeNull();
 		expect(access.canViewProjectMoney(projectOtherOrgId)).toBe(false);
@@ -537,11 +554,13 @@ describe("accessService.resolve", () => {
 			.update(project)
 			.set({ openToOrg: true })
 			.where(inArray(project.id, opened));
+
 		try {
 			const access = await accessService.resolve({
 				organizationId: ORG,
 				userId: "u-plain",
 			});
+
 			expect(access.canTrackOn(projectBId)).toBe(true);
 			expect(access.canTrackOn(projectOtherOrgId)).toBe(false);
 		} finally {
@@ -557,6 +576,7 @@ describe("accessService.resolve", () => {
 			organizationId: ORG,
 			userId: "u-lead",
 		});
+
 		expect(access.scopeFor("pm")).toEqual([projectAId]);
 	});
 });
@@ -567,6 +587,7 @@ describe("accessService.requireAdmin", () => {
 			organizationId: ORG,
 			userId: "u-admin",
 		});
+
 		expect(access.isAdmin).toBe(true);
 	});
 
@@ -605,6 +626,7 @@ describe("Access — Team Lead people lists", () => {
 			"u2",
 			"u3",
 		]);
+
 		expect(leadOnTeamLeadRow.heldAs(P)).toBe("pm");
 		expect(leadOnTeamLeadRow.canViewProjectEntries(P)).toBe(true);
 		expect(leadOnTeamLeadRow.canManageProject(P)).toBe(true);
@@ -668,10 +690,12 @@ describe("Team Lead rank widening follows the assignment role (database)", () =>
 				createdAt: new Date(),
 			})),
 		);
+
 		const [widenClient] = await db
 			.insert(client)
 			.values({ organizationId: ORG, name: "Widen Client" })
 			.returning();
+
 		if (!widenClient) throw new Error("Failed to seed client");
 
 		const [teamLeadProject, memberProject] = await db
@@ -689,9 +713,11 @@ describe("Team Lead rank widening follows the assignment role (database)", () =>
 				},
 			])
 			.returning();
+
 		if (!teamLeadProject || !memberProject) {
 			throw new Error("Failed to seed projects");
 		}
+
 		teamLeadProjectId = teamLeadProject.id;
 		memberProjectId = memberProject.id;
 
@@ -736,6 +762,7 @@ describe("Team Lead rank widening follows the assignment role (database)", () =>
 			organizationId: ORG,
 			userId: WIDEN_LEAD,
 		});
+
 		expect(access.isTeamLead).toBe(true);
 
 		expect(access.heldAs(teamLeadProjectId)).toBe("pm");
@@ -760,6 +787,7 @@ describe("Team Lead rank widening follows the assignment role (database)", () =>
 		const access = await accessService.resolve(ctx);
 		const people = await accessService.peopleScope(ctx, access);
 		expect(people).not.toBeNull();
+
 		if (!people) throw new Error("expected a scoped, non-admin answer");
 
 		expect(people.has(WIDEN_LEAD)).toBe(true);

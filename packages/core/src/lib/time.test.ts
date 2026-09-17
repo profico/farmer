@@ -10,7 +10,9 @@ import {
 } from "./time";
 
 const MON_FRI = new Set([1, 2, 3, 4, 5]);
+
 const HOUR = 3600;
+
 const MINUTE = 60;
 
 describe("countWorkingDays", () => {

@@ -125,10 +125,12 @@ export const workingDaysIn = (
 	holidays: { has(key: string): boolean },
 ): number => {
 	if (from > to) return 0;
+
 	return datesBetween(from, to).filter((key) => {
 		if (holidays.has(key)) return false;
 		// UTC weekday of a bare calendar key — the key IS the calendar day.
 		const weekday = new Date(`${key}T00:00:00Z`).getUTCDay();
+
 		return weekday !== 0 && weekday !== 6;
 	}).length;
 };
@@ -140,9 +142,11 @@ export const trackingStatusFor = (
 	tolerancePct: number,
 ): TrackingStatus => {
 	if (totalSeconds >= targetSeconds) return "on_track";
+
 	if (totalSeconds >= targetSeconds * (1 - tolerancePct / 100)) {
 		return "slightly_behind";
 	}
+
 	return "behind";
 };
 
@@ -195,6 +199,7 @@ const computeTracking = async (
 		ctxTimezone(ctx),
 		orgSettingsService.get(ctx),
 	]);
+
 	const today = dayKeyInTz(opts.now ?? new Date(), tz);
 	const { from, to } = monthBounds(year, month);
 	const complete = today > to;
@@ -205,10 +210,13 @@ const computeTracking = async (
 	// working days counts as elapsed; a month still running only counts the
 	// days strictly before today — today itself is not over yet.
 	const elapsedThrough = complete ? to : addDaysToKey(today, -1);
+
 	const workingDaysElapsed =
 		today < from ? 0 : workingDaysIn(from, elapsedThrough, holidays);
+
 	const share =
 		workingDaysInMonth === 0 ? 0 : workingDaysElapsed / workingDaysInMonth;
+
 	// To the nearest quarter hour, the unit every other figure in the app is
 	// in. With the official fund this is a whole number of 8h days; it only
 	// rounds when an admin entered a fund that is not a multiple of the days.
@@ -219,8 +227,10 @@ const computeTracking = async (
 		complianceCohort(ctx, { year, month }, opts.onlyUserIds ?? null),
 		hourFundService.get(ctx, year, month),
 	]);
+
 	const tolerancePct = settings.trackingTolerancePct;
 	const targetSeconds = fundSeconds == null ? null : prorate(fundSeconds);
+
 	if (cohort.length === 0 || today < from) {
 		return {
 			year,
@@ -237,6 +247,7 @@ const computeTracking = async (
 	}
 
 	const userIds = cohort.map((c) => c.userId);
+
 	const [worked, timeOff] = await Promise.all([
 		ledgerByUser(ctx, { from, to: asOf }, "worked", { userIds }),
 		ledgerByUser(ctx, { from, to: asOf }, "absence", { userIds }),
@@ -246,12 +257,15 @@ const computeTracking = async (
 		const workSeconds = worked.get(person.userId) ?? 0;
 		const timeOffSeconds = timeOff.get(person.userId) ?? 0;
 		const totalSeconds = workSeconds + timeOffSeconds;
+
 		// An explicit override replaces the fund for this person; an hourly
 		// person has a target only through one.
 		const fund = isHourlyMemberType(person.memberType.type)
 			? person.memberType.expectedSecondsOverride
 			: (person.memberType.expectedSecondsOverride ?? fundSeconds);
+
 		const target = fund == null ? null : prorate(fund);
+
 		return {
 			userId: person.userId,
 			name: person.name,
@@ -275,7 +289,9 @@ const computeTracking = async (
 	rows.sort((a, b) => {
 		const ra = a.status == null ? 3 : STATUS_RANK[a.status];
 		const rb = b.status == null ? 3 : STATUS_RANK[b.status];
+
 		if (ra !== rb) return ra - rb;
+
 		return (
 			(a.deltaSeconds ?? 0) - (b.deltaSeconds ?? 0) ||
 			a.name.localeCompare(b.name)
@@ -363,15 +379,19 @@ export const complianceService = {
 			ctxTimezone(ctx),
 			ctxWeekStartsOn(ctx),
 		]);
+
 		const today = dayKeyInTz(opts.now ?? new Date(), tz);
 		const year = Number(today.slice(0, 4));
 		const month = Number(today.slice(5, 7));
+
 		const report = await computeTracking(
 			ctx,
 			{ year, month },
 			{ now: opts.now, onlyUserIds: new Set([ctx.userId]) },
 		);
+
 		const me = report.rows[0] ?? null;
+
 		const daySeconds =
 			me?.monthTargetSeconds != null && report.workingDaysInMonth > 0
 				? Math.round(
@@ -388,6 +408,7 @@ export const complianceService = {
 		const yesterday = addDaysToKey(today, -1);
 		const monthRange = monthBounds(year, month);
 		const userIds = [ctx.userId];
+
 		const [
 			holidays,
 			weekWork,
@@ -425,15 +446,19 @@ export const complianceService = {
 		const weekApplies =
 			me != null &&
 			(!isHourlyMemberType(me.memberType) || me.monthTargetSeconds != null);
+
 		const weekDays = workingDaysIn(weekFrom, weekTo, holidays);
 		const weekElapsed = workingDaysIn(weekFrom, yesterday, holidays);
 		const weekTarget = weekApplies ? weekDays * daySeconds : null;
 		const weekSoFar = weekApplies ? weekElapsed * daySeconds : null;
 		const weekTotal = sumOf(weekWork, ctx.userId) + sumOf(weekOff, ctx.userId);
+
 		const weekTotalSoFar =
 			sumOf(weekWorkSoFar, ctx.userId) + sumOf(weekOffSoFar, ctx.userId);
+
 		const monthTotal =
 			sumOf(monthWork, ctx.userId) + sumOf(monthOff, ctx.userId);
+
 		// The Tracking row's own total already stops at today (or the month's
 		// last day once it is over) — reusing it instead of a second month
 		// query is what keeps this verdict from ever disagreeing with
@@ -494,6 +519,7 @@ export const complianceService = {
 	): Promise<TrackingReport> => {
 		const access = await ctxAccess(ctx);
 		const onlyUserIds = await accessService.peopleScope(ctx, access);
+
 		return computeTracking(ctx, input, { ...opts, onlyUserIds });
 	},
 

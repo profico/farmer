@@ -16,6 +16,7 @@ export const listHourFundsForYear = createServerFn({ method: "GET" })
 	.validator(hourFundYearInput)
 	.handler(async ({ data, context }) => {
 		const { hourFundService } = await import("@farmer/core/services");
+
 		return hourFundService.listForYear(context.ctx, data.year);
 	});
 
@@ -24,6 +25,7 @@ export const setMonthlyHourFund = createServerFn({ method: "POST" })
 	.validator(setMonthlyHourFundInput)
 	.handler(async ({ data, context }) => {
 		const { hourFundService } = await import("@farmer/core/services");
+
 		return hourFundService.set(context.ctx, data);
 	});
 
@@ -35,6 +37,7 @@ export const clearMonthlyHourFund = createServerFn({ method: "POST" })
 	.validator(monthPeriodInput)
 	.handler(async ({ data, context }) => {
 		const { hourFundService } = await import("@farmer/core/services");
+
 		return hourFundService.clear(context.ctx, data.year, data.month);
 	});
 
@@ -46,6 +49,7 @@ export const suggestMonthlyHourFund = createServerFn({ method: "GET" })
 	.validator(monthPeriodInput)
 	.handler(async ({ data, context }) => {
 		const { hourFundService } = await import("@farmer/core/services");
+
 		return hourFundService.suggestForMonth(context.ctx, data.year, data.month);
 	});
 
@@ -54,5 +58,6 @@ export const prefillHourFundYear = createServerFn({ method: "POST" })
 	.validator(hourFundYearInput)
 	.handler(async ({ data, context }) => {
 		const { hourFundService } = await import("@farmer/core/services");
+
 		return hourFundService.prefillYear(context.ctx, data.year);
 	});

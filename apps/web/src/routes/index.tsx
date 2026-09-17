@@ -43,10 +43,12 @@ export const Route = createFileRoute("/")({
 		signedIn: boolean;
 	}> => {
 		const session = await getSession();
+
 		if (!session) return { orgSlug: null, signedIn: false };
 		// Server fn resolves userId/activeOrganizationId from the session itself —
 		// it no longer accepts a client-supplied identity.
 		const orgSlug = await getDefaultOrgSlugForSession();
+
 		return { orgSlug, signedIn: true };
 	},
 	component: Home,
@@ -72,12 +74,14 @@ function DashButton({
 	className?: string;
 }) {
 	const label = orgSlug ? "Open dashboard" : signedIn ? "Continue" : "Log in";
+
 	const content = (
 		<>
 			{label}
 			<ArrowRightIcon weight="regular" size={15} data-icon="inline-end" />
 		</>
 	);
+
 	if (orgSlug) {
 		return (
 			<Link className={className} to="/$orgSlug" params={{ orgSlug }}>
@@ -85,6 +89,7 @@ function DashButton({
 			</Link>
 		);
 	}
+
 	return (
 		<Link className={className} to={signedIn ? "/no-access" : "/login"}>
 			{content}
@@ -175,6 +180,7 @@ const recentEntries = [
 
 function Home() {
 	const { orgSlug, signedIn } = Route.useLoaderData();
+
 	return (
 		// No <MotionConfig> here: `__root.tsx` already wraps the whole app in an
 		// identical one, and this route holds no `motion.*` element for it to

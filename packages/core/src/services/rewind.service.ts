@@ -121,6 +121,7 @@ export const rewindService = {
 		const tz = await ctxTimezone(ctx);
 		const today = dayKeyInTz(opts.now ?? new Date(), tz);
 		const { year } = input;
+
 		if (!isRewindOpen(year, today)) {
 			throw new Error(`Your ${year} Rewind opens on 1 December.`);
 		}
@@ -213,22 +214,29 @@ export const rewindService = {
 
 		for (const row of rows) {
 			const seconds = Number(row.seconds);
+
 			if (row.isAbsence) {
 				addTo(absenceByDay, row.date, seconds);
+
 				if (row.systemKey === "vacation") vacation += seconds;
 				else if (row.systemKey === "sick") sick += seconds;
 				else otherTimeOff += seconds;
+
 				if (row.date > asOf) ahead += seconds;
 				continue;
 			}
+
 			if (row.date > asOf) continue;
+
 			if (firstDay === null || row.date < firstDay) firstDay = row.date;
 			workedSeconds += seconds;
 			addTo(workedByDay, row.date, seconds);
 			addTo(monthWorked, Number(row.date.slice(5, 7)), seconds);
 			const weekday = new Date(`${row.date}T00:00:00Z`).getUTCDay();
 			weekdays[weekday] = (weekdays[weekday] ?? 0) + seconds;
+
 			if (row.overtime) overtimeSeconds += seconds;
+
 			if (row.projectId) addTo(byProject, row.projectId, seconds);
 			const known = byTask.get(row.taskId);
 			byTask.set(row.taskId, {
@@ -237,11 +245,14 @@ export const rewindService = {
 				seconds: (known?.seconds ?? 0) + seconds,
 			});
 			addTo(byGroup, row.group, seconds);
+
 			if (row.systemKey === "meeting") meetingSeconds += seconds;
+
 			if (row.systemKey === "code_review") codeReviewSeconds += seconds;
 		}
 
 		const projectIds = [...byProject.keys()];
+
 		const projectRows =
 			projectIds.length === 0
 				? []
@@ -277,9 +288,12 @@ export const rewindService = {
 
 		let busiestDay: Rewind["busiestDay"] = null;
 		let weekendDaysWorked = 0;
+
 		for (const [date, seconds] of workedByDay) {
 			if (seconds <= 0) continue;
+
 			if (isWeekendKey(date)) weekendDaysWorked += 1;
+
 			if (
 				!busiestDay ||
 				seconds > busiestDay.seconds ||
@@ -290,9 +304,12 @@ export const rewindService = {
 		}
 
 		const pullRequests = { opened: 0, merged: 0, reviewed: 0 };
+
 		for (const row of pullRequestRows) {
 			if (row.kind === "opened") pullRequests.opened = row.count;
+
 			if (row.kind === "merged") pullRequests.merged = row.count;
+
 			if (row.kind === "reviewed") pullRequests.reviewed = row.count;
 		}
 

@@ -16,10 +16,12 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/tasks")({
 				input: NO_INPUT,
 				run: async (ctx): Promise<ApiTaskList> => {
 					const { tasksService } = await import("@farmer/core/services");
+
 					const [tasks, absenceTasks] = await Promise.all([
 						tasksService.listSelectable(ctx),
 						tasksService.listAbsenceTasks(),
 					]);
+
 					return {
 						tasks: tasks.map(toApiTask),
 						absenceTasks: absenceTasks.map(toApiTask),

@@ -102,6 +102,7 @@ function GroupField({
 			value={value}
 			onValueChange={(next) => {
 				const picked = GROUP_ITEMS.find((g) => g.value === next);
+
 				if (picked) onChange(picked.value);
 			}}
 			items={GROUP_ITEMS}
@@ -148,8 +149,11 @@ const DEFAULT_COLOR = CATEGORY_COLORS[0].dot;
 const taskFormSchema = createTaskInput.extend({
 	name: z.string().trim().min(1, "Required").max(80),
 });
+
 type TaskFormValues = z.infer<typeof taskFormSchema>;
+
 const NAME_MAX_LENGTH = taskFormSchema.shape.name.maxLength ?? undefined;
+
 const DESCRIPTION_MAX_LENGTH =
 	createTaskInput.shape.description.unwrap().maxLength ?? undefined;
 
@@ -157,6 +161,7 @@ function CreateTaskDialog() {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
+
 	const form = useForm<TaskFormValues>({
 		resolver: zodResolver(taskFormSchema),
 		defaultValues: {
@@ -289,6 +294,7 @@ function EditTaskDialog({
 	const orgSlug = useOrgSlug();
 	const open = task !== null;
 	const queryClient = useQueryClient();
+
 	const form = useForm<TaskFormValues>({
 		resolver: zodResolver(taskFormSchema),
 		defaultValues: {
@@ -438,11 +444,14 @@ function TasksPage() {
 	// unreadable.
 	const [query, setQuery] = useState("");
 	const searching = query.trim() !== "";
+
 	const matching = tasks.filter((t) =>
 		matchesSearch(query, [t.name, t.description]),
 	);
+
 	const activeTasks = matching.filter((t) => !t.archivedAt);
 	const archivedTasks = matching.filter((t) => t.archivedAt);
+
 	// A search that only turns up archived rows opens their section rather than
 	// reading as no result at all — the same rule as Projects.
 	const archivedOpen =
@@ -469,6 +478,7 @@ function TasksPage() {
 	const renderTaskRow = (task: (typeof tasks)[number]) => {
 		const category = resolveCategoryColor(task.color);
 		const builtIn = task.scope === "site";
+
 		return (
 			<TableRow key={task.id}>
 				<TableCell className="font-medium">
@@ -576,7 +586,9 @@ function TasksPage() {
 					)}
 					{TASK_GROUPS.map((group) => {
 						const rows = activeTasks.filter((t) => t.group === group);
+
 						if (rows.length === 0) return null;
+
 						return (
 							<Fragment key={group}>
 								<TableRow className="hover:bg-transparent">

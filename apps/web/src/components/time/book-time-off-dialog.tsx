@@ -44,9 +44,12 @@ const daysBetween = (from: string, to: string) =>
  */
 const skipReasonLabel = (reason: string) => {
 	if (reason === "public holiday") return "Public holiday";
+
 	if (reason === "not a working day for this person")
 		return "Not a working day for you";
+
 	if (reason === "absence already logged") return "Already booked off";
+
 	return reason;
 };
 
@@ -105,6 +108,7 @@ export function BookTimeOffDialog({
 		...tasksForProjectQuery(orgSlug, undefined),
 		enabled: open,
 	});
+
 	const absenceTasks = (tasksQ.data ?? []).filter((t) => t.isAbsence);
 
 	// With one absence task there is nothing to decide; with two there is, and
@@ -120,6 +124,7 @@ export function BookTimeOffDialog({
 	}, [absenceTasks, taskId]);
 
 	const span = daysBetween(from, to);
+
 	const spanError =
 		span < 0
 			? "The last day is before the first."
@@ -153,6 +158,7 @@ export function BookTimeOffDialog({
 			]);
 
 			const booked = data.booked.length;
+
 			if (data.skipped.length === 0) {
 				toast.success(
 					booked === 1
@@ -162,8 +168,10 @@ export function BookTimeOffDialog({
 							)})`,
 				);
 				setOpen(false);
+
 				return;
 			}
+
 			// Something didn't land. "Booked 8, skipped 3" in a toast is the half of
 			// the answer nobody can act on — which three, and why, is the half that
 			// tells you whether to fix your schedule or shrug at a holiday. So the
@@ -227,6 +235,7 @@ export function BookTimeOffDialog({
 						className="grid gap-5"
 						onSubmit={(e) => {
 							e.preventDefault();
+
 							if (!taskId || spanError) return;
 							mutation.mutate();
 						}}
@@ -270,6 +279,7 @@ export function BookTimeOffDialog({
 									onValueChange={(next) => {
 										if (!next) return;
 										setFrom(next);
+
 										// Moving the start past the end drags the end with it,
 										// rather than leaving a span that reads backwards.
 										if (next > to) setTo(next);

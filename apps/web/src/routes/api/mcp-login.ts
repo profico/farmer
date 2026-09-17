@@ -40,6 +40,7 @@ export const Route = createFileRoute("/api/mcp-login")({
 				// later still arrives intact.
 				const authorize = `/api/auth/mcp/authorize${url.search}`;
 				const target = `/api/login?redirect=${encodeURIComponent(authorize)}`;
+
 				return Response.redirect(new URL(target, url.origin).toString(), 302);
 			},
 		},

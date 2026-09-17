@@ -171,7 +171,9 @@ export const PEOPLE_ITEM: NavItem = {
 
 export function isNavItemActive(pathname: string, to: string, orgSlug: string) {
 	const resolved = to.replace("$orgSlug", orgSlug);
+
 	if (resolved === `/${orgSlug}`) return pathname === resolved;
+
 	return pathname === resolved || pathname.startsWith(`${resolved}/`);
 }
 
@@ -195,9 +197,12 @@ export function activeNavTo(
 	orgSlug: string,
 ): string | null {
 	let best: string | null = null;
+
 	for (const item of items) {
 		if (!isNavItemActive(pathname, item.to, orgSlug)) continue;
+
 		if (best === null || item.to.length > best.length) best = item.to;
 	}
+
 	return best;
 }

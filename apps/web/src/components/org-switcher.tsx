@@ -42,8 +42,10 @@ export function OrgSwitcher({
 	singleOrg?: boolean;
 }) {
 	const navigate = useNavigate();
+
 	const { data: organizations, refetch: refetchOrganizations } =
 		authClient.useListOrganizations();
+
 	const [createOpen, setCreateOpen] = useState(false);
 	const [name, setName] = useState("");
 	const [submitting, setSubmitting] = useState(false);
@@ -53,17 +55,22 @@ export function OrgSwitcher({
 		setSubmitting(true);
 		const slug = slugify(name);
 		const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 		const { data, error } = await authClient.organization.create({
 			name,
 			slug,
 			timezone,
 			country: "US",
 		});
+
 		setSubmitting(false);
+
 		if (error) {
 			toast.error(error.message ?? "Could not create organization");
+
 			return;
 		}
+
 		setCreateOpen(false);
 		setName("");
 		// The atom-listener refetch this triggers races the navigate() below —

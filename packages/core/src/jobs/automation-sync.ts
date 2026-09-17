@@ -133,8 +133,10 @@ const collectTargets = async (): Promise<Target[]> => {
 	// A user may hold several qualifying rows (both switches on, or several
 	// rules); the pass below is per person, not per row.
 	const byKey = new Map<string, Target>();
+
 	for (const row of [...integrationRows, ...ruleRows]) {
 		const key = `${row.organizationId}:${row.userId}`;
+
 		if (byKey.has(key)) continue;
 		byKey.set(key, {
 			organizationId: row.organizationId,
@@ -145,6 +147,7 @@ const collectTargets = async (): Promise<Target[]> => {
 			timezone: row.timezone ?? "UTC",
 		});
 	}
+
 	return [...byKey.values()];
 };
 
@@ -172,6 +175,7 @@ const SWEEP_CONCURRENCY = Number(process.env.AUTOMATION_SYNC_CONCURRENCY ?? 4);
 const DEFAULT_PER_USER_TIMEOUT_MS = Number(
 	process.env.AUTOMATION_SYNC_USER_TIMEOUT_MS ?? 120_000,
 );
+
 let perUserTimeoutMs = DEFAULT_PER_USER_TIMEOUT_MS;
 
 /** Test-only: shorten the per-person deadline. Pass null to restore. */
@@ -208,9 +212,11 @@ const runExclusive = (
 ): Promise<AutomationRunResult> => {
 	const key = `${ctx.organizationId}:${ctx.userId}`;
 	const existing = inFlight.get(key);
+
 	if (existing) return existing;
 
 	const timeoutMs = perUserTimeoutMs;
+
 	const pass = withTimeout(
 		timeEntriesService.runAutomationsForUser(ctx, opts),
 		timeoutMs,
@@ -218,7 +224,9 @@ const runExclusive = (
 	).finally(() => {
 		if (inFlight.get(key) === pass) inFlight.delete(key);
 	});
+
 	inFlight.set(key, pass);
+
 	return pass;
 };
 
@@ -241,8 +249,10 @@ export const runAutomationSyncOnce = async (
 			organizationId: target.organizationId,
 			userId: target.userId,
 		};
+
 		try {
 			const result = await runExclusive(ctx, { now, tz: target.timezone });
+
 			if (result.failed.length > 0) failed++;
 			else synced++;
 		} catch (error) {
@@ -260,15 +270,18 @@ export const runAutomationSyncOnce = async (
 	// of the pool idle, which is the whole problem when one person's calendar is
 	// slow and everyone else's is not.
 	let cursor = 0;
+
 	const workers = Array.from(
 		{ length: Math.max(1, Math.min(SWEEP_CONCURRENCY, targets.length)) },
 		async () => {
 			while (cursor < targets.length) {
 				const target = targets[cursor++];
+
 				if (target) await runOne(target);
 			}
 		},
 	);
+
 	await Promise.all(workers);
 
 	return { eligible: targets.length, synced, failed };

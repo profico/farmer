@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 
 const root = join(import.meta.dir, "..");
+
 const entry = join(root, "src", "main.ts");
 
 // x64 uses the baseline runtime everywhere. The default x64 runtime needs AVX2
@@ -59,11 +60,13 @@ if (Bun.argv.includes("--release")) {
 	await rm(dir, { recursive: true, force: true });
 	await mkdir(dir, { recursive: true });
 	const sums: string[] = [];
+
 	for (const { asset, target } of RELEASE_TARGETS) {
 		const outfile = join(dir, asset);
 		await compile(outfile, target);
 		sums.push(`${await sha256(outfile)}  ${asset}`);
 	}
+
 	await Bun.write(join(dir, "SHA256SUMS"), `${sums.join("\n")}\n`);
 	console.log(
 		`Wrote ${RELEASE_TARGETS.length} binaries and SHA256SUMS to ${dir}`,

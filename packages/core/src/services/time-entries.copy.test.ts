@@ -32,17 +32,25 @@ import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
 const ORG_ID = "org-copy";
+
 const USER_ID = "user-copy";
+
 const MONDAY = "2026-08-10";
+
 const TUESDAY = "2026-08-11";
+
 const EIGHT_HOURS = 8 * 3600;
 
 const ctx: Ctx = { organizationId: ORG_ID, userId: USER_ID };
 
 let harness: TestDb;
+
 let devTaskId: string;
+
 let breakTaskId: string;
+
 let vacationTaskId: string;
+
 let projectId: string;
 
 const rowsOn = (date: string) =>
@@ -87,10 +95,12 @@ beforeAll(async () => {
 		.insert(client)
 		.values({ organizationId: ORG_ID, name: "Acme" })
 		.returning();
+
 	const [p] = await db
 		.insert(project)
 		.values({ organizationId: ORG_ID, clientId: c!.id, name: "Farmer" })
 		.returning();
+
 	projectId = p!.id;
 
 	const findOrMakeSiteTask = async (
@@ -100,7 +110,9 @@ beforeAll(async () => {
 			where: and(eq(task.scope, "site"), eq(task.systemKey, systemKey)),
 			columns: { id: true },
 		});
+
 		if (existing) return existing.id;
+
 		const [row] = await db
 			.insert(task)
 			.values({
@@ -110,6 +122,7 @@ beforeAll(async () => {
 				isAbsence: false,
 			})
 			.returning({ id: task.id });
+
 		return row!.id;
 	};
 
@@ -120,6 +133,7 @@ beforeAll(async () => {
 		where: and(eq(task.scope, "site"), eq(task.isAbsence, true)),
 		columns: { id: true },
 	});
+
 	vacationTaskId =
 		existingVacation?.id ??
 		(
@@ -214,6 +228,7 @@ describe("copy from previous day", () => {
 			fromDate: MONDAY,
 			toDate: TUESDAY,
 		});
+
 		const second = await timeEntriesService.copyDay(ctx, {
 			fromDate: MONDAY,
 			toDate: TUESDAY,

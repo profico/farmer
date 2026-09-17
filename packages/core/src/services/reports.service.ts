@@ -34,6 +34,7 @@ type ReportScope = {
 
 const reportScope = async (ctx: Ctx): Promise<ReportScope> => {
 	const access = await ctxAccess(ctx);
+
 	return {
 		access,
 		projectIds: access.scopeFor("team_lead"),
@@ -195,7 +196,9 @@ const teamTimeOff = async (
 ): Promise<Map<string, number>> => {
 	const people = await accessService.peopleScope(ctx, scope.access);
 	const visible = people ? userIds.filter((id) => people.has(id)) : userIds;
+
 	if (visible.length === 0) return new Map();
+
 	const rows = await db
 		.select({
 			userId: timeEntry.userId,
@@ -205,6 +208,7 @@ const teamTimeOff = async (
 		.innerJoin(task, eq(timeEntry.taskId, task.id))
 		.where(ledgerWhere(ctx, range, "absence", { userIds: visible }))
 		.groupBy(timeEntry.userId);
+
 	return new Map(rows.map((r) => [r.userId, Number(r.total)]));
 };
 
@@ -233,6 +237,7 @@ export const reportsService = {
 				: input.tab === "projects"
 					? { id: project.id, name: project.name }
 					: { id: user.id, name: user.name };
+
 		// The second figure each tab shows beside the hours: how many projects a
 		// client had time on, how many people a project had, how many projects a
 		// person touched.
@@ -284,6 +289,7 @@ export const reportsService = {
 						string,
 						{ code: string | null; status: string; clientName: string }
 					>();
+
 		const timeOff =
 			input.tab === "teammates" && rows.length > 0
 				? await teamTimeOff(
@@ -296,6 +302,7 @@ export const reportsService = {
 
 		const mapped: TimeReportRow[] = rows.map((r) => {
 			const meta = projectMeta.get(r.id);
+
 			return {
 				id: r.id,
 				name: r.name,
@@ -307,6 +314,7 @@ export const reportsService = {
 				archived: meta?.status === "archived",
 			};
 		});
+
 		// Reported separately from `totalSeconds`, not folded into it: this is time
 		// the report cannot attribute, and adding it to the total would make the
 		// per-client rows stop summing to the figure above them.
@@ -319,6 +327,7 @@ export const reportsService = {
 			!input.projectId &&
 			!input.clientId &&
 			!input.userId;
+
 		const unfiled = orgWide
 			? await unfiledTotals(ctx, { from: input.from, to: input.to })
 			: { seconds: 0 };
@@ -389,6 +398,7 @@ export const reportsService = {
 		]);
 
 		const totalRows = Number(totals[0]?.rowCount ?? 0);
+
 		return {
 			rows,
 			totalRows,
@@ -412,6 +422,7 @@ export const reportsService = {
 		input: OvertimeReportInput,
 	): Promise<OvertimeReport> => {
 		const { projectIds, userIds } = await reportScope(ctx);
+
 		const entries = await db
 			.select({
 				id: timeEntry.id,
@@ -441,6 +452,7 @@ export const reportsService = {
 			.orderBy(asc(timeEntry.date), asc(timeEntry.id));
 
 		const byUser = new Map<string, OvertimeRow>();
+
 		for (const e of entries) {
 			const row = byUser.get(e.userId) ?? {
 				userId: e.userId,
@@ -449,6 +461,7 @@ export const reportsService = {
 				seconds: 0,
 				entries: [],
 			};
+
 			row.count += 1;
 			row.seconds += e.durationSeconds;
 			row.entries.push({
@@ -462,9 +475,11 @@ export const reportsService = {
 			});
 			byUser.set(e.userId, row);
 		}
+
 		const rows = [...byUser.values()].sort(
 			(a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name),
 		);
+
 		return {
 			rows,
 			totalSeconds: rows.reduce((sum, r) => sum + r.seconds, 0),
@@ -539,6 +554,7 @@ export const reportsService = {
 			row.taskKey ?? row.taskId;
 
 		const byUser = new Map<string, AbsenceRow>();
+
 		for (const e of entries) {
 			const row = byUser.get(e.userId) ?? {
 				userId: e.userId,
@@ -547,6 +563,7 @@ export const reportsService = {
 				byTask: {},
 				entries: [],
 			};
+
 			const key = columnKey(e);
 			row.seconds += e.durationSeconds;
 			row.byTask[key] = (row.byTask[key] ?? 0) + e.durationSeconds;

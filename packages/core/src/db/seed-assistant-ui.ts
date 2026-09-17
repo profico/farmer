@@ -104,6 +104,7 @@ if (!conversation) {
 const dayKey = (offset: number) => {
 	const date = new Date();
 	date.setDate(date.getDate() - offset);
+
 	return date.toISOString().slice(0, 10);
 };
 
@@ -190,6 +191,7 @@ Reconstruct yesterday from my commits
 ];
 
 let created = 0;
+
 for (const turn of turns) {
 	await db.insert(assistantMessage).values({
 		organizationId: org.id,
@@ -207,11 +209,13 @@ for (const turn of turns) {
 // the state `runTurn` leaves behind, so the card renders from the stored row on
 // load — the same path a real approval takes after a reload.
 const toolCallId = "seeded-approval-1";
+
 /** The same ids the preview rows carry, so un-ticking one actually narrows the
  *  call the way it would on a real batch. */
 const seededEntryIds = [1, 2, 3, 4].map(
 	(n) => `00000000-0000-4000-8000-00000000000${n}`,
 );
+
 await db.insert(assistantMessage).values({
 	organizationId: org.id,
 	conversationId: conversation.id,
@@ -254,4 +258,5 @@ await db.insert(assistantMessage).values({
 console.log(
 	`Seeded "${TITLE}" for ${owner.email} in ${org.slug}: /${org.slug}/assistant?c=${conversation.id}`,
 );
+
 process.exit(0);

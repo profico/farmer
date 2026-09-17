@@ -19,6 +19,7 @@ export const Route = createFileRoute(
 				run: async (ctx, input): Promise<ApiCopyResult> => {
 					const { timeEntriesService } = await import("@farmer/core/services");
 					const result = await timeEntriesService.copyWeek(ctx, input);
+
 					return {
 						copied: result.copied,
 						skipped: result.skipped,

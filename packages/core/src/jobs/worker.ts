@@ -23,6 +23,7 @@ import { startSchedulers, stopSchedulers } from "./scheduler";
 const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS ?? 10_000);
 
 console.log("[INFO] Starting task worker");
+
 const handles = startSchedulers();
 
 if (handles.length === 0) {
@@ -35,6 +36,7 @@ if (handles.length === 0) {
 const keepAlive = setInterval(() => {}, 1 << 30);
 
 let shuttingDown = false;
+
 const shutdown = async (signal: string) => {
 	if (shuttingDown) return;
 	shuttingDown = true;
@@ -47,6 +49,7 @@ const shutdown = async (signal: string) => {
 process.on("SIGTERM", () => {
 	void shutdown("SIGTERM");
 });
+
 process.on("SIGINT", () => {
 	void shutdown("SIGINT");
 });

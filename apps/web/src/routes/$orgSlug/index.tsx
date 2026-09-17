@@ -73,7 +73,9 @@ const PLOT_H = 76;
 
 function greetingForHour(hour: number): string {
 	if (hour < 12) return "Good morning";
+
 	if (hour < 18) return "Good afternoon";
+
 	return "Good evening";
 }
 
@@ -83,15 +85,19 @@ function OrgHome() {
 	const today = dayKeyInTz(new Date(), organization.timezone);
 	const weekStart = startOfWeekKey(today, organization.weekStartsOn);
 	const weekEnd = addDaysToKey(weekStart, 6);
+
 	const { data: weekEntries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 	);
+
 	// The two yardsticks are the fund rule, read for this person: the week and
 	// the month, each with where they should be by today.
 	const { data: targets } = useSuspenseQuery(myTargetsQuery(orgSlug));
+
 	const { data: holidayEntries } = useSuspenseQuery(
 		holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 	);
+
 	const holidays = new Map(holidayEntries);
 
 	// The "by day" bars are clickable; the day the user picks drives the entry
@@ -99,6 +105,7 @@ function OrgHome() {
 	const [selectedDay, setSelectedDay] = useState(today);
 
 	const todayEntries = weekEntries.filter((entry) => entry.date === today);
+
 	const todayTotal = todayEntries.reduce(
 		(sum, e) => sum + e.durationSeconds,
 		0,
@@ -107,21 +114,25 @@ function OrgHome() {
 	const selectedEntries = weekEntries.filter(
 		(entry) => entry.date === selectedDay,
 	);
+
 	const selectedTotal = selectedEntries.reduce(
 		(sum, e) => sum + e.durationSeconds,
 		0,
 	);
+
 	const weekTotal = weekEntries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
 	// Per-weekday totals, in the org's week order, for the bars — derived from
 	// the same week query, so it costs no extra fetch.
 	const secondsByDay = new Map<string, number>();
+
 	for (const entry of weekEntries) {
 		secondsByDay.set(
 			entry.date,
 			(secondsByDay.get(entry.date) ?? 0) + entry.durationSeconds,
 		);
 	}
+
 	const weekDays = orderedWeekdays(organization.weekStartsOn).map(
 		({ day: weekday, label }, i) => ({
 			weekday,
@@ -129,6 +140,7 @@ function OrgHome() {
 			key: addDaysToKey(weekStart, i),
 		}),
 	);
+
 	// The same marks the timesheet's week strip draws, so a day the week has
 	// made up for is never amber here and quiet there. A day with no mark is
 	// not judged: a future day, a weekend and a public holiday are simply not
@@ -143,6 +155,7 @@ function OrgHome() {
 					daySeconds: targets.daySeconds,
 				})
 			: null;
+
 	const perDay = weekDays.map(({ weekday, label, key }) => ({
 		label,
 		key,
@@ -152,11 +165,13 @@ function OrgHome() {
 		holiday: holidays.get(key),
 		mark: marks?.get(key),
 	}));
+
 	const maxDaySeconds = Math.max(
 		...perDay.map((d) => d.seconds),
 		targets.daySeconds,
 		1,
 	);
+
 	// Where the dashed "a day's worth" rule sits, in the plot's own pixels.
 	const targetPx = Math.round((targets.daySeconds / maxDaySeconds) * PLOT_H);
 
@@ -164,25 +179,31 @@ function OrgHome() {
 	// hand — synced Google Calendar meetings (calendarEventId) and GitHub-linked
 	// work (commitCount, pullRequestCount). Both read straight off today's entries.
 	const meetingEntries = todayEntries.filter((e) => e.calendarEventId);
+
 	const meetingSeconds = meetingEntries.reduce(
 		(s, e) => s + e.durationSeconds,
 		0,
 	);
+
 	const githubEntries = todayEntries.filter(
 		(e) => (e.commitCount ?? 0) > 0 || (e.pullRequestCount ?? 0) > 0,
 	);
+
 	const commitTotal = githubEntries.reduce(
 		(s, e) => s + (e.commitCount ?? 0),
 		0,
 	);
+
 	const pullRequestTotal = githubEntries.reduce(
 		(s, e) => s + (e.pullRequestCount ?? 0),
 		0,
 	);
+
 	const githubSeconds = githubEntries.reduce(
 		(s, e) => s + e.durationSeconds,
 		0,
 	);
+
 	const hasAutoTracked = meetingEntries.length > 0 || githubEntries.length > 0;
 
 	const firstName = session.user.name.split(" ")[0];
@@ -450,7 +471,9 @@ function OrgHome() {
 												3,
 											)
 										: 2;
+
 								const isSelected = d.key === selectedDay;
+
 								// A covered day is grey, not amber: the week has made up for
 								// it, and a bar still in the week's colours would be the
 								// alarm the timesheet strip no longer raises.
@@ -465,6 +488,7 @@ function OrgHome() {
 												: d.seconds === 0
 													? "bad"
 													: "warn";
+
 								return (
 									<button
 										type="button"
