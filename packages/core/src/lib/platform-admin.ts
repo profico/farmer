@@ -5,23 +5,36 @@
  * The two are easy to confuse and are not the same column. An org admin is
  * `member.role` — one row per person per organization, granted from Settings →
  * People by anyone who already administers that workspace. A platform admin is
- * `user.role`, one row per person for the whole instance, and nothing in the
- * product can grant it: it comes from `PLATFORM_ADMIN_EMAILS` and from nowhere
- * else. That is the point. The capability it carries is impersonation, which is
- * the ability to become any user in any workspace, so it must not be reachable
- * by anyone who has talked their way into administering one organization.
+ * `user.role`, one value per person for the whole instance, and it carries
+ * impersonation: the ability to become any user in any workspace.
+ *
+ * **The first account on an instance holds it, and a platform admin grants it
+ * to anybody else.** That is Coolify's model and the one issue #75 records for
+ * this repository — a person who deploys Farmer should be able to run it
+ * without being told to edit an environment variable and restart. The grant
+ * itself is a database value, so it survives a redeploy and is not derivable
+ * from the environment.
+ *
+ * Two consequences worth knowing before changing any of this:
+ *
+ * - **The database is the root of trust, not the deployment's environment.** A
+ *   compromised platform admin can promote an accomplice and demote you, and
+ *   the way back is SQL against the `user` table. That was the trade made when
+ *   the environment variable was dropped.
+ * - **An org admin still cannot escalate.** Nothing a workspace's owner can
+ *   reach writes this column. Three things do: the admin plugin's own
+ *   `user.create.before`, which stamps `defaultRole` on every new account;
+ *   `claimPlatformAdmin` in `auth/index.ts`, which upgrades the first one; and
+ *   better-auth's `admin/set-role` endpoint, which requires the role it
+ *   grants.
  *
  * The role string is `platform_admin` rather than better-auth's default
- * `admin` for the same reason — `member.role === "admin"` is already a thing in
- * this codebase, and two columns whose values read identically is a bug waiting
- * for a reader in a hurry.
+ * `admin` on purpose — `member.role === "admin"` is already a thing in this
+ * codebase, and two columns whose values read identically is a bug waiting for
+ * a reader in a hurry.
  *
- * SERVER ONLY. Like `single-org.ts` and `dev-auth.ts`, this reads
- * `process.env`, so in the browser it would answer "nobody is an admin"
- * whatever the server thinks. Screens learn it from the session instead, where
- * better-auth has already put the role.
- *
- * Read per call rather than captured at module scope, matching `mcp-flag.ts`.
+ * Unlike `single-org.ts` and `dev-auth.ts`, nothing here reads `process.env`,
+ * so these are three constants and a comparison and are safe in any process.
  */
 
 /** The value written to `user.role`. See `adminRoles` in `auth/index.ts`. */
@@ -29,43 +42,6 @@ export const PLATFORM_ADMIN_ROLE = "platform_admin";
 
 /** better-auth's `defaultRole` — everybody who is not a platform admin. */
 export const PLATFORM_USER_ROLE = "user";
-
-/**
- * The configured addresses, lowercased and trimmed.
- *
- * Comma-separated, because that is how every other list-shaped env var in a
- * deployment looks. An empty or unset value means no platform admins at all,
- * which is the right default: a deployment that has not asked for
- * impersonation does not get it.
- */
-export const platformAdminEmails = (): ReadonlySet<string> =>
-	new Set(
-		(process.env.PLATFORM_ADMIN_EMAILS ?? "")
-			.split(",")
-			.map((email) => email.trim().toLowerCase())
-			.filter((email) => email.length > 0),
-	);
-
-/**
- * Whether this address operates the deployment.
- *
- * Compared case-insensitively. The address in the env var is typed by an
- * operator; the one on the account comes from Google, which is where this app's
- * identities come from and which does not promise a casing.
- */
-export const isPlatformAdminEmail = (email: string): boolean =>
-	platformAdminEmails().has(email.trim().toLowerCase());
-
-/**
- * The role a given address should hold, whichever one it holds now.
- *
- * Total rather than partial on purpose: removing an address from
- * `PLATFORM_ADMIN_EMAILS` has to take the role away again, and a function that
- * only ever answers "admin" cannot do that. See the session hook in
- * `auth/index.ts` for when it is applied.
- */
-export const platformRoleFor = (email: string): string =>
-	isPlatformAdminEmail(email) ? PLATFORM_ADMIN_ROLE : PLATFORM_USER_ROLE;
 
 /** Whether a `user.role` read back from the database is a platform admin. */
 export const isPlatformAdminRole = (role: string | null | undefined): boolean =>
