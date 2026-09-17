@@ -34,6 +34,7 @@ export type OrgRoutePath =
 	| "/$orgSlug/settings/recurring-blocks"
 	| "/$orgSlug/settings/holidays"
 	| "/$orgSlug/settings/integrations"
+	| "/$orgSlug/settings/workspace-integrations"
 	| "/$orgSlug/settings/tasks"
 	| "/$orgSlug/settings/hour-fund"
 	| "/$orgSlug/settings/reminders"

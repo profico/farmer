@@ -6,6 +6,7 @@ import {
 	GearSixIcon,
 	HashIcon,
 	PlugIcon,
+	PlugsConnectedIcon,
 	TagIcon,
 	UploadSimpleIcon,
 } from "@phosphor-icons/react";
@@ -136,6 +137,17 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "workspace",
 		description:
 			"When the log reminder, the Slack nudge, the month-end reminder and the admin digest go out, and to whom.",
+		show: (audience) => audience.isAdmin,
+	},
+	{
+		item: {
+			label: "Integrations",
+			to: "/$orgSlug/settings/workspace-integrations",
+			icon: PlugsConnectedIcon,
+		},
+		group: "workspace",
+		description:
+			"What the workspace is connected to: GitHub accounts for repositories, Slack for reminders, and the assistant's model provider.",
 		show: (audience) => audience.isAdmin,
 	},
 	{

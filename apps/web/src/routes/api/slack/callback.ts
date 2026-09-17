@@ -54,7 +54,7 @@ export const Route = createFileRoute("/api/slack/callback")({
 				const org = await db.query.organization.findFirst({
 					where: (o, { eq }) => eq(o.id, orgId),
 				});
-				const back = org ? `/${org.slug}/settings/integrations` : "/";
+				const back = org ? `/${org.slug}/settings/workspace-integrations` : "/";
 
 				// Cancelled at Slack's consent screen, or no code came back. Nothing to
 				// undo — the install simply didn't happen.

@@ -45,6 +45,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAssistantStreamRouteImport } from './routes/api/assistant/stream'
 import { Route as OrgSlugTimeWeekRouteImport } from './routes/$orgSlug/time/week'
 import { Route as OrgSlugTimeMonthRouteImport } from './routes/$orgSlug/time/month'
+import { Route as OrgSlugSettingsWorkspaceIntegrationsRouteImport } from './routes/$orgSlug/settings/workspace-integrations'
 import { Route as OrgSlugSettingsTasksRouteImport } from './routes/$orgSlug/settings/tasks'
 import { Route as OrgSlugSettingsRemindersRouteImport } from './routes/$orgSlug/settings/reminders'
 import { Route as OrgSlugSettingsRecurringBlocksRouteImport } from './routes/$orgSlug/settings/recurring-blocks'
@@ -258,6 +259,12 @@ const OrgSlugTimeMonthRoute = OrgSlugTimeMonthRouteImport.update({
   path: '/month',
   getParentRoute: () => OrgSlugTimeRouteRoute,
 } as any)
+const OrgSlugSettingsWorkspaceIntegrationsRoute =
+  OrgSlugSettingsWorkspaceIntegrationsRouteImport.update({
+    id: '/settings/workspace-integrations',
+    path: '/settings/workspace-integrations',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 const OrgSlugSettingsTasksRoute = OrgSlugSettingsTasksRouteImport.update({
   id: '/settings/tasks',
   path: '/settings/tasks',
@@ -454,6 +461,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
   '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
+  '/$orgSlug/settings/workspace-integrations': typeof OrgSlugSettingsWorkspaceIntegrationsRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
@@ -519,6 +527,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
   '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
+  '/$orgSlug/settings/workspace-integrations': typeof OrgSlugSettingsWorkspaceIntegrationsRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
@@ -587,6 +596,7 @@ export interface FileRoutesById {
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
   '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
   '/$orgSlug/settings/tasks': typeof OrgSlugSettingsTasksRoute
+  '/$orgSlug/settings/workspace-integrations': typeof OrgSlugSettingsWorkspaceIntegrationsRoute
   '/$orgSlug/time/month': typeof OrgSlugTimeMonthRoute
   '/$orgSlug/time/week': typeof OrgSlugTimeWeekRoute
   '/api/assistant/stream': typeof ApiAssistantStreamRoute
@@ -656,6 +666,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/recurring-blocks'
     | '/$orgSlug/settings/reminders'
     | '/$orgSlug/settings/tasks'
+    | '/$orgSlug/settings/workspace-integrations'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
     | '/api/assistant/stream'
@@ -721,6 +732,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/recurring-blocks'
     | '/$orgSlug/settings/reminders'
     | '/$orgSlug/settings/tasks'
+    | '/$orgSlug/settings/workspace-integrations'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
     | '/api/assistant/stream'
@@ -788,6 +800,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/recurring-blocks'
     | '/$orgSlug/settings/reminders'
     | '/$orgSlug/settings/tasks'
+    | '/$orgSlug/settings/workspace-integrations'
     | '/$orgSlug/time/month'
     | '/$orgSlug/time/week'
     | '/api/assistant/stream'
@@ -1122,6 +1135,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugTimeMonthRouteImport
       parentRoute: typeof OrgSlugTimeRouteRoute
     }
+    '/$orgSlug/settings/workspace-integrations': {
+      id: '/$orgSlug/settings/workspace-integrations'
+      path: '/settings/workspace-integrations'
+      fullPath: '/$orgSlug/settings/workspace-integrations'
+      preLoaderRoute: typeof OrgSlugSettingsWorkspaceIntegrationsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/settings/tasks': {
       id: '/$orgSlug/settings/tasks'
       path: '/settings/tasks'
@@ -1361,6 +1381,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugSettingsRecurringBlocksRoute: typeof OrgSlugSettingsRecurringBlocksRoute
   OrgSlugSettingsRemindersRoute: typeof OrgSlugSettingsRemindersRoute
   OrgSlugSettingsTasksRoute: typeof OrgSlugSettingsTasksRoute
+  OrgSlugSettingsWorkspaceIntegrationsRoute: typeof OrgSlugSettingsWorkspaceIntegrationsRoute
   OrgSlugProjectsIndexRoute: typeof OrgSlugProjectsIndexRoute
   OrgSlugSettingsIndexRoute: typeof OrgSlugSettingsIndexRoute
   OrgSlugProjectsProjectIdSettingsRoute: typeof OrgSlugProjectsProjectIdSettingsRoute
@@ -1386,6 +1407,8 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugSettingsRecurringBlocksRoute: OrgSlugSettingsRecurringBlocksRoute,
   OrgSlugSettingsRemindersRoute: OrgSlugSettingsRemindersRoute,
   OrgSlugSettingsTasksRoute: OrgSlugSettingsTasksRoute,
+  OrgSlugSettingsWorkspaceIntegrationsRoute:
+    OrgSlugSettingsWorkspaceIntegrationsRoute,
   OrgSlugProjectsIndexRoute: OrgSlugProjectsIndexRoute,
   OrgSlugSettingsIndexRoute: OrgSlugSettingsIndexRoute,
   OrgSlugProjectsProjectIdSettingsRoute: OrgSlugProjectsProjectIdSettingsRoute,
