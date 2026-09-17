@@ -70,7 +70,9 @@ const WORKER_SCRIPT = fileURLToPath(
 // DATABASE_URL the local .env points at, which is routinely a shared or restored
 // staging database full of real addresses. `bun run dev` is not consent to page
 // a colleague. The upload sweep DELETES from the bucket, and a local .env can
-// pair a database with a bucket that was never its own. The automation sweep is
+// pair a database with a bucket that was never its own. The timer sweep drops
+// somebody's running stopwatch and DMs them about it, and a measurement is not
+// recoverable. The automation sweep is
 // the one that has to run locally anyway, since it is what replaced the
 // write-on-read engines.
 //
@@ -79,6 +81,7 @@ const DEV_WORKER_JOB_DEFAULTS = {
 	AUTOMATION_SYNC_ENABLED: "true",
 	LOG_REMINDERS_ENABLED: "false",
 	SLACK_REMINDERS_ENABLED: "false",
+	TIMER_SWEEP_ENABLED: "false",
 	UPLOAD_SWEEP_ENABLED: "false",
 } satisfies Record<string, string>;
 

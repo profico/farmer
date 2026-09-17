@@ -29,6 +29,7 @@ import {
 	settingsNavGroups,
 	settingsSubNavItems,
 } from "#/components/settings-nav.tsx";
+import { TimerCard } from "#/components/time/timer-row.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import {
 	DropdownMenu,
@@ -462,12 +463,15 @@ export function AppSidebar({
 
 							    No toggle while a panel is open: the panel IS the column's
 							    expansion, and a control that would put two labelled lists side
-							    by side is a control with nowhere to go. It FADES and keeps its
-							    space rather than unmounting — dropping the element both moved
-							    the row under it 44px down the column and made the button blink
-							    out in one frame while the column beside it took `--dur-long` to
-							    close. `inert` is what "gone" means for a reader who is not
-							    looking at it.
+							    by side is a control with nowhere to go. It FADES and CLOSES,
+							    rather than unmounting — the two rows above it ride down into the
+							    space it gives up on the column's own clock, and back up when the
+							    panel shuts. Unmounting the row covered that distance in one
+							    frame, and keeping the space and fading alone covered none of it:
+							    the rows then stood over a 44px hole for as long as the panel was
+							    open. The height belongs to `.nav-toggle-slot` in styles.css, on
+							    the panel's `--dur-long`. `inert` is what "gone" means for a
+							    reader who is not looking at it.
 
 							    `navCollapsed`, not `collapsed`: a panel forces the rail, so
 							    `collapsed` would flip the carets round halfway through the fade
@@ -478,6 +482,16 @@ export function AppSidebar({
 							    moved or hidden while it is up — the app is meant to look
 							    exactly as it does for the person being impersonated, which
 							    is the entire point of looking at it. */}
+							{/* A stopwatch is the one piece of state that is true while you
+							    are looking at something else, so it lives in the furniture
+							    rather than on the timesheet — the unfiled badge is in this
+							    column for the same reason. It draws nothing at all unless a
+							    timer is running.
+
+							    Not a nav row: it is a control card, and it keeps its own
+							    height at both widths. `.timer-card` in styles.css crosses
+							    between the two on the column's own clock. */}
+							<TimerCard orgSlug={orgSlug} timezone={timezone} />
 							{impersonating !== null && (
 								<ImpersonationRow name={impersonating} collapsed={collapsed} />
 							)}
@@ -807,8 +821,8 @@ function CollapseToggle({
 	className,
 }: {
 	collapsed: boolean;
-	/** A panel is open, so the control has nowhere to go. It keeps its space and
-	 *  fades instead of unmounting — see the call site. */
+	/** A panel is open, so the control has nowhere to go. It fades and closes
+	 *  its own height instead of unmounting — see the call site. */
 	hidden?: boolean;
 	className?: string;
 }) {
@@ -818,37 +832,46 @@ function CollapseToggle({
 	// is where the edge goes when you press it.
 	const Caret = collapsed ? CaretDoubleRightIcon : CaretDoubleLeftIcon;
 	return (
-		<Tooltip>
-			<TooltipTrigger
-				render={
-					<button
-						type="button"
-						onClick={() => setNavCollapsed(!collapsed)}
-						aria-label={label}
-						inert={hidden}
-						// `text-left` because this row is a <button>, and a button centres its
-						// text where the <a> rows beside it do not.
-						// `navRowBase`, not `navRowClass`: this row's transition is the
-						// stylesheet's, because it fades on the panel's `--dur-long` while
-						// the rows above it hover on `--dur-base`. See `navRowClass`.
-						className={cn(navRowBase, "nav-toggle text-left", className)}
-					>
-						<Caret
-							weight="regular"
-							className="relative size-4.5 shrink-0 text-muted-foreground"
-						/>
-						<span className="nav-label">
-							<span className="min-w-0 flex-1 truncate text-base">
-								Collapse
+		// The height that closes, and the only reason for a wrapper here: the
+		// button carries `h-10` as a utility, which no rule in the stylesheet can
+		// talk down. See `.nav-toggle-slot` in styles.css.
+		<div className="nav-toggle-slot">
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<button
+							type="button"
+							onClick={() => setNavCollapsed(!collapsed)}
+							aria-label={label}
+							inert={hidden}
+							// `text-left` because this row is a <button>, and a button centres its
+							// text where the <a> rows beside it do not.
+							// `navRowBase`, not `navRowClass`: this row's transition is the
+							// stylesheet's, because it fades on the panel's `--dur-long` while
+							// the rows above it hover on `--dur-base`. See `navRowClass`.
+							className={cn(navRowBase, "nav-toggle text-left", className)}
+						>
+							<Caret
+								weight="regular"
+								className="relative size-4.5 shrink-0 text-muted-foreground"
+							/>
+							<span className="nav-label">
+								<span className="min-w-0 flex-1 truncate text-base">
+									Collapse
+								</span>
 							</span>
-						</span>
-					</button>
-				}
-			/>
-			<TooltipContent side="right" sideOffset={8} hidden={!collapsed || hidden}>
-				{label}
-			</TooltipContent>
-		</Tooltip>
+						</button>
+					}
+				/>
+				<TooltipContent
+					side="right"
+					sideOffset={8}
+					hidden={!collapsed || hidden}
+				>
+					{label}
+				</TooltipContent>
+			</Tooltip>
+		</div>
 	);
 }
 

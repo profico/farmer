@@ -1,0 +1,55 @@
+import { z } from "zod";
+
+import { QUARTER_HOUR_SECONDS } from "./time-entries";
+
+// The stopwatch's inputs (issues #59 and #43). Confirming one is creating a time
+// entry, so `confirmTimerInput` carries the entry's own rules — the 15-minute
+// step above all. Nothing about a timer may write a duration a person could not
+// have typed into the form.
+
+export const startTimerInput = z.object({
+	projectId: z.uuid().optional(),
+	taskId: z.uuid(),
+	description: z.string().max(10_000).optional(),
+});
+export type StartTimerInput = z.infer<typeof startTimerInput>;
+
+/** What may be changed while the clock runs. Every field is optional: the
+ *  dialog sends only what the person touched. */
+export const updateTimerInput = z.object({
+	projectId: z.uuid().nullable().optional(),
+	taskId: z.uuid().optional(),
+	description: z.string().max(10_000).optional(),
+});
+export type UpdateTimerInput = z.infer<typeof updateTimerInput>;
+
+export const confirmTimerInput = z.object({
+	// The day the timer started, as the caller read it. Sent rather than derived
+	// so the person can move the entry in the dialog that stopping opens — a
+	// timer run through midnight is the ordinary case for it.
+	date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd"),
+	projectId: z.uuid().optional(),
+	taskId: z.uuid(),
+	description: z.string().max(10_000).optional(),
+	durationSeconds: z
+		.number()
+		.int()
+		.positive("Enter some time")
+		.max(24 * 3600, "A single entry cannot exceed 24 hours")
+		.refine((value) => value % QUARTER_HOUR_SECONDS === 0, {
+			message: "Time must be in 15-minute steps",
+		}),
+	overtime: z.boolean().default(false),
+});
+export type ConfirmTimerInput = z.infer<typeof confirmTimerInput>;
+
+export const timerSettingsInput = z.object({
+	// One hour is the shortest cap worth having; a day is the longest a timer
+	// could honestly measure, since an entry cannot be longer than one.
+	maxSeconds: z
+		.number()
+		.int()
+		.min(3600, "One hour is the shortest limit")
+		.max(24 * 3600, "A day is the longest limit"),
+});
+export type TimerSettingsInput = z.infer<typeof timerSettingsInput>;

@@ -49,7 +49,14 @@ export function WeekStrip({
 				});
 
 	return (
-		<div className="-mx-4 flex items-stretch gap-1 overflow-x-auto border-b px-4 sm:-mx-8 sm:px-8">
+		// `overflow-y-clip` is load-bearing, not tidying. Tailwind's
+		// `overflow-x-auto` sets one axis, and CSS then computes the other from
+		// `visible` to `auto` — so this strip is a VERTICAL scroller too, and any
+		// sub-pixel of height (the active day's 2px underscore below, a fractional
+		// line box at a zoomed scale) puts a real scrollbar down its right edge, on
+		// top of the week total. `clip` with a margin refuses to scroll on that
+		// axis while still drawing the underscore that sits in the border.
+		<div className="-mx-4 flex items-stretch gap-1 overflow-x-auto overflow-y-clip border-b px-4 [overflow-clip-margin:4px] sm:-mx-8 sm:px-8">
 			{dates.map((date) => {
 				const seconds = secondsByDay.get(date) ?? 0;
 				const isActive = date === activeDate;

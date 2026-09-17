@@ -43,6 +43,7 @@ export * from "./slack.service";
 export * from "./tasks.service";
 export * from "./team-leads.service";
 export * from "./time-entries.service";
+export * from "./timers.service";
 export * from "./types";
 export * from "./unfiled";
 export * from "./uploads.service";

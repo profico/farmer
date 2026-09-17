@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { createCredentialStore, type Keyring } from "./credentials";
+import { CliError } from "./errors";
 import { ApiClient, normalizeOrigin, retryAfterSeconds } from "./http";
 import { jsonReply, scriptedServer } from "./test-server";
 
@@ -139,6 +140,36 @@ describe("ApiClient", () => {
 		).rejects.toThrow(
 			"The day would pass 24 hours.\n  durationSeconds: Too long",
 		);
+	});
+
+	// A command for a route the server does not have has to tell that apart
+	// from a route the server refuses. Both answer 404; only the refusal
+	// carries a `code`, so the code is what the command branches on — see
+	// `commands/timer.ts`.
+	test("carries the status and the code of a failure", async () => {
+		const { api } = await clientWith([
+			jsonReply(404, { error: "Not found", code: "not_found" }),
+		]);
+		const refused = await api
+			.get("/api/v1/orgs/acme/timer")
+			.then(() => null)
+			.catch((error: unknown) => error);
+		if (!(refused instanceof CliError)) throw new Error("Expected a CliError");
+		expect(refused.status).toBe(404);
+		expect(refused.code).toBe("not_found");
+	});
+
+	test("carries no code when the body is not an ApiError", async () => {
+		const { api } = await clientWith([
+			new Response("<html>Not Found</html>", { status: 404 }),
+		]);
+		const missing = await api
+			.get("/api/v1/orgs/acme/timer")
+			.then(() => null)
+			.catch((error: unknown) => error);
+		if (!(missing instanceof CliError)) throw new Error("Expected a CliError");
+		expect(missing.status).toBe(404);
+		expect(missing.code).toBeUndefined();
 	});
 });
 

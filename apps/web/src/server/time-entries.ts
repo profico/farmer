@@ -164,8 +164,9 @@ export const deleteTimeEntry = createServerFn({ method: "POST" })
 		return timeEntriesService.remove(context.ctx, timeEntryId);
 	});
 
-// Copy a whole day onto another day. With no timer to run, this is the main
-// affordance for people whose days have a repeating shape.
+// Copy a whole day onto another day — the main affordance for people whose
+// days have a repeating shape, and the one that asks nothing of them while
+// they work. `server/timer.ts` is the other end: measure it as it happens.
 // One cell of the week grid. Deliberately its own endpoint rather than a
 // create-or-update dance on the client: the grid addresses cells by
 // (project, task, date), and resolving that to an entry id is the server's job.

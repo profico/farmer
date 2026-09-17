@@ -60,6 +60,13 @@ farmer log <duration | fill> [description] [-p project] [-t task] [-d date] [--o
 farmer edit [n | id]                Change an entry
 farmer rm [n | id] [--yes]          Delete an entry
 
+farmer start [description] [-p project] [-t task]
+farmer pause                        Hold the clock; it measures nothing
+farmer resume                       Start measuring again
+farmer stop [-m text] [-p project] [-t task] [--duration <d>] [-d date] [--overtime]
+farmer timer                        What the timer is measuring
+farmer timer discard [--yes]        Throw the measurement away
+
 farmer unfiled [--week]             Worked time with no project
 farmer file [ids...] [-p project]   Put unfiled entries on a project
 farmer copy day <from> [to]         Copy a day onto another day
@@ -84,6 +91,9 @@ farmer edit 2 --duration 45m               # the day's second row
 farmer edit 2 --add 1.25                   # 1h15m on top of what it holds
 farmer rm 3 -d mon --yes
 farmer off vacation 2026-12-22..2027-01-02
+farmer start "Checkout form" -p web -t development
+farmer pause                               # holds it; farmer resume goes on
+farmer stop                                # logs the measured time
 farmer today --json | jq '.[].durationSeconds'
 ```
 
@@ -92,6 +102,17 @@ farmer today --json | jq '.[].durationSeconds'
   instead of an id. The number belongs to the day, so `farmer edit 2 -d mon`
   changes Monday's second row. It is the row as the list stands now — log or
   delete something and the numbers below it move.
+- The timer measures; it does not log. `farmer stop` logs the measured time,
+  rounded to the nearest 15 minutes, which is the only duration an entry can
+  hold; pass `--duration` to log another one. One timer at a time, in every
+  organization and on every machine: start it here and stop it in the browser,
+  or the other way round. A timer left running past your limit (Settings →
+  Preferences, 12 hours by default) is dropped and logs nothing, and
+  `farmer timer` says so.
+- `farmer pause` holds the clock and `farmer resume` starts it measuring
+  again. A held timer keeps its figure and measures nothing, so it may be held
+  for as long as you want and can never be dropped for passing your limit. What
+  `farmer stop` logs is the time the timer ran, never the pauses.
 - Durations: `1h30m`, `1.5` or `90m`, in 15-minute steps. `farmer edit --add`
   takes the same forms and adds them to the time the entry already holds, so
   a second stretch of work on one task needs no arithmetic.
@@ -121,7 +142,7 @@ Then `farmer log 90m "Checkout form"` needs no `-p` or `-t`.
 
 - The CLI uses the nearest `.farmer.jsonc` from the current directory up to the
   git root. Outside a git repository, no file applies.
-- `farmer log` uses `project` and `task`. Every command uses `org`.
+- `farmer log` and `farmer start` use `project` and `task`. Every command uses `org`.
 - A flag always wins. `--org` turns the file off for that command.
 - Each command says which values it took from the file, on stderr.
 - A file that is broken, or names something you cannot use, stops the command.

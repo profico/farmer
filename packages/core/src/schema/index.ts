@@ -21,6 +21,7 @@ export * from "./slack";
 export * from "./tasks";
 export * from "./team-leads";
 export * from "./time-entries";
+export * from "./timer";
 export * from "./uploads";
 export * from "./webhooks";
 export * from "./working-hours";

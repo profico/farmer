@@ -1577,14 +1577,111 @@ html {
     filter: blur(5px);
   }
 
-  /* The collapse toggle, which has nothing to do beside an open panel. It keeps
-     its space and fades, rather than unmounting: dropping it moved the row under
-     it 44px down the column, and it blinked out in one frame while the column
-     beside it took `--dur-long` to close. `inert` on the element is the other
-     half — this rule only stops the pointer. */
+  /* The collapse toggle, which has nothing to do beside an open panel. It fades
+     AND hands its space back, on the column's own clock: the rows above it — a
+     running timer, an impersonation warning — sit on a spacer, so the height
+     this row gives up is the distance they travel down, and take back when the
+     panel closes. Unmounting the row covered the same distance in one frame,
+     which is what the space used to be kept for; a height on the panel's curve
+     is the third answer. `inert` on the element is the other half — these rules
+     only stop the pointer.
+
+     The SLOT is what moves, and the button inside it only fades. `h-10` is a
+     Tailwind utility, and `@layer utilities` beats this layer whatever the
+     selector says, so a height on `.nav-toggle` itself is dropped on the floor
+     — the trap `.nav-brand` pays an `!important` to get out of. A plain
+     wrapper owns no utilities, so it needs neither.
+
+     2.5rem is the row. The -0.25rem is the column's `gap-1`: a row of no
+     height still claims a gap on BOTH sides of itself, so the margin gives the
+     second one back and the two neighbours close to one gap. `flex: none`
+     because a zero-height item in a scrolling column is otherwise free to be
+     shrunk past it. */
+  .nav-toggle-slot {
+    flex: none;
+    height: 2.5rem;
+    margin-bottom: 0;
+    overflow: hidden;
+    transition:
+      height var(--dur-long) var(--ease-in-out),
+      margin-bottom var(--dur-long) var(--ease-in-out);
+  }
+
+  [data-panel] .nav-toggle-slot {
+    height: 0;
+    margin-bottom: -0.25rem;
+  }
+
   [data-panel] .nav-toggle {
     opacity: 0;
     pointer-events: none;
+  }
+
+  /* The running timer's control card, at the foot of the column.
+
+     It is the one thing in the column that is not a row: a stopwatch has a
+     state to report (what it is measuring, since when) and two things to do
+     with it, and none of that fits behind an icon. So it keeps the two shapes
+     the column has — a card while the column is open, and a dot over a figure
+     at rail width — and CROSSES between them rather than swapping.
+
+     Driven by `data-nav` / `data-panel`, NOT by React's `collapsed`, for the
+     reason `.nav-label` above gives: one attribute flip is one style
+     recalculation, so the card and the column it sits in start on the same
+     frame. The height is on the panel's `--dur-long` because the rows do not
+     move — the card grows and shrinks under them.
+
+     Both layers are absolutely positioned inside the frame. Laying them out in
+     flow would make the taller one set the height, and the height is the whole
+     point of the switch. */
+  .timer-card {
+    position: relative;
+    flex: none;
+    height: 7.75rem;
+    overflow: hidden;
+    transition: height var(--dur-long) var(--ease-in-out);
+  }
+
+  :root[data-nav='rail'] .timer-card,
+  [data-panel] .timer-card {
+    height: 3.75rem;
+  }
+
+  .timer-card-body,
+  .timer-card-rail {
+    position: absolute;
+    inset: 0;
+    transition:
+      opacity var(--dur-long) var(--ease-in-out),
+      filter var(--dur-long) var(--ease-in-out);
+  }
+
+  .timer-card-body {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  /* The rail layer is only ever the figure, so it fades in as the card fades
+     out rather than waiting for it — a gap with neither on it would read as the
+     timer having stopped. */
+  .timer-card-rail {
+    opacity: 0;
+    filter: blur(5px);
+    pointer-events: none;
+  }
+
+  :root[data-nav='rail'] .timer-card-body,
+  [data-panel] .timer-card-body {
+    opacity: 0;
+    filter: blur(5px);
+    pointer-events: none;
+  }
+
+  :root[data-nav='rail'] .timer-card-rail,
+  [data-panel] .timer-card-rail {
+    opacity: 1;
+    filter: blur(0);
+    pointer-events: auto;
   }
 
   /* All three properties are listed here, and that is deliberate. A Tailwind
@@ -1610,6 +1707,11 @@ html {
      that cannot answer is worse than not being offered it. `inert` is React's
      half, in `app-sidebar.tsx`. */
   @media (max-width: 63.999rem) {
+    .nav-toggle-slot {
+      height: 0;
+      margin-bottom: -0.25rem;
+    }
+
     .nav-toggle {
       opacity: 0;
       pointer-events: none;
