@@ -76,6 +76,7 @@ Two gates that read as one and are not: `assertTaskAvailable` (guards.ts) asks w
 - **Person type decides who has a target** (`memberType`, effective-dated through `memberTypeHistory`): hourly students and contractors have none without an override; overhead employees and archived people are never listed.
 - **No hour fund means no verdict**, not "on track": the nudge sends nothing, and the digest and preview say no fund is set (`reminder-recipients.ts`).
 - `complianceService.myTargets` returns week and month `PeriodTarget`s for `components/targets.tsx`. The service takes an optional `{ now }` so a test can pin the date — every figure is a fraction of the period elapsed.
+- **A short day is marked only while its week is behind** (`lib/day-marks.ts`, issue #58). The timesheet's week strip and the home page's week chart both read `weekDayMarks`: a working day is `done`, `short`, or `covered` — under a day's worth, but the rest of the week (weekends included) has made up for it, and a covered day shows no label. A past day is held to the week tile's own yardstick, so it is never red beside a tile that says on track; today also counts its own day's worth, or it would go quiet every morning for anyone exactly on target.
 
 
 ## Tasks
