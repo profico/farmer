@@ -137,9 +137,7 @@ function PlatformAdminsPage() {
 				lede="These people operate this deployment of Farmer. They have full access to the platform and can manage everyone and everything."
 			/>
 
-			<PageSection
-				title="Current"
-			>
+			<PageSection title="Current">
 				<ul className="divide-y divide-border">
 					{admins.map((person) => (
 						<li
