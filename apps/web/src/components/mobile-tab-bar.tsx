@@ -32,6 +32,7 @@ import { myAccessQuery } from "#/queries/access.ts";
 export function MobileTabBar({
 	orgSlug,
 	isAdmin,
+	isPlatformAdmin,
 	userName,
 	userEmail,
 	userImage,
@@ -40,6 +41,8 @@ export function MobileTabBar({
 }: {
 	orgSlug: string;
 	isAdmin: boolean;
+	/** See the same prop on `AppSidebar`. */
+	isPlatformAdmin: boolean;
 	userName: string;
 	userEmail: string;
 	/** Off the session — see the same prop on `AppSidebar`. */
@@ -84,16 +87,15 @@ export function MobileTabBar({
 				REPORTS_ITEM,
 			],
 		},
-		// Settings, then everything behind it, in the hub's own two groups — the
+		// Settings, then everything behind it, in the hub's own groups — the
 		// same catalogue the sidebar's sub-menu draws (`settingsNavGroups`), so a
 		// phone reaches every settings page in the order a desktop lists them.
 		// Before this the sheet showed "You" and "Manage", which were four of the
 		// twelve; the other eight were two taps away behind the hub.
 		{ label: "Settings", items: YOU_ITEMS },
-		...settingsNavGroups({ isAdmin, canManageClients }).map((group) => ({
-			label: group.label,
-			items: group.items,
-		})),
+		...settingsNavGroups({ isAdmin, canManageClients, isPlatformAdmin }).map(
+			(group) => ({ label: group.label, items: group.items }),
+		),
 	].filter((group) => group.items.length > 0);
 
 	const moreItems = groups.flatMap((group) => group.items);

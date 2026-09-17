@@ -1,4 +1,4 @@
-import { CaretRightIcon, ShieldCheckIcon } from "@phosphor-icons/react";
+import { CaretRightIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
@@ -21,11 +21,13 @@ import { myAccessQuery } from "#/queries/access.ts";
  * the sidebar therefore had to carry all ten. That is what made "Workspace" a
  * group of eleven holding both the hour fund and your color theme.
  *
- * The two sections here are the same split the pages' own eyebrows already
- * state: Account over Preferences, Workspace over Organization. Both the
- * sections and their order come from `components/settings-nav.tsx`, which the
- * sidebar's sub-menu reads too — so the menu and this page cannot disagree
- * about what exists, what it is called, or which section it is in.
+ * The first two sections here are the same split the pages' own eyebrows
+ * already state: Account over Preferences, Workspace over Organization. A third,
+ * Instance, appears only for a platform admin and leaves the workspace
+ * altogether. All three, their order and their contents come from
+ * `components/settings-nav.tsx`, which the sidebar's sub-menu reads too — so the
+ * menu and this page cannot disagree about what exists, what it is called, or
+ * which section it is in.
  *
  * **Two columns, not one.** Twelve rows of icon-and-sentence at 80px each made
  * this page a long scroll for a list of destinations, and the right two thirds
@@ -87,9 +89,14 @@ function SettingsIndex() {
 
 	// Filtered, never rendered as a disabled row: a settings page you may not
 	// open is not a setting you have, it is somebody else's.
-	const entries = settingsEntriesFor({ isAdmin, canManageClients });
+	const entries = settingsEntriesFor({
+		isAdmin,
+		canManageClients,
+		isPlatformAdmin,
+	});
 	const account = entries.filter((entry) => entry.group === "account");
 	const workspace = entries.filter((entry) => entry.group === "workspace");
+	const instance = entries.filter((entry) => entry.group === "instance");
 
 	return (
 		<Page>
@@ -122,40 +129,14 @@ function SettingsIndex() {
 				</PageSection>
 			)}
 
-			{/* The deployment's own settings, which are not this workspace's — and
-			    the only way into them, because `NavItem.to` is typed `OrgRoutePath`
-			    and every surface that draws one passes an `orgSlug` it would not
-			    have (see `routes/infrastructure/route.tsx`).
-
-			    Drawn as its own section rather than a row under Workspace: it
-			    leaves this workspace, and it is the one section here that most
-			    people never see at all. */}
-			{isPlatformAdmin && (
+			{instance.length > 0 && (
 				<PageSection
-					title="Instance"
+					title={SETTINGS_GROUP_LABEL.instance}
 					contentClassName="grid gap-x-10 sm:grid-cols-2"
 				>
-					<Link
-						to="/infrastructure/admins"
-						className="group/row -mx-2.5 flex items-start gap-3 rounded-lg px-2.5 py-3 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40"
-					>
-						<span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors duration-(--dur-fast) group-hover/row:text-foreground">
-							<ShieldCheckIcon className="size-4" />
-						</span>
-						<span className="min-w-0 flex-1">
-							<span className="block text-base font-medium">
-								Infrastructure
-							</span>
-							<span className="mt-0.5 block text-sm leading-normal text-muted-foreground">
-								How this deployment runs, starting with who operates it.
-							</span>
-						</span>
-						<CaretRightIcon
-							weight="regular"
-							aria-hidden
-							className="mt-2 size-3.5 shrink-0 text-faint opacity-0 transition-opacity duration-(--dur-fast) group-hover/row:opacity-100 group-focus-visible/row:opacity-100"
-						/>
-					</Link>
+					{instance.map((entry) => (
+						<SettingsRowLink key={entry.item.to} {...entry} />
+					))}
 				</PageSection>
 			)}
 

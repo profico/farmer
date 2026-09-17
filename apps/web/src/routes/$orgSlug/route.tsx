@@ -119,6 +119,7 @@ function OrgLayout() {
 		session,
 		organization,
 		role,
+		isPlatformAdmin,
 		singleOrg,
 		assistantEnabled,
 		impersonating,
@@ -168,6 +169,7 @@ function OrgLayout() {
 					organizationName={organization.name}
 					organizationLogo={organization.logo}
 					isAdmin={isAdmin}
+					isPlatformAdmin={isPlatformAdmin}
 					userName={session.user.name}
 					userEmail={session.user.email}
 					userImage={session.user.image ?? null}
@@ -182,6 +184,7 @@ function OrgLayout() {
 				<MobileTabBar
 					orgSlug={organization.slug}
 					isAdmin={isAdmin}
+					isPlatformAdmin={isPlatformAdmin}
 					userName={session.user.name}
 					userEmail={session.user.email}
 					userImage={session.user.image ?? null}

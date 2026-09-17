@@ -107,6 +107,7 @@ export function AppSidebar({
 	organizationName,
 	organizationLogo,
 	isAdmin,
+	isPlatformAdmin,
 	userName,
 	userEmail,
 	userImage,
@@ -119,6 +120,9 @@ export function AppSidebar({
 	organizationName: string;
 	organizationLogo?: string | null;
 	isAdmin: boolean;
+	/** `user.role`, not a workspace role. It adds one row to the settings
+	 *  sub-menu — the deployment's own settings. */
+	isPlatformAdmin: boolean;
 	userName: string;
 	userEmail: string;
 	/** Straight off the session rather than through the org directory: this is
@@ -187,7 +191,11 @@ export function AppSidebar({
 	if (panel !== null) lastPanel.current = panel;
 	const shown = panel ?? lastPanel.current;
 
-	const settingsGroups = settingsNavGroups({ isAdmin, canManageClients });
+	const settingsGroups = settingsNavGroups({
+		isAdmin,
+		canManageClients,
+		isPlatformAdmin,
+	});
 
 	// The nav's own rows: the four work screens, then the assistant where it is
 	// available. Reports joins the work group rather than standing alone — a
@@ -207,7 +215,9 @@ export function AppSidebar({
 		[
 			...navItems,
 			SETTINGS_ITEM,
-			...(inSettings ? settingsSubNavItems({ isAdmin, canManageClients }) : []),
+			...(inSettings
+				? settingsSubNavItems({ isAdmin, canManageClients, isPlatformAdmin })
+				: []),
 		],
 		orgSlug,
 	);

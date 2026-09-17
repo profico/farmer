@@ -43,9 +43,21 @@ export type OrgRoutePath =
 	| "/$orgSlug/settings/preferences"
 	| "/$orgSlug/settings/members";
 
+/**
+ * A destination that belongs to the DEPLOYMENT rather than to a workspace.
+ *
+ * It carries no `$orgSlug`, which is the whole difference: everything in
+ * `OrgRoutePath` is drawn with `params={{ orgSlug }}`, and these routes have no
+ * such param to fill. Every surface that draws a `NavItem` passes the params
+ * anyway — an extra key for a route that declares none is inert — so the one
+ * place the distinction has to be made is `isNavItemActive`, where a path with
+ * no `$orgSlug` to substitute simply matches itself.
+ */
+export type InstanceRoutePath = "/infrastructure/admins";
+
 export type NavItem = {
 	label: string;
-	to: OrgRoutePath;
+	to: OrgRoutePath | InstanceRoutePath;
 	icon: ComponentType<{ className?: string }>;
 };
 

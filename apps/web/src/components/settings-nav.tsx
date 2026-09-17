@@ -7,6 +7,7 @@ import {
 	HashIcon,
 	PlugIcon,
 	PlugsConnectedIcon,
+	ShieldCheckIcon,
 	TagIcon,
 	UploadSimpleIcon,
 } from "@phosphor-icons/react";
@@ -35,12 +36,14 @@ export type SettingsAudience = {
 	isAdmin: boolean;
 	/** A Team Lead or PM on any project, or an admin. */
 	canManageClients: boolean;
+	/** `user.role`, not a workspace role — whoever operates the deployment. */
+	isPlatformAdmin: boolean;
 };
 
 export type SettingsEntry = {
 	item: NavItem;
-	/** Which of the hub's two sections the row belongs to. */
-	group: "account" | "workspace";
+	/** Which of the hub's three sections the row belongs to. */
+	group: "account" | "workspace" | "instance";
 	description: string;
 	show: (audience: SettingsAudience) => boolean;
 };
@@ -171,6 +174,21 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		description: "The public holidays this workspace observes.",
 		show: always,
 	},
+	// The deployment's own settings, which are not this workspace's — and the
+	// only way into them. Its own group rather than a row under Workspace,
+	// because it LEAVES the workspace: the destination carries no `$orgSlug`,
+	// and a platform admin need not be a member of the organization they happen
+	// to be looking at when they go there.
+	{
+		item: {
+			label: "Infrastructure",
+			to: "/infrastructure/admins",
+			icon: ShieldCheckIcon,
+		},
+		group: "instance",
+		description: "How this deployment runs, starting with who operates it.",
+		show: (audience) => audience.isPlatformAdmin,
+	},
 ];
 
 /** The rows this reader may open, in the hub's order. */
@@ -183,10 +201,11 @@ export const settingsEntriesFor = (
 export const settingsSubNavItems = (audience: SettingsAudience): NavItem[] =>
 	settingsEntriesFor(audience).map((entry) => entry.item);
 
-/** The label each of the hub's two sections carries, on both surfaces. */
+/** The label each of the hub's three sections carries, on both surfaces. */
 export const SETTINGS_GROUP_LABEL = {
 	account: "Account",
 	workspace: "Workspace",
+	instance: "Instance",
 } as const;
 
 /**
@@ -203,9 +222,13 @@ export const SETTINGS_GROUP_LABEL = {
  */
 export const settingsNavGroups = (
 	audience: SettingsAudience,
-): { key: "account" | "workspace"; label: string; items: NavItem[] }[] => {
+): {
+	key: "account" | "workspace" | "instance";
+	label: string;
+	items: NavItem[];
+}[] => {
 	const entries = settingsEntriesFor(audience);
-	return (["account", "workspace"] as const)
+	return (["account", "workspace", "instance"] as const)
 		.map((key) => ({
 			key,
 			label: SETTINGS_GROUP_LABEL[key],
