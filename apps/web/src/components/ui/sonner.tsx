@@ -40,7 +40,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
 					"--success-text": "var(--ok)",
 					"--success-border": "var(--border)",
 					"--error-bg": "var(--popover)",
-					"--error-text": "var(--acc)",
+					"--error-text": "var(--destructive)",
 					"--error-border": "var(--border)",
 					"--warning-bg": "var(--popover)",
 					"--warning-text": "var(--warn)",

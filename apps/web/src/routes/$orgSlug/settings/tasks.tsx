@@ -516,6 +516,7 @@ function TasksPage() {
 							!builtIn &&
 								!task.archivedAt && {
 									label: "Archive",
+									variant: "destructive",
 									disabled: archiveMutation.isPending,
 									onClick: () => archiveMutation.mutate(task.id),
 								},

@@ -451,6 +451,7 @@ function Roster({
 											<Button
 												variant="ghost"
 												size="icon-sm"
+												className="hover:text-destructive"
 												aria-label={`Remove ${m.name} from the project`}
 												disabled={remove.isPending}
 												onClick={() => removePerson(m)}

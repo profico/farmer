@@ -342,6 +342,7 @@ function OrganizationSettingsPage() {
 								type="button"
 								size="sm"
 								variant="ghost"
+								className="hover:text-destructive"
 								disabled={mutation.isPending}
 								onClick={() => {
 									setLogo("");

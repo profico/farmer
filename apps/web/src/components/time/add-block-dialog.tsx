@@ -708,6 +708,9 @@ export function AddBlockDialog({
 		setCalendarEventId(event.id);
 	};
 
+	// Checked on click only once Save has been pressed: before that, unticking
+	// the last day would say "Pick a day" while the form is still being filled
+	// in, and every other field waits for Save.
 	const toggleDay = (day: number) => {
 		const current = form.getValues("daysOfWeek");
 		form.setValue(
@@ -715,7 +718,7 @@ export function AddBlockDialog({
 			current.includes(day)
 				? current.filter((d) => d !== day)
 				: [...current, day].sort(),
-			{ shouldValidate: true },
+			{ shouldValidate: form.formState.isSubmitted },
 		);
 	};
 
@@ -1430,7 +1433,7 @@ export function AddBlockDialog({
 																type="button"
 																variant="ghost"
 																size="icon-xs"
-																className="shrink-0"
+																className="shrink-0 hover:text-destructive"
 																onClick={() =>
 																	detachCommitMutation.mutate(commit.id)
 																}
@@ -1523,6 +1526,7 @@ export function AddBlockDialog({
 																	type="button"
 																	variant="ghost"
 																	size="icon-xs"
+																	className="hover:text-destructive"
 																	onClick={() =>
 																		detachPullRequestMutation.mutate(group.ids)
 																	}

@@ -457,6 +457,7 @@ function MembersSettingsPage() {
 								<Button
 									variant="outline"
 									size="sm"
+									className={archived ? undefined : "hover:text-destructive"}
 									disabled={archiveMutation.isPending}
 									onClick={() => {
 										if (archived && person?.emailUnconfirmed) {
@@ -479,7 +480,7 @@ function MembersSettingsPage() {
 								<Button
 									variant="ghost"
 									size="sm"
-									className="text-destructive hover:bg-destructive/8 hover:text-destructive"
+									className="hover:text-destructive"
 									disabled={removeMutation.isPending}
 									onClick={() => removeMutation.mutate(m.id)}
 								>
@@ -584,6 +585,7 @@ function MembersSettingsPage() {
 												<Button
 													variant="ghost"
 													size="sm"
+													className="hover:text-destructive"
 													disabled={cancelMutation.isPending}
 													onClick={() => cancelMutation.mutate(inv.id)}
 												>

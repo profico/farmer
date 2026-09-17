@@ -293,7 +293,7 @@ export function ConversationList({
 										// behalf alone — keyboard users get it via focus-visible so it can
 										// be reached by tabbing without it being permanently visible for
 										// everyone. Below `md` it simply stays visible; see the note above.
-										className="quiet shrink-0 p-2.5 transition-opacity duration-(--dur-fast) focus-visible:opacity-100 md:p-0 md:opacity-0 md:group-hover:opacity-100"
+										className="quiet danger shrink-0 p-2.5 transition-opacity duration-(--dur-fast) focus-visible:opacity-100 md:p-0 md:opacity-0 md:group-hover:opacity-100"
 									>
 										<TrashIcon
 											weight="regular"

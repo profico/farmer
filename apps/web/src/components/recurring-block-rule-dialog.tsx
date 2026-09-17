@@ -134,6 +134,8 @@ function RecurringBlockRuleDialog({
 		? descriptionRequiredFor(selectedTask)
 		: true;
 
+	// Checked on click only once Save has been pressed, like every other field:
+	// before that, unticking the last day would already say "Pick a day".
 	const toggleDay = (day: number) => {
 		const current = form.getValues("daysOfWeek");
 		form.setValue(
@@ -141,7 +143,7 @@ function RecurringBlockRuleDialog({
 			current.includes(day)
 				? current.filter((d) => d !== day)
 				: [...current, day].sort(),
-			{ shouldValidate: true },
+			{ shouldValidate: form.formState.isSubmitted },
 		);
 	};
 

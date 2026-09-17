@@ -141,7 +141,11 @@ function GoogleSignInMethod() {
 				<AlertDialog open={disconnectOpen} onOpenChange={setDisconnectOpen}>
 					<AlertDialogTrigger
 						render={
-							<Button variant="outline" disabled={!canDisconnect}>
+							<Button
+								variant="outline"
+								className="hover:text-destructive"
+								disabled={!canDisconnect}
+							>
 								Disconnect
 							</Button>
 						}
@@ -278,7 +282,11 @@ function SessionRow({ session }: { session: MySession }) {
 					<AlertDialog open={open} onOpenChange={setOpen}>
 						<AlertDialogTrigger
 							render={
-								<Button variant="outline" disabled={revoke.isPending}>
+								<Button
+									variant="outline"
+									className="hover:text-destructive"
+									disabled={revoke.isPending}
+								>
 									{revoke.isPending ? "Signing out…" : "Revoke"}
 								</Button>
 							}

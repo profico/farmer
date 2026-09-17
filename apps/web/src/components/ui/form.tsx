@@ -112,11 +112,12 @@ function FormLabel({
 			{...props}
 		>
 			{required ? (
+				// The star takes the label's color: grey at rest, red with the label
+				// once the field is wrong. A red star on every required field would
+				// put red on a form before anything is wrong with it.
 				<span className="inline-flex items-center gap-0.5">
 					{children}
-					<span aria-hidden="true" className="text-destructive">
-						*
-					</span>
+					<span aria-hidden="true">*</span>
 				</span>
 			) : (
 				children

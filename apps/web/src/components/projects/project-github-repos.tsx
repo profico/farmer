@@ -345,7 +345,7 @@ export function ProjectGithubRepos({
 									<Button
 										variant="ghost"
 										size="icon-xs"
-										className="shrink-0"
+										className="shrink-0 hover:text-destructive"
 										onClick={() => unlinkMutation.mutate(repo)}
 									>
 										<XIcon weight="regular" className="size-3" />

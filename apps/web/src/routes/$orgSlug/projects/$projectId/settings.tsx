@@ -546,7 +546,8 @@ function SettingsPage() {
 								render={
 									<Button
 										type="button"
-										variant={archived ? "outline" : "destructive"}
+										variant="outline"
+										className={archived ? undefined : "hover:text-destructive"}
 										disabled={status.isPending}
 									/>
 								}
@@ -568,7 +569,10 @@ function SettingsPage() {
 								</AlertDialogHeader>
 								<AlertDialogFooter>
 									<AlertDialogCancel>Cancel</AlertDialogCancel>
-									<AlertDialogAction onClick={() => status.mutate()}>
+									<AlertDialogAction
+										variant={archived ? "default" : "destructive"}
+										onClick={() => status.mutate()}
+									>
 										{archived ? "Restore" : "Archive"}
 									</AlertDialogAction>
 								</AlertDialogFooter>

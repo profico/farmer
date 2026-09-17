@@ -256,7 +256,14 @@ function IntegrationsSettingsPage() {
 								onOpenChange={setDisconnectOpen}
 							>
 								<AlertDialogTrigger
-									render={<Button variant="outline">Disconnect</Button>}
+									render={
+										<Button
+											variant="outline"
+											className="hover:text-destructive"
+										>
+											Disconnect
+										</Button>
+									}
 								/>
 								<AlertDialogContent>
 									<AlertDialogHeader>
@@ -330,7 +337,14 @@ function IntegrationsSettingsPage() {
 								onOpenChange={setGoogleDisconnectOpen}
 							>
 								<AlertDialogTrigger
-									render={<Button variant="outline">Disconnect</Button>}
+									render={
+										<Button
+											variant="outline"
+											className="hover:text-destructive"
+										>
+											Disconnect
+										</Button>
+									}
 								/>
 								<AlertDialogContent>
 									<AlertDialogHeader>

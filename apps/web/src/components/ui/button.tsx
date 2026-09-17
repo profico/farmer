@@ -28,11 +28,15 @@ const buttonVariants = cva(
 					"bg-secondary text-secondary-foreground hover:bg-[color-mix(in_srgb,var(--bg2),var(--fg)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
 				ghost:
 					"text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
-				// Not a second red — there is only one warm accent in this palette.
-				// An irreversible action sits at its neighbours' weight until you
-				// reach for it; the words carry the warning, the tint confirms it.
+				// A tint, not a fill: even in a confirm dialog, the one place it is
+				// used, an irreversible action sits at its neighbours' weight; the
+				// words carry the warning, the tint confirms it.
+				//
+				// The hover text is pulled towards the foreground because red on
+				// its own 16% tint is 4.2:1 on light paper, under the 4.5 a label
+				// needs. Mixed, it is 5.0.
 				destructive:
-					"bg-destructive/8 text-destructive hover:bg-destructive/16",
+					"bg-destructive/8 text-destructive hover:bg-destructive/16 hover:text-[color-mix(in_srgb,var(--destructive)_86%,var(--fg))]",
 				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {

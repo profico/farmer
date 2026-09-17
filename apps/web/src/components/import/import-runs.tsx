@@ -113,6 +113,7 @@ export function ImportRuns({ busy }: { busy: boolean }) {
 									<Button
 										size="sm"
 										variant="ghost"
+										className="hover:text-destructive"
 										disabled={busy || undo.isPending}
 										onClick={() => setConfirmId(run.id)}
 									>
@@ -145,6 +146,7 @@ export function ImportRuns({ busy }: { busy: boolean }) {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
+							variant="destructive"
 							disabled={undo.isPending}
 							onClick={() => {
 								if (confirmId) undo.mutate(confirmId);
