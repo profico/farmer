@@ -21,7 +21,7 @@ import {
 	say,
 } from "../output";
 import { chooseProjectOrNone, chooseTask } from "../pick";
-import { askConfirm, requireInteractive } from "../prompts";
+import { askConfirm, askText, requireInteractive } from "../prompts";
 import { dayTitle, entryWhat, shortId } from "../render";
 import { defaultRow, defaultsNotice } from "../repository-defaults";
 import { openOrg, type OrgScope, type Session } from "../session";
@@ -278,8 +278,8 @@ export const stop: Command = {
 	usage: STOP_USAGE,
 	summary: "Stop the timer and log the time it measured.",
 	help: [
-		"  -m, --message     What you worked on. The timer's own note is the",
-		"                    default.",
+		"  -m, --message     What you worked on. Without it, farmer asks at a",
+		"                    terminal, offering the timer's own note.",
 		"  -p, --project     Log against this project instead of the timer's.",
 		"  -t, --task        Log against this task instead of the timer's.",
 		"  --duration <d>    Log this instead of the measured time, in 15-minute",
@@ -355,6 +355,29 @@ export const stop: Command = {
 			).id;
 		}
 		if (values.message !== undefined) body.description = values.message;
+
+		// The note. `-m` answers it, and the timer's own note is the default; with
+		// neither, ask, because the task this timer is on usually requires one and
+		// a refusal after the fact costs the person the command. Nothing is asked
+		// where nobody can answer: a script gets the server's sentence, which
+		// names what is missing.
+		//
+		// `needsDescription` is the timer's own task. A `-t` override logs against
+		// another one, whose rule this binary cannot read, so the answer is
+		// optional there and the server stays the authority.
+		if (values.message === undefined && out.interactive) {
+			const needed = timer.task.needsDescription && values.task === undefined;
+			const answer = await askText(
+				"What did you work on?",
+				timer.description,
+				needed ? `Required on ${timer.task.name}` : "Optional",
+				(value) =>
+					needed && !value?.trim()
+						? `${timer.task.name} needs a note. Type one, or stop with -m.`
+						: undefined,
+			);
+			body.description = answer.trim() || undefined;
+		}
 
 		const entry = await session.api.post<ApiTimeEntry, ConfirmTimerInput>(
 			scope.path("/timer/confirm"),

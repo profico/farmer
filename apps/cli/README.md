@@ -109,6 +109,10 @@ farmer today --json | jq '.[].durationSeconds'
   or the other way round. A timer left running past your limit (Settings →
   Preferences, 12 hours by default) is dropped and logs nothing, and
   `farmer timer` says so.
+- `farmer stop` asks what you worked on, with the timer's own note as the
+  default, unless you pass `-m`. A task that needs a note says so and asks
+  again for an empty answer. Where nobody can answer — a script, a pipe — it
+  asks nothing and the server names what is missing.
 - `farmer pause` holds the clock and `farmer resume` starts it measuring
   again. A held timer keeps its figure and measures nothing, so it may be held
   for as long as you want and can never be dropped for passing your limit. What

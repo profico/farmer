@@ -28,7 +28,9 @@ export type ApiTimer = {
 	snappedSeconds: number;
 	serverNow: string;
 	description: string;
-	task: { id: string; name: string };
+	/** `needsDescription` is the task rule as the server reads it, so a client
+	 *  asks for a note exactly when one is required. */
+	task: { id: string; name: string; needsDescription: boolean };
 	project: { id: string; name: string } | null;
 	/** The workspace the entry will land in. A timer belongs to the person, not
 	 *  to a workspace, so a client reading from another one still sees it and
@@ -45,6 +47,7 @@ export type TimerSource = {
 	projectName: string | null;
 	taskId: string;
 	taskName: string;
+	taskNeedsDescription: boolean;
 	description: string;
 	startedAt: Date;
 	paused: boolean;
@@ -63,7 +66,11 @@ export const toApiTimer = (row: TimerSource): ApiTimer => ({
 	snappedSeconds: row.snappedSeconds,
 	serverNow: row.serverNow.toISOString(),
 	description: row.description,
-	task: { id: row.taskId, name: row.taskName },
+	task: {
+		id: row.taskId,
+		name: row.taskName,
+		needsDescription: row.taskNeedsDescription,
+	},
 	project:
 		row.projectId && row.projectName
 			? { id: row.projectId, name: row.projectName }

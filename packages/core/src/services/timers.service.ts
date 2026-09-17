@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { organization } from "../db/schema/auth";
 import { project, task } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
+import { descriptionRequiredFor } from "../lib/task-rules";
 import { snapToQuarterHour } from "../lib/time";
 import type {
 	ConfirmTimerInput,
@@ -50,6 +51,11 @@ export type TimerView = {
 	projectName: string | null;
 	taskId: string;
 	taskName: string;
+	/** Whether the entry this timer becomes will need a note — the task rule,
+	 *  answered here rather than restated by each surface. The CLI cannot read
+	 *  `lib/task-rules` at all (its import boundary is linted), and asking for a
+	 *  note it does not need is as wrong as refusing one it does. */
+	taskNeedsDescription: boolean;
 	description: string;
 	/** When the clock first began — never moved by a pause. */
 	startedAt: Date;
@@ -99,6 +105,8 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 			projectName: project.name,
 			taskId: runningTimer.taskId,
 			taskName: task.name,
+			taskIsAbsence: task.isAbsence,
+			taskSystemKey: task.systemKey,
 			description: runningTimer.description,
 			startedAt: runningTimer.startedAt,
 			runningSince: runningTimer.runningSince,
@@ -122,6 +130,10 @@ const viewOf = (
 	return {
 		...row,
 		here: row.organizationId === ctx.organizationId,
+		taskNeedsDescription: descriptionRequiredFor({
+			isAbsence: row.taskIsAbsence,
+			systemKey: row.taskSystemKey,
+		}),
 		paused: row.runningSince === null && row.droppedAt === null,
 		elapsedSeconds,
 		snappedSeconds: snapToQuarterHour(elapsedSeconds),
