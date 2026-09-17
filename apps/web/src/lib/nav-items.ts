@@ -1,5 +1,6 @@
 import {
 	BriefcaseIcon,
+	BroadcastIcon,
 	CalendarDotsIcon,
 	ChartLineIcon,
 	ChatCircleDotsIcon,
@@ -35,6 +36,7 @@ export type OrgRoutePath =
 	| "/$orgSlug/settings/holidays"
 	| "/$orgSlug/settings/integrations"
 	| "/$orgSlug/settings/workspace-integrations"
+	| "/$orgSlug/settings/webhooks"
 	| "/$orgSlug/settings/tasks"
 	| "/$orgSlug/settings/hour-fund"
 	| "/$orgSlug/settings/reminders"
@@ -150,6 +152,15 @@ export const REPORTS_ITEM: NavItem = {
 	label: "Reports",
 	to: "/$orgSlug/reports",
 	icon: ChartLineIcon,
+};
+
+// Named rather than written inline in the settings catalogue, because one
+// endpoint's page sits UNDER this row and points its eyebrow back at it. Two
+// literals of the same destination drift the first time the path changes.
+export const WEBHOOKS_ITEM: NavItem = {
+	label: "Webhooks",
+	to: "/$orgSlug/settings/webhooks",
+	icon: BroadcastIcon,
 };
 
 export const PEOPLE_ITEM: NavItem = {

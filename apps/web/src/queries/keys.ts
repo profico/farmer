@@ -67,6 +67,7 @@ export const queryKeys = (org: string) =>
 		slack: ["slack", org],
 		tasks: ["tasks", org],
 		timeEntries: ["time-entries", org],
+		webhooks: ["webhooks", org],
 		workingHours: ["working-hours", org],
 	}) as const satisfies Record<string, readonly [string, string]>;
 

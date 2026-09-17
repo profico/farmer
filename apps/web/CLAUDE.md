@@ -13,7 +13,7 @@ bun run generate-routes  # tsr generate — regenerates routeTree.gen.ts
 
 - `src/routes/` — TanStack Router file-based routing.
   - `$orgSlug/route.tsx` is the org-scoped layout: its `beforeLoad` resolves the session, the organization and the caller's role in ONE server call (`enterOrganization`) alongside `getPublicAppConfig`, and redirects out if any check fails — every nested route inherits that guard. `enterOrganization` repoints the session only when the active org actually differs.
-  - Under it: `index.tsx` (home: today, plus week and month targets), `time/` (a `route.tsx` layout with the targets strip and the unfiled banner, then `index`/`week`/`month`), `projects/` (the list, and `$projectId/` with `index`/`team`/`settings`), `reports.tsx`, `assistant.tsx`, and `settings/` (an `index.tsx` hub plus organization, members, my-schedule, clients, tasks, recurring-blocks, holidays, hour-fund, reminders, import, integrations, preferences).
+  - Under it: `index.tsx` (home: today, plus week and month targets), `time/` (a `route.tsx` layout with the targets strip and the unfiled banner, then `index`/`week`/`month`), `projects/` (the list, and `$projectId/` with `index`/`team`/`settings`), `reports.tsx`, `assistant.tsx`, and `settings/` (an `index.tsx` hub plus organization, members, my-schedule, clients, tasks, recurring-blocks, holidays, hour-fund, reminders, import, integrations, preferences, and `webhooks/` — the endpoint list plus one endpoint's delivery log).
   - Outside it: `infrastructure/` (the deployment's own settings — a `route.tsx` shell gated on `user.role`, plus `admins.tsx`; see `docs/domains/authentication.md`), `index.tsx` (the landing page), `login.tsx`, `accept-invite/$invitationId.tsx`, `no-access.tsx`, `device.tsx` (approves a CLI login) and `cli/` (the install scripts and binary downloads).
   - Server routes: `api/auth/$.ts` (better-auth), `api/login.ts`, `api/mcp-login.ts`, `api/github/setup.ts`, `api/slack/callback.ts`, `api/files/$.ts`, `api/assistant/stream.ts`, `api/mcp/$orgSlug.ts`, `[.]well-known/oauth-*.ts`, `api/v1/projects` + `api/v1/time-entries` (cookie-authed REST reads), and `api/v1/{meta,me,session}` + `api/v1/orgs/$orgSlug/*` (the CLI's API). All of that auth lives in `server/api-auth.ts` — deliberately NOT `server/auth.ts`, see the client-bundle rule below.
   - `reports.tsx` is the shell. Its four tabs — Time, Overtime, Tracking (`compliance`) and Absence — are declared in `components/reports/search.ts` and live in `components/reports/`. `periodSearch` there is shared with the project page.
@@ -61,6 +61,7 @@ Dev is `vite dev`, which never loads `server.ts`. **Production is a Bun-native h
 - `docs/domains/authentication.md` — `routes/login.tsx`, `routes/api/login.ts`, `/no-access`.
 - `docs/domains/integrations.md` — `routes/api/github/*`, `routes/api/slack/callback.ts`.
 - `docs/domains/uploads.md` — `routes/api/files/$.ts` and the upload pickers.
+- `docs/domains/webhooks.md` — `routes/…/settings/webhooks/` and `server/webhooks.ts`.
 - `docs/domains/harvest-import.md` — `routes/…/settings/import.tsx` and the Web Worker.
 - `packages/core/CLAUDE.md` — the services every server function wraps.
 - `docs/adr/0001-no-server-function-generator.md`.

@@ -93,6 +93,7 @@ you are about to change before you change it** — these are not loaded for you.
 | `docs/domains/authentication.md` | better-auth, the login routes, or single-organization mode |
 | `docs/domains/harvest-import.md` | `harvest-import.service.ts`, `lib/harvest/` or the import screen |
 | `docs/domains/uploads.md` | `lib/storage.ts`, `uploads.service.ts`, `api/files/$.ts` or the upload sweep |
+| `docs/domains/webhooks.md` | the outbound webhooks — `services/events.ts`, `webhooks.service.ts`, `jobs/webhook-delivery.ts`, the signature or the SSRF guard |
 | `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag or PostHog |
 
 `docs/adr/` holds the decisions that a change may contradict. `docs/plans/` holds
@@ -107,6 +108,7 @@ is in the file named beside it.
 - **Tenancy is a parameter, never ambient.** Every service function takes `ctx` first; every query key names its organization. → `packages/core/CLAUDE.md`, `apps/web/CLAUDE.md`
 - **A day holds at most 24 hours** (`MAX_DAY_SECONDS`), and `services/ledger.ts` is the one definition of what counts as logged time. Never hand-roll a `sum(durationSeconds)` with its own predicate. → `packages/core/CLAUDE.md`
 - **Engines resolve tasks by `systemKey`, never by name.** A name lookup switches an engine off silently when an org renames the task. → `packages/core/CLAUDE.md`
+- **Nothing on a request path calls an organization's webhook URL.** A service writes one outbox row through `emitEvent`; `jobs/webhook-delivery.ts` sends it. The URL came from a person and the server makes the call, so `lib/webhook-url.ts` is the SSRF boundary — read it before touching anything about webhook URLs. → `docs/domains/webhooks.md`
 
 ## Gotchas
 

@@ -76,6 +76,12 @@ import {
 	recomputeDayFill,
 	rehomeDroppedFillEvidence,
 } from "./day-fill";
+import {
+	emitEvent,
+	timeEntryWebhookPayload,
+	timeEntryWebhookPayloads,
+	webhookWants,
+} from "./events";
 import { filingRulesService, ruleKeyFor } from "./filing-rules.service";
 import {
 	pullRequestActivityRow,
@@ -1554,6 +1560,16 @@ export const timeEntriesService = {
 
 			// A new normal entry shrinks whatever fill block shares its day.
 			if (!input.fillsDay) await recomputeDayFill(txCtx, input.date, tz);
+
+			// In the transaction, so the entry and the record that it happened
+			// commit together. Costs nothing unless somebody is subscribed — see
+			// `services/events.ts`.
+			const createdId = row.id;
+			await emitEvent(
+				txCtx,
+				taskRow.isAbsence ? "absence.created" : "time_entry.created",
+				() => timeEntryWebhookPayload(txCtx, createdId),
+			);
 			return row;
 		});
 	},
@@ -1696,6 +1712,12 @@ export const timeEntriesService = {
 			if (existing.date !== input.date) {
 				await recomputeDayFill(txCtx, existing.date, tz);
 			}
+			const updatedId = row?.id;
+			if (updatedId) {
+				await emitEvent(txCtx, "time_entry.updated", () =>
+					timeEntryWebhookPayload(txCtx, updatedId),
+				);
+			}
 			return row;
 		});
 		return updated;
@@ -1757,6 +1779,11 @@ export const timeEntriesService = {
 			.where(eq(timeEntry.id, input.timeEntryId))
 			.returning();
 		if (!updated) throw new Error("Failed to file entry");
+		// Filing changes an entry's project, which is the field a receiver most
+		// often keys on — so it is an update, not a second creation.
+		await emitEvent(ctx, "time_entry.updated", () =>
+			timeEntryWebhookPayload(ctx, updated.id),
+		);
 		return { ...updated, filedFromTaskId: existing.taskId };
 	},
 
@@ -1854,6 +1881,9 @@ export const timeEntriesService = {
 			.where(eq(timeEntry.id, input.timeEntryId))
 			.returning();
 		if (!updated) throw new Error("Failed to update note");
+		await emitEvent(ctx, "time_entry.updated", () =>
+			timeEntryWebhookPayload(ctx, updated.id),
+		);
 		return updated;
 	},
 
@@ -1916,6 +1946,9 @@ export const timeEntriesService = {
 			if (!updated) throw new Error("Failed to update duration");
 
 			await recomputeDayFill(txCtx, existing.date, tz);
+			await emitEvent(txCtx, "time_entry.updated", () =>
+				timeEntryWebhookPayload(txCtx, updated.id),
+			);
 			return updated;
 		});
 	},
@@ -1934,6 +1967,9 @@ export const timeEntriesService = {
 			)
 			.returning();
 		if (!updated) throw new Error("Time entry not found");
+		await emitEvent(ctx, "time_entry.updated", () =>
+			timeEntryWebhookPayload(ctx, updated.id),
+		);
 		return updated;
 	},
 
@@ -1942,6 +1978,16 @@ export const timeEntriesService = {
 			const tx = ctxDb(txCtx);
 			// Before the delete: the attachments cascade with the row.
 			const heldReviews = await reviewsHeldBy(txCtx, timeEntryId);
+			// Also before the delete, and for the same reason: a webhook payload is
+			// a projection over this row's joins, and there is nothing left to
+			// project from once it is gone. Read only when somebody asked for one
+			// of the two kinds a delete can be.
+			const wanted =
+				(await webhookWants(txCtx, "time_entry.deleted")) ||
+				(await webhookWants(txCtx, "absence.removed"));
+			const deleted = wanted
+				? await timeEntryWebhookPayload(txCtx, timeEntryId)
+				: null;
 			const [existing] = await tx
 				.delete(timeEntry)
 				.where(
@@ -2003,6 +2049,16 @@ export const timeEntriesService = {
 			if (existing && !existing.fillsDay) {
 				const tz = await ctxTimezone(txCtx);
 				await recomputeDayFill(txCtx, existing.date, tz);
+			}
+
+			if (existing && deleted) {
+				await emitEvent(
+					txCtx,
+					deleted.entry.task.isAbsence
+						? "absence.removed"
+						: "time_entry.deleted",
+					() => deleted,
+				);
 			}
 
 			// Returned so the caller can offer an "undo" that re-creates the row.
@@ -2253,19 +2309,27 @@ export const timeEntriesService = {
 				throw new DayCapacityError(input.toDate);
 			}
 
+			// One event per row, not one per copy: a receiver reconciles entries,
+			// and a batch shape would be a second payload for every kind to handle.
+			// A copied week is about forty of them (issue #67, question 1).
+			const copiedIds: string[] = [];
 			if (permitted.length > 0) {
-				await tx.insert(timeEntry).values(
-					permitted.map((e) => ({
-						organizationId: ctx.organizationId,
-						userId: ctx.userId,
-						projectId: e.projectId,
-						taskId: e.taskId,
-						date: input.toDate,
-						description: e.description,
-						durationSeconds: e.durationSeconds,
-						overtime: e.overtime,
-					})),
-				);
+				const rows = await tx
+					.insert(timeEntry)
+					.values(
+						permitted.map((e) => ({
+							organizationId: ctx.organizationId,
+							userId: ctx.userId,
+							projectId: e.projectId,
+							taskId: e.taskId,
+							date: input.toDate,
+							description: e.description,
+							durationSeconds: e.durationSeconds,
+							overtime: e.overtime,
+						})),
+					)
+					.returning({ id: timeEntry.id });
+				copiedIds.push(...rows.map((row) => row.id));
 			}
 
 			const tz = await ctxTimezone(txCtx);
@@ -2297,6 +2361,22 @@ export const timeEntriesService = {
 				}
 			} else {
 				await recomputeDayFill(txCtx, input.toDate, tz);
+			}
+
+			// The fill block is deliberately not among them: it is the automation's
+			// row, sized from what the day has left, and the engines do not emit.
+			// See the header of `services/events.ts`.
+			if (copiedIds.length > 0) {
+				const payloads = await timeEntryWebhookPayloads(txCtx, copiedIds);
+				for (const payload of payloads) {
+					await emitEvent(
+						txCtx,
+						payload.entry.task.isAbsence
+							? "absence.created"
+							: "time_entry.created",
+						() => payload,
+					);
+				}
 			}
 			return { copied, skipped };
 		});
@@ -2555,6 +2635,11 @@ export const timeEntriesService = {
 			// PM's three did not, so a day corrected by a PM stayed
 			// over-allocated — an 8h block plus 8h of sick leave on an 8h day.
 			await recomputeDayFill(person, existing.date, tz);
+			if (updated) {
+				await emitEvent(txCtx, "time_entry.updated", () =>
+					timeEntryWebhookPayload(txCtx, updated.id),
+				);
+			}
 			return updated;
 		});
 	},
@@ -2591,6 +2676,9 @@ export const timeEntriesService = {
 			if (!created) throw new Error("Failed to log absence");
 			// The person's day, not the caller's: see `overrideAbsence`.
 			await recomputeDayFill(person, input.date, tz);
+			await emitEvent(txCtx, "absence.created", () =>
+				timeEntryWebhookPayload(txCtx, created.id),
+			);
 			return created;
 		});
 	},
@@ -2616,7 +2704,14 @@ export const timeEntriesService = {
 
 		const tz = await ctxTimezone(ctx);
 		await withCtxTx(ctx, async (txCtx) => {
+			// Projected before the delete — see `remove`.
+			const removed = (await webhookWants(txCtx, "absence.removed"))
+				? await timeEntryWebhookPayload(txCtx, timeEntryId)
+				: null;
 			await ctxDb(txCtx).delete(timeEntry).where(eq(timeEntry.id, timeEntryId));
+			if (removed) {
+				await emitEvent(txCtx, "absence.removed", () => removed);
+			}
 			// The freed hours go back to the person's rest-of-day block, if the day
 			// has one. See `overrideAbsence`.
 			await recomputeDayFill(

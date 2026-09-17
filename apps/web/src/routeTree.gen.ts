@@ -59,7 +59,9 @@ import { Route as OrgSlugSettingsImportRouteImport } from './routes/$orgSlug/set
 import { Route as OrgSlugSettingsHourFundRouteImport } from './routes/$orgSlug/settings/hour-fund'
 import { Route as OrgSlugSettingsHolidaysRouteImport } from './routes/$orgSlug/settings/holidays'
 import { Route as OrgSlugSettingsClientsRouteImport } from './routes/$orgSlug/settings/clients'
+import { Route as OrgSlugSettingsWebhooksIndexRouteImport } from './routes/$orgSlug/settings/webhooks/index'
 import { Route as OrgSlugProjectsProjectIdIndexRouteImport } from './routes/$orgSlug/projects/$projectId/index'
+import { Route as OrgSlugSettingsWebhooksEndpointIdRouteImport } from './routes/$orgSlug/settings/webhooks/$endpointId'
 import { Route as OrgSlugProjectsProjectIdTeamRouteImport } from './routes/$orgSlug/projects/$projectId/team'
 import { Route as OrgSlugProjectsProjectIdSettingsRouteImport } from './routes/$orgSlug/projects/$projectId/settings'
 import { Route as ApiV1OrgsOrgSlugWhoamiRouteImport } from './routes/api/v1/orgs/$orgSlug/whoami'
@@ -338,10 +340,22 @@ const OrgSlugSettingsClientsRoute = OrgSlugSettingsClientsRouteImport.update({
   path: '/settings/clients',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
+const OrgSlugSettingsWebhooksIndexRoute =
+  OrgSlugSettingsWebhooksIndexRouteImport.update({
+    id: '/settings/webhooks/',
+    path: '/settings/webhooks/',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 const OrgSlugProjectsProjectIdIndexRoute =
   OrgSlugProjectsProjectIdIndexRouteImport.update({
     id: '/projects/$projectId/',
     path: '/projects/$projectId/',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
+const OrgSlugSettingsWebhooksEndpointIdRoute =
+  OrgSlugSettingsWebhooksEndpointIdRouteImport.update({
+    id: '/settings/webhooks/$endpointId',
+    path: '/settings/webhooks/$endpointId',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
 const OrgSlugProjectsProjectIdTeamRoute =
@@ -490,7 +504,9 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/time/': typeof OrgSlugTimeIndexRoute
   '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
+  '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -557,7 +573,9 @@ export interface FileRoutesByTo {
   '/$orgSlug/time': typeof OrgSlugTimeIndexRoute
   '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
+  '/$orgSlug/settings/webhooks': typeof OrgSlugSettingsWebhooksIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -627,7 +645,9 @@ export interface FileRoutesById {
   '/$orgSlug/time/': typeof OrgSlugTimeIndexRoute
   '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
+  '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -698,7 +718,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/time/'
     | '/$orgSlug/projects/$projectId/settings'
     | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
+    | '/$orgSlug/settings/webhooks/'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -765,7 +787,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/time'
     | '/$orgSlug/projects/$projectId/settings'
     | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId'
+    | '/$orgSlug/settings/webhooks'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -834,7 +858,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/time/'
     | '/$orgSlug/projects/$projectId/settings'
     | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
+    | '/$orgSlug/settings/webhooks/'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -1246,11 +1272,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsClientsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/settings/webhooks/': {
+      id: '/$orgSlug/settings/webhooks/'
+      path: '/settings/webhooks'
+      fullPath: '/$orgSlug/settings/webhooks/'
+      preLoaderRoute: typeof OrgSlugSettingsWebhooksIndexRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/projects/$projectId/': {
       id: '/$orgSlug/projects/$projectId/'
       path: '/projects/$projectId'
       fullPath: '/$orgSlug/projects/$projectId/'
       preLoaderRoute: typeof OrgSlugProjectsProjectIdIndexRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/settings/webhooks/$endpointId': {
+      id: '/$orgSlug/settings/webhooks/$endpointId'
+      path: '/settings/webhooks/$endpointId'
+      fullPath: '/$orgSlug/settings/webhooks/$endpointId'
+      preLoaderRoute: typeof OrgSlugSettingsWebhooksEndpointIdRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/projects/$projectId/team': {
@@ -1407,7 +1447,9 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugSettingsIndexRoute: typeof OrgSlugSettingsIndexRoute
   OrgSlugProjectsProjectIdSettingsRoute: typeof OrgSlugProjectsProjectIdSettingsRoute
   OrgSlugProjectsProjectIdTeamRoute: typeof OrgSlugProjectsProjectIdTeamRoute
+  OrgSlugSettingsWebhooksEndpointIdRoute: typeof OrgSlugSettingsWebhooksEndpointIdRoute
   OrgSlugProjectsProjectIdIndexRoute: typeof OrgSlugProjectsProjectIdIndexRoute
+  OrgSlugSettingsWebhooksIndexRoute: typeof OrgSlugSettingsWebhooksIndexRoute
 }
 
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
@@ -1435,7 +1477,10 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugSettingsIndexRoute: OrgSlugSettingsIndexRoute,
   OrgSlugProjectsProjectIdSettingsRoute: OrgSlugProjectsProjectIdSettingsRoute,
   OrgSlugProjectsProjectIdTeamRoute: OrgSlugProjectsProjectIdTeamRoute,
+  OrgSlugSettingsWebhooksEndpointIdRoute:
+    OrgSlugSettingsWebhooksEndpointIdRoute,
   OrgSlugProjectsProjectIdIndexRoute: OrgSlugProjectsProjectIdIndexRoute,
+  OrgSlugSettingsWebhooksIndexRoute: OrgSlugSettingsWebhooksIndexRoute,
 }
 
 const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(

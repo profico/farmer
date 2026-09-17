@@ -25,6 +25,7 @@ import type {
 } from "../schema/projects";
 import { AccessError, type Access } from "./access.service";
 import { ctxAccess, invalidateCtxAccess } from "./context";
+import { emitEvent, projectWebhookPayload } from "./events";
 import { assertProjectInOrg, assertUserInOrg } from "./guards";
 import { membersService } from "./members.service";
 import { tasksService } from "./tasks.service";
@@ -534,6 +535,9 @@ export const projectsService = {
 		// The memoized picture predates the assignment above and would still say
 		// "not a member", so it has to be dropped for the re-resolve to see it.
 		invalidateCtxAccess(ctx);
+		await emitEvent(ctx, "project.created", () =>
+			projectWebhookPayload(ctx, created.id),
+		);
 		return projectsService.get(ctx, created.id);
 	},
 
@@ -590,6 +594,9 @@ export const projectsService = {
 		// Opening or closing the project changes what the caller may track on,
 		// and the memoized picture was resolved before the write.
 		if (input.openToOrg !== undefined) invalidateCtxAccess(ctx);
+		await emitEvent(ctx, "project.updated", () =>
+			projectWebhookPayload(ctx, input.projectId),
+		);
 		return projectsService.get(ctx, input.projectId);
 	},
 

@@ -4,7 +4,7 @@ Dev is `vite dev`. **Production is a Bun-native host, not Nitro/srvx** — `apps
 
 The `Dockerfile` bundles with `bun build` into `app.js` (better-auth, framer-motion and the `#tanstack-*` entries stay external), `migrate.js` and `seed-tasks.js`, and installs runtime dependencies from `docker/runtime.package.json` + `docker/bun.lock`. `docker-entrypoint.sh` applies migrations under an advisory lock (`RUN_MIGRATIONS`), seeds tasks (`RUN_SEED`), then starts `app.js`. CI (`.github/workflows/ci.yml`) runs check, typecheck, test and build, then builds the image, pushes it to GHCR and triggers a Coolify deploy. The CLI has its own release workflow (see `apps/cli/CLAUDE.md`).
 
-**This backend is a long-lived process, not a serverless function — background work goes in a job, never in a request handler.** There are four jobs: the automation sweep, log reminders, Slack reminders and the upload sweep. The scheduler lives in `@farmer/core/jobs/scheduler.ts` rather than in `server.ts` so it can run three ways off one implementation:
+**This backend is a long-lived process, not a serverless function — background work goes in a job, never in a request handler.** There are five jobs: the automation sweep, log reminders, Slack reminders, the upload sweep and webhook delivery (`docs/domains/webhooks.md`). The scheduler lives in `@farmer/core/jobs/scheduler.ts` rather than in `server.ts` so it can run three ways off one implementation:
 
 | Where | How | Why |
 |---|---|---|
@@ -12,7 +12,7 @@ The `Dockerfile` bundles with `bun build` into `app.js` (better-auth, framer-mot
 | Development | `vite dev` spawns `packages/core/src/jobs/worker.ts` (the `farmer:dev-worker` plugin) | `vite dev` never loads `server.ts`, and nothing syncs on page load. Runs the **automation sweep only**: the other jobs message real people or delete files, and dev usually points at a shared database. `DEV_WORKER=false` to opt out |
 | Separate worker container | `bun run worker` from `packages/core` | set every `<NAME>_ENABLED=false` on the web host; run exactly one worker |
 
-Each job is env-gated by `<NAME>_ENABLED` / `<NAME>_INTERVAL_MINUTES`; the full list, with `AUTOMATION_SYNC_CONCURRENCY`, `AUTOMATION_SYNC_USER_TIMEOUT_MS`, `EXTERNAL_FETCH_TIMEOUT_MS` and `SCHEDULER_STARTUP_DELAY_MS`, is in the `scheduler.ts` header, and `.env.example` documents the rest. All of it assumes a single instance; the jobs are idempotent, so a second replica is redundant rather than harmful. The tables in `scheduler.ts` are built by hoisted **functions**, not module-scope `const`s — that is load-bearing in the bundled image, and the header explains why.
+Each job is env-gated by `<NAME>_ENABLED` / `<NAME>_INTERVAL_MINUTES`; the full list, with `AUTOMATION_SYNC_CONCURRENCY`, `AUTOMATION_SYNC_USER_TIMEOUT_MS`, `EXTERNAL_FETCH_TIMEOUT_MS`, `WEBHOOK_DELIVERY_TIMEOUT_MS`, `WEBHOOK_ALLOW_PRIVATE_HOSTS` and `SCHEDULER_STARTUP_DELAY_MS`, is in the `scheduler.ts` header, and `.env.example` documents the rest. All of it assumes a single instance; the jobs are idempotent, so a second replica is redundant rather than harmful. The tables in `scheduler.ts` are built by hoisted **functions**, not module-scope `const`s — that is load-bearing in the bundled image, and the header explains why.
 
 `ASSISTANT_ENABLED`, `MCP_ENABLED`, `CLI_ENABLED` and `SINGLE_ORG_SLUG` are plain env vars rather than `VITE_` ones, because `VITE_` values bake at build time and the Dockerfile builds one image for several environments.
 
