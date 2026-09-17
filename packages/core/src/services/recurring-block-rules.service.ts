@@ -314,7 +314,13 @@ export const recurringBlockRulesService = {
 				nextProjectId ?? undefined,
 			);
 			// The note rule follows the task, so a task change and a note change
-			// are both occasions to re-ask it.
+			// are both occasions to re-ask it. Asked against the MERGED rule —
+			// `update` is partial and either half may be absent — and this is the
+			// only place update asks. A second check below used to re-ask it keyed
+			// on "does the rule name a project", left over from when that was the
+			// rule; once every task sat on every project it was wrong both ways,
+			// and it made a Break block on a project unsaveable with the empty note
+			// its own label calls optional.
 			assertDescribed(taskRow, input.description ?? existing.description);
 		}
 
@@ -339,24 +345,6 @@ export const recurringBlockRulesService = {
 			// Resuming is switching on: the floor moves to today rather than
 			// refilling every day the rule spent paused.
 			if (input.active && !existing.active) patch.activeSince = new Date();
-		}
-
-		// Checked against the MERGED rule, not the patch: `update` is partial, so
-		// neither field is necessarily present, and the pair only makes sense
-		// together. Same rule as `createRecurringBlockRuleInput` enforces — a rule
-		// that materializes worked time has to say what the work is, or the entries
-		// it writes are ones the app itself would refuse to save.
-		//
-		// Rules created before this rule existed are grandfathered: they are only
-		// caught here if something else about them is edited.
-		const mergedProjectId =
-			input.projectId !== undefined ? input.projectId : existing.projectId;
-		const mergedDescription =
-			input.description !== undefined
-				? input.description
-				: existing.description;
-		if (mergedProjectId && !mergedDescription?.trim()) {
-			throw new Error("Describe what this block is for");
 		}
 
 		const [updated] = await db
