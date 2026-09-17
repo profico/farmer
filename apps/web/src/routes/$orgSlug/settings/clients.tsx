@@ -32,7 +32,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from "#/components/ui/form.tsx";
-import { Input } from "#/components/ui/input.tsx";
+import { InputGroup, InputGroupInput } from "#/components/ui/input-group.tsx";
 import { PageFull, PageHeader } from "#/components/ui/page-header.tsx";
 import { NoMatchesRow, SearchInput } from "#/components/ui/search-input.tsx";
 import {
@@ -74,17 +74,25 @@ export const Route = createFileRoute("/$orgSlug/settings/clients")({
 	component: ClientsPage,
 });
 
+// Core's name rule in the form's own words: the error sits inside the box,
+// beside its label, where "Required" is all it needs to say. The box stops at
+// the schema's limit, so "too long" is never the error.
+const clientName = z.string().trim().min(1, "Required").max(120);
+const createClientForm = createClientInput.extend({ name: clientName });
+const renameClientForm = updateClientInput.extend({ name: clientName });
+const NAME_MAX_LENGTH = clientName.maxLength ?? undefined;
+
 function CreateClientDialog() {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
-	const form = useForm<z.infer<typeof createClientInput>>({
-		resolver: zodResolver(createClientInput),
+	const form = useForm<z.infer<typeof createClientForm>>({
+		resolver: zodResolver(createClientForm),
 		defaultValues: { name: "" },
 	});
 
 	const mutation = useMutation({
-		mutationFn: (data: z.infer<typeof createClientInput>) =>
+		mutationFn: (data: z.infer<typeof createClientForm>) =>
 			createClient({ data }),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({
@@ -114,10 +122,16 @@ function CreateClientDialog() {
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel required>Name</FormLabel>
-									<FormControl>
-										<Input autoFocus {...field} />
-									</FormControl>
-									<FormMessage />
+									<InputGroup>
+										<FormControl>
+											<InputGroupInput
+												autoFocus
+												maxLength={NAME_MAX_LENGTH}
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</InputGroup>
 								</FormItem>
 							)}
 						/>
@@ -152,13 +166,13 @@ function RenameClientDialog({
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
-	const form = useForm<z.infer<typeof updateClientInput>>({
-		resolver: zodResolver(updateClientInput),
+	const form = useForm<z.infer<typeof renameClientForm>>({
+		resolver: zodResolver(renameClientForm),
 		defaultValues: { clientId: client.id, name: client.name },
 	});
 
 	const mutation = useMutation({
-		mutationFn: (data: z.infer<typeof updateClientInput>) =>
+		mutationFn: (data: z.infer<typeof renameClientForm>) =>
 			updateClient({ data }),
 		onSuccess: async () => {
 			// Projects carry their client's name, and so do the report tabs grouped
@@ -212,10 +226,16 @@ function RenameClientDialog({
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel required>Name</FormLabel>
-									<FormControl>
-										<Input autoFocus {...field} />
-									</FormControl>
-									<FormMessage />
+									<InputGroup>
+										<FormControl>
+											<InputGroupInput
+												autoFocus
+												maxLength={NAME_MAX_LENGTH}
+												{...field}
+											/>
+										</FormControl>
+										<FormMessage />
+									</InputGroup>
 								</FormItem>
 							)}
 						/>

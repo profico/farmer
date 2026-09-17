@@ -3,7 +3,6 @@ import {
 	projectTypeEnum,
 	type ProjectTypeValue,
 	type UpdateProjectInput,
-	updateProjectInput,
 } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
@@ -41,6 +40,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from "#/components/ui/form.tsx";
+import { InputGroup, InputGroupInput } from "#/components/ui/input-group.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import {
@@ -98,13 +98,16 @@ const optionalMoney = z.union([
 	z
 		.string()
 		.trim()
-		.regex(/^\d+(\.\d{1,2})?$/, "Expected an amount like 1500 or 1500.00"),
+		.regex(/^\d+(\.\d{1,2})?$/, "Must be an amount"),
 ]);
 
+// Name and client restate core's rules in the form's own words, as
+// create-project-dialog.tsx does: the error sits inside the box, beside its
+// label, where "Required" is all it needs to say.
 const formSchema = z.object({
-	name: updateProjectInput.shape.name.unwrap(),
+	name: z.string().trim().min(1, "Required").max(120),
 	code: z.string().trim().max(16),
-	clientId: z.uuid(),
+	clientId: z.uuid("Required"),
 	type: projectTypeEnum,
 	icon: z.string().nullable(),
 	budgetHours: z.union([
@@ -112,16 +115,20 @@ const formSchema = z.object({
 		z
 			.string()
 			.trim()
-			.regex(/^\d+(\.\d+)?$/, "Expected a number like 400 or 400.5")
+			.regex(/^\d+(\.\d+)?$/, "Must be an amount")
 			.refine((v) => {
 				const n = Number(v);
 				return n > 0 && n <= 100_000;
-			}, "Must be between 1 and 100,000"),
+			}, "Must be 1 to 100,000"),
 	]),
 	budgetAmount: optionalMoney,
 	hourlyPrice: optionalMoney,
 });
 type FormValues = z.infer<typeof formSchema>;
+
+// The boxes stop at the schema's limits, so "too long" is never the error.
+const NAME_MAX_LENGTH = formSchema.shape.name.maxLength ?? undefined;
+const CODE_MAX_LENGTH = formSchema.shape.code.maxLength ?? undefined;
 
 export const Route = createFileRoute("/$orgSlug/projects/$projectId/settings")({
 	loader: ({ context, params }) =>
@@ -335,10 +342,15 @@ function SettingsPage() {
 									render={({ field }) => (
 										<FormItem>
 											<FormLabel required>Name</FormLabel>
-											<FormControl>
-												<Input {...field} />
-											</FormControl>
-											<FormMessage />
+											<InputGroup>
+												<FormControl>
+													<InputGroupInput
+														maxLength={NAME_MAX_LENGTH}
+														{...field}
+													/>
+												</FormControl>
+												<FormMessage />
+											</InputGroup>
 										</FormItem>
 									)}
 								/>
@@ -349,7 +361,12 @@ function SettingsPage() {
 										<FormItem>
 											<FormLabel>Code</FormLabel>
 											<FormControl>
-												<Input className="mono" placeholder="VINW" {...field} />
+												<Input
+													className="mono"
+													placeholder="VINW"
+													maxLength={CODE_MAX_LENGTH}
+													{...field}
+												/>
 											</FormControl>
 											<FormMessage />
 										</FormItem>
@@ -374,6 +391,7 @@ function SettingsPage() {
 												<FormControl>
 													<SelectTrigger className="w-full">
 														<SelectValue />
+														<FormMessage aria-hidden />
 													</SelectTrigger>
 												</FormControl>
 												<SelectContent>
@@ -384,7 +402,6 @@ function SettingsPage() {
 													))}
 												</SelectContent>
 											</Select>
-											<FormMessage />
 										</FormItem>
 									)}
 								/>
@@ -434,15 +451,17 @@ function SettingsPage() {
 										render={({ field }) => (
 											<FormItem>
 												<FormLabel>Budget, hours</FormLabel>
-												<FormControl>
-													<Input
-														inputMode="decimal"
-														placeholder="e.g. 400"
-														{...field}
-														value={field.value ?? ""}
-													/>
-												</FormControl>
-												<FormMessage />
+												<InputGroup>
+													<FormControl>
+														<InputGroupInput
+															inputMode="decimal"
+															placeholder="e.g. 400"
+															{...field}
+															value={field.value ?? ""}
+														/>
+													</FormControl>
+													<FormMessage />
+												</InputGroup>
 											</FormItem>
 										)}
 									/>
@@ -452,19 +471,21 @@ function SettingsPage() {
 										render={({ field }) => (
 											<FormItem>
 												<FormLabel>Budget, amount</FormLabel>
-												<FormControl>
-													<Input
-														inputMode="decimal"
-														placeholder="e.g. 32000"
-														{...field}
-														value={field.value ?? ""}
-													/>
-												</FormControl>
+												<InputGroup>
+													<FormControl>
+														<InputGroupInput
+															inputMode="decimal"
+															placeholder="e.g. 32000"
+															{...field}
+															value={field.value ?? ""}
+														/>
+													</FormControl>
+													<FormMessage />
+												</InputGroup>
 												<p className="text-sm text-muted-foreground">
 													Shown as context beside the hours. Nothing is computed
 													from it.
 												</p>
-												<FormMessage />
 											</FormItem>
 										)}
 									/>
@@ -477,18 +498,20 @@ function SettingsPage() {
 									render={({ field }) => (
 										<FormItem className="border-t pt-3.5">
 											<FormLabel>Hourly price</FormLabel>
-											<FormControl>
-												<Input
-													inputMode="decimal"
-													placeholder="e.g. 85"
-													{...field}
-													value={field.value ?? ""}
-												/>
-											</FormControl>
+											<InputGroup>
+												<FormControl>
+													<InputGroupInput
+														inputMode="decimal"
+														placeholder="e.g. 85"
+														{...field}
+														value={field.value ?? ""}
+													/>
+												</FormControl>
+												<FormMessage />
+											</InputGroup>
 											<p className="text-sm text-muted-foreground">
 												Visible to this project's PMs and admins only.
 											</p>
-											<FormMessage />
 										</FormItem>
 									)}
 								/>

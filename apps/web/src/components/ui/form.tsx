@@ -81,9 +81,14 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
 
 	return (
 		<FormItemContext.Provider value={{ id }}>
+			{/* `content-start`: a field beside a taller one is stretched to the
+			    row's height, and without it the grid shares that spare height
+			    out between the label and the box — the label's text drops to the
+			    middle of its row and the box slides down. With it the spare
+			    height stays below the field, where nothing is drawn. */}
 			<div
 				data-slot="form-item"
-				className={cn("grid gap-1.5", className)}
+				className={cn("grid content-start gap-1.5", className)}
 				{...props}
 			/>
 		</FormItemContext.Provider>
@@ -157,7 +162,16 @@ function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
 	);
 }
 
-function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
+/**
+ * The field's error, drawn INSIDE its box rather than under it: at the end of
+ * the line in an `InputGroup`, before the caret in a Select or Combobox
+ * trigger, or in the bottom corner of a tall box the caller positions it in.
+ * A message under the box made the field taller, which stretched the field
+ * beside it and moved every field under a centred dialog; inside the box,
+ * nothing grows. A `span`, because a trigger is a `<button>` and a `<p>` is
+ * not allowed inside one.
+ */
+function FormMessage({ className, ...props }: React.ComponentProps<"span">) {
 	const { error, formMessageId } = useFormField();
 	const body = error ? String(error?.message ?? "") : props.children;
 
@@ -166,14 +180,14 @@ function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
 	}
 
 	return (
-		<p
+		<span
 			data-slot="form-message"
 			id={formMessageId}
-			className={cn("text-xs text-destructive", className)}
+			className={cn("text-xs whitespace-nowrap text-destructive", className)}
 			{...props}
 		>
 			{body}
-		</p>
+		</span>
 	);
 }
 

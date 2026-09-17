@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -23,7 +23,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from "#/components/ui/form.tsx";
-import { Input } from "#/components/ui/input.tsx";
+import { InputGroup, InputGroupInput } from "#/components/ui/input-group.tsx";
 import {
 	Select,
 	SelectContent,
@@ -35,6 +35,13 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { pendingInvitationsQuery } from "#/queries/members.ts";
 import { inviteMember } from "#/server/members.ts";
 
+// Core's rule in the form's own words: the error sits inside the box, beside
+// its label, so "Invalid email" says enough.
+const formSchema = inviteMemberInput.extend({
+	email: z.email("Invalid email"),
+});
+type FormValues = z.infer<typeof formSchema>;
+
 const ROLE_OPTIONS = [
 	{ value: "member", label: "Member" },
 	{ value: "admin", label: "Admin" },
@@ -44,14 +51,13 @@ export function InviteMemberDialog() {
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
-	const form = useForm<z.infer<typeof inviteMemberInput>>({
-		resolver: zodResolver(inviteMemberInput),
+	const form = useForm<FormValues>({
+		resolver: zodResolver(formSchema),
 		defaultValues: { email: "", role: "member" },
 	});
 
 	const mutation = useMutation({
-		mutationFn: (data: z.infer<typeof inviteMemberInput>) =>
-			inviteMember({ data }),
+		mutationFn: (data: FormValues) => inviteMember({ data }),
 		// Optimistic: the dialog closes on submit, not on the answer. A refusal
 		// (already a member, already invited) opens it again with what was typed,
 		// so nothing has to be entered twice.
@@ -85,6 +91,10 @@ export function InviteMemberDialog() {
 				<Form {...form}>
 					<form
 						onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+						// The schema checks the address, so the browser's own bubble for
+						// `type="email"` would only get there first, in a different place
+						// and in different words.
+						noValidate
 						className="grid grid-cols-[minmax(0,1fr)] gap-4"
 					>
 						<FormField
@@ -93,10 +103,12 @@ export function InviteMemberDialog() {
 							render={({ field }) => (
 								<FormItem>
 									<FormLabel required>Email</FormLabel>
-									<FormControl>
-										<Input type="email" autoFocus {...field} />
-									</FormControl>
-									<FormMessage />
+									<InputGroup>
+										<FormControl>
+											<InputGroupInput type="email" autoFocus {...field} />
+										</FormControl>
+										<FormMessage />
+									</InputGroup>
 								</FormItem>
 							)}
 						/>

@@ -134,7 +134,7 @@ const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 const formSchema = z
 	.object({
 		projectId: z.string().min(1),
-		taskId: z.uuid("Pick a task"),
+		taskId: z.uuid("Required"),
 		date: dateKey,
 		duration: z.string(),
 		description: z.string().max(10_000),
@@ -150,7 +150,7 @@ const formSchema = z
 				ctx.addIssue({
 					code: "custom",
 					path: ["duration"],
-					message: "Enter some time",
+					message: "Required",
 				});
 			} else {
 				const parsed = parseDuration(data.duration);
@@ -158,19 +158,19 @@ const formSchema = z
 					ctx.addIssue({
 						code: "custom",
 						path: ["duration"],
-						message: "Try 1.5, 1h30m or 1:30",
+						message: "Try 1.5 or 1:30",
 					});
 				} else if (parsed <= 0) {
 					ctx.addIssue({
 						code: "custom",
 						path: ["duration"],
-						message: "Enter some time",
+						message: "Required",
 					});
 				} else if (snapToQuarterHour(parsed) > MAX_ENTRY_SECONDS) {
 					ctx.addIssue({
 						code: "custom",
 						path: ["duration"],
-						message: "A single entry cannot exceed 24 hours",
+						message: "Max 24 hours",
 					});
 				}
 			}
@@ -179,7 +179,7 @@ const formSchema = z
 			ctx.addIssue({
 				code: "custom",
 				path: ["daysOfWeek"],
-				message: "Pick at least one day",
+				message: "Pick a day",
 			});
 		}
 	});
@@ -905,9 +905,7 @@ export function AddBlockDialog({
 	const submit = useCallback(
 		(values: FormValues) => {
 			if (needsDescription && !values.fillsDay && !values.description.trim()) {
-				form.setError("description", {
-					message: "Describe what you worked on",
-				});
+				form.setError("description", { message: "Required" });
 				return;
 			}
 			mutate(values);
@@ -1008,8 +1006,8 @@ export function AddBlockDialog({
 										// each other whatever is in them — a project with no
 										// client, or a task whose group this build does not
 										// know, no longer leaves one box shorter than the one
-										// beside it. An error message lands in an implicit row
-										// under both.
+										// beside it. An error is drawn inside the box, so it
+										// never adds a row under either of them.
 										<FormItem className="grid-rows-[auto_1fr] gap-2">
 											<FormLabel>Project</FormLabel>
 											<FormControl>
@@ -1060,9 +1058,9 @@ export function AddBlockDialog({
 															? "Loading tasks…"
 															: "Pick a task"
 													}
+													message={<FormMessage aria-hidden />}
 												/>
 											</FormControl>
-											<FormMessage />
 										</FormItem>
 									)}
 								/>
@@ -1071,32 +1069,40 @@ export function AddBlockDialog({
 						{/* What you did, and how long: side by side, the time box big
 						    enough to be the thing you read back. The duration stays to the
 						    RIGHT of the note, where it has always been — this is the most
-						    used form in the product and the hand knows where the box is. */}
+						    used form in the product and the hand knows where the box is.
+
+						    Both fields are `grid-rows-[auto_1fr]`, like the pair above: the
+						    label keeps its own height and the box takes the rest, so a note
+						    dragged taller takes the Duration box with it and leaves both
+						    labels where they were. Each error sits in its box's bottom
+						    corner, so neither box grows when one appears. */}
 						<div className="grid gap-3">
 							<div className="grid grid-cols-[minmax(0,1fr)_10.75rem] gap-2.5 max-sm:grid-cols-[minmax(0,1fr)]">
 								<FormField
 									control={form.control}
 									name="description"
 									render={({ field }) => (
-										<FormItem className="gap-2">
+										<FormItem className="grid-rows-[auto_1fr] gap-2">
 											<FormLabel>
 												{needsDescription && !fillsDay
 													? "What you did"
 													: "Note"}
 											</FormLabel>
-											<FormControl>
-												<Textarea
-													rows={3}
-													className="min-h-22 resize-y"
-													placeholder={
-														needsDescription && !fillsDay
-															? "What did you work on?"
-															: "Optional…"
-													}
-													{...field}
-												/>
-											</FormControl>
-											<FormMessage />
+											<div className="relative">
+												<FormControl>
+													<Textarea
+														rows={3}
+														className="min-h-22 resize-y"
+														placeholder={
+															needsDescription && !fillsDay
+																? "What did you work on?"
+																: "Optional…"
+														}
+														{...field}
+													/>
+												</FormControl>
+												<FormMessage className="pointer-events-none absolute right-2.5 bottom-2" />
+											</div>
 										</FormItem>
 									)}
 								/>
@@ -1106,7 +1112,7 @@ export function AddBlockDialog({
 									// tinted one: the preset below is already lit, and a second
 									// highlight here would say the same thing twice in two
 									// different colors.
-									<div className="grid gap-2">
+									<div className="grid grid-rows-[auto_1fr] gap-2">
 										<span className="text-sm leading-none font-medium">
 											Duration
 										</span>
@@ -1119,30 +1125,32 @@ export function AddBlockDialog({
 										control={form.control}
 										name="duration"
 										render={({ field }) => (
-											<FormItem className="gap-2">
+											<FormItem className="grid-rows-[auto_1fr] gap-2">
 												<FormLabel>Duration</FormLabel>
-												<FormControl>
-													<Input
-														{...field}
-														placeholder="0:00"
-														inputMode="decimal"
-														className="mono h-full min-h-22 text-right text-[30px] font-medium tabular-nums"
-														// Normalise on blur, the way the week grid's cells
-														// already do — "1.5" becomes "1:30", so what is on
-														// screen is what will be saved rather than a form the
-														// reader has to snap in their own head.
-														onBlur={(e) => {
-															field.onBlur();
-															const parsed = parseDuration(e.target.value);
-															if (parsed !== null && parsed > 0) {
-																field.onChange(
-																	formatClock(snapToQuarterHour(parsed)),
-																);
-															}
-														}}
-													/>
-												</FormControl>
-												<FormMessage />
+												<div className="relative h-full">
+													<FormControl>
+														<Input
+															{...field}
+															placeholder="0:00"
+															inputMode="decimal"
+															className="mono h-full min-h-22 text-right text-[30px] font-medium tabular-nums"
+															// Normalise on blur, the way the week grid's cells
+															// already do — "1.5" becomes "1:30", so what is on
+															// screen is what will be saved rather than a form the
+															// reader has to snap in their own head.
+															onBlur={(e) => {
+																field.onBlur();
+																const parsed = parseDuration(e.target.value);
+																if (parsed !== null && parsed > 0) {
+																	field.onChange(
+																		formatClock(snapToQuarterHour(parsed)),
+																	);
+																}
+															}}
+														/>
+													</FormControl>
+													<FormMessage className="pointer-events-none absolute right-2.5 bottom-2" />
+												</div>
 											</FormItem>
 										)}
 									/>
@@ -1652,7 +1660,11 @@ export function AddBlockDialog({
 																	className="overflow-hidden"
 																>
 																	<div className="mt-3 flex flex-col gap-3">
-																		<div className="flex gap-1">
+																		{/* The days have no box to hold an error, so it
+																		    sits at the end of their row — as it does at
+																		    the end of an input's line — and the row never
+																		    grows. */}
+																		<div className="flex items-center gap-1">
 																			{weekdays.map(({ day, initial }) => (
 																				<button
 																					key={day}
@@ -1668,15 +1680,15 @@ export function AddBlockDialog({
 																					{initial}
 																				</button>
 																			))}
+																			{form.formState.errors.daysOfWeek && (
+																				<span className="ms-auto text-xs text-destructive">
+																					{
+																						form.formState.errors.daysOfWeek
+																							.message
+																					}
+																				</span>
+																			)}
 																		</div>
-																		{form.formState.errors.daysOfWeek && (
-																			<p className="text-sm text-destructive">
-																				{
-																					form.formState.errors.daysOfWeek
-																						.message
-																				}
-																			</p>
-																		)}
 																		<FormField
 																			control={form.control}
 																			name="repeatEndDate"

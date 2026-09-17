@@ -31,6 +31,7 @@ import {
 	FormLabel,
 	FormMessage,
 } from "#/components/ui/form.tsx";
+import { InputGroup, InputGroupInput } from "#/components/ui/input-group.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import {
 	Select,
@@ -91,32 +92,43 @@ const optionalMoney = z.union([
 	z
 		.string()
 		.trim()
-		.regex(/^\d+(\.\d{1,2})?$/, "Expected an amount like 1500 or 1500.00"),
+		.regex(/^\d+(\.\d{1,2})?$/, "Must be an amount"),
 ]);
 
 // Built from the individual field schemas (rather than .pick()) so the fields
 // carrying zod defaults don't leak their z.infer/z.input mismatch into
 // zodResolver — defaults are applied via the form's defaultValues instead.
+//
+// Name and client restate core's rules in the form's own words. Their error is
+// drawn inside the box, beside its label, where "Required" is all it needs to
+// say; the API keeps core's wording, which has no label beside it.
 const formSchema = z.object({
-	name: createProjectInput.shape.name,
+	name: z.string().trim().min(1, "Required").max(120),
 	code: createProjectInput.shape.code,
 	icon: z.string().nullable(),
-	clientId: createProjectInput.shape.clientId,
+	clientId: z.uuid("Required"),
 	type: createProjectInput.shape.type,
 	budgetHours: z.union([
 		z.literal(""),
 		z
 			.string()
 			.trim()
-			.regex(/^\d+(\.\d+)?$/, "Expected a number like 400 or 400.5")
+			.regex(/^\d+(\.\d+)?$/, "Must be an amount")
 			.refine((v) => {
 				const n = Number(v);
 				return n > 0 && n <= 100_000;
-			}, "Must be between 1 and 100,000"),
+			}, "Must be 1 to 100,000"),
 	]),
 	budgetAmount: optionalMoney,
 	hourlyPrice: optionalMoney,
 });
+
+// The boxes stop at the schema's own limits, so "too long" can never be the
+// error — zod's wording for it ("Too big: expected string to have <=16
+// characters") was never meant to be read.
+const NAME_MAX_LENGTH = formSchema.shape.name.maxLength ?? undefined;
+const CODE_MAX_LENGTH =
+	createProjectInput.shape.code.unwrap().maxLength ?? undefined;
 
 const EMPTY: z.infer<typeof formSchema> = {
 	name: "",
@@ -228,10 +240,16 @@ export function CreateProjectDialog() {
 								render={({ field }) => (
 									<FormItem>
 										<FormLabel required>Name</FormLabel>
-										<FormControl>
-											<Input autoFocus {...field} />
-										</FormControl>
-										<FormMessage />
+										<InputGroup>
+											<FormControl>
+												<InputGroupInput
+													autoFocus
+													maxLength={NAME_MAX_LENGTH}
+													{...field}
+												/>
+											</FormControl>
+											<FormMessage />
+										</InputGroup>
 									</FormItem>
 								)}
 							/>
@@ -245,6 +263,7 @@ export function CreateProjectDialog() {
 											<Input
 												className="w-24"
 												placeholder="ACME"
+												maxLength={CODE_MAX_LENGTH}
 												{...field}
 												value={field.value ?? ""}
 											/>
@@ -270,6 +289,7 @@ export function CreateProjectDialog() {
 										<FormControl>
 											<SelectTrigger className="w-full">
 												<SelectValue placeholder="Pick a client" />
+												<FormMessage aria-hidden />
 											</SelectTrigger>
 										</FormControl>
 										<SelectContent>
@@ -280,7 +300,6 @@ export function CreateProjectDialog() {
 											))}
 										</SelectContent>
 									</Select>
-									<FormMessage />
 								</FormItem>
 							)}
 						/>
@@ -356,15 +375,17 @@ export function CreateProjectDialog() {
 									render={({ field }) => (
 										<FormItem>
 											<FormLabel>Budget, hours</FormLabel>
-											<FormControl>
-												<Input
-													inputMode="decimal"
-													placeholder="e.g. 400"
-													{...field}
-													value={field.value ?? ""}
-												/>
-											</FormControl>
-											<FormMessage />
+											<InputGroup>
+												<FormControl>
+													<InputGroupInput
+														inputMode="decimal"
+														placeholder="e.g. 400"
+														{...field}
+														value={field.value ?? ""}
+													/>
+												</FormControl>
+												<FormMessage />
+											</InputGroup>
 										</FormItem>
 									)}
 								/>
@@ -374,19 +395,21 @@ export function CreateProjectDialog() {
 									render={({ field }) => (
 										<FormItem>
 											<FormLabel>Budget, amount</FormLabel>
-											<FormControl>
-												<Input
-													inputMode="decimal"
-													placeholder="e.g. 32000"
-													{...field}
-													value={field.value ?? ""}
-												/>
-											</FormControl>
+											<InputGroup>
+												<FormControl>
+													<InputGroupInput
+														inputMode="decimal"
+														placeholder="e.g. 32000"
+														{...field}
+														value={field.value ?? ""}
+													/>
+												</FormControl>
+												<FormMessage />
+											</InputGroup>
 											<p className="text-sm text-muted-foreground">
 												Shown as context beside the hours. Nothing is computed
 												from it.
 											</p>
-											<FormMessage />
 										</FormItem>
 									)}
 								/>
@@ -399,18 +422,20 @@ export function CreateProjectDialog() {
 								render={({ field }) => (
 									<FormItem className="border-t pt-3.5">
 										<FormLabel>Hourly price</FormLabel>
-										<FormControl>
-											<Input
-												inputMode="decimal"
-												placeholder="e.g. 85"
-												{...field}
-												value={field.value ?? ""}
-											/>
-										</FormControl>
+										<InputGroup>
+											<FormControl>
+												<InputGroupInput
+													inputMode="decimal"
+													placeholder="e.g. 85"
+													{...field}
+													value={field.value ?? ""}
+												/>
+											</FormControl>
+											<FormMessage />
+										</InputGroup>
 										<p className="text-sm text-muted-foreground">
 											Visible to this project's PMs and admins only.
 										</p>
-										<FormMessage />
 									</FormItem>
 								)}
 							/>
