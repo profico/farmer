@@ -80,6 +80,14 @@ export function AddRowDialog({
 	// against the offered list rather than for a non-empty id, because a
 	// remembered task may since have been archived.
 	const canAdd = pickableTasks.some((t) => t.id === taskId);
+	// Every project offers the same task list, so the task survives a switch
+	// between them. Time-off offers only the leave kinds, so crossing into or out
+	// of it lets go of a task the new list does not hold — once that list has
+	// loaded, not while it is still empty. Adjusted during render, not in an
+	// effect, so the picker never draws a frame holding a task it cannot show.
+	if (taskId && pickableTasks.length > 0 && !canAdd) {
+		setTaskId("");
+	}
 
 	const reset = () => {
 		setProjectId(TIME_OFF);
@@ -156,12 +164,7 @@ export function AddRowDialog({
 							projects={projects}
 							noProject="Time-off"
 							value={projectId === TIME_OFF ? null : projectId}
-							onValueChange={(next) => {
-								setProjectId(next ?? TIME_OFF);
-								// The task list follows the project, so a project change can
-								// leave a task selected that no longer applies.
-								setTaskId("");
-							}}
+							onValueChange={(next) => setProjectId(next ?? TIME_OFF)}
 						/>
 					</div>
 

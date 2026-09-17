@@ -7,7 +7,7 @@ import {
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -130,6 +130,12 @@ function RecurringBlockRuleDialog({
 	// arrives under the box rather than as a toast.
 	const taskId = form.watch("taskId");
 	const selectedTask = taskOptions.find((t) => t.id === taskId);
+	// Every project offers the same task list, so the task survives a switch
+	// between them. The project-less list is a different one, so crossing into
+	// or out of "No project" lets go of a task the new list does not hold.
+	useEffect(() => {
+		if (taskId && !selectedTask) form.setValue("taskId", "");
+	}, [taskId, selectedTask, form]);
 	const needsDescription = selectedTask
 		? descriptionRequiredFor(selectedTask)
 		: true;
@@ -226,10 +232,9 @@ function RecurringBlockRuleDialog({
 											projects={projects}
 											noProject="No project"
 											value={field.value === NO_PROJECT ? null : field.value}
-											onValueChange={(next) => {
-												field.onChange(next ?? NO_PROJECT);
-												form.setValue("taskId", "");
-											}}
+											onValueChange={(next) =>
+												field.onChange(next ?? NO_PROJECT)
+											}
 										/>
 									</FormControl>
 									<FormMessage />
