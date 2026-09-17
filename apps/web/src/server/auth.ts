@@ -232,3 +232,30 @@ export const orgAdminMiddleware = createMiddleware({ type: "function" }).server(
 		return withAccessStatus(AccessError, () => next({ context: { ctx } }));
 	},
 );
+
+/**
+ * Operates the deployment → `context.session`. Not a workspace role.
+ *
+ * `user.role`, not `member.role` and not `Access`: a platform admin is one
+ * value per person for the whole instance, and the screens behind this
+ * middleware are the instance's rather than any workspace's (see
+ * `packages/core/src/lib/platform-admin.ts`). Somebody who owns every
+ * organization on the deployment still fails this check.
+ *
+ * Redirects rather than answering 403, matching `orgAdminMiddleware`: every
+ * caller backs a screen that should not have been reachable, and `/` resolves
+ * where the session actually belongs.
+ *
+ * The import stays inside the `.server()` callback for the reason written on
+ * `orgMiddleware` — a top-level function body in this module ships to the
+ * browser, so a deferred import here would become a real client chunk.
+ */
+export const platformAdminMiddleware = createMiddleware({
+	type: "function",
+}).server(async ({ next }) => {
+	const session = await requireSession();
+	const { isPlatformAdminRole } =
+		await import("@farmer/core/lib/platform-admin");
+	if (!isPlatformAdminRole(session.user.role)) throw redirect({ to: "/" });
+	return next({ context: { session } });
+});

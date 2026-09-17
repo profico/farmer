@@ -71,3 +71,23 @@ export const queryKeys = (org: string) =>
 	}) as const satisfies Record<string, readonly [string, string]>;
 
 export type QueryFamily = keyof ReturnType<typeof queryKeys>;
+
+/**
+ * The instance's own families, which name no organization because they belong
+ * to no organization.
+ *
+ * The rule above — every key names its workspace — exists because a cached
+ * answer belongs to one workspace and the server resolves that workspace from
+ * the session rather than from the key. Neither half is true here: who operates
+ * the DEPLOYMENT is one answer for the whole instance, the same under every
+ * slug, and the server functions behind these keys take no organization at all
+ * (`server/platform-admins.ts`). Adding a slug would not make the key safer, it
+ * would cache the same answer once per workspace and stale it in one of them.
+ *
+ * Kept in this file rather than written as a literal at the call site, for the
+ * reason the header gives: an invalidation and a key are one decision.
+ */
+export const platformKeys = {
+	admins: ["platform-admins"],
+	people: ["platform-people"],
+} as const satisfies Record<string, readonly [string]>;

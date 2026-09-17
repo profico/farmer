@@ -27,6 +27,9 @@ export * from "./notify";
 export * from "./org-context.service";
 export * from "./org-settings.service";
 export * from "./organization.service";
+// Instance-level rather than workspace-level, and therefore the one service
+// whose functions take no `Ctx` — the header says why.
+export * from "./platform-admins.service";
 export * from "./projects.service";
 export * from "./recurring-block-rules.service";
 export * from "./reminder-settings.service";

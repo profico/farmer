@@ -1,4 +1,4 @@
-import { CaretRightIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, ShieldCheckIcon } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
@@ -78,7 +78,7 @@ function SettingsRowLink({ item, description }: SettingsEntry) {
 
 function SettingsIndex() {
 	const orgSlug = useOrgSlug();
-	const { role } = Route.useRouteContext();
+	const { role, isPlatformAdmin } = Route.useRouteContext();
 	const isAdmin = role === "owner" || role === "admin";
 	const { data: access } = useSuspenseQuery(myAccessQuery(orgSlug));
 	// Same gate as the Clients nav row: a Team Lead or PM may run the client
@@ -119,6 +119,43 @@ function SettingsIndex() {
 					{workspace.map((entry) => (
 						<SettingsRowLink key={entry.item.to} {...entry} />
 					))}
+				</PageSection>
+			)}
+
+			{/* The deployment's own settings, which are not this workspace's — and
+			    the only way into them, because `NavItem.to` is typed `OrgRoutePath`
+			    and every surface that draws one passes an `orgSlug` it would not
+			    have (see `routes/infrastructure/route.tsx`).
+
+			    Drawn as its own section rather than a row under Workspace: it
+			    leaves this workspace, and it is the one section here that most
+			    people never see at all. */}
+			{isPlatformAdmin && (
+				<PageSection
+					title="Instance"
+					contentClassName="grid gap-x-10 sm:grid-cols-2"
+				>
+					<Link
+						to="/infrastructure/admins"
+						className="group/row -mx-2.5 flex items-start gap-3 rounded-lg px-2.5 py-3 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40"
+					>
+						<span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors duration-(--dur-fast) group-hover/row:text-foreground">
+							<ShieldCheckIcon className="size-4" />
+						</span>
+						<span className="min-w-0 flex-1">
+							<span className="block text-base font-medium">
+								Infrastructure
+							</span>
+							<span className="mt-0.5 block text-sm leading-normal text-muted-foreground">
+								How this deployment runs, starting with who operates it.
+							</span>
+						</span>
+						<CaretRightIcon
+							weight="regular"
+							aria-hidden
+							className="mt-2 size-3.5 shrink-0 text-faint opacity-0 transition-opacity duration-(--dur-fast) group-hover/row:opacity-100 group-focus-visible/row:opacity-100"
+						/>
+					</Link>
 				</PageSection>
 			)}
 

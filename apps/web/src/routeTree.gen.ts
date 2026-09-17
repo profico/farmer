@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as NoAccessRouteImport } from './routes/no-access'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DeviceRouteImport } from './routes/device'
+import { Route as InfrastructureRouteRouteImport } from './routes/infrastructure/route'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InfrastructureIndexRouteImport } from './routes/infrastructure/index'
 import { Route as CliIndexRouteImport } from './routes/cli/index'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
+import { Route as InfrastructureAdminsRouteImport } from './routes/infrastructure/admins'
 import { Route as CliInstallDotshRouteImport } from './routes/cli/install[.]sh'
 import { Route as CliInstallDotps1RouteImport } from './routes/cli/install[.]ps1'
 import { Route as ApiMcpLoginRouteImport } from './routes/api/mcp-login'
@@ -91,6 +94,11 @@ const DeviceRoute = DeviceRouteImport.update({
   path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InfrastructureRouteRoute = InfrastructureRouteRouteImport.update({
+  id: '/infrastructure',
+  path: '/infrastructure',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
   id: '/$orgSlug',
   path: '/$orgSlug',
@@ -101,6 +109,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InfrastructureIndexRoute = InfrastructureIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => InfrastructureRouteRoute,
+} as any)
 const CliIndexRoute = CliIndexRouteImport.update({
   id: '/cli/',
   path: '/cli/',
@@ -110,6 +123,11 @@ const OrgSlugIndexRoute = OrgSlugIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const InfrastructureAdminsRoute = InfrastructureAdminsRouteImport.update({
+  id: '/admins',
+  path: '/admins',
+  getParentRoute: () => InfrastructureRouteRoute,
 } as any)
 const CliInstallDotshRoute = CliInstallDotshRouteImport.update({
   id: '/cli/install.sh',
@@ -433,6 +451,7 @@ const ApiV1OrgsOrgSlugAbsencesIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/infrastructure': typeof InfrastructureRouteRouteWithChildren
   '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
@@ -447,8 +466,10 @@ export interface FileRoutesByFullPath {
   '/api/mcp-login': typeof ApiMcpLoginRoute
   '/cli/install.ps1': typeof CliInstallDotps1Route
   '/cli/install.sh': typeof CliInstallDotshRoute
+  '/infrastructure/admins': typeof InfrastructureAdminsRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/cli/': typeof CliIndexRoute
+  '/infrastructure/': typeof InfrastructureIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -513,8 +534,10 @@ export interface FileRoutesByTo {
   '/api/mcp-login': typeof ApiMcpLoginRoute
   '/cli/install.ps1': typeof CliInstallDotps1Route
   '/cli/install.sh': typeof CliInstallDotshRoute
+  '/infrastructure/admins': typeof InfrastructureAdminsRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
   '/cli': typeof CliIndexRoute
+  '/infrastructure': typeof InfrastructureIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -568,6 +591,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/infrastructure': typeof InfrastructureRouteRouteWithChildren
   '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
@@ -582,8 +606,10 @@ export interface FileRoutesById {
   '/api/mcp-login': typeof ApiMcpLoginRoute
   '/cli/install.ps1': typeof CliInstallDotps1Route
   '/cli/install.sh': typeof CliInstallDotshRoute
+  '/infrastructure/admins': typeof InfrastructureAdminsRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/cli/': typeof CliIndexRoute
+  '/infrastructure/': typeof InfrastructureIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -638,6 +664,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$orgSlug'
+    | '/infrastructure'
     | '/device'
     | '/login'
     | '/no-access'
@@ -652,8 +679,10 @@ export interface FileRouteTypes {
     | '/api/mcp-login'
     | '/cli/install.ps1'
     | '/cli/install.sh'
+    | '/infrastructure/admins'
     | '/$orgSlug/'
     | '/cli/'
+    | '/infrastructure/'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -718,8 +747,10 @@ export interface FileRouteTypes {
     | '/api/mcp-login'
     | '/cli/install.ps1'
     | '/cli/install.sh'
+    | '/infrastructure/admins'
     | '/$orgSlug'
     | '/cli'
+    | '/infrastructure'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -772,6 +803,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$orgSlug'
+    | '/infrastructure'
     | '/device'
     | '/login'
     | '/no-access'
@@ -786,8 +818,10 @@ export interface FileRouteTypes {
     | '/api/mcp-login'
     | '/cli/install.ps1'
     | '/cli/install.sh'
+    | '/infrastructure/admins'
     | '/$orgSlug/'
     | '/cli/'
+    | '/infrastructure/'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -841,6 +875,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
+  InfrastructureRouteRoute: typeof InfrastructureRouteRouteWithChildren
   DeviceRoute: typeof DeviceRoute
   LoginRoute: typeof LoginRoute
   NoAccessRoute: typeof NoAccessRoute
@@ -904,6 +939,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/infrastructure': {
+      id: '/infrastructure'
+      path: '/infrastructure'
+      fullPath: '/infrastructure'
+      preLoaderRoute: typeof InfrastructureRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$orgSlug': {
       id: '/$orgSlug'
       path: '/$orgSlug'
@@ -918,6 +960,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/infrastructure/': {
+      id: '/infrastructure/'
+      path: '/'
+      fullPath: '/infrastructure/'
+      preLoaderRoute: typeof InfrastructureIndexRouteImport
+      parentRoute: typeof InfrastructureRouteRoute
+    }
     '/cli/': {
       id: '/cli/'
       path: '/cli'
@@ -931,6 +980,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/$orgSlug/'
       preLoaderRoute: typeof OrgSlugIndexRouteImport
       parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/infrastructure/admins': {
+      id: '/infrastructure/admins'
+      path: '/admins'
+      fullPath: '/infrastructure/admins'
+      preLoaderRoute: typeof InfrastructureAdminsRouteImport
+      parentRoute: typeof InfrastructureRouteRoute
     }
     '/cli/install.sh': {
       id: '/cli/install.sh'
@@ -1420,9 +1476,23 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
   OrgSlugRouteRouteChildren,
 )
 
+interface InfrastructureRouteRouteChildren {
+  InfrastructureAdminsRoute: typeof InfrastructureAdminsRoute
+  InfrastructureIndexRoute: typeof InfrastructureIndexRoute
+}
+
+const InfrastructureRouteRouteChildren: InfrastructureRouteRouteChildren = {
+  InfrastructureAdminsRoute: InfrastructureAdminsRoute,
+  InfrastructureIndexRoute: InfrastructureIndexRoute,
+}
+
+const InfrastructureRouteRouteWithChildren =
+  InfrastructureRouteRoute._addFileChildren(InfrastructureRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
+  InfrastructureRouteRoute: InfrastructureRouteRouteWithChildren,
   DeviceRoute: DeviceRoute,
   LoginRoute: LoginRoute,
   NoAccessRoute: NoAccessRoute,
