@@ -4,6 +4,7 @@ import { db } from "../db";
 import { client, project } from "../db/schema/domain";
 import type { CreateClientInput, UpdateClientInput } from "../schema/clients";
 import { ctxAccess, requireAdmin } from "./context";
+import { clientWebhookPayload, emitEvent } from "./events";
 import type { Ctx } from "./types";
 
 // The org's own client, holding every Internal project. Named for the company by
@@ -85,6 +86,9 @@ export const clientsService = {
 			})
 			.returning();
 		if (!created) throw new Error("Failed to create client");
+		await emitEvent(ctx, "client.created", () =>
+			clientWebhookPayload(ctx, created.id),
+		);
 		return created;
 	},
 

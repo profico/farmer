@@ -71,6 +71,7 @@ export type NotifyKind =
 	| "compliance-nudge"
 	| "month-end"
 	| "admin-digest"
+	| "webhook-disabled"
 	| "test";
 
 // The whole policy, in one table. `preference` names the column in
@@ -91,6 +92,17 @@ const KINDS = {
 	"compliance-nudge": { channels: ["slack"], preference: null, reminder: true },
 	"month-end": { channels: ["slack"], preference: null, reminder: true },
 	"admin-digest": { channels: ["slack"], preference: null, reminder: true },
+	// An outbound endpoint that stopped accepting deliveries (issue #67). Not a
+	// reminder: it is a fact about the organization's plumbing, and holding it
+	// back from an admin who has never signed in — which is exactly the person
+	// an import created and then made an owner — would mean nobody is told.
+	// Both channels, because an integration that has gone quiet is the kind of
+	// thing that is noticed late.
+	"webhook-disabled": {
+		channels: ["slack", "push"],
+		preference: null,
+		reminder: false,
+	},
 	test: { channels: ["slack"], preference: null, reminder: false },
 } satisfies Record<
 	NotifyKind,

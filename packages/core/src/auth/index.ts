@@ -26,6 +26,7 @@ import {
 	isSingleOrgMode,
 } from "../lib/single-org";
 import { slugify } from "../lib/slug";
+import { emitEvent, memberWebhookPayload } from "../services/events";
 import { membersService } from "../services/members.service";
 import { slackService } from "../services/slack.service";
 
@@ -94,6 +95,29 @@ const claimPlatformAdmin = async (userId: string) => {
 			.update(schema.user)
 			.set({ role: PLATFORM_ADMIN_ROLE })
 			.where(eq(schema.user.id, userId));
+	});
+};
+
+/**
+ * `member.added`, for whoever is listening on the other end of a webhook.
+ *
+ * The Ctx names the new member as both the organization and the actor, because
+ * there is no third party here: accepting an invitation is something a person
+ * does to themselves. `emitEvent` never throws, so a webhook cannot cost
+ * somebody their membership.
+ */
+const announceNewMember = async (newMember: {
+	organizationId: string;
+	userId: string;
+	role: string;
+}): Promise<void> => {
+	const ctx = {
+		organizationId: newMember.organizationId,
+		userId: newMember.userId,
+	};
+	await emitEvent(ctx, "member.added", async () => {
+		const payload = await memberWebhookPayload(ctx, newMember.userId);
+		return payload ? { ...payload, role: newMember.role } : null;
 	});
 };
 
@@ -333,18 +357,24 @@ export const auth = betterAuth({
 			// invitation (the normal path) and an admin adding somebody directly.
 			// Neither can fail on this — `linkMember` swallows its own errors, so a
 			// Slack outage or an uninstalled app costs the match, not the membership.
+			//
+			// They are also where `member.added` is emitted for outbound webhooks
+			// (issue #67), and for the same reason: joining an organization has no
+			// service function of its own, because better-auth owns both paths.
 			organizationHooks: {
 				afterAcceptInvitation: async ({ member: newMember }) => {
 					await slackService.linkMember(
 						newMember.organizationId,
 						newMember.userId,
 					);
+					await announceNewMember(newMember);
 				},
 				afterAddMember: async ({ member: newMember }) => {
 					await slackService.linkMember(
 						newMember.organizationId,
 						newMember.userId,
 					);
+					await announceNewMember(newMember);
 				},
 			},
 			schema: {

@@ -13,6 +13,7 @@ import * as peopleSchema from "./schema/people";
 import * as scheduleSchema from "./schema/schedule";
 import * as settingsSchema from "./schema/settings";
 import * as slackSchema from "./schema/slack";
+import * as webhooksSchema from "./schema/webhooks";
 
 export const schema = {
 	...authSchema,
@@ -25,6 +26,7 @@ export const schema = {
 	...slackSchema,
 	...assistantSchema,
 	...importSchema,
+	...webhooksSchema,
 };
 
 export type Db = PostgresJsDatabase<typeof schema>;

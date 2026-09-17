@@ -24,11 +24,12 @@ argument — **tenancy is a parameter, never ambient**.
   - `schema/notifications.ts` — pushSubscription, notificationSettings.
   - `schema/import.ts` — importRun, importMapping (what each Harvest import created, so undo removes exactly that).
   - `schema/assistant.ts` — assistantSettings, assistantConversation, assistantMessage.
-- `src/services/` — one file per aggregate: access, account, assistant, clients, compliance, day-assembly, filing-rules, github, google-calendar, harvest-import, holidays, hour-fund, integration-settings, members, notifications, org-context (the slug-to-Ctx membership check MCP and the CLI share), org-settings, organization, platform-admins (the one service with no `Ctx` — it is instance-level, not tenanted), projects, recurring-block-rules, reminder-settings, reports, sessions (Preferences → Signed-in devices), slack, tasks, team-leads, time-entries, uploads, working-hours. Shared modules: `guards.ts`, `ledger.ts`, `unfiled.ts`, `notify.ts`, `reminder-recipients.ts`, `context.ts`, `db-ctx.ts`, `ports.ts`, `day-fill.ts`, `pr-reviews.ts` (the review-block rules the commit engine and the day assembler share), `types.ts`, and the two tool registries `assistant-tools.ts` + `mcp-tools.ts`.
+  - `schema/webhooks.ts` — webhookEndpoint, webhookEvent (the outbox: one row per thing that happened), webhookDelivery (one row per ATTEMPT, and the queue at the same time).
+- `src/services/` — one file per aggregate: access, account, assistant, clients, compliance, day-assembly, filing-rules, github, google-calendar, harvest-import, holidays, hour-fund, integration-settings, members, notifications, org-context (the slug-to-Ctx membership check MCP and the CLI share), org-settings, organization, platform-admins (the one service with no `Ctx` — it is instance-level, not tenanted), projects, recurring-block-rules, reminder-settings, reports, sessions (Preferences → Signed-in devices), slack, tasks, team-leads, time-entries, uploads, working-hours. Shared modules: `guards.ts`, `ledger.ts`, `unfiled.ts`, `notify.ts`, `events.ts` (the outbound sibling of `notify` — see Notifications below), `reminder-recipients.ts`, `context.ts`, `db-ctx.ts`, `ports.ts`, `day-fill.ts`, `pr-reviews.ts` (the review-block rules the commit engine and the day assembler share), `types.ts`, and the two tool registries `assistant-tools.ts` + `mcp-tools.ts`.
 - `src/schema/` — Zod input schemas, one module per aggregate, shared by the RHF form resolver, the server function `.validator()`, the REST handlers (`api/v1` and the CLI's API) and the assistant/MCP tool parameters. Range inputs carry their own ceilings (62 days for a time-entry range, 366 for a report), so a caller cannot ask for a full-table scan by widening the dates. **Don't re-validate by hand at a new call site** — that is how a caller ends up bypassing the ceiling.
 - `src/api/` — exported as `@farmer/core/api`: the REST API's response shapes and the projection functions that build them, plus `MIN_CLI_VERSION` and the CLI's error codes. Types-only imports, because the CLI binary imports it at runtime.
 - `src/lib/` — `time.ts` (UTC-in/display-zone-out durations and timezones on `date-fns`/`@date-fns/tz`; **the only place timezone math should happen**), `working-day.ts`, `day-plan.ts`, `automation-window.ts`, `org-time.ts`, `org-country.ts`, `task-taxonomy.ts` (task groups, the standard org tasks and Harvest name aliases — shared by the seed and the import), `task-rules.ts`, `search.ts` (the list filter the web app and the CLI share), `report-period.ts` + `report-format.ts` (report arithmetic the browser also needs), the integration clients (`github-client.ts`, `google-calendar-client.ts`, `slack-client.ts`, `openrouter-client.ts`), `github-activity.ts` (pure: which day a pull request event belongs to, and whose it is), `http.ts`, `oauth-state.ts`, `single-org.ts`, `dev-auth.ts`, the deployment flags `assistant-flag.ts` + `mcp-flag.ts` + `cli-flag.ts`, `uploads.ts` (browser-safe) + `storage.ts` (server-only), `slug.ts`, `email.ts`, `json.ts`. `harvest/` is the Harvest CSV parser and import planner — pure, because it runs in a browser Web Worker.
-- `src/jobs/` — exported as `@farmer/core/jobs`. `scheduler.ts` is the runner, `worker.ts` a standalone process entry; `automation-sync.ts`, `log-reminders.ts`, `slack-reminders.ts` and `upload-sweep.ts` are one tick of work each.
+- `src/jobs/` — exported as `@farmer/core/jobs`. `scheduler.ts` is the runner, `worker.ts` a standalone process entry; `automation-sync.ts`, `log-reminders.ts`, `slack-reminders.ts`, `upload-sweep.ts` and `webhook-delivery.ts` are one tick of work each.
 - `src/test/harness.ts` — see Testing.
 
 ## Authorization
@@ -98,6 +99,14 @@ Engines resolve tasks by **`systemKey`**, never by name (`meeting`, `development
 
 - **`KINDS` rows carry a `reminder` flag, and `deliveryBlocks()` holds reminder kinds back** from, in order: non-members, archived people, people who have never signed in (no `account` row) and people who opted out. The never-signed-in gate is on by default; `reminderSettings.includeNeverSignedIn` turns it off. A test person therefore needs an `account` row unless the fixture sets that flag.
 - **Both jobs read org-level state once per org**, not once per member, and both take `{ now }`. The Slack job ticks every 15 minutes, skips a kind that already ran today or is not due before any heavy query, and checks the delivery gates before it claims `slackReminderLog` — so a blocked person does not burn the day's claim. `forgetSlackReminderRunsForTests()` clears its in-memory record of the day's runs.
+**Telling another SYSTEM something is `services/events.ts`**, the same shape one
+step further out: `emitEvent(ctx, kind, build)` writes one `webhook_event` row in
+the caller's transaction and returns, and `jobs/webhook-delivery.ts` does the
+sending. `build` is a function rather than a payload because almost no org has an
+endpoint and all of them write time entries — see `docs/domains/webhooks.md`,
+which also says which writes deliberately emit nothing (every automation engine,
+and the Harvest import).
+
 - **The Tracking rule is the reminders' rule.** `complianceService.trackingForReminderJob` is what the nudge, the month-end "only behind" option and the digest read; a person is nudged when the rule calls them *behind* (see Targets and Tracking) by more than `orgSettings.trackingTolerancePct` (default 5). Nothing on `reminderSettings` decides who is behind, and the nudge never goes out on a weekend or a public holiday.
 
 
@@ -140,4 +149,6 @@ to change before you change it.
 - `docs/domains/authentication.md` — better-auth, the login flow, single-org mode.
 - `docs/domains/harvest-import.md` — `harvest-import.service.ts` and `lib/harvest/`.
 - `docs/domains/uploads.md` — `lib/storage.ts`, `uploads.service.ts`, the sweep.
+- `docs/domains/webhooks.md` — `services/events.ts`, `webhooks.service.ts`,
+  `jobs/webhook-delivery.ts`, the signature and the SSRF guard.
 - `docs/domains/deployment.md` — the env flags and how the jobs are hosted.

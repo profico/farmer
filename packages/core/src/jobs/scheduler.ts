@@ -36,6 +36,8 @@
  *   SLACK_REMINDERS_INTERVAL_MINUTES  - minutes between Slack sweeps (default: 15)
  *   UPLOAD_SWEEP_ENABLED              - "false" to keep unused uploads (default: on)
  *   UPLOAD_SWEEP_INTERVAL_MINUTES     - minutes between upload sweeps (default: 1440)
+ *   WEBHOOK_DELIVERY_ENABLED          - "false" to stop sending webhooks (default: on)
+ *   WEBHOOK_DELIVERY_INTERVAL_MINUTES - minutes between delivery ticks (default: 1)
  *   SCHEDULER_STARTUP_DELAY_MS        - delay before the first tick (default: 15000)
  *
  * NOTE: assumes a single instance. If ever scaled to multiple replicas, each
@@ -47,6 +49,7 @@ import { runAutomationSyncOnce } from "./automation-sync";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
 import { runUploadSweepOnce } from "./upload-sweep";
+import { runWebhookDeliveryOnce } from "./webhook-delivery";
 
 export interface SchedulerHandle {
 	/** Clear the startup timeout and the recurring interval; no new ticks fire after this. */
@@ -164,6 +167,20 @@ function schedulerJobs(): SchedulerConfig[] {
 				const s = await runUploadSweepOnce({ logger });
 				if (!s.enabled) return "no object store configured";
 				return `${String(s.deleted)} deleted, ${String(s.failed)} failed (${String(s.listed)} objects)`;
+			},
+		},
+		{
+			name: "Webhook delivery",
+			enabledEnv: "WEBHOOK_DELIVERY_ENABLED",
+			intervalEnv: "WEBHOOK_DELIVERY_INTERVAL_MINUTES",
+			// One minute. A webhook is the one job here whose latency a person
+			// outside this app notices — a receiver is waiting for it — and a tick
+			// with an empty outbox costs two indexed queries that return nothing.
+			defaultIntervalMinutes: 1,
+			run: async (logger) => {
+				const s = await runWebhookDeliveryOnce({ logger });
+				if (!s.enabled) return "disabled";
+				return `${String(s.succeeded)} delivered, ${String(s.failed)} failed (${String(s.fannedOut)} queued, ${String(s.disabled)} endpoints given up on)`;
 			},
 		},
 	];

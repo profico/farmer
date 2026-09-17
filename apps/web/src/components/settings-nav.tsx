@@ -21,6 +21,7 @@ import {
 	PEOPLE_ITEM,
 	RECURRING_BLOCKS_ITEM,
 	SETTINGS_ITEM,
+	WEBHOOKS_ITEM,
 } from "#/lib/nav-items.ts";
 
 /**
@@ -154,6 +155,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		show: (audience) => audience.isAdmin,
 	},
 	{
+		item: WEBHOOKS_ITEM,
+		group: "workspace",
+		description: "Send this workspace's events to another system.",
+		show: (audience) => audience.isAdmin,
+	},
+	{
 		item: {
 			label: "Import",
 			to: "/$orgSlug/settings/import",
@@ -252,12 +259,19 @@ export const settingsNavGroups = (
  *
  * It is the whole eyebrow: a static section name beside it ("Workspace")
  * only repeated what the hub already said.
+ *
+ * `back` is the row one level up, and the hub is only the default: a settings
+ * page that has a page of its own beneath it (an endpoint under Webhooks) hands
+ * in its own parent, so the caret, the target and the geometry stay one
+ * definition. The endpoint page carried a hand-written copy of these classes
+ * with the caret left off, which is how that page ended up with an eyebrow that
+ * read as a label and led nowhere.
  */
-export function SettingsEyebrow() {
+export function SettingsEyebrow({ back = SETTINGS_ITEM }: { back?: NavItem }) {
 	const orgSlug = useOrgSlug();
 	return (
 		<Link
-			to={SETTINGS_ITEM.to}
+			to={back.to}
 			params={{ orgSlug }}
 			// The negative margins buy a real target without moving anything: the
 			// link is one 13px line of text, and on a phone it is the ONLY way out
@@ -272,7 +286,7 @@ export function SettingsEyebrow() {
 			    correction is half that difference, and it is what stops the arrow
 			    sitting visibly low against SETTINGS. */}
 			<CaretLeftIcon weight="bold" className="-mt-px size-2.5" />
-			{SETTINGS_ITEM.label}
+			{back.label}
 		</Link>
 	);
 }

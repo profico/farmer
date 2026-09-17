@@ -30,6 +30,7 @@ import type {
 	MemberTypeValue,
 } from "../schema/members";
 import { ctxDb, ctxTimezone, requireAdmin } from "./context";
+import { emitEvent, memberWebhookPayload } from "./events";
 import { assertUserInOrg } from "./guards";
 import { teamLeadsService } from "./team-leads.service";
 import type { Ctx } from "./types";
@@ -549,6 +550,9 @@ export const membersService = {
 			// an archive and comes back to life when the same person is restored
 			// or a new person is invited into their old email.
 			await teamLeadsService.removeFromAllLists(ctx, userId);
+			await emitEvent(ctx, "member.archived", () =>
+				memberWebhookPayload(ctx, userId),
+			);
 			return { emailConfirmed: false };
 		}
 

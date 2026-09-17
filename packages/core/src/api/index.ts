@@ -38,3 +38,4 @@ export * from "./errors";
 export * from "./me";
 export * from "./meta";
 export * from "./time-entries";
+export * from "./webhooks";

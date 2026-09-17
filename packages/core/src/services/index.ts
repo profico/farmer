@@ -13,6 +13,9 @@ export * from "./compliance.service";
 // `ctxAccess` so the memo it warms is the one the handler's services read.
 export * from "./context";
 export * from "./day-assembly.service";
+// The outbound half of `notify`: the outbox seam every service emits through.
+// See the header of events.ts for why `build` is a function.
+export * from "./events";
 export * from "./filing-rules.service";
 export * from "./github.service";
 export * from "./google-calendar.service";
@@ -43,4 +46,5 @@ export * from "./time-entries.service";
 export * from "./types";
 export * from "./unfiled";
 export * from "./uploads.service";
+export * from "./webhooks.service";
 export * from "./working-hours.service";

@@ -58,6 +58,7 @@ import type {
 } from "../schema/harvest-import";
 import { clientsService } from "./clients.service";
 import { type DbClient, requireAdmin } from "./context";
+import { emitEvent } from "./events";
 import { hourFundService } from "./hour-fund.service";
 import { orgSettingsService } from "./org-settings.service";
 import type { Ctx } from "./types";
@@ -1237,6 +1238,47 @@ export const harvestImportService = {
 				updatedAt: new Date(),
 			})
 			.where(eq(importRun.id, input.runId));
+
+		// One event for the run, not one per row. An import writes tens of
+		// thousands of entries at once, and a receiver wants to know it happened
+		// and then re-read, not to be handed the whole history as a stream. The
+		// counts come from `importMapping`, which is the record of what this run
+		// CREATED — see the header of `services/events.ts`.
+		await emitEvent(ctx, "import.finished", async () => {
+			const created = await db
+				.select({
+					kind: importMapping.kind,
+					count: sql<number>`count(*)::int`,
+				})
+				.from(importMapping)
+				.where(
+					and(
+						eq(importMapping.runId, input.runId),
+						eq(importMapping.created, true),
+					),
+				)
+				.groupBy(importMapping.kind);
+			const countOf = (kind: string) =>
+				created.find((row) => row.kind === kind)?.count ?? 0;
+			const [entries] = await db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(timeEntry)
+				.where(
+					and(
+						eq(timeEntry.organizationId, org),
+						eq(timeEntry.importRunId, input.runId),
+					),
+				);
+			return {
+				import: {
+					id: input.runId,
+					clients: countOf("client"),
+					projects: countOf("project"),
+					people: countOf("person"),
+					timeEntries: entries?.count ?? 0,
+				},
+			};
+		});
 		return result;
 	},
 
