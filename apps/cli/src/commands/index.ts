@@ -6,6 +6,7 @@ import { copyDay, copyWeek, file, off, unfiled } from "./filing";
 import { open, projects, status, sync, tasks } from "./info";
 import { init } from "./init";
 import { orgList, orgUse } from "./org";
+import { start, stop, timer, timerDiscard } from "./timer";
 import { update } from "./update";
 
 /** In the order `farmer help` lists them. */
@@ -22,6 +23,10 @@ export const COMMANDS: Command[] = [
 	log,
 	edit,
 	rm,
+	start,
+	stop,
+	timer,
+	timerDiscard,
 	unfiled,
 	file,
 	copyDay,

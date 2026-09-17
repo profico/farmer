@@ -4,11 +4,28 @@
  */
 export class CliError extends Error {
 	readonly exitCode: number;
+	/** The HTTP status that produced this error, when one did. */
+	readonly status?: number;
+	/**
+	 * The `code` of the `ApiError` body, when the server sent one.
+	 *
+	 * A status alone cannot be branched on. Every organization route answers a
+	 * JSON 404 when the server has `CLI_ENABLED=false`, and a route this
+	 * server does not have at all answers a 404 with no body — so only a 404
+	 * WITHOUT a code means "this Farmer is older than the command you ran".
+	 */
+	readonly code?: string;
 
-	constructor(message: string, exitCode = 1) {
+	constructor(
+		message: string,
+		exitCode = 1,
+		details: { status?: number; code?: string } = {},
+	) {
 		super(message);
 		this.name = "CliError";
 		this.exitCode = exitCode;
+		this.status = details.status;
+		this.code = details.code;
 	}
 }
 

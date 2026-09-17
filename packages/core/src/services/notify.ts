@@ -72,6 +72,7 @@ export type NotifyKind =
 	| "month-end"
 	| "admin-digest"
 	| "webhook-disabled"
+	| "timer-dropped"
 	| "test";
 
 // The whole policy, in one table. `preference` names the column in
@@ -99,6 +100,16 @@ const KINDS = {
 	// Both channels, because an integration that has gone quiet is the kind of
 	// thing that is noticed late.
 	"webhook-disabled": {
+		channels: ["slack", "push"],
+		preference: null,
+		reminder: false,
+	},
+	// A stopwatch nobody stopped, dropped by `jobs/timer-sweep.ts` (issues #59
+	// and #43). Not a reminder: it is a thing that already happened to time the
+	// person meant to log. Both channels, and neither is the promise — the
+	// notice `timersService.get` returns is what reaches a person with no push
+	// permission and no Slack identity.
+	"timer-dropped": {
 		channels: ["slack", "push"],
 		preference: null,
 		reminder: false,

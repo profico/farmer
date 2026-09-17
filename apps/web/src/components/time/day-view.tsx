@@ -24,6 +24,7 @@ import {
 	stepperClass,
 	TimeToolbar,
 } from "#/components/time/time-toolbar.tsx";
+import { StartTimerButton } from "#/components/time/timer-row.tsx";
 import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { GhostRow } from "#/components/ui/ghost-row.tsx";
@@ -76,8 +77,9 @@ export function DayView({
 		);
 	}
 
-	// "Copy from previous day" — Harvest's backfill affordance, and the closest
-	// honest equivalent to a start/stop timer in a duration-only model.
+	// "Copy from previous day" — Harvest's backfill affordance, for a day that
+	// looks like the one before it. The stopwatch beside "Log time" is the other
+	// way in, for a day that does not.
 	const previousDay = addDaysToKey(date, -1);
 	const copy = useMutation({
 		mutationFn: () =>
@@ -113,15 +115,21 @@ export function DayView({
 		<div className="flex min-h-0 flex-1 flex-col">
 			<TimeToolbar
 				add={
-					<AddBlockDialog
-						timezone={timezone}
-						defaultDate={date}
-						trigger={
-							<Button size="icon" aria-label="Log time">
-								<PlusIcon weight="regular" className="size-4" />
-							</Button>
-						}
-					/>
+					<div className="flex items-center gap-2">
+						<AddBlockDialog
+							timezone={timezone}
+							defaultDate={date}
+							trigger={
+								<Button size="icon" aria-label="Log time">
+									<PlusIcon weight="regular" className="size-4" />
+								</Button>
+							}
+						/>
+						{/* Day only. Week and Month are read at a distance, and a clock
+						    that has to be stopped belongs on the day somebody is
+						    working through. */}
+						<StartTimerButton orgSlug={orgSlug} timezone={timezone} />
+					</div>
 				}
 				prev={
 					<Link

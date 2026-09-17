@@ -29,6 +29,7 @@ import {
 	settingsNavGroups,
 	settingsSubNavItems,
 } from "#/components/settings-nav.tsx";
+import { TimerRow } from "#/components/time/timer-row.tsx";
 import { Badge } from "#/components/ui/badge.tsx";
 import {
 	DropdownMenu,
@@ -478,6 +479,16 @@ export function AppSidebar({
 							    moved or hidden while it is up — the app is meant to look
 							    exactly as it does for the person being impersonated, which
 							    is the entire point of looking at it. */}
+							{/* A stopwatch is the one piece of state that is true while you
+							    are looking at something else, so it lives in the furniture
+							    rather than on the timesheet — the unfiled badge is in this
+							    column for the same reason. It draws nothing at all unless a
+							    timer is running. */}
+							<TimerRow
+								orgSlug={orgSlug}
+								timezone={timezone}
+								className={navRowClass}
+							/>
 							{impersonating !== null && (
 								<ImpersonationRow name={impersonating} collapsed={collapsed} />
 							)}

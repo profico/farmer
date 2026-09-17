@@ -71,8 +71,10 @@ import { Route as ApiV1OrgsOrgSlugTasksRouteImport } from './routes/api/v1/orgs/
 import { Route as ApiV1OrgsOrgSlugSyncRouteImport } from './routes/api/v1/orgs/$orgSlug/sync'
 import { Route as ApiV1OrgsOrgSlugRepositoryProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/repository-projects'
 import { Route as ApiV1OrgsOrgSlugProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/projects'
+import { Route as ApiV1OrgsOrgSlugTimerIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/index'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/index'
 import { Route as ApiV1OrgsOrgSlugAbsencesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/index'
+import { Route as ApiV1OrgsOrgSlugTimerConfirmRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/confirm'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesFileRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/file'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesCopyWeekRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/copy-week'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesCopyDayRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/copy-day'
@@ -408,6 +410,12 @@ const ApiV1OrgsOrgSlugProjectsRoute =
     path: '/api/v1/orgs/$orgSlug/projects',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugTimerIndexRoute =
+  ApiV1OrgsOrgSlugTimerIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/timer/',
+    path: '/api/v1/orgs/$orgSlug/timer/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugTimeEntriesIndexRoute =
   ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/time-entries/',
@@ -418,6 +426,12 @@ const ApiV1OrgsOrgSlugAbsencesIndexRoute =
   ApiV1OrgsOrgSlugAbsencesIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/absences/',
     path: '/api/v1/orgs/$orgSlug/absences/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugTimerConfirmRoute =
+  ApiV1OrgsOrgSlugTimerConfirmRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/timer/confirm',
+    path: '/api/v1/orgs/$orgSlug/timer/confirm',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugTimeEntriesFileRoute =
@@ -519,8 +533,10 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
   '/api/v1/orgs/$orgSlug/time-entries/file': typeof ApiV1OrgsOrgSlugTimeEntriesFileRoute
+  '/api/v1/orgs/$orgSlug/timer/confirm': typeof ApiV1OrgsOrgSlugTimerConfirmRoute
   '/api/v1/orgs/$orgSlug/absences/': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
+  '/api/v1/orgs/$orgSlug/timer/': typeof ApiV1OrgsOrgSlugTimerIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -588,8 +604,10 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
   '/api/v1/orgs/$orgSlug/time-entries/file': typeof ApiV1OrgsOrgSlugTimeEntriesFileRoute
+  '/api/v1/orgs/$orgSlug/timer/confirm': typeof ApiV1OrgsOrgSlugTimerConfirmRoute
   '/api/v1/orgs/$orgSlug/absences': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
+  '/api/v1/orgs/$orgSlug/timer': typeof ApiV1OrgsOrgSlugTimerIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -660,8 +678,10 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
   '/api/v1/orgs/$orgSlug/time-entries/file': typeof ApiV1OrgsOrgSlugTimeEntriesFileRoute
+  '/api/v1/orgs/$orgSlug/timer/confirm': typeof ApiV1OrgsOrgSlugTimerConfirmRoute
   '/api/v1/orgs/$orgSlug/absences/': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
+  '/api/v1/orgs/$orgSlug/timer/': typeof ApiV1OrgsOrgSlugTimerIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -733,8 +753,10 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
     | '/api/v1/orgs/$orgSlug/time-entries/file'
+    | '/api/v1/orgs/$orgSlug/timer/confirm'
     | '/api/v1/orgs/$orgSlug/absences/'
     | '/api/v1/orgs/$orgSlug/time-entries/'
+    | '/api/v1/orgs/$orgSlug/timer/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -802,8 +824,10 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
     | '/api/v1/orgs/$orgSlug/time-entries/file'
+    | '/api/v1/orgs/$orgSlug/timer/confirm'
     | '/api/v1/orgs/$orgSlug/absences'
     | '/api/v1/orgs/$orgSlug/time-entries'
+    | '/api/v1/orgs/$orgSlug/timer'
   id:
     | '__root__'
     | '/'
@@ -873,8 +897,10 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
     | '/api/v1/orgs/$orgSlug/time-entries/file'
+    | '/api/v1/orgs/$orgSlug/timer/confirm'
     | '/api/v1/orgs/$orgSlug/absences/'
     | '/api/v1/orgs/$orgSlug/time-entries/'
+    | '/api/v1/orgs/$orgSlug/timer/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -916,8 +942,10 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute: typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
   ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute: typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
   ApiV1OrgsOrgSlugTimeEntriesFileRoute: typeof ApiV1OrgsOrgSlugTimeEntriesFileRoute
+  ApiV1OrgsOrgSlugTimerConfirmRoute: typeof ApiV1OrgsOrgSlugTimerConfirmRoute
   ApiV1OrgsOrgSlugAbsencesIndexRoute: typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   ApiV1OrgsOrgSlugTimeEntriesIndexRoute: typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
+  ApiV1OrgsOrgSlugTimerIndexRoute: typeof ApiV1OrgsOrgSlugTimerIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1356,6 +1384,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/timer/': {
+      id: '/api/v1/orgs/$orgSlug/timer/'
+      path: '/api/v1/orgs/$orgSlug/timer'
+      fullPath: '/api/v1/orgs/$orgSlug/timer/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTimerIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/time-entries/': {
       id: '/api/v1/orgs/$orgSlug/time-entries/'
       path: '/api/v1/orgs/$orgSlug/time-entries'
@@ -1368,6 +1403,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/orgs/$orgSlug/absences'
       fullPath: '/api/v1/orgs/$orgSlug/absences/'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugAbsencesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/timer/confirm': {
+      id: '/api/v1/orgs/$orgSlug/timer/confirm'
+      path: '/api/v1/orgs/$orgSlug/timer/confirm'
+      fullPath: '/api/v1/orgs/$orgSlug/timer/confirm'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTimerConfirmRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/time-entries/file': {
@@ -1531,18 +1573,11 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute:
     ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute,
   ApiV1OrgsOrgSlugTimeEntriesFileRoute: ApiV1OrgsOrgSlugTimeEntriesFileRoute,
+  ApiV1OrgsOrgSlugTimerConfirmRoute: ApiV1OrgsOrgSlugTimerConfirmRoute,
   ApiV1OrgsOrgSlugAbsencesIndexRoute: ApiV1OrgsOrgSlugAbsencesIndexRoute,
   ApiV1OrgsOrgSlugTimeEntriesIndexRoute: ApiV1OrgsOrgSlugTimeEntriesIndexRoute,
+  ApiV1OrgsOrgSlugTimerIndexRoute: ApiV1OrgsOrgSlugTimerIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

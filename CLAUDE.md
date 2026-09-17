@@ -93,6 +93,7 @@ you are about to change before you change it** — these are not loaded for you.
 | `docs/domains/authentication.md` | better-auth, the login routes, or single-organization mode |
 | `docs/domains/harvest-import.md` | `harvest-import.service.ts`, `lib/harvest/` or the import screen |
 | `docs/domains/uploads.md` | `lib/storage.ts`, `uploads.service.ts`, `api/files/$.ts` or the upload sweep |
+| `docs/domains/timer.md` | `timers.service.ts`, `jobs/timer-sweep.ts`, the stopwatch in the web app or the CLI |
 | `docs/domains/webhooks.md` | the outbound webhooks — `services/events.ts`, `webhooks.service.ts`, `jobs/webhook-delivery.ts`, the signature or the SSRF guard |
 | `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag or PostHog |
 
