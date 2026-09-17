@@ -9,6 +9,7 @@
 	"scripts": {
 		"dev": "vite dev --port 3000",
 		"generate-routes": "tsr generate",
+		"check:palette": "bun run scripts/check-palette-contrast.ts",
 		"build": "vite build && bun run scripts/prune-client-assets.ts",
 		"start": "NODE_ENV=production bun run server.ts",
 		"preview": "vite preview",

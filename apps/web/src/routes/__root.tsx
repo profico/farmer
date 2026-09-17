@@ -174,8 +174,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	useEffect(startThemeColorSync, []);
 
 	// `suppressHydrationWarning`: the script below writes `data-theme` (and the
-	// Display preferences' `data-font`, `data-motion`, `data-density` and
-	// `data-palette`, the nav column's `data-nav`, and the inline properties
+	// Display preferences' `data-font`, `data-motion`, `data-density`,
+	// `data-contrast` and `data-palette`, the nav column's `data-nav`, and
+	// the inline properties
 	// carrying the color seed, the three faces and the scale) onto <html>
 	// before React ever sees it, and the server has no way to render the same
 	// values — that mismatch is the point of the script, not a bug, and React
