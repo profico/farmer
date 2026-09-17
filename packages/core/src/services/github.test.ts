@@ -37,6 +37,7 @@ import {
 } from "../db/schema/github";
 import {
 	type GithubCommit,
+	GithubInstallationGoneError,
 	GithubTokenInvalidError,
 } from "../lib/github-client";
 import { attachCommitsInput } from "../schema/github";
@@ -814,5 +815,120 @@ describe("disconnecting an installation", () => {
 
 	test("forgetInstallation on an installation nobody connected is a no-op", async () => {
 		expect(await githubService.forgetInstallation(999)).toBe(0);
+	});
+});
+
+// An installation's id does not survive a reinstall, and
+// `projectGithubRepo.installationId` is frozen at link time. Forgetting the
+// installation used to drop only the `orgGithubInstallation` row, which left
+// every repo naming an id GitHub no longer knows: a 404 on each token mint,
+// reported to the caller as "no commits" and unfixable by reconnecting,
+// because connecting writes a new row rather than repairing old ones.
+describe("a repo left naming a dead installation", () => {
+	const DEAD = 160881810;
+	const LIVE = 160881740;
+
+	const connect = async (installationId: number, accountLogin: string) => {
+		await db.insert(orgGithubInstallation).values({
+			organizationId: ORG_ID,
+			installationId,
+			accountLogin,
+			accountType: "Organization",
+		});
+	};
+
+	const boundTo = async () =>
+		present(
+			await db.query.projectGithubRepo.findFirst({
+				where: eq(projectGithubRepo.id, ownRepoId),
+			}),
+			"the caller's repo",
+		).installationId;
+
+	/** Any read that goes through `reposForUser`. */
+	const readSomething = () =>
+		githubService.attachCommits(memberCtx(), {
+			timeEntryId: entryId,
+			commits: [{ projectGithubRepoId: ownRepoId, sha: SHA }],
+		});
+
+	beforeEach(async () => {
+		await db.delete(orgGithubInstallation);
+		await db.delete(timeEntryGithubCommit);
+		await db
+			.update(projectGithubRepo)
+			.set({ installationId: DEAD })
+			.where(eq(projectGithubRepo.organizationId, ORG_ID));
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			getCommit: async (_token, _owner, _repo, sha) => fakeCommit(sha),
+			listInstallationRepos: async () => [],
+		});
+	});
+
+	afterAll(async () => {
+		await db.delete(orgGithubInstallation);
+		await db
+			.update(projectGithubRepo)
+			.set({ installationId: 100 })
+			.where(eq(projectGithubRepo.organizationId, ORG_ID));
+		setGithubClientForTests(null);
+	});
+
+	// The webhook's half: the admin removed the App and installed it again, so
+	// the org holds both ids for the moment `installation.deleted` arrives.
+	test("forgetInstallation moves them to the installation that replaced it", async () => {
+		await connect(DEAD, "profico");
+		await connect(LIVE, "profico");
+
+		expect(await githubService.forgetInstallation(DEAD)).toBe(1);
+		expect(await boundTo()).toBe(LIVE);
+	});
+
+	// The deployment this was found on: the dead row was already gone, so there
+	// was no webhook left to repair anything. A read has to be enough.
+	test("a read repairs rows the webhook never covered", async () => {
+		await connect(LIVE, "profico");
+
+		await readSomething();
+		expect(await boundTo()).toBe(LIVE);
+	});
+
+	// The id is the only record of which install a repo was linked under, and an
+	// org holding no row for it is not proof that GitHub lost the installation.
+	test("a repo whose owner has no installation keeps the id it was linked under", async () => {
+		await connect(LIVE, "some-other-account");
+
+		await readSomething();
+		expect(await boundTo()).toBe(DEAD);
+	});
+
+	// A webhook can be missed. GitHub answering 404 to the token mint says the
+	// same thing, and is the only proof that arrives on its own.
+	test("a 404 on the token mint stands in for the webhook that never arrived", async () => {
+		await connect(DEAD, "profico");
+		await connect(LIVE, "profico");
+		setGithubClientForTests({
+			getAuthenticatedUser: async () => ({ login: "a-member" }),
+			getInstallationToken: async (installationId: number) => {
+				if (installationId === DEAD) {
+					throw new GithubInstallationGoneError(DEAD);
+				}
+				return "installation-token";
+			},
+			listCommits: async () => [],
+		});
+
+		await githubService.listUserCommitsByDay(memberCtx(), {
+			from: "2026-09-01",
+			to: "2026-09-02",
+		});
+
+		expect(
+			await db.query.orgGithubInstallation.findFirst({
+				where: eq(orgGithubInstallation.installationId, DEAD),
+			}),
+		).toBeUndefined();
+		expect(await boundTo()).toBe(LIVE);
 	});
 });

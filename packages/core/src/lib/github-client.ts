@@ -100,6 +100,13 @@ export const getInstallationToken = async (
 		`${GITHUB_API}/app/installations/${installationId}/access_tokens`,
 		{ method: "POST", headers: appHeaders() },
 	);
+	// A 404 here is not a transient failure: GitHub answers it when the
+	// installation does not exist for this App, which is what an uninstall
+	// leaves behind. It is typed so a caller can repair the rows that still
+	// name it, rather than retrying a dead id every twenty minutes forever.
+	if (response.status === 404) {
+		throw new GithubInstallationGoneError(installationId);
+	}
 	if (!response.ok) {
 		throw new Error(
 			`GitHub API error ${response.status}: mint installation token`,
@@ -323,6 +330,23 @@ export class GithubTokenInvalidError extends Error {
 	constructor(url: string) {
 		super(`GitHub refused the token: ${url}`);
 		this.name = "GithubTokenInvalidError";
+	}
+}
+
+/** The installation itself is gone: 404 from the token mint. GitHub answers
+ *  this when the App is no longer installed on the account, so every row that
+ *  still names the id is stale and no retry will ever succeed.
+ *
+ *  It is the same fact `installation.deleted` carries, reached the other way
+ *  round — by a read, rather than by a webhook that may never have arrived.
+ *  `githubService` treats the two identically: forget the installation, rebind
+ *  the repos that named it, and read again. */
+export class GithubInstallationGoneError extends Error {
+	readonly installationId: number;
+	constructor(installationId: number) {
+		super(`GitHub installation ${installationId} no longer exists`);
+		this.name = "GithubInstallationGoneError";
+		this.installationId = installationId;
 	}
 }
 

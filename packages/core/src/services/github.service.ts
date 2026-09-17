@@ -16,6 +16,7 @@ import {
 } from "../lib/github-activity";
 import * as githubClient from "../lib/github-client";
 import {
+	GithubInstallationGoneError,
 	GithubRateLimitError,
 	GithubTokenInvalidError,
 } from "../lib/github-client";
@@ -246,8 +247,12 @@ const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
  *
  * `ids` narrows it to those repos, for a caller that was handed repo ids.
  */
-const reposForUser = async (ctx: Ctx, ids?: string[]) =>
-	db
+const reposForUser = async (ctx: Ctx, ids?: string[]) => {
+	// A deployment that lost a webhook carries its orphans until something
+	// looks. This is that something: the repair is a no-op on a healthy org,
+	// and the alternative is an admin running UPDATE statements by hand.
+	await rebindOrphanedRepos(ctx.organizationId);
+	return db
 		.select({
 			id: projectGithubRepo.id,
 			projectId: projectGithubRepo.projectId,
@@ -272,6 +277,129 @@ const reposForUser = async (ctx: Ctx, ids?: string[]) =>
 				ids ? inArray(projectGithubRepo.id, ids) : undefined,
 			),
 		);
+};
+
+/** Repoint repo rows whose installation the org no longer holds.
+ *
+ *  `projectGithubRepo.installationId` is frozen at link time, and an
+ *  installation's id is not: removing the App on GitHub and adding it back
+ *  mints a new one. `forgetInstallation` used to drop only the
+ *  `orgGithubInstallation` row, so every repo linked under the old id kept
+ *  naming it — and every commit and pull request read 404ed on a token mint,
+ *  forever. Reconnecting could not fix it, because connecting writes a new row
+ *  rather than repairing old ones, which read as "no commits" with a log full
+ *  of 404s.
+ *
+ *  The repair needs no call to GitHub: an orphan is a row naming an
+ *  installation that is not in the org's own set. A repo is rebound to the
+ *  installation on the account that OWNS it — `accountLogin` against `owner` —
+ *  never merely to whichever installation the org has, because an installation
+ *  on one account cannot read another account's repos, and a wrong id trades a
+ *  loud 404 for a silent empty answer.
+ *
+ *  An orphan with no installation on its owner is set to NULL: the App really
+ *  is gone from that account, and NULL is the state the column already
+ *  documents for a repo nothing can read. It is logged, because from here on
+ *  the repo answers "no activity" rather than failing.
+ *
+ *  Takes no `Ctx`: which orgs named the installation is what this looks up
+ *  rather than what it is told, the same reasoning as `forgetInstallation`.
+ *  Scoped to one org when a read is what triggered it. */
+const rebindOrphanedRepos = async (
+	organizationId?: string,
+): Promise<number> => {
+	const orgFilter = organizationId
+		? eq(projectGithubRepo.organizationId, organizationId)
+		: undefined;
+
+	const repos = await db
+		.select({
+			id: projectGithubRepo.id,
+			organizationId: projectGithubRepo.organizationId,
+			owner: projectGithubRepo.owner,
+			fullName: projectGithubRepo.fullName,
+			installationId: projectGithubRepo.installationId,
+		})
+		.from(projectGithubRepo)
+		.where(orgFilter);
+	// Narrowed by construction rather than asserted: a row with no installation
+	// is not an orphan, it is the documented "linked before installations
+	// existed" state, and nothing here should overwrite it.
+	const named = repos.flatMap((r) =>
+		r.installationId === null
+			? []
+			: [{ ...r, installationId: r.installationId }],
+	);
+	if (named.length === 0) return 0;
+
+	const installs = await db
+		.select({
+			organizationId: orgGithubInstallation.organizationId,
+			installationId: orgGithubInstallation.installationId,
+			accountLogin: orgGithubInstallation.accountLogin,
+		})
+		.from(orgGithubInstallation)
+		.where(
+			organizationId
+				? eq(orgGithubInstallation.organizationId, organizationId)
+				: undefined,
+		);
+
+	// Per org: the ids it still holds, and the id to use for a given account.
+	const held = new Map<string, Set<number>>();
+	const byAccount = new Map<string, number>();
+	for (const i of installs) {
+		let ids = held.get(i.organizationId);
+		if (!ids) {
+			ids = new Set<number>();
+			held.set(i.organizationId, ids);
+		}
+		ids.add(i.installationId);
+		byAccount.set(
+			`${i.organizationId}\u0000${i.accountLogin.toLowerCase()}`,
+			i.installationId,
+		);
+	}
+
+	let repaired = 0;
+	for (const repo of named) {
+		if (held.get(repo.organizationId)?.has(repo.installationId)) continue;
+		const replacement = byAccount.get(
+			`${repo.organizationId}\u0000${repo.owner.toLowerCase()}`,
+		);
+		if (replacement === undefined) continue;
+		await db
+			.update(projectGithubRepo)
+			.set({ installationId: replacement, updatedAt: new Date() })
+			.where(eq(projectGithubRepo.id, repo.id));
+		repaired += 1;
+		console.info("[github] rebound repo to a live installation", {
+			repoId: repo.id,
+			repo: repo.fullName,
+			from: repo.installationId,
+			to: replacement,
+		});
+	}
+	return repaired;
+};
+
+/** A read that 404s on the token mint has learned, the hard way, exactly what
+ *  `installation.deleted` would have told us: the installation is gone. A
+ *  webhook can be missed — no secret set, a delivery that failed, an App
+ *  installed before the endpoint existed — and until something acts on the
+ *  404 the rows stay broken and every later read repeats it.
+ *
+ *  So treat the two as one fact. Forgetting rebinds the repos, which makes the
+ *  NEXT read succeed; this read still degrades to "no activity" for that repo,
+ *  as it does for any other per-repo failure. */
+const forgetGoneInstallation = async (
+	error: GithubInstallationGoneError,
+): Promise<void> => {
+	console.warn("[github] installation is gone, repairing the repos naming it", {
+		installationId: error.installationId,
+	});
+	await githubService.forgetInstallation(error.installationId);
+};
 
 /** How many repos one person's scan may have in flight at once.
  *
@@ -415,6 +543,10 @@ const scanPullRequestActivity = async (
 				// for the same reason: "no activity" would let the engine file a day
 				// it never managed to read.
 				if (error instanceof GithubRateLimitError) throw error;
+				if (error instanceof GithubInstallationGoneError) {
+					await forgetGoneInstallation(error);
+					return [];
+				}
 				console.error(`[github] ${caller} repo failed`, {
 					repoId: repo.id,
 					installationId: repo.installationId,
@@ -679,9 +811,16 @@ export const githubService = {
 		const removed = await db
 			.delete(orgGithubInstallation)
 			.where(eq(orgGithubInstallation.installationId, installationId))
-			.returning({ id: orgGithubInstallation.id });
+			.returning({
+				id: orgGithubInstallation.id,
+				organizationId: orgGithubInstallation.organizationId,
+			});
 		repoLists.delete(installationId);
 		repoListFetches.delete(installationId);
+		// Dropping the row is only half of forgetting. Every repo linked under
+		// this installation still names it, and a repo that names a dead id 404s
+		// on every read until something repoints it — so the two go together.
+		for (const row of removed) await rebindOrphanedRepos(row.organizationId);
 		return removed.length;
 	},
 
@@ -913,6 +1052,10 @@ export const githubService = {
 					// it never actually managed to read — so it ends the whole scan and
 					// the sweep records a failure it can retry.
 					if (error instanceof GithubRateLimitError) throw error;
+					if (error instanceof GithubInstallationGoneError) {
+						await forgetGoneInstallation(error);
+						return [];
+					}
 					console.error("[github] suggestCommits repo failed", {
 						repoId: repo.id,
 						installationId: repo.installationId,
@@ -987,6 +1130,10 @@ export const githubService = {
 					// it never actually managed to read — so it ends the whole scan and
 					// the sweep records a failure it can retry.
 					if (error instanceof GithubRateLimitError) throw error;
+					if (error instanceof GithubInstallationGoneError) {
+						await forgetGoneInstallation(error);
+						return [];
+					}
 					console.error("[github] listUserCommitsByDay repo failed", {
 						repoId: repo.id,
 						installationId: repo.installationId,
@@ -1062,6 +1209,10 @@ export const githubService = {
 					// it never actually managed to read — so it ends the whole scan and
 					// the sweep records a failure it can retry.
 					if (error instanceof GithubRateLimitError) throw error;
+					if (error instanceof GithubInstallationGoneError) {
+						await forgetGoneInstallation(error);
+						return [];
+					}
 					console.error("[github] listUserCommitsForDay repo failed", {
 						repoId: repo.id,
 						installationId: repo.installationId,
