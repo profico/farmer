@@ -2,8 +2,13 @@ import { and, asc, count, desc, eq, isNull, max, or } from "drizzle-orm";
 
 import { db } from "../db";
 import { type TaskSystemKey, task, timeEntry } from "../db/schema/domain";
-import type { CreateTaskInput, UpdateTaskInput } from "../schema/tasks";
-import { requireAdmin } from "./context";
+import { hiddenTask } from "../db/schema/settings";
+import type {
+	CreateTaskInput,
+	SetTaskHiddenInput,
+	UpdateTaskInput,
+} from "../schema/tasks";
+import { ctxAccess, requireAdmin } from "./context";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
@@ -141,6 +146,80 @@ export const tasksService = {
 		};
 		const onProject = await recent(true);
 		return onProject.length > 0 ? onProject : recent(false);
+	},
+
+	/** The tasks the caller has switched off in this org (Preferences → Your
+	 *  tasks). Ids only: the picker already holds the list, and filters it
+	 *  itself so the task an entry already has can stay on offer. */
+	hiddenIds: async (ctx: Ctx): Promise<string[]> => {
+		await ctxAccess(ctx);
+		const rows = await db
+			.select({ taskId: hiddenTask.taskId })
+			.from(hiddenTask)
+			.where(
+				and(
+					eq(hiddenTask.organizationId, ctx.organizationId),
+					eq(hiddenTask.userId, ctx.userId),
+				),
+			);
+		return rows.map((r) => r.taskId);
+	},
+
+	/** Switch one task off for the caller, or back on. Only a task the picker
+	 *  could offer them qualifies — this org's or a site built-in, never an
+	 *  absence task (those are never in the list) and never another org's,
+	 *  which reads as not found. Idempotent both ways. */
+	setHidden: async (ctx: Ctx, input: SetTaskHiddenInput) => {
+		await ctxAccess(ctx);
+		const target = await db.query.task.findFirst({
+			where: and(
+				eq(task.id, input.taskId),
+				eq(task.isAbsence, false),
+				or(
+					eq(task.scope, "site"),
+					and(
+						eq(task.scope, "organization"),
+						eq(task.organizationId, ctx.organizationId),
+					),
+				),
+			),
+			columns: { id: true },
+		});
+		if (!target) throw new Error("Task not found");
+
+		if (input.hidden) {
+			await db
+				.insert(hiddenTask)
+				.values({
+					organizationId: ctx.organizationId,
+					userId: ctx.userId,
+					taskId: target.id,
+				})
+				.onConflictDoNothing();
+			return;
+		}
+		await db
+			.delete(hiddenTask)
+			.where(
+				and(
+					eq(hiddenTask.organizationId, ctx.organizationId),
+					eq(hiddenTask.userId, ctx.userId),
+					eq(hiddenTask.taskId, target.id),
+				),
+			);
+	},
+
+	/** Switch every task back on for the caller, in this org only. */
+	showAll: async (ctx: Ctx) => {
+		await ctxAccess(ctx);
+		await db
+			.delete(hiddenTask)
+			.where(
+				and(
+					eq(hiddenTask.organizationId, ctx.organizationId),
+					eq(hiddenTask.userId, ctx.userId),
+				),
+			);
 	},
 
 	/**

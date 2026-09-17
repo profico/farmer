@@ -59,7 +59,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		},
 		group: "account",
 		description:
-			"Appearance, notifications and how you sign in to this account.",
+			"Appearance, the tasks you log, notifications and how you sign in to this account.",
 		show: always,
 	},
 	{

@@ -421,6 +421,13 @@
       "when": 1789635197108,
       "tag": "0059_grant_platform_admin_to_first_user",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1789659202631,
+      "tag": "0060_hidden_task",
+      "breakpoints": true
     }
   ]
 }
