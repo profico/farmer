@@ -20,7 +20,9 @@ import { cn } from "#/lib/utils.ts";
 // Filtering is the caller's: pass `items` (flat, or groups of `{ value, label,
 // items }`) and `filteredItems` computed with `matchesSearch` from
 // `@farmer/core/lib/search`, so a picker folds accents the way every other list in the
-// app does. `autoHighlight` keeps the first match ready for Enter.
+// app does. `autoHighlight` keeps the first match ready for Enter; Tab takes a
+// match only when it is the only one (Harvest's habit), which each picker
+// decides through `onSearchTab` because the filtered list is the picker's.
 
 const Combobox = ComboboxPrimitive.Root;
 const ComboboxCollection = ComboboxPrimitive.Collection;
@@ -83,6 +85,7 @@ function ComboboxContent({
 	align = "start",
 	alignOffset = 0,
 	searchPlaceholder = "Search…",
+	onSearchTab,
 	...props
 }: ComboboxPrimitive.Popup.Props &
 	Pick<
@@ -91,6 +94,9 @@ function ComboboxContent({
 	> & {
 		/** `false` for a list short enough to need no search box. */
 		searchPlaceholder?: string | false;
+		/** Tab (not Shift+Tab) pressed in the search box, before focus moves on
+		 *  and the popup closes — where a picker takes its one remaining match. */
+		onSearchTab?: () => void;
 	}) {
 	return (
 		<ComboboxPrimitive.Portal container={popupLayer()}>
@@ -115,6 +121,9 @@ function ComboboxContent({
 							<ComboboxPrimitive.Input
 								placeholder={searchPlaceholder}
 								aria-label={searchPlaceholder}
+								onKeyDown={(event) => {
+									if (event.key === "Tab" && !event.shiftKey) onSearchTab?.();
+								}}
 								className="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent py-1 pr-2.5 pl-8 text-base outline-none placeholder:text-faint focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/16"
 							/>
 						</div>

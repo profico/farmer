@@ -310,8 +310,10 @@ export function AddBlockDialog({
 	const weekdays = useWeekdays();
 
 	// The task list follows the project: with one it is the whole grouped list,
-	// without one the short project-less list (time off and the built-ins) — so
-	// switching project can leave a task chosen that no longer applies.
+	// without one the short project-less list (time off and the built-ins). Every
+	// project offers the same list, so the task survives a switch between them;
+	// crossing into or out of Time-off is what can leave one that no longer
+	// applies, and the effect below lets that one go.
 	const { data: tasks = [] } = useQuery({
 		...tasksForProjectQuery(
 			orgSlug,
@@ -1023,7 +1025,6 @@ export function AddBlockDialog({
 													onValueChange={(next) => {
 														const wasTimeOff = field.value === TIME_OFF;
 														field.onChange(next ?? TIME_OFF);
-														form.setValue("taskId", "");
 														// A day off is a whole day until told otherwise;
 														// leaving Time-off takes the prefill back out.
 														if (next === null) {
