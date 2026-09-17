@@ -70,9 +70,14 @@ held, and every surface says so.
    entry still lands on the day the work began. The sweep skips a held timer
    entirely — see The cap below.
 
-## Two fields that look redundant and are not
+## Three fields that look redundant and are not
 
 - `snappedSeconds` — see rule 3.
+- `task.needsDescription` — the task's note rule, answered by the server. The
+  CLI cannot read `lib/task-rules` at all (its import boundary is linted), and
+  a client that asks for a note the task does not need is as wrong as one that
+  logs without a note the task does. `farmer stop` reads this to decide whether
+  an empty answer to its prompt is allowed.
 - `serverNow` — the instant the elapsed figure was measured against. A browser
   and a terminal each draw their own ticking figure between reads; a machine
   whose clock is five minutes fast would otherwise count five minutes the

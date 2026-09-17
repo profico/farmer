@@ -22,6 +22,7 @@ const fullRow = () => ({
 	projectName: "Portal",
 	taskId: "t-1",
 	taskName: "Development",
+	taskNeedsDescription: true,
 	description: "Fix login",
 	startedAt,
 	paused: false,
@@ -44,7 +45,7 @@ describe("toApiTimer", () => {
 			snappedSeconds: 4500,
 			serverNow: "2026-09-17T09:12:00.000Z",
 			description: "Fix login",
-			task: { id: "t-1", name: "Development" },
+			task: { id: "t-1", name: "Development", needsDescription: true },
 			project: { id: "p-1", name: "Portal" },
 			organization: { slug: "acme", name: "Acme", here: true },
 		});
