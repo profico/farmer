@@ -47,8 +47,11 @@ const optionsKey = (orgSlug: string, projectId: string, taskId: string) =>
 	`farmer:entry-options:${orgSlug}:${projectId}:${taskId}`;
 
 // Each dialog that picks a project + task keeps its own last pick: the entry
-// you log and the row you add to the week grid are different habits.
-export type PickSurface = "entry" | "week-row";
+// you log, the row you add to the week grid and the timer you start are
+// different habits. The timer keeps its own rather than sharing the entry's,
+// because somebody who measures one kind of work and types up the rest would
+// otherwise have each surface answer with the other one's last pick.
+export type PickSurface = "entry" | "week-row" | "timer";
 
 const lastPickKey = (surface: PickSurface, orgSlug: string) =>
 	`farmer:${surface}-last-pick:${orgSlug}`;

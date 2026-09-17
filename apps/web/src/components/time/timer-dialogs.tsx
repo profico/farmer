@@ -23,6 +23,7 @@ import {
 import { Input } from "#/components/ui/input.tsx";
 import { Label } from "#/components/ui/label.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
+import { readLastPick, rememberLastPick } from "#/lib/entry-options.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
@@ -77,13 +78,29 @@ export function StartTimerDialog({
 	const [description, setDescription] = useState("");
 	const queryClient = useQueryClient();
 
+	// The dialog opens on the pair you last measured, the way the Log time
+	// dialog opens on the pair you last logged. A stopwatch is started mid-task,
+	// with the work already in front of you — two pickers between you and the
+	// clock is the friction the feature exists to remove.
+	//
+	// The description is deliberately NOT remembered: it describes one stretch
+	// of work, and yesterday's sentence on today's measurement is worse than an
+	// empty box.
 	useEffect(() => {
-		if (open) {
-			setProjectId(defaultProjectId ?? null);
-			setTaskId("");
-			setDescription("");
+		if (!open) return;
+		setDescription("");
+
+		const last = readLastPick("timer", orgSlug);
+		if (defaultProjectId) {
+			// A caller that named the project wins; only the task comes from the
+			// memory, and only when it was picked on that same project.
+			setProjectId(defaultProjectId);
+			setTaskId(last && last.projectId === defaultProjectId ? last.taskId : "");
+			return;
 		}
-	}, [open, defaultProjectId]);
+		setProjectId(last?.projectId ?? null);
+		setTaskId(last?.taskId ?? "");
+	}, [open, defaultProjectId, orgSlug]);
 
 	const projectsQ = useQuery({ ...myProjectsQuery(orgSlug), enabled: open });
 	const tasksQ = useQuery({
@@ -96,6 +113,28 @@ export function StartTimerDialog({
 	const tasks = (tasksQ.data ?? []).filter((t) => !t.isAbsence);
 	const selectedTask = tasks.find((t) => t.id === taskId) ?? null;
 
+	// The memory is read before either list arrives, so a remembered pick has to
+	// answer to them once they do: a project that was archived since, or a task
+	// the project no longer offers, is dropped rather than shown as a choice the
+	// server would then refuse. Both lists are checked only once loaded, so a
+	// slow request never clears a valid pick.
+	const projects = projectsQ.data;
+	useEffect(() => {
+		if (!open || !projects || projectId == null) return;
+		const live = projects.some(
+			(project) => project.id === projectId && project.status === "active",
+		);
+		if (!live) {
+			setProjectId(null);
+			setTaskId("");
+		}
+	}, [open, projects, projectId]);
+
+	useEffect(() => {
+		if (!open || !tasksQ.data || !taskId) return;
+		if (!tasks.some((task) => task.id === taskId)) setTaskId("");
+	}, [open, tasksQ.data, tasks, taskId]);
+
 	const mutation = useMutation({
 		mutationFn: () =>
 			startTimer({
@@ -106,6 +145,11 @@ export function StartTimerDialog({
 				},
 			}),
 		onSuccess: async () => {
+			// Only a pair. A timer measuring against a task with no project is an
+			// unfiled measurement, which says nothing about where the next one
+			// belongs — so it leaves the previous memory alone rather than
+			// clearing it.
+			if (projectId) rememberLastPick("timer", orgSlug, { projectId, taskId });
 			await invalidateAfterTimer(queryClient, orgSlug, false);
 			setOpen(false);
 		},
@@ -255,6 +299,10 @@ export function StopTimerDialog({
 				},
 			}),
 		onSuccess: async () => {
+			// What was LOGGED is the habit, not what was started: somebody who
+			// starts on one project and files the measurement against another has
+			// told you where the next timer belongs.
+			if (projectId) rememberLastPick("timer", orgSlug, { projectId, taskId });
 			await invalidateAfterTimer(queryClient, orgSlug, true);
 			toast.success(`Logged ${formatClock(seconds)}`);
 			onOpenChange(false);
