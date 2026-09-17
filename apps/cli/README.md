@@ -57,8 +57,8 @@ farmer week [--last]                This week's entries
 farmer ls [date] [--from] [--to]    The entries of a day or a range
 
 farmer log <duration | fill> [description] [-p project] [-t task] [-d date] [--overtime]
-farmer edit [id]                    Change an entry
-farmer rm [id] [--yes]              Delete an entry
+farmer edit [n | id]                Change an entry
+farmer rm [n | id] [--yes]          Delete an entry
 
 farmer unfiled [--week]             Worked time with no project
 farmer file [ids...] [-p project]   Put unfiled entries on a project
@@ -80,10 +80,17 @@ Examples:
 farmer log 1h30m "Review of the login flow" -p web -t development
 farmer log fill -p web -t development      # fill the rest of the day
 farmer log 2h -d yesterday
+farmer edit 2 --duration 45m               # the day's second row
+farmer rm 3 -d mon --yes
 farmer off vacation 2026-12-22..2027-01-02
 farmer today --json | jq '.[].durationSeconds'
 ```
 
+- Row numbers: the `#` column of `farmer today`, `week` and `ls` numbers the
+  entries inside their day, and `farmer edit` and `farmer rm` take that number
+  instead of an id. The number belongs to the day, so `farmer edit 2 -d mon`
+  changes Monday's second row. It is the row as the list stands now — log or
+  delete something and the numbers below it move.
 - Durations: `1h30m`, `1.5` or `90m`, in 15-minute steps.
 - Dates: `today`, `yesterday`, a weekday name (the most recent one), or
   `yyyy-MM-dd`, in the timezone of the organization.

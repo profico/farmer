@@ -149,6 +149,8 @@ export const ls: Command = {
 		"  --to <date>     The last day. Without --from, the range is that day.",
 		"",
 		"A range is at most 62 days.",
+		"The # column numbers the rows inside their day: `farmer edit 2` changes",
+		"the second row of today, `farmer rm 2 -d mon` deletes Monday's second.",
 	],
 	run: async (args, runtime) => {
 		const { values, positionals } = parseCommandArgs(
@@ -308,14 +310,16 @@ export const log: Command = {
 };
 
 const EDIT_USAGE =
-	"farmer edit [id] [-d date] [--duration <d>] [-m text] [-p project] [-t task] [--move <date>] [--overtime | --no-overtime]";
+	"farmer edit [n | id] [-d date] [--duration <d>] [-m text] [-p project] [-t task] [--move <date>] [--overtime | --no-overtime]";
 
 export const edit: Command = {
 	name: "edit",
 	usage: EDIT_USAGE,
-	summary: "Change an entry. Without an id, choose one of the day's entries.",
+	summary:
+		"Change an entry. Without a row or an id, choose one of the day's entries.",
 	help: [
-		"  [id]              The id or its first characters, as the lists show it.",
+		"  [n | id]          The row number in the day, as the lists show it, or",
+		"                    the id or its first characters.",
 		"  -d, --date        The day to find the entry on. The default is today.",
 		"  --duration <d>    A new duration, or `fill`.",
 		"  -m, --message     A new description.",
@@ -433,14 +437,16 @@ export const edit: Command = {
 	},
 };
 
-const RM_USAGE = "farmer rm [id] [-d date] [--yes]";
+const RM_USAGE = "farmer rm [n | id] [-d date] [--yes]";
 
 export const rm: Command = {
 	name: "rm",
 	usage: RM_USAGE,
-	summary: "Delete an entry. Without an id, choose one of the day's entries.",
+	summary:
+		"Delete an entry. Without a row or an id, choose one of the day's entries.",
 	help: [
-		"  [id]          The id or its first characters, as the lists show it.",
+		"  [n | id]      The row number in the day, as the lists show it, or the",
+		"                id or its first characters.",
 		"  -d, --date    The day to find the entry on. The default is today.",
 		"  -y, --yes     Delete without asking.",
 	],

@@ -39,12 +39,39 @@ const entryFlags = (entry: ApiTimeEntry): string => {
 	return flags.join(", ");
 };
 
+/**
+ * The order the lists print in, and the order the row numbers count in.
+ *
+ * One function so the two can never drift: a number the table showed has to
+ * still name that row when `edit` reads the day again. `listRange` answers in
+ * (date, createdAt, id) order, and `sort` is stable, so this only groups the
+ * days of a range and leaves each day as the server ordered it.
+ */
+export const sortEntries = (entries: ApiTimeEntry[]): ApiTimeEntry[] =>
+	[...entries].sort((a, b) => a.date.localeCompare(b.date));
+
+/**
+ * The row numbers, counted inside each day rather than down the whole table.
+ *
+ * A day is the unit every command works in — `edit 3` reads one day and counts
+ * its rows — so `3` names the same entry in `farmer ls 2026-09-14` and in the
+ * week table that holds that day.
+ */
+const dayNumbers = (sorted: ApiTimeEntry[]): string[] => {
+	const counted = new Map<string, number>();
+	return sorted.map((entry) => {
+		const next = (counted.get(entry.date) ?? 0) + 1;
+		counted.set(entry.date, next);
+		return String(next);
+	});
+};
+
 export const entriesTable = (
 	entries: ApiTimeEntry[],
 	withDate: boolean,
 ): Table => {
 	const withFlags = entries.some((entry) => entryFlags(entry) !== "");
-	const columns: Column[] = [{ header: "ID" }];
+	const columns: Column[] = [{ header: "#", align: "right" }, { header: "ID" }];
 	if (withDate) columns.push({ header: "Date" });
 	columns.push(
 		{ header: "Time", align: "right" },
@@ -55,6 +82,7 @@ export const entriesTable = (
 	columns.push({ header: "Description", shrink: true });
 
 	const cells = (
+		number: string,
 		id: string,
 		date: string,
 		time: string,
@@ -63,7 +91,7 @@ export const entriesTable = (
 		flags: string,
 		description: string,
 	) => {
-		const row = [id];
+		const row = [number, id];
 		if (withDate) row.push(date);
 		row.push(time, project, task);
 		if (withFlags) row.push(flags);
@@ -71,15 +99,17 @@ export const entriesTable = (
 		return row;
 	};
 
-	const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+	const sorted = sortEntries(entries);
+	const numbers = dayNumbers(sorted);
 	const totalSeconds = sorted.reduce(
 		(sum, entry) => sum + entry.durationSeconds,
 		0,
 	);
 	return {
 		columns,
-		rows: sorted.map((entry) =>
+		rows: sorted.map((entry, index) =>
 			cells(
+				numbers[index] ?? "",
 				shortId(entry.id),
 				entry.date,
 				formatHours(entry.durationSeconds),
@@ -90,6 +120,7 @@ export const entriesTable = (
 			),
 		),
 		total: cells(
+			"",
 			"Total",
 			"",
 			formatHours(totalSeconds),

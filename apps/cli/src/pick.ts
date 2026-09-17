@@ -1,6 +1,6 @@
 /**
- * Turning what a person typed (`-p acme`, `-t dev`, an id prefix) into the one
- * row it means, and asking when it means several.
+ * Turning what a person typed (`-p acme`, `-t dev`, a row number, an id
+ * prefix) into the one row it means, and asking when it means several.
  */
 
 import type { ApiProject, ApiTask, ApiTimeEntry } from "@farmer/core/api";
@@ -10,7 +10,7 @@ import { formatHours } from "./duration";
 import { CliError, UsageError } from "./errors";
 import type { Output } from "./output";
 import { type Choice, pickOne, requireInteractive } from "./prompts";
-import { entryWhat } from "./render";
+import { entryWhat, plural, sortEntries } from "./render";
 
 /** What `-p none` and `-t none` type, and the value of the list row that
  *  stands for it. */
@@ -202,6 +202,17 @@ export const findByIdPrefix = <T extends { id: string }>(
 	return matches.find((row) => row.id === needle) ?? matches[0] ?? null;
 };
 
+/**
+ * A row number as the lists print it, or null when the text is an id.
+ *
+ * One or two digits, because a day holds at most 24 hours in 15-minute steps
+ * and so at most 96 rows. Nobody types one character of an id — it would name
+ * half the day — so the short numbers are free to mean the column that stands
+ * beside them, and anything longer stays an id prefix.
+ */
+export const rowNumber = (text: string): number | null =>
+	/^[1-9][0-9]?$/.test(text) ? Number(text) : null;
+
 export type SelectedEntry = {
 	id: string;
 	/** Null for a full id that is not among the day's entries: the command
@@ -209,8 +220,8 @@ export type SelectedEntry = {
 	entry: ApiTimeEntry | null;
 };
 
-/** The entry `edit` or `rm` acts on: the id given, or a choice from the
- *  day's entries. */
+/** The entry `edit` or `rm` acts on: the row number or id given, or a choice
+ *  from the day's entries. */
 export const selectEntry = async (
 	out: Output,
 	entries: ApiTimeEntry[],
@@ -218,31 +229,44 @@ export const selectEntry = async (
 	day: string,
 	verb: string,
 ): Promise<SelectedEntry> => {
+	// The same order the tables number, so row 3 here is the row 3 the person
+	// read. For one day the server's order already is it.
+	const ordered = sortEntries(entries);
 	if (id !== undefined) {
-		const found = findByIdPrefix(entries, id);
+		const number = rowNumber(id);
+		if (number !== null) {
+			const row = ordered[number - 1];
+			if (row) return { id: row.id, entry: row };
+			throw new UsageError(
+				ordered.length === 0
+					? `There are no entries on ${day}. Pass -d <date> for another day.`
+					: `${day} has ${plural(ordered.length, "entry", "entries")}, so there is no ${number}.`,
+			);
+		}
+		const found = findByIdPrefix(ordered, id);
 		if (found) return { id: found.id, entry: found };
 		if (isUuid(id)) return { id: id.toLowerCase(), entry: null };
 		throw new UsageError(
 			`No entry on ${day} has an id that starts with "${id}". Pass -d <date> for another day.`,
 		);
 	}
-	if (entries.length === 0) {
+	if (ordered.length === 0) {
 		throw new CliError(`There are no entries on ${day} to ${verb}.`);
 	}
 	requireInteractive(
 		out,
-		`Pass the id of the entry to ${verb}. \`farmer ls\` shows the ids.`,
+		`Pass the row number or the id of the entry to ${verb}. \`farmer ls\` shows both.`,
 	);
 	const picked = await pickOne(
 		`Which entry do you want to ${verb}?`,
-		entries.map((entry) => ({
+		ordered.map((entry, index) => ({
 			value: entry.id,
-			label: `${formatHours(entry.durationSeconds)}  ${entryWhat(entry)}`,
+			label: `${index + 1}. ${formatHours(entry.durationSeconds)}  ${entryWhat(entry)}`,
 			hint: entry.description || undefined,
 		})),
 	);
 	return {
 		id: picked,
-		entry: entries.find((entry) => entry.id === picked) ?? null,
+		entry: ordered.find((entry) => entry.id === picked) ?? null,
 	};
 };

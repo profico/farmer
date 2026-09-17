@@ -1109,7 +1109,16 @@ export const timeEntriesService = {
 				lte(timeEntry.date, range.to),
 			),
 			with: { project: { with: { client: true } }, task: true },
-			orderBy: [asc(timeEntry.date), asc(timeEntry.createdAt)],
+			// The id breaks a createdAt tie, which `copy day` and the automation
+			// engines make routinely by inserting a day's rows in one statement.
+			// Without it Postgres is free to answer two identical queries in two
+			// orders, and the CLI's row numbers ("farmer edit 3") name whichever
+			// row came back third that time.
+			orderBy: [
+				asc(timeEntry.date),
+				asc(timeEntry.createdAt),
+				asc(timeEntry.id),
+			],
 		});
 
 		// Keep each day's fill block in sync on read: its duration tracks the day's
