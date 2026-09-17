@@ -2163,6 +2163,42 @@ html {
     }
   }
 
+  /* One word of a streamed answer arriving.
+   *
+   * The cadence an answer arrives at belongs to whichever model the org chose:
+   * one sends a token per frame and the next sends a paragraph in one. The pace
+   * is evened out in `typeset.ts`, which hands the reader whole words at a
+   * steady rate; this is the other half, and what it adds is a leading EDGE.
+   * Text that simply switches on has a hard boundary between what is written
+   * and what is not, and the eye reads that boundary as a cursor rather than as
+   * writing. Blurred, the boundary is a few words deep and the answer reads as
+   * being set down.
+   *
+   * 300ms is longer than any token on the scale above, and deliberately: the
+   * reveals OVERLAP. Several words are mid-reveal at any moment, which is what
+   * makes the edge a gradient instead of a line, and at `--dur-fast` each word
+   * would finish before its neighbour started and the edge would strobe. It is
+   * narration rather than a state change, so it is timed like the other
+   * narration in this file (`field-in`, the shimmer) instead of like a control.
+   *
+   * `backwards` matters more than the duration. The reveal has to be the
+   * element's FIRST painted state, or a word appears solid for one frame and
+   * then blurs, which reads as a flicker in the middle of a sentence.
+   *
+   * 3px of blur, not more. Every word in a long answer carries this on mount,
+   * so a rejoined thread can start a few hundred at once — a heavy blur there
+   * is a compositor stall on the frame the reader arrives. */
+  .answer-word {
+    animation: word-in 300ms var(--ease-out) backwards;
+  }
+
+  @keyframes word-in {
+    from {
+      opacity: 0;
+      filter: blur(3px);
+    }
+  }
+
   /* Text that says it is working by BEING the thing that is working.
    *
    * The thread list used to put a spinning icon beside a title. That icon is a
@@ -2277,6 +2313,15 @@ html {
     /* The skeleton keeps its shape but stops breathing — the placeholder is
        doing its job by being the right size, not by moving. */
     .pulse-quiet {
+      animation: none;
+    }
+    /* The word reveal is narration and goes with the rest of it. `useTypeset`
+       reads the same setting and stops pacing, so the answer arrives as the
+       model writes it rather than one word at a time with nothing to soften
+       the edge. Stated here as well as under `.assistant-motion` above,
+       because the class is a rule of its own and does not depend on which
+       container it was rendered in. */
+    .answer-word {
       animation: none;
     }
     /* Slowed, never stopped, for the reason the spinner is: in the thread list

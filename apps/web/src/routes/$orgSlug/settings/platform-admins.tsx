@@ -134,12 +134,11 @@ function PlatformAdminsPage() {
 			<PageHeader
 				eyebrow={<SettingsEyebrow />}
 				title="Platform admins"
-				lede="Who operates this deployment, as opposed to who administers a workspace inside it. A platform admin can impersonate any user in any workspace, so keep the list short."
+				lede="These people operate this deployment of Farmer. They have full access to the platform and can manage everyone and everything."
 			/>
 
 			<PageSection
 				title="Current"
-				description="The first row is the account that created this instance."
 			>
 				<ul className="divide-y divide-border">
 					{admins.map((person) => (

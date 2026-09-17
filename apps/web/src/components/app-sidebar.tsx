@@ -560,9 +560,17 @@ export function AppSidebar({
 								{shown === "settings" ? "Settings" : "Chats"}
 							</h2>
 						</div>
+						{/* `overflow-x-hidden` for the reason the nav column above carries it:
+						    `.scroll-fade` sets `overflow-y: auto`, and CSS then forces
+						    `overflow-x` to `auto` as well. This box is a fixed `w-60` inside an
+						    `.app-panel` whose width animates from 0, and the thread rows animate
+						    their own position on top of that — so opening the panel, or a thread
+						    lifting back to the top of the list, leaves content wider than the box
+						    for a few frames. What that cost was a horizontal scrollbar under a
+						    column with nothing to scroll sideways to. */}
 						<div
 							ref={panelScrollRef}
-							className="scroll-fade min-h-0 flex-1 px-2.5 pb-2.5"
+							className="scroll-fade min-h-0 flex-1 overflow-x-hidden px-2.5 pb-2.5"
 						>
 							{/* The two lists are a swap, not a replacement — the same
 							    crossfade the rest of the app uses for a panel change, because

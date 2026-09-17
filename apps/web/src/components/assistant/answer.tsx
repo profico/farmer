@@ -2,13 +2,19 @@ import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import { Fragment, useEffect, useState } from "react";
 
+import { FadeSwap } from "#/components/ui/fade-swap.tsx";
+import { Skeleton } from "#/components/ui/skeleton.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 
 import {
 	AnswerChart,
+	type ChartOutline,
+	ChartPlaceholder,
 	type ChartSpec,
+	outlineChart,
 	parseChartSpec,
 } from "./answer-chart.tsx";
+import { useTypeset } from "./typeset.ts";
 
 // A deliberately small markdown reader.
 //
@@ -48,6 +54,25 @@ import {
 // that table, and the chip fence is read whether or not it was closed. Both
 // recover from a wrapper the model ADDED, never from data it left out — a
 // directive the model didn't write is still a directive nobody gets.
+//
+// Two of the props exist for the TURN IN FLIGHT and are off everywhere else,
+// because opening a stored thread must not replay it.
+//
+// `streaming` says the answer is still arriving, and the only thing it changes
+// is what an OPEN directive fence looks like. A chart cannot be drawn from half
+// a JSON object, so what the reader used to get was the raw object in a code
+// block, replaced by the chart on the last token; the chips grew one character
+// at a time beside it. Both render as a sized placeholder instead and cross
+// into the real thing when the fence closes. It is `streaming` and not `closed`
+// that decides, so the two fallbacks for a turn that stopped a token early are
+// untouched: a stored answer holding an unclosed fence still renders its chips,
+// and still shows a half-written chart's numbers as code.
+//
+// `reveal` blurs each word in as it arrives (`.answer-word` in styles.css),
+// which is what makes a paragraph read as written rather than as painted. It
+// pairs with `useTypeset` in `typeset.ts` — the reveal is the frame-level half
+// of one effect, and the drain is the part that decides when a word is there to
+// reveal.
 
 /** `null` is a delimiter that carried no colon — not "left", which is what a
  *  bare `---` used to become. The distinction is what lets a column of numbers
@@ -61,8 +86,14 @@ type Block =
 	| { kind: "ol"; items: string[] }
 	| { kind: "table"; head: string[]; rows: string[][]; align: (Align | null)[] }
 	| { kind: "hr" }
-	| { kind: "chart"; spec: ChartSpec }
-	| { kind: "next"; prompts: string[] }
+	// One kind for both halves of a chart's life, rather than a second kind for
+	// the fence that is still open. The key a block is rendered under is its kind
+	// and its position, so a second kind would change that key on the token the
+	// fence closed — React would remount, and the crossfade between the
+	// placeholder and the chart would never run. `outline` is what the
+	// placeholder is drawn from and is ignored once `spec` lands.
+	| { kind: "chart"; spec: ChartSpec | null; outline: ChartOutline }
+	| { kind: "next"; prompts: string[]; ready: boolean }
 	| { kind: "code"; text: string; lang: string | null };
 
 /** A pipe row with both of its outer pipes — strict, because this is also what
@@ -155,7 +186,9 @@ const parsePrompts = (text: string) =>
 		)
 		.slice(0, 4);
 
-const parseBlocks = (source: string): Block[] => {
+/** `streaming` is the turn's own state, and the only thing it decides is what an
+ *  OPEN directive fence becomes — see the note at the top of this file. */
+const parseBlocks = (source: string, streaming: boolean): Block[] => {
 	const blocks: Block[] = [];
 	const lines = source.split("\n");
 	let index = 0;
@@ -199,9 +232,23 @@ const parseBlocks = (source: string): Block[] => {
 				// numbers are in there, and a chart that silently vanishes takes them
 				// with it.
 				if (spec) {
-					blocks.push({ kind: "chart", spec });
+					blocks.push({ kind: "chart", spec, outline: outlineChart(text) });
 					continue;
 				}
+			}
+			// A chart that is still arriving, as a box the size of the chart it is
+			// going to be. Only while the turn is running, and only for the TAGGED
+			// fence: a stopped turn holding half a chart still shows its numbers as
+			// code, and the untagged recovery above cannot be seen coming — what
+			// identifies a chart there is that the body parses as one, which half an
+			// object never does.
+			if (streaming && !closed && lang === "farmer-chart") {
+				blocks.push({
+					kind: "chart",
+					spec: null,
+					outline: outlineChart(text),
+				});
+				continue;
 			}
 			// Chips do NOT wait for the closing fence, and the asymmetry with the
 			// chart above is deliberate: every line here stands on its own, so half
@@ -212,7 +259,17 @@ const parseBlocks = (source: string): Block[] => {
 			if (lang === "farmer-next") {
 				// Unlike a chart, an empty or broken chip list is decoration nobody
 				// loses anything by not seeing.
-				blocks.push({ kind: "next", prompts: parsePrompts(text) });
+				//
+				// `ready` is what the chips are DRAWN as, not whether they were read:
+				// they are parsed either way, so the paragraph above still holds. An
+				// open fence is a box while the turn runs, because a chip that grows
+				// one character at a time is a button whose label keeps changing under
+				// the pointer — and chips, not a box, the moment nothing is arriving.
+				blocks.push({
+					kind: "next",
+					prompts: parsePrompts(text),
+					ready: closed || !streaming,
+				});
 				continue;
 			}
 
@@ -360,7 +417,7 @@ export const printDayKey = (day: string) => {
  * looking. Anything that isn't a real calendar date renders as plain text, so
  * a hallucinated citation is inert rather than a link to nowhere.
  */
-function DayCitation({ day }: { day: string }) {
+function DayCitation({ day, reveal }: { day: string; reveal: boolean }) {
 	const orgSlug = useOrgSlug();
 	const label = printDayKey(day);
 	if (!label) return <>{day}</>;
@@ -369,26 +426,66 @@ function DayCitation({ day }: { day: string }) {
 			to="/$orgSlug/time"
 			params={{ orgSlug }}
 			search={{ date: day }}
-			className="underlined text-ink"
+			className={word(reveal, "underlined text-ink")}
 		>
 			{label}
 		</Link>
 	);
 }
 
+/** How many words a part holds, and never fewer than one.
+ *
+ *  The floor is there so two adjacent parts cannot share a key: `split` with a
+ *  capture group emits an empty string between neighbouring matches, and a part
+ *  that is only whitespace holds no words at all. */
+const countWords = (part: string) => (part.match(/\S+/g) ?? []).length || 1;
+
+/** `answer-word` on an element that is already one word — a bold run, a date
+ *  citation, a link — so it blurs in with the plain words around it instead of
+ *  being the one thing on the line that simply appears. */
+const word = (reveal: boolean, base: string) =>
+	reveal ? `${base} answer-word` : base;
+
+/** One span per word, each blurring in as it mounts. The whitespace that
+ *  follows a word rides INSIDE its span: a line still breaks there, and one
+ *  element per word is half the nodes of a word plus a separate text node. */
+const revealWords = (part: string, at: number) => {
+	const words = part.match(/\s*\S+\s*/g);
+	if (!words) return part;
+	return words.map((token, offset) => (
+		<span key={`w${at + offset}`} className="answer-word">
+			{token}
+		</span>
+	));
+};
+
 /** Inline `code`, **bold**, *italic*, [links](…) and `[[date]]` citations, in
- *  one pass so none of them can swallow another. */
-const renderInline = (text: string) => {
+ *  one pass so none of them can swallow another.
+ *
+ *  `reveal` wraps each word so it can blur in. It also changes the KEYS, and
+ *  that is the load-bearing half: the key below carries the part's own text, so
+ *  a part that is still growing changes its own key on each of its first eight
+ *  characters, React remounts it, and a CSS animation restarts every time. A
+ *  cumulative WORD count is stable instead — a closing `**` that finally lands
+ *  re-splits the line around itself without changing how many words are on it,
+ *  because the marker's characters belong to the word they are attached to. */
+const renderInline = (text: string, reveal = false) => {
 	const parts = text.split(
 		/(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[\[\d{4}-\d{2}-\d{2}\]\]|\[[^\]\n]+\]\([^)\s]+\))/g,
 	);
+	let cursor = 0;
 	return parts.map((part, index) => {
-		const key = `${index}-${part.slice(0, 8)}`;
+		const at = cursor;
+		cursor += countWords(part);
+		const key = reveal ? `w${at}` : `${index}-${part.slice(0, 8)}`;
 		if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
 			return (
 				<code
 					key={key}
-					className="rounded-[4px] bg-inset px-1 py-0.5 font-mono text-[12px] text-ink"
+					className={word(
+						reveal,
+						"rounded-[4px] bg-inset px-1 py-0.5 font-mono text-[12px] text-ink",
+					)}
 				>
 					{part.slice(1, -1)}
 				</code>
@@ -396,17 +493,21 @@ const renderInline = (text: string) => {
 		}
 		if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
 			return (
-				<strong key={key} className="font-medium text-ink">
+				<strong key={key} className={word(reveal, "font-medium text-ink")}>
 					{part.slice(2, -2)}
 				</strong>
 			);
 		}
 		if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
-			return <em key={key}>{part.slice(1, -1)}</em>;
+			return (
+				<em key={key} className={reveal ? "answer-word" : undefined}>
+					{part.slice(1, -1)}
+				</em>
+			);
 		}
 		const citation = /^\[\[(\d{4}-\d{2}-\d{2})\]\]$/.exec(part);
 		if (citation?.[1]) {
-			return <DayCitation key={key} day={citation[1]} />;
+			return <DayCitation key={key} day={citation[1]} reveal={reveal} />;
 		}
 		const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
 		if (link) {
@@ -418,13 +519,15 @@ const renderInline = (text: string) => {
 					href={href}
 					target="_blank"
 					rel="noreferrer noopener"
-					className="underlined text-ink"
+					className={word(reveal, "underlined text-ink")}
 				>
 					{link[1]}
 				</a>
 			);
 		}
-		return <Fragment key={key}>{part}</Fragment>;
+		return (
+			<Fragment key={key}>{reveal ? revealWords(part, at) : part}</Fragment>
+		);
 	});
 };
 
@@ -630,21 +733,39 @@ export function AnswerActions({ text }: { text: string }) {
 export function Answer({
 	text,
 	onFollowUp,
+	reveal = false,
+	streaming = false,
 }: {
 	text: string;
 	/** Sends a follow-up chip's prompt as the next message. Absent while a turn
 	 *  is in flight, which is what makes the chips inert until it settles. */
 	onFollowUp?: (prompt: string) => void;
+	/** Blur each word in as it mounts. See the note at the top of this file —
+	 *  only the turn in flight sets it. */
+	reveal?: boolean;
+	/** Whether the answer is still arriving. Only an OPEN directive fence reads
+	 *  it, and only to draw itself as a placeholder. */
+	streaming?: boolean;
 }) {
 	if (!text.trim()) return null;
+	// A block that arrives whole rather than word by word: a table, a chart, a
+	// code block. One fade for the whole thing, because its parts are laid out
+	// against each other — a table whose cells blurred in one at a time while its
+	// columns were still being measured is a grid of moving text. The block is
+	// keyed by its position, so this plays once, on the delta that turned a
+	// paragraph into a table, and not again as rows are added under it.
+	const blockIn = reveal
+		? { animation: "fade-up var(--dur-slow) var(--ease-out) both" }
+		: undefined;
 	return (
 		<div className="flex flex-col gap-2.5 text-[13.5px] leading-relaxed text-ink">
-			{parseBlocks(text).map((block, index) => {
+			{parseBlocks(text, streaming).map((block, index) => {
 				const key = `${block.kind}-${index}`;
 				if (block.kind === "code") {
 					return (
 						<pre
 							key={key}
+							style={blockIn}
 							className="overflow-auto rounded-control bg-inset p-2.5 font-mono text-[12px] leading-relaxed text-ink-2"
 						>
 							<code>{block.text}</code>
@@ -653,21 +774,35 @@ export function Answer({
 				}
 				if (block.kind === "table") {
 					return (
-						<AnswerTable
-							key={key}
-							head={block.head}
-							rows={block.rows}
-							align={block.align}
-						/>
+						<div key={key} style={blockIn}>
+							<AnswerTable
+								head={block.head}
+								rows={block.rows}
+								align={block.align}
+							/>
+						</div>
 					);
 				}
 				if (block.kind === "chart") {
 					// Same escape as the table's, and the case it exists for is the
 					// forty-column trend: at the reading column's width its columns are
 					// 8px of bar under a label nobody can read.
+					//
+					// `FadeSwap` is the crossfade every panel change in the app already
+					// uses, and this is one. `mode="wait"` inside it takes the
+					// placeholder out BEFORE the chart arrives, so the two are never on
+					// screen together claiming to be the same figure. The key is the
+					// block's position and does not change when the fence closes — that
+					// is what makes this a swap rather than a remount (see `Block`).
 					return (
-						<div key={key} className="answer-wide">
-							<AnswerChart spec={block.spec} />
+						<div key={key} className="answer-wide" style={blockIn}>
+							<FadeSwap activeKey={block.spec ? "chart" : "loading"}>
+								{block.spec ? (
+									<AnswerChart spec={block.spec} />
+								) : (
+									<ChartPlaceholder outline={block.outline} />
+								)}
+							</FadeSwap>
 						</div>
 					);
 				}
@@ -675,20 +810,34 @@ export function Answer({
 					// No handler means the turn is still running: render them so the
 					// answer doesn't reflow when it settles, but don't offer a click
 					// that would abandon the answer being read.
-					if (block.prompts.length === 0) return null;
+					//
+					// An empty list is dropped only once it is READY. Dropped while the
+					// fence is still open, a `farmer-next` whose first line has not
+					// arrived would have nothing on screen to swap FROM, and the chips
+					// would appear rather than cross in.
+					if (block.ready && block.prompts.length === 0) return null;
 					return (
-						<div key={key} className="mt-0.5 flex flex-wrap gap-1.5">
-							{block.prompts.map((prompt) => (
-								<button
-									key={prompt}
-									type="button"
-									disabled={!onFollowUp}
-									onClick={() => onFollowUp?.(prompt)}
-									className="rounded-control px-2.5 py-1.5 text-left text-[12.5px] text-ink-2 shadow-hairline transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-ink disabled:opacity-60"
-								>
-									{prompt}
-								</button>
-							))}
+						<div key={key} className="mt-0.5" style={blockIn}>
+							<FadeSwap
+								activeKey={block.ready ? "chips" : "loading"}
+								className="flex flex-wrap gap-1.5"
+							>
+								{block.ready ? (
+									block.prompts.map((prompt) => (
+										<button
+											key={prompt}
+											type="button"
+											disabled={!onFollowUp}
+											onClick={() => onFollowUp?.(prompt)}
+											className="rounded-control px-2.5 py-1.5 text-left text-[12.5px] text-ink-2 shadow-hairline transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-ink disabled:opacity-60"
+										>
+											{prompt}
+										</button>
+									))
+								) : (
+									<ChipsPlaceholder count={block.prompts.length} />
+								)}
+							</FadeSwap>
 						</div>
 					);
 				}
@@ -704,7 +853,7 @@ export function Answer({
 							key={key}
 							className="mt-1 font-medium text-ink first:mt-0 [&:not(:first-child)]:pt-0.5"
 						>
-							{renderInline(block.text)}
+							{renderInline(block.text, reveal)}
 						</div>
 					);
 				}
@@ -720,7 +869,7 @@ export function Answer({
 									<span className="shrink-0 text-ink-3 tabular-nums">
 										{itemIndex + 1}.
 									</span>
-									<span className="min-w-0">{renderInline(item)}</span>
+									<span className="min-w-0">{renderInline(item, reveal)}</span>
 								</li>
 							))}
 						</ol>
@@ -739,7 +888,7 @@ export function Answer({
 										aria-hidden
 										className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-3"
 									/>
-									<span className="min-w-0">{renderInline(item)}</span>
+									<span className="min-w-0">{renderInline(item, reveal)}</span>
 								</li>
 							))}
 						</ul>
@@ -747,10 +896,64 @@ export function Answer({
 				}
 				return (
 					<p key={key} className="whitespace-pre-wrap">
-						{renderInline(block.text)}
+						{renderInline(block.text, reveal)}
 					</p>
 				);
 			})}
 		</div>
+	);
+}
+
+/**
+ * The answer of the turn in flight.
+ *
+ * Everything that makes a streamed answer read as written rather than as
+ * painted is in here, and nothing above the live turn has to know about it:
+ * `useTypeset` decides WHEN a word is on screen and `reveal` decides how it
+ * arrives. It is a component of its own so the drain's per-frame re-render
+ * stops at this subtree instead of running the whole transcript.
+ *
+ * `.assistant-motion` is the class the reduced-motion block in styles.css ends
+ * every animation under. The hook reads the same two settings for the drain, so
+ * the pacing and the reveal go together and neither can be left on alone.
+ */
+export function StreamingAnswer({
+	text,
+	streaming,
+}: {
+	text: string;
+	streaming: boolean;
+}) {
+	const visible = useTypeset(text, streaming);
+	return (
+		<div className="assistant-motion">
+			<Answer text={visible} reveal streaming={streaming} />
+		</div>
+	);
+}
+
+/** Cycled rather than randomised, for the reason the chart's are: a random
+ *  width is a different width on every streamed delta. */
+const CHIP_WIDTHS = ["w-40", "w-32", "w-44", "w-28"];
+
+/**
+ * Stands in for the chips while their fence is still open.
+ *
+ * `count` is how many lines have arrived, so the box grows towards the number
+ * of chips it is going to be instead of resizing once at the swap. Two at the
+ * least, because a fence that has only just opened has no lines and one pill
+ * reads as a chip rather than as a placeholder.
+ *
+ * `h-8` is the button's own height — 12.5px of text at the answer's
+ * `leading-relaxed`, plus `py-1.5` top and bottom. Set by hand because the
+ * placeholder has no text in it to be that tall.
+ */
+function ChipsPlaceholder({ count }: { count: number }) {
+	return (
+		<>
+			{CHIP_WIDTHS.slice(0, Math.min(Math.max(count, 2), 4)).map((width) => (
+				<Skeleton key={width} className={`h-8 rounded-control ${width}`} />
+			))}
+		</>
 	);
 }

@@ -86,6 +86,18 @@ export type AssistantRun = {
 	 *  to see what you just typed. Null on an approval turn, which has no new
 	 *  message, and null when idle. */
 	sentMessage: string | null;
+	/** The id the server gave that message, from the `message` receipt.
+	 *
+	 *  The transcript needs it to know when to STOP drawing the live copy. A
+	 *  thread refetched mid-turn — the 30s `staleTime` runs out while you are in
+	 *  another thread, and coming back re-runs the loader — brings the stored row
+	 *  in long before the turn ends, and the question was then on screen twice
+	 *  until it finished. Comparing ids rather than text, because the same
+	 *  question asked twice in one thread is two rows and not a duplicate.
+	 *
+	 *  Null until the receipt arrives, which is also the window in which no
+	 *  stored copy can exist yet. */
+	sentMessageId: string | null;
 	/** Tools this turn has touched, in the order the model asked for them. */
 	traces: ToolTrace[];
 	pending: PendingApproval | null;
@@ -102,6 +114,7 @@ const SETTLE_WAIT_MS = 250;
 const IDLE: AssistantRun = {
 	streamingText: "",
 	sentMessage: null,
+	sentMessageId: null,
 	traces: [],
 	pending: null,
 	error: null,
@@ -228,6 +241,7 @@ export function AssistantRunsProvider({
 					...held,
 					streamingText: "",
 					sentMessage: null,
+					sentMessageId: null,
 					traces: [],
 					isStreaming: false,
 				},
@@ -370,6 +384,10 @@ export function AssistantRunsProvider({
 						switch (event.type) {
 							case "message":
 								delivered = true;
+								patch(conversationId, (state) => ({
+									...state,
+									sentMessageId: event.messageId,
+								}));
 								break;
 							case "delta":
 								streamed = true;

@@ -5,7 +5,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { Answer, AnswerActions } from "#/components/assistant/answer.tsx";
+import {
+	Answer,
+	AnswerActions,
+	StreamingAnswer,
+} from "#/components/assistant/answer.tsx";
 import {
 	useAssistantActions,
 	useAssistantRun,
@@ -187,6 +191,17 @@ function AssistantPage() {
 	});
 
 	const messages = thread?.messages ?? [];
+
+	// Whether the server's own row for the message in flight is already in the
+	// transcript above. It normally is not — the refetch that brings it in is the
+	// one at the END of the turn, by which point the live copy has been dropped.
+	// A thread refetched MID-turn is the exception: the 30s `staleTime` runs out
+	// while you are reading another thread, coming back re-runs the loader, and
+	// the stored row lands with the turn still working. Drawn unconditionally,
+	// the question then sat on screen twice until the answer finished.
+	const sentMessageStored =
+		stream.sentMessageId !== null &&
+		messages.some((message) => message.id === stream.sentMessageId);
 
 	// The approval card, from the live stream if a turn is in flight and from the
 	// stored row otherwise.
@@ -411,7 +426,7 @@ function AssistantPage() {
 							    vanishes on send and the screen shows only the model working —
 							    on a turn that runs tools, for long enough to wonder whether
 							    the message was sent at all. */}
-							{stream.sentMessage !== null && (
+							{stream.sentMessage !== null && !sentMessageStored && (
 								<UserMessage text={stream.sentMessage} />
 							)}
 
@@ -422,7 +437,15 @@ function AssistantPage() {
 								/>
 							)}
 
-							{stream.streamingText && <Answer text={stream.streamingText} />}
+							{/* Not `Answer`: the turn in flight is paced and revealed, and
+							    the stored rows above it are neither. See `StreamingAnswer`
+							    and `typeset.ts`. */}
+							{stream.streamingText && (
+								<StreamingAnswer
+									text={stream.streamingText}
+									streaming={stream.isStreaming}
+								/>
+							)}
 
 							{stream.isStreaming &&
 								!stream.streamingText &&

@@ -18,6 +18,8 @@
 
 import { z } from "zod";
 
+import { Skeleton } from "#/components/ui/skeleton.tsx";
+
 /** The JSON inside a ```farmer-chart fence. */
 export type ChartSpec = {
 	/** `bar` = one row per category, `trend` = columns left to right in time. */
@@ -137,5 +139,119 @@ export function AnswerChart({ spec }: { spec: ChartSpec }) {
 				</div>
 			)}
 		</figure>
+	);
+}
+
+/* ── the placeholder ───────────────────────────────────────────────────────── */
+
+/**
+ * The shape a chart is going to be, read off the JSON that has arrived so far.
+ *
+ * A `farmer-chart` fence cannot be drawn until it CLOSES — half a JSON object
+ * parses as nothing — and what the reader used to get in the meantime was the
+ * raw object in a code block, replaced by the chart on the last token. So the
+ * fence renders as a box instead, and the box is worth sizing: a placeholder
+ * that lands at the chart's own height does not move the text under it when the
+ * two swap.
+ *
+ * Three regexes rather than a tolerant JSON parser, and they are allowed to be
+ * wrong. Every one of them is answering a question about a box nobody will look
+ * at for more than a second, and a partial object is not a document any parser
+ * can be right about.
+ */
+export type ChartOutline = {
+	type: "bar" | "trend";
+	rows: number;
+	titled: boolean;
+};
+
+export const outlineChart = (body: string): ChartOutline => ({
+	type: /"type"\s*:\s*"trend"/.test(body) ? "trend" : "bar",
+	// Three at the least, so a fence that has only just opened is still a box
+	// and not a hairline. Twelve at the most, for the reason the spec's own
+	// ceiling is 40: a placeholder as tall as the screen is a wall.
+	rows: Math.min(Math.max((body.match(/"label"\s*:/g) ?? []).length, 3), 12),
+	titled: /"title"\s*:/.test(body),
+});
+
+/** Widths cycled rather than randomised: a random width is a different width on
+ *  every streamed delta, which is a placeholder that twitches. */
+const LABEL_WIDTHS = ["w-24", "w-16", "w-28", "w-20", "w-14"];
+const BAR_SHARES = [82, 54, 96, 38, 67, 74, 45, 88];
+
+const pick = <T,>(table: readonly T[], index: number, fallback: T) =>
+	table[index % table.length] ?? fallback;
+
+/**
+ * A slot the height of one line of the chart's own text, holding a bar the
+ * height of the ink in it.
+ *
+ * The chart labels its every value, so a row of it is as tall as a line of
+ * 12.5px text under the answer's `leading-relaxed` and not as tall as the 2.5px
+ * bar beside it. A placeholder built out of bare skeletons is a third shorter
+ * than the chart it stands in for, and the text under the two of them steps
+ * down when they swap — which is the one thing sizing the box was for.
+ */
+function TextSlot({ className }: { className: string }) {
+	// A div and not a span, here and on the bar's own track below: `Skeleton`
+	// renders a div, and a div inside a span is a nesting the browser repairs
+	// during hydration rather than accepting.
+	return (
+		<div className="flex h-5 items-center">
+			<Skeleton className={`h-2.5 rounded-[3px] ${className}`} />
+		</div>
+	);
+}
+
+/** Stands in for a chart whose fence has not closed yet. Same frame, same
+ *  metrics, same tokens — see `ChartOutline` for why it is worth the trouble. */
+export function ChartPlaceholder({ outline }: { outline: ChartOutline }) {
+	const rows = Array.from({ length: outline.rows }, (_, index) => index);
+	return (
+		<div aria-hidden className="my-0.5 flex flex-col gap-2">
+			{outline.titled && <TextSlot className="w-32" />}
+
+			{outline.type === "trend" ? (
+				// `overflow-hidden` where the chart has `overflow-x-auto`: the real one
+				// may be scrolled sideways and this one has nothing to scroll to, and a
+				// scrollbar that appears under the placeholder and goes at the swap is
+				// movement at the bottom of the figure.
+				<div className="flex items-end gap-1 overflow-hidden">
+					{rows.map((index) => (
+						<div
+							key={index}
+							className="flex min-w-8 flex-1 flex-col items-center gap-1"
+						>
+							<TextSlot className="w-6" />
+							<div className="flex h-16 w-full items-end rounded-[3px] bg-inset">
+								<Skeleton
+									className="w-full rounded-[3px]"
+									style={{ height: `${pick(BAR_SHARES, index, 60)}%` }}
+								/>
+							</div>
+							<TextSlot className="w-8" />
+						</div>
+					))}
+				</div>
+			) : (
+				<div className="flex flex-col gap-1.5">
+					{rows.map((index) => (
+						<div
+							key={index}
+							className="grid grid-cols-[9rem_1fr_auto] items-center gap-2"
+						>
+							<TextSlot className={pick(LABEL_WIDTHS, index, "w-20")} />
+							<div className="h-2.5 rounded-[3px] bg-inset">
+								<Skeleton
+									className="h-full rounded-[3px]"
+									style={{ width: `${pick(BAR_SHARES, index, 60)}%` }}
+								/>
+							</div>
+							<TextSlot className="w-8" />
+						</div>
+					))}
+				</div>
+			)}
+		</div>
 	);
 }
