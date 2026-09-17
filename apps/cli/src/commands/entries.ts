@@ -12,7 +12,7 @@ import {
 } from "@farmer/core/schema";
 
 import { type DaySpan, parseDay, todayKey, weekAround } from "../dates";
-import { formatHours, parseQuarterHours } from "../duration";
+import { addToDuration, formatHours, parseQuarterHours } from "../duration";
 import { CancelledError, UsageError } from "../errors";
 import {
 	bold,
@@ -310,7 +310,7 @@ export const log: Command = {
 };
 
 const EDIT_USAGE =
-	"farmer edit [n | id] [-d date] [--duration <d>] [-m text] [-p project] [-t task] [--move <date>] [--overtime | --no-overtime]";
+	"farmer edit [n | id] [-d date] [--duration <d> | --add <d>] [-m text] [-p project] [-t task] [--move <date>] [--overtime | --no-overtime]";
 
 export const edit: Command = {
 	name: "edit",
@@ -322,6 +322,7 @@ export const edit: Command = {
 		"                    the id or its first characters.",
 		"  -d, --date        The day to find the entry on. The default is today.",
 		"  --duration <d>    A new duration, or `fill`.",
+		"  --add <d>         Time to add to the duration already logged.",
 		"  -m, --message     A new description.",
 		"  -p, --project     A new project.",
 		"  -t, --task        A new task.",
@@ -336,6 +337,7 @@ export const edit: Command = {
 			{
 				date: { type: "string", short: "d" },
 				duration: { type: "string" },
+				add: { type: "string" },
 				message: { type: "string", short: "m" },
 				project: { type: "string", short: "p" },
 				task: { type: "string", short: "t" },
@@ -349,6 +351,9 @@ export const edit: Command = {
 		const out = createOutput(values.json === true, runtime.env);
 		if (values.overtime && values["no-overtime"]) {
 			throw new UsageError("Pass --overtime or --no-overtime, not both.");
+		}
+		if (values.duration !== undefined && values.add !== undefined) {
+			throw new UsageError("Pass --duration or --add, not both.");
 		}
 
 		const patch: TimeEntryPatch = {};
@@ -391,15 +396,28 @@ export const edit: Command = {
 			"edit",
 		);
 
+		// `--add` is the duration the entry already carries plus what was typed,
+		// so it needs the row itself — a bare id for another day gives nothing to
+		// add to. A fill block becomes a fixed entry, as `--duration` makes it.
+		if (values.add !== undefined) {
+			if (!entry) {
+				throw new UsageError(
+					"--add needs the entry, so pass its row number, or -d <date> for the day it is on.",
+				);
+			}
+			patch.durationSeconds = addToDuration(entry.durationSeconds, values.add);
+			patch.fillsDay = false;
+		}
+
 		if (Object.keys(patch).length === 0) {
 			if (!entry) {
 				throw new UsageError(
-					`Say what to change: --duration, -m, -p, -t, --move or --overtime.\nUsage: ${EDIT_USAGE}`,
+					`Say what to change: --duration, --add, -m, -p, -t, --move or --overtime.\nUsage: ${EDIT_USAGE}`,
 				);
 			}
 			requireInteractive(
 				out,
-				`Say what to change: --duration, -m, -p, -t, --move or --overtime.\nUsage: ${EDIT_USAGE}`,
+				`Say what to change: --duration, --add, -m, -p, -t, --move or --overtime.\nUsage: ${EDIT_USAGE}`,
 			);
 			const current = entry.fillsDay
 				? "fill"

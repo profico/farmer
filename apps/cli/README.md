@@ -81,6 +81,7 @@ farmer log 1h30m "Review of the login flow" -p web -t development
 farmer log fill -p web -t development      # fill the rest of the day
 farmer log 2h -d yesterday
 farmer edit 2 --duration 45m               # the day's second row
+farmer edit 2 --add 1.25                   # 1h15m on top of what it holds
 farmer rm 3 -d mon --yes
 farmer off vacation 2026-12-22..2027-01-02
 farmer today --json | jq '.[].durationSeconds'
@@ -91,7 +92,9 @@ farmer today --json | jq '.[].durationSeconds'
   instead of an id. The number belongs to the day, so `farmer edit 2 -d mon`
   changes Monday's second row. It is the row as the list stands now — log or
   delete something and the numbers below it move.
-- Durations: `1h30m`, `1.5` or `90m`, in 15-minute steps.
+- Durations: `1h30m`, `1.5` or `90m`, in 15-minute steps. `farmer edit --add`
+  takes the same forms and adds them to the time the entry already holds, so
+  a second stretch of work on one task needs no arithmetic.
 - Dates: `today`, `yesterday`, a weekday name (the most recent one), or
   `yyyy-MM-dd`, in the timezone of the organization.
 - A missing `-p` or `-t` opens a searchable list, unless the repository has
