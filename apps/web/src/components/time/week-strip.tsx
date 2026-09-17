@@ -1,3 +1,4 @@
+import { weekDayMarks } from "@farmer/core/lib/day-marks";
 import { Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
 
@@ -6,10 +7,6 @@ import { springLayout } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const isWeekday = (date: string) => {
-	const day = new Date(`${date}T12:00:00Z`).getUTCDay();
-	return day !== 0 && day !== 6;
-};
 
 // The seven-day context bar above the Day view. It exists so a person filling in
 // Tuesday can see, without navigating, that Thursday is still empty — which is
@@ -30,7 +27,9 @@ export function WeekStrip({
 	secondsByDay: Map<string, number>;
 	holidays: Map<string, string>;
 	/** With a day's worth, a past or present working day says how far it is
-	 *  from it. Omitted for people the rule does not apply to. */
+	 *  from it — unless the rest of its week has made up for it
+	 *  (`@farmer/core/lib/day-marks`). Omitted for people the rule does not
+	 *  apply to. */
 	today?: string;
 	dayTargetSeconds?: number | null;
 }) {
@@ -38,6 +37,16 @@ export function WeekStrip({
 		(sum, date) => sum + (secondsByDay.get(date) ?? 0),
 		0,
 	);
+	const marks =
+		today == null || dayTargetSeconds == null
+			? null
+			: weekDayMarks({
+					dates,
+					secondsByDay,
+					holidays,
+					today,
+					daySeconds: dayTargetSeconds,
+				});
 
 	return (
 		<div className="-mx-4 flex items-stretch gap-1 overflow-x-auto border-b px-4 sm:-mx-8 sm:px-8">
@@ -45,6 +54,7 @@ export function WeekStrip({
 				const seconds = secondsByDay.get(date) ?? 0;
 				const isActive = date === activeDate;
 				const holidayName = holidays.get(date);
+				const mark = marks?.get(date);
 				return (
 					<Link
 						key={date}
@@ -99,18 +109,17 @@ export function WeekStrip({
 								{holidayName}
 							</span>
 						)}
-						{!holidayName &&
-							today != null &&
-							dayTargetSeconds != null &&
-							date <= today &&
-							isWeekday(date) &&
-							(seconds >= dayTargetSeconds ? (
-								<span className="mt-1 block text-2xs text-ok">done</span>
-							) : (
-								<span className="mt-1 block text-2xs text-bad">
-									{formatClock(dayTargetSeconds - seconds)} short
-								</span>
-							))}
+						{/* A covered day says nothing. A mark here is either a day's worth
+						    or something to do, and a day the week has made up for is
+						    neither — the targets above carry the week's number. */}
+						{mark === "done" && (
+							<span className="mt-1 block text-2xs text-ok">done</span>
+						)}
+						{mark === "short" && dayTargetSeconds != null && (
+							<span className="mt-1 block text-2xs text-bad">
+								{formatClock(dayTargetSeconds - seconds)} short
+							</span>
+						)}
 					</Link>
 				);
 			})}

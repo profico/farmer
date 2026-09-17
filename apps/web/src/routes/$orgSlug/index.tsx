@@ -1,3 +1,4 @@
+import { weekDayMarks } from "@farmer/core/lib/day-marks";
 import { formatReportHours } from "@farmer/core/lib/report-format";
 import {
 	addDaysToKey,
@@ -114,31 +115,43 @@ function OrgHome() {
 
 	// Per-weekday totals, in the org's week order, for the bars — derived from
 	// the same week query, so it costs no extra fetch.
-	const perDay = orderedWeekdays(organization.weekStartsOn).map(
-		({ day: weekday, label }, i) => {
-			const key = addDaysToKey(weekStart, i);
-			const seconds = weekEntries
-				.filter((e) => e.date === key)
-				.reduce((sum, e) => sum + e.durationSeconds, 0);
-			return {
-				label,
-				key,
-				seconds,
-				isToday: key === today,
-				isWeekend: weekday === 0 || weekday === 6,
-				holiday: holidays.get(key),
-				// A day that may be judged against the day's worth: a working day
-				// that has happened. A future day, a weekend and a public holiday
-				// are all simply not asked.
-				judged:
-					key <= today &&
-					weekday !== 0 &&
-					weekday !== 6 &&
-					!holidays.has(key) &&
-					targets.daySeconds > 0,
-			};
-		},
+	const secondsByDay = new Map<string, number>();
+	for (const entry of weekEntries) {
+		secondsByDay.set(
+			entry.date,
+			(secondsByDay.get(entry.date) ?? 0) + entry.durationSeconds,
+		);
+	}
+	const weekDays = orderedWeekdays(organization.weekStartsOn).map(
+		({ day: weekday, label }, i) => ({
+			weekday,
+			label,
+			key: addDaysToKey(weekStart, i),
+		}),
 	);
+	// The same marks the timesheet's week strip draws, so a day the week has
+	// made up for is never amber here and quiet there. A day with no mark is
+	// not judged: a future day, a weekend and a public holiday are simply not
+	// asked.
+	const marks =
+		targets.daySeconds > 0
+			? weekDayMarks({
+					dates: weekDays.map((d) => d.key),
+					secondsByDay,
+					holidays,
+					today,
+					daySeconds: targets.daySeconds,
+				})
+			: null;
+	const perDay = weekDays.map(({ weekday, label, key }) => ({
+		label,
+		key,
+		seconds: secondsByDay.get(key) ?? 0,
+		isToday: key === today,
+		isWeekend: weekday === 0 || weekday === 6,
+		holiday: holidays.get(key),
+		mark: marks?.get(key),
+	}));
 	const maxDaySeconds = Math.max(
 		...perDay.map((d) => d.seconds),
 		targets.daySeconds,
@@ -438,15 +451,20 @@ function OrgHome() {
 											)
 										: 2;
 								const isSelected = d.key === selectedDay;
+								// A covered day is grey, not amber: the week has made up for
+								// it, and a bar still in the week's colours would be the
+								// alarm the timesheet strip no longer raises.
 								const verdict = d.holiday
 									? "warn"
-									: !d.judged
+									: d.mark == null
 										? "none"
-										: d.seconds === 0
-											? "bad"
-											: d.seconds >= targets.daySeconds
-												? "ok"
-												: "warn";
+										: d.mark === "done"
+											? "ok"
+											: d.mark === "covered"
+												? "covered"
+												: d.seconds === 0
+													? "bad"
+													: "warn";
 								return (
 									<button
 										type="button"
@@ -476,11 +494,13 @@ function OrgHome() {
 														? "bg-warn/40"
 														: verdict === "none"
 															? "bg-line"
-															: verdict === "bad"
-																? "bg-bad"
-																: verdict === "ok"
-																	? "bg-ok"
-																	: "bg-warn",
+															: verdict === "covered"
+																? "bg-line-strong"
+																: verdict === "bad"
+																	? "bg-bad"
+																	: verdict === "ok"
+																		? "bg-ok"
+																		: "bg-warn",
 												)}
 												style={{
 													height: `${px}px`,
@@ -504,18 +524,20 @@ function OrgHome() {
 													? "text-warn"
 													: verdict === "none"
 														? "text-faint"
-														: verdict === "bad"
-															? "text-bad"
-															: verdict === "ok"
-																? "text-ok"
-																: "text-warn",
+														: verdict === "covered"
+															? "text-muted-foreground"
+															: verdict === "bad"
+																? "text-bad"
+																: verdict === "ok"
+																	? "text-ok"
+																	: "text-warn",
 											)}
 										>
 											{d.holiday
 												? "hol."
 												: d.seconds > 0
 													? formatReportHours(d.seconds)
-													: d.judged
+													: d.mark != null
 														? "—"
 														: " "}
 										</span>
