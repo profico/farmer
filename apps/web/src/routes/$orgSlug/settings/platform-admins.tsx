@@ -152,6 +152,7 @@ function PlatformAdminsPage() {
 								<Button
 									variant="outline"
 									size="sm"
+									className="hover:text-destructive"
 									disabled={busy}
 									onClick={() =>
 										change.mutate({

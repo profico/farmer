@@ -270,7 +270,7 @@ function DeleteRuleButton({
 		<AlertDialog open={open} onOpenChange={setOpen}>
 			<AlertDialogTrigger
 				render={
-					<Button variant="ghost" size="sm">
+					<Button variant="ghost" size="sm" className="hover:text-destructive">
 						Delete
 					</Button>
 				}

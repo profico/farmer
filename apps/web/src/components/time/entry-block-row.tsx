@@ -416,7 +416,7 @@ export function EntryBlockRow({
 				<Button
 					variant="ghost"
 					size="sm"
-					className="text-faint hover:text-primary"
+					className="text-faint hover:text-destructive"
 					onClick={() => {
 						setCollapsing(true);
 						deleteMutation.mutate();

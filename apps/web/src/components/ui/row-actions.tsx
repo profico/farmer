@@ -46,9 +46,10 @@ export function RowActions({
 				size="sm"
 				disabled={action.disabled}
 				onClick={action.onClick}
+				// Grey like its neighbours until the pointer is on it — the same rule
+				// as Delete on a time entry.
 				className={cn(
-					action.variant === "destructive" &&
-						"text-destructive hover:bg-destructive/10 hover:text-destructive",
+					action.variant === "destructive" && "hover:text-destructive",
 					className,
 				)}
 			>

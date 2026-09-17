@@ -546,7 +546,7 @@ export function WeekView({
 											<button
 												type="button"
 												aria-label={`Remove ${row.heading}`}
-												className="flex size-6 items-center justify-center rounded-md text-faint transition-colors duration-(--dur-fast) hover:bg-muted hover:text-primary"
+												className="flex size-6 items-center justify-center rounded-md text-faint transition-colors duration-(--dur-fast) hover:bg-muted hover:text-destructive"
 												disabled={removeRow.isPending}
 												onClick={() => removeRow.mutate(row)}
 											>

@@ -725,9 +725,9 @@ const navRowClass = `${navRowBase} transition-[color,transform] duration-(--dur-
  *
  * It carries the name, and pressing it stops. Those are deliberately the same
  * control: the row is an alarm, and an alarm with no way to silence it teaches
- * people to look past it. `--warn` rather than `--destructive`, which in this
- * palette IS the accent (see styles.css) and would have made the loudest row in
- * the column look like the active one.
+ * people to look past it. `--warn` rather than `--destructive`: red means an
+ * error or an action that removes something, and stopping removes nothing — the
+ * row marks a state to be careful in.
  *
  * At rail width the name is gone with every other label, so the tooltip
  * carries it — this is the row where "an icon you have to hover to read" is

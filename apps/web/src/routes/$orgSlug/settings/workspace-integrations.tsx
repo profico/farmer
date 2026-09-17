@@ -388,7 +388,11 @@ function OpenRouterSection() {
 						<AlertDialog>
 							<AlertDialogTrigger
 								render={
-									<Button variant="outline" disabled={disconnect.isPending}>
+									<Button
+										variant="outline"
+										className="hover:text-destructive"
+										disabled={disconnect.isPending}
+									>
 										Disconnect
 									</Button>
 								}
@@ -565,7 +569,11 @@ function SlackSection() {
 						<AlertDialog>
 							<AlertDialogTrigger
 								render={
-									<Button variant="outline" disabled={disconnect.isPending}>
+									<Button
+										variant="outline"
+										className="hover:text-destructive"
+										disabled={disconnect.isPending}
+									>
 										Disconnect
 									</Button>
 								}
@@ -792,7 +800,7 @@ function InstallationRow({
 						<Button
 							variant="ghost"
 							size="sm"
-							className="shrink-0"
+							className="shrink-0 hover:text-destructive"
 							disabled={disabled}
 						>
 							Disconnect

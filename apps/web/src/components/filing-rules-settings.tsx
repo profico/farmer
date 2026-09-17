@@ -126,6 +126,7 @@ export function FilingRulesSettings() {
 								<Button
 									variant="outline"
 									size="sm"
+									className="hover:text-destructive"
 									disabled={busy}
 									onClick={() => removeMutation.mutate(rule.id)}
 								>
