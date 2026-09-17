@@ -262,7 +262,17 @@
      action that removes something. One red, so it keeps one meaning: something
      is off. The accent stays the color of actions. */
   --bad: #b3423f;
+  /* The tint under the pointer, and under the lit sidebar row — `--muted`,
+     `--accent`, `--sidebar-accent` and `--hover` all point here. A wash, not a
+     mark: it says where the pointer is and nothing else. */
   --sel: rgba(27, 26, 23, 0.045);
+  /* SELECTED TEXT, which is a different job and needs a different weight. It
+     used to read `--sel`, and a 4.5% wash behind a word you have dragged over
+     is not a highlight — on paper it is invisible. Drawn from the accent
+     rather than from the ink, so a highlight reads as something you did rather
+     than as a smudge, and mixed with `transparent` so it also tints over a
+     `--bg2` band and over a popover. */
+  --text-sel: color-mix(in srgb, var(--acc) 22%, transparent);
 
   /* The one elevation in the app: what something looks like while it is off the
      page — a menu, a dialog, a row you are dragging. Nothing is raised because
@@ -361,6 +371,9 @@
   --ok: #7fa887;
   --bad: #d98782;
   --sel: rgba(237, 232, 222, 0.05);
+  /* A step stronger than light's 22%: the accent is lighter here and the paper
+     is dark, so the same percentage lands as a fainter step off the surface. */
+  --text-sel: color-mix(in srgb, var(--acc) 28%, transparent);
   /* The ground is dark enough that a tinted shadow disappears into it; only a
      near-black one still reads as a gap. */
   --lift: 0 8px 22px rgba(0, 0, 0, 0.5);
@@ -536,6 +549,154 @@
     --chart-4: oklch(0.6732 0.0422 calc(39.8 + var(--harmony)));
     --chart-5: oklch(0.6683 0.0394 calc(227.9 + var(--harmony)));
   }
+}
+
+/* ----------------------------------------------------- high contrast --- */
+
+/* Preferences → Display → High contrast. `lib/display-prefs.ts` writes
+   `data-contrast="high"` onto <html> before the first paint, the same way the
+   other three switches write theirs.
+
+   THE SURFACES DO NOT MOVE. The ground, the island paper and the band inside an
+   island are byte-for-byte the ones above, and so is `--fg`. Only the ink is
+   pushed: muted and faint text, the accent, the status colors, the chart
+   earths, the two hairlines and the focus ring. Three things follow, and all
+   three are the reason it is built this way. The warm paper and the island
+   depth model survive the switch, so this is the same app and not a second
+   design. `lib/theme-color.ts` needs no change, because the browser chrome
+   follows `--ground` and `--ground` is unchanged. And `--fg` already measures
+   14.75 against its worst surface, so darkening it would be a change to the
+   design rather than to its legibility.
+
+   EVERY NUMBER HERE IS FITTED, NOT CHOSEN. Each role keeps its hue and its
+   chroma and moves only in OKLCH lightness — vanilla's own rule — until it
+   reaches 7 against the worst of the three surfaces. That is AAA for body text
+   and AA for the large type these also draw.
+   `scripts/check-palette-contrast.ts` sweeps both contrast levels across the
+   whole wheel and is what fixed them; change one here and change it there.
+
+   `--faint` is the one role that answers to 4.5 rather than to 7. It has to
+   stay a step quieter than `--mut` or the hierarchy the whole design rests on
+   collapses into a single weight. It draws at 2.26 today, which is under AA,
+   and this is the largest single readability win in the switch.
+
+   Two selectors per theme, mutually exclusive by `data-palette`, so neither
+   can clobber the other whatever their order. The pair that works for BOTH
+   palettes is hoisted above them: `--line`, `--line2`, `--sel` and
+   `--text-sel` are all a percentage of a token the palette has already set, so
+   one expression covers vanilla and custom alike. Vanilla's own rgba form is
+   the same color as the `color-mix` below it — `rgba(27, 26, 23, 0.28)` IS
+   `--fg` at 28%. */
+
+:root[data-contrast='high']:not([data-theme='dark']) {
+  /* 11% → 28% and 5.5% → 15%. A table's row rules and an input's outline are
+     drawn to be felt rather than seen; here they are meant to be seen. */
+  --line: color-mix(in srgb, var(--fg) 28%, transparent);
+  --line2: color-mix(in srgb, var(--fg) 15%, transparent);
+  /* The pointer tint, and the lit sidebar row, which is the same token. At
+     4.5% the lit row is a suggestion; the whole point of the switch is that
+     state is legible. */
+  --sel: color-mix(in srgb, var(--fg) 10%, transparent);
+  --text-sel: color-mix(in srgb, var(--acc) 40%, transparent);
+}
+
+:root[data-theme='dark'][data-contrast='high'] {
+  --line: color-mix(in srgb, var(--fg) 32%, transparent);
+  --line2: color-mix(in srgb, var(--fg) 17%, transparent);
+  --sel: color-mix(in srgb, var(--fg) 11%, transparent);
+  --text-sel: color-mix(in srgb, var(--acc) 45%, transparent);
+}
+
+/* Vanilla. Hexes rather than an `oklch()` the way the block at the top of this
+   file is written, and for the same reason: no browser gate stands between
+   these and the paint. */
+:root[data-contrast='high']:not([data-palette='custom']):not(
+    [data-theme='dark']
+  ) {
+  --mut: #524d44;
+  --faint: #70695e;
+  --acc: #5733a1;
+  --warn: #664700;
+  --ok: #305537;
+  --bad: #922224;
+  /* `--chart-1` is `--acc` and `--chart-3` is `--warn`, so the series follow
+     from the two lines above and only the three earths are listed. */
+  --chart-2: #3f523f;
+  --chart-4: #65463c;
+  --chart-5: #37515e;
+}
+
+:root[data-theme='dark'][data-contrast='high']:not([data-palette='custom']) {
+  --mut: #b4ab9d;
+  --faint: #90887b;
+  --acc: #b49cff;
+  --warn: #cbac65;
+  --ok: #90b997;
+  --bad: #ed9994;
+  --chart-2: #9db699;
+  --chart-4: #c9a89d;
+  --chart-5: #94b3c1;
+}
+
+/* The custom palette in high contrast. The same expressions the block above
+   uses, at the fitted lightnesses — the chroma fractions, the harmony rotation
+   and the accent's clamps are untouched, so a seed keeps its color and only
+   gains weight. Behind the same `@supports` gate, for the same reason: half a
+   palette paints the app transparent. */
+@supports (color: oklch(0.5 0.1 200)) and (top: mod(1px, 1px)) {
+  :root[data-palette='custom'][data-contrast='high']:not([data-theme='dark']) {
+    --mut: oklch(0.4223 calc(var(--seed-c) * 0.092 * var(--tint)) var(--seed-h));
+    --faint: oklch(
+      0.5239 calc(var(--seed-c) * 0.113 * var(--tint)) var(--seed-h)
+    );
+
+    /* The curve keeps its SHAPE and drops whole. It is the shape of WCAG's own
+       luminance error across the wheel — highest around red, lowest around hue
+       190 — and that shape does not change when the bar moves from 4.5 to 7.
+       Only `mid` was re-fitted. The flat ceiling is what the curve gives at the
+       logo's own hue, so seed 293 still reproduces the vanilla accent above. */
+    --acc: oklch(
+      min(0.4292, 0.4146 + 0.045 * cos((var(--seed-h) - 4) * 1deg))
+        clamp(0.06, var(--seed-c), 0.2) var(--seed-h)
+    );
+
+    --warn: oklch(0.4202 0.0983 calc(84.4 + var(--harmony)));
+    --ok: oklch(0.4138 0.0664 calc(148.6 + var(--harmony)));
+    --bad: oklch(0.4374 0.1479 calc(25 + var(--harmony)));
+    --chart-2: oklch(0.4172 0.0394 calc(143.8 + var(--harmony)));
+    --chart-4: oklch(0.4253 0.0462 calc(39.2 + var(--harmony)));
+    --chart-5: oklch(0.4207 0.0376 calc(229 + var(--harmony)));
+  }
+
+  :root[data-theme='dark'][data-palette='custom'][data-contrast='high'] {
+    --mut: oklch(0.7456 calc(var(--seed-c) * 0.13 * var(--tint)) var(--seed-h));
+    --faint: oklch(
+      0.6295 calc(var(--seed-c) * 0.128 * var(--tint)) var(--seed-h)
+    );
+
+    --acc: oklch(0.7561 clamp(0.05, calc(var(--seed-c) * 0.89), 0.18)
+        var(--seed-h));
+
+    --warn: oklch(0.7567 0.0973 calc(86.3 + var(--harmony)));
+    --ok: oklch(0.7465 0.0655 calc(150.3 + var(--harmony)));
+    --bad: oklch(0.7654 0.1016 calc(23.7 + var(--harmony)));
+    --chart-2: oklch(0.7486 0.0488 calc(142.1 + var(--harmony)));
+    --chart-4: oklch(0.7574 0.0422 calc(39.8 + var(--harmony)));
+    --chart-5: oklch(0.7488 0.0394 calc(227.9 + var(--harmony)));
+  }
+}
+
+/* Focus, as one rule rather than as a token.
+   The house pattern is `focus-visible:border-ring focus-visible:ring-3
+   focus-visible:ring-ring/16` — a border swap, and a 3px halo at 16% of the
+   accent behind it. It is repeated at about thirty call sites with the opacity
+   written into the class, so there is no token to turn up. An outline instead:
+   it is one declaration, it sits outside the border box so it never moves a
+   layout, and it leaves the halo underneath untouched. `--ring` is `--acc`,
+   which the blocks above have already strengthened. */
+:root[data-contrast='high'] *:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 /* ------------------------------------------------- shadcn token bridge --- */
@@ -949,7 +1110,7 @@ html {
 }
 
 ::selection {
-  background: var(--sel);
+  background: var(--text-sel);
 }
 
 /* Every primitive below lives in the components layer on purpose. Unlayered

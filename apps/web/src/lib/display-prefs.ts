@@ -44,6 +44,14 @@ const PREFS = {
 		attribute: "data-density",
 		value: "compact",
 	},
+	/** Every mark drawn harder on the same paper: muted and faint text, the
+	 *  hairlines, the accent, the status colors and the focus ring. The
+	 *  surfaces do not move — see the high-contrast blocks in `styles.css`. */
+	highContrast: {
+		key: "farmer-high-contrast",
+		attribute: "data-contrast",
+		value: "high",
+	},
 } as const;
 
 export type DisplayPref = keyof typeof PREFS;

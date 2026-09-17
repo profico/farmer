@@ -589,6 +589,11 @@ function DisplaySection() {
 				<FontRow />
 				<ScaleRow />
 				<DisplayPrefRow
+					pref="highContrast"
+					title="High contrast"
+					description="Draw text, lines and focus rings harder. Captions, placeholders and the rules between table rows stop being quiet."
+				/>
+				<DisplayPrefRow
 					pref="boringFont"
 					title="Boring font"
 					description="Set page titles and large numbers in the text face, rather than in their own."

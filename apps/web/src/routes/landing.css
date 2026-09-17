@@ -76,7 +76,7 @@
 	}
 }
 .fm-landing ::selection {
-	background: var(--sel);
+	background: var(--text-sel);
 }
 .fm-landing .fm-serif {
 	font-family: "Instrument Serif", Georgia, serif;
