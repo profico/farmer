@@ -1,5 +1,6 @@
 import { matchesSearch } from "@farmer/core/lib/search";
 import { TASK_GROUP_LABELS, TASK_GROUPS } from "@farmer/core/lib/task-taxonomy";
+import { PencilSimpleIcon } from "@phosphor-icons/react";
 import {
 	type ComponentPropsWithRef,
 	type ReactNode,
@@ -20,6 +21,8 @@ import {
 	ComboboxValue,
 } from "#/components/ui/combobox.tsx";
 import { cn } from "#/lib/utils.ts";
+
+import { useHiddenTaskIds, YourTasksDialog } from "./your-tasks.tsx";
 
 /** What the picker needs of a task — the shape `tasksForProjectQuery` returns. */
 export type PickableTask = {
@@ -63,6 +66,14 @@ const NONE = "__none__";
  *
  * Recent is a shortcut, not a second home: it disappears while a query is
  * typed, so a search never shows the same task twice.
+ *
+ * Tasks the person switched off (Preferences → Your tasks) are left out of the
+ * list and its search, with two exceptions: the task already chosen, so an
+ * entry on a switched-off task still shows it and its tick, and Recent, which
+ * is what they actually logged. The grouped list ends in Edit list, which
+ * opens the same switches in a dialog and brings the list back when it closes.
+ * The flat project-less list is short and has no search, so it filters but
+ * carries no Edit list.
  */
 export function TaskPicker({
 	tasks,
@@ -97,7 +108,12 @@ export function TaskPicker({
 	ComponentPropsWithRef<"button">,
 	"value" | "onChange" | "children" | "className" | "disabled" | "type"
 >) {
+	const hidden = useHiddenTaskIds();
+	const [open, setOpen] = useState(false);
+	const [editing, setEditing] = useState(false);
+
 	const groups = useMemo<Group[]>(() => {
+		const offered = tasks.filter((t) => !hidden.has(t.id) || t.id === value);
 		const item = (t: PickableTask, recent = false): Item => ({
 			value: recent ? `${RECENT}:${t.id}` : t.id,
 			id: t.id,
@@ -126,7 +142,7 @@ export function TaskPicker({
 		if (!grouped) {
 			return [
 				...none,
-				{ value: "all", label: null, items: tasks.map((t) => item(t)) },
+				{ value: "all", label: null, items: offered.map((t) => item(t)) },
 			];
 		}
 		const byId = new Map(tasks.map((t) => [t.id, t]));
@@ -137,7 +153,7 @@ export function TaskPicker({
 		const grouped_ = TASK_GROUPS.map((g) => ({
 			value: g,
 			label: TASK_GROUP_LABELS[g],
-			items: tasks.filter((t) => t.group === g).map((t) => item(t)),
+			items: offered.filter((t) => t.group === g).map((t) => item(t)),
 		})).filter((g) => g.items.length > 0);
 		return recent.length > 0
 			? [
@@ -146,7 +162,13 @@ export function TaskPicker({
 					...grouped_,
 				]
 			: [...none, ...grouped_];
-	}, [tasks, recentIds, grouped, noTask]);
+	}, [tasks, recentIds, grouped, noTask, hidden, value]);
+
+	// How many of THIS list are switched off, shown on Edit list so a short list
+	// reads as chosen rather than broken.
+	const hiddenCount = tasks.filter(
+		(t) => hidden.has(t.id) && t.id !== value,
+	).length;
 
 	const [query, setQuery] = useState("");
 	const filtered = useMemo(() => {
@@ -172,29 +194,32 @@ export function TaskPicker({
 		null;
 
 	return (
-		<Combobox
-			items={groups}
-			filteredItems={filtered}
-			value={selected}
-			onValueChange={(item: Item | null) => {
-				if (item) onValueChange(item.id);
-			}}
-			isItemEqualToValue={(a: Item, b: Item) => a.value === b.value}
-			itemToStringLabel={(item: Item) => item.label}
-			inputValue={query}
-			onInputValueChange={setQuery}
-			onOpenChange={(open) => {
-				if (!open) setQuery("");
-			}}
-			autoHighlight
-			disabled={disabled || tasks.length === 0}
-		>
-			<ComboboxTrigger className={cn("w-full", className)} {...triggerProps}>
-				<ComboboxValue placeholder={placeholder}>
-					{(item: Item | null) =>
-						item ? (
-							<>
-								{/* The group over the task, which is the shape the project
+		<>
+			<Combobox
+				open={open}
+				items={groups}
+				filteredItems={filtered}
+				value={selected}
+				onValueChange={(item: Item | null) => {
+					if (item) onValueChange(item.id);
+				}}
+				isItemEqualToValue={(a: Item, b: Item) => a.value === b.value}
+				itemToStringLabel={(item: Item) => item.label}
+				inputValue={query}
+				onInputValueChange={setQuery}
+				onOpenChange={(next) => {
+					setOpen(next);
+					if (!next) setQuery("");
+				}}
+				autoHighlight
+				disabled={disabled || tasks.length === 0}
+			>
+				<ComboboxTrigger className={cn("w-full", className)} {...triggerProps}>
+					<ComboboxValue placeholder={placeholder}>
+						{(item: Item | null) =>
+							item ? (
+								<>
+									{/* The group over the task, which is the shape the project
 								    picker already uses for its client — and what makes the
 								    two triggers beside each other on the entry form read as
 								    one row rather than two boxes of different heights. Only
@@ -202,45 +227,82 @@ export function TaskPicker({
 								    flat and every row is time off or a built-in, so a header
 								    over each would name a grouping the picker is not
 								    showing. */}
-								{grouped && item.groupLabel && (
-									<span className="truncate text-xs text-muted-foreground">
-										{item.groupLabel}
-									</span>
-								)}
-								<span className="truncate">{item.label}</span>
-							</>
-						) : (
-							placeholder
-						)
+									{grouped && item.groupLabel && (
+										<span className="truncate text-xs text-muted-foreground">
+											{item.groupLabel}
+										</span>
+									)}
+									<span className="truncate">{item.label}</span>
+								</>
+							) : (
+								placeholder
+							)
+						}
+					</ComboboxValue>
+					{message}
+				</ComboboxTrigger>
+				<ComboboxContent
+					searchPlaceholder={grouped ? "Search tasks…" : false}
+					className={
+						grouped ? undefined : "w-auto min-w-(--popup-anchor-width)"
 					}
-				</ComboboxValue>
-				{message}
-			</ComboboxTrigger>
-			<ComboboxContent
-				searchPlaceholder={grouped ? "Search tasks…" : false}
-				className={grouped ? undefined : "w-auto min-w-(--popup-anchor-width)"}
-				onSearchTab={() => {
-					if (soleMatch) onValueChange(soleMatch.id);
-				}}
-			>
-				<ComboboxEmpty>No task matches.</ComboboxEmpty>
-				<ComboboxList>
-					{(group: Group) => (
-						<ComboboxGroup key={group.value} items={group.items}>
-							{group.label && (
-								<ComboboxGroupLabel>{group.label}</ComboboxGroupLabel>
-							)}
-							<ComboboxCollection>
-								{(item: Item) => (
-									<ComboboxItem key={item.value} value={item}>
-										<span className="truncate">{item.label}</span>
-									</ComboboxItem>
+					onSearchTab={() => {
+						if (soleMatch) onValueChange(soleMatch.id);
+					}}
+				>
+					<ComboboxEmpty>No task matches.</ComboboxEmpty>
+					<ComboboxList>
+						{(group: Group) => (
+							<ComboboxGroup key={group.value} items={group.items}>
+								{group.label && (
+									<ComboboxGroupLabel>{group.label}</ComboboxGroupLabel>
 								)}
-							</ComboboxCollection>
-						</ComboboxGroup>
+								<ComboboxCollection>
+									{(item: Item) => (
+										<ComboboxItem key={item.value} value={item}>
+											<span className="truncate">{item.label}</span>
+										</ComboboxItem>
+									)}
+								</ComboboxCollection>
+							</ComboboxGroup>
+						)}
+					</ComboboxList>
+					{grouped && (
+						<div className="shrink-0 border-t border-line2 p-1">
+							{/* Out of the Tab order on purpose: Tab in the search box takes
+						    the only match and moves on to the next field, and a
+						    focusable row here would catch that Tab instead. Keyboard
+						    users reach the same chips on Preferences. */}
+							<button
+								type="button"
+								tabIndex={-1}
+								onClick={() => {
+									setOpen(false);
+									setEditing(true);
+								}}
+								className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-base text-muted-foreground transition-colors duration-(--dur-fast) outline-none hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground"
+							>
+								<PencilSimpleIcon aria-hidden className="size-4 shrink-0" />
+								Edit list
+								{hiddenCount > 0 && (
+									<span className="ml-auto text-xs">{hiddenCount} hidden</span>
+								)}
+							</button>
+						</div>
 					)}
-				</ComboboxList>
-			</ComboboxContent>
-		</Combobox>
+				</ComboboxContent>
+			</Combobox>
+			{grouped && (
+				<YourTasksDialog
+					open={editing}
+					onOpenChange={(next) => {
+						setEditing(next);
+						// Back to the list the dialog was opened from, now without what
+						// was just switched off.
+						if (!next) setOpen(true);
+					}}
+				/>
+			)}
+		</>
 	);
 }

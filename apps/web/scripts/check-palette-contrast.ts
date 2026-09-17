@@ -58,6 +58,11 @@ type Token =
 type Harmonised = "warn" | "ok" | "bad" | "chart2" | "chart4" | "chart5";
 type Neutral = Exclude<Token, "acc" | Harmonised>;
 type Theme = "light" | "dark";
+/** Preferences → Display → High contrast. A second palette per theme, drawn on
+ *  the same paper: the surfaces do not move and only the ink is pushed. Swept
+ *  here as its own dimension, because a generated palette AND a contrast mode
+ *  is a combination nobody has ever looked at. */
+type Contrast = "normal" | "high";
 
 type Oklch = { l: number; c: number; h: number };
 
@@ -82,6 +87,32 @@ const DARK = {
 	faint: { l: 0.5064, ratio: 0.128 },
 } satisfies Record<Neutral, Role>;
 
+/** High contrast, written as what it CHANGES rather than as a second table.
+ *  The spread is the claim: three surfaces and `--fg` are byte-for-byte the
+ *  normal ones, so a reader who turns the switch on gets the same paper and
+ *  the same body text, and everything else drawn harder on it.
+ *
+ *  `--fg` is left alone deliberately. It already measures 14.75 against its
+ *  worst surface; there is nothing to win by darkening it, and moving it would
+ *  be a change to the design rather than to its legibility. */
+const ROLES = {
+	normal: { light: LIGHT, dark: DARK },
+	high: {
+		light: {
+			...LIGHT,
+			mut: { l: 0.4223, ratio: 0.092 },
+			faint: { l: 0.5239, ratio: 0.113 },
+		},
+		dark: {
+			...DARK,
+			mut: { l: 0.7456, ratio: 0.13 },
+			faint: { l: 0.6295, ratio: 0.128 },
+		},
+	},
+} satisfies Record<Contrast, Record<Theme, Record<Neutral, Role>>>;
+
+const CONTRASTS: readonly Contrast[] = ["normal", "high"];
+
 /** The accent, including the hue-dependent lightness ceiling the light half
  *  carries — see the comment beside `--acc` in the custom palette. `curve` is
  *  null where the lightness is flat. */
@@ -94,38 +125,79 @@ type Accent = {
 };
 
 const ACCENT = {
-	light: {
-		l: 0.5174,
-		curve: { mid: 0.536, amp: 0.045, phase: 4 },
-		scale: 1,
-		min: 0.06,
-		max: 0.2,
+	normal: {
+		light: {
+			l: 0.5174,
+			curve: { mid: 0.536, amp: 0.045, phase: 4 },
+			scale: 1,
+			min: 0.06,
+			max: 0.2,
+		},
+		dark: { l: 0.6407, curve: null, scale: 0.89, min: 0.05, max: 0.18 },
 	},
-	dark: { l: 0.6407, curve: null, scale: 0.89, min: 0.05, max: 0.18 },
-} satisfies Record<Theme, Accent>;
+	/** High contrast keeps the SHAPE of the light curve and lowers it whole.
+	 *  The curve is the shape of WCAG's own luminance error across the wheel —
+	 *  highest around red, lowest around hue 190 — and that shape does not
+	 *  change when the bar it has to clear moves from 4.5 to 7. `mid` is the
+	 *  one number fitted, by the sweep below. */
+	high: {
+		light: {
+			l: 0.4292,
+			curve: { mid: 0.4146, amp: 0.045, phase: 4 },
+			scale: 1,
+			min: 0.06,
+			max: 0.2,
+		},
+		dark: { l: 0.7561, curve: null, scale: 0.89, min: 0.05, max: 0.18 },
+	},
+} satisfies Record<Contrast, Record<Theme, Accent>>;
 
 /** Each harmonised token's fixed lightness and chroma, and the hue it sits at
  *  in vanilla. The rotation itself is one number for all six. */
 type Harmony = { l: number; c: number; h: number };
 
 const HARMONISED = {
-	light: {
-		warn: { l: 0.5426, c: 0.0983, h: 84.4 },
-		ok: { l: 0.5072, c: 0.0664, h: 148.6 },
-		bad: { l: 0.5348, c: 0.1479, h: 25 },
-		chart2: { l: 0.5741, c: 0.0394, h: 143.8 },
-		chart4: { l: 0.5371, c: 0.0462, h: 39.2 },
-		chart5: { l: 0.5288, c: 0.0376, h: 229 },
+	normal: {
+		light: {
+			warn: { l: 0.5426, c: 0.0983, h: 84.4 },
+			ok: { l: 0.5072, c: 0.0664, h: 148.6 },
+			bad: { l: 0.5348, c: 0.1479, h: 25 },
+			chart2: { l: 0.5741, c: 0.0394, h: 143.8 },
+			chart4: { l: 0.5371, c: 0.0462, h: 39.2 },
+			chart5: { l: 0.5288, c: 0.0376, h: 229 },
+		},
+		dark: {
+			warn: { l: 0.7217, c: 0.0973, h: 86.3 },
+			ok: { l: 0.6923, c: 0.0655, h: 150.3 },
+			bad: { l: 0.7076, c: 0.1016, h: 23.7 },
+			chart2: { l: 0.7045, c: 0.0488, h: 142.1 },
+			chart4: { l: 0.6732, c: 0.0422, h: 39.8 },
+			chart5: { l: 0.6683, c: 0.0394, h: 227.9 },
+		},
 	},
-	dark: {
-		warn: { l: 0.7217, c: 0.0973, h: 86.3 },
-		ok: { l: 0.6923, c: 0.0655, h: 150.3 },
-		bad: { l: 0.7076, c: 0.1016, h: 23.7 },
-		chart2: { l: 0.7045, c: 0.0488, h: 142.1 },
-		chart4: { l: 0.6732, c: 0.0422, h: 39.8 },
-		chart5: { l: 0.6683, c: 0.0394, h: 227.9 },
+	/** The same six, at the lightness each needs to reach 7 against the worst
+	 *  of the three surfaces. Chroma and hue are untouched, so the gaps that
+	 *  tell one chart series from the next survive the switch exactly, and so
+	 *  does the rotation. */
+	high: {
+		light: {
+			warn: { l: 0.4202, c: 0.0983, h: 84.4 },
+			ok: { l: 0.4138, c: 0.0664, h: 148.6 },
+			bad: { l: 0.4374, c: 0.1479, h: 25 },
+			chart2: { l: 0.4172, c: 0.0394, h: 143.8 },
+			chart4: { l: 0.4253, c: 0.0462, h: 39.2 },
+			chart5: { l: 0.4207, c: 0.0376, h: 229 },
+		},
+		dark: {
+			warn: { l: 0.7567, c: 0.0973, h: 86.3 },
+			ok: { l: 0.7465, c: 0.0655, h: 150.3 },
+			bad: { l: 0.7654, c: 0.1016, h: 23.7 },
+			chart2: { l: 0.7486, c: 0.0488, h: 142.1 },
+			chart4: { l: 0.7574, c: 0.0422, h: 39.8 },
+			chart5: { l: 0.7488, c: 0.0394, h: 227.9 },
+		},
 	},
-} satisfies Record<Theme, Record<Harmonised, Harmony>>;
+} satisfies Record<Contrast, Record<Theme, Record<Harmonised, Harmony>>>;
 
 /** The rotation, straight out of `--harmony`: the shortest signed arc from
  *  vanilla's own hue to the seed's, clamped to 15 degrees. */
@@ -140,9 +212,41 @@ const SEED_MAX_CHROMA = 0.3;
  *  which pair gives way first. */
 const tint = (c: number) => Math.max(1, c / VANILLA_SEED.c);
 
+/** Vanilla in high contrast, straight out of the `[data-contrast='high']`
+ *  blocks in `styles.css`. The four surfaces are absent because they do not
+ *  move — the entries below are spread over the normal table, which is the
+ *  same claim `ROLES.high` makes and keeps the two from drifting apart. */
+const VANILLA_HIGH = {
+	light: {
+		mut: "#524d44",
+		faint: "#70695e",
+		acc: "#5733a1",
+		warn: "#664700",
+		ok: "#305537",
+		bad: "#922224",
+		chart2: "#3f523f",
+		chart4: "#65463c",
+		chart5: "#37515e",
+	},
+	dark: {
+		mut: "#b4ab9d",
+		faint: "#90887b",
+		acc: "#b49cff",
+		warn: "#cbac65",
+		ok: "#90b997",
+		bad: "#ed9994",
+		chart2: "#9db699",
+		chart4: "#c9a89d",
+		chart5: "#94b3c1",
+	},
+} satisfies Record<
+	Theme,
+	Record<Exclude<Token, "ground" | "bg" | "bg2" | "fg">, string>
+>;
+
 /** Vanilla, straight out of `styles.css`, and the seed that should reproduce
  *  it. */
-const VANILLA = {
+const VANILLA_NORMAL = {
 	light: {
 		ground: "#efece5",
 		bg: "#faf9f6",
@@ -174,6 +278,15 @@ const VANILLA = {
 		chart5: "#7c9aa8",
 	},
 } satisfies Record<Theme, Record<Token, string>>;
+
+const VANILLA = {
+	normal: VANILLA_NORMAL,
+	high: {
+		light: { ...VANILLA_NORMAL.light, ...VANILLA_HIGH.light },
+		dark: { ...VANILLA_NORMAL.dark, ...VANILLA_HIGH.dark },
+	},
+} satisfies Record<Contrast, Record<Theme, Record<Token, string>>>;
+
 const VANILLA_SEED = { h: 293, c: 0.168 };
 
 /** How much of vanilla's own contrast a generated palette may give up. Five
@@ -187,10 +300,53 @@ const TOLERANCE = 0.95;
  *  violet is an unusually dark color for its lightness in WCAG's arithmetic,
  *  so matching it would force every cyan and teal accent to be muddy for no
  *  benefit anybody can see. What a button owes its label is 4.5. */
-const FLOOR = { fg: 4.5, acc: 4.5, bg: 4.5 };
+/** Written out in full rather than as a partial record, so adding a token to
+ *  `Token` is a type error here and not a pair that silently answers to
+ *  nothing. */
+const NO_FLOOR = {
+	ground: 0,
+	bg: 0,
+	bg2: 0,
+	fg: 0,
+	mut: 0,
+	faint: 0,
+	acc: 0,
+	warn: 0,
+	ok: 0,
+	bad: 0,
+	chart2: 0,
+	chart4: 0,
+	chart5: 0,
+} satisfies Record<Token, number>;
 
-const floorFor = (token: Token) =>
-	token === "fg" || token === "acc" || token === "bg" ? FLOOR[token] : 0;
+/** HIGH CONTRAST ANSWERS TO WCAG, NOT TO VANILLA. The tolerance above exists
+ *  because the shipped design is the promise a generated palette has to keep;
+ *  here the promise is the number somebody turned the switch on to get, so
+ *  every role that carries text answers to 7 — AAA for body text, AA for the
+ *  large type these also draw.
+ *
+ *  `faint` is the one exception and answers to 4.5. It has to stay a step
+ *  quieter than `mut`, or the hierarchy the design is built on collapses into
+ *  one weight. 4.5 is AA, where it draws at 2.26 today. */
+const FLOOR = {
+	normal: { ...NO_FLOOR, fg: 4.5, acc: 4.5, bg: 4.5 },
+	high: {
+		...NO_FLOOR,
+		fg: 7,
+		acc: 7,
+		bg: 7,
+		mut: 7,
+		faint: 4.5,
+		warn: 7,
+		ok: 7,
+		bad: 7,
+		chart2: 7,
+		chart4: 7,
+		chart5: 7,
+	},
+} satisfies Record<Contrast, Record<Token, number>>;
+
+const floorFor = (contrast: Contrast, token: Token) => FLOOR[contrast][token];
 
 const clamp = (value: number, min: number, max: number) =>
 	Math.min(Math.max(value, min), max);
@@ -260,11 +416,19 @@ const PAIRS: readonly { of: Token; on: Token; absolute?: true }[] = [
 	{ of: "acc", on: "bg", absolute: true },
 	{ of: "bg", on: "acc", absolute: true },
 ];
+// NOT here: the accent on `--bg2` or on the ground. The accent is text as well
+// as fill — every link in the app is `--acc` — so the pairs look like they
+// belong. They do not: the lightness curve is fitted to hold the accent at 4.5
+// against the ISLAND PAPER, and at the cyan end of the wheel a custom accent
+// falls to 4.15 against the recessed ground. That is the shipped design, not a
+// regression, and a check the shipped design fails is a check everyone learns
+// to ignore. The high-contrast accent is chosen to clear 7 against the ground
+// anyway, which is the stricter of the two directions.
 
 /** One whole palette, as the browser would paint it. */
-const derive = (theme: Theme, h: number, c: number) => {
-	const roles = theme === "light" ? LIGHT : DARK;
-	const accent = ACCENT[theme];
+const derive = (contrast: Contrast, theme: Theme, h: number, c: number) => {
+	const roles = ROLES[contrast][theme];
+	const accent = ACCENT[contrast][theme];
 	const neutral = (name: Neutral) =>
 		toLinearSrgb({
 			l: roles[name].l,
@@ -272,7 +436,7 @@ const derive = (theme: Theme, h: number, c: number) => {
 			h,
 		});
 	const rotated = (name: Harmonised) => {
-		const spec = HARMONISED[theme][name];
+		const spec = HARMONISED[contrast][theme][name];
 		return toLinearSrgb({ l: spec.l, c: spec.c, h: spec.h + harmony(h) });
 	};
 	return {
@@ -343,60 +507,66 @@ const drift = (a: number[], b: number[]) =>
 	);
 
 const reproduction: string[] = [];
-for (const theme of THEMES) {
-	const roles = theme === "light" ? LIGHT : DARK;
-	const accent = ACCENT[theme];
+for (const contrast of CONTRASTS) {
+	for (const theme of THEMES) {
+		const roles = ROLES[contrast][theme];
+		const accent = ACCENT[contrast][theme];
+		const where = contrast === "normal" ? theme : `${theme} high-contrast`;
 
-	// Each neutral at ITS OWN vanilla hue: the seed's hue is the one thing here
-	// that is meant to differ, so it is the one thing held equal.
-	for (const name of NEUTRALS) {
-		const off = drift(
+		// Each neutral at ITS OWN vanilla hue: the seed's hue is the one thing here
+		// that is meant to differ, so it is the one thing held equal.
+		for (const name of NEUTRALS) {
+			const off = drift(
+				toLinearSrgb({
+					l: roles[name].l,
+					// tint() is 1 here by construction, and named rather than dropped so
+					// that changing where it turns on cannot quietly skip this check.
+					c: VANILLA_SEED.c * roles[name].ratio * tint(VANILLA_SEED.c),
+					h: NEUTRAL_HUE[theme][name],
+				}),
+				hexToLinearSrgb(VANILLA[contrast][theme][name]),
+			);
+			if (off > 2) {
+				reproduction.push(
+					`  ${where} --${name}: lightness or chroma is no longer vanilla's (off by ${off}/255)`,
+				);
+			}
+		}
+
+		const accOff = drift(
 			toLinearSrgb({
-				l: roles[name].l,
-				// tint() is 1 here by construction, and named rather than dropped so
-				// that changing where it turns on cannot quietly skip this check.
-				c: VANILLA_SEED.c * roles[name].ratio * tint(VANILLA_SEED.c),
-				h: NEUTRAL_HUE[theme][name],
+				l: accentLightness(accent, VANILLA_SEED.h),
+				c: clamp(VANILLA_SEED.c * accent.scale, accent.min, accent.max),
+				h: VANILLA_SEED.h,
 			}),
-			hexToLinearSrgb(VANILLA[theme][name]),
+			hexToLinearSrgb(VANILLA[contrast][theme].acc),
 		);
-		if (off > 2) {
+		if (accOff > 2) {
 			reproduction.push(
-				`  ${theme} --${name}: lightness or chroma is no longer vanilla's (off by ${off}/255)`,
+				`  ${where} --acc: seed 293 no longer reproduces the shipped accent (off by ${accOff}/255)`,
 			);
 		}
-	}
 
-	const accOff = drift(
-		toLinearSrgb({
-			l: accentLightness(accent, VANILLA_SEED.h),
-			c: clamp(VANILLA_SEED.c * accent.scale, accent.min, accent.max),
-			h: VANILLA_SEED.h,
-		}),
-		hexToLinearSrgb(VANILLA[theme].acc),
-	);
-	if (accOff > 2) {
-		reproduction.push(
-			`  ${theme} --acc: seed 293 no longer reproduces the shipped accent (off by ${accOff}/255)`,
-		);
-	}
-
-	// The harmonised six rotate by zero at vanilla's own hue, so these must land
-	// on the shipped hex exactly.
-	const derived = derive(theme, VANILLA_SEED.h, VANILLA_SEED.c);
-	for (const name of [
-		"warn",
-		"ok",
-		"bad",
-		"chart2",
-		"chart4",
-		"chart5",
-	] as const) {
-		const off = drift(derived[name], hexToLinearSrgb(VANILLA[theme][name]));
-		if (off > 2) {
-			reproduction.push(
-				`  ${theme} --${name}: seed 293 no longer reproduces the shipped color (off by ${off}/255)`,
+		// The harmonised six rotate by zero at vanilla's own hue, so these must land
+		// on the shipped hex exactly.
+		const derived = derive(contrast, theme, VANILLA_SEED.h, VANILLA_SEED.c);
+		for (const name of [
+			"warn",
+			"ok",
+			"bad",
+			"chart2",
+			"chart4",
+			"chart5",
+		] as const) {
+			const off = drift(
+				derived[name],
+				hexToLinearSrgb(VANILLA[contrast][theme][name]),
 			);
+			if (off > 2) {
+				reproduction.push(
+					`  ${where} --${name}: seed 293 no longer reproduces the shipped color (off by ${off}/255)`,
+				);
+			}
 		}
 	}
 }
@@ -407,14 +577,17 @@ if (reproduction.length) {
 	process.exit(1);
 }
 
-/** Vanilla's own ratio for a pair — the bar a generated palette has to clear. */
-const baseline = (theme: Theme, of: Token, on: Token) =>
+/** Vanilla's own ratio for a pair — the bar a generated palette has to clear.
+ *  Read from the same contrast level, so a high-contrast custom palette is
+ *  measured against high-contrast vanilla and not against the quieter one. */
+const baseline = (level: Contrast, theme: Theme, of: Token, on: Token) =>
 	contrast(
-		hexToLinearSrgb(VANILLA[theme][of]),
-		hexToLinearSrgb(VANILLA[theme][on]),
+		hexToLinearSrgb(VANILLA[level][theme][of]),
+		hexToLinearSrgb(VANILLA[level][theme][on]),
 	);
 
 type Failure = {
+	level: Contrast;
 	theme: Theme;
 	h: number;
 	c: number;
@@ -426,33 +599,36 @@ type Failure = {
 const failures: Failure[] = [];
 let checked = 0;
 
-for (const theme of THEMES) {
-	// 5-degree steps, and chroma from grey to the ceiling the wheel allows.
-	for (let h = 0; h < 360; h += 5) {
-		// Twenty steps rather than a handful: `--tint` makes the neutrals grow
-		// faster than the seed does, so the worst case is no longer guaranteed to
-		// sit at the ceiling.
-		for (let step = 0; step <= 20; step += 1) {
-			const c = (SEED_MAX_CHROMA * step) / 20;
-			const tokens = derive(theme, h, c);
-			for (const pair of PAIRS) {
-				checked += 1;
-				const got = contrast(tokens[pair.of], tokens[pair.on]);
-				const want = pair.absolute
-					? floorFor(pair.of)
-					: Math.max(
-							baseline(theme, pair.of, pair.on) * TOLERANCE,
-							floorFor(pair.of),
-						);
-				if (got + 0.005 < want) {
-					failures.push({
-						theme,
-						h,
-						c,
-						pair: `${pair.of} on ${pair.on}`,
-						got,
-						want,
-					});
+for (const level of CONTRASTS) {
+	for (const theme of THEMES) {
+		// 5-degree steps, and chroma from grey to the ceiling the wheel allows.
+		for (let h = 0; h < 360; h += 5) {
+			// Twenty steps rather than a handful: `--tint` makes the neutrals grow
+			// faster than the seed does, so the worst case is no longer guaranteed to
+			// sit at the ceiling.
+			for (let step = 0; step <= 20; step += 1) {
+				const c = (SEED_MAX_CHROMA * step) / 20;
+				const tokens = derive(level, theme, h, c);
+				for (const pair of PAIRS) {
+					checked += 1;
+					const got = contrast(tokens[pair.of], tokens[pair.on]);
+					const want = pair.absolute
+						? floorFor(level, pair.of)
+						: Math.max(
+								baseline(level, theme, pair.of, pair.on) * TOLERANCE,
+								floorFor(level, pair.of),
+							);
+					if (got + 0.005 < want) {
+						failures.push({
+							level,
+							theme,
+							h,
+							c,
+							pair: `${pair.of} on ${pair.on}`,
+							got,
+							want,
+						});
+					}
 				}
 			}
 		}
@@ -461,7 +637,7 @@ for (const theme of THEMES) {
 
 if (failures.length === 0) {
 	console.log(
-		`Every constant still matches vanilla. ${checked} pairs checked across the wheel, none worse than vanilla by more than ${Math.round((1 - TOLERANCE) * 100)}%.`,
+		`Every constant still matches vanilla. ${checked} pairs checked across the wheel, at both contrast levels, none worse than vanilla by more than ${Math.round((1 - TOLERANCE) * 100)}%.`,
 	);
 	process.exit(0);
 }
@@ -471,7 +647,9 @@ console.error(`${failures.length} of ${checked} pairs fall short:\n`);
 // palette block until the worst hue clears it.
 for (const f of failures.sort((a, b) => a.got - b.got).slice(0, 40)) {
 	console.error(
-		`  ${f.theme}  hue ${String(f.h).padStart(3)}  chroma ${f.c
+		`  ${`${f.theme} ${f.level}`.padEnd(13)} hue ${String(f.h).padStart(
+			3,
+		)}  chroma ${f.c
 			.toFixed(2)
 			.padStart(
 				4,

@@ -29,3 +29,10 @@ export type ArchiveTaskInput = z.infer<typeof archiveTaskInput>;
 
 export const taskIdInput = z.uuid();
 export type TaskIdInput = z.infer<typeof taskIdInput>;
+
+// Preferences → Your tasks: switch one task off (or back on) for the caller.
+export const setTaskHiddenInput = z.object({
+	taskId: z.uuid(),
+	hidden: z.boolean(),
+});
+export type SetTaskHiddenInput = z.infer<typeof setTaskHiddenInput>;

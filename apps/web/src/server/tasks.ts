@@ -2,6 +2,7 @@ import {
 	archiveTaskInput,
 	createTaskInput,
 	projectIdInput,
+	setTaskHiddenInput,
 	taskIdInput,
 	updateTaskInput,
 } from "@farmer/core/schema";
@@ -38,6 +39,30 @@ export const listSelectableTasks = createServerFn({ method: "GET" })
 	.handler(async ({ context }) => {
 		const { tasksService } = await import("@farmer/core/services");
 		return tasksService.listSelectable(context.ctx);
+	});
+
+// Preferences → Your tasks: the caller's own switched-off tasks. Every picker
+// reads this and filters itself, so it is a member's call, not an admin's.
+export const listHiddenTasks = createServerFn({ method: "GET" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { tasksService } = await import("@farmer/core/services");
+		return tasksService.hiddenIds(context.ctx);
+	});
+
+export const setTaskHidden = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(setTaskHiddenInput)
+	.handler(async ({ data, context }) => {
+		const { tasksService } = await import("@farmer/core/services");
+		return tasksService.setHidden(context.ctx, data);
+	});
+
+export const showAllTasks = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { tasksService } = await import("@farmer/core/services");
+		return tasksService.showAll(context.ctx);
 	});
 
 export const listManagedTasks = createServerFn({ method: "GET" })

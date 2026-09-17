@@ -505,3 +505,98 @@ describe("listManaged", () => {
 		);
 	});
 });
+
+// Preferences → Your tasks. What is pinned is whose list it is: one person in
+// one org, stored as what they switched off. The picker does the filtering, so
+// nothing here reaches into `listForProject` — that list stays whole.
+describe("hidden tasks", () => {
+	test("a person switches a task off and back on, and nobody else's list moves", async () => {
+		await tasksService.setHidden(ctx(MEM), { taskId: designA, hidden: true });
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([designA]);
+		expect(await tasksService.hiddenIds(ctx(PM))).toEqual([]);
+
+		await tasksService.setHidden(ctx(MEM), { taskId: designA, hidden: false });
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([]);
+	});
+
+	test("switching off twice keeps one row; switching on what was never off does nothing", async () => {
+		await tasksService.setHidden(ctx(MEM), { taskId: devA, hidden: true });
+		await tasksService.setHidden(ctx(MEM), { taskId: devA, hidden: true });
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([devA]);
+
+		await tasksService.setHidden(ctx(PM), { taskId: devA, hidden: false });
+		expect(await tasksService.hiddenIds(ctx(PM))).toEqual([]);
+
+		await tasksService.showAll(ctx(MEM));
+	});
+
+	test("a site built-in such as Meeting can be switched off", async () => {
+		await tasksService.setHidden(ctx(MEM), { taskId: meetingId, hidden: true });
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([meetingId]);
+		await tasksService.showAll(ctx(MEM));
+	});
+
+	test("an absence task is refused, and nothing is written", async () => {
+		await expect(
+			tasksService.setHidden(ctx(MEM), { taskId: vacationId, hidden: true }),
+		).rejects.toThrow("Task not found");
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([]);
+	});
+
+	test("another org's task reads as not found, and nothing is written", async () => {
+		await expect(
+			tasksService.setHidden(ctx(MEM), { taskId: taskB, hidden: true }),
+		).rejects.toThrow("Task not found");
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([]);
+	});
+
+	test("the list belongs to one org: the same person's list in another org is separate", async () => {
+		await db.insert(member).values({
+			id: "m-tk-member-b",
+			organizationId: ORG_B,
+			userId: MEM,
+			role: "member",
+			createdAt: new Date(),
+		});
+		await tasksService.setHidden(ctx(MEM), { taskId: devA, hidden: true });
+		expect(await tasksService.hiddenIds(ctx(MEM, ORG_B))).toEqual([]);
+
+		await tasksService.setHidden(ctx(MEM, ORG_B), {
+			taskId: taskB,
+			hidden: true,
+		});
+		expect(await tasksService.hiddenIds(ctx(MEM, ORG_B))).toEqual([taskB]);
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([devA]);
+
+		// Show all in one org leaves the other org's list alone.
+		await tasksService.showAll(ctx(MEM, ORG_B));
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([devA]);
+
+		await tasksService.showAll(ctx(MEM));
+		await db.delete(member).where(eq(member.id, "m-tk-member-b"));
+	});
+
+	test("show all switches every task back on for the caller only", async () => {
+		await tasksService.setHidden(ctx(MEM), { taskId: devA, hidden: true });
+		await tasksService.setHidden(ctx(MEM), { taskId: designA, hidden: true });
+		await tasksService.setHidden(ctx(PM), { taskId: devA, hidden: true });
+
+		await tasksService.showAll(ctx(MEM));
+		expect(await tasksService.hiddenIds(ctx(MEM))).toEqual([]);
+		expect(await tasksService.hiddenIds(ctx(PM))).toEqual([devA]);
+
+		await tasksService.showAll(ctx(PM));
+	});
+
+	test("a caller with no membership in the org is refused on every path", async () => {
+		await expect(tasksService.hiddenIds(ctx(OUTSIDER))).rejects.toThrow(
+			NotAMemberError,
+		);
+		await expect(
+			tasksService.setHidden(ctx(OUTSIDER), { taskId: devA, hidden: true }),
+		).rejects.toThrow(NotAMemberError);
+		await expect(tasksService.showAll(ctx(OUTSIDER))).rejects.toThrow(
+			NotAMemberError,
+		);
+	});
+});

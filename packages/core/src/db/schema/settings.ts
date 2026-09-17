@@ -225,6 +225,27 @@ export const filingRule = pgTable(
 	],
 );
 
+// The tasks one person has switched off in one organization — Preferences →
+// Your tasks, and Edit list at the foot of every task picker. Stored as what
+// is HIDDEN rather than what is shown, so a task an admin adds later reaches
+// everyone without a backfill. It shapes the picker and nothing else: no
+// report, engine or API read looks at it.
+export const hiddenTask = pgTable(
+	"hidden_task",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: org(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		taskId: uuid("task_id")
+			.notNull()
+			.references(() => task.id, { onDelete: "cascade" }),
+		createdAt: ts("created_at").notNull().defaultNow(),
+	},
+	(t) => [unique("hidden_task_unq").on(t.organizationId, t.userId, t.taskId)],
+);
+
 // Org-wide knobs (PRD §8). One row per org; a missing row implies the column
 // defaults (see orgSettingsService.get) so no backfill is needed.
 // Deliberately NOT configurable and therefore absent here: the 15-minute entry

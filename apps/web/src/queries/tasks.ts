@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 
 import {
+	listHiddenTasks,
 	listManagedTasks,
 	listRecentTasks,
 	listSelectableTasks,
@@ -36,6 +37,14 @@ export const selectableTasksQuery = (org: string) =>
 	queryOptions({
 		queryKey: [...queryKeys(org).tasks, "selectable"],
 		queryFn: () => listSelectableTasks(),
+	});
+
+// The caller's switched-off tasks (Preferences → Your tasks), which every task
+// picker filters itself by. Ids only.
+export const hiddenTasksQuery = (org: string) =>
+	queryOptions({
+		queryKey: [...queryKeys(org).tasks, "hidden"],
+		queryFn: () => listHiddenTasks(),
 	});
 
 // Admin's Settings list: org tasks with usage counts, including archived.

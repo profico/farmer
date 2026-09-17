@@ -18,7 +18,7 @@ argument — **tenancy is a parameter, never ambient**.
   - `schema/domain.ts` — client, project (`projectType`), task (`taskScope`, `taskGroup`, `systemKey`), projectMember, recurringBlockRule(+Skip), timeEntry.
   - `schema/people.ts` — memberProfile, memberTypeHistory (effective-dated `memberType`), teamLeadPerson, invitationEmail (whether an invite email reached the provider; it sits here because `invitation` is CLI-generated).
   - `schema/schedule.ts` — memberWorkingHoursDay, disabledHoliday.
-  - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, pullRequestReviewTombstone, filingRule, orgSettings, reminderSettings, monthlyHourFund.
+  - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, pullRequestReviewTombstone, filingRule, hiddenTask (a person's switched-off tasks), orgSettings, reminderSettings, monthlyHourFund.
   - `schema/github.ts` — orgGithubInstallation, projectGithubRepo, timeEntryGithubCommit, timeEntryGithubPrActivity (one row per pull request EVENT — opened, merged, closed, reviewed — not per PR).
   - `schema/slack.ts` — slackInstallation, memberSlackIdentity, slackReminderLog.
   - `schema/notifications.ts` — pushSubscription, notificationSettings.
@@ -87,6 +87,8 @@ One global list per org (`scope: "organization"`) plus **site-scoped built-ins**
 Engines resolve tasks by **`systemKey`**, never by name (`meeting`, `development`, `code_review`, `break`, `vacation`, `sick`, `paid_leave`). A name lookup switches an engine off silently when an org renames the task — no block, no error. Names stay freely editable.
 
 `assertTaskAvailable` (guards.ts) lets any live non-absence task of the org, or any site task, go on any project. An absence task must carry no project; archived tasks and other orgs' tasks are refused.
+
+**A person can switch tasks off** (Preferences → Your tasks, `hiddenTask`; `tasksService.hiddenIds` / `setHidden` / `showAll`). It is per person per org and stored as what is hidden, so a task added later reaches everyone. It only narrows the web task picker, which filters itself: `listForProject`, `assertTaskAvailable`, reports, the API and the engines never read it, and a switched-off task can still be logged.
 
 
 ## Notifications
