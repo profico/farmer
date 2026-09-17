@@ -380,6 +380,94 @@ describe("confirming", () => {
 	});
 });
 
+describe("pausing", () => {
+	// The claim the whole feature rests on: a held clock measures nothing, for
+	// as long as it is held.
+	test("holds the figure for as long as the pause lasts", async () => {
+		await startDev();
+
+		const held = await timersService.pause(ctx(), { now: later(2 * HOUR) });
+		expect(held.paused).toBe(true);
+		expect(held.elapsedSeconds).toBe(2 * HOUR);
+
+		const days = await timersService.get(ctx(), { now: later(48 * HOUR) });
+		expect(present(days, "the held timer").elapsedSeconds).toBe(2 * HOUR);
+	});
+
+	test("counts the segments it ran and none of the pauses", async () => {
+		await startDev();
+		await timersService.pause(ctx(), { now: later(HOUR) });
+		await timersService.resume(ctx(), { now: later(5 * HOUR) });
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(6 * HOUR) }),
+			"the resumed timer",
+		);
+		expect(view.paused).toBe(false);
+		expect(view.elapsedSeconds).toBe(2 * HOUR);
+	});
+
+	// The day the entry lands on is the day the work began, so a pause must not
+	// move it — not even one held over a night.
+	test("never moves the instant the timer started", async () => {
+		await startDev();
+		await timersService.pause(ctx(), { now: later(HOUR) });
+		const resumed = await timersService.resume(ctx(), {
+			now: later(20 * HOUR),
+		});
+
+		expect(resumed.startedAt).toEqual(START);
+	});
+
+	// Two surfaces drive one clock. A phone that pauses a second after a laptop
+	// did must not be shown an error about it.
+	test("pausing twice and resuming twice change nothing", async () => {
+		await startDev();
+		await timersService.pause(ctx(), { now: later(HOUR) });
+		const again = await timersService.pause(ctx(), { now: later(2 * HOUR) });
+		expect(again.elapsedSeconds).toBe(HOUR);
+
+		await timersService.resume(ctx(), { now: later(3 * HOUR) });
+		const still = await timersService.resume(ctx(), { now: later(4 * HOUR) });
+		expect(still.elapsedSeconds).toBe(2 * HOUR);
+	});
+
+	test("logs what the running segments came to", async () => {
+		await startDev();
+		await timersService.pause(ctx(), { now: later(HOUR) });
+		const held = present(
+			await timersService.get(ctx(), { now: later(9 * HOUR) }),
+			"the held timer",
+		);
+
+		const entry = await timersService.confirm(ctx(), {
+			date: DAY,
+			projectId,
+			taskId: devTaskId,
+			description: "Timed work",
+			durationSeconds: held.snappedSeconds,
+			overtime: false,
+		});
+
+		expect(entry.durationSeconds).toBe(HOUR);
+		expect(await timersService.get(ctx(), { now: later(9 * HOUR) })).toBeNull();
+	});
+
+	test("refuses to pause a timer that belongs to another workspace", async () => {
+		await startDev();
+
+		await expect(timersService.pause(otherCtx())).rejects.toThrow(
+			/belongs to Timer Org/,
+		);
+	});
+
+	test("refuses to pause when nothing is running", async () => {
+		await expect(timersService.pause(ctx())).rejects.toThrow(
+			/No timer is running/,
+		);
+	});
+});
+
 describe("discarding", () => {
 	test("throws the measurement away", async () => {
 		await startDev();

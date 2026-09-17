@@ -51,10 +51,15 @@ export type TimerView = {
 	taskId: string;
 	taskName: string;
 	description: string;
+	/** When the clock first began — never moved by a pause. */
 	startedAt: Date;
+	/** True while the clock is held. A paused timer measures nothing, keeps its
+	 *  figure and may be held for as long as somebody wants. */
+	paused: boolean;
 	/** Null while it runs; set once the sweep dropped it for passing the cap. */
 	droppedAt: Date | null;
-	/** Seconds measured so far, or the whole run of a dropped timer. */
+	/** Seconds measured so far, or the whole run of a dropped timer. Pauses are
+	 *  not in it: what is counted is the running segments. */
 	elapsedSeconds: number;
 	/** What confirming it would log: `snapToQuarterHour(elapsedSeconds)`, which
 	 *  rounds to the NEAREST quarter hour and never below one. The figure is
@@ -65,16 +70,23 @@ export type TimerView = {
 	serverNow: Date;
 };
 
+/** What the clock has measured: the segments that finished, plus the one that
+ *  is running. A paused timer has no running segment, so its figure stands
+ *  still — that is the whole of what a pause does. */
 const elapsedOf = (
-	row: { startedAt: Date; droppedAt: Date | null },
+	row: {
+		runningSince: Date | null;
+		accumulatedSeconds: number;
+		droppedAt: Date | null;
+	},
 	now: Date,
-) =>
-	Math.max(
-		0,
-		Math.round(
-			((row.droppedAt ?? now).getTime() - row.startedAt.getTime()) / 1000,
-		),
-	);
+) => {
+	const current = row.runningSince
+		? ((row.droppedAt ?? now).getTime() - row.runningSince.getTime()) / 1000
+		: 0;
+
+	return Math.max(0, row.accumulatedSeconds + Math.round(current));
+};
 
 const rowOf = async (ctx: Ctx, userId: string) =>
 	ctxDb(ctx)
@@ -89,6 +101,8 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 			taskName: task.name,
 			description: runningTimer.description,
 			startedAt: runningTimer.startedAt,
+			runningSince: runningTimer.runningSince,
+			accumulatedSeconds: runningTimer.accumulatedSeconds,
 			droppedAt: runningTimer.droppedAt,
 		})
 		.from(runningTimer)
@@ -108,6 +122,7 @@ const viewOf = (
 	return {
 		...row,
 		here: row.organizationId === ctx.organizationId,
+		paused: row.runningSince === null && row.droppedAt === null,
 		elapsedSeconds,
 		snappedSeconds: snapToQuarterHour(elapsedSeconds),
 		serverNow: now,
@@ -119,6 +134,28 @@ const read = async (ctx: Ctx, now: Date): Promise<TimerView | null> => {
 	const [row] = await rowOf(ctx, ctx.userId);
 
 	return row ? viewOf(ctx, row, now) : null;
+};
+
+/** The three sentences every control on a timer has to be able to say before
+ *  it touches the row: there is one, it is not a dropped notice, and it belongs
+ *  to the workspace that asked. `verb` names the control in the message. */
+const assertDrivable = async (
+	ctx: Ctx,
+	now: Date,
+	verb: string,
+): Promise<TimerView> => {
+	const running = await read(ctx, now);
+	if (!running) throw new Error("No timer is running");
+	if (running.droppedAt) {
+		throw new Error("This timer was dropped and can only be dismissed");
+	}
+	if (!running.here) {
+		throw new Error(
+			`This timer belongs to ${running.organizationName}. ${verb} it there.`,
+		);
+	}
+
+	return running;
 };
 
 export const timersService = {
@@ -173,6 +210,7 @@ export const timersService = {
 				taskId: input.taskId,
 				description: input.description?.trim() ?? "",
 				startedAt: now,
+				runningSince: now,
 			});
 
 		const started = await read(ctx, now);
@@ -233,6 +271,57 @@ export const timersService = {
 		if (!updated) throw new Error("Failed to update the timer");
 
 		return updated;
+	},
+
+	/**
+	 * Hold the clock, for as long as somebody wants.
+	 *
+	 * The running segment is banked into `accumulatedSeconds` and the row stops
+	 * measuring, so nothing grows while a person is at lunch or in a meeting
+	 * about something else. `jobs/timer-sweep.ts` skips a paused timer for the
+	 * same reason: the cap is a limit on measured time, and a paused timer is
+	 * not measuring.
+	 *
+	 * Pausing an already paused timer answers the row as it stands rather than
+	 * refusing. Two surfaces drive one clock, and a phone that pressed pause a
+	 * second after a laptop did should not be shown an error about it.
+	 */
+	pause: async (ctx: Ctx, opts: { now?: Date } = {}): Promise<TimerView> => {
+		const now = opts.now ?? new Date();
+		const running = await assertDrivable(ctx, now, "Pause");
+		if (running.paused) return running;
+
+		await ctxDb(ctx)
+			.update(runningTimer)
+			.set({
+				runningSince: null,
+				accumulatedSeconds: running.elapsedSeconds,
+				updatedAt: now,
+			})
+			.where(eq(runningTimer.id, running.id));
+
+		const paused = await read(ctx, now);
+		if (!paused) throw new Error("Failed to pause the timer");
+
+		return paused;
+	},
+
+	/** Start a new running segment. Resuming a timer that is already running
+	 *  answers it unchanged, for the reason `pause` gives. */
+	resume: async (ctx: Ctx, opts: { now?: Date } = {}): Promise<TimerView> => {
+		const now = opts.now ?? new Date();
+		const running = await assertDrivable(ctx, now, "Resume");
+		if (!running.paused) return running;
+
+		await ctxDb(ctx)
+			.update(runningTimer)
+			.set({ runningSince: now, updatedAt: now })
+			.where(eq(runningTimer.id, running.id));
+
+		const resumed = await read(ctx, now);
+		if (!resumed) throw new Error("Failed to resume the timer");
+
+		return resumed;
 	},
 
 	/**

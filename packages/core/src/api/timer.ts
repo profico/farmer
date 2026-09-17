@@ -21,6 +21,9 @@ export type ApiTimer = {
 	/** Set when the sweep dropped the timer for passing the person's limit:
 	 *  nothing was logged, and this is the notice. Null while it runs. */
 	droppedAt: string | null;
+	/** True while the clock is held. A paused timer keeps its figure, so a
+	 *  client must stop drawing its own ticking one. */
+	paused: boolean;
 	elapsedSeconds: number;
 	snappedSeconds: number;
 	serverNow: string;
@@ -44,6 +47,7 @@ export type TimerSource = {
 	taskName: string;
 	description: string;
 	startedAt: Date;
+	paused: boolean;
 	droppedAt: Date | null;
 	elapsedSeconds: number;
 	snappedSeconds: number;
@@ -54,6 +58,7 @@ export const toApiTimer = (row: TimerSource): ApiTimer => ({
 	id: row.id,
 	startedAt: row.startedAt.toISOString(),
 	droppedAt: row.droppedAt ? row.droppedAt.toISOString() : null,
+	paused: row.paused,
 	elapsedSeconds: row.elapsedSeconds,
 	snappedSeconds: row.snappedSeconds,
 	serverNow: row.serverNow.toISOString(),

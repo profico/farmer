@@ -18,7 +18,9 @@ import { timerQuery } from "#/queries/timer.ts";
  */
 export function useTimer(orgSlug: string) {
 	const { data: timer, isPending } = useQuery(timerQuery(orgSlug));
-	const running = timer != null && timer.droppedAt == null;
+	// Ticking, not merely alive: a paused timer keeps its figure, so the browser
+	// has nothing to draw between fetches.
+	const running = timer != null && timer.droppedAt == null && !timer.paused;
 	const [browserNow, setBrowserNow] = useState(() => Date.now());
 
 	useEffect(() => {

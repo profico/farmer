@@ -45,6 +45,7 @@ const startTimer = () =>
 		taskId: devTaskId,
 		description: "Forgotten",
 		startedAt: START,
+		runningSince: START,
 	});
 
 const droppedAt = async () => {
@@ -151,6 +152,35 @@ test("tells the person when it started and what the limit was", async () => {
 	expect(sent.map((s) => s.channel).sort()).toEqual(["push", "slack"]);
 	expect(present(sent[0], "the first notification").text).toContain("09:00");
 	expect(present(sent[0], "the first notification").text).toContain("12h");
+});
+
+// A held timer measures nothing, so it cannot grow into the cap and nobody
+// forgot it — holding one is a thing somebody chose.
+test("never drops a timer that is held", async () => {
+	await startTimer();
+	await db
+		.update(runningTimer)
+		.set({ runningSince: null, accumulatedSeconds: HOUR })
+		.where(eq(runningTimer.userId, USER_ID));
+
+	const summary = await runTimerSweepOnce({ now: later(90 * HOUR) });
+
+	expect(summary.running).toBe(0);
+	expect(summary.dropped).toBe(0);
+	expect(await droppedAt()).toBeNull();
+});
+
+test("counts the segments a paused timer ran, not the wall clock", async () => {
+	await startTimer();
+	// Ran an hour, held for three days, then measuring again for one more hour.
+	await db
+		.update(runningTimer)
+		.set({ runningSince: later(72 * HOUR), accumulatedSeconds: HOUR })
+		.where(eq(runningTimer.userId, USER_ID));
+
+	await runTimerSweepOnce({ now: later(73 * HOUR) });
+
+	expect(await droppedAt()).toBeNull();
 });
 
 test("a second pass finds nothing left to do", async () => {

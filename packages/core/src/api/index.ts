@@ -29,6 +29,8 @@
  *   POST   orgs/$slug/sync                       ApiSyncResult
  *   GET    orgs/$slug/timer                      ApiTimerState
  *   POST   orgs/$slug/timer                      ApiTimerState (start)
+ *   POST   orgs/$slug/timer/pause                ApiTimerState (hold the clock)
+ *   POST   orgs/$slug/timer/resume               ApiTimerState
  *   POST   orgs/$slug/timer/confirm              ApiTimeEntry (stop and log)
  *   DELETE orgs/$slug/timer                      ApiTimerState (discard or dismiss)
  *

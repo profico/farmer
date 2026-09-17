@@ -61,6 +61,8 @@ farmer edit [n | id]                Change an entry
 farmer rm [n | id] [--yes]          Delete an entry
 
 farmer start [description] [-p project] [-t task]
+farmer pause                        Hold the clock; it measures nothing
+farmer resume                       Start measuring again
 farmer stop [-m text] [-p project] [-t task] [--duration <d>] [-d date] [--overtime]
 farmer timer                        What the timer is measuring
 farmer timer discard [--yes]        Throw the measurement away
@@ -90,6 +92,7 @@ farmer edit 2 --add 1.25                   # 1h15m on top of what it holds
 farmer rm 3 -d mon --yes
 farmer off vacation 2026-12-22..2027-01-02
 farmer start "Checkout form" -p web -t development
+farmer pause                               # holds it; farmer resume goes on
 farmer stop                                # logs the measured time
 farmer today --json | jq '.[].durationSeconds'
 ```
@@ -106,6 +109,10 @@ farmer today --json | jq '.[].durationSeconds'
   or the other way round. A timer left running past your limit (Settings →
   Preferences, 12 hours by default) is dropped and logs nothing, and
   `farmer timer` says so.
+- `farmer pause` holds the clock and `farmer resume` starts it measuring
+  again. A held timer keeps its figure and measures nothing, so it may be held
+  for as long as you want and can never be dropped for passing your limit. What
+  `farmer stop` logs is the time the timer ran, never the pauses.
 - Durations: `1h30m`, `1.5` or `90m`, in 15-minute steps. `farmer edit --add`
   takes the same forms and adds them to the time the entry already holds, so
   a second stretch of work on one task needs no arithmetic.

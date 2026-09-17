@@ -77,7 +77,38 @@ duration the entry model already allows.
 - There is no MCP tool and no assistant tool for the stopwatch. An agent should
   not start a wall clock it cannot watch, and `list_time_entries` is already
   the read an agent loop hits hardest.
-- Pause and resume are out. A pause is a second duration model — a timer would
-  hold a total as well as a start — and two entries an hour apart say the same
-  thing with rules that already exist.
+- Pause and resume are IN, by the owner's decision of 17 September 2026. They
+  were out in the first version of this record, for the reason the amendment
+  below answers.
 - Issue #75 also earmarks the number 0003 for an ADR. This one took it first.
+
+## Amendment, 17 September 2026 — a timer can be held
+
+The first version of this record refused pause and resume, on the grounds that
+a pause makes a timer hold a total as well as a start, and that two entries an
+hour apart say the same thing. The owner asked for a pause that can last
+indefinitely. That is the decision; this is what it costs and how the cost is
+paid.
+
+- **A timer is a chain of running segments.** `running_timer` carries
+  `running_since` (when the current segment began, null while held) and
+  `accumulated_seconds` (what the finished segments came to). The elapsed
+  figure is the sum, so a held timer measures nothing for as long as it is
+  held.
+- **`started_at` is never rewritten**, not even by a resume. The cheaper
+  implementation — move `started_at` forward by the length of each pause and
+  keep one field — reads the same on a screen and lies about the day: a timer
+  held over a night would file the previous morning's work on the following
+  day. The day the entry lands on is still the day the work began.
+- **This is not a second duration model.** The entry is still one date and one
+  duration in 15-minute steps, and `confirm` still writes it through
+  `timeEntriesService.create`. What a pause changes is which wall-clock seconds
+  are counted, and nothing about what is written.
+- **The cap does not apply to a held timer.** `jobs/timer-sweep.ts` reads only
+  timers with a running segment. The cap is a limit on measured time; a held
+  timer cannot grow into it, and holding one is a thing somebody chose rather
+  than a thing they forgot.
+- **Opening the Log dialog holds the clock**, which is why that dialog offers
+  Discard, Resume and Log rather than Discard and Log. A figure somebody is
+  correcting must not grow while they type, and opening the form to look at it
+  is not a decision to stop.

@@ -5,11 +5,21 @@ import {
 	snapToQuarterHour,
 } from "@farmer/core/lib/time";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { TaskPicker } from "#/components/pickers/task-picker.tsx";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "#/components/ui/alert-dialog.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import {
@@ -29,7 +39,13 @@ import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
 import type { getTimer } from "#/server/timer.ts";
-import { confirmTimer, discardTimer, startTimer } from "#/server/timer.ts";
+import {
+	confirmTimer,
+	discardTimer,
+	pauseTimer,
+	resumeTimer,
+	startTimer,
+} from "#/server/timer.ts";
 
 export type RunningTimer = NonNullable<Awaited<ReturnType<typeof getTimer>>>;
 
@@ -52,6 +68,35 @@ const invalidateAfterTimer = async (
 		});
 	}
 };
+
+/**
+ * Hold the clock, and let it go again.
+ *
+ * Both controls live here rather than in the card, because the card is not the
+ * only thing that pauses: opening the Log dialog holds the clock too, so the
+ * figure somebody is correcting cannot grow while they type. Both mutations
+ * answer an already-held or already-running timer with the row as it stands
+ * (see `timersService.pause`), so nothing here has to guess the state first.
+ */
+export function useTimerControls(orgSlug: string) {
+	const queryClient = useQueryClient();
+
+	const pause = useMutation({
+		mutationFn: () => pauseTimer({}),
+		onSuccess: () => invalidateAfterTimer(queryClient, orgSlug, false),
+		onError: (error: Error) =>
+			toast.error(error.message ?? "Could not pause the timer"),
+	});
+
+	const resume = useMutation({
+		mutationFn: () => resumeTimer({}),
+		onSuccess: () => invalidateAfterTimer(queryClient, orgSlug, false),
+		onError: (error: Error) =>
+			toast.error(error.message ?? "Could not resume the timer"),
+	});
+
+	return { pause, resume };
+}
 
 /**
  * Starting the clock (issue #59).
@@ -234,6 +279,11 @@ export function StartTimerDialog({
  * on the issue: a stopwatch here cannot produce 2:12, and it cannot produce a
  * figure nobody looked at.
  *
+ * Opening it HOLDS the clock, which is why the third button says Resume: the
+ * figure somebody is correcting must not grow while they type, and a person who
+ * opened the form to look at it has not decided to stop. Closing the dialog any
+ * other way leaves the timer paused, and the sidebar card says so.
+ *
  * The timer survives every refusal — a full day, a missing note, a task
  * archived while it ran — because `timersService.confirm` writes the entry and
  * clears the timer in one transaction. So this dialog stays open on an error
@@ -261,16 +311,24 @@ export function StopTimerDialog({
 	const [taskId, setTaskId] = useState(timer.taskId);
 	const [description, setDescription] = useState(timer.description);
 
-	// Every opening reads the timer as it stands now: the figure grew while the
-	// dialog was closed, and the person is about to confirm this one.
+	// Every OPENING reads the timer as it stands: the figure grew while the
+	// dialog was closed, and the person is about to confirm this one. Once only,
+	// which the ref is for — the timer query refetches on window focus and the
+	// pause that opening this dialog performs invalidates it as well, and either
+	// answer arriving would otherwise wipe out what somebody had typed.
+	const filled = useRef(false);
 	useEffect(() => {
-		if (open) {
-			setDuration(formatClock(timer.snappedSeconds));
-			setDate(dayKeyInTz(timer.startedAt, timezone));
-			setProjectId(timer.projectId);
-			setTaskId(timer.taskId);
-			setDescription(timer.description);
+		if (!open) {
+			filled.current = false;
+			return;
 		}
+		if (filled.current) return;
+		filled.current = true;
+		setDuration(formatClock(timer.snappedSeconds));
+		setDate(dayKeyInTz(timer.startedAt, timezone));
+		setProjectId(timer.projectId);
+		setTaskId(timer.taskId);
+		setDescription(timer.description);
 	}, [open, timer, timezone]);
 
 	const projectsQ = useQuery({ ...myProjectsQuery(orgSlug), enabled: open });
@@ -321,7 +379,8 @@ export function StopTimerDialog({
 			toast.error(error.message ?? "Could not discard the timer"),
 	});
 
-	const busy = confirm.isPending || discard.isPending;
+	const { resume } = useTimerControls(orgSlug);
+	const busy = confirm.isPending || discard.isPending || resume.isPending;
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -329,7 +388,7 @@ export function StopTimerDialog({
 				<DialogHeader>
 					<DialogTitle>Log the time</DialogTitle>
 					<p className="text-sm text-muted-foreground">
-						{`Measured ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes. Change anything here before it goes on your timesheet.`}
+						{`The clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes. Change anything here before it goes on your timesheet, or resume and keep measuring.`}
 					</p>
 				</DialogHeader>
 
@@ -399,6 +458,9 @@ export function StopTimerDialog({
 					</div>
 				</div>
 
+				{/* Three ways out, and the gap says which is which: throwing the
+				    measurement away stands apart on the left, and the two that keep
+				    it sit together on the right under the one filled button. */}
 				<DialogFooter className="sm:justify-between">
 					<Button
 						type="button"
@@ -410,20 +472,36 @@ export function StopTimerDialog({
 					>
 						Discard
 					</Button>
-					<Button
-						type="button"
-						onClick={() => {
-							confirm.mutate();
-						}}
-						disabled={
-							busy ||
-							seconds <= 0 ||
-							!taskId ||
-							(needsDescription && !description.trim())
-						}
-					>
-						{confirm.isPending ? "Logging…" : `Log ${formatClock(seconds)}`}
-					</Button>
+					<div className="flex items-center gap-2">
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => {
+								resume.mutate(undefined, {
+									onSuccess: () => {
+										onOpenChange(false);
+									},
+								});
+							}}
+							disabled={busy}
+						>
+							{resume.isPending ? "Resuming…" : "Resume"}
+						</Button>
+						<Button
+							type="button"
+							onClick={() => {
+								confirm.mutate();
+							}}
+							disabled={
+								busy ||
+								seconds <= 0 ||
+								!taskId ||
+								(needsDescription && !description.trim())
+							}
+						>
+							{confirm.isPending ? "Logging…" : `Log ${formatClock(seconds)}`}
+						</Button>
+					</div>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -484,5 +562,63 @@ export function DroppedTimerDialog({
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+/**
+ * Throwing a running timer away (issue #59).
+ *
+ * The Log dialog carries Discard as well, but reaching it there means opening
+ * the whole entry form for a measurement somebody has already decided not to
+ * keep. This is the same mutation behind one question, for the button on the
+ * sidebar card. It asks, because the measurement is the only copy: nothing was
+ * written while the clock ran.
+ */
+export function DiscardTimerDialog({
+	orgSlug,
+	measured,
+	open,
+	onOpenChange,
+}: {
+	orgSlug: string;
+	/** The figure as the card shows it, so the question names what is lost. */
+	measured: string;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+}) {
+	const queryClient = useQueryClient();
+	const discard = useMutation({
+		mutationFn: () => discardTimer({}),
+		onSuccess: async () => {
+			await invalidateAfterTimer(queryClient, orgSlug, false);
+			onOpenChange(false);
+		},
+		onError: (error: Error) =>
+			toast.error(error.message ?? "Could not discard the timer"),
+	});
+
+	return (
+		<AlertDialog open={open} onOpenChange={onOpenChange}>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Discard this timer?</AlertDialogTitle>
+					<AlertDialogDescription>
+						{`${measured} was measured and nothing has been logged yet. Discarding throws the measurement away.`}
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Keep it running</AlertDialogCancel>
+					<AlertDialogAction
+						variant="destructive"
+						onClick={() => {
+							discard.mutate();
+						}}
+						disabled={discard.isPending}
+					>
+						Discard
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 }

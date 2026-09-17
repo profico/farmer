@@ -35,6 +35,22 @@ export const updateTimer = createServerFn({ method: "POST" })
 		return timersService.update(context.ctx, data);
 	});
 
+/** Hold the clock. It keeps its figure and measures nothing until `resumeTimer`
+ *  starts a new segment, so a pause may last for as long as somebody wants. */
+export const pauseTimer = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { timersService } = await import("@farmer/core/services");
+		return timersService.pause(context.ctx);
+	});
+
+export const resumeTimer = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.handler(async ({ context }) => {
+		const { timersService } = await import("@farmer/core/services");
+		return timersService.resume(context.ctx);
+	});
+
 /** Stop and log: one transaction that writes the entry and clears the timer. */
 export const confirmTimer = createServerFn({ method: "POST" })
 	.middleware([orgMiddleware])

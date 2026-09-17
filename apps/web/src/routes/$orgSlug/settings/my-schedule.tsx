@@ -3,6 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
+import { TimerSettings } from "#/components/time/timer-settings.tsx";
 import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import { WorkingHoursRow } from "#/components/working-hours-row.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
@@ -60,29 +61,7 @@ function MySchedulePage() {
 				</div>
 			</PageSection>
 
-			{/* Time off is no longer requested and approved here — Vacation and Sick
-			    Leave are logged as ordinary time entries against the built-in absence
-			    tasks, so they live on the Time screen with everything else. */}
-			<PageSection
-				title="Time off"
-				description={
-					<>
-						Log Vacation, Sick Leave and Paid Leave on the{" "}
-						<Link
-							to="/$orgSlug/time"
-							params={{ orgSlug: organization.slug }}
-							search={{}}
-							className="underlined text-primary"
-						>
-							Time
-						</Link>{" "}
-						screen, the same way you log everything else. There's no approval
-						step. For a stretch of days, use <strong>Time off</strong> in the
-						timesheet toolbar — it books every working day in the span at the
-						hours above, and skips public holidays and days you don't work.
-					</>
-				}
-			/>
+			<TimerSettings />
 		</Page>
 	);
 }

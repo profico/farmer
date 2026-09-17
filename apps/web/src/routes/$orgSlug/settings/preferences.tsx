@@ -18,7 +18,6 @@ import { FilingRulesSettings } from "#/components/filing-rules-settings.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
 import { YourTasksSection } from "#/components/pickers/your-tasks.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
-import { TimerSettings } from "#/components/time/timer-settings.tsx";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -638,7 +637,6 @@ function PreferencesSettingsPage() {
 
 			<SignedInDevicesSection />
 			<NotificationSettings />
-			<TimerSettings />
 			<FilingRulesSettings />
 		</Page>
 	);

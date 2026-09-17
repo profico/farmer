@@ -59,7 +59,22 @@ export const runningTimer = pgTable(
 			.notNull()
 			.references(() => task.id, { onDelete: "cascade" }),
 		description: text("description").notNull().default(""),
+		// When the clock first began. Never rewritten, not even by a resume: it is
+		// the day the entry lands on and the time the surfaces say "since".
 		startedAt: ts("started_at").notNull().defaultNow(),
+		// The two fields a pause needs, and no more. A timer is a chain of
+		// running segments: `runningSince` is when the current one began, and
+		// `accumulatedSeconds` is what the finished ones came to. Paused means
+		// `runningSince` is null, so a paused timer measures nothing and the
+		// elapsed figure is frozen at the sum — which is why a pause may last for
+		// as long as somebody wants.
+		//
+		// The alternative was to move `startedAt` forward by the length of each
+		// pause and keep one field. That reads the same on a screen and lies
+		// about the day: a timer paused over a night would file its morning's
+		// work on the next day.
+		runningSince: ts("running_since"),
+		accumulatedSeconds: integer("accumulated_seconds").notNull().default(0),
 		// Set by `jobs/timer-sweep.ts` when the timer passed the person's cap. The
 		// row stops measuring and becomes a notice, cleared by `dismiss`.
 		droppedAt: ts("dropped_at"),

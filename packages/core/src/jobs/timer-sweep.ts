@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
@@ -45,6 +45,8 @@ export const runTimerSweepOnce = async (
 			userId: runningTimer.userId,
 			taskName: task.name,
 			startedAt: runningTimer.startedAt,
+			runningSince: runningTimer.runningSince,
+			accumulatedSeconds: runningTimer.accumulatedSeconds,
 			maxSeconds: timerSettings.maxSeconds,
 		})
 		.from(runningTimer)
@@ -57,7 +59,13 @@ export const runTimerSweepOnce = async (
 				eq(timerSettings.userId, runningTimer.userId),
 			),
 		)
-		.where(isNull(runningTimer.droppedAt));
+		// A paused timer is left alone, however long it has been held. The cap is
+		// a limit on measured time, and a paused timer measures nothing — its
+		// figure cannot grow into the cap, and holding one is a thing somebody
+		// chose rather than a thing they forgot.
+		.where(
+			and(isNull(runningTimer.droppedAt), isNotNull(runningTimer.runningSince)),
+		);
 
 	const summary: TimerSweepSummary = {
 		running: rows.length,
@@ -66,9 +74,14 @@ export const runTimerSweepOnce = async (
 	};
 
 	for (const row of rows) {
-		const elapsed = Math.round(
-			(now.getTime() - row.startedAt.getTime()) / 1000,
-		);
+		// The segments that finished plus the one still running — the same figure
+		// `timersService` shows, so what the person reads is what is measured
+		// against the cap.
+		const elapsed =
+			row.accumulatedSeconds +
+			Math.round(
+				(now.getTime() - (row.runningSince ?? row.startedAt).getTime()) / 1000,
+			);
 		const cap = row.maxSeconds ?? DEFAULT_TIMER_MAX_SECONDS;
 		if (elapsed <= cap) continue;
 

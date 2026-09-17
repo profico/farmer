@@ -99,12 +99,84 @@ const describeTimer = (out: Output, timer: ApiTimer) => {
 		return;
 	}
 	print(
-		`${bold(out, stopwatch(timer.elapsedSeconds))} on ${whatItMeasures(timer)}.`,
+		`${bold(out, stopwatch(timer.elapsedSeconds))} on ${whatItMeasures(timer)}${timer.paused ? ", held" : ""}.`,
 	);
 	print(
-		`Stopping now logs ${formatHours(timer.snappedSeconds)}, in 15-minute steps as every entry is.`,
+		timer.paused
+			? `The clock is held, so this figure stands still. Resume it with \`farmer resume\`, or stop it to log ${formatHours(timer.snappedSeconds)}.`
+			: `Stopping now logs ${formatHours(timer.snappedSeconds)}, in 15-minute steps as every entry is.`,
 	);
 };
+
+/**
+ * `farmer pause` and `farmer resume` — one shape, two verbs.
+ *
+ * Both routes answer a timer that is already in the state asked for with the
+ * row as it stands, rather than an error, so a terminal that repeats itself
+ * says the same thing twice instead of failing the second time.
+ */
+const hold = (
+	name: "pause" | "resume",
+	summary: string,
+	help: string[],
+	said: (out: Output, timer: ApiTimer) => string,
+): Command => ({
+	name,
+	usage: `farmer ${name}`,
+	summary,
+	help,
+	run: async (args, runtime) => {
+		const { values } = parseCommandArgs(args, {}, 0, `farmer ${name}`);
+		const out = createOutput(values.json === true, runtime.env);
+		const { session, scope } = await openOrg(runtime, out, values.org, {
+			announce: false,
+		});
+		const running = await readTimer(session, scope);
+		if (!running) {
+			throw new CliError("No timer is running. Start one with `farmer start`.");
+		}
+		if (running.droppedAt) {
+			throw new CliError(
+				"Your timer was dropped for running past your limit. Run `farmer timer discard` to clear it.",
+			);
+		}
+		if (!running.organization.here) {
+			throw new CliError(
+				`That timer is running in ${running.organization.name}. Run \`farmer ${name} --org ${running.organization.slug}\`.`,
+			);
+		}
+
+		const state = await session.api.post<ApiTimerState, Record<string, never>>(
+			scope.path(`/timer/${name}`),
+			{},
+		);
+		const timer = state.timer;
+		if (!timer) throw new CliError("The server answered with no timer.");
+
+		if (out.json) printJson(timer);
+		else say(out, said(out, timer));
+	},
+});
+
+export const pause = hold(
+	"pause",
+	"Hold the timer. It keeps its figure and measures nothing.",
+	[
+		"A held timer may be held for as long as you want: it measures nothing,",
+		"so it can never run past your limit and be dropped. `farmer resume`",
+		"starts it measuring again.",
+	],
+	(out, timer) =>
+		`Held at ${bold(out, stopwatch(timer.elapsedSeconds))} on ${whatItMeasures(timer)}. Resume it with \`farmer resume\`.`,
+);
+
+export const resume = hold(
+	"resume",
+	"Start a held timer measuring again.",
+	["`farmer pause` holds it."],
+	(out, timer) =>
+		`Measuring again from ${bold(out, stopwatch(timer.elapsedSeconds))} on ${whatItMeasures(timer)}.`,
+);
 
 const START_USAGE = "farmer start [description] [-p project] [-t task]";
 

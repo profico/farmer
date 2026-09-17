@@ -24,6 +24,7 @@ const fullRow = () => ({
 	taskName: "Development",
 	description: "Fix login",
 	startedAt,
+	paused: false,
 	droppedAt: null,
 	createdAt: startedAt,
 	updatedAt: startedAt,
@@ -38,6 +39,7 @@ describe("toApiTimer", () => {
 			id: "tm-1",
 			startedAt: "2026-09-17T08:00:00.000Z",
 			droppedAt: null,
+			paused: false,
 			elapsedSeconds: 4320,
 			snappedSeconds: 4500,
 			serverNow: "2026-09-17T09:12:00.000Z",
@@ -72,6 +74,12 @@ describe("toApiTimer", () => {
 			projectName: null,
 		});
 		expect(projected.project).toBe(null);
+	});
+
+	// A held timer keeps its figure, so a client has to know to stop drawing a
+	// ticking one of its own.
+	test("says when the clock is held", () => {
+		expect(toApiTimer({ ...fullRow(), paused: true }).paused).toBe(true);
 	});
 
 	// A dropped timer logged nothing. The client shows the notice, so the

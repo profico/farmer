@@ -74,6 +74,8 @@ import { Route as ApiV1OrgsOrgSlugProjectsRouteImport } from './routes/api/v1/or
 import { Route as ApiV1OrgsOrgSlugTimerIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/index'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/index'
 import { Route as ApiV1OrgsOrgSlugAbsencesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/index'
+import { Route as ApiV1OrgsOrgSlugTimerResumeRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/resume'
+import { Route as ApiV1OrgsOrgSlugTimerPauseRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/pause'
 import { Route as ApiV1OrgsOrgSlugTimerConfirmRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/confirm'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesFileRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/file'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesCopyWeekRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/copy-week'
@@ -428,6 +430,18 @@ const ApiV1OrgsOrgSlugAbsencesIndexRoute =
     path: '/api/v1/orgs/$orgSlug/absences/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugTimerResumeRoute =
+  ApiV1OrgsOrgSlugTimerResumeRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/timer/resume',
+    path: '/api/v1/orgs/$orgSlug/timer/resume',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugTimerPauseRoute =
+  ApiV1OrgsOrgSlugTimerPauseRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/timer/pause',
+    path: '/api/v1/orgs/$orgSlug/timer/pause',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugTimerConfirmRoute =
   ApiV1OrgsOrgSlugTimerConfirmRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/timer/confirm',
@@ -534,6 +548,8 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
   '/api/v1/orgs/$orgSlug/time-entries/file': typeof ApiV1OrgsOrgSlugTimeEntriesFileRoute
   '/api/v1/orgs/$orgSlug/timer/confirm': typeof ApiV1OrgsOrgSlugTimerConfirmRoute
+  '/api/v1/orgs/$orgSlug/timer/pause': typeof ApiV1OrgsOrgSlugTimerPauseRoute
+  '/api/v1/orgs/$orgSlug/timer/resume': typeof ApiV1OrgsOrgSlugTimerResumeRoute
   '/api/v1/orgs/$orgSlug/absences/': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
   '/api/v1/orgs/$orgSlug/timer/': typeof ApiV1OrgsOrgSlugTimerIndexRoute
@@ -605,6 +621,8 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
   '/api/v1/orgs/$orgSlug/time-entries/file': typeof ApiV1OrgsOrgSlugTimeEntriesFileRoute
   '/api/v1/orgs/$orgSlug/timer/confirm': typeof ApiV1OrgsOrgSlugTimerConfirmRoute
+  '/api/v1/orgs/$orgSlug/timer/pause': typeof ApiV1OrgsOrgSlugTimerPauseRoute
+  '/api/v1/orgs/$orgSlug/timer/resume': typeof ApiV1OrgsOrgSlugTimerResumeRoute
   '/api/v1/orgs/$orgSlug/absences': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
   '/api/v1/orgs/$orgSlug/timer': typeof ApiV1OrgsOrgSlugTimerIndexRoute
@@ -679,6 +697,8 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
   '/api/v1/orgs/$orgSlug/time-entries/file': typeof ApiV1OrgsOrgSlugTimeEntriesFileRoute
   '/api/v1/orgs/$orgSlug/timer/confirm': typeof ApiV1OrgsOrgSlugTimerConfirmRoute
+  '/api/v1/orgs/$orgSlug/timer/pause': typeof ApiV1OrgsOrgSlugTimerPauseRoute
+  '/api/v1/orgs/$orgSlug/timer/resume': typeof ApiV1OrgsOrgSlugTimerResumeRoute
   '/api/v1/orgs/$orgSlug/absences/': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
   '/api/v1/orgs/$orgSlug/timer/': typeof ApiV1OrgsOrgSlugTimerIndexRoute
@@ -754,6 +774,8 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
     | '/api/v1/orgs/$orgSlug/time-entries/file'
     | '/api/v1/orgs/$orgSlug/timer/confirm'
+    | '/api/v1/orgs/$orgSlug/timer/pause'
+    | '/api/v1/orgs/$orgSlug/timer/resume'
     | '/api/v1/orgs/$orgSlug/absences/'
     | '/api/v1/orgs/$orgSlug/time-entries/'
     | '/api/v1/orgs/$orgSlug/timer/'
@@ -825,6 +847,8 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
     | '/api/v1/orgs/$orgSlug/time-entries/file'
     | '/api/v1/orgs/$orgSlug/timer/confirm'
+    | '/api/v1/orgs/$orgSlug/timer/pause'
+    | '/api/v1/orgs/$orgSlug/timer/resume'
     | '/api/v1/orgs/$orgSlug/absences'
     | '/api/v1/orgs/$orgSlug/time-entries'
     | '/api/v1/orgs/$orgSlug/timer'
@@ -898,6 +922,8 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
     | '/api/v1/orgs/$orgSlug/time-entries/file'
     | '/api/v1/orgs/$orgSlug/timer/confirm'
+    | '/api/v1/orgs/$orgSlug/timer/pause'
+    | '/api/v1/orgs/$orgSlug/timer/resume'
     | '/api/v1/orgs/$orgSlug/absences/'
     | '/api/v1/orgs/$orgSlug/time-entries/'
     | '/api/v1/orgs/$orgSlug/timer/'
@@ -943,6 +969,8 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute: typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
   ApiV1OrgsOrgSlugTimeEntriesFileRoute: typeof ApiV1OrgsOrgSlugTimeEntriesFileRoute
   ApiV1OrgsOrgSlugTimerConfirmRoute: typeof ApiV1OrgsOrgSlugTimerConfirmRoute
+  ApiV1OrgsOrgSlugTimerPauseRoute: typeof ApiV1OrgsOrgSlugTimerPauseRoute
+  ApiV1OrgsOrgSlugTimerResumeRoute: typeof ApiV1OrgsOrgSlugTimerResumeRoute
   ApiV1OrgsOrgSlugAbsencesIndexRoute: typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   ApiV1OrgsOrgSlugTimeEntriesIndexRoute: typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
   ApiV1OrgsOrgSlugTimerIndexRoute: typeof ApiV1OrgsOrgSlugTimerIndexRoute
@@ -1405,6 +1433,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugAbsencesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/timer/resume': {
+      id: '/api/v1/orgs/$orgSlug/timer/resume'
+      path: '/api/v1/orgs/$orgSlug/timer/resume'
+      fullPath: '/api/v1/orgs/$orgSlug/timer/resume'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTimerResumeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/timer/pause': {
+      id: '/api/v1/orgs/$orgSlug/timer/pause'
+      path: '/api/v1/orgs/$orgSlug/timer/pause'
+      fullPath: '/api/v1/orgs/$orgSlug/timer/pause'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTimerPauseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/timer/confirm': {
       id: '/api/v1/orgs/$orgSlug/timer/confirm'
       path: '/api/v1/orgs/$orgSlug/timer/confirm'
@@ -1574,6 +1616,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute,
   ApiV1OrgsOrgSlugTimeEntriesFileRoute: ApiV1OrgsOrgSlugTimeEntriesFileRoute,
   ApiV1OrgsOrgSlugTimerConfirmRoute: ApiV1OrgsOrgSlugTimerConfirmRoute,
+  ApiV1OrgsOrgSlugTimerPauseRoute: ApiV1OrgsOrgSlugTimerPauseRoute,
+  ApiV1OrgsOrgSlugTimerResumeRoute: ApiV1OrgsOrgSlugTimerResumeRoute,
   ApiV1OrgsOrgSlugAbsencesIndexRoute: ApiV1OrgsOrgSlugAbsencesIndexRoute,
   ApiV1OrgsOrgSlugTimeEntriesIndexRoute: ApiV1OrgsOrgSlugTimeEntriesIndexRoute,
   ApiV1OrgsOrgSlugTimerIndexRoute: ApiV1OrgsOrgSlugTimerIndexRoute,
