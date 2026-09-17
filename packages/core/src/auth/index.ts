@@ -2,11 +2,13 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import {
+	admin,
 	deviceAuthorization,
 	genericOAuth,
 	mcp,
 	organization,
 } from "better-auth/plugins";
+import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, eq } from "drizzle-orm";
 
@@ -16,6 +18,11 @@ import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
 import { sendMail } from "../lib/email";
+import {
+	PLATFORM_ADMIN_ROLE,
+	PLATFORM_USER_ROLE,
+	platformRoleFor,
+} from "../lib/platform-admin";
 import {
 	bootstrapSingleOrg,
 	findPendingInvitation,
@@ -38,6 +45,32 @@ const uniqueSlugFor = async (name: string) => {
 		slug = `${base}-${suffix++}`;
 	}
 	return slug;
+};
+
+/**
+ * Write `user.role` to whatever `PLATFORM_ADMIN_EMAILS` says it should be.
+ *
+ * A plain `update`, not the internal adapter: the admin plugin declares `role`
+ * with `input: false`, so better-auth's own update path drops it, and it is
+ * right to — the whole point of that flag is that no request may set its own
+ * role. This is the deployment's environment speaking, not a caller.
+ *
+ * Guarded by a read so the common case (everybody, every sign-in) is one
+ * SELECT and no write at all. Called from the session hook below, which sees
+ * only a user id.
+ */
+const reconcilePlatformRole = async (userId: string) => {
+	const row = await db.query.user.findFirst({
+		where: eq(schema.user.id, userId),
+		columns: { email: true, role: true },
+	});
+	if (!row) return;
+	const expected = platformRoleFor(row.email);
+	if (row.role === expected) return;
+	await db
+		.update(schema.user)
+		.set({ role: expected })
+		.where(eq(schema.user.id, userId));
 };
 
 export const auth = betterAuth({
@@ -218,6 +251,28 @@ export const auth = betterAuth({
 		session: {
 			create: {
 				before: async (session) => {
+					// Bring `user.role` back in line with `PLATFORM_ADMIN_EMAILS`.
+					//
+					// This is the only writer of that column, and a sign-in is the only
+					// moment it can run: the list is an environment variable, so it
+					// changes when the deployment restarts, and nothing else in the app
+					// ever looks at a user row it has no request for. A boot-time sweep
+					// was the alternative and is worse — it would have to reach every
+					// user in the database to find the two it cares about, and it still
+					// would not cover somebody added to the list while the server is up.
+					//
+					// It runs in BOTH directions, which is the part worth keeping: an
+					// address removed from the list loses the role on its owner's next
+					// sign-in. A grant-only version would leave a former operator
+					// holding impersonation until somebody remembered the column
+					// existed.
+					//
+					// The corollary — a session that is already open keeps whatever
+					// role it had until it is signed out of — is real but small: the
+					// role is read from the user row on every request, not from the
+					// session, so the change lands as soon as the row does.
+					await reconcilePlatformRole(session.userId);
+
 					// In single-org mode, pin the session to *the* organization rather
 					// than to whichever membership happens to come back first. Only
 					// matters for a database that had several organizations before the
@@ -461,6 +516,43 @@ export const auth = betterAuth({
 			validateClient: (clientId) => clientId === CLI_CLIENT_ID,
 			expiresIn: "10m",
 			verificationUri: "/device",
+		}),
+		// Impersonation, and nothing else this plugin offers.
+		//
+		// It exists so somebody operating the deployment can answer "it doesn't
+		// work for me" by looking at the screen the person is looking at. A
+		// timesheet is assembled from that person's memberships, project
+		// assignments, working hours, calendar grants and filing rules, and no
+		// admin view reproduces that combination — reading the database tells you
+		// what the rows say, not what the app draws from them.
+		//
+		// **Who may do it is `PLATFORM_ADMIN_EMAILS`, not an org role.** See
+		// `lib/platform-admin.ts` for why the two are deliberately different
+		// columns, and the session hook above for when `user.role` is written.
+		//
+		// `roles` has to be given explicitly, and is not decoration. The plugin
+		// resolves a permission by looking the session user's role up in this map
+		// (`hasPermission` in better-auth's admin plugin); `adminRoles` only says
+		// which roles count as "an admin you may not impersonate". Name a role in
+		// `adminRoles` without putting it in `roles` and every check fails
+		// closed — the endpoint 403s for the very people it was added for.
+		//
+		// The plugin's other endpoints (ban, set-role, create-user, delete-user,
+		// list-users) are mounted too and cannot be switched off individually.
+		// `adminAc` grants them, so a platform admin can reach them over the API.
+		// Nothing in this app's UI calls them, and they are not an escalation
+		// beyond impersonation, which already lets you become anyone.
+		admin({
+			roles: { [PLATFORM_ADMIN_ROLE]: adminAc, [PLATFORM_USER_ROLE]: userAc },
+			adminRoles: [PLATFORM_ADMIN_ROLE],
+			defaultRole: PLATFORM_USER_ROLE,
+			// An hour, the plugin's own default, stated here because it is a
+			// security property rather than a preference: the impersonated session
+			// is a real session row for the other person, and this is how long it
+			// lives if nobody presses Stop. Signing out ends it too, but the
+			// sidebar's Stop is the way back, because it restores the operator's own
+			// session instead of leaving them at the login screen.
+			impersonationSessionDuration: 60 * 60,
 		}),
 		// tanstackStartCookies MUST stay last — see better-auth/better-auth#5639
 		tanstackStartCookies(),

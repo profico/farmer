@@ -1,4 +1,5 @@
 import {
+	adminClient,
 	deviceAuthorizationClient,
 	genericOAuthClient,
 	organizationClient,
@@ -7,6 +8,16 @@ import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
 	plugins: [
+		// Two calls out of this plugin are used, both from Settings → People and
+		// the sidebar: `admin.impersonateUser` and `admin.stopImpersonating`. Both
+		// swap the session cookie on the server, so both callers follow with a
+		// full document load rather than a router invalidation — see
+		// `lib/impersonation.ts`.
+		//
+		// No `roles` here, unlike the server plugin (`packages/core/src/auth`).
+		// That option only types `admin.checkRolePermission`, which nothing calls;
+		// who may impersonate is decided on the server, where the role lives.
+		adminClient(),
 		// The approval half of `farmer login` (routes/device.tsx). The CLI itself
 		// does not use this client: it speaks the device endpoints over plain
 		// HTTP, and only the browser that approves the code needs the typed calls.

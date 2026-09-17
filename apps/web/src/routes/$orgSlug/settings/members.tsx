@@ -53,6 +53,7 @@ import {
 	TableScroll,
 } from "#/components/ui/table.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { startImpersonating } from "#/lib/impersonation.ts";
 import { searchFlag } from "#/lib/search-flag.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
@@ -109,7 +110,7 @@ export const Route = createFileRoute("/$orgSlug/settings/members")({
 
 function MembersSettingsPage() {
 	const orgSlug = useOrgSlug();
-	const { session } = Route.useRouteContext();
+	const { session, isPlatformAdmin, impersonating } = Route.useRouteContext();
 	const { data: membersData } = useSuspenseQuery(membersQuery(orgSlug));
 	const { data: people } = useSuspenseQuery(peopleQuery(orgSlug));
 	const personByUserId = new Map(people.map((p) => [p.userId, p]));
@@ -206,6 +207,20 @@ function MembersSettingsPage() {
 		restore: boolean;
 	} | null>(null);
 
+	// Becoming somebody else, for whoever operates the deployment. Not a role in
+	// this workspace — see `packages/core/src/lib/platform-admin.ts` — so an org
+	// admin never sees this button, however much of the rest of the page they own.
+	//
+	// No confirmation dialog. The row names the person, the button names the act,
+	// and what follows is a whole application that says "Impersonating <name>" in
+	// the sidebar until you stop; a modal in front of that would be a second
+	// reading of a sentence you have already read. Nothing is written by the act
+	// itself.
+	const impersonateMutation = useMutation({
+		mutationFn: (userId: string) => startImpersonating(userId),
+		onError: (error) => toast.error(error.message ?? "Could not impersonate"),
+	});
+
 	const startDateMutation = useMutation({
 		mutationFn: (vars: { userId: string; startDate: string | null }) =>
 			setMemberStartDate({ data: vars }),
@@ -259,6 +274,12 @@ function MembersSettingsPage() {
 	const shownInvitations = invitations.filter((inv) =>
 		matchesSearch(query, [inv.email]),
 	);
+
+	// Not while already impersonating. better-auth keeps the operator's own
+	// session in a second cookie and `stopImpersonating` restores it, so a second
+	// hop would overwrite that cookie and strand the way back — the operator
+	// would have to sign out and in again to be themselves. One hop, then Stop.
+	const canImpersonate = isPlatformAdmin && impersonating === null;
 
 	const renderMemberRow = (m: (typeof membersData.members)[number]) => {
 		const isSelf = m.userId === session.user.id;
@@ -387,63 +408,86 @@ function MembersSettingsPage() {
 					)}
 				</TableCell>
 				<TableCell>
-					{/* Archive, not delete: an archived person keeps every
-					    entry and month they appear in and
-					    drops out of the forward-looking surfaces. Remove is
-					    still here for the invited-the-wrong-address case, but
-					    it is no longer the obvious button. */}
-					{!isSelf && !isOnlyOwner && (
-						<div className="flex justify-end gap-2">
-							{!archived && person?.emailUnconfirmed && (
-								<Button
-									variant="outline"
-									size="sm"
-									disabled={confirmMutation.isPending}
-									onClick={() =>
-										setConfirmEmail({
-											userId: m.userId,
-											name: m.user.name,
-											email: m.user.email,
-											restore: false,
-										})
-									}
-								>
-									Confirm email
-								</Button>
-							)}
+					<div className="flex justify-end gap-2">
+						{/* Outside the `!isOnlyOwner` gate below, and deliberately: that
+						    gate protects the workspace from losing its last owner, and
+						    impersonating somebody takes nothing away from them. The only
+						    exclusion is yourself, which is not a button, it is the page
+						    you are already on.
+
+						    Still offered for an archived person: "why can this person not
+						    log in any more" is exactly the question this answers.
+
+						    The server refuses one case the row cannot see — impersonating
+						    another platform admin — and the toast carries its message. */}
+						{canImpersonate && !isSelf && (
 							<Button
 								variant="outline"
 								size="sm"
-								disabled={archiveMutation.isPending}
-								onClick={() => {
-									if (archived && person?.emailUnconfirmed) {
-										setConfirmEmail({
+								disabled={impersonateMutation.isPending}
+								onClick={() => impersonateMutation.mutate(m.userId)}
+							>
+								Impersonate
+							</Button>
+						)}
+						{/* Archive, not delete: an archived person keeps every
+						    entry and month they appear in and
+						    drops out of the forward-looking surfaces. Remove is
+						    still here for the invited-the-wrong-address case, but
+						    it is no longer the obvious button. */}
+						{!isSelf && !isOnlyOwner && (
+							<>
+								{!archived && person?.emailUnconfirmed && (
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={confirmMutation.isPending}
+										onClick={() =>
+											setConfirmEmail({
+												userId: m.userId,
+												name: m.user.name,
+												email: m.user.email,
+												restore: false,
+											})
+										}
+									>
+										Confirm email
+									</Button>
+								)}
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={archiveMutation.isPending}
+									onClick={() => {
+										if (archived && person?.emailUnconfirmed) {
+											setConfirmEmail({
+												userId: m.userId,
+												name: m.user.name,
+												email: m.user.email,
+												restore: true,
+											});
+											return;
+										}
+										archiveMutation.mutate({
 											userId: m.userId,
-											name: m.user.name,
-											email: m.user.email,
-											restore: true,
+											archived: !archived,
 										});
-										return;
-									}
-									archiveMutation.mutate({
-										userId: m.userId,
-										archived: !archived,
-									});
-								}}
-							>
-								{archived ? "Restore" : "Archive"}
-							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								className="text-destructive hover:bg-destructive/8 hover:text-destructive"
-								disabled={removeMutation.isPending}
-								onClick={() => removeMutation.mutate(m.id)}
-							>
-								Remove
-							</Button>
-						</div>
-					)}
+									}}
+								>
+									{archived ? "Restore" : "Archive"}
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="text-destructive hover:bg-destructive/8 hover:text-destructive"
+									disabled={removeMutation.isPending}
+									onClick={() => removeMutation.mutate(m.id)}
+								>
+									Remove
+								</Button>
+							</>
+						)}
+					</div>
 				</TableCell>
 			</TableRow>
 		);

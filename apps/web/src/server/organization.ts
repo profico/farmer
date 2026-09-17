@@ -39,6 +39,8 @@ export const enterOrganization = createServerFn({ method: "POST" })
 		const { organization } = await import("@farmer/core/schema/auth");
 		const { membersService } = await import("@farmer/core/services");
 		const { toWeekStartsOn } = await import("@farmer/core/lib/time");
+		const { isPlatformAdminRole } =
+			await import("@farmer/core/lib/platform-admin");
 
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.slug, slug),
@@ -66,6 +68,24 @@ export const enterOrganization = createServerFn({ method: "POST" })
 			// The column is a plain integer; every week on screen reads this one.
 			organization: { ...org, weekStartsOn: toWeekStartsOn(org.weekStartsOn) },
 			role,
+			// Whether this person operates the DEPLOYMENT, which is a different
+			// question from `role` above and a different column — see
+			// `packages/core/src/lib/platform-admin.ts`. Resolved here rather than
+			// read off the session in the browser so the role string stays on the
+			// server, and so the flag arrives with the rest of the shell's context
+			// instead of a frame later.
+			//
+			// It gates a button and nothing more: better-auth refuses the
+			// impersonation endpoint itself to anybody without the role, whatever
+			// the client believes.
+			isPlatformAdmin: isPlatformAdminRole(context.session.user.role),
+			// The person being impersonated right now, or null. `impersonatedBy`
+			// holds the OPERATOR's user id, so its presence is the signal and
+			// `user.name` — the account the session currently is — is what the
+			// sidebar shows.
+			impersonating: context.session.session.impersonatedBy
+				? context.session.user.name
+				: null,
 		};
 	});
 

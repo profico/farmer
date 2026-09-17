@@ -60,6 +60,13 @@ export const Route = createFileRoute("/$orgSlug")({
 			session: entered.session,
 			organization: entered.organization,
 			role: entered.role,
+			// Operates the deployment, as opposed to administering this workspace
+			// — `PLATFORM_ADMIN_EMAILS`, not `member.role`. The only thing it opens
+			// is Impersonate on Settings → People.
+			isPlatformAdmin: entered.isPlatformAdmin,
+			// The name of the person this session currently IS, when it got there by
+			// impersonation. Null the rest of the time, which is almost always.
+			impersonating: entered.impersonating,
 			singleOrg: config.singleOrgMode,
 			assistantEnabled: config.assistantEnabled,
 			// The MCP server's own switch. Nothing in the nav reads it — an MCP
@@ -108,8 +115,14 @@ export const Route = createFileRoute("/$orgSlug")({
 });
 
 function OrgLayout() {
-	const { session, organization, role, singleOrg, assistantEnabled } =
-		Route.useRouteContext();
+	const {
+		session,
+		organization,
+		role,
+		singleOrg,
+		assistantEnabled,
+		impersonating,
+	} = Route.useRouteContext();
 	const posthog = usePostHog();
 	const isAdmin = role === "owner" || role === "admin";
 
@@ -161,6 +174,7 @@ function OrgLayout() {
 					singleOrg={singleOrg}
 					assistantAvailable={assistantAvailable}
 					timezone={organization.timezone}
+					impersonating={impersonating}
 				/>
 				<SidebarInset>
 					<Outlet />
