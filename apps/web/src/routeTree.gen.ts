@@ -12,13 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as NoAccessRouteImport } from './routes/no-access'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DeviceRouteImport } from './routes/device'
-import { Route as InfrastructureRouteRouteImport } from './routes/infrastructure/route'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as InfrastructureIndexRouteImport } from './routes/infrastructure/index'
 import { Route as CliIndexRouteImport } from './routes/cli/index'
 import { Route as OrgSlugIndexRouteImport } from './routes/$orgSlug/index'
-import { Route as InfrastructureAdminsRouteImport } from './routes/infrastructure/admins'
 import { Route as CliInstallDotshRouteImport } from './routes/cli/install[.]sh'
 import { Route as CliInstallDotps1RouteImport } from './routes/cli/install[.]ps1'
 import { Route as ApiMcpLoginRouteImport } from './routes/api/mcp-login'
@@ -53,6 +50,7 @@ import { Route as OrgSlugSettingsTasksRouteImport } from './routes/$orgSlug/sett
 import { Route as OrgSlugSettingsRemindersRouteImport } from './routes/$orgSlug/settings/reminders'
 import { Route as OrgSlugSettingsRecurringBlocksRouteImport } from './routes/$orgSlug/settings/recurring-blocks'
 import { Route as OrgSlugSettingsPreferencesRouteImport } from './routes/$orgSlug/settings/preferences'
+import { Route as OrgSlugSettingsPlatformAdminsRouteImport } from './routes/$orgSlug/settings/platform-admins'
 import { Route as OrgSlugSettingsOrganizationRouteImport } from './routes/$orgSlug/settings/organization'
 import { Route as OrgSlugSettingsMyScheduleRouteImport } from './routes/$orgSlug/settings/my-schedule'
 import { Route as OrgSlugSettingsMembersRouteImport } from './routes/$orgSlug/settings/members'
@@ -94,11 +92,6 @@ const DeviceRoute = DeviceRouteImport.update({
   path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
-const InfrastructureRouteRoute = InfrastructureRouteRouteImport.update({
-  id: '/infrastructure',
-  path: '/infrastructure',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
   id: '/$orgSlug',
   path: '/$orgSlug',
@@ -109,11 +102,6 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const InfrastructureIndexRoute = InfrastructureIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => InfrastructureRouteRoute,
-} as any)
 const CliIndexRoute = CliIndexRouteImport.update({
   id: '/cli/',
   path: '/cli/',
@@ -123,11 +111,6 @@ const OrgSlugIndexRoute = OrgSlugIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => OrgSlugRouteRoute,
-} as any)
-const InfrastructureAdminsRoute = InfrastructureAdminsRouteImport.update({
-  id: '/admins',
-  path: '/admins',
-  getParentRoute: () => InfrastructureRouteRoute,
 } as any)
 const CliInstallDotshRoute = CliInstallDotshRouteImport.update({
   id: '/cli/install.sh',
@@ -306,6 +289,12 @@ const OrgSlugSettingsPreferencesRoute =
     path: '/settings/preferences',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const OrgSlugSettingsPlatformAdminsRoute =
+  OrgSlugSettingsPlatformAdminsRouteImport.update({
+    id: '/settings/platform-admins',
+    path: '/settings/platform-admins',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 const OrgSlugSettingsOrganizationRoute =
   OrgSlugSettingsOrganizationRouteImport.update({
     id: '/settings/organization',
@@ -451,7 +440,6 @@ const ApiV1OrgsOrgSlugAbsencesIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
-  '/infrastructure': typeof InfrastructureRouteRouteWithChildren
   '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
@@ -466,10 +454,8 @@ export interface FileRoutesByFullPath {
   '/api/mcp-login': typeof ApiMcpLoginRoute
   '/cli/install.ps1': typeof CliInstallDotps1Route
   '/cli/install.sh': typeof CliInstallDotshRoute
-  '/infrastructure/admins': typeof InfrastructureAdminsRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/cli/': typeof CliIndexRoute
-  '/infrastructure/': typeof InfrastructureIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -478,6 +464,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
+  '/$orgSlug/settings/platform-admins': typeof OrgSlugSettingsPlatformAdminsRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
   '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
@@ -534,10 +521,8 @@ export interface FileRoutesByTo {
   '/api/mcp-login': typeof ApiMcpLoginRoute
   '/cli/install.ps1': typeof CliInstallDotps1Route
   '/cli/install.sh': typeof CliInstallDotshRoute
-  '/infrastructure/admins': typeof InfrastructureAdminsRoute
   '/$orgSlug': typeof OrgSlugIndexRoute
   '/cli': typeof CliIndexRoute
-  '/infrastructure': typeof InfrastructureIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -546,6 +531,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
+  '/$orgSlug/settings/platform-admins': typeof OrgSlugSettingsPlatformAdminsRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
   '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
@@ -591,7 +577,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
-  '/infrastructure': typeof InfrastructureRouteRouteWithChildren
   '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
@@ -606,10 +591,8 @@ export interface FileRoutesById {
   '/api/mcp-login': typeof ApiMcpLoginRoute
   '/cli/install.ps1': typeof CliInstallDotps1Route
   '/cli/install.sh': typeof CliInstallDotshRoute
-  '/infrastructure/admins': typeof InfrastructureAdminsRoute
   '/$orgSlug/': typeof OrgSlugIndexRoute
   '/cli/': typeof CliIndexRoute
-  '/infrastructure/': typeof InfrastructureIndexRoute
   '/$orgSlug/settings/clients': typeof OrgSlugSettingsClientsRoute
   '/$orgSlug/settings/holidays': typeof OrgSlugSettingsHolidaysRoute
   '/$orgSlug/settings/hour-fund': typeof OrgSlugSettingsHourFundRoute
@@ -618,6 +601,7 @@ export interface FileRoutesById {
   '/$orgSlug/settings/members': typeof OrgSlugSettingsMembersRoute
   '/$orgSlug/settings/my-schedule': typeof OrgSlugSettingsMyScheduleRoute
   '/$orgSlug/settings/organization': typeof OrgSlugSettingsOrganizationRoute
+  '/$orgSlug/settings/platform-admins': typeof OrgSlugSettingsPlatformAdminsRoute
   '/$orgSlug/settings/preferences': typeof OrgSlugSettingsPreferencesRoute
   '/$orgSlug/settings/recurring-blocks': typeof OrgSlugSettingsRecurringBlocksRoute
   '/$orgSlug/settings/reminders': typeof OrgSlugSettingsRemindersRoute
@@ -664,7 +648,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$orgSlug'
-    | '/infrastructure'
     | '/device'
     | '/login'
     | '/no-access'
@@ -679,10 +662,8 @@ export interface FileRouteTypes {
     | '/api/mcp-login'
     | '/cli/install.ps1'
     | '/cli/install.sh'
-    | '/infrastructure/admins'
     | '/$orgSlug/'
     | '/cli/'
-    | '/infrastructure/'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -691,6 +672,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
+    | '/$orgSlug/settings/platform-admins'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
     | '/$orgSlug/settings/reminders'
@@ -747,10 +729,8 @@ export interface FileRouteTypes {
     | '/api/mcp-login'
     | '/cli/install.ps1'
     | '/cli/install.sh'
-    | '/infrastructure/admins'
     | '/$orgSlug'
     | '/cli'
-    | '/infrastructure'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -759,6 +739,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
+    | '/$orgSlug/settings/platform-admins'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
     | '/$orgSlug/settings/reminders'
@@ -803,7 +784,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$orgSlug'
-    | '/infrastructure'
     | '/device'
     | '/login'
     | '/no-access'
@@ -818,10 +798,8 @@ export interface FileRouteTypes {
     | '/api/mcp-login'
     | '/cli/install.ps1'
     | '/cli/install.sh'
-    | '/infrastructure/admins'
     | '/$orgSlug/'
     | '/cli/'
-    | '/infrastructure/'
     | '/$orgSlug/settings/clients'
     | '/$orgSlug/settings/holidays'
     | '/$orgSlug/settings/hour-fund'
@@ -830,6 +808,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/members'
     | '/$orgSlug/settings/my-schedule'
     | '/$orgSlug/settings/organization'
+    | '/$orgSlug/settings/platform-admins'
     | '/$orgSlug/settings/preferences'
     | '/$orgSlug/settings/recurring-blocks'
     | '/$orgSlug/settings/reminders'
@@ -875,7 +854,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
-  InfrastructureRouteRoute: typeof InfrastructureRouteRouteWithChildren
   DeviceRoute: typeof DeviceRoute
   LoginRoute: typeof LoginRoute
   NoAccessRoute: typeof NoAccessRoute
@@ -939,13 +917,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/infrastructure': {
-      id: '/infrastructure'
-      path: '/infrastructure'
-      fullPath: '/infrastructure'
-      preLoaderRoute: typeof InfrastructureRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/$orgSlug': {
       id: '/$orgSlug'
       path: '/$orgSlug'
@@ -960,13 +931,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/infrastructure/': {
-      id: '/infrastructure/'
-      path: '/'
-      fullPath: '/infrastructure/'
-      preLoaderRoute: typeof InfrastructureIndexRouteImport
-      parentRoute: typeof InfrastructureRouteRoute
-    }
     '/cli/': {
       id: '/cli/'
       path: '/cli'
@@ -980,13 +944,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/$orgSlug/'
       preLoaderRoute: typeof OrgSlugIndexRouteImport
       parentRoute: typeof OrgSlugRouteRoute
-    }
-    '/infrastructure/admins': {
-      id: '/infrastructure/admins'
-      path: '/admins'
-      fullPath: '/infrastructure/admins'
-      preLoaderRoute: typeof InfrastructureAdminsRouteImport
-      parentRoute: typeof InfrastructureRouteRoute
     }
     '/cli/install.sh': {
       id: '/cli/install.sh'
@@ -1226,6 +1183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsPreferencesRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/settings/platform-admins': {
+      id: '/$orgSlug/settings/platform-admins'
+      path: '/settings/platform-admins'
+      fullPath: '/$orgSlug/settings/platform-admins'
+      preLoaderRoute: typeof OrgSlugSettingsPlatformAdminsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/settings/organization': {
       id: '/$orgSlug/settings/organization'
       path: '/settings/organization'
@@ -1433,6 +1397,7 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugSettingsMembersRoute: typeof OrgSlugSettingsMembersRoute
   OrgSlugSettingsMyScheduleRoute: typeof OrgSlugSettingsMyScheduleRoute
   OrgSlugSettingsOrganizationRoute: typeof OrgSlugSettingsOrganizationRoute
+  OrgSlugSettingsPlatformAdminsRoute: typeof OrgSlugSettingsPlatformAdminsRoute
   OrgSlugSettingsPreferencesRoute: typeof OrgSlugSettingsPreferencesRoute
   OrgSlugSettingsRecurringBlocksRoute: typeof OrgSlugSettingsRecurringBlocksRoute
   OrgSlugSettingsRemindersRoute: typeof OrgSlugSettingsRemindersRoute
@@ -1459,6 +1424,7 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugSettingsMembersRoute: OrgSlugSettingsMembersRoute,
   OrgSlugSettingsMyScheduleRoute: OrgSlugSettingsMyScheduleRoute,
   OrgSlugSettingsOrganizationRoute: OrgSlugSettingsOrganizationRoute,
+  OrgSlugSettingsPlatformAdminsRoute: OrgSlugSettingsPlatformAdminsRoute,
   OrgSlugSettingsPreferencesRoute: OrgSlugSettingsPreferencesRoute,
   OrgSlugSettingsRecurringBlocksRoute: OrgSlugSettingsRecurringBlocksRoute,
   OrgSlugSettingsRemindersRoute: OrgSlugSettingsRemindersRoute,
@@ -1476,23 +1442,9 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
   OrgSlugRouteRouteChildren,
 )
 
-interface InfrastructureRouteRouteChildren {
-  InfrastructureAdminsRoute: typeof InfrastructureAdminsRoute
-  InfrastructureIndexRoute: typeof InfrastructureIndexRoute
-}
-
-const InfrastructureRouteRouteChildren: InfrastructureRouteRouteChildren = {
-  InfrastructureAdminsRoute: InfrastructureAdminsRoute,
-  InfrastructureIndexRoute: InfrastructureIndexRoute,
-}
-
-const InfrastructureRouteRouteWithChildren =
-  InfrastructureRouteRoute._addFileChildren(InfrastructureRouteRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
-  InfrastructureRouteRoute: InfrastructureRouteRouteWithChildren,
   DeviceRoute: DeviceRoute,
   LoginRoute: LoginRoute,
   NoAccessRoute: NoAccessRoute,

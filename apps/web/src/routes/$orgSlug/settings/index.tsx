@@ -23,8 +23,9 @@ import { myAccessQuery } from "#/queries/access.ts";
  *
  * The first two sections here are the same split the pages' own eyebrows
  * already state: Account over Preferences, Workspace over Organization. A third,
- * Instance, appears only for a platform admin and leaves the workspace
- * altogether. All three, their order and their contents come from
+ * Infrastructure, appears only for a platform admin and holds the deployment's
+ * own settings rather than this workspace's. All three, their order and their
+ * contents come from
  * `components/settings-nav.tsx`, which the sidebar's sub-menu reads too — so the
  * menu and this page cannot disagree about what exists, what it is called, or
  * which section it is in.
@@ -96,7 +97,9 @@ function SettingsIndex() {
 	});
 	const account = entries.filter((entry) => entry.group === "account");
 	const workspace = entries.filter((entry) => entry.group === "workspace");
-	const instance = entries.filter((entry) => entry.group === "instance");
+	const infrastructure = entries.filter(
+		(entry) => entry.group === "infrastructure",
+	);
 
 	return (
 		<Page>
@@ -129,12 +132,12 @@ function SettingsIndex() {
 				</PageSection>
 			)}
 
-			{instance.length > 0 && (
+			{infrastructure.length > 0 && (
 				<PageSection
-					title={SETTINGS_GROUP_LABEL.instance}
+					title={SETTINGS_GROUP_LABEL.infrastructure}
 					contentClassName="grid gap-x-10 sm:grid-cols-2"
 				>
-					{instance.map((entry) => (
+					{infrastructure.map((entry) => (
 						<SettingsRowLink key={entry.item.to} {...entry} />
 					))}
 				</PageSection>

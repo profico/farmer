@@ -1,20 +1,22 @@
+import { ShieldCheckIcon } from "@phosphor-icons/react";
 import {
 	useMutation,
 	useQuery,
 	useQueryClient,
 	useSuspenseQuery,
 } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
 	Avatar,
 	AvatarFallback,
 	AvatarImage,
 } from "#/components/ui/avatar.tsx";
 import { Button } from "#/components/ui/button.tsx";
-import { PageHeader, PageSection } from "#/components/ui/page-header.tsx";
+import { Page, PageHeader, PageSection } from "#/components/ui/page-header.tsx";
 import { SearchInput } from "#/components/ui/search-input.tsx";
 import { getInitials } from "#/lib/utils.ts";
 import { platformKeys } from "#/queries/keys.ts";
@@ -25,13 +27,51 @@ import {
 import { setPlatformAdmin } from "#/server/platform-admins.ts";
 
 /**
+ * Who operates this deployment.
+ *
+ * **A settings page like every other one, under an Infrastructure group.** The
+ * data is the instance's rather than the workspace's — `user.role`, one value
+ * per person for the whole deployment — but that is a fact about the data, not
+ * a reason to give it its own chrome: somebody looking for it goes to Settings,
+ * and a page that leaves the sidebar behind reads as having left the app.
+ * `settings-nav.tsx` carries it as a third group beside Account and Workspace,
+ * shown only to a platform admin.
+ *
+ * **The list is the admins, and everybody else is behind a search.** A
+ * multi-tenant instance's `user` table is every customer's staff directory, so
+ * rendering it to fill in a promote screen turns one grant into a readable
+ * roster of every person on the deployment. The search answers a name somebody
+ * already has; it refuses a query under two characters, server-side as well as
+ * here, so an empty box cannot be made to mean "everybody".
+ *
+ * The role carries impersonation, which is why the copy says so plainly rather
+ * than calling it access. See `docs/domains/authentication.md`.
+ */
+export const Route = createFileRoute("/$orgSlug/settings/platform-admins")({
+	beforeLoad: ({ context, params }) => {
+		// Read off the parent layout's context rather than a server call: it is
+		// already resolved for this request, and the real refusal is
+		// `platformAdminMiddleware` on every server function below.
+		if (!context.isPlatformAdmin) {
+			throw redirect({
+				to: "/$orgSlug/settings",
+				params: { orgSlug: params.orgSlug },
+			});
+		}
+	},
+	loader: async ({ context }) => {
+		await context.queryClient.ensureQueryData(platformAdminsQuery());
+	},
+	component: PlatformAdminsPage,
+});
+
+/**
  * A person's face and name, off the `user` row itself.
  *
  * Deliberately not `PersonCell`: that one resolves a photo through the org
- * directory and therefore calls `useOrgSlug`, which reads the `/$orgSlug` route
- * match. This page sits outside that layout on purpose, so the shared component
- * throws here. It also has nothing to look up — these people are the instance's
- * accounts, not one workspace's roster — and `user.image` is the photo anyway.
+ * directory, and these people are the instance's accounts rather than this
+ * workspace's roster — an admin of another organization has no directory row
+ * here. `user.image` is the photo anyway.
  */
 function PlatformPersonCell({
 	person,
@@ -57,26 +97,6 @@ function PlatformPersonCell({
 		</span>
 	);
 }
-
-/**
- * Who operates this deployment.
- *
- * **The list is the admins, and everybody else is behind a search.** A
- * multi-tenant instance's `user` table is every customer's staff directory, so
- * rendering it to fill in a promote screen turns one grant into a readable
- * roster of every person on the deployment. The search answers a name somebody
- * already has; it refuses a query under two characters, server-side as well as
- * here, so an empty box cannot be made to mean "everybody".
- *
- * The role carries impersonation, which is why the copy says so plainly rather
- * than calling it access. See `docs/domains/authentication.md`.
- */
-export const Route = createFileRoute("/infrastructure/admins")({
-	loader: async ({ context }) => {
-		await context.queryClient.ensureQueryData(platformAdminsQuery());
-	},
-	component: PlatformAdminsPage,
-});
 
 function PlatformAdminsPage() {
 	const queryClient = useQueryClient();
@@ -110,8 +130,9 @@ function PlatformAdminsPage() {
 	const busy = change.isPending;
 
 	return (
-		<>
+		<Page>
 			<PageHeader
+				eyebrow={<SettingsEyebrow />}
 				title="Platform admins"
 				lede="Who operates this deployment, as opposed to who administers a workspace inside it. A platform admin can impersonate any user in any workspace, so keep the list short."
 			/>
@@ -177,6 +198,7 @@ function PlatformAdminsPage() {
 										})
 									}
 								>
+									<ShieldCheckIcon />
 									Make platform admin
 								</Button>
 							</li>
@@ -191,6 +213,6 @@ function PlatformAdminsPage() {
 					</ul>
 				)}
 			</PageSection>
-		</>
+		</Page>
 	);
 }

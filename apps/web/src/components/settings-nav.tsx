@@ -43,7 +43,7 @@ export type SettingsAudience = {
 export type SettingsEntry = {
 	item: NavItem;
 	/** Which of the hub's three sections the row belongs to. */
-	group: "account" | "workspace" | "instance";
+	group: "account" | "workspace" | "infrastructure";
 	description: string;
 	show: (audience: SettingsAudience) => boolean;
 };
@@ -174,19 +174,20 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		description: "The public holidays this workspace observes.",
 		show: always,
 	},
-	// The deployment's own settings, which are not this workspace's — and the
-	// only way into them. Its own group rather than a row under Workspace,
-	// because it LEAVES the workspace: the destination carries no `$orgSlug`,
-	// and a platform admin need not be a member of the organization they happen
-	// to be looking at when they go there.
+	// The deployment's own settings, which are not this workspace's. Its own
+	// group rather than a row under Workspace, because the data behind it is the
+	// instance's — `user.role`, one value per person for the whole deployment —
+	// and most people never see the group at all. Issue #75's further entries
+	// (email, S3, the OAuth sources) join it here.
 	{
 		item: {
-			label: "Infrastructure",
-			to: "/infrastructure/admins",
+			label: "Platform admins",
+			to: "/$orgSlug/settings/platform-admins",
 			icon: ShieldCheckIcon,
 		},
-		group: "instance",
-		description: "How this deployment runs, starting with who operates it.",
+		group: "infrastructure",
+		description:
+			"Who operates this deployment, and who may impersonate any user in it.",
 		show: (audience) => audience.isPlatformAdmin,
 	},
 ];
@@ -205,7 +206,7 @@ export const settingsSubNavItems = (audience: SettingsAudience): NavItem[] =>
 export const SETTINGS_GROUP_LABEL = {
 	account: "Account",
 	workspace: "Workspace",
-	instance: "Instance",
+	infrastructure: "Infrastructure",
 } as const;
 
 /**
@@ -223,12 +224,12 @@ export const SETTINGS_GROUP_LABEL = {
 export const settingsNavGroups = (
 	audience: SettingsAudience,
 ): {
-	key: "account" | "workspace" | "instance";
+	key: "account" | "workspace" | "infrastructure";
 	label: string;
 	items: NavItem[];
 }[] => {
 	const entries = settingsEntriesFor(audience);
-	return (["account", "workspace", "instance"] as const)
+	return (["account", "workspace", "infrastructure"] as const)
 		.map((key) => ({
 			key,
 			label: SETTINGS_GROUP_LABEL[key],
