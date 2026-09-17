@@ -151,6 +151,12 @@ export function TaskPicker({
 			.filter((g) => g.items.length > 0);
 	}, [groups, query]);
 
+	// Harvest's habit: a search narrowed to one task, then Tab, takes that task
+	// and moves on. Recent is hidden while a query is typed, so one match is one
+	// task, never the same task twice.
+	const matches = query.trim() === "" ? [] : filtered.flatMap((g) => g.items);
+	const soleMatch = matches.length === 1 ? matches[0] : undefined;
+
 	// The group row, not the recent one, so the tick shows in one place.
 	const selected =
 		groups.flatMap((g) => g.items).find((i) => i.id === value && !i.recent) ??
@@ -203,6 +209,9 @@ export function TaskPicker({
 			<ComboboxContent
 				searchPlaceholder={grouped ? "Search tasks…" : false}
 				className={grouped ? undefined : "w-auto min-w-(--popup-anchor-width)"}
+				onSearchTab={() => {
+					if (soleMatch) onValueChange(soleMatch.id);
+				}}
 			>
 				<ComboboxEmpty>No task matches.</ComboboxEmpty>
 				<ComboboxList>

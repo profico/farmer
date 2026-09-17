@@ -134,6 +134,11 @@ export function ProjectPicker({
 			.filter((g) => g.items.length > 0);
 	}, [groups, query]);
 
+	// Harvest's habit: a search narrowed to one project, then Tab, takes that
+	// project and moves on. The "no project" row is a match like any other.
+	const matches = query.trim() === "" ? [] : filtered.flatMap((g) => g.items);
+	const soleMatch = matches.length === 1 ? matches[0] : undefined;
+
 	const selected =
 		value === null
 			? noProject
@@ -177,7 +182,12 @@ export function ProjectPicker({
 					}
 				</ComboboxValue>
 			</ComboboxTrigger>
-			<ComboboxContent searchPlaceholder="Search projects and clients…">
+			<ComboboxContent
+				searchPlaceholder="Search projects and clients…"
+				onSearchTab={() => {
+					if (soleMatch) onValueChange(soleMatch.id);
+				}}
+			>
 				<ComboboxEmpty>No project matches.</ComboboxEmpty>
 				<ComboboxList>
 					{(group: Group) => (
