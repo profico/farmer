@@ -10,7 +10,7 @@ import {
 } from "better-auth/plugins";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { CLI_CLIENT_ID } from "../api/errors";
 import { db } from "../db";
@@ -18,11 +18,7 @@ import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
 import { sendMail } from "../lib/email";
-import {
-	PLATFORM_ADMIN_ROLE,
-	PLATFORM_USER_ROLE,
-	platformRoleFor,
-} from "../lib/platform-admin";
+import { PLATFORM_ADMIN_ROLE, PLATFORM_USER_ROLE } from "../lib/platform-admin";
 import {
 	bootstrapSingleOrg,
 	findPendingInvitation,
@@ -47,30 +43,58 @@ const uniqueSlugFor = async (name: string) => {
 	return slug;
 };
 
+/** An arbitrary constant, shared only with itself. `pg_advisory_xact_lock`
+ *  namespaces nothing, so the number has to be unique among the locks this
+ *  application takes; it is the only one today. */
+const PLATFORM_ADMIN_LOCK = 8_531_207;
+
 /**
- * Write `user.role` to whatever `PLATFORM_ADMIN_EMAILS` says it should be.
+ * Give the instance's first account the platform admin role.
+ *
+ * Whoever deploys Farmer and signs in first operates it — the same shape as
+ * single-org mode's "first person to sign in claims the instance", and what
+ * issue #75 records for the wider Infrastructure work. Everybody after them is
+ * promoted by somebody who already holds it (better-auth's `admin/set-role`).
+ * There is no environment variable: the grant is a database value.
+ *
+ * **The rule is "the oldest `user` row, and only while nobody holds it", not
+ * "nobody holds it".** Those come apart on a populated instance: an open
+ * deployment accepts a Google sign-up from anybody, so "grant it to the next
+ * person who signs in when the role is vacant" hands the deployment to a
+ * stranger the moment the one admin is deleted. Being the oldest row is
+ * something a later signup can never become.
+ *
+ * Runs AFTER the insert, because the question is about a row that now exists,
+ * and inside an advisory lock, because two first signups a millisecond apart
+ * would otherwise both read an empty table and both grant. The lock costs one
+ * round trip per account created, once in that account's life.
  *
  * A plain `update`, not the internal adapter: the admin plugin declares `role`
- * with `input: false`, so better-auth's own update path drops it, and it is
- * right to — the whole point of that flag is that no request may set its own
- * role. This is the deployment's environment speaking, not a caller.
- *
- * Guarded by a read so the common case (everybody, every sign-in) is one
- * SELECT and no write at all. Called from the session hook below, which sees
- * only a user id.
+ * with `input: false`, so better-auth's own update path drops it — and it is
+ * right to, since the point of that flag is that no request may set its own
+ * role. This is the instance bootstrapping itself, not a caller.
  */
-const reconcilePlatformRole = async (userId: string) => {
-	const row = await db.query.user.findFirst({
-		where: eq(schema.user.id, userId),
-		columns: { email: true, role: true },
+const claimPlatformAdmin = async (userId: string) => {
+	await db.transaction(async (tx) => {
+		await tx.execute(sql`select pg_advisory_xact_lock(${PLATFORM_ADMIN_LOCK})`);
+		const held = await tx.query.user.findFirst({
+			where: eq(schema.user.role, PLATFORM_ADMIN_ROLE),
+			columns: { id: true },
+		});
+		if (held) return;
+		const oldest = await tx.query.user.findFirst({
+			// `createdAt` alone is not a total order — two rows written in the same
+			// millisecond would tie, and the answer has to be the same one every
+			// time it is asked.
+			orderBy: [asc(schema.user.createdAt), asc(schema.user.id)],
+			columns: { id: true },
+		});
+		if (oldest?.id !== userId) return;
+		await tx
+			.update(schema.user)
+			.set({ role: PLATFORM_ADMIN_ROLE })
+			.where(eq(schema.user.id, userId));
 	});
-	if (!row) return;
-	const expected = platformRoleFor(row.email);
-	if (row.role === expected) return;
-	await db
-		.update(schema.user)
-		.set({ role: expected })
-		.where(eq(schema.user.id, userId));
 };
 
 export const auth = betterAuth({
@@ -217,6 +241,11 @@ export const auth = betterAuth({
 					});
 				},
 				after: async (user) => {
+					// Before either branch: an instance's first account operates it
+					// whether or not it is in single-org mode, and whether or not the
+					// organization bootstrap below has anything to do.
+					await claimPlatformAdmin(user.id);
+
 					if (isSingleOrgMode()) {
 						// Either this call claims the instance, or the user was invited
 						// and their membership comes from accepting the invitation — not
@@ -251,28 +280,6 @@ export const auth = betterAuth({
 		session: {
 			create: {
 				before: async (session) => {
-					// Bring `user.role` back in line with `PLATFORM_ADMIN_EMAILS`.
-					//
-					// This is the only writer of that column, and a sign-in is the only
-					// moment it can run: the list is an environment variable, so it
-					// changes when the deployment restarts, and nothing else in the app
-					// ever looks at a user row it has no request for. A boot-time sweep
-					// was the alternative and is worse — it would have to reach every
-					// user in the database to find the two it cares about, and it still
-					// would not cover somebody added to the list while the server is up.
-					//
-					// It runs in BOTH directions, which is the part worth keeping: an
-					// address removed from the list loses the role on its owner's next
-					// sign-in. A grant-only version would leave a former operator
-					// holding impersonation until somebody remembered the column
-					// existed.
-					//
-					// The corollary — a session that is already open keeps whatever
-					// role it had until it is signed out of — is real but small: the
-					// role is read from the user row on every request, not from the
-					// session, so the change lands as soon as the row does.
-					await reconcilePlatformRole(session.userId);
-
 					// In single-org mode, pin the session to *the* organization rather
 					// than to whichever membership happens to come back first. Only
 					// matters for a database that had several organizations before the
@@ -526,9 +533,11 @@ export const auth = betterAuth({
 		// admin view reproduces that combination — reading the database tells you
 		// what the rows say, not what the app draws from them.
 		//
-		// **Who may do it is `PLATFORM_ADMIN_EMAILS`, not an org role.** See
+		// **Who may do it is `user.role`, not an org role.** See
 		// `lib/platform-admin.ts` for why the two are deliberately different
-		// columns, and the session hook above for when `user.role` is written.
+		// columns, and `claimPlatformAdmin` above for how the first one is
+		// written. Every one after that comes from this plugin's own
+		// `admin/set-role`, which requires the role it grants.
 		//
 		// `roles` has to be given explicitly, and is not decoration. The plugin
 		// resolves a permission by looking the session user's role up in this map
