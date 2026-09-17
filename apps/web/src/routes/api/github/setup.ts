@@ -73,7 +73,9 @@ export const Route = createFileRoute("/api/github/setup")({
 				const org = await db.query.organization.findFirst({
 					where: (o, { eq }) => eq(o.id, orgId),
 				});
-				return redirectTo(org ? `/${org.slug}/settings/integrations` : "/");
+				return redirectTo(
+					org ? `/${org.slug}/settings/workspace-integrations` : "/",
+				);
 			},
 		},
 	},
