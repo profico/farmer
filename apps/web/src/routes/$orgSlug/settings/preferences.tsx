@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { ColorWheel } from "#/components/color-wheel.tsx";
 import { FilingRulesSettings } from "#/components/filing-rules-settings.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
+import { YourTasksSection } from "#/components/pickers/your-tasks.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
 	AlertDialog,
@@ -54,6 +55,7 @@ import { SCALES, useScale } from "#/lib/scale.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { mySessionsQuery } from "#/queries/sessions.ts";
+import { hiddenTasksQuery, selectableTasksQuery } from "#/queries/tasks.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
 import { type listMySessions, revokeMySession } from "#/server/sessions.ts";
 
@@ -68,6 +70,10 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 				: null,
 			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(mySessionsQuery(orgSlug)),
+			// Your tasks, so its chips are there on first paint instead of
+			// pushing every section below them down when they arrive.
+			context.queryClient.ensureQueryData(selectableTasksQuery(orgSlug)),
+			context.queryClient.ensureQueryData(hiddenTasksQuery(orgSlug)),
 		]);
 		return { devAuth: context.devAuth };
 	},
@@ -625,6 +631,7 @@ function PreferencesSettingsPage() {
 			/>
 
 			<DisplaySection />
+			<YourTasksSection />
 
 			{devAuth ? <SignInMethodsSection /> : null}
 
