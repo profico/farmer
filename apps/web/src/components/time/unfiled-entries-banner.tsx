@@ -501,20 +501,21 @@ function UnfiledGroupRow({
 						) : first ? (
 							whenLabel(first, timezone)
 						) : null}
+						{" · "}
+						<RemoveLink
+							disabled={removing}
+							what={
+								isRecurring
+									? `all ${group.entries.length} occurrences of ${group.title}`
+									: group.title
+							}
+							onClick={() => onRemove(group.entries.map((e) => e.id))}
+						/>
 					</span>
 				</span>
 				<span className="mono shrink-0 text-base tabular-nums">
 					{formatHoursShort(group.seconds)}
 				</span>
-				<RemoveLink
-					disabled={removing}
-					what={
-						isRecurring
-							? `all ${group.entries.length} occurrences of ${group.title}`
-							: group.title
-					}
-					onClick={() => onRemove(group.entries.map((e) => e.id))}
-				/>
 				<input
 					type="checkbox"
 					className="size-4 shrink-0 cursor-pointer accent-primary"
@@ -536,15 +537,18 @@ function UnfiledGroupRow({
 							key={entry.id}
 							className="flex cursor-pointer items-center gap-4 rounded-md py-1.5 pr-6 pl-14 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
 						>
-							<span className="flex-1">{whenLabel(entry, timezone)}</span>
+							<span className="flex-1">
+								{whenLabel(entry, timezone)}
+								{" · "}
+								<RemoveLink
+									disabled={removing}
+									what={`${group.title} on ${whenLabel(entry, timezone)}`}
+									onClick={() => onRemove([entry.id])}
+								/>
+							</span>
 							<span className="mono tabular-nums">
 								{formatHoursShort(entry.durationSeconds)}
 							</span>
-							<RemoveLink
-								disabled={removing}
-								what={`${group.title} on ${whenLabel(entry, timezone)}`}
-								onClick={() => onRemove([entry.id])}
-							/>
 							<input
 								type="checkbox"
 								className="size-4 cursor-pointer accent-primary"
@@ -559,9 +563,10 @@ function UnfiledGroupRow({
 	);
 }
 
-/** "Remove", quiet until hovered, then red: it deletes. Inside the row's
- *  label, so it cancels the label's default or the box would tick on the way
- *  to the handler. */
+/** "Remove", at the end of the row's second line, after the day and time —
+ *  the same grey as that line until hovered, then red, because it deletes.
+ *  Inside the row's label, so it cancels the label's default or the box would
+ *  tick on the way to the handler. */
 function RemoveLink({
 	what,
 	disabled,
@@ -577,7 +582,7 @@ function RemoveLink({
 			disabled={disabled}
 			aria-label={`Remove ${what}`}
 			title="Didn't happen? Remove it from the timesheet. The calendar won't bring it back."
-			className="shrink-0 cursor-pointer text-sm text-muted-foreground underline underline-offset-3 transition-colors duration-(--dur-fast) hover:text-destructive focus-visible:text-destructive focus-visible:outline-none disabled:cursor-default disabled:opacity-50"
+			className="cursor-pointer underline underline-offset-3 transition-colors duration-(--dur-fast) hover:text-destructive focus-visible:text-destructive focus-visible:outline-none disabled:cursor-default disabled:opacity-50"
 			onClick={(event) => {
 				event.preventDefault();
 				onClick();
