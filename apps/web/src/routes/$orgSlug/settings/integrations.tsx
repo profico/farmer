@@ -1,6 +1,5 @@
 import type { UpdateIntegrationSettingsInput } from "@farmer/core/schema";
 import {
-	CalendarBlankIcon,
 	GithubLogoIcon,
 	PlugsConnectedIcon,
 	TerminalWindowIcon,
@@ -14,6 +13,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { GoogleCalendarMark } from "#/components/google-calendar-mark.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
 	AlertDialog,
@@ -311,7 +311,7 @@ function IntegrationsSettingsPage() {
 			{/* Google Calendar — meeting autofill, per-user sync toggles */}
 			<PageSection>
 				<SettingRow
-					icon={<CalendarBlankIcon className="size-5" />}
+					icon={<GoogleCalendarMark className="size-5" />}
 					title="Google Calendar"
 					badge={
 						googleStatus.unreachable ? (

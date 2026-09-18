@@ -1,10 +1,11 @@
 import { timeKeyInTz } from "@farmer/core/lib/time";
-import { CalendarBlankIcon, TrayIcon } from "@phosphor-icons/react";
+import { TrayIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { GoogleCalendarMark } from "#/components/google-calendar-mark.tsx";
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { TaskPicker } from "#/components/pickers/task-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
@@ -29,7 +30,7 @@ import {
 	unfiledWindow,
 	unfiledWindowQuery,
 } from "#/queries/time-entries.ts";
-import { fileTimeEntries } from "#/server/time-entries.ts";
+import { deleteTimeEntry, fileTimeEntries } from "#/server/time-entries.ts";
 
 // Everything the engines write lands with no project: the calendar sync files
 // meetings this way, and so do commit fill blocks and accepted day-assembly
@@ -65,11 +66,18 @@ export function UnfiledEntriesBanner({
 		(sum, e) => sum + e.durationSeconds,
 		0,
 	);
-	// When everything on the list came from the calendar, say so: "entries
-	// aren't filed" describes the database, "meetings from your calendar need a
-	// project" describes what the person is looking at. A mixed list (a
-	// rest-of-day block, an accepted suggestion) keeps the general wording.
-	const allMeetings = count > 0 && (entries ?? []).every(isCalendarMeeting);
+	// Say what the person is looking at, not what the database holds. "Entries
+	// aren't filed against a project" is the schema talking; "3 calendar
+	// meetings need a project" is the list. A list with anything else on it
+	// (a rest-of-day block, an accepted suggestion) counts the two apart.
+	const meetings = (entries ?? []).filter(isCalendarMeeting).length;
+	const others = count - meetings;
+	const allMeetings = count > 0 && others === 0;
+	const headline = allMeetings
+		? `${meetings} calendar ${meetings === 1 ? "meeting needs" : "meetings need"} a project`
+		: meetings === 0
+			? `${count} ${count === 1 ? "entry needs" : "entries need"} a project`
+			: `${meetings} calendar ${meetings === 1 ? "meeting" : "meetings"} and ${others} other ${others === 1 ? "entry" : "entries"} need a project`;
 
 	return (
 		<>
@@ -84,25 +92,17 @@ export function UnfiledEntriesBanner({
 						className="mb-4 shrink-0 overflow-hidden rounded-lg border bg-secondary"
 					>
 						<div className="flex items-center gap-3 px-4 py-3">
-							{allMeetings ? (
-								<CalendarBlankIcon className="size-4 shrink-0 text-primary" />
+							{meetings > 0 ? (
+								<GoogleCalendarMark />
 							) : (
 								<TrayIcon className="size-4 shrink-0 text-primary" />
 							)}
 							<div className="min-w-0 flex-1">
-								<p className="text-base font-medium">
-									{allMeetings
-										? count === 1
-											? "1 meeting from your calendar needs a project"
-											: `${count} meetings from your calendar need a project`
-										: count === 1
-											? "1 entry needs a project"
-											: `${count} entries need a project`}
-								</p>
+								<p className="text-base font-medium">{headline}</p>
 								<p className="text-sm text-muted-foreground">
 									{allMeetings
-										? `Google Calendar added ${formatHoursShort(seconds)} of meetings. Pick the project each one belongs to and its time counts in that project's reports.`
-										: `${formatHoursShort(seconds)} of tracked time won't show in any project report until you file it.`}
+										? `${formatHoursShort(seconds)} synced from Google Calendar. Add each meeting to its project so the time shows up in reports.`
+										: `${formatHoursShort(seconds)} of your time isn't on any project yet, so it's missing from reports.`}
 								</p>
 							</div>
 							<Button size="sm" onClick={() => setOpen(true)}>
@@ -308,6 +308,31 @@ function FileEntriesDialog({
 		onError: (error: Error) => toast.error(error.message),
 	});
 
+	// The other answer to "where does this go": nowhere, because it didn't
+	// happen. Same delete as the timesheet row's, so a calendar meeting gets its
+	// tombstone and the next sync does not bring it back; Assemble my day can
+	// still re-offer it with "include dismissed" if that was a mistake.
+	const removeMutation = useMutation({
+		mutationFn: async () => {
+			const ids = [...selectedIds];
+			for (const id of ids) await deleteTimeEntry({ data: id });
+			return ids.length;
+		},
+		onSuccess: async (removed) => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+			setSelectedIds(new Set());
+			toast.success(
+				allMeetings
+					? `Removed ${removed} ${removed === 1 ? "meeting" : "meetings"} · the calendar won't bring ${removed === 1 ? "it" : "them"} back`
+					: `Removed ${removed} ${removed === 1 ? "entry" : "entries"}`,
+			);
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+	const busy = fileMutation.isPending || removeMutation.isPending;
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-2xl">
@@ -317,8 +342,8 @@ function FileEntriesDialog({
 					</DialogTitle>
 					<DialogDescription>
 						{allMeetings
-							? "These came from your Google Calendar. Tick the meetings that belong to a project and add them together. Choose a task only when they need a different one."
-							: "Pick the entries that belong to a project and file them together. Choose a task only when they need a different one."}
+							? "Tick the meetings that belong to one project, pick it, and add them in one go. Change the task only if Meeting isn't right."
+							: "Tick the entries that belong to one project, pick it, and file them in one go. Change the task only if it isn't right."}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -381,9 +406,20 @@ function FileEntriesDialog({
 									: `${selectedIds.size} selected · ${formatHoursShort(selectedSeconds)}`}
 							</span>
 							<Button
-								disabled={
-									selectedIds.size === 0 || !projectId || fileMutation.isPending
+								variant="ghost"
+								className="text-muted-foreground hover:text-destructive"
+								disabled={selectedIds.size === 0 || busy}
+								onClick={() => removeMutation.mutate()}
+								title={
+									allMeetings
+										? "The meeting didn't happen: remove it from the timesheet. The calendar won't bring it back."
+										: "Remove the selected entries from the timesheet."
 								}
+							>
+								{removeMutation.isPending ? "Removing…" : "Remove"}
+							</Button>
+							<Button
+								disabled={selectedIds.size === 0 || !projectId || busy}
 								onClick={() => fileMutation.mutate()}
 							>
 								{fileMutation.isPending
@@ -424,86 +460,85 @@ function UnfiledGroupRow({
 	return (
 		<div className="py-1">
 			{/* The label is the whole row, not just the box: a 16px checkbox is a
-			    hard target, and everything to its right identifies the same group.
-			    "Show dates" has to stay OUTSIDE it — a button nested in a label
-			    toggles the checkbox on its way to its own handler.
-
-			    Three things in a fixed place, so the eye can run down the list:
-			    the box, then what the meeting is (a calendar mark on synced rows,
-			    the title, then the task and when it was), then how long, in the
-			    mono figure the timesheet uses. */}
-			<div className="flex items-center gap-3 pr-6">
-				<label
-					className={cn(
-						"flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md py-2.5 pl-6 transition-colors duration-(--dur-fast) hover:bg-muted",
-						allIn && "bg-muted/60",
-					)}
-				>
-					<input
-						type="checkbox"
-						className="size-4 shrink-0 cursor-pointer accent-primary"
-						checked={allIn}
-						ref={(node) => {
-							// The only honest state for a partly-selected group. Set through a
-							// ref because `indeterminate` is a DOM property with no attribute.
-							if (node) node.indeterminate = someIn;
-						}}
-						onChange={onToggleGroup}
-						aria-label={`Select ${group.title}`}
-					/>
-					{group.fromCalendar && (
-						<CalendarBlankIcon
-							className="size-4 shrink-0 text-muted-foreground"
-							aria-label="From your Google Calendar"
-						/>
-					)}
-					<span className="min-w-0 flex-1">
-						<span className="block truncate text-base font-medium">
-							{group.title}
-						</span>
-						<span className="block text-sm text-muted-foreground">
-							{group.taskName}
-							{" · "}
-							{isRecurring
-								? `${group.entries.length} occurrences`
-								: first
-									? whenLabel(first, timezone)
-									: ""}
-						</span>
-					</span>
-					<span className="mono shrink-0 text-base tabular-nums">
-						{formatHoursShort(group.seconds)}
-					</span>
-				</label>
-				{isRecurring && (
-					<Button
-						variant="ghost"
-						size="sm"
-						className="shrink-0"
-						onClick={() => setExpanded((current) => !current)}
-					>
-						{expanded ? "Hide dates" : "Show dates"}
-					</Button>
+			    hard target, and everything on the row identifies the same group.
+			    Left to right: what the meeting is (Google's mark on synced rows,
+			    the title, then the task and when it was), how long, in the mono
+			    figure the timesheet uses, and the box at the far right where a
+			    list of things to tick keeps it. "Show dates" sits in the text and
+			    cancels the label's default so it does not tick the box on the way
+			    to its own handler. */}
+			<label
+				className={cn(
+					"flex cursor-pointer items-center gap-4 rounded-md px-6 py-2.5 transition-colors duration-(--dur-fast) hover:bg-muted",
+					allIn && "bg-muted/60",
 				)}
-			</div>
+			>
+				{group.fromCalendar ? (
+					<GoogleCalendarMark />
+				) : (
+					<span className="size-4 shrink-0" aria-hidden="true" />
+				)}
+				<span className="min-w-0 flex-1">
+					<span className="block truncate text-base font-medium">
+						{group.title}
+					</span>
+					<span className="block text-sm text-muted-foreground">
+						{group.taskName}
+						{" · "}
+						{isRecurring ? (
+							<>
+								{group.entries.length} occurrences
+								{" · "}
+								<button
+									type="button"
+									className="cursor-pointer underline underline-offset-3 hover:text-foreground"
+									onClick={(event) => {
+										event.preventDefault();
+										setExpanded((current) => !current);
+									}}
+								>
+									{expanded ? "Hide dates" : "Show dates"}
+								</button>
+							</>
+						) : first ? (
+							whenLabel(first, timezone)
+						) : null}
+					</span>
+				</span>
+				<span className="mono shrink-0 text-base tabular-nums">
+					{formatHoursShort(group.seconds)}
+				</span>
+				<input
+					type="checkbox"
+					className="size-4 shrink-0 cursor-pointer accent-primary"
+					checked={allIn}
+					ref={(node) => {
+						// The only honest state for a partly-selected group. Set through a
+						// ref because `indeterminate` is a DOM property with no attribute.
+						if (node) node.indeterminate = someIn;
+					}}
+					onChange={onToggleGroup}
+					aria-label={`Select ${group.title}`}
+				/>
+			</label>
 
 			{expanded && (
-				<div className="mb-2 flex flex-col pl-6">
+				<div className="mb-2 flex flex-col">
 					{group.entries.map((entry) => (
 						<label
 							key={entry.id}
-							className="flex cursor-pointer items-center gap-3 rounded-md py-1.5 pr-3 pl-8 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
+							className="flex cursor-pointer items-center gap-4 rounded-md py-1.5 pr-6 pl-14 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
 						>
+							<span className="flex-1">{whenLabel(entry, timezone)}</span>
+							<span className="mono tabular-nums">
+								{formatHoursShort(entry.durationSeconds)}
+							</span>
 							<input
 								type="checkbox"
 								className="size-4 cursor-pointer accent-primary"
 								checked={selectedIds.has(entry.id)}
 								onChange={() => onToggleEntry(entry.id)}
 							/>
-							<span className="flex-1">{whenLabel(entry, timezone)}</span>
-							<span className="mono tabular-nums">
-								{formatHoursShort(entry.durationSeconds)}
-							</span>
 						</label>
 					))}
 				</div>
