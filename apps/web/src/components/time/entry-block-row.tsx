@@ -4,11 +4,7 @@ import {
 	snapToQuarterHour,
 	timeKeyInTz,
 } from "@farmer/core/lib/time";
-import {
-	CalendarDotIcon,
-	GitCommitIcon,
-	GitPullRequestIcon,
-} from "@phosphor-icons/react";
+import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -131,19 +127,6 @@ function calendarLabel(
 	if (diff.durationSeconds != null)
 		parts.push(formatClock(diff.durationSeconds));
 	return parts.join(" · ");
-}
-
-/** The pill's hover text: the whole sentence, and what clicking does. */
-function calendarSentence(
-	diff: NonNullable<ReturnType<typeof calendarDifference>>,
-) {
-	const what =
-		diff.date && diff.durationSeconds != null
-			? `${formatClock(diff.durationSeconds)} on ${formatDateKeyShort(diff.date)}`
-			: diff.date
-				? `on ${formatDateKeyShort(diff.date)}`
-				: `${formatClock(diff.durationSeconds ?? 0)} long`;
-	return `On your calendar this meeting is ${what}. Click to use the calendar's day and length.`;
 }
 
 /** Harvest's row heading: "[CODE] Project (Client)". The code is what people
@@ -476,20 +459,63 @@ export function EntryBlockRow({
 						</span>
 					)}
 					{/* A synced meeting the person moved or re-lengthed: the calendar's
-					    value, as a pill in the slot "Overtime" uses, and the pill is the
-					    button that takes it. Absent on every meeting that simply follows
-					    the calendar, so its presence means something. */}
+					    value, as a quiet pill like "Updated automatically" beside it.
+					    Opening it (hover or tap) sets the two side by side, and the button
+					    inside is what takes the calendar's — the pill itself never acts,
+					    so a stray click cannot move an entry. Absent on every meeting that
+					    simply follows the calendar, so its presence means something. */}
 					{calendarDiff && (
-						<button
-							type="button"
-							onClick={() => calendarMutation.mutate()}
-							disabled={calendarMutation.isPending}
-							title={calendarSentence(calendarDiff)}
-							className="eyebrow flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-warn/12 px-1.5 py-0.5 text-warn transition-colors duration-(--dur-fast) hover:bg-warn/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
-						>
-							<CalendarDotIcon className="size-3" />
-							Calendar: {calendarLabel(calendarDiff)}
-						</button>
+						<Popover>
+							<PopoverTrigger
+								openOnHover
+								delay={300}
+								closeDelay={100}
+								render={
+									<button
+										type="button"
+										className="flex h-5 shrink-0 cursor-pointer items-center rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:text-foreground"
+									/>
+								}
+							>
+								Calendar: {calendarLabel(calendarDiff)}
+							</PopoverTrigger>
+							<PopoverContent
+								side="bottom"
+								align="start"
+								className="flex w-72 flex-col gap-2 p-3"
+							>
+								<div className="eyebrow">Differs from your calendar</div>
+								<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+									<dt className="text-muted-foreground">Calendar</dt>
+									<dd>
+										{formatDateKeyShort(calendarDiff.date ?? entry.date)} ·{" "}
+										{formatClock(
+											calendarDiff.durationSeconds ?? entry.durationSeconds,
+										)}
+									</dd>
+									<dt className="text-muted-foreground">Your entry</dt>
+									<dd>
+										{formatDateKeyShort(entry.date)} ·{" "}
+										{formatClock(entry.durationSeconds)}
+									</dd>
+								</dl>
+								<p className="text-xs text-muted-foreground">
+									Your entry keeps your values. Take the calendar's and it
+									follows the calendar again.
+								</p>
+								<Button
+									size="sm"
+									variant="secondary"
+									className="self-start"
+									disabled={calendarMutation.isPending}
+									onClick={() => calendarMutation.mutate()}
+								>
+									{calendarMutation.isPending
+										? "Updating…"
+										: "Use the calendar's"}
+								</Button>
+							</PopoverContent>
+						</Popover>
 					)}
 					{/* The sync moved, re-lengthed or renamed this on the calendar's
 					    say-so. A quiet pill in words only — the calendar mark is already
