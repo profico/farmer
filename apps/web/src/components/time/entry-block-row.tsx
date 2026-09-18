@@ -492,8 +492,9 @@ export function EntryBlockRow({
 						</button>
 					)}
 					{/* The sync moved, re-lengthed or renamed this on the calendar's
-					    say-so. A quiet pill; opening it (hover or tap) says what the
-					    entry was before, and "Got it" puts the notice away. */}
+					    say-so. A quiet pill in words only — the calendar mark is already
+					    beside the heading; opening it (hover or tap) says what the entry
+					    was before, and "Got it" puts the notice away. */}
 					{calendarChanges.length > 0 && (
 						<Popover>
 							<PopoverTrigger
@@ -503,12 +504,11 @@ export function EntryBlockRow({
 								render={
 									<button
 										type="button"
-										className="flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-muted pr-2 pl-1.5 text-xs font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:text-foreground"
+										className="flex h-5 shrink-0 cursor-pointer items-center rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:text-foreground"
 									/>
 								}
 							>
-								<GoogleCalendarMark className="size-3" />
-								Updated
+								Updated automatically
 							</PopoverTrigger>
 							<PopoverContent
 								side="bottom"
