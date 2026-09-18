@@ -508,3 +508,58 @@ describe("taking the calendar's values back", () => {
 		).rejects.toThrow("not linked to a calendar meeting");
 	});
 });
+
+describe("the 'updated by calendar' notice", () => {
+	test("a first import carries no notice", async () => {
+		await sync([eventOn("e1", "Planning", MONDAY)]);
+		expect(at(await rows(), 0).calendarChangedAt).toBeNull();
+	});
+
+	test("a calendar move stamps the notice with what the entry said before", async () => {
+		await sync([eventOn("e1", "Planning", MONDAY, 60)]);
+		await sync([eventOn("e1", "Planning", TUESDAY, 90)]);
+
+		const row = at(await rows(), 0);
+		expect(row.calendarChangedAt).not.toBeNull();
+		expect(row.calendarChangeFrom).toEqual({
+			date: MONDAY,
+			durationSeconds: 3600,
+			description: "Planning",
+		});
+	});
+
+	test("an unchanged calendar leaves the notice as it was", async () => {
+		await sync([eventOn("e1", "Planning", MONDAY)]);
+		await sync([eventOn("e1", "Planning", TUESDAY)]);
+		const stamped = at(await rows(), 0).calendarChangedAt;
+		await sync([eventOn("e1", "Planning", TUESDAY)]);
+		expect(at(await rows(), 0).calendarChangedAt).toEqual(stamped);
+	});
+
+	test("a field the person owns changing on the calendar is not a notice", async () => {
+		await sync([eventOn("e1", "Planning", MONDAY, 60)]);
+		const id = at(await rows(), 0).id;
+		await timeEntriesService.updateDuration(ctx, {
+			timeEntryId: id,
+			durationSeconds: 2 * 3600,
+		});
+		await sync([eventOn("e1", "Planning", MONDAY, 90)]);
+		expect(at(await rows(), 0).calendarChangedAt).toBeNull();
+	});
+
+	test("dismissing clears it, and the next real change brings it back", async () => {
+		await sync([eventOn("e1", "Planning", MONDAY)]);
+		await sync([eventOn("e1", "Planning", TUESDAY)]);
+		const id = at(await rows(), 0).id;
+		await timeEntriesService.acknowledgeCalendarChange(ctx, {
+			timeEntryId: id,
+		});
+		expect(at(await rows(), 0).calendarChangedAt).toBeNull();
+		expect(at(await rows(), 0).calendarChangeFrom).toBeNull();
+
+		await sync([eventOn("e1", "Planning (Q4)", TUESDAY)]);
+		expect(at(await rows(), 0).calendarChangeFrom?.description).toBe(
+			"Planning",
+		);
+	});
+});

@@ -192,6 +192,15 @@ const calendarFaceOf = (row: SyncedRow) => ({
 	meetingUrl: row.meetingUrl,
 });
 
+// Inside the upsert: is a calendar-owned field about to take a new value from
+// the calendar? Per field, "the row still says what the calendar last said"
+// AND "the calendar now says something else".
+const calendarWillChange = sql`(
+	(${timeEntry.date} is not distinct from ${timeEntry.syncedDate} and ${timeEntry.date} is distinct from excluded.date)
+	or (${timeEntry.durationSeconds} is not distinct from ${timeEntry.syncedDurationSeconds} and ${timeEntry.durationSeconds} is distinct from excluded.duration_seconds)
+	or (${timeEntry.description} is not distinct from ${timeEntry.syncedDescription} and ${timeEntry.description} is distinct from excluded.description)
+)`;
+
 // Does every field the calendar owns by default still say what the calendar
 // last said? A field that does is the calendar's; one that differs is the
 // person's. A null baseline never matches, which reads as "the person's" —
@@ -451,6 +460,11 @@ const syncMeetingsForRange = async (
 					// it on a synced row, and a stale link is worse than none.
 					meetingUrl: sql`excluded.meeting_url`,
 					meetingStartsAt: sql`excluded.meeting_starts_at`,
+					// Stamp the change and keep what the row said, when a field the
+					// calendar still owns is about to take a different value. A field the
+					// person owns is not changing, so it is not a change to report.
+					calendarChangedAt: sql`case when ${calendarWillChange} then now() else ${timeEntry.calendarChangedAt} end`,
+					calendarChangeFrom: sql`case when ${calendarWillChange} then jsonb_build_object('date', ${timeEntry.date}, 'durationSeconds', ${timeEntry.durationSeconds}, 'description', ${timeEntry.description}) else ${timeEntry.calendarChangeFrom} end`,
 					syncedDate: sql`excluded.synced_date`,
 					syncedDurationSeconds: sql`excluded.synced_duration_seconds`,
 					syncedDescription: sql`excluded.synced_description`,
@@ -503,6 +517,8 @@ const syncMeetingsForRange = async (
 			.set({
 				calendarEventId: null,
 				meetingStartsAt: null,
+				calendarChangedAt: null,
+				calendarChangeFrom: null,
 				syncedDate: null,
 				syncedDurationSeconds: null,
 				syncedDescription: null,
@@ -2156,6 +2172,26 @@ export const timeEntriesService = {
 			);
 			return updated;
 		});
+	},
+
+	/** Dismiss the row's "updated by calendar" notice. Nothing else changes. */
+	acknowledgeCalendarChange: async (
+		ctx: Ctx,
+		input: UseCalendarValuesInput,
+	) => {
+		const [updated] = await db
+			.update(timeEntry)
+			.set({ calendarChangedAt: null, calendarChangeFrom: null })
+			.where(
+				and(
+					eq(timeEntry.id, input.timeEntryId),
+					eq(timeEntry.organizationId, ctx.organizationId),
+					eq(timeEntry.userId, ctx.userId),
+				),
+			)
+			.returning({ id: timeEntry.id });
+		if (!updated) throw new Error("Time entry not found");
+		return updated;
 	},
 
 	/** Overtime is purely manual — this is the only thing that ever sets it. */

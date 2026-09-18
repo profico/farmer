@@ -96,6 +96,15 @@ export const updateTimeEntryDuration = createServerFn({ method: "POST" })
 		return timeEntriesService.updateDuration(context.ctx, data);
 	});
 
+// The row's "Updated by calendar" pill: dismiss it.
+export const acknowledgeCalendarChange = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(useCalendarValuesInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.acknowledgeCalendarChange(context.ctx, data);
+	});
+
 // The row's "Calendar: 1:30" pill: put a synced meeting the person had
 // re-lengthed or moved back on the calendar's day and length.
 export const useCalendarValues = createServerFn({ method: "POST" })

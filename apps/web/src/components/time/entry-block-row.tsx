@@ -1,4 +1,8 @@
-import { parseDuration, snapToQuarterHour } from "@farmer/core/lib/time";
+import {
+	parseDuration,
+	snapToQuarterHour,
+	timeKeyInTz,
+} from "@farmer/core/lib/time";
 import {
 	CalendarDotIcon,
 	GitCommitIcon,
@@ -9,6 +13,7 @@ import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { GoogleCalendarMark } from "#/components/google-calendar-mark.tsx";
 import {
 	AddBlockDialog,
 	type ExistingTimeEntry,
@@ -24,6 +29,7 @@ import { useHeightTransition } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
+	acknowledgeCalendarChange,
 	createTimeEntry,
 	deleteTimeEntry,
 	setTimeEntryOvertime,
@@ -47,7 +53,43 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 	calendarEventId?: string | null;
 	syncedDate?: string | null;
 	syncedDurationSeconds?: number | null;
+	syncedDescription?: string | null;
+	/** When the meeting starts, per the calendar. Display only. */
+	meetingStartsAt?: Date | string | null;
+	/** The sync changed the day, length or title on the calendar's say-so, and
+	 *  what the entry said before it did. Cleared when dismissed. */
+	calendarChangedAt?: Date | string | null;
+	calendarChangeFrom?: {
+		date: string;
+		durationSeconds: number;
+		description: string;
+	} | null;
 };
+
+/** The sentences behind the "Updated by calendar" pill: each field the sync
+ *  changed, as "was X". Compared against what the calendar says NOW rather
+ *  than the row, because the person may have edited the row since. */
+export function calendarChangeSentences(entry: EntryBlockRowEntry): string[] {
+	const from = entry.calendarChangeFrom;
+	if (!from) return [];
+	const out: string[] = [];
+	if (entry.syncedDate != null && from.date !== entry.syncedDate) {
+		out.push(`Moved from ${formatDateKeyShort(from.date)}`);
+	}
+	if (
+		entry.syncedDurationSeconds != null &&
+		from.durationSeconds !== entry.syncedDurationSeconds
+	) {
+		out.push(`Was ${formatClock(from.durationSeconds)} long`);
+	}
+	if (
+		entry.syncedDescription != null &&
+		from.description !== entry.syncedDescription
+	) {
+		out.push(`Was called "${from.description}"`);
+	}
+	return out;
+}
 
 /** What the calendar says about a synced meeting that the person has since
  *  moved or re-lengthed, or null when the entry still matches the calendar
@@ -211,6 +253,20 @@ export function EntryBlockRow({
 		if (snapped === entry.durationSeconds) return;
 		durationMutation.mutate(snapped);
 	};
+
+	const calendarChanges = calendarChangeSentences(entry);
+	const acknowledgeMutation = useMutation({
+		mutationFn: () =>
+			acknowledgeCalendarChange({ data: { timeEntryId: entry.id } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not dismiss the notice");
+		},
+	});
 
 	const calendarDiff = calendarDifference(entry);
 	const calendarMutation = useMutation({
@@ -388,6 +444,21 @@ export function EntryBlockRow({
 					<p className="truncate text-base font-medium">
 						{entryHeading(entry)}
 					</p>
+					{/* Where this entry came from. Google's own mark, so a synced
+					    meeting is told from a typed one at a glance; the hover names
+					    the meeting's start, which the duration-only row cannot. */}
+					{entry.calendarEventId != null && (
+						<span
+							className="flex shrink-0 items-center"
+							title={
+								entry.meetingStartsAt
+									? `From Google Calendar · ${formatDateKeyShort(entry.date)} at ${timeKeyInTz(new Date(entry.meetingStartsAt), timezone)}`
+									: "From Google Calendar"
+							}
+						>
+							<GoogleCalendarMark className="size-3.5" />
+						</span>
+					)}
 					{entry.fillsDay && (
 						<span className="eyebrow shrink-0 rounded-full bg-muted px-1.5 py-0.5">
 							Rest of day
@@ -412,6 +483,19 @@ export function EntryBlockRow({
 						>
 							<CalendarDotIcon className="size-3" />
 							Calendar: {calendarLabel(calendarDiff)}
+						</button>
+					)}
+					{/* The sync moved, re-lengthed or renamed this on the calendar's
+					    say-so. Says what it was before; a click dismisses it. */}
+					{calendarChanges.length > 0 && (
+						<button
+							type="button"
+							onClick={() => acknowledgeMutation.mutate()}
+							disabled={acknowledgeMutation.isPending}
+							title={`${calendarChanges.join(" · ")} · click to dismiss`}
+							className="eyebrow flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 transition-colors duration-(--dur-fast) hover:bg-muted-foreground/20 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
+						>
+							Updated by calendar
 						</button>
 					)}
 					{!!entry.commitCount && entry.commitCount > 0 && (

@@ -4,6 +4,7 @@ import {
 	check,
 	index,
 	integer,
+	jsonb,
 	numeric,
 	pgEnum,
 	pgTable,
@@ -363,6 +364,18 @@ export const timeEntry = pgTable(
 		// "the 10:00 stand-up" from "the 16:00 one" in the filing list. Always the
 		// calendar's, rewritten on every sync; null on anything not a meeting.
 		meetingStartsAt: ts("meeting_starts_at"),
+		// The last time the sync changed this entry's day, length or title on the
+		// calendar's say-so, and what those were before — so the row can say
+		// "updated by calendar: moved from Thu, was 1:00" rather than moving in
+		// silence. Set only when something actually changed on an existing row,
+		// cleared when the person dismisses the notice (`acknowledgeCalendarChange`)
+		// or the entry is unlinked. Never set by the first import.
+		calendarChangedAt: ts("calendar_changed_at"),
+		calendarChangeFrom: jsonb("calendar_change_from").$type<{
+			date: string;
+			durationSeconds: number;
+			description: string;
+		}>(),
 		// Set together when this entry was auto-materialized from a recurring rule.
 		generatedFromRuleId: uuid("generated_from_rule_id").references(
 			() => recurringBlockRule.id,
