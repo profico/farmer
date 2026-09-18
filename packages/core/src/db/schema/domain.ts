@@ -358,6 +358,11 @@ export const timeEntry = pgTable(
 		syncedDate: text("synced_date"),
 		syncedDurationSeconds: integer("synced_duration_seconds"),
 		syncedDescription: text("synced_description"),
+		// When the meeting starts, as the calendar has it. Display only — the
+		// entry itself is duration-only by design (PRD 3.6) — so a person can tell
+		// "the 10:00 stand-up" from "the 16:00 one" in the filing list. Always the
+		// calendar's, rewritten on every sync; null on anything not a meeting.
+		meetingStartsAt: ts("meeting_starts_at"),
 		// Set together when this entry was auto-materialized from a recurring rule.
 		generatedFromRuleId: uuid("generated_from_rule_id").references(
 			() => recurringBlockRule.id,

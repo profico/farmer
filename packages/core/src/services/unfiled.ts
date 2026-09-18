@@ -85,6 +85,11 @@ export const listUnfiledForUser = async (
 			taskId: timeEntry.taskId,
 			taskName: task.name,
 			meetingUrl: timeEntry.meetingUrl,
+			// So the list can say which rows came from the calendar and when the
+			// meeting was — a 15-minute "1:1" at 10:00 and one at 16:00 are two
+			// different answers.
+			calendarEventId: timeEntry.calendarEventId,
+			meetingStartsAt: timeEntry.meetingStartsAt,
 		})
 		.from(timeEntry)
 		.innerJoin(task, eq(timeEntry.taskId, task.id))

@@ -1,4 +1,5 @@
-import { TrayIcon } from "@phosphor-icons/react";
+import { timeKeyInTz } from "@farmer/core/lib/time";
+import { CalendarBlankIcon, TrayIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
@@ -16,9 +17,10 @@ import {
 	DialogTitle,
 } from "#/components/ui/dialog.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { formatDateKeyLong } from "#/lib/format-date.ts";
+import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { useHeightTransition } from "#/lib/motion.ts";
+import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
@@ -39,7 +41,15 @@ import { fileTimeEntries } from "#/server/time-entries.ts";
 
 // The window this nags about now lives with the query (`unfiledWindow`), because
 // the Time nav row's badge counts the same list and the two must not drift.
-export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
+export function UnfiledEntriesBanner({
+	todayKey,
+	timezone,
+}: {
+	todayKey: string;
+	/** The org's timezone: a meeting's start is shown in it, like every other
+	 *  clock time in the app. */
+	timezone: string;
+}) {
 	const heightTransition = useHeightTransition();
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
@@ -55,6 +65,11 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 		(sum, e) => sum + e.durationSeconds,
 		0,
 	);
+	// When everything on the list came from the calendar, say so: "entries
+	// aren't filed" describes the database, "meetings from your calendar need a
+	// project" describes what the person is looking at. A mixed list (a
+	// rest-of-day block, an accepted suggestion) keeps the general wording.
+	const allMeetings = count > 0 && (entries ?? []).every(isCalendarMeeting);
 
 	return (
 		<>
@@ -69,20 +84,29 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 						className="mb-4 shrink-0 overflow-hidden rounded-lg border bg-secondary"
 					>
 						<div className="flex items-center gap-3 px-4 py-3">
-							<TrayIcon className="size-4 shrink-0 text-primary" />
+							{allMeetings ? (
+								<CalendarBlankIcon className="size-4 shrink-0 text-primary" />
+							) : (
+								<TrayIcon className="size-4 shrink-0 text-primary" />
+							)}
 							<div className="min-w-0 flex-1">
 								<p className="text-base font-medium">
-									{count === 1
-										? "1 entry isn't filed against a project"
-										: `${count} entries aren't filed against a project`}
+									{allMeetings
+										? count === 1
+											? "1 meeting from your calendar needs a project"
+											: `${count} meetings from your calendar need a project`
+										: count === 1
+											? "1 entry needs a project"
+											: `${count} entries need a project`}
 								</p>
 								<p className="text-sm text-muted-foreground">
-									{formatHoursShort(seconds)} of tracked time won't appear in
-									any project report until you file it.
+									{allMeetings
+										? `Google Calendar added ${formatHoursShort(seconds)} of meetings. Pick the project each one belongs to and its time counts in that project's reports.`
+										: `${formatHoursShort(seconds)} of tracked time won't show in any project report until you file it.`}
 								</p>
 							</div>
 							<Button size="sm" onClick={() => setOpen(true)}>
-								File them
+								{allMeetings ? "Add events" : "File them"}
 							</Button>
 						</div>
 					</motion.div>
@@ -94,6 +118,7 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 				onOpenChange={setOpen}
 				from={from}
 				to={todayKey}
+				timezone={timezone}
 			/>
 		</>
 	);
@@ -106,6 +131,21 @@ type UnfiledEntry = {
 	durationSeconds: number;
 	taskId: string;
 	taskName: string;
+	calendarEventId: string | null;
+	/** When the meeting starts, per the calendar. Null on anything that is not
+	 *  a synced meeting. A `Date` on the server and whatever the transport made
+	 *  of it here, so it is always re-wrapped before it is read. */
+	meetingStartsAt: Date | string | null;
+};
+
+const isCalendarMeeting = (entry: { calendarEventId: string | null }) =>
+	entry.calendarEventId != null;
+
+/** "Wed, Sep 17 at 14:00" for a meeting, "Wed, Sep 17" for anything else. */
+const whenLabel = (entry: UnfiledEntry, timezone: string): string => {
+	const day = formatDateKeyShort(entry.date);
+	if (!entry.meetingStartsAt) return day;
+	return `${day} at ${timeKeyInTz(new Date(entry.meetingStartsAt), timezone)}`;
 };
 
 /** Entries that are the same piece of recurring work: same task, same title,
@@ -117,6 +157,8 @@ type UnfiledGroup = {
 	taskName: string;
 	entries: UnfiledEntry[];
 	seconds: number;
+	/** Every row in the group came from the calendar. */
+	fromCalendar: boolean;
 };
 
 const groupUnfiled = (entries: UnfiledEntry[]): UnfiledGroup[] => {
@@ -128,6 +170,7 @@ const groupUnfiled = (entries: UnfiledEntry[]): UnfiledGroup[] => {
 		if (group) {
 			group.entries.push(entry);
 			group.seconds += entry.durationSeconds;
+			group.fromCalendar &&= isCalendarMeeting(entry);
 		} else {
 			byKey.set(key, {
 				key,
@@ -135,6 +178,7 @@ const groupUnfiled = (entries: UnfiledEntry[]): UnfiledGroup[] => {
 				taskName: entry.taskName,
 				entries: [entry],
 				seconds: entry.durationSeconds,
+				fromCalendar: isCalendarMeeting(entry),
 			});
 		}
 	}
@@ -150,11 +194,13 @@ function FileEntriesDialog({
 	onOpenChange,
 	from,
 	to,
+	timezone,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	from: string;
 	to: string;
+	timezone: string;
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -180,6 +226,8 @@ function FileEntriesDialog({
 	});
 
 	const groups = groupUnfiled(entries ?? []);
+	const allMeetings =
+		(entries?.length ?? 0) > 0 && (entries ?? []).every(isCalendarMeeting);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [projectId, setProjectId] = useState<string | null>(null);
 	// "" keeps each entry's own task. A rest-of-day block lands as Development
@@ -264,10 +312,13 @@ function FileEntriesDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-2xl">
 				<DialogHeader>
-					<DialogTitle>File your time</DialogTitle>
+					<DialogTitle>
+						{allMeetings ? "Add your meetings to a project" : "File your time"}
+					</DialogTitle>
 					<DialogDescription>
-						Pick the entries that belong to a project and file them together.
-						Choose a task only when they need a different one.
+						{allMeetings
+							? "These came from your Google Calendar. Tick the meetings that belong to a project and add them together. Choose a task only when they need a different one."
+							: "Pick the entries that belong to a project and file them together. Choose a task only when they need a different one."}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -276,6 +327,7 @@ function FileEntriesDialog({
 						<UnfiledGroupRow
 							key={group.key}
 							group={group}
+							timezone={timezone}
 							selectedIds={selectedIds}
 							onToggleGroup={() => toggleGroup(group)}
 							onToggleEntry={(id) =>
@@ -334,7 +386,13 @@ function FileEntriesDialog({
 								}
 								onClick={() => fileMutation.mutate()}
 							>
-								{fileMutation.isPending ? "Filing…" : "File"}
+								{fileMutation.isPending
+									? allMeetings
+										? "Adding…"
+										: "Filing…"
+									: allMeetings
+										? "Add to project"
+										: "File"}
 							</Button>
 						</div>
 					</DialogFooter>
@@ -346,11 +404,13 @@ function FileEntriesDialog({
 
 function UnfiledGroupRow({
 	group,
+	timezone,
 	selectedIds,
 	onToggleGroup,
 	onToggleEntry,
 }: {
 	group: UnfiledGroup;
+	timezone: string;
 	selectedIds: Set<string>;
 	onToggleGroup: () => void;
 	onToggleEntry: (id: string) => void;
@@ -359,18 +419,29 @@ function UnfiledGroupRow({
 	const allIn = group.entries.every((e) => selectedIds.has(e.id));
 	const someIn = !allIn && group.entries.some((e) => selectedIds.has(e.id));
 	const isRecurring = group.entries.length > 1;
+	const first = group.entries[0];
 
 	return (
 		<div className="py-1">
 			{/* The label is the whole row, not just the box: a 16px checkbox is a
 			    hard target, and everything to its right identifies the same group.
 			    "Show dates" has to stay OUTSIDE it — a button nested in a label
-			    toggles the checkbox on its way to its own handler. */}
+			    toggles the checkbox on its way to its own handler.
+
+			    Three things in a fixed place, so the eye can run down the list:
+			    the box, then what the meeting is (a calendar mark on synced rows,
+			    the title, then the task and when it was), then how long, in the
+			    mono figure the timesheet uses. */}
 			<div className="flex items-center gap-3 pr-6">
-				<label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md py-2 pl-6 transition-colors duration-(--dur-fast) hover:bg-muted">
+				<label
+					className={cn(
+						"flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md py-2.5 pl-6 transition-colors duration-(--dur-fast) hover:bg-muted",
+						allIn && "bg-muted/60",
+					)}
+				>
 					<input
 						type="checkbox"
-						className="shrink-0 accent-primary"
+						className="size-4 shrink-0 cursor-pointer accent-primary"
 						checked={allIn}
 						ref={(node) => {
 							// The only honest state for a partly-selected group. Set through a
@@ -380,16 +451,28 @@ function UnfiledGroupRow({
 						onChange={onToggleGroup}
 						aria-label={`Select ${group.title}`}
 					/>
+					{group.fromCalendar && (
+						<CalendarBlankIcon
+							className="size-4 shrink-0 text-muted-foreground"
+							aria-label="From your Google Calendar"
+						/>
+					)}
 					<span className="min-w-0 flex-1">
-						<span className="block truncate text-sm font-medium">
+						<span className="block truncate text-base font-medium">
 							{group.title}
 						</span>
-						<span className="block text-xs text-muted-foreground">
-							{group.taskName} · {formatHoursShort(group.seconds)}
+						<span className="block text-sm text-muted-foreground">
+							{group.taskName}
+							{" · "}
 							{isRecurring
-								? ` · ${group.entries.length} occurrences`
-								: ` · ${formatDateKeyLong(group.entries[0]?.date ?? "")}`}
+								? `${group.entries.length} occurrences`
+								: first
+									? whenLabel(first, timezone)
+									: ""}
 						</span>
+					</span>
+					<span className="mono shrink-0 text-base tabular-nums">
+						{formatHoursShort(group.seconds)}
 					</span>
 				</label>
 				{isRecurring && (
@@ -409,16 +492,18 @@ function UnfiledGroupRow({
 					{group.entries.map((entry) => (
 						<label
 							key={entry.id}
-							className="flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-8 text-xs text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
+							className="flex cursor-pointer items-center gap-3 rounded-md py-1.5 pr-3 pl-8 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
 						>
 							<input
 								type="checkbox"
-								className="accent-primary"
+								className="size-4 cursor-pointer accent-primary"
 								checked={selectedIds.has(entry.id)}
 								onChange={() => onToggleEntry(entry.id)}
 							/>
-							{formatDateKeyLong(entry.date)} ·{" "}
-							{formatHoursShort(entry.durationSeconds)}
+							<span className="flex-1">{whenLabel(entry, timezone)}</span>
+							<span className="mono tabular-nums">
+								{formatHoursShort(entry.durationSeconds)}
+							</span>
 						</label>
 					))}
 				</div>

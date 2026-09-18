@@ -359,6 +359,7 @@ const syncMeetingsForRange = async (
 				durationSeconds,
 				meetingUrl: event.meetingUrl,
 				calendarEventId: event.id,
+				meetingStartsAt: startedAt,
 				// What the calendar says now, so the next pass can tell the person's
 				// edits from the calendar's.
 				syncedDate: date,
@@ -449,6 +450,7 @@ const syncMeetingsForRange = async (
 					// The join link is the calendar's outright: nothing in the app edits
 					// it on a synced row, and a stale link is worse than none.
 					meetingUrl: sql`excluded.meeting_url`,
+					meetingStartsAt: sql`excluded.meeting_starts_at`,
 					syncedDate: sql`excluded.synced_date`,
 					syncedDurationSeconds: sql`excluded.synced_duration_seconds`,
 					syncedDescription: sql`excluded.synced_description`,
@@ -500,6 +502,7 @@ const syncMeetingsForRange = async (
 			.update(timeEntry)
 			.set({
 				calendarEventId: null,
+				meetingStartsAt: null,
 				syncedDate: null,
 				syncedDurationSeconds: null,
 				syncedDescription: null,

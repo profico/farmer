@@ -69,6 +69,7 @@ function TimeLayout() {
 			<div className="mt-6 flex min-h-0 flex-1 flex-col">
 				<UnfiledEntriesBanner
 					todayKey={dayKeyInTz(new Date(), organization.timezone)}
+					timezone={organization.timezone}
 				/>
 				<Outlet />
 			</div>
