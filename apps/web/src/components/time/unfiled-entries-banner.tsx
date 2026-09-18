@@ -309,20 +309,25 @@ function FileEntriesDialog({
 	});
 
 	// The other answer to "where does this go": nowhere, because it didn't
-	// happen. Same delete as the timesheet row's, so a calendar meeting gets its
+	// happen. Per row, beside the length, rather than a footer button over the
+	// selection — removing is a decision about one meeting, filing is about a
+	// batch. Same delete as the timesheet row's, so a calendar meeting gets its
 	// tombstone and the next sync does not bring it back; Assemble my day can
 	// still re-offer it with "include dismissed" if that was a mistake.
 	const removeMutation = useMutation({
-		mutationFn: async () => {
-			const ids = [...selectedIds];
+		mutationFn: async (ids: string[]) => {
 			for (const id of ids) await deleteTimeEntry({ data: id });
 			return ids.length;
 		},
-		onSuccess: async (removed) => {
+		onSuccess: async (removed, ids) => {
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
-			setSelectedIds(new Set());
+			setSelectedIds((current) => {
+				const next = new Set(current);
+				for (const id of ids) next.delete(id);
+				return next;
+			});
 			toast.success(
 				allMeetings
 					? `Removed ${removed} ${removed === 1 ? "meeting" : "meetings"} · the calendar won't bring ${removed === 1 ? "it" : "them"} back`
@@ -354,6 +359,8 @@ function FileEntriesDialog({
 							group={group}
 							timezone={timezone}
 							selectedIds={selectedIds}
+							removing={removeMutation.isPending}
+							onRemove={(ids) => removeMutation.mutate(ids)}
 							onToggleGroup={() => toggleGroup(group)}
 							onToggleEntry={(id) =>
 								setSelectedIds((current) => {
@@ -406,19 +413,6 @@ function FileEntriesDialog({
 									: `${selectedIds.size} selected · ${formatHoursShort(selectedSeconds)}`}
 							</span>
 							<Button
-								variant="ghost"
-								className="text-muted-foreground hover:text-destructive"
-								disabled={selectedIds.size === 0 || busy}
-								onClick={() => removeMutation.mutate()}
-								title={
-									allMeetings
-										? "The meeting didn't happen: remove it from the timesheet. The calendar won't bring it back."
-										: "Remove the selected entries from the timesheet."
-								}
-							>
-								{removeMutation.isPending ? "Removing…" : "Remove"}
-							</Button>
-							<Button
 								disabled={selectedIds.size === 0 || !projectId || busy}
 								onClick={() => fileMutation.mutate()}
 							>
@@ -442,12 +436,16 @@ function UnfiledGroupRow({
 	group,
 	timezone,
 	selectedIds,
+	removing,
+	onRemove,
 	onToggleGroup,
 	onToggleEntry,
 }: {
 	group: UnfiledGroup;
 	timezone: string;
 	selectedIds: Set<string>;
+	removing: boolean;
+	onRemove: (ids: string[]) => void;
 	onToggleGroup: () => void;
 	onToggleEntry: (id: string) => void;
 }) {
@@ -508,6 +506,15 @@ function UnfiledGroupRow({
 				<span className="mono shrink-0 text-base tabular-nums">
 					{formatHoursShort(group.seconds)}
 				</span>
+				<RemoveLink
+					disabled={removing}
+					what={
+						isRecurring
+							? `all ${group.entries.length} occurrences of ${group.title}`
+							: group.title
+					}
+					onClick={() => onRemove(group.entries.map((e) => e.id))}
+				/>
 				<input
 					type="checkbox"
 					className="size-4 shrink-0 cursor-pointer accent-primary"
@@ -533,6 +540,11 @@ function UnfiledGroupRow({
 							<span className="mono tabular-nums">
 								{formatHoursShort(entry.durationSeconds)}
 							</span>
+							<RemoveLink
+								disabled={removing}
+								what={`${group.title} on ${whenLabel(entry, timezone)}`}
+								onClick={() => onRemove([entry.id])}
+							/>
 							<input
 								type="checkbox"
 								className="size-4 cursor-pointer accent-primary"
@@ -544,5 +556,34 @@ function UnfiledGroupRow({
 				</div>
 			)}
 		</div>
+	);
+}
+
+/** "Remove", quiet until hovered, then red: it deletes. Inside the row's
+ *  label, so it cancels the label's default or the box would tick on the way
+ *  to the handler. */
+function RemoveLink({
+	what,
+	disabled,
+	onClick,
+}: {
+	what: string;
+	disabled: boolean;
+	onClick: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			disabled={disabled}
+			aria-label={`Remove ${what}`}
+			title="Didn't happen? Remove it from the timesheet. The calendar won't bring it back."
+			className="shrink-0 cursor-pointer text-sm text-muted-foreground underline underline-offset-3 transition-colors duration-(--dur-fast) hover:text-destructive focus-visible:text-destructive focus-visible:outline-none disabled:cursor-default disabled:opacity-50"
+			onClick={(event) => {
+				event.preventDefault();
+				onClick();
+			}}
+		>
+			Remove
+		</button>
 	);
 }
