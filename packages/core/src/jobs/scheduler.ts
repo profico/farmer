@@ -34,6 +34,8 @@
  *   LOG_REMINDERS_INTERVAL_MINUTES    - minutes between reminder sweeps (default: 30)
  *   SLACK_REMINDERS_ENABLED           - "false" to disable Slack reminders (default: on)
  *   SLACK_REMINDERS_INTERVAL_MINUTES  - minutes between Slack sweeps (default: 15)
+ *   TIMER_SWEEP_ENABLED               - "false" to let a forgotten timer run (default: on)
+ *   TIMER_SWEEP_INTERVAL_MINUTES      - minutes between timer sweeps (default: 15)
  *   UPLOAD_SWEEP_ENABLED              - "false" to keep unused uploads (default: on)
  *   UPLOAD_SWEEP_INTERVAL_MINUTES     - minutes between upload sweeps (default: 1440)
  *   WEBHOOK_DELIVERY_ENABLED          - "false" to stop sending webhooks (default: on)
@@ -48,6 +50,7 @@
 import { runAutomationSyncOnce } from "./automation-sync";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
+import { runTimerSweepOnce } from "./timer-sweep";
 import { runUploadSweepOnce } from "./upload-sweep";
 import { runWebhookDeliveryOnce } from "./webhook-delivery";
 
@@ -154,6 +157,19 @@ function schedulerJobs(): SchedulerConfig[] {
 			run: async () => {
 				const s = await runSlackRemindersOnce();
 				return `${String(s.nudges)} nudges, ${String(s.monthEnd)} month-end, ${String(s.digests)} digests, ${String(s.failed)} failed (${String(s.organizations)} orgs with Slack)`;
+			},
+		},
+		{
+			name: "Timer sweep",
+			enabledEnv: "TIMER_SWEEP_ENABLED",
+			intervalEnv: "TIMER_SWEEP_INTERVAL_MINUTES",
+			// Every 15 minutes. The cap it enforces is measured in hours, so the
+			// interval only decides how long a dropped timer keeps saying it is
+			// running; a tick with nobody timing is one indexed query.
+			defaultIntervalMinutes: 15,
+			run: async () => {
+				const s = await runTimerSweepOnce();
+				return `${String(s.dropped)} dropped, ${String(s.failed)} failed (${String(s.running)} running)`;
 			},
 		},
 		{

@@ -2414,8 +2414,8 @@ export const timeEntriesService = {
 		});
 	},
 
-	/** Copy a day's entries onto another day. The backfill affordance that stands
-	 *  in for a running timer: most people work a similar shape most days.
+	/** Copy a day's entries onto another day. The backfill affordance for a
+	 *  repeating week: most people work a similar shape most days.
 	 *
 	 *  Four rules, each of which used to be missing:
 	 *

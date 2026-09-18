@@ -43,6 +43,30 @@ export const parseQuarterHours = (input: string): number => {
 	return seconds;
 };
 
+/**
+ * What an entry's duration becomes when a person adds to the time already
+ * logged on it — `farmer edit 1 --add 1.25`.
+ *
+ * The addend goes through `parseQuarterHours`, so one rule and one set of
+ * messages cover both flags. The total is checked as well: two additions that
+ * each fit on their own can still pass 24 hours together.
+ */
+export const addToDuration = (
+	currentSeconds: number,
+	input: string,
+): number => {
+	const added = parseQuarterHours(input);
+	const total = currentSeconds + added;
+
+	if (total > MAX_ENTRY_SECONDS) {
+		throw new UsageError(
+			`${formatDurationInput(currentSeconds)} plus ${formatDurationInput(added)} is more than 24 hours, which one entry cannot be.`,
+		);
+	}
+
+	return total;
+};
+
 /** `H:MM`, the form the web app displays every duration in. */
 export const formatHours = (seconds: number): string => {
 	const minutes = Math.round(seconds / 60);

@@ -27,6 +27,12 @@
  *   GET    orgs/$slug/tasks                      ApiTaskList
  *   GET    orgs/$slug/tracking                   ApiTracking
  *   POST   orgs/$slug/sync                       ApiSyncResult
+ *   GET    orgs/$slug/timer                      ApiTimerState
+ *   POST   orgs/$slug/timer                      ApiTimerState (start)
+ *   POST   orgs/$slug/timer/pause                ApiTimerState (hold the clock)
+ *   POST   orgs/$slug/timer/resume               ApiTimerState
+ *   POST   orgs/$slug/timer/confirm              ApiTimeEntry (stop and log)
+ *   DELETE orgs/$slug/timer                      ApiTimerState (discard or dismiss)
  *
  * Any failure answers `ApiError` with a status: 401 unauthorized, 403
  * forbidden, 404 not_found, 422 invalid_input, 426 cli_outdated, 429
@@ -38,4 +44,5 @@ export * from "./errors";
 export * from "./me";
 export * from "./meta";
 export * from "./time-entries";
+export * from "./timer";
 export * from "./webhooks";

@@ -158,7 +158,9 @@ const apiErrorBody = z.object({
 });
 
 /** The sentence an `ApiError` carries, with its issues, or the status when
- *  the body is not one (a proxy's HTML error page). */
+ *  the body is not one (a proxy's HTML error page). The `code` comes back
+ *  beside it, because a caller cannot tell a route this server does not have
+ *  from a route it refuses without one — see `CliError.code`. */
 const failureMessage = async (response: Response, origin: string) => {
 	let parsed: ReturnType<typeof apiErrorBody.safeParse> | null = null;
 	try {
@@ -167,12 +169,19 @@ const failureMessage = async (response: Response, origin: string) => {
 		parsed = null;
 	}
 	if (!parsed?.success) {
-		return `${origin} answered ${response.status} ${response.statusText}`.trim();
+		return {
+			message:
+				`${origin} answered ${response.status} ${response.statusText}`.trim(),
+			code: undefined,
+		};
 	}
 	const issues = (parsed.data.issues ?? []).map(
 		(issue) => `  ${issue.path ? `${issue.path}: ` : ""}${issue.message}`,
 	);
-	return [parsed.data.error, ...issues].join("\n");
+	return {
+		message: [parsed.data.error, ...issues].join("\n"),
+		code: parsed.data.code,
+	};
 };
 
 export type ApiClientOptions = {
@@ -256,19 +265,29 @@ export class ApiClient {
 				);
 				return new CliError(
 					`You have no access to the organization "${slug}" on ${transport.origin}. Run \`farmer org list\` to see yours.`,
+					1,
+					{ status: 401 },
 				);
 			}
 			await this.#options.forgetToken();
 			return new CliError(
 				`Your session on ${transport.origin} has ended. Run \`farmer login\` to sign in again.`,
+				1,
+				{ status: 401 },
 			);
 		}
 		if (response.status === 426) {
 			return new CliError(
 				outdatedMessage(transport.origin, transport.platform),
+				1,
+				{ status: 426 },
 			);
 		}
-		return new CliError(await failureMessage(response, transport.origin));
+		const failure = await failureMessage(response, transport.origin);
+		return new CliError(failure.message, 1, {
+			status: response.status,
+			code: failure.code,
+		});
 	}
 
 	async #tokenStillValid(): Promise<boolean> {

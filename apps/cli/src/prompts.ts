@@ -73,11 +73,15 @@ export const askText = async (
 	message: string,
 	initialValue?: string,
 	placeholder?: string,
+	/** Return a sentence to refuse the answer and ask again, in the prompt
+	 *  itself. A caller that needs a value gets it here rather than by throwing
+	 *  after the person has already typed something. */
+	validate?: (value: string | undefined) => string | undefined,
 ): Promise<string> =>
 	// clack answers `undefined` for an empty input with no default, whatever
 	// its type says, and every caller reads empty as "nothing typed".
 	textAnswer(
-		await clack.text({ message, initialValue, placeholder, output }),
+		await clack.text({ message, initialValue, placeholder, validate, output }),
 	) ?? "";
 
 export const askConfirm = async (message: string): Promise<boolean> =>

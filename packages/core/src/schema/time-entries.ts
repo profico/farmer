@@ -2,8 +2,10 @@ import { z } from "zod";
 
 const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
-/** 15-minute granularity (PRD 3.6): 0.25, 0.5, 0.75... No timer, no clock — an
- *  entry is a date and an amount of time. */
+/** 15-minute granularity (PRD 3.6): 0.25, 0.5, 0.75... An entry is a date and
+ *  an amount of time, and holds no clock. The stopwatch measures in seconds and
+ *  snaps to this step before anybody confirms it (`schema/timer.ts`), so no
+ *  measured hour reaches a timesheet as 2:12. */
 export const QUARTER_HOUR_SECONDS = 900;
 
 const duration = z
@@ -179,8 +181,9 @@ export type SetWeekCellInput = z.infer<typeof setWeekCellInput>;
 export const deleteTimeEntryInput = z.uuid();
 export type DeleteTimeEntryInput = z.infer<typeof deleteTimeEntryInput>;
 
-// Copy a whole day's entries onto another day — the backfill affordance that
-// replaces a running timer for people who work a similar shape most days.
+// Copy a whole day's entries onto another day — the backfill affordance for
+// people who work a similar shape most days, and the one that costs no
+// attention while the work happens.
 export const copyTimeEntriesInput = z.object({
 	fromDate: dateKey,
 	toDate: dateKey,

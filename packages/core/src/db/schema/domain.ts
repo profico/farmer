@@ -306,9 +306,11 @@ export const recurringBlockRuleSkip = pgTable(
 	(t) => [uniqueIndex("rbrs_rule_date_uidx").on(t.ruleId, t.date)],
 );
 
-// Duration-only by design (PRD 3.6): a date and an amount of time, no clock.
-// There is no timer, no start/stop, and no per-entry billable flag — billability
-// is derived from `project.type != 'internal'`.
+// Duration-only by design (PRD 3.6): a date and an amount of time, and no
+// per-entry billable flag — billability is derived from
+// `project.type != 'internal'`. An entry holds no clock and no start/stop: the
+// stopwatch in `db/schema/timer.ts` is an input method that ends in one of
+// these rows, snapped to the 15-minute step, and nothing else writes here.
 export const timeEntry = pgTable(
 	"time_entry",
 	{

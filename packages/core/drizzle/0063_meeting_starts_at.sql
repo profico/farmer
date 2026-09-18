@@ -1,1 +1,0 @@
-ALTER TABLE "time_entry" ADD COLUMN "meeting_starts_at" timestamp with time zone;
