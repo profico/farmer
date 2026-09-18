@@ -1,4 +1,5 @@
 import {
+	dayKeyInTz,
 	parseDuration,
 	snapToQuarterHour,
 	timeKeyInTz,
@@ -21,6 +22,11 @@ import {
 import { EntryMark } from "#/components/time/entry-mark.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "#/components/ui/popover.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyShort } from "#/lib/format-date.ts";
@@ -486,17 +492,55 @@ export function EntryBlockRow({
 						</button>
 					)}
 					{/* The sync moved, re-lengthed or renamed this on the calendar's
-					    say-so. Says what it was before; a click dismisses it. */}
+					    say-so. A quiet pill; opening it (hover or tap) says what the
+					    entry was before, and "Got it" puts the notice away. */}
 					{calendarChanges.length > 0 && (
-						<button
-							type="button"
-							onClick={() => acknowledgeMutation.mutate()}
-							disabled={acknowledgeMutation.isPending}
-							title={`${calendarChanges.join(" · ")} · click to dismiss`}
-							className="eyebrow flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 transition-colors duration-(--dur-fast) hover:bg-muted-foreground/20 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
-						>
-							Updated by calendar
-						</button>
+						<Popover>
+							<PopoverTrigger
+								openOnHover
+								delay={300}
+								closeDelay={100}
+								render={
+									<button
+										type="button"
+										className="flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded-full bg-muted pr-2 pl-1.5 text-xs font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:text-foreground"
+									/>
+								}
+							>
+								<GoogleCalendarMark className="size-3" />
+								Updated
+							</PopoverTrigger>
+							<PopoverContent
+								side="bottom"
+								align="start"
+								className="flex w-64 flex-col gap-2 p-3"
+							>
+								<div className="eyebrow">Updated by your calendar</div>
+								<ul className="flex flex-col gap-0.5 text-sm">
+									{calendarChanges.map((line) => (
+										<li key={line}>{line}</li>
+									))}
+								</ul>
+								{entry.calendarChangedAt && (
+									<p className="text-xs text-muted-foreground">
+										{formatDateKeyShort(
+											dayKeyInTz(new Date(entry.calendarChangedAt), timezone),
+										)}{" "}
+										at{" "}
+										{timeKeyInTz(new Date(entry.calendarChangedAt), timezone)}
+									</p>
+								)}
+								<Button
+									size="sm"
+									variant="secondary"
+									className="self-start"
+									disabled={acknowledgeMutation.isPending}
+									onClick={() => acknowledgeMutation.mutate()}
+								>
+									Got it
+								</Button>
+							</PopoverContent>
+						</Popover>
 					)}
 					{!!entry.commitCount && entry.commitCount > 0 && (
 						<span
