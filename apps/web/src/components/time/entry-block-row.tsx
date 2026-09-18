@@ -26,6 +26,9 @@ import {
 	updateTimeEntryDuration,
 } from "#/server/time-entries.ts";
 
+// Notes longer than this are cut on the row until "Show more" is pressed.
+const NOTE_LIMIT = 220;
+
 export type EntryBlockRowEntry = ExistingTimeEntry & {
 	project: {
 		name: string;
@@ -92,6 +95,18 @@ export function EntryBlockRow({
 			setNote(entry.description ?? "");
 		},
 	});
+
+	// A long note is cut at a fixed number of CHARACTERS and opened with "Show
+	// more". A line clamp cannot do this job on the field itself: `line-clamp`
+	// works on line boxes in a block, and a textarea's value is not laid out as
+	// ones it can reach — with `field-sizing: content` a twenty-line note grew
+	// the row to twenty lines. So reading and editing are separate: a button
+	// holds the (possibly cut) note and swaps to the textarea on click.
+	const [expanded, setExpanded] = useState(false);
+	const [editing, setEditing] = useState(false);
+	const isLong = note.length > NOTE_LIMIT;
+	const shownNote =
+		isLong && !expanded ? `${note.slice(0, NOTE_LIMIT).trimEnd()}…` : note;
 
 	const saveNote = () => {
 		const trimmed = note.trimEnd();
@@ -347,14 +362,50 @@ export function EntryBlockRow({
 				{entry.project && (
 					<p className="text-sm text-muted-foreground">{entry.task.name}</p>
 				)}
-				<Textarea
-					value={note}
-					onChange={(event) => setNote(event.target.value)}
-					onBlur={saveNote}
-					placeholder="Add a note…"
-					rows={1}
-					className="mt-0.5 -ml-1.5 min-h-7 w-full resize-none rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-muted-foreground shadow-none [field-sizing:content] placeholder:text-faint hover:border-input focus-visible:border-ring focus-visible:bg-background focus-visible:text-foreground"
-				/>
+				{editing ? (
+					<Textarea
+						// oxlint-disable-next-line jsx-a11y/no-autofocus -- the field only exists because the person just clicked the note to edit it
+						autoFocus
+						value={note}
+						onChange={(event) => setNote(event.target.value)}
+						onBlur={() => {
+							saveNote();
+							setEditing(false);
+						}}
+						onKeyDown={(event) => {
+							// Escape abandons the edit and puts the stored value back.
+							if (event.key === "Escape") {
+								setNote(entry.description ?? "");
+								setEditing(false);
+							}
+						}}
+						placeholder="Add a note…"
+						rows={1}
+						className="mt-0.5 -ml-1.5 max-h-56 min-h-7 w-full resize-none overflow-y-auto rounded-md border border-transparent bg-transparent px-1.5 py-1 text-sm text-muted-foreground shadow-none [field-sizing:content] placeholder:text-faint hover:border-input focus-visible:border-ring focus-visible:bg-background focus-visible:text-foreground"
+					/>
+				) : (
+					<button
+						type="button"
+						aria-label={note ? `Edit note: ${note}` : "Add a note"}
+						onClick={() => setEditing(true)}
+						className={cn(
+							"mt-0.5 -ml-1.5 block min-h-7 w-full cursor-text rounded-md border border-transparent px-1.5 py-1 text-left text-sm wrap-anywhere whitespace-pre-wrap outline-none hover:border-input focus-visible:border-ring",
+							note ? "text-muted-foreground" : "text-faint",
+						)}
+					>
+						{shownNote || "Add a note…"}
+					</button>
+				)}
+				{!editing && isLong && (
+					<button
+						type="button"
+						aria-expanded={expanded}
+						onClick={() => setExpanded((open) => !open)}
+						className="rounded-sm text-xs font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/16"
+					>
+						{expanded ? "Show less" : "Show more"}
+					</button>
+				)}
 			</div>
 			<div className="flex w-full shrink-0 items-center justify-end gap-1 @md/entries:w-auto @md/entries:items-start @md/entries:gap-3">
 				{/* A fill block's length is the day's leftover working time, recomputed
