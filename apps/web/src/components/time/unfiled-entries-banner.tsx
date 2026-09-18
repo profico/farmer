@@ -25,11 +25,7 @@ import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
-import {
-	unfiledEntriesQuery,
-	unfiledWindow,
-	unfiledWindowQuery,
-} from "#/queries/time-entries.ts";
+import { unfiledEntriesQuery } from "#/queries/time-entries.ts";
 import { deleteTimeEntry, fileTimeEntries } from "#/server/time-entries.ts";
 
 // Everything the engines write lands with no project: the calendar sync files
@@ -40,13 +36,18 @@ import { deleteTimeEntry, fileTimeEntries } from "#/server/time-entries.ts";
 // Deliberately NOT dismissible, unlike AutoTrackNag: that one nudges you toward
 // an optional feature, this one is a worklist of your own unattributed hours.
 
-// The window this nags about now lives with the query (`unfiledWindow`), because
-// the Time nav row's badge counts the same list and the two must not drift.
+// Scoped to the week or month on screen (the layout route hands it the range).
+// The Time nav badge keeps the wider `unfiledWindow`, so the count of everything
+// still shows somewhere; this banner is about the time in front of you.
 export function UnfiledEntriesBanner({
-	todayKey,
+	range,
+	scopeLabel,
 	timezone,
 }: {
-	todayKey: string;
+	/** The week or month on screen. The banner counts only this. */
+	range: { from: string; to: string };
+	/** "this week" / "this month", for the headline. */
+	scopeLabel: string;
 	/** The org's timezone: a meeting's start is shown in it, like every other
 	 *  clock time in the app. */
 	timezone: string;
@@ -54,10 +55,10 @@ export function UnfiledEntriesBanner({
 	const heightTransition = useHeightTransition();
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
-	const { from } = unfiledWindow(todayKey);
+	const { from, to } = range;
 
 	const { data: entries } = useQuery({
-		...unfiledWindowQuery(orgSlug, todayKey),
+		...unfiledEntriesQuery(orgSlug, from, to),
 		staleTime: 60_000,
 	});
 
@@ -74,10 +75,10 @@ export function UnfiledEntriesBanner({
 	const others = count - meetings;
 	const allMeetings = count > 0 && others === 0;
 	const headline = allMeetings
-		? `${meetings} calendar ${meetings === 1 ? "meeting needs" : "meetings need"} a project`
+		? `${meetings} calendar ${meetings === 1 ? "meeting" : "meetings"} ${scopeLabel} ${meetings === 1 ? "needs" : "need"} a project`
 		: meetings === 0
-			? `${count} ${count === 1 ? "entry needs" : "entries need"} a project`
-			: `${meetings} calendar ${meetings === 1 ? "meeting" : "meetings"} and ${others} other ${others === 1 ? "entry" : "entries"} need a project`;
+			? `${count} ${count === 1 ? "entry" : "entries"} ${scopeLabel} ${count === 1 ? "needs" : "need"} a project`
+			: `${meetings} calendar ${meetings === 1 ? "meeting" : "meetings"} and ${others} other ${others === 1 ? "entry" : "entries"} ${scopeLabel} need a project`;
 
 	return (
 		<>
@@ -117,7 +118,7 @@ export function UnfiledEntriesBanner({
 				open={open}
 				onOpenChange={setOpen}
 				from={from}
-				to={todayKey}
+				to={to}
 				timezone={timezone}
 			/>
 		</>
