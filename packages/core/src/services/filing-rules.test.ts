@@ -28,6 +28,7 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import { filingRule } from "../db/schema/settings";
+import { fakeCalendar } from "../test/calendar";
 import { createTestDb, type TestDb } from "../test/harness";
 import { present } from "../test/harness";
 import { findTool } from "./assistant-tools";
@@ -65,11 +66,6 @@ const event = (id: string, title: string): Event => ({
 	end: `${DATE}T10:00:00.000Z`,
 	meetingUrl: null,
 	htmlLink: null,
-});
-
-const calendarReturning = (events: Event[]) => ({
-	listEventsForRange: async () => events,
-	listEventsForDay: async () => events,
 });
 
 const entries = () =>
@@ -190,9 +186,7 @@ beforeEach(async () => {
 describe("filing rules applied by the meeting sync", () => {
 	test("a matching meeting arrives already filed", async () => {
 		await ruleFor("Daily standup", projectId);
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Daily standup")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Daily standup")]));
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -203,9 +197,7 @@ describe("filing rules applied by the meeting sync", () => {
 
 	test("matching ignores case and surrounding whitespace", async () => {
 		await ruleFor("Daily standup", projectId);
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "  DAILY Standup ")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "  DAILY Standup ")]));
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -214,9 +206,7 @@ describe("filing rules applied by the meeting sync", () => {
 
 	test("a meeting with no rule still lands unfiled", async () => {
 		await ruleFor("Daily standup", projectId);
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Something else")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Something else")]));
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -227,9 +217,7 @@ describe("filing rules applied by the meeting sync", () => {
 	// project does not delete the rules naming it, and the sweep runs unattended.
 	test("a rule for a project the person is not on files nothing", async () => {
 		await ruleFor("Daily standup", otherProjectId);
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Daily standup")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Daily standup")]));
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -246,9 +234,7 @@ describe("filing rules applied by the meeting sync", () => {
 			.update(project)
 			.set({ status: "archived" })
 			.where(eq(project.id, projectId));
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Daily standup")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Daily standup")]));
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -260,13 +246,11 @@ describe("filing rules applied by the meeting sync", () => {
 	// existence and a cancelled one must still disappear.
 	test("a rule-filed entry is still deleted when the meeting is cancelled", async () => {
 		await ruleFor("Daily standup", projectId);
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Daily standup")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Daily standup")]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		expect(await entries()).toHaveLength(1);
 
-		setCalendarSourceForTests(calendarReturning([event("e2", "Retro")]));
+		setCalendarSourceForTests(fakeCalendar([event("e2", "Retro")]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		const rows = await entries();
@@ -324,9 +308,7 @@ describe("remembering a rule from what was just filed", () => {
 
 	test("removing a rule leaves the entries it already filed alone", async () => {
 		await ruleFor("Daily standup", projectId);
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Daily standup")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Daily standup")]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		const rules = await filingRulesService.list(ctx);
@@ -355,9 +337,7 @@ describe("remembering a rule from what was just filed", () => {
 describe("the task a rule files under", () => {
 	test("a rule with a task files the meeting under that task", async () => {
 		await ruleFor("Design review", projectId, designTaskId);
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Design review")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Design review")]));
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -374,9 +354,7 @@ describe("the task a rule files under", () => {
 			.update(task)
 			.set({ archivedAt: new Date() })
 			.where(eq(task.id, designTaskId));
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Design review")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Design review")]));
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -386,9 +364,7 @@ describe("the task a rule files under", () => {
 	});
 
 	test("filing under a task changes it and remembers it", async () => {
-		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Design review")]),
-		);
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Design review")]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		const [synced] = await entries();
 
@@ -410,7 +386,7 @@ describe("the task a rule files under", () => {
 
 		// A later occurrence: a different length, so it is not the same meeting.
 		setCalendarSourceForTests(
-			calendarReturning([
+			fakeCalendar([
 				event("e1", "Design review"),
 				{
 					...event("e2", "Design review"),

@@ -155,6 +155,49 @@ export const listCalendarEvents = async (
 	return items;
 };
 
+/** What Google says about one event when asked for it by id.
+ *  - `found`: it exists and is still a meeting the person attends (the same
+ *    `isImportableEvent` test the list applies), wherever it now sits.
+ *  - `absent`: deleted, cancelled, declined, or turned into something that is
+ *    not a meeting — the entry describing it should go.
+ *  - `unreadable`: Google could not be asked (revoked token, outage). Nothing
+ *    can be concluded, so nothing should be deleted on the strength of it. */
+export type CalendarEventLookup =
+	| { status: "found"; event: GoogleCalendarEvent }
+	| { status: "absent" }
+	| { status: "unreadable" };
+
+// Fetches one event by id. The meeting-sync engine calls this for a synced
+// entry whose event is missing from the range list, BEFORE deleting it: the
+// list can come back empty or truncated, and "not in the list" is not the same
+// fact as "gone". A recurring instance id (`<series>_<start>`) is accepted here
+// exactly as the list hands it out.
+//
+// Google answers a deleted event with 200 and `status: "cancelled"` for a while
+// and 404/410 after that; both are `absent`. Everything else that is not a
+// definite answer is `unreadable` rather than thrown — this is one lookup per
+// stale row inside a pass that must not fail on one bad response.
+export const getCalendarEvent = async (
+	token: string,
+	eventId: string,
+): Promise<CalendarEventLookup> => {
+	const response = await externalFetch(
+		`${GOOGLE_API}/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
+		{ headers: authHeaders(token) },
+	);
+	if (response.status === 404 || response.status === 410) {
+		return { status: "absent" };
+	}
+	if (!response.ok) return { status: "unreadable" };
+	// SAFETY: guarded by the `!response.ok` return above, so this is Google's
+	// documented event resource — the same shape the list endpoint's `items`
+	// carry, and `isImportableEvent` reads only optional fields from it.
+	const event = (await response.json()) as GoogleCalendarEvent;
+	return isImportableEvent(event)
+		? { status: "found", event }
+		: { status: "absent" };
+};
+
 // Creates an all-day event on the primary calendar and returns its id.
 // `startDate` maps to Google's inclusive `start.date`; `endDate` maps to
 // `end.date`, which Google treats as EXCLUSIVE — callers pass the day after the

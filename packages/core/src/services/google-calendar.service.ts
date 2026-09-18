@@ -5,7 +5,9 @@ import { db } from "../db";
 import { account } from "../db/schema/auth";
 import {
 	extractMeetingUrl,
+	getCalendarEvent,
 	getGoogleUserInfo,
+	type GoogleCalendarEvent,
 	insertAllDayEvent,
 	isImportableEvent,
 	listCalendarEvents,
@@ -132,6 +134,38 @@ export const googleCalendarService = {
 		return fetchTimedEvents(token, start, end);
 	},
 
+	// One event by id, for the meeting-sync engine to confirm a synced entry's
+	// event is really gone before it deletes the entry. The shape the engine
+	// reads is the same as the list's, so a `found` event that is still inside
+	// the window can be written through the same path the list feeds.
+	//
+	// Every failure is `unreadable`, including a thrown fetch (timeout, network):
+	// this is one lookup per stale row inside a pass that has already done its
+	// useful work, and a throw here would report the whole engine as failed.
+	lookupEvent: async (
+		ctx: Ctx,
+		eventId: string,
+	): Promise<
+		| { status: "found"; event: CalendarEventOption }
+		| { status: "absent" }
+		| { status: "unreadable" }
+	> => {
+		const token = await getAccessToken(ctx);
+		if (!token) return { status: "unreadable" };
+		try {
+			const lookup = await getCalendarEvent(token, eventId);
+			if (lookup.status !== "found") return lookup;
+			return { status: "found", event: toOption(lookup.event) };
+		} catch (error) {
+			console.error("[google-calendar] event lookup failed", {
+				userId: ctx.userId,
+				eventId,
+				error,
+			});
+			return { status: "unreadable" };
+		}
+	},
+
 	// Writes an all-day vacation marker to the requester's primary calendar and
 	// returns the created event id (null if the token is missing/insufficient).
 	// `endDate` is the inclusive last day off; Google's end.date is exclusive so
@@ -160,14 +194,17 @@ const fetchTimedEvents = async (
 	timeMax: Date,
 ): Promise<CalendarEventOption[]> => {
 	const events = await listCalendarEvents(token, { timeMin, timeMax });
-	return events.filter(isImportableEvent).map((event) => ({
-		id: event.id,
-		title: event.summary?.trim() || "(no title)",
-		// oxlint-disable-next-line typescript/no-non-null-assertion -- guaranteed present by the filter above
-		start: event.start!.dateTime!,
-		// oxlint-disable-next-line typescript/no-non-null-assertion -- guaranteed present by the filter above
-		end: event.end!.dateTime!,
-		meetingUrl: extractMeetingUrl(event),
-		htmlLink: event.htmlLink ?? null,
-	}));
+	return events.filter(isImportableEvent).map(toOption);
 };
+
+/** Normalize one event that has passed `isImportableEvent`. */
+const toOption = (event: GoogleCalendarEvent): CalendarEventOption => ({
+	id: event.id,
+	title: event.summary?.trim() || "(no title)",
+	// oxlint-disable-next-line typescript/no-non-null-assertion -- every caller filtered on isImportableEvent, which requires both instants
+	start: event.start!.dateTime!,
+	// oxlint-disable-next-line typescript/no-non-null-assertion -- every caller filtered on isImportableEvent, which requires both instants
+	end: event.end!.dateTime!,
+	meetingUrl: extractMeetingUrl(event),
+	htmlLink: event.htmlLink ?? null,
+});

@@ -342,10 +342,22 @@ export const timeEntry = pgTable(
 		// the source event id (kept so the same event isn't imported twice).
 		meetingUrl: text("meeting_url"),
 		calendarEventId: text("calendar_event_id"),
-		// True once the user takes ownership of a calendar-linked entry. The
-		// meeting-sync engine treats Google as the source of truth ONLY where this
-		// is false.
+		// True once the user takes ownership of a calendar-linked entry: filing
+		// it, editing it, typing into its week cell. It marks the ROW as the
+		// person's; which of its fields still follow the calendar is decided per
+		// field by the three `synced*` columns below, so filing a meeting no
+		// longer stops it moving when the calendar moves it (issue #60).
 		syncLocked: boolean("sync_locked").notNull().default(false),
+		// What the calendar last said this meeting's day, length and title were.
+		// The meeting engine compares each field against its baseline: a field that
+		// still equals what the calendar last said follows the calendar's new
+		// value; one the person has changed is theirs and is left alone. Null when
+		// nothing is known — a row the person made by hand around an event, or a
+		// row filed before these columns existed — and a null baseline never
+		// matches, so such a row keeps every value that differs from the calendar.
+		syncedDate: text("synced_date"),
+		syncedDurationSeconds: integer("synced_duration_seconds"),
+		syncedDescription: text("synced_description"),
 		// Set together when this entry was auto-materialized from a recurring rule.
 		generatedFromRuleId: uuid("generated_from_rule_id").references(
 			() => recurringBlockRule.id,
