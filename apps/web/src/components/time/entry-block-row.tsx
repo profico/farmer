@@ -1,5 +1,9 @@
 import { parseDuration, snapToQuarterHour } from "@farmer/core/lib/time";
-import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
+import {
+	CalendarDotIcon,
+	GitCommitIcon,
+	GitPullRequestIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
@@ -14,6 +18,7 @@ import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { useHeightTransition } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
@@ -24,6 +29,7 @@ import {
 	setTimeEntryOvertime,
 	updateTimeEntryDescription,
 	updateTimeEntryDuration,
+	useCalendarValues,
 } from "#/server/time-entries.ts";
 
 export type EntryBlockRowEntry = ExistingTimeEntry & {
@@ -36,7 +42,61 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 	task: { name: string; color: string | null; isAbsence: boolean };
 	commitCount?: number;
 	pullRequestCount?: number;
+	// A synced meeting carries what the calendar last said its day and length
+	// were. Where the entry differs, the person changed it, and the row says so.
+	calendarEventId?: string | null;
+	syncedDate?: string | null;
+	syncedDurationSeconds?: number | null;
 };
+
+/** What the calendar says about a synced meeting that the person has since
+ *  moved or re-lengthed, or null when the entry still matches the calendar
+ *  (or is not a synced meeting). The note is deliberately not compared: a note
+ *  is the person's from the moment they write one, and flagging every meeting
+ *  with a note would make the pill mean nothing. */
+export function calendarDifference(entry: EntryBlockRowEntry): {
+	date: string | null;
+	durationSeconds: number | null;
+} | null {
+	if (
+		entry.calendarEventId == null ||
+		entry.syncedDate == null ||
+		entry.syncedDurationSeconds == null
+	) {
+		return null;
+	}
+	const date = entry.syncedDate !== entry.date ? entry.syncedDate : null;
+	const durationSeconds =
+		entry.syncedDurationSeconds !== entry.durationSeconds
+			? entry.syncedDurationSeconds
+			: null;
+	if (date === null && durationSeconds === null) return null;
+	return { date, durationSeconds };
+}
+
+/** The pill's text: the calendar's day, its length, or both. */
+function calendarLabel(
+	diff: NonNullable<ReturnType<typeof calendarDifference>>,
+) {
+	const parts: string[] = [];
+	if (diff.date) parts.push(formatDateKeyShort(diff.date));
+	if (diff.durationSeconds != null)
+		parts.push(formatClock(diff.durationSeconds));
+	return parts.join(" · ");
+}
+
+/** The pill's hover text: the whole sentence, and what clicking does. */
+function calendarSentence(
+	diff: NonNullable<ReturnType<typeof calendarDifference>>,
+) {
+	const what =
+		diff.date && diff.durationSeconds != null
+			? `${formatClock(diff.durationSeconds)} on ${formatDateKeyShort(diff.date)}`
+			: diff.date
+				? `on ${formatDateKeyShort(diff.date)}`
+				: `${formatClock(diff.durationSeconds ?? 0)} long`;
+	return `On your calendar this meeting is ${what}. Click to use the calendar's day and length.`;
+}
 
 /** Harvest's row heading: "[CODE] Project (Client)". The code is what people
  *  actually say out loud, so it leads; an absence has neither and just names
@@ -151,6 +211,19 @@ export function EntryBlockRow({
 		if (snapped === entry.durationSeconds) return;
 		durationMutation.mutate(snapped);
 	};
+
+	const calendarDiff = calendarDifference(entry);
+	const calendarMutation = useMutation({
+		mutationFn: () => useCalendarValues({ data: { timeEntryId: entry.id } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not take the calendar's values");
+		},
+	});
 
 	const overtimeMutation = useMutation({
 		mutationFn: (overtime: boolean) =>
@@ -324,6 +397,22 @@ export function EntryBlockRow({
 						<span className="eyebrow shrink-0 rounded-full bg-warn/12 px-1.5 py-0.5 text-warn">
 							Overtime
 						</span>
+					)}
+					{/* A synced meeting the person moved or re-lengthed: the calendar's
+					    value, as a pill in the slot "Overtime" uses, and the pill is the
+					    button that takes it. Absent on every meeting that simply follows
+					    the calendar, so its presence means something. */}
+					{calendarDiff && (
+						<button
+							type="button"
+							onClick={() => calendarMutation.mutate()}
+							disabled={calendarMutation.isPending}
+							title={calendarSentence(calendarDiff)}
+							className="eyebrow flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-warn/12 px-1.5 py-0.5 text-warn transition-colors duration-(--dur-fast) hover:bg-warn/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
+						>
+							<CalendarDotIcon className="size-3" />
+							Calendar: {calendarLabel(calendarDiff)}
+						</button>
 					)}
 					{!!entry.commitCount && entry.commitCount > 0 && (
 						<span

@@ -14,6 +14,7 @@ import {
 	updateTimeEntryDescriptionInput,
 	updateTimeEntryDurationInput,
 	updateTimeEntryInput,
+	useCalendarValuesInput,
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 
@@ -93,6 +94,16 @@ export const updateTimeEntryDuration = createServerFn({ method: "POST" })
 	.handler(async ({ data, context }) => {
 		const { timeEntriesService } = await import("@farmer/core/services");
 		return timeEntriesService.updateDuration(context.ctx, data);
+	});
+
+// The row's "Calendar: 1:30" pill: put a synced meeting the person had
+// re-lengthed or moved back on the calendar's day and length.
+export const useCalendarValues = createServerFn({ method: "POST" })
+	.middleware([orgMiddleware])
+	.validator(useCalendarValuesInput)
+	.handler(async ({ data, context }) => {
+		const { timeEntriesService } = await import("@farmer/core/services");
+		return timeEntriesService.useCalendarValues(context.ctx, data);
 	});
 
 // The unfiled worklist: entries with no project yet (synced meetings, fill

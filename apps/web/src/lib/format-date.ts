@@ -21,6 +21,15 @@ export const formatDateKeyLong = (key: string): string =>
 		year: "numeric",
 	});
 
+// "2026-07-09" → "Thu, Jul 9" — a day named the way a calendar names it, for
+// a row that has to say which day the calendar has a meeting on.
+export const formatDateKeyShort = (key: string): string =>
+	parseDateKey(key).toLocaleDateString("en-US", {
+		weekday: "short",
+		month: "short",
+		day: "numeric",
+	});
+
 // "2026-07" → "July 2026"
 export const formatMonthKey = (key: string): string =>
 	parseMonthKey(key).toLocaleDateString("en-US", {
