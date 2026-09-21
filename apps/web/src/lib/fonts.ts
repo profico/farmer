@@ -396,7 +396,45 @@ export const applyFaces = () => {
 	document.head.appendChild(link);
 };
 
-export const setFace = (role: FaceRole, id: string) => {
+/** How long a pick waits for its face before it is applied anyway. Past this
+ *  the network is the problem, and `display=swap` draws the fallback until the
+ *  face turns up — which is what every pick did before this wait existed. */
+const PRELOAD_TIMEOUT_MS = 8000;
+
+/**
+ * Fetch a face that is not on the page yet, before any role points at it.
+ *
+ * Pointed at first, the role drew the device's fallback until the file came
+ * in and then swapped again — two changes for one pick, the first of them
+ * away from what was asked for. So the face's own stylesheet goes in first,
+ * the file is loaded through it, and only then is the role moved.
+ *
+ * The <link> stays. `applyFaces` builds the one link a cold load reads, and
+ * its stylesheet is a second fetch: removing this one before that one has
+ * parsed would leave a frame with no rule for the face. A face nobody uses
+ * any more costs nothing — a browser cannot unload one anyway.
+ */
+const preloadFace = async (role: FaceRole, face: Face) => {
+	if (!face.google || !face.family) return;
+	const id = `${LINK_ID}-${role}-${face.id}`;
+	if (!document.getElementById(id)) {
+		const link = document.createElement("link");
+		link.id = id;
+		link.rel = "stylesheet";
+		link.href = `${GOOGLE_BASE}${face.google}&display=swap`;
+		const parsed = new Promise((resolve) => {
+			link.addEventListener("load", resolve, { once: true });
+			link.addEventListener("error", resolve, { once: true });
+		});
+		document.head.appendChild(link);
+		await parsed;
+	}
+	await document.fonts.load(`1em '${face.family}'`);
+};
+
+/** Store a pick, show it in the selector at once, and apply it once its face
+ *  is here. Resolves when the pick is drawn, for the selector's "Loading". */
+export const setFace = async (role: FaceRole, id: string) => {
 	try {
 		if (id === defaultId(role)) localStorage.removeItem(storageKey(role));
 		else localStorage.setItem(storageKey(role), id);
@@ -404,6 +442,15 @@ export const setFace = (role: FaceRole, id: string) => {
 		// Private-mode / blocked storage. `applyFaces` reads storage back, so
 		// this one is genuinely lost rather than merely unremembered — there is
 		// nowhere else to keep it that the inline script could reach.
+	}
+	// The selector follows storage, so it shows the pick before the fetch.
+	window.dispatchEvent(new Event(CHANGE_EVENT));
+	const face = faceOf(role, id);
+	if (face) {
+		await Promise.race([
+			preloadFace(role, face).catch(() => {}),
+			new Promise((resolve) => setTimeout(resolve, PRELOAD_TIMEOUT_MS)),
+		]);
 	}
 	applyFaces();
 	window.dispatchEvent(new Event(CHANGE_EVENT));
