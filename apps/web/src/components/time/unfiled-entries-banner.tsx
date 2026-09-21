@@ -317,22 +317,45 @@ function FileEntriesDialog({
 	// still re-offer it with "include dismissed" if that was a mistake.
 	const removeMutation = useMutation({
 		mutationFn: async (ids: string[]) => {
-			for (const id of ids) await deleteTimeEntry({ data: id });
-			return ids.length;
+			// One delete per row, and a failure kept rather than thrown. A batch
+			// that stops halfway has still deleted everything up to the row that
+			// failed, and throwing sent the whole thing to `onError` — no
+			// invalidation, so the dialog went on listing rows that are gone, and
+			// no pruning, so they stayed ticked and the next Add to project asked
+			// the server to file them.
+			const removed: string[] = [];
+			let firstError: string | null = null;
+			for (const id of ids) {
+				try {
+					await deleteTimeEntry({ data: id });
+					removed.push(id);
+				} catch (error) {
+					firstError ??=
+						error instanceof Error ? error.message : "unknown reason";
+				}
+			}
+			return { removed, firstError };
 		},
-		onSuccess: async (removed, ids) => {
+		onSuccess: async ({ removed, firstError }, ids) => {
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
 			setSelectedIds((current) => {
 				const next = new Set(current);
-				for (const id of ids) next.delete(id);
+				for (const id of removed) next.delete(id);
 				return next;
 			});
+			if (firstError !== null) {
+				toast.error(
+					`Removed ${removed.length} of ${ids.length}: ${firstError}`,
+				);
+				return;
+			}
+			const count = removed.length;
 			toast.success(
 				allMeetings
-					? `Removed ${removed} ${removed === 1 ? "meeting" : "meetings"} · the calendar won't bring ${removed === 1 ? "it" : "them"} back`
-					: `Removed ${removed} ${removed === 1 ? "entry" : "entries"}`,
+					? `Removed ${count} ${count === 1 ? "meeting" : "meetings"} · the calendar won't bring ${count === 1 ? "it" : "them"} back`
+					: `Removed ${count} ${count === 1 ? "entry" : "entries"}`,
 			);
 		},
 		onError: (error: Error) => toast.error(error.message),

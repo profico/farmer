@@ -282,6 +282,114 @@ describe("a meeting cancelled on the calendar", () => {
 
 		expect(await rows()).toHaveLength(1);
 	});
+
+	test("then restored on the calendar: the kept entry is not imported a second time", async () => {
+		await sync([eventOn("e1", "Planning", MONDAY)]);
+		const id = at(await rows(), 0).id;
+		await timeEntriesService.updateDescription(ctx, {
+			timeEntryId: id,
+			description: "Planning — agreed the Q4 scope",
+		});
+		await sync([]);
+		expect(at(await rows(), 0).calendarEventId).toBeNull();
+
+		// The organiser puts the meeting back, on the same day. Nothing ties the
+		// person's record to the event any more — that link had to go — so the
+		// event arrives as new, lands beside the record of the same meeting and
+		// Monday counts it twice. The tombstone is what "nothing touches it
+		// again" means.
+		await sync([eventOn("e1", "Planning", MONDAY)]);
+
+		const after = await rows();
+		expect(after).toHaveLength(1);
+		expect(at(after, 0).id).toBe(id);
+		expect(at(after, 0).description).toBe("Planning — agreed the Q4 scope");
+	});
+
+	test("a meeting MOVED out of the window is not tombstoned: only a gone one is", async () => {
+		const NEXT_MONDAY = "2026-08-17";
+		await sync([eventOn("e1", "Planning", MONDAY)]);
+		await timeEntriesService.updateDescription(ctx, {
+			timeEntryId: at(await rows(), 0).id,
+			description: "Planning — agreed the Q4 scope",
+		});
+
+		await sync([], {
+			lookups: {
+				e1: { status: "found", event: eventOn("e1", "Planning", NEXT_MONDAY) },
+			},
+		});
+
+		// Still on the calendar, so it is meant to be written again on its new
+		// day — the reason the row was unlinked in the first place.
+		expect(
+			await db.query.syncedMeetingTombstone.findMany({
+				where: eq(syncedMeetingTombstone.userId, USER_ID),
+			}),
+		).toHaveLength(0);
+	});
+});
+
+describe("a reissued id that another row already holds", () => {
+	test("the row outside the window keeps it, and the pass still finishes", async () => {
+		const FRIDAY_BEFORE = "2026-08-07";
+		// A row on a day this engine may no longer write to: synced while that
+		// day was in the window, and holding the very id the reissue mints.
+		await sync([eventOn("e2", "Planning", FRIDAY_BEFORE)], {
+			range: { from: FRIDAY_BEFORE, to: FRIDAY_BEFORE },
+		});
+		await sync([eventOn("e1", "Planning", MONDAY)]);
+		expect(await rows()).toHaveLength(2);
+
+		// "This and following": e1 is gone, and what Monday's meeting is called
+		// now is e2 — the id the out-of-window row holds. Re-pointing Monday's
+		// row at it hits te_calendar_event_uidx, and the whole meeting pass goes
+		// down with it, imports and fill recompute included.
+		await sync([eventOn("e2", "Planning", MONDAY)], {
+			lookups: { e1: { status: "absent" } },
+		});
+
+		const after = await rows();
+		expect(after).toHaveLength(1);
+		expect(at(after, 0).date).toBe(FRIDAY_BEFORE);
+		expect(at(after, 0).calendarEventId).toBe("e2");
+	});
+});
+
+describe("asking Google about the rows its list left out", () => {
+	test("all of them in one call, however many there are", async () => {
+		await sync([
+			eventOn("e1", "Planning", MONDAY),
+			eventOn("e2", "Standup", MONDAY, 15),
+			eventOn("e3", "Retro", TUESDAY, 30),
+		]);
+		expect(await rows()).toHaveLength(3);
+
+		// The list comes back empty because Google throttled it, not because the
+		// week emptied — so every synced row in the window is stale at once. One
+		// call carrying every id: per id, the engine used to spend an account
+		// read and a better-auth token refresh before it reached Google, in
+		// series, and again twenty minutes later.
+		const calls: string[][] = [];
+		const throttled = fakeCalendar([], {
+			e1: { status: "unreadable" },
+			e2: { status: "unreadable" },
+			e3: { status: "unreadable" },
+		});
+		setCalendarSourceForTests({
+			...throttled,
+			lookupEvents: async (lookupCtx, ids) => {
+				calls.push([...ids]);
+				return throttled.lookupEvents(lookupCtx, ids);
+			},
+		});
+		await timeEntriesService.syncMeetingsForUser(ctx, WINDOW);
+
+		expect(calls).toHaveLength(1);
+		expect([...at(calls, 0)].sort()).toEqual(["e1", "e2", "e3"]);
+		// And no answer is no evidence: nothing was removed.
+		expect(await rows()).toHaveLength(3);
+	});
 });
 
 describe("a meeting moved beyond the window", () => {
@@ -367,6 +475,10 @@ describe("when the person and the calendar both change something", () => {
 		const after = at(await rows(), 0);
 		expect(after.date).toBe(TUESDAY);
 		expect(after.durationSeconds).toBe(90 * 60);
+		// And the notice names the length alone. A record that carried the day
+		// as well read out as "Moved from Tue" on an entry that is still on
+		// Tuesday and was never moved by anybody but the person.
+		expect(after.calendarChangeFrom).toEqual({ durationSeconds: 60 * 60 });
 	});
 
 	test("both changed the same field: the person wins, and the calendar's value is remembered", async () => {
@@ -521,10 +633,11 @@ describe("the 'updated by calendar' notice", () => {
 
 		const row = at(await rows(), 0);
 		expect(row.calendarChangedAt).not.toBeNull();
+		// The title did not change, so it is not in the record: the record is the
+		// list of what moved, which is what the pill reads out.
 		expect(row.calendarChangeFrom).toEqual({
 			date: MONDAY,
 			durationSeconds: 3600,
-			description: "Planning",
 		});
 	});
 

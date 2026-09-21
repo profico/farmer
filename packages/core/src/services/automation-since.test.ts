@@ -111,7 +111,7 @@ const calendarWithMeetingsOn = (dates: string[]) => ({
 	listEventsForDay: async () => [],
 	// Nothing here is ever asked about by id: every synced row's event stays in
 	// the list, so a lookup would only ever be a test bug.
-	lookupEvent: async () => ({ status: "unreadable" as const }),
+	lookupEvents: async () => new Map(),
 });
 
 /** Likewise for commits: the GitHub adapter is asked for a range and answers

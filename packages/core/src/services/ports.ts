@@ -21,7 +21,7 @@ import { googleCalendarService } from "./google-calendar.service";
 
 export type CalendarSource = Pick<
 	typeof googleCalendarService,
-	"listEventsForDay" | "listEventsForRange" | "lookupEvent"
+	"listEventsForDay" | "listEventsForRange" | "lookupEvents"
 >;
 
 export type CommitSource = Pick<

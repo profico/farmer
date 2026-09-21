@@ -192,14 +192,31 @@ const calendarFaceOf = (row: SyncedRow) => ({
 	meetingUrl: row.meetingUrl,
 });
 
-// Inside the upsert: is a calendar-owned field about to take a new value from
-// the calendar? Per field, "the row still says what the calendar last said"
-// AND "the calendar now says something else".
-const calendarWillChange = sql`(
-	(${timeEntry.date} is not distinct from ${timeEntry.syncedDate} and ${timeEntry.date} is distinct from excluded.date)
-	or (${timeEntry.durationSeconds} is not distinct from ${timeEntry.syncedDurationSeconds} and ${timeEntry.durationSeconds} is distinct from excluded.duration_seconds)
-	or (${timeEntry.description} is not distinct from ${timeEntry.syncedDescription} and ${timeEntry.description} is distinct from excluded.description)
-)`;
+// Inside the upsert, per field: is this one about to take a new value from the
+// calendar? "The row still says what the calendar last said" AND "the calendar
+// now says something else" — the first half is what makes it the calendar's
+// field to change at all.
+const dateWillChange = sql`(${timeEntry.date} is not distinct from ${timeEntry.syncedDate} and ${timeEntry.date} is distinct from excluded.date)`;
+const durationWillChange = sql`(${timeEntry.durationSeconds} is not distinct from ${timeEntry.syncedDurationSeconds} and ${timeEntry.durationSeconds} is distinct from excluded.duration_seconds)`;
+const descriptionWillChange = sql`(${timeEntry.description} is not distinct from ${timeEntry.syncedDescription} and ${timeEntry.description} is distinct from excluded.description)`;
+
+const calendarWillChange = sql`(${dateWillChange} or ${durationWillChange} or ${descriptionWillChange})`;
+
+// What the row said, for the fields this write is actually changing, and for
+// no others — `jsonb_strip_nulls` drops the rest, so the record IS the list of
+// what the calendar moved.
+//
+// A whole-row snapshot could not carry that, and the screen could not
+// reconstruct it: comparing the record against the baseline calls a field the
+// person owns moved (the baseline advances under it while the entry keeps
+// their value), and comparing it against the entry calls the person's own
+// later edit the calendar's doing. Both read as "Moved from Thu" on an entry
+// that never left Thursday.
+const calendarChangeRecord = sql`jsonb_strip_nulls(jsonb_build_object(
+	'date', case when ${dateWillChange} then ${timeEntry.date} else null end,
+	'durationSeconds', case when ${durationWillChange} then ${timeEntry.durationSeconds} else null end,
+	'description', case when ${descriptionWillChange} then ${timeEntry.description} else null end
+))`;
 
 // Does every field the calendar owns by default still say what the calendar
 // last said? A field that does is the calendar's; one that differs is the
@@ -295,7 +312,6 @@ const syncMeetingsForRange = async (
 	);
 
 	const liveIds = new Set(events.map((event) => event.id));
-	const byEventId = new Map(existing.map((row) => [row.calendarEventId, row]));
 
 	// Rows whose event is not in the list. "Not in the list" is not yet "gone":
 	// Google returns an empty page on a throttled request, the list is capped,
@@ -305,18 +321,31 @@ const syncMeetingsForRange = async (
 	// had carried it; one that is gone, or now sits on a day outside the window,
 	// is removed below — unless the person has edited it, in which case it is
 	// their record of a meeting and not the calendar's to take back.
+	//
+	// Asked in one batch: the case this pass exists for is the empty or
+	// throttled list, where EVERY synced row in the window is stale at once.
 	const stale = existing.filter((row) => !liveIds.has(row.calendarEventId));
+	const lookups = await calendar.lookupEvents(
+		ctx,
+		stale.map((row) => row.calendarEventId),
+	);
 	const confirmedLive: typeof events = [];
 	const removable: SyncedRow[] = [];
+	// Row id → event id, for the rows whose event Google says is GONE, as
+	// against merely outside the window. The two retire a row alike and part
+	// company at the tombstone below.
+	const vanished = new Map<string, string>();
 	for (const row of stale) {
-		const lookup = await calendar.lookupEvent(ctx, row.calendarEventId);
-		if (lookup.status === "unreadable") continue;
+		const lookup = lookups.get(row.calendarEventId);
+		if (!lookup || lookup.status === "unreadable") continue;
 		if (lookup.status === "found") {
 			const date = dayKeyInTz(new Date(lookup.event.start), tz);
 			if (date >= range.from && date <= range.to) {
 				confirmedLive.push(lookup.event);
 				continue;
 			}
+		} else {
+			vanished.set(row.id, row.calendarEventId);
 		}
 		removable.push(row);
 	}
@@ -401,9 +430,34 @@ const syncMeetingsForRange = async (
 			if (!orphans.has(key)) orphans.set(key, row);
 		}
 	}
+
+	// An incoming id that some row ALREADY holds is not free to point anything
+	// at. `existing` stops at the window, so a row on a day this engine may not
+	// write to is invisible to it — and repointing an orphan at that row's
+	// event id hits `te_calendar_event_uidx` and takes the whole meeting pass
+	// down with it. It is the wrong answer on its own terms too: the event has
+	// a row, it just sits on a day nothing here may move.
+	const claimed = new Set<string>();
+	if (rows.length > 0) {
+		const held = await db.query.timeEntry.findMany({
+			where: and(
+				eq(timeEntry.organizationId, ctx.organizationId),
+				eq(timeEntry.userId, ctx.userId),
+				inArray(
+					timeEntry.calendarEventId,
+					rows.map((row) => row.calendarEventId),
+				),
+			),
+			columns: { calendarEventId: true },
+		});
+		for (const row of held) {
+			if (row.calendarEventId) claimed.add(row.calendarEventId);
+		}
+	}
+
 	const repointed = new Set<string>();
 	for (const row of rows) {
-		if (byEventId.has(row.calendarEventId)) continue;
+		if (claimed.has(row.calendarEventId)) continue;
 		const holder = meetingIdentityKeys(row)
 			.map((key) => orphans.get(key))
 			.find((candidate) => candidate && !repointed.has(candidate.id));
@@ -413,6 +467,7 @@ const syncMeetingsForRange = async (
 			.set({ calendarEventId: row.calendarEventId })
 			.where(eq(timeEntry.id, holder.id));
 		repointed.add(holder.id);
+		claimed.add(row.calendarEventId);
 		console.info("[time-entries] re-linked a reissued calendar event", {
 			previousEventId: holder.calendarEventId,
 			eventId: row.calendarEventId,
@@ -464,7 +519,7 @@ const syncMeetingsForRange = async (
 					// calendar still owns is about to take a different value. A field the
 					// person owns is not changing, so it is not a change to report.
 					calendarChangedAt: sql`case when ${calendarWillChange} then now() else ${timeEntry.calendarChangedAt} end`,
-					calendarChangeFrom: sql`case when ${calendarWillChange} then jsonb_build_object('date', ${timeEntry.date}, 'durationSeconds', ${timeEntry.durationSeconds}, 'description', ${timeEntry.description}) else ${timeEntry.calendarChangeFrom} end`,
+					calendarChangeFrom: sql`case when ${calendarWillChange} then ${calendarChangeRecord} else ${timeEntry.calendarChangeFrom} end`,
 					syncedDate: sql`excluded.synced_date`,
 					syncedDurationSeconds: sql`excluded.synced_duration_seconds`,
 					syncedDescription: sql`excluded.synced_description`,
@@ -512,7 +567,7 @@ const syncMeetingsForRange = async (
 			)
 			.returning({ date: timeEntry.date });
 		for (const row of removed) touched.add(row.date);
-		await db
+		const unlinked = await db
 			.update(timeEntry)
 			.set({
 				calendarEventId: null,
@@ -529,7 +584,36 @@ const syncMeetingsForRange = async (
 					eq(timeEntry.userId, ctx.userId),
 					inArray(timeEntry.id, gone),
 				),
-			);
+			)
+			.returning({ id: timeEntry.id });
+
+		// A kept row is no longer linked, so nothing ties it to the event any
+		// more — and that is the whole difference between the two reasons a row
+		// is retired. A meeting merely moved OUT OF THE WINDOW is meant to be
+		// written again on its new day, which is why the link had to go. One
+		// Google calls gone can only come back as the same event restored on the
+		// same day, and that would import a second entry beside the person's own
+		// record of the same meeting. The tombstone is what "nothing touches it
+		// again" means; deliberately re-creating an entry for the event lifts it,
+		// the same as for a meeting deleted by hand (see `create`).
+		const staysGone = unlinked.flatMap(({ id }) => {
+			const calendarEventId = vanished.get(id);
+			return calendarEventId
+				? [
+						{
+							organizationId: ctx.organizationId,
+							userId: ctx.userId,
+							calendarEventId,
+						},
+					]
+				: [];
+		});
+		if (staysGone.length > 0) {
+			await db
+				.insert(syncedMeetingTombstone)
+				.values(staysGone)
+				.onConflictDoNothing();
+		}
 	}
 
 	// A meeting is a claim on the day, so the day's fill block — which describes

@@ -373,10 +373,15 @@ export const timeEntry = pgTable(
 		// cleared when the person dismisses the notice (`acknowledgeCalendarChange`)
 		// or the entry is unlinked. Never set by the first import.
 		calendarChangedAt: ts("calendar_changed_at"),
+		// **Only the fields that write changed.** A field the person owns is not
+		// the sync's to report, and a key that is absent is how the screen knows:
+		// it lists what it is given rather than comparing, because neither thing
+		// it could compare against says which half of the row moved. See
+		// `calendarChangeRecord` in time-entries.service.ts.
 		calendarChangeFrom: jsonb("calendar_change_from").$type<{
-			date: string;
-			durationSeconds: number;
-			description: string;
+			date?: string;
+			durationSeconds?: number;
+			description?: string;
 		}>(),
 		// Set together when this entry was auto-materialized from a recurring rule.
 		generatedFromRuleId: uuid("generated_from_rule_id").references(

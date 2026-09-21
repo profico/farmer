@@ -59,35 +59,38 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 	/** When the meeting starts, per the calendar. Display only. */
 	meetingStartsAt?: Date | string | null;
 	/** The sync changed the day, length or title on the calendar's say-so, and
-	 *  what the entry said before it did. Cleared when dismissed. */
+	 *  what the entry said before it did — **one key per field it changed, and
+	 *  no others**. Cleared when dismissed. */
 	calendarChangedAt?: Date | string | null;
 	calendarChangeFrom?: {
-		date: string;
-		durationSeconds: number;
-		description: string;
+		date?: string;
+		durationSeconds?: number;
+		description?: string;
 	} | null;
 };
 
 /** The sentences behind the "Updated by calendar" pill: each field the sync
- *  changed, as "was X". Compared against what the calendar says NOW rather
- *  than the row, because the person may have edited the row since. */
+ *  changed, as "was X".
+ *
+ *  Read, never compared. `calendarChangeFrom` carries a key only for a field
+ *  that write changed, so the keys present ARE the sentences — and a field
+ *  the person owns is absent from it. Comparing was the old way and it had no
+ *  right answer: against the baseline (the calendar's latest word, which moves
+ *  on under a field the person owns) it announced "Moved from Thu" on an entry
+ *  still sitting on Thursday; against the entry it would blame the calendar
+ *  for the person's own next edit. */
 export function calendarChangeSentences(entry: EntryBlockRowEntry): string[] {
 	const from = entry.calendarChangeFrom;
 	if (!from) return [];
 	const out: string[] = [];
-	if (entry.syncedDate != null && from.date !== entry.syncedDate) {
+	if (from.date != null) {
 		out.push(`Moved from ${formatDateKeyShort(from.date)}`);
 	}
-	if (
-		entry.syncedDurationSeconds != null &&
-		from.durationSeconds !== entry.syncedDurationSeconds
-	) {
+	if (from.durationSeconds != null) {
 		out.push(`Was ${formatClock(from.durationSeconds)} long`);
 	}
-	if (
-		entry.syncedDescription != null &&
-		from.description !== entry.syncedDescription
-	) {
+	// A meeting the calendar imported untitled has nothing to quote.
+	if (from.description) {
 		out.push(`Was called "${from.description}"`);
 	}
 	return out;
