@@ -17,7 +17,7 @@ import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
-import { sendMail } from "../lib/email";
+import { invitationMail, sendMail } from "../lib/email";
 import { PLATFORM_ADMIN_ROLE, PLATFORM_USER_ROLE } from "../lib/platform-admin";
 import {
 	bootstrapSingleOrg,
@@ -428,12 +428,15 @@ export const auth = betterAuth({
 				// long as it took, over an invitation that had already happened. The
 				// outcome lands on `invitationEmail` instead, and the members page
 				// shows it; a failed invitation can be cancelled and sent again.
-				void sendMail({
-					to: data.email,
-					subject: `${data.inviter.user.name} invited you to join ${data.organization.name}`,
-					text: `${data.inviter.user.name} invited you to join ${data.organization.name} as ${data.role}.\n\nAccept the invitation: ${link}`,
-					html: `<p>${data.inviter.user.name} invited you to join <strong>${data.organization.name}</strong> as ${data.role}.</p><p><a href="${link}">Accept the invitation</a></p>`,
-				}).then(
+				void sendMail(
+					invitationMail({
+						to: data.email,
+						inviterName: data.inviter.user.name,
+						organizationName: data.organization.name,
+						role: data.role,
+						link,
+					}),
+				).then(
 					() =>
 						membersService.recordInvitationEmail(
 							organizationId,
