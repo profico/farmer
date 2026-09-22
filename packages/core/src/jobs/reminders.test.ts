@@ -21,6 +21,8 @@ import {
 	test,
 } from "bun:test";
 
+import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { account, member, organization, user } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
@@ -390,6 +392,85 @@ describe("a log reminder still being sent", () => {
 		for (const userId of [SILENT, SLOW, CONTRACTOR]) {
 			expect(sent.filter((s) => s.userId === userId)).toHaveLength(1);
 		}
+	});
+});
+
+// The claim is taken before the send, so a crash loses a DM rather than
+// sending two. But a send that came back undelivered kept its claim too, so a
+// Slack hiccup at 09:00 cost the person that day's reminder for good, and the
+// summary counted nothing as failed.
+describe("an undelivered Slack reminder", () => {
+	const claimsFor = (userId: string) =>
+		db.query.slackReminderLog.findMany({
+			where: and(
+				eq(slackReminderLog.recipientUserId, userId),
+				eq(slackReminderLog.kind, "nudge"),
+			),
+		});
+
+	test("is tried again on the next tick, and counted as failed", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		const record = recorder("slack");
+		let silentTries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				if (event.kind === "compliance-nudge" && to.userId === SILENT) {
+					silentTries++;
+					if (silentTries === 1) return false;
+				}
+				// SLOW has no Slack identity: nothing a retry could fix.
+				if (event.kind === "compliance-nudge" && to.userId === SLOW) {
+					return false;
+				}
+				return record(to, event);
+			},
+		});
+
+		const first = await slackAt(TUESDAY, "09:00");
+		expect(first.failed).toBe(1);
+		expect(first.nudges).toBe(0);
+		expect(await claimsFor(SILENT)).toHaveLength(0);
+		expect(await claimsFor(SLOW)).toHaveLength(1);
+
+		const second = await slackAt(TUESDAY, "09:15");
+		expect(second.failed).toBe(0);
+		expect(second.nudges).toBe(1);
+		expect(reached("compliance-nudge")).toEqual([SILENT]);
+		expect(await claimsFor(SILENT)).toHaveLength(1);
+
+		// Delivered once, and nobody is tried again.
+		await slackAt(TUESDAY, "09:30");
+		expect(silentTries).toBe(2);
+		expect(reached("compliance-nudge")).toEqual([SILENT]);
+	});
+
+	test("is given up on after three tries, and the claim stays", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		const record = recorder("slack");
+		let silentTries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				if (event.kind === "compliance-nudge" && to.userId === SILENT) {
+					silentTries++;
+					return false;
+				}
+				return record(to, event);
+			},
+		});
+
+		const failed: number[] = [];
+		for (const time of ["09:00", "09:15", "09:30", "09:45"]) {
+			failed.push((await slackAt(TUESDAY, time)).failed);
+		}
+		expect(failed).toEqual([1, 1, 1, 0]);
+		expect(silentTries).toBe(3);
+		expect(await claimsFor(SILENT)).toHaveLength(1);
 	});
 });
 

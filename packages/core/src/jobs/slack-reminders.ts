@@ -1,3 +1,5 @@
+import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { slackReminderLog } from "../db/schema/slack";
@@ -44,6 +46,15 @@ export type SlackReminderSummary = {
 // BEFORE the send. A crash mid-run therefore loses at most one DM rather than
 // re-sending the whole batch on the next tick — the safer direction for a
 // nag, where a duplicate is more damaging than a miss.
+//
+// A send that comes back undelivered is a different case: nothing went out,
+// so the claim only stood between the person and a retry. Unless they simply
+// have no Slack identity (nothing to retry), the claim is released and the
+// pass is left unfinished, so the next tick tries again — at most
+// `MAX_SEND_ATTEMPTS` times a day, after which the claim stays. `notify`
+// reports only whether a channel delivered, not why it did not, so a rate
+// limit and a deactivated account look the same here; the cap bounds the
+// second.
 
 /** The three kinds this job sends, the claim key each has always used in
  *  `slack_reminder_log`, and the summary counter it adds to. */
@@ -69,9 +80,17 @@ const SLACK_KINDS = [
  *  more pass per org and kind, which the claims make harmless. */
 const finishedRuns = new Map<string, string>();
 
+/** How many times one reminder is tried on one day before the job gives up. */
+const MAX_SEND_ATTEMPTS = 3;
+
+/** `${organizationId}:${userId}:${claim}:${dayKey}` → the failed sends so far,
+ *  for a reminder whose claim was released to be tried again. */
+const failedAttempts = new Map<string, number>();
+
 /** Forget which passes already ran, so a test can run the same day twice. */
 export const forgetSlackReminderRunsForTests = (): void => {
 	finishedRuns.clear();
+	failedAttempts.clear();
 };
 
 /** Claims the (org, user, kind, day) slot. Returns false if already claimed. */
@@ -87,6 +106,25 @@ const claim = async (
 		.onConflictDoNothing()
 		.returning({ id: slackReminderLog.id });
 	return rows.length > 0;
+};
+
+/** Gives a claimed slot back, so the next tick may try the send again. */
+const releaseClaim = async (
+	organizationId: string,
+	recipientUserId: string,
+	kind: string,
+	dayKey: string,
+): Promise<void> => {
+	await db
+		.delete(slackReminderLog)
+		.where(
+			and(
+				eq(slackReminderLog.organizationId, organizationId),
+				eq(slackReminderLog.recipientUserId, recipientUserId),
+				eq(slackReminderLog.kind, kind),
+				eq(slackReminderLog.dayKey, dayKey),
+			),
+		);
 };
 
 /** Is `dayKey` the last Mon–Fri non-holiday day of its month? The month-end
@@ -164,18 +202,68 @@ export const runSlackRemindersOnce = async (
 					recipients.map((r) => r.userId),
 					entry.kind,
 				);
+				let retryLater = false;
 				for (const recipient of recipients) {
 					if (blocks.has(recipient.userId)) continue;
 					if (!(await claim(org.id, recipient.userId, entry.claim, today))) {
 						continue;
 					}
-					const outcome = await notify(
-						{ organizationId: org.id, userId: recipient.userId },
-						recipient.event,
-					);
-					if (wasDelivered(outcome)) summary[entry.counter]++;
+					const attemptKey = `${org.id}:${recipient.userId}:${entry.claim}:${today}`;
+					let result: "delivered" | "unreachable" | "failed";
+					try {
+						const outcome = await notify(
+							{ organizationId: org.id, userId: recipient.userId },
+							recipient.event,
+						);
+						if (wasDelivered(outcome)) result = "delivered";
+						else {
+							// No Slack identity is not a failure a retry can fix: keep the
+							// claim, as before.
+							const slackId = await slackService.slackIdFor(
+								org.id,
+								recipient.userId,
+							);
+							result = slackId ? "failed" : "unreachable";
+						}
+					} catch (error) {
+						console.error("[slack-reminders] send failed", {
+							organizationId: org.id,
+							userId: recipient.userId,
+							kind: entry.kind,
+							error,
+						});
+						result = "failed";
+					}
+
+					if (result === "delivered") summary[entry.counter]++;
+					if (result !== "failed") {
+						failedAttempts.delete(attemptKey);
+						continue;
+					}
+
+					summary.failed++;
+					const attempts = (failedAttempts.get(attemptKey) ?? 0) + 1;
+					if (attempts >= MAX_SEND_ATTEMPTS) {
+						// Out of attempts: the claim stays, and the day gets no more.
+						failedAttempts.delete(attemptKey);
+						continue;
+					}
+					failedAttempts.set(attemptKey, attempts);
+					try {
+						await releaseClaim(org.id, recipient.userId, entry.claim, today);
+						retryLater = true;
+					} catch (error) {
+						// The claim stays, so this is a miss, never a duplicate.
+						console.error("[slack-reminders] could not release a claim", {
+							organizationId: org.id,
+							userId: recipient.userId,
+							kind: entry.kind,
+							error,
+						});
+					}
 				}
-				finishedRuns.set(`${org.id}:${entry.kind}`, today);
+				// A released claim needs this kind's pass to run again next tick.
+				if (!retryLater) finishedRuns.set(`${org.id}:${entry.kind}`, today);
 			}
 		} catch (error) {
 			summary.failed++;
