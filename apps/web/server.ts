@@ -75,6 +75,8 @@ import path from "node:path";
 // loaded by the deferred import inside startBackgroundSchedulers().
 import type { SchedulerHandle } from "@farmer/core/jobs";
 
+import { acceptsGzip } from "./src/lib/accept-encoding.ts";
+
 // Configuration
 const SERVER_PORT = Number(process.env.PORT ?? 3000);
 const CLIENT_DIRECTORY = "./dist/client";
@@ -308,6 +310,12 @@ function createResponseHandler(
 			"Content-Type": asset.type,
 			"Cache-Control": cacheControl,
 		});
+		// An asset with a gzip variant answers differently per Accept-Encoding,
+		// so a shared cache must key on it. Without `Vary`, a CDN that stored the
+		// gzip body could serve it to a client that never asked for gzip. On the
+		// 304 too: it refreshes the stored response, and must describe it.
+		const varies = ENABLE_GZIP && asset.gz !== undefined;
+		if (varies) headers.set("Vary", "Accept-Encoding");
 
 		if (ENABLE_ETAG && asset.etag) {
 			const ifNone = req.headers.get("if-none-match");
@@ -315,10 +323,12 @@ function createResponseHandler(
 				// A 304 has to repeat Cache-Control. It is what refreshes the stored
 				// freshness lifetime, so omitting it left the client revalidating a
 				// still-good asset on every single request.
-				return new Response(null, {
-					status: 304,
-					headers: { ETag: asset.etag, "Cache-Control": cacheControl },
+				const notModified = new Headers({
+					ETag: asset.etag,
+					"Cache-Control": cacheControl,
 				});
+				if (varies) notModified.set("Vary", "Accept-Encoding");
+				return new Response(null, { status: 304, headers: notModified });
 			}
 			headers.set("ETag", asset.etag);
 		}
@@ -326,7 +336,7 @@ function createResponseHandler(
 		if (
 			ENABLE_GZIP &&
 			asset.gz &&
-			req.headers.get("accept-encoding")?.includes("gzip")
+			acceptsGzip(req.headers.get("accept-encoding"))
 		) {
 			headers.set("Content-Encoding", "gzip");
 			headers.set("Content-Length", String(asset.gz.byteLength));
