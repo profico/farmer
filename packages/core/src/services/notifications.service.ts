@@ -6,6 +6,10 @@ import {
 	notificationSettings,
 	pushSubscription,
 } from "../db/schema/notifications";
+import {
+	isAllowedPushEndpoint,
+	PUSH_ENDPOINT_MESSAGE,
+} from "../lib/push-endpoint";
 import type {
 	SavePushSubscriptionInput,
 	UpdateNotificationSettingsInput,
@@ -69,6 +73,11 @@ export const notificationsService = {
 		ctx: Ctx,
 		input: SavePushSubscriptionInput,
 	): Promise<void> => {
+		// The schema refuses it too; this holds for a caller that skipped it,
+		// since `sendPush` will POST to whatever is stored here.
+		if (!isAllowedPushEndpoint(input.endpoint)) {
+			throw new Error(PUSH_ENDPOINT_MESSAGE);
+		}
 		await db
 			.insert(pushSubscription)
 			.values({
@@ -198,6 +207,15 @@ export const notificationsService = {
 		const body = JSON.stringify(payload);
 		await Promise.all(
 			subs.map(async (sub) => {
+				// A row saved before the allowlist existed can name any host. It is
+				// never sent to; the device re-subscribes with a real endpoint.
+				if (!isAllowedPushEndpoint(sub.endpoint)) {
+					console.warn("[notifications] skipped a non-push endpoint", {
+						userId,
+						subscriptionId: sub.id,
+					});
+					return;
+				}
 				try {
 					await webpush.sendNotification(
 						{

@@ -25,7 +25,7 @@ const ORG_B = "nt-b";
 const ME = "u-nt-me";
 const OTHER = "u-nt-other";
 
-const ENDPOINT = "https://push.example.com/device-1";
+const ENDPOINT = "https://fcm.googleapis.com/fcm/send/device-1";
 
 let harness: TestDb;
 
@@ -86,6 +86,20 @@ describe("push subscriptions", () => {
 			auth: "a1",
 			userAgent: "Firefox",
 		});
+	});
+
+	// `sendPush` POSTs to whatever is stored, so a URL that is not a browser
+	// push service is refused before it is stored — the schema refuses it
+	// too, and this holds for a caller that skipped the schema.
+	test("an endpoint that is not a push service is refused and not stored", async () => {
+		const internal = "https://10.0.0.1:6379/";
+		await expect(
+			notificationsService.saveSubscription(ctx(ME), {
+				endpoint: internal,
+				keys: { p256dh: "p1", auth: "a1" },
+			}),
+		).rejects.toThrow("Push endpoint must be a browser push service");
+		expect(await subscriptionsAt(internal)).toHaveLength(0);
 	});
 
 	test("another person cannot remove a subscription that is not theirs", async () => {
