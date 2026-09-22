@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as NoAccessRouteImport } from './routes/no-access'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DeviceRouteImport } from './routes/device'
+import { Route as ChooseOrganizationRouteImport } from './routes/choose-organization'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CliIndexRouteImport } from './routes/cli/index'
@@ -96,6 +97,11 @@ const LoginRoute = LoginRouteImport.update({
 const DeviceRoute = DeviceRouteImport.update({
   id: '/device',
   path: '/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChooseOrganizationRoute = ChooseOrganizationRouteImport.update({
+  id: '/choose-organization',
+  path: '/choose-organization',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
@@ -482,6 +488,7 @@ const ApiV1OrgsOrgSlugAbsencesIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
@@ -556,6 +563,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
@@ -631,6 +639,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
@@ -708,6 +717,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$orgSlug'
+    | '/choose-organization'
     | '/device'
     | '/login'
     | '/no-access'
@@ -782,6 +792,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/choose-organization'
     | '/device'
     | '/login'
     | '/no-access'
@@ -856,6 +867,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$orgSlug'
+    | '/choose-organization'
     | '/device'
     | '/login'
     | '/no-access'
@@ -932,6 +944,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
+  ChooseOrganizationRoute: typeof ChooseOrganizationRoute
   DeviceRoute: typeof DeviceRoute
   LoginRoute: typeof LoginRoute
   NoAccessRoute: typeof NoAccessRoute
@@ -997,6 +1010,13 @@ declare module '@tanstack/react-router' {
       path: '/device'
       fullPath: '/device'
       preLoaderRoute: typeof DeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/choose-organization': {
+      id: '/choose-organization'
+      path: '/choose-organization'
+      fullPath: '/choose-organization'
+      preLoaderRoute: typeof ChooseOrganizationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug': {
@@ -1574,6 +1594,7 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
+  ChooseOrganizationRoute: ChooseOrganizationRoute,
   DeviceRoute: DeviceRoute,
   LoginRoute: LoginRoute,
   NoAccessRoute: NoAccessRoute,

@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { safeRedirectPath } from "#/lib/org-redirect.ts";
+
 /**
  * The entire sign-in surface.
  *
@@ -23,13 +25,9 @@ export const Route = createFileRoute("/api/login")({
 
 				// Where the user lands once Google is done. `redirect` is attacker-
 				// supplied in principle (it rides in a link), so only a same-site
-				// absolute path is accepted — "//evil.com" is a protocol-relative URL,
-				// not a path, which is why the second test is not redundant.
-				const requested = url.searchParams.get("redirect");
+				// absolute path is accepted (`safeRedirectPath`).
 				const target =
-					requested?.startsWith("/") && !requested.startsWith("//")
-						? requested
-						: "/";
+					safeRedirectPath(url.searchParams.get("redirect")) ?? "/";
 				// Invite context (org/orgSlug/role/email) rides along as query params
 				// so an invited visitor lands on the same accept-invite screen the
 				// email link would have taken them to, still knowing which org it is.

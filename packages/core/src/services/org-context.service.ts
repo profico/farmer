@@ -79,15 +79,30 @@ export const orgContextService = {
 	 * The organizations a person is a member of, oldest membership first.
 	 *
 	 * What `farmer login` offers after the device flow, when the token has no
-	 * organization yet. Oldest first for the reason the session hook in
-	 * `auth/index.ts` orders that way: the same person gets the same default
-	 * every time, rather than whichever row the planner returned first.
+	 * organization yet, and what the web app's workspace chooser lists. Oldest
+	 * first for the reason the session hook in `auth/index.ts` orders that way:
+	 * the same person gets the same default every time, rather than whichever
+	 * row the planner returned first.
 	 */
 	organizationsFor: async (
 		userId: string,
-	): Promise<{ slug: string; name: string }[]> =>
+	): Promise<
+		{
+			slug: string;
+			name: string;
+			logo: string | null;
+			role: string;
+			timezone: string;
+		}[]
+	> =>
 		db
-			.select({ slug: organization.slug, name: organization.name })
+			.select({
+				slug: organization.slug,
+				name: organization.name,
+				logo: organization.logo,
+				role: member.role,
+				timezone: organization.timezone,
+			})
 			.from(member)
 			.innerJoin(organization, eq(member.organizationId, organization.id))
 			.where(eq(member.userId, userId))

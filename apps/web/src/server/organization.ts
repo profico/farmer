@@ -7,7 +7,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { and, eq, gt, sql } from "drizzle-orm";
 
-import { orgAdminMiddleware, sessionMiddleware } from "./auth";
+import { isOrgPlaceholder } from "#/lib/org-redirect.ts";
+
+import {
+	optionalSessionMiddleware,
+	orgAdminMiddleware,
+	sessionMiddleware,
+} from "./auth";
 
 /**
  * Everything `/$orgSlug`'s `beforeLoad` needs about the workspace being
@@ -26,37 +32,63 @@ import { orgAdminMiddleware, sessionMiddleware } from "./auth";
  * conditional: the write happens when the active org differs, and a plain
  * navigation inside one workspace does no writes at all.
  *
- * Returns null when the slug names an organization that does not exist or that
- * the caller is not a member of — the two are deliberately the same answer, so
- * this cannot be used to probe which slugs are taken.
+ * When the slug does not open a workspace, the answer says where to go
+ * instead, and `beforeLoad` turns that into the redirect:
+ *
+ *  - `signed-out` — to `/login`, carrying the page that was asked for. The
+ *    guard builds that redirect because only it knows the page.
+ *  - `elsewhere` — the slug is a placeholder (`/:org/settings`, see
+ *    `lib/org-redirect.ts`), names no organization, or names one the caller is
+ *    not in. The last two are deliberately the same answer, so this cannot be
+ *    used to probe which slugs are taken. `onlySlug` is set when the caller
+ *    has exactly one workspace, so the guard can go straight there; with more
+ *    the guard sends them to the chooser, and with none to `/no-access`.
  */
 export const enterOrganization = createServerFn({ method: "POST" })
-	.middleware([sessionMiddleware])
+	.middleware([optionalSessionMiddleware])
 	.validator(setActiveOrgBySlugInput)
 	.handler(async ({ data: slug, context }) => {
+		const { session } = context;
+		if (!session) return { kind: "signed-out" } as const;
+
 		const { auth } = await import("@farmer/core/auth");
 		const { db } = await import("@farmer/core/db");
 		const { organization } = await import("@farmer/core/schema/auth");
-		const { membersService } = await import("@farmer/core/services");
+		const { membersService, orgContextService } =
+			await import("@farmer/core/services");
 		const { toWeekStartsOn } = await import("@farmer/core/lib/time");
 		const { isPlatformAdminRole } =
 			await import("@farmer/core/lib/platform-admin");
 
+		const elsewhere = async () => {
+			const organizations = await orgContextService.organizationsFor(
+				session.user.id,
+			);
+			return {
+				kind: "elsewhere",
+				count: organizations.length,
+				onlySlug:
+					organizations.length === 1 ? (organizations[0]?.slug ?? null) : null,
+			} as const;
+		};
+
+		if (isOrgPlaceholder(slug)) return elsewhere();
+
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.slug, slug),
 		});
-		if (!org) return null;
+		if (!org) return elsewhere();
 
 		// Membership before anything else: this is what decides whether the
 		// session may be repointed at this organization at all, and it is the
 		// same question `orgMiddleware` asks on every server function underneath.
 		const role = await membersService.getRole({
 			organizationId: org.id,
-			userId: context.session.user.id,
+			userId: session.user.id,
 		});
-		if (!role) return null;
+		if (!role) return elsewhere();
 
-		if (context.session.session.activeOrganizationId !== org.id) {
+		if (session.session.activeOrganizationId !== org.id) {
 			await auth.api.setActiveOrganization({
 				body: { organizationId: org.id },
 				headers: getRequestHeaders(),
@@ -64,7 +96,8 @@ export const enterOrganization = createServerFn({ method: "POST" })
 		}
 
 		return {
-			session: context.session,
+			kind: "entered",
+			session,
 			// The column is a plain integer; every week on screen reads this one.
 			organization: { ...org, weekStartsOn: toWeekStartsOn(org.weekStartsOn) },
 			role,
@@ -78,14 +111,30 @@ export const enterOrganization = createServerFn({ method: "POST" })
 			// It gates a button and nothing more: better-auth refuses the
 			// impersonation endpoint itself to anybody without the role, whatever
 			// the client believes.
-			isPlatformAdmin: isPlatformAdminRole(context.session.user.role),
+			isPlatformAdmin: isPlatformAdminRole(session.user.role),
 			// The person being impersonated right now, or null. `impersonatedBy`
 			// holds the OPERATOR's user id, so its presence is the signal and
 			// `user.name` — the account the session currently is — is what the
 			// sidebar shows.
-			impersonating: context.session.session.impersonatedBy
-				? context.session.user.name
-				: null,
+			impersonating: session.session.impersonatedBy ? session.user.name : null,
+		} as const;
+	});
+
+/**
+ * Every workspace the caller belongs to, for `/choose-organization`. Null when
+ * signed out, so the route can send them to `/login` with the page they asked
+ * for rather than lose it.
+ */
+export const listMyOrganizations = createServerFn({ method: "GET" })
+	.middleware([optionalSessionMiddleware])
+	.handler(async ({ context }) => {
+		if (!context.session) return null;
+		const { orgContextService } = await import("@farmer/core/services");
+		return {
+			email: context.session.user.email,
+			organizations: await orgContextService.organizationsFor(
+				context.session.user.id,
+			),
 		};
 	});
 
