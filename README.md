@@ -48,7 +48,7 @@ bun run db:migrate
 bun run dev
 ```
 
-Open the URL that `vite dev` prints (http://localhost:3000, or the next free port). Outside production, `/login` has an email and password form, so you can sign up without a Google Cloud project. The first account you create makes your organization. `bun run dev` also seeds the built-in tasks and starts a worker that runs the automation sync.
+Open the URL that `vite dev` prints (http://localhost:3000, or the next free port). In development (`NODE_ENV=development`, which `vite dev` sets), `/login` has an email and password form, so you can sign up without a Google Cloud project. The first account you create makes your organization. `bun run dev` also seeds the built-in tasks and starts a worker that runs the automation sync.
 
 Only `DATABASE_URL`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are required. Everything else in `.env.example` is optional and documented there: email, uploads, GitHub, Google, Slack and push.
 

@@ -12,12 +12,15 @@
  * The gate is `NODE_ENV`, deliberately, and not an opt-in env var: an opt-in
  * flag is a thing you set once in a `.env` that then gets copied to a server,
  * and this is the one feature where that mistake is a second way into the
- * product. `NODE_ENV=production` is set by the Dockerfile and by
- * `apps/web`'s `start` script, so every way this app is actually served has it.
+ * product.
  *
- * The corollary is worth stating plainly: running the built server with
- * `NODE_ENV` unset opens password sign-in. If you host this some third way,
- * set `NODE_ENV=production` there too.
+ * It fails CLOSED: only `development` and `test` turn it on. `vite dev` sets
+ * `NODE_ENV=development` in its own process when nothing else has (the SSR
+ * environment runs in that process, so server functions see it), and `bun
+ * test` sets `test`. Everything else — `production`, a typo, and above all an
+ * unset `NODE_ENV` on a server somebody started by hand — keeps password
+ * sign-in off. The earlier `!== "production"` gate failed open on exactly that
+ * last case.
  *
  * SERVER ONLY — like `single-org.ts`, this reads `process.env`, so in the
  * browser it would read as "off" whatever the server thinks. The client learns
@@ -27,4 +30,4 @@
  * `assistant-flag.ts`.
  */
 export const isDevAuthEnabled = (): boolean =>
-	process.env.NODE_ENV !== "production";
+	process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";

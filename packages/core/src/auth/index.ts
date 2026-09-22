@@ -128,7 +128,7 @@ export const auth = betterAuth({
 	// or not a form points at it, so leaving it enabled would be a second,
 	// unreachable-by-design way in.
 	//
-	// In development it is on, so a fresh checkout can be signed into without a
+	// In development (and under `bun test`) it is on, so a fresh checkout can be signed into without a
 	// Google Cloud project (see lib/dev-auth.ts for why the gate is NODE_ENV and
 	// not an opt-in flag). Everything downstream is shared with the Google path
 	// rather than special-cased: the `databaseHooks.user.create` hooks below
