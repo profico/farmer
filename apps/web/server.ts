@@ -76,6 +76,7 @@ import path from "node:path";
 import type { SchedulerHandle } from "@farmer/core/jobs";
 
 import { acceptsGzip } from "./src/lib/accept-encoding.ts";
+import { applySecurityHeaders } from "./src/lib/security-headers.ts";
 
 // Configuration
 const SERVER_PORT = Number(process.env.PORT ?? 3000);
@@ -652,13 +653,18 @@ async function initializeServer() {
 			// (`/assets/*`) only, or set to "respect existing headers", or these
 			// directives are moot. (This was the cause of the time-off list showing
 			// empty until the browser cache was disabled.)
+			//
+			// Every response here also gets the baseline security headers (see
+			// `lib/security-headers.ts`), including one that sets its own
+			// Cache-Control. A header the route set itself is kept.
 			"/*": async (req: Request) => {
 				try {
 					const res = await handler.fetch(req);
-					if (res.headers.has("Cache-Control")) return res;
-					const headers = new Headers(res.headers);
-					headers.set("Cache-Control", "private, no-store, must-revalidate");
-					headers.append("Vary", "Cookie");
+					const headers = applySecurityHeaders(new Headers(res.headers));
+					if (!headers.has("Cache-Control")) {
+						headers.set("Cache-Control", "private, no-store, must-revalidate");
+						headers.append("Vary", "Cookie");
+					}
 					return new Response(res.body, {
 						status: res.status,
 						statusText: res.statusText,
