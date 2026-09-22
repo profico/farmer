@@ -413,7 +413,7 @@ export function EntryBlockRow({
 				    figure. Everything else is editable in place, like the note. */}
 				{entry.fillsDay ? (
 					<span
-						className="mono mr-auto px-1.5 text-base @md/entries:mt-0.5 @md/entries:mr-0"
+						className="mono mr-auto w-16 shrink-0 border-x border-transparent px-1.5 text-right text-base @md/entries:mt-0.5 @md/entries:mr-0"
 						title="This block fills the rest of the day, so its length follows the day"
 					>
 						{formatClock(entry.durationSeconds)}
@@ -443,13 +443,27 @@ export function EntryBlockRow({
 				)}
 				{/* Overtime is a one-click toggle from the row: it is purely manual, and
 				    making people reopen the dialog for it guarantees it never gets set. */}
-				{!entry.task.isAbsence && !entry.fillsDay && (
+				{!entry.task.isAbsence && !entry.fillsDay ? (
 					<Button
 						variant="ghost"
 						size="sm"
 						className={cn("text-faint", entry.overtime && "text-warn")}
 						onClick={() => overtimeMutation.mutate(!entry.overtime)}
 						disabled={overtimeMutation.isPending}
+					>
+						OT
+					</Button>
+				) : (
+					// An absence or a fill block has no overtime, but the slot stays: the
+					// row is right-aligned, so a missing button moves the duration out of
+					// its column. The same button, unseen, is the same width by definition.
+					<Button
+						variant="ghost"
+						size="sm"
+						className="invisible"
+						aria-hidden
+						tabIndex={-1}
+						disabled
 					>
 						OT
 					</Button>
