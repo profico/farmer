@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { declaresBodyOver, readBodyUpTo } from "#/lib/request-body.ts";
 import { resolveMcpOrgContext } from "#/server/api-auth.ts";
 import {
 	admitCaller,
@@ -100,6 +101,26 @@ const tooManyRequests = (retryAfterSeconds: number) =>
 		{ status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
 	);
 
+/** The largest MCP request body read. A tool call's arguments are a handful of
+ *  ids, dates and a note. The widest one the schemas admit, `apply_day_assembly`
+ *  with 50 entries at the 10,000-character note limit, is about half a
+ *  megabyte, so 1MB refuses no legitimate call. The SDK's transport would
+ *  otherwise `request.json()` whatever arrived, up to the host's global limit. */
+const MAX_MCP_BODY_BYTES = 1024 * 1024;
+
+const payloadTooLarge = () =>
+	Response.json(
+		{
+			jsonrpc: "2.0",
+			error: {
+				code: -32000,
+				message: `Request body too large (max ${MAX_MCP_BODY_BYTES} bytes)`,
+			},
+			id: null,
+		},
+		{ status: 413 },
+	);
+
 const handle = async (request: Request, orgSlug: string) => {
 	// The kill switch, before auth and before anything is imported: a feature
 	// switched off at the deployment has no live endpoint, rather than one that
@@ -117,6 +138,9 @@ const handle = async (request: Request, orgSlug: string) => {
 	const address = callerAddress(request);
 	const caller = admitCaller("mcp", address);
 	if (!caller.ok) return tooManyRequests(caller.retryAfterSeconds);
+	// The declared size, before the credential is resolved: it is a header read
+	// and costs nothing. A body with no Content-Length is measured below.
+	if (declaresBodyOver(request, MAX_MCP_BODY_BYTES)) return payloadTooLarge();
 
 	const origin = new URL(request.url).origin;
 	const ctx = await resolveMcpOrgContext(request, orgSlug);
@@ -217,12 +241,27 @@ const handle = async (request: Request, orgSlug: string) => {
 		}
 	});
 
+	// Read with a ceiling before the transport sees it, because the transport
+	// reads without one. Only a POST carries a message; the transport answers
+	// GET and DELETE without reading a body. The bytes go back into a fresh
+	// Request so the transport still does its own parsing and its own errors.
+	let message = request;
+	if (request.method === "POST") {
+		const body = await readBodyUpTo(request, MAX_MCP_BODY_BYTES);
+		if (!body.ok) return payloadTooLarge();
+		message = new Request(request.url, {
+			method: request.method,
+			headers: request.headers,
+			body: body.bytes,
+		});
+	}
+
 	const transport = new WebStandardStreamableHTTPServerTransport({
 		sessionIdGenerator: undefined,
 		enableJsonResponse: true,
 	});
 	await server.connect(transport);
-	return transport.handleRequest(request);
+	return transport.handleRequest(message);
 };
 
 export const Route = createFileRoute("/api/mcp/$orgSlug")({
