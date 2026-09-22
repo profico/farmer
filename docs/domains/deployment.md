@@ -14,6 +14,8 @@ The `Dockerfile` bundles with `bun build` into `app.js` (better-auth, framer-mot
 
 Each job is env-gated by `<NAME>_ENABLED` / `<NAME>_INTERVAL_MINUTES`; the full list, with `AUTOMATION_SYNC_CONCURRENCY`, `AUTOMATION_SYNC_USER_TIMEOUT_MS`, `EXTERNAL_FETCH_TIMEOUT_MS`, `WEBHOOK_DELIVERY_TIMEOUT_MS`, `WEBHOOK_ALLOW_PRIVATE_HOSTS` and `SCHEDULER_STARTUP_DELAY_MS`, is in the `scheduler.ts` header, and `.env.example` documents the rest. All of it assumes a single instance; the jobs are idempotent, so a second replica is redundant rather than harmful. The tables in `scheduler.ts` are built by hoisted **functions**, not module-scope `const`s — that is load-bearing in the bundled image, and the header explains why.
 
+**Request bodies are capped at 32MB** (`MAX_REQUEST_BODY_BYTES`, `server.ts`), because TanStack Start reads a server function's body before any middleware checks the session, and Bun's own default is 128MB. The largest legitimate body is a Harvest import step, a few MB; the constant's comment has the measurement. `vite dev` has no such cap.
+
 `ASSISTANT_ENABLED`, `MCP_ENABLED`, `CLI_ENABLED` and `SINGLE_ORG_SLUG` are plain env vars rather than `VITE_` ones, because `VITE_` values bake at build time and the Dockerfile builds one image for several environments.
 
 **Impersonation is not configured here.** The platform admin role — who may become any user in any workspace — is a database value, granted to the instance's first account and passed on from inside the product. There is no environment variable for it, deliberately; see `docs/domains/authentication.md`.

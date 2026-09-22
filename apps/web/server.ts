@@ -63,6 +63,10 @@
  *   - Comma-separated list of MIME types eligible for Gzip compression
  *   - Supports partial matching for types ending with "/"
  *   - Default: text/,application/javascript,application/json,application/xml,image/svg+xml
+ *
+ * MAX_REQUEST_BODY_BYTES (number)
+ *   - The largest request body the server reads; a larger one gets a 413
+ *   - Default: 33554432 (32MB) — see `MAX_REQUEST_BODY_BYTES` below for why
  */
 
 import path from "node:path";
@@ -75,6 +79,38 @@ import type { SchedulerHandle } from "@farmer/core/jobs";
 const SERVER_PORT = Number(process.env.PORT ?? 3000);
 const CLIENT_DIRECTORY = "./dist/client";
 const SERVER_ENTRY_POINT = "./dist/server/server.js";
+
+/**
+ * The largest request body Bun reads, for every route, before any handler runs.
+ *
+ * TanStack Start's server-function handler calls `request.formData()` or
+ * `request.json()` before any middleware — so before the session is checked —
+ * and Bun's default ceiling is 128MB. Any unauthenticated POST could make the
+ * process buffer that much. Bun answers 413 past this limit, for a
+ * `Content-Length` body and a chunked one alike.
+ *
+ * The largest legitimate body is a Harvest import step. `importDays` carries
+ * up to `HARVEST_CHUNK_MAX_ROWS` (5,000) rows, and measured through the same
+ * seroval encoding the browser sends, a chunk is about 2-3MB with ordinary
+ * notes and 6.7MB when EVERY note is 1,000 characters long. `start` is smaller
+ * in practice (its 50,000 project memberships are two short keys each). An
+ * upload is 1MB (`MAX_UPLOAD_BYTES`) in a multipart body, and an assistant
+ * message or an MCP request is a few kilobytes. 32MB keeps about five times the
+ * worst realistic import chunk in hand, so no import fails on this, and it is
+ * still a quarter of the default. The schema itself would admit a ~52MB chunk
+ * (5,000 rows of 10,000-character notes); a file like that is not an export
+ * anyone has, and the import can be retried after raising this variable.
+ *
+ * Only the production host reads this: `vite dev` never loads `server.ts`.
+ */
+const DEFAULT_MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024;
+// A value that is not a positive number falls back to the default rather than
+// to NaN, which Bun would read as no usable limit.
+const configuredBodyLimit = Number(process.env.MAX_REQUEST_BODY_BYTES);
+const MAX_REQUEST_BODY_BYTES =
+	Number.isFinite(configuredBodyLimit) && configuredBodyLimit > 0
+		? configuredBodyLimit
+		: DEFAULT_MAX_REQUEST_BODY_BYTES;
 
 // Logging utilities for professional output
 const log = {
@@ -577,6 +613,7 @@ async function initializeServer() {
 		// The browser then got an unreadable reply ("Invariant failed") for work
 		// that went on to succeed. 255 is Bun's maximum.
 		idleTimeout: 255,
+		maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
 
 		routes: {
 			// Serve static assets (preloaded or on-demand)
