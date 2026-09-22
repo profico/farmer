@@ -359,6 +359,40 @@ describe("the defaults reproduce the jobs as they were", () => {
 	});
 });
 
+// A send the sweep abandoned at its deadline kept running, and the day is
+// claimed only once it delivers — so the next tick saw no claim and sent the
+// same reminder again. Two ticks over one slow send is the same race.
+describe("a log reminder still being sent", () => {
+	test("is not sent again by an overlapping tick", async () => {
+		let release: (() => void) | undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const record = recorder("push");
+		let entered = 0;
+		setNotifyAdaptersForTests({
+			push: async (to, event) => {
+				entered++;
+				await gate;
+				return record(to, event);
+			},
+			slack: recorder("slack"),
+		});
+
+		const first = logAt(TUESDAY, "17:00");
+		// Let the first tick reach all three sends before the second one starts.
+		while (entered < 3) await Bun.sleep(1);
+		const second = await logAt(TUESDAY, "17:15");
+		release?.();
+		await first;
+
+		expect(second.sent).toBe(0);
+		for (const userId of [SILENT, SLOW, CONTRACTOR]) {
+			expect(sent.filter((s) => s.userId === userId)).toHaveLength(1);
+		}
+	});
+});
+
 describe("the digest mentions people", () => {
 	test("in Slack, by their Slack id, and keeps plain names elsewhere", async () => {
 		await db

@@ -193,33 +193,54 @@ type AutomationRunResult = Awaited<
  * once, racing each other's reads for the fill block and paying the API quota
  * twice. Now a second request JOINS the pass in flight, from either side.
  *
- * The deadline wraps the pass for both callers, and the guard is keyed on the
- * DEADLINED promise, not the pass behind it. A pass that wedges is abandoned
- * when its deadline fires, and the person can sync again; keyed on the pass
- * itself, one stuck socket would lock them out until the process restarted.
- * The abandoned work may still finish in the background, which is harmless:
- * every engine is idempotent.
+ * The guard is keyed on the PASS, not on the deadline around it. Each caller
+ * waits under its own deadline, and a deadline that fires ends that caller's
+ * wait, not the pass: the work goes on, and the person stays in flight until
+ * it settles. It used to be keyed on the deadlined promise and cleared when
+ * the deadline fired, so the next tick or a press of the button started a
+ * second pass beside the first one still running — the same two passes over
+ * the same days this guard exists to prevent.
+ *
+ * A pass that never settles would then lock the person out until the process
+ * restarts. So a pass older than `ABANDON_AFTER_DEADLINES` deadlines is
+ * treated as wedged and dropped from the guard, and the next request starts a
+ * fresh one. A pass that slow is waiting on nothing that will come back.
  */
-const inFlight = new Map<string, Promise<AutomationRunResult>>();
+type Flight = { work: Promise<AutomationRunResult>; startedAt: number };
+const inFlight = new Map<string, Flight>();
+
+/** How many deadlines a pass may run for before the guard gives up on it. */
+const ABANDON_AFTER_DEADLINES = 4;
 
 const runExclusive = (
 	ctx: Ctx,
 	opts: { now?: Date; tz?: string } = {},
 ): Promise<AutomationRunResult> => {
 	const key = `${ctx.organizationId}:${ctx.userId}`;
-	const existing = inFlight.get(key);
-	if (existing) return existing;
-
 	const timeoutMs = perUserTimeoutMs;
-	const pass = withTimeout(
-		timeEntriesService.runAutomationsForUser(ctx, opts),
+	const now = Date.now();
+
+	let flight = inFlight.get(key);
+	if (flight && now - flight.startedAt > timeoutMs * ABANDON_AFTER_DEADLINES) {
+		inFlight.delete(key);
+		flight = undefined;
+	}
+	if (!flight) {
+		const started: Flight = {
+			work: timeEntriesService.runAutomationsForUser(ctx, opts).finally(() => {
+				if (inFlight.get(key) === started) inFlight.delete(key);
+			}),
+			startedAt: now,
+		};
+		inFlight.set(key, started);
+		flight = started;
+	}
+
+	return withTimeout(
+		flight.work,
 		timeoutMs,
 		() => new Error(`automation pass exceeded ${String(timeoutMs)}ms`),
-	).finally(() => {
-		if (inFlight.get(key) === pass) inFlight.delete(key);
-	});
-	inFlight.set(key, pass);
-	return pass;
+	);
 };
 
 /** One tick: run every enabled automation for everyone who has one. */

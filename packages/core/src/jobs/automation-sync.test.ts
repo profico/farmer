@@ -253,19 +253,55 @@ describe("one pass per person at a time", () => {
 		}
 	});
 
-	test("a wedged pass is abandoned at the deadline and frees the person", async () => {
+	test("a deadline ends the wait, not the pass: a second request joins it", async () => {
+		let release: ((result: PassResult) => void) | undefined;
 		const pass = spyOn(
 			timeEntriesService,
 			"runAutomationsForUser",
-		).mockImplementation(() => new Promise<PassResult>(() => {}));
+		).mockImplementation(
+			() =>
+				new Promise<PassResult>((resolve) => {
+					release = resolve;
+				}),
+		);
 		setAutomationPassTimeoutForTests(20);
 		try {
 			await expect(runAutomationSyncForCtx(personCtx())).rejects.toThrow(
 				/exceeded 20ms/,
 			);
-			// A second press starts a new pass rather than joining the stuck one.
+			// The first pass is still running. A second request, from the sweep or
+			// the button, must wait on it rather than start another beside it.
+			const second = runAutomationSyncForCtx(personCtx());
+			release?.(noop);
+			expect(await second).toEqual(noop);
+			expect(pass).toHaveBeenCalledTimes(1);
+
+			// Settled, so the person is free and the next request starts a pass.
+			const third = runAutomationSyncForCtx(personCtx());
+			release?.(noop);
+			expect(await third).toEqual(noop);
+			expect(pass).toHaveBeenCalledTimes(2);
+		} finally {
+			pass.mockRestore();
+		}
+	});
+
+	test("a pass wedged for several deadlines is given up on", async () => {
+		const pass = spyOn(
+			timeEntriesService,
+			"runAutomationsForUser",
+		).mockImplementation(() => new Promise<PassResult>(() => {}));
+		setAutomationPassTimeoutForTests(10);
+		try {
 			await expect(runAutomationSyncForCtx(personCtx())).rejects.toThrow(
-				/exceeded 20ms/,
+				/exceeded 10ms/,
+			);
+			expect(pass).toHaveBeenCalledTimes(1);
+			// Past four deadlines the pass is waiting on nothing that will come
+			// back, and holding the person would lock them out until a restart.
+			await Bun.sleep(60);
+			await expect(runAutomationSyncForCtx(personCtx())).rejects.toThrow(
+				/exceeded 10ms/,
 			);
 			expect(pass).toHaveBeenCalledTimes(2);
 		} finally {
