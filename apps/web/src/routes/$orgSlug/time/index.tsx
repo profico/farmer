@@ -4,6 +4,7 @@ import {
 	dayKeyInTz,
 	startOfWeekKey,
 } from "@farmer/core/lib/time";
+import { dayKeySchema } from "@farmer/core/schema";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
@@ -15,10 +16,7 @@ import { myProjectsQuery } from "#/queries/projects.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
 
 const searchSchema = z.object({
-	date: z
-		.string()
-		.regex(/^\d{4}-\d{2}-\d{2}$/)
-		.optional(),
+	date: dayKeySchema.optional(),
 });
 
 export const Route = createFileRoute("/$orgSlug/time/")({

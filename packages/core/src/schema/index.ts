@@ -1,6 +1,7 @@
 export * from "./assistant";
 export * from "./clients";
 export * from "./day-assembly";
+export * from "./day-key";
 export * from "./filing-rules";
 export * from "./github";
 export * from "./google-calendar";

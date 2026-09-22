@@ -1,3 +1,4 @@
+import { canonicalTaskName } from "../task-taxonomy";
 // Identifies a Harvest export by its header row and turns its data rows into
 // typed records. Detection keys on a small set of REQUIRED columns per kind
 // rather than an exact header match, so column reordering or an extra column
@@ -7,7 +8,7 @@
 // `~/Downloads/harvest/*.csv`, 2026-09-11) to be mutually exclusive: each
 // name below appears in exactly one file's header, even though the files
 // share several column names (`Client`, `Project`, `First Name` ...).
-import { canonicalTaskName } from "../task-taxonomy";
+import { isValidDayKey } from "../time";
 import { parseHarvestNumber } from "./number";
 
 export type HarvestFileKind =
@@ -91,6 +92,14 @@ function parseYesNo(raw: string): boolean {
 // locale-dependent CSV export is not guaranteed to stay ISO forever — by
 // zero-padding a `YYYY-M-D` or `M/D/YYYY` value. Anything else is `null`.
 export function parseHarvestDate(raw: string): string | null {
+	const key = padHarvestDate(raw);
+	// "2026-02-31" has the shape and names no day. The server's schema refuses
+	// it, so it is `null` here — a bad row — rather than a chunk the import
+	// cannot send.
+	return key !== null && isValidDayKey(key) ? key : null;
+}
+
+function padHarvestDate(raw: string): string | null {
 	const trimmed = raw.trim();
 	if (trimmed === "") return null;
 

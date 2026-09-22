@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
+import { dayKeySchema } from "./day-key";
 
 export const linkProjectRepoInput = z.object({
 	projectId: z.uuid(),
@@ -63,7 +63,7 @@ export type DetachCommitInput = z.infer<typeof detachCommitInput>;
 
 export const suggestCommitsInput = z.object({
 	projectId: z.uuid(),
-	date: dateKey,
+	date: dayKeySchema,
 });
 export type SuggestCommitsInput = z.infer<typeof suggestCommitsInput>;
 
@@ -82,7 +82,7 @@ export type SuggestCommitsInput = z.infer<typeof suggestCommitsInput>;
 const MAX_COMMIT_SCAN_DAYS = 31;
 
 export const userCommitsRangeInput = z
-	.object({ from: dateKey, to: dateKey })
+	.object({ from: dayKeySchema, to: dayKeySchema })
 	.refine((data) => data.from <= data.to, {
 		message: "from must not be after to",
 		path: ["to"],

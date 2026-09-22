@@ -1,13 +1,13 @@
 import { z } from "zod";
 
+import { dayKeySchema } from "./day-key";
+
 export const listHolidaysForYearInput = z.coerce.number().int();
 export type ListHolidaysForYearInput = z.infer<typeof listHolidaysForYearInput>;
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
-
 export const listHolidaysForRangeInput = z.object({
-	from: dateKey,
-	to: dateKey,
+	from: dayKeySchema,
+	to: dayKeySchema,
 });
 export type ListHolidaysForRangeInput = z.infer<
 	typeof listHolidaysForRangeInput

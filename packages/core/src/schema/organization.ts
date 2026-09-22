@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isValidDayKey } from "../lib/time";
+import { dayKeySchema } from "./day-key";
 import { uploadedFilePath } from "./uploads";
 
 export const setActiveOrgBySlugInput = z.string().min(1);
@@ -41,10 +41,6 @@ export const updateOrgSettingsInput = z.object({
 	// and every consumer compares day keys as strings, so an impossible date
 	// throws nowhere — it just sorts after every real one and silently locks
 	// every automation forever.
-	automationLockedThrough: z
-		.string()
-		.refine(isValidDayKey, "Use a real YYYY-MM-DD date")
-		.nullable()
-		.optional(),
+	automationLockedThrough: dayKeySchema.nullable().optional(),
 });
 export type UpdateOrgSettingsInput = z.infer<typeof updateOrgSettingsInput>;

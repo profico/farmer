@@ -1,11 +1,10 @@
 import { z } from "zod";
 
+import { dayKeySchema } from "./day-key";
 import { pullRequestRef } from "./github";
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
-
 export const suggestDayAssemblyInput = z.object({
-	date: dateKey,
+	date: dayKeySchema,
 	/**
 	 * Propose things this person previously deleted, too.
 	 *
@@ -50,7 +49,7 @@ const assembledEntry = z.object({
 });
 
 export const applyDayAssemblyInput = z.object({
-	date: dateKey,
+	date: dayKeySchema,
 	entries: z.array(assembledEntry).min(1).max(50),
 });
 export type ApplyDayAssemblyInput = z.infer<typeof applyDayAssemblyInput>;

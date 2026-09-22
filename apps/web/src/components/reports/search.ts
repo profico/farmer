@@ -1,3 +1,4 @@
+import { dayKeySchema } from "@farmer/core/schema";
 import { z } from "zod";
 
 import { searchFlag } from "#/lib/search-flag.ts";
@@ -21,16 +22,14 @@ export type TabId = (typeof TABS)[number]["id"];
 
 const monthKey = z.string().regex(/^\d{4}-\d{2}$/);
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-
 // The period, shared with the project page: `month` anchors every preset but
 // Week and Custom; `preset` widens or narrows it, and `from`/`to` carry a week
 // or a custom range.
 export const periodSearch = {
 	month: monthKey.optional(),
 	preset: z.enum(["week", "month", "quarter", "year", "custom"]).optional(),
-	from: dateKey.optional(),
-	to: dateKey.optional(),
+	from: dayKeySchema.optional(),
+	to: dayKeySchema.optional(),
 };
 const periodSearchSchema = z.object(periodSearch);
 export type PeriodSearch = z.infer<typeof periodSearchSchema>;

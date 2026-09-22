@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
+import { dayKeySchema } from "./day-key";
+
 const year = z.number().int().min(2000).max(2100);
 const month = z.number().int().min(1).max(12);
 
@@ -8,8 +9,8 @@ export const timeReportTab = z.enum(["clients", "projects", "teammates"]);
 export type TimeReportTab = z.infer<typeof timeReportTab>;
 
 const range = {
-	from: dateKey,
-	to: dateKey,
+	from: dayKeySchema,
+	to: dayKeySchema,
 };
 
 // The widest span a range report may cover.

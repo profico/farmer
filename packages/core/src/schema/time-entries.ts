@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
+import { dayKeySchema } from "./day-key";
 
 /** 15-minute granularity (PRD 3.6): 0.25, 0.5, 0.75... An entry is a date and
  *  an amount of time, and holds no clock. The stopwatch measures in seconds and
@@ -20,7 +20,7 @@ const duration = z
 // A fill block's duration is derived from the day's remaining working hours
 // rather than entered, so it is neither supplied nor granularity-checked.
 const entryBody = {
-	date: dateKey,
+	date: dayKeySchema,
 	// Absent for Vacation / Sick Leave, which carry no client and no project.
 	projectId: z.uuid().optional(),
 	// Required on every entry — the structural half of the answer to
@@ -133,7 +133,7 @@ export type SetTimeEntryOvertimeInput = z.infer<
 >;
 
 export const listTimeEntriesRangeInput = z
-	.object({ from: dateKey, to: dateKey })
+	.object({ from: dayKeySchema, to: dayKeySchema })
 	.refine((data) => data.from <= data.to, {
 		message: "from must not be after to",
 		path: ["to"],
@@ -156,7 +156,7 @@ export type ListTimeEntriesRangeInput = z.infer<
 // the delete gesture, and routing it through a separate call would make the two
 // racy against each other.
 export const setWeekCellInput = z.object({
-	date: dateKey,
+	date: dayKeySchema,
 	projectId: z.uuid().optional(),
 	taskId: z.uuid(),
 	durationSeconds: z
@@ -185,8 +185,8 @@ export type DeleteTimeEntryInput = z.infer<typeof deleteTimeEntryInput>;
 // people who work a similar shape most days, and the one that costs no
 // attention while the work happens.
 export const copyTimeEntriesInput = z.object({
-	fromDate: dateKey,
-	toDate: dateKey,
+	fromDate: dayKeySchema,
+	toDate: dayKeySchema,
 });
 export type CopyTimeEntriesInput = z.infer<typeof copyTimeEntriesInput>;
 
@@ -195,8 +195,8 @@ export type CopyTimeEntriesInput = z.infer<typeof copyTimeEntriesInput>;
 // week STARTS rather than a range: the seven days are paired up by offset, so
 // last Tuesday's entries land on this Tuesday.
 export const copyWeekEntriesInput = z.object({
-	fromWeekStart: dateKey,
-	toWeekStart: dateKey,
+	fromWeekStart: dayKeySchema,
+	toWeekStart: dayKeySchema,
 });
 export type CopyWeekEntriesInput = z.infer<typeof copyWeekEntriesInput>;
 
@@ -225,8 +225,8 @@ export type OverrideAbsenceEntryInput = z.infer<
 export const logAbsenceRangeInput = z
 	.object({
 		taskId: z.uuid(),
-		from: dateKey,
-		to: dateKey,
+		from: dayKeySchema,
+		to: dayKeySchema,
 		description: z.string().max(10_000).optional(),
 	})
 	.refine((data) => data.from <= data.to, {
@@ -262,7 +262,7 @@ export type AbsenceTotalsInput = z.infer<typeof absenceTotalsInput>;
 export const createAbsenceForUserInput = z.object({
 	userId: z.string().min(1),
 	taskId: z.uuid(),
-	date: dateKey,
+	date: dayKeySchema,
 	durationSeconds: duration,
 	description: z.string().max(10_000).optional(),
 });

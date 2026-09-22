@@ -2,8 +2,7 @@ import { z } from "zod";
 
 import { parseDuration } from "../lib/time";
 import { MAX_DAY_SECONDS } from "../lib/working-day";
-
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
+import { dayKeySchema } from "./day-key";
 
 /**
  * The one recurring block the app proposes to everybody: a daily rest break.
@@ -53,8 +52,8 @@ export const createRecurringBlockRuleInput = z.object({
 		.array(z.number().int().min(0).max(6))
 		.min(1, "Pick at least one day"),
 	duration: ruleDuration,
-	effectiveFrom: dateKey.optional(),
-	effectiveUntil: dateKey.optional(),
+	effectiveFrom: dayKeySchema.optional(),
+	effectiveUntil: dayKeySchema.optional(),
 });
 export type CreateRecurringBlockRuleInput = z.infer<
 	typeof createRecurringBlockRuleInput
@@ -74,8 +73,8 @@ export const updateRecurringBlockRuleInput = z.object({
 		.min(1, "Pick at least one day")
 		.optional(),
 	duration: ruleDuration.optional(),
-	effectiveFrom: dateKey.optional(),
-	effectiveUntil: dateKey.optional(),
+	effectiveFrom: dayKeySchema.optional(),
+	effectiveUntil: dayKeySchema.optional(),
 	active: z.boolean().optional(),
 });
 export type UpdateRecurringBlockRuleInput = z.infer<

@@ -8,6 +8,7 @@ import {
 	timeKeyInTz,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
+import { dayKeySchema } from "@farmer/core/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	ArrowLeftIcon,
@@ -141,13 +142,11 @@ const MAX_ENTRY_SECONDS = 24 * 3600;
  *  came out of More options, where nobody found it. */
 const QUICK_DURATIONS = ["0:30", "1:00", "2:00", "4:00"] as const;
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
-
 const formSchema = z
 	.object({
 		projectId: z.string().min(1),
 		taskId: z.uuid("Required"),
-		date: dateKey,
+		date: dayKeySchema,
 		duration: z.string(),
 		description: z.string().max(10_000),
 		overtime: z.boolean(),
