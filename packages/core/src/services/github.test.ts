@@ -1046,3 +1046,49 @@ describe("suggestCommits", () => {
 		expect(scanned).toEqual([]);
 	});
 });
+
+// Linking decides which repos a project's members may then read with the
+// installation token, so the service holds the admin line itself rather than
+// leaving it to the server function's middleware.
+describe("linking and unlinking a repo", () => {
+	const projectNamed = async (name: string) =>
+		present(
+			await db.query.project.findFirst({
+				where: eq(project.name, name),
+				columns: { id: true },
+			}),
+			`project ${name}`,
+		).id;
+
+	test("a member cannot link a repo, even to their own project", async () => {
+		await expect(
+			githubService.linkRepo(memberCtx(), {
+				projectId: await projectNamed("Mine"),
+				installationId: 100,
+				githubRepoId: 3,
+			}),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	test("a member cannot unlink a repo, and the row stays", async () => {
+		await expect(
+			githubService.unlinkRepo(memberCtx(), ownRepoId),
+		).rejects.toBeInstanceOf(AccessError);
+		expect(
+			await db.query.projectGithubRepo.findFirst({
+				where: eq(projectGithubRepo.id, ownRepoId),
+			}),
+		).toBeDefined();
+	});
+
+	test("an admin passes the gate", async () => {
+		// Past the admin check, the installation lookup is what answers.
+		await expect(
+			githubService.linkRepo(adminCtx(), {
+				projectId: await projectNamed("Mine"),
+				installationId: 999_999,
+				githubRepoId: 3,
+			}),
+		).rejects.toThrow("Installation not connected to this organization");
+	});
+});

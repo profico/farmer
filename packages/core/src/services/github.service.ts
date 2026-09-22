@@ -895,7 +895,12 @@ export const githubService = {
 		return { repos, fetchedAt };
 	},
 
+	// Linking and unlinking are admin-only, like `listAvailableRepos`: the
+	// server functions sat behind `orgAdminMiddleware`, but the service checked
+	// only the organization, so any other caller of it was one missing
+	// middleware away from letting a member repoint a project's repos.
 	linkRepo: async (ctx: Ctx, input: LinkProjectRepoInput) => {
+		await requireAdmin(ctx);
 		await assertProjectInOrg(ctx, input.projectId);
 
 		const inst = await db.query.orgGithubInstallation.findFirst({
@@ -949,6 +954,7 @@ export const githubService = {
 	},
 
 	unlinkRepo: async (ctx: Ctx, projectGithubRepoId: string) => {
+		await requireAdmin(ctx);
 		await db
 			.delete(projectGithubRepo)
 			.where(
