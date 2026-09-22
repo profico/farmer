@@ -22,6 +22,7 @@ import { logConsoleGreeting } from "../lib/console-greeting";
 import { displayInitScript } from "../lib/display-prefs";
 import { unzoomPagePoint } from "../lib/motion";
 import { navInitScript } from "../lib/nav-collapse";
+import { isResizeObserverLoop } from "../lib/posthog-noise";
 import { themeInitScript } from "../lib/theme";
 import { startThemeColorSync, themeColorInitScript } from "../lib/theme-color";
 
@@ -260,6 +261,8 @@ function PostHogRoot({ children }: { children: React.ReactNode }) {
 					capture_unhandled_rejections: true,
 					capture_console_errors: false,
 				},
+				before_send: (event) =>
+					event && isResizeObserverLoop(event) ? null : event,
 				debug: import.meta.env.DEV,
 				tracing_headers: import.meta.env.SSR ? [] : [window.location.hostname],
 			}}

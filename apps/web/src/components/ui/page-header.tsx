@@ -61,7 +61,10 @@ export function Page({
 }) {
 	return (
 		<div className="island flex flex-1 flex-col">
-			<ScrollFade className={cn("page-scroll island-pad screen", className)}>
+			<ScrollFade
+				gutter
+				className={cn("page-scroll island-pad screen", className)}
+			>
 				{children}
 			</ScrollFade>
 		</div>
