@@ -1890,12 +1890,18 @@ html {
      `.island`, because tables and calendar grids fill their island edge to edge
      and supply their own cell padding instead. */
   .island-pad {
-    padding: 1rem;
+    /* The side padding as a property, because two other rules have to reach
+       exactly this far: `.setting-list-bleed` pulls its rows back out by it,
+       and `.page-scroll` gives the scrollbar's width back out of it. It
+       inherits, so both read the value of the island they sit in. */
+    --island-px: 1rem;
+    padding: 1rem var(--island-px);
   }
 
   @media (min-width: 640px) {
     .island-pad {
-      padding: 1.75rem 2rem;
+      --island-px: 2rem;
+      padding: 1.75rem var(--island-px);
     }
   }
 
@@ -1905,19 +1911,11 @@ html {
      would move the rules' ends without moving the text, and the labels have to
      stay on the island's text column.
 
-     The numbers are `.island-pad`'s, and they have to be — a bleed resolves
-     against the parent box, so these two rules are one measurement written
-     twice. Change one and change the other. */
+     The number is `.island-pad`'s `--island-px`, and it has to be — a bleed
+     resolves against the parent box, so the two have to be one measurement. */
   .setting-list-bleed > * {
-    margin-inline: -1rem;
-    padding-inline: 1rem;
-  }
-
-  @media (min-width: 640px) {
-    .setting-list-bleed > * {
-      margin-inline: -2rem;
-      padding-inline: 2rem;
-    }
+    margin-inline: calc(-1 * var(--island-px));
+    padding-inline: var(--island-px);
   }
 
   /* A page: the content island, and the column of stacked islands some pages
@@ -2263,6 +2261,31 @@ html {
          with a radio group far down it then made the frame scrollable, which
          moved the sidebar island down by its own `top` offset. */
       position: relative;
+    }
+
+    /* `Page`'s scroller gives the bar's width back out of its own right
+       padding, so a page that grows past the window keeps its content box
+       where it was. Without this the bar took its width out of the content,
+       and every line reflowed the moment the page overflowed and again the
+       moment it stopped.
+
+       Not `scrollbar-gutter: stable`, which does hold the content still but
+       reserves the strip on a page with nothing to scroll too — and every
+       full-bleed rule (a row's border pulled out by a negative margin) then
+       stops a bar's width short of the island's edge. Here the strip exists
+       only while there is a bar in it.
+
+       `--scroll-gutter` is the bar's measured width, kept by `useScrollFade`.
+       A bleed row now reaches past the narrowed padding box by that much when
+       the bar shows, so `overflow-x` clips it at the bar rather than letting
+       it scroll sideways. That clip is for every child, not only bleed rows:
+       a block wider than the page is cut off at its right edge, not scrolled
+       to. Nothing depends on the page scrolling sideways today — a table
+       brings its own horizontal scroller — but a new wide block has to do the
+       same. */
+    .page-scroll {
+      padding-right: calc(var(--island-px) - var(--scroll-gutter, 0px));
+      overflow-x: hidden;
     }
   }
 
