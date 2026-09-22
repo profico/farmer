@@ -15,16 +15,26 @@ const ORG_PLACEHOLDERS = new Set([":org", "_"]);
 
 export const isOrgPlaceholder = (slug: string) => ORG_PLACEHOLDERS.has(slug);
 
+const REDIRECT_BASE = "http://farmer.invalid";
+
 /**
  * `value` when it is a same-site absolute path, otherwise null. A redirect
- * target rides in a link and is attacker-supplied in principle. "//evil.com"
- * is a protocol-relative URL, not a path, and browsers read "/\evil.com" the
- * same way, which is why the two extra tests are not redundant.
+ * target rides in a link and is attacker-supplied in principle, so it is
+ * resolved the way a browser would and its origin compared, not matched by
+ * prefix. A prefix test misses what the parser does first: "//evil.com" and
+ * "/\evil.com" are protocol-relative, and the parser strips tab, CR and LF,
+ * so "/\t/evil.com" is too. An unparsable value is not a path either.
  */
-export const safeRedirectPath = (value: string | null | undefined) =>
-	value?.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\")
-		? value
-		: null;
+export const safeRedirectPath = (value: string | null | undefined) => {
+	if (!value?.startsWith("/")) return null;
+	try {
+		return new URL(value, REDIRECT_BASE).origin === REDIRECT_BASE
+			? value
+			: null;
+	} catch {
+		return null;
+	}
+};
 
 /** `href` with its first path segment — the org slug — replaced by `slug`.
  *  "/" becomes the workspace's home. */
