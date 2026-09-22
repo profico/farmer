@@ -230,10 +230,18 @@ export const notificationsService = {
 					// from anywhere else simply fails both checks and is logged rather than acted on.
 					const status = (error as { statusCode?: number }).statusCode;
 					if (status === 404 || status === 410) {
-						// Subscription expired/unsubscribed — drop it.
+						// Subscription expired/unsubscribed — drop it. By this person as
+						// well as the endpoint: the endpoint may have been re-bound to
+						// somebody else since it was read, and their live row is not
+						// this send's to delete.
 						await db
 							.delete(pushSubscription)
-							.where(eq(pushSubscription.endpoint, sub.endpoint))
+							.where(
+								and(
+									eq(pushSubscription.endpoint, sub.endpoint),
+									eq(pushSubscription.userId, userId),
+								),
+							)
 							.catch(() => {});
 						return;
 					}

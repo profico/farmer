@@ -134,7 +134,7 @@ Fixture rules:
 
 The services that turn logged time into a number somebody acts on — `reports`, `compliance`, `hour-fund` — are pinned on properties rather than outputs: a detail's total stays whole when its rows hit the cap, Team Lead scoping holds on every tab, a null fund is not zero, `prefillYear` never clobbers a hand-entered figure.
 
-**Not covered at all**, so the suite cannot tell you whether you broke them: the `google-calendar` **service** (its `lib/` client is tested; the engines read it through `test/calendar.ts`'s `fakeCalendar`); the `slack` service beyond `syncIdentities` and `sendInvitation`; the GitHub installation flows (`connectInstallation` and the setup callback); `notificationsService.sendPush` (it reads VAPID keys from the environment); member role changes (better-auth's `updateMemberRole`, which has no service function); and everything in `apps/web`.
+**Not covered at all**, so the suite cannot tell you whether you broke them: the `google-calendar` **service** (its `lib/` client is tested; the engines read it through `test/calendar.ts`'s `fakeCalendar`); the `slack` service beyond `syncIdentities` and `sendInvitation`; the GitHub installation flows (`connectInstallation` and the setup callback); `notificationsService.sendPush` beyond which subscriptions it keeps and drops (the test replaces `web-push`'s send); member role changes (better-auth's `updateMemberRole`, which has no service function); and everything in `apps/web`.
 
 
 ## The subsystems documented elsewhere
