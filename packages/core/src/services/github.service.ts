@@ -33,7 +33,13 @@ import {
 	type SuggestPullRequestsInput,
 } from "../schema/github";
 import { AccessError } from "./access.service";
-import { ctxDb, ctxTimezone, requireAdmin, withCtxTx } from "./context";
+import {
+	ctxAccess,
+	ctxDb,
+	ctxTimezone,
+	requireAdmin,
+	withCtxTx,
+} from "./context";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
@@ -950,7 +956,20 @@ export const githubService = {
 			);
 	},
 
+	/**
+	 * The repos linked to one project: the project panel's GitHub tab (admin)
+	 * and the entry dialog's commit picker (whoever logs time there).
+	 *
+	 * Gated on `canTrackOn`, the same line that decides whether the project is
+	 * in the caller's picker at all: Admin, any assignment, or a project open to
+	 * the organization. It used to check only the organization, so a plain
+	 * member could name any project and read the owner/name of its repos,
+	 * private ones included, which is exactly what `reposForUser` keeps the
+	 * commit scans from reaching.
+	 */
 	listLinkedRepos: async (ctx: Ctx, projectId: string) => {
+		const access = await ctxAccess(ctx);
+		access.assertCanTrackOn(projectId);
 		return db.query.projectGithubRepo.findMany({
 			where: and(
 				eq(projectGithubRepo.projectId, projectId),
@@ -966,9 +985,9 @@ export const githubService = {
 	 * suggestion from a git remote.
 	 *
 	 * Filtered through `projectsService.listMine`, not just the organization:
-	 * `listLinkedRepos` above checks only that a repo belongs to this org,
-	 * which is right for a project's own settings page but wrong here, where
-	 * the answer is a suggestion for THIS person to log time against. `fullName`
+	 * the lookup runs across every project in the org by repository name, so
+	 * the caller's own picker is what bounds the answer — a suggestion for
+	 * THIS person to log time against. `fullName`
 	 * is cached at link time, so a renamed repository simply stops matching —
 	 * acceptable, since this only ever feeds a suggestion.
 	 */

@@ -932,3 +932,41 @@ describe("a repo left naming a dead installation", () => {
 		expect(await boundTo()).toBe(LIVE);
 	});
 });
+
+// The project's linked repos name private repositories, so reading them is the
+// same line as tracking on the project: Admin, an assignment, or an open project.
+describe("listLinkedRepos", () => {
+	const projectNamed = async (name: string) =>
+		present(
+			await db.query.project.findFirst({
+				where: eq(project.name, name),
+				columns: { id: true },
+			}),
+			`project ${name}`,
+		).id;
+
+	test("an assigned member reads their project's repos", async () => {
+		const repos = await githubService.listLinkedRepos(
+			memberCtx(),
+			await projectNamed("Mine"),
+		);
+		expect(repos.map((repo) => repo.fullName)).toEqual(["profico/mine"]);
+	});
+
+	test("an unassigned member is refused", async () => {
+		await expect(
+			githubService.listLinkedRepos(
+				memberCtx(),
+				await projectNamed("Not mine"),
+			),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	test("an admin reads any project's repos", async () => {
+		const repos = await githubService.listLinkedRepos(
+			adminCtx(),
+			await projectNamed("Not mine"),
+		);
+		expect(repos.map((repo) => repo.fullName)).toEqual(["profico/secret"]);
+	});
+});
