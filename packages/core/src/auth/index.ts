@@ -485,14 +485,15 @@ export const auth = betterAuth({
 					clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
 					pkce: true,
 					// genericOAuth does not add better-auth's default identity scopes,
-					// so request them explicitly alongside calendar.events (read+write:
-					// read meetings for the picker/auto-sync, write all-day events when
-					// approved time off is synced). Google has no insert-only scope.
+					// so request them explicitly alongside calendar.events.readonly.
+					// Read-only is all the app needs: the picker and the meeting engine
+					// list and look up events, and nothing writes to a calendar. Ask
+					// for write access again only together with the code that uses it.
 					scopes: [
 						"openid",
 						"email",
 						"profile",
-						"https://www.googleapis.com/auth/calendar.events",
+						"https://www.googleapis.com/auth/calendar.events.readonly",
 					],
 					// Google only returns a refresh token when offline access is
 					// requested AND consent is re-prompted; without both, the ~1h access

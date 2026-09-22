@@ -9,11 +9,10 @@ import {
 	getCalendarEvent,
 	getGoogleUserInfo,
 	type GoogleCalendarEvent,
-	insertAllDayEvent,
 	isImportableEvent,
 	listCalendarEvents,
 } from "../lib/google-calendar-client";
-import { addDaysToKey, dayBoundsInTz } from "../lib/time";
+import { dayBoundsInTz } from "../lib/time";
 import type { ListCalendarEventsInput } from "../schema/google-calendar";
 import { ctxTimezone } from "./context";
 import type { Ctx } from "./types";
@@ -192,23 +191,6 @@ export const googleCalendarService = {
 			},
 		);
 		return new Map(looked);
-	},
-
-	// Writes an all-day vacation marker to the requester's primary calendar and
-	// returns the created event id (null if the token is missing/insufficient).
-	// `endDate` is the inclusive last day off; Google's end.date is exclusive so
-	// we advance it by one day.
-	insertTimeOffEvent: async (
-		ctx: Ctx,
-		input: { startDate: string; endDate: string; label: string | null },
-	): Promise<string | null> => {
-		const token = await getAccessToken(ctx);
-		if (!token) return null;
-		return insertAllDayEvent(token, {
-			summary: input.label?.trim() || "Time off",
-			startDate: input.startDate,
-			endDate: addDaysToKey(input.endDate, 1),
-		});
 	},
 };
 

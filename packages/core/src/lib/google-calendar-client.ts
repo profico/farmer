@@ -198,41 +198,6 @@ export const getCalendarEvent = async (
 		: { status: "absent" };
 };
 
-// Creates an all-day event on the primary calendar and returns its id.
-// `startDate` maps to Google's inclusive `start.date`; `endDate` maps to
-// `end.date`, which Google treats as EXCLUSIVE — callers pass the day after the
-// last covered day (see googleCalendarService.insertTimeOffEvent). Returns null
-// on 401/403 so a revoked/insufficient token degrades instead of throwing.
-export const insertAllDayEvent = async (
-	token: string,
-	input: { summary: string; startDate: string; endDate: string },
-): Promise<string | null> => {
-	const response = await externalFetch(
-		`${GOOGLE_API}/calendar/v3/calendars/primary/events`,
-		{
-			method: "POST",
-			headers: { ...authHeaders(token), "Content-Type": "application/json" },
-			body: JSON.stringify({
-				summary: input.summary,
-				start: { date: input.startDate },
-				end: { date: input.endDate },
-				transparency: "transparent", // shows as "free", it's an all-day marker
-			}),
-		},
-	);
-	if (response.status === 401 || response.status === 403) return null;
-	if (!response.ok) {
-		throw new Error(
-			`Google Calendar API error ${response.status}: insert event`,
-		);
-	}
-	// SAFETY: 401/403 returned null and every other non-2xx threw above. `id` is
-	// optional here rather than asserted present — the caller maps a missing one
-	// to null, so a surprising body costs the id, not the request.
-	const body = (await response.json()) as { id?: string };
-	return body.id ?? null;
-};
-
 // Best join link for a meeting, in priority order:
 //  1. hangoutLink            — Google Meet, the common case
 //  2. conferenceData video   — Meet/Zoom/Teams via a calendar add-on
