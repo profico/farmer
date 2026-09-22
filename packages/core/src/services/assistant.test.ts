@@ -30,7 +30,8 @@ import {
 	test,
 } from "bun:test";
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 
 import { db } from "../db";
 import {
@@ -756,6 +757,48 @@ describe("read tools", () => {
 		// syncing fixes it.
 		expect(status.github.needsReconnect).toBe(false);
 		expect(status.automationsLockedThrough).toBeNull();
+	});
+
+	test("list_members sends an email only where two names collide", async () => {
+		// Every tool result goes to the model provider, so the roster's addresses
+		// stay home — except where two people share a name and the address is
+		// what tells them apart.
+		const twins = ["u-ai-ana-1", "u-ai-ana-2"];
+		await db.insert(user).values(
+			twins.map((id, index) => ({
+				id,
+				name: index === 0 ? "Ana Smith" : "  ana  smith ",
+				email: `${id}@example.com`,
+				emailVerified: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})),
+		);
+		await db.insert(member).values(
+			twins.map((id) => ({
+				id: `m-${id}`,
+				organizationId: ORG,
+				userId: id,
+				role: "member",
+				createdAt: new Date(),
+			})),
+		);
+		try {
+			const rows = z
+				.array(z.object({ userId: z.string(), email: z.string().nullable() }))
+				.parse(await findTool("list_members")?.run(ctxFor(ADMIN), {}));
+			const emailOf = new Map(rows.map((row) => [row.userId, row.email]));
+
+			expect(emailOf.get(twins[0] ?? "")).toBe("u-ai-ana-1@example.com");
+			expect(emailOf.get(twins[1] ?? "")).toBe("u-ai-ana-2@example.com");
+			for (const id of [ADMIN, WORKER, STRANGER]) {
+				expect(emailOf.has(id)).toBe(true);
+				expect(emailOf.get(id)).toBeNull();
+			}
+		} finally {
+			await db.delete(member).where(inArray(member.userId, twins));
+			await db.delete(user).where(inArray(user.id, twins));
+		}
 	});
 
 	test("every tool the model is offered can be dispatched", async () => {

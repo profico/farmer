@@ -278,6 +278,11 @@ const nameOr = async (
 // use this tool", which is the only form of the question that can be answered
 // before the arguments exist.
 
+// How `list_members` decides two people share a name: case, surrounding space
+// and runs of inner space do not tell anyone apart.
+const normalizedName = (name: string) =>
+	name.trim().replace(/\s+/g, " ").toLowerCase();
+
 const adminOnly = (access: Access) => access.isAdmin;
 
 /** Every report is scoped by the service to what the caller may see — a
@@ -451,17 +456,32 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "list_members",
 		kind: "read",
 		description:
-			"Everyone in the organization with their user ids — how a person named in the question becomes the id the other tools take.",
+			"Everyone in the organization with their user ids — how a person named in the question becomes the id the other tools take. The email is null, except on rows whose name another member shares, where it tells them apart.",
 		schema: z.object({}),
 		run: async (ctx) => {
 			const [access, rows] = await Promise.all([
 				ctxAccess(ctx),
 				membersService.list(ctx),
 			]);
+			// No email, except where it is the only thing that tells two people
+			// apart. Every tool result goes to the org's model provider, and a
+			// whole roster's addresses is a mailing list handed to a third party
+			// on every "who is on my team". A name shared by two members still
+			// needs something the person asking can recognise, so those rows —
+			// and only those — keep it.
+			const nameCounts = new Map<string, number>();
+			for (const row of rows) {
+				const key = normalizedName(row.name);
+				nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+			}
 			return rows.map((row) => ({
 				userId: row.userId,
 				name: row.name,
-				email: row.email,
+				// Null rather than absent, like `memberType` below.
+				email:
+					(nameCounts.get(normalizedName(row.name)) ?? 0) > 1
+						? row.email
+						: null,
 				orgRole: row.orgRole,
 				archived: row.archivedAt !== null,
 				// Billable/overhead/contractor decides Expected, so
