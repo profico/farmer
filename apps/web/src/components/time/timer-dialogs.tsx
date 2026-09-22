@@ -273,10 +273,28 @@ export function StartTimerDialog({
 							onChange={(e) => {
 								setHeadStart(e.target.value);
 							}}
+							onBlur={() => {
+								// The blur shows what was read, as the Log dialog's duration
+								// does: "0.5" becomes "0:30". Not snapped — the sum is.
+								if (headStartSeconds) {
+									setHeadStart(formatClock(headStartSeconds));
+								}
+							}}
 							placeholder="0:30, if you forgot to start it"
 							inputMode="decimal"
 							aria-invalid={headStartSeconds === null}
+							aria-describedby={
+								headStartSeconds === null ? "timer-head-start-error" : undefined
+							}
 						/>
+						{headStartSeconds === null && (
+							<p
+								id="timer-head-start-error"
+								className="text-xs text-destructive"
+							>
+								Could not read that duration — try 0:30, 30m or 0.5
+							</p>
+						)}
 					</div>
 				</div>
 
