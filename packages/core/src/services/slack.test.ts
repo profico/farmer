@@ -13,6 +13,7 @@ import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
 import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
+import { isSealed } from "../lib/secret-box";
 import { slackClient } from "../lib/slack-client";
 import { createTestDb, type TestDb } from "../test/harness";
 import { slackService } from "./slack.service";
@@ -126,5 +127,26 @@ describe("syncIdentities", () => {
 		} finally {
 			lookup.mockRestore();
 		}
+	});
+});
+
+describe("installationFor", () => {
+	test("opens the bot token, and reseals one stored in plaintext", async () => {
+		// `beforeAll` writes the token the way every row was written before
+		// encryption at rest existed.
+		const installation = await slackService.installationFor(ORG);
+		expect(installation?.botToken).toBe("xoxb-test");
+
+		const row = await db.query.slackInstallation.findFirst({
+			where: eq(slackInstallation.organizationId, ORG),
+			columns: { botToken: true },
+		});
+		expect(isSealed(row?.botToken ?? "")).toBe(true);
+		expect(row?.botToken).not.toContain("xoxb-test");
+
+		// The sealed row reads back the same.
+		expect((await slackService.installationFor(ORG))?.botToken).toBe(
+			"xoxb-test",
+		);
 	});
 });

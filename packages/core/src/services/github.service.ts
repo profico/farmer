@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { auth } from "../auth";
+import { sealLegacyOAuthTokens } from "../auth/legacy-tokens";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
 import { project, projectMember, timeEntry } from "../db/schema/domain";
@@ -198,9 +199,10 @@ const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
 			eq(account.userId, ctx.userId),
 			eq(account.providerId, "github"),
 		),
-		columns: { id: true },
+		columns: { id: true, accessToken: true, refreshToken: true },
 	});
 	if (!linked) return null;
+	await sealLegacyOAuthTokens(linked);
 	try {
 		const result = await auth.api.getAccessToken({
 			body: { providerId: "github", userId: ctx.userId },

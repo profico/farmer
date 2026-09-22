@@ -5,6 +5,7 @@ import { member, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
 import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
 import { signOrgState } from "../lib/oauth-state";
+import { openAndHeal, sealSecret } from "../lib/secret-box";
 import {
 	SLACK_BOT_SCOPES,
 	slackClient,
@@ -73,6 +74,8 @@ export const slackService = {
 
 		const result = await slackClient.exchangeOAuthCode(code);
 		const teamName = result.team.name ?? null;
+		// Sealed at rest (`lib/secret-box.ts`); only `installationFor` opens it.
+		const botToken = sealSecret(result.access_token);
 
 		await db
 			.insert(slackInstallation)
@@ -80,7 +83,7 @@ export const slackService = {
 				organizationId: ctx.organizationId,
 				teamId: result.team.id,
 				teamName,
-				botToken: result.access_token,
+				botToken,
 				botUserId: result.bot_user_id,
 				installedByUserId: ctx.userId,
 			})
@@ -89,7 +92,7 @@ export const slackService = {
 				set: {
 					teamId: result.team.id,
 					teamName,
-					botToken: result.access_token,
+					botToken,
 					botUserId: result.bot_user_id,
 					installedByUserId: ctx.userId,
 					updatedAt: new Date(),
@@ -229,13 +232,35 @@ export const slackService = {
 		return mapped;
 	},
 
-	/** Internal: the workspace credential for an org. Deliberately takes a raw
-	 *  organizationId (not a Ctx) because the reminder job runs outside a request
-	 *  and iterates every org. */
-	installationFor: async (organizationId: string) =>
-		db.query.slackInstallation.findFirst({
+	/** Internal: the workspace credential for an org, with the bot token opened.
+	 *  Deliberately takes a raw organizationId (not a Ctx) because the reminder
+	 *  job runs outside a request and iterates every org.
+	 *
+	 *  A token stored before encryption existed is resealed here, on its first
+	 *  read. One that does not decrypt (a changed BETTER_AUTH_SECRET) reads as
+	 *  no installation, so nothing sends with garbage and a reinstall fixes it. */
+	installationFor: async (organizationId: string) => {
+		const row = await db.query.slackInstallation.findFirst({
 			where: eq(slackInstallation.organizationId, organizationId),
-		}),
+		});
+		if (!row) return undefined;
+		const botToken = await openAndHeal(
+			row.botToken,
+			async (sealed) => {
+				await db
+					.update(slackInstallation)
+					.set({ botToken: sealed })
+					.where(
+						and(
+							eq(slackInstallation.id, row.id),
+							eq(slackInstallation.botToken, row.botToken),
+						),
+					);
+			},
+			"a Slack bot token",
+		);
+		return botToken === null ? undefined : { ...row, botToken };
+	},
 
 	slackIdFor: async (
 		organizationId: string,

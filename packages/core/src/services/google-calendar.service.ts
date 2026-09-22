@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
 import { auth } from "../auth";
+import { sealLegacyOAuthTokens } from "../auth/legacy-tokens";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
 import { mapBounded } from "../lib/concurrency";
@@ -29,9 +30,10 @@ const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
 			eq(account.userId, ctx.userId),
 			eq(account.providerId, "google-calendar"),
 		),
-		columns: { id: true },
+		columns: { id: true, accessToken: true, refreshToken: true },
 	});
 	if (!linked) return null;
+	await sealLegacyOAuthTokens(linked);
 	try {
 		const result = await auth.api.getAccessToken({
 			body: { providerId: "google-calendar", userId: ctx.userId },

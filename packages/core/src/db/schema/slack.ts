@@ -22,7 +22,8 @@ const stamps = {
 
 // One Slack workspace per org (PRD §8). The bot token is the credential every
 // reminder DM is sent with; it is written once at install and never exposed to
-// the client — no server function or REST route returns it.
+// the client — no server function or REST route returns it. Stored sealed
+// (`lib/secret-box.ts`); `slackService.installationFor` is the one reader.
 export const slackInstallation = pgTable(
 	"slack_installation",
 	{

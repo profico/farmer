@@ -154,6 +154,13 @@ export const auth = betterAuth({
 		freshAge: 0,
 	},
 	account: {
+		// The GitHub and Google Calendar access and refresh tokens are encrypted
+		// at rest, keyed from BETTER_AUTH_SECRET, so a database dump is not a
+		// set of live credentials for everybody's GitHub and calendar. Rows
+		// written before this was on still read: better-auth passes a value that
+		// does not look encrypted through as it is, and `sealLegacyOAuthTokens`
+		// (./legacy-tokens.ts) encrypts such a row the next time it is used.
+		encryptOAuthTokens: true,
 		accountLinking: {
 			// GitHub only returns emailVerified:true for the user's primary
 			// verified email; without this, linking a github account to an

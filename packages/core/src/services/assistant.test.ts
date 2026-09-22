@@ -49,6 +49,7 @@ import {
 } from "../db/schema/domain";
 import { ABORTED } from "../lib/openrouter-client";
 import type { ChatMessage, ChatTool, ChatTurn } from "../lib/openrouter-client";
+import { isSealed, openSecret } from "../lib/secret-box";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { type Access, AccessError, accessService } from "./access.service";
 import { findTool, toolDefinitions, toolsFor } from "./assistant-tools";
@@ -92,6 +93,9 @@ let seen: ChatMessage[][] = [];
 /** The tool list each call was sent, so a call made deliberately WITHOUT tools
  *  can be told from one that simply had none to offer. */
 let seenTools: (ChatTool[] | undefined)[] = [];
+/** The API key each call was made with, so a test can tell the stored key was
+ *  opened rather than sent sealed. */
+let seenKeys: string[] = [];
 
 const turn = (over: Partial<ChatTurn> = {}): ChatTurn => ({
 	content: "",
@@ -119,6 +123,7 @@ beforeAll(async () => {
 		streamChatCompletion: async (opts) => {
 			seen.push(opts.messages);
 			seenTools.push(opts.tools);
+			seenKeys.push(opts.apiKey);
 			const next = script.shift();
 			if (!next) throw new Error("scripted model ran out of turns");
 			if (next.content) opts.onDelta?.(next.content);
@@ -241,6 +246,7 @@ beforeEach(async () => {
 	script = [];
 	seen = [];
 	seenTools = [];
+	seenKeys = [];
 	await db.delete(assistantConversation);
 	await db.delete(assistantSettings);
 	await db.delete(timeEntry);
@@ -275,6 +281,73 @@ describe("settings", () => {
 		expect(view.keyHint).toBe("sk-or-v1-abc123••••••••");
 		expect(view.keyHint).not.toContain(KEY.slice(-4));
 		expect(JSON.stringify(view)).not.toContain(KEY);
+	});
+
+	test("a key stored in plaintext is resealed on its first read", async () => {
+		// `beforeEach` writes the key the way every row was written before
+		// encryption at rest existed.
+		const view = await assistantService.settings.get(ctxFor(WORKER));
+		expect(view.keyHint).toBe("sk-or-v1-abc123••••••••");
+
+		const row = present(
+			await db.query.assistantSettings.findFirst({
+				where: eq(assistantSettings.organizationId, ORG),
+			}),
+			"the settings row",
+		);
+		expect(isSealed(row.apiKey)).toBe(true);
+		expect(row.apiKey).not.toContain(KEY);
+		expect(openSecret(row.apiKey)).toBe(KEY);
+
+		// And the sealed row still drives a turn with the real key.
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "hi" })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "hello",
+		});
+		expect(seenKeys).toEqual([KEY]);
+	});
+
+	test("connecting stores the key sealed", async () => {
+		await db.delete(assistantSettings);
+		await assistantService.settings.set(ctxFor(ADMIN), {
+			apiKey: KEY,
+			defaultModel: "test/model",
+		});
+		const row = present(
+			await db.query.assistantSettings.findFirst({
+				where: eq(assistantSettings.organizationId, ORG),
+			}),
+			"the settings row",
+		);
+		expect(isSealed(row.apiKey)).toBe(true);
+		expect(openSecret(row.apiKey)).toBe(KEY);
+		const view = await assistantService.settings.get(ctxFor(WORKER));
+		expect(view.keyHint).toBe("sk-or-v1-abc123••••••••");
+	});
+
+	test("a key that does not decrypt reads as not connected, and a reconnect fixes it", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		await db
+			.update(assistantSettings)
+			.set({ apiKey: "enc:v1:bm90LWEtcmVhbC1jaXBoZXJ0ZXh0LWF0LWFsbA" })
+			.where(eq(assistantSettings.organizationId, ORG));
+
+		const view = await assistantService.settings.get(ctxFor(WORKER));
+		expect(view.keyHint).toBeNull();
+		script = [turn({ content: "hi" })];
+		await expect(
+			collect(ctxFor(WORKER), { conversationId: chat.id, message: "hello" }),
+		).rejects.toThrow(/not connected/i);
+
+		await assistantService.settings.set(ctxFor(ADMIN), {
+			apiKey: KEY,
+			defaultModel: "test/model",
+		});
+		expect((await assistantService.settings.get(ctxFor(WORKER))).keyHint).toBe(
+			"sk-or-v1-abc123••••••••",
+		);
 	});
 
 	test("an unconfigured org reports as not connected rather than throwing", async () => {

@@ -14,6 +14,12 @@ import { afterAll } from "bun:test";
 
 import { closeTestEngine } from "./harness";
 
+// The services seal stored credentials with a key derived from this
+// (`lib/secret-box.ts`), and a fixture that inserts a plaintext token then
+// exercises the reseal on read. A deployment always has it set; the suite has
+// no `.env`, so it gets a fixed one here.
+process.env.BETTER_AUTH_SECRET ??= "test-secret-for-the-suite";
+
 afterAll(async () => {
 	await closeTestEngine();
 });

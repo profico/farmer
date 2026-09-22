@@ -29,6 +29,7 @@ const stamps = {
 // billed against: it is written by one admin-gated server function and never
 // read back out — `assistantService.settings.get` selects around it and returns
 // a masked hint instead, so a compromised client session cannot exfiltrate it.
+// It is stored sealed (`lib/secret-box.ts`), so a database dump cannot either.
 //
 // Per-org rather than an env var because each workspace pays its own way, and
 // because a deployment-wide key would make one org's runaway conversation
