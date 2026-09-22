@@ -62,7 +62,7 @@ Two gates that read as one and are not: `assertTaskAvailable` (guards.ts) asks w
 
 `LedgerFilter.visibleProjectIds` and `visibleUserIds` are ORed: a row passes if it is on a visible project OR belongs to a visible person. `null` means unscoped; both empty means nothing. `overtimeOnly` and `activeOnly` narrow further.
 
-**A day holds at most 24 hours** (`MAX_DAY_SECONDS`, `lib/working-day.ts`). Every manual write that grows a day checks it and throws `DayCapacityError`: create, update, the week grid, copy day/week, day assembly and the PM absence writes. An edit that does not grow the day is allowed even on a day already over. The engines are exempt, since a fill block is sized from the remainder and a synced meeting mirrors the calendar.
+**A day holds at most 24 hours** (`MAX_DAY_SECONDS`, `lib/working-day.ts`). Every manual write that grows a day checks it and throws `DayCapacityError`: create, update, the week grid, copy day/week, day assembly and the PM absence writes. An edit that does not grow the day is allowed even on a day already over. The fill block and the meeting sync are exempt, since a fill block is sized from the remainder and a synced meeting mirrors the calendar. The recurring-block materializer is not: a rule is at most 24 hours, and a day with no room for its block gets none.
 
 **Unfiled** = worked time with no project yet (a synced meeting, a commit fill block, an accepted assembly suggestion) — real work, not yet attributed, therefore a to-do. Absence is not unfiled (it never carries a project by definition), and neither is a project-less **Break** — nobody bills a client for lunch, so counting it would nag people to file something unfileable.
 

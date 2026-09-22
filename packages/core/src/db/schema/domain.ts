@@ -284,9 +284,12 @@ export const recurringBlockRule = pgTable(
 			"rbr_days_of_week_valid",
 			sql`${t.daysOfWeek} <@ ARRAY[0,1,2,3,4,5,6]::integer[]`,
 		),
+		// At most a whole day (`MAX_DAY_SECONDS`): a rule is "N hours on each of
+		// these days", and more than 24 of them is not a day. Migration 0066
+		// clamps any rule saved before the ceiling existed.
 		check(
 			"rbr_duration_granularity",
-			sql`${t.durationSeconds} > 0 and ${t.durationSeconds} % 900 = 0`,
+			sql`${t.durationSeconds} > 0 and ${t.durationSeconds} <= 86400 and ${t.durationSeconds} % 900 = 0`,
 		),
 	],
 );
