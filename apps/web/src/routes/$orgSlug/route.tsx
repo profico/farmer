@@ -9,7 +9,7 @@ import { Field } from "#/components/field.tsx";
 import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
 import { AppShellLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { SidebarInset, SidebarProvider } from "#/components/ui/sidebar.tsx";
-import { withOrgSlug } from "#/lib/org-redirect.ts";
+import { isOrgPlaceholder, withOrgSlug } from "#/lib/org-redirect.ts";
 import { assistantSettingsQuery } from "#/queries/assistant.ts";
 import { directoryQuery } from "#/queries/members.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
@@ -57,20 +57,23 @@ export const Route = createFileRoute("/$orgSlug")({
 
 		if (entered.kind === "elsewhere") {
 			// A placeholder, no such workspace, or not a member of it — the last
-			// two deliberately the same outcome. One workspace is the answer
-			// without asking. More than one is a choice, and the chooser keeps the
-			// rest of the path. None is `/no-access`, which explains it and lists
-			// any live invitations.
-			if (entered.onlySlug) {
+			// two deliberately the same outcome. A placeholder with one workspace
+			// is the answer without asking. A real slug always goes through the
+			// chooser, even with one workspace: rewriting `/acme/projects/p_123`
+			// to `/beta/…` in silence lands on a not-found in the wrong workspace
+			// with nothing to say why, where the chooser says "You are not a member
+			// of acme". None is `/no-access`, which explains it and lists any live
+			// invitations — and keeps the link, for a sign-in to another account.
+			if (entered.onlySlug && isOrgPlaceholder(params.orgSlug)) {
 				throw redirect({ href: withOrgSlug(location.href, entered.onlySlug) });
 			}
-			if (entered.count > 1) {
+			if (entered.count > 0) {
 				throw redirect({
 					to: "/choose-organization",
 					search: { redirect: location.href },
 				});
 			}
-			throw redirect({ to: "/no-access" });
+			throw redirect({ to: "/no-access", search: { redirect: location.href } });
 		}
 
 		return {

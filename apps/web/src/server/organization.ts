@@ -41,8 +41,10 @@ import {
  *    `lib/org-redirect.ts`), names no organization, or names one the caller is
  *    not in. The last two are deliberately the same answer, so this cannot be
  *    used to probe which slugs are taken. `onlySlug` is set when the caller
- *    has exactly one workspace, so the guard can go straight there; with more
- *    the guard sends them to the chooser, and with none to `/no-access`.
+ *    has exactly one workspace, so the guard can resolve a placeholder
+ *    straight to it; otherwise the guard sends them to the chooser, and with
+ *    no workspace to `/no-access`. In single-org mode the answer is always
+ *    "no workspace".
  */
 export const enterOrganization = createServerFn({ method: "POST" })
 	.middleware([optionalSessionMiddleware])
@@ -60,7 +62,17 @@ export const enterOrganization = createServerFn({ method: "POST" })
 		const { isPlatformAdminRole } =
 			await import("@farmer/core/lib/platform-admin");
 
+		const { isSingleOrgMode } = await import("@farmer/core/lib/single-org");
+
 		const elsewhere = async () => {
+			// A one-workspace instance has nowhere else to send anybody. The guard
+			// answers every other slug with the one workspace, so an `onlySlug`
+			// naming a second organization (a database that had several before the
+			// mode was switched on) sent the reader there and straight back again,
+			// forever. A non-member here is `/no-access`, whatever else they are in.
+			if (isSingleOrgMode()) {
+				return { kind: "elsewhere", count: 0, onlySlug: null } as const;
+			}
 			const organizations = await orgContextService.organizationsFor(
 				session.user.id,
 			);

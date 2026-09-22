@@ -45,9 +45,19 @@ export const Route = createFileRoute("/choose-organization")({
 			throw redirect({ to: "/login", search: { redirect: location.href } });
 		}
 		const target = safeRedirectPath(search.redirect) ?? "/";
+		const asked = orgSlugOf(target);
 		const [only, ...others] = mine.organizations;
-		if (!only) throw redirect({ to: "/no-access" });
-		if (others.length === 0) {
+		if (!only)
+			throw redirect({ to: "/no-access", search: { redirect: target } });
+		// A link into a workspace the reader is in after all (opened by hand, or
+		// joined since) needs no choice.
+		if (mine.organizations.some((org) => org.slug === asked)) {
+			throw redirect({ href: target });
+		}
+		// One workspace answers a placeholder, or a bare visit, without asking. A
+		// real slug the reader cannot open still stops here, so the page can say
+		// so — see the `/$orgSlug` guard.
+		if (others.length === 0 && (!asked || isOrgPlaceholder(asked))) {
 			throw redirect({ href: withOrgSlug(target, only.slug) });
 		}
 		return { mine, target };
@@ -71,11 +81,21 @@ function ChooseOrganizationPage() {
 	);
 
 	const open = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
+		// The fragment never reaches the server, so a link opened cold arrives
+		// here with it on the chooser's own URL, not inside `target`: the
+		// browser kept it across the guard's redirect. It goes back on here, at
+		// the click, because only the browser can read it — and onto the
+		// anchor too, so a new tab gets it as well.
+		const withHash =
+			href.includes("#") || !window.location.hash
+				? href
+				: `${href}${window.location.hash}`;
+		event.currentTarget.href = withHash;
 		// A modified click keeps the browser's own behaviour (a new tab).
 		if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
 			return;
 		event.preventDefault();
-		void navigate({ href });
+		void navigate({ href: withHash });
 	};
 
 	const handleSignOut = async () => {
@@ -124,6 +144,7 @@ function ChooseOrganizationPage() {
 											<a
 												href={href}
 												onClick={(event) => open(event, href)}
+												onAuxClick={(event) => open(event, href)}
 												className="group/row flex h-16 items-center gap-3 rounded-lg border px-3 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40"
 											>
 												<OrgMark name={org.name} logo={org.logo} />
