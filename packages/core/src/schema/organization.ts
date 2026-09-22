@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { dayKeySchema } from "./day-key";
+import { httpUrlSchema } from "./http-url";
 import { uploadedFilePath } from "./uploads";
 
 export const setActiveOrgBySlugInput = z.string().min(1);
@@ -19,7 +20,11 @@ export const updateOrganizationSettingsInput = z.object({
 	// The org's own logo, shown in the app chrome in place of the Profico
 	// fallback: a URL somebody pasted, or the path of an uploaded image. An
 	// empty string clears it (→ null).
-	logo: z.url().max(2048).or(uploadedFilePath).or(z.literal("")).nullish(),
+	logo: httpUrlSchema
+		.max(2048)
+		.or(uploadedFilePath)
+		.or(z.literal(""))
+		.nullish(),
 });
 export type UpdateOrganizationSettingsInput = z.infer<
 	typeof updateOrganizationSettingsInput

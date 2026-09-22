@@ -16,6 +16,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
+	extractMeetingUrl,
 	getCalendarEvent,
 	type GoogleCalendarEvent,
 	isImportableEvent,
@@ -159,5 +160,44 @@ describe("getCalendarEvent", () => {
 		expect((await getCalendarEvent("token", "e1")).status).toBe("unreadable");
 		answering(503);
 		expect((await getCalendarEvent("token", "e1")).status).toBe("unreadable");
+	});
+});
+
+// The join link lands in an `href`. A conference add-on writes the entry point,
+// so a `javascript:` URI there ran in the session of whoever clicked it.
+describe("extractMeetingUrl", () => {
+	const video = (uri: string) =>
+		timed({
+			conferenceData: { entryPoints: [{ entryPointType: "video", uri }] },
+		});
+
+	test("returns an https join link", () => {
+		expect(extractMeetingUrl(video("https://zoom.us/j/1"))).toBe(
+			"https://zoom.us/j/1",
+		);
+	});
+
+	test("never returns a link that is not http or https", () => {
+		for (const uri of [
+			"javascript:alert(1)",
+			"data:text/html,<script>alert(1)</script>",
+			"file:///etc/passwd",
+			"not a url",
+		]) {
+			expect(extractMeetingUrl(video(uri))).toBeNull();
+			expect(extractMeetingUrl(timed({ hangoutLink: uri }))).toBeNull();
+		}
+	});
+
+	test("skips a bad entry point for a good one", () => {
+		const event = timed({
+			conferenceData: {
+				entryPoints: [
+					{ entryPointType: "video", uri: "javascript:alert(1)" },
+					{ entryPointType: "video", uri: "https://meet.example.com/x" },
+				],
+			},
+		});
+		expect(extractMeetingUrl(event)).toBe("https://meet.example.com/x");
 	});
 });

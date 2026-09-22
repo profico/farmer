@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { dayKeySchema } from "./day-key";
 import { pullRequestRef } from "./github";
+import { httpUrlSchema } from "./http-url";
 
 export const suggestDayAssemblyInput = z.object({
 	date: dayKeySchema,
@@ -35,7 +36,7 @@ const assembledEntry = z.object({
 	durationSeconds: z.number().int().positive().optional(),
 	fillsDay: z.boolean().optional(),
 	overtime: z.boolean().optional(),
-	meetingUrl: z.url().optional(),
+	meetingUrl: httpUrlSchema.optional(),
 	calendarEventId: z.string().optional(),
 	commits: z
 		.array(

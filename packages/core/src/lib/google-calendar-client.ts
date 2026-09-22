@@ -198,16 +198,33 @@ export const getCalendarEvent = async (
 		: { status: "absent" };
 };
 
+/** Whether a link is an http or https URL — the only kind a join link may be. */
+const isWebLink = (uri: string): boolean => {
+	try {
+		const { protocol } = new URL(uri);
+		return protocol === "http:" || protocol === "https:";
+	} catch {
+		return false;
+	}
+};
+
 // Best join link for a meeting, in priority order:
 //  1. hangoutLink            — Google Meet, the common case
 //  2. conferenceData video   — Meet/Zoom/Teams via a calendar add-on
 //  3. first URL in location  — Zoom/Teams links are often just pasted here
+//
+// Only an http(s) link is returned. The URI comes from whoever made the event
+// (a conference add-on writes it), and the link lands in an `href`, so a
+// `javascript:` URI there would run in the person's session when clicked.
 export const extractMeetingUrl = (
 	event: GoogleCalendarEvent,
 ): string | null => {
-	if (event.hangoutLink) return event.hangoutLink;
+	if (event.hangoutLink && isWebLink(event.hangoutLink)) {
+		return event.hangoutLink;
+	}
 	const video = event.conferenceData?.entryPoints?.find(
-		(entry) => entry.entryPointType === "video" && entry.uri,
+		(entry) =>
+			entry.entryPointType === "video" && !!entry.uri && isWebLink(entry.uri),
 	);
 	if (video?.uri) return video.uri;
 	if (event.location) {

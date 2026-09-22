@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { dayKeySchema } from "./day-key";
+import { httpUrlSchema } from "./http-url";
 
 /** 15-minute granularity (PRD 3.6): 0.25, 0.5, 0.75... An entry is a date and
  *  an amount of time, and holds no clock. The stopwatch measures in seconds and
@@ -31,7 +32,7 @@ const entryBody = {
 	// Purely manual: no weekend automation, no rules. The person flags it.
 	overtime: z.boolean().default(false),
 	fillsDay: z.boolean().default(false),
-	meetingUrl: z.url().optional(),
+	meetingUrl: httpUrlSchema.optional(),
 	calendarEventId: z.string().optional(),
 };
 
