@@ -202,6 +202,32 @@ describe("which projects come back", () => {
 	});
 });
 
+// `get` is the one-project door to the same answer, so it holds the same scope:
+// naming a project you are not on must not return its name and client.
+describe("one project by id", () => {
+	test("a plain member is refused a project they are not on", async () => {
+		await expect(
+			projectsService.get(ctx(PLAIN), unassignedId),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	test("a PM is refused a project they are not on", async () => {
+		await expect(
+			projectsService.get(ctx(PM), unassignedId),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	test("an assigned member reads their project", async () => {
+		const seen = await projectsService.get(ctx(PLAIN), assignedId);
+		expect(seen.name).toBe("Assigned");
+	});
+
+	test("an admin reads any project", async () => {
+		const seen = await projectsService.get(ctx(ADMIN), unassignedId);
+		expect(seen.name).toBe("Unassigned");
+	});
+});
+
 describe("the money fields", () => {
 	const moneyOf = (row: {
 		budgetAmount: string | null;

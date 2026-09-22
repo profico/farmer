@@ -266,8 +266,13 @@ export const projectsService = {
 		return enrichedProjects(ctx, access, scope ?? undefined);
 	},
 
+	/** One project, on the same scope as `list`: Admin, an assignment, or a
+	 *  project open to the organization. It used to run no check at all, so a
+	 *  member could name any project and read its name, code and client — the
+	 *  things `list` stopped enumerating for them. */
 	get: async (ctx: Ctx, projectId: string) => {
 		const access = await ctxAccess(ctx);
+		access.assertCanTrackOn(projectId);
 		const rows = await enrichedProjects(ctx, access, [projectId]);
 		const row = rows[0];
 		if (!row) throw new Error("Project not found");
