@@ -2264,6 +2264,27 @@ html {
          moved the sidebar island down by its own `top` offset. */
       position: relative;
     }
+
+    /* `Page`'s scroller gives the bar's width back out of its own right
+       padding, so a page that grows past the window keeps its content box
+       where it was. Without this the bar took its width out of the content,
+       and every line reflowed the moment the page overflowed and again the
+       moment it stopped.
+
+       Not `scrollbar-gutter: stable`, which does hold the content still but
+       reserves the strip on a page with nothing to scroll too — and every
+       full-bleed rule (a row's border pulled out by a negative margin) then
+       stops a bar's width short of the island's edge. Here the strip exists
+       only while there is a bar in it.
+
+       `--scroll-gutter` is the bar's measured width, kept by `useScrollFade`.
+       A bleed row now reaches past the narrowed padding box by that much when
+       the bar shows, so `overflow-x` clips it at the bar rather than letting
+       it scroll sideways. */
+    .page-scroll {
+      padding-right: calc(2rem - var(--scroll-gutter, 0px));
+      overflow-x: hidden;
+    }
   }
 
   /* Shortened, not removed. The mask is an opacity ramp saying "there is more

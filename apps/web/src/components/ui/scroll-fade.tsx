@@ -45,6 +45,17 @@ export function useScrollFade(ref: React.RefObject<HTMLElement | null>) {
 			"--fade-bottom",
 			bottom ? "var(--fade-size)" : "0px",
 		);
+		// The bar's width while it shows, 0 while it does not — `.page-scroll`
+		// takes it back out of its right padding. A ResizeObserver callback runs
+		// after layout and before paint, so the bar and the narrower padding
+		// arrive in the same frame.
+		element.style.setProperty(
+			"--scroll-gutter",
+			`${element.offsetWidth - element.clientWidth}px`,
+		);
+		// That clipped overflow is still scrollable from script, and focusing a
+		// full-bleed row scrolls it into view — sideways by the bar's width.
+		if (element.scrollLeft !== 0) element.scrollLeft = 0;
 	}, [ref]);
 
 	useEffect(() => {
