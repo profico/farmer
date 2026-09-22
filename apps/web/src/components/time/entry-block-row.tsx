@@ -293,10 +293,12 @@ export function EntryBlockRow({
 	// Continue this entry on the stopwatch (issue #107), the way Harvest restarts
 	// a row: the timer measures on top of what the entry holds and saves over
 	// it when stopped. Only the id of the entry being timed is selected, so the
-	// one-second tick of a running timer does not re-render every row.
+	// one-second tick of a running timer does not re-render every row. A timer
+	// the sweep dropped times nothing, as in `useTimer`.
 	const { data: timedEntryId } = useQuery({
 		...timerQuery(orgSlug),
-		select: (timer) => timer?.timeEntryId ?? null,
+		select: (timer) =>
+			timer && timer.droppedAt == null ? timer.timeEntryId : null,
 	});
 	const continuable = !entry.task.isAbsence && !entry.fillsDay;
 	const continueMutation = useMutation({

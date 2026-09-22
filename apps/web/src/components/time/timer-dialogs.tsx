@@ -128,6 +128,14 @@ export function StartTimerDialog({
 	const headStartSeconds = headStart.trim()
 		? parseDuration(headStart.trim())
 		: 0;
+	// The same ceiling as the CLI's `parseHeadStart`, so a bare "25" (read as
+	// hours) is refused here and never reaches the server as a raw Zod error.
+	const headStartError =
+		headStartSeconds === null
+			? "Could not read that duration — try 0:30, 30m or 0.5"
+			: headStartSeconds >= 24 * 3600
+				? "A head start must be shorter than a day"
+				: null;
 	const queryClient = useQueryClient();
 
 	// The dialog opens on the pair you last measured, the way the Log time
@@ -282,17 +290,17 @@ export function StartTimerDialog({
 							}}
 							placeholder="0:30"
 							inputMode="decimal"
-							aria-invalid={headStartSeconds === null}
+							aria-invalid={headStartError !== null}
 							aria-describedby={
-								headStartSeconds === null ? "timer-head-start-error" : undefined
+								headStartError ? "timer-head-start-error" : undefined
 							}
 						/>
-						{headStartSeconds === null && (
+						{headStartError && (
 							<p
 								id="timer-head-start-error"
 								className="text-xs text-destructive"
 							>
-								Could not read that duration — try 0:30, 30m or 0.5
+								{headStartError}
 							</p>
 						)}
 					</div>
@@ -304,9 +312,7 @@ export function StartTimerDialog({
 						onClick={() => {
 							mutation.mutate();
 						}}
-						disabled={
-							!taskId || headStartSeconds === null || mutation.isPending
-						}
+						disabled={!taskId || headStartError !== null || mutation.isPending}
 					>
 						{mutation.isPending ? "Starting…" : "Start"}
 					</Button>

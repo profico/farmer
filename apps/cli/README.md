@@ -61,7 +61,7 @@ farmer edit [n | id]                Change an entry
 farmer rm [n | id] [--yes]          Delete an entry
 
 farmer start [description] [-p project] [-t task] [--head-start <d>]
-farmer continue [n | id] [-d date]  Start the timer on an entry, adding to it
+farmer continue [n | id] [-d date] [--head-start <d>]
 farmer pause                        Hold the clock; it measures nothing
 farmer resume                       Start measuring again
 farmer stop [-m text] [-p project] [-t task] [--duration <d>] [-d date] [--overtime]

@@ -482,8 +482,13 @@ export const stop: Command = {
 			printJson(entry);
 			return;
 		}
+		// `elapsedSeconds` of a continued entry includes the hours the entry
+		// already held, so the clock's own figure is what is left after them.
+		const measured = timer.entry
+			? `Measured ${stopwatch(timer.elapsedSeconds - timer.entry.durationSeconds)} on top of the ${formatHours(timer.entry.durationSeconds)} it held. Updated the entry to`
+			: `Measured ${stopwatch(timer.elapsedSeconds)}. Logged`;
 		print(
-			`Measured ${stopwatch(timer.elapsedSeconds)}. ${timer.entry ? "Updated the entry to" : "Logged"} ${bold(out, formatHours(entry.durationSeconds))} on ${entryWhat(entry)} for ${dayTitle(entry.date)}. (${shortId(entry.id)})`,
+			`${measured} ${bold(out, formatHours(entry.durationSeconds))} on ${entryWhat(entry)} for ${dayTitle(entry.date)}. (${shortId(entry.id)})`,
 		);
 	},
 };
