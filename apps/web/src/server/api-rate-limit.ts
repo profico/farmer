@@ -27,6 +27,8 @@
  * to stop a runaway loop rather than to shape traffic.
  */
 
+import { clientAddress, trustedIpHeader } from "#/lib/client-address.ts";
+
 /** The surfaces that keep their own buckets. */
 export type RateLimitSurface = "mcp" | "cli";
 
@@ -131,10 +133,11 @@ export const admitWrite = (
 //    CLI to run `farmer login`), so a small budget here costs a legitimate
 //    caller nothing.
 //
-// The address comes from the proxy's headers, as nothing else reaches a server
-// route. A deployment whose proxy does not overwrite them lets a caller choose
-// its own key; that weakens this to a per-claimed-address limit, and the hard
-// cap on the map below is what keeps it from also becoming a memory leak.
+// The address comes from the one header `TRUSTED_IP_HEADER` names, or from the
+// socket (`callerAddress` below). A deployment whose proxy does not overwrite
+// that header lets a caller choose its own key; that weakens this to a
+// per-claimed-address limit, and the hard cap on the map below is what keeps it
+// from also becoming a memory leak.
 
 /** Requests per caller address per minute, authenticated or not. */
 const MAX_REQUESTS_PER_ADDRESS = 1_200;
@@ -184,18 +187,16 @@ const addressBucketFor = (
 	return fresh;
 };
 
-/** The address a request came from, as the proxy in front of us reports it.
- *  `cf-connecting-ip` first because Cloudflare fronts this deployment and
- *  sets it itself; the first `x-forwarded-for` hop is the client's. Requests
- *  that carry none share one bucket, which is the conservative answer. */
-export const callerAddress = (request: Request): string => {
-	const headers = request.headers;
-	const direct =
-		headers.get("cf-connecting-ip") ?? headers.get("x-real-ip") ?? null;
-	if (direct?.trim()) return direct.trim();
-	const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-	return forwarded || "unknown";
-};
+/** The address a request came from: the one header `TRUSTED_IP_HEADER` names
+ *  (default `cf-connecting-ip`), else the socket address the production host
+ *  recorded, else `"unknown"`, one shared bucket. See `lib/client-address.ts`.
+ *  The variable is read per call, because this module also ships to the
+ *  browser, where `process.env` is not there to read at import. */
+export const callerAddress = (request: Request): string =>
+	clientAddress(
+		request.headers,
+		trustedIpHeader(process.env.TRUSTED_IP_HEADER),
+	);
 
 /**
  * Count one request against its address, before anything is resolved, and say

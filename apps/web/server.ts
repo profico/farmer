@@ -76,6 +76,7 @@ import path from "node:path";
 import type { SchedulerHandle } from "@farmer/core/jobs";
 
 import { acceptsGzip } from "./src/lib/accept-encoding.ts";
+import { SOCKET_ADDRESS_HEADER } from "./src/lib/client-address.ts";
 import { applySecurityHeaders } from "./src/lib/security-headers.ts";
 
 // Configuration
@@ -657,8 +658,16 @@ async function initializeServer() {
 			// Every response here also gets the baseline security headers (see
 			// `lib/security-headers.ts`), including one that sets its own
 			// Cache-Control. A header the route set itself is kept.
-			"/*": async (req: Request) => {
+			"/*": async (req, bunServer) => {
 				try {
+					// The socket address, for the per-address rate limits when the
+					// trusted proxy header is missing (`lib/client-address.ts`). The
+					// caller's own copy of the header is deleted first, so the only
+					// value it can hold is the one written here.
+					req.headers.delete(SOCKET_ADDRESS_HEADER);
+					const socketAddress = bunServer.requestIP(req)?.address;
+					if (socketAddress)
+						req.headers.set(SOCKET_ADDRESS_HEADER, socketAddress);
 					const res = await handler.fetch(req);
 					const headers = applySecurityHeaders(new Headers(res.headers));
 					if (!headers.has("Cache-Control")) {
