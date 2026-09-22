@@ -18,11 +18,18 @@ export const Route = createFileRoute("/api/v1/me")({
 			GET: userApiRoute({
 				run: async (caller): Promise<ApiMe> => {
 					const { orgContextService } = await import("@farmer/core/services");
+					const organizations = await orgContextService.organizationsFor(
+						caller.userId,
+					);
 					return {
 						user: caller.user,
-						organizations: await orgContextService.organizationsFor(
-							caller.userId,
-						),
+						// The CLI's contract is the slug and the name. The logo and the
+						// role are for the web app's chooser, and `farmer org --json`
+						// prints this list as it arrives.
+						organizations: organizations.map(({ slug, name }) => ({
+							slug,
+							name,
+						})),
 					};
 				},
 			}),

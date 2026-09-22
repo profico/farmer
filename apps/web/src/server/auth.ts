@@ -153,6 +153,18 @@ export const sessionMiddleware = createMiddleware({ type: "function" }).server(
 	},
 );
 
+// The session, or null — for the two guards that must know WHERE the visitor
+// was going before they send them to `/login`. `requireSession` redirects with
+// no `redirect` param, because a server function cannot see the page that
+// called it, so a shared link to a workspace page used to land on the
+// workspace's home after sign-in. The caller builds that redirect itself.
+export const optionalSessionMiddleware = createMiddleware({
+	type: "function",
+}).server(async ({ next }) => {
+	const session = await getSession();
+	return next({ context: { session } });
+});
+
 // Authenticated + an active organization → `context.ctx` is the service ctx.
 //
 // The membership check is the point, and it is not the same check as

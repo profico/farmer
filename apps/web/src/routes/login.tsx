@@ -7,6 +7,7 @@ import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
 import { Label } from "#/components/ui/label.tsx";
 import { signIn, signUp } from "#/lib/auth-client.ts";
+import { safeRedirectPath } from "#/lib/org-redirect.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
 
 const searchSchema = z.object({
@@ -37,13 +38,10 @@ const signInHref = (search: Search) => {
 /**
  * Where a successful sign-in lands. Same rule as `/api/login`'s: `redirect`
  * rides in a link and is attacker-supplied in principle, so only a same-site
- * absolute path is accepted — "//evil.com" is a protocol-relative URL, not a
- * path, which is why the second test is not redundant.
+ * absolute path is accepted (`safeRedirectPath`).
  */
 const destination = (search: Search) => {
-	const requested = search.redirect;
-	const target =
-		requested?.startsWith("/") && !requested.startsWith("//") ? requested : "/";
+	const target = safeRedirectPath(search.redirect) ?? "/";
 	const context = new URLSearchParams();
 	for (const key of ["email", "org", "orgSlug", "role"] as const) {
 		const value = search[key];

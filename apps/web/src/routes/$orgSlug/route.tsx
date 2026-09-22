@@ -9,6 +9,7 @@ import { Field } from "#/components/field.tsx";
 import { MobileTabBar } from "#/components/mobile-tab-bar.tsx";
 import { AppShellLoadingSkeleton } from "#/components/states/loading-skeleton.tsx";
 import { SidebarInset, SidebarProvider } from "#/components/ui/sidebar.tsx";
+import { isOrgPlaceholder, withOrgSlug } from "#/lib/org-redirect.ts";
 import { assistantSettingsQuery } from "#/queries/assistant.ts";
 import { directoryQuery } from "#/queries/members.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
@@ -31,7 +32,7 @@ import { enterOrganization } from "#/server/organization.ts";
 // to purge and no ordering to get right.
 
 export const Route = createFileRoute("/$orgSlug")({
-	beforeLoad: async ({ params }) => {
+	beforeLoad: async ({ params, location }) => {
 		// Two round trips, in parallel, where there used to be four in sequence —
 		// and this runs on every client-side navigation into every org route, so
 		// it is the fixed cost in front of every screen in the app.
@@ -40,20 +41,39 @@ export const Route = createFileRoute("/$orgSlug")({
 			getPublicAppConfig(),
 		]);
 
-		// Single-org mode keeps the `/$orgSlug` prefix — tenancy stays an explicit
-		// route parameter rather than becoming ambient, which is the same rule the
-		// service layer is built on — and simply refuses to answer under any other
-		// slug.
-		if (config.org && params.orgSlug !== config.org.slug) {
-			throw redirect({ to: "/$orgSlug", params: { orgSlug: config.org.slug } });
+		// Sign-in comes back to the page that was asked for, placeholder and all,
+		// so a shared link survives the round trip through Google.
+		if (entered.kind === "signed-out") {
+			throw redirect({ to: "/login", search: { redirect: location.href } });
 		}
 
-		if (!entered) {
-			// No such workspace, or not a member of it — deliberately the same
-			// outcome. `/` is the homepage in every mode now, and its CTA resolves
-			// where a session with no active org belongs (`/no-access`, which
-			// explains it and lists any live invitations).
-			throw redirect({ to: "/" });
+		// Single-org mode keeps the `/$orgSlug` prefix — tenancy stays an explicit
+		// route parameter rather than becoming ambient, which is the same rule the
+		// service layer is built on — and answers any other slug with the same
+		// page in its one workspace.
+		if (config.org && params.orgSlug !== config.org.slug) {
+			throw redirect({ href: withOrgSlug(location.href, config.org.slug) });
+		}
+
+		if (entered.kind === "elsewhere") {
+			// A placeholder, no such workspace, or not a member of it — the last
+			// two deliberately the same outcome. A placeholder with one workspace
+			// is the answer without asking. A real slug always goes through the
+			// chooser, even with one workspace: rewriting `/acme/projects/p_123`
+			// to `/beta/…` in silence lands on a not-found in the wrong workspace
+			// with nothing to say why, where the chooser says "You are not a member
+			// of acme". None is `/no-access`, which explains it and lists any live
+			// invitations — and keeps the link, for a sign-in to another account.
+			if (entered.onlySlug && isOrgPlaceholder(params.orgSlug)) {
+				throw redirect({ href: withOrgSlug(location.href, entered.onlySlug) });
+			}
+			if (entered.count > 0) {
+				throw redirect({
+					to: "/choose-organization",
+					search: { redirect: location.href },
+				});
+			}
+			throw redirect({ to: "/no-access", search: { redirect: location.href } });
 		}
 
 		return {

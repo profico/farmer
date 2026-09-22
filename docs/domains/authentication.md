@@ -9,7 +9,16 @@
 - **`/` never redirects, in any mode.** The landing page renders for everyone and its CTA resolves the destination (workspace / `/no-access` / `/login`).
 - **`prompt: "select_account"` on the google provider is deliberate.** With no login screen there is nowhere to offer "use a different account".
 - `session.freshAge: 0` — better-auth 403s `SESSION_NOT_FRESH` on unlink-account once a session is older than a day, and this app has no step-up re-auth flow, so integration disconnects would break.
-- Invite context rides through as query params and is rebuilt into the Google `callbackURL`. `redirect` is attacker-supplied in principle, so `api/login.ts` accepts only a same-site absolute path (`/…` but not `//…`).
+- Invite context rides through as query params and is rebuilt into the Google `callbackURL`. `redirect` is attacker-supplied in principle, so `api/login.ts` and `login.tsx` accept only a same-site absolute path (`safeRedirectPath` in `lib/org-redirect.ts`: `/…` but not `//…` or `/\…`).
+
+## Links that name no workspace
+
+**`/:org/settings` (or `/_/settings`) opens the settings page in whichever workspace the reader works in.** `lib/org-redirect.ts` owns the placeholders; neither can be a real slug, because `slugify` keeps only `[a-z0-9-]`.
+
+- **`/$orgSlug`'s guard resolves it**, from the answer `enterOrganization` gives: `signed-out` goes to `/login?redirect=<the page>`, so the link survives the Google round trip; `elsewhere` resolves a placeholder straight to the reader's only workspace with the rest of the path kept, and sends everything else to `/choose-organization` — a real slug the reader cannot open goes there even with one workspace, so the page can say why instead of rewriting the link in silence. With no workspace it goes to `/no-access?redirect=<the page>`, whose sign-out keeps the link. In single-org mode `enterOrganization` reports no other workspace, so a non-member always lands on `/no-access` (an `onlySlug` pointing outside the one workspace looped between the two slugs).
+- **A slug the reader cannot open takes the same path as a placeholder.** No such workspace and not a member are still one answer, so this is not a way to probe which slugs are taken. The chooser says which slug did not open.
+- **`enterOrganization` uses `optionalSessionMiddleware`, not `sessionMiddleware`.** `requireSession` redirects to `/login` with no `redirect`, because a server function cannot see the page that called it. That is what used to send a shared workspace link to the workspace's home after sign-in.
+- **`/choose-organization` sits outside `/$orgSlug`** (`docs/images/workspace-chooser.png`): the frame and the field with one island in it, and no sidebar, because there is no workspace yet. It lists `orgContextService.organizationsFor`, adds a search box above three workspaces, and skips itself when there is only one.
 
 
 ## Single-organization mode

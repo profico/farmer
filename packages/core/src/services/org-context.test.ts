@@ -139,7 +139,13 @@ describe("orgContextService.organizationsFor", () => {
 	// is not a second way to enumerate workspaces.
 	test("lists only the caller's memberships", async () => {
 		expect(await orgContextService.organizationsFor("u-member")).toEqual([
-			{ slug: "ctx-org", name: "Ctx Org" },
+			{
+				slug: "ctx-org",
+				name: "Ctx Org",
+				logo: null,
+				role: "member",
+				timezone: "UTC",
+			},
 		]);
 		expect(await orgContextService.organizationsFor("u-nobody")).toEqual([]);
 	});

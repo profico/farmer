@@ -2,6 +2,7 @@ import { usePostHog } from "@posthog/react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { Button } from "#/components/ui/button.tsx";
 import {
@@ -12,6 +13,7 @@ import {
 	CardTitle,
 } from "#/components/ui/card.tsx";
 import { authClient } from "#/lib/auth-client.ts";
+import { safeRedirectPath } from "#/lib/org-redirect.ts";
 import { requireSession } from "#/server/auth.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
 import { listMyPendingInvitations } from "#/server/organization.ts";
@@ -28,7 +30,15 @@ import { listMyPendingInvitations } from "#/server/organization.ts";
  * the front door rather than from their invite link has a live invitation
  * sitting unaccepted, and this is where they can accept it.
  */
+const searchSchema = z.object({
+	// The page the reader was trying to open, when a workspace guard sent them
+	// here. Kept through sign-out, so switching to the account that IS a member
+	// still lands on the link.
+	redirect: z.string().optional(),
+});
+
 export const Route = createFileRoute("/no-access")({
+	validateSearch: searchSchema,
 	loader: async () => {
 		await requireSession();
 		const [config, invitations] = await Promise.all([
@@ -42,6 +52,7 @@ export const Route = createFileRoute("/no-access")({
 
 function NoAccessPage() {
 	const { config, invitations } = Route.useLoaderData();
+	const target = safeRedirectPath(Route.useSearch().redirect);
 	const navigate = useNavigate();
 	const posthog = usePostHog();
 	const [busyId, setBusyId] = useState<string | null>(null);
@@ -58,13 +69,19 @@ function NoAccessPage() {
 			toast.error(error.message ?? "Could not accept invitation");
 			return;
 		}
-		await navigate({ to: "/" });
+		// Into the link that was asked for, which the guard resolves against the
+		// workspace just joined.
+		if (target) await navigate({ href: target });
+		else await navigate({ to: "/" });
 	};
 
 	const handleSignOut = async () => {
 		await authClient.signOut();
 		posthog.reset();
-		await navigate({ to: "/login" });
+		await navigate({
+			to: "/login",
+			search: target ? { redirect: target } : {},
+		});
 	};
 
 	return (
