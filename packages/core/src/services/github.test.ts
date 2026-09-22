@@ -970,3 +970,79 @@ describe("listLinkedRepos", () => {
 		expect(repos.map((repo) => repo.fullName)).toEqual(["profico/secret"]);
 	});
 });
+
+// The commit picker scans with the installation token, so it holds the same
+// assignment line as `suggestPullRequests` and `attachCommits`.
+describe("suggestCommits", () => {
+	/** Every repo `listCommits` was asked about — a refused scan asks none. */
+	let scanned: string[] = [];
+
+	const projectNamed = async (name: string) =>
+		present(
+			await db.query.project.findFirst({
+				where: eq(project.name, name),
+				columns: { id: true },
+			}),
+			`project ${name}`,
+		).id;
+
+	beforeAll(async () => {
+		for (const userId of [MEMBER_ID, ADMIN_ID]) {
+			await db
+				.insert(account)
+				.values({
+					id: `account-github-${userId}`,
+					accountId: `gh-${userId}`,
+					providerId: "github",
+					userId,
+					accessToken: "user-token",
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				})
+				.onConflictDoNothing();
+		}
+	});
+
+	beforeEach(() => {
+		scanned = [];
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			getAuthenticatedUser: async () => ({ login: "tester" }),
+			listCommits: async (_token, owner, repo) => {
+				scanned.push(`${owner}/${repo}`);
+				return [fakeCommit(SHA)];
+			},
+			listInstallationRepos: async () => [],
+		});
+	});
+
+	test("an assigned member gets the commits on their project", async () => {
+		const commits = await githubService.suggestCommits(memberCtx(), {
+			projectId: await projectNamed("Mine"),
+			date: "2026-09-01",
+		});
+		expect(commits.map((commit) => commit.repoFullName)).toEqual([
+			"profico/mine",
+		]);
+	});
+
+	test("an unassigned member gets nothing, and no repo is read", async () => {
+		const commits = await githubService.suggestCommits(memberCtx(), {
+			projectId: await projectNamed("Not mine"),
+			date: "2026-09-01",
+		});
+		expect(commits).toEqual([]);
+		expect(scanned).toEqual([]);
+	});
+
+	// No admin bypass, as with every other commit scan: an admin who is not on
+	// the project has no work of theirs to attribute to it.
+	test("an unassigned admin gets nothing either", async () => {
+		const commits = await githubService.suggestCommits(adminCtx(), {
+			projectId: await projectNamed("Not mine"),
+			date: "2026-09-01",
+		});
+		expect(commits).toEqual([]);
+		expect(scanned).toEqual([]);
+	});
+});

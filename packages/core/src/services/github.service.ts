@@ -245,8 +245,11 @@ const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
  * commits ought to count, the fix is to assign them to the project — which is
  * the same thing that lets them log the time.
  *
- * `suggestCommits` deliberately does NOT go through here: it is scoped to one
- * project the caller named and already gated by `assertProjectInOrg`.
+ * `suggestCommits` and `suggestPullRequests` read through here too, narrowed to
+ * the one project the caller named. `assertProjectInOrg` alone used to gate
+ * `suggestCommits`, which let a member scan any project's repos, private ones
+ * included, with the installation token; and a commit it offered there was
+ * one `attachCommits` would then refuse.
  *
  * There is no admin bypass, here or in `attachCommits`, which reads through
  * this too: the argument above is about attribution, and being an admin does
@@ -1015,12 +1018,12 @@ export const githubService = {
 		const login = await githubLoginFor(ctx);
 		if (!login) throw new Error(NOT_CONNECTED);
 
-		const repos = await db.query.projectGithubRepo.findMany({
-			where: and(
-				eq(projectGithubRepo.projectId, input.projectId),
-				eq(projectGithubRepo.organizationId, ctx.organizationId),
-			),
-		});
+		// The caller's assignments, like `suggestPullRequests`: the installation
+		// token reads every repo it covers, so the scope is whatever this lets
+		// the caller name.
+		const repos = (await reposForUser(ctx)).filter(
+			(repo) => repo.projectId === input.projectId,
+		);
 		if (repos.length === 0) return [];
 
 		const tz = await ctxTimezone(ctx);
@@ -1397,7 +1400,7 @@ export const githubService = {
 	 * The caller's PRs with activity on one project on one day, one row per PR,
 	 * for the entry dialog's picker.
 	 *
-	 * Scoped to the caller's assignments, unlike `suggestCommits`: attaching goes
+	 * Scoped to the caller's assignments, like `suggestCommits`: attaching goes
 	 * through `reposForUser`, and offering a PR that attach will then refuse is a
 	 * picker full of rows that fail.
 	 */
