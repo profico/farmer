@@ -276,16 +276,24 @@ export function WeekView({
 	   one after another, and then the refetch — seconds on a full row, behind a
 	   button that did not look any different while it waited. The days go in
 	   parallel; a day's own entries stay in order, because each delete
-	   recomputes that day's fill block. */
+	   recomputes that day's fill block.
+
+	   Every day is waited for before a failure is thrown. `Promise.all` threw
+	   on the first one while the other days were still deleting, so the
+	   rollback and the refetch ran against a server that had not finished,
+	   and the grid kept a total that a reload did not show. */
 	const removeRow = useMutation({
-		mutationFn: (row: GridRow) =>
-			Promise.all(
+		mutationFn: async (row: GridRow) => {
+			const days = await Promise.allSettled(
 				[...row.byDate.values()].map(async (cell) => {
 					for (const entry of cell) {
 						await deleteTimeEntry({ data: entry.id });
 					}
 				}),
-			),
+			);
+			const failed = days.find((day) => day.status === "rejected");
+			if (failed) throw failed.reason;
+		},
 		onMutate: async (row) => {
 			const { queryKey } = timeEntriesRangeQuery(
 				orgSlug,
@@ -578,7 +586,11 @@ export function WeekView({
 											<button
 												type="button"
 												aria-label={`Remove ${row.heading}`}
-												className="flex size-6 items-center justify-center rounded-md text-faint transition-colors duration-(--dur-fast) hover:bg-muted hover:text-destructive"
+												className="flex size-6 items-center justify-center rounded-md text-faint transition-colors duration-(--dur-fast) hover:bg-muted hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+												// One removal at a time: two at once each snapshot,
+												// roll back and refetch over the other's optimistic
+												// state, so a removed row came back.
+												disabled={removeRow.isPending}
 												onClick={() => removeRow.mutate(row)}
 											>
 												<XIcon weight="regular" className="size-3.5" />

@@ -906,10 +906,16 @@ function AddBlockDialogBody({
 			if (!values.repeatEnabled && values.date !== defaultDate) {
 				toast.success(`Saved to ${formatDateKeyLong(values.date)}`);
 			}
-			// Closed as soon as the save is in, and the refetches are left to run
-			// behind the exit: the dialog used to wait for five of them, one after
-			// another, with its Save button disabled and nothing else to say so —
-			// and people pressed it again.
+			// The entry lists are waited for, and nothing else. The body stays
+			// mounted after a close and seeds its form from `entry` only on the
+			// open transition, so a close before this refetch let a quick reopen
+			// show the values from before the save — and a second Save wrote them
+			// back. The other refetches run behind the exit: the dialog used to
+			// wait for all five, one after another, with its Save button disabled
+			// and nothing else to say so, and people pressed it again.
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
 			setOpen(false);
 			void Promise.all([
 				// The attached lists sit in the cache under the entry's id, fresh for
@@ -920,9 +926,6 @@ function AddBlockDialogBody({
 				}),
 				queryClient.invalidateQueries({
 					queryKey: attachedPullRequestsQuery(orgSlug, savedEntry.id).queryKey,
-				}),
-				queryClient.invalidateQueries({
-					queryKey: [...queryKeys(orgSlug).timeEntries],
 				}),
 				// The task just logged is the next "Recent".
 				queryClient.invalidateQueries({
