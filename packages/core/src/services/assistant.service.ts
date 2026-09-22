@@ -39,6 +39,7 @@ import {
 	toolDefinitions,
 } from "./assistant-tools";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
+import { safeErrorMessage } from "./error-message";
 import type { Ctx } from "./types";
 
 export class AssistantError extends Error {
@@ -764,9 +765,16 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 	try {
 		return { ok: true, content: stringifyResult(await tool.run(ctx, args)) };
 	} catch (error) {
+		// The content goes to the model provider, so only a message written for
+		// a person may pass. A database error carries the SQL and its
+		// parameters; that stays in the server log.
+		const message = error instanceof Error ? safeErrorMessage(error) : null;
+		if (message === null) {
+			console.error(`[assistant] tool "${call.name}" failed`, error);
+		}
 		return {
 			ok: false,
-			content: `Error: ${error instanceof Error ? error.message : "failed"}`,
+			content: `Error: ${message ?? "the tool failed on the server."}`,
 		};
 	}
 };

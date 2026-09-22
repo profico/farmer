@@ -130,7 +130,7 @@ const handle = async (request: Request, orgSlug: string) => {
 	const admitted = admitRequest("mcp", ctx.userId);
 	if (!admitted.ok) return tooManyRequests(admitted.retryAfterSeconds);
 
-	const { ctxAccess, findTool, mcpToolDefinitions } =
+	const { ctxAccess, findTool, mcpToolDefinitions, safeErrorMessage } =
 		await import("@farmer/core/services");
 	// Already resolved and memoized at the boundary; this reads the memo.
 	const access = await ctxAccess(ctx);
@@ -203,9 +203,15 @@ const handle = async (request: Request, orgSlug: string) => {
 		} catch (error) {
 			// A refusal is information the client can act on ("you aren't assigned
 			// to that project"), not a transport failure — so it comes back as a
-			// tool result rather than a JSON-RPC error.
+			// tool result rather than a JSON-RPC error. Only a message written for
+			// the person passes (`classifyServiceError`): a `DrizzleQueryError`
+			// carries the SQL and its parameters, and that stays in the log.
+			const message = error instanceof Error ? safeErrorMessage(error) : null;
+			if (message === null) {
+				console.error(`[mcp] tool "${call.params.name}" failed`, error);
+			}
 			return text(
-				`Error: ${error instanceof Error ? error.message : "failed"}`,
+				`Error: ${message ?? "the tool failed on the server."}`,
 				true,
 			);
 		}

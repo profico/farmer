@@ -13,6 +13,9 @@ export * from "./compliance.service";
 // `ctxAccess` so the memo it warms is the one the handler's services read.
 export * from "./context";
 export * from "./day-assembly.service";
+// What a client may be told about an error a service threw — shared by the
+// CLI's API, the MCP server and the assistant's tool results.
+export * from "./error-message";
 // The outbound half of `notify`: the outbox seam every service emits through.
 // See the header of events.ts for why `build` is a function.
 export * from "./events";
