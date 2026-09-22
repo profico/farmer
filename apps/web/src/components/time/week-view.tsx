@@ -1,4 +1,5 @@
 import {
+	addDaysToKey,
 	parseDuration,
 	snapToQuarterHour,
 	startOfWeekKey,
@@ -48,6 +49,7 @@ import { formatWeekRange } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
+import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
 import {
 	copyTimeEntriesWeek,
 	deleteTimeEntry,
@@ -269,19 +271,57 @@ export function WeekView({
 		onError: (error) => toast.error(error.message ?? "Could not copy the week"),
 	});
 
+	/* Optimistic: the row leaves the grid on the press, and comes back with a
+	   toast if the server refuses. It used to wait for one delete per entry,
+	   one after another, and then the refetch — seconds on a full row, behind a
+	   button that did not look any different while it waited. The days go in
+	   parallel; a day's own entries stay in order, because each delete
+	   recomputes that day's fill block.
+
+	   Every day is waited for before a failure is thrown. `Promise.all` threw
+	   on the first one while the other days were still deleting, so the
+	   rollback and the refetch ran against a server that had not finished,
+	   and the grid kept a total that a reload did not show. */
 	const removeRow = useMutation({
 		mutationFn: async (row: GridRow) => {
-			for (const cell of row.byDate.values()) {
-				for (const entry of cell) {
-					await deleteTimeEntry({ data: entry.id });
-				}
-			}
+			const days = await Promise.allSettled(
+				[...row.byDate.values()].map(async (cell) => {
+					for (const entry of cell) {
+						await deleteTimeEntry({ data: entry.id });
+					}
+				}),
+			);
+			const failed = days.find((day) => day.status === "rejected");
+			if (failed) throw failed.reason;
 		},
-		onSuccess: async (_result, row) => {
+		onMutate: async (row) => {
+			const { queryKey } = timeEntriesRangeQuery(
+				orgSlug,
+				weekStart,
+				addDaysToKey(weekStart, 6),
+			);
+			await queryClient.cancelQueries({ queryKey });
+			const previous = queryClient.getQueryData(queryKey);
+			const previousDrafts = draftRows;
+			const ids = new Set(
+				[...row.byDate.values()].flatMap((cell) => cell.map((e) => e.id)),
+			);
+			queryClient.setQueryData(queryKey, (old) =>
+				old?.filter((entry) => !ids.has(entry.id)),
+			);
 			setDraftRows((current) => current.filter((d) => d.key !== row.key));
-			await invalidate();
+			return { queryKey, previous, previousDrafts };
 		},
-		onError: (error) => toast.error(error.message ?? "Could not remove row"),
+		onError: (error, _row, context) => {
+			if (context) {
+				queryClient.setQueryData(context.queryKey, context.previous);
+				setDraftRows(context.previousDrafts);
+			}
+			toast.error(error.message ?? "Could not remove row");
+		},
+		// A delete moves the day's fill block and the targets, which only the
+		// server can answer — and a partial failure leaves some entries gone.
+		onSettled: invalidate,
 	});
 
 	return (
@@ -546,7 +586,10 @@ export function WeekView({
 											<button
 												type="button"
 												aria-label={`Remove ${row.heading}`}
-												className="flex size-6 items-center justify-center rounded-md text-faint transition-colors duration-(--dur-fast) hover:bg-muted hover:text-destructive"
+												className="flex size-6 items-center justify-center rounded-md text-faint transition-colors duration-(--dur-fast) hover:bg-muted hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+												// One removal at a time: two at once each snapshot,
+												// roll back and refetch over the other's optimistic
+												// state, so a removed row came back.
 												disabled={removeRow.isPending}
 												onClick={() => removeRow.mutate(row)}
 											>

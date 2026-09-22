@@ -1,3 +1,4 @@
+import { CheckIcon } from "@phosphor-icons/react";
 import { useCallback, useId, useRef } from "react";
 
 import { QUICK_SEEDS, type Seed, SEED_MAX_CHROMA } from "#/lib/palette.ts";
@@ -231,15 +232,21 @@ export function ColorWheel({
 				const selected =
 					Math.round(quick.seed.h) === Math.round(seed.h) &&
 					Math.abs(quick.seed.c - seed.c) < 0.005;
+				// The pick is marked ON the swatch, with a check. The ring alone
+				// was drawn in `--ring`, which the pick itself just recolored —
+				// the mark moved and changed color in the same frame the whole
+				// app did, and read as nothing having happened. The press scales
+				// down at once, before the repaint that follows it.
 				return (
 					<button
 						key={quick.label}
 						type="button"
 						aria-label={quick.label}
+						aria-pressed={selected}
 						title={quick.label}
 						onClick={() => onChange(quick.seed)}
 						className={cn(
-							"absolute -translate-x-1/2 -translate-y-1/2 rounded-full ring-offset-2 ring-offset-background transition-transform duration-(--dur-fast) hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
+							"absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-white ring-offset-2 ring-offset-background transition-transform duration-(--dur-fast) hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring active:scale-95",
 							selected && "ring-2 ring-ring",
 						)}
 						style={{
@@ -249,7 +256,9 @@ export function ColorWheel({
 							height: SWATCH,
 							backgroundColor: `oklch(0.5174 ${quick.seed.c} ${quick.seed.h})`,
 						}}
-					/>
+					>
+						{selected && <CheckIcon weight="bold" className="size-3.5" />}
+					</button>
 				);
 			})}
 		</div>

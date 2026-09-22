@@ -176,6 +176,22 @@ export function isNavItemActive(pathname: string, to: string, orgSlug: string) {
 }
 
 /**
+ * Whether a nav row points at exactly the screen on show — the one case a
+ * press has nothing to do. Not `isNavItemActive`: a row is lit for every page
+ * under it, and from `/acme/time/week`, `/acme/settings/preferences` or a
+ * Reports tab the press is the way back to the section's own first screen.
+ * Swallowing it there left the lit row dead, and people pressed it again.
+ */
+export function isNavItemHere(
+	pathname: string,
+	searchStr: string,
+	to: string,
+	orgSlug: string,
+) {
+	return pathname === to.replace("$orgSlug", orgSlug) && searchStr === "";
+}
+
+/**
  * Which single row a path belongs to: the longest match wins.
  *
  * `isNavItemActive` is a prefix test, and the Settings hub is the prefix of

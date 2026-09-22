@@ -10,7 +10,7 @@ import {
 	useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
 import { ColorWheel } from "#/components/color-wheel.tsx";
@@ -505,18 +505,38 @@ function ColorsRow() {
 function FaceSelect({ face, label }: { face: FaceRole; label: string }) {
 	const role = face;
 	const [id, setId] = useFace(role);
+	// A face not on the page yet is fetched before it is applied (see
+	// `setFace`), so for that moment the pick is in the trigger and nowhere
+	// else. Say so, or the pick reads as ignored. The counter lets only the
+	// latest pick clear it.
+	const [loading, setLoading] = useState(false);
+	const latestPick = useRef(0);
+	const pick = (next: string) => {
+		const n = ++latestPick.current;
+		setLoading(true);
+		void setId(next).finally(() => {
+			if (latestPick.current === n) setLoading(false);
+		});
+	};
 	const items = FACES[role].map((face) => ({
 		value: face.id,
 		label: face.label,
 	}));
 	return (
 		<label className="flex flex-col gap-1.5">
-			<span className="text-sm text-muted-foreground">{label}</span>
+			<span className="flex items-baseline gap-2 text-sm text-muted-foreground">
+				{label}
+				{/* Always mounted: a live region announces a change to its text,
+				    not its own arrival. */}
+				<span className="text-xs text-faint" aria-live="polite">
+					{loading ? "Loading…" : null}
+				</span>
+			</span>
 			<Select
 				value={id}
 				// Base UI's `onValueChange` is nullable because a Select may be
 				// clearable. This one is not — every role always has a face.
-				onValueChange={(value) => setId(value ?? id)}
+				onValueChange={(value) => pick(value ?? id)}
 				items={items}
 			>
 				<SelectTrigger className="w-full bg-card sm:w-56">

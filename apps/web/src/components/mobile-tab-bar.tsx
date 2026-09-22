@@ -21,6 +21,7 @@ import { authClient } from "#/lib/auth-client.ts";
 import { springExpressive } from "#/lib/motion.ts";
 import {
 	activeNavTo,
+	isNavItemHere,
 	mobileWorkItems,
 	type NavItem,
 	REPORTS_ITEM,
@@ -54,6 +55,7 @@ export function MobileTabBar({
 	timezone: string;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
+	const searchStr = useLocation({ select: (location) => location.searchStr });
 	const router = useRouter();
 	const posthog = usePostHog();
 	const [moreOpen, setMoreOpen] = useState(false);
@@ -137,10 +139,15 @@ export function MobileTabBar({
 								key={item.to}
 								to={item.to}
 								params={{ orgSlug }}
-								// Re-tapping the tab you're already on is a no-op — skip
+								// Re-tapping the screen already on show is a no-op — skip
 								// the navigation entirely so it doesn't re-run the route's
-								// loader for no reason.
-								onClick={(e) => active && e.preventDefault()}
+								// loader for no reason. A lit tab on a page UNDER it still
+								// goes back to the section's first screen.
+								onClick={(e) => {
+									if (isNavItemHere(pathname, searchStr, item.to, orgSlug)) {
+										e.preventDefault();
+									}
+								}}
 								className={cn(
 									"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform duration-(--dur-fast) active:scale-[0.97]",
 									active ? "text-primary" : "text-muted-foreground",

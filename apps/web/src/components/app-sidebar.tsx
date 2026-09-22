@@ -62,6 +62,7 @@ import {
 	activeNavTo,
 	ASSISTANT_ITEM,
 	isNavItemActive,
+	isNavItemHere,
 	type NavItem,
 	REPORTS_ITEM,
 	SETTINGS_ITEM,
@@ -149,6 +150,7 @@ export function AppSidebar({
 	impersonating?: string | null;
 }) {
 	const pathname = useLocation({ select: (location) => location.pathname });
+	const searchStr = useLocation({ select: (location) => location.searchStr });
 	const navigate = useNavigate();
 
 	const panelScrollRef = useRef<HTMLDivElement>(null);
@@ -256,29 +258,36 @@ export function AppSidebar({
 	// was made on, and clearing on `keydown` closes even that: a keyboard
 	// activation always sends keydown before click, a mouse press never does.
 	const pressedRef = useRef<EventTarget | null>(null);
-	const pressToNavigate = (item: NavItem, isActive: boolean) => ({
-		onMouseDown: (e: React.MouseEvent) => {
-			pressedRef.current = null;
-			// Only fast-path a plain primary-button press. Modifier / middle clicks
-			// fall through so the browser can open a new tab; keyboard activation
-			// has no mousedown and navigates on click below.
-			if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
-				return;
-			pressedRef.current = e.currentTarget;
-			if (!isActive) navigate({ to: item.to, params: { orgSlug } });
-		},
-		onKeyDown: () => {
-			pressedRef.current = null;
-		},
-		onClick: (e: React.MouseEvent) => {
-			// This row's own press already navigated on mousedown — swallow its
-			// click. Keyboard Enter reaches here with the ref cleared and navigates
-			// normally, except on the active row, which stays a no-op.
-			const pressedHere = pressedRef.current === e.currentTarget;
-			pressedRef.current = null;
-			if (pressedHere || isActive) e.preventDefault();
-		},
-	});
+	//
+	// Only the screen already on show is a no-op. A lit row is lit for every page
+	// under it, and from one of those the press goes back to the section's first
+	// screen — see `isNavItemHere`.
+	const pressToNavigate = (item: NavItem) => {
+		const isHere = isNavItemHere(pathname, searchStr, item.to, orgSlug);
+		return {
+			onMouseDown: (e: React.MouseEvent) => {
+				pressedRef.current = null;
+				// Only fast-path a plain primary-button press. Modifier / middle clicks
+				// fall through so the browser can open a new tab; keyboard activation
+				// has no mousedown and navigates on click below.
+				if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+					return;
+				pressedRef.current = e.currentTarget;
+				if (!isHere) navigate({ to: item.to, params: { orgSlug } });
+			},
+			onKeyDown: () => {
+				pressedRef.current = null;
+			},
+			onClick: (e: React.MouseEvent) => {
+				// This row's own press already navigated on mousedown — swallow its
+				// click. Keyboard Enter reaches here with the ref cleared and navigates
+				// normally, except on the screen already on show, which stays a no-op.
+				const pressedHere = pressedRef.current === e.currentTarget;
+				pressedRef.current = null;
+				if (pressedHere || isHere) e.preventDefault();
+			},
+		};
+	};
 
 	/** A nav row, in whichever of the column's two widths it is being drawn at. */
 	const navRow = (item: NavItem, badge?: number) => {
@@ -293,7 +302,7 @@ export function AppSidebar({
 							aria-label={item.label}
 							aria-current={isActive ? "page" : undefined}
 							className={navRowClass}
-							{...pressToNavigate(item, isActive)}
+							{...pressToNavigate(item)}
 						>
 							{isActive && (
 								<ActiveFill from={navFillFrom} className="rounded-xl" />
@@ -361,7 +370,7 @@ export function AppSidebar({
 							? "font-medium text-foreground"
 							: "text-sidebar-foreground hover:text-foreground",
 					)}
-					{...pressToNavigate(item, isActive)}
+					{...pressToNavigate(item)}
 				>
 					{isActive && (
 						<ActiveFill from={panelFillFrom} className="rounded-lg" />

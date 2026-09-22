@@ -690,7 +690,13 @@ export const byNumber =
 
 /** A column header that sorts the table, with the arrow on the active one.
  *  Every column is one: a table you cannot sort by the column you are
- *  reading is a table you read twice. */
+ *  reading is a table you read twice.
+ *
+ *  The whole cell takes the press, through the button's `::before` stretched
+ *  over the `<th>`. The button alone is as wide as its label, and "Δ" is one
+ *  glyph: a press anywhere else in the header did nothing, and was pressed
+ *  again. The layer is out of flow, so the label keeps its alignment. A
+ *  `stickyHeader` table's `sticky` outranks `relative` and still anchors it. */
 export function SortHead<K extends string>({
 	label,
 	sortKey,
@@ -710,14 +716,14 @@ export function SortHead<K extends string>({
 	const active = sort.key === sortKey;
 	return (
 		<TableHead
-			className={className}
+			className={cn("relative", className)}
 			aria-sort={active ? (sort.dir > 0 ? "ascending" : "descending") : "none"}
 		>
 			<button
 				type="button"
 				onClick={() => onSort(sortKey, numeric)}
 				className={cn(
-					"inline-flex items-center gap-1 rounded-sm transition-colors duration-(--dur-fast) outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16",
+					"inline-flex cursor-pointer items-center gap-1 rounded-sm transition-colors duration-(--dur-fast) outline-none before:absolute before:inset-0 before:content-[''] hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/16",
 					active && "text-foreground",
 				)}
 			>

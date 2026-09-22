@@ -96,6 +96,7 @@ import {
 	suggestPullRequestsForEntry,
 } from "#/server/github.ts";
 import type { listCalendarEventsForDay } from "#/server/google-calendar.ts";
+import type { listMyProjects } from "#/server/projects.ts";
 import { createRecurringBlockRule } from "#/server/recurring-block-rules.ts";
 import { createTimeEntry, updateTimeEntry } from "#/server/time-entries.ts";
 
@@ -243,13 +244,7 @@ function activitySummary(
 	return labels.join(" · ");
 }
 
-export function AddBlockDialog({
-	timezone,
-	defaultDate: defaultDateProp,
-	defaultProjectId,
-	entry,
-	trigger,
-}: {
+type AddBlockDialogProps = {
 	timezone: string;
 	/** The day the dialog opens on; the stepper in its header moves from there.
 	 *  An existing entry opens on its own day. */
@@ -258,14 +253,62 @@ export function AddBlockDialog({
 	defaultProjectId?: string;
 	entry?: ExistingTimeEntry;
 	trigger: React.ReactElement;
+};
+
+/**
+ * The trigger and the open state, and nothing else until the first open.
+ *
+ * The body is a form, a dozen queries and every effect below, and the Day
+ * view draws one of these per entry row for its Edit button — all of it
+ * rendered and hydrated for dialogs that are mostly never opened. That is
+ * page load a press on "Log time" waits behind, and a press that lands before
+ * hydration is lost outright. So the body mounts on the first open and then
+ * STAYS: closing keeps its state exactly as it was before this split, and the
+ * exit animation has something to animate.
+ *
+ * The projects are read here and not in the body: this observer is what keeps
+ * them in the cache, so a first open late in a long session answers from it
+ * instead of suspending the whole page.
+ */
+export function AddBlockDialog({ trigger, ...props }: AddBlockDialogProps) {
+	const orgSlug = useOrgSlug();
+	const [open, setOpen] = useState(false);
+	const [opened, setOpened] = useState(false);
+	if (open && !opened) setOpened(true);
+	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogTrigger render={trigger} />
+			{opened && (
+				<AddBlockDialogBody
+					{...props}
+					open={open}
+					setOpen={setOpen}
+					projects={projects}
+				/>
+			)}
+		</Dialog>
+	);
+}
+
+function AddBlockDialogBody({
+	timezone,
+	defaultDate: defaultDateProp,
+	defaultProjectId,
+	entry,
+	open,
+	setOpen,
+	projects,
+}: Omit<AddBlockDialogProps, "trigger"> & {
+	open: boolean;
+	setOpen: (open: boolean) => void;
+	projects: Awaited<ReturnType<typeof listMyProjects>>;
 }) {
 	const orgSlug = useOrgSlug();
 	// The three disclosures below all open by changing their HEIGHT, which the
 	// root <MotionConfig reducedMotion="user"> does not touch — see the hook.
 	const heightTransition = useHeightTransition();
-	const [open, setOpen] = useState(false);
 	const queryClient = useQueryClient();
-	const { data: projects } = useSuspenseQuery(myProjectsQuery(orgSlug));
 
 	const defaultDate = entry?.date ?? defaultDateProp;
 
@@ -868,17 +911,6 @@ export function AddBlockDialog({
 					});
 				}
 			}
-			// The attached lists sit in the cache under the entry's id, fresh for
-			// the default 30s, so reopening the entry showed the attachments from
-			// before this save until a reload.
-			await Promise.all([
-				queryClient.invalidateQueries({
-					queryKey: attachedCommitsQuery(orgSlug, savedEntry.id).queryKey,
-				}),
-				queryClient.invalidateQueries({
-					queryKey: attachedPullRequestsQuery(orgSlug, savedEntry.id).queryKey,
-				}),
-			]);
 			// Time off is never remembered: a day of leave is not what the next
 			// entry is likely to be. An edit does not move the last pick either,
 			// since correcting an old entry says nothing about the next one.
@@ -896,24 +928,42 @@ export function AddBlockDialog({
 					});
 				}
 			}
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timeEntries],
-			});
-			// The task just logged is the next "Recent".
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).tasks, "recent"],
-			});
-			if (!entry) {
-				await queryClient.invalidateQueries({
-					queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
-				});
-			}
 			// Saved to a day other than the one the dialog opened on, which the page
 			// behind it may not show: say where the time went.
 			if (!values.repeatEnabled && values.date !== defaultDate) {
 				toast.success(`Saved to ${formatDateKeyLong(values.date)}`);
 			}
+			// The entry lists are waited for, and nothing else. The body stays
+			// mounted after a close and seeds its form from `entry` only on the
+			// open transition, so a close before this refetch let a quick reopen
+			// show the values from before the save — and a second Save wrote them
+			// back. The other refetches run behind the exit: the dialog used to
+			// wait for all five, one after another, with its Save button disabled
+			// and nothing else to say so, and people pressed it again.
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
 			setOpen(false);
+			void Promise.all([
+				// The attached lists sit in the cache under the entry's id, fresh for
+				// the default 30s, so reopening the entry showed the attachments from
+				// before this save until a reload.
+				queryClient.invalidateQueries({
+					queryKey: attachedCommitsQuery(orgSlug, savedEntry.id).queryKey,
+				}),
+				queryClient.invalidateQueries({
+					queryKey: attachedPullRequestsQuery(orgSlug, savedEntry.id).queryKey,
+				}),
+				// The task just logged is the next "Recent".
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).tasks, "recent"],
+				}),
+				entry
+					? null
+					: queryClient.invalidateQueries({
+							queryKey: recurringBlockRulesQuery(orgSlug).queryKey,
+						}),
+			]);
 		},
 		onError: (error) => {
 			toast.error(error.message ?? "Could not save time entry");
@@ -934,13 +984,24 @@ export function AddBlockDialog({
 	].flatMap((o) => (o ? [o] : []));
 
 	const { mutate } = mutation;
+	// The disabled Save button only guards a click. ⌘↩ reaches `submit` from a
+	// document listener, and a second press mid-save logged the entry twice. A
+	// ref and not `isPending`: two presses can land before the render that
+	// would disable anything.
+	const saving = useRef(false);
 	const submit = useCallback(
 		(values: FormValues) => {
+			if (saving.current) return;
 			if (needsDescription && !values.fillsDay && !values.description.trim()) {
 				form.setError("description", { message: "Required" });
 				return;
 			}
-			mutate(values);
+			saving.current = true;
+			mutate(values, {
+				onSettled: () => {
+					saving.current = false;
+				},
+			});
 		},
 		[needsDescription, form, mutate],
 	);
@@ -958,9 +1019,10 @@ export function AddBlockDialog({
 		return () => document.removeEventListener("keydown", onKeyDown);
 	}, [open, form, submit]);
 
+	// A fragment only to keep the body at the indentation it had inside the
+	// <Dialog> the wrapper now owns, so this split reads as the split it is.
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger render={trigger} />
+		<>
 			<DialogContent className="sm:max-w-xl">
 				<DialogHeader>
 					<DialogTitle>{entry ? "Edit entry" : "Log time"}</DialogTitle>
@@ -1838,11 +1900,13 @@ export function AddBlockDialog({
 								Cancel
 							</DialogClose>
 							<Button type="submit" disabled={mutation.isPending}>
-								{entry
-									? "Save entry"
-									: repeatEnabled
-										? "Create repeating entry"
-										: "Save entry"}
+								{mutation.isPending
+									? "Saving…"
+									: entry
+										? "Save entry"
+										: repeatEnabled
+											? "Create repeating entry"
+											: "Save entry"}
 								<kbd className="mono rounded-sm bg-primary-foreground/22 px-1 text-2xs">
 									{modKey}↩
 								</kbd>
@@ -1851,6 +1915,6 @@ export function AddBlockDialog({
 					</form>
 				</Form>
 			</DialogContent>
-		</Dialog>
+		</>
 	);
 }
