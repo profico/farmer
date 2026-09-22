@@ -36,6 +36,7 @@ import {
 	filingRule,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
+import { emptyCalendar } from "../test/calendar";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { dayAssemblyService } from "./day-assembly.service";
 import { pullRequestActivityRow } from "./github.service";
@@ -62,10 +63,7 @@ let reviewTaskId: string;
 let projectId: string;
 let repoId: string;
 
-const noCalendar = {
-	listEventsForRange: async () => [],
-	listEventsForDay: async () => [],
-};
+const noCalendar = emptyCalendar;
 const noCommits = {
 	listUserCommitsForDay: async () => [],
 	listUserCommitsByDay: async () => [],

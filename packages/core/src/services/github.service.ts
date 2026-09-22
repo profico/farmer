@@ -10,6 +10,7 @@ import {
 	timeEntryGithubCommit,
 	timeEntryGithubPrActivity,
 } from "../db/schema/github";
+import { mapBounded } from "../lib/concurrency";
 import {
 	type PullRequestActivity,
 	pullRequestActivity,
@@ -423,31 +424,6 @@ const forgetGoneInstallation = async (
 const REPO_SCAN_CONCURRENCY = Number(
 	process.env.GITHUB_REPO_SCAN_CONCURRENCY ?? 4,
 );
-
-/** `Promise.all(items.map(fn))` with a ceiling on how many run at once, results
- *  in input order. `fn` is expected to handle its own failures (all three
- *  callers log and return an empty list), so one bad repo cannot abort a scan. */
-const mapBounded = async <T, R>(
-	items: T[],
-	limit: number,
-	fn: (item: T) => Promise<R>,
-): Promise<R[]> => {
-	const results = new Array<R>(items.length);
-	let next = 0;
-	const workers = Array.from(
-		{ length: Math.min(Math.max(limit, 1), items.length) },
-		async () => {
-			for (let i = next++; i < items.length; i = next++) {
-				// SAFETY: `i < items.length` is the loop condition and `items` is a dense array
-				// the caller passed in, so the element is present. `noUncheckedIndexedAccess`
-				// cannot see that through the shared cursor.
-				results[i] = await fn(items[i] as T);
-			}
-		},
-	);
-	await Promise.all(workers);
-	return results;
-};
 
 // ── Pull request activity ──────────────────────────────────────────────────
 // The PR half of the evidence. Same scope as the commit scans (`reposForUser`,

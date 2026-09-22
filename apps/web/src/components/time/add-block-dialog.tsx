@@ -102,12 +102,23 @@ import { createTimeEntry, updateTimeEntry } from "#/server/time-entries.ts";
 // Time off is chosen where a project would be: it sits first in the project
 // picker, and choosing it narrows the task list to the leave kinds.
 const TIME_OFF = "__time_off__";
+// An entry that has no project YET — a synced meeting, a rest-of-day block —
+// opened for editing. Not Time-off: it is worked time whose project question
+// is still open, and it may be saved with the question still open. Opening
+// such an entry as Time-off narrowed the tasks to the leave kinds, so
+// "Meeting" vanished from its own entry and the only way to change its day or
+// note was to pick a project and a task first.
+const NO_PROJECT_YET = "__no_project_yet__";
 
 export type ExistingTimeEntry = {
 	id: string;
 	date: string;
 	projectId: string | null;
 	taskId: string;
+	/** Whether the task is a leave kind. Read only to tell a project-less
+	 *  worked entry (still unfiled) from time off, which has no project by
+	 *  definition. Absent: assume time off, the older behaviour. */
+	task?: { isAbsence: boolean };
 	description: string;
 	durationSeconds: number;
 	overtime: boolean;
@@ -258,8 +269,13 @@ export function AddBlockDialog({
 
 	const defaultDate = entry?.date ?? defaultDateProp;
 
+	const unfiledEdit =
+		!!entry && entry.projectId == null && entry.task?.isAbsence === false;
+
 	const buildDefaults = (): FormValues => ({
-		projectId: entry?.projectId ?? defaultProjectId ?? TIME_OFF,
+		projectId:
+			entry?.projectId ??
+			(unfiledEdit ? NO_PROJECT_YET : (defaultProjectId ?? TIME_OFF)),
 		taskId: entry?.taskId ?? "",
 		date: defaultDate,
 		duration: entry ? formatClock(entry.durationSeconds) : "",
@@ -317,15 +333,18 @@ export function AddBlockDialog({
 	const { data: tasks = [] } = useQuery({
 		...tasksForProjectQuery(
 			orgSlug,
-			projectId === TIME_OFF ? undefined : projectId,
+			projectId === TIME_OFF || projectId === NO_PROJECT_YET
+				? undefined
+				: projectId,
 		),
 		enabled: open,
 	});
 	const { data: recentIds = [] } = useQuery({
 		...recentTasksQuery(orgSlug, projectId),
-		enabled: open && projectId !== TIME_OFF,
+		enabled: open && projectId !== TIME_OFF && projectId !== NO_PROJECT_YET,
 	});
 	const isTimeOff = projectId === TIME_OFF;
+	const hasProject = projectId !== TIME_OFF && projectId !== NO_PROJECT_YET;
 	// Under Time-off only the leave kinds are offered; Break and Meeting are
 	// logged on a project like everything else.
 	const pickableTasks = isTimeOff ? tasks.filter((t) => t.isAbsence) : tasks;
@@ -418,7 +437,7 @@ export function AddBlockDialog({
 	});
 	const { data: linkedRepos } = useQuery({
 		...projectGithubReposQuery(orgSlug, projectId),
-		enabled: open && projectId !== TIME_OFF,
+		enabled: open && hasProject,
 	});
 	const { data: attachedCommits } = useQuery({
 		...attachedCommitsQuery(orgSlug, entry?.id ?? ""),
@@ -466,7 +485,7 @@ export function AddBlockDialog({
 	const showCommitPicker =
 		!repeatEnabled &&
 		!fillsDay &&
-		projectId !== TIME_OFF &&
+		hasProject &&
 		!!githubStatus?.connected &&
 		!!linkedRepos &&
 		linkedRepos.length > 0;
@@ -774,13 +793,21 @@ export function AddBlockDialog({
 			const parsed = parseDuration(values.duration);
 			const seconds =
 				parsed !== null && parsed > 0 ? snapToQuarterHour(parsed) : undefined;
+			// Both sentinels are "no project" to the server; only the reason
+			// differs, and the server does not need the reason.
+			values = {
+				...values,
+				projectId:
+					values.projectId === TIME_OFF || values.projectId === NO_PROJECT_YET
+						? ""
+						: values.projectId,
+			};
 
 			if (!entry && values.repeatEnabled) {
 				return createRecurringBlockRule({
 					data: {
 						taskId: values.taskId,
-						projectId:
-							values.projectId === TIME_OFF ? undefined : values.projectId,
+						projectId: values.projectId || undefined,
 						description: values.description || undefined,
 						daysOfWeek: values.daysOfWeek,
 						duration: values.duration,
@@ -791,7 +818,7 @@ export function AddBlockDialog({
 			}
 			const payload = {
 				taskId: values.taskId,
-				projectId: values.projectId === TIME_OFF ? undefined : values.projectId,
+				projectId: values.projectId || undefined,
 				description: values.description || undefined,
 				date: values.date,
 				// A fill block's duration is derived server-side from the day's
@@ -855,7 +882,7 @@ export function AddBlockDialog({
 			// Time off is never remembered: a day of leave is not what the next
 			// entry is likely to be. An edit does not move the last pick either,
 			// since correcting an old entry says nothing about the next one.
-			if (values.projectId !== TIME_OFF) {
+			if (values.projectId) {
 				if (!entry) {
 					rememberLastPick("entry", orgSlug, {
 						projectId: values.projectId,
@@ -1020,9 +1047,23 @@ export function AddBlockDialog({
 													aria-label="Project"
 													className="h-full"
 													projects={projects}
-													noProject="Time-off"
-													value={field.value === TIME_OFF ? null : field.value}
+													// An unfiled entry's "no project" row is "not yet",
+													// and keeps it worked time; anywhere else it is
+													// Time-off. Same row, different answer.
+													noProject={
+														unfiledEdit ? "No project yet" : "Time-off"
+													}
+													value={
+														field.value === TIME_OFF ||
+														field.value === NO_PROJECT_YET
+															? null
+															: field.value
+													}
 													onValueChange={(next) => {
+														if (unfiledEdit) {
+															field.onChange(next ?? NO_PROJECT_YET);
+															return;
+														}
 														const wasTimeOff = field.value === TIME_OFF;
 														field.onChange(next ?? TIME_OFF);
 														// A day off is a whole day until told otherwise;

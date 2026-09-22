@@ -6,6 +6,13 @@ import {
 	CheckIcon,
 	MagnifyingGlassIcon,
 } from "@phosphor-icons/react";
+import {
+	createContext,
+	type RefObject,
+	useContext,
+	useRef,
+	useState,
+} from "react";
 
 import { popupLayer } from "#/lib/popup-layer.ts";
 import { cn } from "#/lib/utils.ts";
@@ -24,7 +31,46 @@ import { cn } from "#/lib/utils.ts";
 // match only when it is the only one (Harvest's habit), which each picker
 // decides through `onSearchTab` because the filtered list is the picker's.
 
-const Combobox = ComboboxPrimitive.Root;
+// Which way the popup opens. Base UI's own collision handling flips the popup
+// above the trigger whenever the list's NATURAL height does not fit below —
+// and every project or task list is taller than the space under a dialog's
+// footer, so "Pick a project" in File your time opened upwards, search box at
+// the top of the screen and the list reading back down towards the trigger.
+// The size middleware would have shrunk the list to the room below, but flip
+// runs first and never sees that. So the side is decided here instead, once,
+// as the popup opens: below unless the room below cannot hold the search box
+// and a few rows, and flipping is switched off so the popup then sizes to the
+// side it was given. A list too tall for the room scrolls, as a list should.
+type PopupSide = "bottom" | "top";
+const MIN_ROOM_BELOW_PX = 160;
+const PopupSideContext = createContext<{
+	side: PopupSide;
+	trigger: RefObject<HTMLButtonElement | null>;
+}>({ side: "bottom", trigger: { current: null } });
+
+function Combobox<Value, Multiple extends boolean | undefined = false>({
+	onOpenChange,
+	...props
+}: ComboboxPrimitive.Root.Props<Value, Multiple>) {
+	const trigger = useRef<HTMLButtonElement | null>(null);
+	const [side, setSide] = useState<PopupSide>("bottom");
+	return (
+		<PopupSideContext.Provider value={{ side, trigger }}>
+			<ComboboxPrimitive.Root
+				{...props}
+				onOpenChange={(open, details) => {
+					if (open && trigger.current) {
+						const room =
+							window.innerHeight -
+							trigger.current.getBoundingClientRect().bottom;
+						setSide(room >= MIN_ROOM_BELOW_PX ? "bottom" : "top");
+					}
+					onOpenChange?.(open, details);
+				}}
+			/>
+		</PopupSideContext.Provider>
+	);
+}
 const ComboboxCollection = ComboboxPrimitive.Collection;
 
 function ComboboxTrigger({
@@ -35,8 +81,10 @@ function ComboboxTrigger({
 }: ComboboxPrimitive.Trigger.Props & {
 	size?: "sm" | "default";
 }) {
+	const { trigger } = useContext(PopupSideContext);
 	return (
 		<ComboboxPrimitive.Trigger
+			ref={trigger}
 			data-slot="combobox-trigger"
 			data-size={size}
 			className={cn(
@@ -80,7 +128,7 @@ function ComboboxValue({
 function ComboboxContent({
 	className,
 	children,
-	side = "bottom",
+	side: sideProp,
 	sideOffset = 4,
 	align = "start",
 	alignOffset = 0,
@@ -98,13 +146,17 @@ function ComboboxContent({
 		 *  and the popup closes — where a picker takes its one remaining match. */
 		onSearchTab?: () => void;
 	}) {
+	const { side } = useContext(PopupSideContext);
 	return (
 		<ComboboxPrimitive.Portal container={popupLayer()}>
 			<ComboboxPrimitive.Positioner
-				side={side}
+				side={sideProp ?? side}
 				sideOffset={sideOffset}
 				align={align}
 				alignOffset={alignOffset}
+				// The side was chosen above with the room measured; see the note on
+				// `Combobox`. Alignment still shifts to stay inside the viewport.
+				collisionAvoidance={{ side: "none", align: "shift" }}
 				className="isolate z-50 outline-none"
 			>
 				<ComboboxPrimitive.Popup

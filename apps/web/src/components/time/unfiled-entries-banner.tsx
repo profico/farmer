@@ -1,9 +1,11 @@
+import { timeKeyInTz } from "@farmer/core/lib/time";
 import { TrayIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { GoogleCalendarMark } from "#/components/google-calendar-mark.tsx";
 import { ProjectPicker } from "#/components/pickers/project-picker.tsx";
 import { TaskPicker } from "#/components/pickers/task-picker.tsx";
 import { Button } from "#/components/ui/button.tsx";
@@ -16,18 +18,15 @@ import {
 	DialogTitle,
 } from "#/components/ui/dialog.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
-import { formatDateKeyLong } from "#/lib/format-date.ts";
+import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { useHeightTransition } from "#/lib/motion.ts";
+import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { selectableTasksQuery } from "#/queries/tasks.ts";
-import {
-	unfiledEntriesQuery,
-	unfiledWindow,
-	unfiledWindowQuery,
-} from "#/queries/time-entries.ts";
-import { fileTimeEntries } from "#/server/time-entries.ts";
+import { unfiledEntriesQuery } from "#/queries/time-entries.ts";
+import { deleteTimeEntry, fileTimeEntries } from "#/server/time-entries.ts";
 
 // Everything the engines write lands with no project: the calendar sync files
 // meetings this way, and so do commit fill blocks and accepted day-assembly
@@ -37,16 +36,29 @@ import { fileTimeEntries } from "#/server/time-entries.ts";
 // Deliberately NOT dismissible, unlike AutoTrackNag: that one nudges you toward
 // an optional feature, this one is a worklist of your own unattributed hours.
 
-// The window this nags about now lives with the query (`unfiledWindow`), because
-// the Time nav row's badge counts the same list and the two must not drift.
-export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
+// Scoped to the week or month on screen (the layout route hands it the range).
+// The Time nav badge keeps the wider `unfiledWindow`, so the count of everything
+// still shows somewhere; this banner is about the time in front of you.
+export function UnfiledEntriesBanner({
+	range,
+	scopeLabel,
+	timezone,
+}: {
+	/** The week or month on screen. The banner counts only this. */
+	range: { from: string; to: string };
+	/** "this week" / "this month", for the headline. */
+	scopeLabel: string;
+	/** The org's timezone: a meeting's start is shown in it, like every other
+	 *  clock time in the app. */
+	timezone: string;
+}) {
 	const heightTransition = useHeightTransition();
 	const orgSlug = useOrgSlug();
 	const [open, setOpen] = useState(false);
-	const { from } = unfiledWindow(todayKey);
+	const { from, to } = range;
 
 	const { data: entries } = useQuery({
-		...unfiledWindowQuery(orgSlug, todayKey),
+		...unfiledEntriesQuery(orgSlug, from, to),
 		staleTime: 60_000,
 	});
 
@@ -55,6 +67,18 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 		(sum, e) => sum + e.durationSeconds,
 		0,
 	);
+	// Say what the person is looking at, not what the database holds. "Entries
+	// aren't filed against a project" is the schema talking; "3 calendar
+	// meetings need a project" is the list. A list with anything else on it
+	// (a rest-of-day block, an accepted suggestion) counts the two apart.
+	const meetings = (entries ?? []).filter(isCalendarMeeting).length;
+	const others = count - meetings;
+	const allMeetings = count > 0 && others === 0;
+	const headline = allMeetings
+		? `${meetings} calendar ${meetings === 1 ? "meeting" : "meetings"} ${scopeLabel} ${meetings === 1 ? "needs" : "need"} a project`
+		: meetings === 0
+			? `${count} ${count === 1 ? "entry" : "entries"} ${scopeLabel} ${count === 1 ? "needs" : "need"} a project`
+			: `${meetings} calendar ${meetings === 1 ? "meeting" : "meetings"} and ${others} other ${others === 1 ? "entry" : "entries"} ${scopeLabel} need a project`;
 
 	return (
 		<>
@@ -69,20 +93,21 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 						className="mb-4 shrink-0 overflow-hidden rounded-lg border bg-secondary"
 					>
 						<div className="flex items-center gap-3 px-4 py-3">
-							<TrayIcon className="size-4 shrink-0 text-primary" />
+							{meetings > 0 ? (
+								<GoogleCalendarMark />
+							) : (
+								<TrayIcon className="size-4 shrink-0 text-primary" />
+							)}
 							<div className="min-w-0 flex-1">
-								<p className="text-base font-medium">
-									{count === 1
-										? "1 entry isn't filed against a project"
-										: `${count} entries aren't filed against a project`}
-								</p>
+								<p className="text-base font-medium">{headline}</p>
 								<p className="text-sm text-muted-foreground">
-									{formatHoursShort(seconds)} of tracked time won't appear in
-									any project report until you file it.
+									{allMeetings
+										? `${formatHoursShort(seconds)} synced from Google Calendar. Add each meeting to its project so the time shows up in reports.`
+										: `${formatHoursShort(seconds)} of your time isn't on any project yet, so it's missing from reports.`}
 								</p>
 							</div>
 							<Button size="sm" onClick={() => setOpen(true)}>
-								File them
+								{allMeetings ? "Add events" : "File them"}
 							</Button>
 						</div>
 					</motion.div>
@@ -93,7 +118,8 @@ export function UnfiledEntriesBanner({ todayKey }: { todayKey: string }) {
 				open={open}
 				onOpenChange={setOpen}
 				from={from}
-				to={todayKey}
+				to={to}
+				timezone={timezone}
 			/>
 		</>
 	);
@@ -106,6 +132,21 @@ type UnfiledEntry = {
 	durationSeconds: number;
 	taskId: string;
 	taskName: string;
+	calendarEventId: string | null;
+	/** When the meeting starts, per the calendar. Null on anything that is not
+	 *  a synced meeting. A `Date` on the server and whatever the transport made
+	 *  of it here, so it is always re-wrapped before it is read. */
+	meetingStartsAt: Date | string | null;
+};
+
+const isCalendarMeeting = (entry: { calendarEventId: string | null }) =>
+	entry.calendarEventId != null;
+
+/** "Wed, Sep 17 at 14:00" for a meeting, "Wed, Sep 17" for anything else. */
+const whenLabel = (entry: UnfiledEntry, timezone: string): string => {
+	const day = formatDateKeyShort(entry.date);
+	if (!entry.meetingStartsAt) return day;
+	return `${day} at ${timeKeyInTz(new Date(entry.meetingStartsAt), timezone)}`;
 };
 
 /** Entries that are the same piece of recurring work: same task, same title,
@@ -117,6 +158,8 @@ type UnfiledGroup = {
 	taskName: string;
 	entries: UnfiledEntry[];
 	seconds: number;
+	/** Every row in the group came from the calendar. */
+	fromCalendar: boolean;
 };
 
 const groupUnfiled = (entries: UnfiledEntry[]): UnfiledGroup[] => {
@@ -128,6 +171,7 @@ const groupUnfiled = (entries: UnfiledEntry[]): UnfiledGroup[] => {
 		if (group) {
 			group.entries.push(entry);
 			group.seconds += entry.durationSeconds;
+			group.fromCalendar &&= isCalendarMeeting(entry);
 		} else {
 			byKey.set(key, {
 				key,
@@ -135,6 +179,7 @@ const groupUnfiled = (entries: UnfiledEntry[]): UnfiledGroup[] => {
 				taskName: entry.taskName,
 				entries: [entry],
 				seconds: entry.durationSeconds,
+				fromCalendar: isCalendarMeeting(entry),
 			});
 		}
 	}
@@ -150,11 +195,13 @@ function FileEntriesDialog({
 	onOpenChange,
 	from,
 	to,
+	timezone,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	from: string;
 	to: string;
+	timezone: string;
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
@@ -180,6 +227,8 @@ function FileEntriesDialog({
 	});
 
 	const groups = groupUnfiled(entries ?? []);
+	const allMeetings =
+		(entries?.length ?? 0) > 0 && (entries ?? []).every(isCalendarMeeting);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [projectId, setProjectId] = useState<string | null>(null);
 	// "" keeps each entry's own task. A rest-of-day block lands as Development
@@ -260,14 +309,70 @@ function FileEntriesDialog({
 		onError: (error: Error) => toast.error(error.message),
 	});
 
+	// The other answer to "where does this go": nowhere, because it didn't
+	// happen. Per row, beside the length, rather than a footer button over the
+	// selection — removing is a decision about one meeting, filing is about a
+	// batch. Same delete as the timesheet row's, so a calendar meeting gets its
+	// tombstone and the next sync does not bring it back; Assemble my day can
+	// still re-offer it with "include dismissed" if that was a mistake.
+	const removeMutation = useMutation({
+		mutationFn: async (ids: string[]) => {
+			// One delete per row, and a failure kept rather than thrown. A batch
+			// that stops halfway has still deleted everything up to the row that
+			// failed, and throwing sent the whole thing to `onError` — no
+			// invalidation, so the dialog went on listing rows that are gone, and
+			// no pruning, so they stayed ticked and the next Add to project asked
+			// the server to file them.
+			const removed: string[] = [];
+			let firstError: string | null = null;
+			for (const id of ids) {
+				try {
+					await deleteTimeEntry({ data: id });
+					removed.push(id);
+				} catch (error) {
+					firstError ??=
+						error instanceof Error ? error.message : "unknown reason";
+				}
+			}
+			return { removed, firstError };
+		},
+		onSuccess: async ({ removed, firstError }, ids) => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+			setSelectedIds((current) => {
+				const next = new Set(current);
+				for (const id of removed) next.delete(id);
+				return next;
+			});
+			if (firstError !== null) {
+				toast.error(
+					`Removed ${removed.length} of ${ids.length}: ${firstError}`,
+				);
+				return;
+			}
+			const count = removed.length;
+			toast.success(
+				allMeetings
+					? `Removed ${count} ${count === 1 ? "meeting" : "meetings"} · the calendar won't bring ${count === 1 ? "it" : "them"} back`
+					: `Removed ${count} ${count === 1 ? "entry" : "entries"}`,
+			);
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+	const busy = fileMutation.isPending || removeMutation.isPending;
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-2xl">
 				<DialogHeader>
-					<DialogTitle>File your time</DialogTitle>
+					<DialogTitle>
+						{allMeetings ? "Add your meetings to a project" : "File your time"}
+					</DialogTitle>
 					<DialogDescription>
-						Pick the entries that belong to a project and file them together.
-						Choose a task only when they need a different one.
+						{allMeetings
+							? "Tick the meetings that belong to one project, pick it, and add them in one go. Change the task only if Meeting isn't right."
+							: "Tick the entries that belong to one project, pick it, and file them in one go. Change the task only if it isn't right."}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -276,7 +381,10 @@ function FileEntriesDialog({
 						<UnfiledGroupRow
 							key={group.key}
 							group={group}
+							timezone={timezone}
 							selectedIds={selectedIds}
+							removing={removeMutation.isPending}
+							onRemove={(ids) => removeMutation.mutate(ids)}
 							onToggleGroup={() => toggleGroup(group)}
 							onToggleEntry={(id) =>
 								setSelectedIds((current) => {
@@ -329,12 +437,16 @@ function FileEntriesDialog({
 									: `${selectedIds.size} selected · ${formatHoursShort(selectedSeconds)}`}
 							</span>
 							<Button
-								disabled={
-									selectedIds.size === 0 || !projectId || fileMutation.isPending
-								}
+								disabled={selectedIds.size === 0 || !projectId || busy}
 								onClick={() => fileMutation.mutate()}
 							>
-								{fileMutation.isPending ? "Filing…" : "File"}
+								{fileMutation.isPending
+									? allMeetings
+										? "Adding…"
+										: "Filing…"
+									: allMeetings
+										? "Add to project"
+										: "File"}
 							</Button>
 						</div>
 					</DialogFooter>
@@ -346,12 +458,18 @@ function FileEntriesDialog({
 
 function UnfiledGroupRow({
 	group,
+	timezone,
 	selectedIds,
+	removing,
+	onRemove,
 	onToggleGroup,
 	onToggleEntry,
 }: {
 	group: UnfiledGroup;
+	timezone: string;
 	selectedIds: Set<string>;
+	removing: boolean;
+	onRemove: (ids: string[]) => void;
 	onToggleGroup: () => void;
 	onToggleEntry: (id: string) => void;
 }) {
@@ -359,70 +477,142 @@ function UnfiledGroupRow({
 	const allIn = group.entries.every((e) => selectedIds.has(e.id));
 	const someIn = !allIn && group.entries.some((e) => selectedIds.has(e.id));
 	const isRecurring = group.entries.length > 1;
+	const first = group.entries[0];
 
 	return (
 		<div className="py-1">
 			{/* The label is the whole row, not just the box: a 16px checkbox is a
-			    hard target, and everything to its right identifies the same group.
-			    "Show dates" has to stay OUTSIDE it — a button nested in a label
-			    toggles the checkbox on its way to its own handler. */}
-			<div className="flex items-center gap-3 pr-6">
-				<label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md py-2 pl-6 transition-colors duration-(--dur-fast) hover:bg-muted">
-					<input
-						type="checkbox"
-						className="shrink-0 accent-primary"
-						checked={allIn}
-						ref={(node) => {
-							// The only honest state for a partly-selected group. Set through a
-							// ref because `indeterminate` is a DOM property with no attribute.
-							if (node) node.indeterminate = someIn;
-						}}
-						onChange={onToggleGroup}
-						aria-label={`Select ${group.title}`}
-					/>
-					<span className="min-w-0 flex-1">
-						<span className="block truncate text-sm font-medium">
-							{group.title}
-						</span>
-						<span className="block text-xs text-muted-foreground">
-							{group.taskName} · {formatHoursShort(group.seconds)}
-							{isRecurring
-								? ` · ${group.entries.length} occurrences`
-								: ` · ${formatDateKeyLong(group.entries[0]?.date ?? "")}`}
-						</span>
-					</span>
-				</label>
-				{isRecurring && (
-					<Button
-						variant="ghost"
-						size="sm"
-						className="shrink-0"
-						onClick={() => setExpanded((current) => !current)}
-					>
-						{expanded ? "Hide dates" : "Show dates"}
-					</Button>
+			    hard target, and everything on the row identifies the same group.
+			    Left to right: what the meeting is (Google's mark on synced rows,
+			    the title, then the task and when it was), how long, in the mono
+			    figure the timesheet uses, and the box at the far right where a
+			    list of things to tick keeps it. "Show dates" sits in the text and
+			    cancels the label's default so it does not tick the box on the way
+			    to its own handler. */}
+			<label
+				className={cn(
+					"flex cursor-pointer items-center gap-4 rounded-md px-6 py-2.5 transition-colors duration-(--dur-fast) hover:bg-muted",
+					allIn && "bg-muted/60",
 				)}
-			</div>
+			>
+				{group.fromCalendar ? (
+					<GoogleCalendarMark />
+				) : (
+					<span className="size-4 shrink-0" aria-hidden="true" />
+				)}
+				<span className="min-w-0 flex-1">
+					<span className="block truncate text-base font-medium">
+						{group.title}
+					</span>
+					<span className="block text-sm text-muted-foreground">
+						{group.taskName}
+						{" · "}
+						{isRecurring ? (
+							<>
+								{group.entries.length} occurrences
+								{" · "}
+								<button
+									type="button"
+									className="cursor-pointer underline underline-offset-3 hover:text-foreground"
+									onClick={(event) => {
+										event.preventDefault();
+										setExpanded((current) => !current);
+									}}
+								>
+									{expanded ? "Hide dates" : "Show dates"}
+								</button>
+							</>
+						) : first ? (
+							whenLabel(first, timezone)
+						) : null}
+						{" · "}
+						<RemoveLink
+							disabled={removing}
+							what={
+								isRecurring
+									? `all ${group.entries.length} occurrences of ${group.title}`
+									: group.title
+							}
+							onClick={() => onRemove(group.entries.map((e) => e.id))}
+						/>
+					</span>
+				</span>
+				<span className="mono shrink-0 text-base tabular-nums">
+					{formatHoursShort(group.seconds)}
+				</span>
+				<input
+					type="checkbox"
+					className="size-4 shrink-0 cursor-pointer accent-primary"
+					checked={allIn}
+					ref={(node) => {
+						// The only honest state for a partly-selected group. Set through a
+						// ref because `indeterminate` is a DOM property with no attribute.
+						if (node) node.indeterminate = someIn;
+					}}
+					onChange={onToggleGroup}
+					aria-label={`Select ${group.title}`}
+				/>
+			</label>
 
 			{expanded && (
-				<div className="mb-2 flex flex-col pl-6">
+				<div className="mb-2 flex flex-col">
 					{group.entries.map((entry) => (
 						<label
 							key={entry.id}
-							className="flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-8 text-xs text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
+							className="flex cursor-pointer items-center gap-4 rounded-md py-1.5 pr-6 pl-14 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
 						>
+							<span className="flex-1">
+								{whenLabel(entry, timezone)}
+								{" · "}
+								<RemoveLink
+									disabled={removing}
+									what={`${group.title} on ${whenLabel(entry, timezone)}`}
+									onClick={() => onRemove([entry.id])}
+								/>
+							</span>
+							<span className="mono tabular-nums">
+								{formatHoursShort(entry.durationSeconds)}
+							</span>
 							<input
 								type="checkbox"
-								className="accent-primary"
+								className="size-4 cursor-pointer accent-primary"
 								checked={selectedIds.has(entry.id)}
 								onChange={() => onToggleEntry(entry.id)}
 							/>
-							{formatDateKeyLong(entry.date)} ·{" "}
-							{formatHoursShort(entry.durationSeconds)}
 						</label>
 					))}
 				</div>
 			)}
 		</div>
+	);
+}
+
+/** "Remove", at the end of the row's second line, after the day and time —
+ *  the same grey as that line until hovered, then red, because it deletes.
+ *  Inside the row's label, so it cancels the label's default or the box would
+ *  tick on the way to the handler. */
+function RemoveLink({
+	what,
+	disabled,
+	onClick,
+}: {
+	what: string;
+	disabled: boolean;
+	onClick: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			disabled={disabled}
+			aria-label={`Remove ${what}`}
+			title="Didn't happen? Remove it from the timesheet. The calendar won't bring it back."
+			className="cursor-pointer underline underline-offset-3 transition-colors duration-(--dur-fast) hover:text-destructive focus-visible:text-destructive focus-visible:outline-none disabled:cursor-default disabled:opacity-50"
+			onClick={(event) => {
+				event.preventDefault();
+				onClick();
+			}}
+		>
+			Remove
+		</button>
 	);
 }

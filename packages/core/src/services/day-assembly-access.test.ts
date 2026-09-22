@@ -33,6 +33,7 @@ import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
+import { emptyCalendar } from "../test/calendar";
 import { createTestDb, type TestDb } from "../test/harness";
 import { dayAssemblyService } from "./day-assembly.service";
 import { setCalendarSourceForTests, setCommitSourceForTests } from "./ports";
@@ -51,10 +52,7 @@ let minePId = "";
 /** Linked to a repo in the same org, but the user is not on it. */
 let theirsPId = "";
 
-const noCalendar = {
-	listEventsForRange: async () => [],
-	listEventsForDay: async () => [],
-};
+const noCalendar = emptyCalendar;
 
 const commitsOn = (projectIds: string[]) => ({
 	listUserCommitsByDay: async () => [],

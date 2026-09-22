@@ -15,7 +15,7 @@ argument — **tenancy is a parameter, never ambient**.
 `packages/core` layout:
 - `src/db/` — `drizzle-orm/postgres-js` client (`index.ts`, resolved lazily — see Testing) + schema:
   - `schema/auth.ts` — better-auth-owned: user/session/account/verification/organization/member/invitation, plus the plugin tables (`oauthApplication`/`oauthAccessToken`/`oauthConsent` for MCP, the device codes for the CLI). CLI-generated, see `auth:generate`.
-  - `schema/domain.ts` — client, project (`projectType`), task (`taskScope`, `taskGroup`, `systemKey`), projectMember, recurringBlockRule(+Skip), timeEntry.
+  - `schema/domain.ts` — client, project (`projectType`), task (`taskScope`, `taskGroup`, `systemKey`), projectMember, recurringBlockRule(+Skip), timeEntry (a synced meeting also carries `syncedDate/syncedDurationSeconds/syncedDescription`, what the calendar last said — the meeting engine is a per-field merge against them, see `docs/domains/automation.md`).
   - `schema/people.ts` — memberProfile, memberTypeHistory (effective-dated `memberType`), teamLeadPerson, invitationEmail (whether an invite email reached the provider; it sits here because `invitation` is CLI-generated).
   - `schema/schedule.ts` — memberWorkingHoursDay, disabledHoliday.
   - `schema/settings.ts` — integrationSettings, syncedMeetingTombstone, commitFillTombstone, pullRequestReviewTombstone, filingRule, hiddenTask (a person's switched-off tasks), orgSettings, reminderSettings, monthlyHourFund.
@@ -134,7 +134,7 @@ Fixture rules:
 
 The services that turn logged time into a number somebody acts on — `reports`, `compliance`, `hour-fund` — are pinned on properties rather than outputs: a detail's total stays whole when its rows hit the cap, Team Lead scoping holds on every tab, a null fund is not zero, `prefillYear` never clobbers a hand-entered figure.
 
-**Not covered at all**, so the suite cannot tell you whether you broke them: the `google-calendar` **service** (its `lib/` client is tested); the `slack` service beyond `syncIdentities` and `sendInvitation`; the GitHub installation flows (`connectInstallation` and the setup callback); `notificationsService.sendPush` (it reads VAPID keys from the environment); member role changes (better-auth's `updateMemberRole`, which has no service function); and everything in `apps/web`.
+**Not covered at all**, so the suite cannot tell you whether you broke them: the `google-calendar` **service** (its `lib/` client is tested; the engines read it through `test/calendar.ts`'s `fakeCalendar`); the `slack` service beyond `syncIdentities` and `sendInvitation`; the GitHub installation flows (`connectInstallation` and the setup callback); `notificationsService.sendPush` (it reads VAPID keys from the environment); member role changes (better-auth's `updateMemberRole`, which has no service function); and everything in `apps/web`.
 
 
 ## The subsystems documented elsewhere

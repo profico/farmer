@@ -1,10 +1,16 @@
-import { parseDuration, snapToQuarterHour } from "@farmer/core/lib/time";
+import {
+	dayKeyInTz,
+	parseDuration,
+	snapToQuarterHour,
+	timeKeyInTz,
+} from "@farmer/core/lib/time";
 import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { GoogleCalendarMark } from "#/components/google-calendar-mark.tsx";
 import {
 	AddBlockDialog,
 	type ExistingTimeEntry,
@@ -12,18 +18,26 @@ import {
 import { EntryMark } from "#/components/time/entry-mark.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { Input } from "#/components/ui/input.tsx";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "#/components/ui/popover.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { useHeightTransition } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
+	acknowledgeCalendarChange,
 	createTimeEntry,
 	deleteTimeEntry,
 	setTimeEntryOvertime,
 	updateTimeEntryDescription,
 	updateTimeEntryDuration,
+	useCalendarValues,
 } from "#/server/time-entries.ts";
 
 // Notes longer than this are cut on the row until "Show more" is pressed.
@@ -39,7 +53,87 @@ export type EntryBlockRowEntry = ExistingTimeEntry & {
 	task: { name: string; color: string | null; isAbsence: boolean };
 	commitCount?: number;
 	pullRequestCount?: number;
+	// A synced meeting carries what the calendar last said its day and length
+	// were. Where the entry differs, the person changed it, and the row says so.
+	calendarEventId?: string | null;
+	syncedDate?: string | null;
+	syncedDurationSeconds?: number | null;
+	syncedDescription?: string | null;
+	/** When the meeting starts, per the calendar. Display only. */
+	meetingStartsAt?: Date | string | null;
+	/** The sync changed the day, length or title on the calendar's say-so, and
+	 *  what the entry said before it did — **one key per field it changed, and
+	 *  no others**. Cleared when dismissed. */
+	calendarChangedAt?: Date | string | null;
+	calendarChangeFrom?: {
+		date?: string;
+		durationSeconds?: number;
+		description?: string;
+	} | null;
 };
+
+/** The sentences behind the "Updated by calendar" pill: each field the sync
+ *  changed, as "was X".
+ *
+ *  Read, never compared. `calendarChangeFrom` carries a key only for a field
+ *  that write changed, so the keys present ARE the sentences — and a field
+ *  the person owns is absent from it. Comparing was the old way and it had no
+ *  right answer: against the baseline (the calendar's latest word, which moves
+ *  on under a field the person owns) it announced "Moved from Thu" on an entry
+ *  still sitting on Thursday; against the entry it would blame the calendar
+ *  for the person's own next edit. */
+export function calendarChangeSentences(entry: EntryBlockRowEntry): string[] {
+	const from = entry.calendarChangeFrom;
+	if (!from) return [];
+	const out: string[] = [];
+	if (from.date != null) {
+		out.push(`Moved from ${formatDateKeyShort(from.date)}`);
+	}
+	if (from.durationSeconds != null) {
+		out.push(`Was ${formatClock(from.durationSeconds)} long`);
+	}
+	// A meeting the calendar imported untitled has nothing to quote.
+	if (from.description) {
+		out.push(`Was called "${from.description}"`);
+	}
+	return out;
+}
+
+/** What the calendar says about a synced meeting that the person has since
+ *  moved or re-lengthed, or null when the entry still matches the calendar
+ *  (or is not a synced meeting). The note is deliberately not compared: a note
+ *  is the person's from the moment they write one, and flagging every meeting
+ *  with a note would make the pill mean nothing. */
+export function calendarDifference(entry: EntryBlockRowEntry): {
+	date: string | null;
+	durationSeconds: number | null;
+} | null {
+	if (
+		entry.calendarEventId == null ||
+		entry.syncedDate == null ||
+		entry.syncedDurationSeconds == null
+	) {
+		return null;
+	}
+	const date = entry.syncedDate !== entry.date ? entry.syncedDate : null;
+	const durationSeconds =
+		entry.syncedDurationSeconds !== entry.durationSeconds
+			? entry.syncedDurationSeconds
+			: null;
+	if (date === null && durationSeconds === null) return null;
+	return { date, durationSeconds };
+}
+
+/** The pill's text: the calendar's day, its length, or both. */
+function calendarLabel(
+	diff: NonNullable<ReturnType<typeof calendarDifference>>,
+) {
+	const parts: string[] = [];
+	if (diff.date) parts.push(formatDateKeyShort(diff.date));
+	if (diff.durationSeconds != null)
+		parts.push(formatClock(diff.durationSeconds));
+	return parts.join(" · ");
+}
 
 /** Harvest's row heading: "[CODE] Project (Client)". The code is what people
  *  actually say out loud, so it leads; an absence has neither and just names
@@ -166,6 +260,33 @@ export function EntryBlockRow({
 		if (snapped === entry.durationSeconds) return;
 		durationMutation.mutate(snapped);
 	};
+
+	const calendarChanges = calendarChangeSentences(entry);
+	const acknowledgeMutation = useMutation({
+		mutationFn: () =>
+			acknowledgeCalendarChange({ data: { timeEntryId: entry.id } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not dismiss the notice");
+		},
+	});
+
+	const calendarDiff = calendarDifference(entry);
+	const calendarMutation = useMutation({
+		mutationFn: () => useCalendarValues({ data: { timeEntryId: entry.id } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not take the calendar's values");
+		},
+	});
 
 	const overtimeMutation = useMutation({
 		mutationFn: (overtime: boolean) =>
@@ -330,6 +451,21 @@ export function EntryBlockRow({
 					<p className="truncate text-base font-medium">
 						{entryHeading(entry)}
 					</p>
+					{/* Where this entry came from. Google's own mark, so a synced
+					    meeting is told from a typed one at a glance; the hover names
+					    the meeting's start, which the duration-only row cannot. */}
+					{entry.calendarEventId != null && (
+						<span
+							className="flex shrink-0 items-center"
+							title={
+								entry.meetingStartsAt
+									? `From Google Calendar · ${formatDateKeyShort(entry.date)} at ${timeKeyInTz(new Date(entry.meetingStartsAt), timezone)}`
+									: "From Google Calendar"
+							}
+						>
+							<GoogleCalendarMark className="size-3.5" />
+						</span>
+					)}
 					{entry.fillsDay && (
 						<span className="eyebrow shrink-0 rounded-full bg-muted px-1.5 py-0.5">
 							Rest of day
@@ -339,6 +475,116 @@ export function EntryBlockRow({
 						<span className="eyebrow shrink-0 rounded-full bg-warn/12 px-1.5 py-0.5 text-warn">
 							Overtime
 						</span>
+					)}
+					{/* A synced meeting the person moved or re-lengthed: the calendar's
+					    value, as a quiet pill like "Updated automatically" beside it.
+					    Opening it (hover or tap) sets the two side by side, and the button
+					    inside is what takes the calendar's — the pill itself never acts,
+					    so a stray click cannot move an entry. Absent on every meeting that
+					    simply follows the calendar, so its presence means something. */}
+					{calendarDiff && (
+						<Popover>
+							<PopoverTrigger
+								openOnHover
+								delay={300}
+								closeDelay={100}
+								render={
+									<button
+										type="button"
+										className="flex h-5 shrink-0 cursor-pointer items-center rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:text-foreground"
+									/>
+								}
+							>
+								Calendar: {calendarLabel(calendarDiff)}
+							</PopoverTrigger>
+							<PopoverContent
+								side="bottom"
+								align="start"
+								className="flex w-72 flex-col gap-2 p-3"
+							>
+								<div className="eyebrow">Differs from your calendar</div>
+								<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+									<dt className="text-muted-foreground">Calendar</dt>
+									<dd>
+										{formatDateKeyShort(calendarDiff.date ?? entry.date)} ·{" "}
+										{formatClock(
+											calendarDiff.durationSeconds ?? entry.durationSeconds,
+										)}
+									</dd>
+									<dt className="text-muted-foreground">Your entry</dt>
+									<dd>
+										{formatDateKeyShort(entry.date)} ·{" "}
+										{formatClock(entry.durationSeconds)}
+									</dd>
+								</dl>
+								<p className="text-xs text-muted-foreground">
+									Your entry keeps your values. Take the calendar's and it
+									follows the calendar again.
+								</p>
+								<Button
+									size="sm"
+									variant="secondary"
+									className="self-start"
+									disabled={calendarMutation.isPending}
+									onClick={() => calendarMutation.mutate()}
+								>
+									{calendarMutation.isPending
+										? "Updating…"
+										: "Use the calendar's"}
+								</Button>
+							</PopoverContent>
+						</Popover>
+					)}
+					{/* The sync moved, re-lengthed or renamed this on the calendar's
+					    say-so. A quiet pill in words only — the calendar mark is already
+					    beside the heading; opening it (hover or tap) says what the entry
+					    was before, and "Got it" puts the notice away. */}
+					{calendarChanges.length > 0 && (
+						<Popover>
+							<PopoverTrigger
+								openOnHover
+								delay={300}
+								closeDelay={100}
+								render={
+									<button
+										type="button"
+										className="flex h-5 shrink-0 cursor-pointer items-center rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-popup-open:text-foreground"
+									/>
+								}
+							>
+								Updated automatically
+							</PopoverTrigger>
+							<PopoverContent
+								side="bottom"
+								align="start"
+								className="flex w-64 flex-col gap-2 p-3"
+							>
+								<div className="eyebrow">Updated by your calendar</div>
+								<ul className="flex flex-col gap-0.5 text-sm">
+									{calendarChanges.map((line) => (
+										<li key={line}>{line}</li>
+									))}
+								</ul>
+								{entry.calendarChangedAt && (
+									<p className="text-xs text-muted-foreground">
+										{formatDateKeyShort(
+											dayKeyInTz(new Date(entry.calendarChangedAt), timezone),
+										)}{" "}
+										at{" "}
+										{timeKeyInTz(new Date(entry.calendarChangedAt), timezone)}
+									</p>
+								)}
+								<Button
+									size="sm"
+									variant="secondary"
+									className="self-start"
+									disabled={acknowledgeMutation.isPending}
+									onClick={() => acknowledgeMutation.mutate()}
+								>
+									Got it
+								</Button>
+							</PopoverContent>
+						</Popover>
 					)}
 					{!!entry.commitCount && entry.commitCount > 0 && (
 						<span

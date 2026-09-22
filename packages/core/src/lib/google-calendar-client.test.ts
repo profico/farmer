@@ -13,9 +13,10 @@
 // `attendees[].self.responseStatus` and `eventType` were both already in the
 // payload. Neither was read.
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import {
+	getCalendarEvent,
 	type GoogleCalendarEvent,
 	isImportableEvent,
 } from "./google-calendar-client";
@@ -104,5 +105,59 @@ describe("isImportableEvent", () => {
 		// Google adds these over time; a new one is far more likely to be a real
 		// meeting than not, and dropping time is the worse failure.
 		expect(isImportableEvent(timed({ eventType: "somethingNew" }))).toBe(true);
+	});
+});
+
+// One event asked for by id, as the meeting engine does before it deletes an
+// entry whose event is missing from the list. Every non-answer is `unreadable`
+// rather than a throw: this runs once per stale row inside a pass that has
+// already done its useful work.
+describe("getCalendarEvent", () => {
+	const realFetch = globalThis.fetch;
+	const answering = (status: number, body?: GoogleCalendarEvent) => {
+		globalThis.fetch = Object.assign(
+			async () =>
+				new Response(body === undefined ? null : JSON.stringify(body), {
+					status,
+					headers: { "Content-Type": "application/json" },
+				}),
+			{ preconnect: realFetch.preconnect },
+		);
+	};
+	afterEach(() => {
+		globalThis.fetch = realFetch;
+	});
+
+	test("a live meeting is found", async () => {
+		answering(200, timed());
+		const lookup = await getCalendarEvent("token", "e1");
+		expect(lookup.status).toBe("found");
+	});
+
+	test("a cancelled event is absent, as Google reports it for a while after deletion", async () => {
+		answering(200, timed({ status: "cancelled" }));
+		expect((await getCalendarEvent("token", "e1")).status).toBe("absent");
+	});
+
+	test("a declined meeting is absent: the list would not carry it either", async () => {
+		answering(
+			200,
+			timed({ attendees: [{ self: true, responseStatus: "declined" }] }),
+		);
+		expect((await getCalendarEvent("token", "e1")).status).toBe("absent");
+	});
+
+	test("404 and 410 are absent", async () => {
+		answering(404);
+		expect((await getCalendarEvent("token", "e1")).status).toBe("absent");
+		answering(410);
+		expect((await getCalendarEvent("token", "e1")).status).toBe("absent");
+	});
+
+	test("a revoked token or an outage is unreadable, not a throw", async () => {
+		answering(401);
+		expect((await getCalendarEvent("token", "e1")).status).toBe("unreadable");
+		answering(503);
+		expect((await getCalendarEvent("token", "e1")).status).toBe("unreadable");
 	});
 });

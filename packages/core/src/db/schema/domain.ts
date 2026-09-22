@@ -4,6 +4,7 @@ import {
 	check,
 	index,
 	integer,
+	jsonb,
 	numeric,
 	pgEnum,
 	pgTable,
@@ -344,10 +345,44 @@ export const timeEntry = pgTable(
 		// the source event id (kept so the same event isn't imported twice).
 		meetingUrl: text("meeting_url"),
 		calendarEventId: text("calendar_event_id"),
-		// True once the user takes ownership of a calendar-linked entry. The
-		// meeting-sync engine treats Google as the source of truth ONLY where this
-		// is false.
+		// True once the user takes ownership of a calendar-linked entry: filing
+		// it, editing it, typing into its week cell. It marks the ROW as the
+		// person's; which of its fields still follow the calendar is decided per
+		// field by the three `synced*` columns below, so filing a meeting no
+		// longer stops it moving when the calendar moves it (issue #60).
 		syncLocked: boolean("sync_locked").notNull().default(false),
+		// What the calendar last said this meeting's day, length and title were.
+		// The meeting engine compares each field against its baseline: a field that
+		// still equals what the calendar last said follows the calendar's new
+		// value; one the person has changed is theirs and is left alone. Null when
+		// nothing is known — a row the person made by hand around an event, or a
+		// row filed before these columns existed — and a null baseline never
+		// matches, so such a row keeps every value that differs from the calendar.
+		syncedDate: text("synced_date"),
+		syncedDurationSeconds: integer("synced_duration_seconds"),
+		syncedDescription: text("synced_description"),
+		// When the meeting starts, as the calendar has it. Display only — the
+		// entry itself is duration-only by design (PRD 3.6) — so a person can tell
+		// "the 10:00 stand-up" from "the 16:00 one" in the filing list. Always the
+		// calendar's, rewritten on every sync; null on anything not a meeting.
+		meetingStartsAt: ts("meeting_starts_at"),
+		// The last time the sync changed this entry's day, length or title on the
+		// calendar's say-so, and what those were before — so the row can say
+		// "updated by calendar: moved from Thu, was 1:00" rather than moving in
+		// silence. Set only when something actually changed on an existing row,
+		// cleared when the person dismisses the notice (`acknowledgeCalendarChange`)
+		// or the entry is unlinked. Never set by the first import.
+		calendarChangedAt: ts("calendar_changed_at"),
+		// **Only the fields that write changed.** A field the person owns is not
+		// the sync's to report, and a key that is absent is how the screen knows:
+		// it lists what it is given rather than comparing, because neither thing
+		// it could compare against says which half of the row moved. See
+		// `calendarChangeRecord` in time-entries.service.ts.
+		calendarChangeFrom: jsonb("calendar_change_from").$type<{
+			date?: string;
+			durationSeconds?: number;
+			description?: string;
+		}>(),
 		// Set together when this entry was auto-materialized from a recurring rule.
 		generatedFromRuleId: uuid("generated_from_rule_id").references(
 			() => recurringBlockRule.id,

@@ -77,6 +77,12 @@ export type UpdateTimeEntryDescriptionInput = z.infer<
 	typeof updateTimeEntryDescriptionInput
 >;
 
+// Puts a synced meeting back on the calendar's day and length after the person
+// had changed one of them — the row's "Calendar: 1:30" pill. Nothing to supply
+// but the entry: the values come from what the sync last recorded.
+export const useCalendarValuesInput = z.object({ timeEntryId: z.uuid() });
+export type UseCalendarValuesInput = z.infer<typeof useCalendarValuesInput>;
+
 // Patches only the length of an entry — the row's inline duration box, the note
 // field's twin. Narrow for the same reason: correcting "1:15" to "1:30" must not
 // require the caller to resupply the project, task and date, and an edit that

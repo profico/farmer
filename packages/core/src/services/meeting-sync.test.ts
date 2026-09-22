@@ -35,6 +35,7 @@ import {
 	orgSettings,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
+import { fakeCalendar } from "../test/calendar";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { setCalendarSourceForTests } from "./ports";
 import { timeEntriesService } from "./time-entries.service";
@@ -99,12 +100,6 @@ const degenerateEvent = (
 	end: `${DATE}T09:${String(Math.max(0, minutes)).padStart(2, "0")}:00.000Z`,
 	meetingUrl: null,
 	htmlLink: null,
-});
-
-/** In-memory calendar. `null` reproduces "couldn't read the calendar". */
-const calendarReturning = (events: Event[] | null) => ({
-	listEventsForRange: async () => events,
-	listEventsForDay: async () => events ?? [],
 });
 
 let harness: TestDb;
@@ -180,7 +175,7 @@ beforeEach(async () => {
 
 describe("meeting sync", () => {
 	test("imports one entry per calendar event", async () => {
-		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		const rows = await meetingRows();
@@ -193,7 +188,7 @@ describe("meeting sync", () => {
 	// The claim under test.
 	test("running twice over an unchanged calendar changes nothing", async () => {
 		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Standup", 1), event("e2", "Review", 2)]),
+			fakeCalendar([event("e1", "Standup", 1), event("e2", "Review", 2)]),
 		);
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
@@ -212,7 +207,7 @@ describe("meeting sync", () => {
 	});
 
 	test("a third and fourth run are still stable", async () => {
-		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
 		for (let i = 0; i < 4; i++) {
 			await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		}
@@ -223,12 +218,12 @@ describe("meeting sync", () => {
 	// sync-owned entry.
 	test("an event removed from the calendar removes its entry", async () => {
 		setCalendarSourceForTests(
-			calendarReturning([event("e1", "Standup", 1), event("e2", "Review", 2)]),
+			fakeCalendar([event("e1", "Standup", 1), event("e2", "Review", 2)]),
 		);
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		expect(await meetingRows()).toHaveLength(2);
 
-		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		const rows = await meetingRows();
@@ -236,32 +231,58 @@ describe("meeting sync", () => {
 		expect(rows[0]?.calendarEventId).toBe("e1");
 	});
 
-	// The empty-set guard: an emptied calendar is indistinguishable from a
-	// calendar the sync failed to read for this range, so it must not wipe.
-	test("an empty calendar does not delete everything", async () => {
-		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+	// An empty list is not proof of anything: Google returns one on a throttled
+	// request or a partial scope. The engine used to skip deletion on an empty
+	// list altogether, which also meant the ONE meeting in a quiet week could
+	// never be removed once it moved. It now asks Google about each missing
+	// event by id and acts only on a definite answer.
+	test("an empty list deletes nothing while Google still lists the event", async () => {
+		const standup = event("e1", "Standup", 1);
+		setCalendarSourceForTests(fakeCalendar([standup]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		expect(await meetingRows()).toHaveLength(1);
 
-		setCalendarSourceForTests(calendarReturning([]));
+		setCalendarSourceForTests(
+			fakeCalendar([], { e1: { status: "found", event: standup } }),
+		);
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		expect(await meetingRows()).toHaveLength(1);
+	});
+
+	test("an empty list deletes nothing when Google cannot be asked", async () => {
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		setCalendarSourceForTests(
+			fakeCalendar([], { e1: { status: "unreadable" } }),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+		expect(await meetingRows()).toHaveLength(1);
+	});
+
+	test("an empty list DOES delete a meeting Google confirms is gone", async () => {
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		setCalendarSourceForTests(fakeCalendar([]));
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+		expect(await meetingRows()).toHaveLength(0);
 	});
 
 	// An unreadable calendar (disconnected / revoked token) must bail rather than
 	// treat "no events" as "every meeting was cancelled".
 	test("an unreadable calendar leaves existing entries alone", async () => {
-		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		expect(await meetingRows()).toHaveLength(1);
 
-		setCalendarSourceForTests(calendarReturning(null));
+		setCalendarSourceForTests(fakeCalendar(null));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		expect(await meetingRows()).toHaveLength(1);
 	});
 
 	test("a tombstoned meeting stays deleted across syncs", async () => {
-		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		const [row] = await meetingRows();
@@ -276,11 +297,11 @@ describe("meeting sync", () => {
 	});
 
 	// Google mints a new event id when a recurring series is edited with "this
-	// and following", and a filed meeting is sync-locked so delete-by-absence
-	// spares it. Without the identity guard the new id imports alongside the old
-	// row and the day shows the same meeting twice.
-	test("a reissued event id does not duplicate a sync-locked meeting", async () => {
-		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+	// and following". The old id is then gone and a new one sits on the same day
+	// with the same face; the existing row is re-linked to it rather than being
+	// retired next to a fresh import, so nothing the person did to it is lost.
+	test("a reissued event id re-links the existing row instead of duplicating it", async () => {
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
 		const [row] = await meetingRows();
@@ -293,10 +314,33 @@ describe("meeting sync", () => {
 			.where(eq(timeEntry.id, row.id));
 
 		// Same day, same title, same length — a new id for the same meeting.
-		setCalendarSourceForTests(calendarReturning([event("e2", "Standup", 1)]));
+		setCalendarSourceForTests(fakeCalendar([event("e2", "Standup", 1)]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
-		expect(await meetingRows()).toHaveLength(1);
+		const rows = await meetingRows();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.id).toBe(row.id);
+		expect(rows[0]?.calendarEventId).toBe("e2");
+	});
+
+	// The old guard matched on the face alone, so once one of two same-shaped
+	// meetings was filed, the other could never import.
+	test("two different meetings with the same title and length both import", async () => {
+		setCalendarSourceForTests(fakeCalendar([event("e1", "1:1", 1)]));
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+		const [row] = await meetingRows();
+		if (!row) throw new Error("expected a synced row");
+		await db
+			.update(timeEntry)
+			.set({ syncLocked: true })
+			.where(eq(timeEntry.id, row.id));
+
+		setCalendarSourceForTests(
+			fakeCalendar([event("e1", "1:1", 1), event("e2", "1:1", 1)]),
+		);
+		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
+
+		expect(await meetingRows()).toHaveLength(2);
 	});
 	// `snapToQuarterHour` floors at 900s by design, so snap(0) and snap(-3600)
 	// are both 900. The engine filtered `durationSeconds > 0` AFTER snapping —
@@ -305,7 +349,7 @@ describe("meeting sync", () => {
 	// guarded on the raw duration; the engine that actually writes did not.
 	test("a zero-length calendar event is not imported", async () => {
 		setCalendarSourceForTests(
-			calendarReturning([degenerateEvent("z1", "Placeholder", 0)]),
+			fakeCalendar([degenerateEvent("z1", "Placeholder", 0)]),
 		);
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -314,7 +358,7 @@ describe("meeting sync", () => {
 
 	test("an event that ends before it starts is not imported", async () => {
 		setCalendarSourceForTests(
-			calendarReturning([
+			fakeCalendar([
 				{
 					id: "z2",
 					title: "Backwards",
@@ -334,7 +378,7 @@ describe("meeting sync", () => {
 	// that happened, and rounds up to the smallest slot the app can express.
 	test("a very short real meeting still rounds up to 15 minutes", async () => {
 		setCalendarSourceForTests(
-			calendarReturning([degenerateEvent("s1", "Quick sync", 5)]),
+			fakeCalendar([degenerateEvent("s1", "Quick sync", 5)]),
 		);
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -345,7 +389,7 @@ describe("meeting sync", () => {
 
 	test("a zero-length event alongside a real one imports only the real one", async () => {
 		setCalendarSourceForTests(
-			calendarReturning([
+			fakeCalendar([
 				degenerateEvent("z1", "Placeholder", 0),
 				event("e1", "Standup", 1),
 			]),
@@ -394,7 +438,7 @@ describe("a synced meeting resizes the day's fill block", () => {
 	test("importing a meeting shortens a block written before it", async () => {
 		await addFill(DATE, WORKDAY_SECONDS);
 		setCalendarSourceForTests(
-			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+			fakeCalendar([shortEventOn("e1", "Standup", DATE, 15)]),
 		);
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
@@ -407,7 +451,7 @@ describe("a synced meeting resizes the day's fill block", () => {
 		// Two events, because delete-by-absence deliberately declines to act on an
 		// empty live set — an empty page from Google must not wipe the day.
 		setCalendarSourceForTests(
-			calendarReturning([
+			fakeCalendar([
 				shortEventOn("e1", "Standup", DATE, 15),
 				shortEventOn("e2", "Review", DATE, 30),
 			]),
@@ -416,7 +460,7 @@ describe("a synced meeting resizes the day's fill block", () => {
 		expect((await fillOn(DATE))?.durationSeconds).toBe(WORKDAY_SECONDS - 2700);
 
 		setCalendarSourceForTests(
-			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+			fakeCalendar([shortEventOn("e1", "Standup", DATE, 15)]),
 		);
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 
@@ -430,14 +474,14 @@ describe("a synced meeting resizes the day's fill block", () => {
 		await addFill(NEXT_DATE, WORKDAY_SECONDS);
 
 		setCalendarSourceForTests(
-			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+			fakeCalendar([shortEventOn("e1", "Standup", DATE, 15)]),
 		);
 		await timeEntriesService.syncMeetingsForUser(ctx, TWO_DAY_RANGE);
 		expect((await fillOn(DATE))?.durationSeconds).toBe(WORKDAY_SECONDS - 900);
 		expect((await fillOn(NEXT_DATE))?.durationSeconds).toBe(WORKDAY_SECONDS);
 
 		setCalendarSourceForTests(
-			calendarReturning([shortEventOn("e1", "Standup", NEXT_DATE, 15)]),
+			fakeCalendar([shortEventOn("e1", "Standup", NEXT_DATE, 15)]),
 		);
 		await timeEntriesService.syncMeetingsForUser(ctx, TWO_DAY_RANGE);
 
@@ -450,7 +494,7 @@ describe("a synced meeting resizes the day's fill block", () => {
 	test("a second sync over an unchanged calendar does not shorten it again", async () => {
 		await addFill(DATE, WORKDAY_SECONDS);
 		setCalendarSourceForTests(
-			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+			fakeCalendar([shortEventOn("e1", "Standup", DATE, 15)]),
 		);
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
@@ -465,7 +509,7 @@ describe("a synced meeting resizes the day's fill block", () => {
 	test("a day filled entirely by meetings loses its block", async () => {
 		await addFill(DATE, WORKDAY_SECONDS);
 		setCalendarSourceForTests(
-			calendarReturning([event("e1", "All-day workshop", 8)]),
+			fakeCalendar([event("e1", "All-day workshop", 8)]),
 		);
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
@@ -475,7 +519,7 @@ describe("a synced meeting resizes the day's fill block", () => {
 
 	test("a day with no block is left alone", async () => {
 		setCalendarSourceForTests(
-			calendarReturning([shortEventOn("e1", "Standup", DATE, 15)]),
+			fakeCalendar([shortEventOn("e1", "Standup", DATE, 15)]),
 		);
 
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
@@ -552,7 +596,7 @@ describe("the meeting engine and the automation window", () => {
 			},
 		]);
 		setCalendarSourceForTests(
-			calendarReturning([shortEventOn("standup-0828", "Standup", SEP_02, 15)]),
+			fakeCalendar([shortEventOn("standup-0828", "Standup", SEP_02, 15)]),
 		);
 
 		await timeEntriesService.runAutomationsForUser(ctx, {
@@ -572,7 +616,7 @@ describe("the meeting engine and the automation window", () => {
 	// before the window comes back too, dated by its start.
 	test("an event dated before the window is not written", async () => {
 		setCalendarSourceForTests(
-			calendarReturning([shortEventOn("eve", "Late call", DATE, 30)]),
+			fakeCalendar([shortEventOn("eve", "Late call", DATE, 30)]),
 		);
 
 		await timeEntriesService.syncMeetingsForUser(ctx, {
@@ -589,7 +633,7 @@ describe("the meeting engine and the automation window", () => {
 // next sync set the cell straight back to the calendar's length.
 describe("typing into a synced meeting's week cell", () => {
 	test("takes the row out of the sync's hands", async () => {
-		setCalendarSourceForTests(calendarReturning([event("e1", "Standup", 1)]));
+		setCalendarSourceForTests(fakeCalendar([event("e1", "Standup", 1)]));
 		await timeEntriesService.syncMeetingsForUser(ctx, RANGE);
 		const [synced] = await meetingRows();
 

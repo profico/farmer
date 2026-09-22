@@ -3,9 +3,12 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "../auth";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
+import { mapBounded } from "../lib/concurrency";
 import {
 	extractMeetingUrl,
+	getCalendarEvent,
 	getGoogleUserInfo,
+	type GoogleCalendarEvent,
 	insertAllDayEvent,
 	isImportableEvent,
 	listCalendarEvents,
@@ -43,6 +46,18 @@ const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
 		return null;
 	}
 };
+
+/** What Google says about one event the engine asked about by id. `absent` is
+ *  a definite no — cancelled, declined, 404 or 410; `unreadable` is no answer
+ *  at all, which the engine must not act on. */
+export type CalendarEventLookup =
+	| { status: "found"; event: CalendarEventOption }
+	| { status: "absent" }
+	| { status: "unreadable" };
+
+// Against one person's own calendar, so the ceiling is about being a good
+// citizen of Google's per-user quota rather than about speed.
+const EVENT_LOOKUP_CONCURRENCY = 4;
 
 export type CalendarEventOption = {
 	id: string;
@@ -132,6 +147,53 @@ export const googleCalendarService = {
 		return fetchTimedEvents(token, start, end);
 	},
 
+	// Events by id, for the meeting-sync engine to confirm a synced entry's
+	// event is really gone before it deletes the entry. The shape the engine
+	// reads is the same as the list's, so a `found` event that is still inside
+	// the window can be written through the same path the list feeds.
+	//
+	// Plural, and one token for the batch, because of the case that matters:
+	// a throttled or empty list leaves EVERY synced row in the window stale, so
+	// the engine asks about all of them on the same tick. One call per id meant
+	// one account read and one better-auth token refresh per id as well, all in
+	// series, twenty minutes later again.
+	//
+	// Every failure is `unreadable`, including a thrown fetch (timeout, network):
+	// these lookups sit inside a pass that has already done its useful work, and
+	// a throw here would report the whole engine as failed.
+	lookupEvents: async (
+		ctx: Ctx,
+		eventIds: string[],
+	): Promise<Map<string, CalendarEventLookup>> => {
+		if (eventIds.length === 0) return new Map();
+		const token = await getAccessToken(ctx);
+		if (!token) {
+			return new Map(eventIds.map((id) => [id, { status: "unreadable" }]));
+		}
+		const looked = await mapBounded(
+			eventIds,
+			EVENT_LOOKUP_CONCURRENCY,
+			async (eventId): Promise<readonly [string, CalendarEventLookup]> => {
+				try {
+					const lookup = await getCalendarEvent(token, eventId);
+					if (lookup.status !== "found") return [eventId, lookup] as const;
+					return [
+						eventId,
+						{ status: "found", event: toOption(lookup.event) },
+					] as const;
+				} catch (error) {
+					console.error("[google-calendar] event lookup failed", {
+						userId: ctx.userId,
+						eventId,
+						error,
+					});
+					return [eventId, { status: "unreadable" }] as const;
+				}
+			},
+		);
+		return new Map(looked);
+	},
+
 	// Writes an all-day vacation marker to the requester's primary calendar and
 	// returns the created event id (null if the token is missing/insufficient).
 	// `endDate` is the inclusive last day off; Google's end.date is exclusive so
@@ -160,14 +222,17 @@ const fetchTimedEvents = async (
 	timeMax: Date,
 ): Promise<CalendarEventOption[]> => {
 	const events = await listCalendarEvents(token, { timeMin, timeMax });
-	return events.filter(isImportableEvent).map((event) => ({
-		id: event.id,
-		title: event.summary?.trim() || "(no title)",
-		// oxlint-disable-next-line typescript/no-non-null-assertion -- guaranteed present by the filter above
-		start: event.start!.dateTime!,
-		// oxlint-disable-next-line typescript/no-non-null-assertion -- guaranteed present by the filter above
-		end: event.end!.dateTime!,
-		meetingUrl: extractMeetingUrl(event),
-		htmlLink: event.htmlLink ?? null,
-	}));
+	return events.filter(isImportableEvent).map(toOption);
 };
+
+/** Normalize one event that has passed `isImportableEvent`. */
+const toOption = (event: GoogleCalendarEvent): CalendarEventOption => ({
+	id: event.id,
+	title: event.summary?.trim() || "(no title)",
+	// oxlint-disable-next-line typescript/no-non-null-assertion -- every caller filtered on isImportableEvent, which requires both instants
+	start: event.start!.dateTime!,
+	// oxlint-disable-next-line typescript/no-non-null-assertion -- every caller filtered on isImportableEvent, which requires both instants
+	end: event.end!.dateTime!,
+	meetingUrl: extractMeetingUrl(event),
+	htmlLink: event.htmlLink ?? null,
+});
