@@ -264,7 +264,7 @@ export function StartTimerDialog({
 					</div>
 					<div className="grid gap-2">
 						<Label htmlFor="timer-head-start">
-							Already worked
+							Timer starts from
 							<span className="text-muted-foreground"> (optional)</span>
 						</Label>
 						<Input
@@ -280,7 +280,7 @@ export function StartTimerDialog({
 									setHeadStart(formatClock(headStartSeconds));
 								}
 							}}
-							placeholder="0:30, if you forgot to start it"
+							placeholder="0:30"
 							inputMode="decimal"
 							aria-invalid={headStartSeconds === null}
 							aria-describedby={
