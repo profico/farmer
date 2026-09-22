@@ -39,6 +39,14 @@ const ruleDuration = z
 		{ message: "A recurring block cannot exceed 24 hours" },
 	);
 
+/** The weekdays a rule runs on, 0 = Sunday, as a set: deduplicated and
+ *  sorted. `[1, 1, 1]` used to be stored as given, so a rule read as running
+ *  three times on a Monday, and two rules on the same days compared unequal. */
+const ruleWeekdays = z
+	.array(z.number().int().min(0).max(6))
+	.min(1, "Pick at least one day")
+	.transform((days) => [...new Set(days)].sort((a, b) => a - b));
+
 // The mandatory note is not checked here: whether a rule needs one depends on
 // its task (a Break rule does not, a Development rule does — `lib/task-rules.ts`)
 // and the schema only sees an id. The service asserts it with the task row in
@@ -48,9 +56,7 @@ export const createRecurringBlockRuleInput = z.object({
 	taskId: z.uuid(),
 	projectId: z.uuid().optional(),
 	description: z.string().optional(),
-	daysOfWeek: z
-		.array(z.number().int().min(0).max(6))
-		.min(1, "Pick at least one day"),
+	daysOfWeek: ruleWeekdays,
 	duration: ruleDuration,
 	effectiveFrom: dayKeySchema.optional(),
 	effectiveUntil: dayKeySchema.optional(),
@@ -68,10 +74,7 @@ export const updateRecurringBlockRuleInput = z.object({
 	// project by design — would be a one-way door.
 	projectId: z.uuid().nullable().optional(),
 	description: z.string().optional(),
-	daysOfWeek: z
-		.array(z.number().int().min(0).max(6))
-		.min(1, "Pick at least one day")
-		.optional(),
+	daysOfWeek: ruleWeekdays.optional(),
 	duration: ruleDuration.optional(),
 	effectiveFrom: dayKeySchema.optional(),
 	effectiveUntil: dayKeySchema.optional(),

@@ -33,7 +33,10 @@ import {
 	timeEntry,
 } from "../db/schema/domain";
 import { MAX_DAY_SECONDS } from "../lib/working-day";
-import { createRecurringBlockRuleInput } from "../schema/recurring-block-rules";
+import {
+	createRecurringBlockRuleInput,
+	updateRecurringBlockRuleInput,
+} from "../schema/recurring-block-rules";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
@@ -750,5 +753,41 @@ describe("a recurring block never takes a day past 24 hours", () => {
 		expect(monday).toHaveLength(1);
 		const total = monday.reduce((sum, e) => sum + e.durationSeconds, 0);
 		expect(total).toBeLessThanOrEqual(MAX_DAY_SECONDS);
+	});
+});
+
+// A rule's weekdays were stored as sent, so `[1, 1, 1]` was three Mondays.
+describe("a rule's weekdays are a set", () => {
+	test("the schema drops duplicates and sorts", () => {
+		const parsed = createRecurringBlockRuleInput.parse({
+			taskId: breakTaskId,
+			daysOfWeek: [5, 1, 1, 3, 5],
+			duration: "30m",
+		});
+		expect(parsed.daysOfWeek).toEqual([1, 3, 5]);
+		const update = updateRecurringBlockRuleInput.parse({
+			ruleId: breakTaskId,
+			daysOfWeek: [2, 2],
+		});
+		expect(update.daysOfWeek).toEqual([2]);
+	});
+
+	test("a rule saved through the schema stores each day once", async () => {
+		const rule = await recurringBlockRulesService.create(
+			ctx,
+			createRecurringBlockRuleInput.parse({
+				taskId: breakTaskId,
+				daysOfWeek: [1, 1, 1],
+				duration: "30m",
+				description: "Break",
+			}),
+		);
+		const stored = present(
+			await db.query.recurringBlockRule.findFirst({
+				where: eq(recurringBlockRule.id, rule.id),
+			}),
+			"the saved rule",
+		);
+		expect(stored.daysOfWeek).toEqual([1]);
 	});
 });
