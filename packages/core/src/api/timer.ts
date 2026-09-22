@@ -32,6 +32,10 @@ export type ApiTimer = {
 	 *  asks for a note exactly when one is required. */
 	task: { id: string; name: string; needsDescription: boolean };
 	project: { id: string; name: string } | null;
+	/** The entry this timer continues (issue #107), or null when stopping it
+	 *  logs a new one. `elapsedSeconds` already includes what the entry held,
+	 *  and `date` is the day to confirm it on. */
+	entry: { id: string; date: string; durationSeconds: number } | null;
 	/** The workspace the entry will land in. A timer belongs to the person, not
 	 *  to a workspace, so a client reading from another one still sees it and
 	 *  can say where it is running. */
@@ -49,6 +53,9 @@ export type TimerSource = {
 	taskName: string;
 	taskNeedsDescription: boolean;
 	description: string;
+	timeEntryId: string | null;
+	entryDate: string | null;
+	entrySeconds: number;
 	startedAt: Date;
 	paused: boolean;
 	droppedAt: Date | null;
@@ -74,6 +81,14 @@ export const toApiTimer = (row: TimerSource): ApiTimer => ({
 	project:
 		row.projectId && row.projectName
 			? { id: row.projectId, name: row.projectName }
+			: null,
+	entry:
+		row.timeEntryId && row.entryDate
+			? {
+					id: row.timeEntryId,
+					date: row.entryDate,
+					durationSeconds: row.entrySeconds,
+				}
 			: null,
 	organization: {
 		slug: row.organizationSlug,

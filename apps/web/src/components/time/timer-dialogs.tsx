@@ -121,6 +121,13 @@ export function StartTimerDialog({
 	);
 	const [taskId, setTaskId] = useState("");
 	const [description, setDescription] = useState("");
+	// Time already worked before somebody remembered the timer (issue #107).
+	// Empty is no head start; it is added to what the clock measures, and the
+	// sum is what gets snapped when it stops.
+	const [headStart, setHeadStart] = useState("");
+	const headStartSeconds = headStart.trim()
+		? parseDuration(headStart.trim())
+		: 0;
 	const queryClient = useQueryClient();
 
 	// The dialog opens on the pair you last measured, the way the Log time
@@ -134,6 +141,7 @@ export function StartTimerDialog({
 	useEffect(() => {
 		if (!open) return;
 		setDescription("");
+		setHeadStart("");
 
 		const last = readLastPick("timer", orgSlug);
 		if (defaultProjectId) {
@@ -187,6 +195,7 @@ export function StartTimerDialog({
 					projectId: projectId ?? undefined,
 					taskId,
 					description: description.trim() || undefined,
+					headStartSeconds: headStartSeconds || undefined,
 				},
 			}),
 		onSuccess: async () => {
@@ -253,6 +262,22 @@ export function StartTimerDialog({
 							rows={2}
 						/>
 					</div>
+					<div className="grid gap-2">
+						<Label htmlFor="timer-head-start">
+							Already worked
+							<span className="text-muted-foreground"> (optional)</span>
+						</Label>
+						<Input
+							id="timer-head-start"
+							value={headStart}
+							onChange={(e) => {
+								setHeadStart(e.target.value);
+							}}
+							placeholder="0:30, if you forgot to start it"
+							inputMode="decimal"
+							aria-invalid={headStartSeconds === null}
+						/>
+					</div>
 				</div>
 
 				<DialogFooter>
@@ -261,7 +286,9 @@ export function StartTimerDialog({
 						onClick={() => {
 							mutation.mutate();
 						}}
-						disabled={!taskId || mutation.isPending}
+						disabled={
+							!taskId || headStartSeconds === null || mutation.isPending
+						}
 					>
 						{mutation.isPending ? "Starting…" : "Start"}
 					</Button>
@@ -286,7 +313,10 @@ export function StartTimerDialog({
  *
  * The timer survives every refusal — a full day, a missing note, a task
  * archived while it ran — because `timersService.confirm` writes the entry and
- * clears the timer in one transaction. So this dialog stays open on an error
+ * clears the timer in one transaction.
+ *
+ * A timer that continues an entry (issue #107) opens on that entry's day and
+ * saves over it, so the words say "update" rather than "log". So this dialog stays open on an error
  * and the measurement is still there to correct.
  */
 export function StopTimerDialog({
@@ -303,7 +333,8 @@ export function StopTimerDialog({
 	onOpenChange: (open: boolean) => void;
 }) {
 	const queryClient = useQueryClient();
-	const startDay = dayKeyInTz(timer.startedAt, timezone);
+	const continuing = timer.timeEntryId != null;
+	const startDay = timer.entryDate ?? dayKeyInTz(timer.startedAt, timezone);
 
 	const [duration, setDuration] = useState(formatClock(timer.snappedSeconds));
 	const [date, setDate] = useState(startDay);
@@ -325,7 +356,7 @@ export function StopTimerDialog({
 		if (filled.current) return;
 		filled.current = true;
 		setDuration(formatClock(timer.snappedSeconds));
-		setDate(dayKeyInTz(timer.startedAt, timezone));
+		setDate(timer.entryDate ?? dayKeyInTz(timer.startedAt, timezone));
 		setProjectId(timer.projectId);
 		setTaskId(timer.taskId);
 		setDescription(timer.description);
@@ -362,7 +393,11 @@ export function StopTimerDialog({
 			// told you where the next timer belongs.
 			if (projectId) rememberLastPick("timer", orgSlug, { projectId, taskId });
 			await invalidateAfterTimer(queryClient, orgSlug, true);
-			toast.success(`Logged ${formatClock(seconds)}`);
+			toast.success(
+				continuing
+					? `Updated the entry to ${formatClock(seconds)}`
+					: `Logged ${formatClock(seconds)}`,
+			);
 			onOpenChange(false);
 		},
 		onError: (error: Error) =>
@@ -386,9 +421,13 @@ export function StopTimerDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Log the time</DialogTitle>
+					<DialogTitle>
+						{continuing ? "Update the entry" : "Log the time"}
+					</DialogTitle>
 					<p className="text-sm text-muted-foreground">
-						{`The clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes. Change anything here before it goes on your timesheet, or resume and keep measuring.`}
+						{continuing
+							? `The entry held ${formatClock(timer.entrySeconds)}. With the time measured since, the clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes. Change anything here before it is saved, or resume and keep measuring.`
+							: `The clock is held at ${formatClock(timer.elapsedSeconds)}, rounded to the nearest 15 minutes. Change anything here before it goes on your timesheet, or resume and keep measuring.`}
 					</p>
 				</DialogHeader>
 
@@ -499,7 +538,11 @@ export function StopTimerDialog({
 								(needsDescription && !description.trim())
 							}
 						>
-							{confirm.isPending ? "Logging…" : `Log ${formatClock(seconds)}`}
+							{confirm.isPending
+								? continuing
+									? "Saving…"
+									: "Logging…"
+								: `${continuing ? "Save" : "Log"} ${formatClock(seconds)}`}
 						</Button>
 					</div>
 				</DialogFooter>
@@ -577,12 +620,15 @@ export function DroppedTimerDialog({
 export function DiscardTimerDialog({
 	orgSlug,
 	measured,
+	continuing = false,
 	open,
 	onOpenChange,
 }: {
 	orgSlug: string;
 	/** The figure as the card shows it, so the question names what is lost. */
 	measured: string;
+	/** The timer continues an entry, which keeps what it held before. */
+	continuing?: boolean;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
@@ -603,7 +649,9 @@ export function DiscardTimerDialog({
 				<AlertDialogHeader>
 					<AlertDialogTitle>Discard this timer?</AlertDialogTitle>
 					<AlertDialogDescription>
-						{`${measured} was measured and nothing has been logged yet. Discarding throws the measurement away.`}
+						{continuing
+							? `The clock is at ${measured}. Discarding throws away what it measured, and the entry keeps what it held before.`
+							: `${measured} was measured and nothing has been logged yet. Discarding throws the measurement away.`}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>

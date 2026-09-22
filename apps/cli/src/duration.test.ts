@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { addToDuration, formatHours, parseQuarterHours } from "./duration";
+import {
+	addToDuration,
+	formatHours,
+	parseHeadStart,
+	parseQuarterHours,
+} from "./duration";
 
 describe("parseQuarterHours", () => {
 	test("reads the three forms the issue names", () => {
@@ -56,4 +61,18 @@ test("formatHours prints H:MM", () => {
 	expect(formatHours(5400)).toBe("1:30");
 	expect(formatHours(0)).toBe("0:00");
 	expect(formatHours(36_900)).toBe("10:15");
+});
+
+describe("parseHeadStart", () => {
+	// Added to a measurement, so any minute is fine: the sum is snapped later.
+	test("reads any whole minute", () => {
+		expect(parseHeadStart("20m")).toBe(20 * 60);
+		expect(parseHeadStart("1:10")).toBe(70 * 60);
+	});
+
+	test("refuses nothing, a typo and a whole day", () => {
+		expect(() => parseHeadStart("0")).toThrow(/Enter some time/);
+		expect(() => parseHeadStart("soon")).toThrow(/Cannot read/);
+		expect(() => parseHeadStart("24h")).toThrow(/shorter than a day/);
+	});
 });

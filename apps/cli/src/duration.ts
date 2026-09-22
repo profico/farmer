@@ -67,6 +67,25 @@ export const addToDuration = (
 	return total;
 };
 
+/**
+ * The head start of `farmer start --head-start 20m` (issue #107): time already
+ * worked before the timer began. Any whole minute, not a quarter hour — it is
+ * added to a measurement, and the sum is what gets snapped when it stops.
+ */
+export const parseHeadStart = (input: string): number => {
+	const seconds = parseDuration(input);
+	if (seconds === null) {
+		throw new UsageError(
+			`Cannot read "${input}" as a duration. Use 20m, 1h30m or 1:30.`,
+		);
+	}
+	if (seconds <= 0) throw new UsageError("Enter some time.");
+	if (seconds >= MAX_ENTRY_SECONDS) {
+		throw new UsageError("A head start must be shorter than a day.");
+	}
+	return seconds;
+};
+
 /** `H:MM`, the form the web app displays every duration in. */
 export const formatHours = (seconds: number): string => {
 	const minutes = Math.round(seconds / 60);

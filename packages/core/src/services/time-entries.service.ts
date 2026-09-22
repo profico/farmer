@@ -1793,7 +1793,7 @@ export const timeEntriesService = {
 	},
 
 	update: async (ctx: Ctx, input: UpdateTimeEntryInput) => {
-		const existing = await db.query.timeEntry.findFirst({
+		const existing = await ctxDb(ctx).query.timeEntry.findFirst({
 			where: and(
 				eq(timeEntry.id, input.timeEntryId),
 				eq(timeEntry.organizationId, ctx.organizationId),
@@ -1811,11 +1811,11 @@ export const timeEntriesService = {
 		// the dialog alone, so the CLI and the MCP tools meet the same rule.
 		if (input.date !== existing.date) {
 			const [commit, pullRequestEvent] = await Promise.all([
-				db.query.timeEntryGithubCommit.findFirst({
+				ctxDb(ctx).query.timeEntryGithubCommit.findFirst({
 					where: eq(timeEntryGithubCommit.timeEntryId, existing.id),
 					columns: { id: true },
 				}),
-				db.query.timeEntryGithubPrActivity.findFirst({
+				ctxDb(ctx).query.timeEntryGithubPrActivity.findFirst({
 					where: eq(timeEntryGithubPrActivity.timeEntryId, existing.id),
 					columns: { id: true },
 				}),
@@ -1843,7 +1843,7 @@ export const timeEntriesService = {
 		// as `create` asks it, because the index answers with a driver error that
 		// the web app and the REST API can only report as a server failure.
 		if (input.fillsDay) {
-			const otherFill = await db.query.timeEntry.findFirst({
+			const otherFill = await ctxDb(ctx).query.timeEntry.findFirst({
 				where: and(
 					eq(timeEntry.organizationId, ctx.organizationId),
 					eq(timeEntry.userId, ctx.userId),

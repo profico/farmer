@@ -22,7 +22,8 @@ nothing is written until a person confirms a duration.
 | `apps/web/src/components/time/timer-row.tsx` | The sidebar control card and the button beside "Log time" |
 | `apps/web/src/components/time/timer-dialogs.tsx` | Start, Stop-and-log, and the dropped notice |
 | `apps/web/src/components/time/timer-settings.tsx` | The cap, on Settings → My schedule |
-| `apps/cli/src/commands/timer.ts` | `farmer start`, `pause`, `resume`, `stop`, `timer`, `timer discard` |
+| `apps/cli/src/commands/timer.ts` | `farmer start`, `continue`, `pause`, `resume`, `stop`, `timer`, `timer discard` |
+| `apps/web/src/components/time/entry-block-row.tsx` | The Start button on each entry, which continues it |
 
 ## The states
 
@@ -85,7 +86,8 @@ held, and every surface says so.
 
 ## The day the entry lands on
 
-The day the timer **started**, in the organization's timezone. A timer run
+The day the timer **started**, in the organization's timezone — or, for a
+timer that continues an entry, that entry's day. A timer run
 through midnight logs to the day the work began. The confirm input carries the
 date rather than deriving it, so the dialog can move the entry — which is the
 ordinary correction for a timer left running into the small hours.
@@ -122,3 +124,30 @@ is the courtesy.
   inbox. A timer may run without a project, and the entry is filed later, as
   any unfiled entry is.
 - **No reminder while a timer runs.** The cap is the answer to forgetting.
+
+## Not from zero (issue #107)
+
+Two ways to start a timer that has already counted something. Both go
+through `timersService.start`, and both still end in `confirm`.
+
+- **A head start** (`headStartSeconds`): time worked before somebody
+  remembered the timer. It is banked in `accumulated_seconds` as if the clock
+  had measured it, and `started_at` moves back by it, because that is when the
+  work began. It counts towards the cap, so `start` refuses a head start that
+  is not shorter than the cap — the sweep would drop the timer on its next
+  pass otherwise. Any whole second, not a quarter hour: the sum is snapped.
+- **Continuing an entry** (`timeEntryId`), the way Harvest restarts a row. The
+  timer takes the entry's project, task and note, and `running_timer.
+  time_entry_id` points at it. The entry's duration is **joined on every read,
+  never copied**: `elapsedSeconds` is the entry's hours plus what the clock
+  measured, an edit to the entry while the clock runs is kept, and
+  `accumulated_seconds` holds only the clock's own part — which is also why
+  the cap does not count the entry's hours. `confirm` rewrites the entry
+  through `timeEntriesService.update`, keeping its overtime mark, and puts it
+  on the entry's day unless the person moves it. Deleting the entry sets the
+  column to null (`on delete set null`), and the timer becomes an ordinary one
+  that writes a new entry. A work-time block cannot be continued: its length
+  is recomputed from the day, and would overwrite the clock.
+
+Discarding a continuing timer leaves the entry as it was; only the clock's
+part is thrown away.

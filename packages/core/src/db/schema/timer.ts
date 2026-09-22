@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { organization, user } from "./auth";
-import { project, task } from "./domain";
+import { project, task, timeEntry } from "./domain";
 
 const ts = (name: string) =>
 	timestamp(name, { withTimezone: true, mode: "date" });
@@ -59,12 +59,22 @@ export const runningTimer = pgTable(
 			.notNull()
 			.references(() => task.id, { onDelete: "cascade" }),
 		description: text("description").notNull().default(""),
+		// The entry this timer continues (issue #107), or null for a timer that
+		// will write a new one. The entry's own duration is not copied here: the
+		// read joins it, so an edit to the entry while the clock runs is kept, and
+		// a deleted entry leaves a timer that simply writes a new one — which is
+		// what `set null` is for. `accumulatedSeconds` holds only what the clock
+		// itself measured, so the cap is still a limit on forgotten time.
+		timeEntryId: uuid("time_entry_id").references(() => timeEntry.id, {
+			onDelete: "set null",
+		}),
 		// When the clock first began. Never rewritten, not even by a resume: it is
 		// the day the entry lands on and the time the surfaces say "since".
 		startedAt: ts("started_at").notNull().defaultNow(),
 		// The two fields a pause needs, and no more. A timer is a chain of
 		// running segments: `runningSince` is when the current one began, and
-		// `accumulatedSeconds` is what the finished ones came to. Paused means
+		// `accumulatedSeconds` is what the finished ones came to, plus the head
+		// start somebody gave a timer they started late. Paused means
 		// `runningSince` is null, so a paused timer measures nothing and the
 		// elapsed figure is frozen at the sum — which is why a pause may last for
 		// as long as somebody wants.

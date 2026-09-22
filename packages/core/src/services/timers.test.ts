@@ -505,3 +505,196 @@ describe("the cap", () => {
 		});
 	});
 });
+
+describe("a head start (issue #107)", () => {
+	test("counts the time given as measured, and began that long ago", async () => {
+		await timersService.start(
+			ctx(),
+			{ projectId, taskId: devTaskId, headStartSeconds: 30 * 60 },
+			{ now: START },
+		);
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(HOUR) }),
+			"the running timer",
+		);
+		expect(view.elapsedSeconds).toBe(HOUR + 30 * 60);
+		expect(view.startedAt).toEqual(later(-30 * 60));
+	});
+
+	test("survives a pause", async () => {
+		await timersService.start(
+			ctx(),
+			{ projectId, taskId: devTaskId, headStartSeconds: 30 * 60 },
+			{ now: START },
+		);
+		await timersService.pause(ctx(), { now: later(HOUR) });
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(5 * HOUR) }),
+			"the held timer",
+		);
+		expect(view.elapsedSeconds).toBe(HOUR + 30 * 60);
+	});
+
+	// The sweep drops a timer past the cap. A head start at or over it would
+	// be dropped on the next pass, which is a refusal the person never sees.
+	test("must leave room under the cap", async () => {
+		await timersService.setSettings(ctx(), { maxSeconds: 2 * HOUR });
+
+		await expect(
+			timersService.start(
+				ctx(),
+				{ projectId, taskId: devTaskId, headStartSeconds: 2 * HOUR },
+				{ now: START },
+			),
+		).rejects.toThrow(/shorter than your timer limit/);
+		expect(await timersService.get(ctx(), { now: START })).toBeNull();
+	});
+});
+
+describe("continuing an entry (issue #107)", () => {
+	const insertEntry = async (
+		over: Partial<typeof timeEntry.$inferInsert> = {},
+	) => {
+		const [row] = await db
+			.insert(timeEntry)
+			.values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				date: "2026-08-10",
+				projectId,
+				taskId: devTaskId,
+				description: "Yesterday's work",
+				durationSeconds: HOUR,
+				...over,
+			})
+			.returning();
+		return present(row, "the entry to continue");
+	};
+
+	test("takes the entry's project, task and note, and counts its hours", async () => {
+		const entry = await insertEntry();
+
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(40 * 60) }),
+			"the running timer",
+		);
+		expect(view.timeEntryId).toBe(entry.id);
+		expect(view.entryDate).toBe("2026-08-10");
+		expect(view.projectId).toBe(projectId);
+		expect(view.taskId).toBe(devTaskId);
+		expect(view.description).toBe("Yesterday's work");
+		expect(view.elapsedSeconds).toBe(HOUR + 40 * 60);
+		expect(view.snappedSeconds).toBe(HOUR + 45 * 60);
+	});
+
+	test("confirming rewrites the entry instead of writing another", async () => {
+		const entry = await insertEntry({ overtime: true });
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+
+		const saved = await timersService.confirm(ctx(), {
+			date: "2026-08-10",
+			projectId,
+			taskId: devTaskId,
+			description: "Yesterday's work, finished",
+			durationSeconds: HOUR + 45 * 60,
+			overtime: false,
+		});
+
+		expect(saved.id).toBe(entry.id);
+		const rows = await db.select().from(timeEntry);
+		expect(rows).toHaveLength(1);
+		const row = present(rows[0], "the continued entry");
+		expect(row.durationSeconds).toBe(HOUR + 45 * 60);
+		expect(row.description).toBe("Yesterday's work, finished");
+		// No surface that confirms a timer shows the mark, so it is kept.
+		expect(row.overtime).toBe(true);
+		expect(await timersService.get(ctx(), { now: later(HOUR) })).toBeNull();
+	});
+
+	test("a pause banks only what the clock measured", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await timersService.pause(ctx(), { now: later(30 * 60) });
+		await timersService.resume(ctx(), { now: later(HOUR) });
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(HOUR + 15 * 60) }),
+			"the resumed timer",
+		);
+		expect(view.elapsedSeconds).toBe(HOUR + 45 * 60);
+	});
+
+	test("follows an edit made to the entry while the clock runs", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ durationSeconds: 2 * HOUR })
+			.where(eq(timeEntry.id, entry.id));
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(15 * 60) }),
+			"the running timer",
+		);
+		expect(view.elapsedSeconds).toBe(2 * HOUR + 15 * 60);
+	});
+
+	test("an entry deleted while the clock ran becomes a new one", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db.delete(timeEntry).where(eq(timeEntry.id, entry.id));
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(30 * 60) }),
+			"the running timer",
+		);
+		expect(view.timeEntryId).toBeNull();
+		expect(view.elapsedSeconds).toBe(30 * 60);
+
+		const saved = await timersService.confirm(ctx(), {
+			date: DAY,
+			projectId,
+			taskId: devTaskId,
+			description: "Yesterday's work",
+			durationSeconds: 30 * 60,
+			overtime: false,
+		});
+		expect(saved.id).not.toBe(entry.id);
+	});
+
+	test("refuses a work-time block", async () => {
+		const entry = await insertEntry({ fillsDay: true });
+
+		await expect(
+			timersService.start(ctx(), { timeEntryId: entry.id }, { now: START }),
+		).rejects.toThrow(/cannot continue it/);
+	});
+
+	test("refuses time off", async () => {
+		const entry = await insertEntry({
+			projectId: null,
+			taskId: vacationTaskId,
+			description: "",
+		});
+
+		await expect(
+			timersService.start(ctx(), { timeEntryId: entry.id }, { now: START }),
+		).rejects.toThrow(/Time off/);
+	});
+
+	test("refuses an entry in another workspace", async () => {
+		const entry = await insertEntry();
+
+		await expect(
+			timersService.start(
+				otherCtx(),
+				{ timeEntryId: entry.id },
+				{ now: START },
+			),
+		).rejects.toThrow(/not found/);
+	});
+});

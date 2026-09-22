@@ -5,7 +5,7 @@ import {
 	timeKeyInTz,
 } from "@farmer/core/lib/time";
 import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -30,6 +30,7 @@ import { formatClock } from "#/lib/format-hours.ts";
 import { useHeightTransition } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
+import { timerQuery } from "#/queries/timer.ts";
 import {
 	acknowledgeCalendarChange,
 	createTimeEntry,
@@ -39,6 +40,7 @@ import {
 	updateTimeEntryDuration,
 	useCalendarValues,
 } from "#/server/time-entries.ts";
+import { startTimer } from "#/server/timer.ts";
 
 // Notes longer than this are cut on the row until "Show more" is pressed.
 const NOTE_LIMIT = 220;
@@ -288,6 +290,27 @@ export function EntryBlockRow({
 		},
 	});
 
+	// Continue this entry on the stopwatch (issue #107), the way Harvest restarts
+	// a row: the timer measures on top of what the entry holds and saves over
+	// it when stopped. Only the id of the entry being timed is selected, so the
+	// one-second tick of a running timer does not re-render every row.
+	const { data: timedEntryId } = useQuery({
+		...timerQuery(orgSlug),
+		select: (timer) => timer?.timeEntryId ?? null,
+	});
+	const continuable = !entry.task.isAbsence && !entry.fillsDay;
+	const continueMutation = useMutation({
+		mutationFn: () => startTimer({ data: { timeEntryId: entry.id } }),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timer],
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not start the timer");
+		},
+	});
+
 	const overtimeMutation = useMutation({
 		mutationFn: (overtime: boolean) =>
 			setTimeEntryOvertime({ data: { timeEntryId: entry.id, overtime } }),
@@ -390,8 +413,8 @@ export function EntryBlockRow({
 	});
 
 	return (
-		// Wraps in a narrow column. The figure and the three word-buttons are a
-		// fixed ~180px; holding them on the same line as the text squeezed a
+		// Wraps in a narrow column. The figure and the four word-buttons are a
+		// fixed ~250px; holding them on the same line as the text squeezed a
 		// project name down to a dozen characters and turned every note into a
 		// five-line column, so under 28rem they drop to their own right-aligned
 		// line.
@@ -712,6 +735,39 @@ export function EntryBlockRow({
 						disabled
 					>
 						OT
+					</Button>
+				)}
+				{/* The same unseen-slot rule as OT above: an entry a timer cannot
+				    continue keeps the button's width, so the column stays put. */}
+				{continuable ? (
+					<Button
+						variant="ghost"
+						size="sm"
+						// Fixed, so "Timing" and "Start" take the same room.
+						className={cn(
+							"w-16 text-faint",
+							timedEntryId === entry.id && "text-ok",
+						)}
+						onClick={() => continueMutation.mutate()}
+						disabled={continueMutation.isPending || timedEntryId === entry.id}
+						title={
+							timedEntryId === entry.id
+								? "A timer is adding to this entry"
+								: "Start a timer that adds to this entry"
+						}
+					>
+						{timedEntryId === entry.id ? "Timing" : "Start"}
+					</Button>
+				) : (
+					<Button
+						variant="ghost"
+						size="sm"
+						className="invisible w-16"
+						aria-hidden
+						tabIndex={-1}
+						disabled
+					>
+						Start
 					</Button>
 				)}
 				<AddBlockDialog

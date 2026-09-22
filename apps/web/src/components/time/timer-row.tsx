@@ -14,6 +14,7 @@ import {
 	TooltipTrigger,
 } from "#/components/ui/tooltip.tsx";
 import { useTimer } from "#/hooks/use-timer.ts";
+import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { cn } from "#/lib/utils.ts";
 
 import {
@@ -108,6 +109,8 @@ export function TimerCard({
 						</div>
 						<div className="truncate text-xs text-muted-foreground">
 							{timer.taskName}
+							{timer.entryDate &&
+								` · adds to ${formatDateKeyShort(timer.entryDate)}`}
 						</div>
 					</div>
 
@@ -242,6 +245,7 @@ export function TimerCard({
 						<DiscardTimerDialog
 							orgSlug={orgSlug}
 							measured={figure}
+							continuing={timer.timeEntryId != null}
 							open={discardOpen}
 							onOpenChange={setDiscardOpen}
 						/>

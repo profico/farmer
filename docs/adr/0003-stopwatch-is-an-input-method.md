@@ -112,3 +112,18 @@ paid.
   Discard, Resume and Log rather than Discard and Log. A figure somebody is
   correcting must not grow while they type, and opening the form to look at it
   is not a decision to stop.
+
+## Amendment, 22 September 2026 — a timer may start from a figure
+
+Issue #107 asked for a head start, for a timer somebody forgot to start, and
+for a timer that continues an existing entry, as Harvest's does. Both are in.
+
+- **The entry model still does not change.** A continued entry is rewritten
+  through `timeEntriesService.update`, so the day's 24 hours, the note and the
+  15-minute step apply exactly as they do to an edit in the form.
+- **Nothing is written between starting and confirming**, as before. Starting
+  on an entry does not touch the entry; only confirming does, and discarding
+  leaves it as it was.
+- **The cap stays a limit on the clock.** A head start is part of the clock's
+  figure and counts towards it; an entry's own hours are not, because nobody
+  forgot them.
