@@ -44,7 +44,7 @@ import { updateInstanceSettings } from "#/server/instance-settings.ts";
  * The Infrastructure pages' shared half: the gate, the settings form one
  * section at a time, and the "test it" row two of the pages carry.
  *
- * **One form per page, one field per `INSTANCE_SETTINGS` entry.** The registry
+ * **One form per group, one field per `INSTANCE_SETTINGS` entry.** The registry
  * in `@farmer/core/lib/instance-settings` is the only list of what is
  * configurable, so the pages draw whatever it holds for their section and add
  * nothing by hand. A new setting shows up here without a line of UI.
@@ -274,10 +274,14 @@ function SettingField({
 	}
 
 	if (isSecret(setting)) {
+		// A locked secret cannot be replaced here, so its box shows only the
+		// hint of the environment's value.
 		const placeholder = removed
 			? "Removed when you save"
 			: setting.secretHint
-				? `${setting.secretHint} — type to replace`
+				? locked
+					? setting.secretHint
+					: `${setting.secretHint} — type to replace`
 				: "Not set";
 		// Remove is offered only for a stored secret: one from the environment
 		// is locked, and one that is not set has nothing to remove.
@@ -359,11 +363,13 @@ function SettingField({
 
 /**
  * One Infrastructure page's settings, grouped under the registry's own
- * sub-headings, with one Save for the lot.
+ * sub-headings, each group with its own Save.
  *
- * The form is remounted when the saved values change (the `key` below), so a
- * save, or a change another admin made, resets every box to what is stored
- * rather than leaving a stale draft on screen.
+ * A group is one app or one concern (Google, SMTP, the S3 store), and its
+ * values only make sense together, so a group saves as one. Two groups never
+ * share a save: a change to the single-org slug must not wait under, or be
+ * sent with, the GitHub app below it. The Save row shows only while its group
+ * has a change.
  */
 export function InstanceSettingsForm({
 	section,
@@ -379,24 +385,37 @@ export function InstanceSettingsForm({
 	confirmBeforeSave?: (changes: Changes) => Promise<SaveConfirmation | null>;
 }) {
 	const { data } = useSuspenseQuery(instanceSettingsQuery());
-	const settings = data.filter((setting) => setting.section === section);
-	return (
-		<SectionForm
-			key={JSON.stringify(settings)}
-			settings={settings}
-			groupNotes={groupNotes}
+	// The registry's order, which is also the order its groups first appear in.
+	const groups: { name: string; settings: InstanceSettingView[] }[] = [];
+	for (const setting of data) {
+		if (setting.section !== section) continue;
+		const group = groups.find((g) => g.name === setting.group);
+		if (group) group.settings.push(setting);
+		else groups.push({ name: setting.group, settings: [setting] });
+	}
+	return groups.map((group) => (
+		<GroupForm
+			// Remounted when the group's saved values change, so a save, or a
+			// change another admin made, resets its boxes to what is stored. The
+			// key is per group, so a save in one group keeps a draft in another.
+			key={`${group.name}:${JSON.stringify(group.settings)}`}
+			title={group.name}
+			description={groupNotes?.[group.name]}
+			settings={group.settings}
 			confirmBeforeSave={confirmBeforeSave}
 		/>
-	);
+	));
 }
 
-function SectionForm({
+function GroupForm({
+	title,
+	description,
 	settings,
-	groupNotes,
 	confirmBeforeSave,
 }: {
+	title: string;
+	description?: ReactNode;
 	settings: InstanceSettingView[];
-	groupNotes?: Record<string, ReactNode>;
 	confirmBeforeSave?: (changes: Changes) => Promise<SaveConfirmation | null>;
 }) {
 	const queryClient = useQueryClient();
@@ -425,7 +444,7 @@ function SectionForm({
 			reset();
 			setConfirming(null);
 			await queryClient.invalidateQueries({ queryKey: platformKeys.settings });
-			toast.success("Settings saved");
+			toast.success(`${title} saved`);
 		},
 		// The service refuses with the reason ("S3_BUCKET is set by the
 		// environment"), so show it rather than a generic failure.
@@ -456,63 +475,44 @@ function SectionForm({
 		save.mutate({ changes });
 	};
 
-	// The registry's order, which is also the order its groups first appear in.
-	const groups: { name: string; settings: InstanceSettingView[] }[] = [];
-	for (const setting of settings) {
-		const group = groups.find((g) => g.name === setting.group);
-		if (group) group.settings.push(setting);
-		else groups.push({ name: setting.group, settings: [setting] });
-	}
-
 	return (
-		<>
-			{groups.map((group) => (
-				<PageSection
-					key={group.name}
-					title={group.name}
-					description={groupNotes?.[group.name]}
-				>
-					<div className="grid gap-5">
-						{group.settings.map((setting) => (
-							<SettingField
-								key={setting.name}
-								setting={setting}
-								value={draft[setting.name] ?? ""}
-								removed={removed.has(setting.name)}
-								disabled={busy}
-								onChange={(value) =>
-									setDraft((current) => ({
-										...current,
-										[setting.name]: value,
-									}))
-								}
-								onRemove={(remove) =>
-									setRemoved((current) => {
-										const next = new Set(current);
-										if (remove) next.add(setting.name);
-										else next.delete(setting.name);
-										return next;
-									})
-								}
-							/>
-						))}
-					</div>
-				</PageSection>
-			))}
+		<PageSection title={title} description={description}>
+			<div className="grid gap-5">
+				{settings.map((setting) => (
+					<SettingField
+						key={setting.name}
+						setting={setting}
+						value={draft[setting.name] ?? ""}
+						removed={removed.has(setting.name)}
+						disabled={busy}
+						onChange={(value) =>
+							setDraft((current) => ({
+								...current,
+								[setting.name]: value,
+							}))
+						}
+						onRemove={(remove) =>
+							setRemoved((current) => {
+								const next = new Set(current);
+								if (remove) next.add(setting.name);
+								else next.delete(setting.name);
+								return next;
+							})
+						}
+					/>
+				))}
+			</div>
 
-			{/* Not a <form> around the sections: `.screen > section` is how the
-			    page drops the first section's rule, and a wrapper would hide
-			    every section from it. */}
-			<div className="mt-7 flex items-center gap-3">
-				<Button disabled={!changed || busy} onClick={() => void submit()}>
-					{busy ? "Saving…" : "Save"}
-				</Button>
-				{changed && (
+			{(changed || busy) && (
+				<div className="mt-5 flex items-center gap-3">
+					<Button disabled={busy} onClick={() => void submit()}>
+						{busy ? "Saving…" : "Save"}
+					</Button>
 					<Button variant="ghost" disabled={busy} onClick={reset}>
 						Discard
 					</Button>
-				)}
-			</div>
+				</div>
+			)}
 
 			<AlertDialog
 				open={confirming !== null}
@@ -545,7 +545,7 @@ function SectionForm({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</>
+		</PageSection>
 	);
 }
 

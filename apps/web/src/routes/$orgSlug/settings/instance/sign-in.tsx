@@ -211,7 +211,7 @@ function OAuthProvidersSection() {
 			description="Any provider that publishes an OpenID Connect discovery document, such as Authentik, Keycloak or Entra ID. Each one gets its own button on the sign-in page."
 			action={
 				<Button variant="outline" onClick={() => setEditing("new")}>
-					<PlusIcon />
+					<PlusIcon weight="regular" />
 					Add provider
 				</Button>
 			}
