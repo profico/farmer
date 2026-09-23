@@ -1,6 +1,8 @@
 /**
- * The security headers the production host puts on every dynamic response —
- * the SSR document, server functions and API routes (`server.ts`'s `/*`).
+ * The security headers the production host puts on every response — the SSR
+ * document, server functions and API routes (`server.ts`'s `/*`), and the
+ * static assets, whose routes answer before that wrapper and add them in
+ * `createResponseHandler` and the on-demand file route.
  *
  *  - `Content-Security-Policy: frame-ancestors 'none'` — no other site may
  *    frame the app, which is what a clickjacking page needs. Deliberately NOT

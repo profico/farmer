@@ -48,7 +48,7 @@ Dev is `vite dev`, which never loads `server.ts`. **Production is a Bun-native h
 
 **`Bun.serve` carries `idleTimeout: 255`, Bun's maximum, and it is load-bearing.** The default is 10 seconds, and Bun enforces it by closing the socket with an empty reply while the handler keeps running. A server function that works longer than that — "Re-match people" on Slack, a Harvest import step — then succeeds on the server while the browser gets an unreadable reply, which TanStack Start reports as the bare "Invariant failed". `vite dev` does not run `server.ts`, so this never reproduces locally. Work that can outlast 255 seconds belongs in a job, not a request.
 
-**Every dynamic response gets baseline security headers** in `server.ts`'s `/*` wrapper (`lib/security-headers.ts`): `frame-ancestors 'none'`, `nosniff` and a referrer policy. Not a full CSP, because the inline theme and PostHog scripts in `__root.tsx` would need hashes or a nonce first, and not HSTS, which belongs at the TLS edge. A header a route sets itself wins, which keeps `api/files/$.ts`'s `sandbox` policy whole. `vite dev` sends none of them.
+**Every response gets baseline security headers** (`lib/security-headers.ts`) — a dynamic one in `server.ts`'s `/*` wrapper, a static asset in its own route handler, because the static routes answer before the wrapper: `frame-ancestors 'none'`, `nosniff` and a referrer policy. Not a full CSP, because the inline theme and PostHog scripts in `__root.tsx` would need hashes or a nonce first, and not HSTS, which belongs at the TLS edge. A header a route sets itself wins, which keeps `api/files/$.ts`'s `sandbox` policy whole. `vite dev` sends none of them.
 
 ## Gotchas
 

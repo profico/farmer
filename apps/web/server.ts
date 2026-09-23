@@ -308,10 +308,15 @@ function createResponseHandler(
 		: "public, max-age=3600";
 
 	return (req: Request) => {
-		const headers = new Headers({
-			"Content-Type": asset.type,
-			"Cache-Control": cacheControl,
-		});
+		// The static routes answer before the `/*` wrapper that adds the
+		// security headers, so they add their own: an `/assets/*.svg` without
+		// `nosniff` or `frame-ancestors` is the gap the wrapper exists to close.
+		const headers = applySecurityHeaders(
+			new Headers({
+				"Content-Type": asset.type,
+				"Cache-Control": cacheControl,
+			}),
+		);
 		// An asset with a gzip variant answers differently per Accept-Encoding,
 		// so a shared cache must key on it. Without `Vary`, a CDN that stored the
 		// gzip body could serve it to a client that never asked for gzip. On the
@@ -325,10 +330,12 @@ function createResponseHandler(
 				// A 304 has to repeat Cache-Control. It is what refreshes the stored
 				// freshness lifetime, so omitting it left the client revalidating a
 				// still-good asset on every single request.
-				const notModified = new Headers({
-					ETag: asset.etag,
-					"Cache-Control": cacheControl,
-				});
+				const notModified = applySecurityHeaders(
+					new Headers({
+						ETag: asset.etag,
+						"Cache-Control": cacheControl,
+					}),
+				);
 				if (varies) notModified.set("Vary", "Accept-Encoding");
 				return new Response(null, { status: 304, headers: notModified });
 			}
@@ -443,10 +450,12 @@ async function initializeStaticRoutes(
 					routes[route] = () => {
 						const fileOnDemand = Bun.file(filepath);
 						return new Response(fileOnDemand, {
-							headers: {
-								"Content-Type": metadata.type,
-								"Cache-Control": "public, max-age=3600",
-							},
+							headers: applySecurityHeaders(
+								new Headers({
+									"Content-Type": metadata.type,
+									"Cache-Control": "public, max-age=3600",
+								}),
+							),
 						});
 					};
 
