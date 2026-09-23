@@ -1,44 +1,52 @@
 import {
-	getRepoContentsReadToken,
-	isGithubAppConfigured,
-} from "@farmer/core/lib/github-client";
-import { externalFetch } from "@farmer/core/lib/http";
+	cachedRead,
+	GithubPublicRateLimitError,
+	githubPublicGet,
+} from "@farmer/core/lib/github-public";
+import {
+	DEFAULT_SOURCE_REPOSITORY,
+	sourceRepository,
+} from "@farmer/core/lib/source-repository";
 import { z } from "zod";
 
 /**
  * What this build is, and who built it — the two facts behind the contributors
  * card at the foot of Settings.
  *
- * Server-only, and deliberately NOT imported at the top of `server/about.ts`:
- * `lib/github-client` reaches `node:crypto` at module scope, which is the
- * client-bundle rule in apps/web/CLAUDE.md. The server function defers this module
- * inside its handler.
+ * Server-only, and deferred inside the handler of `server/about.ts` for the
+ * client-bundle rule in apps/web/CLAUDE.md: it calls GitHub and reads `.git`.
  *
- * Both halves fail soft. A deployment with no GitHub App still runs, and a
- * GitHub outage costs the roster rather than the settings screen, so every
- * failure here comes back as an empty list rather than a throw.
+ * Both halves fail soft. A GitHub outage or a spent rate limit costs the
+ * roster rather than the settings screen, so every failure here comes back as
+ * an empty list rather than a throw.
  */
-
-const GITHUB_API = "https://api.github.com";
 
 /** How long a roster is held per process.
  *
  *  Six hours, and long on purpose. Contributors change on the order of weeks,
- *  and one refresh is not one request: it is the list plus a `/users/:login`
- *  read per person, up to fifty-one calls against the installation's hourly
- *  budget that the commit sync also spends from. `queries/about.ts` keeps the
+ *  and the read is anonymous (`lib/github-public.ts`): 60 requests an hour per
+ *  IP address, shared with the CLI downloads. `queries/about.ts` keeps the
  *  same figure so the browser does not ask for a copy the server is holding. */
 const CONTRIBUTORS_CACHE_MS = 6 * 60 * 60 * 1000;
 
-/** The ceiling on how many people are looked up by name below. The roster is a
- *  popover, not a page, and one `/users/:login` request per contributor is what
- *  turns a login into a person's name. */
+/** The ceiling on how many people the roster holds. It is a popover, not a
+ *  page. */
 const MAX_CONTRIBUTORS = 50;
+
+/** How long a display name is held. A week: people rename themselves rarely,
+ *  and each name costs one request from the anonymous budget. */
+const NAME_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** The most names one roster refresh looks up. The rest show their login
+ *  until a later refresh reaches them, so the first refresh costs at most
+ *  eleven requests of the sixty, not fifty-one. Most commits first, so the
+ *  faces on the card get their names before the tail of the list does. */
+const NAME_LOOKUPS_PER_REFRESH = 10;
 
 export type Contributor = {
 	login: string;
 	/** Their display name on GitHub, falling back to the login when they have
-	 *  not set one. */
+	 *  not set one, or when it has not been looked up yet. */
 	name: string;
 	avatarUrl: string;
 	profileUrl: string;
@@ -47,8 +55,8 @@ export type Contributor = {
 };
 
 export type DeploymentInfo = {
-	/** Most commits first. Empty when the App is unconfigured, uninstalled, or
-	 *  GitHub refused — the card renders nothing rather than an error. */
+	/** Most commits first. Empty when GitHub refused, or when the repository is
+	 *  not public — the card renders nothing rather than an error. */
 	contributors: Contributor[];
 	/** The commit this process is running, or null off a real build. */
 	commit: { sha: string; shortSha: string; url: string } | null;
@@ -66,98 +74,100 @@ const contributorList = z.array(
 
 const userProfile = z.object({ name: z.string().nullable() });
 
-const githubHeaders = (token: string) => ({
-	Authorization: `Bearer ${token}`,
-	Accept: "application/vnd.github+json",
-	"X-GitHub-Api-Version": "2022-11-28",
-	"User-Agent": "farmer-about",
-});
+const USER_AGENT = "farmer-about";
 
-let cache: { repo: string; fetchedAt: number; rows: Contributor[] } | null =
-	null;
+const rosters = cachedRead<Contributor[]>(CONTRIBUTORS_CACHE_MS);
 
-/** The repository this deployment is built from. The same one the CLI's
- *  releases come off, because it is the same repository — see
- *  `server/cli-releases.ts`. */
-export const sourceRepo = (): string =>
-	process.env.CLI_RELEASES_REPO?.trim() || "profico/farmer";
+/** Display names by login. `null` is "has none", which is an answer too. */
+const names = new Map<string, { name: string | null; at: number }>();
+
+/** One person's display name on GitHub, or null when they have not set one
+ *  or GitHub does not answer for them. */
+const lookUpName = async (login: string): Promise<string | null> => {
+	const profile = await githubPublicGet(
+		`/users/${encodeURIComponent(login)}`,
+		USER_AGENT,
+	);
+	if (!profile.ok) {
+		await profile.body?.cancel();
+		return null;
+	}
+	return userProfile.parse(await profile.json()).name;
+};
 
 /**
- * Everyone with a commit on the default branch, most commits first.
- *
- * The repository is private, so the browser cannot read this and neither can an
- * unauthenticated server. It goes through the GitHub App the commit sync and
- * the CLI installer already use, with a token narrowed to this one repository.
+ * The display names the roster shows, filling the cache for at most
+ * `NAME_LOOKUPS_PER_REFRESH` people. One at a time, so a spent rate limit stops
+ * the loop after one refused request rather than after ten.
+ */
+const resolveNames = async (logins: string[]): Promise<void> => {
+	const now = Date.now();
+	const due = logins
+		.filter((login) => {
+			const known = names.get(login);
+			return !known || now - known.at >= NAME_CACHE_MS;
+		})
+		.slice(0, NAME_LOOKUPS_PER_REFRESH);
+	for (const login of due) {
+		try {
+			names.set(login, { name: await lookUpName(login), at: Date.now() });
+		} catch (error) {
+			// A spent budget ends the round; anything else costs that one name.
+			if (error instanceof GithubPublicRateLimitError) return;
+		}
+	}
+};
+
+/**
+ * Everyone with a commit on the default branch, most commits first, read from
+ * the public repository with no token.
  */
 const readContributors = async (): Promise<Contributor[]> => {
-	if (!isGithubAppConfigured()) return [];
-	const repo = sourceRepo();
-	if (
-		cache &&
-		cache.repo === repo &&
-		Date.now() - cache.fetchedAt < CONTRIBUTORS_CACHE_MS
-	) {
-		return cache.rows;
-	}
-
-	const [owner, name] = repo.split("/");
-	if (!owner || !name) return [];
-
-	const token = await getRepoContentsReadToken(owner, name);
-	if (!token) return [];
-
-	const response = await externalFetch(
-		`${GITHUB_API}/repos/${repo}/contributors?per_page=100`,
-		{ headers: githubHeaders(token) },
-	);
-	if (!response.ok) {
-		throw new Error(
-			`GitHub answered ${response.status} for the contributor list`,
+	const repo = sourceRepository();
+	if (!repo) return [];
+	return rosters.read(repo, async () => {
+		const response = await githubPublicGet(
+			`/repos/${repo}/contributors?per_page=100`,
+			USER_AGENT,
 		);
-	}
-	const people = contributorList
-		.parse(await response.json())
-		// Dependabot and the release workflow commit like anybody else, and a
-		// card that says "built by" should not be counting them.
-		.filter(
-			(person) => person.type !== "Bot" && !person.login.endsWith("[bot]"),
-		)
-		// Sorted here rather than trusted: GitHub documents this endpoint as
-		// descending by commit count, but the stack shows the top four and the
-		// `+N` stands for everybody else, so the order IS the meaning of the
-		// card. Sorting costs nothing and makes it true rather than documented.
-		.sort((a, b) => b.contributions - a.contributions)
-		.slice(0, MAX_CONTRIBUTORS);
-
-	// The contributors endpoint carries no display name, and a roster of logins
-	// is a list of handles rather than of people. One request each, settled
-	// individually so a single 404 (a deleted account) costs that one name and
-	// not the list. Bounded by MAX_CONTRIBUTORS and cached for an hour.
-	const names = await Promise.allSettled(
-		people.map(async (person) => {
-			const profile = await externalFetch(
-				`${GITHUB_API}/users/${person.login}`,
-				{ headers: githubHeaders(token) },
+		// Missing or private: no roster, and cached as that answer.
+		if (response.status === 404) {
+			await response.body?.cancel();
+			return [];
+		}
+		if (!response.ok) {
+			await response.body?.cancel();
+			throw new Error(
+				`GitHub answered ${response.status} for the contributor list`,
 			);
-			if (!profile.ok) return null;
-			return userProfile.parse(await profile.json()).name;
-		}),
-	);
+		}
+		const people = contributorList
+			.parse(await response.json())
+			// Dependabot and the release workflow commit like anybody else, and a
+			// card that says "built by" should not be counting them.
+			.filter(
+				(person) => person.type !== "Bot" && !person.login.endsWith("[bot]"),
+			)
+			// Sorted here rather than trusted: GitHub documents this endpoint as
+			// descending by commit count, but the stack shows the top four and the
+			// `+N` stands for everybody else, so the order IS the meaning of the
+			// card. Sorting costs nothing and makes it true rather than documented.
+			.sort((a, b) => b.contributions - a.contributions)
+			.slice(0, MAX_CONTRIBUTORS);
 
-	const rows = people.map((person, index) => {
-		const resolved = names[index];
-		const displayName =
-			resolved?.status === "fulfilled" ? resolved.value : null;
-		return {
+		// The contributors endpoint carries no display name, and a roster of
+		// logins is a list of handles rather than of people. Looked up a few at a
+		// time and kept for a week (`resolveNames`).
+		await resolveNames(people.map((person) => person.login));
+
+		return people.map((person) => ({
 			login: person.login,
-			name: displayName || person.login,
+			name: names.get(person.login)?.name || person.login,
 			avatarUrl: person.avatar_url,
 			profileUrl: person.html_url,
 			contributions: person.contributions,
-		};
+		}));
 	});
-	cache = { repo, fetchedAt: Date.now(), rows };
-	return rows;
 };
 
 /**
@@ -258,7 +268,7 @@ const readCommit = async (): Promise<DeploymentInfo["commit"]> => {
 	return {
 		sha: resolvedSha,
 		shortSha: resolvedSha.slice(0, 7),
-		url: `https://github.com/${sourceRepo()}/commit/${resolvedSha}`,
+		url: `https://github.com/${sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY}/commit/${resolvedSha}`,
 	};
 };
 

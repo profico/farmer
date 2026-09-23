@@ -3,10 +3,10 @@
  * Linux, `irm <origin>/cli | iex` in Windows PowerShell.
  *
  * Both scripts download from THIS server (`/cli/download/<asset>`), never from
- * GitHub directly. The repository is private, so an anonymous script cannot
- * read its releases; the server holds the token and redirects each download to
- * GitHub's short-lived signed URL (`server/cli-releases.ts`). That also means a
- * deployment installs the binaries its own operator chose to point it at.
+ * GitHub directly. The server finds the newest release in the public releases
+ * repository and redirects each download to GitHub (`server/cli-releases.ts`).
+ * That means a deployment installs the binaries its own operator chose to
+ * point it at (`CLI_RELEASES_REPO`), and one cached lookup serves every script.
  *
  * The scripts are templates over one value, the origin, and it is embedded as a
  * quoted literal in each shell's own quoting rules. It comes from the
