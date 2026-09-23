@@ -1,6 +1,32 @@
 import { describe, expect, spyOn, test } from "bun:test";
 
-import { isSealed, openAndHeal, openSecret, sealSecret } from "./secret-box";
+import {
+	isSealed,
+	isSealedWithCurrentKey,
+	openAndHeal,
+	openSecret,
+	sealSecret,
+} from "./secret-box";
+
+/** Run `body` with BETTER_AUTH_SECRETS set to `value` (or removed, for
+ *  undefined), and put the old value back after it. */
+const withRotation = async (
+	value: string | undefined,
+	body: () => void | Promise<void>,
+) => {
+	const original = process.env.BETTER_AUTH_SECRETS;
+	if (value === undefined) delete process.env.BETTER_AUTH_SECRETS;
+	else process.env.BETTER_AUTH_SECRETS = value;
+	try {
+		await body();
+	} finally {
+		if (original === undefined) delete process.env.BETTER_AUTH_SECRETS;
+		else process.env.BETTER_AUTH_SECRETS = original;
+	}
+};
+
+const OLD = "1:the-first-secret-in-the-rotation-set";
+const NEW = "2:the-second-secret-in-the-rotation-set";
 
 describe("sealSecret / openSecret", () => {
 	test("round-trips, and the stored form does not carry the secret", () => {
@@ -101,5 +127,118 @@ describe("openAndHeal", () => {
 				"a test key",
 			),
 		).toBe("sk-or-v1-legacy");
+	});
+});
+
+describe("rotation through BETTER_AUTH_SECRETS", () => {
+	test("without it, seals as enc:v1 under BETTER_AUTH_SECRET", async () => {
+		await withRotation(undefined, () => {
+			const sealed = sealSecret("sk-or-v1-abc");
+			expect(sealed.startsWith("enc:v1:")).toBe(true);
+			expect(isSealedWithCurrentKey(sealed)).toBe(true);
+			expect(openSecret(sealed)).toBe("sk-or-v1-abc");
+		});
+	});
+
+	test("seals with the first (current) version", async () => {
+		await withRotation(`${NEW},${OLD}`, () => {
+			const sealed = sealSecret("sk-or-v1-abc");
+			expect(sealed.startsWith("enc:v2:2:")).toBe(true);
+			expect(isSealed(sealed)).toBe(true);
+			expect(isSealedWithCurrentKey(sealed)).toBe(true);
+			expect(openSecret(sealed)).toBe("sk-or-v1-abc");
+		});
+	});
+
+	test("still opens a legacy enc:v1 value with BETTER_AUTH_SECRET", async () => {
+		const legacy = sealSecret("sk-or-v1-legacy");
+		await withRotation(`${NEW},${OLD}`, () => {
+			expect(isSealedWithCurrentKey(legacy)).toBe(false);
+			expect(openSecret(legacy)).toBe("sk-or-v1-legacy");
+		});
+	});
+
+	test("opens an older version by direct lookup", async () => {
+		let old = "";
+		await withRotation(OLD, () => {
+			old = sealSecret("xoxb-old");
+		});
+		expect(old.startsWith("enc:v2:1:")).toBe(true);
+		await withRotation(`${NEW},${OLD}`, () => {
+			expect(isSealedWithCurrentKey(old)).toBe(false);
+			expect(openSecret(old)).toBe("xoxb-old");
+		});
+	});
+
+	test("the first entry is current, whatever its number", async () => {
+		await withRotation(`${OLD},${NEW}`, () => {
+			expect(sealSecret("x").startsWith("enc:v2:1:")).toBe(true);
+		});
+	});
+
+	test("refuses a version the list no longer holds", async () => {
+		let old = "";
+		await withRotation(OLD, () => {
+			old = sealSecret("xoxb-old");
+		});
+		await withRotation(NEW, () => {
+			expect(() => openSecret(old)).toThrow(/version 1 not found/);
+		});
+		await withRotation(undefined, () => {
+			expect(() => openSecret(old)).toThrow(/version 1 not found/);
+		});
+		expect(() => openSecret("enc:v2:nope")).toThrow(/no key version/);
+	});
+
+	test("refuses a malformed BETTER_AUTH_SECRETS, as better-auth does", async () => {
+		await withRotation("no-version-here", () => {
+			expect(() => sealSecret("x")).toThrow(/Invalid BETTER_AUTH_SECRETS/);
+		});
+		await withRotation("1:a,1:b", () => {
+			expect(() => sealSecret("x")).toThrow(/Duplicate version 1/);
+		});
+	});
+
+	test("openAndHeal reseals an old version under the current one", async () => {
+		let old = "";
+		await withRotation(OLD, () => {
+			old = sealSecret("xoxb-old");
+		});
+		const legacy = sealSecret("sk-or-v1-legacy");
+		await withRotation(`${NEW},${OLD}`, async () => {
+			for (const [stored, plaintext] of [
+				[old, "xoxb-old"],
+				[legacy, "sk-or-v1-legacy"],
+			] as const) {
+				const written: string[] = [];
+				expect(
+					await openAndHeal(
+						stored,
+						async (sealed) => {
+							written.push(sealed);
+						},
+						"a test key",
+					),
+				).toBe(plaintext);
+				expect(written).toHaveLength(1);
+				const resealed = written[0] ?? "";
+				expect(resealed.startsWith("enc:v2:2:")).toBe(true);
+				expect(openSecret(resealed)).toBe(plaintext);
+			}
+		});
+	});
+
+	test("openAndHeal leaves a value under the current version alone", async () => {
+		await withRotation(`${NEW},${OLD}`, async () => {
+			let calls = 0;
+			await openAndHeal(
+				sealSecret("xoxb-new"),
+				async () => {
+					calls++;
+				},
+				"a test key",
+			);
+			expect(calls).toBe(0);
+		});
 	});
 });
