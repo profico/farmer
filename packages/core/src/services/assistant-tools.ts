@@ -29,6 +29,7 @@ import { member, organization, user } from "../db/schema/auth";
 // passes over the same days at once — see `runExclusive`.
 import { runAutomationSyncForCtx } from "../jobs/automation-sync";
 import type { JsonRecord, JsonValue, Serializable } from "../lib/json";
+import { foldForSearch } from "../lib/search";
 import {
 	absenceReportInput,
 	absenceTotalsInput,
@@ -278,10 +279,12 @@ const nameOr = async (
 // use this tool", which is the only form of the question that can be answered
 // before the arguments exist.
 
-// How `list_members` decides two people share a name: case, surrounding space
-// and runs of inner space do not tell anyone apart.
+// How `list_members` decides two people share a name: the search box's fold
+// (case, accents, surrounding space), plus runs of inner space. None of them
+// tells anyone apart — "Ive Vasiljević" and "Ive Vasiljevic" are one name to
+// the person asking, who types it without the accent.
 const normalizedName = (name: string) =>
-	name.trim().replace(/\s+/g, " ").toLowerCase();
+	foldForSearch(name).replace(/\s+/g, " ");
 
 const adminOnly = (access: Access) => access.isAdmin;
 

@@ -874,6 +874,43 @@ describe("read tools", () => {
 		}
 	});
 
+	test("list_members treats names that differ only by accent as one", async () => {
+		// The person asking types "Vasiljevic"; the roster says "Vasiljević".
+		// Without the email on both rows the model cannot say which one it means.
+		const pair = ["u-ai-ive-1", "u-ai-ive-2"];
+		await db.insert(user).values(
+			pair.map((id, index) => ({
+				id,
+				name: index === 0 ? "Ive Vasiljević" : "IVE VASILJEVIC",
+				email: `${id}@example.com`,
+				emailVerified: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})),
+		);
+		await db.insert(member).values(
+			pair.map((id) => ({
+				id: `m-${id}`,
+				organizationId: ORG,
+				userId: id,
+				role: "member",
+				createdAt: new Date(),
+			})),
+		);
+		try {
+			const rows = z
+				.array(z.object({ userId: z.string(), email: z.string().nullable() }))
+				.parse(await findTool("list_members")?.run(ctxFor(ADMIN), {}));
+			const emailOf = new Map(rows.map((row) => [row.userId, row.email]));
+
+			expect(emailOf.get(pair[0] ?? "")).toBe("u-ai-ive-1@example.com");
+			expect(emailOf.get(pair[1] ?? "")).toBe("u-ai-ive-2@example.com");
+		} finally {
+			await db.delete(member).where(inArray(member.userId, pair));
+			await db.delete(user).where(inArray(user.id, pair));
+		}
+	});
+
 	test("every tool the model is offered can be dispatched", async () => {
 		// The list the model is shown and the list `findTool` can dispatch are two
 		// places, and a tool present in one and absent from the other fails only at
