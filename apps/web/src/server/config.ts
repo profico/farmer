@@ -66,6 +66,18 @@ export type PublicAppConfig = {
 	 */
 	devAuth: boolean;
 	/**
+	 * The sign-in buttons `/login` draws: Google when it has credentials, then
+	 * each OpenID Connect source switched on in Infrastructure → Sign-in
+	 * (`signInProviders` in `packages/core/src/auth/sign-in-methods.ts`). An id
+	 * and a label each, never a secret. Empty means no provider is configured.
+	 */
+	signInProviders: { id: string; name: string }[];
+	/**
+	 * Whether Google is one of them. `/login` bounces straight to Google, with
+	 * no page, when it is the only way in; see `routes/login.tsx`.
+	 */
+	googleSignIn: boolean;
+	/**
 	 * Whether this deployment has an object store for uploaded project icons
 	 * and organization logos (`S3_*`, `packages/core/src/lib/storage.ts`).
 	 *
@@ -88,6 +100,7 @@ export type PublicAppConfig = {
 export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 	async (): Promise<PublicAppConfig> => {
 		const [
+			{ signInProviders },
 			{ isSingleOrgMode, findSingleOrg },
 			{ isAssistantEnabled },
 			{ isMcpEnabled },
@@ -95,6 +108,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			{ isDevAuthEnabled },
 			{ isStorageEnabled },
 		] = await Promise.all([
+			import("@farmer/core/auth"),
 			import("@farmer/core/lib/single-org"),
 			import("@farmer/core/lib/assistant-flag"),
 			import("@farmer/core/lib/mcp-flag"),
@@ -107,6 +121,8 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 		const cliEnabled = isCliEnabled();
 		const devAuth = isDevAuthEnabled();
 		const uploadsEnabled = isStorageEnabled();
+		const providers = signInProviders();
+		const googleSignIn = providers.some((provider) => provider.id === "google");
 		// Parsed rather than passed through, so a trailing path or slash in the
 		// environment cannot end up doubled in the middle of a URL somebody
 		// pastes. An unparseable value is the same answer as a missing one.
@@ -120,6 +136,8 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 				cliEnabled,
 				appOrigin,
 				devAuth,
+				signInProviders: providers,
+				googleSignIn,
 				uploadsEnabled,
 				org: null,
 			};
@@ -132,10 +150,30 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			cliEnabled,
 			appOrigin,
 			devAuth,
+			signInProviders: providers,
+			googleSignIn,
 			uploadsEnabled,
 			org: org
 				? { slug: org.slug, name: org.name, logo: org.logo ?? null }
 				: null,
 		};
+	},
+);
+
+/**
+ * What `/login` offers for a password outside development: the form that
+ * creates the first account, the form a platform admin who has no provider
+ * yet signs in with, or nothing. See `passwordSignIn` in
+ * `packages/core/src/auth/sign-in-methods.ts`, and the `emailAndPassword`
+ * comment in `packages/core/src/auth/index.ts` for the gates behind it.
+ *
+ * Its own function rather than a field of `getPublicAppConfig`, because it
+ * reads the database and only `/login` needs it; the config runs on every
+ * navigation into a workspace.
+ */
+export const getPasswordSignIn = createServerFn({ method: "GET" }).handler(
+	async (): Promise<"first-account" | "administrator" | null> => {
+		const { passwordSignIn } = await import("@farmer/core/auth");
+		return passwordSignIn();
 	},
 );
