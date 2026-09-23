@@ -477,6 +477,13 @@
       "when": 1790167314756,
       "tag": "0067_slack_token_rejected",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1790167473512,
+      "tag": "0068_slack_reminder_attempts",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,7 @@
 import {
+	boolean,
 	index,
+	integer,
 	pgTable,
 	text,
 	timestamp,
@@ -72,6 +74,12 @@ export const memberSlackIdentity = pgTable(
 // claimed per (org, recipient, kind, day) and a duplicate insert is a no-op.
 // Every reminder is a DM, so the recipient is never null — which also keeps the
 // unique constraint meaningful (Postgres lets NULLs collide freely).
+//
+// `attempts` and `retry` carry a failed send to the next tick. A failed send
+// sets `retry`, and only a row with `retry` set may be claimed again, which
+// adds one to `attempts`. A row without it is settled: sent, given up on, or
+// in flight when the process stopped — a miss, never a duplicate. In the row
+// rather than in memory, so a restart does not reset the count.
 export const slackReminderLog = pgTable(
 	"slack_reminder_log",
 	{
@@ -85,6 +93,8 @@ export const slackReminderLog = pgTable(
 		kind: text("kind").notNull(),
 		/** Org-timezone day key (yyyy-MM-dd) the send belongs to. */
 		dayKey: text("day_key").notNull(),
+		attempts: integer("attempts").notNull().default(1),
+		retry: boolean("retry").notNull().default(false),
 		createdAt: ts("created_at").notNull().defaultNow(),
 	},
 	(t) => [
