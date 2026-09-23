@@ -312,7 +312,9 @@ const readShaFromGit = async (): Promise<string | null> => {
 	}
 };
 
-const readCommit = async (): Promise<DeploymentInfo["commit"]> => {
+/** The commit this process is running, or null off a real build. The
+ *  Changelog reads it too, to list the web changes up to this build. */
+export const readCommit = async (): Promise<DeploymentInfo["commit"]> => {
 	if (resolvedSha === undefined) {
 		resolvedSha =
 			shaFromEnvironment() ??
