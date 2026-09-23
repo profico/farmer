@@ -535,6 +535,15 @@ html:has(.fm-site) {
 	font-size: 13px;
 	color: var(--faint);
 }
+/* The wheat under the base line (wheat-field.tsx). Its height is the field's
+   own HEIGHT; the width grows more stalks rather than bigger ones. `pan-y`
+   keeps a vertical swipe scrolling the page on a touch screen. */
+.fm-site .fm-footer-field {
+	display: block;
+	width: 100%;
+	height: 160px;
+	touch-action: pan-y;
+}
 
 /* ---- Small screens ---------------------------------------------------- */
 @media (max-width: 760px) {

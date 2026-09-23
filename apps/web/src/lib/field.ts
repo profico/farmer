@@ -2,8 +2,9 @@ import { dayKeyInTz, timeKeyInTz } from "@farmer/core/lib/time";
 import { useEffect, useState } from "react";
 
 // The widescreen field — the crop rows on the ground behind the app frame.
-// This module is the clock; `components/field.tsx` draws it and the `field`
-// section of `styles.css` is the art.
+// This module is the clock; `components/field.tsx` draws it with
+// `lib/wheat-field.ts`, and the `field` section of `styles.css` sets its tint,
+// height and width gate.
 //
 // There is no switch. The field is on for everyone with a screen wide enough to
 // show it, which is what lets the whole thing server-render: nothing here reads

@@ -11,6 +11,7 @@ import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
 // Every rule the public site uses, scoped under `.fm-site`.
 import "./site.css";
+import { WheatField } from "./wheat-field.tsx";
 
 /**
  * Who is looking at a public page, so the CTAs can say it: their workspace
@@ -336,6 +337,7 @@ export function SiteFooter({ repository }: { repository: string }) {
 					.
 				</span>
 			</div>
+			<WheatField />
 		</footer>
 	);
 }
