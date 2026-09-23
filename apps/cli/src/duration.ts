@@ -1,12 +1,12 @@
 import {
 	formatDurationInput,
+	MAX_DAY_SECONDS as MAX_ENTRY_SECONDS,
 	parseDuration,
+	parseHeadStart as readHeadStart,
 	QUARTER_HOUR_SECONDS,
 } from "@farmer/core/lib/time";
 
 import { UsageError } from "./errors";
-
-const MAX_ENTRY_SECONDS = 24 * 3600;
 
 /**
  * Reads a duration the way the web app's inputs do (`1h30m`, `1.5`, `90m`,
@@ -69,21 +69,18 @@ export const addToDuration = (
 
 /**
  * The head start of `farmer start --head-start 20m` (issue #107): time already
- * worked before the timer began. Any whole minute, not a quarter hour — it is
- * added to a measurement, and the sum is what gets snapped when it stops.
+ * worked before the timer began. The rule is `parseHeadStart` in
+ * `@farmer/core/lib/time`, which the web dialog and `startTimerInput` read as
+ * well; this only turns its refusal into a usage error.
  */
 export const parseHeadStart = (input: string): number => {
-	const seconds = parseDuration(input);
-	if (seconds === null) {
+	const reading = readHeadStart(input);
+	if (!reading.ok) {
 		throw new UsageError(
-			`Cannot read "${input}" as a duration. Use 20m, 1h30m or 1:30.`,
+			reading.error.endsWith(".") ? reading.error : `${reading.error}.`,
 		);
 	}
-	if (seconds <= 0) throw new UsageError("Enter some time.");
-	if (seconds >= MAX_ENTRY_SECONDS) {
-		throw new UsageError("A head start must be shorter than a day.");
-	}
-	return seconds;
+	return reading.seconds;
 };
 
 /** `H:MM`, the form the web app displays every duration in. */

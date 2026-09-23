@@ -4,7 +4,7 @@ import { organization } from "../db/schema/auth";
 import { project, task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
 import { descriptionRequiredFor } from "../lib/task-rules";
-import { formatDurationLong, snapToQuarterHour } from "../lib/time";
+import { headStartTooLong, snapToQuarterHour } from "../lib/time";
 import type {
 	ConfirmTimerInput,
 	StartTimerInput,
@@ -265,9 +265,7 @@ export const timersService = {
 		if (headStartSeconds > 0) {
 			const { maxSeconds } = await readSettings(ctx);
 			if (headStartSeconds >= maxSeconds) {
-				throw new Error(
-					`A head start must be shorter than your timer limit of ${formatDurationLong(maxSeconds)}`,
-				);
+				throw new Error(headStartTooLong(maxSeconds));
 			}
 		}
 
@@ -421,71 +419,102 @@ export const timersService = {
 	 *
 	 * A timer that continues an entry rewrites that entry through
 	 * `timeEntriesService.update`, which owes the day the same rules `create`
-	 * does. The entry's overtime mark is kept: no surface that confirms a timer
-	 * shows it, so an absent one is not a request to clear it. An entry deleted
-	 * while the clock ran has already cleared `timeEntryId`, and the figure
-	 * becomes a new entry.
+	 * does. `update` is a full-form edit, so every field the caller left out is
+	 * taken from the entry: an absent project or note keeps the entry's, and the
+	 * overtime mark is kept, since no surface that confirms a timer shows it.
+	 *
+	 * Everything is read INSIDE the transaction, and the continued entry is
+	 * locked there before it is written. An entry deleted in another tab has
+	 * then either gone already — the lock finds nothing, and the figure becomes
+	 * a new entry, as `on delete set null` promises — or has to wait for this
+	 * write to commit. Deleting the timer's row last, and requiring that it
+	 * still be there, is what stops two surfaces confirming one timer twice.
 	 */
-	confirm: async (ctx: Ctx, input: ConfirmTimerInput) => {
-		const running = await read(ctx, new Date());
-		if (!running) throw new Error("No timer is running");
-		if (running.droppedAt) {
-			throw new Error("This timer was dropped and can only be dismissed");
-		}
-		if (!running.here) {
-			throw new Error(
-				`This timer belongs to ${running.organizationName}. Stop it there.`,
-			);
-		}
-
-		if (input.projectId) {
-			const live = await ctxDb(ctx).query.project.findFirst({
-				where: and(
-					eq(project.id, input.projectId),
-					eq(project.organizationId, ctx.organizationId),
-					eq(project.status, "active"),
-				),
-				columns: { id: true },
-			});
-			if (!live) {
+	confirm: async (ctx: Ctx, input: ConfirmTimerInput) =>
+		withCtxTx(ctx, async (txCtx) => {
+			const [row] = await rowOf(txCtx, ctx.userId);
+			if (!row) throw new Error("No timer is running");
+			if (row.droppedAt) {
+				throw new Error("This timer was dropped and can only be dismissed");
+			}
+			if (row.organizationId !== ctx.organizationId) {
 				throw new Error(
-					"That project is archived. Pick another one for this time.",
+					`This timer belongs to ${row.organizationName}. Stop it there.`,
 				);
 			}
-		}
 
-		const continued = running.timeEntryId
-			? await timeEntriesService.getOwn(ctx, running.timeEntryId)
-			: undefined;
+			if (input.projectId) {
+				const live = await ctxDb(txCtx).query.project.findFirst({
+					where: and(
+						eq(project.id, input.projectId),
+						eq(project.organizationId, ctx.organizationId),
+						eq(project.status, "active"),
+					),
+					columns: { id: true },
+				});
+				if (!live) {
+					throw new Error(
+						"That project is archived. Pick another one for this time.",
+					);
+				}
+			}
 
-		return withCtxTx(ctx, async (txCtx) => {
-			const fields = {
-				date: input.date,
-				projectId: input.projectId,
-				taskId: input.taskId,
-				description: input.description,
-				durationSeconds: input.durationSeconds,
-				fillsDay: false,
-			};
+			// FOR UPDATE, and a query of its own: Postgres cannot lock the
+			// nullable side of the outer join `rowOf` reads the entry through.
+			const [continued] = row.timeEntryId
+				? await ctxDb(txCtx)
+						.select({
+							id: timeEntry.id,
+							projectId: timeEntry.projectId,
+							description: timeEntry.description,
+							overtime: timeEntry.overtime,
+						})
+						.from(timeEntry)
+						.where(
+							and(
+								eq(timeEntry.id, row.timeEntryId),
+								eq(timeEntry.organizationId, ctx.organizationId),
+								eq(timeEntry.userId, ctx.userId),
+							),
+						)
+						.for("update")
+				: [];
+
 			const entry = continued
 				? await timeEntriesService.update(txCtx, {
-						...fields,
 						timeEntryId: continued.id,
+						date: input.date,
+						projectId:
+							(input.projectId === undefined
+								? continued.projectId
+								: input.projectId) ?? undefined,
+						taskId: input.taskId,
+						description: input.description ?? continued.description,
+						durationSeconds: input.durationSeconds,
 						overtime: input.overtime || continued.overtime,
+						fillsDay: false,
 					})
 				: await timeEntriesService.create(txCtx, {
-						...fields,
+						date: input.date,
+						projectId: input.projectId ?? undefined,
+						taskId: input.taskId,
+						description: input.description,
+						durationSeconds: input.durationSeconds,
 						overtime: input.overtime,
+						fillsDay: false,
 					});
 			if (!entry) throw new Error("Failed to log the time");
 
-			await ctxDb(txCtx)
+			const cleared = await ctxDb(txCtx)
 				.delete(runningTimer)
-				.where(eq(runningTimer.id, running.id));
+				.where(eq(runningTimer.id, row.id))
+				.returning({ id: runningTimer.id });
+			// Another surface confirmed or discarded it first. Throwing rolls
+			// the entry back, so the time is logged once.
+			if (cleared.length === 0) throw new Error("No timer is running");
 
 			return entry;
-		});
-	},
+		}),
 
 	/** Throw the timer away — or clear the notice a dropped one left. */
 	discard: async (ctx: Ctx): Promise<void> => {

@@ -48,3 +48,20 @@ export function useTimer(orgSlug: string) {
 		isPending,
 	};
 }
+
+/**
+ * The id of the entry a timer is adding to (issue #107), or null.
+ *
+ * Read ONCE by the list that draws the entries, and passed to each row as a
+ * prop, so a row never subscribes to the timer itself. Only the id is
+ * selected, so the one-second tick of a running timer re-renders nothing here.
+ * A timer the sweep dropped times nothing, as in `useTimer`.
+ */
+export function useTimedEntryId(orgSlug: string): string | null {
+	const { data } = useQuery({
+		...timerQuery(orgSlug),
+		select: (timer) =>
+			timer && timer.droppedAt == null ? timer.timeEntryId : null,
+	});
+	return data ?? null;
+}

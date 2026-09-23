@@ -666,6 +666,80 @@ describe("continuing an entry (issue #107)", () => {
 		expect(saved.id).not.toBe(entry.id);
 	});
 
+	// The reviewer's case: `POST /timer/confirm` with only the date, the task
+	// and the duration. `update` is a full-form edit, so forwarding the body
+	// as it came would unfile the entry and wipe its note.
+	test("an absent project or note keeps the entry's own", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+
+		await timersService.confirm(ctx(), {
+			date: "2026-08-10",
+			taskId: devTaskId,
+			durationSeconds: HOUR + 30 * 60,
+			overtime: false,
+		});
+
+		const [row] = await db
+			.select()
+			.from(timeEntry)
+			.where(eq(timeEntry.id, entry.id));
+		const saved = present(row, "the continued entry");
+		expect(saved.projectId).toBe(projectId);
+		expect(saved.description).toBe("Yesterday's work");
+		expect(saved.durationSeconds).toBe(HOUR + 30 * 60);
+	});
+
+	test("a null project and an empty note clear the entry's", async () => {
+		const entry = await insertEntry({ taskId: breakTaskId });
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+
+		await timersService.confirm(ctx(), {
+			date: "2026-08-10",
+			projectId: null,
+			taskId: breakTaskId,
+			description: "",
+			durationSeconds: HOUR + 30 * 60,
+			overtime: false,
+		});
+
+		const [row] = await db
+			.select()
+			.from(timeEntry)
+			.where(eq(timeEntry.id, entry.id));
+		const saved = present(row, "the continued entry");
+		expect(saved.projectId).toBeNull();
+		expect(saved.description).toBe("");
+	});
+
+	// A client read the timer while it still continued the entry, and the
+	// entry was deleted in another tab before Stop. The confirm reads the
+	// timer again inside its transaction, so it writes a new entry rather
+	// than failing on the one that is gone.
+	test("a confirm sent after the entry was deleted writes a new one", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		const seen = present(
+			await timersService.get(ctx(), { now: later(30 * 60) }),
+			"the timer as the client read it",
+		);
+		expect(seen.timeEntryId).toBe(entry.id);
+
+		await db.delete(timeEntry).where(eq(timeEntry.id, entry.id));
+
+		const saved = await timersService.confirm(ctx(), {
+			date: present(seen.entryDate, "the entry's day"),
+			projectId,
+			taskId: devTaskId,
+			description: "Yesterday's work",
+			durationSeconds: seen.snappedSeconds,
+			overtime: false,
+		});
+		expect(saved.id).not.toBe(entry.id);
+		expect(await db.select().from(timeEntry)).toHaveLength(1);
+		expect(await timersService.get(ctx(), { now: later(HOUR) })).toBeNull();
+	});
+
 	test("refuses a work-time block", async () => {
 		const entry = await insertEntry({ fillsDay: true });
 

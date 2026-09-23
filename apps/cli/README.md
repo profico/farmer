@@ -122,7 +122,11 @@ farmer today --json | jq '.[].durationSeconds'
   began before you remembered it. `farmer continue 2` starts the timer on the
   day's second entry: it measures on top of the entry's time, and
   `farmer stop` saves the total over that entry, on its own day, instead of
-  logging a new one. `farmer timer discard` leaves the entry as it was.
+  logging a new one. `farmer stop --duration 0:30` on a continued entry adds
+  0:30 to what the entry held, as `farmer edit --add` does, rather than
+  replacing it. A work-time block and time off cannot be continued, and the
+  list leaves them out. `farmer timer discard` leaves the entry as it was.
+  A head start must be shorter than a day, and shorter than your timer limit.
 - Durations: `1h30m`, `1.5` or `90m`, in 15-minute steps. `farmer edit --add`
   takes the same forms and adds them to the time the entry already holds, so
   a second stretch of work on one task needs no arithmetic.

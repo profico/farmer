@@ -220,23 +220,40 @@ export type SelectedEntry = {
 	entry: ApiTimeEntry | null;
 };
 
-/** The entry `edit` or `rm` acts on: the row number or id given, or a choice
- *  from the day's entries. */
+/** The sentence that says why a command cannot act on an entry, or null when
+ *  it can. */
+export type EntryRefusal = (entry: ApiTimeEntry) => string | null;
+
+/**
+ * The entry `edit`, `rm` or `continue` acts on: the row number or id given, or
+ * a choice from the day's entries.
+ *
+ * `refuse` names the rows the command cannot act on — `farmer continue` cannot
+ * continue a work-time block or time off. Such a row keeps its number, since
+ * the number is the one the table printed, but naming it fails here with the
+ * reason, before anything is posted, and the picker leaves it out.
+ */
 export const selectEntry = async (
 	out: Output,
 	entries: ApiTimeEntry[],
 	id: string | undefined,
 	day: string,
 	verb: string,
+	refuse: EntryRefusal = () => null,
 ): Promise<SelectedEntry> => {
 	// The same order the tables number, so row 3 here is the row 3 the person
 	// read. For one day the server's order already is it.
 	const ordered = sortEntries(entries);
+	const allowed = (row: ApiTimeEntry): SelectedEntry => {
+		const reason = refuse(row);
+		if (reason) throw new UsageError(reason);
+		return { id: row.id, entry: row };
+	};
 	if (id !== undefined) {
 		const number = rowNumber(id);
 		if (number !== null) {
 			const row = ordered[number - 1];
-			if (row) return { id: row.id, entry: row };
+			if (row) return allowed(row);
 			throw new UsageError(
 				ordered.length === 0
 					? `There are no entries on ${day}. Pass -d <date> for another day.`
@@ -244,13 +261,18 @@ export const selectEntry = async (
 			);
 		}
 		const found = findByIdPrefix(ordered, id);
-		if (found) return { id: found.id, entry: found };
+		if (found) return allowed(found);
 		if (isUuid(id)) return { id: id.toLowerCase(), entry: null };
 		throw new UsageError(
 			`No entry on ${day} has an id that starts with "${id}". Pass -d <date> for another day.`,
 		);
 	}
-	if (ordered.length === 0) {
+	// Numbered before the refused rows are left out, so a choice carries the
+	// number the table printed beside it.
+	const choices = ordered
+		.map((entry, index) => ({ entry, number: index + 1 }))
+		.filter(({ entry }) => refuse(entry) === null);
+	if (choices.length === 0) {
 		throw new CliError(`There are no entries on ${day} to ${verb}.`);
 	}
 	requireInteractive(
@@ -259,9 +281,9 @@ export const selectEntry = async (
 	);
 	const picked = await pickOne(
 		`Which entry do you want to ${verb}?`,
-		ordered.map((entry, index) => ({
+		choices.map(({ entry, number }) => ({
 			value: entry.id,
-			label: `${index + 1}. ${formatHours(entry.durationSeconds)}  ${entryWhat(entry)}`,
+			label: `${number}. ${formatHours(entry.durationSeconds)}  ${entryWhat(entry)}`,
 			hint: entry.description || undefined,
 		})),
 	);

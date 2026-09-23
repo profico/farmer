@@ -23,7 +23,7 @@ nothing is written until a person confirms a duration.
 | `apps/web/src/components/time/timer-dialogs.tsx` | Start, Stop-and-log, and the dropped notice |
 | `apps/web/src/components/time/timer-settings.tsx` | The cap, on Settings → My schedule |
 | `apps/cli/src/commands/timer.ts` | `farmer start`, `continue`, `pause`, `resume`, `stop`, `timer`, `timer discard` |
-| `apps/web/src/components/time/entry-block-row.tsx` | The Start button on each entry, which continues it |
+| `apps/web/src/components/time/entry-block-row.tsx` | The Start button on each entry, which continues it. The list reads the timed entry once (`useTimedEntryId`) and passes it down |
 
 ## The states
 
@@ -136,6 +136,11 @@ through `timersService.start`, and both still end in `confirm`.
   work began. It counts towards the cap, so `start` refuses a head start that
   is not shorter than the cap — the sweep would drop the timer on its next
   pass otherwise. Any whole second, not a quarter hour: the sum is snapped.
+  One reading, `parseHeadStart` in `lib/time.ts`, serves the web dialog and
+  the CLI, and `startTimerInput` uses the same bound: shorter than
+  `MAX_DAY_SECONDS`, so exactly a day is refused everywhere. The web dialog
+  also reads the person's cap (`timerSettingsQuery`) and refuses a head start
+  that does not fit under it in the field, in the service's own words.
 - **Continuing an entry** (`timeEntryId`), the way Harvest restarts a row. The
   timer takes the entry's project, task and note, and `running_timer.
   time_entry_id` points at it. The entry's duration is **joined on every read,
@@ -147,7 +152,22 @@ through `timersService.start`, and both still end in `confirm`.
   on the entry's day unless the person moves it. Deleting the entry sets the
   column to null (`on delete set null`), and the timer becomes an ordinary one
   that writes a new entry. A work-time block cannot be continued: its length
-  is recomputed from the day, and would overwrite the clock.
+  is recomputed from the day, and would overwrite the clock. Time off cannot
+  either, and `farmer continue` refuses both before it posts anything.
+
+  `update` is a full-form edit, so `confirm` fills what the caller left out
+  from the entry: an ABSENT `projectId` or `description` keeps the entry's,
+  `null` clears the project and `""` clears the note. Both clients send what
+  their form holds. `durationSeconds` is the entry's new total, so
+  `farmer stop --duration` on a continued entry adds the typed figure to what
+  the entry held, as `farmer edit --add` does.
+
+  `confirm` reads the timer inside its transaction and locks the continued
+  entry (`FOR UPDATE`) before it writes. An entry deleted in another tab is
+  then either gone — the lock finds nothing, and a new entry is written — or
+  waits for the confirm to commit. The timer's row is deleted last, and a
+  confirm that finds it already gone rolls back, so two surfaces cannot log
+  one timer twice.
 
 Discarding a continuing timer leaves the entry as it was; only the clock's
 part is thrown away.

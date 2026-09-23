@@ -35,6 +35,7 @@ import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { Of, StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useTimedEntryId } from "#/hooks/use-timer.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { orderedWeekdays } from "#/lib/weekdays.ts";
@@ -93,6 +94,7 @@ function OrgHome() {
 		holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 	);
 	const holidays = new Map(holidayEntries);
+	const timedEntryId = useTimedEntryId(orgSlug);
 
 	// The "by day" bars are clickable; the day the user picks drives the entry
 	// list beside them. Defaults to today.
@@ -381,6 +383,7 @@ function OrgHome() {
 								key={entry.id}
 								entry={entry}
 								timezone={organization.timezone}
+								timing={entry.id === timedEntryId}
 								className="-mx-4 sm:-mx-8"
 							/>
 						))}

@@ -9,7 +9,12 @@ import { dayKeyInTz } from "@farmer/core/lib/time";
 import type { ConfirmTimerInput, StartTimerInput } from "@farmer/core/schema";
 
 import { parseDay } from "../dates";
-import { formatHours, parseHeadStart, parseQuarterHours } from "../duration";
+import {
+	addToDuration,
+	formatHours,
+	parseHeadStart,
+	parseQuarterHours,
+} from "../duration";
 import { CancelledError, CliError } from "../errors";
 import {
 	bold,
@@ -309,6 +314,23 @@ export const start: Command = {
 const CONTINUE_USAGE = "farmer continue [n | id] [-d date] [--head-start <d>]";
 
 /**
+ * Why the server would refuse to continue an entry, said before anything is
+ * posted: a work-time block's length is recomputed from the day, and would
+ * overwrite the clock, and time off is booked as a span rather than measured.
+ * `timersService.start` refuses both as well — this only saves the round trip,
+ * and keeps the picker from offering them.
+ */
+export const whyNotContinued = (entry: ApiTimeEntry): string | null => {
+	if (entry.fillsDay) {
+		return "That entry is a work-time block. It fills whatever the day has left, so a timer cannot continue it.";
+	}
+	if (entry.task.isAbsence) {
+		return `That entry is time off (${entry.task.name}). Time off is booked as a span, not measured by a timer.`;
+	}
+	return null;
+};
+
+/**
  * `farmer continue` (issue #107): start the timer on an entry that already
  * exists, the way Harvest restarts a row. The timer takes the entry's project,
  * task and note, measures on top of what it holds, and `farmer stop` saves
@@ -325,6 +347,7 @@ export const continueEntry: Command = {
 		...HEAD_START_HELP,
 		"",
 		"`farmer stop` saves the total over the entry, on the entry's own day.",
+		"A work-time block and time off cannot be continued.",
 	],
 	run: async (args, runtime) => {
 		const { values, positionals } = parseCommandArgs(
@@ -353,6 +376,7 @@ export const continueEntry: Command = {
 			positionals[0],
 			day,
 			"continue",
+			whyNotContinued,
 		);
 
 		const body: StartTimerInput = { timeEntryId: id };
@@ -360,6 +384,24 @@ export const continueEntry: Command = {
 
 		await postStart(session, scope, out, body);
 	},
+};
+
+/**
+ * The figure `farmer stop` sends, which `confirm` writes as the entry's TOTAL.
+ *
+ * A typed `--duration` is the time this timer stands for, never that total: on
+ * a timer that continues an entry it is added to what the entry held, the way
+ * `farmer edit --add` adds. Sent as it was typed, `farmer stop --duration 0:30`
+ * on an entry of 3:00 would leave the entry at 0:30 and the 3:00 gone.
+ */
+export const stoppedDuration = (
+	timer: Pick<ApiTimer, "snappedSeconds" | "entry">,
+	typed: string | undefined,
+): number => {
+	if (typed === undefined) return timer.snappedSeconds;
+	return timer.entry
+		? addToDuration(timer.entry.durationSeconds, typed)
+		: parseQuarterHours(typed);
 };
 
 const STOP_USAGE =
@@ -375,7 +417,8 @@ export const stop: Command = {
 		"  -p, --project     Log against this project instead of the timer's.",
 		"  -t, --task        Log against this task instead of the timer's.",
 		"  --duration <d>    Log this instead of the measured time, in 15-minute",
-		"                    steps.",
+		"                    steps. On a timer that continues an entry, this is",
+		"                    added to what the entry held, as `farmer edit --add`.",
 		"  -d, --date        Log on this day instead of the day the timer started,",
 		"                    or the day of the entry it continues.",
 		"  --overtime        Mark the entry as overtime.",
@@ -429,7 +472,7 @@ export const stop: Command = {
 						dayKeyInTz(new Date(timer.startedAt), scope.clock.timeZone))
 					: parseDay(values.date, scope.clock),
 			taskId: timer.task.id,
-			durationSeconds: typed ?? timer.snappedSeconds,
+			durationSeconds: stoppedDuration(timer, values.duration),
 			overtime: values.overtime === true,
 		};
 		if (timer.project) body.projectId = timer.project.id;
@@ -440,8 +483,9 @@ export const stop: Command = {
 				scope.path("/projects"),
 			);
 			const chosen = await chooseProjectOrNone(out, projects, values.project);
-			if (chosen) body.projectId = chosen.id;
-			else body.projectId = undefined;
+			// Null, not absent: on a continued entry an absent project keeps the
+			// entry's own, and `-p none` asks to clear it.
+			body.projectId = chosen ? chosen.id : null;
 		}
 		if (values.task !== undefined) {
 			const taskList = await session.api.get<ApiTaskList>(scope.path("/tasks"));
@@ -471,7 +515,9 @@ export const stop: Command = {
 						? `${timer.task.name} needs a note. Type one, or stop with -m.`
 						: undefined,
 			);
-			body.description = answer.trim() || undefined;
+			// "" rather than absent: an emptied answer clears the note, where an
+			// absent one would keep a continued entry's.
+			body.description = answer.trim();
 		}
 
 		const entry = await session.api.post<ApiTimeEntry, ConfirmTimerInput>(
@@ -484,9 +530,14 @@ export const stop: Command = {
 		}
 		// `elapsedSeconds` of a continued entry includes the hours the entry
 		// already held, so the clock's own figure is what is left after them.
+		const clock = stopwatch(
+			timer.elapsedSeconds - (timer.entry?.durationSeconds ?? 0),
+		);
 		const measured = timer.entry
-			? `Measured ${stopwatch(timer.elapsedSeconds - timer.entry.durationSeconds)} on top of the ${formatHours(timer.entry.durationSeconds)} it held. Updated the entry to`
-			: `Measured ${stopwatch(timer.elapsedSeconds)}. Logged`;
+			? typed === null
+				? `Measured ${clock} on top of the ${formatHours(timer.entry.durationSeconds)} it held. Updated the entry to`
+				: `Measured ${clock}, and added ${formatHours(typed)} to the ${formatHours(timer.entry.durationSeconds)} it held. Updated the entry to`
+			: `Measured ${clock}. Logged`;
 		print(
 			`${measured} ${bold(out, formatHours(entry.durationSeconds))} on ${entryWhat(entry)} for ${dayTitle(entry.date)}. (${shortId(entry.id)})`,
 		);

@@ -5,7 +5,7 @@ import {
 	timeKeyInTz,
 } from "@farmer/core/lib/time";
 import { GitCommitIcon, GitPullRequestIcon } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -30,7 +30,6 @@ import { formatClock } from "#/lib/format-hours.ts";
 import { useHeightTransition } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
-import { timerQuery } from "#/queries/timer.ts";
 import {
 	acknowledgeCalendarChange,
 	createTimeEntry,
@@ -150,10 +149,17 @@ export function entryHeading(entry: EntryBlockRowEntry): string {
 export function EntryBlockRow({
 	entry,
 	timezone,
+	timing = false,
 	className,
 }: {
 	entry: EntryBlockRowEntry;
 	timezone: string;
+	/**
+	 * True while a timer is adding to this entry (issue #107). The list reads
+	 * it once through `useTimedEntryId` (`hooks/use-timer.ts`) and passes it
+	 * down, so no row subscribes to the timer on its own.
+	 */
+	timing?: boolean;
 	/**
 	 * Layout only, and in practice only the row's inset. The row is built for a
 	 * full-bleed list and carries the island's own padding (`px-4 sm:px-8`), so
@@ -292,14 +298,7 @@ export function EntryBlockRow({
 
 	// Continue this entry on the stopwatch (issue #107), the way Harvest restarts
 	// a row: the timer measures on top of what the entry holds and saves over
-	// it when stopped. Only the id of the entry being timed is selected, so the
-	// one-second tick of a running timer does not re-render every row. A timer
-	// the sweep dropped times nothing, as in `useTimer`.
-	const { data: timedEntryId } = useQuery({
-		...timerQuery(orgSlug),
-		select: (timer) =>
-			timer && timer.droppedAt == null ? timer.timeEntryId : null,
-	});
+	// it when stopped. Whether it already does is `timing`, from the list.
 	const continuable = !entry.task.isAbsence && !entry.fillsDay;
 	const continueMutation = useMutation({
 		mutationFn: () => startTimer({ data: { timeEntryId: entry.id } }),
@@ -746,19 +745,16 @@ export function EntryBlockRow({
 						variant="ghost"
 						size="sm"
 						// Fixed, so "Timing" and "Start" take the same room.
-						className={cn(
-							"w-16 text-faint",
-							timedEntryId === entry.id && "text-ok",
-						)}
+						className={cn("w-16 text-faint", timing && "text-ok")}
 						onClick={() => continueMutation.mutate()}
-						disabled={continueMutation.isPending || timedEntryId === entry.id}
+						disabled={continueMutation.isPending || timing}
 						title={
-							timedEntryId === entry.id
+							timing
 								? "A timer is adding to this entry"
 								: "Start a timer that adds to this entry"
 						}
 					>
-						{timedEntryId === entry.id ? "Timing" : "Start"}
+						{timing ? "Timing" : "Start"}
 					</Button>
 				) : (
 					<Button

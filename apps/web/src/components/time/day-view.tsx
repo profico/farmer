@@ -28,6 +28,7 @@ import { StartTimerButton } from "#/components/time/timer-row.tsx";
 import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { GhostRow } from "#/components/ui/ghost-row.tsx";
+import { useTimedEntryId } from "#/hooks/use-timer.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
@@ -56,6 +57,7 @@ export function DayView({
 }) {
 	const queryClient = useQueryClient();
 	const navigate = useNavigate();
+	const timedEntryId = useTimedEntryId(orgSlug);
 	// Read without suspending: the strip's "short" marks are a courtesy, and the
 	// day must never wait on them.
 	const { data: targets } = useQuery(myTargetsQuery(orgSlug));
@@ -232,7 +234,12 @@ export function DayView({
 				    as the window. */}
 				<div className="@container/entries divide-y divide-line2">
 					{sortedEntries.map((entry) => (
-						<EntryBlockRow key={entry.id} entry={entry} timezone={timezone} />
+						<EntryBlockRow
+							key={entry.id}
+							entry={entry}
+							timezone={timezone}
+							timing={entry.id === timedEntryId}
+						/>
 					))}
 				</div>
 				{/* The list ends on the way to add to it, whether or not it has rows.

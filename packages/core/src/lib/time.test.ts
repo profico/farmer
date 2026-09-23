@@ -5,7 +5,9 @@ import {
 	countWorkingDays,
 	formatDurationInput,
 	isValidDayKey,
+	MAX_DAY_SECONDS,
 	parseDuration,
+	parseHeadStart,
 	snapToQuarterHour,
 } from "./time";
 
@@ -117,6 +119,50 @@ describe("snapToQuarterHour", () => {
 		// entry the server then rejects for being zero.
 		expect(snapToQuarterHour(6 * MINUTE)).toBe(15 * MINUTE);
 		expect(snapToQuarterHour(1)).toBe(15 * MINUTE);
+	});
+});
+
+// One reading for the web dialog, the CLI and `startTimerInput` (issue #107).
+describe("parseHeadStart", () => {
+	test("reads any whole minute, not only quarter hours", () => {
+		expect(parseHeadStart("20m")).toEqual({ ok: true, seconds: 20 * MINUTE });
+		expect(parseHeadStart("1:07")).toEqual({
+			ok: true,
+			seconds: HOUR + 7 * MINUTE,
+		});
+	});
+
+	test("refuses what it cannot read, and no time at all", () => {
+		expect(parseHeadStart("soon")).toMatchObject({ ok: false });
+		expect(parseHeadStart("0")).toEqual({
+			ok: false,
+			error: "Enter some time.",
+		});
+	});
+
+	// Shorter than a day, so exactly a day is refused as well — the schema
+	// uses the same bound, and once allowed exactly 86400.
+	test("refuses a day or more", () => {
+		expect(parseHeadStart("23:59")).toMatchObject({ ok: true });
+		expect(parseHeadStart("24")).toEqual({
+			ok: false,
+			error: "A head start must be shorter than a day",
+		});
+		expect(parseHeadStart("25h")).toMatchObject({ ok: false });
+	});
+
+	test("refuses the person's limit in the service's own words", () => {
+		expect(parseHeadStart("12", 12 * HOUR)).toEqual({
+			ok: false,
+			error: "A head start must be shorter than your timer limit of 12 hours",
+		});
+		expect(parseHeadStart("11:59", 12 * HOUR)).toMatchObject({ ok: true });
+	});
+
+	test("never allows more than a day, whatever limit it is given", () => {
+		expect(parseHeadStart("24", 2 * MAX_DAY_SECONDS)).toMatchObject({
+			ok: false,
+		});
 	});
 });
 

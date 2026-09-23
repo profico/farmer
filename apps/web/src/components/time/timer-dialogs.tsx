@@ -2,6 +2,7 @@ import { descriptionRequiredFor } from "@farmer/core/lib/task-rules";
 import {
 	dayKeyInTz,
 	parseDuration,
+	parseHeadStart,
 	snapToQuarterHour,
 } from "@farmer/core/lib/time";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,6 +39,7 @@ import { formatClock } from "#/lib/format-hours.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
+import { timerSettingsQuery } from "#/queries/timer.ts";
 import type { getTimer } from "#/server/timer.ts";
 import {
 	confirmTimer,
@@ -125,17 +127,20 @@ export function StartTimerDialog({
 	// Empty is no head start; it is added to what the clock measures, and the
 	// sum is what gets snapped when it stops.
 	const [headStart, setHeadStart] = useState("");
-	const headStartSeconds = headStart.trim()
-		? parseDuration(headStart.trim())
-		: 0;
-	// The same ceiling as the CLI's `parseHeadStart`, so a bare "25" (read as
-	// hours) is refused here and never reaches the server as a raw Zod error.
+	// The ceiling `timersService.start` enforces is the person's timer limit,
+	// not a day, so it is read here: "13" against a 12-hour limit is refused
+	// in the field, in the service's own words, rather than as a toast. Until
+	// the limit arrives the day is the ceiling, and the service still checks.
+	const settingsQ = useQuery({
+		...timerSettingsQuery(orgSlug),
+		enabled: open,
+	});
+	const headStartReading = headStart.trim()
+		? parseHeadStart(headStart, settingsQ.data?.maxSeconds)
+		: null;
+	const headStartSeconds = headStartReading?.ok ? headStartReading.seconds : 0;
 	const headStartError =
-		headStartSeconds === null
-			? "Could not read that duration — try 0:30, 30m or 0.5"
-			: headStartSeconds >= 24 * 3600
-				? "A head start must be shorter than a day"
-				: null;
+		headStartReading && !headStartReading.ok ? headStartReading.error : null;
 	const queryClient = useQueryClient();
 
 	// The dialog opens on the pair you last measured, the way the Log time
@@ -404,9 +409,12 @@ export function StopTimerDialog({
 			confirmTimer({
 				data: {
 					date,
-					projectId: projectId ?? undefined,
+					// Null and "" rather than absent: on a timer that continues an
+					// entry, an absent project or note keeps the entry's, and this
+					// form shows both, so what it holds is what is meant.
+					projectId,
 					taskId,
-					description: description.trim() || undefined,
+					description: description.trim(),
 					durationSeconds: seconds,
 					overtime: false,
 				},
