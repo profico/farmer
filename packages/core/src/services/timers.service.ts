@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
 
 import { organization } from "../db/schema/auth";
-import { project, task } from "../db/schema/domain";
+import { project, task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
 import { descriptionRequiredFor } from "../lib/task-rules";
-import { snapToQuarterHour } from "../lib/time";
+import { headStartTooLong, snapToQuarterHour } from "../lib/time";
 import type {
 	ConfirmTimerInput,
 	StartTimerInput,
@@ -32,6 +32,12 @@ import type { Ctx } from "./types";
  * organization, but `get` deliberately does not filter by it: a timer running
  * in another workspace must be visible from this one, or the person is told
  * that nothing is running while something is.
+ *
+ * A timer may continue an entry (issue #107): it then measures on top of the
+ * entry's own duration, and confirming it rewrites that entry through
+ * `timeEntriesService.update` instead of writing a new one. The entry's
+ * duration is joined on every read rather than copied at start, so the clock
+ * and the timesheet never disagree about what the entry already holds.
  */
 
 /** The default cap on a timer nobody stopped. A missing `timer_settings` row
@@ -57,15 +63,24 @@ export type TimerView = {
 	 *  note it does not need is as wrong as refusing one it does. */
 	taskNeedsDescription: boolean;
 	description: string;
-	/** When the clock first began — never moved by a pause. */
+	/** The entry this timer continues, or null when stopping it writes a new
+	 *  one. `entryDate` is that entry's day, which is where the time lands. */
+	timeEntryId: string | null;
+	entryDate: string | null;
+	/** What the continued entry held before the clock began — part of
+	 *  `elapsedSeconds`, but not of what the clock measured. Zero otherwise. */
+	entrySeconds: number;
+	/** When the clock first began — never moved by a pause. A head start moves
+	 *  it back by the time it gives, since that is when the work began. */
 	startedAt: Date;
 	/** True while the clock is held. A paused timer measures nothing, keeps its
 	 *  figure and may be held for as long as somebody wants. */
 	paused: boolean;
 	/** Null while it runs; set once the sweep dropped it for passing the cap. */
 	droppedAt: Date | null;
-	/** Seconds measured so far, or the whole run of a dropped timer. Pauses are
-	 *  not in it: what is counted is the running segments. */
+	/** Seconds measured so far, or the whole run of a dropped timer, plus what
+	 *  a continued entry already held. Pauses are not in it: what is counted is
+	 *  the running segments. */
 	elapsedSeconds: number;
 	/** What confirming it would log: `snapToQuarterHour(elapsedSeconds)`, which
 	 *  rounds to the NEAREST quarter hour and never below one. The figure is
@@ -108,6 +123,9 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 			taskIsAbsence: task.isAbsence,
 			taskSystemKey: task.systemKey,
 			description: runningTimer.description,
+			timeEntryId: timeEntry.id,
+			entryDate: timeEntry.date,
+			entryDurationSeconds: timeEntry.durationSeconds,
 			startedAt: runningTimer.startedAt,
 			runningSince: runningTimer.runningSince,
 			accumulatedSeconds: runningTimer.accumulatedSeconds,
@@ -117,6 +135,7 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 		.innerJoin(organization, eq(organization.id, runningTimer.organizationId))
 		.innerJoin(task, eq(task.id, runningTimer.taskId))
 		.leftJoin(project, eq(project.id, runningTimer.projectId))
+		.leftJoin(timeEntry, eq(timeEntry.id, runningTimer.timeEntryId))
 		.where(eq(runningTimer.userId, userId))
 		.limit(1);
 
@@ -125,10 +144,13 @@ const viewOf = (
 	row: Awaited<ReturnType<typeof rowOf>>[number],
 	now: Date,
 ): TimerView => {
-	const elapsedSeconds = elapsedOf(row, now);
+	const { entryDurationSeconds, ...fields } = row;
+	const entrySeconds = entryDurationSeconds ?? 0;
+	const elapsedSeconds = entrySeconds + elapsedOf(row, now);
 
 	return {
-		...row,
+		...fields,
+		entrySeconds,
 		here: row.organizationId === ctx.organizationId,
 		taskNeedsDescription: descriptionRequiredFor({
 			isAbsence: row.taskIsAbsence,
@@ -139,6 +161,18 @@ const viewOf = (
 		snappedSeconds: snapToQuarterHour(elapsedSeconds),
 		serverNow: now,
 	};
+};
+
+const readSettings = async (ctx: Ctx): Promise<{ maxSeconds: number }> => {
+	const row = await ctxDb(ctx).query.timerSettings.findFirst({
+		where: and(
+			eq(timerSettings.organizationId, ctx.organizationId),
+			eq(timerSettings.userId, ctx.userId),
+		),
+		columns: { maxSeconds: true },
+	});
+
+	return { maxSeconds: row?.maxSeconds ?? DEFAULT_TIMER_MAX_SECONDS };
 };
 
 /** The person's own timer, or null. Reads by person, never by workspace. */
@@ -182,6 +216,14 @@ export const timersService = {
 	 * `running_timer_user_unq` would otherwise raise — which every surface can
 	 * only report as a server failure. `timeEntriesService.create` asks the same
 	 * question of the fill-block index for the same reason.
+	 *
+	 * Two ways to start that are not from zero (issue #107). A head start is
+	 * time worked before somebody remembered the timer: it is banked as if the
+	 * clock had measured it, `startedAt` moves back by it, and it must leave room
+	 * under the person's cap, or the sweep would drop the timer on its next
+	 * pass. Continuing an entry takes the entry's project, task and note, and
+	 * measures on top of what it holds; the entry's own hours do not count
+	 * towards the cap, which is a limit on a clock nobody stopped.
 	 */
 	start: async (
 		ctx: Ctx,
@@ -200,15 +242,38 @@ export const timersService = {
 			);
 		}
 
-		if (input.projectId) {
-			await assertProjectInOrg(ctx, input.projectId);
-			(await ctxAccess(ctx)).assertCanTrackOn(input.projectId);
+		let projectId = input.projectId;
+		let taskId = input.taskId;
+		let description = input.description?.trim() ?? "";
+		if (input.timeEntryId) {
+			const entry = await timeEntriesService.getOwn(ctx, input.timeEntryId);
+			if (!entry) throw new Error("Time entry not found");
+			// Its length is whatever the working day has left, so a clock on top
+			// of it would be overwritten by the next recompute.
+			if (entry.fillsDay) {
+				throw new Error(
+					"A work-time block fills the rest of the day, so a timer cannot continue it",
+				);
+			}
+			projectId = entry.projectId ?? undefined;
+			taskId = entry.taskId;
+			description = entry.description;
 		}
-		const taskRow = await assertTaskAvailable(
-			ctx,
-			input.taskId,
-			input.projectId,
-		);
+		if (!taskId) throw new Error("Pick a task, or an entry to continue");
+
+		const headStartSeconds = input.headStartSeconds ?? 0;
+		if (headStartSeconds > 0) {
+			const { maxSeconds } = await readSettings(ctx);
+			if (headStartSeconds >= maxSeconds) {
+				throw new Error(headStartTooLong(maxSeconds));
+			}
+		}
+
+		if (projectId) {
+			await assertProjectInOrg(ctx, projectId);
+			(await ctxAccess(ctx)).assertCanTrackOn(projectId);
+		}
+		const taskRow = await assertTaskAvailable(ctx, taskId, projectId);
 		if (taskRow.isAbsence) {
 			throw new Error("Time off is booked as a span, not measured by a timer");
 		}
@@ -218,11 +283,13 @@ export const timersService = {
 			.values({
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
-				projectId: input.projectId ?? null,
-				taskId: input.taskId,
-				description: input.description?.trim() ?? "",
-				startedAt: now,
+				projectId: projectId ?? null,
+				taskId,
+				description,
+				timeEntryId: input.timeEntryId ?? null,
+				startedAt: new Date(now.getTime() - headStartSeconds * 1000),
 				runningSince: now,
+				accumulatedSeconds: headStartSeconds,
 			});
 
 		const started = await read(ctx, now);
@@ -307,7 +374,9 @@ export const timersService = {
 			.update(runningTimer)
 			.set({
 				runningSince: null,
-				accumulatedSeconds: running.elapsedSeconds,
+				// Only what the clock measured. The entry's own hours are joined
+				// on every read, and banking them here would count them twice.
+				accumulatedSeconds: running.elapsedSeconds - running.entrySeconds,
 				updatedAt: now,
 			})
 			.where(eq(runningTimer.id, running.id));
@@ -347,53 +416,105 @@ export const timersService = {
 	 * The project is re-checked for being live, because a timer outlives the
 	 * project state that was true when it started — the same reason a recurring
 	 * block rule re-checks on every materializing pass.
+	 *
+	 * A timer that continues an entry rewrites that entry through
+	 * `timeEntriesService.update`, which owes the day the same rules `create`
+	 * does. `update` is a full-form edit, so every field the caller left out is
+	 * taken from the entry: an absent project or note keeps the entry's, and the
+	 * overtime mark is kept, since no surface that confirms a timer shows it.
+	 *
+	 * Everything is read INSIDE the transaction, and the continued entry is
+	 * locked there before it is written. An entry deleted in another tab has
+	 * then either gone already — the lock finds nothing, and the figure becomes
+	 * a new entry, as `on delete set null` promises — or has to wait for this
+	 * write to commit. Deleting the timer's row last, and requiring that it
+	 * still be there, is what stops two surfaces confirming one timer twice.
 	 */
-	confirm: async (ctx: Ctx, input: ConfirmTimerInput) => {
-		const running = await read(ctx, new Date());
-		if (!running) throw new Error("No timer is running");
-		if (running.droppedAt) {
-			throw new Error("This timer was dropped and can only be dismissed");
-		}
-		if (!running.here) {
-			throw new Error(
-				`This timer belongs to ${running.organizationName}. Stop it there.`,
-			);
-		}
-
-		if (input.projectId) {
-			const live = await ctxDb(ctx).query.project.findFirst({
-				where: and(
-					eq(project.id, input.projectId),
-					eq(project.organizationId, ctx.organizationId),
-					eq(project.status, "active"),
-				),
-				columns: { id: true },
-			});
-			if (!live) {
+	confirm: async (ctx: Ctx, input: ConfirmTimerInput) =>
+		withCtxTx(ctx, async (txCtx) => {
+			const [row] = await rowOf(txCtx, ctx.userId);
+			if (!row) throw new Error("No timer is running");
+			if (row.droppedAt) {
+				throw new Error("This timer was dropped and can only be dismissed");
+			}
+			if (row.organizationId !== ctx.organizationId) {
 				throw new Error(
-					"That project is archived. Pick another one for this time.",
+					`This timer belongs to ${row.organizationName}. Stop it there.`,
 				);
 			}
-		}
 
-		return withCtxTx(ctx, async (txCtx) => {
-			const entry = await timeEntriesService.create(txCtx, {
-				date: input.date,
-				projectId: input.projectId,
-				taskId: input.taskId,
-				description: input.description,
-				durationSeconds: input.durationSeconds,
-				overtime: input.overtime,
-				fillsDay: false,
-			});
+			if (input.projectId) {
+				const live = await ctxDb(txCtx).query.project.findFirst({
+					where: and(
+						eq(project.id, input.projectId),
+						eq(project.organizationId, ctx.organizationId),
+						eq(project.status, "active"),
+					),
+					columns: { id: true },
+				});
+				if (!live) {
+					throw new Error(
+						"That project is archived. Pick another one for this time.",
+					);
+				}
+			}
 
-			await ctxDb(txCtx)
+			// FOR UPDATE, and a query of its own: Postgres cannot lock the
+			// nullable side of the outer join `rowOf` reads the entry through.
+			const [continued] = row.timeEntryId
+				? await ctxDb(txCtx)
+						.select({
+							id: timeEntry.id,
+							projectId: timeEntry.projectId,
+							description: timeEntry.description,
+							overtime: timeEntry.overtime,
+						})
+						.from(timeEntry)
+						.where(
+							and(
+								eq(timeEntry.id, row.timeEntryId),
+								eq(timeEntry.organizationId, ctx.organizationId),
+								eq(timeEntry.userId, ctx.userId),
+							),
+						)
+						.for("update")
+				: [];
+
+			const entry = continued
+				? await timeEntriesService.update(txCtx, {
+						timeEntryId: continued.id,
+						date: input.date,
+						projectId:
+							(input.projectId === undefined
+								? continued.projectId
+								: input.projectId) ?? undefined,
+						taskId: input.taskId,
+						description: input.description ?? continued.description,
+						durationSeconds: input.durationSeconds,
+						overtime: input.overtime || continued.overtime,
+						fillsDay: false,
+					})
+				: await timeEntriesService.create(txCtx, {
+						date: input.date,
+						projectId: input.projectId ?? undefined,
+						taskId: input.taskId,
+						description: input.description,
+						durationSeconds: input.durationSeconds,
+						overtime: input.overtime,
+						fillsDay: false,
+					});
+			if (!entry) throw new Error("Failed to log the time");
+
+			const cleared = await ctxDb(txCtx)
 				.delete(runningTimer)
-				.where(eq(runningTimer.id, running.id));
+				.where(eq(runningTimer.id, row.id))
+				.returning({ id: runningTimer.id });
+			// Another surface confirmed or discarded it first. Throwing rolls
+			// the entry back, so the time is logged once.
+			if (cleared.length === 0) throw new Error("No timer is running");
 
 			return entry;
-		});
-	},
+		}),
 
 	/** Throw the timer away — or clear the notice a dropped one left. */
 	discard: async (ctx: Ctx): Promise<void> => {
@@ -402,17 +523,7 @@ export const timersService = {
 			.where(eq(runningTimer.userId, ctx.userId));
 	},
 
-	settings: async (ctx: Ctx): Promise<{ maxSeconds: number }> => {
-		const row = await ctxDb(ctx).query.timerSettings.findFirst({
-			where: and(
-				eq(timerSettings.organizationId, ctx.organizationId),
-				eq(timerSettings.userId, ctx.userId),
-			),
-			columns: { maxSeconds: true },
-		});
-
-		return { maxSeconds: row?.maxSeconds ?? DEFAULT_TIMER_MAX_SECONDS };
-	},
+	settings: readSettings,
 
 	setSettings: async (
 		ctx: Ctx,

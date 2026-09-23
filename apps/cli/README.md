@@ -60,7 +60,8 @@ farmer log <duration | fill> [description] [-p project] [-t task] [-d date] [--o
 farmer edit [n | id]                Change an entry
 farmer rm [n | id] [--yes]          Delete an entry
 
-farmer start [description] [-p project] [-t task]
+farmer start [description] [-p project] [-t task] [--head-start <d>]
+farmer continue [n | id] [-d date] [--head-start <d>]
 farmer pause                        Hold the clock; it measures nothing
 farmer resume                       Start measuring again
 farmer stop [-m text] [-p project] [-t task] [--duration <d>] [-d date] [--overtime]
@@ -117,6 +118,15 @@ farmer today --json | jq '.[].durationSeconds'
   again. A held timer keeps its figure and measures nothing, so it may be held
   for as long as you want and can never be dropped for passing your limit. What
   `farmer stop` logs is the time the timer ran, never the pauses.
+- `farmer start --head-start 20m` starts the timer at 0:20, for work you
+  began before you remembered it. `farmer continue 2` starts the timer on the
+  day's second entry: it measures on top of the entry's time, and
+  `farmer stop` saves the total over that entry, on its own day, instead of
+  logging a new one. `farmer stop --duration 0:30` on a continued entry adds
+  0:30 to what the entry held, as `farmer edit --add` does, rather than
+  replacing it. A work-time block and time off cannot be continued, and the
+  list leaves them out. `farmer timer discard` leaves the entry as it was.
+  A head start must be shorter than a day, and shorter than your timer limit.
 - Durations: `1h30m`, `1.5` or `90m`, in 15-minute steps. `farmer edit --add`
   takes the same forms and adds them to the time the entry already holds, so
   a second stretch of work on one task needs no arithmetic.

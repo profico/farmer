@@ -1,0 +1,2 @@
+ALTER TABLE "running_timer" ADD COLUMN "time_entry_id" uuid;--> statement-breakpoint
+ALTER TABLE "running_timer" ADD CONSTRAINT "running_timer_time_entry_id_time_entry_id_fk" FOREIGN KEY ("time_entry_id") REFERENCES "public"."time_entry"("id") ON DELETE set null ON UPDATE no action;

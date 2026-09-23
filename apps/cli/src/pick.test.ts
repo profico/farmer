@@ -64,4 +64,33 @@ describe("selectEntry", () => {
 		const picked = await selectEntry(out, entries, "33333333", DAY, "rm");
 		expect(picked.id).toBe("33333333-3333-4333-8333-333333333333");
 	});
+
+	// `farmer continue`: a refused row keeps its number, and naming it fails
+	// with the reason before anything is posted.
+	test("a refused row fails with the reason, and keeps its number", async () => {
+		const refuse = (row: ApiTimeEntry) =>
+			row.id.startsWith("1") ? "That entry is a work-time block." : null;
+
+		await expect(
+			selectEntry(out, entries, "1", DAY, "continue", refuse),
+		).rejects.toThrow("work-time block");
+		await expect(
+			selectEntry(out, entries, "11111111", DAY, "continue", refuse),
+		).rejects.toThrow("work-time block");
+		const picked = await selectEntry(
+			out,
+			entries,
+			"2",
+			DAY,
+			"continue",
+			refuse,
+		);
+		expect(picked.id).toBe("22222222-2222-4222-8222-222222222222");
+	});
+
+	test("a day with nothing but refused rows says so before asking", async () => {
+		await expect(
+			selectEntry(out, entries, undefined, DAY, "continue", () => "no"),
+		).rejects.toThrow(`There are no entries on ${DAY} to continue.`);
+	});
 });

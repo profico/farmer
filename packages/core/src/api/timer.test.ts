@@ -24,6 +24,9 @@ const fullRow = () => ({
 	taskName: "Development",
 	taskNeedsDescription: true,
 	description: "Fix login",
+	timeEntryId: null,
+	entryDate: null,
+	entrySeconds: 0,
 	startedAt,
 	paused: false,
 	droppedAt: null,
@@ -47,6 +50,7 @@ describe("toApiTimer", () => {
 			description: "Fix login",
 			task: { id: "t-1", name: "Development", needsDescription: true },
 			project: { id: "p-1", name: "Portal" },
+			entry: null,
 			organization: { slug: "acme", name: "Acme", here: true },
 		});
 	});
@@ -61,6 +65,9 @@ describe("toApiTimer", () => {
 			"taskId",
 			"projectId",
 			"here",
+			"timeEntryId",
+			"entryDate",
+			"entrySeconds",
 		]) {
 			expect(Object.keys(projected)).not.toContain(key);
 		}
@@ -105,6 +112,22 @@ describe("toApiTimer", () => {
 			slug: "beta",
 			name: "Beta",
 			here: false,
+		});
+	});
+
+	// A timer that continues an entry (issue #107) confirms onto that entry's
+	// day, so the client needs the day as well as the id.
+	test("names the entry a timer continues", () => {
+		const projected = toApiTimer({
+			...fullRow(),
+			timeEntryId: "te-1",
+			entryDate: "2026-09-16",
+			entrySeconds: 3600,
+		});
+		expect(projected.entry).toStrictEqual({
+			id: "te-1",
+			date: "2026-09-16",
+			durationSeconds: 3600,
 		});
 	});
 });

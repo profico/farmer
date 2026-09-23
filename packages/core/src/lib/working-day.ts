@@ -122,8 +122,11 @@ export const loggedSeconds = (claims: DayClaim[]): number =>
  *  A per-ENTRY ceiling has always existed (schema/time-entries), but nothing
  *  bounded the day itself, so any bulk write — `copyDay` above all — could stack
  *  a day arbitrarily high one click at a time. A day is 24 hours; that is the
- *  only ceiling that needs no policy discussion. */
-export const MAX_DAY_SECONDS = 24 * 3600;
+ *  only ceiling that needs no policy discussion.
+ *
+ *  Lives in `./time`, so the CLI can read it too; re-exported here, where
+ *  every engine already looks for it. */
+export { MAX_DAY_SECONDS } from "./time";
 
 /** What is left of the day after the given claims, floored at 0.
  *

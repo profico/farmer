@@ -225,6 +225,50 @@ export const snapToQuarterHour = (seconds: number): number =>
 		Math.round(seconds / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS,
 	);
 
+/** The most time that may sit on one day, in seconds. Defined here rather
+ *  than in `working-day.ts`, which re-exports it, because the CLI may import
+ *  this file and not that one (`apps/cli/CLAUDE.md`). */
+export const MAX_DAY_SECONDS = 24 * 3600;
+
+/** The sentence for a head start that does not leave room under a ceiling —
+ *  a day, or the person's timer limit. One sentence for the service, the web
+ *  dialog and the CLI, so all three refuse the same figure in the same words. */
+export const headStartTooLong = (limitSeconds: number): string =>
+	limitSeconds >= MAX_DAY_SECONDS
+		? "A head start must be shorter than a day"
+		: `A head start must be shorter than your timer limit of ${formatDurationLong(limitSeconds)}`;
+
+export type HeadStartReading =
+	| { ok: true; seconds: number }
+	| { ok: false; error: string };
+
+/**
+ * A typed head start (issue #107): time already worked before the timer
+ * began. Any whole second, more than none, and SHORTER than the limit — a head
+ * start as long as the limit would be dropped by the sweep on its next pass.
+ *
+ * `limitSeconds` is the person's timer limit where the caller knows it (the web
+ * dialog reads it); a day otherwise, which is also what `startTimerInput`
+ * refuses. `timersService.start` checks the limit again, since only it can be
+ * sure what the limit is.
+ */
+export const parseHeadStart = (
+	input: string,
+	limitSeconds: number = MAX_DAY_SECONDS,
+): HeadStartReading => {
+	const seconds = parseDuration(input);
+	if (seconds === null) {
+		return {
+			ok: false,
+			error: `Cannot read "${input.trim()}" as a duration. Use 20m, 0:30 or 1h30m.`,
+		};
+	}
+	if (seconds <= 0) return { ok: false, error: "Enter some time." };
+	const limit = Math.min(limitSeconds, MAX_DAY_SECONDS);
+	if (seconds >= limit) return { ok: false, error: headStartTooLong(limit) };
+	return { ok: true, seconds };
+};
+
 // yyyy-MM (the month a day key belongs to).
 export const monthKeyOf = (dateKey: string): string => dateKey.slice(0, 7);
 
