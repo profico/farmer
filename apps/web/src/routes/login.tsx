@@ -1,11 +1,21 @@
+import {
+	ArrowLeftIcon,
+	EnvelopeSimpleIcon,
+	GearSixIcon,
+	GoogleLogoIcon,
+	type Icon,
+	KeyIcon,
+	LinkSimpleIcon,
+	LockSimpleIcon,
+	WarningCircleIcon,
+	WrenchIcon,
+} from "@phosphor-icons/react";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
 import { AuthSplitPanel } from "#/components/auth-split-panel.tsx";
-import { Button } from "#/components/ui/button.tsx";
-import { Input } from "#/components/ui/input.tsx";
-import { Label } from "#/components/ui/label.tsx";
+import { AuthError, AuthHead } from "#/components/site/auth-parts.tsx";
 import { signIn, signUp } from "#/lib/auth-client.ts";
 import { safeRedirectPath } from "#/lib/org-redirect.ts";
 import { getPasswordSignIn, getPublicAppConfig } from "#/server/config.ts";
@@ -24,15 +34,16 @@ const searchSchema = z.object({
 
 type Search = z.infer<typeof searchSchema>;
 
-/** `/api/login`, carrying whatever destination and invite context we arrived with. */
-const signInHref = (search: Search) => {
+/** `/api/login` (or `path`), carrying whatever destination and invite
+ *  context we arrived with. */
+const signInHref = (search: Search, path = "/api/login") => {
 	const params = new URLSearchParams();
 	for (const key of ["redirect", "email", "org", "orgSlug", "role"] as const) {
 		const value = search[key];
 		if (value) params.set(key, value);
 	}
 	const query = params.toString();
-	return `/api/login${query ? `?${query}` : ""}`;
+	return `${path}${query ? `?${query}` : ""}`;
 };
 
 /**
@@ -90,6 +101,13 @@ const ERRORS = new Map<string, SignInFailure>([
 				"This email already has an account here, and the account is not connected to this provider. Sign in the way you did before, then connect the provider in Preferences → Sign-in methods.",
 		},
 	],
+]);
+
+/** The icon beside each known failure; anything else gets a warning. */
+const ERROR_ICONS = new Map<string, Icon>([
+	["REGISTRATION_CLOSED", LockSimpleIcon],
+	["INVITE_ONLY", EnvelopeSimpleIcon],
+	["account_not_linked", LinkSimpleIcon],
 ]);
 
 const GENERIC_ERROR: SignInFailure = {
@@ -168,65 +186,174 @@ function SignInPage() {
 		: null;
 	const providers = config.signInProviders;
 	const notConfigured = providers.length === 0 && !config.devAuth;
+	const org = config.singleOrgMode ? config.org : null;
 
-	const title = failure
-		? failure.title
-		: passwordSignIn === "first-account"
-			? "Set up Farmer"
-			: notConfigured
-				? "Sign-in is not configured yet"
-				: "Welcome back";
-	const lede =
-		oauthError ??
-		(passwordSignIn === "first-account"
-			? "Create the first account. It administers this instance: it adds the sign-in providers, email and storage."
-			: notConfigured
-				? passwordSignIn === "administrator"
-					? "The administrator signs in with a password and adds a sign-in provider under Settings → Infrastructure."
-					: "Ask the person who runs this instance to add a sign-in provider."
-				: providers.length === 1 && providers[0]?.id === "google"
-					? "Continue with the Google account you work from."
-					: "Continue with the account you work from.");
+	// The password form sits behind a link when there are buttons: the
+	// administrator is one person, and everybody else reads the page too.
+	const [passwordOpen, setPasswordOpen] = useState(providers.length === 0);
 
-	return (
-		<AuthSplitPanel
-			tagline="Every hour, accounted for — without the friction."
-			brand={config.org}
-		>
-			<h1 className="h2">{title}</h1>
-			<p className="lede mt-2">{lede}</p>
+	const providerButtons =
+		providers.length > 0 ? (
+			<div className="fm-auth-actions">
+				{providers.map((provider, index) => (
+					<ProviderButton
+						key={provider.id}
+						provider={provider}
+						search={search}
+						retry={oauthError !== null}
+						primary={index === 0}
+					/>
+				))}
+			</div>
+		) : null;
 
-			{providers.length > 0 ? (
-				<div className="mt-6 flex flex-col gap-2">
-					{providers.map((provider) => (
-						<ProviderButton
-							key={provider.id}
-							provider={provider}
-							search={search}
-							retry={oauthError !== null}
-						/>
-					))}
-				</div>
-			) : null}
+	if (failure) {
+		// The same page without the error: every button, and the password or
+		// development form. Only worth a link when there is more than the one
+		// button already on screen.
+		const otherOptions =
+			providers.length > 1 || config.devAuth || passwordSignIn !== null;
+		return (
+			<AuthSplitPanel brand={config.org}>
+				<AuthHead
+					icon={
+						(knownFailure && search.error
+							? ERROR_ICONS.get(search.error)
+							: undefined) ?? WarningCircleIcon
+					}
+					tone="warn"
+					title={failure.title}
+				>
+					{oauthError}
+				</AuthHead>
+				{providerButtons}
+				{otherOptions ? (
+					<a
+						href={signInHref(search, "/login")}
+						className="fm-auth-link fm-auth-back"
+						data-tone="muted"
+					>
+						Use another sign-in option
+					</a>
+				) : null}
+			</AuthSplitPanel>
+		);
+	}
 
-			{config.devAuth ? (
-				<PasswordForm search={search} kind="development" />
-			) : passwordSignIn ? (
+	if (passwordSignIn && !config.devAuth && passwordOpen) {
+		const back =
+			providers.length > 0 ? (
+				<button
+					type="button"
+					className="fm-auth-link fm-auth-back"
+					data-tone="muted"
+					onClick={() => setPasswordOpen(false)}
+				>
+					<ArrowLeftIcon size={14} aria-hidden />
+					All sign-in options
+				</button>
+			) : null;
+		return (
+			<AuthSplitPanel brand={config.org}>
+				{passwordSignIn === "first-account" ? (
+					<AuthHead
+						back={back}
+						title={
+							<>
+								Set up <em>Farmer</em>
+							</>
+						}
+					>
+						No account exists yet. This first account administers the instance.
+						Sign-in providers and invitations come after.
+					</AuthHead>
+				) : notConfigured ? (
+					<AuthHead icon={GearSixIcon} title="Sign-in is not configured yet">
+						This instance has no sign-in provider. The administrator signs in
+						with a password and adds Google or an OpenID Connect provider under
+						Settings → Infrastructure.
+					</AuthHead>
+				) : (
+					<AuthHead back={back} title="Administrator sign-in">
+						For the instance administrator. Everyone else signs in with a
+						provider.
+					</AuthHead>
+				)}
 				<PasswordForm
 					search={search}
 					kind={passwordSignIn}
-					// Behind a link when there are buttons: the administrator is one
-					// person, and everybody else reads the page too.
-					collapsed={providers.length > 0}
+					submitLabel={
+						passwordSignIn === "first-account"
+							? "Create administrator account"
+							: notConfigured
+								? "Sign in as administrator"
+								: "Sign in"
+					}
 				/>
-			) : null}
+				{passwordSignIn === "administrator" && notConfigured ? (
+					<p className="fm-auth-fine">
+						Not the administrator? Ask them to finish setup, then come back.
+					</p>
+				) : null}
+			</AuthSplitPanel>
+		);
+	}
+
+	if (notConfigured && !passwordSignIn) {
+		return (
+			<AuthSplitPanel brand={config.org}>
+				<AuthHead icon={GearSixIcon} title="Sign-in is not configured yet">
+					This instance has no sign-in provider. Ask the person who runs this
+					instance to add one.
+				</AuthHead>
+			</AuthSplitPanel>
+		);
+	}
+
+	return (
+		<AuthSplitPanel brand={config.org}>
+			{passwordSignIn === "first-account" ? (
+				<AuthHead
+					title={
+						<>
+							Set up <em>Farmer</em>
+						</>
+					}
+				>
+					Create the first account. It administers this instance: it adds the
+					sign-in providers, email and storage.
+				</AuthHead>
+			) : (
+				<AuthHead title="Welcome back">
+					{org
+						? `Sign in to ${org.name}'s timesheet.`
+						: "Sign in with the account you work from."}
+				</AuthHead>
+			)}
+
+			{providerButtons}
 
 			{providers.length > 0 ? (
-				<p className="mt-6 text-sm text-muted-foreground">
-					{config.singleOrgMode && config.org
-						? `Access to ${config.org.name} is by invitation.`
+				<p className="fm-auth-note">
+					{org
+						? `Access to ${org.name} is by invitation.`
 						: "Your first sign-in creates your account when you have an invitation."}
 				</p>
+			) : null}
+
+			{config.devAuth ? (
+				<DevelopmentForm search={search} />
+			) : passwordSignIn ? (
+				<button
+					type="button"
+					className="fm-auth-link fm-auth-divided"
+					data-tone="faint"
+					onClick={() => setPasswordOpen(true)}
+				>
+					{passwordSignIn === "first-account"
+						? "Create the first account with a password"
+						: "Administrator: sign in with your password"}
+				</button>
 			) : null}
 		</AuthSplitPanel>
 	);
@@ -242,22 +369,26 @@ function ProviderButton({
 	provider,
 	search,
 	retry,
+	primary,
 }: {
 	provider: { id: string; name: string };
 	search: Search;
 	retry: boolean;
+	primary: boolean;
 }) {
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const label = `${retry ? "Try again with" : "Continue with"} ${provider.name}`;
+	const className = primary
+		? "fm-btn fm-btn-block"
+		: "fm-btn fm-btn-outline fm-btn-block";
 
 	if (provider.id === "google") {
 		return (
-			<Button
-				className="w-full"
-				nativeButton={false}
-				render={<a href={signInHref(search)}>{label}</a>}
-			/>
+			<a className={className} href={signInHref(search)}>
+				<GoogleLogoIcon size={18} aria-hidden />
+				{label}
+			</a>
 		);
 	}
 
@@ -281,32 +412,28 @@ function ProviderButton({
 
 	return (
 		<>
-			<Button className="w-full" disabled={pending} onClick={start}>
+			<button
+				type="button"
+				className={className}
+				disabled={pending}
+				onClick={start}
+			>
+				<KeyIcon size={18} weight="duotone" aria-hidden />
 				{label}
-			</Button>
-			{error ? (
-				<p className="text-sm text-destructive" role="alert">
-					{error}
-				</p>
-			) : null}
+			</button>
+			{error ? <AuthError>{error}</AuthError> : null}
 		</>
 	);
 }
 
-type PasswordFormKind = "development" | "first-account" | "administrator";
-
-const DIVIDER_LABEL = {
-	development: "development only",
-	"first-account": "first account",
-	administrator: "administrator",
-} satisfies Record<PasswordFormKind, string>;
+type Credentials = { name: string; email: string; password: string };
 
 /**
- * Email + password, in three cases, each with its own label on screen:
+ * Email + password, in three cases:
  *
  * - `development`: `getPublicAppConfig` reports `devAuth` (the server runs
  *   under NODE_ENV=development — see packages/core/src/lib/dev-auth.ts). Sign
- *   in or create an account. The label says "development only", because this
+ *   in or create an account. The box says "Development only", because this
  *   form in a deployed environment is a bug and should be recognisable as one.
  * - `first-account`: a deployed instance with no user. Create only.
  * - `administrator`: a platform admin who has no provider connected yet.
@@ -321,27 +448,14 @@ const DIVIDER_LABEL = {
  * two fields are better-auth's, not ours — so the resolver would buy a second
  * copy of "required, and an email" and nothing else.
  */
-function PasswordForm({
-	search,
-	kind,
-	collapsed = false,
-}: {
-	search: Search;
-	kind: PasswordFormKind;
-	collapsed?: boolean;
-}) {
-	const [open, setOpen] = useState(!collapsed);
-	const [mode, setMode] = useState<"sign-in" | "sign-up">(
-		kind === "first-account" ? "sign-up" : "sign-in",
-	);
-	const [name, setName] = useState("");
-	const [email, setEmail] = useState(search.email ?? "");
-	const [password, setPassword] = useState("");
+function usePasswordSubmit(search: Search) {
 	const [error, setError] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
 
-	const submit = async (event: FormEvent) => {
-		event.preventDefault();
+	const submit = async (
+		mode: "sign-in" | "sign-up",
+		{ name, email, password }: Credentials,
+	) => {
 		setError(null);
 		setPending(true);
 		// The first account lands on `/`, which finds the workspace its signup
@@ -370,106 +484,168 @@ function PasswordForm({
 		window.location.href = callbackURL;
 	};
 
-	if (!open) {
-		return (
-			<button
-				type="button"
-				className="mt-6 self-start text-sm text-muted-foreground underline-offset-4 hover:underline"
-				onClick={() => setOpen(true)}
-			>
-				Administrator: sign in with your password
-			</button>
-		);
-	}
+	return { submit, error, setError, pending };
+}
+
+/** The first account, or the administrator's password sign-in. */
+function PasswordForm({
+	search,
+	kind,
+	submitLabel,
+}: {
+	search: Search;
+	kind: "first-account" | "administrator";
+	submitLabel: string;
+}) {
+	const mode = kind === "first-account" ? "sign-up" : "sign-in";
+	const [name, setName] = useState("");
+	const [email, setEmail] = useState(search.email ?? "");
+	const [password, setPassword] = useState("");
+	const { submit, error, pending } = usePasswordSubmit(search);
+
+	const onSubmit = (event: FormEvent) => {
+		event.preventDefault();
+		void submit(mode, { name, email, password });
+	};
 
 	return (
-		<>
-			<div className="mt-6 flex items-center gap-3">
-				<div className="h-px flex-1 bg-border" />
-				<span className="text-xs uppercase tracking-wide text-faint">
-					{DIVIDER_LABEL[kind]}
-				</span>
-				<div className="h-px flex-1 bg-border" />
+		<form className="fm-auth-form" onSubmit={onSubmit}>
+			{mode === "sign-up" ? (
+				<label className="fm-field">
+					Name
+					<input
+						className="fm-input"
+						autoComplete="name"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						placeholder="Ada Lovelace"
+					/>
+				</label>
+			) : null}
+			<label className="fm-field">
+				Email
+				<input
+					className="fm-input"
+					type="email"
+					required
+					autoComplete="email"
+					value={email}
+					onChange={(e) => setEmail(e.target.value)}
+					placeholder="you@company.com"
+				/>
+			</label>
+			<label className="fm-field">
+				Password
+				<input
+					className="fm-input"
+					type="password"
+					required
+					minLength={8}
+					autoComplete={
+						mode === "sign-up" ? "new-password" : "current-password"
+					}
+					value={password}
+					onChange={(e) => setPassword(e.target.value)}
+					placeholder={
+						mode === "sign-up" ? "At least 8 characters" : "Your password"
+					}
+				/>
+			</label>
+			{error ? <AuthError>{error}</AuthError> : null}
+			<button type="submit" className="fm-btn fm-btn-block" disabled={pending}>
+				{pending
+					? mode === "sign-up"
+						? "Creating account…"
+						: "Signing in…"
+					: submitLabel}
+			</button>
+		</form>
+	);
+}
+
+/** The development form: compact, dashed, and labelled with the reason it
+ *  exists, below the provider buttons. */
+function DevelopmentForm({ search }: { search: Search }) {
+	const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+	const [name, setName] = useState("");
+	const [email, setEmail] = useState(search.email ?? "");
+	const [password, setPassword] = useState("");
+	const { submit, error, setError, pending } = usePasswordSubmit(search);
+
+	const onSubmit = (event: FormEvent) => {
+		event.preventDefault();
+		void submit(mode, { name, email, password });
+	};
+
+	return (
+		<form className="fm-auth-dev" onSubmit={onSubmit}>
+			<div className="fm-auth-dev-head">
+				<WrenchIcon size={14} weight="duotone" aria-hidden />
+				Development only
+				<span className="fm-auth-dev-env">NODE_ENV=development</span>
 			</div>
-
-			<form className="mt-5 flex flex-col gap-3" onSubmit={submit}>
+			<div className="fm-auth-dev-fields">
 				{mode === "sign-up" ? (
-					<div className="flex flex-col gap-1.5">
-						<Label htmlFor="dev-name">Name</Label>
-						<Input
-							id="dev-name"
-							autoComplete="name"
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							placeholder="Ada Lovelace"
-						/>
-					</div>
-				) : null}
-
-				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="dev-email">Email</Label>
-					<Input
-						id="dev-email"
-						type="email"
-						required
-						autoComplete="email"
-						value={email}
-						onChange={(e) => setEmail(e.target.value)}
-						placeholder="you@example.com"
+					<input
+						className="fm-input"
+						aria-label="Name"
+						autoComplete="name"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						placeholder="Name"
 					/>
-				</div>
-
-				<div className="flex flex-col gap-1.5">
-					<Label htmlFor="dev-password">Password</Label>
-					<Input
-						id="dev-password"
-						type="password"
-						required
-						minLength={8}
-						autoComplete={
-							mode === "sign-up" ? "new-password" : "current-password"
-						}
-						value={password}
-						onChange={(e) => setPassword(e.target.value)}
-						placeholder="At least 8 characters"
-					/>
-				</div>
-
-				{error ? (
-					<p className="text-sm text-destructive" role="alert">
-						{error}
-					</p>
 				) : null}
-
-				<Button
+				<input
+					className="fm-input"
+					aria-label="Email"
+					type="email"
+					required
+					autoComplete="email"
+					value={email}
+					onChange={(e) => setEmail(e.target.value)}
+					placeholder="Email"
+				/>
+				<input
+					className="fm-input"
+					aria-label="Password"
+					type="password"
+					required
+					minLength={8}
+					autoComplete={
+						mode === "sign-up" ? "new-password" : "current-password"
+					}
+					value={password}
+					onChange={(e) => setPassword(e.target.value)}
+					placeholder="Password"
+				/>
+				<button
 					type="submit"
-					variant={kind === "development" ? "outline" : "default"}
+					className="fm-btn fm-btn-outline"
 					disabled={pending}
 				>
 					{mode === "sign-up"
 						? pending
-							? "Creating account…"
+							? "Creating…"
 							: "Create account"
 						: pending
 							? "Signing in…"
-							: "Sign in with password"}
-				</Button>
-			</form>
-
-			{kind === "development" ? (
-				<button
-					type="button"
-					className="mt-3 self-start text-sm text-muted-foreground underline-offset-4 hover:underline"
-					onClick={() => {
-						setMode(mode === "sign-in" ? "sign-up" : "sign-in");
-						setError(null);
-					}}
-				>
-					{mode === "sign-in"
-						? "No account yet? Create one"
-						: "Already have an account? Sign in"}
+							: "Sign in"}
 				</button>
-			) : null}
-		</>
+			</div>
+			{error ? <AuthError>{error}</AuthError> : null}
+			<button
+				type="button"
+				className="fm-auth-link"
+				data-tone="muted"
+				onClick={() => {
+					setMode(mode === "sign-in" ? "sign-up" : "sign-in");
+					setError(null);
+				}}
+			>
+				{mode === "sign-in"
+					? "Create a test account"
+					: "Sign in to a test account"}
+			</button>
+		</form>
 	);
 }

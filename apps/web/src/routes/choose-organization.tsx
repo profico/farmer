@@ -1,13 +1,12 @@
 import { matchesSearch } from "@farmer/core/lib/search";
-import { CaretRightIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { type MouseEvent, useState } from "react";
 import { z } from "zod";
 
-import { Field } from "#/components/field.tsx";
-import { PageFull } from "#/components/ui/page-header.tsx";
-import { SearchInput } from "#/components/ui/search-input.tsx";
+import { AuthSplitPanel } from "#/components/auth-split-panel.tsx";
+import { AuthHead, OrgMark } from "#/components/site/auth-parts.tsx";
 import { authClient } from "#/lib/auth-client.ts";
 import {
 	isOrgPlaceholder,
@@ -15,7 +14,6 @@ import {
 	safeRedirectPath,
 	withOrgSlug,
 } from "#/lib/org-redirect.ts";
-import { cn, getInitials } from "#/lib/utils.ts";
 import { listMyOrganizations } from "#/server/organization.ts";
 
 const searchSchema = z.object({
@@ -33,8 +31,7 @@ const SEARCH_THRESHOLD = 3;
  * than one.
  *
  * Outside `/$orgSlug` on purpose. There is no workspace yet, so there is no
- * sidebar to draw — the page is the app's frame and ground with one island in
- * it. A reader with exactly one workspace never sees it: the `/$orgSlug` guard
+ * sidebar to draw — the page is the sign-in frame, like the screen before it. A reader with exactly one workspace never sees it: the `/$orgSlug` guard
  * goes straight there, and so does this route when somebody opens it by hand.
  */
 export const Route = createFileRoute("/choose-organization")({
@@ -107,105 +104,70 @@ function ChooseOrganizationPage() {
 	};
 
 	return (
-		<>
-			<Field timezone={organizations[0]?.timezone ?? "UTC"} />
-			<div className="app-frame">
-				{/* A small centred block in the one island, like a sign-in screen:
-				    the choice is the whole page, so it sits where the eye lands. */}
-				<PageFull className="items-center justify-center">
-					<div className="w-full max-w-xl text-center">
-						<h1 className="h1">Choose a workspace</h1>
-						<p className="lede mx-auto mt-2 max-w-[48ch]">
-							{askedSlug && !isOrgPlaceholder(askedSlug)
-								? `You are not a member of "${askedSlug}", or it does not exist. Open one of your workspaces instead.`
-								: destination
-									? `The link is taking you to "${destination}", which workspace do you want to open this in?`
-									: "Which workspace do you want to open?"}
-						</p>
+		<AuthSplitPanel>
+			<AuthHead title="Which workspace do you want to open?">
+				{askedSlug && !isOrgPlaceholder(askedSlug)
+					? `You are not a member of "${askedSlug}", or it does not exist. Open one of your workspaces instead.`
+					: destination
+						? `The link opens "${destination}". You're a member of ${organizations.length} workspaces.`
+						: `You're a member of ${organizations.length} workspaces.`}
+			</AuthHead>
 
-						{organizations.length > SEARCH_THRESHOLD ? (
-							<SearchInput
-								value={query}
-								onValueChange={setQuery}
-								placeholder="Search workspaces…"
-								className="mt-6"
-							/>
-						) : null}
-
-						{visible.length ? (
-							// Two columns and three rows at most; more scrolls inside the
-							// list, so the page never grows past the island. The padding
-							// keeps a tile's focus ring clear of the scroll edge.
-							<ul className="-mx-1 mt-4 grid max-h-[13.5rem] gap-2 overflow-y-auto p-1 text-left sm:grid-cols-2">
-								{visible.map((org) => {
-									const href = withOrgSlug(target, org.slug);
-									return (
-										<li key={org.slug}>
-											<a
-												href={href}
-												onClick={(event) => open(event, href)}
-												onAuxClick={(event) => open(event, href)}
-												className="group/row flex h-16 items-center gap-3 rounded-lg border px-3 transition-colors duration-(--dur-fast) outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40"
-											>
-												<OrgMark name={org.name} logo={org.logo} />
-												<span className="min-w-0 flex-1">
-													<span className="block truncate text-sm font-medium">
-														{org.name}
-													</span>
-													<span className="block truncate text-xs text-muted-foreground">
-														{org.slug} · {org.role}
-													</span>
-												</span>
-												<CaretRightIcon
-													weight="regular"
-													aria-hidden
-													className="size-3.5 shrink-0 text-faint opacity-0 transition-opacity duration-(--dur-fast) group-hover/row:opacity-100 group-focus-visible/row:opacity-100"
-												/>
-											</a>
-										</li>
-									);
-								})}
-							</ul>
-						) : (
-							<p className="mt-4 text-sm text-muted-foreground">
-								No workspace matches "{query}".
-							</p>
-						)}
-
-						<p className="mt-6 text-sm text-muted-foreground">
-							Signed in as {email}.{" "}
-							<button
-								type="button"
-								className="underline-offset-4 hover:text-foreground hover:underline"
-								onClick={handleSignOut}
-							>
-								Use a different account
-							</button>
-						</p>
-					</div>
-				</PageFull>
+			<div className="fm-auth-list">
+				{organizations.length > SEARCH_THRESHOLD ? (
+					<label className="fm-auth-search">
+						<MagnifyingGlassIcon size={16} aria-hidden />
+						<input
+							type="search"
+							aria-label="Search workspaces"
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+							placeholder="Search workspaces"
+						/>
+					</label>
+				) : null}
+				{visible.length ? (
+					// More than fit scrolls inside the list, so the card never grows
+					// past the screen.
+					<ul className="fm-auth-scroll">
+						{visible.map((org) => {
+							const href = withOrgSlug(target, org.slug);
+							return (
+								<li key={org.slug}>
+									<a
+										href={href}
+										onClick={(event) => open(event, href)}
+										onAuxClick={(event) => open(event, href)}
+										className="fm-auth-ws"
+									>
+										<OrgMark name={org.name} logo={org.logo} />
+										<span className="fm-auth-ws-text">
+											<span className="fm-auth-ws-name">{org.name}</span>
+											<span className="fm-auth-ws-meta">
+												{org.slug} · {org.role}
+											</span>
+										</span>
+										<CaretRightIcon
+											size={14}
+											aria-hidden
+											className="fm-auth-caret"
+										/>
+									</a>
+								</li>
+							);
+						})}
+					</ul>
+				) : (
+					<div className="fm-auth-empty">No workspace matches "{query}".</div>
+				)}
 			</div>
-		</>
-	);
-}
 
-/** The workspace's logo, or its initials — the same mark the sidebar draws. */
-function OrgMark({ name, logo }: { name: string; logo: string | null }) {
-	const size = "size-9";
-	return logo ? (
-		<img
-			src={logo}
-			alt=""
-			className={cn("shrink-0 rounded-md object-contain", size)}
-		/>
-	) : (
-		<span
-			className={cn(
-				"flex shrink-0 items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground",
-				size,
-			)}
-		>
-			{getInitials(name)}
-		</span>
+			<div className="fm-auth-switch">
+				<span className="fm-muted">Signed in as {email}.</span>
+				<button type="button" className="fm-auth-link" onClick={handleSignOut}>
+					Use a different account
+				</button>
+			</div>
+		</AuthSplitPanel>
 	);
 }

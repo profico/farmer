@@ -1,0 +1,669 @@
+/* The sign-in screens: /login, /no-access, /choose-organization,
+ * /accept-invite/:id and /device. One frame — an ink brand column beside a
+ * content panel — on the ground.
+ *
+ * Every rule sits under `.fm-auth`, which always carries `.fm-site` too, so
+ * the site tokens (`--ink-*`, `--acc-soft`, `--on-acc`) and controls
+ * (`.fm-btn`, `.fm-input`, `.fm-field`) apply here as well.
+ */
+
+/* The ground, not the site's paper: the card is the only paper on screen. */
+html:has(.fm-auth),
+html:has(.fm-auth) body {
+	background: var(--ground) !important;
+}
+.fm-site.fm-auth {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 48px 20px;
+	background: var(--ground);
+	font-size: 15px;
+}
+
+.fm-auth .fm-auth-card {
+	width: 100%;
+	max-width: 980px;
+	display: flex;
+	flex-wrap: wrap;
+	border-radius: 16px;
+	overflow: hidden;
+	border: 1px solid var(--line);
+	background: var(--bg);
+}
+
+/* ---- The ink brand column -------------------------------------------- */
+.fm-auth .fm-auth-brand {
+	flex: 1 1 320px;
+	max-width: 100%;
+	min-height: 600px;
+	padding: 40px;
+	display: flex;
+	flex-direction: column;
+	gap: 32px;
+	background: var(--ink);
+	color: var(--ink-fg);
+}
+.fm-auth .fm-auth-wordmark {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.fm-auth .fm-auth-wordmark-name {
+	font-family: var(--serif);
+	font-size: 34px;
+	line-height: 1;
+}
+.fm-auth .fm-auth-org {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+.fm-auth .fm-auth-org-tile {
+	flex: none;
+	width: 36px;
+	height: 36px;
+	border-radius: 9px;
+	background: #e9e4d8;
+	color: var(--ink);
+	display: grid;
+	place-items: center;
+	font-weight: 600;
+	font-size: 17px;
+}
+.fm-auth .fm-auth-org-logo {
+	display: block;
+	height: 36px;
+	width: auto;
+	max-width: 180px;
+	object-fit: contain;
+	object-position: left;
+}
+.fm-auth .fm-auth-org-name {
+	font-weight: 600;
+	font-size: 19px;
+	letter-spacing: -0.01em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fm-auth .fm-auth-preview {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+.fm-auth .fm-auth-foot {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.fm-auth .fm-auth-tagline {
+	margin: 0;
+	font-family: var(--serif);
+	font-size: clamp(28px, 3vw, 36px);
+	line-height: 1.08;
+	letter-spacing: -0.01em;
+	text-wrap: balance;
+}
+.fm-auth .fm-auth-tagline em {
+	color: var(--ink-acc);
+}
+.fm-auth .fm-auth-byline {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 12px;
+	color: var(--ink-mut);
+}
+
+/* The day card and the terminal card: hairlines on the ink. */
+.fm-auth .fm-auth-day {
+	border: 1px solid var(--ink-line);
+	border-radius: 12px;
+	padding: 16px 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	font-size: 13px;
+}
+.fm-auth .fm-auth-day-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12.5px;
+	color: var(--ink-mut);
+}
+.fm-auth .fm-auth-day-head svg {
+	color: var(--ink-acc);
+}
+.fm-auth .fm-auth-day-row {
+	display: flex;
+	gap: 12px;
+	align-items: baseline;
+}
+.fm-auth .fm-auth-grow {
+	flex: 1;
+	min-width: 0;
+}
+.fm-auth .fm-auth-day-rule {
+	border-top: 1px solid var(--ink-line);
+	padding-top: 10px;
+}
+.fm-auth .fm-auth-num {
+	font-family: var(--mono);
+	letter-spacing: -0.03em;
+	font-variant-numeric: tabular-nums;
+}
+.fm-auth .fm-auth-time {
+	width: 40px;
+	color: var(--ink-mut);
+}
+.fm-auth .fm-auth-ink-mut {
+	color: var(--ink-mut);
+}
+.fm-auth .fm-auth-total {
+	color: var(--ink-acc);
+	font-size: 15px;
+}
+.fm-auth .fm-auth-terminal {
+	margin: 0;
+	border: 1px solid var(--ink-line);
+	border-radius: 12px;
+	padding: 16px 18px;
+	font-family: var(--mono);
+	font-size: 12.5px;
+	line-height: 1.8;
+	letter-spacing: -0.03em;
+	white-space: pre-wrap;
+	color: var(--ink-fg);
+}
+.fm-auth .fm-auth-terminal-code {
+	color: var(--ink-acc);
+	font-size: 15px;
+}
+
+/* ---- The content panel ------------------------------------------------ */
+.fm-auth .fm-auth-main {
+	flex: 1.45 1 400px;
+	max-width: 100%;
+	padding: 56px clamp(24px, 5.5vw, 72px);
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 24px;
+}
+.fm-auth .fm-auth-head {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.fm-auth .fm-auth-head-icon {
+	gap: 10px;
+}
+.fm-auth .fm-auth-title {
+	margin: 0;
+	font-family: var(--serif);
+	font-weight: 400;
+	font-size: 40px;
+	line-height: 1.05;
+	letter-spacing: -0.01em;
+	text-wrap: balance;
+}
+.fm-auth .fm-auth-head-icon .fm-auth-title {
+	margin-top: 6px;
+}
+.fm-auth .fm-auth-title em {
+	color: var(--acc);
+}
+.fm-auth .fm-auth-lede {
+	margin: 0;
+	color: var(--mut);
+	font-size: 16px;
+	text-wrap: pretty;
+}
+.fm-auth .fm-auth-lede b,
+.fm-auth .fm-auth-strong {
+	color: var(--fg);
+	font-weight: 500;
+}
+.fm-auth .fm-auth-icon {
+	width: 40px;
+	height: 40px;
+	border-radius: 10px;
+	display: grid;
+	place-items: center;
+	background: var(--acc-soft);
+	color: var(--acc);
+}
+.fm-auth .fm-auth-icon[data-size="lg"] {
+	width: 44px;
+	height: 44px;
+	border-radius: 11px;
+}
+.fm-auth .fm-auth-icon[data-tone="warn"] {
+	background: color-mix(in oklab, var(--warn) 14%, transparent);
+	color: var(--warn);
+}
+.fm-auth .fm-auth-icon[data-tone="muted"] {
+	background: var(--ground);
+	color: var(--mut);
+}
+
+.fm-auth .fm-auth-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.fm-auth .fm-auth-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+.fm-auth .fm-auth-row > .fm-btn {
+	height: 46px;
+}
+.fm-auth .fm-auth-start {
+	align-self: flex-start;
+}
+.fm-auth .fm-btn:disabled {
+	opacity: 0.55;
+	cursor: default;
+	transform: none;
+}
+.fm-auth .fm-auth-form {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.fm-auth .fm-auth-form .fm-input {
+	height: 42px;
+	font-weight: 400;
+}
+.fm-auth .fm-auth-form .fm-btn {
+	margin-top: 4px;
+}
+.fm-auth .fm-auth-note {
+	margin: 0;
+	font-size: 14px;
+	color: var(--mut);
+}
+.fm-auth .fm-auth-note[data-tone="fg"] {
+	color: var(--fg);
+	font-size: 14.5px;
+}
+.fm-auth .fm-auth-fine {
+	margin: 0;
+	font-size: 13.5px;
+	color: var(--faint);
+}
+.fm-auth .fm-auth-error {
+	margin: 0;
+	font-size: 14px;
+	color: var(--bad);
+}
+/* A link-styled button: a toggle or an action that is not a navigation. */
+.fm-auth .fm-auth-link {
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	color: var(--acc);
+	cursor: pointer;
+	text-align: left;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-auth .fm-auth-link:hover {
+		text-decoration: underline;
+	}
+}
+.fm-auth .fm-auth-link[data-tone="muted"] {
+	color: var(--mut);
+}
+.fm-auth .fm-auth-link[data-tone="faint"] {
+	color: var(--faint);
+}
+.fm-auth .fm-auth-back {
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+}
+.fm-auth .fm-auth-divided {
+	align-self: stretch;
+	border-top: 1px solid var(--line);
+	padding-top: 16px;
+	margin-top: 4px;
+	font-size: 13px;
+}
+.fm-auth .fm-auth-switch {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 16px;
+	font-size: 13.5px;
+	border-top: 1px solid var(--line);
+	padding-top: 16px;
+}
+
+/* The development form: dashed, compact, and obviously not for production. */
+.fm-auth .fm-auth-dev {
+	border: 1px dashed var(--line);
+	border-radius: 10px;
+	padding: 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 4px;
+}
+.fm-auth .fm-auth-dev-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12.5px;
+	color: var(--mut);
+}
+.fm-auth .fm-auth-dev-env {
+	margin-left: auto;
+	font-family: var(--mono);
+	font-size: 11px;
+}
+.fm-auth .fm-auth-dev-fields {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.fm-auth .fm-auth-dev-fields .fm-input {
+	flex: 1 1 140px;
+	min-width: 0;
+	height: 34px;
+	padding: 0 10px;
+	border-radius: 7px;
+	font-size: 13.5px;
+}
+.fm-auth .fm-auth-dev-fields .fm-btn {
+	height: 34px;
+	padding: 0 12px;
+	border-radius: 7px;
+	font-size: 13.5px;
+	color: var(--mut);
+}
+.fm-auth .fm-auth-dev .fm-auth-link {
+	align-self: flex-start;
+	font-size: 12.5px;
+}
+
+/* A bordered list: invitations, the workspace chooser, the device facts. */
+.fm-auth .fm-auth-list {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	overflow: hidden;
+}
+.fm-auth .fm-auth-search {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 0 14px;
+	border-bottom: 1px solid var(--line);
+	color: var(--faint);
+}
+.fm-auth .fm-auth-search input {
+	flex: 1;
+	min-width: 0;
+	height: 44px;
+	border: 0;
+	outline: 0;
+	background: transparent;
+	color: var(--fg);
+	font: inherit;
+}
+.fm-auth .fm-auth-search input::placeholder {
+	color: var(--faint);
+}
+.fm-auth .fm-auth-search:focus-within {
+	box-shadow: inset 0 -2px 0 var(--acc);
+}
+.fm-auth .fm-auth-scroll {
+	max-height: 280px;
+	overflow: auto;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.fm-auth .fm-auth-scroll > li + li {
+	border-top: 1px solid var(--line);
+}
+.fm-auth .fm-auth-ws {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 14px;
+	color: var(--fg);
+	text-decoration: none;
+	outline-offset: -2px;
+	transition: background-color var(--dur-base);
+}
+.fm-auth .fm-auth-ws:hover,
+.fm-auth .fm-auth-ws:focus-visible {
+	background: var(--acc-soft);
+	text-decoration: none;
+}
+.fm-auth .fm-auth-ws-text {
+	flex: 1;
+	min-width: 0;
+}
+.fm-auth .fm-auth-ws-name {
+	display: block;
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fm-auth .fm-auth-ws-meta {
+	display: block;
+	font-size: 12.5px;
+	color: var(--mut);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fm-auth .fm-auth-caret {
+	flex: none;
+	color: var(--faint);
+}
+.fm-auth .fm-auth-empty {
+	padding: 20px 14px;
+	color: var(--mut);
+	font-size: 14px;
+}
+
+/* An organization's mark: its logo, or its initials on the accent. */
+.fm-auth .fm-auth-mark {
+	flex: none;
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	background: var(--acc);
+	color: var(--on-acc);
+	display: grid;
+	place-items: center;
+	font-weight: 600;
+	font-size: 14px;
+	object-fit: contain;
+}
+.fm-auth .fm-auth-mark[data-size="md"] {
+	width: 38px;
+	height: 38px;
+	border-radius: 9px;
+	font-size: 15px;
+}
+.fm-auth .fm-auth-mark[data-size="lg"] {
+	width: 48px;
+	height: 48px;
+	border-radius: 11px;
+	font-size: 20px;
+}
+img.fm-auth-mark {
+	background: transparent;
+}
+
+/* One pending invitation on /no-access. */
+.fm-auth .fm-auth-invite {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 14px;
+	padding: 14px 16px;
+	border-radius: 12px;
+	border: 1px solid var(--line);
+	background: var(--acc-soft);
+}
+.fm-auth .fm-auth-invite-text {
+	flex: 1;
+	min-width: 140px;
+}
+.fm-auth .fm-auth-callout {
+	display: flex;
+	gap: 12px;
+	padding: 16px;
+	border-radius: 12px;
+	border: 1px solid var(--line);
+	font-size: 14.5px;
+	color: var(--mut);
+}
+.fm-auth .fm-auth-callout > svg {
+	flex: none;
+	color: var(--acc);
+}
+
+/* The invitation card on /accept-invite. */
+.fm-auth .fm-auth-org-card-head {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 18px;
+}
+.fm-auth .fm-auth-org-card-name {
+	font-family: var(--serif);
+	font-size: 28px;
+	line-height: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.fm-auth .fm-auth-facts {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	border-top: 1px solid var(--line);
+	font-size: 14px;
+}
+.fm-auth .fm-auth-facts[data-single] {
+	grid-template-columns: 1fr;
+}
+.fm-auth .fm-auth-facts > div {
+	padding: 12px 18px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.fm-auth .fm-auth-facts > div + div {
+	border-left: 1px solid var(--line);
+}
+.fm-auth .fm-auth-fact-label {
+	font-size: 12.5px;
+	color: var(--mut);
+}
+
+/* The device facts: label, value. */
+.fm-auth .fm-auth-table {
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	font-size: 14px;
+}
+.fm-auth .fm-auth-table > div {
+	display: flex;
+	padding: 12px 16px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.fm-auth .fm-auth-table > div + div {
+	border-top: 1px solid var(--line);
+}
+.fm-auth .fm-auth-table-label {
+	flex: none;
+	width: 110px;
+	color: var(--mut);
+}
+.fm-auth .fm-auth-code-value {
+	font-family: var(--mono);
+	letter-spacing: 0.08em;
+}
+
+/* The code from the terminal, typed or shown. */
+.fm-auth .fm-auth-code-input {
+	width: 100%;
+	height: 68px;
+	border-radius: 12px;
+	border: 1px solid var(--line);
+	background: var(--ground);
+	color: var(--fg);
+	text-align: center;
+	font-family: var(--mono);
+	font-size: 32px;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	outline-color: var(--acc);
+}
+.fm-auth .fm-auth-code-input::placeholder {
+	color: var(--faint);
+}
+.fm-auth .fm-auth-code-big {
+	margin: 0;
+	font-family: var(--mono);
+	letter-spacing: 0.12em;
+	font-size: 20px;
+	color: var(--mut);
+}
+.fm-auth .fm-auth-checking {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 14px;
+}
+.fm-auth .fm-auth-spin {
+	color: var(--acc);
+	animation: fm-auth-spin 1s linear infinite;
+}
+@keyframes fm-auth-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.fm-auth .fm-auth-spin {
+		animation: none;
+	}
+}
+
+/* ---- Small screens ---------------------------------------------------- */
+@media (max-width: 760px) {
+	.fm-site.fm-auth {
+		padding: 16px;
+		align-items: flex-start;
+	}
+	.fm-auth .fm-auth-brand {
+		min-height: 0;
+		padding: 24px;
+		gap: 20px;
+	}
+	.fm-auth .fm-auth-preview {
+		display: none;
+	}
+	.fm-auth .fm-auth-main {
+		padding: 32px 24px;
+	}
+	.fm-auth .fm-auth-title {
+		font-size: 34px;
+	}
+}
