@@ -100,21 +100,6 @@ export const INSTANCE_SETTINGS = [
 		label: "Client secret",
 		kind: "secret",
 	},
-	{
-		name: "GITHUB_CLIENT_ID",
-		section: "sign-in",
-		group: "GitHub OAuth app",
-		label: "Client ID",
-		kind: "text",
-		hint: "Callback URL: {origin}/api/auth/callback/github",
-	},
-	{
-		name: "GITHUB_CLIENT_SECRET",
-		section: "sign-in",
-		group: "GitHub OAuth app",
-		label: "Client secret",
-		kind: "secret",
-	},
 	// Email
 	{
 		name: "EMAIL_PROVIDER",
@@ -218,6 +203,21 @@ export const INSTANCE_SETTINGS = [
 		kind: "secret",
 	},
 	// Integrations
+	{
+		name: "GITHUB_CLIENT_ID",
+		section: "integrations",
+		group: "GitHub OAuth app",
+		label: "Client ID",
+		kind: "text",
+		hint: "Callback URL: {origin}/api/auth/callback/github",
+	},
+	{
+		name: "GITHUB_CLIENT_SECRET",
+		section: "integrations",
+		group: "GitHub OAuth app",
+		label: "Client secret",
+		kind: "secret",
+	},
 	{
 		name: "GITHUB_APP_ID",
 		section: "integrations",

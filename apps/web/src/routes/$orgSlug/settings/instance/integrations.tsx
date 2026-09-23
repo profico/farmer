@@ -9,7 +9,8 @@ import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { instanceSettingsQuery } from "#/queries/instance-settings.ts";
 
 /**
- * The GitHub App and the Slack app the whole deployment connects through.
+ * The GitHub App, the GitHub OAuth app and the Slack app the whole deployment
+ * connects through.
  *
  * Not Settings → Integrations (a person's own connections) and not Workspace
  * integrations (one organization's): this is the app registration every
@@ -32,7 +33,7 @@ function IntegrationSettingsPage() {
 			<PageHeader
 				eyebrow={<SettingsEyebrow />}
 				title="Integration apps"
-				lede="The GitHub App and the Slack app that every workspace on this deployment connects through. Each workspace still connects its own account."
+				lede="The GitHub apps and the Slack app that every workspace on this deployment connects through. Each workspace still connects its own account."
 			/>
 
 			<InstanceSettingsForm section="integrations" />

@@ -370,7 +370,7 @@ export function AppSidebar({
 					params={{ orgSlug }}
 					aria-current={isActive ? "page" : undefined}
 					className={cn(
-						"relative flex items-center rounded-lg px-2.5 py-1.5 text-base ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
+						"relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-base ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
 						isActive
 							? "font-medium text-foreground"
 							: "text-sidebar-foreground hover:text-foreground",
@@ -380,9 +380,7 @@ export function AppSidebar({
 					{isActive && (
 						<ActiveFill from={panelFillFrom} className="rounded-lg" />
 					)}
-					{/* No icon, unlike the nav: the nav already carries the glyph for the
-					    section these pages belong to, and a second column of them at this
-					    width leaves the labels nowhere to go. */}
+					<item.icon className="relative size-4 shrink-0" />
 					<span className="relative min-w-0 truncate">{item.label}</span>
 				</Link>
 			</li>

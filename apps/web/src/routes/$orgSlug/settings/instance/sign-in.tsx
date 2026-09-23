@@ -68,8 +68,8 @@ import {
 } from "#/server/instance-settings.ts";
 
 /**
- * Who may sign in, and with what: the registration rule, Google, GitHub, and
- * any number of OpenID Connect sources (Authentik, Keycloak, Entra ID…).
+ * Who may sign in, and with what: the registration rule, Google, and any
+ * number of OpenID Connect sources (Authentik, Keycloak, Entra ID…).
  *
  * The OIDC sources are rows rather than settings, because there can be any
  * number of them, so they get their own list and dialog under the registry's

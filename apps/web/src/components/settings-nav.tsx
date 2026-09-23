@@ -211,7 +211,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		},
 		group: "infrastructure",
 		description:
-			"Who may create an account, and Google, GitHub and OpenID Connect sign-in.",
+			"Who may create an account, and Google and OpenID Connect sign-in.",
 		show: (audience) => audience.isPlatformAdmin,
 	},
 	{
@@ -242,7 +242,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		},
 		group: "infrastructure",
 		description:
-			"The GitHub App and the Slack app that every workspace connects through.",
+			"The GitHub apps and the Slack app that every workspace connects through.",
 		show: (audience) => audience.isPlatformAdmin,
 	},
 	{
