@@ -37,6 +37,12 @@ afterAll(async () => {
 	};
 	restore("BETTER_AUTH_SECRETS", originalRotation);
 	restore("RESEND_API_KEY", originalResend);
+	// The loaded snapshot is process state, and the next test file shares the
+	// process. Load it again from empty tables, or this file's provider shows
+	// up in another file's sign-in methods.
+	await db.delete(instanceOAuthProvider);
+	await db.delete(instanceSetting);
+	await refreshInstanceSettings({ force: true });
 	await harness.close();
 });
 
