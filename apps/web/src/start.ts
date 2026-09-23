@@ -1,4 +1,8 @@
-import { createMiddleware, createStart } from "@tanstack/react-start";
+import {
+	createCsrfMiddleware,
+	createMiddleware,
+	createStart,
+} from "@tanstack/react-start";
 
 /**
  * Bring the instance's settings up to date before any handler reads one.
@@ -21,6 +25,20 @@ const instanceSettingsMiddleware = createMiddleware().server(
 	},
 );
 
+/**
+ * Refuse a cross-site call to a server function.
+ *
+ * A server function is a same-origin RPC endpoint that acts with the caller's
+ * session cookie, so a page on another site could otherwise make a signed-in
+ * browser call one. The check reads `Sec-Fetch-Site`, then `Origin`, then
+ * `Referer`. Server routes (`/api/*`) are not in the filter: the OAuth
+ * callbacks, the webhooks, the MCP server and the CLI's API are called from
+ * other origins on purpose and carry their own authentication.
+ */
+const csrfMiddleware = createCsrfMiddleware({
+	filter: (ctx) => ctx.handlerType === "serverFn",
+});
+
 export const startInstance = createStart(() => ({
-	requestMiddleware: [instanceSettingsMiddleware],
+	requestMiddleware: [csrfMiddleware, instanceSettingsMiddleware],
 }));
