@@ -40,6 +40,7 @@ import {
 	GithubInstallationGoneError,
 	GithubTokenInvalidError,
 } from "../lib/github-client";
+import { setInstanceSettingsForTests } from "../lib/instance-settings";
 import { attachCommitsInput } from "../schema/github";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
@@ -76,6 +77,13 @@ const fakeCommit = (sha: string): GithubCommit => ({
 });
 
 beforeAll(async () => {
+	// The user-token paths go through better-auth's getAccessToken, which
+	// needs a registered GitHub provider. The auth instance registers one
+	// only when the settings hold its credentials, and CI has none.
+	setInstanceSettingsForTests({
+		GITHUB_CLIENT_ID: "test-client-id",
+		GITHUB_CLIENT_SECRET: "test-client-secret",
+	});
 	harness = await createTestDb();
 
 	await db.insert(organization).values({
@@ -200,6 +208,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
 	setGithubClientForTests(null);
+	setInstanceSettingsForTests(undefined);
 	await harness.close();
 });
 
