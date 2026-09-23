@@ -88,6 +88,14 @@ export const openSecret = (stored: string): string => {
  * concurrent reconnect is never overwritten. A failed reseal is logged and the
  * read still succeeds; the next read tries again.
  */
+/** Stored values already reported as unreadable. After a changed
+ *  BETTER_AUTH_SECRET every page view and every reminder tick reads the same
+ *  value again, and one log line with a stack for each read buried the rest of
+ *  the log. One line per stored value says the same. Cleared when it grows
+ *  past the limit, so a long-lived process cannot keep old values forever. */
+const reportedUnreadable = new Set<string>();
+const REPORTED_UNREADABLE_LIMIT = 1000;
+
 export const openAndHeal = async (
 	stored: string,
 	reseal: (sealed: string) => Promise<void>,
@@ -97,7 +105,13 @@ export const openAndHeal = async (
 	try {
 		plaintext = openSecret(stored);
 	} catch (error) {
-		console.error(`[secret-box] ${what} does not decrypt`, { error });
+		if (!reportedUnreadable.has(stored)) {
+			if (reportedUnreadable.size >= REPORTED_UNREADABLE_LIMIT) {
+				reportedUnreadable.clear();
+			}
+			reportedUnreadable.add(stored);
+			console.error(`[secret-box] ${what} does not decrypt`, { error });
+		}
 		return null;
 	}
 	if (!isSealed(stored)) {

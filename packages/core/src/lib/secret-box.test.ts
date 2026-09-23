@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { isSealed, openAndHeal, openSecret, sealSecret } from "./secret-box";
 
@@ -77,6 +77,18 @@ describe("openAndHeal", () => {
 		expect(
 			await openAndHeal("enc:v1:c2hvcnQ", async () => {}, "a test key"),
 		).toBeNull();
+	});
+
+	test("logs an unreadable value one time", async () => {
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			for (let i = 0; i < 3; i++) {
+				await openAndHeal("enc:v1:b25jZQ", async () => {}, "a test key");
+			}
+			expect(logged).toHaveBeenCalledTimes(1);
+		} finally {
+			logged.mockRestore();
+		}
 	});
 
 	test("still answers when the reseal fails", async () => {
