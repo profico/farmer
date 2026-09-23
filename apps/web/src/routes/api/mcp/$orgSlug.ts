@@ -245,6 +245,7 @@ const handle = async (request: Request, orgSlug: string) => {
 	// reads without one. Only a POST carries a message; the transport answers
 	// GET and DELETE without reading a body. The bytes go back into a fresh
 	// Request so the transport still does its own parsing and its own errors.
+	// The signal goes along, so a client that hangs up still aborts the call.
 	let message = request;
 	if (request.method === "POST") {
 		const body = await readBodyUpTo(request, MAX_MCP_BODY_BYTES);
@@ -253,6 +254,7 @@ const handle = async (request: Request, orgSlug: string) => {
 			method: request.method,
 			headers: request.headers,
 			body: body.bytes,
+			signal: request.signal,
 		});
 	}
 
