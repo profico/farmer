@@ -18,6 +18,7 @@
 		"db:migrate": "turbo run db:migrate",
 		"db:check": "turbo run db:check",
 		"db:studio": "turbo run db:studio",
+		"setup": "bun run scripts/setup.ts",
 		"test": "turbo run test",
 		"typecheck": "turbo run typecheck",
 		"lint": "oxlint",
