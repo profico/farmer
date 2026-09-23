@@ -89,6 +89,4 @@ Commands, architecture notes and the sharp edges we've already hit are in [CLAUD
 
 ## License
 
-(wip, not open source yet)
-
-[Apache-2.0](LICENSE)
+[AGPLv3](LICENSE)
