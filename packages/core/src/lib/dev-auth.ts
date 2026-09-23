@@ -1,13 +1,13 @@
 /**
  * Email + password sign-in, for local development only.
  *
- * Google is the only identity this app accepts in production (see
- * `src/auth/index.ts`), which is correct and also means a fresh checkout cannot
- * be logged into at all without a Google Cloud project, an OAuth consent screen
- * and two secrets — before the first page can be looked at, and again for every
- * throwaway account somebody wants to test a second role with. This switch
- * turns better-auth's `emailAndPassword` endpoints back on so that `bun run
- * dev` needs no third party.
+ * In production a password is the first account's way in and nobody else's
+ * (see `emailAndPassword` in `src/auth/index.ts`). That would make a fresh
+ * checkout hard to use: a second account to test a role with would need a
+ * Google Cloud project, an OAuth consent screen and two secrets. This switch
+ * opens the password endpoints fully, so that `bun run dev` needs no third
+ * party. A password signup still passes the registration gate
+ * (`src/auth/registration.ts`).
  *
  * The gate is `NODE_ENV`, deliberately, and not an opt-in env var: an opt-in
  * flag is a thing you set once in a `.env` that then gets copied to a server,
