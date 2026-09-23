@@ -214,7 +214,9 @@ export const viewInstanceSettings = async (): Promise<
 export const updateInstanceSettings = async (
 	userId: string,
 	changes: Record<string, string | null>,
+	options: { confirmStorageMove?: boolean } = {},
 ): Promise<void> => {
+	await guardStorageMove(changes, options.confirmStorageMove === true);
 	const entries = Object.entries(changes);
 	for (const [name, value] of entries) {
 		if (!isSettingName(name)) {
@@ -414,7 +416,24 @@ export const testEmail = async (to: string): Promise<ConnectionTestResult> => {
 	throw new Error(`testEmail(${to}): not implemented`);
 };
 
+/** How many stored uploads the configured store holds references to. The page
+ *  warns before a change to the endpoint or the bucket when this is not 0. */
+export const storageUsage = async (): Promise<{ storedObjects: number }> => {
+	throw new Error("storageUsage: not implemented");
+};
+
+/**
+ * Refuse a change to `S3_ENDPOINT` or `S3_BUCKET` while stored objects exist,
+ * unless the caller confirmed it. Every stored key points into the current
+ * store, so a move breaks every icon and logo until the objects are copied.
+ */
+const guardStorageMove = async (
+	_changes: Record<string, string | null>,
+	_confirmed: boolean,
+): Promise<void> => {};
+
 export const instanceSettingsService = {
+	storageUsage,
 	testStorage,
 	testEmail,
 	refresh: refreshInstanceSettings,

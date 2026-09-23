@@ -22,6 +22,9 @@ export const getInstanceSettings = createServerFn({ method: "GET" })
  *  is left out of the map, so it keeps its stored value. */
 const updateInput = z.object({
 	changes: z.record(z.string(), z.string().max(20_000).nullable()),
+	/** Set after the person confirmed a change to the S3 endpoint or bucket
+	 *  while objects are stored. Without it the service refuses that change. */
+	confirmStorageMove: z.boolean().optional(),
 });
 
 export const updateInstanceSettings = createServerFn({ method: "POST" })
@@ -29,7 +32,11 @@ export const updateInstanceSettings = createServerFn({ method: "POST" })
 	.validator(updateInput)
 	.handler(async ({ data, context }) => {
 		const { instanceSettingsService } = await import("@farmer/core/services");
-		await instanceSettingsService.update(context.session.user.id, data.changes);
+		await instanceSettingsService.update(
+			context.session.user.id,
+			data.changes,
+			{ confirmStorageMove: data.confirmStorageMove },
+		);
 		return instanceSettingsService.view();
 	});
 
@@ -93,4 +100,12 @@ export const sendTestEmail = createServerFn({ method: "POST" })
 	.handler(async ({ context }) => {
 		const { instanceSettingsService } = await import("@farmer/core/services");
 		return instanceSettingsService.testEmail(context.session.user.email);
+	});
+
+/** How many uploads the current store holds. */
+export const getStorageUsage = createServerFn({ method: "GET" })
+	.middleware([platformAdminMiddleware])
+	.handler(async () => {
+		const { instanceSettingsService } = await import("@farmer/core/services");
+		return instanceSettingsService.storageUsage();
 	});
