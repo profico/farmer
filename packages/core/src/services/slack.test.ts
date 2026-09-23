@@ -15,7 +15,7 @@ import { memberProfile } from "../db/schema/people";
 import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
 import { isSealed } from "../lib/secret-box";
 import { slackClient } from "../lib/slack-client";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { slackService } from "./slack.service";
 
 const ORG = "org-slack-sync";
@@ -148,6 +148,44 @@ describe("installationFor", () => {
 		expect((await slackService.installationFor(ORG))?.botToken).toBe(
 			"xoxb-test",
 		);
+	});
+});
+
+describe("status", () => {
+	const admin = { organizationId: ORG, userId: ACTIVE };
+
+	test("says connected only when the bot token opens", async () => {
+		const before = await slackService.status(admin);
+		expect(before.connected).toBe(true);
+		expect(before.needsReconnect).toBe(false);
+
+		const sealed = present(
+			await db.query.slackInstallation.findFirst({
+				where: eq(slackInstallation.organizationId, ORG),
+				columns: { botToken: true },
+			}),
+			"the installation row",
+		).botToken;
+		// What a changed BETTER_AUTH_SECRET leaves behind: a sealed value this
+		// process cannot open. The row is still there, so the Settings tab used
+		// to say "Connected" while every DM failed.
+		await db
+			.update(slackInstallation)
+			.set({ botToken: "enc:v1:bm90LWEtcmVhbC1jaXBoZXJ0ZXh0LWF0LWFsbA" })
+			.where(eq(slackInstallation.organizationId, ORG));
+		try {
+			expect(await slackService.status(admin)).toEqual({
+				connected: false,
+				needsReconnect: true,
+				teamName: null,
+			});
+		} finally {
+			await db
+				.update(slackInstallation)
+				.set({ botToken: sealed })
+				.where(eq(slackInstallation.organizationId, ORG));
+		}
+		expect((await slackService.status(admin)).connected).toBe(true);
 	});
 });
 

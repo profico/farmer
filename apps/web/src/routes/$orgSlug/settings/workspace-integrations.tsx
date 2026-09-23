@@ -564,6 +564,11 @@ function SlackSection() {
 	});
 
 	const connected = status?.connected ?? false;
+	// The install row is there but its bot token no longer opens
+	// (`BETTER_AUTH_SECRET` changed). Nothing sends, and the reminder job skips
+	// the workspace, so this is the one place the admin learns a reinstall is
+	// needed. Installing again replaces the token in place.
+	const needsReconnect = status?.needsReconnect ?? false;
 
 	return (
 		<PageSection>
@@ -571,13 +576,19 @@ function SlackSection() {
 				icon={<SlackLogoIcon className="size-5" />}
 				title="Slack"
 				badge={
-					connected && (
+					connected ? (
 						<Badge variant="secondary">
 							Connected{status?.teamName ? ` to ${status.teamName}` : ""}
 						</Badge>
+					) : (
+						needsReconnect && <Badge variant="destructive">Connect again</Badge>
 					)
 				}
-				description="Sends reminder DMs on Tuesday and Friday, plus a push at the end of the month."
+				description={
+					needsReconnect
+						? `The stored Slack credential${status?.teamName ? ` for ${status.teamName}` : ""} can no longer be read, because the server's secret changed after it was saved. No reminder goes out until Slack is added again.`
+						: "Sends reminder DMs on Tuesday and Friday, plus a push at the end of the month."
+				}
 				action={
 					connected ? (
 						<AlertDialog>
@@ -615,7 +626,7 @@ function SlackSection() {
 						</AlertDialog>
 					) : (
 						<Button onClick={handleInstall} disabled={isPending}>
-							Add to Slack
+							{needsReconnect ? "Add to Slack again" : "Add to Slack"}
 						</Button>
 					)
 				}

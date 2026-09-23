@@ -18,15 +18,29 @@ import type { Ctx } from "./types";
 
 export const slackService = {
 	/** Connection status for the Settings screen. Never returns the bot token —
-	 *  it is a workspace-wide credential and no client has any use for it. */
+	 *  it is a workspace-wide credential and no client has any use for it.
+	 *
+	 *  Reads through `installationFor`, the same door every send goes through,
+	 *  so it cannot say "Connected" to a token nothing can use. A row whose token
+	 *  does not decrypt (a changed BETTER_AUTH_SECRET) is `needsReconnect`: no
+	 *  DM goes out and the reminder job skips the org, and this screen is the one
+	 *  place that can tell an admin to install again. */
 	status: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
-		const row = await db.query.slackInstallation.findFirst({
-			where: eq(slackInstallation.organizationId, ctx.organizationId),
-			columns: { teamId: true, teamName: true, createdAt: true },
-		});
-		if (!row) return { connected: false as const };
-
+		const installation = await slackService.installationFor(ctx.organizationId);
+		if (!installation) {
+			const stale = await db.query.slackInstallation.findFirst({
+				where: eq(slackInstallation.organizationId, ctx.organizationId),
+				columns: { teamName: true },
+			});
+			return stale
+				? {
+						connected: false as const,
+						needsReconnect: true as const,
+						teamName: stale.teamName,
+					}
+				: { connected: false as const, needsReconnect: false as const };
+		}
 		const identities = await db
 			.select({ userId: memberSlackIdentity.userId })
 			.from(memberSlackIdentity)
@@ -34,9 +48,10 @@ export const slackService = {
 
 		return {
 			connected: true as const,
-			teamId: row.teamId,
-			teamName: row.teamName,
-			connectedAt: row.createdAt,
+			needsReconnect: false as const,
+			teamId: installation.teamId,
+			teamName: installation.teamName,
+			connectedAt: installation.createdAt,
 			mappedPeople: identities.length,
 		};
 	},
