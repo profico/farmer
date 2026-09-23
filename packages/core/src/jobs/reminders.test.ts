@@ -55,8 +55,9 @@ import {
 } from "../services/notify";
 import { orgSettingsService } from "../services/org-settings.service";
 import { reminderSettingsService } from "../services/reminder-settings.service";
+import { slackService } from "../services/slack.service";
 import type { Ctx } from "../services/types";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { runLogRemindersOnce } from "./log-reminders";
 import {
 	forgetSlackReminderRunsForTests,
@@ -500,6 +501,48 @@ describe("an undelivered Slack reminder", () => {
 
 		await slackAt(TUESDAY, "09:15");
 		expect(silentTries).toBe(1);
+	});
+
+	// A revoked bot token used to read as every person being unreachable: the
+	// claims burned, nothing counted, and Settings still "Connected".
+	test("ends the org's pass when Slack refuses the token, and asks for a reconnect", async () => {
+		await db.insert(memberSlackIdentity).values([
+			{ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" },
+			{ organizationId: ORG, userId: SLOW, slackUserId: "U0SLOW" },
+		]);
+		let tries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			// What `sendDm` does when Slack answers `token_revoked`.
+			slack: async () => {
+				tries++;
+				const installation = present(
+					await slackService.installationFor(ORG),
+					"the Slack installation",
+				);
+				await slackService.rejectToken(installation);
+				return false;
+			},
+		});
+
+		try {
+			const first = await slackAt(TUESDAY, "09:00");
+			expect(tries).toBe(1);
+			expect(first.failed).toBe(1);
+			expect(await db.query.slackReminderLog.findMany()).toHaveLength(0);
+
+			const second = await slackAt(TUESDAY, "09:15");
+			expect(second.organizations).toBe(0);
+			expect(tries).toBe(1);
+
+			expect(await slackService.status(adminCtx())).toMatchObject({
+				connected: false,
+				needsReconnect: true,
+				reason: "rejected",
+			});
+		} finally {
+			await db.update(slackInstallation).set({ tokenRejectedAt: null });
+		}
 	});
 
 	test("forgets its failures when the day ends", async () => {

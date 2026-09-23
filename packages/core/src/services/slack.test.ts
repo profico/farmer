@@ -151,9 +151,10 @@ describe("installationFor", () => {
 	});
 });
 
-describe("status", () => {
-	const admin = { organizationId: ORG, userId: ACTIVE };
+/** An admin in ORG: `status` is for admins only. */
+const admin = { organizationId: ORG, userId: ACTIVE };
 
+describe("status", () => {
 	test("says connected only when the bot token opens", async () => {
 		const before = await slackService.status(admin);
 		expect(before.connected).toBe(true);
@@ -177,6 +178,7 @@ describe("status", () => {
 			expect(await slackService.status(admin)).toEqual({
 				connected: false,
 				needsReconnect: true,
+				reason: "unreadable",
 				teamName: null,
 			});
 		} finally {
@@ -191,7 +193,7 @@ describe("status", () => {
 
 describe("sendDm", () => {
 	test("tells a refusal no retry can change from one it may", async () => {
-		let answer: "sent" | "refused" | "failed" = "refused";
+		let answer: "sent" | "refused" | "revoked" | "failed" = "refused";
 		const post = spyOn(slackClient, "postMessage").mockImplementation(
 			async () => answer,
 		);
@@ -208,5 +210,42 @@ describe("sendDm", () => {
 		} finally {
 			post.mockRestore();
 		}
+	});
+
+	// A refused token is about the credential, not the person: the send says
+	// false, and the installation reads as gone until Slack is added again.
+	test("records a refused token and reads as no installation after it", async () => {
+		const post = spyOn(slackClient, "postMessage").mockImplementation(
+			async () => "revoked",
+		);
+		try {
+			expect(await slackService.sendDm(ORG, ARCHIVED, "hi")).toBe(false);
+			expect(await slackService.installationFor(ORG)).toBeUndefined();
+			expect(await slackService.status(admin)).toMatchObject({
+				connected: false,
+				needsReconnect: true,
+				reason: "rejected",
+			});
+		} finally {
+			post.mockRestore();
+			await db
+				.update(slackInstallation)
+				.set({ tokenRejectedAt: null })
+				.where(eq(slackInstallation.organizationId, ORG));
+		}
+	});
+
+	// The mark names the token Slack refused, so an install that replaced it
+	// while a send was in flight stays connected.
+	test("does not mark a token that an install already replaced", async () => {
+		const installation = present(
+			await slackService.installationFor(ORG),
+			"the installation",
+		);
+		await slackService.rejectToken({
+			id: installation.id,
+			sealedBotToken: "enc:v1:YW4tb2xkZXItdG9rZW4",
+		});
+		expect((await slackService.status(admin)).connected).toBe(true);
 	});
 });

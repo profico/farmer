@@ -586,7 +586,9 @@ function SlackSection() {
 				}
 				description={
 					needsReconnect
-						? `The stored Slack credential${status?.teamName ? ` for ${status.teamName}` : ""} can no longer be read, because the server's secret changed after it was saved. No reminder goes out until Slack is added again.`
+						? status?.reason === "rejected"
+							? `Slack refused the stored credential${status.teamName ? ` for ${status.teamName}` : ""}. The app was removed or its token was revoked. No reminder goes out until Slack is added again.`
+							: `The stored Slack credential${status?.teamName ? ` for ${status.teamName}` : ""} can no longer be read, because the server's secret changed after it was saved. No reminder goes out until Slack is added again.`
 						: "Sends reminder DMs on Tuesday and Friday, plus a push at the end of the month."
 				}
 				action={

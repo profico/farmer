@@ -24,6 +24,11 @@ const stamps = {
 // reminder DM is sent with; it is written once at install and never exposed to
 // the client — no server function or REST route returns it. Stored sealed
 // (`lib/secret-box.ts`); `slackService.installationFor` is the one reader.
+//
+// `tokenRejectedAt` is set when Slack refuses the token itself (revoked,
+// invalid, or its workspace deleted). The row stays, so Settings can name the
+// workspace and ask for a new install; `installationFor` reads it as no
+// installation, and an install clears it.
 export const slackInstallation = pgTable(
 	"slack_installation",
 	{
@@ -36,6 +41,7 @@ export const slackInstallation = pgTable(
 		installedByUserId: text("installed_by_user_id").references(() => user.id, {
 			onDelete: "set null",
 		}),
+		tokenRejectedAt: ts("token_rejected_at"),
 		...stamps,
 	},
 	(t) => [unique("slack_installation_org_unq").on(t.organizationId)],

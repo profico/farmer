@@ -470,6 +470,13 @@
       "when": 1790167055964,
       "tag": "0066_recurring_rule_day_cap",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1790167314756,
+      "tag": "0067_slack_token_rejected",
+      "breakpoints": true
     }
   ]
 }

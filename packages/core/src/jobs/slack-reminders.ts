@@ -55,12 +55,20 @@ export type SlackReminderSummary = {
 // A send that comes back undelivered is a different case: nothing went out,
 // so the claim only stood between the person and a retry. Unless no retry can
 // help — they have no Slack identity, or Slack refused for good (a deactivated
-// account, an unknown user, a revoked token: `PERMANENT_POST_ERRORS` in
-// `lib/slack-client.ts`, reported by `notify` as `"unreachable"`) — the claim
+// account, an unknown user: `RECIPIENT_REFUSALS` in `lib/slack-client.ts`,
+// reported by `notify` as `"unreachable"`) — the claim
 // is released and the pass is left unfinished, so the next tick tries again,
 // at most `MAX_SEND_ATTEMPTS` times a day, after which the claim stays. A
 // permanent refusal keeps its claim and counts as neither sent nor failed:
 // counting it would add three failures a day per deactivated account.
+//
+// A refused bot token is neither case: it is about the credential, and every
+// send after it fails the same way. `sendDm` records it on the installation
+// (`slackService.rejectToken`), so after a failed send the job asks whether
+// the org still has Slack. When it does not, the send counts as failed, its
+// claim is released like any other failure, and the org's pass ends there
+// rather than claiming and failing the rest of the list. Settings shows the
+// reconnect state, and a new install reaches everyone the same day.
 
 /** The three kinds this job sends, the claim key each has always used in
  *  `slack_reminder_log`, and the summary counter it adds to. */
@@ -255,6 +263,7 @@ export const runSlackRemindersOnce = async (
 					),
 				});
 				let retryLater = false;
+				let slackLost = false;
 				for (const recipient of recipients) {
 					if (blocks.has(recipient.userId)) continue;
 					if (!(await claim(org.id, recipient.userId, entry.claim, today))) {
@@ -295,10 +304,12 @@ export const runSlackRemindersOnce = async (
 					}
 
 					summary.failed++;
+					slackLost = !(await slackService.installationFor(org.id));
 					const attempts = (failedAttempts.get(attemptKey)?.count ?? 0) + 1;
 					if (attempts >= MAX_SEND_ATTEMPTS) {
 						// Out of attempts: the claim stays, and the day gets no more.
 						failedAttempts.delete(attemptKey);
+						if (slackLost) break;
 						continue;
 					}
 					failedAttempts.set(attemptKey, {
@@ -320,7 +331,11 @@ export const runSlackRemindersOnce = async (
 							error,
 						});
 					}
+					if (slackLost) break;
 				}
+				// No Slack left to send with: stop the org, and leave every kind
+				// unfinished so a new install today still sends.
+				if (slackLost) break;
 				// A released claim needs this kind's pass to run again next tick.
 				if (!retryLater) finishedRuns.set(`${org.id}:${entry.kind}`, today);
 			}

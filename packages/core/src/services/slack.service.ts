@@ -22,21 +22,25 @@ export const slackService = {
 	 *
 	 *  Reads through `installationFor`, the same door every send goes through,
 	 *  so it cannot say "Connected" to a token nothing can use. A row whose token
-	 *  does not decrypt (a changed BETTER_AUTH_SECRET) is `needsReconnect`: no
-	 *  DM goes out and the reminder job skips the org, and this screen is the one
-	 *  place that can tell an admin to install again. */
+	 *  does not decrypt (a changed BETTER_AUTH_SECRET) or that Slack refused
+	 *  (`tokenRejectedAt`) is `needsReconnect`: no DM goes out and the reminder
+	 *  job skips the org, and this screen is the one place that can tell an
+	 *  admin to install again. `reason` says which, for the message. */
 	status: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
 		const installation = await slackService.installationFor(ctx.organizationId);
 		if (!installation) {
 			const stale = await db.query.slackInstallation.findFirst({
 				where: eq(slackInstallation.organizationId, ctx.organizationId),
-				columns: { teamName: true },
+				columns: { teamName: true, tokenRejectedAt: true },
 			});
 			return stale
 				? {
 						connected: false as const,
 						needsReconnect: true as const,
+						reason: stale.tokenRejectedAt
+							? ("rejected" as const)
+							: ("unreadable" as const),
 						teamName: stale.teamName,
 					}
 				: { connected: false as const, needsReconnect: false as const };
@@ -110,6 +114,7 @@ export const slackService = {
 					botToken,
 					botUserId: result.bot_user_id,
 					installedByUserId: ctx.userId,
+					tokenRejectedAt: null,
 					updatedAt: new Date(),
 				},
 			});
@@ -252,13 +257,17 @@ export const slackService = {
 	 *  job runs outside a request and iterates every org.
 	 *
 	 *  A token stored before encryption existed is resealed here, on its first
-	 *  read. One that does not decrypt (a changed BETTER_AUTH_SECRET) reads as
-	 *  no installation, so nothing sends with garbage and a reinstall fixes it. */
+	 *  read. One that does not decrypt (a changed BETTER_AUTH_SECRET), or that
+	 *  Slack has refused (`tokenRejectedAt`), reads as no installation, so
+	 *  nothing sends with garbage and a reinstall fixes it.
+	 *
+	 *  `sealedBotToken` is the value as stored, for `rejectToken`. */
 	installationFor: async (organizationId: string) => {
 		const row = await db.query.slackInstallation.findFirst({
 			where: eq(slackInstallation.organizationId, organizationId),
 		});
-		if (!row) return undefined;
+		if (!row || row.tokenRejectedAt) return undefined;
+		let sealedBotToken = row.botToken;
 		const botToken = await openAndHeal(
 			row.botToken,
 			async (sealed) => {
@@ -271,10 +280,32 @@ export const slackService = {
 							eq(slackInstallation.botToken, row.botToken),
 						),
 					);
+				sealedBotToken = sealed;
 			},
 			"a Slack bot token",
 		);
-		return botToken === null ? undefined : { ...row, botToken };
+		return botToken === null ? undefined : { ...row, botToken, sealedBotToken };
+	},
+
+	/** Record that Slack refused the org's bot token. Only where the row still
+	 *  holds the token that was refused, so an install that replaced it in the
+	 *  meantime is never marked. */
+	rejectToken: async (installation: {
+		id: string;
+		sealedBotToken: string;
+	}): Promise<void> => {
+		console.error("[slack] Slack refused the bot token; install Slack again", {
+			installationId: installation.id,
+		});
+		await db
+			.update(slackInstallation)
+			.set({ tokenRejectedAt: new Date() })
+			.where(
+				and(
+					eq(slackInstallation.id, installation.id),
+					eq(slackInstallation.botToken, installation.sealedBotToken),
+				),
+			);
 	},
 
 	slackIdFor: async (
@@ -317,8 +348,10 @@ export const slackService = {
 	/** Send a DM to a person. Never throws — one person's failure must not
 	 *  abort a whole reminder run. True when it went out; `"unreachable"` when
 	 *  no retry can change that today (the person is not mapped, or Slack
-	 *  refused for good — see `PERMANENT_POST_ERRORS`); false for anything a
-	 *  later try may get through, and when the org has no Slack. */
+	 *  refused them for good — see `RECIPIENT_REFUSALS`); false for anything a
+	 *  later try may get through, and when the org has no Slack. A refused
+	 *  token is false too, after `rejectToken` records it: the person is not
+	 *  the problem, and the next read of `installationFor` finds no Slack. */
 	sendDm: async (
 		organizationId: string,
 		userId: string,
@@ -334,6 +367,7 @@ export const slackService = {
 			text,
 		);
 		if (result === "sent") return true;
+		if (result === "revoked") await slackService.rejectToken(installation);
 		return result === "refused" ? "unreachable" : false;
 	},
 
@@ -372,6 +406,7 @@ export const slackService = {
 				slackUserId,
 				text,
 			);
+			if (result === "revoked") await slackService.rejectToken(installation);
 			return result === "sent";
 		} catch (error) {
 			console.error("[slack] could not send invitation", {
