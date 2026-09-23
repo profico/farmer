@@ -94,19 +94,18 @@ const NAV = [
 	{ label: "About", to: "/about" },
 ] as const;
 
-/** How far past the top the page scrolls before the header is fully an
- *  island. */
-const FLOAT_DISTANCE = 96;
+/** How far past the top the page scrolls before the header's edge is fully
+ *  drawn. */
+const SCROLL_DISTANCE = 48;
 
 /** How long each spring takes to catch up with its target, in seconds: its
- *  period. The shape is slow and calm. The colour is quicker, so the island
- *  is dark by the time the dark band is plainly under it. */
-const FLOAT_RESPONSE = 0.6;
+ *  period. */
+const EDGE_RESPONSE = 0.3;
 const INK_RESPONSE = 0.3;
 
 /** The line in the viewport that decides whether the header sits over an ink
- *  band: the middle of the floating island. */
-const HEADER_MIDLINE = 36;
+ *  band: the middle of the header. */
+const HEADER_MIDLINE = 31;
 
 /** 1 while the header's midline is over an element marked
  *  `data-header-ink`, such as the front page's dark Developers band. */
@@ -126,25 +125,20 @@ const USER_INPUT = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
  * Drives the header's two custom properties from the scroll, so the CSS can
  * draw every state in between (see the Header block in site.css):
  *
- * - `--fm-float`: 0 is the bar, 1 is the floating island.
+ * - `--fm-scrolled`: 0 at the top of the page, 1 once it has scrolled, which
+ *   fades in the header's bottom edge and shadow.
  * - `--fm-ink`: 0 is the page's own palette, 1 is the ink palette, while the
  *   header passes over a dark band.
  *
- * The scroll sets where each is going, not where it is. One wheel notch is
- * about 100px, the whole float distance, so a header that followed the scroll
- * directly jumped from bar to island in one frame. A critically damped spring
- * chases each target instead: it never overshoots, a scroll back mid-way
- * turns it around from where it is at the speed it has, and a slow trackpad
- * scroll still tracks nearly 1:1.
+ * The scroll sets where each is going, not where it is. A critically damped
+ * spring chases each target, so one wheel notch fades the edge in over a
+ * moment rather than in one frame, and a scroll back mid-way turns it around
+ * from where it is. Nothing here moves, so reduced motion keeps the fades.
  *
  * A scroll nobody asked for snaps. Each public page mounts its own header,
  * and the router moves the page to the top, or back to where it was, only
- * after the header exists. Sprung, that drew the island melting back into
- * the bar on every page change. So the springs only animate once the
- * reader has touched the page.
- *
- * Reduced motion snaps the shape, which moves, and keeps the colour, which
- * does not.
+ * after the header exists. Sprung, that faded the edge out on every page
+ * change. So the springs only animate once the reader has touched the page.
  *
  * Straight to the DOM from a frame loop rather than through React state, and
  * the loop stops once both springs are at rest.
@@ -153,17 +147,15 @@ function useHeaderSprings(ref: RefObject<HTMLElement | null>) {
 	useEffect(() => {
 		const header = ref.current;
 		if (!header) return;
-		const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-		const floatTarget = () => {
-			const t = Math.min(Math.max(window.scrollY / FLOAT_DISTANCE, 0), 1);
+		const scrolledTarget = () => {
+			const t = Math.min(Math.max(window.scrollY / SCROLL_DISTANCE, 0), 1);
 			return t * t * (3 - 2 * t);
 		};
 		const springs = [
 			{
-				name: "--fm-float",
-				target: floatTarget,
-				omega: (2 * Math.PI) / FLOAT_RESPONSE,
-				moves: true,
+				name: "--fm-scrolled",
+				target: scrolledTarget,
+				omega: (2 * Math.PI) / EDGE_RESPONSE,
 				value: 0,
 				velocity: 0,
 			},
@@ -171,7 +163,6 @@ function useHeaderSprings(ref: RefObject<HTMLElement | null>) {
 				name: "--fm-ink",
 				target: overInk,
 				omega: (2 * Math.PI) / INK_RESPONSE,
-				moves: false,
 				value: 0,
 				velocity: 0,
 			},
@@ -195,13 +186,10 @@ function useHeaderSprings(ref: RefObject<HTMLElement | null>) {
 			const dt =
 				last < 0 ? 1 / 60 : Math.min(Math.max((now - last) / 1000, 0), 1 / 30);
 			last = now;
-			const reduced =
-				reduceMotion.matches ||
-				document.documentElement.dataset.motion === "reduce";
 			let settled = true;
 			for (const spring of springs) {
 				const goal = spring.target();
-				if (!touched || (reduced && spring.moves)) {
+				if (!touched) {
 					spring.value = goal;
 					spring.velocity = 0;
 					continue;

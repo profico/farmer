@@ -369,27 +369,15 @@ html:has(.fm-site) {
 }
 
 /* ---- Header ----------------------------------------------------------- */
-/* At the top of the page the header is a full-width bar on the paper. As the
-   page scrolls it lets go of the edges and floats down as an island:
-   rounded, on its own glass with a hairline and a shadow.
+/* A full-width bar on the paper's own glass. Once the page scrolls, a hairline
+   and a soft shadow set it off from the content passing under it.
 
-   It is not a switch. `SiteHeader` writes `--fm-float` from a spring that
-   chases the scroll (0 at the top, 1 after the first 96px), and every length
-   below is a line between the bar and the island at that value. There is no
-   CSS transition on any of them: the spring is the animation, so a scroll
-   back up turns it around from wherever it is, and nothing flips back and
-   forth at a threshold.
-
-   The row keeps its layout at every value: the island is drawn by two
-   pseudo-elements behind it, the glass (`::before`) and its shadow
-   (`::after`), and the content moves only by `transform`. So a frame of the
-   spring repaints the island and recomposites the row, and never lays out the
-   header again. The blur is a constant for the same reason: a blur radius that
-   changes re-renders the backdrop on every frame.
-
-   The header box keeps its height, so the page under it never moves. */
+   `SiteHeader` writes `--fm-scrolled`, a spring that chases the scroll from 0
+   at the top to 1 after the first 48px, so the edge fades in and out rather
+   than blinking at a threshold. The shadow sits on its own layer and fades by
+   opacity, so a frame of the spring never repaints a blur. */
 .fm-site .fm-header {
-	--f: var(--fm-float, 0);
+	--s: var(--fm-scrolled, 0);
 	/* Over an ink band (`data-header-ink`, the front page's Developers) the
 	   header takes the band's palette. `--fm-ink` is a spring from 0 to 1, so
 	   every token below blends across rather than flipping. A token cannot
@@ -431,81 +419,40 @@ html:has(.fm-site) {
 	position: sticky;
 	top: 0;
 	z-index: 20;
-	/* The row's height. */
-	height: 62px;
+}
+.fm-site .fm-header::before,
+.fm-site .fm-header::after {
+	content: "";
+	position: absolute;
+	inset: 0;
 	pointer-events: none;
 }
-/* A phone has no room for a full-width bar to give way, so it is the island
-   from the first frame. */
-@media (max-width: 760px) {
-	.fm-site .fm-header {
-		--f: 1;
-	}
+/* The glass, and the hairline under it. */
+.fm-site .fm-header::before {
+	z-index: -1;
+	background: color-mix(in oklab, var(--bg) 86%, transparent);
+	backdrop-filter: blur(20px) saturate(160%);
+	-webkit-backdrop-filter: blur(20px) saturate(160%);
+	border-bottom: 1px solid
+		color-mix(in oklab, var(--line) calc(100% * var(--s)), transparent);
+}
+.fm-site .fm-header::after {
+	z-index: -2;
+	box-shadow: 0 8px 24px -16px rgb(27 26 23 / 0.35);
+	opacity: var(--s);
+}
+:root[data-theme="dark"] .fm-site .fm-header::after {
+	box-shadow: 0 8px 24px -14px rgb(0 0 0 / 0.8);
 }
 .fm-site .fm-header-inner {
-	/* How far the island steps in from the row's ends. 0 on a wide screen,
-	   where it keeps the bar's width and pops out in place. */
-	--edge: 0px;
-	position: relative;
 	display: flex;
 	align-items: center;
 	gap: 28px;
-	pointer-events: auto;
-	/* 13 + 36 + 13: the header's full 62px, so the island's 52px fits it. */
 	padding: 13px 24px;
-	/* The island spans 10–62px, so its middle is 5px below the bar's. */
-	transform: translateY(calc(5px * var(--f)));
 }
-/* Narrower than the container plus two 12px margins, the island steps in
-   from each edge, so its rounded ends and its shadow stay visible. */
-@media (max-width: 1223px) {
-	.fm-site .fm-header-inner {
-		--edge: 12px;
-	}
-}
-.fm-site .fm-header-inner::before,
-.fm-site .fm-header-inner::after {
-	content: "";
-	position: absolute;
-	/* The row is moved 5px down, so 5px in at the top and bottom is 10–62px
-	   on the screen. The right end closes in to 8px past the buttons, the
-	   same 8px they sit from the top and bottom, so the last button's round
-	   end is concentric with the island's. The buttons themselves stay put. */
-	inset: calc(5px * var(--f)) calc(16px * var(--f)) calc(5px * var(--f))
-		calc(var(--edge) * var(--f));
-	/* Half the island's 52px height: a full capsule at 1. */
-	border-radius: calc(26px * var(--f));
-	pointer-events: none;
-}
-/* The glass. */
-.fm-site .fm-header-inner::before {
-	z-index: -1;
-	border: 1px solid
-		color-mix(in oklab, var(--line) calc(100% * var(--f)), transparent);
-	background: color-mix(
-		in oklab,
-		var(--bg) calc(86% - 10% * var(--f)),
-		transparent
-	);
-	backdrop-filter: blur(20px) saturate(160%);
-	-webkit-backdrop-filter: blur(20px) saturate(160%);
-}
-/* The shadow, faded by opacity rather than repainted at a new strength. */
-.fm-site .fm-header-inner::after {
-	z-index: -2;
-	box-shadow: 0 12px 32px -18px rgb(27 26 23 / 0.45);
-	opacity: var(--f);
-}
-:root[data-theme="dark"] .fm-site .fm-header-inner::after {
-	box-shadow: 0 12px 32px -14px rgb(0 0 0 / 0.85);
-}
-/* Buttons round off with the island: 8px at rest, a capsule at 1. */
-.fm-site .fm-header .fm-btn {
-	border-radius: calc(8px + 10px * var(--f));
-}
-/* Glass is a nicety. Asked for less, the island is solid paper. */
+/* Glass is a nicety. Asked for less, the bar is solid paper. */
 @media (prefers-reduced-transparency: reduce) {
-	.fm-site .fm-header-inner::before {
+	.fm-site .fm-header::before {
 		background: var(--bg);
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
