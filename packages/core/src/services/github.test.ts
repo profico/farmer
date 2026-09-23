@@ -962,6 +962,26 @@ describe("listLinkedRepos", () => {
 		).rejects.toBeInstanceOf(AccessError);
 	});
 
+	// `suggestCommits` needs an assignment, so a repo listed here would open a
+	// commit picker that can never fill.
+	test("a member on an open project they are not assigned to reads none", async () => {
+		const projectId = await projectNamed("Not mine");
+		await db
+			.update(project)
+			.set({ openToOrg: true })
+			.where(eq(project.id, projectId));
+		try {
+			expect(
+				await githubService.listLinkedRepos(memberCtx(), projectId),
+			).toEqual([]);
+		} finally {
+			await db
+				.update(project)
+				.set({ openToOrg: false })
+				.where(eq(project.id, projectId));
+		}
+	});
+
 	test("an admin reads any project's repos", async () => {
 		const repos = await githubService.listLinkedRepos(
 			adminCtx(),

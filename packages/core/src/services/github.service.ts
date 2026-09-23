@@ -977,10 +977,17 @@ export const githubService = {
 	 * member could name any project and read the owner/name of its repos,
 	 * private ones included, which is exactly what `reposForUser` keeps the
 	 * commit scans from reaching.
+	 *
+	 * A member who reaches the project only because it is open to the
+	 * organization gets an empty list. `suggestCommits` and `attachCommits`
+	 * read through `reposForUser`, which needs an active assignment, so a repo
+	 * shown here would open a commit picker that always answers empty. An
+	 * admin keeps the whole list: the project panel's GitHub tab is theirs.
 	 */
 	listLinkedRepos: async (ctx: Ctx, projectId: string) => {
 		const access = await ctxAccess(ctx);
 		access.assertCanTrackOn(projectId);
+		if (!access.isAdmin && access.roleOn(projectId) === null) return [];
 		return db.query.projectGithubRepo.findMany({
 			where: and(
 				eq(projectGithubRepo.projectId, projectId),
