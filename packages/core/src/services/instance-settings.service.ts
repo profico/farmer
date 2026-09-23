@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { db } from "../db";
 import { instanceOAuthProvider, instanceSetting } from "../db/schema/instance";
@@ -13,7 +13,11 @@ import {
 	type SettingSource,
 	settingDefinition,
 } from "../lib/instance-settings";
-import { openSecret, sealSecret } from "../lib/secret-box";
+import {
+	isSealedWithCurrentKey,
+	openSecret,
+	sealSecret,
+} from "../lib/secret-box";
 import { objectStore } from "../lib/storage";
 import { UserFacingError } from "../lib/user-facing-error";
 
@@ -27,7 +31,9 @@ import { UserFacingError } from "../lib/user-facing-error";
  *
  * A secret is sealed with `lib/secret-box.ts` before it is written and is
  * never sent back to a browser: the view carries a hint (its first four
- * characters) and nothing else.
+ * characters) and nothing else. The loader reseals a stored secret that is
+ * not under the current key, so a BETTER_AUTH_SECRETS rotation reaches these
+ * rows on the next refresh.
  */
 
 /** How long one read of the table serves. Short, because a web process and a
@@ -80,6 +86,30 @@ const openOrSkip = (name: string, stored: string): string | undefined => {
 	}
 };
 
+/**
+ * Rewrite a stored secret under the current key when it is plaintext or was
+ * sealed before a rotation (`lib/secret-box.ts`). `write` must update the row
+ * only where it still holds the old value, so a concurrent save wins.
+ *
+ * Not awaited: the loader runs on the request path, and a rotation must not
+ * add a write to it. A failed reseal is logged and ignored; the next load
+ * tries again.
+ */
+const healLater = (
+	what: string,
+	stored: string,
+	plaintext: string,
+	write: (sealed: string) => Promise<void>,
+) => {
+	Promise.resolve()
+		.then(() =>
+			isSealedWithCurrentKey(stored) ? undefined : write(sealSecret(plaintext)),
+		)
+		.catch((error: unknown) => {
+			console.error(`[instance-settings] resealing ${what} failed`, error);
+		});
+};
+
 const load = async () => {
 	const [rows, providerRows] = await Promise.all([
 		db.select().from(instanceSetting),
@@ -95,10 +125,24 @@ const load = async () => {
 		// A row for a setting this build no longer knows is left alone, not
 		// deleted: an older build may still be running against this database.
 		if (!definition) continue;
-		const value = isSecretKind(definition)
-			? openOrSkip(row.name, row.value)
-			: row.value;
-		if (value !== undefined) values.set(row.name, value);
+		if (!isSecretKind(definition)) {
+			values.set(row.name, row.value);
+			continue;
+		}
+		const value = openOrSkip(row.name, row.value);
+		if (value === undefined) continue;
+		values.set(row.name, value);
+		healLater(row.name, row.value, value, async (sealed) => {
+			await db
+				.update(instanceSetting)
+				.set({ value: sealed })
+				.where(
+					and(
+						eq(instanceSetting.name, row.name),
+						eq(instanceSetting.value, row.value),
+					),
+				);
+		});
 	}
 	const nextProviders: OAuthProviderConfig[] = [];
 	for (const row of providerRows) {
@@ -107,6 +151,22 @@ const load = async () => {
 			row.clientSecret,
 		);
 		if (clientSecret === undefined) continue;
+		healLater(
+			`OAuth provider ${row.providerId}`,
+			row.clientSecret,
+			clientSecret,
+			async (sealed) => {
+				await db
+					.update(instanceOAuthProvider)
+					.set({ clientSecret: sealed })
+					.where(
+						and(
+							eq(instanceOAuthProvider.id, row.id),
+							eq(instanceOAuthProvider.clientSecret, row.clientSecret),
+						),
+					);
+			},
+		);
 		nextProviders.push({
 			providerId: row.providerId,
 			name: row.name,

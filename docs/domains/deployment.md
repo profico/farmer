@@ -26,6 +26,14 @@ Each job is env-gated by `<NAME>_ENABLED` / `<NAME>_INTERVAL_MINUTES`; the full 
 
 **Development sends nothing, in either half.** Both `lib/posthog-server.ts` and the browser's config in `routes/__root.tsx` answer null unless `NODE_ENV=production`, so a developer's `.env` — a copy of a real deployment's, token included — cannot put reloads, test clicks and seeded rows into the project the dashboards are built on. It is deliberately not an opt-in variable, which can be copied onto a server. `lib/dev-auth.ts` reads the same variable from the other side (password sign-in only under `development` or `test`), so both fail safe when it is unset. `vite dev` sets `development`, never `production`; the Dockerfile and `apps/web`'s `start` script both pin it. One consequence to know before debugging: a local run cannot exercise the analytics path at all, however the variables are set.
 
+**Rotate the secret with `BETTER_AUTH_SECRETS`, never by changing `BETTER_AUTH_SECRET`.** Every stored credential is encrypted with a key from it (better-auth's OAuth tokens, and `lib/secret-box.ts` for the Slack bot token, the OpenRouter key and the instance's secret settings), so a changed value makes all of them unreadable. `BETTER_AUTH_SECRETS` is better-auth's own rotation set, and `secret-box.ts` reads it the same way, so there is one thing to configure:
+
+1. Set `BETTER_AUTH_SECRETS=2:<new secret>,1:<old secret>` — the new version FIRST, because the first entry is the one that encrypts; the rest only decrypt. Versions are non-negative integers and must be unique. Leave `BETTER_AUTH_SECRET` set to what it was: it still opens every value written before the rotation set existed (`enc:v1:…` here, bare hex in better-auth), and `lib/oauth-state.ts` signs with it.
+2. Restart. New writes use version 2. Nothing needs a migration: a value under an older key heals on its next read — the Slack token on the next reminder tick, the OpenRouter key when the assistant next loads it, the instance settings on the next refresh (enabled OAuth sources only) — and on its next write. better-auth's OAuth tokens only move when the provider issues a new token, which for a GitHub OAuth token or a Google refresh token may be never.
+3. Drop version 1 only when nothing still carries it: no `enc:v2:1:…` in `slack_installation.bot_token`, `assistant_settings.api_key`, `instance_setting.value` or `instance_oauth_provider.client_secret`, and no `$ba$1$…` in `account.access_token` / `account.refresh_token`. A value under a dropped version is refused like one under a wrong secret. Do not remove `BETTER_AUTH_SECRET` while any `enc:v1:…` or bare-hex value remains.
+
+Without `BETTER_AUTH_SECRETS`, nothing changes: `secret-box.ts` seals `enc:v1:…` from `BETTER_AUTH_SECRET`, as it always did.
+
 ---
 
 See also: `apps/web/CLAUDE.md` (`server.ts` and the build), `packages/core/CLAUDE.md` (`jobs/scheduler.ts`).
