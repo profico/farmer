@@ -23,6 +23,7 @@ import {
 } from "../lib/openrouter-client";
 import { openAndHeal, sealSecret } from "../lib/secret-box";
 import { dayKeyInTz } from "../lib/time";
+import { UserFacingError } from "../lib/user-facing-error";
 import type {
 	CreateConversationInput,
 	RenameConversationInput,
@@ -30,7 +31,6 @@ import type {
 	SetAssistantSettingsInput,
 	UpdateAssistantSettingsInput,
 } from "../schema";
-import { AccessError } from "./access.service";
 import { reportGeneration, reportSpan } from "./ai-telemetry";
 import {
 	type ApprovalPreview,
@@ -42,7 +42,7 @@ import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { safeErrorMessage } from "./error-message";
 import type { Ctx } from "./types";
 
-export class AssistantError extends Error {
+export class AssistantError extends UserFacingError {
 	constructor(message: string) {
 		super(message);
 		this.name = "AssistantError";
@@ -73,18 +73,16 @@ export class AssistantDisabledError extends AssistantError {
  * The text a person may read for an error that ended a turn, or null when the
  * error is not theirs to read.
  *
- * Only the errors this layer and the services throw ON PURPOSE qualify: the
- * assistant's own (not connected, switched off, conversation not found), an
- * `AccessError` refusal, and OpenRouter's account-level answers (no credit, a
- * revoked key). Everything else — a database error, a bug, a failed import —
- * can carry SQL, a hostname or a file path, and belongs in the server log
- * rather than in somebody's chat. The stream route streamed every message
- * through before this existed.
+ * Only the errors this layer and the services throw ON PURPOSE qualify: a
+ * `UserFacingError` (the assistant's own — not connected, switched off,
+ * conversation not found — an `AccessError` refusal, a full day), and
+ * OpenRouter's account-level answers (no credit, a revoked key). Everything
+ * else — a database error, a bug, a failed import — can carry SQL, a hostname
+ * or a file path, and belongs in the server log rather than in somebody's
+ * chat. The stream route streamed every message through before this existed.
  */
 export const userFacingAssistantError = (error: Error): string | null =>
-	error instanceof AssistantError ||
-	error instanceof AccessError ||
-	error instanceof OpenRouterError
+	error instanceof UserFacingError || error instanceof OpenRouterError
 		? error.message
 		: null;
 

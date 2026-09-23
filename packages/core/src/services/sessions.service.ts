@@ -3,6 +3,7 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import { CLI_USER_AGENT_PREFIX } from "../api/errors";
 import { db } from "../db";
 import { session } from "../db/schema/auth";
+import { UserFacingError } from "../lib/user-facing-error";
 import type { Ctx } from "./types";
 
 /**
@@ -47,7 +48,7 @@ export type MySession = {
  *  and the web app already has a control for that which also clears the
  *  cookie and leaves the page. Doing it from here would leave the page on
  *  screen with a dead session behind it. */
-export class CurrentSessionRevokeError extends Error {
+export class CurrentSessionRevokeError extends UserFacingError {
 	constructor() {
 		super("That is the session you are using now. Sign out instead to end it.");
 		this.name = "CurrentSessionRevokeError";

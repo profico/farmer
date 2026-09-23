@@ -9,12 +9,18 @@ import {
 	uploadOrganizationOf,
 	uploadPath,
 } from "../lib/uploads";
+import { UserFacingError } from "../lib/user-facing-error";
 import { ctxAccess, requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
 /** An upload the app will not take: no store, too big, not an image. The
  *  message is written for the person who chose the file. */
-export class UploadRejectedError extends Error {}
+export class UploadRejectedError extends UserFacingError {
+	constructor(message: string) {
+		super(message);
+		this.name = "UploadRejectedError";
+	}
+}
 
 export const uploadsService = {
 	/**

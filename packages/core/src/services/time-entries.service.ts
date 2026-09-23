@@ -43,6 +43,7 @@ import {
 	QUARTER_HOUR_SECONDS,
 	snapToQuarterHour,
 } from "../lib/time";
+import { UserFacingError } from "../lib/user-facing-error";
 import {
 	type HolidayLookup,
 	MAX_DAY_SECONDS,
@@ -127,7 +128,7 @@ import { workingHoursService } from "./working-hours.service";
  * names no particular action: copying, typing into a cell and saving the entry
  * dialog all end up here.
  */
-export class DayCapacityError extends Error {
+export class DayCapacityError extends UserFacingError {
 	constructor(readonly dateKey: string) {
 		super(`This would put more than 24 hours on ${dateKey}`);
 		this.name = "DayCapacityError";

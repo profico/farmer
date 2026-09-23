@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { member } from "../db/schema/auth";
 import { project, projectMember } from "../db/schema/domain";
 import { teamLeadPerson } from "../db/schema/people";
+import { UserFacingError } from "../lib/user-facing-error";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
 
@@ -42,7 +43,7 @@ const RANK = {
 	pm: 3,
 } satisfies Record<ProjectRole, number>;
 
-export class AccessError extends Error {
+export class AccessError extends UserFacingError {
 	constructor(message: string) {
 		super(message);
 		this.name = "AccessError";
