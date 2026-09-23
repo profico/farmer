@@ -1441,8 +1441,8 @@ export function planHarvestImport(
 	}
 	const candidateEmails = new Set(parsed.candidateEmails);
 
-	// Names that differ only in accents or punctuation ("Ive Vasiljević" and
-	// "Ive Vasiljevic") are two source keys. The admin says whether they are
+	// Names that differ only in accents or punctuation ("Tin Primjerić" and
+	// "Tin Primjeric") are two source keys. The admin says whether they are
 	// one person. A group whose every member an earlier run mapped was
 	// answered then: one user is one person, two users are two.
 	const personMapped = (sourceKey: string) =>

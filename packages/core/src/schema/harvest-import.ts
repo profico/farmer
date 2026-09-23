@@ -116,8 +116,8 @@ const personPlan = z.discriminatedUnion("action", [
 		startDate: dayKeySchema,
 		archivedOn: dayKeySchema.nullable(),
 	}),
-	// A second Harvest spelling of a person in the plan ("Ive Vasiljević" and
-	// "Ive Vasiljevic"), that the admin said is the same person. It gets a
+	// A second Harvest spelling of a person in the plan ("Tin Primjerić" and
+	// "Tin Primjeric"), that the admin said is the same person. It gets a
 	// mapping to `of`'s user, so its rows and a later run resolve to them.
 	z.object({ action: z.literal("alias"), sourceKey, of: sourceKey }),
 ]);
