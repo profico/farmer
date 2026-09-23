@@ -14,6 +14,7 @@
 // trade working behaviour for a shortcut to the same events, so the events are
 // emitted directly instead.
 
+import { settingEnabled } from "@farmer/core/lib/instance-settings";
 import type { AiGeneration, AiSpan } from "@farmer/core/services";
 
 import { getPostHogClient } from "./posthog-server";
@@ -28,11 +29,12 @@ import { getPostHogClient } from "./posthog-server";
  * addresses, whatever the person typed into the box. This product is
  * multi-tenant, so that is not ours to forward by default.
  *
- * Read per call rather than once at module scope, so the switch is the
- * deployment's current answer and not whichever one the process started with.
+ * An instance setting, read per call rather than once at module scope, so the
+ * switch is the deployment's current answer (the environment, else the
+ * Infrastructure page) and not whichever one the process started with.
  */
 const captureContent = (): boolean =>
-	process.env.POSTHOG_AI_CAPTURE_CONTENT === "true";
+	settingEnabled("POSTHOG_AI_CAPTURE_CONTENT");
 
 /** Content, or a stand-in that says why it is missing.
  *

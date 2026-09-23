@@ -3,6 +3,7 @@ import {
 	isGithubAppConfigured,
 } from "@farmer/core/lib/github-client";
 import { externalFetch } from "@farmer/core/lib/http";
+import { setting } from "@farmer/core/lib/instance-settings";
 import { z } from "zod";
 
 import type { CliReleaseAsset } from "./cli-install";
@@ -119,7 +120,7 @@ export const resolveCliDownload = async (
 	asset: CliReleaseAsset,
 ): Promise<CliDownload> => {
 	if (!isGithubAppConfigured()) return { kind: "unconfigured" };
-	const repo = process.env.CLI_RELEASES_REPO?.trim() || "profico/farmer";
+	const repo = setting("CLI_RELEASES_REPO")?.trim() || "profico/farmer";
 	const [owner, name] = repo.split("/");
 	if (!owner || !name) {
 		return {

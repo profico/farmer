@@ -3,10 +3,11 @@ import { createServerFn } from "@tanstack/react-start";
 /**
  * Deployment shape the client is allowed to know, resolved server-side.
  *
- * `SINGLE_ORG_SLUG` is a plain env var, not a `VITE_` one, on purpose: `VITE_`
- * variables are baked at build time, and the Dockerfile builds one image that
- * is meant to run under different environments. So the mode is read on the
- * server, per request, and handed to the client through this function.
+ * `SINGLE_ORG_SLUG` and the feature switches are instance settings
+ * (`@farmer/core/lib/instance-settings`), never `VITE_` variables: those are
+ * baked at build time, and the Dockerfile builds one image that is meant to
+ * run under different environments. So each is read on the server, per
+ * request, and handed to the client through this function.
  */
 export type PublicAppConfig = {
 	singleOrgMode: boolean;

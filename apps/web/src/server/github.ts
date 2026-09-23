@@ -41,9 +41,12 @@ export const listGithubInstallations = createServerFn({
 export const getGithubInstallUrl = createServerFn({ method: "GET" })
 	.middleware([orgAdminMiddleware])
 	.handler(async ({ context }) => {
-		const slug = process.env.GITHUB_APP_SLUG;
+		const [{ setting }, { signOrgState }] = await Promise.all([
+			import("@farmer/core/lib/instance-settings"),
+			import("@farmer/core/lib/oauth-state"),
+		]);
+		const slug = setting("GITHUB_APP_SLUG");
 		if (!slug) throw new Error("GITHUB_APP_SLUG not configured");
-		const { signOrgState } = await import("@farmer/core/lib/oauth-state");
 		const url = new URL(`https://github.com/apps/${slug}/installations/new`);
 		url.searchParams.set(
 			"state",
