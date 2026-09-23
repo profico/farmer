@@ -18,8 +18,9 @@ import {
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { FarmerLogo } from "#/components/farmer-logo.tsx";
-import { GITHUB_URL } from "#/lib/links.ts";
+import { githubLinks } from "#/lib/links.ts";
 import { getSession } from "#/server/auth.ts";
+import { getPublicAppConfig } from "#/server/config.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
 // Marketing-only styles, every rule scoped under `.fm-landing`. See the header
@@ -41,13 +42,19 @@ export const Route = createFileRoute("/")({
 	loader: async (): Promise<{
 		orgSlug: string | null;
 		signedIn: boolean;
+		/** `owner/name`, for the "View on GitHub" links. A fork links to itself. */
+		repository: string;
 	}> => {
-		const session = await getSession();
-		if (!session) return { orgSlug: null, signedIn: false };
+		const [session, config] = await Promise.all([
+			getSession(),
+			getPublicAppConfig(),
+		]);
+		const { repository } = config;
+		if (!session) return { orgSlug: null, signedIn: false, repository };
 		// Server fn resolves userId/activeOrganizationId from the session itself —
 		// it no longer accepts a client-supplied identity.
 		const orgSlug = await getDefaultOrgSlugForSession();
-		return { orgSlug, signedIn: true };
+		return { orgSlug, signedIn: true, repository };
 	},
 	component: Home,
 });
@@ -174,7 +181,8 @@ const recentEntries = [
 ];
 
 function Home() {
-	const { orgSlug, signedIn } = Route.useLoaderData();
+	const { orgSlug, signedIn, repository } = Route.useLoaderData();
+	const githubUrl = githubLinks(repository).home;
 	return (
 		// No <MotionConfig> here: `__root.tsx` already wraps the whole app in an
 		// identical one, and this route holds no `motion.*` element for it to
@@ -283,7 +291,7 @@ function Home() {
 					}}
 				>
 					<DashButton orgSlug={orgSlug} signedIn={signedIn} />
-					<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
+					<a className="fm-btn fm-btn-outline" href={githubUrl}>
 						<GitBranchIcon size={15} data-icon="inline-start" />
 						Star on GitHub
 					</a>
@@ -936,7 +944,7 @@ function Home() {
 						style={{ display: "flex", gap: "10px" }}
 					>
 						<DashButton orgSlug={orgSlug} signedIn={signedIn} />
-						<a className="fm-btn fm-btn-outline" href={GITHUB_URL}>
+						<a className="fm-btn fm-btn-outline" href={githubUrl}>
 							<GitBranchIcon size={15} data-icon="inline-start" />
 							View on GitHub
 						</a>

@@ -15,6 +15,7 @@ import {
 	Link,
 	useLocation,
 	useNavigate,
+	useRouteContext,
 	useRouter,
 } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
@@ -51,7 +52,7 @@ import {
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { stopImpersonating } from "#/lib/impersonation.ts";
-import { GITHUB_NEW_ISSUE_URL } from "#/lib/links.ts";
+import { githubLinks } from "#/lib/links.ts";
 import { easeOut } from "#/lib/motion.ts";
 import {
 	setNavCollapsed,
@@ -149,6 +150,10 @@ export function AppSidebar({
 	 */
 	impersonating?: string | null;
 }) {
+	const newIssueUrl = useRouteContext({
+		from: "/$orgSlug",
+		select: (context) => githubLinks(context.repository).newIssue,
+	});
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const searchStr = useLocation({ select: (location) => location.searchStr });
 	const navigate = useNavigate();
@@ -512,7 +517,7 @@ export function AppSidebar({
 								<TooltipTrigger
 									render={
 										<a
-											href={GITHUB_NEW_ISSUE_URL}
+											href={newIssueUrl}
 											target="_blank"
 											rel="noreferrer"
 											aria-label="Report a problem"
