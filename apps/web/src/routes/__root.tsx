@@ -1,3 +1,4 @@
+import { setting } from "@farmer/core/lib/instance-settings";
 import { IconContext } from "@phosphor-icons/react";
 import { PostHogProvider, usePostHog } from "@posthog/react";
 import { TanStackDevtools } from "@tanstack/react-devtools";
@@ -42,9 +43,10 @@ const DESCRIPTION = "Farmer — a simple, open-source time tracker.";
  * inside the Docker image — so a `VITE_` value can only ever be what CI was
  * given, never what the deployment is configured with. One image runs several
  * environments here, which is why `ASSISTANT_ENABLED` and `SINGLE_ORG_SLUG` are
- * plain variables read per request (`server/config.ts` says the same thing).
+ * instance settings read per request (`server/config.ts` says the same thing).
  *
- * So the server reads `process.env` and writes the pair into the inline script
+ * So the server reads the instance settings (the environment, else the
+ * Infrastructure page) and writes the pair into the inline script
  * below, beside the theme; the browser reads it back off `window`. Not through
  * `getPublicAppConfig`, which is a server FUNCTION: the root route has no
  * loader to call one from, and `RootDocument` is the `shellComponent`, which
@@ -68,8 +70,8 @@ declare global {
 const posthogConfig = createIsomorphicFn()
 	.server((): PostHogConfig => {
 		if (process.env.NODE_ENV !== "production") return null;
-		const token = process.env.POSTHOG_PROJECT_TOKEN;
-		const host = process.env.POSTHOG_HOST;
+		const token = setting("POSTHOG_PROJECT_TOKEN");
+		const host = setting("POSTHOG_HOST");
 		return token && host ? { token, host } : null;
 	})
 	.client((): PostHogConfig => window.__FARMER_POSTHOG__ ?? null);

@@ -3,6 +3,7 @@ import {
 	isGithubAppConfigured,
 } from "@farmer/core/lib/github-client";
 import { externalFetch } from "@farmer/core/lib/http";
+import { setting } from "@farmer/core/lib/instance-settings";
 import { z } from "zod";
 
 /**
@@ -80,7 +81,7 @@ let cache: { repo: string; fetchedAt: number; rows: Contributor[] } | null =
  *  releases come off, because it is the same repository — see
  *  `server/cli-releases.ts`. */
 export const sourceRepo = (): string =>
-	process.env.CLI_RELEASES_REPO?.trim() || "profico/farmer";
+	setting("CLI_RELEASES_REPO")?.trim() || "profico/farmer";
 
 /**
  * Everyone with a commit on the default branch, most commits first.

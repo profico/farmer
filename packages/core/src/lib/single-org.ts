@@ -3,9 +3,10 @@ import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { invitation, member, organization } from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
+import { setting } from "./instance-settings";
 
 /**
- * Single-organization mode — the whole switch is one env var.
+ * Single-organization mode — the whole switch is one instance setting.
  *
  * Setting `SINGLE_ORG_SLUG` turns a deployment into a one-workspace instance:
  * nobody can create a second organization, signup is invitation-only, and the
@@ -17,14 +18,19 @@ import { ensureOrgTasks } from "../db/seed-tasks";
  * organization?" implicit, and the only implicit answer available ("the oldest
  * row") silently picks wrong on any database that already has two.
  *
- * SERVER ONLY. This module reads `process.env` and touches the database, so
- * importing it from a component or from a route module's top level would both
- * crash hydration (see apps/web/CLAUDE.md) and read the mode as "off" in the browser.
- * The client learns the mode from `getPublicAppConfig` instead.
+ * Read per call, not captured at import: the value can now come from the
+ * Infrastructure page (`lib/instance-settings.ts`), and a process that pinned
+ * it at start would disagree with the page until a restart.
+ *
+ * SERVER ONLY. This module touches the database, so importing it from a
+ * component or from a route module's top level would both crash hydration (see
+ * apps/web/CLAUDE.md) and read the mode as "off" in the browser. The client
+ * learns the mode from `getPublicAppConfig` instead.
  */
-export const SINGLE_ORG_SLUG = process.env.SINGLE_ORG_SLUG?.trim() || null;
+export const singleOrgSlug = (): string | null =>
+	setting("SINGLE_ORG_SLUG")?.trim() || null;
 
-export const isSingleOrgMode = () => SINGLE_ORG_SLUG !== null;
+export const isSingleOrgMode = () => singleOrgSlug() !== null;
 
 /**
  * The one organization, or null. Null has two distinct meanings — mode off, or
@@ -32,10 +38,11 @@ export const isSingleOrgMode = () => SINGLE_ORG_SLUG !== null;
  * — and callers that care distinguish them with `isSingleOrgMode()`.
  */
 export const findSingleOrg = async () => {
-	if (!SINGLE_ORG_SLUG) return null;
+	const slug = singleOrgSlug();
+	if (!slug) return null;
 	return (
 		(await db.query.organization.findFirst({
-			where: eq(organization.slug, SINGLE_ORG_SLUG),
+			where: eq(organization.slug, slug),
 		})) ?? null
 	);
 };
@@ -69,7 +76,8 @@ export const findPendingInvitation = async (
  * hands out ownership.
  */
 export const bootstrapSingleOrg = async (userId: string): Promise<boolean> => {
-	if (!SINGLE_ORG_SLUG) return false;
+	const slug = singleOrgSlug();
+	if (!slug) return false;
 	const [created] = await db
 		.insert(organization)
 		.values({
@@ -77,10 +85,11 @@ export const bootstrapSingleOrg = async (userId: string): Promise<boolean> => {
 			// Title-cased from the slug — a placeholder the owner renames in
 			// Settings → Organization, which is also where the sign-in screen's
 			// branding is read from, so it's worth doing on day one.
-			name: SINGLE_ORG_SLUG.split("-")
+			name: slug
+				.split("-")
 				.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
 				.join(" "),
-			slug: SINGLE_ORG_SLUG,
+			slug,
 			timezone: "UTC",
 			country: "US",
 			createdAt: new Date(),

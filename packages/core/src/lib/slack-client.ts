@@ -2,6 +2,7 @@
 // a thin fetch wrapper rather than a dependency on @slack/web-api.
 
 import { externalFetch } from "./http";
+import { setting } from "./instance-settings";
 import type { JsonValue } from "./json";
 
 const SLACK_API = "https://slack.com/api";
@@ -151,8 +152,8 @@ export const slackClient = {
 	 * JSON.
 	 */
 	exchangeOAuthCode: async (code: string): Promise<SlackOAuthResult> => {
-		const clientId = process.env.SLACK_CLIENT_ID;
-		const clientSecret = process.env.SLACK_CLIENT_SECRET;
+		const clientId = setting("SLACK_CLIENT_ID");
+		const clientSecret = setting("SLACK_CLIENT_SECRET");
 		if (!clientId || !clientSecret) {
 			throw new Error("SLACK_CLIENT_ID / SLACK_CLIENT_SECRET not configured");
 		}
