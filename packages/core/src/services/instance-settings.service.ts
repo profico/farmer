@@ -2,6 +2,8 @@ import { asc, eq, inArray } from "drizzle-orm";
 
 import { db } from "../db";
 import { instanceOAuthProvider, instanceSetting } from "../db/schema/instance";
+import { referencedUploadKeys } from "../jobs/upload-sweep";
+import { sendMail } from "../lib/email";
 import {
 	INSTANCE_SETTINGS,
 	isSettingName,
@@ -12,6 +14,7 @@ import {
 	settingDefinition,
 } from "../lib/instance-settings";
 import { openSecret, sealSecret } from "../lib/secret-box";
+import { objectStore } from "../lib/storage";
 import { UserFacingError } from "../lib/user-facing-error";
 
 /**
@@ -216,7 +219,6 @@ export const updateInstanceSettings = async (
 	changes: Record<string, string | null>,
 	options: { confirmStorageMove?: boolean } = {},
 ): Promise<void> => {
-	await guardStorageMove(changes, options.confirmStorageMove === true);
 	const entries = Object.entries(changes);
 	for (const [name, value] of entries) {
 		if (!isSettingName(name)) {
@@ -244,6 +246,9 @@ export const updateInstanceSettings = async (
 			throw new UserFacingError(`${name} must be true or false.`);
 		}
 	}
+	// After the checks above, so a write that is refused anyway does not first
+	// ask the person to confirm a storage move.
+	await guardStorageMove(changes, options.confirmStorageMove === true);
 	const removals: string[] = [];
 	const writes: { name: string; value: string }[] = [];
 	for (const [name, raw] of entries) {
@@ -406,31 +411,148 @@ export const deleteOAuthProvider = async (id: string): Promise<void> => {
 /** What a "test" button shows. `ok: false` carries the reason in `message`. */
 export type ConnectionTestResult = { ok: boolean; message: string };
 
-/** A put, get and delete round trip on a probe key in the configured store. */
+/**
+ * An error's message with every stored secret blanked out. A test result goes
+ * to a browser, and a driver may echo what it was given (a URL with a key in
+ * it, a refused password) into its error.
+ */
+const withoutSecrets = (message: string): string => {
+	let clean = message;
+	for (const definition of INSTANCE_SETTINGS) {
+		if (!isSecretKind(definition) && definition.name !== "S3_ACCESS_KEY_ID") {
+			continue;
+		}
+		const value = resolveSetting(definition.name).value;
+		if (value && value.length >= 4) clean = clean.replaceAll(value, "••••••••");
+	}
+	return clean;
+};
+
+/** Where the storage test writes. Outside `orgs/`, the only prefix the upload
+ *  sweep lists, so a probe whose delete failed is never taken for an upload
+ *  (and never served: `/api/files` only answers upload-shaped keys). */
+const STORAGE_PROBE_PREFIX = "instance/connection-test/";
+
+/** A put, get and delete round trip on a probe key in the configured store.
+ *  Never throws for a store that refuses: the refusal is the answer. */
 export const testStorage = async (): Promise<ConnectionTestResult> => {
-	throw new Error("testStorage: not implemented");
+	const store = objectStore();
+	if (!store) {
+		return {
+			ok: false,
+			message:
+				"No store is configured. Set the endpoint, the bucket and both keys.",
+		};
+	}
+	const key = `${STORAGE_PROBE_PREFIX}${crypto.randomUUID()}.txt`;
+	const body = `Farmer storage test, ${new Date().toISOString()}`;
+	let step = "write";
+	let written = false;
+	try {
+		await store.put(key, new TextEncoder().encode(body), "text/plain");
+		written = true;
+		step = "read";
+		const read = await store.get(key);
+		if (!read) {
+			return {
+				ok: false,
+				message: "The store took the test file and then did not find it.",
+			};
+		}
+		if ((await new Response(read.body).text()) !== body) {
+			return {
+				ok: false,
+				message: "The store gave back different bytes from the ones written.",
+			};
+		}
+		step = "delete";
+		await store.delete(key);
+		written = false;
+		return { ok: true, message: "Wrote, read and deleted a test file." };
+	} catch (error) {
+		return {
+			ok: false,
+			message: `The ${step} failed: ${withoutSecrets(error instanceof Error ? error.message : String(error))}`,
+		};
+	} finally {
+		// A failed read leaves the probe behind. One more try, and its failure
+		// is not the answer: the probe sits outside what the sweep reads.
+		if (written) await store.delete(key).catch(() => undefined);
+	}
 };
 
 /** One message to `to` through the configured mail provider. */
 export const testEmail = async (to: string): Promise<ConnectionTestResult> => {
-	throw new Error(`testEmail(${to}): not implemented`);
+	try {
+		await sendMail({
+			to,
+			subject: "Farmer test email",
+			text: "This is a test message from the Infrastructure page. Email works.",
+			html: "<p>This is a test message from the Infrastructure page. Email works.</p>",
+		});
+		return { ok: true, message: `Sent a test message to ${to}.` };
+	} catch (error) {
+		return {
+			ok: false,
+			message: withoutSecrets(
+				error instanceof Error ? error.message : String(error),
+			),
+		};
+	}
 };
 
 /** How many stored uploads the configured store holds references to. The page
- *  warns before a change to the endpoint or the bucket when this is not 0. */
-export const storageUsage = async (): Promise<{ storedObjects: number }> => {
-	throw new Error("storageUsage: not implemented");
-};
+ *  warns before a change to the endpoint or the bucket when this is not 0.
+ *
+ *  Counted from the rows, not by listing the bucket: a reference is what
+ *  breaks when the store moves, and an unreferenced object is the sweep's to
+ *  delete anyway. Instance-wide, so every organization counts. */
+export const storageUsage = async (): Promise<{ storedObjects: number }> => ({
+	storedObjects: (await referencedUploadKeys()).size,
+});
+
+/** A storage move that needs the person to confirm it first. Its own class so
+ *  the page can tell it from any other refusal and ask. */
+export class StorageMoveNeedsConfirmationError extends UserFacingError {
+	readonly storedObjects: number;
+	constructor(storedObjects: number) {
+		super(
+			`${storedObjects} stored ${storedObjects === 1 ? "file points" : "files point"} into the current store. ` +
+				"A new endpoint or bucket breaks them until they are copied there. " +
+				"Confirm the change to save it.",
+		);
+		this.name = "StorageMoveNeedsConfirmationError";
+		this.storedObjects = storedObjects;
+	}
+}
+
+const STORE_LOCATION = ["S3_ENDPOINT", "S3_BUCKET"] as const;
 
 /**
  * Refuse a change to `S3_ENDPOINT` or `S3_BUCKET` while stored objects exist,
  * unless the caller confirmed it. Every stored key points into the current
  * store, so a move breaks every icon and logo until the objects are copied.
+ *
+ * Clearing either one counts as a move: it switches uploads off, and every
+ * stored icon then answers 404.
  */
-const guardStorageMove = async (
-	_changes: Record<string, string | null>,
-	_confirmed: boolean,
-): Promise<void> => {};
+export const guardStorageMove = async (
+	changes: Record<string, string | null>,
+	confirmed: boolean,
+): Promise<void> => {
+	if (confirmed) return;
+	const moves = STORE_LOCATION.some((name) => {
+		if (!(name in changes)) return false;
+		const next = changes[name]?.trim() ?? "";
+		const current = resolveSetting(name).value?.trim() ?? "";
+		return next !== current;
+	});
+	if (!moves) return;
+	const { storedObjects } = await storageUsage();
+	if (storedObjects > 0) {
+		throw new StorageMoveNeedsConfirmationError(storedObjects);
+	}
+};
 
 export const instanceSettingsService = {
 	storageUsage,

@@ -27,6 +27,9 @@
  * while the listing runs is still seen. A client holding a stale "Recently used"
  * image can still save a path this sweep has just deleted; that icon then falls
  * back to the project's initial.
+ *
+ * Only `orgs/` is listed, so the probe the Infrastructure page's storage test
+ * writes (under `instance/`) is never a candidate, even if its delete failed.
  */
 
 import { inArray, like } from "drizzle-orm";
@@ -51,7 +54,10 @@ export type UploadSweepSummary = {
 	failed: number;
 };
 
-const referencedKeys = async (): Promise<Set<string>> => {
+/** Every upload key a row points at, across the instance. The storage move
+ *  guard (`instanceSettingsService.storageUsage`) counts the same set, so the
+ *  warning and the sweep agree on what "in use" means. */
+export const referencedUploadKeys = async (): Promise<Set<string>> => {
 	const prefix = `${UPLOAD_PATH_PREFIX}%`;
 	const [icons, logos] = await Promise.all([
 		db
@@ -95,7 +101,7 @@ export const runUploadSweepOnce = async (
 	if (old.size === 0) return { enabled: true, listed, deleted: 0, failed: 0 };
 
 	const [referenced, known] = await Promise.all([
-		referencedKeys(),
+		referencedUploadKeys(),
 		db
 			.select({ id: organization.id })
 			.from(organization)
