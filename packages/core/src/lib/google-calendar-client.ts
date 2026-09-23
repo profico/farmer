@@ -1,3 +1,4 @@
+import { httpUrlSchema } from "../schema/http-url";
 import { externalFetch } from "./http";
 
 const GOOGLE_API = "https://www.googleapis.com";
@@ -198,15 +199,10 @@ export const getCalendarEvent = async (
 		: { status: "absent" };
 };
 
-/** Whether a link is an http or https URL — the only kind a join link may be. */
-const isWebLink = (uri: string): boolean => {
-	try {
-		const { protocol } = new URL(uri);
-		return protocol === "http:" || protocol === "https:";
-	} catch {
-		return false;
-	}
-};
+/** Whether a link is one `createTimeEntryInput.meetingUrl` accepts. The same
+ *  schema answers, so a later change to it cannot leave this path behind. */
+const isWebLink = (uri: string): boolean =>
+	httpUrlSchema.safeParse(uri).success;
 
 // Best join link for a meeting, in priority order:
 //  1. hangoutLink            — Google Meet, the common case
@@ -229,7 +225,7 @@ export const extractMeetingUrl = (
 	if (video?.uri) return video.uri;
 	if (event.location) {
 		const match = event.location.match(/https?:\/\/\S+/);
-		if (match) return match[0];
+		if (match && isWebLink(match[0])) return match[0];
 	}
 	return null;
 };
