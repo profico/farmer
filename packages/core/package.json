@@ -29,7 +29,8 @@
 		"db:studio": "drizzle-kit studio",
 		"db:seed": "bun run src/db/seed.ts",
 		"db:seed-tasks": "bun run src/db/seed-tasks.ts",
-		"db:seed-assistant-ui": "bun run src/db/seed-assistant-ui.ts"
+		"db:seed-assistant-ui": "bun run src/db/seed-assistant-ui.ts",
+		"settings:import-env": "bun run src/db/import-env-settings.ts"
 	},
 	"dependencies": {
 		"@date-fns/tz": "1.5.0",
