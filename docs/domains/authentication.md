@@ -4,7 +4,8 @@
 
 - **`packages/core/src/auth/sign-in-methods.ts` is the one answer to "what is configured".** `signInProviders()` is Google when both halves are set, then each enabled OIDC source. The auth instance, `getPublicAppConfig().signInProviders` and the password gates all read it, so they cannot disagree.
 - **A provider is registered only when it is configured.** Google, GitHub and the `google-calendar` grant used to be registered with `process.env.X!` whether or not X was set.
-- **An OIDC source is a `genericOAuth` entry** (`oidcProvider` in `auth/index.ts`): `discoveryUrl` is the base URL plus `/.well-known/openid-configuration` unless it already ends with that path, the scopes default to `openid email profile`, and PKCE is on. The provider registers `{origin}/api/auth/oauth2/callback/{providerId}` (better-auth 1.6.23, `plugins/generic-oauth/routes.mjs`). It is not a trusted provider for account linking, so a sign-in links to an existing account by email only when the source says the email is verified.
+- **An OIDC source is a `genericOAuth` entry** (`oidcProvider` in `auth/index.ts`): `discoveryUrl` is the base URL plus `/.well-known/openid-configuration` unless it already ends with that path, the scopes default to `openid email profile`, and PKCE is on. The provider registers `{origin}/api/auth/oauth2/callback/{providerId}` (better-auth 1.6.23, `plugins/generic-oauth/routes.mjs`). It is not a trusted provider for account linking, so a sign-in links to an existing account by email only when the source says the email is verified. The source's "verifies email addresses" switch (`trustsEmail`, off by default) is for an identity provider that leaves the `email_verified` claim out, such as Entra ID: `mapProfileToUser` then marks every address it hands out as verified.
+- **A source's issuer is fixed while accounts are linked through it.** An account is found by the provider's subject and `providerId`, and a subject is only unique inside one issuer, so `updateOAuthProvider` refuses a new base URL while `account` rows carry its `providerId`. Deleting a source deletes those rows, and a source added again links each person again by a verified address.
 
 ## The instance is rebuilt, not restarted
 
@@ -23,11 +24,12 @@
 1. Single-org mode with its organization claimed: an invitation to that organization, or `INVITE_ONLY`. `REGISTRATION_OPEN` does not widen it.
 2. A password signup outside development: the first account only.
 3. No `user` row yet: allowed. The account becomes the platform admin (`claimPlatformAdmin`).
-4. A pending invitation in any organization (matched without case): allowed.
+4. A pending invitation in any organization (matched without case), for a verified address: allowed.
 5. `REGISTRATION_OPEN`: allowed.
 6. Otherwise `REGISTRATION_CLOSED`.
 
 - **The `code` on the thrown `APIError` is load-bearing.** Both OAuth callbacks (the social one and genericOAuth's) turn a thrown `APIError` into a redirect to `errorCallbackURL` only when it has a `code`, with the message as `error_description`. Without it the visitor gets a raw 403 in the middle of the round trip. `/login` has a title for `REGISTRATION_CLOSED`, `INVITE_ONLY` and better-auth's `account_not_linked`.
+- **An invitation needs a verified address** (`mayClaimInvitation`). It is matched by address alone, and an OIDC source with open self-registration hands out any address unverified. The same rule guards accepting one (`requireEmailVerificationOnInvitation`) and listing one on `/no-access`. Development is the exception: no password account there is ever verified.
 - **The gate applies in development too.** A second password account on a checkout needs an invitation or `REGISTRATION_OPEN=true`.
 - "No user yet" is a read before a write. Two first signups in the same instant can both pass; the second is an ordinary account, because the admin role goes to the oldest row only.
 
@@ -74,7 +76,7 @@ Setting `SINGLE_ORG_SLUG=<slug>` (in the environment or on Infrastructure → Si
 - **Bootstrap: the first account on an unclaimed instance creates the org and owns it.** The race is settled by the unique index on `organization.slug`, not a read-then-write check. An unclaimed organization no longer means "open to anybody": on a populated instance the general gate applies, so the mode switched on later cannot hand the organization to a stranger.
 - **`allowUserToCreateOrganization: false` + `disableOrganizationDeletion: true`** are what actually close those endpoints; hiding the switcher's "New organization" item is presentation.
 - **URLs keep the `/$orgSlug` prefix.** Tenancy stays an explicit parameter, matching the service-layer rule.
-- **`/no-access` exists to break a redirect loop.** A signed-in user with no membership would otherwise bounce `/` → workspace → `/` forever. It lists their live invitations through a local server fn, because better-auth's `listUserInvitations` rejects any caller whose email isn't verified, and this app has no verification flow.
+- **`/no-access` exists to break a redirect loop.** A signed-in user with no membership would otherwise bounce `/` → workspace → `/` forever. It lists their live invitations through a local server fn, because better-auth's `listUserInvitations` rejects any caller whose email isn't verified, and a development password account never is. The server fn still asks for a verified address outside development.
 
 ## Platform admins and impersonation
 

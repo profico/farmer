@@ -153,11 +153,18 @@ function SignInPage() {
 	const { config, passwordSignIn } = Route.useLoaderData();
 	const search = Route.useSearch();
 
-	const failure = search.error
-		? (ERRORS.get(search.error) ?? GENERIC_ERROR)
-		: null;
+	// `error` is a code this app defined and better-auth echoed back; `error_
+	// description` is attacker-controlled query-string text once it crosses the
+	// redirect. A code this app KNOWS gets this app's own sentence, never the
+	// query string's — otherwise `?error=REGISTRATION_CLOSED&error_description=…`
+	// renders whatever text rides along. Only a code this app does not
+	// recognize falls back to showing what the provider said.
+	const knownFailure = search.error ? ERRORS.get(search.error) : undefined;
+	const failure = search.error ? (knownFailure ?? GENERIC_ERROR) : null;
 	const oauthError = failure
-		? (search.error_description ?? failure.fallback)
+		? knownFailure
+			? failure.fallback
+			: (search.error_description ?? failure.fallback)
 		: null;
 	const providers = config.signInProviders;
 	const notConfigured = providers.length === 0 && !config.devAuth;

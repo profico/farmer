@@ -1,3 +1,4 @@
+import { isSecretKind } from "@farmer/core/lib/instance-settings";
 import type {
 	ConnectionTestResult,
 	InstanceSettingView,
@@ -51,7 +52,9 @@ import { updateInstanceSettings } from "#/server/instance-settings.ts";
  *
  * **The environment wins, and the field says so** (ADR 0004). A locked field
  * is drawn disabled with "Set by the environment" beside it, and is never in a
- * save: the service would refuse the whole write over it.
+ * save: the service would refuse the whole write over it. A field in a lock
+ * group (the SMTP and S3 settings) is locked when any of its group is set
+ * there, and its badge names the variable.
  *
  * **A secret is never sent back**, so its box is never prefilled. The view's
  * `secretHint` goes in the placeholder, an empty box means "keep it", and
@@ -80,15 +83,13 @@ export const requirePlatformAdmin = ({
 type Section = InstanceSettingView["section"];
 type Changes = Record<string, string | null>;
 
-/** What the storage page asks before a save that moves the store. */
+/** What the storage page asks when the service refuses a save that moves
+ *  the store, with the number of stored files it counted. */
 export type SaveConfirmation = {
 	title: string;
 	description: ReactNode;
 	action: string;
 };
-
-const isSecret = (setting: InstanceSettingView) =>
-	setting.kind === "secret" || setting.kind === "multiline";
 
 /** Base UI's Select has no "no value" item, and an empty string reads as no
  *  selection at all, so the "not set" choice travels under this name. */
@@ -105,7 +106,7 @@ const OPTION_LABEL = new Map([
  *  into the box, it would be saved as a row the first time anything else was,
  *  and would stop following the default when the default changes. */
 const initialValue = (setting: InstanceSettingView): string => {
-	if (isSecret(setting)) return "";
+	if (isSecretKind(setting)) return "";
 	if (setting.kind === "boolean") {
 		return setting.value === "true" ? "true" : "false";
 	}
@@ -126,7 +127,7 @@ const changesOf = (
 	for (const setting of settings) {
 		if (setting.locked) continue;
 		const value = draft[setting.name] ?? "";
-		if (isSecret(setting)) {
+		if (isSecretKind(setting)) {
 			if (removed.has(setting.name)) changes.set(setting.name, null);
 			else if (value.trim() !== "") changes.set(setting.name, value);
 			continue;
@@ -186,7 +187,14 @@ function FieldLabel({
 		<div className="flex flex-wrap items-center gap-2">
 			<Label htmlFor={htmlFor}>{setting.label}</Label>
 			{setting.locked && (
-				<Badge variant="secondary">Set by the environment</Badge>
+				<Badge variant="secondary">
+					{setting.lockedBy
+						? `Locked by ${setting.lockedBy} in the environment`
+						: "Set by the environment"}
+				</Badge>
+			)}
+			{setting.unreadable && (
+				<Badge variant="destructive">Does not decrypt</Badge>
 			)}
 		</div>
 	);
@@ -273,16 +281,19 @@ function SettingField({
 		);
 	}
 
-	if (isSecret(setting)) {
+	if (isSecretKind(setting)) {
 		// A locked secret cannot be replaced here, so its box shows only the
-		// hint of the environment's value.
+		// hint of the environment's value. An unreadable one is stored under a
+		// key this server no longer has, and is not in use until entered again.
 		const placeholder = removed
 			? "Removed when you save"
 			: setting.secretHint
 				? locked
 					? setting.secretHint
 					: `${setting.secretHint} — type to replace`
-				: "Not set";
+				: setting.unreadable
+					? "Stored under a retired key — enter it again"
+					: "Not set";
 		// Remove is offered only for a stored secret: one from the environment
 		// is locked, and one that is not set has nothing to remove.
 		const removable = !locked && setting.source === "db" && setting.secretHint;
@@ -347,6 +358,7 @@ function SettingField({
 			<FieldLabel htmlFor={id} setting={setting} />
 			<Input
 				id={id}
+				inputMode={setting.kind === "port" ? "numeric" : undefined}
 				value={locked ? (setting.value ?? "") : value}
 				// The default, where there is one, is what the server uses with an
 				// empty box, so the box shows it rather than a generic prompt.
@@ -374,15 +386,15 @@ function SettingField({
 export function InstanceSettingsForm({
 	section,
 	groupNotes,
-	confirmBeforeSave,
+	confirmStoreMove,
 }: {
 	section: Section;
 	/** A line under a group's heading, keyed by the group's name. */
 	groupNotes?: Record<string, ReactNode>;
-	/** Asked before a save; an answer is shown as a confirm dialog, and the
-	 *  save that follows it is sent with `confirmStorageMove`. Only the
-	 *  storage page passes one. */
-	confirmBeforeSave?: (changes: Changes) => Promise<SaveConfirmation | null>;
+	/** The dialog for a save the service refused as a storage move; the save
+	 *  that follows it is sent with `confirmStorageMove`. Only the storage
+	 *  page passes one. */
+	confirmStoreMove?: (storedObjects: number) => SaveConfirmation;
 }) {
 	const { data } = useSuspenseQuery(instanceSettingsQuery());
 	// The registry's order, which is also the order its groups first appear in.
@@ -402,7 +414,7 @@ export function InstanceSettingsForm({
 			title={group.name}
 			description={groupNotes?.[group.name]}
 			settings={group.settings}
-			confirmBeforeSave={confirmBeforeSave}
+			confirmStoreMove={confirmStoreMove}
 		/>
 	));
 }
@@ -411,17 +423,16 @@ function GroupForm({
 	title,
 	description,
 	settings,
-	confirmBeforeSave,
+	confirmStoreMove,
 }: {
 	title: string;
 	description?: ReactNode;
 	settings: InstanceSettingView[];
-	confirmBeforeSave?: (changes: Changes) => Promise<SaveConfirmation | null>;
+	confirmStoreMove?: (storedObjects: number) => SaveConfirmation;
 }) {
 	const queryClient = useQueryClient();
 	const [draft, setDraft] = useState(() => initialDraft(settings));
 	const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
-	const [checking, setChecking] = useState(false);
 	const [confirming, setConfirming] = useState<{
 		changes: Changes;
 		prompt: SaveConfirmation;
@@ -438,7 +449,16 @@ function GroupForm({
 	const save = useMutation({
 		mutationFn: (input: { changes: Changes; confirmStorageMove?: boolean }) =>
 			updateInstanceSettings({ data: input }),
-		onSuccess: async () => {
+		onSuccess: async (result, input) => {
+			if (!result.saved) {
+				const prompt = confirmStoreMove?.(result.storedObjects) ?? {
+					title: "Move to another store?",
+					description: `${result.storedObjects} stored files point into the current store.`,
+					action: "Save and move",
+				};
+				setConfirming({ changes: input.changes, prompt });
+				return;
+			}
 			// Reset first: a secret re-entered with the same first characters
 			// leaves the view unchanged, so the remount would not clear its box.
 			reset();
@@ -451,28 +471,10 @@ function GroupForm({
 		onError: (error: Error) => toast.error(error.message),
 	});
 
-	const busy = save.isPending || checking;
+	const busy = save.isPending;
 
-	const submit = async () => {
-		if (!changed) return;
-		if (confirmBeforeSave) {
-			setChecking(true);
-			try {
-				const prompt = await confirmBeforeSave(changes);
-				if (prompt) {
-					setConfirming({ changes, prompt });
-					return;
-				}
-			} catch (error) {
-				toast.error(
-					error instanceof Error ? error.message : "Could not check the store",
-				);
-				return;
-			} finally {
-				setChecking(false);
-			}
-		}
-		save.mutate({ changes });
+	const submit = () => {
+		if (changed) save.mutate({ changes });
 	};
 
 	return (
@@ -505,7 +507,7 @@ function GroupForm({
 
 			{(changed || busy) && (
 				<div className="mt-5 flex items-center gap-3">
-					<Button disabled={busy} onClick={() => void submit()}>
+					<Button disabled={busy} onClick={submit}>
 						{busy ? "Saving…" : "Save"}
 					</Button>
 					<Button variant="ghost" disabled={busy} onClick={reset}>

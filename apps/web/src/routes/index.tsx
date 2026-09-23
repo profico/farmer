@@ -20,7 +20,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { FarmerLogo } from "#/components/farmer-logo.tsx";
 import { githubLinks } from "#/lib/links.ts";
 import { getSession } from "#/server/auth.ts";
-import { getPublicAppConfig } from "#/server/config.ts";
+import { getSourceRepository } from "#/server/config.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
 // Marketing-only styles, every rule scoped under `.fm-landing`. See the header
@@ -45,11 +45,10 @@ export const Route = createFileRoute("/")({
 		/** `owner/name`, for the "View on GitHub" links. A fork links to itself. */
 		repository: string;
 	}> => {
-		const [session, config] = await Promise.all([
+		const [session, repository] = await Promise.all([
 			getSession(),
-			getPublicAppConfig(),
+			getSourceRepository(),
 		]);
-		const { repository } = config;
 		if (!session) return { orgSlug: null, signedIn: false, repository };
 		// Server fn resolves userId/activeOrganizationId from the session itself —
 		// it no longer accepts a client-supplied identity.

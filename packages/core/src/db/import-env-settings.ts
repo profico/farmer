@@ -1,4 +1,4 @@
-import { INSTANCE_SETTINGS } from "../lib/instance-settings";
+import { INSTANCE_SETTINGS, isSecretKind } from "../lib/instance-settings";
 import { sealSecret } from "../lib/secret-box";
 import { db } from "./index";
 import { instanceSetting } from "./schema/instance";
@@ -26,10 +26,7 @@ const kept: string[] = [];
 for (const definition of INSTANCE_SETTINGS) {
 	const value = process.env[definition.name]?.trim();
 	if (!value) continue;
-	const stored =
-		definition.kind === "secret" || definition.kind === "multiline"
-			? sealSecret(value)
-			: value;
+	const stored = isSecretKind(definition) ? sealSecret(value) : value;
 	const now = new Date();
 	const insert = db
 		.insert(instanceSetting)

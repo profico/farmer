@@ -51,7 +51,13 @@ const fromAddress = () =>
 // sending through the transport that holds the old one.
 let transport: { key: string; transporter: Transporter } | undefined;
 const smtpTransport = (): Transporter => {
+	// The page refuses a port that is not one, but the environment is not
+	// checked. `Number("587a")` is NaN, and nodemailer would fail on the socket
+	// with an error that never names the port.
 	const port = Number(setting("SMTP_PORT") ?? 465);
+	if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+		throw new Error(`SMTP_PORT must be a port from 1 to 65535`);
+	}
 	const options = {
 		host: setting("SMTP_HOST"),
 		port,

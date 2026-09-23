@@ -1,8 +1,13 @@
 import {
+	getRepoContentsReadToken,
+	isGithubAppConfigured,
+} from "@farmer/core/lib/github-client";
+import {
 	cachedRead,
 	GithubPublicRateLimitError,
 	githubPublicGet,
 } from "@farmer/core/lib/github-public";
+import { externalFetch } from "@farmer/core/lib/http";
 import {
 	DEFAULT_SOURCE_REPOSITORY,
 	sourceRepository,
@@ -121,6 +126,13 @@ const resolveNames = async (logins: string[]): Promise<void> => {
 /**
  * Everyone with a commit on the default branch, most commits first, read from
  * the public repository with no token.
+ *
+ * FALLBACK, until the repository is public: an anonymous 404 also means
+ * "private", which this card should still show a roster for while the
+ * repository has not gone public yet. So when the GitHub App is configured,
+ * a 404 is retried with the App's installation token, narrowed to this one
+ * repository (`getRepoContentsReadToken`, `lib/github-client.ts`). Remove
+ * this fallback once the repository is public for good.
  */
 const readContributors = async (): Promise<Contributor[]> => {
 	const repo = sourceRepository();
@@ -130,10 +142,9 @@ const readContributors = async (): Promise<Contributor[]> => {
 			`/repos/${repo}/contributors?per_page=100`,
 			USER_AGENT,
 		);
-		// Missing or private: no roster, and cached as that answer.
 		if (response.status === 404) {
 			await response.body?.cancel();
-			return [];
+			return isGithubAppConfigured() ? readContributorsWithToken(repo) : [];
 		}
 		if (!response.ok) {
 			await response.body?.cancel();
@@ -141,33 +152,76 @@ const readContributors = async (): Promise<Contributor[]> => {
 				`GitHub answered ${response.status} for the contributor list`,
 			);
 		}
-		const people = contributorList
-			.parse(await response.json())
-			// Dependabot and the release workflow commit like anybody else, and a
-			// card that says "built by" should not be counting them.
-			.filter(
-				(person) => person.type !== "Bot" && !person.login.endsWith("[bot]"),
-			)
-			// Sorted here rather than trusted: GitHub documents this endpoint as
-			// descending by commit count, but the stack shows the top four and the
-			// `+N` stands for everybody else, so the order IS the meaning of the
-			// card. Sorting costs nothing and makes it true rather than documented.
-			.sort((a, b) => b.contributions - a.contributions)
-			.slice(0, MAX_CONTRIBUTORS);
-
-		// The contributors endpoint carries no display name, and a roster of
-		// logins is a list of handles rather than of people. Looked up a few at a
-		// time and kept for a week (`resolveNames`).
-		await resolveNames(people.map((person) => person.login));
-
-		return people.map((person) => ({
-			login: person.login,
-			name: names.get(person.login)?.name || person.login,
-			avatarUrl: person.avatar_url,
-			profileUrl: person.html_url,
-			contributions: person.contributions,
-		}));
+		return projectContributors(response);
 	});
+};
+
+/** Turns a raw `GET /repos/:repo/contributors` `Response` into the roster the
+ *  card draws: bots dropped, sorted by commit count, capped, names resolved.
+ *  Shared by the anonymous read and the token fallback below, which parse the
+ *  same shape from two different requests. Parses straight off the `Response`
+ *  — the I/O boundary — rather than taking already-decoded JSON, which
+ *  `no-unknown-parameters` would otherwise flag as an unparsed `unknown`. */
+const projectContributors = async (
+	response: Response,
+): Promise<Contributor[]> => {
+	const people = contributorList
+		.parse(await response.json())
+		// Dependabot and the release workflow commit like anybody else, and a
+		// card that says "built by" should not be counting them.
+		.filter(
+			(person) => person.type !== "Bot" && !person.login.endsWith("[bot]"),
+		)
+		// Sorted here rather than trusted: GitHub documents this endpoint as
+		// descending by commit count, but the stack shows the top four and the
+		// `+N` stands for everybody else, so the order IS the meaning of the
+		// card. Sorting costs nothing and makes it true rather than documented.
+		.sort((a, b) => b.contributions - a.contributions)
+		.slice(0, MAX_CONTRIBUTORS);
+
+	// The contributors endpoint carries no display name, and a roster of
+	// logins is a list of handles rather than of people. Looked up a few at a
+	// time and kept for a week (`resolveNames`).
+	await resolveNames(people.map((person) => person.login));
+
+	return people.map((person) => ({
+		login: person.login,
+		name: names.get(person.login)?.name || person.login,
+		avatarUrl: person.avatar_url,
+		profileUrl: person.html_url,
+		contributions: person.contributions,
+	}));
+};
+
+/** The FALLBACK read: the App's installation token in place of the anonymous
+ *  request. `[]` when the App is not installed on this repository either —
+ *  from here that reads the same as "no repository". See the module comment
+ *  on `readContributors`. */
+const readContributorsWithToken = async (
+	repo: string,
+): Promise<Contributor[]> => {
+	const [owner, name] = repo.split("/");
+	if (!owner || !name) return [];
+	const token = await getRepoContentsReadToken(owner, name);
+	if (!token) return [];
+	const response = await externalFetch(
+		`https://api.github.com/repos/${repo}/contributors?per_page=100`,
+		{
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28",
+				"User-Agent": USER_AGENT,
+			},
+		},
+	);
+	if (!response.ok) {
+		await response.body?.cancel();
+		throw new Error(
+			`GitHub answered ${response.status} for the contributor list (fallback token)`,
+		);
+	}
+	return projectContributors(response);
 };
 
 /**

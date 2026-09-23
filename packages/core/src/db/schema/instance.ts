@@ -38,6 +38,9 @@ export const instanceOAuthProvider = pgTable("instance_oauth_provider", {
 	/** Space-separated. `openid email profile` when empty. */
 	scopes: text("scopes").notNull().default(""),
 	enabled: boolean("enabled").notNull().default(true),
+	/** The source checks every address it hands out, so a sign-in through it
+	 *  counts as a verified address even without an `email_verified` claim. */
+	trustsEmail: boolean("trusts_email").notNull().default(false),
 	createdAt: ts("created_at").notNull().defaultNow(),
 	updatedAt: ts("updated_at").notNull().defaultNow(),
 });

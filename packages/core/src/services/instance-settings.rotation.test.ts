@@ -13,6 +13,7 @@ import { openSecret, sealSecret } from "../lib/secret-box";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import {
 	enabledOAuthProviders,
+	instanceSettingsService,
 	refreshInstanceSettings,
 } from "./instance-settings.service";
 
@@ -107,5 +108,78 @@ describe("refreshInstanceSettings after a rotation", () => {
 		);
 		expect(provider.clientSecret.startsWith("enc:v2:2:")).toBe(true);
 		expect(openSecret(provider.clientSecret)).toBe("client-secret");
+	});
+});
+
+describe("a disabled provider", () => {
+	test("is resealed too, so it still opens when it is switched on", async () => {
+		delete process.env.BETTER_AUTH_SECRETS;
+		const oldClient = sealSecret("dormant-secret");
+		await db.insert(instanceOAuthProvider).values({
+			providerId: "dormant",
+			name: "Dormant",
+			baseUrl: "https://dormant.example.com",
+			clientId: "farmer",
+			clientSecret: oldClient,
+			enabled: false,
+		});
+
+		process.env.BETTER_AUTH_SECRETS = ROTATION;
+		await refreshInstanceSettings({ force: true });
+		expect(
+			enabledOAuthProviders().some((p) => p.providerId === "dormant"),
+		).toBe(false);
+		const row = await eventually(
+			async () =>
+				present(
+					await db.query.instanceOAuthProvider.findFirst({
+						where: eq(instanceOAuthProvider.providerId, "dormant"),
+					}),
+					"the dormant row",
+				),
+			(r) => r.clientSecret !== oldClient,
+		);
+		expect(row.clientSecret.startsWith("enc:v2:2:")).toBe(true);
+	});
+});
+
+describe("a secret under a retired key", () => {
+	test("reads as unreadable, not as set and not as empty", async () => {
+		process.env.BETTER_AUTH_SECRETS = ROTATION;
+		await db.delete(instanceSetting);
+		await db
+			.insert(instanceSetting)
+			.values({ name: "RESEND_API_KEY", value: sealSecret("re_retired") });
+		await db.insert(instanceOAuthProvider).values({
+			providerId: "retired",
+			name: "Retired",
+			baseUrl: "https://retired.example.com",
+			clientId: "farmer",
+			clientSecret: sealSecret("retired-secret"),
+		});
+
+		// Version 2 is retired: nothing sealed under it opens any more.
+		process.env.BETTER_AUTH_SECRETS = "3:the-third-secret-in-the-rotation-set";
+		await refreshInstanceSettings({ force: true });
+
+		expect(setting("RESEND_API_KEY")).toBeUndefined();
+		const view = present(
+			(await instanceSettingsService.view()).find(
+				(row) => row.name === "RESEND_API_KEY",
+			),
+			"the RESEND_API_KEY view",
+		);
+		expect(view).toMatchObject({ unreadable: true, secretHint: null });
+
+		const provider = present(
+			(await instanceSettingsService.listOAuthProviders()).find(
+				(row) => row.providerId === "retired",
+			),
+			"the retired provider",
+		);
+		expect(provider).toMatchObject({ enabled: true, secretHint: null });
+		expect(
+			enabledOAuthProviders().some((p) => p.providerId === "retired"),
+		).toBe(false);
 	});
 });

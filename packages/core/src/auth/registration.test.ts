@@ -114,6 +114,26 @@ describe("the registration gate", () => {
 		await userByEmail("invited@example.com");
 	});
 
+	// An OpenID Connect source with open self-registration hands out any
+	// address, unverified. That address must not take somebody's invitation.
+	test("an invitation needs a verified address outside development", async () => {
+		await invite("cfo@example.com");
+		await expect(
+			inProduction(() =>
+				assertMayRegister(
+					{ email: "cfo@example.com", emailVerified: false },
+					"/oauth2/callback/:providerId",
+				),
+			),
+		).rejects.toMatchObject({ body: { code: "REGISTRATION_CLOSED" } });
+		await inProduction(() =>
+			assertMayRegister(
+				{ email: "cfo@example.com", emailVerified: true },
+				"/oauth2/callback/:providerId",
+			),
+		);
+	});
+
 	test("lets anybody in while REGISTRATION_OPEN is on", async () => {
 		setInstanceSettingsForTests({ REGISTRATION_OPEN: "true" });
 		await signUp("open@example.com");
@@ -132,7 +152,10 @@ describe("the registration gate", () => {
 			REGISTRATION_OPEN: "true",
 		});
 		await expect(
-			assertMayRegister("stranger@example.com", "/callback/:id"),
+			assertMayRegister(
+				{ email: "stranger@example.com", emailVerified: true },
+				"/callback/:id",
+			),
 		).rejects.toMatchObject({ body: { code: "INVITE_ONLY" } });
 	});
 });

@@ -40,7 +40,12 @@ export type SettingKind =
 	| "secret"
 	| "multiline"
 	| "boolean"
-	| "select";
+	| "select"
+	| "port";
+
+/** A kind whose value is sealed at rest and never sent back to a browser. */
+export const isSecretKind = (setting: { kind: SettingKind }): boolean =>
+	setting.kind === "secret" || setting.kind === "multiline";
 
 export type SettingDefinition = {
 	/** The environment variable, and the row's key. */
@@ -56,6 +61,17 @@ export type SettingDefinition = {
 	options?: readonly string[];
 	/** One line under the field. */
 	hint?: string;
+	/**
+	 * Settings that only make sense together. When the environment sets any
+	 * one of them, every one is locked, not only that name.
+	 *
+	 * The reason is a secret that leaves the process. With `SMTP_PASS` pinned
+	 * in the environment and `SMTP_HOST` open on the page, a platform admin
+	 * could point the host at their own server and receive the password in the
+	 * next AUTH command. The S3 group gets the same rule: SigV4 never sends the
+	 * secret, but a half-pinned store is one nobody can reason about.
+	 */
+	lockGroup?: "smtp" | "s3";
 };
 
 const BOOL = { kind: "boolean" } as const;
@@ -129,6 +145,7 @@ export const INSTANCE_SETTINGS = [
 		name: "SMTP_HOST",
 		section: "email",
 		group: "SMTP",
+		lockGroup: "smtp",
 		label: "Host",
 		kind: "text",
 	},
@@ -136,8 +153,9 @@ export const INSTANCE_SETTINGS = [
 		name: "SMTP_PORT",
 		section: "email",
 		group: "SMTP",
+		lockGroup: "smtp",
 		label: "Port",
-		kind: "text",
+		kind: "port",
 		defaultValue: "465",
 		hint: "465 uses TLS from the start. Other ports use STARTTLS.",
 	},
@@ -145,6 +163,7 @@ export const INSTANCE_SETTINGS = [
 		name: "SMTP_USER",
 		section: "email",
 		group: "SMTP",
+		lockGroup: "smtp",
 		label: "User",
 		kind: "text",
 	},
@@ -152,6 +171,7 @@ export const INSTANCE_SETTINGS = [
 		name: "SMTP_PASS",
 		section: "email",
 		group: "SMTP",
+		lockGroup: "smtp",
 		label: "Password",
 		kind: "secret",
 	},
@@ -168,6 +188,7 @@ export const INSTANCE_SETTINGS = [
 		name: "S3_ENDPOINT",
 		section: "storage",
 		group: "S3-compatible store",
+		lockGroup: "s3",
 		label: "Endpoint",
 		kind: "text",
 		hint: "For example http://localhost:3900 for the Garage in docker-compose.yml.",
@@ -176,6 +197,7 @@ export const INSTANCE_SETTINGS = [
 		name: "S3_REGION",
 		section: "storage",
 		group: "S3-compatible store",
+		lockGroup: "s3",
 		label: "Region",
 		kind: "text",
 		defaultValue: "us-east-1",
@@ -185,6 +207,7 @@ export const INSTANCE_SETTINGS = [
 		name: "S3_BUCKET",
 		section: "storage",
 		group: "S3-compatible store",
+		lockGroup: "s3",
 		label: "Bucket",
 		kind: "text",
 	},
@@ -192,6 +215,7 @@ export const INSTANCE_SETTINGS = [
 		name: "S3_ACCESS_KEY_ID",
 		section: "storage",
 		group: "S3-compatible store",
+		lockGroup: "s3",
 		label: "Access key ID",
 		kind: "text",
 	},
@@ -199,6 +223,7 @@ export const INSTANCE_SETTINGS = [
 		name: "S3_SECRET_ACCESS_KEY",
 		section: "storage",
 		group: "S3-compatible store",
+		lockGroup: "s3",
 		label: "Secret access key",
 		kind: "secret",
 	},
@@ -363,8 +388,11 @@ export type SettingSource = "env" | "db" | "default";
 export type ResolvedSetting = {
 	value: string | undefined;
 	source: SettingSource;
-	/** Set by the environment, so the page shows the field disabled. */
+	/** Set by the environment, itself or through its lock group, so the page
+	 *  shows the field disabled. */
 	locked: boolean;
+	/** For a value locked through its lock group: the variable that locks it. */
+	lockedBy: string | null;
 };
 
 /** The database half, as the last refresh read it. Secrets are opened. */
@@ -380,18 +408,39 @@ const fromEnv = (name: string): string | undefined => {
 	return value ? value : undefined;
 };
 
+/** The first other member of `name`'s lock group that the environment sets. */
+const groupLockedBy = (definition: SettingDefinition): string | null => {
+	if (!definition.lockGroup) return null;
+	for (const other of DEFINITIONS.values()) {
+		if (
+			other.lockGroup === definition.lockGroup &&
+			fromEnv(other.name) !== undefined
+		) {
+			return other.name;
+		}
+	}
+	return null;
+};
+
 export const resolveSetting = (name: SettingName): ResolvedSetting => {
 	const env = fromEnv(name);
-	if (env !== undefined) return { value: env, source: "env", locked: true };
-	const stored = (snapshotForTests ?? snapshot).get(name);
-	if (stored !== undefined) {
-		return { value: stored, source: "db", locked: false };
+	if (env !== undefined) {
+		return { value: env, source: "env", locked: true, lockedBy: null };
 	}
 	const definition = DEFINITIONS.get(name);
+	// A locked sibling still reads the database: the lock stops a change, and
+	// a value stored before the environment was set keeps working.
+	const lockedBy = definition ? groupLockedBy(definition) : null;
+	const locked = lockedBy !== null;
+	const stored = (snapshotForTests ?? snapshot).get(name);
+	if (stored !== undefined) {
+		return { value: stored, source: "db", locked, lockedBy };
+	}
 	return {
 		value: definition?.defaultValue,
 		source: "default",
-		locked: false,
+		locked,
+		lockedBy,
 	};
 };
 

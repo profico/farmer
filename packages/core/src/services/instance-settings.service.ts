@@ -1,11 +1,14 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
+import type { z } from "zod";
 
 import { db } from "../db";
+import { account } from "../db/schema/auth";
 import { instanceOAuthProvider, instanceSetting } from "../db/schema/instance";
 import { referencedUploadKeys } from "../jobs/upload-sweep";
 import { sendMail } from "../lib/email";
 import {
 	INSTANCE_SETTINGS,
+	isSecretKind,
 	isSettingName,
 	replaceSettingsSnapshot,
 	resolveSetting,
@@ -20,6 +23,12 @@ import {
 } from "../lib/secret-box";
 import { objectStore } from "../lib/storage";
 import { UserFacingError } from "../lib/user-facing-error";
+import {
+	type CreateOAuthProviderInput,
+	createOAuthProviderInput,
+	type UpdateOAuthProviderInput,
+	updateOAuthProviderInput,
+} from "../schema/instance-settings";
 
 /**
  * The instance's configuration: the loader behind `lib/instance-settings.ts`,
@@ -33,7 +42,9 @@ import { UserFacingError } from "../lib/user-facing-error";
  * never sent back to a browser: the view carries a hint (its first four
  * characters) and nothing else. The loader reseals a stored secret that is
  * not under the current key, so a BETTER_AUTH_SECRETS rotation reaches these
- * rows on the next refresh.
+ * rows on the next refresh. A disabled OIDC source is resealed too: it is off
+ * today, and it must still open when somebody switches it on after the old
+ * key is retired.
  */
 
 /** How long one read of the table serves. Short, because a web process and a
@@ -48,12 +59,19 @@ export type OAuthProviderConfig = {
 	clientId: string;
 	clientSecret: string;
 	scopes: string[];
+	trustsEmail: boolean;
 };
 
-let loadedAt = 0;
+/** When the last load finished, whether it worked or not. A failed load waits
+ *  out the TTL too: during a database outage every request would otherwise
+ *  pay for one more failing query and log one more line. */
+let attemptedAt = 0;
 let inFlight: Promise<void> | null = null;
 let fingerprint = "";
 let providers: readonly OAuthProviderConfig[] = [];
+/** The settings whose stored secret does not decrypt. The page says so,
+ *  rather than show them as not set. */
+let unreadable: ReadonlySet<string> = new Set();
 const listeners = new Set<() => void>();
 
 /** The OpenID Connect sources that are switched on, as the last refresh read
@@ -74,14 +92,21 @@ export const onInstanceSettingsChanged = (listener: () => void) => {
 	};
 };
 
+/** Stored values already logged as unreadable. The loader reads them again
+ *  every few seconds, and one line each says the same as one line a load. */
+const reportedUnreadable = new Set<string>();
+
 const openOrSkip = (name: string, stored: string): string | undefined => {
 	try {
 		return openSecret(stored);
 	} catch (error) {
-		console.error(
-			`[instance-settings] ${name} does not decrypt; treating it as not set`,
-			error,
-		);
+		if (!reportedUnreadable.has(stored)) {
+			reportedUnreadable.add(stored);
+			console.error(
+				`[instance-settings] ${name} does not decrypt; treating it as not set`,
+				error,
+			);
+		}
 		return undefined;
 	}
 };
@@ -116,10 +141,10 @@ const load = async () => {
 		db
 			.select()
 			.from(instanceOAuthProvider)
-			.where(eq(instanceOAuthProvider.enabled, true))
 			.orderBy(asc(instanceOAuthProvider.createdAt)),
 	]);
 	const values = new Map<string, string>();
+	const nextUnreadable = new Set<string>();
 	for (const row of rows) {
 		const definition = settingDefinition(row.name);
 		// A row for a setting this build no longer knows is left alone, not
@@ -130,7 +155,10 @@ const load = async () => {
 			continue;
 		}
 		const value = openOrSkip(row.name, row.value);
-		if (value === undefined) continue;
+		if (value === undefined) {
+			nextUnreadable.add(row.name);
+			continue;
+		}
 		values.set(row.name, value);
 		healLater(row.name, row.value, value, async (sealed) => {
 			await db
@@ -167,6 +195,7 @@ const load = async () => {
 					);
 			},
 		);
+		if (!row.enabled) continue;
 		nextProviders.push({
 			providerId: row.providerId,
 			name: row.name,
@@ -174,6 +203,7 @@ const load = async () => {
 			clientId: row.clientId,
 			clientSecret,
 			scopes: parseScopes(row.scopes),
+			trustsEmail: row.trustsEmail,
 		});
 	}
 	const next = JSON.stringify([
@@ -182,7 +212,7 @@ const load = async () => {
 	]);
 	replaceSettingsSnapshot(values);
 	providers = nextProviders;
-	loadedAt = Date.now();
+	unreadable = nextUnreadable;
 	if (next !== fingerprint) {
 		const first = fingerprint === "";
 		fingerprint = next;
@@ -198,24 +228,35 @@ const load = async () => {
  * share one query. A failed read keeps the last snapshot and logs, rather than
  * failing the request: a database that cannot answer this query cannot answer
  * the request either, and it will say so there.
+ *
+ * `force` is what a writer passes after its commit, and it must not share a
+ * load that started before the commit: that load's SELECT may not see the
+ * write, and its fresh timestamp would then hold the old values for a TTL.
+ * So a forced refresh waits for such a load and runs its own. A load that
+ * started after the wait is after the commit, and is shared.
  */
 export const refreshInstanceSettings = async (
 	options: { force?: boolean } = {},
 ): Promise<void> => {
-	if (!options.force && Date.now() - loadedAt < REFRESH_TTL_MS) return;
-	if (inFlight) return inFlight;
+	if (!options.force && Date.now() - attemptedAt < REFRESH_TTL_MS) return;
+	if (inFlight) {
+		if (!options.force) return inFlight;
+		await inFlight;
+		if (inFlight) return inFlight;
+	}
 	inFlight = load()
 		.catch((error: unknown) => {
 			console.error("[instance-settings] refresh failed", error);
 		})
 		.finally(() => {
+			attemptedAt = Date.now();
 			inFlight = null;
 		});
 	return inFlight;
 };
 
-const isSecretKind = (definition: SettingDefinition) =>
-	definition.kind === "secret" || definition.kind === "multiline";
+const isPort = (value: string) =>
+	/^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65_535;
 
 const SECRET_VISIBLE_CHARS = 4;
 
@@ -232,10 +273,15 @@ export type InstanceSettingView = {
 	hint: string | null;
 	source: SettingSource;
 	locked: boolean;
+	/** For a field locked through its lock group: the variable that locks it. */
+	lockedBy: string | null;
 	/** The value, for every kind except a secret. */
 	value: string | null;
 	/** For a secret: whether one is set, and its first characters. */
 	secretHint: string | null;
+	/** A stored secret that does not decrypt (a retired key). It is not in
+	 *  use, and entering it again fixes it. */
+	unreadable: boolean;
 };
 
 /** Every setting, resolved, with secrets masked. Refreshes first, so the page
@@ -257,11 +303,16 @@ export const viewInstanceSettings = async (): Promise<
 			hint: "hint" in definition ? definition.hint : null,
 			source: resolved.source,
 			locked: resolved.locked,
+			lockedBy: resolved.lockedBy,
 			value: secret ? null : (resolved.value ?? null),
 			secretHint:
 				secret && resolved.value !== undefined && resolved.source !== "default"
 					? maskSecret(resolved.value)
 					: null,
+			unreadable:
+				secret &&
+				resolved.source === "default" &&
+				unreadable.has(definition.name),
 		};
 	});
 };
@@ -284,9 +335,12 @@ export const updateInstanceSettings = async (
 		if (!isSettingName(name)) {
 			throw new UserFacingError(`There is no setting called ${name}.`);
 		}
-		if (resolveSetting(name).locked) {
+		const { locked, lockedBy } = resolveSetting(name);
+		if (locked) {
 			throw new UserFacingError(
-				`${name} is set by the environment. Change it there.`,
+				lockedBy
+					? `${name} is locked because ${lockedBy} is set by the environment. Set it there too.`
+					: `${name} is set by the environment. Change it there.`,
 			);
 		}
 		const definition = settingDefinition(name);
@@ -304,6 +358,14 @@ export const updateInstanceSettings = async (
 			value !== "false"
 		) {
 			throw new UserFacingError(`${name} must be true or false.`);
+		}
+		if (
+			value !== null &&
+			value.trim() !== "" &&
+			definition?.kind === "port" &&
+			!isPort(value.trim())
+		) {
+			throw new UserFacingError(`${name} must be a port from 1 to 65535.`);
 		}
 	}
 	// After the checks above, so a write that is refused anyway does not first
@@ -346,18 +408,22 @@ export const updateInstanceSettings = async (
 
 // OAuth sources
 
-/** better-auth's own provider ids, and anything that would shadow a route.
- *  "credential" is the id better-auth gives a password account: a provider
- *  under it would write account rows the app reads as a password. */
-const RESERVED_PROVIDER_IDS = new Set([
-	"credential",
-	"google",
-	"github",
-	"google-calendar",
-]);
-const PROVIDER_ID = /^[a-z0-9][a-z0-9-]{1,39}$/;
-
 const parseScopes = (scopes: string) => scopes.split(/\s+/).filter(Boolean);
+
+/** The schema's first complaint, as the refusal. */
+const parseOrRefuse = <T extends z.ZodType>(
+	schema: T,
+	input: z.input<T>,
+): z.output<T> => {
+	const parsed = schema.safeParse(input);
+	if (parsed.success) return parsed.data;
+	throw new UserFacingError(
+		parsed.error.issues[0]?.message ?? "The provider is not valid.",
+	);
+};
+
+/** The base URL as the auth instance uses it, so "/" at the end is no change. */
+const issuerOf = (baseUrl: string) => baseUrl.trim().replace(/\/+$/, "");
 
 export type OAuthProviderView = {
 	id: string;
@@ -365,9 +431,11 @@ export type OAuthProviderView = {
 	name: string;
 	baseUrl: string;
 	clientId: string;
-	secretHint: string;
+	/** The secret's first characters, or null when it does not decrypt. */
+	secretHint: string | null;
 	scopes: string;
 	enabled: boolean;
+	trustsEmail: boolean;
 };
 
 export const listOAuthProviders = async (): Promise<OAuthProviderView[]> => {
@@ -375,103 +443,116 @@ export const listOAuthProviders = async (): Promise<OAuthProviderView[]> => {
 		.select()
 		.from(instanceOAuthProvider)
 		.orderBy(asc(instanceOAuthProvider.createdAt));
-	return rows.map((row) => ({
-		id: row.id,
-		providerId: row.providerId,
-		name: row.name,
-		baseUrl: row.baseUrl,
-		clientId: row.clientId,
-		secretHint: maskSecret(openOrSkip(row.providerId, row.clientSecret) ?? ""),
-		scopes: row.scopes,
-		enabled: row.enabled,
-	}));
-};
-
-export type OAuthProviderInput = {
-	providerId: string;
-	name: string;
-	baseUrl: string;
-	clientId: string;
-	/** Required on create. On update, undefined keeps the stored secret. */
-	clientSecret?: string;
-	scopes: string;
-	enabled: boolean;
-};
-
-const checkProvider = (input: OAuthProviderInput) => {
-	if (!PROVIDER_ID.test(input.providerId)) {
-		throw new UserFacingError(
-			"The ID must be 2 to 40 lowercase letters, digits or hyphens.",
-		);
-	}
-	if (RESERVED_PROVIDER_IDS.has(input.providerId)) {
-		throw new UserFacingError(`"${input.providerId}" is a built-in provider.`);
-	}
-	const url = URL.parse(input.baseUrl.trim());
-	if (!url || (url.protocol !== "https:" && url.protocol !== "http:")) {
-		throw new UserFacingError("The base URL must be an http(s) URL.");
-	}
-	if (!input.name.trim() || !input.clientId.trim()) {
-		throw new UserFacingError("The name and the client ID are required.");
-	}
+	return rows.map((row) => {
+		let secretHint: string | null = null;
+		try {
+			secretHint = maskSecret(openSecret(row.clientSecret));
+		} catch {
+			// The loader logs it. The view says it, rather than a mask that reads
+			// like a working secret.
+		}
+		return {
+			id: row.id,
+			providerId: row.providerId,
+			name: row.name,
+			baseUrl: row.baseUrl,
+			clientId: row.clientId,
+			secretHint,
+			scopes: row.scopes,
+			enabled: row.enabled,
+			trustsEmail: row.trustsEmail,
+		};
+	});
 };
 
 export const createOAuthProvider = async (
-	input: OAuthProviderInput,
+	input: CreateOAuthProviderInput,
 ): Promise<void> => {
-	checkProvider(input);
-	const secret = input.clientSecret?.trim();
-	if (!secret) throw new UserFacingError("The client secret is required.");
+	const data = parseOrRefuse(createOAuthProviderInput, input);
 	const existing = await db.query.instanceOAuthProvider.findFirst({
-		where: eq(instanceOAuthProvider.providerId, input.providerId),
+		where: eq(instanceOAuthProvider.providerId, data.providerId),
 	});
 	if (existing) {
-		throw new UserFacingError(`A provider "${input.providerId}" exists.`);
+		throw new UserFacingError(`A provider "${data.providerId}" exists.`);
 	}
 	await db.insert(instanceOAuthProvider).values({
-		providerId: input.providerId,
-		name: input.name.trim(),
-		baseUrl: input.baseUrl.trim(),
-		clientId: input.clientId.trim(),
-		clientSecret: sealSecret(secret),
-		scopes: input.scopes.trim(),
-		enabled: input.enabled,
+		providerId: data.providerId,
+		name: data.name,
+		baseUrl: data.baseUrl,
+		clientId: data.clientId,
+		clientSecret: sealSecret(data.clientSecret),
+		scopes: data.scopes,
+		enabled: data.enabled,
+		trustsEmail: data.trustsEmail,
 	});
 	await refreshInstanceSettings({ force: true });
 };
 
-/** `providerId` is not changed here: it is in the callback URL registered
- *  with the provider, and accounts linked through it carry it. */
+/** How many accounts are linked through the source `providerId`. */
+const linkedAccounts = async (providerId: string) =>
+	(
+		await db
+			.select({ n: count() })
+			.from(account)
+			.where(eq(account.providerId, providerId))
+	)[0]?.n ?? 0;
+
+/**
+ * `providerId` is not changed here: it is in the callback URL registered
+ * with the provider, and accounts linked through it carry it.
+ *
+ * Nor is the issuer, while accounts are linked through the source. An account
+ * is found by (the provider's subject, `providerId`), and a subject is only
+ * unique inside one issuer: GitLab's is a number, so person 42 at a new issuer
+ * would sign in as whoever was 42 at the old one. Deleting the source removes
+ * those links, and adding it again starts clean.
+ */
 export const updateOAuthProvider = async (
-	id: string,
-	input: Omit<OAuthProviderInput, "providerId">,
+	input: UpdateOAuthProviderInput,
 ): Promise<void> => {
+	const data = parseOrRefuse(updateOAuthProviderInput, input);
 	const row = await db.query.instanceOAuthProvider.findFirst({
-		where: eq(instanceOAuthProvider.id, id),
+		where: eq(instanceOAuthProvider.id, data.id),
 	});
 	if (!row) throw new UserFacingError("That provider no longer exists.");
-	checkProvider({ ...input, providerId: row.providerId });
+	if (issuerOf(data.baseUrl) !== issuerOf(row.baseUrl)) {
+		const linked = await linkedAccounts(row.providerId);
+		if (linked > 0) {
+			throw new UserFacingError(
+				`${linked} ${linked === 1 ? "account is" : "accounts are"} linked through this provider, and a new base URL can be another identity provider. Delete the provider and add it again to change it.`,
+			);
+		}
+	}
 	const changes: Partial<typeof instanceOAuthProvider.$inferInsert> = {
-		name: input.name.trim(),
-		baseUrl: input.baseUrl.trim(),
-		clientId: input.clientId.trim(),
-		scopes: input.scopes.trim(),
-		enabled: input.enabled,
+		name: data.name,
+		baseUrl: data.baseUrl,
+		clientId: data.clientId,
+		scopes: data.scopes,
+		enabled: data.enabled,
+		trustsEmail: data.trustsEmail,
 		updatedAt: new Date(),
 	};
-	const secret = input.clientSecret?.trim();
-	if (secret) changes.clientSecret = sealSecret(secret);
+	if (data.clientSecret) changes.clientSecret = sealSecret(data.clientSecret);
 	await db
 		.update(instanceOAuthProvider)
 		.set(changes)
-		.where(eq(instanceOAuthProvider.id, id));
+		.where(eq(instanceOAuthProvider.id, data.id));
 	await refreshInstanceSettings({ force: true });
 };
 
+/** Removes the accounts linked through the source too, so a source added
+ *  again under the same ID, perhaps at another issuer, inherits no links. A
+ *  person then links again by a verified address, as at a first sign-in. */
 export const deleteOAuthProvider = async (id: string): Promise<void> => {
-	await db
-		.delete(instanceOAuthProvider)
-		.where(eq(instanceOAuthProvider.id, id));
+	await db.transaction(async (tx) => {
+		const [row] = await tx
+			.delete(instanceOAuthProvider)
+			.where(eq(instanceOAuthProvider.id, id))
+			.returning({ providerId: instanceOAuthProvider.providerId });
+		if (row) {
+			await tx.delete(account).where(eq(account.providerId, row.providerId));
+		}
+	});
 	await refreshInstanceSettings({ force: true });
 };
 

@@ -216,6 +216,80 @@ export const verifyWebhookSignature = (
 	return crypto.timingSafeEqual(given, want);
 };
 
+const repoReadTokenCache = new Map<
+	string,
+	{ token: string; expiresAt: number }
+>();
+
+// A token that can read ONE repository's contents (and so its releases), or
+// null when the App is not installed on that repository.
+//
+// It is the App's installation token, narrowed when it is minted: `repositories`
+// and `permissions` in the request body limit it to this repository and to
+// Contents: read, whatever else the installation reaches.
+//
+// Not `getInstallationToken`, because that cache is keyed by installation id
+// and holds the full token the commit sync needs. A narrowed token stored
+// there would starve the sync, and the full one stored here would widen this.
+//
+// This is a FALLBACK, used only when an anonymous read (`lib/github-public.ts`)
+// answers 404: the releases repository is currently private, so the CLI
+// download route and the contributors card retry with this once the App is
+// configured. Remove it once the repository is public for good.
+export const getRepoContentsReadToken = async (
+	owner: string,
+	repo: string,
+): Promise<string | null> => {
+	const key = `${owner}/${repo}`;
+	const cached = repoReadTokenCache.get(key);
+	if (cached && cached.expiresAt - 5 * 60_000 > Date.now()) {
+		return cached.token;
+	}
+
+	const installation = await externalFetch(
+		`${GITHUB_API}/repos/${key}/installation`,
+		{ headers: appHeaders() },
+	);
+	// 404 is GitHub's answer for "the App is not installed here", and also for a
+	// repository that does not exist — the same thing, from where this sits.
+	if (installation.status === 404) return null;
+	if (!installation.ok) {
+		throw new Error(
+			`GitHub API error ${installation.status}: /repos/${key}/installation`,
+		);
+	}
+	// SAFETY: guarded by the 404 return and the `!ok` throw above. This is the
+	// documented 200 body of GET /repos/:owner/:repo/installation; only `id` is
+	// read, and a missing one fails the mint below with a GitHub error.
+	const { id } = (await installation.json()) as { id: number };
+
+	const response = await externalFetch(
+		`${GITHUB_API}/app/installations/${id}/access_tokens`,
+		{
+			method: "POST",
+			headers: appHeaders(),
+			body: JSON.stringify({
+				repositories: [repo],
+				permissions: { contents: "read" },
+			}),
+		},
+	);
+	if (!response.ok) {
+		throw new Error(
+			`GitHub API error ${response.status}: mint a read token for ${key}`,
+		);
+	}
+	// SAFETY: guarded by the `!response.ok` throw above. The same documented 201
+	// body `getInstallationToken` reads; a malformed `expires_at` becomes NaN,
+	// which the cache treats as already expired.
+	const body = (await response.json()) as { token: string; expires_at: string };
+	repoReadTokenCache.set(key, {
+		token: body.token,
+		expiresAt: new Date(body.expires_at).getTime(),
+	});
+	return body.token;
+};
+
 // Lists every repo an installation can access, paging past the 100/page cap.
 export const listInstallationRepos = async (
 	token: string,

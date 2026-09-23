@@ -1,3 +1,7 @@
+import {
+	oauthProviderFieldsSchema,
+	oauthProviderIdSchema,
+} from "@farmer/core/schema";
 import type { OAuthProviderView } from "@farmer/core/services";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PlusIcon } from "@phosphor-icons/react";
@@ -91,25 +95,11 @@ export const Route = createFileRoute("/$orgSlug/settings/instance/sign-in")({
 	component: SignInSettingsPage,
 });
 
-/** The service's own rule (`instance-settings.service.ts`), repeated so the
- *  box can say what is wrong before a round trip. The service still decides. */
-const PROVIDER_ID = /^[a-z0-9][a-z0-9-]{1,39}$/;
-
-const isHttpUrl = (value: string) => {
-	const url = URL.parse(value);
-	return url?.protocol === "https:" || url?.protocol === "http:";
-};
-
-const providerForm = z.object({
-	name: z.string().trim().min(1, "Required").max(80),
-	providerId: z
-		.string()
-		.trim()
-		.regex(PROVIDER_ID, "2 to 40 lowercase letters, digits or hyphens"),
-	baseUrl: z.string().trim().refine(isHttpUrl, "An http(s) URL"),
-	clientId: z.string().trim().min(1, "Required").max(500),
+/** The service's own schema (`@farmer/core/schema`), with the secret as the
+ *  box holds it: required to create, and empty on an edit keeps it. */
+const providerForm = oauthProviderFieldsSchema.extend({
+	providerId: oauthProviderIdSchema,
 	clientSecret: z.string().max(2_000),
-	scopes: z.string().max(500),
 });
 
 type ProviderForm = z.infer<typeof providerForm>;
@@ -121,6 +111,7 @@ const EMPTY_PROVIDER: ProviderForm = {
 	clientId: "",
 	clientSecret: "",
 	scopes: "",
+	trustsEmail: false,
 };
 
 /** The URL to register at the provider. better-auth's generic OAuth plugin
@@ -183,6 +174,7 @@ function OAuthProvidersSection() {
 					baseUrl: provider.baseUrl,
 					clientId: provider.clientId,
 					scopes: provider.scopes,
+					trustsEmail: provider.trustsEmail,
 					enabled: !provider.enabled,
 				},
 			}),
@@ -232,6 +224,12 @@ function OAuthProvidersSection() {
 							description={
 								<span className="grid gap-1">
 									<span className="break-all">{provider.baseUrl}</span>
+									{provider.secretHint === null && (
+										<span className="text-destructive">
+											The client secret is stored under a retired key, so this
+											provider is off until you enter it again.
+										</span>
+									)}
 									<span className="break-all">
 										Callback URL:{" "}
 										<code className="font-mono text-xs">
@@ -290,9 +288,9 @@ function OAuthProvidersSection() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Its button leaves the sign-in page. People who signed in only
-							through it lose that way in, until you add it again with the same
-							ID.
+							Its button leaves the sign-in page, and the accounts linked
+							through it are removed. Added again, it links each person again by
+							a verified email address.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
@@ -342,6 +340,7 @@ function ProviderDialog({
 					clientId: existing.clientId,
 					clientSecret: "",
 					scopes: existing.scopes,
+					trustsEmail: existing.trustsEmail,
 				}
 			: EMPTY_PROVIDER,
 	});
@@ -363,6 +362,7 @@ function ProviderDialog({
 						// Left out when empty: the service keeps the stored one.
 						clientSecret: secret === "" ? undefined : secret,
 						scopes: values.scopes,
+						trustsEmail: values.trustsEmail,
 						enabled: existing.enabled,
 					},
 				});
@@ -407,7 +407,9 @@ function ProviderDialog({
 					<form
 						onSubmit={form.handleSubmit((values) => {
 							if (!existing && values.clientSecret.trim() === "") {
-								form.setError("clientSecret", { message: "Required" });
+								form.setError("clientSecret", {
+									message: "Enter the client secret.",
+								});
 								return;
 							}
 							save.mutate(values);
@@ -504,7 +506,9 @@ function ProviderDialog({
 												autoComplete="new-password"
 												placeholder={
 													existing
-														? `${existing.secretHint} — empty keeps it`
+														? existing.secretHint === null
+															? "Stored under a retired key — enter it again"
+															: `${existing.secretHint} — empty keeps it`
 														: undefined
 												}
 												{...field}
@@ -531,6 +535,32 @@ function ProviderDialog({
 										<FormMessage />
 									</InputGroup>
 									<FormDescription>Separated by spaces.</FormDescription>
+								</FormItem>
+							)}
+						/>
+						<FormField
+							control={form.control}
+							name="trustsEmail"
+							render={({ field }) => (
+								<FormItem className="flex items-start justify-between gap-6">
+									<div className="grid gap-1.5">
+										<FormLabel>
+											This provider verifies email addresses
+										</FormLabel>
+										<FormDescription>
+											Turn it on only if nobody can sign up there with an
+											address they do not own. Needed for a provider that leaves
+											out the email_verified claim, such as Entra ID. Without a
+											verified address, a person cannot accept an invitation or
+											reach an existing account.
+										</FormDescription>
+									</div>
+									<FormControl>
+										<Switch
+											checked={field.value}
+											onCheckedChange={field.onChange}
+										/>
+									</FormControl>
 								</FormItem>
 							)}
 						/>

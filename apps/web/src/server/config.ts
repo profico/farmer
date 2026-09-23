@@ -189,3 +189,19 @@ export const getPasswordSignIn = createServerFn({ method: "GET" }).handler(
 		return passwordSignIn();
 	},
 );
+
+/**
+ * The `owner/name` `getPublicAppConfig` also carries, on its own.
+ *
+ * The landing page's loader runs for every signed-out visitor and only ever
+ * wanted this one field, so pulling it through `getPublicAppConfig` cost the
+ * eight modules that function imports (`findSingleOrg` among them) on every
+ * anonymous hit. This reads one module instead.
+ */
+export const getSourceRepository = createServerFn({ method: "GET" }).handler(
+	async (): Promise<string> => {
+		const { sourceRepository, DEFAULT_SOURCE_REPOSITORY } =
+			await import("@farmer/core/lib/source-repository");
+		return sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY;
+	},
+);

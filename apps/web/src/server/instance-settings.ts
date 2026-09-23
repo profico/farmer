@@ -1,3 +1,7 @@
+import {
+	createOAuthProviderInput,
+	updateOAuthProviderInput,
+} from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
@@ -27,17 +31,32 @@ const updateInput = z.object({
 	confirmStorageMove: z.boolean().optional(),
 });
 
+/** Saved, or refused until the person confirms a storage move. The refusal
+ *  is an answer rather than a thrown error, so the page can tell it from any
+ *  other one without reading a message. */
+export type UpdateInstanceSettingsResult =
+	| { saved: true }
+	| { saved: false; storedObjects: number };
+
 export const updateInstanceSettings = createServerFn({ method: "POST" })
 	.middleware([platformAdminMiddleware])
 	.validator(updateInput)
-	.handler(async ({ data, context }) => {
-		const { instanceSettingsService } = await import("@farmer/core/services");
-		await instanceSettingsService.update(
-			context.session.user.id,
-			data.changes,
-			{ confirmStorageMove: data.confirmStorageMove },
-		);
-		return instanceSettingsService.view();
+	.handler(async ({ data, context }): Promise<UpdateInstanceSettingsResult> => {
+		const { instanceSettingsService, StorageMoveNeedsConfirmationError } =
+			await import("@farmer/core/services");
+		try {
+			await instanceSettingsService.update(
+				context.session.user.id,
+				data.changes,
+				{ confirmStorageMove: data.confirmStorageMove },
+			);
+		} catch (error) {
+			if (error instanceof StorageMoveNeedsConfirmationError) {
+				return { saved: false, storedObjects: error.storedObjects };
+			}
+			throw error;
+		}
+		return { saved: true };
 	});
 
 export const listInstanceOAuthProviders = createServerFn({ method: "GET" })
@@ -47,23 +66,9 @@ export const listInstanceOAuthProviders = createServerFn({ method: "GET" })
 		return instanceSettingsService.listOAuthProviders();
 	});
 
-const providerFields = {
-	name: z.string().trim().min(1).max(80),
-	baseUrl: z.string().trim().min(1).max(500),
-	clientId: z.string().trim().min(1).max(500),
-	clientSecret: z.string().max(2_000).optional(),
-	scopes: z.string().max(500),
-	enabled: z.boolean(),
-};
-
 export const createInstanceOAuthProvider = createServerFn({ method: "POST" })
 	.middleware([platformAdminMiddleware])
-	.validator(
-		z.object({
-			providerId: z.string().trim().min(1).max(40),
-			...providerFields,
-		}),
-	)
+	.validator(createOAuthProviderInput)
 	.handler(async ({ data }) => {
 		const { instanceSettingsService } = await import("@farmer/core/services");
 		await instanceSettingsService.createOAuthProvider(data);
@@ -71,10 +76,10 @@ export const createInstanceOAuthProvider = createServerFn({ method: "POST" })
 
 export const updateInstanceOAuthProvider = createServerFn({ method: "POST" })
 	.middleware([platformAdminMiddleware])
-	.validator(z.object({ id: z.string().uuid(), ...providerFields }))
-	.handler(async ({ data: { id, ...input } }) => {
+	.validator(updateOAuthProviderInput)
+	.handler(async ({ data }) => {
 		const { instanceSettingsService } = await import("@farmer/core/services");
-		await instanceSettingsService.updateOAuthProvider(id, input);
+		await instanceSettingsService.updateOAuthProvider(data);
 	});
 
 export const deleteInstanceOAuthProvider = createServerFn({ method: "POST" })
@@ -100,12 +105,4 @@ export const sendTestEmail = createServerFn({ method: "POST" })
 	.handler(async ({ context }) => {
 		const { instanceSettingsService } = await import("@farmer/core/services");
 		return instanceSettingsService.testEmail(context.session.user.email);
-	});
-
-/** How many uploads the current store holds. */
-export const getStorageUsage = createServerFn({ method: "GET" })
-	.middleware([platformAdminMiddleware])
-	.handler(async () => {
-		const { instanceSettingsService } = await import("@farmer/core/services");
-		return instanceSettingsService.storageUsage();
 	});

@@ -46,6 +46,7 @@ import {
 	mayUsePassword,
 } from "./sign-in-methods";
 
+export { mayClaimInvitation } from "./registration";
 export {
 	type PasswordSignIn,
 	passwordSignIn,
@@ -161,7 +162,12 @@ const OIDC_DISCOVERY_PATH = "/.well-known/openid-configuration";
  * sign-in links to an existing account with the same email only when the
  * source says the email is verified (`email_verified`). The operator chose
  * the source, but an identity provider with open self-registration would
- * otherwise hand out any address it is asked for.
+ * otherwise hand out any address it is asked for. The same claim decides
+ * whether the address may take an invitation (`./registration.ts`).
+ *
+ * `trustsEmail` is the operator saying the source checks every address, for
+ * one that leaves the claim out (Entra ID's ID token does): every address it
+ * hands out then counts as verified.
  */
 const oidcProvider = (provider: OAuthProviderConfig): GenericOAuthConfig => {
 	const base = provider.baseUrl.replace(/\/+$/, "");
@@ -177,6 +183,9 @@ const oidcProvider = (provider: OAuthProviderConfig): GenericOAuthConfig => {
 				? provider.scopes
 				: ["openid", "email", "profile"],
 		pkce: true,
+		...(provider.trustsEmail && {
+			mapProfileToUser: () => ({ emailVerified: true }),
+		}),
 	};
 };
 
@@ -358,7 +367,7 @@ const buildAuth = () => {
 					// reason the thrown error carries a `code` are in
 					// `./registration.ts`.
 					before: async (user, context) => {
-						await assertMayRegister(user.email, context?.path);
+						await assertMayRegister(user, context?.path);
 					},
 					after: async (user) => {
 						// Before either branch: an instance's first account operates it
@@ -459,6 +468,10 @@ const buildAuth = () => {
 				// at once. (Its `listMembers` breaks there too, whatever this says —
 				// see `membersService.roster`.)
 				membershipLimit: 10_000,
+				// An invitation is matched by address, so only a verified address
+				// may accept one; see `mayClaimInvitation` in `./registration.ts`.
+				// Off in development, where no password account is ever verified.
+				requireEmailVerificationOnInvitation: !isDevAuthEnabled(),
 				// Becoming a member of an organization is the moment to match somebody to
 				// Slack, and it was previously nobody's job: the only path was an admin
 				// pressing "Re-match people" on the integrations screen, so a new hire got

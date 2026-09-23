@@ -35,6 +35,9 @@ const TOUCHED: SettingName[] = [
 	"EMAIL_PROVIDER",
 	"RESEND_API_KEY",
 	"SMTP_HOST",
+	"SMTP_PORT",
+	"SMTP_USER",
+	"SMTP_PASS",
 	"GITHUB_APP_ID",
 	"GITHUB_APP_PRIVATE_KEY",
 ];
@@ -61,11 +64,13 @@ describe("resolveSetting", () => {
 			value: "us-east-1",
 			source: "default",
 			locked: false,
+			lockedBy: null,
 		});
 		expect(resolveSetting("S3_BUCKET")).toEqual({
 			value: undefined,
 			source: "default",
 			locked: false,
+			lockedBy: null,
 		});
 	});
 
@@ -75,6 +80,7 @@ describe("resolveSetting", () => {
 			value: "garage",
 			source: "db",
 			locked: false,
+			lockedBy: null,
 		});
 	});
 
@@ -85,6 +91,7 @@ describe("resolveSetting", () => {
 			value: "eu-west-1",
 			source: "env",
 			locked: true,
+			lockedBy: null,
 		});
 	});
 
@@ -98,8 +105,35 @@ describe("resolveSetting", () => {
 				value: "garage",
 				source: "db",
 				locked: false,
+				lockedBy: null,
 			});
 		}
+	});
+});
+
+describe("lock groups", () => {
+	// A pinned SMTP password with an open host would let a platform admin
+	// send that password to a server of their own.
+	test("a variable locks every setting in its group, and names itself", () => {
+		setInstanceSettingsForTests({ SMTP_HOST: "mail.example.com" });
+		process.env.SMTP_PASS = "pinned";
+		expect(resolveSetting("SMTP_HOST")).toEqual({
+			value: "mail.example.com",
+			source: "db",
+			locked: true,
+			lockedBy: "SMTP_PASS",
+		});
+		expect(resolveSetting("SMTP_PORT")).toMatchObject({
+			source: "default",
+			locked: true,
+			lockedBy: "SMTP_PASS",
+		});
+	});
+
+	test("does not reach a setting outside the group", () => {
+		process.env.SMTP_PASS = "pinned";
+		expect(resolveSetting("S3_BUCKET").locked).toBe(false);
+		expect(resolveSetting("RESEND_API_KEY").locked).toBe(false);
 	});
 });
 

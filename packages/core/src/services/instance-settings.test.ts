@@ -14,9 +14,9 @@ import {
 import { eq } from "drizzle-orm";
 
 import { db } from "../db";
-import { organization, user } from "../db/schema/auth";
+import { account, organization, user } from "../db/schema/auth";
 import { client, project } from "../db/schema/domain";
-import { instanceSetting } from "../db/schema/instance";
+import { instanceOAuthProvider, instanceSetting } from "../db/schema/instance";
 import {
 	INSTANCE_SETTINGS,
 	replaceSettingsSnapshot,
@@ -138,6 +138,32 @@ describe("update", () => {
 			expect(await storedRow("S3_REGION")).toBeNull();
 		} finally {
 			delete process.env.S3_REGION;
+		}
+	});
+
+	test("refuses a port that is not one", async () => {
+		for (const port of ["smtp", "587a", "0", "70000"]) {
+			await expect(
+				instanceSettingsService.update(ADMIN, { SMTP_PORT: port }),
+			).rejects.toThrow(/port from 1 to 65535/);
+		}
+	});
+
+	// With the password pinned, a host from the page would receive it.
+	test("refuses a setting its lock group pins in the environment", async () => {
+		process.env.SMTP_PASS = "pinned-password";
+		try {
+			await expect(
+				instanceSettingsService.update(ADMIN, {
+					SMTP_HOST: "mail.attacker.example",
+				}),
+			).rejects.toThrow(/locked because SMTP_PASS is set by the environment/);
+			expect(await viewOf("SMTP_HOST")).toMatchObject({
+				locked: true,
+				lockedBy: "SMTP_PASS",
+			});
+		} finally {
+			delete process.env.SMTP_PASS;
 		}
 	});
 
@@ -363,7 +389,67 @@ describe("createOAuthProvider", () => {
 				clientSecret: "secret",
 				scopes: "openid",
 				enabled: true,
+				trustsEmail: false,
 			}),
 		).rejects.toThrow('"credential" is a built-in provider.');
+	});
+});
+
+describe("a provider's issuer", () => {
+	const provider = {
+		providerId: "gitlab",
+		name: "GitLab",
+		baseUrl: "https://gitlab.example.com",
+		clientId: "client",
+		clientSecret: "secret",
+		scopes: "",
+		enabled: true,
+		trustsEmail: false,
+	};
+
+	const row = async () =>
+		present(
+			await db.query.instanceOAuthProvider.findFirst({
+				where: eq(instanceOAuthProvider.providerId, "gitlab"),
+			}),
+			"the gitlab row",
+		);
+
+	// A subject is only unique inside one issuer. GitLab's is a number, so
+	// person 42 at a new issuer would sign in as person 42 at the old one.
+	test("cannot move while accounts are linked through it", async () => {
+		await instanceSettingsService.createOAuthProvider(provider);
+		const { id } = await row();
+		// A trailing slash is the same issuer.
+		await instanceSettingsService.updateOAuthProvider({
+			...provider,
+			id,
+			baseUrl: "https://gitlab.example.com/",
+		});
+		await db.insert(account).values({
+			id: "acc-gitlab-42",
+			accountId: "42",
+			providerId: "gitlab",
+			userId: ADMIN,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await expect(
+			instanceSettingsService.updateOAuthProvider({
+				...provider,
+				id,
+				baseUrl: "https://other.example.com",
+			}),
+		).rejects.toThrow(/1 account is linked/);
+		expect((await row()).baseUrl).toBe("https://gitlab.example.com/");
+	});
+
+	test("a delete removes the accounts linked through it", async () => {
+		await instanceSettingsService.deleteOAuthProvider((await row()).id);
+		expect(
+			await db.query.account.findFirst({
+				where: eq(account.providerId, "gitlab"),
+			}),
+		).toBeUndefined();
 	});
 });

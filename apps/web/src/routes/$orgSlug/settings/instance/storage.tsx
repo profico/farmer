@@ -9,10 +9,7 @@ import {
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { instanceSettingsQuery } from "#/queries/instance-settings.ts";
-import {
-	getStorageUsage,
-	testStorageConnection,
-} from "#/server/instance-settings.ts";
+import { testStorageConnection } from "#/server/instance-settings.ts";
 
 /**
  * The S3-compatible store behind uploads: project icons, logos, avatars.
@@ -20,10 +17,9 @@ import {
  * **A new endpoint or bucket is a move, and the page asks first.** Every
  * stored upload is a key into the CURRENT store, so pointing Farmer at another
  * one leaves every existing file behind: the rows still name them, and the new
- * store does not have them. Nothing copies them for you. The page counts what
- * is stored before such a save, and with anything there it says so and asks;
- * the service refuses the same save without `confirmStorageMove`, so the
- * dialog is the explanation rather than the guard.
+ * store does not have them. Nothing copies them for you. The service refuses
+ * such a save while anything is stored (`guardStorageMove`) and says how much;
+ * the page then asks, and sends the save again with `confirmStorageMove`.
  */
 export const Route = createFileRoute("/$orgSlug/settings/instance/storage")({
 	beforeLoad: requirePlatformAdmin,
@@ -33,15 +29,7 @@ export const Route = createFileRoute("/$orgSlug/settings/instance/storage")({
 	component: StorageSettingsPage,
 });
 
-/** The two names that decide WHICH store, as opposed to how to reach it. */
-const MOVES_THE_STORE = ["S3_ENDPOINT", "S3_BUCKET"];
-
-const confirmStoreMove = async (
-	changes: Record<string, string | null>,
-): Promise<SaveConfirmation | null> => {
-	if (!MOVES_THE_STORE.some((name) => name in changes)) return null;
-	const { storedObjects } = await getStorageUsage();
-	if (storedObjects === 0) return null;
+const confirmStoreMove = (storedObjects: number): SaveConfirmation => {
 	const files = storedObjects === 1 ? "1 file" : `${storedObjects} files`;
 	return {
 		title: "Move to another store?",
@@ -61,7 +49,7 @@ function StorageSettingsPage() {
 
 			<InstanceSettingsForm
 				section="storage"
-				confirmBeforeSave={confirmStoreMove}
+				confirmStoreMove={confirmStoreMove}
 			/>
 
 			<ConnectionCheck

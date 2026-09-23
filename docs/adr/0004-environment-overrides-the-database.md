@@ -27,7 +27,7 @@ tell which one is live.
 2. Else the `instance_setting` row wins.
 3. Else the default in the definition answers, or nothing.
 
-`resolveSetting(name)` returns `{ value, source, locked }` and is the only
+`resolveSetting(name)` returns `{ value, source, locked, lockedBy }` and is the only
 place this order is written. The server reads `setting(name)`; the page reads
 the same resolution through `instanceSettingsService.view()`.
 
@@ -37,6 +37,11 @@ the same resolution through `instanceSettingsService.view()`.
   disabled with "set by the environment", and the service refuses a write to
   it. A stored value under an environment variable would do nothing today and
   would surprise somebody on the day the variable is removed.
+- **A lock group locks as one.** The SMTP settings and the S3 settings each
+  carry a `lockGroup`. When the environment sets one of a group, every one is
+  locked, and `lockedBy` names the variable. Without it, an operator who pins
+  only `SMTP_PASS` leaves `SMTP_HOST` open, and a platform admin can point the
+  host at their own server and receive the password in the next AUTH command.
 - **An empty variable is not set.** `.env.example` lists names with nothing
   after the `=`, and a copied file must not lock every field.
 - **Secrets are sealed** with `lib/secret-box.ts` before they are written, and
