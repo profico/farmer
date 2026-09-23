@@ -1,8 +1,9 @@
 /// <reference types="bun-types" />
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import {
 	clientAddress,
+	resetClientAddressWarningForTests,
 	SOCKET_ADDRESS_HEADER,
 	trustedIpHeader,
 } from "./client-address.ts";
@@ -59,5 +60,37 @@ describe("clientAddress", () => {
 		expect(clientAddress(new Headers({ "x-real-ip": "1.2.3.4" }), null)).toBe(
 			"unknown",
 		);
+	});
+});
+
+describe("a missing trusted header", () => {
+	test("warns one time when another proxy's header is present", () => {
+		resetClientAddressWarningForTests();
+		const warn = spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const headers = new Headers({
+				"x-forwarded-for": "198.51.100.2",
+				[SOCKET_ADDRESS_HEADER]: "10.0.0.2",
+			});
+			expect(clientAddress(headers, "cf-connecting-ip")).toBe("10.0.0.2");
+			expect(clientAddress(headers, "cf-connecting-ip")).toBe("10.0.0.2");
+			expect(warn).toHaveBeenCalledTimes(1);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	test("stays quiet when no proxy header is present", () => {
+		resetClientAddressWarningForTests();
+		const warn = spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			clientAddress(
+				new Headers({ [SOCKET_ADDRESS_HEADER]: "10.0.0.2" }),
+				"cf-connecting-ip",
+			);
+			expect(warn).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });

@@ -44,6 +44,32 @@ export const trustedIpHeader = (
 	return name === "" || name === "none" ? null : name;
 };
 
+/** Headers a proxy other than the configured one would set. */
+const OTHER_PROXY_HEADERS = ["x-forwarded-for", "x-real-ip"];
+
+let warnedHeaderMissing = false;
+
+/** Warn one time when the trusted header is missing but another proxy's
+ *  header is present. That is a deployment behind nginx or Traefik with the
+ *  Cloudflare default: every caller shares the proxy's socket address, and so
+ *  one rate limit, and nothing else says why. */
+const warnIfMisconfigured = (headers: Headers, trustedHeader: string): void => {
+	if (warnedHeaderMissing) return;
+	const seen = OTHER_PROXY_HEADERS.find(
+		(name) => name !== trustedHeader && headers.has(name),
+	);
+	if (!seen) return;
+	warnedHeaderMissing = true;
+	console.warn(
+		`[client-address] no "${trustedHeader}" header, but "${seen}" is present. Every caller shares the socket address for rate limits. Set TRUSTED_IP_HEADER to the header your proxy writes.`,
+	);
+};
+
+/** Let a test see the warning again. */
+export const resetClientAddressWarningForTests = (): void => {
+	warnedHeaderMissing = false;
+};
+
 /** The client's address, per the rules above. */
 export const clientAddress = (
 	headers: Headers,
@@ -56,6 +82,7 @@ export const clientAddress = (
 				? value?.split(",").at(-1)?.trim()
 				: value?.trim();
 		if (address) return address;
+		warnIfMisconfigured(headers, trustedHeader);
 	}
 	return headers.get(SOCKET_ADDRESS_HEADER)?.trim() || "unknown";
 };
