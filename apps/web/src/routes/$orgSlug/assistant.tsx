@@ -309,6 +309,22 @@ function AssistantPage() {
 		return actions.send(id, text);
 	};
 
+	if (settings?.keyUnreadable) {
+		return (
+			<PageFull>
+				<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+					<ChatCircleDotsIcon className="size-8 text-faint" />
+					<h1 className="h2">The assistant needs to be connected again</h1>
+					<p className="lede max-w-[48ch]">
+						The stored OpenRouter key can no longer be read. An admin can paste
+						it again under Settings → Integrations, and the assistant comes back
+						with every conversation intact.
+					</p>
+				</div>
+			</PageFull>
+		);
+	}
+
 	if (!settings?.configured || !settings.enabled) {
 		return (
 			<PageFull>

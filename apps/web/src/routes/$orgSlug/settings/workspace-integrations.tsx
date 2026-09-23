@@ -312,6 +312,10 @@ function OpenRouterSection() {
 	const [apiKey, setApiKey] = useState("");
 
 	const configured = settings?.configured ?? false;
+	// A row whose key no longer opens (`BETTER_AUTH_SECRET` changed). Not
+	// configured, so nothing below that needs the key is shown, but the admin is
+	// told why it stopped, and may still disconnect the stored row.
+	const unreadable = settings?.keyUnreadable ?? false;
 
 	const invalidate = () =>
 		queryClient.invalidateQueries({
@@ -376,15 +380,17 @@ function OpenRouterSection() {
 				icon={<SparkleIcon className="size-5" />}
 				title="OpenRouter"
 				badge={
-					configured && (
+					configured ? (
 						<Badge variant="secondary">
 							{settings?.enabled ? "Connected" : "Paused"}
 						</Badge>
+					) : (
+						unreadable && <Badge variant="destructive">Connect again</Badge>
 					)
 				}
 				description="Powers the Assistant. Everyone in the workspace asks through this one account, and every answer is scoped to what that person is allowed to see."
 				action={
-					configured ? (
+					configured || unreadable ? (
 						<AlertDialog>
 							<AlertDialogTrigger
 								render={
@@ -425,11 +431,19 @@ function OpenRouterSection() {
 
 			<SettingList className="mt-1">
 				<SettingRow
-					title={configured ? "Replace the API key" : "API key"}
+					title={
+						configured
+							? "Replace the API key"
+							: unreadable
+								? "Paste the API key again"
+								: "API key"
+					}
 					description={
 						configured
-							? `Currently ${settings?.keyHint}. Pasting a new one replaces it; the old key is not recoverable from here.`
-							: "Create a key at openrouter.ai/keys. It is verified before it is saved, and never shown again afterwards."
+							? `Currently ${settings?.keyHint ?? ""}. Pasting a new one replaces it; the old key is not recoverable from here.`
+							: unreadable
+								? "The stored key can no longer be read, because the server's secret changed after it was saved. The Assistant is off for everyone until a key is saved again — the same one or a new one."
+								: "Create a key at openrouter.ai/keys. It is verified before it is saved, and never shown again afterwards."
 					}
 					action={
 						<div className="flex items-center gap-2">

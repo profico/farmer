@@ -327,15 +327,20 @@ describe("settings", () => {
 		expect(view.keyHint).toBe("sk-or-v1-abc123••••••••");
 	});
 
-	test("a key that does not decrypt reads as not connected, and a reconnect fixes it", async () => {
+	test("a key that does not decrypt reads as unreadable, not ready, and a reconnect fixes it", async () => {
 		const chat = await startChat(ctxFor(WORKER));
 		await db
 			.update(assistantSettings)
 			.set({ apiKey: "enc:v1:bm90LWEtcmVhbC1jaXBoZXJ0ZXh0LWF0LWFsbA" })
 			.where(eq(assistantSettings.organizationId, ORG));
 
+		// The row is there, so this is not "never connected" — but it is not
+		// ready either, or the page would offer a composer whose every message
+		// throws.
 		const view = await assistantService.settings.get(ctxFor(WORKER));
 		expect(view.keyHint).toBeNull();
+		expect(view.configured).toBe(false);
+		expect(view.keyUnreadable).toBe(true);
 		script = [turn({ content: "hi" })];
 		await expect(
 			collect(ctxFor(WORKER), { conversationId: chat.id, message: "hello" }),
@@ -345,15 +350,17 @@ describe("settings", () => {
 			apiKey: KEY,
 			defaultModel: "test/model",
 		});
-		expect((await assistantService.settings.get(ctxFor(WORKER))).keyHint).toBe(
-			"sk-or-v1-abc123••••••••",
-		);
+		const healed = await assistantService.settings.get(ctxFor(WORKER));
+		expect(healed.keyHint).toBe("sk-or-v1-abc123••••••••");
+		expect(healed.configured).toBe(true);
+		expect(healed.keyUnreadable).toBe(false);
 	});
 
 	test("an unconfigured org reports as not connected rather than throwing", async () => {
 		await db.delete(assistantSettings);
 		const view = await assistantService.settings.get(ctxFor(WORKER));
 		expect(view.configured).toBe(false);
+		expect(view.keyUnreadable).toBe(false);
 		expect(view.keyHint).toBeNull();
 	});
 

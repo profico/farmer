@@ -262,7 +262,14 @@ const maskKey = (key: string) =>
  *  connected" rather than an error, so every field is nullable and one shape
  *  answers both cases. The key itself is never here — only a hint. */
 export type AssistantSettingsView = {
+	/** A usable key is stored: the row exists AND its key opens. What every
+	 *  "is the assistant ready" check reads. */
 	configured: boolean;
+	/** The row exists but its key does not decrypt — `BETTER_AUTH_SECRET`
+	 *  changed since it was saved. Not the same as never connected: the admin
+	 *  has to be told WHY it stopped, and that pasting the key again is the fix.
+	 *  `configured` is false whenever this is true. */
+	keyUnreadable: boolean;
 	enabled: boolean;
 	defaultModel: string | null;
 	keyHint: string | null;
@@ -279,6 +286,7 @@ const settings = {
 		if (!row) {
 			return {
 				configured: false,
+				keyUnreadable: false,
 				enabled: false,
 				defaultModel: null,
 				keyHint: null,
@@ -286,8 +294,12 @@ const settings = {
 				connectedAt: null,
 			};
 		}
+		// Every message would throw `AssistantNotConfiguredError` on a key that
+		// does not open, so this must not answer `configured` for it — the
+		// assistant page and the nav read `configured` as "ready".
 		return {
-			configured: true,
+			configured: row.apiKey !== null,
+			keyUnreadable: row.apiKey === null,
 			enabled: row.enabled,
 			defaultModel: row.defaultModel,
 			keyHint: row.apiKey === null ? null : maskKey(row.apiKey),
