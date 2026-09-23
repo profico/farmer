@@ -370,12 +370,11 @@ html:has(.fm-site) {
 
 /* ---- Header ----------------------------------------------------------- */
 /* A full-width bar on the paper's own glass. Once the page scrolls, a hairline
-   and a soft shadow set it off from the content passing under it.
+   sets it off from the content passing under it.
 
    `SiteHeader` writes `--fm-scrolled`, a spring that chases the scroll from 0
-   at the top to 1 after the first 48px, so the edge fades in and out rather
-   than blinking at a threshold. The shadow sits on its own layer and fades by
-   opacity, so a frame of the spring never repaints a blur. */
+   at the top to 1 after the first 48px, so the hairline fades in and out
+   rather than blinking at a threshold. */
 .fm-site .fm-header {
 	--s: var(--fm-scrolled, 0);
 	/* Over an ink band (`data-header-ink`, the front page's Developers) the
@@ -420,29 +419,18 @@ html:has(.fm-site) {
 	top: 0;
 	z-index: 20;
 }
-.fm-site .fm-header::before,
-.fm-site .fm-header::after {
+/* The glass, and the hairline under it. */
+.fm-site .fm-header::before {
 	content: "";
 	position: absolute;
 	inset: 0;
 	pointer-events: none;
-}
-/* The glass, and the hairline under it. */
-.fm-site .fm-header::before {
 	z-index: -1;
 	background: color-mix(in oklab, var(--bg) 86%, transparent);
 	backdrop-filter: blur(20px) saturate(160%);
 	-webkit-backdrop-filter: blur(20px) saturate(160%);
 	border-bottom: 1px solid
 		color-mix(in oklab, var(--line) calc(100% * var(--s)), transparent);
-}
-.fm-site .fm-header::after {
-	z-index: -2;
-	box-shadow: 0 8px 24px -16px rgb(27 26 23 / 0.35);
-	opacity: var(--s);
-}
-:root[data-theme="dark"] .fm-site .fm-header::after {
-	box-shadow: 0 8px 24px -14px rgb(0 0 0 / 0.8);
 }
 .fm-site .fm-header-inner {
 	display: flex;

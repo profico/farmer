@@ -94,7 +94,7 @@ const NAV = [
 	{ label: "About", to: "/about" },
 ] as const;
 
-/** How far past the top the page scrolls before the header's edge is fully
+/** How far past the top the page scrolls before the header's hairline is fully
  *  drawn. */
 const SCROLL_DISTANCE = 48;
 
@@ -126,18 +126,18 @@ const USER_INPUT = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
  * draw every state in between (see the Header block in site.css):
  *
  * - `--fm-scrolled`: 0 at the top of the page, 1 once it has scrolled, which
- *   fades in the header's bottom edge and shadow.
+ *   fades in the header's bottom hairline.
  * - `--fm-ink`: 0 is the page's own palette, 1 is the ink palette, while the
  *   header passes over a dark band.
  *
  * The scroll sets where each is going, not where it is. A critically damped
- * spring chases each target, so one wheel notch fades the edge in over a
+ * spring chases each target, so one wheel notch fades the hairline in over a
  * moment rather than in one frame, and a scroll back mid-way turns it around
  * from where it is. Nothing here moves, so reduced motion keeps the fades.
  *
  * A scroll nobody asked for snaps. Each public page mounts its own header,
  * and the router moves the page to the top, or back to where it was, only
- * after the header exists. Sprung, that faded the edge out on every page
+ * after the header exists. Sprung, that faded the hairline out on every page
  * change. So the springs only animate once the reader has touched the page.
  *
  * Straight to the DOM from a frame loop rather than through React state, and
