@@ -5,7 +5,12 @@ import { organization } from "../db/schema/auth";
 import { slackReminderLog } from "../db/schema/slack";
 import { dayKeyInTz, timeKeyInTz } from "../lib/time";
 import type { ReminderKind } from "../schema/reminder-settings";
-import { deliveryBlocks, notify, wasDelivered } from "../services/notify";
+import {
+	deliveryBlocks,
+	notify,
+	wasDelivered,
+	wasUnreachable,
+} from "../services/notify";
 import {
 	dashboardLoader,
 	isMonthEndDay,
@@ -48,13 +53,14 @@ export type SlackReminderSummary = {
 // nag, where a duplicate is more damaging than a miss.
 //
 // A send that comes back undelivered is a different case: nothing went out,
-// so the claim only stood between the person and a retry. Unless they simply
-// have no Slack identity (nothing to retry), the claim is released and the
-// pass is left unfinished, so the next tick tries again — at most
-// `MAX_SEND_ATTEMPTS` times a day, after which the claim stays. `notify`
-// reports only whether a channel delivered, not why it did not, so a rate
-// limit and a deactivated account look the same here; the cap bounds the
-// second.
+// so the claim only stood between the person and a retry. Unless no retry can
+// help — they have no Slack identity, or Slack refused for good (a deactivated
+// account, an unknown user, a revoked token: `PERMANENT_POST_ERRORS` in
+// `lib/slack-client.ts`, reported by `notify` as `"unreachable"`) — the claim
+// is released and the pass is left unfinished, so the next tick tries again,
+// at most `MAX_SEND_ATTEMPTS` times a day, after which the claim stays. A
+// permanent refusal keeps its claim and counts as neither sent nor failed:
+// counting it would add three failures a day per deactivated account.
 
 /** The three kinds this job sends, the claim key each has always used in
  *  `slack_reminder_log`, and the summary counter it adds to. */
@@ -84,8 +90,43 @@ const finishedRuns = new Map<string, string>();
 const MAX_SEND_ATTEMPTS = 3;
 
 /** `${organizationId}:${userId}:${claim}:${dayKey}` → the failed sends so far,
- *  for a reminder whose claim was released to be tried again. */
-const failedAttempts = new Map<string, number>();
+ *  for a reminder whose claim was released to be tried again.
+ *
+ *  An entry only matters for its own day and only while the person is still
+ *  due the reminder, so `pruneFailedAttempts` drops it once either stops being
+ *  true. Without that, a person who failed once and then logged their time
+ *  kept an entry until the process restarted. */
+const failedAttempts = new Map<
+	string,
+	{
+		organizationId: string;
+		userId: string;
+		claim: string;
+		dayKey: string;
+		count: number;
+	}
+>();
+
+/** Drop the org's entries from another day, and — given `claim` and the
+ *  people still due it today — those for anyone who left the list. */
+const pruneFailedAttempts = (
+	organizationId: string,
+	today: string,
+	still?: { claim: string; userIds: Set<string> },
+): void => {
+	for (const [key, entry] of failedAttempts) {
+		if (entry.organizationId !== organizationId) continue;
+		const stale =
+			entry.dayKey !== today ||
+			(still !== undefined &&
+				entry.claim === still.claim &&
+				!still.userIds.has(entry.userId));
+		if (stale) failedAttempts.delete(key);
+	}
+};
+
+/** How many attempt records the job holds. For a test to see the pruning. */
+export const slackReminderAttemptsForTests = (): number => failedAttempts.size;
 
 /** Forget which passes already ran, so a test can run the same day twice. */
 export const forgetSlackReminderRunsForTests = (): void => {
@@ -154,15 +195,18 @@ export const runSlackRemindersOnce = async (
 	};
 
 	for (const org of orgs) {
+		const tz = org.timezone ?? "UTC";
+		const today = dayKeyInTz(now, tz);
+		const timeKey = timeKeyInTz(now, tz);
+		// Before the installation check, so an org that disconnected Slack does
+		// not keep yesterday's records either.
+		pruneFailedAttempts(org.id, today);
+
 		// No Slack workspace connected = nothing this job can do, and no reason to
 		// run the (fairly expensive) compliance queries for that org at all.
 		const installation = await slackService.installationFor(org.id);
 		if (!installation) continue;
 		summary.organizations++;
-
-		const tz = org.timezone ?? "UTC";
-		const today = dayKeyInTz(now, tz);
-		const timeKey = timeKeyInTz(now, tz);
 
 		// The job runs unattended, so it needs a ctx to satisfy the service
 		// signatures; nothing below checks a caller, because there is none.
@@ -202,6 +246,14 @@ export const runSlackRemindersOnce = async (
 					recipients.map((r) => r.userId),
 					entry.kind,
 				);
+				pruneFailedAttempts(org.id, today, {
+					claim: entry.claim,
+					userIds: new Set(
+						recipients
+							.map((r) => r.userId)
+							.filter((userId) => !blocks.has(userId)),
+					),
+				});
 				let retryLater = false;
 				for (const recipient of recipients) {
 					if (blocks.has(recipient.userId)) continue;
@@ -216,6 +268,7 @@ export const runSlackRemindersOnce = async (
 							recipient.event,
 						);
 						if (wasDelivered(outcome)) result = "delivered";
+						else if (wasUnreachable(outcome)) result = "unreachable";
 						else {
 							// No Slack identity is not a failure a retry can fix: keep the
 							// claim, as before.
@@ -242,13 +295,19 @@ export const runSlackRemindersOnce = async (
 					}
 
 					summary.failed++;
-					const attempts = (failedAttempts.get(attemptKey) ?? 0) + 1;
+					const attempts = (failedAttempts.get(attemptKey)?.count ?? 0) + 1;
 					if (attempts >= MAX_SEND_ATTEMPTS) {
 						// Out of attempts: the claim stays, and the day gets no more.
 						failedAttempts.delete(attemptKey);
 						continue;
 					}
-					failedAttempts.set(attemptKey, attempts);
+					failedAttempts.set(attemptKey, {
+						organizationId: org.id,
+						userId: recipient.userId,
+						claim: entry.claim,
+						dayKey: today,
+						count: attempts,
+					});
 					try {
 						await releaseClaim(org.id, recipient.userId, entry.claim, today);
 						retryLater = true;

@@ -299,19 +299,27 @@ export const slackService = {
 		return new Map(rows.map((r) => [r.userId, r.slackUserId]));
 	},
 
-	/** Send a DM to a person. Returns false (never throws) when the org has no
-	 *  Slack, the person isn't mapped, or Slack rejects the call — one person's
-	 *  failure must not abort a whole reminder run. */
+	/** Send a DM to a person. Never throws — one person's failure must not
+	 *  abort a whole reminder run. True when it went out; `"unreachable"` when
+	 *  no retry can change that today (the person is not mapped, or Slack
+	 *  refused for good — see `PERMANENT_POST_ERRORS`); false for anything a
+	 *  later try may get through, and when the org has no Slack. */
 	sendDm: async (
 		organizationId: string,
 		userId: string,
 		text: string,
-	): Promise<boolean> => {
+	): Promise<boolean | "unreachable"> => {
 		const installation = await slackService.installationFor(organizationId);
 		if (!installation) return false;
 		const slackUserId = await slackService.slackIdFor(organizationId, userId);
-		if (!slackUserId) return false;
-		return slackClient.postMessage(installation.botToken, slackUserId, text);
+		if (!slackUserId) return "unreachable";
+		const result = await slackClient.postMessage(
+			installation.botToken,
+			slackUserId,
+			text,
+		);
+		if (result === "sent") return true;
+		return result === "refused" ? "unreachable" : false;
 	},
 
 	/** DM an invitation to the address it was sent to, when that address belongs
@@ -344,11 +352,12 @@ export const slackService = {
 			if (!slackUserId) return false;
 			const link = slackLink(invite.path, "Accept the invitation");
 			const text = `*${slackEscape(invite.inviterName)} invited you to join ${slackEscape(invite.organizationName)}* as ${slackEscape(invite.role)}.${link ? `\n${link}` : ""}`;
-			return await slackClient.postMessage(
+			const result = await slackClient.postMessage(
 				installation.botToken,
 				slackUserId,
 				text,
 			);
+			return result === "sent";
 		} catch (error) {
 			console.error("[slack] could not send invitation", {
 				organizationId,

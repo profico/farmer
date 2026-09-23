@@ -47,6 +47,32 @@ export const slackLink = (path: string, label: string): string | null => {
 type SlackResponse<T> = { ok: true } & T;
 type SlackError = { ok: false; error: string };
 
+/** What a `chat.postMessage` came to. `refused` is an answer no retry today
+ *  can change (`PERMANENT_POST_ERRORS`); `failed` is anything else — a rate
+ *  limit, a 5xx, a timeout — which a later try may get through. */
+export type SlackPostResult = "sent" | "refused" | "failed";
+
+/** Slack's error codes that say the message will never go out as asked.
+ *
+ *  Two kinds. The recipient is gone: a deactivated or deleted account, or a
+ *  user id this workspace does not know (`channel_not_found` is what a DM to
+ *  one answers). Or the credential is: `account_inactive` is Slack's answer
+ *  for a bot token whose workspace or installing user was deleted, beside the
+ *  revoked and invalid token codes — every send fails until an admin connects
+ *  Slack again. Neither changes within the day, so the reminder job gives up
+ *  on the person at once rather than trying three times. */
+const PERMANENT_POST_ERRORS = new Set([
+	"account_inactive",
+	"cannot_dm_bot",
+	"channel_not_found",
+	"invalid_auth",
+	"is_archived",
+	"not_authed",
+	"token_revoked",
+	"user_disabled",
+	"user_not_found",
+]);
+
 /**
  * Every call is form-encoded, not JSON.
  *
@@ -189,7 +215,7 @@ export const slackClient = {
 		text: string,
 		/** Block Kit blocks. JSON by definition — Slack's own wire format. */
 		blocks?: JsonValue[],
-	): Promise<boolean> => {
+	): Promise<SlackPostResult> => {
 		// `blocks` only when there are some: Slack reads an empty `blocks` key as
 		// an instruction to render nothing, which silently drops the message body.
 		const result = await call<{ ts: string }>(
@@ -199,8 +225,8 @@ export const slackClient = {
 		);
 		if (!result.ok) {
 			console.error(`[slack] postMessage failed: ${result.error}`);
-			return false;
+			return PERMANENT_POST_ERRORS.has(result.error) ? "refused" : "failed";
 		}
-		return true;
+		return "sent";
 	},
 };

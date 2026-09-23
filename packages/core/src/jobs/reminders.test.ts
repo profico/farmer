@@ -61,6 +61,7 @@ import { runLogRemindersOnce } from "./log-reminders";
 import {
 	forgetSlackReminderRunsForTests,
 	runSlackRemindersOnce,
+	slackReminderAttemptsForTests,
 } from "./slack-reminders";
 
 const H = 3600;
@@ -471,6 +472,77 @@ describe("an undelivered Slack reminder", () => {
 		expect(failed).toEqual([1, 1, 1, 0]);
 		expect(silentTries).toBe(3);
 		expect(await claimsFor(SILENT)).toHaveLength(1);
+	});
+
+	// A deactivated account used to be retried like a Slack hiccup: three sends
+	// a day, and three failures in the summary, for somebody no send can reach.
+	test("is given up on at once when Slack refuses for good, and not counted as failed", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		const record = recorder("slack");
+		let silentTries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				if (event.kind === "compliance-nudge" && to.userId === SILENT) {
+					silentTries++;
+					return "unreachable";
+				}
+				return record(to, event);
+			},
+		});
+
+		const first = await slackAt(TUESDAY, "09:00");
+		expect(first.failed).toBe(0);
+		expect(await claimsFor(SILENT)).toHaveLength(1);
+		expect(slackReminderAttemptsForTests()).toBe(0);
+
+		await slackAt(TUESDAY, "09:15");
+		expect(silentTries).toBe(1);
+	});
+
+	test("forgets its failures when the day ends", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) =>
+				event.kind === "compliance-nudge" && to.userId === SILENT
+					? false
+					: recorder("slack")(to, event),
+		});
+
+		await slackAt(TUESDAY, "09:00");
+		expect(slackReminderAttemptsForTests()).toBe(1);
+
+		// Wednesday is no nudge day, so nothing is sent — and Tuesday's record
+		// still goes.
+		await slackAt(WEDNESDAY, "09:00");
+		expect(slackReminderAttemptsForTests()).toBe(0);
+	});
+
+	test("forgets its failures for somebody who is no longer due the reminder", async () => {
+		await configure({ includeNeverSignedIn: true });
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: NEVER, slackUserId: "U0NEVER" });
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) =>
+				event.kind === "compliance-nudge" && to.userId === NEVER
+					? false
+					: recorder("slack")(to, event),
+		});
+
+		await slackAt(TUESDAY, "09:00");
+		expect(slackReminderAttemptsForTests()).toBe(1);
+
+		await configure({ includeNeverSignedIn: false });
+		await slackAt(TUESDAY, "09:15");
+		expect(slackReminderAttemptsForTests()).toBe(0);
+		expect(await claimsFor(NEVER)).toHaveLength(0);
 	});
 });
 

@@ -150,3 +150,25 @@ describe("installationFor", () => {
 		);
 	});
 });
+
+describe("sendDm", () => {
+	test("tells a refusal no retry can change from one it may", async () => {
+		let answer: "sent" | "refused" | "failed" = "refused";
+		const post = spyOn(slackClient, "postMessage").mockImplementation(
+			async () => answer,
+		);
+		try {
+			// `beforeAll` maps ARCHIVED; OUTSIDE has no Slack match at all.
+			expect(await slackService.sendDm(ORG, ARCHIVED, "hi")).toBe(
+				"unreachable",
+			);
+			answer = "failed";
+			expect(await slackService.sendDm(ORG, ARCHIVED, "hi")).toBe(false);
+			answer = "sent";
+			expect(await slackService.sendDm(ORG, ARCHIVED, "hi")).toBe(true);
+			expect(await slackService.sendDm(ORG, OUTSIDE, "hi")).toBe("unreachable");
+		} finally {
+			post.mockRestore();
+		}
+	});
+});
