@@ -8,13 +8,19 @@
  * `externalFetch`, so a store that stops answering costs one upload rather than
  * a request that never ends.
  *
- * Optional. With any of the four required variables missing, `objectStore()`
+ * Optional. With any of the four required settings missing, `objectStore()`
  * is null: the upload controls do not render, the upload server function
- * refuses, and `/api/files` answers 404. Read per call, like `lib/mcp-flag.ts`.
+ * refuses, and `/api/files` answers 404.
+ *
+ * The settings come from `lib/instance-settings.ts` (the environment, then the
+ * Infrastructure page) and are read per call, so a store configured on the
+ * page is live at the next settings refresh with no restart. That is also why
+ * `objectStore()` stays synchronous: it reads the snapshot, not the database.
  */
 import { AwsClient } from "aws4fetch";
 
 import { externalFetch } from "./http";
+import { setting } from "./instance-settings";
 
 export type StoredObject = {
 	body: ReadableStream<Uint8Array>;
@@ -48,7 +54,7 @@ export class ObjectStoreFullError extends ObjectStoreError {}
 let storeForTests: ObjectStore | null | undefined;
 
 /** Substitute the store for a test file. `undefined` restores the one the
- *  environment describes; `null` is a deployment with no store at all. */
+ *  instance settings describe; `null` is a deployment with no store at all. */
 export const setObjectStoreForTests = (
 	store: ObjectStore | null | undefined,
 ) => {
@@ -57,17 +63,17 @@ export const setObjectStoreForTests = (
 
 export const objectStore = (): ObjectStore | null => {
 	if (storeForTests !== undefined) return storeForTests;
-	const endpoint = process.env.S3_ENDPOINT?.trim();
-	const bucket = process.env.S3_BUCKET?.trim();
-	const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
-	const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
+	const endpoint = setting("S3_ENDPOINT")?.trim();
+	const bucket = setting("S3_BUCKET")?.trim();
+	const accessKeyId = setting("S3_ACCESS_KEY_ID")?.trim();
+	const secretAccessKey = setting("S3_SECRET_ACCESS_KEY")?.trim();
 	if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) return null;
 	return s3Store({
 		endpoint,
 		bucket,
 		accessKeyId,
 		secretAccessKey,
-		region: process.env.S3_REGION?.trim() || "us-east-1",
+		region: setting("S3_REGION")?.trim() || "us-east-1",
 	});
 };
 

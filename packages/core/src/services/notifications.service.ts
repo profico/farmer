@@ -6,6 +6,7 @@ import {
 	notificationSettings,
 	pushSubscription,
 } from "../db/schema/notifications";
+import { setting } from "../lib/instance-settings";
 import {
 	isAllowedPushEndpoint,
 	PUSH_ENDPOINT_MESSAGE,
@@ -33,18 +34,22 @@ export type PushPayload = {
 	tag?: string;
 };
 
-// Configure web-push once from env. Missing keys is not fatal — the app runs
-// fine without push (sendPush becomes a no-op) so a dev without VAPID keys
-// isn't blocked. Guarded so we only call setVapidDetails when fully configured.
-let vapidReady = false;
+// Configure web-push from the VAPID settings (`lib/instance-settings.ts`).
+// Missing keys is not fatal — the app runs fine without push (sendPush becomes
+// a no-op) so a dev without VAPID keys isn't blocked. Guarded so we only call
+// setVapidDetails when fully configured, and again whenever the values differ
+// from the ones it was last called with: the keys can change on the
+// Infrastructure page while the process runs.
+let vapidConfigured: string | null = null;
 const configureVapid = (): boolean => {
-	if (vapidReady) return true;
-	const publicKey = process.env.VAPID_PUBLIC_KEY;
-	const privateKey = process.env.VAPID_PRIVATE_KEY;
-	const subject = process.env.VAPID_SUBJECT ?? "mailto:admin@example.com";
+	const publicKey = setting("VAPID_PUBLIC_KEY");
+	const privateKey = setting("VAPID_PRIVATE_KEY");
+	const subject = setting("VAPID_SUBJECT") ?? "mailto:admin@example.com";
 	if (!publicKey || !privateKey) return false;
+	const key = JSON.stringify([subject, publicKey, privateKey]);
+	if (vapidConfigured === key) return true;
 	webpush.setVapidDetails(subject, publicKey, privateKey);
-	vapidReady = true;
+	vapidConfigured = key;
 	return true;
 };
 
