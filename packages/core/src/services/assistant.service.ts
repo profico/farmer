@@ -21,7 +21,9 @@ import {
 	streamChatCompletion,
 	verifyKey,
 } from "../lib/openrouter-client";
+import { openAndHeal, sealSecret } from "../lib/secret-box";
 import { dayKeyInTz } from "../lib/time";
+import { UserFacingError } from "../lib/user-facing-error";
 import type {
 	CreateConversationInput,
 	RenameConversationInput,
@@ -29,7 +31,6 @@ import type {
 	SetAssistantSettingsInput,
 	UpdateAssistantSettingsInput,
 } from "../schema";
-import { AccessError } from "./access.service";
 import { reportGeneration, reportSpan } from "./ai-telemetry";
 import {
 	type ApprovalPreview,
@@ -38,9 +39,10 @@ import {
 	toolDefinitions,
 } from "./assistant-tools";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
+import { safeErrorMessage } from "./error-message";
 import type { Ctx } from "./types";
 
-export class AssistantError extends Error {
+export class AssistantError extends UserFacingError {
 	constructor(message: string) {
 		super(message);
 		this.name = "AssistantError";
@@ -71,18 +73,16 @@ export class AssistantDisabledError extends AssistantError {
  * The text a person may read for an error that ended a turn, or null when the
  * error is not theirs to read.
  *
- * Only the errors this layer and the services throw ON PURPOSE qualify: the
- * assistant's own (not connected, switched off, conversation not found), an
- * `AccessError` refusal, and OpenRouter's account-level answers (no credit, a
- * revoked key). Everything else — a database error, a bug, a failed import —
- * can carry SQL, a hostname or a file path, and belongs in the server log
- * rather than in somebody's chat. The stream route streamed every message
- * through before this existed.
+ * Only the errors this layer and the services throw ON PURPOSE qualify: a
+ * `UserFacingError` (the assistant's own — not connected, switched off,
+ * conversation not found — an `AccessError` refusal, a full day), and
+ * OpenRouter's account-level answers (no credit, a revoked key). Everything
+ * else — a database error, a bug, a failed import — can carry SQL, a hostname
+ * or a file path, and belongs in the server log rather than in somebody's
+ * chat. The stream route streamed every message through before this existed.
  */
 export const userFacingAssistantError = (error: Error): string | null =>
-	error instanceof AssistantError ||
-	error instanceof AccessError ||
-	error instanceof OpenRouterError
+	error instanceof UserFacingError || error instanceof OpenRouterError
 		? error.message
 		: null;
 
@@ -185,10 +185,37 @@ const MAX_TOOL_RESULT_CHARS = 12_000;
 
 // ── settings ─────────────────────────────────────────────────────────────────
 
-const loadSettings = async (ctx: Ctx) =>
+/** The row as stored — the key still sealed. For the writes, which only need
+ *  to know whether a row exists. */
+const readSettingsRow = async (ctx: Ctx) =>
 	db.query.assistantSettings.findFirst({
 		where: eq(assistantSettings.organizationId, ctx.organizationId),
 	});
+
+/** The row with its key opened (`lib/secret-box.ts`). `apiKey` is null when the
+ *  stored key does not decrypt — a changed BETTER_AUTH_SECRET — which every
+ *  caller treats as "not configured", so reconnecting fixes it. A key stored
+ *  before encryption existed is resealed here, on its first read. */
+const loadSettings = async (ctx: Ctx) => {
+	const row = await readSettingsRow(ctx);
+	if (!row) return undefined;
+	const apiKey = await openAndHeal(
+		row.apiKey,
+		async (sealed) => {
+			await db
+				.update(assistantSettings)
+				.set({ apiKey: sealed })
+				.where(
+					and(
+						eq(assistantSettings.id, row.id),
+						eq(assistantSettings.apiKey, row.apiKey),
+					),
+				);
+		},
+		"the assistant API key",
+	);
+	return { ...row, apiKey };
+};
 
 /** The key plus every assertion that it may be used. Everything that talks to
  *  OpenRouter goes through here, so neither switch can be forgotten at one call
@@ -201,8 +228,10 @@ const loadSettings = async (ctx: Ctx) =>
 const requireKey = async (ctx: Ctx) => {
 	if (!isAssistantEnabled()) throw new AssistantDisabledError();
 	const row = await loadSettings(ctx);
-	if (!row || !row.enabled) throw new AssistantNotConfiguredError();
-	return row;
+	if (!row || !row.enabled || row.apiKey === null) {
+		throw new AssistantNotConfiguredError();
+	}
+	return { ...row, apiKey: row.apiKey };
 };
 
 /** How much of the key an admin ever sees again: `sk-or-v1-` plus six.
@@ -233,7 +262,14 @@ const maskKey = (key: string) =>
  *  connected" rather than an error, so every field is nullable and one shape
  *  answers both cases. The key itself is never here — only a hint. */
 export type AssistantSettingsView = {
+	/** A usable key is stored: the row exists AND its key opens. What every
+	 *  "is the assistant ready" check reads. */
 	configured: boolean;
+	/** The row exists but its key does not decrypt — `BETTER_AUTH_SECRET`
+	 *  changed since it was saved. Not the same as never connected: the admin
+	 *  has to be told WHY it stopped, and that pasting the key again is the fix.
+	 *  `configured` is false whenever this is true. */
+	keyUnreadable: boolean;
 	enabled: boolean;
 	defaultModel: string | null;
 	keyHint: string | null;
@@ -250,6 +286,7 @@ const settings = {
 		if (!row) {
 			return {
 				configured: false,
+				keyUnreadable: false,
 				enabled: false,
 				defaultModel: null,
 				keyHint: null,
@@ -257,11 +294,15 @@ const settings = {
 				connectedAt: null,
 			};
 		}
+		// Every message would throw `AssistantNotConfiguredError` on a key that
+		// does not open, so this must not answer `configured` for it — the
+		// assistant page and the nav read `configured` as "ready".
 		return {
-			configured: true,
+			configured: row.apiKey !== null,
+			keyUnreadable: row.apiKey === null,
 			enabled: row.enabled,
 			defaultModel: row.defaultModel,
-			keyHint: maskKey(row.apiKey),
+			keyHint: row.apiKey === null ? null : maskKey(row.apiKey),
 			// Not a secret, unlike the key beside it: it is house rules an admin
 			// wrote, and the settings screen has to render them back to be editable.
 			systemPrompt: row.systemPrompt,
@@ -280,12 +321,14 @@ const settings = {
 		// else's first question.
 		await chatModel().verifyKey(input.apiKey);
 
-		const existing = await loadSettings(ctx);
+		// Sealed at rest (`lib/secret-box.ts`); only `loadSettings` opens it.
+		const apiKey = sealSecret(input.apiKey);
+		const existing = await readSettingsRow(ctx);
 		if (existing) {
 			await db
 				.update(assistantSettings)
 				.set({
-					apiKey: input.apiKey,
+					apiKey,
 					defaultModel: input.defaultModel,
 					enabled: true,
 					connectedByUserId: ctx.userId,
@@ -296,7 +339,7 @@ const settings = {
 		}
 		await db.insert(assistantSettings).values({
 			organizationId: ctx.organizationId,
-			apiKey: input.apiKey,
+			apiKey,
 			defaultModel: input.defaultModel,
 			connectedByUserId: ctx.userId,
 		});
@@ -306,7 +349,7 @@ const settings = {
 	update: async (ctx: Ctx, input: UpdateAssistantSettingsInput) => {
 		await requireAdmin(ctx);
 		if (!isAssistantEnabled()) throw new AssistantDisabledError();
-		const existing = await loadSettings(ctx);
+		const existing = await readSettingsRow(ctx);
 		if (!existing) throw new AssistantNotConfiguredError();
 		const patch: Partial<typeof assistantSettings.$inferInsert> = {
 			updatedAt: new Date(),
@@ -349,7 +392,7 @@ const settings = {
 		// A switched-off feature makes no outbound calls, catalogue included.
 		if (!isAssistantEnabled()) throw new AssistantDisabledError();
 		const row = await loadSettings(ctx);
-		if (!row) throw new AssistantNotConfiguredError();
+		if (!row?.apiKey) throw new AssistantNotConfiguredError();
 		return chatModel().listModels(row.apiKey);
 	},
 };
@@ -732,9 +775,16 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 	try {
 		return { ok: true, content: stringifyResult(await tool.run(ctx, args)) };
 	} catch (error) {
+		// The content goes to the model provider, so only a message written for
+		// a person may pass. A database error carries the SQL and its
+		// parameters; that stays in the server log.
+		const message = error instanceof Error ? safeErrorMessage(error) : null;
+		if (message === null) {
+			console.error(`[assistant] tool "${call.name}" failed`, error);
+		}
 		return {
 			ok: false,
-			content: `Error: ${error instanceof Error ? error.message : "failed"}`,
+			content: `Error: ${message ?? "the tool failed on the server."}`,
 		};
 	}
 };
@@ -1029,7 +1079,7 @@ const run = async (
 	if (!needsTitle || !conversation || !input.message) return;
 
 	const settings = await loadSettings(ctx);
-	const title = settings
+	const title = settings?.apiKey
 		? await generateTitle(
 				ctx,
 				{

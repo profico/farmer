@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
+import { dayKeySchema } from "./day-key";
 
-export const listCalendarEventsInput = z.object({ date: dateKey });
+export const listCalendarEventsInput = z.object({ date: dayKeySchema });
 export type ListCalendarEventsInput = z.infer<typeof listCalendarEventsInput>;

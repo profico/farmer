@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { auth } from "../auth";
+import { sealLegacyOAuthTokens } from "../auth/legacy-tokens";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
 import { project, projectMember, timeEntry } from "../db/schema/domain";
@@ -33,7 +34,13 @@ import {
 	type SuggestPullRequestsInput,
 } from "../schema/github";
 import { AccessError } from "./access.service";
-import { ctxDb, ctxTimezone, requireAdmin, withCtxTx } from "./context";
+import {
+	ctxAccess,
+	ctxDb,
+	ctxTimezone,
+	requireAdmin,
+	withCtxTx,
+} from "./context";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
@@ -192,9 +199,10 @@ const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
 			eq(account.userId, ctx.userId),
 			eq(account.providerId, "github"),
 		),
-		columns: { id: true },
+		columns: { id: true, accessToken: true, refreshToken: true },
 	});
 	if (!linked) return null;
+	await sealLegacyOAuthTokens(linked);
 	try {
 		const result = await auth.api.getAccessToken({
 			body: { providerId: "github", userId: ctx.userId },
@@ -239,8 +247,11 @@ const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
  * commits ought to count, the fix is to assign them to the project — which is
  * the same thing that lets them log the time.
  *
- * `suggestCommits` deliberately does NOT go through here: it is scoped to one
- * project the caller named and already gated by `assertProjectInOrg`.
+ * `suggestCommits` and `suggestPullRequests` read through here too, narrowed to
+ * the one project the caller named. `assertProjectInOrg` alone used to gate
+ * `suggestCommits`, which let a member scan any project's repos, private ones
+ * included, with the installation token; and a commit it offered there was
+ * one `attachCommits` would then refuse.
  *
  * There is no admin bypass, here or in `attachCommits`, which reads through
  * this too: the argument above is about attribution, and being an admin does
@@ -886,7 +897,12 @@ export const githubService = {
 		return { repos, fetchedAt };
 	},
 
+	// Linking and unlinking are admin-only, like `listAvailableRepos`: the
+	// server functions sat behind `orgAdminMiddleware`, but the service checked
+	// only the organization, so any other caller of it was one missing
+	// middleware away from letting a member repoint a project's repos.
 	linkRepo: async (ctx: Ctx, input: LinkProjectRepoInput) => {
+		await requireAdmin(ctx);
 		await assertProjectInOrg(ctx, input.projectId);
 
 		const inst = await db.query.orgGithubInstallation.findFirst({
@@ -940,6 +956,7 @@ export const githubService = {
 	},
 
 	unlinkRepo: async (ctx: Ctx, projectGithubRepoId: string) => {
+		await requireAdmin(ctx);
 		await db
 			.delete(projectGithubRepo)
 			.where(
@@ -950,7 +967,27 @@ export const githubService = {
 			);
 	},
 
+	/**
+	 * The repos linked to one project: the project panel's GitHub tab (admin)
+	 * and the entry dialog's commit picker (whoever logs time there).
+	 *
+	 * Gated on `canTrackOn`, the same line that decides whether the project is
+	 * in the caller's picker at all: Admin, any assignment, or a project open to
+	 * the organization. It used to check only the organization, so a plain
+	 * member could name any project and read the owner/name of its repos,
+	 * private ones included, which is exactly what `reposForUser` keeps the
+	 * commit scans from reaching.
+	 *
+	 * A member who reaches the project only because it is open to the
+	 * organization gets an empty list. `suggestCommits` and `attachCommits`
+	 * read through `reposForUser`, which needs an active assignment, so a repo
+	 * shown here would open a commit picker that always answers empty. An
+	 * admin keeps the whole list: the project panel's GitHub tab is theirs.
+	 */
 	listLinkedRepos: async (ctx: Ctx, projectId: string) => {
+		const access = await ctxAccess(ctx);
+		access.assertCanTrackOn(projectId);
+		if (!access.isAdmin && access.roleOn(projectId) === null) return [];
 		return db.query.projectGithubRepo.findMany({
 			where: and(
 				eq(projectGithubRepo.projectId, projectId),
@@ -966,9 +1003,9 @@ export const githubService = {
 	 * suggestion from a git remote.
 	 *
 	 * Filtered through `projectsService.listMine`, not just the organization:
-	 * `listLinkedRepos` above checks only that a repo belongs to this org,
-	 * which is right for a project's own settings page but wrong here, where
-	 * the answer is a suggestion for THIS person to log time against. `fullName`
+	 * the lookup runs across every project in the org by repository name, so
+	 * the caller's own picker is what bounds the answer — a suggestion for
+	 * THIS person to log time against. `fullName`
 	 * is cached at link time, so a renamed repository simply stops matching —
 	 * acceptable, since this only ever feeds a suggestion.
 	 */
@@ -996,12 +1033,12 @@ export const githubService = {
 		const login = await githubLoginFor(ctx);
 		if (!login) throw new Error(NOT_CONNECTED);
 
-		const repos = await db.query.projectGithubRepo.findMany({
-			where: and(
-				eq(projectGithubRepo.projectId, input.projectId),
-				eq(projectGithubRepo.organizationId, ctx.organizationId),
-			),
-		});
+		// The caller's assignments, like `suggestPullRequests`: the installation
+		// token reads every repo it covers, so the scope is whatever this lets
+		// the caller name.
+		const repos = (await reposForUser(ctx)).filter(
+			(repo) => repo.projectId === input.projectId,
+		);
 		if (repos.length === 0) return [];
 
 		const tz = await ctxTimezone(ctx);
@@ -1378,7 +1415,7 @@ export const githubService = {
 	 * The caller's PRs with activity on one project on one day, one row per PR,
 	 * for the entry dialog's picker.
 	 *
-	 * Scoped to the caller's assignments, unlike `suggestCommits`: attaching goes
+	 * Scoped to the caller's assignments, like `suggestCommits`: attaching goes
 	 * through `reposForUser`, and offering a PR that attach will then refuse is a
 	 * picker full of rows that fail.
 	 */

@@ -107,6 +107,37 @@ const sendWithResend = async (input: MailInput) => {
 	}
 };
 
+/** Escapes the five characters that let text break out of an HTML element
+ *  or a quoted attribute. */
+export const escapeHtml = (text: string): string =>
+	text
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("'", "&#39;");
+
+/** The invitation email. The inviter's name and the organization's name are
+ *  whatever a person typed into a profile or a settings form, so the HTML part
+ *  escapes every one of them — unescaped, an admin could put markup (a link to
+ *  anywhere, a fake button) into an email that arrives from this deployment's
+ *  own sender. The plain-text part is not HTML and goes out as typed. */
+export const invitationMail = (input: {
+	to: string;
+	inviterName: string;
+	organizationName: string;
+	role: string;
+	link: string;
+}): MailInput => {
+	const { inviterName, organizationName, role, link } = input;
+	return {
+		to: input.to,
+		subject: `${inviterName} invited you to join ${organizationName}`,
+		text: `${inviterName} invited you to join ${organizationName} as ${role}.\n\nAccept the invitation: ${link}`,
+		html: `<p>${escapeHtml(inviterName)} invited you to join <strong>${escapeHtml(organizationName)}</strong> as ${escapeHtml(role)}.</p><p><a href="${escapeHtml(link)}">Accept the invitation</a></p>`,
+	};
+};
+
 export const sendMail = async (input: MailInput) => {
 	const provider = emailProvider();
 	if (provider === "resend") return sendWithResend(input);

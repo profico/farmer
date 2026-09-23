@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { headStartTooLong, MAX_DAY_SECONDS } from "../lib/time";
+import { dayKeySchema } from "./day-key";
 import { QUARTER_HOUR_SECONDS } from "./time-entries";
 
 // The stopwatch's inputs (issues #59 and #43). Confirming one is creating a time
@@ -52,7 +53,7 @@ export const confirmTimerInput = z.object({
 	// it continues. Sent rather than derived so the person can move the entry in
 	// the dialog that stopping opens — a timer run through midnight is the
 	// ordinary case for it.
-	date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd"),
+	date: dayKeySchema,
 	// For a timer that continues an entry, an ABSENT project or note keeps the
 	// entry's own, so a caller that sends only the duration cannot unfile the
 	// entry or wipe its note. `null` clears the project and "" clears the note.

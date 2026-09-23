@@ -184,56 +184,43 @@ const cookieUser = async (
 /**
  * Map an error a route's service call threw to an answer.
  *
- *  - A validation failure (`ZodError`) and a full day (`DayCapacityError`) are
- *    422: the request was understood and its values were refused.
- *  - An `AccessError` is 403. Its message is written for the person ("You are
- *    not assigned to this project"), the same reason `userFacingAssistantError`
- *    passes it through.
- *  - An error whose constructor is exactly `Error` is a sentence a service threw
- *    ON PURPOSE — `throw new Error("Time entry not found")`, `"Only absence
- *    tasks can be logged this way"`. The services use the bare class for this
- *    everywhere, and the runtime, the database driver and the ORM all throw
- *    subclasses. So its message is passed through, as 404 when it says "not
- *    found" and 422 otherwise.
+ * What may be said is `classifyServiceError`'s decision (`services/
+ * error-message.ts`), shared with the MCP server and the assistant; this only
+ * picks the status:
+ *
+ *  - A validation failure and a full day are 422: the request was understood
+ *    and its values were refused.
+ *  - An `AccessError` is 403. Its message is written for the person.
+ *  - A sentence a service threw on purpose is 404 when it says "not found" and
+ *    422 otherwise.
  *  - Anything else — a `TypeError`, a `DrizzleQueryError`, a `PostgresError` —
  *    can carry SQL, a hostname or a file path. It is logged and answered with a
  *    generic 500.
- *
- * The bare-`Error` rule is a convention rather than a type, and it is the one to
- * watch. The integration clients in `packages/core/src/lib` break it today —
- * `github-client.ts` throws `GitHub API error 404: <url>` — and none of the
- * routes here can reach them: the sync route's engines report a failure in
- * `failed` rather than throwing it. A route that starts calling one directly, or
- * a service that starts throwing a bare `Error` with a raw database message in
- * it, would put that text in somebody's terminal. Throw a subclass for anything
- * that is not a sentence for the person.
  */
 const failure = async (error: Error): Promise<Response> => {
-	const { AccessError, DayCapacityError } =
-		await import("@farmer/core/services");
-	if (error instanceof z.core.$ZodError) {
-		return refuse(422, {
-			error: "The input is not valid.",
-			code: "invalid_input",
-			issues: issuesOf(error),
-		});
+	const { classifyServiceError } = await import("@farmer/core/services");
+	const verdict = classifyServiceError(error);
+	switch (verdict.kind) {
+		case "validation":
+			return refuse(422, {
+				error: "The input is not valid.",
+				code: "invalid_input",
+				issues: issuesOf(verdict.error),
+			});
+		case "capacity":
+		case "refused":
+			return refuse(422, { error: verdict.message, code: "invalid_input" });
+		case "forbidden":
+			return refuse(403, { error: verdict.message, code: "forbidden" });
+		case "not_found":
+			return refuse(404, { error: verdict.message, code: "not_found" });
+		case "unsafe":
+			console.error("[api] request failed", error);
+			return refuse(500, {
+				error: "The server failed. Try again in a moment.",
+				code: "server_error",
+			});
 	}
-	if (error instanceof DayCapacityError) {
-		return refuse(422, { error: error.message, code: "invalid_input" });
-	}
-	if (error instanceof AccessError) {
-		return refuse(403, { error: error.message, code: "forbidden" });
-	}
-	if (error.constructor === Error) {
-		return /not found/i.test(error.message)
-			? refuse(404, { error: error.message, code: "not_found" })
-			: refuse(422, { error: error.message, code: "invalid_input" });
-	}
-	console.error("[api] request failed", error);
-	return refuse(500, {
-		error: "The server failed. Try again in a moment.",
-		code: "server_error",
-	});
 };
 
 /**

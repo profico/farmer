@@ -1,3 +1,4 @@
+import { httpUrlSchema } from "../schema/http-url";
 import { externalFetch } from "./http";
 
 const GOOGLE_API = "https://www.googleapis.com";
@@ -198,56 +199,33 @@ export const getCalendarEvent = async (
 		: { status: "absent" };
 };
 
-// Creates an all-day event on the primary calendar and returns its id.
-// `startDate` maps to Google's inclusive `start.date`; `endDate` maps to
-// `end.date`, which Google treats as EXCLUSIVE — callers pass the day after the
-// last covered day (see googleCalendarService.insertTimeOffEvent). Returns null
-// on 401/403 so a revoked/insufficient token degrades instead of throwing.
-export const insertAllDayEvent = async (
-	token: string,
-	input: { summary: string; startDate: string; endDate: string },
-): Promise<string | null> => {
-	const response = await externalFetch(
-		`${GOOGLE_API}/calendar/v3/calendars/primary/events`,
-		{
-			method: "POST",
-			headers: { ...authHeaders(token), "Content-Type": "application/json" },
-			body: JSON.stringify({
-				summary: input.summary,
-				start: { date: input.startDate },
-				end: { date: input.endDate },
-				transparency: "transparent", // shows as "free", it's an all-day marker
-			}),
-		},
-	);
-	if (response.status === 401 || response.status === 403) return null;
-	if (!response.ok) {
-		throw new Error(
-			`Google Calendar API error ${response.status}: insert event`,
-		);
-	}
-	// SAFETY: 401/403 returned null and every other non-2xx threw above. `id` is
-	// optional here rather than asserted present — the caller maps a missing one
-	// to null, so a surprising body costs the id, not the request.
-	const body = (await response.json()) as { id?: string };
-	return body.id ?? null;
-};
+/** Whether a link is one `createTimeEntryInput.meetingUrl` accepts. The same
+ *  schema answers, so a later change to it cannot leave this path behind. */
+const isWebLink = (uri: string): boolean =>
+	httpUrlSchema.safeParse(uri).success;
 
 // Best join link for a meeting, in priority order:
 //  1. hangoutLink            — Google Meet, the common case
 //  2. conferenceData video   — Meet/Zoom/Teams via a calendar add-on
 //  3. first URL in location  — Zoom/Teams links are often just pasted here
+//
+// Only an http(s) link is returned. The URI comes from whoever made the event
+// (a conference add-on writes it), and the link lands in an `href`, so a
+// `javascript:` URI there would run in the person's session when clicked.
 export const extractMeetingUrl = (
 	event: GoogleCalendarEvent,
 ): string | null => {
-	if (event.hangoutLink) return event.hangoutLink;
+	if (event.hangoutLink && isWebLink(event.hangoutLink)) {
+		return event.hangoutLink;
+	}
 	const video = event.conferenceData?.entryPoints?.find(
-		(entry) => entry.entryPointType === "video" && entry.uri,
+		(entry) =>
+			entry.entryPointType === "video" && !!entry.uri && isWebLink(entry.uri),
 	);
 	if (video?.uri) return video.uri;
 	if (event.location) {
 		const match = event.location.match(/https?:\/\/\S+/);
-		if (match) return match[0];
+		if (match && isWebLink(match[0])) return match[0];
 	}
 	return null;
 };

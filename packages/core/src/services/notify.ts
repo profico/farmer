@@ -62,9 +62,14 @@ export type NotifyEvent = {
 	slack?: string;
 };
 
+/** What one channel came to: true when it delivered, false when it did not,
+ *  and `"unreachable"` when it did not and no retry today can change that — a
+ *  person with no Slack match, or an account Slack refuses for good. */
+export type ChannelResult = boolean | "unreachable";
+
 /** Which channels actually delivered. Callers count sends; nobody has to guess
  *  from a void return whether anything happened. */
-export type NotifyOutcome = Record<NotifyChannel, boolean>;
+export type NotifyOutcome = Record<NotifyChannel, ChannelResult>;
 
 export type NotifyKind =
 	| "log-reminder"
@@ -222,13 +227,14 @@ export const deliveryBlocks = async (
 	return blocks;
 };
 
-/** A way of reaching someone. Returns whether it delivered; it never throws,
- *  because a dead push endpoint or an uninstalled Slack app must not fail the
- *  decision that triggered the notification. */
+/** A way of reaching someone. Returns whether it delivered (see
+ *  `ChannelResult`); it never throws, because a dead push endpoint or an
+ *  uninstalled Slack app must not fail the decision that triggered the
+ *  notification. */
 export type NotifyAdapter = (
 	to: NotifyRecipient,
 	event: NotifyEvent,
-) => Promise<boolean>;
+) => Promise<ChannelResult>;
 
 const pushAdapter: NotifyAdapter = async (to, event) => {
 	await notificationsService.sendPush(to.userId, {
@@ -322,4 +328,11 @@ export const notify = async (
 
 /** Whether anything at all reached the person — what the jobs count. */
 export const wasDelivered = (outcome: NotifyOutcome): boolean =>
-	Object.values(outcome).some(Boolean);
+	Object.values(outcome).some((result) => result === true);
+
+/** Whether nothing reached the person and a channel said no retry today can
+ *  change that — what tells the Slack job to keep its claim rather than try
+ *  again next tick. */
+export const wasUnreachable = (outcome: NotifyOutcome): boolean =>
+	!wasDelivered(outcome) &&
+	Object.values(outcome).some((result) => result === "unreachable");

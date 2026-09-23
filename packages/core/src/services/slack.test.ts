@@ -13,8 +13,9 @@ import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
 import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
+import { isSealed } from "../lib/secret-box";
 import { slackClient } from "../lib/slack-client";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { slackService } from "./slack.service";
 
 const ORG = "org-slack-sync";
@@ -126,5 +127,125 @@ describe("syncIdentities", () => {
 		} finally {
 			lookup.mockRestore();
 		}
+	});
+});
+
+describe("installationFor", () => {
+	test("opens the bot token, and reseals one stored in plaintext", async () => {
+		// `beforeAll` writes the token the way every row was written before
+		// encryption at rest existed.
+		const installation = await slackService.installationFor(ORG);
+		expect(installation?.botToken).toBe("xoxb-test");
+
+		const row = await db.query.slackInstallation.findFirst({
+			where: eq(slackInstallation.organizationId, ORG),
+			columns: { botToken: true },
+		});
+		expect(isSealed(row?.botToken ?? "")).toBe(true);
+		expect(row?.botToken).not.toContain("xoxb-test");
+
+		// The sealed row reads back the same.
+		expect((await slackService.installationFor(ORG))?.botToken).toBe(
+			"xoxb-test",
+		);
+	});
+});
+
+/** An admin in ORG: `status` is for admins only. */
+const admin = { organizationId: ORG, userId: ACTIVE };
+
+describe("status", () => {
+	test("says connected only when the bot token opens", async () => {
+		const before = await slackService.status(admin);
+		expect(before.connected).toBe(true);
+		expect(before.needsReconnect).toBe(false);
+
+		const sealed = present(
+			await db.query.slackInstallation.findFirst({
+				where: eq(slackInstallation.organizationId, ORG),
+				columns: { botToken: true },
+			}),
+			"the installation row",
+		).botToken;
+		// What a changed BETTER_AUTH_SECRET leaves behind: a sealed value this
+		// process cannot open. The row is still there, so the Settings tab used
+		// to say "Connected" while every DM failed.
+		await db
+			.update(slackInstallation)
+			.set({ botToken: "enc:v1:bm90LWEtcmVhbC1jaXBoZXJ0ZXh0LWF0LWFsbA" })
+			.where(eq(slackInstallation.organizationId, ORG));
+		try {
+			expect(await slackService.status(admin)).toEqual({
+				connected: false,
+				needsReconnect: true,
+				reason: "unreadable",
+				teamName: null,
+			});
+		} finally {
+			await db
+				.update(slackInstallation)
+				.set({ botToken: sealed })
+				.where(eq(slackInstallation.organizationId, ORG));
+		}
+		expect((await slackService.status(admin)).connected).toBe(true);
+	});
+});
+
+describe("sendDm", () => {
+	test("tells a refusal no retry can change from one it may", async () => {
+		let answer: "sent" | "refused" | "revoked" | "failed" = "refused";
+		const post = spyOn(slackClient, "postMessage").mockImplementation(
+			async () => answer,
+		);
+		try {
+			// `beforeAll` maps ARCHIVED; OUTSIDE has no Slack match at all.
+			expect(await slackService.sendDm(ORG, ARCHIVED, "hi")).toBe(
+				"unreachable",
+			);
+			answer = "failed";
+			expect(await slackService.sendDm(ORG, ARCHIVED, "hi")).toBe(false);
+			answer = "sent";
+			expect(await slackService.sendDm(ORG, ARCHIVED, "hi")).toBe(true);
+			expect(await slackService.sendDm(ORG, OUTSIDE, "hi")).toBe("unreachable");
+		} finally {
+			post.mockRestore();
+		}
+	});
+
+	// A refused token is about the credential, not the person: the send says
+	// false, and the installation reads as gone until Slack is added again.
+	test("records a refused token and reads as no installation after it", async () => {
+		const post = spyOn(slackClient, "postMessage").mockImplementation(
+			async () => "revoked",
+		);
+		try {
+			expect(await slackService.sendDm(ORG, ARCHIVED, "hi")).toBe(false);
+			expect(await slackService.installationFor(ORG)).toBeUndefined();
+			expect(await slackService.status(admin)).toMatchObject({
+				connected: false,
+				needsReconnect: true,
+				reason: "rejected",
+			});
+		} finally {
+			post.mockRestore();
+			await db
+				.update(slackInstallation)
+				.set({ tokenRejectedAt: null })
+				.where(eq(slackInstallation.organizationId, ORG));
+		}
+	});
+
+	// The mark names the token Slack refused, so an install that replaced it
+	// while a send was in flight stays connected.
+	test("does not mark a token that an install already replaced", async () => {
+		const installation = present(
+			await slackService.installationFor(ORG),
+			"the installation",
+		);
+		await slackService.rejectToken({
+			id: installation.id,
+			sealedBotToken: "enc:v1:YW4tb2xkZXItdG9rZW4",
+		});
+		expect((await slackService.status(admin)).connected).toBe(true);
 	});
 });

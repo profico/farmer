@@ -6,12 +6,22 @@
 // Preferences are per (org, person) and default ON, and the reminder job's
 // "last reminded" stamp shares the row without clobbering the toggle.
 //
-// `sendPush` is not covered: it reads VAPID keys from the environment and
-// would make real network calls when they are set.
+// `sendPush` is covered only for what it keeps and drops: VAPID keys are
+// generated per run and `web-push`'s send is replaced, so no call leaves the
+// process.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	describe,
+	expect,
+	spyOn,
+	test,
+} from "bun:test";
 
 import { eq } from "drizzle-orm";
+import webpush from "web-push";
 
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
@@ -25,7 +35,7 @@ const ORG_B = "nt-b";
 const ME = "u-nt-me";
 const OTHER = "u-nt-other";
 
-const ENDPOINT = "https://push.example.com/device-1";
+const ENDPOINT = "https://fcm.googleapis.com/fcm/send/device-1";
 
 let harness: TestDb;
 
@@ -88,6 +98,20 @@ describe("push subscriptions", () => {
 		});
 	});
 
+	// `sendPush` POSTs to whatever is stored, so a URL that is not a browser
+	// push service is refused before it is stored — the schema refuses it
+	// too, and this holds for a caller that skipped the schema.
+	test("an endpoint that is not a push service is refused and not stored", async () => {
+		const internal = "https://10.0.0.1:6379/";
+		await expect(
+			notificationsService.saveSubscription(ctx(ME), {
+				endpoint: internal,
+				keys: { p256dh: "p1", auth: "a1" },
+			}),
+		).rejects.toThrow("Push endpoint must be a browser push service");
+		expect(await subscriptionsAt(internal)).toHaveLength(0);
+	});
+
 	test("another person cannot remove a subscription that is not theirs", async () => {
 		await notificationsService.removeSubscription(ctx(OTHER), ENDPOINT);
 		expect(await subscriptionsAt(ENDPOINT)).toHaveLength(1);
@@ -115,6 +139,102 @@ describe("push subscriptions", () => {
 
 		await notificationsService.removeSubscription(ctx(OTHER), ENDPOINT);
 		expect(await subscriptionsAt(ENDPOINT)).toHaveLength(0);
+	});
+});
+
+describe("sending a push", () => {
+	const DEAD = "https://fcm.googleapis.com/fcm/send/device-dead";
+	const STRAY = "https://10.0.0.1:6379/";
+	const gone = () =>
+		Object.assign(new Error("Received unexpected response code"), {
+			statusCode: 410,
+		});
+	/** Every endpoint `web-push` was asked to send to. */
+	let sentTo: string[] = [];
+
+	beforeAll(() => {
+		const keys = webpush.generateVAPIDKeys();
+		process.env.VAPID_PUBLIC_KEY = keys.publicKey;
+		process.env.VAPID_PRIVATE_KEY = keys.privateKey;
+	});
+
+	afterEach(async () => {
+		sentTo = [];
+		await db.delete(pushSubscription);
+	});
+
+	afterAll(() => {
+		delete process.env.VAPID_PUBLIC_KEY;
+		delete process.env.VAPID_PRIVATE_KEY;
+	});
+
+	test("an endpoint the push service reports gone is dropped", async () => {
+		await notificationsService.saveSubscription(ctx(ME), {
+			endpoint: DEAD,
+			keys: { p256dh: "p1", auth: "a1" },
+		});
+		const send = spyOn(webpush, "sendNotification").mockImplementation(
+			async (subscription) => {
+				sentTo.push(subscription.endpoint);
+				throw gone();
+			},
+		);
+		try {
+			await notificationsService.sendPush(ME, { title: "t", body: "b" });
+		} finally {
+			send.mockRestore();
+		}
+		expect(sentTo).toEqual([DEAD]);
+		expect(await subscriptionsAt(DEAD)).toHaveLength(0);
+	});
+
+	// The endpoint changed hands between the read and the 410: the delete is
+	// the first person's, and the row is now somebody else's live device.
+	test("dropping it never takes a row that now belongs to someone else", async () => {
+		await notificationsService.saveSubscription(ctx(ME), {
+			endpoint: DEAD,
+			keys: { p256dh: "p1", auth: "a1" },
+		});
+		const send = spyOn(webpush, "sendNotification").mockImplementation(
+			async (subscription) => {
+				sentTo.push(subscription.endpoint);
+				await notificationsService.saveSubscription(ctx(OTHER), {
+					endpoint: DEAD,
+					keys: { p256dh: "p2", auth: "a2" },
+				});
+				throw gone();
+			},
+		);
+		try {
+			await notificationsService.sendPush(ME, { title: "t", body: "b" });
+		} finally {
+			send.mockRestore();
+		}
+		const rows = await subscriptionsAt(DEAD);
+		expect(rows).toHaveLength(1);
+		expect(at(rows, 0).userId).toBe(OTHER);
+	});
+
+	// A row stored before the endpoint allowlist existed.
+	test("a stored endpoint that is not a push service is never sent to", async () => {
+		await db.insert(pushSubscription).values({
+			userId: ME,
+			endpoint: STRAY,
+			p256dh: "p1",
+			auth: "a1",
+		});
+		const send = spyOn(webpush, "sendNotification").mockImplementation(
+			async (subscription) => {
+				sentTo.push(subscription.endpoint);
+				throw gone();
+			},
+		);
+		try {
+			await notificationsService.sendPush(ME, { title: "t", body: "b" });
+		} finally {
+			send.mockRestore();
+		}
+		expect(sentTo).toEqual([]);
 	});
 });
 

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { dayKeySchema } from "./day-key";
+
 export const inviteMemberInput = z.object({
 	email: z.email(),
 	role: z.enum(["admin", "member"]),
@@ -27,8 +29,6 @@ export const updateMemberRoleInput = z.object({
 	role: z.enum(["admin", "member"]),
 });
 export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleInput>;
-
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
 
 // Three kinds of person, each with one attribute (PRD 3.1, revised Sept 2026):
 // an employee is billable or overhead; a student or a contractor is full-time
@@ -74,7 +74,7 @@ export const setMemberTypeInput = z
 			.max(400 * 3600)
 			.nullable()
 			.optional(),
-		effectiveFrom: dateKey,
+		effectiveFrom: dayKeySchema,
 	})
 	.refine(
 		(data) =>
@@ -94,7 +94,7 @@ export type MemberUserIdInput = z.infer<typeof memberUserIdInput>;
 
 export const setMemberStartDateInput = z.object({
 	userId: z.string().min(1),
-	startDate: dateKey.nullable(),
+	startDate: dayKeySchema.nullable(),
 });
 export type SetMemberStartDateInput = z.infer<typeof setMemberStartDateInput>;
 

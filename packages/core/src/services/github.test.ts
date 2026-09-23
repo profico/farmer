@@ -932,3 +932,183 @@ describe("a repo left naming a dead installation", () => {
 		expect(await boundTo()).toBe(LIVE);
 	});
 });
+
+// The project's linked repos name private repositories, so reading them is the
+// same line as tracking on the project: Admin, an assignment, or an open project.
+describe("listLinkedRepos", () => {
+	const projectNamed = async (name: string) =>
+		present(
+			await db.query.project.findFirst({
+				where: eq(project.name, name),
+				columns: { id: true },
+			}),
+			`project ${name}`,
+		).id;
+
+	test("an assigned member reads their project's repos", async () => {
+		const repos = await githubService.listLinkedRepos(
+			memberCtx(),
+			await projectNamed("Mine"),
+		);
+		expect(repos.map((repo) => repo.fullName)).toEqual(["profico/mine"]);
+	});
+
+	test("an unassigned member is refused", async () => {
+		await expect(
+			githubService.listLinkedRepos(
+				memberCtx(),
+				await projectNamed("Not mine"),
+			),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	// `suggestCommits` needs an assignment, so a repo listed here would open a
+	// commit picker that can never fill.
+	test("a member on an open project they are not assigned to reads none", async () => {
+		const projectId = await projectNamed("Not mine");
+		await db
+			.update(project)
+			.set({ openToOrg: true })
+			.where(eq(project.id, projectId));
+		try {
+			expect(
+				await githubService.listLinkedRepos(memberCtx(), projectId),
+			).toEqual([]);
+		} finally {
+			await db
+				.update(project)
+				.set({ openToOrg: false })
+				.where(eq(project.id, projectId));
+		}
+	});
+
+	test("an admin reads any project's repos", async () => {
+		const repos = await githubService.listLinkedRepos(
+			adminCtx(),
+			await projectNamed("Not mine"),
+		);
+		expect(repos.map((repo) => repo.fullName)).toEqual(["profico/secret"]);
+	});
+});
+
+// The commit picker scans with the installation token, so it holds the same
+// assignment line as `suggestPullRequests` and `attachCommits`.
+describe("suggestCommits", () => {
+	/** Every repo `listCommits` was asked about — a refused scan asks none. */
+	let scanned: string[] = [];
+
+	const projectNamed = async (name: string) =>
+		present(
+			await db.query.project.findFirst({
+				where: eq(project.name, name),
+				columns: { id: true },
+			}),
+			`project ${name}`,
+		).id;
+
+	beforeAll(async () => {
+		for (const userId of [MEMBER_ID, ADMIN_ID]) {
+			await db
+				.insert(account)
+				.values({
+					id: `account-github-${userId}`,
+					accountId: `gh-${userId}`,
+					providerId: "github",
+					userId,
+					accessToken: "user-token",
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				})
+				.onConflictDoNothing();
+		}
+	});
+
+	beforeEach(() => {
+		scanned = [];
+		setGithubClientForTests({
+			getInstallationToken: async () => "installation-token",
+			getAuthenticatedUser: async () => ({ login: "tester" }),
+			listCommits: async (_token, owner, repo) => {
+				scanned.push(`${owner}/${repo}`);
+				return [fakeCommit(SHA)];
+			},
+			listInstallationRepos: async () => [],
+		});
+	});
+
+	test("an assigned member gets the commits on their project", async () => {
+		const commits = await githubService.suggestCommits(memberCtx(), {
+			projectId: await projectNamed("Mine"),
+			date: "2026-09-01",
+		});
+		expect(commits.map((commit) => commit.repoFullName)).toEqual([
+			"profico/mine",
+		]);
+	});
+
+	test("an unassigned member gets nothing, and no repo is read", async () => {
+		const commits = await githubService.suggestCommits(memberCtx(), {
+			projectId: await projectNamed("Not mine"),
+			date: "2026-09-01",
+		});
+		expect(commits).toEqual([]);
+		expect(scanned).toEqual([]);
+	});
+
+	// No admin bypass, as with every other commit scan: an admin who is not on
+	// the project has no work of theirs to attribute to it.
+	test("an unassigned admin gets nothing either", async () => {
+		const commits = await githubService.suggestCommits(adminCtx(), {
+			projectId: await projectNamed("Not mine"),
+			date: "2026-09-01",
+		});
+		expect(commits).toEqual([]);
+		expect(scanned).toEqual([]);
+	});
+});
+
+// Linking decides which repos a project's members may then read with the
+// installation token, so the service holds the admin line itself rather than
+// leaving it to the server function's middleware.
+describe("linking and unlinking a repo", () => {
+	const projectNamed = async (name: string) =>
+		present(
+			await db.query.project.findFirst({
+				where: eq(project.name, name),
+				columns: { id: true },
+			}),
+			`project ${name}`,
+		).id;
+
+	test("a member cannot link a repo, even to their own project", async () => {
+		await expect(
+			githubService.linkRepo(memberCtx(), {
+				projectId: await projectNamed("Mine"),
+				installationId: 100,
+				githubRepoId: 3,
+			}),
+		).rejects.toBeInstanceOf(AccessError);
+	});
+
+	test("a member cannot unlink a repo, and the row stays", async () => {
+		await expect(
+			githubService.unlinkRepo(memberCtx(), ownRepoId),
+		).rejects.toBeInstanceOf(AccessError);
+		expect(
+			await db.query.projectGithubRepo.findFirst({
+				where: eq(projectGithubRepo.id, ownRepoId),
+			}),
+		).toBeDefined();
+	});
+
+	test("an admin passes the gate", async () => {
+		// Past the admin check, the installation lookup is what answers.
+		await expect(
+			githubService.linkRepo(adminCtx(), {
+				projectId: await projectNamed("Mine"),
+				installationId: 999_999,
+				githubRepoId: 3,
+			}),
+		).rejects.toThrow("Installation not connected to this organization");
+	});
+});

@@ -1,5 +1,5 @@
 import { matchesSearch } from "@farmer/core/lib/search";
-import type { WeekStartsOn } from "@farmer/core/lib/time";
+import { isValidDayKey, type WeekStartsOn } from "@farmer/core/lib/time";
 import {
 	isUploadedFile,
 	MAX_UPLOAD_BYTES,
@@ -567,11 +567,7 @@ function AutomationLockSection() {
 	// and "changed" has to compare against null rather than against "".
 	const trimmed = value.trim();
 	const next = trimmed === "" ? null : trimmed;
-	const valid =
-		next === null ||
-		(/^\d{4}-\d{2}-\d{2}$/.test(next) &&
-			!Number.isNaN(new Date(`${next}T00:00:00Z`).getTime()) &&
-			new Date(`${next}T00:00:00Z`).toISOString().startsWith(next));
+	const valid = next === null || isValidDayKey(next);
 	const changed = valid && next !== (policy.automationLockedThrough ?? null);
 
 	return (

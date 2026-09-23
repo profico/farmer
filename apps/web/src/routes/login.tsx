@@ -69,8 +69,8 @@ const destination = (search: Search) => {
  *  - `?error=…` — better-auth's `errorCallbackURL`, most usefully the
  *    single-org invite-only gate. Redirecting here would bounce an uninvited
  *    visitor between this route and Google forever.
- *  - development (`config.devAuth`, i.e. the server is not running under
- *    NODE_ENV=production) — where there is a second way in to offer, and where
+ *  - development (`config.devAuth`, i.e. the server is running under
+ *    NODE_ENV=development) — where there is a second way in to offer, and where
  *    bouncing to Google is a dead end on a checkout with no OAuth credentials
  *    configured.
  *
@@ -141,7 +141,7 @@ function SignInPage() {
 
 /**
  * Development-only email + password, rendered when `getPublicAppConfig` reports
- * `devAuth` (i.e. the server is not running under NODE_ENV=production — see
+ * `devAuth` (i.e. the server is running under NODE_ENV=development — see
  * packages/core/src/lib/dev-auth.ts).
  *
  * Deliberately plain `useState` rather than the RHF + Zod resolver every real

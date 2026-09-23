@@ -1,0 +1,1 @@
+ALTER TABLE "slack_installation" ADD COLUMN "token_rejected_at" timestamp with time zone;

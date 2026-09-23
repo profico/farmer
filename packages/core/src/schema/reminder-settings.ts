@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isValidDayKey } from "../lib/time";
+import { dayKeySchema } from "./day-key";
 
 // The reminder settings (docs/plans/reminder-settings.md), and the limits that
 // keep the reason they used to be constants: a reminder sent too often gets
@@ -117,6 +117,6 @@ export type UpdateReminderSettingsInput = z.infer<
 
 export const reminderPreviewInput = z.object({
 	kind: reminderKind,
-	date: z.string().refine(isValidDayKey, "Use a real YYYY-MM-DD date"),
+	date: dayKeySchema,
 });
 export type ReminderPreviewInput = z.infer<typeof reminderPreviewInput>;

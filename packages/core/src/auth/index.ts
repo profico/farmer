@@ -17,7 +17,7 @@ import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
-import { sendMail } from "../lib/email";
+import { invitationMail, sendMail } from "../lib/email";
 import { PLATFORM_ADMIN_ROLE, PLATFORM_USER_ROLE } from "../lib/platform-admin";
 import {
 	bootstrapSingleOrg,
@@ -128,7 +128,7 @@ export const auth = betterAuth({
 	// or not a form points at it, so leaving it enabled would be a second,
 	// unreachable-by-design way in.
 	//
-	// In development it is on, so a fresh checkout can be signed into without a
+	// In development (and under `bun test`) it is on, so a fresh checkout can be signed into without a
 	// Google Cloud project (see lib/dev-auth.ts for why the gate is NODE_ENV and
 	// not an opt-in flag). Everything downstream is shared with the Google path
 	// rather than special-cased: the `databaseHooks.user.create` hooks below
@@ -154,6 +154,13 @@ export const auth = betterAuth({
 		freshAge: 0,
 	},
 	account: {
+		// The GitHub and Google Calendar access and refresh tokens are encrypted
+		// at rest, keyed from BETTER_AUTH_SECRET, so a database dump is not a
+		// set of live credentials for everybody's GitHub and calendar. Rows
+		// written before this was on still read: better-auth passes a value that
+		// does not look encrypted through as it is, and `sealLegacyOAuthTokens`
+		// (./legacy-tokens.ts) encrypts such a row the next time it is used.
+		encryptOAuthTokens: true,
 		accountLinking: {
 			// GitHub only returns emailVerified:true for the user's primary
 			// verified email; without this, linking a github account to an
@@ -428,12 +435,15 @@ export const auth = betterAuth({
 				// long as it took, over an invitation that had already happened. The
 				// outcome lands on `invitationEmail` instead, and the members page
 				// shows it; a failed invitation can be cancelled and sent again.
-				void sendMail({
-					to: data.email,
-					subject: `${data.inviter.user.name} invited you to join ${data.organization.name}`,
-					text: `${data.inviter.user.name} invited you to join ${data.organization.name} as ${data.role}.\n\nAccept the invitation: ${link}`,
-					html: `<p>${data.inviter.user.name} invited you to join <strong>${data.organization.name}</strong> as ${data.role}.</p><p><a href="${link}">Accept the invitation</a></p>`,
-				}).then(
+				void sendMail(
+					invitationMail({
+						to: data.email,
+						inviterName: data.inviter.user.name,
+						organizationName: data.organization.name,
+						role: data.role,
+						link,
+					}),
+				).then(
 					() =>
 						membersService.recordInvitationEmail(
 							organizationId,
@@ -482,14 +492,15 @@ export const auth = betterAuth({
 					clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
 					pkce: true,
 					// genericOAuth does not add better-auth's default identity scopes,
-					// so request them explicitly alongside calendar.events (read+write:
-					// read meetings for the picker/auto-sync, write all-day events when
-					// approved time off is synced). Google has no insert-only scope.
+					// so request them explicitly alongside calendar.events.readonly.
+					// Read-only is all the app needs: the picker and the meeting engine
+					// list and look up events, and nothing writes to a calendar. Ask
+					// for write access again only together with the code that uses it.
 					scopes: [
 						"openid",
 						"email",
 						"profile",
-						"https://www.googleapis.com/auth/calendar.events",
+						"https://www.googleapis.com/auth/calendar.events.readonly",
 					],
 					// Google only returns a refresh token when offline access is
 					// requested AND consent is re-prompted; without both, the ~1h access

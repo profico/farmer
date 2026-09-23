@@ -312,6 +312,10 @@ function OpenRouterSection() {
 	const [apiKey, setApiKey] = useState("");
 
 	const configured = settings?.configured ?? false;
+	// A row whose key no longer opens (`BETTER_AUTH_SECRET` changed). Not
+	// configured, so nothing below that needs the key is shown, but the admin is
+	// told why it stopped, and may still disconnect the stored row.
+	const unreadable = settings?.keyUnreadable ?? false;
 
 	const invalidate = () =>
 		queryClient.invalidateQueries({
@@ -376,15 +380,17 @@ function OpenRouterSection() {
 				icon={<SparkleIcon className="size-5" />}
 				title="OpenRouter"
 				badge={
-					configured && (
+					configured ? (
 						<Badge variant="secondary">
 							{settings?.enabled ? "Connected" : "Paused"}
 						</Badge>
+					) : (
+						unreadable && <Badge variant="destructive">Connect again</Badge>
 					)
 				}
 				description="Powers the Assistant. Everyone in the workspace asks through this one account, and every answer is scoped to what that person is allowed to see."
 				action={
-					configured ? (
+					configured || unreadable ? (
 						<AlertDialog>
 							<AlertDialogTrigger
 								render={
@@ -425,11 +431,19 @@ function OpenRouterSection() {
 
 			<SettingList className="mt-1">
 				<SettingRow
-					title={configured ? "Replace the API key" : "API key"}
+					title={
+						configured
+							? "Replace the API key"
+							: unreadable
+								? "Paste the API key again"
+								: "API key"
+					}
 					description={
 						configured
-							? `Currently ${settings?.keyHint}. Pasting a new one replaces it; the old key is not recoverable from here.`
-							: "Create a key at openrouter.ai/keys. It is verified before it is saved, and never shown again afterwards."
+							? `Currently ${settings?.keyHint ?? ""}. Pasting a new one replaces it; the old key is not recoverable from here.`
+							: unreadable
+								? "The stored key can no longer be read, because the server's secret changed after it was saved. The Assistant is off for everyone until a key is saved again — the same one or a new one."
+								: "Create a key at openrouter.ai/keys. It is verified before it is saved, and never shown again afterwards."
 					}
 					action={
 						<div className="flex items-center gap-2">
@@ -550,6 +564,11 @@ function SlackSection() {
 	});
 
 	const connected = status?.connected ?? false;
+	// The install row is there but its bot token no longer opens
+	// (`BETTER_AUTH_SECRET` changed). Nothing sends, and the reminder job skips
+	// the workspace, so this is the one place the admin learns a reinstall is
+	// needed. Installing again replaces the token in place.
+	const needsReconnect = status?.needsReconnect ?? false;
 
 	return (
 		<PageSection>
@@ -557,13 +576,21 @@ function SlackSection() {
 				icon={<SlackLogoIcon className="size-5" />}
 				title="Slack"
 				badge={
-					connected && (
+					connected ? (
 						<Badge variant="secondary">
 							Connected{status?.teamName ? ` to ${status.teamName}` : ""}
 						</Badge>
+					) : (
+						needsReconnect && <Badge variant="destructive">Connect again</Badge>
 					)
 				}
-				description="Sends reminder DMs on Tuesday and Friday, plus a push at the end of the month."
+				description={
+					needsReconnect
+						? status?.reason === "rejected"
+							? `Slack refused the stored credential${status.teamName ? ` for ${status.teamName}` : ""}. The app was removed or its token was revoked. No reminder goes out until Slack is added again.`
+							: `The stored Slack credential${status?.teamName ? ` for ${status.teamName}` : ""} can no longer be read, because the server's secret changed after it was saved. No reminder goes out until Slack is added again.`
+						: "Sends reminder DMs on Tuesday and Friday, plus a push at the end of the month."
+				}
 				action={
 					connected ? (
 						<AlertDialog>
@@ -601,7 +628,7 @@ function SlackSection() {
 						</AlertDialog>
 					) : (
 						<Button onClick={handleInstall} disabled={isPending}>
-							Add to Slack
+							{needsReconnect ? "Add to Slack again" : "Add to Slack"}
 						</Button>
 					)
 				}

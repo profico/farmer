@@ -47,6 +47,40 @@ export const slackLink = (path: string, label: string): string | null => {
 type SlackResponse<T> = { ok: true } & T;
 type SlackError = { ok: false; error: string };
 
+/** What a `chat.postMessage` came to. `refused` is an answer about the
+ *  recipient that no retry today can change (`RECIPIENT_REFUSALS`);
+ *  `revoked` is an answer about the bot token (`CREDENTIAL_REFUSALS`), so no
+ *  send to anybody can go out until an admin installs Slack again; `failed`
+ *  is anything else — a rate limit, a 5xx, a timeout — which a later try may
+ *  get through. */
+export type SlackPostResult = "sent" | "refused" | "revoked" | "failed";
+
+/** Slack's error codes that say the recipient cannot get a DM: a deactivated
+ *  or deleted account, an archived channel, or a user id this workspace does
+ *  not know (`channel_not_found` is what a DM to one answers). None changes
+ *  within the day, so the reminder job gives up on the person at once rather
+ *  than trying three times. */
+const RECIPIENT_REFUSALS = new Set([
+	"cannot_dm_bot",
+	"channel_not_found",
+	"is_archived",
+	"user_disabled",
+	"user_not_found",
+]);
+
+/** Slack's error codes that say the credential is dead, not the person:
+ *  `account_inactive` is the answer for a bot token whose workspace or
+ *  installing user was deleted, beside the revoked and invalid token codes.
+ *  Every send fails the same way, so reading one as "this person cannot be
+ *  reached" made a revoked token look like an organization nobody could
+ *  reach, with nothing counted and Settings still "Connected". */
+const CREDENTIAL_REFUSALS = new Set([
+	"account_inactive",
+	"invalid_auth",
+	"not_authed",
+	"token_revoked",
+]);
+
 /**
  * Every call is form-encoded, not JSON.
  *
@@ -189,7 +223,7 @@ export const slackClient = {
 		text: string,
 		/** Block Kit blocks. JSON by definition — Slack's own wire format. */
 		blocks?: JsonValue[],
-	): Promise<boolean> => {
+	): Promise<SlackPostResult> => {
 		// `blocks` only when there are some: Slack reads an empty `blocks` key as
 		// an instruction to render nothing, which silently drops the message body.
 		const result = await call<{ ts: string }>(
@@ -199,8 +233,9 @@ export const slackClient = {
 		);
 		if (!result.ok) {
 			console.error(`[slack] postMessage failed: ${result.error}`);
-			return false;
+			if (CREDENTIAL_REFUSALS.has(result.error)) return "revoked";
+			return RECIPIENT_REFUSALS.has(result.error) ? "refused" : "failed";
 		}
-		return true;
+		return "sent";
 	},
 };

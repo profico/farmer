@@ -141,7 +141,15 @@ export const clientsService = {
 		await db
 			.update(client)
 			.set({ archivedAt: new Date(), updatedAt: new Date() })
-			.where(eq(client.id, clientId));
+			// The organization again, not only the id: the check above and this
+			// write are two statements, and the write is what must never reach
+			// another tenant's row.
+			.where(
+				and(
+					eq(client.id, clientId),
+					eq(client.organizationId, ctx.organizationId),
+				),
+			);
 	},
 
 	unarchive: async (ctx: Ctx, clientId: string) => {

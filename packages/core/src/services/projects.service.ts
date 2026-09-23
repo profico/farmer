@@ -266,8 +266,13 @@ export const projectsService = {
 		return enrichedProjects(ctx, access, scope ?? undefined);
 	},
 
+	/** One project, on the same scope as `list`: Admin, an assignment, or a
+	 *  project open to the organization. It used to run no check at all, so a
+	 *  member could name any project and read its name, code and client — the
+	 *  things `list` stopped enumerating for them. */
 	get: async (ctx: Ctx, projectId: string) => {
 		const access = await ctxAccess(ctx);
+		access.assertCanTrackOn(projectId);
 		const rows = await enrichedProjects(ctx, access, [projectId]);
 		const row = rows[0];
 		if (!row) throw new Error("Project not found");
@@ -438,6 +443,10 @@ export const projectsService = {
 			.onConflictDoUpdate({
 				target: [projectMember.projectId, projectMember.userId],
 				set: { role: input.role, active: true, updatedAt: new Date() },
+				// A conflicting row is on this project, which is this org's, so
+				// this never filters anything today. It keeps the write tenant-bound
+				// on its own terms rather than by inference from the project.
+				setWhere: eq(projectMember.organizationId, ctx.organizationId),
 			});
 
 		// The assignment may be the caller's own, which would leave the memoized
@@ -588,7 +597,15 @@ export const projectsService = {
 			await tx
 				.update(project)
 				.set(patch)
-				.where(eq(project.id, input.projectId));
+				// The organization again, not only the id: `assertProjectInOrg`
+				// above is a separate statement, and the write is what must never
+				// reach another tenant's row.
+				.where(
+					and(
+						eq(project.id, input.projectId),
+						eq(project.organizationId, ctx.organizationId),
+					),
+				);
 		});
 
 		// Opening or closing the project changes what the caller may track on,

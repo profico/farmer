@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
 import { auth } from "../auth";
+import { sealLegacyOAuthTokens } from "../auth/legacy-tokens";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
 import { mapBounded } from "../lib/concurrency";
@@ -9,11 +10,10 @@ import {
 	getCalendarEvent,
 	getGoogleUserInfo,
 	type GoogleCalendarEvent,
-	insertAllDayEvent,
 	isImportableEvent,
 	listCalendarEvents,
 } from "../lib/google-calendar-client";
-import { addDaysToKey, dayBoundsInTz } from "../lib/time";
+import { dayBoundsInTz } from "../lib/time";
 import type { ListCalendarEventsInput } from "../schema/google-calendar";
 import { ctxTimezone } from "./context";
 import type { Ctx } from "./types";
@@ -30,9 +30,10 @@ const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
 			eq(account.userId, ctx.userId),
 			eq(account.providerId, "google-calendar"),
 		),
-		columns: { id: true },
+		columns: { id: true, accessToken: true, refreshToken: true },
 	});
 	if (!linked) return null;
+	await sealLegacyOAuthTokens(linked);
 	try {
 		const result = await auth.api.getAccessToken({
 			body: { providerId: "google-calendar", userId: ctx.userId },
@@ -192,23 +193,6 @@ export const googleCalendarService = {
 			},
 		);
 		return new Map(looked);
-	},
-
-	// Writes an all-day vacation marker to the requester's primary calendar and
-	// returns the created event id (null if the token is missing/insufficient).
-	// `endDate` is the inclusive last day off; Google's end.date is exclusive so
-	// we advance it by one day.
-	insertTimeOffEvent: async (
-		ctx: Ctx,
-		input: { startDate: string; endDate: string; label: string | null },
-	): Promise<string | null> => {
-		const token = await getAccessToken(ctx);
-		if (!token) return null;
-		return insertAllDayEvent(token, {
-			summary: input.label?.trim() || "Time off",
-			startDate: input.startDate,
-			endDate: addDaysToKey(input.endDate, 1),
-		});
 	},
 };
 

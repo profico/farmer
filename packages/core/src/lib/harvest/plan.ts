@@ -22,6 +22,7 @@ import type {
 } from "../../schema/harvest-import";
 import type { MemberTypeValue } from "../../schema/members";
 import type { ProjectTypeValue } from "../../schema/projects";
+import { isValidDayKey } from "../time";
 import type { HarvestMappingKind, HarvestSnapshot } from "./contract";
 import { iterateCsvRecords, readCsvHeader } from "./csv";
 import {
@@ -147,8 +148,6 @@ export function guessEmail(first: string, last: string): string {
 function looksLikeEmail(s: string): boolean {
 	return /^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s);
 }
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function addDays(date: string, days: number): string {
 	const [y, m, d] = date.split("-").map(Number);
@@ -1096,7 +1095,7 @@ export function planHarvestImport(
 ): HarvestPlan {
 	const blocked: HarvestBlocked[] = [];
 	const cutoff = choices.cutoffDate;
-	if (!DATE_RE.test(cutoff)) {
+	if (!isValidDayKey(cutoff)) {
 		blocked.push({
 			kind: "choices",
 			sourceKey: "cutoffDate",
@@ -1132,7 +1131,7 @@ export function planHarvestImport(
 	// Active: a work row in the window before the cutoff, or named by the
 	// project list. The list adds to the set; it never archives a project that
 	// was worked on last month.
-	const projectActiveFrom = DATE_RE.test(cutoff)
+	const projectActiveFrom = isValidDayKey(cutoff)
 		? addDays(cutoff, -HARVEST_ACTIVE_PROJECT_WINDOW_DAYS)
 		: cutoff;
 	const isActiveProject = (p: ParsedProject) =>
@@ -1724,7 +1723,7 @@ export function planHarvestImport(
 			byDate.set(date, [digest, edited]);
 		importedByUser.set(u.userId, byDate);
 	}
-	const activeFrom = DATE_RE.test(cutoff)
+	const activeFrom = isValidDayKey(cutoff)
 		? addDays(cutoff, -HARVEST_ACTIVE_WINDOW_DAYS)
 		: cutoff;
 

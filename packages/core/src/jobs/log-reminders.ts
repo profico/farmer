@@ -61,6 +61,16 @@ const PER_USER_TIMEOUT_MS = Number(
  *  tests) fails a statement with a few thousand parameters. */
 const GATE_BATCH = 500;
 
+/** `${organizationId}:${userId}:${dayKey}` of every send still running.
+ *
+ *  A send that overruns its deadline is abandoned by the sweep, not stopped:
+ *  it keeps running, and the day is claimed only once it delivers. The next
+ *  tick saw no claim yet and sent a second reminder beside the first. So a
+ *  person stays here until their send settles, and a tick skips them while
+ *  they are, whatever the deadline did. Module-level because the ticks that
+ *  would overlap are separate calls. */
+const sendsInFlight = new Set<string>();
+
 type OrgRun = {
 	organizationId: string;
 	slug: string;
@@ -210,9 +220,18 @@ export const runLogRemindersOnce = async (
 				while (cursor < recipients.length) {
 					const recipient = recipients[cursor++];
 					if (!recipient) continue;
+					const flightKey = `${run.organizationId}:${recipient.userId}:${todayKey}`;
+					if (sendsInFlight.has(flightKey)) {
+						skipped++;
+						continue;
+					}
+					sendsInFlight.add(flightKey);
+					const send = sendOne(run, todayKey, recipient).finally(() => {
+						sendsInFlight.delete(flightKey);
+					});
 					try {
 						await withTimeout(
-							sendOne(run, todayKey, recipient),
+							send,
 							PER_USER_TIMEOUT_MS,
 							() =>
 								new Error(
@@ -221,8 +240,8 @@ export const runLogRemindersOnce = async (
 						);
 					} catch (error) {
 						// Only a timeout reaches here — `sendOne` handles its own
-						// failures. The abandoned send keeps running and is harmless: the
-						// day is claimed only after a delivered send.
+						// failures. The abandoned send keeps running, and the person stays
+						// in `sendsInFlight` until it settles, so no tick sends again.
 						failed++;
 						console.error("[log-reminders] user send timed out", {
 							organizationId: run.organizationId,

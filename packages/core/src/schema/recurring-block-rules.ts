@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected yyyy-MM-dd");
+import { parseDuration } from "../lib/time";
+import { MAX_DAY_SECONDS } from "../lib/working-day";
+import { dayKeySchema } from "./day-key";
 
 /**
  * The one recurring block the app proposes to everybody: a daily rest break.
@@ -22,6 +24,29 @@ export const DEFAULT_BREAK_BLOCK = {
 	description: "Break",
 } as const;
 
+/** A rule's length, as typed. At most a whole day: a rule writes this much onto
+ *  each of its days, and a day holds at most `MAX_DAY_SECONDS`. Without the
+ *  ceiling a "100h" rule saved, and "1000000h" overflowed the integer column.
+ *  The service parses it again for the seconds and the 15-minute step. */
+const ruleDuration = z
+	.string()
+	.min(1, "Duration is required")
+	.refine(
+		(value) => {
+			const seconds = parseDuration(value);
+			return seconds === null || seconds <= MAX_DAY_SECONDS;
+		},
+		{ message: "A recurring block cannot exceed 24 hours" },
+	);
+
+/** The weekdays a rule runs on, 0 = Sunday, as a set: deduplicated and
+ *  sorted. `[1, 1, 1]` used to be stored as given, so a rule read as running
+ *  three times on a Monday, and two rules on the same days compared unequal. */
+const ruleWeekdays = z
+	.array(z.number().int().min(0).max(6))
+	.min(1, "Pick at least one day")
+	.transform((days) => [...new Set(days)].sort((a, b) => a - b));
+
 // The mandatory note is not checked here: whether a rule needs one depends on
 // its task (a Break rule does not, a Development rule does — `lib/task-rules.ts`)
 // and the schema only sees an id. The service asserts it with the task row in
@@ -31,12 +56,10 @@ export const createRecurringBlockRuleInput = z.object({
 	taskId: z.uuid(),
 	projectId: z.uuid().optional(),
 	description: z.string().optional(),
-	daysOfWeek: z
-		.array(z.number().int().min(0).max(6))
-		.min(1, "Pick at least one day"),
-	duration: z.string().min(1, "Duration is required"),
-	effectiveFrom: dateKey.optional(),
-	effectiveUntil: dateKey.optional(),
+	daysOfWeek: ruleWeekdays,
+	duration: ruleDuration,
+	effectiveFrom: dayKeySchema.optional(),
+	effectiveUntil: dayKeySchema.optional(),
 });
 export type CreateRecurringBlockRuleInput = z.infer<
 	typeof createRecurringBlockRuleInput
@@ -51,13 +74,10 @@ export const updateRecurringBlockRuleInput = z.object({
 	// project by design — would be a one-way door.
 	projectId: z.uuid().nullable().optional(),
 	description: z.string().optional(),
-	daysOfWeek: z
-		.array(z.number().int().min(0).max(6))
-		.min(1, "Pick at least one day")
-		.optional(),
-	duration: z.string().min(1).optional(),
-	effectiveFrom: dateKey.optional(),
-	effectiveUntil: dateKey.optional(),
+	daysOfWeek: ruleWeekdays.optional(),
+	duration: ruleDuration.optional(),
+	effectiveFrom: dayKeySchema.optional(),
+	effectiveUntil: dayKeySchema.optional(),
 	active: z.boolean().optional(),
 });
 export type UpdateRecurringBlockRuleInput = z.infer<

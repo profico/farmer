@@ -48,7 +48,7 @@ bun run db:migrate
 bun run dev
 ```
 
-Open the URL that `vite dev` prints (http://localhost:3000, or the next free port). Outside production, `/login` has an email and password form, so you can sign up without a Google Cloud project. The first account you create makes your organization. `bun run dev` also seeds the built-in tasks and starts a worker that runs the automation sync.
+Open the URL that `vite dev` prints (http://localhost:3000, or the next free port). In development (`NODE_ENV=development`, which `vite dev` sets), `/login` has an email and password form, so you can sign up without a Google Cloud project. The first account you create makes your organization. `bun run dev` also seeds the built-in tasks and starts a worker that runs the automation sync.
 
 Only `DATABASE_URL`, `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are required. Everything else in `.env.example` is optional and documented there: email, uploads, GitHub, Google, Slack and push.
 
@@ -60,7 +60,7 @@ cd packages/core && bun run db:seed
 
 ### Integration credentials
 
-- **Google** signs people in (the only sign-in method in production) and, as a separate grant requested from Settings → Integrations, reads their calendar (`calendar.events`). Enable the Calendar API on the OAuth client. Farmer requests offline access, so sync keeps working after the first access token expires.
+- **Google** signs people in (the only sign-in method in production) and, as a separate grant requested from Settings → Integrations, reads their calendar (`calendar.events.readonly`). Enable the Calendar API on the OAuth client. Farmer requests offline access, so sync keeps working after the first access token expires.
 - **GitHub** needs two things, and they aren't interchangeable: an OAuth app (identity — matching activity to people, `GITHUB_CLIENT_ID`/`SECRET`) and a GitHub App (reads repos, commits and pull requests, installed once per organization, `GITHUB_APP_*`). Give the App read access to **Contents** and **Pull requests**; without Pull requests, PR and review activity is silently empty. The same App serves the CLI's binary downloads, so its installation must include the releases repository.
 - **Slack** needs an app with the `chat:write`, `im:write`, `users:read` and `users:read.email` bot scopes and `{BETTER_AUTH_URL}/api/slack/callback` as a redirect URL. An admin installs it per organization from Settings → Integrations; no token is ever pasted into the app.
 - **OpenRouter** is not an environment variable. An admin pastes the organization's key in Settings → Integrations.

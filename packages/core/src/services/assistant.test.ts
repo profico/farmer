@@ -30,7 +30,8 @@ import {
 	test,
 } from "bun:test";
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 
 import { db } from "../db";
 import {
@@ -48,6 +49,7 @@ import {
 } from "../db/schema/domain";
 import { ABORTED } from "../lib/openrouter-client";
 import type { ChatMessage, ChatTool, ChatTurn } from "../lib/openrouter-client";
+import { isSealed, openSecret } from "../lib/secret-box";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { type Access, AccessError, accessService } from "./access.service";
 import { findTool, toolDefinitions, toolsFor } from "./assistant-tools";
@@ -91,6 +93,9 @@ let seen: ChatMessage[][] = [];
 /** The tool list each call was sent, so a call made deliberately WITHOUT tools
  *  can be told from one that simply had none to offer. */
 let seenTools: (ChatTool[] | undefined)[] = [];
+/** The API key each call was made with, so a test can tell the stored key was
+ *  opened rather than sent sealed. */
+let seenKeys: string[] = [];
 
 const turn = (over: Partial<ChatTurn> = {}): ChatTurn => ({
 	content: "",
@@ -118,6 +123,7 @@ beforeAll(async () => {
 		streamChatCompletion: async (opts) => {
 			seen.push(opts.messages);
 			seenTools.push(opts.tools);
+			seenKeys.push(opts.apiKey);
 			const next = script.shift();
 			if (!next) throw new Error("scripted model ran out of turns");
 			if (next.content) opts.onDelta?.(next.content);
@@ -240,6 +246,7 @@ beforeEach(async () => {
 	script = [];
 	seen = [];
 	seenTools = [];
+	seenKeys = [];
 	await db.delete(assistantConversation);
 	await db.delete(assistantSettings);
 	await db.delete(timeEntry);
@@ -276,10 +283,84 @@ describe("settings", () => {
 		expect(JSON.stringify(view)).not.toContain(KEY);
 	});
 
+	test("a key stored in plaintext is resealed on its first read", async () => {
+		// `beforeEach` writes the key the way every row was written before
+		// encryption at rest existed.
+		const view = await assistantService.settings.get(ctxFor(WORKER));
+		expect(view.keyHint).toBe("sk-or-v1-abc123••••••••");
+
+		const row = present(
+			await db.query.assistantSettings.findFirst({
+				where: eq(assistantSettings.organizationId, ORG),
+			}),
+			"the settings row",
+		);
+		expect(isSealed(row.apiKey)).toBe(true);
+		expect(row.apiKey).not.toContain(KEY);
+		expect(openSecret(row.apiKey)).toBe(KEY);
+
+		// And the sealed row still drives a turn with the real key.
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "hi" })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "hello",
+		});
+		expect(seenKeys).toEqual([KEY]);
+	});
+
+	test("connecting stores the key sealed", async () => {
+		await db.delete(assistantSettings);
+		await assistantService.settings.set(ctxFor(ADMIN), {
+			apiKey: KEY,
+			defaultModel: "test/model",
+		});
+		const row = present(
+			await db.query.assistantSettings.findFirst({
+				where: eq(assistantSettings.organizationId, ORG),
+			}),
+			"the settings row",
+		);
+		expect(isSealed(row.apiKey)).toBe(true);
+		expect(openSecret(row.apiKey)).toBe(KEY);
+		const view = await assistantService.settings.get(ctxFor(WORKER));
+		expect(view.keyHint).toBe("sk-or-v1-abc123••••••••");
+	});
+
+	test("a key that does not decrypt reads as unreadable, not ready, and a reconnect fixes it", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		await db
+			.update(assistantSettings)
+			.set({ apiKey: "enc:v1:bm90LWEtcmVhbC1jaXBoZXJ0ZXh0LWF0LWFsbA" })
+			.where(eq(assistantSettings.organizationId, ORG));
+
+		// The row is there, so this is not "never connected" — but it is not
+		// ready either, or the page would offer a composer whose every message
+		// throws.
+		const view = await assistantService.settings.get(ctxFor(WORKER));
+		expect(view.keyHint).toBeNull();
+		expect(view.configured).toBe(false);
+		expect(view.keyUnreadable).toBe(true);
+		script = [turn({ content: "hi" })];
+		await expect(
+			collect(ctxFor(WORKER), { conversationId: chat.id, message: "hello" }),
+		).rejects.toThrow(/not connected/i);
+
+		await assistantService.settings.set(ctxFor(ADMIN), {
+			apiKey: KEY,
+			defaultModel: "test/model",
+		});
+		const healed = await assistantService.settings.get(ctxFor(WORKER));
+		expect(healed.keyHint).toBe("sk-or-v1-abc123••••••••");
+		expect(healed.configured).toBe(true);
+		expect(healed.keyUnreadable).toBe(false);
+	});
+
 	test("an unconfigured org reports as not connected rather than throwing", async () => {
 		await db.delete(assistantSettings);
 		const view = await assistantService.settings.get(ctxFor(WORKER));
 		expect(view.configured).toBe(false);
+		expect(view.keyUnreadable).toBe(false);
 		expect(view.keyHint).toBeNull();
 	});
 
@@ -756,6 +837,85 @@ describe("read tools", () => {
 		// syncing fixes it.
 		expect(status.github.needsReconnect).toBe(false);
 		expect(status.automationsLockedThrough).toBeNull();
+	});
+
+	test("list_members sends an email only where two names collide", async () => {
+		// Every tool result goes to the model provider, so the roster's addresses
+		// stay home — except where two people share a name and the address is
+		// what tells them apart.
+		const twins = ["u-ai-ana-1", "u-ai-ana-2"];
+		await db.insert(user).values(
+			twins.map((id, index) => ({
+				id,
+				name: index === 0 ? "Ana Smith" : "  ana  smith ",
+				email: `${id}@example.com`,
+				emailVerified: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})),
+		);
+		await db.insert(member).values(
+			twins.map((id) => ({
+				id: `m-${id}`,
+				organizationId: ORG,
+				userId: id,
+				role: "member",
+				createdAt: new Date(),
+			})),
+		);
+		try {
+			const rows = z
+				.array(z.object({ userId: z.string(), email: z.string().nullable() }))
+				.parse(await findTool("list_members")?.run(ctxFor(ADMIN), {}));
+			const emailOf = new Map(rows.map((row) => [row.userId, row.email]));
+
+			expect(emailOf.get(twins[0] ?? "")).toBe("u-ai-ana-1@example.com");
+			expect(emailOf.get(twins[1] ?? "")).toBe("u-ai-ana-2@example.com");
+			for (const id of [ADMIN, WORKER, STRANGER]) {
+				expect(emailOf.has(id)).toBe(true);
+				expect(emailOf.get(id)).toBeNull();
+			}
+		} finally {
+			await db.delete(member).where(inArray(member.userId, twins));
+			await db.delete(user).where(inArray(user.id, twins));
+		}
+	});
+
+	test("list_members treats names that differ only by accent as one", async () => {
+		// The person asking types "Vasiljevic"; the roster says "Vasiljević".
+		// Without the email on both rows the model cannot say which one it means.
+		const pair = ["u-ai-ive-1", "u-ai-ive-2"];
+		await db.insert(user).values(
+			pair.map((id, index) => ({
+				id,
+				name: index === 0 ? "Ive Vasiljević" : "IVE VASILJEVIC",
+				email: `${id}@example.com`,
+				emailVerified: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})),
+		);
+		await db.insert(member).values(
+			pair.map((id) => ({
+				id: `m-${id}`,
+				organizationId: ORG,
+				userId: id,
+				role: "member",
+				createdAt: new Date(),
+			})),
+		);
+		try {
+			const rows = z
+				.array(z.object({ userId: z.string(), email: z.string().nullable() }))
+				.parse(await findTool("list_members")?.run(ctxFor(ADMIN), {}));
+			const emailOf = new Map(rows.map((row) => [row.userId, row.email]));
+
+			expect(emailOf.get(pair[0] ?? "")).toBe("u-ai-ive-1@example.com");
+			expect(emailOf.get(pair[1] ?? "")).toBe("u-ai-ive-2@example.com");
+		} finally {
+			await db.delete(member).where(inArray(member.userId, pair));
+			await db.delete(user).where(inArray(user.id, pair));
+		}
 	});
 
 	test("every tool the model is offered can be dispatched", async () => {

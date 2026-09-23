@@ -31,6 +31,7 @@ import {
 	QUARTER_HOUR_SECONDS,
 	weekdayInTz,
 } from "../lib/time";
+import { MAX_DAY_SECONDS, spokenForSeconds } from "../lib/working-day";
 import {
 	type CreateRecurringBlockRuleInput,
 	DEFAULT_BREAK_BLOCK,
@@ -57,6 +58,11 @@ const parseRuleDuration = (input: string): number => {
 	if (seconds <= 0) throw new Error("Duration must be greater than zero");
 	if (seconds % QUARTER_HOUR_SECONDS !== 0) {
 		throw new Error("Duration must be in 15-minute steps");
+	}
+	// The schema refuses this too; asked again here because this is where the
+	// seconds are made, and the database check would answer with a raw error.
+	if (seconds > MAX_DAY_SECONDS) {
+		throw new Error("A recurring block cannot exceed 24 hours");
 	}
 	return seconds;
 };
@@ -418,9 +424,29 @@ export const recurringBlockRulesService = {
 				gte(timeEntry.date, from),
 				lte(timeEntry.date, to),
 			),
-			columns: { date: true, taskId: true, projectId: true },
+			columns: {
+				date: true,
+				taskId: true,
+				projectId: true,
+				durationSeconds: true,
+				fillsDay: true,
+			},
 			with: { task: { columns: { isAbsence: true } } },
 		});
+
+		// What each day already holds, by the same count `assertDayHasRoom` uses
+		// for a hand-made write: everything but the fill block, which is sized
+		// from the rest and shrinks around a new block. A rule never takes a day
+		// past `MAX_DAY_SECONDS`; the day simply gets no block, as it would on a
+		// day off. That service imports this one, so the count is shared through
+		// `spokenForSeconds` rather than by calling it.
+		const spokenFor = new Map<string, number>();
+		for (const date of new Set(existing.map((e) => e.date))) {
+			spokenFor.set(
+				date,
+				spokenForSeconds(existing.filter((e) => e.date === date)),
+			);
+		}
 
 		// A day off takes no block. A rule is "on these weekdays", and a weekday
 		// somebody spends on vacation or sick leave is not a day they take a break
@@ -527,6 +553,9 @@ export const recurringBlockRulesService = {
 				if (skipSet.has(`${rule.id}:${date}`)) continue;
 				if (isDayOff.has(date)) continue;
 				if (dayAlreadyHas(rule, date)) continue;
+				const dayHolds = spokenFor.get(date) ?? 0;
+				if (dayHolds + rule.durationSeconds > MAX_DAY_SECONDS) continue;
+				spokenFor.set(date, dayHolds + rule.durationSeconds);
 
 				// Claimed as this batch goes, so two rules for the same block on the
 				// same weekday produce one entry rather than racing each other. Both

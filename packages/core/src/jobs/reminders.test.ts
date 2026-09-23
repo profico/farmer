@@ -21,6 +21,8 @@ import {
 	test,
 } from "bun:test";
 
+import { and, eq } from "drizzle-orm";
+
 import { db } from "../db";
 import { account, member, organization, user } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
@@ -53,8 +55,9 @@ import {
 } from "../services/notify";
 import { orgSettingsService } from "../services/org-settings.service";
 import { reminderSettingsService } from "../services/reminder-settings.service";
+import { slackService } from "../services/slack.service";
 import type { Ctx } from "../services/types";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { runLogRemindersOnce } from "./log-reminders";
 import {
 	forgetSlackReminderRunsForTests,
@@ -356,6 +359,225 @@ describe("the defaults reproduce the jobs as they were", () => {
 		expect(bodyFor("month-end", SLOW)).toBe(
 			"You've logged 88h of the 168h expected so far. Anything still unlogged needs to go in before the month ends tomorrow.",
 		);
+	});
+});
+
+// A send the sweep abandoned at its deadline kept running, and the day is
+// claimed only once it delivers — so the next tick saw no claim and sent the
+// same reminder again. Two ticks over one slow send is the same race.
+describe("a log reminder still being sent", () => {
+	test("is not sent again by an overlapping tick", async () => {
+		let release: (() => void) | undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const record = recorder("push");
+		let entered = 0;
+		setNotifyAdaptersForTests({
+			push: async (to, event) => {
+				entered++;
+				await gate;
+				return record(to, event);
+			},
+			slack: recorder("slack"),
+		});
+
+		const first = logAt(TUESDAY, "17:00");
+		// Let the first tick reach all three sends before the second one starts.
+		while (entered < 3) await Bun.sleep(1);
+		const second = await logAt(TUESDAY, "17:15");
+		release?.();
+		await first;
+
+		expect(second.sent).toBe(0);
+		for (const userId of [SILENT, SLOW, CONTRACTOR]) {
+			expect(sent.filter((s) => s.userId === userId)).toHaveLength(1);
+		}
+	});
+});
+
+// The claim is taken before the send, so a crash loses a DM rather than
+// sending two. But a send that came back undelivered kept its claim too, so a
+// Slack hiccup at 09:00 cost the person that day's reminder for good, and the
+// summary counted nothing as failed.
+describe("an undelivered Slack reminder", () => {
+	const claimsFor = (userId: string) =>
+		db.query.slackReminderLog.findMany({
+			where: and(
+				eq(slackReminderLog.recipientUserId, userId),
+				eq(slackReminderLog.kind, "nudge"),
+			),
+		});
+
+	test("is tried again on the next tick, and counted as failed", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		const record = recorder("slack");
+		let silentTries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				if (event.kind === "compliance-nudge" && to.userId === SILENT) {
+					silentTries++;
+					if (silentTries === 1) return false;
+				}
+				// SLOW has no Slack identity: nothing a retry could fix.
+				if (event.kind === "compliance-nudge" && to.userId === SLOW) {
+					return false;
+				}
+				return record(to, event);
+			},
+		});
+
+		const first = await slackAt(TUESDAY, "09:00");
+		expect(first.failed).toBe(1);
+		expect(first.nudges).toBe(0);
+		expect(await claimsFor(SILENT)).toMatchObject([
+			{ attempts: 1, retry: true },
+		]);
+		expect(await claimsFor(SLOW)).toMatchObject([
+			{ attempts: 1, retry: false },
+		]);
+
+		const second = await slackAt(TUESDAY, "09:15");
+		expect(second.failed).toBe(0);
+		expect(second.nudges).toBe(1);
+		expect(reached("compliance-nudge")).toEqual([SILENT]);
+		expect(await claimsFor(SILENT)).toMatchObject([
+			{ attempts: 2, retry: false },
+		]);
+
+		// Delivered once, and nobody is tried again.
+		await slackAt(TUESDAY, "09:30");
+		expect(silentTries).toBe(2);
+		expect(reached("compliance-nudge")).toEqual([SILENT]);
+	});
+
+	test("is given up on after three tries, and the claim stays", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		const record = recorder("slack");
+		let silentTries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				if (event.kind === "compliance-nudge" && to.userId === SILENT) {
+					silentTries++;
+					return false;
+				}
+				return record(to, event);
+			},
+		});
+
+		const failed: number[] = [];
+		for (const time of ["09:00", "09:15", "09:30", "09:45"]) {
+			failed.push((await slackAt(TUESDAY, time)).failed);
+		}
+		expect(failed).toEqual([1, 1, 1, 0]);
+		expect(silentTries).toBe(3);
+		expect(await claimsFor(SILENT)).toMatchObject([
+			{ attempts: 3, retry: false },
+		]);
+	});
+
+	// The count used to live in the process, so a restart between two failures
+	// started it again: five or six sends on a bad day instead of three.
+	test("keeps its count across a restart", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		const record = recorder("slack");
+		let silentTries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				if (event.kind === "compliance-nudge" && to.userId === SILENT) {
+					silentTries++;
+					return false;
+				}
+				return record(to, event);
+			},
+		});
+
+		for (const time of ["09:00", "09:15", "09:30", "09:45", "10:00"]) {
+			// What a restart forgets.
+			forgetSlackReminderRunsForTests();
+			await slackAt(TUESDAY, time);
+		}
+		expect(silentTries).toBe(3);
+	});
+
+	// A deactivated account used to be retried like a Slack hiccup: three sends
+	// a day, and three failures in the summary, for somebody no send can reach.
+	test("is given up on at once when Slack refuses for good, and not counted as failed", async () => {
+		await db
+			.insert(memberSlackIdentity)
+			.values({ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" });
+		const record = recorder("slack");
+		let silentTries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			slack: async (to, event) => {
+				if (event.kind === "compliance-nudge" && to.userId === SILENT) {
+					silentTries++;
+					return "unreachable";
+				}
+				return record(to, event);
+			},
+		});
+
+		const first = await slackAt(TUESDAY, "09:00");
+		expect(first.failed).toBe(0);
+		expect(await claimsFor(SILENT)).toMatchObject([{ retry: false }]);
+
+		await slackAt(TUESDAY, "09:15");
+		expect(silentTries).toBe(1);
+	});
+
+	// A revoked bot token used to read as every person being unreachable: the
+	// claims burned, nothing counted, and Settings still "Connected".
+	test("ends the org's pass when Slack refuses the token, and asks for a reconnect", async () => {
+		await db.insert(memberSlackIdentity).values([
+			{ organizationId: ORG, userId: SILENT, slackUserId: "U0SILENT" },
+			{ organizationId: ORG, userId: SLOW, slackUserId: "U0SLOW" },
+		]);
+		let tries = 0;
+		setNotifyAdaptersForTests({
+			push: recorder("push"),
+			// What `sendDm` does when Slack answers `token_revoked`.
+			slack: async () => {
+				tries++;
+				const installation = present(
+					await slackService.installationFor(ORG),
+					"the Slack installation",
+				);
+				await slackService.rejectToken(installation);
+				return false;
+			},
+		});
+
+		try {
+			const first = await slackAt(TUESDAY, "09:00");
+			expect(tries).toBe(1);
+			expect(first.failed).toBe(1);
+			expect(await db.query.slackReminderLog.findMany()).toMatchObject([
+				{ retry: true },
+			]);
+
+			const second = await slackAt(TUESDAY, "09:15");
+			expect(second.organizations).toBe(0);
+			expect(tries).toBe(1);
+
+			expect(await slackService.status(adminCtx())).toMatchObject({
+				connected: false,
+				needsReconnect: true,
+				reason: "rejected",
+			});
+		} finally {
+			await db.update(slackInstallation).set({ tokenRejectedAt: null });
+		}
 	});
 });
 

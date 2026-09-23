@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { externalFetch } from "./http";
+import { UserFacingError } from "./user-facing-error";
 
 const GITHUB_API = "https://api.github.com";
 
@@ -313,10 +314,14 @@ export type GithubUser = { login: string };
  *  into the same `null`, so a rate-limited sweep was indistinguishable from a
  *  repository with no commits: the engine wrote nothing, reported success, and
  *  logged nothing. A throw makes the sweep record a failure it can retry. */
-export class GithubRateLimitError extends Error {
+export class GithubRateLimitError extends UserFacingError {
+	/** The request GitHub throttled. Kept off `message`, which a person reads:
+	 *  the URL names repositories and logins. */
+	readonly url: string;
 	constructor(url: string) {
-		super(`GitHub rate limit reached: ${url}`);
+		super("GitHub is limiting requests right now. Try again in a few minutes.");
 		this.name = "GithubRateLimitError";
+		this.url = url;
 	}
 }
 
@@ -326,10 +331,16 @@ export class GithubRateLimitError extends Error {
  *  answers "no account linked" rather than retry the same dead token every
  *  twenty minutes forever. `githubService.connectionStatus` is what turns it
  *  into something the person can act on. */
-export class GithubTokenInvalidError extends Error {
+export class GithubTokenInvalidError extends UserFacingError {
+	/** The request GitHub refused, kept off `message` for the same reason as
+	 *  `GithubRateLimitError.url`. */
+	readonly url: string;
 	constructor(url: string) {
-		super(`GitHub refused the token: ${url}`);
+		super(
+			"GitHub refused the connection. Connect GitHub again under Integrations.",
+		);
 		this.name = "GithubTokenInvalidError";
+		this.url = url;
 	}
 }
 
@@ -341,7 +352,7 @@ export class GithubTokenInvalidError extends Error {
  *  round — by a read, rather than by a webhook that may never have arrived.
  *  `githubService` treats the two identically: forget the installation, rebind
  *  the repos that named it, and read again. */
-export class GithubInstallationGoneError extends Error {
+export class GithubInstallationGoneError extends UserFacingError {
 	readonly installationId: number;
 	constructor(installationId: number) {
 		super(`GitHub installation ${installationId} no longer exists`);

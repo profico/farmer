@@ -5,6 +5,7 @@ import { member, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
 import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
 import { signOrgState } from "../lib/oauth-state";
+import { openAndHeal, sealSecret } from "../lib/secret-box";
 import {
 	SLACK_BOT_SCOPES,
 	slackClient,
@@ -17,15 +18,33 @@ import type { Ctx } from "./types";
 
 export const slackService = {
 	/** Connection status for the Settings screen. Never returns the bot token —
-	 *  it is a workspace-wide credential and no client has any use for it. */
+	 *  it is a workspace-wide credential and no client has any use for it.
+	 *
+	 *  Reads through `installationFor`, the same door every send goes through,
+	 *  so it cannot say "Connected" to a token nothing can use. A row whose token
+	 *  does not decrypt (a changed BETTER_AUTH_SECRET) or that Slack refused
+	 *  (`tokenRejectedAt`) is `needsReconnect`: no DM goes out and the reminder
+	 *  job skips the org, and this screen is the one place that can tell an
+	 *  admin to install again. `reason` says which, for the message. */
 	status: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
-		const row = await db.query.slackInstallation.findFirst({
-			where: eq(slackInstallation.organizationId, ctx.organizationId),
-			columns: { teamId: true, teamName: true, createdAt: true },
-		});
-		if (!row) return { connected: false as const };
-
+		const installation = await slackService.installationFor(ctx.organizationId);
+		if (!installation) {
+			const stale = await db.query.slackInstallation.findFirst({
+				where: eq(slackInstallation.organizationId, ctx.organizationId),
+				columns: { teamName: true, tokenRejectedAt: true },
+			});
+			return stale
+				? {
+						connected: false as const,
+						needsReconnect: true as const,
+						reason: stale.tokenRejectedAt
+							? ("rejected" as const)
+							: ("unreadable" as const),
+						teamName: stale.teamName,
+					}
+				: { connected: false as const, needsReconnect: false as const };
+		}
 		const identities = await db
 			.select({ userId: memberSlackIdentity.userId })
 			.from(memberSlackIdentity)
@@ -33,9 +52,10 @@ export const slackService = {
 
 		return {
 			connected: true as const,
-			teamId: row.teamId,
-			teamName: row.teamName,
-			connectedAt: row.createdAt,
+			needsReconnect: false as const,
+			teamId: installation.teamId,
+			teamName: installation.teamName,
+			connectedAt: installation.createdAt,
 			mappedPeople: identities.length,
 		};
 	},
@@ -73,6 +93,8 @@ export const slackService = {
 
 		const result = await slackClient.exchangeOAuthCode(code);
 		const teamName = result.team.name ?? null;
+		// Sealed at rest (`lib/secret-box.ts`); only `installationFor` opens it.
+		const botToken = sealSecret(result.access_token);
 
 		await db
 			.insert(slackInstallation)
@@ -80,7 +102,7 @@ export const slackService = {
 				organizationId: ctx.organizationId,
 				teamId: result.team.id,
 				teamName,
-				botToken: result.access_token,
+				botToken,
 				botUserId: result.bot_user_id,
 				installedByUserId: ctx.userId,
 			})
@@ -89,9 +111,10 @@ export const slackService = {
 				set: {
 					teamId: result.team.id,
 					teamName,
-					botToken: result.access_token,
+					botToken,
 					botUserId: result.bot_user_id,
 					installedByUserId: ctx.userId,
+					tokenRejectedAt: null,
 					updatedAt: new Date(),
 				},
 			});
@@ -229,13 +252,61 @@ export const slackService = {
 		return mapped;
 	},
 
-	/** Internal: the workspace credential for an org. Deliberately takes a raw
-	 *  organizationId (not a Ctx) because the reminder job runs outside a request
-	 *  and iterates every org. */
-	installationFor: async (organizationId: string) =>
-		db.query.slackInstallation.findFirst({
+	/** Internal: the workspace credential for an org, with the bot token opened.
+	 *  Deliberately takes a raw organizationId (not a Ctx) because the reminder
+	 *  job runs outside a request and iterates every org.
+	 *
+	 *  A token stored before encryption existed is resealed here, on its first
+	 *  read. One that does not decrypt (a changed BETTER_AUTH_SECRET), or that
+	 *  Slack has refused (`tokenRejectedAt`), reads as no installation, so
+	 *  nothing sends with garbage and a reinstall fixes it.
+	 *
+	 *  `sealedBotToken` is the value as stored, for `rejectToken`. */
+	installationFor: async (organizationId: string) => {
+		const row = await db.query.slackInstallation.findFirst({
 			where: eq(slackInstallation.organizationId, organizationId),
-		}),
+		});
+		if (!row || row.tokenRejectedAt) return undefined;
+		let sealedBotToken = row.botToken;
+		const botToken = await openAndHeal(
+			row.botToken,
+			async (sealed) => {
+				await db
+					.update(slackInstallation)
+					.set({ botToken: sealed })
+					.where(
+						and(
+							eq(slackInstallation.id, row.id),
+							eq(slackInstallation.botToken, row.botToken),
+						),
+					);
+				sealedBotToken = sealed;
+			},
+			"a Slack bot token",
+		);
+		return botToken === null ? undefined : { ...row, botToken, sealedBotToken };
+	},
+
+	/** Record that Slack refused the org's bot token. Only where the row still
+	 *  holds the token that was refused, so an install that replaced it in the
+	 *  meantime is never marked. */
+	rejectToken: async (installation: {
+		id: string;
+		sealedBotToken: string;
+	}): Promise<void> => {
+		console.error("[slack] Slack refused the bot token; install Slack again", {
+			installationId: installation.id,
+		});
+		await db
+			.update(slackInstallation)
+			.set({ tokenRejectedAt: new Date() })
+			.where(
+				and(
+					eq(slackInstallation.id, installation.id),
+					eq(slackInstallation.botToken, installation.sealedBotToken),
+				),
+			);
+	},
 
 	slackIdFor: async (
 		organizationId: string,
@@ -274,19 +345,30 @@ export const slackService = {
 		return new Map(rows.map((r) => [r.userId, r.slackUserId]));
 	},
 
-	/** Send a DM to a person. Returns false (never throws) when the org has no
-	 *  Slack, the person isn't mapped, or Slack rejects the call — one person's
-	 *  failure must not abort a whole reminder run. */
+	/** Send a DM to a person. Never throws — one person's failure must not
+	 *  abort a whole reminder run. True when it went out; `"unreachable"` when
+	 *  no retry can change that today (the person is not mapped, or Slack
+	 *  refused them for good — see `RECIPIENT_REFUSALS`); false for anything a
+	 *  later try may get through, and when the org has no Slack. A refused
+	 *  token is false too, after `rejectToken` records it: the person is not
+	 *  the problem, and the next read of `installationFor` finds no Slack. */
 	sendDm: async (
 		organizationId: string,
 		userId: string,
 		text: string,
-	): Promise<boolean> => {
+	): Promise<boolean | "unreachable"> => {
 		const installation = await slackService.installationFor(organizationId);
 		if (!installation) return false;
 		const slackUserId = await slackService.slackIdFor(organizationId, userId);
-		if (!slackUserId) return false;
-		return slackClient.postMessage(installation.botToken, slackUserId, text);
+		if (!slackUserId) return "unreachable";
+		const result = await slackClient.postMessage(
+			installation.botToken,
+			slackUserId,
+			text,
+		);
+		if (result === "sent") return true;
+		if (result === "revoked") await slackService.rejectToken(installation);
+		return result === "refused" ? "unreachable" : false;
 	},
 
 	/** DM an invitation to the address it was sent to, when that address belongs
@@ -319,11 +401,13 @@ export const slackService = {
 			if (!slackUserId) return false;
 			const link = slackLink(invite.path, "Accept the invitation");
 			const text = `*${slackEscape(invite.inviterName)} invited you to join ${slackEscape(invite.organizationName)}* as ${slackEscape(invite.role)}.${link ? `\n${link}` : ""}`;
-			return await slackClient.postMessage(
+			const result = await slackClient.postMessage(
 				installation.botToken,
 				slackUserId,
 				text,
 			);
+			if (result === "revoked") await slackService.rejectToken(installation);
+			return result === "sent";
 		} catch (error) {
 			console.error("[slack] could not send invitation", {
 				organizationId,

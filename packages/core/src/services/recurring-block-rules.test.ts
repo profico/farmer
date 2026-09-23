@@ -32,7 +32,12 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { createTestDb, type TestDb } from "../test/harness";
+import { MAX_DAY_SECONDS } from "../lib/working-day";
+import {
+	createRecurringBlockRuleInput,
+	updateRecurringBlockRuleInput,
+} from "../schema/recurring-block-rules";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
 import { recurringBlockRulesService } from "./recurring-block-rules.service";
 import { tasksService } from "./tasks.service";
@@ -644,5 +649,145 @@ describe("a rule is re-checked on every pass", () => {
 				.set({ archivedAt: null })
 				.where(eq(task.id, devTaskId));
 		}
+	});
+});
+
+// A rule's length had no ceiling: "100h" saved, and the materializer wrote a
+// 100-hour entry onto every one of its days, past the 24 hours a day holds.
+describe("a recurring block never takes a day past 24 hours", () => {
+	const ruleOf = (duration: string) =>
+		recurringBlockRulesService.create(ctx, {
+			taskId: breakTaskId,
+			daysOfWeek: WEEKDAYS,
+			duration,
+			description: "Break",
+		});
+
+	test("the schema refuses a rule longer than a day", () => {
+		const input = (duration: string) =>
+			createRecurringBlockRuleInput.safeParse({
+				taskId: breakTaskId,
+				daysOfWeek: WEEKDAYS,
+				duration,
+			}).success;
+		expect(input("24h")).toBe(true);
+		expect(input("24h15m")).toBe(false);
+		expect(input("100h")).toBe(false);
+		expect(input("1000000h")).toBe(false);
+	});
+
+	test("the service refuses it too, with a clean message", async () => {
+		await expect(ruleOf("100h")).rejects.toThrow(
+			"A recurring block cannot exceed 24 hours",
+		);
+		await expect(ruleOf("1000000h")).rejects.toThrow(
+			"A recurring block cannot exceed 24 hours",
+		);
+		expect(await db.query.recurringBlockRule.findMany()).toHaveLength(0);
+	});
+
+	test("the database refuses a rule written around the service", async () => {
+		const [rule] = await db
+			.insert(recurringBlockRule)
+			.values({
+				organizationId: ORG_ID,
+				userId: USER_ID,
+				taskId: breakTaskId,
+				description: "Break",
+				daysOfWeek: WEEKDAYS,
+				durationSeconds: 24 * 3600,
+			})
+			.returning();
+		const id = present(rule, "the 24-hour rule").id;
+		let refusal = "";
+		try {
+			await db
+				.update(recurringBlockRule)
+				.set({ durationSeconds: 24 * 3600 + 900 })
+				.where(eq(recurringBlockRule.id, id));
+		} catch (error) {
+			refusal =
+				error instanceof Error
+					? `${error.message} ${String(error.cause)}`
+					: String(error);
+		}
+		expect(refusal).toContain("rbr_duration_granularity");
+	});
+
+	test("a day that has no room for the block gets none", async () => {
+		const rule = await ruleOf("8h");
+		await switchedOnAt(rule.id, MONDAY);
+		// Monday already holds 20 hours; Tuesday holds nothing.
+		await db.insert(timeEntry).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: devTaskId,
+			date: MONDAY,
+			description: "Release",
+			durationSeconds: 20 * 3600,
+		});
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, TUESDAY);
+
+		const monday = await entriesOn(MONDAY);
+		expect(monday).toHaveLength(1);
+		expect(monday.every((e) => e.generatedFromRuleId === null)).toBe(true);
+		const tuesday = await entriesOn(TUESDAY);
+		expect(tuesday.map((e) => e.durationSeconds)).toEqual([8 * 3600]);
+	});
+
+	test("two rules that together overrun a day write only the one that fits", async () => {
+		const first = await ruleOf("16h");
+		await switchedOnAt(first.id, MONDAY);
+		const second = await recurringBlockRulesService.create(ctx, {
+			taskId: devTaskId,
+			daysOfWeek: WEEKDAYS,
+			duration: "16h",
+			description: "Retainer",
+		});
+		await switchedOnAt(second.id, MONDAY);
+
+		await recurringBlockRulesService.materializeRange(ctx, MONDAY, MONDAY);
+
+		const monday = await entriesOn(MONDAY);
+		expect(monday).toHaveLength(1);
+		const total = monday.reduce((sum, e) => sum + e.durationSeconds, 0);
+		expect(total).toBeLessThanOrEqual(MAX_DAY_SECONDS);
+	});
+});
+
+// A rule's weekdays were stored as sent, so `[1, 1, 1]` was three Mondays.
+describe("a rule's weekdays are a set", () => {
+	test("the schema drops duplicates and sorts", () => {
+		const parsed = createRecurringBlockRuleInput.parse({
+			taskId: breakTaskId,
+			daysOfWeek: [5, 1, 1, 3, 5],
+			duration: "30m",
+		});
+		expect(parsed.daysOfWeek).toEqual([1, 3, 5]);
+		const update = updateRecurringBlockRuleInput.parse({
+			ruleId: breakTaskId,
+			daysOfWeek: [2, 2],
+		});
+		expect(update.daysOfWeek).toEqual([2]);
+	});
+
+	test("a rule saved through the schema stores each day once", async () => {
+		const rule = await recurringBlockRulesService.create(
+			ctx,
+			createRecurringBlockRuleInput.parse({
+				taskId: breakTaskId,
+				daysOfWeek: [1, 1, 1],
+				duration: "30m",
+				description: "Break",
+			}),
+		);
+		const stored = present(
+			await db.query.recurringBlockRule.findFirst({
+				where: eq(recurringBlockRule.id, rule.id),
+			}),
+			"the saved rule",
+		);
+		expect(stored.daysOfWeek).toEqual([1]);
 	});
 });

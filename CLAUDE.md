@@ -13,7 +13,7 @@ Bun workspaces (`apps/*`, `packages/*`) orchestrated by Turborepo. Run from repo
 bun install                 # installs all workspaces
 bun run dev                 # turbo: starts apps/web (vite dev --port 3000, falls back to 3001+ if occupied — check the log's "Local:" line, don't assume 3000)
 bun run build               # turbo: builds all workspaces
-bun run test                # turbo: runs the bun test suites of packages/core and apps/cli
+bun run test                # turbo: runs the bun test suites of packages/core, apps/cli and apps/web
 bun run check               # oxfmt --check + oxlint — what CI runs
 bun run typecheck           # turbo: tsc --noEmit in every workspace — also what CI runs
 bun run lint                # oxlint only

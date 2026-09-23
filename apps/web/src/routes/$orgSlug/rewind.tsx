@@ -1,5 +1,6 @@
 import { defaultRewindYear, isRewindOpen } from "@farmer/core/lib/rewind";
 import { dayKeyInTz } from "@farmer/core/lib/time";
+import { dayKeySchema } from "@farmer/core/schema";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import {
 	createFileRoute,
@@ -25,11 +26,7 @@ const searchSchema = z.object({
 	year: z.number().int().min(2000).max(2100).optional().catch(undefined),
 	// Development only — the server drops it in production. Reads the year as
 	// of that day, so December's projection can be looked at in any month.
-	asOf: z
-		.string()
-		.regex(/^\d{4}-\d{2}-\d{2}$/)
-		.optional()
-		.catch(undefined),
+	asOf: dayKeySchema.optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/$orgSlug/rewind")({

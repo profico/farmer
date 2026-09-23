@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { dayKeySchema } from "./day-key";
 import { memberTypeEnum } from "./members";
 import { projectTypeEnum } from "./projects";
 
@@ -9,7 +10,6 @@ import { projectTypeEnum } from "./projects";
 // server resolves a source key to a local id through `import_mapping`, so a
 // request cannot point an entry at a row of another organization.
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use yyyy-MM-dd");
 const sourceKey = z.string().min(1).max(500);
 const email = z.email().max(320);
 
@@ -22,8 +22,8 @@ export const HARVEST_SNAPSHOT_MAX_YEARS = 20;
 
 export const harvestSnapshotInput = z
 	.object({
-		from: dateKey,
-		to: dateKey,
+		from: dayKeySchema,
+		to: dayKeySchema,
 		// The addresses the plan wants to use: the people list and the guesses.
 		// The answer says which of them already belong to a user outside this org.
 		emails: z.array(email).max(2000),
@@ -96,7 +96,7 @@ const personPlan = z.discriminatedUnion("action", [
 		sourceKey,
 		localId: z.string().min(1),
 		// Fills the profile's start date only when it is empty.
-		startDate: dateKey.nullable(),
+		startDate: dayKeySchema.nullable(),
 	}),
 	z.object({
 		action: z.literal("create"),
@@ -113,8 +113,8 @@ const personPlan = z.discriminatedUnion("action", [
 		emailConfirmed: z.boolean(),
 		role: z.enum(["admin", "member"]),
 		type: memberTypeEnum,
-		startDate: dateKey,
-		archivedOn: dateKey.nullable(),
+		startDate: dayKeySchema,
+		archivedOn: dayKeySchema.nullable(),
 	}),
 	// A second Harvest spelling of a person in the plan ("Ive Vasiljević" and
 	// "Ive Vasiljevic"), that the admin said is the same person. It gets a
@@ -129,7 +129,7 @@ export const harvestStartInput = z.object({
 	// back, instead of a second run that the first one's mappings refuse.
 	runId: z.uuid(),
 	source: z.literal("harvest"),
-	cutoffDate: dateKey,
+	cutoffDate: dayKeySchema,
 	clients: z.array(clientPlan).max(5000),
 	tasks: z.array(taskPlan).max(2000),
 	projects: z.array(projectPlan).max(5000),
@@ -173,7 +173,7 @@ export type HarvestImportRow = z.infer<typeof importRow>;
 
 const importDay = z.object({
 	personSourceKey: sourceKey,
-	date: dateKey,
+	date: dayKeySchema,
 	rows: z.array(importRow).min(1).max(500),
 });
 export type HarvestImportDay = z.infer<typeof importDay>;
@@ -193,7 +193,7 @@ export type HarvestImportDaysInput = z.infer<typeof harvestImportDaysInput>;
 export const harvestRemoveDaysInput = z.object({
 	runId: z.uuid(),
 	days: z
-		.array(z.object({ personSourceKey: sourceKey, date: dateKey }))
+		.array(z.object({ personSourceKey: sourceKey, date: dayKeySchema }))
 		.min(1)
 		.max(HARVEST_CHUNK_MAX_ROWS),
 });
