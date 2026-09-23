@@ -63,6 +63,11 @@ import { Route as OrgSlugSettingsClientsRouteImport } from './routes/$orgSlug/se
 import { Route as OrgSlugSettingsWebhooksIndexRouteImport } from './routes/$orgSlug/settings/webhooks/index'
 import { Route as OrgSlugProjectsProjectIdIndexRouteImport } from './routes/$orgSlug/projects/$projectId/index'
 import { Route as OrgSlugSettingsWebhooksEndpointIdRouteImport } from './routes/$orgSlug/settings/webhooks/$endpointId'
+import { Route as OrgSlugSettingsInstanceStorageRouteImport } from './routes/$orgSlug/settings/instance/storage'
+import { Route as OrgSlugSettingsInstanceSignInRouteImport } from './routes/$orgSlug/settings/instance/sign-in'
+import { Route as OrgSlugSettingsInstanceIntegrationsRouteImport } from './routes/$orgSlug/settings/instance/integrations'
+import { Route as OrgSlugSettingsInstanceFeaturesRouteImport } from './routes/$orgSlug/settings/instance/features'
+import { Route as OrgSlugSettingsInstanceEmailRouteImport } from './routes/$orgSlug/settings/instance/email'
 import { Route as OrgSlugProjectsProjectIdTeamRouteImport } from './routes/$orgSlug/projects/$projectId/team'
 import { Route as OrgSlugProjectsProjectIdSettingsRouteImport } from './routes/$orgSlug/projects/$projectId/settings'
 import { Route as ApiV1OrgsOrgSlugWhoamiRouteImport } from './routes/api/v1/orgs/$orgSlug/whoami'
@@ -368,6 +373,36 @@ const OrgSlugSettingsWebhooksEndpointIdRoute =
     path: '/settings/webhooks/$endpointId',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const OrgSlugSettingsInstanceStorageRoute =
+  OrgSlugSettingsInstanceStorageRouteImport.update({
+    id: '/settings/instance/storage',
+    path: '/settings/instance/storage',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
+const OrgSlugSettingsInstanceSignInRoute =
+  OrgSlugSettingsInstanceSignInRouteImport.update({
+    id: '/settings/instance/sign-in',
+    path: '/settings/instance/sign-in',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
+const OrgSlugSettingsInstanceIntegrationsRoute =
+  OrgSlugSettingsInstanceIntegrationsRouteImport.update({
+    id: '/settings/instance/integrations',
+    path: '/settings/instance/integrations',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
+const OrgSlugSettingsInstanceFeaturesRoute =
+  OrgSlugSettingsInstanceFeaturesRouteImport.update({
+    id: '/settings/instance/features',
+    path: '/settings/instance/features',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
+const OrgSlugSettingsInstanceEmailRoute =
+  OrgSlugSettingsInstanceEmailRouteImport.update({
+    id: '/settings/instance/email',
+    path: '/settings/instance/email',
+    getParentRoute: () => OrgSlugRouteRoute,
+  } as any)
 const OrgSlugProjectsProjectIdTeamRoute =
   OrgSlugProjectsProjectIdTeamRouteImport.update({
     id: '/projects/$projectId/team',
@@ -539,6 +574,11 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/time/': typeof OrgSlugTimeIndexRoute
   '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/settings/instance/email': typeof OrgSlugSettingsInstanceEmailRoute
+  '/$orgSlug/settings/instance/features': typeof OrgSlugSettingsInstanceFeaturesRoute
+  '/$orgSlug/settings/instance/integrations': typeof OrgSlugSettingsInstanceIntegrationsRoute
+  '/$orgSlug/settings/instance/sign-in': typeof OrgSlugSettingsInstanceSignInRoute
+  '/$orgSlug/settings/instance/storage': typeof OrgSlugSettingsInstanceStorageRoute
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
@@ -613,6 +653,11 @@ export interface FileRoutesByTo {
   '/$orgSlug/time': typeof OrgSlugTimeIndexRoute
   '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/settings/instance/email': typeof OrgSlugSettingsInstanceEmailRoute
+  '/$orgSlug/settings/instance/features': typeof OrgSlugSettingsInstanceFeaturesRoute
+  '/$orgSlug/settings/instance/integrations': typeof OrgSlugSettingsInstanceIntegrationsRoute
+  '/$orgSlug/settings/instance/sign-in': typeof OrgSlugSettingsInstanceSignInRoute
+  '/$orgSlug/settings/instance/storage': typeof OrgSlugSettingsInstanceStorageRoute
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks': typeof OrgSlugSettingsWebhooksIndexRoute
@@ -690,6 +735,11 @@ export interface FileRoutesById {
   '/$orgSlug/time/': typeof OrgSlugTimeIndexRoute
   '/$orgSlug/projects/$projectId/settings': typeof OrgSlugProjectsProjectIdSettingsRoute
   '/$orgSlug/projects/$projectId/team': typeof OrgSlugProjectsProjectIdTeamRoute
+  '/$orgSlug/settings/instance/email': typeof OrgSlugSettingsInstanceEmailRoute
+  '/$orgSlug/settings/instance/features': typeof OrgSlugSettingsInstanceFeaturesRoute
+  '/$orgSlug/settings/instance/integrations': typeof OrgSlugSettingsInstanceIntegrationsRoute
+  '/$orgSlug/settings/instance/sign-in': typeof OrgSlugSettingsInstanceSignInRoute
+  '/$orgSlug/settings/instance/storage': typeof OrgSlugSettingsInstanceStorageRoute
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
@@ -768,6 +818,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/time/'
     | '/$orgSlug/projects/$projectId/settings'
     | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/settings/instance/email'
+    | '/$orgSlug/settings/instance/features'
+    | '/$orgSlug/settings/instance/integrations'
+    | '/$orgSlug/settings/instance/sign-in'
+    | '/$orgSlug/settings/instance/storage'
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
@@ -842,6 +897,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/time'
     | '/$orgSlug/projects/$projectId/settings'
     | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/settings/instance/email'
+    | '/$orgSlug/settings/instance/features'
+    | '/$orgSlug/settings/instance/integrations'
+    | '/$orgSlug/settings/instance/sign-in'
+    | '/$orgSlug/settings/instance/storage'
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId'
     | '/$orgSlug/settings/webhooks'
@@ -918,6 +978,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/time/'
     | '/$orgSlug/projects/$projectId/settings'
     | '/$orgSlug/projects/$projectId/team'
+    | '/$orgSlug/settings/instance/email'
+    | '/$orgSlug/settings/instance/features'
+    | '/$orgSlug/settings/instance/integrations'
+    | '/$orgSlug/settings/instance/sign-in'
+    | '/$orgSlug/settings/instance/storage'
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
@@ -1369,6 +1434,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugSettingsWebhooksEndpointIdRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/$orgSlug/settings/instance/storage': {
+      id: '/$orgSlug/settings/instance/storage'
+      path: '/settings/instance/storage'
+      fullPath: '/$orgSlug/settings/instance/storage'
+      preLoaderRoute: typeof OrgSlugSettingsInstanceStorageRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/settings/instance/sign-in': {
+      id: '/$orgSlug/settings/instance/sign-in'
+      path: '/settings/instance/sign-in'
+      fullPath: '/$orgSlug/settings/instance/sign-in'
+      preLoaderRoute: typeof OrgSlugSettingsInstanceSignInRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/settings/instance/integrations': {
+      id: '/$orgSlug/settings/instance/integrations'
+      path: '/settings/instance/integrations'
+      fullPath: '/$orgSlug/settings/instance/integrations'
+      preLoaderRoute: typeof OrgSlugSettingsInstanceIntegrationsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/settings/instance/features': {
+      id: '/$orgSlug/settings/instance/features'
+      path: '/settings/instance/features'
+      fullPath: '/$orgSlug/settings/instance/features'
+      preLoaderRoute: typeof OrgSlugSettingsInstanceFeaturesRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/settings/instance/email': {
+      id: '/$orgSlug/settings/instance/email'
+      path: '/settings/instance/email'
+      fullPath: '/$orgSlug/settings/instance/email'
+      preLoaderRoute: typeof OrgSlugSettingsInstanceEmailRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
     '/$orgSlug/projects/$projectId/team': {
       id: '/$orgSlug/projects/$projectId/team'
       path: '/projects/$projectId/team'
@@ -1551,6 +1651,11 @@ interface OrgSlugRouteRouteChildren {
   OrgSlugSettingsIndexRoute: typeof OrgSlugSettingsIndexRoute
   OrgSlugProjectsProjectIdSettingsRoute: typeof OrgSlugProjectsProjectIdSettingsRoute
   OrgSlugProjectsProjectIdTeamRoute: typeof OrgSlugProjectsProjectIdTeamRoute
+  OrgSlugSettingsInstanceEmailRoute: typeof OrgSlugSettingsInstanceEmailRoute
+  OrgSlugSettingsInstanceFeaturesRoute: typeof OrgSlugSettingsInstanceFeaturesRoute
+  OrgSlugSettingsInstanceIntegrationsRoute: typeof OrgSlugSettingsInstanceIntegrationsRoute
+  OrgSlugSettingsInstanceSignInRoute: typeof OrgSlugSettingsInstanceSignInRoute
+  OrgSlugSettingsInstanceStorageRoute: typeof OrgSlugSettingsInstanceStorageRoute
   OrgSlugSettingsWebhooksEndpointIdRoute: typeof OrgSlugSettingsWebhooksEndpointIdRoute
   OrgSlugProjectsProjectIdIndexRoute: typeof OrgSlugProjectsProjectIdIndexRoute
   OrgSlugSettingsWebhooksIndexRoute: typeof OrgSlugSettingsWebhooksIndexRoute
@@ -1581,6 +1686,12 @@ const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugSettingsIndexRoute: OrgSlugSettingsIndexRoute,
   OrgSlugProjectsProjectIdSettingsRoute: OrgSlugProjectsProjectIdSettingsRoute,
   OrgSlugProjectsProjectIdTeamRoute: OrgSlugProjectsProjectIdTeamRoute,
+  OrgSlugSettingsInstanceEmailRoute: OrgSlugSettingsInstanceEmailRoute,
+  OrgSlugSettingsInstanceFeaturesRoute: OrgSlugSettingsInstanceFeaturesRoute,
+  OrgSlugSettingsInstanceIntegrationsRoute:
+    OrgSlugSettingsInstanceIntegrationsRoute,
+  OrgSlugSettingsInstanceSignInRoute: OrgSlugSettingsInstanceSignInRoute,
+  OrgSlugSettingsInstanceStorageRoute: OrgSlugSettingsInstanceStorageRoute,
   OrgSlugSettingsWebhooksEndpointIdRoute:
     OrgSlugSettingsWebhooksEndpointIdRoute,
   OrgSlugProjectsProjectIdIndexRoute: OrgSlugProjectsProjectIdIndexRoute,
@@ -1648,10 +1759,11 @@ export const routeTree = rootRouteImport
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }
