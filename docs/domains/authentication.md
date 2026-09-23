@@ -1,13 +1,57 @@
 # Authentication
 
-**Google is the only identity in production, and there is no login page there.** `emailAndPassword` is off, so there is no form to render and nothing to choose — "log in" is a redirect.
+**Sign-in is Google, the OpenID Connect sources on Infrastructure → Sign-in, and a password for one person only.** All of it comes from the instance settings (ADR 0004): `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, the `instance_oauth_provider` rows, `REGISTRATION_OPEN` and `SINGLE_ORG_SLUG`. The environment still wins over the page.
 
-- **`routes/api/login.ts` is the sign-in surface.** A server route: it asks better-auth for the Google authorize URL and re-shapes that 200-plus-`Location` response into a real 302, copying the OAuth state/PKCE cookie across, so an unauthenticated document request reaches Google without the app hydrating.
-- **`routes/login.tsx` stays a *page* route on purpose**, even though it renders almost never. Every `redirect({ to: "/login" })` and sign-out points at it, and a page route's `beforeLoad` runs both server-side and in the browser; `redirect({ href, reloadDocument: true })` turns either into the full-page hop `/api/login` needs.
-- **Two cases render instead of redirecting.** `?error=…` — better-auth's `errorCallbackURL`, most usefully the single-org invite-only gate; that branch must not redirect, or an uninvited visitor bounces between `/login` and Google forever. And development, below.
-- **`lib/dev-auth.ts` turns email + password back on in development.** The gate is `NODE_ENV` being `development` or `test`, and deliberately **not** an opt-in env var, which could be copied from a `.env` onto a server. It fails closed: `vite dev` sets `development` itself and `bun test` sets `test`, and anything else — including an unset `NODE_ENV` on a hand-started server — leaves password sign-in off. The Dockerfile and `apps/web`'s `start` script still pin `NODE_ENV=production`, which the PostHog gate needs (see `docs/domains/deployment.md`). Downstream nothing is special-cased — the same `databaseHooks.user.create` hooks bootstrap the org and seed its tasks, and single-org mode's invite gate still applies to a password signup. The client learns it from `getPublicAppConfig().devAuth`, which also hides Preferences → Sign-in methods in production.
+- **`packages/core/src/auth/sign-in-methods.ts` is the one answer to "what is configured".** `signInProviders()` is Google when both halves are set, then each enabled OIDC source. The auth instance, `getPublicAppConfig().signInProviders` and the password gates all read it, so they cannot disagree.
+- **A provider is registered only when it is configured.** Google, GitHub and the `google-calendar` grant used to be registered with `process.env.X!` whether or not X was set.
+- **An OIDC source is a `genericOAuth` entry** (`oidcProvider` in `auth/index.ts`): `discoveryUrl` is the base URL plus `/.well-known/openid-configuration` unless it already ends with that path, the scopes default to `openid email profile`, and PKCE is on. The provider registers `{origin}/api/auth/oauth2/callback/{providerId}` (better-auth 1.6.23, `plugins/generic-oauth/routes.mjs`). It is not a trusted provider for account linking, so a sign-in links to an existing account by email only when the source says the email is verified.
+
+## The instance is rebuilt, not restarted
+
+**Saving a provider needs no restart** (the open question in issue #75). better-auth takes its providers once, when the instance is built, so `auth/index.ts` builds it in `buildAuth()` and rebuilds it when an input changes.
+
+- **The exported `auth` is an object of getters**, one per key of the better-auth type (`handler`, `api`, `options`, `$context`, `$ERROR_CODES`, `$Infer`), each reading the current build. The type is the inferred better-auth type, so no caller changed. Not a Proxy: a Proxy trap needs `Reflect.get` or a cast, and this way a key better-auth adds later is a compile error here.
+- **In the process that saves the change, the rebuild is immediate:** the write forces a settings refresh, and `onInstanceSettingsChanged` rebuilds. **Another process** (the worker, a second replica) rebuilds at its next refresh, within the refresh interval (five seconds).
+- **Each read also compares the inputs** (`liveAuth()`), because the first settings load fires no listener and the module can be imported before it.
+- **Do not keep `auth.api` in a variable.** Read it through `auth` each time, or you hold the build of that moment.
+- `bun run auth:generate` imports the module with no settings loaded, so it builds from the environment only. No provider changes the schema, so the output does not change.
+
+## Registration closes after the first account
+
+**Issue #75, decision 3: the first account configures the instance, then registration closes.** The gate is `assertMayRegister` (`auth/registration.ts`), called from `databaseHooks.user.create.before`, because signing in with a provider IS the signup: the user row is made in the middle of the OAuth callback. In order:
+
+1. Single-org mode with its organization claimed: an invitation to that organization, or `INVITE_ONLY`. `REGISTRATION_OPEN` does not widen it.
+2. A password signup outside development: the first account only.
+3. No `user` row yet: allowed. The account becomes the platform admin (`claimPlatformAdmin`).
+4. A pending invitation in any organization (matched without case): allowed.
+5. `REGISTRATION_OPEN`: allowed.
+6. Otherwise `REGISTRATION_CLOSED`.
+
+- **The `code` on the thrown `APIError` is load-bearing.** Both OAuth callbacks (the social one and genericOAuth's) turn a thrown `APIError` into a redirect to `errorCallbackURL` only when it has a `code`, with the message as `error_description`. Without it the visitor gets a raw 403 in the middle of the round trip. `/login` has a title for `REGISTRATION_CLOSED`, `INVITE_ONLY` and better-auth's `account_not_linked`.
+- **The gate applies in development too.** A second password account on a checkout needs an invitation or `REGISTRATION_OPEN=true`.
+- "No user yet" is a read before a write. Two first signups in the same instant can both pass; the second is an ordinary account, because the admin role goes to the oldest row only.
+
+## The first account, with no provider configured
+
+**A new deployment has no provider, so the first account signs up with a password.** This is the only way a password account is made outside development.
+
+- **`emailAndPassword` is on in every environment, and two gates close it in production** (the comment on `emailAndPassword` in `auth/index.ts`):
+  - `/sign-up/email` works only while the `user` table is empty. `hooks.before` refuses it earlier than better-auth's "user already exists" check, so a visitor cannot find out which addresses have an account.
+  - `/sign-in/email` works only for a **platform admin who has no configured provider connected** (`mayUsePassword`). It is checked in `databaseHooks.session.create.before`, after the password is verified, so a wrong password gets better-auth's usual answer and only the holder of the right one learns that the door is closed.
+- **So the password is not a second way in.** Nobody after the first account gets a password. The first account's password closes when it connects a provider that is configured. The restriction to platform admins stops a database copied from development, full of password accounts, from opening a door for each of them.
+- **Why the password does not close when a provider is saved.** A provider with a wrong secret would then lock out the only administrator, and the way back would be SQL. It closes when the administrator proves a provider works for them by connecting it.
+- **Why the administrator connects it in Preferences, not by signing in.** better-auth links a provider sign-in to an existing account by email only when the local email is verified (`requireLocalEmailVerified`), and a password signup is not. Turning that off would let a provider that vouches for any address take over an account. So Preferences → Sign-in methods now renders for every account that holds a password, with a Connect button for Google and each OIDC source. A provider sign-in before that fails with `account_not_linked`, and `/login` says what to do.
+- **`/login` in production:** no user → "Set up Farmer" and the first-account form; no provider and an administrator with a password → "Sign-in is not configured yet" and the sign-in form; providers and such an administrator → the buttons and an "Administrator: sign in with your password" link; providers only → the buttons. `getPasswordSignIn` (`server/config.ts`) answers which, apart from `getPublicAppConfig` because it reads the database.
+
+## The login routes
+
+- **`routes/login.tsx` bounces straight to Google when Google is the only way in** and there is no password form, as it always did. Otherwise it renders: a button per provider, Google as an anchor to `/api/login`, an OIDC source through the client's `signIn.oauth2({ providerId, callbackURL, errorCallbackURL: "/login" })`. A page route on purpose: every `redirect({ to: "/login" })` and sign-out points at it, and its `beforeLoad` runs server-side and in the browser.
+- **`routes/api/login.ts` is the Google leg.** It asks better-auth for the Google authorize URL and re-shapes that 200-plus-`Location` response into a real 302, copying the OAuth state/PKCE cookie across, so an unauthenticated document request reaches Google without the app hydrating. Without Google it sends the visitor to `/login` with the same parameters; `/login` sends a visitor here only when Google is configured, so the two cannot loop.
+- **`?error=…` always renders.** It is better-auth's `errorCallbackURL`; redirecting would bounce a refused visitor between `/login` and the provider forever.
+- **`api/mcp-login.ts` hands the MCP authorize request to `/login`**, not `/api/login`, so a person can choose a provider.
+- **`lib/dev-auth.ts` turns the full email + password form on in development.** The gate is `NODE_ENV` being `development` or `test`, and deliberately **not** an opt-in env var, which could be copied from a `.env` onto a server. It fails closed: `vite dev` sets `development` itself and `bun test` sets `test`, and anything else — including an unset `NODE_ENV` on a hand-started server — leaves only the production gates above. The Dockerfile and `apps/web`'s `start` script still pin `NODE_ENV=production`, which the PostHog gate needs (see `docs/domains/deployment.md`). The client learns it from `getPublicAppConfig().devAuth`.
 - **`/` never redirects, in any mode.** The landing page renders for everyone and its CTA resolves the destination (workspace / `/no-access` / `/login`).
-- **`prompt: "select_account"` on the google provider is deliberate.** With no login screen there is nowhere to offer "use a different account".
+- **`prompt: "select_account"` on the google provider is deliberate.** When Google is the only way in there is no login screen, so there is nowhere else to offer "use a different account".
 - `session.freshAge: 0` — better-auth 403s `SESSION_NOT_FRESH` on unlink-account once a session is older than a day, and this app has no step-up re-auth flow, so integration disconnects would break.
 - Invite context rides through as query params and is rebuilt into the Google `callbackURL`. `redirect` is attacker-supplied in principle, so `api/login.ts` and `login.tsx` accept only a same-site absolute path (`safeRedirectPath` in `lib/org-redirect.ts`: `/…` but not `//…` or `/\…`).
 
@@ -23,11 +67,11 @@
 
 ## Single-organization mode
 
-Setting `SINGLE_ORG_SLUG=<slug>` turns a deployment into a one-workspace, invite-only instance. Unset (the default) is the normal multi-tenant product, and every code path below is a no-op. It is a slug rather than a boolean so "which organization?" is never implicit.
+Setting `SINGLE_ORG_SLUG=<slug>` (in the environment or on Infrastructure → Sign-in) turns a deployment into a one-workspace, invite-only instance. Unset (the default) is the normal multi-tenant product, and every code path below is a no-op. It is a slug rather than a boolean so "which organization?" is never implicit.
 
-- **The switch is `packages/core/src/lib/single-org.ts`** — server-only. The client never reads the env var: `apps/web/src/server/config.ts` (`getPublicAppConfig`) hands it the mode plus the org's name/logo/slug.
-- **The signup gate is a `databaseHooks.user.create.before` hook, not a screen.** Signing in with Google *is* the signup, and the user is created mid-OAuth-callback. The hook throws an `APIError` carrying a `code` (`INVITE_ONLY`) — that field is load-bearing, since better-auth's OAuth callback only turns a thrown error into a redirect back to `errorCallbackURL` when one is set, and otherwise surfaces a raw 403 mid-round-trip.
-- **Bootstrap: the first person to sign in on an unclaimed instance creates the org and owns it.** The race is settled by the unique index on `organization.slug`, not a read-then-write check.
+- **The switch is `packages/core/src/lib/single-org.ts`** — server-only, and read per call through `setting("SINGLE_ORG_SLUG")`. The client never reads the setting: `apps/web/src/server/config.ts` (`getPublicAppConfig`) hands it the mode plus the org's name/logo/slug.
+- **The signup gate is step 1 of the registration gate above.** Once the organization exists, only an invitation to it lets a new account in (`INVITE_ONLY`).
+- **Bootstrap: the first account on an unclaimed instance creates the org and owns it.** The race is settled by the unique index on `organization.slug`, not a read-then-write check. An unclaimed organization no longer means "open to anybody": on a populated instance the general gate applies, so the mode switched on later cannot hand the organization to a stranger.
 - **`allowUserToCreateOrganization: false` + `disableOrganizationDeletion: true`** are what actually close those endpoints; hiding the switcher's "New organization" item is presentation.
 - **URLs keep the `/$orgSlug` prefix.** Tenancy stays an explicit parameter, matching the service-layer rule.
 - **`/no-access` exists to break a redirect loop.** A signed-in user with no membership would otherwise bounce `/` → workspace → `/` forever. It lists their live invitations through a local server fn, because better-auth's `listUserInvitations` rejects any caller whose email isn't verified, and this app has no verification flow.
@@ -37,7 +81,7 @@ Setting `SINGLE_ORG_SLUG=<slug>` turns a deployment into a one-workspace, invite
 **A platform admin operates the deployment. An org admin administers one workspace. They are different people, different columns and different grants, and nothing an org admin can reach turns one into the other.**
 
 - **`user.role` vs `member.role`.** An org admin is a `member` row — one per person per organization, granted from Settings → People by anybody who already administers that workspace. A platform admin is `user.role = 'platform_admin'`, one value per person for the whole instance. The role string is not better-auth's default `admin` precisely because `member.role === "admin"` already exists in this codebase.
-- **The instance's first account holds it, and a platform admin grants it to anybody else.** Coolify's model, and the one issue #75 records for this repository: a person who deploys Farmer should be able to run it without being told to edit an environment variable and restart. There is no environment variable — the grant is a database value, so it survives a redeploy.
+- **The instance's first account holds it, and a platform admin grants it to anybody else.** On a new deployment that first account is usually the password account above. Coolify's model, and the one issue #75 records for this repository: a person who deploys Farmer should be able to run it without being told to edit an environment variable and restart. There is no environment variable — the grant is a database value, so it survives a redeploy.
 - **The bootstrap is `claimPlatformAdmin`** (`databaseHooks.user.create.after`). The rule is "the oldest `user` row, and only while nobody holds the role", which is not the same as "nobody holds the role": an open deployment accepts a Google sign-up from anybody, so granting it to whoever signs in next when the role is vacant hands the instance to a stranger the moment its one admin is deleted. Being the oldest row is something a later signup can never become. It runs after the insert, inside a `pg_advisory_xact_lock`, so two first signups a millisecond apart cannot both read an empty table and both grant. Existing deployments got the same rule once, from migration `0059`.
 - **Promotion is better-auth's `admin/set-role`**, which itself needs the role it grants. The screen for it is Infrastructure → Platform admins (`apps/web/src/routes/infrastructure/`), reached from the Instance section of the settings hub and gated on `platformAdminMiddleware`. `setPlatformAdmin` (`server/platform-admins.ts`) routes the write through the plugin rather than writing the column, so the app never has two writers with two ideas of who may write, and adds two refusals the plugin does not make: nobody demotes themselves, and the instance never reaches zero platform admins.
 - **The page lists the admins and finds everybody else by search.** On a multi-tenant instance the `user` table is every customer's staff directory, so rendering it to fill in a promote screen turns one grant into a readable roster of the whole deployment. `platformAdminsService.search` answers a name somebody already has: two characters minimum, ten results, enforced server-side so an empty box cannot be made to mean "everybody".

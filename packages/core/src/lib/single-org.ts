@@ -51,14 +51,21 @@ export const findSingleOrg = async () => {
  * A live invitation for `email` — pending and not yet expired. Compared
  * case-insensitively: the address is typed by an admin into the invite form,
  * but matched here against whatever casing the invitee typed at signup.
+ *
+ * `organizationId` null means "in any organization": the registration gate in
+ * `auth/registration.ts` lets an invited person create an account wherever the
+ * invitation is from. Single-org mode passes its one organization, because an
+ * invitation to an organization that is not the instance's does not count.
  */
 export const findPendingInvitation = async (
-	organizationId: string,
+	organizationId: string | null,
 	email: string,
 ) =>
 	(await db.query.invitation.findFirst({
 		where: and(
-			eq(invitation.organizationId, organizationId),
+			organizationId === null
+				? undefined
+				: eq(invitation.organizationId, organizationId),
 			sql`lower(${invitation.email}) = ${email.toLowerCase()}`,
 			eq(invitation.status, "pending"),
 			gt(invitation.expiresAt, new Date()),
