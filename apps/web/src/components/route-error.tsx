@@ -1,53 +1,75 @@
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
-import { Button } from "#/components/ui/button.tsx";
+import { SiteBrand } from "#/components/site/site-chrome.tsx";
+
+import "./site/errors.css";
+
+/** A short, per-render correlation id plus a UTC timestamp, so a person can
+ *  read it to an administrator over chat without attaching a screenshot. Not
+ *  wired to a real error-tracking id (Sentry etc. keep their own) — this is
+ *  just something a person can say out loud. */
+const makeErrorRef = () => {
+	const stamp = new Date().toISOString().replace("T", " ").slice(0, 16);
+	const id = Math.random().toString(36).slice(2, 10);
+	return `${id} · ${stamp} UTC`;
+};
 
 /**
  * App-wide fallback for `defaultErrorComponent` / route `errorComponent`.
  * Any `useSuspenseQuery`/loader rejection anywhere under the router lands
  * here instead of TanStack Router's unstyled default error screen.
  *
- * Left-aligned, no warning glyph, no centred column. An error screen is still a
- * page of the app, and the previous version — a red-tinted icon tile floating in
- * the middle of the viewport — announced the failure far more loudly than the
- * failure usually deserves. The sentence says what happened; the button fixes
- * it.
+ * Renders both fully outside the app shell (the root route itself threw) and
+ * nested inside a matched route's own layout, so — like `RouteNotFound` — it
+ * draws a complete page of its own rather than assuming any ancestor chrome,
+ * and never calls a loader (`SiteBrand` needs no visitor).
  */
 export function RouteError({ error, reset }: ErrorComponentProps) {
 	const posthog = usePostHog();
 	const message = error instanceof Error ? error.message : String(error);
+	const [errorRef] = useState(makeErrorRef);
 
 	useEffect(() => {
 		posthog.captureException(error);
 	}, [error, posthog]);
 
 	return (
-		<div className="island island-pad flex-1">
-			<h1 className="h2">Something went wrong</h1>
-			<p className="lede mt-2 max-w-[52ch]">
-				This page ran into an unexpected error. Try again, and if it keeps
-				happening, let us know.
-			</p>
-			{import.meta.env.DEV && message && (
-				<pre className="mono mt-5 max-w-[68ch] overflow-x-auto border-t pt-4 text-xs text-muted-foreground">
-					{message}
-				</pre>
-			)}
-			<Button
-				variant="outline"
-				size="sm"
-				className="mt-6"
-				onClick={() => {
-					posthog.capture("route_error_retry_clicked");
-					reset();
-				}}
-			>
-				<ArrowsClockwiseIcon weight="regular" className="size-3.5" />
-				Try again
-			</Button>
+		<div className="fm-site fm-error-page">
+			<header className="fm-error-header">
+				<SiteBrand size={24} />
+			</header>
+			<main className="fm-error-main">
+				<span className="fm-mono fm-error-code">500 · server error</span>
+				<h1 className="fm-error-h1">
+					Something broke <span className="fm-em">on our side.</span>
+				</h1>
+				<p className="fm-lede fm-error-lede">
+					Your time entries are safe. Try again in a moment.
+				</p>
+				<div className="fm-error-actions">
+					<button
+						type="button"
+						className="fm-btn"
+						onClick={() => {
+							posthog.capture("route_error_retry_clicked");
+							reset();
+						}}
+					>
+						<ArrowsClockwiseIcon size={16} aria-hidden />
+						Try again
+					</button>
+				</div>
+				<p className="fm-error-ref">
+					If it keeps happening, send this to your administrator:{" "}
+					<span className="fm-code">ref {errorRef}</span>
+				</p>
+				{import.meta.env.DEV && message && (
+					<pre className="fm-mono fm-error-detail">{message}</pre>
+				)}
+			</main>
 		</div>
 	);
 }

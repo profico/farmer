@@ -1,0 +1,115 @@
+/* The About page. Scoped under `.fm-site`. */
+
+.fm-site .fm-about-hero {
+	padding-top: 88px;
+	padding-bottom: 56px;
+}
+.fm-site .fm-about-hero h1 {
+	max-width: 900px;
+}
+
+.fm-site .fm-about-photo {
+	display: block;
+	width: 100%;
+	object-fit: cover;
+	border-radius: 16px;
+	background: var(--ground);
+}
+
+.fm-site .fm-about-section {
+	padding-top: 96px;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+	gap: 24px 56px;
+}
+.fm-site .fm-about-section + .fm-about-section {
+	padding-top: 80px;
+}
+
+.fm-site .fm-about-body {
+	grid-column: span 2;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	color: var(--mut);
+	font-size: 17px;
+	max-width: 640px;
+}
+.fm-site .fm-about-body p {
+	margin: 0;
+}
+
+.fm-site .fm-about-offices {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+	gap: 1px;
+	background: var(--line);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	overflow: hidden;
+	margin-top: 6px;
+	font-size: 14.5px;
+	list-style: none;
+	padding: 0;
+}
+.fm-site .fm-about-offices li {
+	background: var(--bg);
+	padding: 14px 16px;
+}
+.fm-site .fm-about-offices li > :first-child {
+	color: var(--fg);
+}
+.fm-site .fm-about-offices li > :last-child {
+	font-size: 12.5px;
+}
+
+.fm-site .fm-about-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 15px;
+}
+
+.fm-site .fm-about-callout {
+	border-radius: 16px;
+	background: var(--ground);
+	padding: clamp(28px, 5vw, 56px);
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+	gap: 32px;
+	align-items: center;
+}
+.fm-site .fm-about-callout > div {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.fm-site .fm-about-callout p {
+	margin: 0;
+	color: var(--mut);
+}
+
+.fm-site .fm-about-gallery {
+	padding-bottom: 120px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+	gap: 16px;
+}
+.fm-site .fm-about-gallery .fm-about-photo {
+	aspect-ratio: 4 / 3;
+}
+
+.fm-site .fm-about-oss {
+	aspect-ratio: 4 / 3;
+	border-radius: 12px;
+	border: 1px solid var(--line);
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	gap: 10px;
+	padding: 22px;
+}
+.fm-site .fm-about-oss p {
+	margin: 0;
+	color: var(--mut);
+	font-size: 15px;
+}

@@ -205,3 +205,27 @@ export const getSourceRepository = createServerFn({ method: "GET" }).handler(
 		return sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY;
 	},
 );
+
+/**
+ * The one workspace the front page opens on in single-organization mode, or
+ * null when the mode is off (or on, with no workspace yet). The front page
+ * draws the Front Door for it instead of the marketing page.
+ *
+ * Its own function for the same reason as `getSourceRepository`: the front
+ * page runs for every anonymous visitor and needs only this.
+ */
+export const getFrontDoor = createServerFn({ method: "GET" }).handler(
+	async (): Promise<{
+		slug: string;
+		name: string;
+		logo: string | null;
+	} | null> => {
+		const { isSingleOrgMode, findSingleOrg } =
+			await import("@farmer/core/lib/single-org");
+		if (!isSingleOrgMode()) return null;
+		const org = await findSingleOrg();
+		return org
+			? { slug: org.slug, name: org.name, logo: org.logo ?? null }
+			: null;
+	},
+);
