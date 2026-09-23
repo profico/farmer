@@ -25,6 +25,7 @@ export * from "./google-calendar.service";
 export * from "./harvest-import.service";
 export * from "./holidays.service";
 export * from "./hour-fund.service";
+export * from "./instance-settings.service";
 export * from "./integration-settings.service";
 export * from "./mcp-tools";
 export * from "./members.service";
