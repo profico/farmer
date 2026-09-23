@@ -351,3 +351,19 @@ describe("testEmail", () => {
 		expect(result.message).toMatch(/no email provider configured/i);
 	});
 });
+
+describe("createOAuthProvider", () => {
+	test("refuses the id better-auth gives a password account", async () => {
+		await expect(
+			instanceSettingsService.createOAuthProvider({
+				providerId: "credential",
+				name: "Password",
+				baseUrl: "https://id.example.com",
+				clientId: "client",
+				clientSecret: "secret",
+				scopes: "openid",
+				enabled: true,
+			}),
+		).rejects.toThrow('"credential" is a built-in provider.');
+	});
+});

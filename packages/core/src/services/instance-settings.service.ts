@@ -346,8 +346,15 @@ export const updateInstanceSettings = async (
 
 // OAuth sources
 
-/** better-auth's own provider ids, and anything that would shadow a route. */
-const RESERVED_PROVIDER_IDS = new Set(["google", "github", "google-calendar"]);
+/** better-auth's own provider ids, and anything that would shadow a route.
+ *  "credential" is the id better-auth gives a password account: a provider
+ *  under it would write account rows the app reads as a password. */
+const RESERVED_PROVIDER_IDS = new Set([
+	"credential",
+	"google",
+	"github",
+	"google-calendar",
+]);
 const PROVIDER_ID = /^[a-z0-9][a-z0-9-]{1,39}$/;
 
 const parseScopes = (scopes: string) => scopes.split(/\s+/).filter(Boolean);

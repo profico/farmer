@@ -80,13 +80,13 @@ const posthogConfig = createIsomorphicFn()
  *
  *  `JSON.stringify` of an object with two string fields, so there is nothing
  *  here for a value to break out of; `</script>` inside a JSON string would,
- *  which is what the `<` escape covers. */
-const posthogInitScript = createIsomorphicFn()
-	.server(
-		() =>
-			`window.__FARMER_POSTHOG__=${JSON.stringify(posthogConfig()).replace(/</g, "\\u003c")};`,
-	)
-	.client(() => "");
+ *  which is what the `<` escape covers.
+ *
+ *  The browser builds the same string from the value the script left on
+ *  `window`, so the `<script>` hydrates with the `__html` the server sent.
+ *  An empty string on the client is a hydration mismatch on every load. */
+const posthogInitScript = () =>
+	`window.__FARMER_POSTHOG__=${JSON.stringify(posthogConfig()).replace(/</g, "\\u003c")};`;
 
 // A link preview only follows an absolute image URL, and the crawlers that
 // fetch one never run JavaScript, so the server's answer is the one that
