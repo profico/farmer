@@ -105,6 +105,9 @@ export const Route = createFileRoute("/$orgSlug")({
 			// Whether an object store is configured. The icon picker and Settings →
 			// Organization offer an upload only when it is.
 			uploadsEnabled: config.uploadsEnabled,
+			// `owner/name` of the repository this deployment is built from, for
+			// the "Report a problem" and "View on GitHub" links.
+			repository: config.repository,
 		};
 	},
 	// The router-wide default renders a lone page skeleton, which is right for a

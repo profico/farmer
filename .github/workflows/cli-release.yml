@@ -5,10 +5,14 @@ name: CLI release
 #   git tag cli-v0.1.0 && git push origin cli-v0.1.0
 #
 # The web app's install script (`curl -fsSL <origin>/cli | sh`) downloads from
-# the newest release whose tag starts with `cli-v`, through the server's GitHub
-# App (see CLI_RELEASES_REPO in .env.example), because the repository is private.
-# So a release published here is live for every deployment within about five
-# minutes, which is how long the server caches the release lookup.
+# the newest release whose tag starts with `cli-v`, in the repository named by
+# CLI_RELEASES_REPO (see .env.example). The server reads the public release
+# list with no token, so a release published here is live for every deployment
+# within about five minutes, which is how long the server caches the lookup.
+#
+# A fork runs this as is: nothing here needs a secret, and a `cli-v*` tag
+# pushed to the fork publishes to the fork's own releases, with the fork's own
+# `github.token`. Point the fork's deployment at it with CLI_RELEASES_REPO.
 #
 # Three jobs, and nothing is published until every binary has run:
 #

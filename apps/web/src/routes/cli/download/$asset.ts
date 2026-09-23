@@ -6,8 +6,8 @@ import { CLI_RELEASE_ASSETS, plainText } from "#/server/cli-install.ts";
 const assetName = z.enum(CLI_RELEASE_ASSETS);
 
 /**
- * `GET /cli/download/<asset>` — a 302 to GitHub's signed URL for one file of
- * the newest CLI release. The lookup and the reasons it never proxies are in
+ * `GET /cli/download/<asset>` — a 302 to GitHub's public download URL for one
+ * file of the newest CLI release. The lookup and the reasons it never proxies are in
  * `server/cli-releases.ts`.
  *
  * Unauthenticated, like the script that calls it: an install happens before
@@ -16,8 +16,8 @@ const assetName = z.enum(CLI_RELEASE_ASSETS);
  * being a way to read any other release asset in the repository.
  *
  * Every answer but the redirect is plain text, because the install script
- * prints the body of a failed download — so "the GitHub App is not installed
- * on the repository" reaches the person running the script in words, not as a bare 503.
+ * prints the body of a failed download — so "GitHub has no public repository
+ * by that name" reaches the person running the script in words, not as a bare 503.
  */
 export const Route = createFileRoute("/cli/download/$asset")({
 	server: {
@@ -45,14 +45,18 @@ export const Route = createFileRoute("/cli/download/$asset")({
 								"Cache-Control": "no-store",
 							},
 						});
-					case "unconfigured":
+					case "misconfigured":
+						console.error(
+							"[cli-download]",
+							`CLI_RELEASES_REPO is "${download.value}", not owner/name`,
+						);
 						return plainText(
-							"This Farmer server cannot hand out the CLI yet: it has no GitHub App configured (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY). Ask the person who runs it to set one up (see .env.example).",
+							"This Farmer server cannot hand out the CLI: its releases repository is not set as owner/name. Ask the person who runs it to fix CLI_RELEASES_REPO.",
 							503,
 						);
-					case "not-installed":
+					case "no-repository":
 						return plainText(
-							`This Farmer server cannot hand out the CLI yet: its GitHub App is not installed on ${download.repo}. Ask the person who runs it to give the App access to that repository.`,
+							`This Farmer server cannot hand out the CLI: GitHub has no public repository ${download.repo}. Ask the person who runs it to check CLI_RELEASES_REPO.`,
 							503,
 						);
 					case "no-release":
@@ -65,10 +69,15 @@ export const Route = createFileRoute("/cli/download/$asset")({
 							`The newest Farmer CLI release (${download.tag}) has no ${parsed.data}.`,
 							404,
 						);
+					case "rate-limited":
+						return plainText(
+							`GitHub is limiting how often this Farmer server can read the CLI releases. Try again after ${new Date(download.retryAt).toISOString()}.`,
+							503,
+						);
 					case "upstream-error":
 						console.error("[cli-download]", download.detail);
 						return plainText(
-							"This Farmer server could not read the CLI release from GitHub. Try again in a minute; if it keeps happening, ask the person who runs it to check the GitHub App's access to the releases repository.",
+							"This Farmer server could not read the CLI release from GitHub. Try again in a minute; if it keeps happening, ask the person who runs it to check CLI_RELEASES_REPO.",
 							502,
 						);
 				}

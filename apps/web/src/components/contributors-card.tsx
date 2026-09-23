@@ -1,5 +1,6 @@
 import { ArrowUpRightIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
+import { useRouteContext } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { type CSSProperties, useSyncExternalStore } from "react";
 
@@ -13,7 +14,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "#/components/ui/popover.tsx";
-import { GITHUB_URL, PROJECT_TAGLINE } from "#/lib/links.ts";
+import { githubLinks, PROJECT_TAGLINE } from "#/lib/links.ts";
 import { springProductive } from "#/lib/motion.ts";
 import { cn, getInitials } from "#/lib/utils.ts";
 import { deploymentInfoQuery } from "#/queries/about.ts";
@@ -100,6 +101,10 @@ export function ContributorsCard({ className }: { className?: string }) {
 	// Not a suspense query: this is a footer on a screen whose contents are the
 	// point, and it reaches GitHub. It arrives when it arrives.
 	const { data } = useQuery(deploymentInfoQuery());
+	const repositoryUrl = useRouteContext({
+		from: "/$orgSlug",
+		select: (context) => githubLinks(context.repository).home,
+	});
 	const contributors = data?.contributors ?? [];
 
 	// The stored answer is on the DEVICE, so the server cannot know it and
@@ -198,7 +203,7 @@ export function ContributorsCard({ className }: { className?: string }) {
 								))}
 							</ul>
 							<a
-								href={GITHUB_URL}
+								href={repositoryUrl}
 								target="_blank"
 								rel="noreferrer"
 								className="flex items-center gap-1 text-2xs text-muted-foreground ring-ring outline-hidden transition-colors duration-(--dur-fast) hover:text-foreground focus-visible:ring-2"

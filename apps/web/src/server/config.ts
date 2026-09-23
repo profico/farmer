@@ -96,6 +96,12 @@ export type PublicAppConfig = {
 	 * has not been claimed yet: the first person to sign in creates it.
 	 */
 	org: { slug: string; name: string; logo: string | null } | null;
+	/**
+	 * The GitHub repository this deployment is built from, as `owner/name`
+	 * (`@farmer/core/lib/source-repository`). The "Report a problem" and
+	 * "View on GitHub" links read it, so a fork links to itself.
+	 */
+	repository: string;
 };
 
 export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
@@ -108,6 +114,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			{ isCliEnabled },
 			{ isDevAuthEnabled },
 			{ isStorageEnabled },
+			{ sourceRepository, DEFAULT_SOURCE_REPOSITORY },
 		] = await Promise.all([
 			import("@farmer/core/auth"),
 			import("@farmer/core/lib/single-org"),
@@ -116,6 +123,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			import("@farmer/core/lib/cli-flag"),
 			import("@farmer/core/lib/dev-auth"),
 			import("@farmer/core/lib/storage"),
+			import("@farmer/core/lib/source-repository"),
 		]);
 		const assistantEnabled = isAssistantEnabled();
 		const mcpEnabled = isMcpEnabled();
@@ -124,6 +132,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 		const uploadsEnabled = isStorageEnabled();
 		const providers = signInProviders();
 		const googleSignIn = providers.some((provider) => provider.id === "google");
+		const repository = sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY;
 		// Parsed rather than passed through, so a trailing path or slash in the
 		// environment cannot end up doubled in the middle of a URL somebody
 		// pastes. An unparseable value is the same answer as a missing one.
@@ -141,6 +150,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 				googleSignIn,
 				uploadsEnabled,
 				org: null,
+				repository,
 			};
 		}
 		const org = await findSingleOrg();
@@ -157,6 +167,7 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			org: org
 				? { slug: org.slug, name: org.name, logo: org.logo ?? null }
 				: null,
+			repository,
 		};
 	},
 );

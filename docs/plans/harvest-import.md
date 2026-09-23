@@ -322,8 +322,8 @@ A person is keyed by email when the people list has one, else by full name.
   - A guess that is the same as an existing user, a person in the people list
     or another guess is blocked. The admin must change it.
   - `emailVerified = false` (section 3.3).
-- **Two names that are the same without accents and punctuation** ("Ive
-  Vasiljević" to 2020, "Ive Vasiljevic" from 2021): the review screen asks if
+- **Two names that are the same without accents and punctuation** ("Tin
+  Primjerić" to 2020, "Tin Primjeric" from 2021): the review screen asks if
   they are one person or different people, and the import stays blocked until
   the admin answers. "One person" merges the rows into the chosen name. The
   other name gets an `alias` plan, and `start` maps it to the same user. Undo

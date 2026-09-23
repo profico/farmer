@@ -1,11 +1,19 @@
-export const GITHUB_URL = "https://github.com/profico/farmer";
-
-/** Where somebody reports a problem or suggests something, from inside the app. */
-export const GITHUB_NEW_ISSUE_URL = `${GITHUB_URL}/issues/new`;
-
-/** The repository's own contributor graph — the roster popover's way out to
- *  the whole list, rather than the four faces the card has room for. */
-export const GITHUB_CONTRIBUTORS_URL = `${GITHUB_URL}/graphs/contributors`;
+/**
+ * The links into the repository this deployment is built from.
+ *
+ * `repository` is `owner/name`, from `getPublicAppConfig().repository`, which
+ * follows `CLI_RELEASES_REPO` (`@farmer/core/lib/source-repository`), so a
+ * fork's "Report a problem" opens an issue on the fork, not on upstream.
+ */
+export const githubLinks = (repository: string) => {
+	const home = `https://github.com/${repository}`;
+	return {
+		home,
+		/** Where somebody reports a problem or suggests something, from inside
+		 *  the app. */
+		newIssue: `${home}/issues/new`,
+	};
+};
 
 /**
  * What this project is, in one line, for the one place anybody asks: the

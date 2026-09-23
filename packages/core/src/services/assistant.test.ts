@@ -882,13 +882,13 @@ describe("read tools", () => {
 	});
 
 	test("list_members treats names that differ only by accent as one", async () => {
-		// The person asking types "Vasiljevic"; the roster says "Vasiljević".
+		// The person asking types "Primjeric"; the roster says "Primjerić".
 		// Without the email on both rows the model cannot say which one it means.
 		const pair = ["u-ai-ive-1", "u-ai-ive-2"];
 		await db.insert(user).values(
 			pair.map((id, index) => ({
 				id,
-				name: index === 0 ? "Ive Vasiljević" : "IVE VASILJEVIC",
+				name: index === 0 ? "Tin Primjerić" : "TIN PRIMJERIC",
 				email: `${id}@example.com`,
 				emailVerified: true,
 				createdAt: new Date(),

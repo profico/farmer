@@ -163,8 +163,8 @@ describe("typed row accessors", () => {
 				"No",
 				"No",
 				"No",
-				"Mateo",
-				"Perak",
+				"Probo",
+				"Testić",
 				"",
 				"Administration|Product management",
 				"",
@@ -186,17 +186,17 @@ describe("typed row accessors", () => {
 		expect(row.notes).toBe("a note");
 		expect(row.hours).toBeCloseTo(0.5);
 		expect(row.billable).toBe(false);
-		expect(row.firstName).toBe("Mateo");
-		expect(row.lastName).toBe("Perak");
+		expect(row.firstName).toBe("Probo");
+		expect(row.lastName).toBe("Testić");
 		expect(row.employee).toBe(true);
 	});
 
 	test("toPeopleRow reads a real-shaped row", () => {
 		const records = recordsFor(PEOPLE_HEADER, [
 			[
-				"Mateo",
-				"Perak",
-				"mateo@profico.hr",
+				"Probo",
+				"Testić",
+				"probo@example.com",
 				"",
 				"Administration|Product management",
 				"0.0",
@@ -208,8 +208,8 @@ describe("typed row accessors", () => {
 			],
 		]);
 		const row = toPeopleRow(at(records, 0));
-		expect(row.firstName).toBe("Mateo");
-		expect(row.email).toBe("mateo@profico.hr");
+		expect(row.firstName).toBe("Probo");
+		expect(row.email).toBe("probo@example.com");
 		expect(row.admin).toBe(true);
 		expect(row.employee).toBe(true);
 	});
