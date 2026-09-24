@@ -351,9 +351,9 @@ export function SitePage({
 	children: ReactNode;
 }) {
 	return (
-		<div className="fm-site">
+		<div className="fm-site fm-page">
 			<SiteHeader visitor={visitor} />
-			<main>{children}</main>
+			<main className="fm-page-main">{children}</main>
 			<SiteFooter repository={visitor.repository} />
 		</div>
 	);
