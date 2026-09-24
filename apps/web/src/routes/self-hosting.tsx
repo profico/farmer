@@ -1,5 +1,6 @@
 import {
 	ArrowUpRightIcon,
+	CheckIcon,
 	CopyIcon,
 	CubeIcon,
 	DatabaseIcon,
@@ -12,7 +13,7 @@ import {
 	SparkleIcon,
 } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import type { ComponentType } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 
 import { loadSiteVisitor, SitePage } from "#/components/site/site-chrome.tsx";
 
@@ -100,6 +101,54 @@ const INTEGRATIONS: Array<{
 	},
 ];
 
+/** The `docker run` block as plain text, for the Copy button. The `<pre>`
+ *  draws the same command with the variables picked out. */
+const runCommand = (image: string) =>
+	[
+		"docker run -d --name farmer -p 3000:3000 \\",
+		"  -e DATABASE_URL=postgres://farmer:…@db:5432/farmer \\",
+		"  -e BETTER_AUTH_SECRET=$(openssl rand -base64 32) \\",
+		"  -e BETTER_AUTH_URL=https://time.example.com \\",
+		`  ${image}`,
+	].join("\n");
+
+/** Copies `text`, and says "Copied" for a moment after. */
+function CopyButton({ text }: { text: string }) {
+	const [copied, setCopied] = useState(false);
+
+	// Clears itself, and cleans up if the page unmounts mid-timeout.
+	useEffect(() => {
+		if (!copied) return;
+		const timer = setTimeout(() => setCopied(false), 1600);
+		return () => clearTimeout(timer);
+	}, [copied]);
+
+	const copy = async () => {
+		try {
+			await navigator.clipboard.writeText(text);
+			setCopied(true);
+		} catch {
+			// Denied permission or an insecure origin. The command is on screen
+			// and selectable.
+		}
+	};
+
+	return (
+		<button
+			type="button"
+			className="fm-codeblock-copy"
+			onClick={() => void copy()}
+		>
+			{copied ? (
+				<CheckIcon weight="bold" size={14} />
+			) : (
+				<CopyIcon weight="duotone" size={14} />
+			)}
+			<span aria-live="polite">{copied ? "Copied" : "Copy"}</span>
+		</button>
+	);
+}
+
 function Page() {
 	const visitor = Route.useLoaderData();
 	const links = githubLinks(visitor.repository);
@@ -155,17 +204,7 @@ function Page() {
 									<div className="fm-codeblock">
 										<div className="fm-codeblock-bar">
 											<span className="fm-mono">shell</span>
-											<span
-												style={{
-													marginLeft: "auto",
-													display: "inline-flex",
-													alignItems: "center",
-													gap: 5,
-												}}
-											>
-												<CopyIcon weight="duotone" size={14} />
-												Copy
-											</span>
+											<CopyButton text={runCommand(image)} />
 										</div>
 										<pre>
 											{"docker run -d --name farmer -p 3000:3000 \\\n  -e "}
