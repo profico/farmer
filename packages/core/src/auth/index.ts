@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { getOAuth2Tokens, refreshAccessTokenRequest } from "better-auth/oauth2";
 import {
 	admin,
 	deviceAuthorization,
@@ -12,6 +13,7 @@ import {
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, asc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import { CLI_CLIENT_ID } from "../api/errors";
 import { db } from "../db";
@@ -19,6 +21,7 @@ import * as schema from "../db/schema/auth";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
 import { invitationMail, sendMail } from "../lib/email";
+import { externalFetch } from "../lib/http";
 import { PLATFORM_ADMIN_ROLE, PLATFORM_USER_ROLE } from "../lib/platform-admin";
 import {
 	bootstrapSingleOrg,
@@ -44,6 +47,7 @@ import {
 	googleCredentials,
 	isInstanceEmpty,
 	mayUsePassword,
+	type OAuthCredentials,
 } from "./sign-in-methods";
 
 export { mayClaimInvitation } from "./registration";
@@ -189,6 +193,86 @@ const oidcProvider = (provider: OAuthProviderConfig): GenericOAuthConfig => {
 	};
 };
 
+const GITHUB_TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token";
+
+/** The `error` body GitHub sends with a 200 when it refuses a refresh. */
+const githubRefusal = z.object({
+	error: z.string(),
+	error_description: z.string().optional(),
+});
+
+/**
+ * Refresh a GitHub user token, and FAIL when GitHub refuses it.
+ *
+ * `GITHUB_CLIENT_ID` is a GitHub App client id, so a user token is a
+ * user-to-server token: it dies after 8 hours, and its refresh token is single
+ * use — GitHub invalidates the old one the moment it issues a new pair.
+ *
+ * GitHub answers a spent refresh token with HTTP **200** and an `error` body
+ * (`bad_refresh_token`), not with a 4xx. better-auth's helper only throws on a
+ * non-2xx, so it read that as a refresh that succeeded and returned nothing —
+ * and `getValidAccessToken` then wrote the refresh token it had READ back over
+ * the fresh pair a concurrent caller had just stored. Two callers arriving
+ * together at the 8-hour boundary is all it took, and from that second on
+ * every refresh failed, the access token died, and the person had to connect
+ * GitHub again. The rows said so: a refresh-token expiry OLDER than the
+ * access-token expiry, and `updated_at` moving every twenty minutes while
+ * neither expiry did.
+ *
+ * A refresh that produced no access token is a failure. Throwing leaves the
+ * stored row exactly as it was, so the caller that won the race keeps its
+ * tokens and the one that lost costs a single failed read.
+ *
+ * The request is better-auth's own (`refreshAccessTokenRequest`: the
+ * credentials in the POST body, `accept: application/json`), and the answer
+ * goes through `getOAuth2Tokens`, which maps `refresh_token_expires_in` (so the
+ * stored refresh-token expiry moves with every renewal) and keeps the raw body
+ * for the log below. `github` is the object the provider itself is built
+ * from, so the refresh can never send other credentials than the sign-in did.
+ *
+ * `getValidAccessToken` swallows this throw into a generic
+ * `FAILED_TO_GET_ACCESS_TOKEN`, so the refusal is logged here, where GitHub's
+ * `error` code is still in hand. The caller has no user id to give; the
+ * `[github] getAccessToken failed` line that follows it names the user.
+ */
+const refreshGithubToken =
+	(github: OAuthCredentials) => async (refreshToken: string) => {
+		const { body, headers } = await refreshAccessTokenRequest({
+			refreshToken,
+			options: {
+				clientId: github.clientId,
+				clientSecret: github.clientSecret,
+			},
+		});
+		// Manual, as better-auth's own fetch is: the endpoint is a constant, but a
+		// server-side OAuth call never follows a redirect.
+		const response = await externalFetch(GITHUB_TOKEN_ENDPOINT, {
+			method: "POST",
+			body,
+			headers,
+			redirect: "manual",
+		});
+		if (!response.ok) {
+			throw new APIError("BAD_REQUEST", {
+				message: `GitHub answered the refresh with HTTP ${response.status}`,
+				code: "GITHUB_REFRESH_FAILED",
+			});
+		}
+		const tokens = getOAuth2Tokens(await response.json());
+		if (!tokens.accessToken) {
+			const refusal = githubRefusal.safeParse(tokens.raw);
+			console.warn("[github] GitHub refused the refresh token", {
+				error: refusal.success ? refusal.data.error : null,
+				description: refusal.success ? refusal.data.error_description : null,
+			});
+			throw new APIError("BAD_REQUEST", {
+				message: "GitHub refused the refresh token",
+				code: "GITHUB_REFRESH_TOKEN_REFUSED",
+			});
+		}
+		return tokens;
+	};
+
 /** Every value `buildAuth` reads from the instance settings, as one string.
  *  When it changes, the instance is rebuilt. */
 const authInputs = () =>
@@ -307,6 +391,10 @@ const buildAuth = () => {
 					// access token* instead, which enumerates installations without `repo`.
 					// That is a provider change, not a one-line scope edit.
 					scope: ["repo"],
+					// See `refreshGithubToken`: GitHub refuses a spent refresh token with a
+					// 200, which better-auth's default reads as a successful refresh that
+					// returned nothing — and then stores it.
+					refreshAccessToken: refreshGithubToken(github),
 				},
 			}),
 			...(google && {
