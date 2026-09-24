@@ -22,7 +22,7 @@ import { listMyPendingInvitations } from "#/server/organization.ts";
  * predates the mode being switched on) and harmless elsewhere.
  *
  * It also does the recovery, not just the apology: a user who signed in from
- * the front door rather than from their invite link has a live invitation
+ * `/` rather than from their invite link has a live invitation
  * sitting unaccepted, and this is where they can accept it.
  */
 const searchSchema = z.object({

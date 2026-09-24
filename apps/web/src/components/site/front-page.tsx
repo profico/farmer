@@ -42,9 +42,9 @@ import { type SiteVisitor, SitePage, VisitorCta } from "./site-chrome.tsx";
 import "./front.css";
 
 /**
- * The public front page: what Farmer does, in six parts, for a visitor to a
- * deployment that is not in single-organization mode (that one draws
- * `FrontDoor` instead — see `routes/index.tsx`).
+ * The public front page: what Farmer does, in six parts. Only a deployment
+ * with `HOMEPAGE_ENABLED` on draws it; any other sends `/` into the workspace
+ * (see `routes/index.tsx`).
  */
 export function FrontPage({
 	visitor,
