@@ -11,8 +11,9 @@ import { setting } from "./instance-settings";
  * Setting `SINGLE_ORG_SLUG` turns a deployment into a one-workspace instance:
  * nobody can create a second organization, signup is invitation-only, and the
  * one screen sign-in can still show — its error state — wears that
- * organization's name and logo. `/` still renders the landing page. Unset (the
- * default) is the normal multi-tenant product, unchanged.
+ * organization's name and logo. What `/` shows is not this switch's business:
+ * `HOMEPAGE_ENABLED` decides that, in every mode. Unset (the default) is the
+ * normal multi-tenant product, unchanged.
  *
  * It is a *slug*, not a boolean, on purpose: a boolean would leave "which
  * organization?" implicit, and the only implicit answer available ("the oldest

@@ -1,6 +1,5 @@
 /* The public site: the front page, About, Self-hosting, Changelog, Early
- * access, Privacy and Terms, the single-organization front door and the error
- * pages.
+ * access, Privacy and Terms, and the error pages.
  *
  * Every rule is scoped under `.fm-site` (and the ones that are not key off
  * `html:has(.fm-site)`), so none of it can reach the dense product UI even
