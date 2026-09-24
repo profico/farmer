@@ -191,18 +191,29 @@ export const getPasswordSignIn = createServerFn({ method: "GET" }).handler(
 );
 
 /**
- * The `owner/name` `getPublicAppConfig` also carries, on its own.
+ * What the public pages' header and footer need: the `owner/name` that
+ * `getPublicAppConfig` also carries, and whether `/` is the product page
+ * (`HOMEPAGE_ENABLED`). With it off, `/` redirects into the workspace, so the
+ * chrome must not offer a link to `/` as a page of the site.
  *
- * The landing page's loader runs for every signed-out visitor and only ever
- * wanted this one field, so pulling it through `getPublicAppConfig` cost the
+ * Its own function because every public page's loader runs for every
+ * signed-out visitor, and pulling these through `getPublicAppConfig` cost the
  * eight modules that function imports (`findSingleOrg` among them) on every
- * anonymous hit. This reads one module instead.
+ * anonymous hit. This reads two modules and no database row.
  */
-export const getSourceRepository = createServerFn({ method: "GET" }).handler(
-	async (): Promise<string> => {
-		const { sourceRepository, DEFAULT_SOURCE_REPOSITORY } =
-			await import("@farmer/core/lib/source-repository");
-		return sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY;
+export const getSiteConfig = createServerFn({ method: "GET" }).handler(
+	async (): Promise<{ repository: string; homepageEnabled: boolean }> => {
+		const [
+			{ sourceRepository, DEFAULT_SOURCE_REPOSITORY },
+			{ settingEnabled },
+		] = await Promise.all([
+			import("@farmer/core/lib/source-repository"),
+			import("@farmer/core/lib/instance-settings"),
+		]);
+		return {
+			repository: sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY,
+			homepageEnabled: settingEnabled("HOMEPAGE_ENABLED"),
+		};
 	},
 );
 
@@ -218,7 +229,7 @@ export const getSourceRepository = createServerFn({ method: "GET" }).handler(
  * anyone has claimed the instance has no slug to name yet, so it takes the
  * placeholder too.
  *
- * Its own function for the same reason as `getSourceRepository`: `/` runs for
+ * Its own function for the same reason as `getSiteConfig`: `/` runs for
  * every anonymous visitor and needs only this.
  */
 export const getHomeRedirect = createServerFn({ method: "GET" }).handler(
