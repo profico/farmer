@@ -204,14 +204,15 @@ test("a refused refresh never overwrites the token another caller just stored", 
 	const row = await stored();
 	expect(await open(row.refreshToken)).toBe(NEW_REFRESH);
 	expect(await open(row.accessToken)).toBe(NEW_ACCESS);
-	// The fingerprint of the clobber in production: a refresh-token expiry
-	// OLDER than the access-token expiry, because the loser put back the one it
-	// had read.
-	expect(
-		present(row.refreshTokenExpiresAt, "the refresh token expiry").getTime(),
-	).toBeGreaterThan(
-		present(row.accessTokenExpiresAt, "the access token expiry").getTime(),
-	);
+	// The winner's refresh-token expiry, not the seed's thirty days: the
+	// override maps `refresh_token_expires_in`, and the loser left it alone.
+	const refreshExpiry = present(
+		row.refreshTokenExpiresAt,
+		"the refresh token expiry",
+	).getTime();
+	const sixMonths = Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000;
+	expect(refreshExpiry).toBeGreaterThan(sixMonths - 60_000);
+	expect(refreshExpiry).toBeLessThanOrEqual(sixMonths);
 });
 
 test("two concurrent readers refresh once, and neither is told to reconnect", async () => {
