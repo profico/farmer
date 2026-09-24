@@ -207,25 +207,27 @@ export const getSourceRepository = createServerFn({ method: "GET" }).handler(
 );
 
 /**
- * The one workspace the front page opens on in single-organization mode, or
- * null when the mode is off (or on, with no workspace yet). The front page
- * draws the Front Door for it instead of the marketing page.
+ * Where `/` sends the visitor instead of drawing the product page: the
+ * workspace slug to redirect to, or null to draw the page.
  *
- * Its own function for the same reason as `getSourceRepository`: the front
- * page runs for every anonymous visitor and needs only this.
+ * `HOMEPAGE_ENABLED` decides it, not single-organization mode. On, `/` is the
+ * product page in every mode. Off (the default), `/` is only a way into the
+ * app: the one workspace in single-organization mode, else the `_`
+ * placeholder, which `/$orgSlug`'s guard resolves — sign-in, the only
+ * workspace, the chooser or `/no-access`. Single-organization mode before
+ * anyone has claimed the instance has no slug to name yet, so it takes the
+ * placeholder too.
+ *
+ * Its own function for the same reason as `getSourceRepository`: `/` runs for
+ * every anonymous visitor and needs only this.
  */
-export const getFrontDoor = createServerFn({ method: "GET" }).handler(
-	async (): Promise<{
-		slug: string;
-		name: string;
-		logo: string | null;
-	} | null> => {
-		const { isSingleOrgMode, findSingleOrg } =
-			await import("@farmer/core/lib/single-org");
-		if (!isSingleOrgMode()) return null;
+export const getHomeRedirect = createServerFn({ method: "GET" }).handler(
+	async (): Promise<string | null> => {
+		const { settingEnabled } =
+			await import("@farmer/core/lib/instance-settings");
+		if (settingEnabled("HOMEPAGE_ENABLED")) return null;
+		const { findSingleOrg } = await import("@farmer/core/lib/single-org");
 		const org = await findSingleOrg();
-		return org
-			? { slug: org.slug, name: org.name, logo: org.logo ?? null }
-			: null;
+		return org?.slug ?? "_";
 	},
 );

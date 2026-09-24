@@ -1,8 +1,7 @@
-/* The front page (`front-page.tsx`, `front-preview.tsx`) and the
- * single-organization front door (`front-door.tsx`).
+/* The front page (`front-page.tsx`, `front-preview.tsx`).
  *
  * Every rule is scoped under `.fm-site`, and reads the tokens and classes of
- * `site.css` — this file only adds what those two pages draw and nothing
+ * `site.css` — this file only adds what the front page draws and nothing
  * else does: the hero, the product mock-ups and the ink Developers band.
  */
 
@@ -928,94 +927,6 @@
 	.fm-site .fp-bottom {
 		padding-bottom: 72px;
 	}
-}
-
-/* ---- The front door (single-organization mode) ------------------------ */
-.fm-site.fd-root {
-	display: flex;
-	flex-direction: column;
-	padding: 24px;
-}
-.fm-site .fd-main {
-	flex: 1;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 22px;
-	padding: 48px 0;
-	text-align: center;
-}
-/* An uploaded logo sits on white whatever the theme: a logo drawn for a
-   light page is the common case, and it disappears on the dark paper. */
-.fm-site .fd-logo {
-	display: grid;
-	place-items: center;
-	width: 72px;
-	height: 72px;
-	padding: 12px;
-	border-radius: 16px;
-	border: 1px solid var(--line);
-	background: #fff;
-}
-.fm-site .fd-logo img {
-	display: block;
-	width: 100%;
-	height: 100%;
-	object-fit: contain;
-	border-radius: 10px;
-}
-.fm-site .fd-initial {
-	display: grid;
-	place-items: center;
-	width: 64px;
-	height: 64px;
-	border-radius: 16px;
-	border: 1px solid var(--line);
-	background: var(--ground);
-	font-family: var(--serif);
-	font-size: 34px;
-	color: var(--fg);
-}
-.fm-site .fd-title {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 10px;
-}
-.fm-site .fd-name {
-	margin: 0;
-	font-family: var(--serif);
-	font-weight: 400;
-	font-size: clamp(44px, 6vw, 64px);
-	line-height: 1;
-	letter-spacing: -0.02em;
-	text-wrap: balance;
-}
-.fm-site .fd-line {
-	max-width: 420px;
-	font-size: 17px;
-}
-.fm-site .fd-cta {
-	height: 46px;
-	margin-top: 6px;
-	padding: 0 22px;
-}
-.fm-site .fd-footer {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: center;
-	gap: 8px 20px;
-	font-size: 12.5px;
-	color: var(--faint);
-}
-.fm-site .fd-footer a {
-	color: var(--faint);
-}
-.fm-site .fd-by {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
 }
 
 .fm-site .fp-figure {

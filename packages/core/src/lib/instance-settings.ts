@@ -291,6 +291,15 @@ export const INSTANCE_SETTINGS = [
 	},
 	// Features
 	{
+		name: "HOMEPAGE_ENABLED",
+		section: "features",
+		group: "Features",
+		label: "Public homepage",
+		...BOOL,
+		defaultValue: "false",
+		hint: "On: / shows the Farmer product page. Off: / opens the workspace, or sign-in first.",
+	},
+	{
 		name: "ASSISTANT_ENABLED",
 		section: "features",
 		group: "Features",
