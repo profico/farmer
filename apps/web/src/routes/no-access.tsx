@@ -1,17 +1,12 @@
+import { ArrowRightIcon, EnvelopeSimpleIcon } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { Button } from "#/components/ui/button.tsx";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "#/components/ui/card.tsx";
+import { AuthSplitPanel } from "#/components/auth-split-panel.tsx";
+import { AuthHead, OrgMark } from "#/components/site/auth-parts.tsx";
 import { authClient } from "#/lib/auth-client.ts";
 import { safeRedirectPath } from "#/lib/org-redirect.ts";
 import { requireSession } from "#/server/auth.ts";
@@ -40,24 +35,22 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/no-access")({
 	validateSearch: searchSchema,
 	loader: async () => {
-		await requireSession();
+		const session = await requireSession();
 		const [config, invitations] = await Promise.all([
 			getPublicAppConfig(),
 			listMyPendingInvitations(),
 		]);
-		return { config, invitations };
+		return { config, invitations, email: session.user.email };
 	},
 	component: NoAccessPage,
 });
 
 function NoAccessPage() {
-	const { config, invitations } = Route.useLoaderData();
+	const { config, invitations, email } = Route.useLoaderData();
 	const target = safeRedirectPath(Route.useSearch().redirect);
 	const navigate = useNavigate();
 	const posthog = usePostHog();
 	const [busyId, setBusyId] = useState<string | null>(null);
-
-	const workspace = config.org?.name ?? "this workspace";
 
 	const handleAccept = async (invitationId: string) => {
 		setBusyId(invitationId);
@@ -85,34 +78,73 @@ function NoAccessPage() {
 	};
 
 	return (
-		<div className="flex min-h-[calc(100*var(--svh))] items-center justify-center p-4">
-			<Card className="w-full max-w-sm">
-				<CardHeader>
-					<CardTitle className="h2">
-						{invitations.length ? "One step left" : "No access yet"}
-					</CardTitle>
-					<CardDescription className="text-base">
-						{invitations.length
+		<AuthSplitPanel brand={config.org}>
+			<AuthHead title="You're signed in, but not in a workspace">
+				{config.org ? (
+					<>
+						{config.org.name} is invite-only, and <b>{email}</b> isn't a member
+						yet.
+					</>
+				) : (
+					<>
+						<b>{email}</b> isn't a member of a workspace here yet.
+					</>
+				)}
+			</AuthHead>
+
+			{invitations.length ? (
+				<div className="fm-auth-actions">
+					<p className="fm-auth-note" data-tone="fg">
+						{invitations.length === 1
 							? "You have an invitation waiting. Accept it to get in."
-							: `Your account isn't a member of ${workspace}. Ask an admin to send you an invitation.`}
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="grid gap-3">
+							: "You have invitations waiting. Accept one to get in."}
+					</p>
 					{invitations.map((invitation) => (
-						<Button
-							key={invitation.id}
-							onClick={() => handleAccept(invitation.id)}
-							disabled={busyId !== null}
-						>
-							Join {invitation.organizationName} as{" "}
-							{invitation.role ?? "member"}
-						</Button>
+						<div key={invitation.id} className="fm-auth-invite">
+							<OrgMark name={invitation.organizationName} size="md" />
+							<div className="fm-auth-invite-text">
+								<div className="fm-auth-strong">
+									{invitation.organizationName}
+								</div>
+								<div className="fm-auth-ws-meta">
+									{roleLabel(invitation.role)}
+								</div>
+							</div>
+							<button
+								type="button"
+								className="fm-btn fm-btn-sm"
+								onClick={() => handleAccept(invitation.id)}
+								disabled={busyId !== null}
+							>
+								{busyId === invitation.id ? "Joining…" : "Accept"}
+								<ArrowRightIcon size={14} aria-hidden />
+							</button>
+						</div>
 					))}
-					<Button variant="outline" onClick={handleSignOut}>
-						Sign out
-					</Button>
-				</CardContent>
-			</Card>
-		</div>
+				</div>
+			) : (
+				<div className="fm-auth-callout">
+					<EnvelopeSimpleIcon size={20} weight="duotone" aria-hidden />
+					<span>
+						Ask an administrator to invite{" "}
+						<b className="fm-auth-strong">{email}</b>. The invitation arrives by
+						email, and in Slack when the workspace has Slack connected.
+					</span>
+				</div>
+			)}
+
+			<div className="fm-auth-switch">
+				<span className="fm-muted">Wrong account?</span>
+				<button type="button" className="fm-auth-link" onClick={handleSignOut}>
+					Sign out
+				</button>
+			</div>
+		</AuthSplitPanel>
 	);
 }
+
+/** "member" → "Member": the role as a person reads it. */
+const roleLabel = (role: string | null) => {
+	const value = role ?? "member";
+	return value.charAt(0).toUpperCase() + value.slice(1);
+};

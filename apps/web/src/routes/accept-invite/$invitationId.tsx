@@ -1,17 +1,12 @@
+import { CheckIcon } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { Button } from "#/components/ui/button.tsx";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "#/components/ui/card.tsx";
+import { AuthSplitPanel } from "#/components/auth-split-panel.tsx";
+import { AuthHead, OrgMark } from "#/components/site/auth-parts.tsx";
 import { authClient } from "#/lib/auth-client.ts";
 import { getSession } from "#/server/auth.ts";
 
@@ -71,62 +66,95 @@ function AcceptInvitePage() {
 		});
 	};
 
+	const orgName = org ?? "the organization";
+	const who = session
+		? { label: "Signed in as", value: session.user.email }
+		: email
+			? { label: "Invited as", value: email }
+			: null;
+
 	return (
-		<div className="flex min-h-[calc(100*var(--svh))] items-center justify-center p-4">
-			<Card className="w-full max-w-sm">
-				<CardHeader>
-					<CardTitle className="h2">You've been invited</CardTitle>
-					<CardDescription className="text-base">
-						Join{" "}
-						<strong className="text-foreground">
-							{org ?? "the organization"}
-						</strong>{" "}
-						as {role ?? "member"}
-						{email ? ` — invited as ${email}` : ""}.
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="grid gap-3">
-					{/* One button, because Google both signs in and signs up: a
-					    first-time invitee gets an account on the way through. */}
-					{!session && (
-						<Button
-							nativeButton={false}
-							render={
-								<Link
-									to="/login"
-									search={{ redirect: redirectTarget, ...inviteContext }}
-								>
-									Continue with Google
-								</Link>
-							}
-						/>
-					)}
-					{session && emailMismatch && (
-						<>
-							<p className="text-sm text-muted-foreground">
-								You're signed in as{" "}
-								<span className="font-medium text-foreground">
-									{session.user.email}
-								</span>
-								, but this invite is for a different address.
-							</p>
-							<Button variant="outline" onClick={handleSignOutAndSwitch}>
-								Sign out and use a different account
-							</Button>
-						</>
-					)}
-					{session && !emailMismatch && (
-						<Button onClick={handleAccept} disabled={accepting}>
-							Accept invitation
-						</Button>
-					)}
-					<Button
-						variant="ghost"
-						nativeButton={false}
-						render={<Link to="/">Cancel</Link>}
-					/>
-				</CardContent>
-			</Card>
-		</div>
+		<AuthSplitPanel>
+			<AuthHead title="You've been invited">
+				You're invited to track time in {org ? <b>{org}</b> : "a workspace"}.
+			</AuthHead>
+
+			<div className="fm-auth-list">
+				<div className="fm-auth-org-card-head">
+					<OrgMark name={orgName} size="lg" />
+					<div className="fm-auth-org-card-name">{orgName}</div>
+				</div>
+				<div className="fm-auth-facts" data-single={who ? undefined : ""}>
+					<div>
+						<div className="fm-auth-fact-label">Role</div>
+						{roleLabel(role)}
+					</div>
+					{who ? (
+						<div>
+							<div className="fm-auth-fact-label">{who.label}</div>
+							{who.value}
+						</div>
+					) : null}
+				</div>
+			</div>
+
+			{session && emailMismatch ? (
+				<div className="fm-auth-actions">
+					<p className="fm-auth-note">
+						You're signed in as{" "}
+						<b className="fm-auth-strong">{session.user.email}</b>, but this
+						invite is for <b className="fm-auth-strong">{email}</b>.
+					</p>
+					<button
+						type="button"
+						className="fm-btn fm-btn-outline fm-btn-block"
+						onClick={handleSignOutAndSwitch}
+					>
+						Sign out and use a different account
+					</button>
+				</div>
+			) : null}
+
+			<div className="fm-auth-row">
+				{/* One button, because signing in with a provider also signs up: a
+				    first-time invitee gets an account on the way through. */}
+				{!session ? (
+					<Link
+						to="/login"
+						search={{ redirect: redirectTarget, ...inviteContext }}
+						className="fm-btn fm-auth-grow"
+					>
+						Sign in to accept
+					</Link>
+				) : null}
+				{session && !emailMismatch ? (
+					<button
+						type="button"
+						className="fm-btn fm-auth-grow"
+						onClick={handleAccept}
+						disabled={accepting}
+					>
+						<CheckIcon size={16} aria-hidden />
+						{org ? `Accept and open ${org}` : "Accept invitation"}
+					</button>
+				) : null}
+				<Link
+					to="/"
+					className={
+						session && emailMismatch
+							? "fm-btn fm-btn-outline fm-auth-grow"
+							: "fm-btn fm-btn-outline"
+					}
+				>
+					Cancel
+				</Link>
+			</div>
+		</AuthSplitPanel>
 	);
 }
+
+/** "member" → "Member": the role as a person reads it. */
+const roleLabel = (role: string | undefined) => {
+	const value = role ?? "member";
+	return value.charAt(0).toUpperCase() + value.slice(1);
+};

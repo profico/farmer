@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as SelfHostingRouteImport } from './routes/self-hosting'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as NoAccessRouteImport } from './routes/no-access'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as EarlyAccessRouteImport } from './routes/early-access'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as ChooseOrganizationRouteImport } from './routes/choose-organization'
+import { Route as ChangelogRouteImport } from './routes/changelog'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CliIndexRouteImport } from './routes/cli/index'
@@ -89,6 +95,21 @@ import { Route as ApiV1OrgsOrgSlugTimeEntriesCopyDayRouteImport } from './routes
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIdRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/$id'
 import { Route as ApiV1OrgsOrgSlugAbsencesIdRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/$id'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SelfHostingRoute = SelfHostingRouteImport.update({
+  id: '/self-hosting',
+  path: '/self-hosting',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NoAccessRoute = NoAccessRouteImport.update({
   id: '/no-access',
   path: '/no-access',
@@ -99,6 +120,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EarlyAccessRoute = EarlyAccessRouteImport.update({
+  id: '/early-access',
+  path: '/early-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DeviceRoute = DeviceRouteImport.update({
   id: '/device',
   path: '/device',
@@ -107,6 +133,16 @@ const DeviceRoute = DeviceRouteImport.update({
 const ChooseOrganizationRoute = ChooseOrganizationRouteImport.update({
   id: '/choose-organization',
   path: '/choose-organization',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangelogRoute = ChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrgSlugRouteRoute = OrgSlugRouteRouteImport.update({
@@ -523,10 +559,16 @@ const ApiV1OrgsOrgSlugAbsencesIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/about': typeof AboutRoute
+  '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
+  '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
+  '/privacy': typeof PrivacyRoute
+  '/self-hosting': typeof SelfHostingRoute
+  '/terms': typeof TermsRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
@@ -603,10 +645,16 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
+  '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
+  '/privacy': typeof PrivacyRoute
+  '/self-hosting': typeof SelfHostingRoute
+  '/terms': typeof TermsRoute
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/$orgSlug/rewind': typeof OrgSlugRewindRoute
@@ -684,10 +732,16 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
+  '/about': typeof AboutRoute
+  '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
+  '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
   '/no-access': typeof NoAccessRoute
+  '/privacy': typeof PrivacyRoute
+  '/self-hosting': typeof SelfHostingRoute
+  '/terms': typeof TermsRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
@@ -767,10 +821,16 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$orgSlug'
+    | '/about'
+    | '/changelog'
     | '/choose-organization'
     | '/device'
+    | '/early-access'
     | '/login'
     | '/no-access'
+    | '/privacy'
+    | '/self-hosting'
+    | '/terms'
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
@@ -847,10 +907,16 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
+    | '/changelog'
     | '/choose-organization'
     | '/device'
+    | '/early-access'
     | '/login'
     | '/no-access'
+    | '/privacy'
+    | '/self-hosting'
+    | '/terms'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
     | '/$orgSlug/rewind'
@@ -927,10 +993,16 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$orgSlug'
+    | '/about'
+    | '/changelog'
     | '/choose-organization'
     | '/device'
+    | '/early-access'
     | '/login'
     | '/no-access'
+    | '/privacy'
+    | '/self-hosting'
+    | '/terms'
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
     | '/$orgSlug/reports'
@@ -1009,10 +1081,16 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
+  AboutRoute: typeof AboutRoute
+  ChangelogRoute: typeof ChangelogRoute
   ChooseOrganizationRoute: typeof ChooseOrganizationRoute
   DeviceRoute: typeof DeviceRoute
+  EarlyAccessRoute: typeof EarlyAccessRoute
   LoginRoute: typeof LoginRoute
   NoAccessRoute: typeof NoAccessRoute
+  PrivacyRoute: typeof PrivacyRoute
+  SelfHostingRoute: typeof SelfHostingRoute
+  TermsRoute: typeof TermsRoute
   DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute
   DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRoute
   AcceptInviteInvitationIdRoute: typeof AcceptInviteInvitationIdRoute
@@ -1056,6 +1134,27 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/self-hosting': {
+      id: '/self-hosting'
+      path: '/self-hosting'
+      fullPath: '/self-hosting'
+      preLoaderRoute: typeof SelfHostingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/no-access': {
       id: '/no-access'
       path: '/no-access'
@@ -1070,6 +1169,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/early-access': {
+      id: '/early-access'
+      path: '/early-access'
+      fullPath: '/early-access'
+      preLoaderRoute: typeof EarlyAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/device': {
       id: '/device'
       path: '/device'
@@ -1082,6 +1188,20 @@ declare module '@tanstack/react-router' {
       path: '/choose-organization'
       fullPath: '/choose-organization'
       preLoaderRoute: typeof ChooseOrganizationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/changelog': {
+      id: '/changelog'
+      path: '/changelog'
+      fullPath: '/changelog'
+      preLoaderRoute: typeof ChangelogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$orgSlug': {
@@ -1705,10 +1825,16 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
+  AboutRoute: AboutRoute,
+  ChangelogRoute: ChangelogRoute,
   ChooseOrganizationRoute: ChooseOrganizationRoute,
   DeviceRoute: DeviceRoute,
+  EarlyAccessRoute: EarlyAccessRoute,
   LoginRoute: LoginRoute,
   NoAccessRoute: NoAccessRoute,
+  PrivacyRoute: PrivacyRoute,
+  SelfHostingRoute: SelfHostingRoute,
+  TermsRoute: TermsRoute,
   DotwellKnownOauthAuthorizationServerRoute:
     DotwellKnownOauthAuthorizationServerRoute,
   DotwellKnownOauthProtectedResourceRoute:

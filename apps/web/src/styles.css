@@ -1941,10 +1941,10 @@ html {
    * 2200px there is not enough of it to put anything in, which is the media
    * query this section ends on.
    *
-   * The art is three tiling silhouettes used as masks, so one asset set serves
-   * both themes and all four seasons — the season decides `--field-tint` and
-   * the layer is painted with it. See `scripts/generate-field-art.ts` for the
-   * contract any replacement has to meet. */
+   * The crop is the public site's footer wheat, drawn on a canvas by
+   * `lib/wheat-field.ts` in one color: `--field-tint`, which the season
+   * decides. So one drawing serves both themes and all four seasons, and the
+   * season's `--field-scale` sets how tall it stands. */
   .field {
     position: fixed;
     inset: 0;
@@ -1970,13 +1970,10 @@ html {
     transition: opacity 1.6s var(--ease-out);
 
     --field-tint: color-mix(in oklab, var(--field-hue) 60%, var(--field-ink));
-  }
-
-  /* Below the gate the crop is invisible, so there is no reason for the wind to
-     be running. Stated on the parent rather than as a `max-width` twin of the
-     media query, so the breakpoint stays a single number. */
-  .field .field-layer {
-    animation-play-state: paused;
+    /* Below the gate the crop is invisible, so there is no reason for the wind
+       to be running. The gate sets this to 1 and the canvas reads it on every
+       resize, so the breakpoint stays a single number. */
+    --field-live: 0;
   }
 
   /* The season sets how tall the crop stands and what color it is: bare
@@ -2068,63 +2065,17 @@ html {
     opacity: var(--field-glow-strength);
   }
 
-  /* A depth of crop. Wider than the ground on both sides so the sway can never
-     drag an edge into view; the ground clips the overhang.
-
-     Both spellings of every mask property. Unprefixed `mask-image` is read as
-     `match-source`, which some WebKit versions resolve to luminance rather than
-     alpha — the art is filled white for that reason, so it survives either
-     reading — and Safari before 15.4 has only the prefixed properties. */
-  .field-layer {
+  /* The crop: one canvas along the bottom of the ground, as tall as the
+     tallest summer stalk (`HEIGHT` in `components/field.tsx`). The daylight
+     moves its strength; the stalks carry their own depth. */
+  .field-crop {
     position: absolute;
     bottom: 0;
-    left: -2rem;
-    right: -2rem;
-    background-color: var(--field-tint);
-    -webkit-mask-repeat: repeat-x;
-    mask-repeat: repeat-x;
-    -webkit-mask-position: 0 bottom;
-    mask-position: 0 bottom;
-    -webkit-mask-size: auto 100%;
-    mask-size: auto 100%;
-    /* The crop is planted: it bends from the ground, it does not slide. */
-    transform-origin: 50% 100%;
-    animation: field-sway var(--field-period) ease-in-out infinite alternate;
-  }
-
-  /* The three tile widths do not divide into each other, so the layers never
-     line up into a visible column. The near layer is the tallest, the most
-     opaque and the one the wind moves most. */
-  .field-far {
-    height: calc(7rem * var(--field-scale));
-    opacity: calc(var(--field-strength) * 0.55 * var(--field-light));
-    -webkit-mask-image: url('/field/crop-far.svg');
-    mask-image: url('/field/crop-far.svg');
-    --field-sway: 3px;
-    --field-tilt: 0.2deg;
-    --field-period: 23s;
-    animation-delay: -9s;
-  }
-
-  .field-mid {
-    height: calc(12rem * var(--field-scale));
-    opacity: calc(var(--field-strength) * 0.8 * var(--field-light));
-    -webkit-mask-image: url('/field/crop-mid.svg');
-    mask-image: url('/field/crop-mid.svg');
-    --field-sway: 5px;
-    --field-tilt: 0.35deg;
-    --field-period: 19s;
-    animation-delay: -4s;
-  }
-
-  .field-near {
-    height: calc(17.5rem * var(--field-scale));
+    left: 0;
+    display: block;
+    width: 100%;
+    height: 300px;
     opacity: calc(var(--field-strength) * var(--field-light));
-    -webkit-mask-image: url('/field/crop-near.svg');
-    mask-image: url('/field/crop-near.svg');
-    --field-sway: 8px;
-    --field-tilt: 0.55deg;
-    --field-period: 15s;
   }
 
   @keyframes field-in {
@@ -2136,21 +2087,11 @@ html {
     }
   }
 
-  @keyframes field-sway {
-    from {
-      transform: translateX(calc(var(--field-sway) * -1))
-        skewX(calc(var(--field-tilt) * -1));
-    }
-    to {
-      transform: translateX(var(--field-sway)) skewX(var(--field-tilt));
-    }
-  }
-
   /* Wind is the whole point of the motion, so reduced motion keeps the field
-     and stops it moving rather than removing it. */
+     and stops it moving rather than removing it. The canvas holds its own
+     stalks still; this stops the fade. */
   @media (prefers-reduced-motion: reduce) {
-    .field-ground,
-    .field-layer {
+    .field-ground {
       animation: none;
     }
   }
@@ -2161,10 +2102,7 @@ html {
   @media (min-width: 2200px) {
     .field {
       opacity: 1;
-    }
-
-    .field .field-layer {
-      animation-play-state: running;
+      --field-live: 1;
     }
   }
 

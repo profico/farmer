@@ -1,0 +1,594 @@
+/* The public site: the front page, About, Self-hosting, Changelog, Early
+ * access, Privacy and Terms, the single-organization front door and the error
+ * pages.
+ *
+ * Every rule is scoped under `.fm-site` (and the ones that are not key off
+ * `html:has(.fm-site)`), so none of it can reach the dense product UI even
+ * though this is a plain, always-loaded stylesheet.
+ *
+ * Colors read the product's own tokens from styles.css — `--bg`, `--ground`,
+ * `--fg`, `--mut`, `--faint`, `--line`, `--acc`, `--warn`, `--bad` — so the site
+ * follows the reader's light/dark choice, high contrast and accent exactly as
+ * the app does. The handful the site needs on top are derived here, never
+ * written as a second palette:
+ *
+ *   --on-acc    ink on an accent fill: the paper in light, the ground in dark
+ *   --acc-soft  the accent as a 13% wash, for chips and selected rows
+ *   --acc-mid   the accent mixed into the paper, for the quiet bar in a chart
+ *   --ink-*     the one always-dark surface (Developers, the sign-in column),
+ *               literal on purpose: it is dark whatever the page is doing
+ *
+ * The layout is plain classes rather than inline styles, so the responsive
+ * rules at the bottom need no !important.
+ */
+.fm-site {
+	--on-acc: var(--bg);
+	--acc-soft: color-mix(in oklab, var(--acc) 13%, transparent);
+	--acc-mid: color-mix(in oklab, var(--acc) 38%, var(--bg));
+	--ink: #15140f;
+	--ink-deep: #0e0d0a;
+	--ink-fg: #ede8de;
+	--ink-mut: #8f887c;
+	--ink-line: rgba(237, 232, 222, 0.13);
+	--ink-acc: #9178de;
+	--ink-ok: #9fbf8f;
+	--fm-shadow-window: 0 30px 60px -40px rgba(27, 26, 23, 0.35);
+	/* The page's own palette, for the header to blend from (see Header). */
+	--page-bg: var(--bg);
+	--page-fg: var(--fg);
+	--page-mut: var(--mut);
+	--page-line: var(--line);
+	--page-sel: var(--sel);
+	--page-acc: var(--acc);
+	--page-on-acc: var(--on-acc);
+
+	min-height: calc(100 * var(--svh));
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--sans);
+	font-size: 16px;
+	line-height: 1.5;
+	/* `clip`, not `hidden`: `hidden` makes this a scroll container, and a
+	   sticky header inside a scroll container sticks to it rather than to the
+	   viewport — which is why the old landing header scrolled away. */
+	overflow-x: clip;
+	-webkit-font-smoothing: antialiased;
+}
+:root[data-theme="dark"] .fm-site {
+	--on-acc: var(--ground);
+	--fm-shadow-window: 0 30px 60px -40px rgba(0, 0, 0, 0.8);
+}
+.fm-site *,
+.fm-site *::before,
+.fm-site *::after {
+	box-sizing: border-box;
+}
+/* An icon with no `size` prop is drawn at the text size. The root layout's
+   Phosphor `IconContext` sets only the weight, and that replaces the default
+   size of 1em, so such an icon has no width attribute and fills its box.
+   `:where` keeps this at zero specificity: any class that sizes an icon wins. */
+:where(.fm-site svg:not([width])) {
+	width: 1em;
+	height: 1em;
+	flex-shrink: 0;
+}
+.fm-site ::selection {
+	background: var(--text-sel);
+}
+
+/* The site is one sheet of paper rather than islands on the ground, so <html>
+   and <body> are repainted to `--bg` or the ground shows as a band on
+   overscroll. `!important` because the rule it beats is the base `body` in
+   styles.css, and this file loads in an order it does not control. */
+html:has(.fm-site),
+html:has(.fm-site) body {
+	background: var(--bg) !important;
+}
+html:has(.fm-site) {
+	scroll-behavior: smooth;
+	/* In-page anchors land below the sticky header. */
+	scroll-padding-top: 80px;
+}
+@media (prefers-reduced-motion: reduce) {
+	html:has(.fm-site) {
+		scroll-behavior: auto;
+	}
+}
+
+/* ---- Type ------------------------------------------------------------- */
+.fm-site a {
+	color: var(--acc);
+	text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site a:hover {
+		text-decoration: underline;
+	}
+}
+.fm-site .fm-serif {
+	font-family: var(--serif);
+	font-weight: 400;
+}
+.fm-site .fm-mono {
+	font-family: var(--mono);
+	letter-spacing: -0.03em;
+	font-variant-numeric: tabular-nums;
+}
+/* The italic accent phrase every headline ends on. */
+.fm-site .fm-em {
+	font-style: italic;
+	color: var(--acc);
+}
+.fm-site .fm-eyebrow {
+	font-size: 10.5px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--faint);
+}
+.fm-site .fm-h1 {
+	margin: 0;
+	font-family: var(--serif);
+	font-weight: 400;
+	font-size: clamp(46px, 6vw, 76px);
+	line-height: 0.98;
+	letter-spacing: -0.02em;
+	text-wrap: balance;
+}
+.fm-site .fm-h2 {
+	margin: 0;
+	font-family: var(--serif);
+	font-weight: 400;
+	font-size: clamp(36px, 4.2vw, 54px);
+	line-height: 1.02;
+	letter-spacing: -0.02em;
+	text-wrap: balance;
+}
+.fm-site .fm-h3 {
+	margin: 0;
+	font-family: var(--serif);
+	font-weight: 400;
+	font-size: 40px;
+	line-height: 1.05;
+}
+.fm-site .fm-lede {
+	margin: 0;
+	color: var(--mut);
+	font-size: 18px;
+	line-height: 1.55;
+	text-wrap: pretty;
+}
+.fm-site .fm-muted {
+	color: var(--mut);
+}
+.fm-site .fm-faint {
+	color: var(--faint);
+}
+.fm-site .fm-code {
+	font-family: var(--mono);
+	letter-spacing: -0.03em;
+	font-size: 0.875em;
+	color: var(--fg);
+	background: var(--ground);
+	padding: 1px 6px;
+	border-radius: 5px;
+}
+
+/* ---- Layout ----------------------------------------------------------- */
+.fm-site .fm-container {
+	width: 100%;
+	max-width: 1200px;
+	margin: 0 auto;
+	padding-left: 24px;
+	padding-right: 24px;
+}
+.fm-site .fm-stack {
+	display: flex;
+	flex-direction: column;
+}
+/* Hairline cells: a grid whose gap is the line color, each cell painted with
+   the paper. */
+.fm-site .fm-cells {
+	display: grid;
+	gap: 1px;
+	background: var(--line);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	overflow: hidden;
+}
+.fm-site .fm-cells > * {
+	background: var(--bg);
+}
+/* A product surface: the ground, with a paper island 10px inside it. */
+.fm-site .fm-frame {
+	background: var(--ground);
+	border-radius: 16px;
+	padding: 10px;
+}
+.fm-site .fm-frame > .fm-island {
+	background: var(--bg);
+	border-radius: 12px;
+	overflow: hidden;
+}
+.fm-site .fm-card {
+	border: 1px solid var(--line);
+	border-radius: 12px;
+}
+
+/* ---- Controls --------------------------------------------------------- */
+.fm-site .fm-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	height: 44px;
+	padding: 0 18px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	background: var(--acc);
+	color: var(--on-acc);
+	font: inherit;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	text-decoration: none;
+	transition:
+		background-color var(--dur-base),
+		border-color var(--dur-base),
+		transform var(--dur-base) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fm-btn:hover {
+		text-decoration: none;
+		background: color-mix(in srgb, var(--acc) 86%, var(--fg));
+	}
+	.fm-site .fm-btn-outline:hover {
+		background: var(--sel);
+		border-color: color-mix(in srgb, var(--mut) 60%, transparent);
+	}
+}
+.fm-site .fm-btn:active {
+	transform: scale(0.985);
+}
+.fm-site .fm-btn-outline {
+	background: transparent;
+	color: var(--fg);
+	border-color: var(--line);
+}
+.fm-site .fm-btn-sm {
+	height: 36px;
+	padding: 0 14px;
+	font-size: 14.5px;
+}
+/* After `.fm-btn-sm`, so its zero padding wins. */
+.fm-site .fm-btn-icon {
+	width: 36px;
+	padding: 0;
+}
+.fm-site .fm-btn-icon .fm-theme-icon {
+	width: 16px;
+	height: 16px;
+}
+.fm-site .fm-btn-block {
+	display: flex;
+	width: 100%;
+	height: 46px;
+}
+.fm-site .fm-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 11px;
+	border-radius: 999px;
+	border: 1px solid var(--line);
+	font-size: 13.5px;
+	color: var(--fg);
+}
+.fm-site .fm-segmented {
+	display: inline-flex;
+	gap: 4px;
+	padding: 3px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	font-size: 14px;
+}
+.fm-site .fm-segmented > a,
+.fm-site .fm-segmented > button {
+	display: inline-flex;
+	align-items: center;
+	height: 32px;
+	padding: 0 14px;
+	border: 0;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--mut);
+	font: inherit;
+	cursor: pointer;
+	text-decoration: none;
+}
+.fm-site .fm-segmented > [aria-current="page"],
+.fm-site .fm-segmented > [aria-pressed="true"] {
+	background: var(--ground);
+	color: var(--fg);
+}
+.fm-site .fm-input {
+	height: 44px;
+	padding: 0 12px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: transparent;
+	color: var(--fg);
+	font: inherit;
+	font-size: 15px;
+}
+.fm-site .fm-input::placeholder {
+	color: var(--faint);
+}
+.fm-site .fm-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 13.5px;
+	font-weight: 500;
+}
+
+/* A shell / docker snippet: the ground, a caption bar, then mono. */
+.fm-site .fm-codeblock {
+	border-radius: 12px;
+	background: var(--ground);
+	overflow: hidden;
+}
+.fm-site .fm-codeblock-bar {
+	display: flex;
+	align-items: center;
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--line);
+	font-size: 12px;
+	color: var(--mut);
+}
+.fm-site .fm-codeblock-copy {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 2px 6px;
+	margin-right: -6px;
+	border: 0;
+	border-radius: 6px;
+	background: none;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+.fm-site .fm-codeblock-copy:hover {
+	color: var(--fg);
+}
+.fm-site .fm-codeblock-copy:focus-visible {
+	outline: 2px solid var(--acc);
+	outline-offset: 1px;
+}
+.fm-site .fm-codeblock pre {
+	margin: 0;
+	padding: 18px;
+	font-family: var(--mono);
+	font-size: 13.5px;
+	line-height: 1.75;
+	letter-spacing: -0.03em;
+	white-space: pre;
+	overflow-x: auto;
+}
+.fm-site .fm-codeblock .fm-var {
+	color: var(--acc);
+}
+
+/* ---- Scale ------------------------------------------------------------ */
+/* Preferences → Display → Scale is `zoom` on `<html>`, written inline by
+   `lib/scale.ts`. It is a setting for the app, so a public page puts the
+   factor back to 1. `!important` is what lets a stylesheet win over the inline
+   value, and every length that divides by `--ui-scale` follows along.
+
+   Not on `.fm-error-page`: `__root.tsx` also draws the 404 and the error
+   page inside a workspace layout, and there the sidebar around it must keep
+   the reader's Scale. */
+:root:has(.fm-site:not(.fm-error-page)) {
+	--ui-scale: 1 !important;
+}
+
+/* ---- Header ----------------------------------------------------------- */
+/* A full-width bar on the paper's own glass. Once the page scrolls, a hairline
+   sets it off from the content passing under it.
+
+   `SiteHeader` writes `--fm-scrolled`, a spring that chases the scroll from 0
+   at the top to 1 after the first 48px, so the hairline fades in and out
+   rather than blinking at a threshold. */
+.fm-site .fm-header {
+	--s: var(--fm-scrolled, 0);
+	/* Over an ink band (`data-header-ink`, the front page's Developers) the
+	   header takes the band's palette. `--fm-ink` is a spring from 0 to 1, so
+	   every token below blends across rather than flipping. A token cannot
+	   name itself, so each mixes with the page's value, captured one level up
+	   on `.fm-site` as `--page-*`. */
+	--i: var(--fm-ink, 0);
+	--bg: color-mix(in oklab, var(--ink) calc(100% * var(--i)), var(--page-bg));
+	--fg: color-mix(
+		in oklab,
+		var(--ink-fg) calc(100% * var(--i)),
+		var(--page-fg)
+	);
+	--mut: color-mix(
+		in oklab,
+		var(--ink-mut) calc(100% * var(--i)),
+		var(--page-mut)
+	);
+	--line: color-mix(
+		in oklab,
+		var(--ink-line) calc(100% * var(--i)),
+		var(--page-line)
+	);
+	--sel: color-mix(
+		in oklab,
+		rgb(237 232 222 / 0.08) calc(100% * var(--i)),
+		var(--page-sel)
+	);
+	--acc: color-mix(
+		in oklab,
+		var(--ink-acc) calc(100% * var(--i)),
+		var(--page-acc)
+	);
+	--on-acc: color-mix(
+		in oklab,
+		var(--ink-deep) calc(100% * var(--i)),
+		var(--page-on-acc)
+	);
+	color: var(--fg);
+	position: sticky;
+	top: 0;
+	z-index: 20;
+}
+/* The glass, and the hairline under it. */
+.fm-site .fm-header::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: -1;
+	background: color-mix(in oklab, var(--bg) 86%, transparent);
+	backdrop-filter: blur(20px) saturate(160%);
+	-webkit-backdrop-filter: blur(20px) saturate(160%);
+	border-bottom: 1px solid
+		color-mix(in oklab, var(--line) calc(100% * var(--s)), transparent);
+}
+.fm-site .fm-header-inner {
+	display: flex;
+	align-items: center;
+	gap: 28px;
+	padding: 13px 24px;
+}
+/* Glass is a nicety. Asked for less, the bar is solid paper. */
+@media (prefers-reduced-transparency: reduce) {
+	.fm-site .fm-header::before {
+		background: var(--bg);
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+	}
+}
+.fm-site .fm-brand {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	color: var(--fg);
+	text-decoration: none;
+}
+.fm-site .fm-brand:hover {
+	text-decoration: none;
+}
+.fm-site .fm-brand-name {
+	font-family: var(--serif);
+	font-size: 29px;
+	line-height: 1;
+	letter-spacing: -0.01em;
+}
+/* Each link is a capsule: a wash under the pointer, and a firmer one under
+   the page you are on. The wash appears on press as well as hover, so a tap
+   answers at once. */
+.fm-site .fm-nav {
+	display: flex;
+	gap: 2px;
+	min-width: 0;
+	font-size: 14.5px;
+}
+.fm-site .fm-nav a {
+	display: inline-flex;
+	align-items: center;
+	height: 34px;
+	padding: 0 12px;
+	border-radius: 999px;
+	color: var(--mut);
+	white-space: nowrap;
+	transition:
+		background-color var(--dur-base) var(--ease-out),
+		color var(--dur-base) var(--ease-out);
+}
+.fm-site .fm-nav a:hover,
+.fm-site .fm-nav a:active {
+	color: var(--fg);
+	background: color-mix(in oklab, var(--fg) 6%, transparent);
+	text-decoration: none;
+}
+.fm-site .fm-nav a[aria-current="page"] {
+	color: var(--fg);
+	background: color-mix(in oklab, var(--fg) 9%, transparent);
+}
+.fm-site .fm-header-actions {
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-shrink: 0;
+}
+
+/* ---- Footer ----------------------------------------------------------- */
+.fm-site .fm-footer-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+	gap: 40px;
+	padding-top: 56px;
+	padding-bottom: 40px;
+}
+.fm-site .fm-footer-about {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	grid-column: span 2;
+	min-width: 0;
+}
+.fm-site .fm-footer-col {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	font-size: 14px;
+}
+.fm-site .fm-footer-col a {
+	color: var(--mut);
+}
+.fm-site .fm-footer-base {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 20px;
+	justify-content: space-between;
+	padding-top: 18px;
+	padding-bottom: 28px;
+	font-size: 13px;
+	color: var(--faint);
+}
+/* The wheat under the base line (wheat-field.tsx). Its height is the field's
+   own HEIGHT; the width grows more stalks rather than bigger ones. `pan-y`
+   keeps a vertical swipe scrolling the page on a touch screen. */
+.fm-site .fm-footer-field {
+	display: block;
+	width: 100%;
+	height: 160px;
+	touch-action: pan-y;
+}
+
+/* ---- Small screens ---------------------------------------------------- */
+@media (max-width: 760px) {
+	.fm-site .fm-sm-hide {
+		display: none !important;
+	}
+	.fm-site .fm-footer-about {
+		grid-column: auto;
+	}
+}
+
+/* The site's own movement, answered once: drop what travels (the press
+   scale), keep the color changes. */
+@media (prefers-reduced-motion: reduce) {
+	.fm-site .fm-btn {
+		transition:
+			background-color var(--dur-base),
+			border-color var(--dur-base);
+	}
+	.fm-site .fm-btn:active {
+		transform: none;
+	}
+}

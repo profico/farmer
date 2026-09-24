@@ -1,3 +1,16 @@
+import {
+	ArrowCounterClockwiseIcon,
+	CheckCircleIcon,
+	CheckIcon,
+	CircleNotchIcon,
+	CloudSlashIcon,
+	HandIcon,
+	HourglassSimpleLowIcon,
+	type Icon,
+	QuestionIcon,
+	SealCheckIcon,
+	UserSwitchIcon,
+} from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -11,9 +24,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { z } from "zod";
 
 import { AuthSplitPanel } from "#/components/auth-split-panel.tsx";
-import { Button } from "#/components/ui/button.tsx";
-import { Input } from "#/components/ui/input.tsx";
-import { Label } from "#/components/ui/label.tsx";
+import { AuthHead } from "#/components/site/auth-parts.tsx";
 import { authClient } from "#/lib/auth-client.ts";
 import { getSession } from "#/server/auth.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
@@ -144,13 +155,17 @@ export const Route = createFileRoute("/device")({
 });
 
 function DevicePage() {
-	const { brand } = Route.useRouteContext();
+	const { brand, email } = Route.useRouteContext();
 	const userCode = useLocation({
 		select: (location) => codeFromSearch(location.searchStr),
 	});
 
 	return (
-		<AuthSplitPanel tagline="Your timesheet, from the terminal." brand={brand}>
+		<AuthSplitPanel
+			kind="device"
+			brand={brand}
+			terminalCode={userCode ? formatUserCode(userCode) : null}
+		>
 			{userCode ? (
 				// Keyed on the code: a code typed into the form below is a new
 				// mount, so it is opened (bound) afresh, and the result of approving
@@ -158,32 +173,33 @@ function DevicePage() {
 				<DeviceApproval key={userCode} userCode={userCode} />
 			) : (
 				<>
-					<h1 className="h2">Connect a terminal</h1>
-					<p className="lede mt-2">
-						Enter the code that <code>farmer login</code> shows in your
-						terminal.
-					</p>
+					<AuthHead title="Enter the code from your terminal">
+						It was printed when you ran{" "}
+						<code className="fm-code">farmer login</code>.
+					</AuthHead>
 					<UserCodeForm />
+					<p className="fm-auth-fine">
+						Signed in as {email}. The terminal will act as you.
+					</p>
 				</>
 			)}
 		</AuthSplitPanel>
 	);
 }
 
-function BigCode({ userCode }: { userCode: string }) {
+/** The code as the terminal prints it, read out a character at a time. */
+function CodeText({ userCode }: { userCode: string }) {
 	return (
-		<p
-			className="mt-6 text-center font-mono text-4xl font-medium tracking-[0.18em] sm:text-5xl"
-			aria-label={`Code ${userCode.split("").join(" ")}`}
-		>
+		<span aria-label={`Code ${userCode.split("").join(" ")}`}>
 			{formatUserCode(userCode)}
-		</p>
+		</span>
 	);
 }
 
 function DeviceApproval({ userCode }: { userCode: string }) {
 	const { email } = Route.useRouteContext();
 	const posthog = usePostHog();
+	const navigate = useNavigate();
 	const [decision, setDecision] = useState<Outcome | null>(null);
 	const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
 
@@ -235,6 +251,16 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 		);
 	};
 
+	// Back to the empty form, for a new code. `href` for the reason at the top
+	// of this file.
+	const enterAnother = () => void navigate({ href: devicePath(null) });
+	// Open the same code again: a failure here was the server or the network,
+	// not the code.
+	const checkAgain = () => {
+		setDecision(null);
+		openCode(userCode);
+	};
+
 	const outcome: Outcome | null =
 		decision ??
 		opened ??
@@ -244,13 +270,13 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 		// What the server renders, and the first client render: nothing to
 		// approve until the code is bound, so no buttons yet.
 		return (
-			<>
-				<h1 className="h2">Checking the code…</h1>
-				<p className="lede mt-2">
-					Signed in as <strong className="text-foreground">{email}</strong>.
+			<div className="fm-auth-checking" aria-busy="true">
+				<CircleNotchIcon size={32} className="fm-auth-spin" aria-hidden />
+				<h1 className="fm-auth-title">Checking the code…</h1>
+				<p className="fm-auth-code-big">
+					<CodeText userCode={userCode} />
 				</p>
-				<BigCode userCode={userCode} />
-			</>
+			</div>
 		);
 	}
 
@@ -258,35 +284,47 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 		case "pending":
 			return (
 				<>
-					<h1 className="h2">Approve this sign-in?</h1>
-					<p className="lede mt-2">
-						A terminal is asking to sign in to Farmer as{" "}
-						<strong className="text-foreground">{email}</strong>. Check that it
-						shows this code:
-					</p>
-					<BigCode userCode={userCode} />
-					<p
-						role="note"
-						className="mt-6 rounded-lg border bg-muted px-4 py-3 text-sm leading-normal"
-					>
-						Approve only a code that your own terminal shows. Farmer never asks
-						you for this code by email or chat.
-					</p>
-					<div className="mt-6 grid grid-cols-2 gap-3">
-						<Button
-							variant="outline"
+					<AuthHead title="Approve this sign-in?">
+						A terminal wants to read and log time as you. Approve only a code
+						that your own terminal shows, after you ran{" "}
+						<code className="fm-code">farmer login</code>. Farmer never asks you
+						for this code by email or chat.
+					</AuthHead>
+					<div className="fm-auth-table">
+						<div>
+							<span className="fm-auth-table-label">Code</span>
+							<span className="fm-auth-code-value">
+								<CodeText userCode={userCode} />
+							</span>
+						</div>
+						<div>
+							<span className="fm-auth-table-label">Account</span>
+							{email}
+						</div>
+					</div>
+					<div className="fm-auth-row">
+						<button
+							type="button"
+							className="fm-btn fm-auth-grow"
+							disabled={busy !== null}
+							onClick={() => act("approve")}
+						>
+							<CheckIcon size={16} aria-hidden />
+							{busy === "approve" ? "Approving…" : "Approve"}
+						</button>
+						<button
+							type="button"
+							className="fm-btn fm-btn-outline"
 							disabled={busy !== null}
 							onClick={() => act("deny")}
 						>
 							{busy === "deny" ? "Denying…" : "Deny"}
-						</Button>
-						<Button disabled={busy !== null} onClick={() => act("approve")}>
-							{busy === "approve" ? "Approving…" : "Approve"}
-						</Button>
+						</button>
 					</div>
 					<button
 						type="button"
-						className="mt-4 self-start text-sm text-muted-foreground underline-offset-4 hover:underline"
+						className="fm-auth-link fm-auth-back"
+						data-tone="muted"
 						onClick={switchAccount}
 					>
 						Not {email}? Use a different account
@@ -295,50 +333,77 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 			);
 		case "approved":
 			return (
-				<Result title="Terminal approved">
+				<Result icon={CheckCircleIcon} tone="accent" title="Terminal approved">
 					Go back to your terminal. It finishes signing in on its own within a
 					few seconds, and you can close this tab.
 				</Result>
 			);
 		case "denied":
 			return (
-				<Result title="Sign-in denied">
+				<Result
+					icon={HandIcon}
+					title="Sign-in denied"
+					action={{ label: "Enter another code", onClick: enterAnother }}
+				>
 					Nothing was signed in. Go back to your terminal, which stops waiting.
 					If you did not start this sign-in, there is nothing else to do.
 				</Result>
 			);
 		case "used":
 			return (
-				<Result title="This code was already used" retry>
+				<Result
+					icon={SealCheckIcon}
+					title="This code was already used"
+					action={{ label: "Enter another code", onClick: enterAnother }}
+				>
 					It has already been approved or denied. Go back to your terminal. To
-					sign in again, run <code>farmer login</code> for a new code.
+					sign in again, run <code className="fm-code">farmer login</code> for a
+					new code.
 				</Result>
 			);
 		case "expired":
 			return (
-				<Result title="This code has expired" retry>
-					A code lasts ten minutes. Run <code>farmer login</code> in your
-					terminal again for a new one.
+				<Result
+					icon={HourglassSimpleLowIcon}
+					title="This code has expired"
+					action={{ label: "Enter another code", onClick: enterAnother }}
+				>
+					A code lasts ten minutes. Run{" "}
+					<code className="fm-code">farmer login</code> in your terminal again
+					for a new one.
 				</Result>
 			);
 		case "invalid":
 			return (
-				<Result title="Farmer doesn't know this code" retry>
+				<Result
+					icon={QuestionIcon}
+					title="Farmer doesn't know this code"
+					action={{ label: "Try again", onClick: enterAnother }}
+				>
 					Check the code in your terminal and type it again, or run{" "}
-					<code>farmer login</code> for a new one.
+					<code className="fm-code">farmer login</code> for a new one.
 				</Result>
 			);
 		case "not-yours":
 			return (
-				<Result title="This code belongs to another sign-in" retry>
+				<Result
+					icon={UserSwitchIcon}
+					title="This code belongs to another sign-in"
+					action={{ label: "Enter another code", onClick: enterAnother }}
+				>
 					A different account opened this code first, so it cannot be approved
-					as {email}. Run <code>farmer login</code> again and open the new link
-					in this browser.
+					as {email}. Run <code className="fm-code">farmer login</code> again
+					and open the new link in this browser.
 				</Result>
 			);
 		case "failed":
 			return (
-				<Result title="Couldn't check this code" retry>
+				<Result
+					icon={CloudSlashIcon}
+					tone="warn"
+					title="Couldn't check this code"
+					action={{ label: "Try again", onClick: checkAgain }}
+				>
 					{outcome.message}
 				</Result>
 			);
@@ -346,19 +411,33 @@ function DeviceApproval({ userCode }: { userCode: string }) {
 }
 
 function Result({
+	icon,
+	tone = "muted",
 	title,
-	retry = false,
+	action,
 	children,
 }: {
+	icon: Icon;
+	tone?: "accent" | "warn" | "muted";
 	title: string;
-	retry?: boolean;
+	action?: { label: string; onClick: () => void };
 	children: ReactNode;
 }) {
 	return (
 		<>
-			<h1 className="h2">{title}</h1>
-			<p className="lede mt-2">{children}</p>
-			{retry ? <UserCodeForm /> : null}
+			<AuthHead icon={icon} tone={tone} size="lg" title={title}>
+				{children}
+			</AuthHead>
+			{action ? (
+				<button
+					type="button"
+					className="fm-btn fm-btn-outline fm-auth-start"
+					onClick={action.onClick}
+				>
+					<ArrowCounterClockwiseIcon size={16} aria-hidden />
+					{action.label}
+				</button>
+			) : null}
 		</>
 	);
 }
@@ -377,23 +456,20 @@ function UserCodeForm() {
 	};
 
 	return (
-		<form className="mt-6 flex flex-col gap-3" onSubmit={submit}>
-			<div className="flex flex-col gap-1.5">
-				<Label htmlFor="device-user-code">Code from your terminal</Label>
-				<Input
-					id="device-user-code"
-					value={value}
-					onChange={(event) => setValue(event.target.value.toUpperCase())}
-					placeholder="ABCD-EFGH"
-					autoComplete="one-time-code"
-					autoCapitalize="characters"
-					spellCheck={false}
-					className="font-mono tracking-widest"
-				/>
-			</div>
-			<Button type="submit" disabled={!code}>
+		<form className="fm-auth-form" onSubmit={submit}>
+			<input
+				className="fm-auth-code-input"
+				aria-label="Code from your terminal"
+				value={value}
+				onChange={(event) => setValue(event.target.value.toUpperCase())}
+				placeholder="XXXX-XXXX"
+				autoComplete="one-time-code"
+				autoCapitalize="characters"
+				spellCheck={false}
+			/>
+			<button type="submit" className="fm-btn fm-btn-block" disabled={!code}>
 				Continue
-			</Button>
+			</button>
 		</form>
 	);
 }
