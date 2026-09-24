@@ -39,10 +39,14 @@ const FILTERS: { kind: ChangelogKind; label: string }[] = [
 	{ kind: "cli", label: "CLI" },
 ];
 
+// In UTC: the commit days are UTC calendar days (`groupCommitsByDay`), and
+// the server renders in UTC too, so a browser west of UTC must not print the
+// day before, or hydrate text that differs from the server's.
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
 	month: "short",
 	day: "numeric",
 	year: "numeric",
+	timeZone: "UTC",
 });
 
 /** The commit day's UTC calendar date, as `committedAt`'s first ten
