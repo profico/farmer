@@ -17,12 +17,15 @@ export const Route = createFileRoute("/")({
 	// So the loader resolves who the viewer is and lets the CTAs say it — see
 	// `loadSiteVisitor` — and, in single-org mode, which organization this
 	// deployment belongs to: that draws the Front Door instead of the marketing
-	// page. The release read fails soft to null, so it never breaks the page.
+	// page. The release read fails soft to null, so it never breaks the page,
+	// and it is skipped for the Front Door, which never shows it: a GitHub
+	// request there would only spend the anonymous budget.
 	loader: async () => {
-		const [visitor, release, frontDoor] = await Promise.all([
+		const frontDoorRead = getFrontDoor();
+		const [visitor, frontDoor, release] = await Promise.all([
 			loadSiteVisitor(),
-			getLatestReleaseNote(),
-			getFrontDoor(),
+			frontDoorRead,
+			frontDoorRead.then((door) => (door ? null : getLatestReleaseNote())),
 		]);
 		return { visitor, release, frontDoor };
 	},

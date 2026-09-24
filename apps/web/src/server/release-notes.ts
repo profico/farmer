@@ -17,6 +17,11 @@ import { z } from "zod";
  * hour at most, out of the anonymous budget of sixty that the CLI downloads and
  * the contributors card share. It fails soft — a refusal with nothing cached
  * is an empty list, and the Changelog says so, rather than a broken page.
+ *
+ * A 404 (the repository is missing or private) is an empty list too, but
+ * cached as an answer rather than thrown. A thrown error backs off only for
+ * `FAILURE_BACKOFF_MS`, and a read a minute would spend the anonymous budget
+ * that `cli-releases.ts` needs to reach its own 404 fallback.
  */
 
 const RELEASE_NOTES_CACHE_MS = 15 * 60 * 1000;
@@ -79,6 +84,14 @@ const readReleaseNotes = async (repo: string): Promise<ReleaseNote[]> => {
 		`/repos/${repo}/releases?per_page=30`,
 		"farmer-changelog",
 	);
+	if (response.status === 404) {
+		// Missing or private. An answer, not a failure: cached for the full
+		// TTL, so a private repository costs four requests an hour and not
+		// the sixty `FAILURE_BACKOFF_MS` would allow (see the module comment).
+		await response.body?.cancel();
+		console.warn(`[changelog] GitHub has no public ${repo} (404)`);
+		return [];
+	}
 	if (!response.ok) {
 		await response.body?.cancel();
 		throw new Error(`GitHub answered ${response.status} for the release list`);
@@ -155,6 +168,14 @@ const readCommits = async (repo: string): Promise<BranchCommit[]> => {
 		`/repos/${repo}/commits?per_page=${WEB_COMMIT_LIMIT}`,
 		"farmer-changelog",
 	);
+	if (response.status === 404) {
+		// Missing or private. An answer, not a failure: cached for the full
+		// TTL, so a private repository costs four requests an hour and not
+		// the sixty `FAILURE_BACKOFF_MS` would allow (see the module comment).
+		await response.body?.cancel();
+		console.warn(`[changelog] GitHub has no public ${repo} (404)`);
+		return [];
+	}
 	if (!response.ok) {
 		await response.body?.cancel();
 		throw new Error(`GitHub answered ${response.status} for the commit list`);
@@ -172,6 +193,12 @@ const readCommits = async (repo: string): Promise<BranchCommit[]> => {
 };
 
 const commitCache = cachedRead<BranchCommit[]>(RELEASE_NOTES_CACHE_MS);
+
+/** Clears both caches. Tests only. */
+export const clearReleaseNotesCacheForTests = (): void => {
+	cache.clear();
+	commitCache.clear();
+};
 
 /**
  * Every recent commit on the default branch, with the one this server runs
