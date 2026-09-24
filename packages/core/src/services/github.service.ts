@@ -186,10 +186,35 @@ export type ScannedCommit = {
 	url: string;
 };
 
+/** A token read already running for a user, keyed by user id — the account is
+ *  per person, not per organization.
+ *
+ *  A GitHub user token dies after 8 hours, and the refresh that replaces it
+ *  SPENDS a single-use refresh token (see `refreshGithubToken` in
+ *  `auth/index.ts`). So two callers arriving together just after the expiry
+ *  send the same refresh token twice, and GitHub refuses the second: the
+ *  automation sweep beside a dashboard load, or simply two browser tabs.
+ *
+ *  The loser no longer damages the row, but it still read nothing and
+ *  `connectionStatus` still has to call that `needsReconnect` — the reconnect
+ *  banner, in front of somebody whose connection is fine. Sharing the flight
+ *  makes the second caller wait for the first token rather than race it. */
+const tokenReads = new Map<string, Promise<string | null>>();
+
 // The user's OAuth token is used ONLY for identity — resolving their GitHub
 // login (to filter commits by author) and enumerating installations they may
 // connect. All repo/commit reads go through installation tokens instead.
-const getAccessToken = async (ctx: Ctx): Promise<string | null> => {
+const getAccessToken = (ctx: Ctx): Promise<string | null> => {
+	const running = tokenReads.get(ctx.userId);
+	if (running) return running;
+	const work = readAccessToken(ctx).finally(() => {
+		if (tokenReads.get(ctx.userId) === work) tokenReads.delete(ctx.userId);
+	});
+	tokenReads.set(ctx.userId, work);
+	return work;
+};
+
+const readAccessToken = async (ctx: Ctx): Promise<string | null> => {
 	// No linked account is the ordinary answer for most people, and better-auth
 	// throws "Account not found" for it — which logged a full stack trace as an
 	// error on every such call. Ask the table first; a throw below is then a real
