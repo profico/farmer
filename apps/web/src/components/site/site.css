@@ -384,8 +384,12 @@ html:has(.fm-site) {
 /* Preferences → Display → Scale is `zoom` on `<html>`, written inline by
    `lib/scale.ts`. It is a setting for the app, so a public page puts the
    factor back to 1. `!important` is what lets a stylesheet win over the inline
-   value, and every length that divides by `--ui-scale` follows along. */
-:root:has(.fm-site) {
+   value, and every length that divides by `--ui-scale` follows along.
+
+   Not on `.fm-error-page`: `__root.tsx` also draws the 404 and the error
+   page inside a workspace layout, and there the sidebar around it must keep
+   the reader's Scale. */
+:root:has(.fm-site:not(.fm-error-page)) {
 	--ui-scale: 1 !important;
 }
 
