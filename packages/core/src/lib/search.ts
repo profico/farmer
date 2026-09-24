@@ -1,6 +1,6 @@
 /**
  * Folds text for a list filter: case and accents both drop out, so
- * "vasiljevic" finds "Vasiljević". A Harvest import can leave both spellings
+ * "primjeric" finds "Primjerić". A Harvest import can leave both spellings
  * of one name in the same workspace, and an accent-exact filter finds half.
  */
 export const foldForSearch = (text: string) =>

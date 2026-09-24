@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { eq } from "drizzle-orm";
 
+import { googleCredentials } from "../auth/sign-in-methods";
 import { db } from "../db";
 import { account, organization, user } from "../db/schema/auth";
 import { createTestDb, type TestDb } from "../test/harness";
@@ -80,21 +81,27 @@ afterAll(async () => {
 });
 
 describe("signInMethods", () => {
+	// From the environment when it sets Google, as a developer's `.env` does.
+	const configured = googleCredentials() !== null;
+
 	test("reports Google and a password from the caller's own rows", async () => {
 		expect(await accountService.signInMethods(ctx(GOOGLE_ONLY))).toEqual({
 			hasPassword: false,
-			google: { linked: true },
+			google: { linked: true, configured },
+			providers: [],
 		});
 		expect(await accountService.signInMethods(ctx(BOTH))).toEqual({
 			hasPassword: true,
-			google: { linked: true },
+			google: { linked: true, configured },
+			providers: [],
 		});
 	});
 
 	test("integration connections are not sign-in methods", async () => {
 		expect(await accountService.signInMethods(ctx(INTEGRATIONS_ONLY))).toEqual({
 			hasPassword: false,
-			google: { linked: false },
+			google: { linked: false, configured },
+			providers: [],
 		});
 	});
 });

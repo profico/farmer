@@ -11,6 +11,9 @@ Bun workspaces (`apps/*`, `packages/*`) orchestrated by Turborepo. Run from repo
 
 ```bash
 bun install                 # installs all workspaces
+bun run setup               # .env from .env.example (new BETTER_AUTH_SECRET), the workspace .env
+                            # links, migrations, built-in tasks, demo data once an org exists.
+                            # Run after `docker compose up -d`; safe to run again (scripts/setup.ts)
 bun run dev                 # turbo: starts apps/web (vite dev --port 3000, falls back to 3001+ if occupied — check the log's "Local:" line, don't assume 3000)
 bun run build               # turbo: builds all workspaces
 bun run test                # turbo: runs the bun test suites of packages/core, apps/cli and apps/web
@@ -33,7 +36,8 @@ bun run auth:generate        # regenerates src/db/schema/auth.ts from src/auth/i
                               # better-auth plugin config, then db:generate + db:migrate.
 bun run db:seed-tasks        # site-scoped built-in tasks + each org's starter tasks. Idempotent. `vite dev`
                               # (the `farmer:seed-site-tasks` plugin) and the Docker entrypoint both run it.
-bun run db:seed              # demo data: one client/project/task. NOT idempotent, dev only.
+bun run db:seed              # demo data: clients, projects, assignments, an hour fund. Dev only.
+                              # A second run changes nothing. Needs an organization (sign up first).
 bun run db:seed-assistant-ui # an assistant thread holding every renderer construct plus a suspended
                               # approval, so no model call is spent. Idempotent by title, dev only.
                               # Optional args: [org-slug] [user-email].

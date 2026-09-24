@@ -281,7 +281,7 @@ const nameOr = async (
 
 // How `list_members` decides two people share a name: the search box's fold
 // (case, accents, surrounding space), plus runs of inner space. None of them
-// tells anyone apart — "Ive Vasiljević" and "Ive Vasiljevic" are one name to
+// tells anyone apart — "Tin Primjerić" and "Tin Primjeric" are one name to
 // the person asking, who types it without the accent.
 const normalizedName = (name: string) =>
 	foldForSearch(name).replace(/\s+/g, " ");

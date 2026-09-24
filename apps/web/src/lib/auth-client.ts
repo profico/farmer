@@ -36,8 +36,11 @@ export const authClient = createAuthClient({
 	],
 });
 
-// `signUp` is here for the development-only email + password form on /login
-// (packages/core/src/lib/dev-auth.ts). In production the endpoint behind it does
-// not exist: Google is the only identity, and its callback creates the user on
-// first sign-in, so there is nothing for a sign-up call to do.
+// `signUp` is here for the email + password form on /login: the development
+// form (packages/core/src/lib/dev-auth.ts), and in production the form that
+// creates the instance's first account. The server refuses every other
+// production sign-up; see `emailAndPassword` in packages/core/src/auth. A
+// provider's callback creates the user on first sign-in, so the provider
+// paths never call it. `genericOAuthClient` above gives `signIn.oauth2`, the
+// button for each OpenID Connect source.
 export const { useSession, signIn, signUp, signOut } = authClient;

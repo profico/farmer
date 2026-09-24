@@ -22,12 +22,14 @@ import { createFileRoute } from "@tanstack/react-router";
  * where a whole URL is already carried safely:
  *
  *     /api/mcp-login?<oauth query>
- *       -> /api/login?redirect=<encoded "/api/auth/mcp/authorize?<oauth query>">
+ *       -> /login?redirect=<encoded "/api/auth/mcp/authorize?<oauth query>">
  *
- * `/api/login` already accepts only a same-site absolute path, already rejects
- * `//evil.com`, and already short-circuits straight to the destination when a
- * session exists — so a person already signed in never sees Google at all, and
- * one who is not comes back here through the callback with a cookie.
+ * `/login`, not `/api/login`: with more than one sign-in provider the person
+ * has to choose, and `/login` still bounces straight to Google when Google is
+ * the only way in. Both accept only a same-site absolute path as `redirect`
+ * and reject `//evil.com`. The person comes back here through the provider's
+ * callback with a cookie. One who is already signed in never reaches this
+ * route: the plugin sends only an unauthenticated authorize request here.
  */
 export const Route = createFileRoute("/api/mcp-login")({
 	server: {
@@ -39,7 +41,7 @@ export const Route = createFileRoute("/api/mcp-login")({
 				// about WHICH, so a client sending one better-auth grows support for
 				// later still arrives intact.
 				const authorize = `/api/auth/mcp/authorize${url.search}`;
-				const target = `/api/login?redirect=${encodeURIComponent(authorize)}`;
+				const target = `/login?redirect=${encodeURIComponent(authorize)}`;
 				return Response.redirect(new URL(target, url.origin).toString(), 302);
 			},
 		},

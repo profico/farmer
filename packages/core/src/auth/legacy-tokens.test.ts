@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { account, user } from "../db/schema/auth";
+import { setInstanceSettingsForTests } from "../lib/instance-settings";
 import { createTestDb, present, type TestDb } from "../test/harness";
 import { auth } from "./index";
 import { sealLegacyOAuthTokens } from "./legacy-tokens";
@@ -36,6 +37,13 @@ const open = async (value: string | null) =>
 	});
 
 beforeAll(async () => {
+	// better-auth reads a GitHub token only through a registered GitHub
+	// provider, and the auth instance registers one only when the settings
+	// hold its credentials. CI has none, so pin placeholder ones here.
+	setInstanceSettingsForTests({
+		GITHUB_CLIENT_ID: "test-client-id",
+		GITHUB_CLIENT_SECRET: "test-client-secret",
+	});
 	harness = await createTestDb();
 	await db.insert(user).values({
 		id: USER,
@@ -58,6 +66,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+	setInstanceSettingsForTests(undefined);
 	await harness.close();
 });
 

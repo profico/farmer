@@ -206,9 +206,15 @@ export const getDefaultOrgSlugForSession = createServerFn({
 // which only checks when `requireEmailVerificationOnInvitation` is set. This
 // app has no verification flow, so every password user would get a 403 on the
 // one screen whose entire job is to show them their way in.
+//
+// The address must be verified all the same (`mayClaimInvitation`): an
+// invitation is matched by address alone, and an OpenID Connect source can
+// hand out an address it never checked. Accepting refuses the same person.
 export const listMyPendingInvitations = createServerFn({ method: "GET" })
 	.middleware([sessionMiddleware])
 	.handler(async ({ context }) => {
+		const { mayClaimInvitation } = await import("@farmer/core/auth");
+		if (!mayClaimInvitation(context.session.user.emailVerified)) return [];
 		const email = context.session.user.email.toLowerCase();
 		const { db } = await import("@farmer/core/db");
 		const { invitation, organization } =

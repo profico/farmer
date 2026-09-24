@@ -3,19 +3,22 @@ import { createFileRoute } from "@tanstack/react-router";
 import { safeRedirectPath } from "#/lib/org-redirect.ts";
 
 /**
- * The entire sign-in surface.
+ * The Google leg of sign-in.
  *
- * Google is the only identity the app accepts (see packages/core/src/auth),
- * so there is nothing to choose and no credentials to type — "log in" is a
- * redirect, not a page. This route asks better-auth for the Google authorize
- * URL and 302s to it, carrying the OAuth state cookie better-auth just minted
- * on the same response.
+ * This route asks better-auth for the Google authorize URL and 302s to it,
+ * carrying the OAuth state cookie better-auth just minted on the same
+ * response. `/login` sends a visitor here without drawing anything when
+ * Google is the only way in, and its Google button links here otherwise.
  *
  * A server route rather than a client-side `authClient.signIn.social()` call
  * because the bounce then costs no JavaScript: an unauthenticated document
- * request reaches Google without the app ever hydrating. `/login` exists only
- * to funnel router-level redirects (and Links) here and to render OAuth
- * errors — it never shows a form.
+ * request reaches Google without the app ever hydrating.
+ *
+ * Google is not always configured (see `signInProviders` in
+ * packages/core/src/auth/sign-in-methods.ts). Without it this sends the
+ * visitor to `/login`, with the same parameters, which shows whatever else
+ * there is. `/login` sends a visitor here only when Google IS configured, so
+ * the two cannot bounce between each other.
  */
 export const Route = createFileRoute("/api/login")({
 	server: {
@@ -43,12 +46,16 @@ export const Route = createFileRoute("/api/login")({
 
 				const absolute = (path: string) => new URL(path, url.origin).toString();
 
-				const { auth } = await import("@farmer/core/auth");
+				const { auth, signInProviders } = await import("@farmer/core/auth");
 
 				// Already signed in — a stale /login link, or a second tab. Send them
 				// where they were going rather than back through Google.
 				const session = await auth.api.getSession({ headers: request.headers });
 				if (session) return Response.redirect(absolute(callbackURL), 302);
+
+				if (!signInProviders().some((provider) => provider.id === "google")) {
+					return Response.redirect(absolute(`/login${url.search}`), 302);
+				}
 
 				// `asResponse` is what makes this work: the endpoint returns 200 with
 				// the authorize URL in its body and the OAuth state/PKCE cookie in its

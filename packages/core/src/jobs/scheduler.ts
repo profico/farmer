@@ -47,6 +47,7 @@
  * lock or run exactly one worker container at that point.
  */
 
+import { refreshInstanceSettings } from "../services/instance-settings.service";
 import { runAutomationSyncOnce } from "./automation-sync";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
@@ -240,6 +241,10 @@ const startIntervalScheduler = (
 		}
 		running = true;
 		try {
+			// A job reads the instance's settings synchronously (the object
+			// store, the mail transport, the Slack credentials), so the snapshot
+			// is brought up to date first. See `lib/instance-settings.ts`.
+			await refreshInstanceSettings();
 			const summary = await config.run(logger);
 			logger.info(`${config.name}: ${summary}`);
 		} catch (error) {

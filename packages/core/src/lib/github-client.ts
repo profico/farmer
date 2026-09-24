@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { externalFetch } from "./http";
+import { setting } from "./instance-settings";
 import { UserFacingError } from "./user-facing-error";
 
 const GITHUB_API = "https://api.github.com";
@@ -22,19 +23,41 @@ const githubHeaders = (token: string) => ({
 const b64url = (input: Buffer | string) =>
 	(Buffer.isBuffer(input) ? input : Buffer.from(input)).toString("base64url");
 
-let cachedAppJwt: { token: string; expiresAt: number } | null = null;
+/**
+ * The App's private key as PEM. The setting takes the PEM file as pasted on the
+ * Infrastructure page, or its base64 encoding, which is what an environment
+ * variable held before the page existed (a PEM has line breaks, and not every
+ * deploy tool keeps them in a variable).
+ */
+export const appPrivateKeyPem = (stored: string): string => {
+	const trimmed = stored.trim();
+	if (trimmed.startsWith("-----BEGIN")) return trimmed;
+	return Buffer.from(trimmed, "base64").toString("utf8");
+};
+
+// Keyed by the App ID and the key it was signed with, so a change on the page
+// is not answered with a token signed by the App that was configured before.
+let cachedAppJwt: {
+	credentials: string;
+	token: string;
+	expiresAt: number;
+} | null = null;
 
 const appJwt = (): string => {
-	// Reuse until 1min before expiry to avoid re-signing on every call.
-	if (cachedAppJwt && cachedAppJwt.expiresAt - 60_000 > Date.now()) {
-		return cachedAppJwt.token;
-	}
-	const appId = process.env.GITHUB_APP_ID;
-	const pemB64 = process.env.GITHUB_APP_PRIVATE_KEY;
-	if (!appId || !pemB64) {
+	const appId = setting("GITHUB_APP_ID");
+	const storedKey = setting("GITHUB_APP_PRIVATE_KEY");
+	if (!appId || !storedKey) {
 		throw new Error("GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY not configured");
 	}
-	const pem = Buffer.from(pemB64, "base64").toString("utf8");
+	const credentials = `${appId}\n${storedKey}`;
+	// Reuse until 1min before expiry to avoid re-signing on every call.
+	if (
+		cachedAppJwt?.credentials === credentials &&
+		cachedAppJwt.expiresAt - 60_000 > Date.now()
+	) {
+		return cachedAppJwt.token;
+	}
+	const pem = appPrivateKeyPem(storedKey);
 	const now = Math.floor(Date.now() / 1000);
 	// iat backdated 60s for clock skew; exp is the 10min max GitHub allows.
 	const payload = { iat: now - 60, exp: now + 9 * 60, iss: appId };
@@ -45,7 +68,7 @@ const appJwt = (): string => {
 		crypto.createSign("RSA-SHA256").update(signingInput).sign(pem),
 	);
 	const token = `${signingInput}.${signature}`;
-	cachedAppJwt = { token, expiresAt: (now + 9 * 60) * 1000 };
+	cachedAppJwt = { credentials, token, expiresAt: (now + 9 * 60) * 1000 };
 	return token;
 };
 
@@ -128,7 +151,7 @@ export const getInstallationToken = async (
  *  without them, so a caller that has a better answer than a thrown error
  *  asks first. */
 export const isGithubAppConfigured = (): boolean =>
-	Boolean(process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY);
+	Boolean(setting("GITHUB_APP_ID") && setting("GITHUB_APP_PRIVATE_KEY"));
 
 // Uninstall the App from the account this installation belongs to — the App
 // JWT, never an installation token, because this authenticates AS the App and
@@ -166,7 +189,7 @@ export const deleteInstallation = async (
  *  credentials: an App may be configured with no webhook secret, and the
  *  endpoint has to say which of the two is missing. */
 export const isGithubWebhookConfigured = (): boolean =>
-	Boolean(process.env.GITHUB_WEBHOOK_SECRET);
+	Boolean(setting("GITHUB_WEBHOOK_SECRET"));
 
 /** Whether a delivery really came from GitHub: HMAC-SHA256 of the RAW body
  *  under the App's webhook secret, as `X-Hub-Signature-256`.
@@ -180,7 +203,7 @@ export const verifyWebhookSignature = (
 	body: string,
 	signature: string | null,
 ): boolean => {
-	const secret = process.env.GITHUB_WEBHOOK_SECRET;
+	const secret = setting("GITHUB_WEBHOOK_SECRET");
 	if (!secret || !signature) return false;
 	const expected = `sha256=${crypto
 		.createHmac("sha256", secret)
@@ -203,13 +226,16 @@ const repoReadTokenCache = new Map<
 //
 // It is the App's installation token, narrowed when it is minted: `repositories`
 // and `permissions` in the request body limit it to this repository and to
-// Contents: read, whatever else the installation reaches. The CLI download
-// route is its only caller, and it has no reason to hold a token that also
-// reads pull requests on every repository in the organization.
+// Contents: read, whatever else the installation reaches.
 //
 // Not `getInstallationToken`, because that cache is keyed by installation id
 // and holds the full token the commit sync needs. A narrowed token stored
 // there would starve the sync, and the full one stored here would widen this.
+//
+// This is a FALLBACK, used only when an anonymous read (`lib/github-public.ts`)
+// answers 404: the releases repository is currently private, so the CLI
+// download route and the contributors card retry with this once the App is
+// configured. Remove it once the repository is public for good.
 export const getRepoContentsReadToken = async (
 	owner: string,
 	repo: string,

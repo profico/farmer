@@ -15,6 +15,7 @@ import {
 	Link,
 	useLocation,
 	useNavigate,
+	useRouteContext,
 	useRouter,
 } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
@@ -51,7 +52,7 @@ import {
 import { useUnfiledCount } from "#/hooks/use-unfiled-count.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { stopImpersonating } from "#/lib/impersonation.ts";
-import { GITHUB_NEW_ISSUE_URL } from "#/lib/links.ts";
+import { githubLinks } from "#/lib/links.ts";
 import { easeOut } from "#/lib/motion.ts";
 import {
 	setNavCollapsed,
@@ -149,6 +150,10 @@ export function AppSidebar({
 	 */
 	impersonating?: string | null;
 }) {
+	const newIssueUrl = useRouteContext({
+		from: "/$orgSlug",
+		select: (context) => githubLinks(context.repository).newIssue,
+	});
 	const pathname = useLocation({ select: (location) => location.pathname });
 	const searchStr = useLocation({ select: (location) => location.searchStr });
 	const navigate = useNavigate();
@@ -365,7 +370,7 @@ export function AppSidebar({
 					params={{ orgSlug }}
 					aria-current={isActive ? "page" : undefined}
 					className={cn(
-						"relative flex items-center rounded-lg px-2.5 py-1.5 text-base ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
+						"relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-base ring-sidebar-ring outline-hidden transition-colors duration-(--dur-base) focus-visible:ring-2",
 						isActive
 							? "font-medium text-foreground"
 							: "text-sidebar-foreground hover:text-foreground",
@@ -375,9 +380,7 @@ export function AppSidebar({
 					{isActive && (
 						<ActiveFill from={panelFillFrom} className="rounded-lg" />
 					)}
-					{/* No icon, unlike the nav: the nav already carries the glyph for the
-					    section these pages belong to, and a second column of them at this
-					    width leaves the labels nowhere to go. */}
+					<item.icon className="relative size-4 shrink-0" />
 					<span className="relative min-w-0 truncate">{item.label}</span>
 				</Link>
 			</li>
@@ -512,7 +515,7 @@ export function AppSidebar({
 								<TooltipTrigger
 									render={
 										<a
-											href={GITHUB_NEW_ISSUE_URL}
+											href={newIssueUrl}
 											target="_blank"
 											rel="noreferrer"
 											aria-label="Report a problem"

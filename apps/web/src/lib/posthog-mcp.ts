@@ -11,6 +11,7 @@
 // them. `packages/core` still holds no PostHog import and no MCP SDK import —
 // this file sits in `apps/web` beside the route that defers it.
 
+import { settingEnabled } from "@farmer/core/lib/instance-settings";
 import type { Ctx } from "@farmer/core/services";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
@@ -27,7 +28,7 @@ import { getPostHogClient } from "./posthog-server";
  *  `$mcp_parameters` is a tool's arguments and `$mcp_response` is the rows it
  *  answered with, so on this surface the content is the timesheet itself. */
 const captureContent = (): boolean =>
-	process.env.POSTHOG_AI_CAPTURE_CONTENT === "true";
+	settingEnabled("POSTHOG_AI_CAPTURE_CONTENT");
 
 /** `$mcp_parameters`, as the SDK builds it: the JSON-RPC envelope, and the
  *  tool's own arguments nested under `request.params.arguments`.

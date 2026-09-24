@@ -11,8 +11,8 @@ import {
 function fields(overrides: Partial<ImportKeyFields> = {}): ImportKeyFields {
 	return {
 		date: "2024-01-02",
-		firstName: "Mateo",
-		lastName: "Perak",
+		firstName: "Probo",
+		lastName: "Testić",
 		client: "Profico",
 		project: "Internal",
 		projectCode: "PRINT",
@@ -25,16 +25,16 @@ function fields(overrides: Partial<ImportKeyFields> = {}): ImportKeyFields {
 
 describe("personDayKey", () => {
 	test("is stable across calls", () => {
-		const a = personDayKey("2024-01-02", "Mateo", "Perak");
-		const b = personDayKey("2024-01-02", "Mateo", "Perak");
+		const a = personDayKey("2024-01-02", "Probo", "Testić");
+		const b = personDayKey("2024-01-02", "Probo", "Testić");
 		expect(a).toBe(b);
 	});
 
 	test("differs by date, first name or last name", () => {
-		const base = personDayKey("2024-01-02", "Mateo", "Perak");
-		expect(personDayKey("2024-01-03", "Mateo", "Perak")).not.toBe(base);
-		expect(personDayKey("2024-01-02", "Marina", "Perak")).not.toBe(base);
-		expect(personDayKey("2024-01-02", "Mateo", "Meštrović")).not.toBe(base);
+		const base = personDayKey("2024-01-02", "Probo", "Testić");
+		expect(personDayKey("2024-01-03", "Probo", "Testić")).not.toBe(base);
+		expect(personDayKey("2024-01-02", "Marina", "Testić")).not.toBe(base);
+		expect(personDayKey("2024-01-02", "Probo", "Meštrović")).not.toBe(base);
 	});
 });
 

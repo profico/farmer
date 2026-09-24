@@ -3,12 +3,17 @@ import {
 	BuildingsIcon,
 	CalendarHeartIcon,
 	CaretLeftIcon,
+	EnvelopeSimpleIcon,
 	GearSixIcon,
+	HardDrivesIcon,
 	HashIcon,
 	PlugIcon,
 	PlugsConnectedIcon,
+	PuzzlePieceIcon,
 	ShieldCheckIcon,
+	SignInIcon,
 	TagIcon,
+	ToggleRightIcon,
 	UploadSimpleIcon,
 } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
@@ -183,9 +188,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 	},
 	// The deployment's own settings, which are not this workspace's. Its own
 	// group rather than a row under Workspace, because the data behind it is the
-	// instance's — `user.role`, one value per person for the whole deployment —
-	// and most people never see the group at all. Issue #75's further entries
-	// (email, S3, the OAuth sources) join it here.
+	// instance's — `user.role`, and the `instance_setting` rows, one value for
+	// the whole deployment — and most people never see the group at all. The
+	// five configuration pages after Platform admins are issue #75's, one per
+	// section of `INSTANCE_SETTINGS`, and live under `settings/instance/`.
 	{
 		item: {
 			label: "Platform admins",
@@ -195,6 +201,59 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
 		group: "infrastructure",
 		description:
 			"Who operates this deployment, and who may impersonate any user in it.",
+		show: (audience) => audience.isPlatformAdmin,
+	},
+	{
+		item: {
+			label: "Sign-in",
+			to: "/$orgSlug/settings/instance/sign-in",
+			icon: SignInIcon,
+		},
+		group: "infrastructure",
+		description:
+			"Who may create an account, and Google and OpenID Connect sign-in.",
+		show: (audience) => audience.isPlatformAdmin,
+	},
+	{
+		item: {
+			label: "Email",
+			to: "/$orgSlug/settings/instance/email",
+			icon: EnvelopeSimpleIcon,
+		},
+		group: "infrastructure",
+		description: "How invitations and reminders are sent: Resend or SMTP.",
+		show: (audience) => audience.isPlatformAdmin,
+	},
+	{
+		item: {
+			label: "Storage",
+			to: "/$orgSlug/settings/instance/storage",
+			icon: HardDrivesIcon,
+		},
+		group: "infrastructure",
+		description: "The S3-compatible store that holds uploaded files.",
+		show: (audience) => audience.isPlatformAdmin,
+	},
+	{
+		item: {
+			label: "Integration apps",
+			to: "/$orgSlug/settings/instance/integrations",
+			icon: PuzzlePieceIcon,
+		},
+		group: "infrastructure",
+		description:
+			"The GitHub apps and the Slack app that every workspace connects through.",
+		show: (audience) => audience.isPlatformAdmin,
+	},
+	{
+		item: {
+			label: "Features",
+			to: "/$orgSlug/settings/instance/features",
+			icon: ToggleRightIcon,
+		},
+		group: "infrastructure",
+		description:
+			"The assistant, MCP and CLI switches, web push and PostHog, for every workspace.",
 		show: (audience) => audience.isPlatformAdmin,
 	},
 ];

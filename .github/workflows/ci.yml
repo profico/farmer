@@ -58,20 +58,73 @@ jobs:
       - name: Build
         run: bun run build
 
+  # Every new commit, scanned for credentials before it is merged. The
+  # repository is public, so a secret that reaches main is published.
+  #
+  # TruffleHog's action scans only the commits this event brings: a pull
+  # request's commits, or a push's. `--only-verified` keeps it quiet: a finding
+  # fails the job only when TruffleHog has checked, against the provider, that
+  # the credential works. The test fixtures hold key-shaped strings on purpose,
+  # and none of them works. It needs no secret, so it runs the same on a fork's
+  # pull request. A full-history scan is a one-off, not a CI job (issue #75).
+  secrets:
+    name: Scan new commits for secrets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The action diffs the event's base and head, so both must be here.
+          fetch-depth: 0
+
+      - name: TruffleHog
+        uses: trufflesecurity/trufflehog@v3.97.6
+        with:
+          version: 3.97.6
+          extra_args: --only-verified
+
+  # Whether this repository deploys at all. A job's `if` cannot read a secret,
+  # so this job reads it into an output. A fork has no COOLIFY_WEBHOOK_URL, and
+  # then the image is not built or pushed either: nothing would pull it.
+  # Upstream, the secret is set and the deploy runs as before.
+  deploy-gate:
+    name: Check the deploy target
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Is COOLIFY_WEBHOOK_URL set?
+        id: check
+        env:
+          WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+        run: |
+          if [ -n "$WEBHOOK_URL" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::COOLIFY_WEBHOOK_URL is not set, so this repository does not deploy."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # Build the production image here instead of on the Coolify host — that host
   # builds --no-cache on a shared arm64 box, which has corrupted tarballs and
   # hung installs (see the retry loops in the Dockerfile). Coolify's app is a
-  # "Docker Image" resource pointing at ghcr.io/profico/farmer:latest; the last
-  # step just tells it to pull and restart.
+  # "Docker Image" resource pointing at ghcr.io/<owner>/<repository>:latest;
+  # the last step just tells it to pull and restart.
+  #
+  # Only on a push to main, and only where `deploy-gate` found the Coolify
+  # secret. A pull request never deploys, from a fork or not.
   #
   # ubuntu-24.04-arm is a native arm64 runner, matching the Coolify host's arch
-  # with no QEMU. If your plan doesn't provide arm runners for private repos,
-  # switch runs-on to ubuntu-latest and add docker/setup-qemu-action@v3 before
-  # buildx — same result, much slower build.
+  # with no QEMU. If your plan doesn't provide arm runners, switch runs-on to
+  # ubuntu-latest and add docker/setup-qemu-action@v3 before buildx — same
+  # result, much slower build.
   deploy:
     name: Build image, deploy to Coolify
-    needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci, deploy-gate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy-gate.outputs.enabled == 'true'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -120,8 +173,4 @@ jobs:
           WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
           API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
         run: |
-          if [ -z "$WEBHOOK_URL" ]; then
-            echo "::notice::COOLIFY_WEBHOOK_URL secret not set — image pushed, deploy trigger skipped"
-            exit 0
-          fi
           curl --fail-with-body -sS -H "Authorization: Bearer $API_TOKEN" "$WEBHOOK_URL"

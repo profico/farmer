@@ -1,5 +1,7 @@
+import { settingEnabled } from "./instance-settings";
+
 /**
- * The assistant's kill switch — one env var, default on.
+ * The assistant's kill switch — one instance setting, default on.
  *
  * `ASSISTANT_ENABLED=false` takes the whole feature away: the nav row, the
  * page, the streaming endpoint, the settings section, and every service call
@@ -15,14 +17,15 @@
  *   - A missing `assistantSettings` row is "never connected".
  *   - This is the operator saying the feature itself is not to run here.
  *
- * A plain env var rather than a `VITE_` one, for the same reason as
- * `SINGLE_ORG_SLUG`: `VITE_` variables bake at build time and the Dockerfile
- * builds one image meant to run under several environments. The client learns
- * the flag from `getPublicAppConfig` instead.
+ * An instance setting (`lib/instance-settings.ts`): the environment wins, then
+ * the Infrastructure page, then the default, "true". Never a `VITE_` variable:
+ * those bake at build time and the Dockerfile builds one image meant to run
+ * under several environments. The client learns the flag from
+ * `getPublicAppConfig` instead.
  *
- * Read per call rather than captured at module scope, matching
- * `jobs/scheduler.ts` — it makes the flag testable, and it means a process that
- * reads it early doesn't pin the answer for one that reads it late.
+ * Read per call rather than captured at module scope: a change on the page
+ * reaches a running process within the settings refresh, and a test can flip
+ * it.
  */
 export const isAssistantEnabled = (): boolean =>
-	(process.env.ASSISTANT_ENABLED ?? "true") === "true";
+	settingEnabled("ASSISTANT_ENABLED");
