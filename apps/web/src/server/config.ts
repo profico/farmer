@@ -3,10 +3,11 @@ import { createServerFn } from "@tanstack/react-start";
 /**
  * Deployment shape the client is allowed to know, resolved server-side.
  *
- * `SINGLE_ORG_SLUG` is a plain env var, not a `VITE_` one, on purpose: `VITE_`
- * variables are baked at build time, and the Dockerfile builds one image that
- * is meant to run under different environments. So the mode is read on the
- * server, per request, and handed to the client through this function.
+ * `SINGLE_ORG_SLUG` and the feature switches are instance settings
+ * (`@farmer/core/lib/instance-settings`), never `VITE_` variables: those are
+ * baked at build time, and the Dockerfile builds one image that is meant to
+ * run under different environments. So each is read on the server, per
+ * request, and handed to the client through this function.
  */
 export type PublicAppConfig = {
 	singleOrgMode: boolean;
@@ -66,6 +67,18 @@ export type PublicAppConfig = {
 	 */
 	devAuth: boolean;
 	/**
+	 * The sign-in buttons `/login` draws: Google when it has credentials, then
+	 * each OpenID Connect source switched on in Infrastructure → Sign-in
+	 * (`signInProviders` in `packages/core/src/auth/sign-in-methods.ts`). An id
+	 * and a label each, never a secret. Empty means no provider is configured.
+	 */
+	signInProviders: { id: string; name: string }[];
+	/**
+	 * Whether Google is one of them. `/login` bounces straight to Google, with
+	 * no page, when it is the only way in; see `routes/login.tsx`.
+	 */
+	googleSignIn: boolean;
+	/**
 	 * Whether this deployment has an object store for uploaded project icons
 	 * and organization logos (`S3_*`, `packages/core/src/lib/storage.ts`).
 	 *
@@ -83,30 +96,43 @@ export type PublicAppConfig = {
 	 * has not been claimed yet: the first person to sign in creates it.
 	 */
 	org: { slug: string; name: string; logo: string | null } | null;
+	/**
+	 * The GitHub repository this deployment is built from, as `owner/name`
+	 * (`@farmer/core/lib/source-repository`). The "Report a problem" and
+	 * "View on GitHub" links read it, so a fork links to itself.
+	 */
+	repository: string;
 };
 
 export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 	async (): Promise<PublicAppConfig> => {
 		const [
+			{ signInProviders },
 			{ isSingleOrgMode, findSingleOrg },
 			{ isAssistantEnabled },
 			{ isMcpEnabled },
 			{ isCliEnabled },
 			{ isDevAuthEnabled },
 			{ isStorageEnabled },
+			{ sourceRepository, DEFAULT_SOURCE_REPOSITORY },
 		] = await Promise.all([
+			import("@farmer/core/auth"),
 			import("@farmer/core/lib/single-org"),
 			import("@farmer/core/lib/assistant-flag"),
 			import("@farmer/core/lib/mcp-flag"),
 			import("@farmer/core/lib/cli-flag"),
 			import("@farmer/core/lib/dev-auth"),
 			import("@farmer/core/lib/storage"),
+			import("@farmer/core/lib/source-repository"),
 		]);
 		const assistantEnabled = isAssistantEnabled();
 		const mcpEnabled = isMcpEnabled();
 		const cliEnabled = isCliEnabled();
 		const devAuth = isDevAuthEnabled();
 		const uploadsEnabled = isStorageEnabled();
+		const providers = signInProviders();
+		const googleSignIn = providers.some((provider) => provider.id === "google");
+		const repository = sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY;
 		// Parsed rather than passed through, so a trailing path or slash in the
 		// environment cannot end up doubled in the middle of a URL somebody
 		// pastes. An unparseable value is the same answer as a missing one.
@@ -120,8 +146,11 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 				cliEnabled,
 				appOrigin,
 				devAuth,
+				signInProviders: providers,
+				googleSignIn,
 				uploadsEnabled,
 				org: null,
+				repository,
 			};
 		}
 		const org = await findSingleOrg();
@@ -132,10 +161,47 @@ export const getPublicAppConfig = createServerFn({ method: "GET" }).handler(
 			cliEnabled,
 			appOrigin,
 			devAuth,
+			signInProviders: providers,
+			googleSignIn,
 			uploadsEnabled,
 			org: org
 				? { slug: org.slug, name: org.name, logo: org.logo ?? null }
 				: null,
+			repository,
 		};
+	},
+);
+
+/**
+ * What `/login` offers for a password outside development: the form that
+ * creates the first account, the form a platform admin who has no provider
+ * yet signs in with, or nothing. See `passwordSignIn` in
+ * `packages/core/src/auth/sign-in-methods.ts`, and the `emailAndPassword`
+ * comment in `packages/core/src/auth/index.ts` for the gates behind it.
+ *
+ * Its own function rather than a field of `getPublicAppConfig`, because it
+ * reads the database and only `/login` needs it; the config runs on every
+ * navigation into a workspace.
+ */
+export const getPasswordSignIn = createServerFn({ method: "GET" }).handler(
+	async (): Promise<"first-account" | "administrator" | null> => {
+		const { passwordSignIn } = await import("@farmer/core/auth");
+		return passwordSignIn();
+	},
+);
+
+/**
+ * The `owner/name` `getPublicAppConfig` also carries, on its own.
+ *
+ * The landing page's loader runs for every signed-out visitor and only ever
+ * wanted this one field, so pulling it through `getPublicAppConfig` cost the
+ * eight modules that function imports (`findSingleOrg` among them) on every
+ * anonymous hit. This reads one module instead.
+ */
+export const getSourceRepository = createServerFn({ method: "GET" }).handler(
+	async (): Promise<string> => {
+		const { sourceRepository, DEFAULT_SOURCE_REPOSITORY } =
+			await import("@farmer/core/lib/source-repository");
+		return sourceRepository() ?? DEFAULT_SOURCE_REPOSITORY;
 	},
 );

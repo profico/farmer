@@ -8,6 +8,7 @@ export * from "./google-calendar";
 export * from "./harvest-import";
 export * from "./holidays";
 export * from "./http-url";
+export * from "./instance-settings";
 export * from "./hour-fund";
 export * from "./integration-settings";
 export * from "./members";

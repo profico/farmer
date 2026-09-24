@@ -12,6 +12,7 @@ import {
 	type HarvestChoices,
 	type HarvestPlan,
 	type ParsedHarvest,
+	HARVEST_GUESS_DOMAIN,
 	chunkDays,
 	dayDigestSync,
 	defaultHarvestChoices,
@@ -22,6 +23,11 @@ import {
 } from "./plan";
 
 // --- Fixtures ---------------------------------------------------------------
+
+/** A guessed address. The domain is the import's own, not the fixture's, so a
+ *  test that needs a real address to collide with a guess writes it this way.
+ *  Every other address in this file is at `example.com`. */
+const guessed = (local: string) => `${local}@${HARVEST_GUESS_DOMAIN}`;
 
 // The real header lines, from `~/Downloads/harvest/*.csv` (2026-09-11).
 const TIME_HEADER =
@@ -298,7 +304,7 @@ function anaSnapshot(overrides: Partial<HarvestSnapshot> = {}) {
 				archived: false,
 			},
 		],
-		members: [member("u-ana", "Ana Horvat", "ana@profico.hr")],
+		members: [member("u-ana", "Ana Horvat", "ana@example.com")],
 		...overrides,
 	});
 }
@@ -353,10 +359,10 @@ describe("normName and guessEmail", () => {
 	});
 
 	test("guessEmail folds diacritics and drops non-alphanumerics", () => {
-		expect(guessEmail("Ivan", "Horvat")).toBe("ihorvat@profico.hr");
-		expect(guessEmail("Đuro", "Šimić-Čorić")).toBe("dsimiccoric@profico.hr");
-		expect(guessEmail("Žana", "Van Dijk")).toBe("zvandijk@profico.hr");
-		expect(guessEmail("José", "Müller")).toBe("jmuller@profico.hr");
+		expect(guessEmail("Ivan", "Horvat")).toBe(guessed("ihorvat"));
+		expect(guessEmail("Đuro", "Šimić-Čorić")).toBe(guessed("dsimiccoric"));
+		expect(guessEmail("Žana", "Van Dijk")).toBe(guessed("zvandijk"));
+		expect(guessEmail("José", "Müller")).toBe(guessed("jmuller"));
 	});
 
 	test("dayDigestSync equals the async dayDigest", async () => {
@@ -393,11 +399,11 @@ describe("parseHarvestFiles", () => {
 	test("candidate emails are the listed addresses and the guesses", async () => {
 		const parsed = await parseHarvestFiles([
 			timeReport([{}, { first: "Marko", last: "Kovač" }]),
-			peopleList([{ first: "Ana", last: "Horvat", email: "Ana@Profico.hr" }]),
+			peopleList([{ first: "Ana", last: "Horvat", email: "Ana@Example.com" }]),
 		]);
 		expect(parsed.candidateEmails).toEqual([
-			"ana@profico.hr",
-			"mkovac@profico.hr",
+			"ana@example.com",
+			guessed("mkovac"),
 		]);
 	});
 
@@ -791,7 +797,9 @@ describe("matching existing rows", () => {
 						task: "frontend",
 					},
 				]),
-				peopleList([{ first: "Ana", last: "Horvat", email: "ANA@profico.hr" }]),
+				peopleList([
+					{ first: "Ana", last: "Horvat", email: "ANA@example.com" },
+				]),
 			],
 			anaSnapshot(),
 		);
@@ -822,7 +830,7 @@ describe("matching existing rows", () => {
 
 	test("a member matches by name, and gets a start date only when theirs is empty", async () => {
 		const snap = anaSnapshot({
-			members: [member("u-ana", "Ana  Horvat", "a.h@elsewhere.com", null)],
+			members: [member("u-ana", "Ana  Horvat", "a.h@example.org", null)],
 		});
 		const { plan } = await planFor(
 			[timeReport([{ date: "2019-03-01" }, { date: "2020-05-05" }])],
@@ -851,8 +859,8 @@ describe("matching existing rows", () => {
 				},
 			],
 			members: [
-				member("u-ana", "Ana Horvat", "ana@profico.hr"),
-				member("u-ana-2", "Someone Else", "else@profico.hr"),
+				member("u-ana", "Ana Horvat", "ana@example.com"),
+				member("u-ana-2", "Someone Else", "else@example.com"),
 			],
 			mappings: [
 				{ kind: "client", sourceKey: "acme", localId: ID.other },
@@ -877,21 +885,21 @@ describe("people", () => {
 	test("a listed person is created with role, type, capacity and a verified address", async () => {
 		const { plan } = await planFor([
 			timeReport([
-				{ first: "Mateo", last: "Perak", date: "2015-01-02" },
-				{ first: "Mateo", last: "Perak", date: "2026-08-03" },
+				{ first: "Probo", last: "Testić", date: "2015-01-02" },
+				{ first: "Probo", last: "Testić", date: "2026-08-03" },
 			]),
 			peopleList([
 				{
-					first: "Mateo",
-					last: "Perak",
-					email: "mateo@profico.hr",
+					first: "Probo",
+					last: "Testić",
+					email: "probo@example.com",
 					admin: true,
 					permissions: "Owner",
 				},
 				{
 					first: "Iva",
 					last: "Ext",
-					email: "iva@ext.com",
+					email: "iva@example.net",
 					employee: false,
 					capacity: "25.0",
 				},
@@ -902,7 +910,7 @@ describe("people", () => {
 				action: "create",
 				sourceKey: "iva ext",
 				name: "Iva Ext",
-				email: "iva@ext.com",
+				email: "iva@example.net",
 				emailListed: true,
 				emailConfirmed: true,
 				role: "member",
@@ -912,9 +920,9 @@ describe("people", () => {
 			},
 			{
 				action: "create",
-				sourceKey: "mateo perak",
-				name: "Mateo Perak",
-				email: "mateo@profico.hr",
+				sourceKey: "probo testić",
+				name: "Probo Testić",
+				email: "probo@example.com",
 				emailListed: true,
 				emailConfirmed: true,
 				role: "admin",
@@ -937,7 +945,7 @@ describe("people", () => {
 				action: "create",
 				sourceKey: "đuro šimić",
 				name: "Đuro Šimić",
-				email: "dsimic@profico.hr",
+				email: guessed("dsimic"),
 				emailListed: false,
 				emailConfirmed: false,
 				role: "member",
@@ -961,13 +969,11 @@ describe("people", () => {
 				{ first: "Mia", last: "Babic" }, // ... this guess
 				{ first: "Lana", last: "Ok" },
 			]),
-			peopleList([
-				{ first: "Pero", last: "Novak", email: "pnovak@profico.hr" },
-			]),
+			peopleList([{ first: "Pero", last: "Novak", email: guessed("pnovak") }]),
 		];
 		const snap = snapshot({
-			members: [member("u-x", "Ivana Horvat-Old", "ihorvat@profico.hr")],
-			takenEmails: ["ikos@profico.hr"],
+			members: [member("u-x", "Ivana Horvat-Old", guessed("ihorvat"))],
+			takenEmails: [guessed("ikos")],
 		});
 		const { plan } = await planFor(files, snap);
 		expect(plan.ready).toBe(false);
@@ -988,8 +994,8 @@ describe("people", () => {
 		const { plan } = await planFor([
 			timeReport([{}]),
 			peopleList([
-				{ first: "Ana", last: "Horvat", email: "team@profico.hr" },
-				{ first: "Iva", last: "Horvat", email: "team@profico.hr" },
+				{ first: "Ana", last: "Horvat", email: "team@example.com" },
+				{ first: "Iva", last: "Horvat", email: "team@example.com" },
 			]),
 		]);
 		expect(plan.blocked.map((b) => b.sourceKey)).toEqual([
@@ -1004,11 +1010,11 @@ describe("people", () => {
 				{ first: "Ivan", last: "Horvat" },
 				{ first: "Ana", last: "Kos" },
 			]),
-			peopleList([{ first: "Ana", last: "Kos", email: "akos@profico.hr" }]),
+			peopleList([{ first: "Ana", last: "Kos", email: "akos@example.com" }]),
 		];
 		const snap = snapshot({
-			members: [member("u-x", "Other", "ihorvat@profico.hr")],
-			takenEmails: ["akos@profico.hr"],
+			members: [member("u-x", "Other", guessed("ihorvat"))],
+			takenEmails: ["akos@example.com"],
 		});
 		const parsed = await parseHarvestFiles(files);
 		const blockedPlan = planHarvestImport(parsed, snap, choices(parsed));
@@ -1022,7 +1028,7 @@ describe("people", () => {
 			choices(parsed, {
 				people: {
 					"ivan horvat": {
-						email: "Ivan.H@Profico.hr",
+						email: "Ivan.H@Example.com",
 						role: "admin",
 						type: "employee_overhead",
 					},
@@ -1033,7 +1039,7 @@ describe("people", () => {
 		expect(
 			plan.start.people.find((p) => p.sourceKey === "ivan horvat"),
 		).toMatchObject({
-			email: "ivan.h@profico.hr",
+			email: "ivan.h@example.com",
 			emailListed: false,
 			// The admin typed it, so it is theirs to vouch for, not a guess.
 			emailConfirmed: true,
@@ -1044,7 +1050,7 @@ describe("people", () => {
 			plan.review.people.find((p) => p.sourceKey === "ivan horvat")
 				?.emailGuessed,
 		).toBe(false);
-		expect(plan.emailsToCheck).toEqual(["ivan.h@profico.hr"]);
+		expect(plan.emailsToCheck).toEqual(["ivan.h@example.com"]);
 	});
 
 	test("an address the admin typed is confirmed; the untouched guess is not", async () => {
@@ -1059,7 +1065,7 @@ describe("people", () => {
 			parsed,
 			snapshot(),
 			choices(parsed, {
-				people: { "ivan horvat": { email: "ivan@elsewhere.com" } },
+				people: { "ivan horvat": { email: "ivan@example.org" } },
 			}),
 		);
 		const bySource = new Map(
@@ -1070,7 +1076,7 @@ describe("people", () => {
 			emailConfirmed: true,
 		});
 		expect(bySource.get("lana ok")).toMatchObject({
-			email: "lok@profico.hr",
+			email: guessed("lok"),
 			emailListed: false,
 			emailConfirmed: false,
 		});
@@ -1090,7 +1096,7 @@ describe("project members", () => {
 				{ client: "Acme", project: "Website", code: "ACW" },
 				{ client: "Acme", project: "Old", code: "OLD" },
 			]),
-			peopleList([{ first: "Ana", last: "Horvat", email: "ana@profico.hr" }]),
+			peopleList([{ first: "Ana", last: "Horvat", email: "ana@example.com" }]),
 		]);
 		const website = JSON.stringify(["acme", "website", "ACW"]);
 		const old = JSON.stringify(["acme", "old", "OLD"]);
@@ -1375,18 +1381,18 @@ describe("a second import (5.3)", () => {
 // --- Section 6 ------------------------------------------------------------
 
 describe("two spellings of one name", () => {
-	// The real case: "Ive Vasiljević" until 2020, "Ive Vasiljevic" from 2021,
+	// The case this was written for: "Tin Primjerić" until 2020, "Tin Primjeric" from 2021,
 	// and only the second on the people list.
 	const files = () => [
 		timeReport([
-			{ first: "Ive", last: "Vasiljević", date: "2019-02-11" },
-			{ first: "Ive", last: "Vasiljevic", date: "2019-02-11", hours: "2,0" },
-			{ first: "Ive", last: "Vasiljevic", date: "2021-05-19" },
+			{ first: "Tin", last: "Primjerić", date: "2019-02-11" },
+			{ first: "Tin", last: "Primjeric", date: "2019-02-11", hours: "2,0" },
+			{ first: "Tin", last: "Primjeric", date: "2021-05-19" },
 		]),
-		peopleList([{ first: "Ive", last: "Vasiljevic", email: "ive@profico.hr" }]),
+		peopleList([{ first: "Tin", last: "Primjeric", email: "tin@example.com" }]),
 	];
-	const LISTED = "ive vasiljevic";
-	const OLD = "ive vasiljević";
+	const LISTED = "tin primjeric";
+	const OLD = "tin primjerić";
 
 	async function groupKey() {
 		const { plan } = await planFor(files());
@@ -1403,7 +1409,7 @@ describe("two spellings of one name", () => {
 				people: [
 					{
 						sourceKey: OLD,
-						name: "Ive Vasiljević",
+						name: "Tin Primjerić",
 						listed: false,
 						rows: 1,
 						firstDate: "2019-02-11",
@@ -1411,7 +1417,7 @@ describe("two spellings of one name", () => {
 					},
 					{
 						sourceKey: LISTED,
-						name: "Ive Vasiljevic",
+						name: "Tin Primjeric",
 						listed: true,
 						rows: 2,
 						firstDate: "2019-02-11",
@@ -1421,7 +1427,7 @@ describe("two spellings of one name", () => {
 			},
 		]);
 		expect(plan.blocked.map((b) => b.message)).toContain(
-			"Decide whether Ive Vasiljevic and Ive Vasiljević are one person or different people",
+			"Decide whether Tin Primjeric and Tin Primjerić are one person or different people",
 		);
 	});
 
@@ -1435,7 +1441,7 @@ describe("two spellings of one name", () => {
 			expect.objectContaining({
 				action: "create",
 				sourceKey: LISTED,
-				email: "ive@profico.hr",
+				email: "tin@example.com",
 				startDate: "2019-02-11",
 				archivedOn: null,
 			}),
@@ -1443,8 +1449,8 @@ describe("two spellings of one name", () => {
 		]);
 		expect(plan.review.people).toHaveLength(1);
 		expect(plan.review.people[0]).toMatchObject({
-			name: "Ive Vasiljevic",
-			aliases: ["Ive Vasiljević"],
+			name: "Tin Primjeric",
+			aliases: ["Tin Primjerić"],
 			rows: 3,
 		});
 		expect(plan.review.duplicates[0]?.decision).toBe(LISTED);
@@ -1487,9 +1493,9 @@ describe("two spellings of one name", () => {
 	});
 
 	describe("after an earlier run", () => {
-		const ive = () =>
+		const tin = () =>
 			snapshot({
-				members: [member("u-ive", "Ive Vasiljevic", "ive@profico.hr")],
+				members: [member("u-tin", "Tin Primjeric", "tin@example.com")],
 			});
 
 		test("both spellings on one user: no question, and the merged day reads as unchanged", async () => {
@@ -1498,14 +1504,14 @@ describe("two spellings of one name", () => {
 				.filter((d) => d.date === "2019-02-11")
 				.flatMap((d) => d.rows.map((i) => present(parsed.rows[i], "row").key));
 			const snap = snapshot({
-				...ive(),
+				...tin(),
 				mappings: [
-					{ kind: "person", sourceKey: LISTED, localId: "u-ive" },
-					{ kind: "person", sourceKey: OLD, localId: "u-ive" },
+					{ kind: "person", sourceKey: LISTED, localId: "u-tin" },
+					{ kind: "person", sourceKey: OLD, localId: "u-tin" },
 				],
 				importedDays: [
 					{
-						userId: "u-ive",
+						userId: "u-tin",
 						days: [["2019-02-11", await dayDigest(shared), 0]],
 					},
 				],
@@ -1517,11 +1523,11 @@ describe("two spellings of one name", () => {
 				{
 					action: "match",
 					sourceKey: LISTED,
-					localId: "u-ive",
+					localId: "u-tin",
 					startDate: null,
 				},
 			]);
-			expect(plan.review.people[0]?.aliases).toEqual(["Ive Vasiljević"]);
+			expect(plan.review.people[0]?.aliases).toEqual(["Tin Primjerić"]);
 			expect(plan.days.map((d) => d.date)).toEqual(["2021-05-19"]);
 			expect(plan.review.summary.unchangedDays).toBe(1);
 		});
@@ -1530,12 +1536,12 @@ describe("two spellings of one name", () => {
 			const key = await groupKey();
 			const snap = snapshot({
 				members: [
-					member("u-ive", "Ive Vasiljevic", "ive@profico.hr"),
-					member("u-ive-2", "Ive Old", "ive.old@profico.hr"),
+					member("u-tin", "Tin Primjeric", "tin@example.com"),
+					member("u-tin-2", "Tin Old", "tin.old@example.com"),
 				],
 				mappings: [
-					{ kind: "person", sourceKey: LISTED, localId: "u-ive" },
-					{ kind: "person", sourceKey: OLD, localId: "u-ive-2" },
+					{ kind: "person", sourceKey: LISTED, localId: "u-tin" },
+					{ kind: "person", sourceKey: OLD, localId: "u-tin-2" },
 				],
 			});
 			const both = await planFor(files(), snap);
@@ -1543,8 +1549,8 @@ describe("two spellings of one name", () => {
 			expect(both.plan.ready).toBe(true);
 
 			const oneMapped = snapshot({
-				...ive(),
-				mappings: [{ kind: "person", sourceKey: LISTED, localId: "u-ive" }],
+				...tin(),
+				mappings: [{ kind: "person", sourceKey: LISTED, localId: "u-tin" }],
 			});
 			const merged = await planFor(files(), oneMapped, {
 				duplicates: { [key]: OLD },
@@ -1552,7 +1558,7 @@ describe("two spellings of one name", () => {
 			// The mapped spelling's user becomes the person. That spelling has
 			// its mapping already, so it needs no alias plan.
 			expect(merged.plan.start.people).toEqual([
-				{ action: "match", sourceKey: OLD, localId: "u-ive", startDate: null },
+				{ action: "match", sourceKey: OLD, localId: "u-tin", startDate: null },
 			]);
 			expect(merged.plan.days.every((d) => d.personSourceKey === OLD)).toBe(
 				true,
@@ -1676,7 +1682,7 @@ describe("negative correction rows", () => {
 	});
 
 	test("a correction can cancel a row that was too long for a day", async () => {
-		// The real case: "40,0" by mistake, "-40,0" to take it back.
+		// The case this was written for: "40,0" by mistake, "-40,0" to take it back.
 		const { plan } = await planFor(
 			[timeReport([{ hours: "40,0" }, { hours: "0,5" }, { hours: "-40,0" }])],
 			snapshot(),

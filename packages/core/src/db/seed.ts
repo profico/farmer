@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "./index";
 import { member, organization } from "./schema/auth";
@@ -7,13 +7,25 @@ import { memberTypeHistory } from "./schema/people";
 import { monthlyHourFund } from "./schema/settings";
 import { ensureOrgTasks, ensureSiteTasks } from "./seed-tasks";
 
-const targetSlug = process.argv[2];
+// `bun run db:seed [org-slug] [--skip-without-org]`. The flag is for
+// `bun run setup`, which runs this before anyone has signed up: no
+// organization is then a note, not a failure.
+const args = process.argv.slice(2);
+const skipWithoutOrg = args.includes("--skip-without-org");
+const targetSlug = args.find((arg) => !arg.startsWith("--"));
 
 const org = targetSlug
 	? await db.query.organization.findFirst({
 			where: eq(organization.slug, targetSlug),
 		})
 	: await db.query.organization.findFirst();
+
+if (!org && skipWithoutOrg) {
+	console.log(
+		"No organization yet, so no demo data. Sign up in the app (the first account makes the organization), then run `bun run setup` again.",
+	);
+	process.exit(0);
+}
 
 if (!org) {
 	console.error(
@@ -27,6 +39,18 @@ if (!org) {
 await ensureSiteTasks();
 await ensureOrgTasks(org.id);
 
+// Safe to run twice: the demo client is the marker, and an organization that
+// has it already holds everything below.
+const DEMO_CLIENT = "Acme Inc.";
+const seeded = await db.query.client.findFirst({
+	where: and(eq(client.organizationId, org.id), eq(client.name, DEMO_CLIENT)),
+	columns: { id: true },
+});
+if (seeded) {
+	console.log(`"${org.name}" (${org.slug}) already has the demo data.`);
+	process.exit(0);
+}
+
 // Every project belongs to a client, and internal work goes to the org's own
 // client — which is why `project.clientId` can be NOT NULL.
 const [internalClient] = await db
@@ -37,7 +61,7 @@ const [internalClient] = await db
 
 const [seedClient] = await db
 	.insert(client)
-	.values({ organizationId: org.id, name: "Acme Inc." })
+	.values({ organizationId: org.id, name: DEMO_CLIENT })
 	.returning();
 if (!seedClient) throw new Error("Failed to insert seed client");
 

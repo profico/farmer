@@ -13,7 +13,8 @@ import { orgMiddleware } from "./auth";
 // UI can hide the "enable notifications" control gracefully.
 export const getVapidPublicKey = createServerFn({ method: "GET" }).handler(
 	async () => {
-		return { key: process.env.VAPID_PUBLIC_KEY ?? null };
+		const { setting } = await import("@farmer/core/lib/instance-settings");
+		return { key: setting("VAPID_PUBLIC_KEY") ?? null };
 	},
 );
 

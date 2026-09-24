@@ -4,6 +4,7 @@ import { db } from "../db";
 import { member, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
 import { memberSlackIdentity, slackInstallation } from "../db/schema/slack";
+import { setting } from "../lib/instance-settings";
 import { signOrgState } from "../lib/oauth-state";
 import { openAndHeal, sealSecret } from "../lib/secret-box";
 import {
@@ -68,7 +69,7 @@ export const slackService = {
 	 */
 	installUrl: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
-		const clientId = process.env.SLACK_CLIENT_ID;
+		const clientId = setting("SLACK_CLIENT_ID");
 		if (!clientId) throw new Error("SLACK_CLIENT_ID not configured");
 
 		const url = new URL("https://slack.com/oauth/v2/authorize");

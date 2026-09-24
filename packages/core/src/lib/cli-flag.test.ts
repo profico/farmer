@@ -24,11 +24,18 @@ describe("isCliEnabled", () => {
 	// Anything but "true" is off once the variable is set, the same rule as
 	// `MCP_ENABLED`: a typo turns the surface off rather than silently on.
 	test("is off for any other value", () => {
-		for (const value of ["0", "no", "TRUE", ""]) {
+		for (const value of ["0", "no", "TRUE"]) {
 			process.env.CLI_ENABLED = value;
 			expect(isCliEnabled()).toBe(false);
 		}
 		process.env.CLI_ENABLED = "true";
+		expect(isCliEnabled()).toBe(true);
+	});
+
+	// An empty variable is "not set" for every instance setting (ADR 0004), so
+	// it leaves the default, on, in place rather than switching the CLI off.
+	test("is on for an empty variable", () => {
+		process.env.CLI_ENABLED = "";
 		expect(isCliEnabled()).toBe(true);
 	});
 

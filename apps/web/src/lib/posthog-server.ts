@@ -1,14 +1,18 @@
+import { setting } from "@farmer/core/lib/instance-settings";
 import { PostHog } from "posthog-node";
 
 /**
  * The server-side PostHog client, or null on a deployment without one.
  *
- * Reads plain environment variables rather than `VITE_` ones, and so does the
- * browser half — see `posthogConfig` in `routes/__root.tsx`. A `VITE_` value is
- * substituted by `vite build`, which runs inside the Docker image, so it can
- * only ever hold what CI was given and never what a deployment is configured
- * with. One image runs several environments here, which is the same reason
- * `ASSISTANT_ENABLED` and `SINGLE_ORG_SLUG` are plain variables.
+ * Reads the instance settings (`@farmer/core/lib/instance-settings`: the
+ * environment, else the Infrastructure page) rather than `VITE_` variables, and
+ * so does the browser half — see `posthogConfig` in `routes/__root.tsx`. A
+ * `VITE_` value is substituted by `vite build`, which runs inside the Docker
+ * image, so it can only ever hold what CI was given and never what a
+ * deployment is configured with.
+ *
+ * The client is kept with the token and host it was built from and rebuilt
+ * when they change, so a token fixed on the page is used without a restart.
  *
  * A missing token or host is "PostHog is not set up here", not a fault: every
  * caller gets null and carries on. Nothing about the product depends on
@@ -25,30 +29,33 @@ import { PostHog } from "posthog-node";
  * `apps/web`'s `start` script both pin it. The browser half is gated the same
  * way, in `routes/__root.tsx` — it never receives the credentials at all.
  */
-let posthogClient: PostHog | null = null;
+let posthogClient: { key: string; client: PostHog } | null = null;
 
 export const posthogServerConfig = (): {
 	token: string;
 	host: string;
 } | null => {
 	if (process.env.NODE_ENV !== "production") return null;
-	const token = process.env.POSTHOG_PROJECT_TOKEN;
-	const host = process.env.POSTHOG_HOST;
+	const token = setting("POSTHOG_PROJECT_TOKEN");
+	const host = setting("POSTHOG_HOST");
 	if (!token || !host) return null;
 	return { token, host };
 };
 
 export function getPostHogClient(): PostHog | null {
-	if (posthogClient) return posthogClient;
-
 	const config = posthogServerConfig();
 	if (!config) return null;
+	const key = `${config.host}\n${config.token}`;
+	if (posthogClient?.key === key) return posthogClient.client;
 
-	posthogClient = new PostHog(config.token, {
+	// The old client flushes what it holds before it goes; nothing waits on it.
+	void posthogClient?.client.shutdown();
+	const client = new PostHog(config.token, {
 		host: config.host,
 		flushAt: 1,
 		flushInterval: 0,
 		enableExceptionAutocapture: true,
 	});
-	return posthogClient;
+	posthogClient = { key, client };
+	return client;
 }

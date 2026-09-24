@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { FarmerLogo } from "./farmer-logo";
+
 /**
  * The two-pane frame the sign-in screen sits in: a dark brand column on the
  * left, the message on the right.
@@ -31,12 +33,13 @@ export function AuthSplitPanel({
 	tagline: string;
 	brandContent?: ReactNode;
 	/**
-	 * Whitelabelling for single-org mode: the one organization's own name and
-	 * logo replace the Profico mark, so an invite-only instance greets people
-	 * with the company they were invited to rather than the vendor.
+	 * Whitelabelling for single-org mode: when the one organization has a logo,
+	 * it replaces the Farmer mark, so an invite-only instance greets people
+	 * with the company they were invited to. Without a logo, or outside
+	 * single-org mode (where this is null), the column shows Farmer.
 	 *
 	 * Read live from the organization row (Settings → Organization), not from
-	 * env vars — renaming the workspace rebrands the login screen.
+	 * env vars — a new logo rebrands the login screen.
 	 */
 	brand?: { name: string; logo: string | null } | null;
 	children: ReactNode;
@@ -49,29 +52,18 @@ export function AuthSplitPanel({
 					className="hidden w-[320px] shrink-0 flex-col p-8 md:flex"
 					style={{ backgroundColor: INK.bg, color: INK.mut }}
 				>
-					{brand ? (
-						// A logo when there is one; otherwise the name set as a wordmark,
-						// at the mark's own height so the column's rhythm doesn't shift.
-						brand.logo ? (
-							<img
-								src={brand.logo}
-								alt={brand.name}
-								className="h-6 w-auto max-w-[180px] object-contain object-left"
-							/>
-						) : (
-							<span
-								className="flex h-6 items-center text-base font-medium"
-								style={{ color: INK.fg }}
-							>
-								{brand.name}
-							</span>
-						)
-					) : (
+					{brand?.logo ? (
 						<img
-							src="/profico-logo-white.svg"
-							alt="Profico"
-							className="h-6 w-auto"
+							src={brand.logo}
+							alt={brand.name}
+							className="h-6 w-auto max-w-[180px] object-contain object-left"
 						/>
+					) : (
+						// The letters take `currentColor`, and the column's own color is
+						// the muted one, so the wordmark gets the bright ink here.
+						<span style={{ color: INK.fg }}>
+							<FarmerLogo height={24} />
+						</span>
 					)}
 					<div className="mt-auto">
 						<p

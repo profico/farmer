@@ -1,5 +1,7 @@
+import { settingEnabled } from "./instance-settings";
+
 /**
- * The MCP server's kill switch — one env var, default on.
+ * The MCP server's kill switch — one instance setting, default on.
  *
  * `MCP_ENABLED=false` takes the endpoint away: `/api/mcp/<slug>` 404s and the
  * connection URL disappears from Settings → Integrations. The OAuth
@@ -14,13 +16,8 @@
  * want this deployment calling OpenRouter, which is not a statement about
  * whether Claude Code may read a timesheet.
  *
- * A plain env var rather than a `VITE_` one, for the same reason as
- * `ASSISTANT_ENABLED` and `SINGLE_ORG_SLUG`: `VITE_` variables bake at build
- * time and the Dockerfile builds one image meant to run under several
- * environments. The client learns the flag from `getPublicAppConfig`.
- *
- * Read per call rather than captured at module scope, matching
- * `lib/assistant-flag.ts`.
+ * An instance setting with the default "true", for the same reasons as
+ * `lib/assistant-flag.ts`. The client learns the flag from
+ * `getPublicAppConfig`. Read per call, like the other two.
  */
-export const isMcpEnabled = (): boolean =>
-	(process.env.MCP_ENABLED ?? "true") === "true";
+export const isMcpEnabled = (): boolean => settingEnabled("MCP_ENABLED");

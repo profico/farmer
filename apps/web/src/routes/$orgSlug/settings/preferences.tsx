@@ -1,6 +1,7 @@
 import {
 	BrowserIcon,
 	GoogleLogoIcon,
+	IdentificationCardIcon,
 	KeyIcon,
 	TerminalWindowIcon,
 } from "@phosphor-icons/react";
@@ -63,11 +64,9 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 	loader: async ({ context, params }) => {
 		const orgSlug = params.orgSlug;
 		await Promise.all([
-			// Only worth fetching when the section that reads it renders — see
-			// PreferencesSettingsPage.
-			context.devAuth
-				? context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug))
-				: null,
+			// Always: whether the section renders depends on it (see
+			// PreferencesSettingsPage).
+			context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(mySessionsQuery(orgSlug)),
 			// Your tasks, so its chips are there on first paint instead of
@@ -211,9 +210,55 @@ function SignInMethodsSection() {
 						</Badge>
 					}
 				/>
-				<GoogleSignInMethod />
+				{methods.google.configured || methods.google.linked ? (
+					<GoogleSignInMethod />
+				) : null}
+				{methods.providers.map((provider) => (
+					<ProviderSignInMethod key={provider.id} provider={provider} />
+				))}
 			</SettingList>
 		</PageSection>
+	);
+}
+
+/**
+ * An OpenID Connect source from Infrastructure → Sign-in. Connect only: there
+ * is no guarded unlink for these yet, unlike Google's.
+ */
+function ProviderSignInMethod({
+	provider,
+}: {
+	provider: { id: string; name: string; linked: boolean };
+}) {
+	const connect = async () => {
+		const { error } = await authClient.oauth2.link({
+			providerId: provider.id,
+			callbackURL: window.location.href,
+		});
+		if (error)
+			toast.error(error.message ?? `Could not connect ${provider.name}`);
+	};
+
+	return (
+		<SignInMethodRow
+			icon={<IdentificationCardIcon className="size-5 text-muted-foreground" />}
+			title={provider.name}
+			description={
+				provider.linked
+					? `You can sign in with ${provider.name}.`
+					: `Connect your ${provider.name} account to sign in with it.`
+			}
+			badge={
+				provider.linked ? (
+					<Badge variant="secondary">Connected</Badge>
+				) : undefined
+			}
+			action={
+				provider.linked ? undefined : (
+					<Button onClick={connect}>Connect {provider.name}</Button>
+				)
+			}
+		/>
 	);
 }
 
@@ -641,6 +686,15 @@ function DisplaySection() {
 
 function PreferencesSettingsPage() {
 	const { devAuth } = Route.useLoaderData();
+	const orgSlug = useOrgSlug();
+	const { data: methods } = useSuspenseQuery(signInMethodsQuery(orgSlug));
+	// In development, and for an account that holds a password. Outside
+	// development that is the first account, made with a password on an
+	// instance that had no sign-in provider; this section is where it connects
+	// one, which also closes its password (see
+	// packages/core/src/auth/sign-in-methods.ts). better-auth will not connect
+	// it on a sign-in by email alone, because the address was never verified.
+	const showSignInMethods = devAuth || methods.hasPassword;
 
 	return (
 		<Page>
@@ -653,7 +707,7 @@ function PreferencesSettingsPage() {
 			<DisplaySection />
 			<YourTasksSection />
 
-			{devAuth ? <SignInMethodsSection /> : null}
+			{showSignInMethods ? <SignInMethodsSection /> : null}
 
 			<SignedInDevicesSection />
 			<NotificationSettings />

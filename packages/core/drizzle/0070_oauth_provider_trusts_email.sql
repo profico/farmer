@@ -1,0 +1,1 @@
+ALTER TABLE "instance_oauth_provider" ADD COLUMN "trusts_email" boolean DEFAULT false NOT NULL;

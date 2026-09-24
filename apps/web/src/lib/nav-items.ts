@@ -44,7 +44,12 @@ export type OrgRoutePath =
 	| "/$orgSlug/settings/organization"
 	| "/$orgSlug/settings/preferences"
 	| "/$orgSlug/settings/members"
-	| "/$orgSlug/settings/platform-admins";
+	| "/$orgSlug/settings/platform-admins"
+	| "/$orgSlug/settings/instance/sign-in"
+	| "/$orgSlug/settings/instance/email"
+	| "/$orgSlug/settings/instance/storage"
+	| "/$orgSlug/settings/instance/integrations"
+	| "/$orgSlug/settings/instance/features";
 
 export type NavItem = {
 	label: string;

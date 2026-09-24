@@ -92,4 +92,6 @@ export type QueryFamily = keyof ReturnType<typeof queryKeys>;
 export const platformKeys = {
 	admins: ["platform-admins"],
 	people: ["platform-people"],
+	settings: ["instance-settings"],
+	oauthProviders: ["instance-oauth-providers"],
 } as const satisfies Record<string, readonly [string]>;

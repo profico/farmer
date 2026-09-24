@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
+import { googleCredentials, signInProviders } from "../auth/sign-in-methods";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
 import type { Ctx } from "./types";
@@ -13,7 +14,14 @@ export type SignInMethods = {
 	// A "credential" account row means an email/password is set. Needed so the UI
 	// can block unlinking the last social method into a lockout.
 	hasPassword: boolean;
-	google: { linked: boolean };
+	/** `configured`: the instance has Google credentials, so a Connect button
+	 *  can work. A linked row outlives the credentials, so both are reported. */
+	google: { linked: boolean; configured: boolean };
+	/** The OpenID Connect sources that are switched on, from the
+	 *  Infrastructure page. The first account, created with a password on an
+	 *  instance with no provider, connects one here; see
+	 *  `auth/sign-in-methods.ts`. */
+	providers: { id: string; name: string; linked: boolean }[];
 };
 
 export const accountService = {
@@ -28,7 +36,16 @@ export const accountService = {
 		const providers = new Set(rows.map((row) => row.providerId));
 		return {
 			hasPassword: providers.has("credential"),
-			google: { linked: providers.has("google") },
+			google: {
+				linked: providers.has("google"),
+				configured: googleCredentials() !== null,
+			},
+			providers: signInProviders()
+				.filter((provider) => provider.id !== "google")
+				.map((provider) => ({
+					...provider,
+					linked: providers.has(provider.id),
+				})),
 		};
 	},
 

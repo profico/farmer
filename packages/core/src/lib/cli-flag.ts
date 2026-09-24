@@ -1,5 +1,7 @@
+import { settingEnabled } from "./instance-settings";
+
 /**
- * The command-line tool's kill switch — one env var, default on.
+ * The command-line tool's kill switch — one instance setting, default on.
  *
  * `CLI_ENABLED=false` takes the CLI's surface away: `/api/v1/orgs/*`, the
  * device authorization endpoints and the install script answer 404, `meta`
@@ -12,13 +14,8 @@
  * calls no model. An operator who switched one of those off has said nothing
  * about this one.
  *
- * A plain env var rather than a `VITE_` one, for the same reason as
- * `MCP_ENABLED`: `VITE_` variables bake at build time and the Dockerfile builds
- * one image meant to run under several environments. The client learns the
- * flag from `getPublicAppConfig`.
- *
- * Read per call rather than captured at module scope, matching
- * `lib/mcp-flag.ts`.
+ * An instance setting with the default "true", for the same reasons as
+ * `lib/assistant-flag.ts`. The client learns the flag from
+ * `getPublicAppConfig`. Read per call, like the other two.
  */
-export const isCliEnabled = (): boolean =>
-	(process.env.CLI_ENABLED ?? "true") === "true";
+export const isCliEnabled = (): boolean => settingEnabled("CLI_ENABLED");
