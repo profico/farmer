@@ -8,8 +8,10 @@
  * `/choose-organization` when they have more than one. Signed out, the same
  * link goes through `/login` first and comes back to the guard unchanged.
  *
- * Neither placeholder can be a real slug: `slugify` keeps only `[a-z0-9-]`,
- * and `enterOrganization` checks for a placeholder before it looks a slug up.
+ * Neither placeholder can be a real slug: the organization hooks in
+ * `@farmer/core/auth` refuse any slug that `slugify` would not make (only
+ * `[a-z0-9-]`), and `enterOrganization` checks for a placeholder before it
+ * looks a slug up.
  */
 const ORG_PLACEHOLDERS = new Set([":org", "_"]);
 
