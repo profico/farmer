@@ -10,8 +10,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import {
 	checkWebhookUrlRules,
+	fetchWebhookTarget,
 	isPublicIpAddress,
 	resolveWebhookTarget,
+	type WebhookUrlAccepted,
 } from "./webhook-url";
 
 afterEach(() => {
@@ -155,5 +157,70 @@ describe("the lookup", () => {
 		process.env.WEBHOOK_ALLOW_PRIVATE_HOSTS = "true";
 		const result = await resolveWebhookTarget("http://localhost:9000/hook");
 		expect(result.ok).toBe(true);
+	});
+
+	test("a refusal names the host, not the address it resolved to", async () => {
+		// Echoing the address would let an admin read the deployment's internal
+		// DNS: `https://postgres/` answering "resolves to 172.18.0.3".
+		const result = await resolveWebhookTarget("https://localhost/hook");
+		const reason = result.ok ? "" : result.reason;
+		expect(reason).toContain("localhost");
+		expect(reason).not.toContain("127.0.0.1");
+		expect(reason).not.toContain("::1");
+	});
+});
+
+describe("the connection", () => {
+	// A `.invalid` name never resolves (RFC 6761), so a request that arrives at
+	// all proves the connection went to the checked address and the name was
+	// not looked up a second time — the lookup a rebinding resolver would win.
+	const echoHost = () =>
+		Bun.serve({
+			hostname: "127.0.0.1",
+			port: 0,
+			fetch: (request) => {
+				const url = new URL(request.url);
+				return new Response(
+					`${request.headers.get("host") ?? ""} ${url.pathname}${url.search}`,
+				);
+			},
+		});
+
+	const targetOn = (port: number, addresses: string[]): WebhookUrlAccepted => ({
+		ok: true,
+		url: new URL(`http://hook.invalid:${String(port)}/hook?kind=test`),
+		addresses,
+	});
+
+	test("goes to the checked address and carries the name in Host", async () => {
+		const server = echoHost();
+		try {
+			const response = await fetchWebhookTarget(
+				targetOn(server.port ?? 0, ["127.0.0.1"]),
+				{ method: "POST", headers: {}, body: "{}" },
+				5_000,
+			);
+			expect(await response.text()).toBe(
+				`hook.invalid:${String(server.port)} /hook?kind=test`,
+			);
+		} finally {
+			await server.stop(true);
+		}
+	});
+
+	test("moves past a checked address that refuses the connection", async () => {
+		// Nothing listens on [::1] at this port, so that attempt connects to
+		// nothing and sends nothing; the next checked address answers.
+		const server = echoHost();
+		try {
+			const response = await fetchWebhookTarget(
+				targetOn(server.port ?? 0, ["::1", "127.0.0.1"]),
+				{ method: "POST", headers: {}, body: "{}" },
+				5_000,
+			);
+			expect(response.status).toBe(200);
+		} finally {
+			await server.stop(true);
+		}
 	});
 });

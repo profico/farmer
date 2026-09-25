@@ -26,12 +26,11 @@
 //      checked — which is why a 3xx counts as a FAILED delivery rather than
 //      being followed.
 //
-// Rule 3 leaves a gap that is honest to state: between the lookup here and the
-// connection `fetch` makes, the name is resolved a second time by the runtime,
-// and a resolver that answers differently the second time wins. Closing it
-// needs a custom dialer that connects to the address this module checked.
-// Bun's `fetch` has no such hook today, so the re-check per attempt is the
-// bound, not a proof.
+// Rule 3 is only as good as the connection that follows it: handed the URL,
+// `fetch` would resolve the name a second time, and a resolver that answers
+// differently the second time would win. So `fetchWebhookTarget` connects to
+// an address this module checked, and the name travels only in the `Host`
+// header and the TLS server name.
 //
 // `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` switches rules 1 and 3 off, for the
 // self-hosted deployment whose receiver genuinely is on the same private
@@ -42,6 +41,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
 import { MAX_WEBHOOK_URL_LENGTH } from "../api/webhooks";
+import { externalFetch } from "./http";
 
 /** Whether this deployment lets webhooks reach a private address. An operator's
  *  switch, read at call time so a test can set it. */
@@ -294,11 +294,70 @@ export const resolveWebhookTarget = async (
 	if (answers.length === 0) return refuse(`Could not resolve ${hostname}`);
 
 	for (const answer of answers) {
+		// The reason names the host and not the address: an admin may type any
+		// name, and echoing what it resolves to would read out the deployment's
+		// internal DNS one text field at a time.
 		if (!isPublicIpAddress(answer.address)) {
-			return refuse(
-				`${hostname} resolves to ${answer.address}, which is not reachable from the public internet`,
-			);
+			return refuse(`${hostname} is not reachable from the public internet`);
 		}
 	}
 	return { ...checked, addresses: answers.map((answer) => answer.address) };
+};
+
+/**
+ * `fetch` a target `resolveWebhookTarget` accepted, connecting to an address
+ * it checked rather than to whatever the name resolves to next.
+ *
+ * The URL's host is swapped for the checked address, so the runtime has no
+ * name to resolve. The name goes where the receiver needs it: the `Host`
+ * header, and the TLS server name that SNI sends and the certificate is
+ * verified against. A receiver sees the same request as before.
+ *
+ * The addresses are tried in the resolver's order, moving on only when no
+ * connection was made at all, which is what `fetch` does itself with a name
+ * that has several. Nothing reached an address that refused, so the next one
+ * cannot receive a second copy. One deadline covers every address.
+ */
+export const fetchWebhookTarget = async (
+	target: WebhookUrlAccepted,
+	init: RequestInit & { headers: Record<string, string> },
+	timeoutMs: number,
+): Promise<Response> => {
+	const hostname = target.url.hostname.startsWith("[")
+		? target.url.hostname.slice(1, -1)
+		: target.url.hostname;
+	// Nothing to resolve a second time: the operator's switch skipped the
+	// lookup, or the host is a literal address `fetch` connects to as it is.
+	if (target.addresses.length === 0 || isIP(hostname) !== 0) {
+		return externalFetch(target.url, init, timeoutMs);
+	}
+
+	const deadline = AbortSignal.timeout(timeoutMs);
+	const signal = init.signal
+		? AbortSignal.any([init.signal, deadline])
+		: deadline;
+	for (const [index, address] of target.addresses.entries()) {
+		const pinned = new URL(target.url);
+		pinned.hostname = isIP(address) === 6 ? `[${address}]` : address;
+		// `tls` is Bun's extension to `fetch`, and `externalFetch` passes the
+		// init through to it unchanged.
+		const pinnedInit: BunFetchRequestInit = {
+			...init,
+			headers: { ...init.headers, Host: target.url.host },
+			tls: { serverName: hostname },
+			signal,
+		};
+		try {
+			return await externalFetch(pinned, pinnedInit, timeoutMs);
+		} catch (error) {
+			// Bun's codes for "no socket was ever connected".
+			const code =
+				error instanceof Error && "code" in error ? error.code : undefined;
+			const connected =
+				code !== "ConnectionRefused" && code !== "FailedToOpenSocket";
+			if (connected || index === target.addresses.length - 1) throw error;
+		}
+	}
+	// Not reached: the loop returns, or throws on its last address.
+	throw new Error(`Could not connect to ${hostname}`);
 };

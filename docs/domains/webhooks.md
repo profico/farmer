@@ -148,11 +148,12 @@ credentials to whoever asks from inside.
    resolved publicly an hour ago can resolve to 127.0.0.1 now (DNS rebinding),
    which is also why **a 3xx counts as a failed delivery**.
 
-One gap, stated because it is real: between the lookup and the connection
-`fetch` makes, the runtime resolves the name a second time, and a resolver that
-answers differently then wins. Closing it needs a custom dialer that connects to
-the address this module checked; Bun's `fetch` has no such hook today. The
-per-attempt re-check is the bound, not a proof.
+**The connection goes to the address that was checked.** Handed the URL,
+`fetch` would resolve the name a second time, and a resolver that answered
+10.0.0.5 then would win. `fetchWebhookTarget` swaps the host for a checked
+address and sends the name only as the `Host` header and the TLS server name,
+which is what the certificate is verified against. A refusal names the host and
+never the address it resolved to, so the URL field cannot read out internal DNS.
 
 `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` switches rules 1 and 3 off, for the
 self-hosted deployment whose receiver genuinely is on the same private network
@@ -227,7 +228,8 @@ what a kind is.
 ## What is not covered by tests
 
 The real `httpSender` — the tests substitute a sender through
-`setWebhookSenderForTests`, so `externalFetch`, `redirect: "manual"` and the
-bounded response read are exercised by nothing. The address rules and the
-signature are tested directly and are the parts that matter; the fetch call
-itself is four lines with no branches the tests could not see.
+`setWebhookSenderForTests`, so `redirect: "manual"` and the bounded response
+read are exercised by nothing. The address rules, the signature and
+`fetchWebhookTarget`'s connection to the checked address are tested directly
+and are the parts that matter; the TLS server name is not, because a test would
+need a certificate the runtime trusts.
