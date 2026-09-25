@@ -45,6 +45,7 @@ import type {
 	HarvestSnapshot,
 } from "../lib/harvest/contract";
 import { DAY_DIGEST_LENGTH } from "../lib/harvest/keys";
+import { isSingleOrgMode } from "../lib/single-org";
 import { groupForTaskName } from "../lib/task-taxonomy";
 import { addDaysToKey } from "../lib/time";
 import type {
@@ -818,6 +819,34 @@ export const harvestImportService = {
 					// A listed address of a user with no membership here: attach
 					// that user rather than make a second one. Undo tells the two
 					// apart by the user row's age.
+					//
+					// With several organizations on the instance, only a user nobody
+					// else has a stake in: never signed in, and no other organization
+					// holds them — the rule for vouching for an address
+					// (`whyEmailNotConfirmable` in members.service.ts). `emailListed`
+					// comes from the browser and the people list from this org's
+					// admin, so neither is the person's consent, and anybody else
+					// joins through an invitation they accept. In single-org mode
+					// every user came in through an invitation to the one
+					// organization, so no other tenant's person is reached.
+					if (!isSingleOrgMode()) {
+						const signedIn = await usersWithAccount(tx, [found.id]);
+						const [elsewhere] = await tx
+							.select({ id: member.id })
+							.from(member)
+							.where(
+								and(
+									eq(member.userId, found.id),
+									ne(member.organizationId, org),
+								),
+							)
+							.limit(1);
+						if (signedIn.has(found.id) || elsewhere) {
+							throw new Error(
+								`${email} belongs to a user outside this organization. Invite them, and match the person once they have joined.`,
+							);
+						}
+					}
 					userId = found.id;
 				} else {
 					userId = generateId();
