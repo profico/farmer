@@ -31,9 +31,9 @@ export const Route = createFileRoute("/api/github/setup")({
 				// our Connect button redirects to the Setup URL with no state, as
 				// GitHub only echoes a state we put on the install link. Refusing it
 				// would leave those installs unreachable. It stays safe because
-				// `connectInstallation` independently requires the installation to
-				// appear in the caller's OWN GitHub installation list, read with
-				// their own token — so a crafted link can at most attach something
+				// `connectInstallation` independently requires the caller to OWN the
+				// installation's GitHub account (checked with their own GitHub token),
+				// not merely see it — so a crafted link can at most attach something
 				// this admin already controls to an org they already administer,
 				// which is not a thing an attacker gains from. The Slack callback has
 				// no such second check and is strict.

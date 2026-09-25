@@ -76,13 +76,16 @@ const appHeaders = () => githubHeaders(appJwt());
 
 export type GithubInstallation = {
 	id: number;
-	account: { login: string; type: string } | null;
+	account: { id: number; login: string; type: string } | null;
 };
 
-// Installations the *user* can administer, per their OAuth token. This is the
-// authorization gate for connecting an installation to an org: a user may only
-// attach an installation that shows up here, so they can't hijack a stranger's
-// installation_id to read repos they don't control.
+// Installations the *user* can see, per their OAuth token. GitHub lists an
+// installation here when the user has explicit read, write or admin access to
+// ANY repository it covers, so this proves the user can see the installation,
+// not that they control it. It is only the first half of the gate in
+// `githubService.connectInstallation`; the second half checks that the user
+// owns the account the installation is on (`getAuthenticatedUser` for a
+// personal account, `getOrgMembership` for an organization).
 export const listUserInstallations = async (
 	userToken: string,
 ): Promise<GithubInstallation[]> => {
@@ -332,7 +335,15 @@ export type GithubCommit = {
 	author: { login: string } | null;
 };
 
-export type GithubUser = { login: string };
+export type GithubUser = { id: number; login: string };
+
+/** The authenticated user's own membership of one GitHub organization. `role`
+ *  "admin" is an organization owner; `state` "pending" is an invitation not
+ *  yet accepted. */
+export type GithubOrgMembership = {
+	state: "active" | "pending";
+	role: "admin" | "member" | "billing_manager";
+};
 
 /** A 403/429 that means "slow down", not "you may not see this".
  *
@@ -479,6 +490,16 @@ export const getCommit = (
 
 export const getAuthenticatedUser = (token: string) =>
 	githubGet<GithubUser>(`${GITHUB_API}/user`, token);
+
+// The user token's own membership of `org`. GitHub answers this for a GitHub
+// App user token only when the App holds the "Members: read" organization
+// permission and the organization has accepted it. Without it the answer is a
+// 403, which `githubGet` returns as null, the same as "not a member".
+export const getOrgMembership = (userToken: string, org: string) =>
+	githubGet<GithubOrgMembership>(
+		`${GITHUB_API}/user/memberships/orgs/${encodeURIComponent(org)}`,
+		userToken,
+	);
 
 // ── Pull requests (GraphQL) ────────────────────────────────────────────────
 // GraphQL rather than REST because REST has no way to ask "the PRs this person

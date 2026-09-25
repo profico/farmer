@@ -393,11 +393,11 @@ const buildAuth = () => {
 					//
 					// It is kept for exactly one reason, so don't "tidy" it away:
 					// `GET /user/installations` is documented as working only for OAuth app
-					// and classic tokens that carry `repo`, and that call is the
-					// authorization gate in `githubService.connectInstallation` — the check
-					// that you may only attach an installation you actually administer.
-					// Remove the scope and connecting the GitHub App breaks for everyone who
-					// links their account afterwards.
+					// and classic tokens that carry `repo`, and that call is the first half
+					// of the authorization gate in `githubService.connectInstallation`. It
+					// proves only that you can see one repo of the installation; the second
+					// half checks that you own its account. Remove the scope and connecting
+					// the GitHub App breaks for everyone who links their account afterwards.
 					//
 					// (The older note here — "so commit tracking works for private repos" —
 					// stopped being true when commit reads moved to the installation token.
