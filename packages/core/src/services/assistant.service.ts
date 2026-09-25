@@ -823,12 +823,18 @@ const previewCall = async (
 	}
 };
 
-/** Whether this call stops the turn: anything destructive, plus any batch write
- *  that describes itself with rows. One dialog for fifteen rows is not the
- *  fifteen dialogs the `write` tier exists to avoid — see `ApprovalPreview`. */
+/** Whether this call stops the turn: anything destructive, any batch write that
+ *  describes itself with rows, and any write that reaches past one day of the
+ *  caller's own timesheet (`AssistantTool.confirm`). One dialog for fifteen
+ *  rows is not the fifteen dialogs the `write` tier exists to avoid — see
+ *  `ApprovalPreview`. */
 const needsApproval = (name: string) => {
 	const tool = findTool(name);
-	return tool?.kind === "destructive" || Boolean(tool?.preview);
+	return (
+		tool?.kind === "destructive" ||
+		tool?.confirm === true ||
+		Boolean(tool?.preview)
+	);
 };
 
 /** The leading calls of `queue` that may run beside each other: reads, minus
@@ -1293,12 +1299,15 @@ const runPendingCalls = async (
 		const head = queue[0];
 		if (!head) break;
 		// Destructive tools stop the turn, and so does a batch write that can
-		// show its rows. Single creates and corrections still run inline: asking
-		// before each one turns "reconstruct my week from my commits" into
-		// fifteen dialogs, which is the interaction this feature exists to
-		// replace — whereas the batch that would HAVE been those fifteen writes
-		// is one card with fifteen rows. See ToolKind and ApprovalPreview in
-		// assistant-tools.ts for where the line sits and why.
+		// show its rows, and a write marked `confirm` — one that changes the org
+		// or somebody's access, or writes many days at once, which text the model
+		// read in a tool result must not be able to set off unseen. Single
+		// entries still run inline: asking before each one turns "reconstruct my
+		// week from my commits" into fifteen dialogs, which is the interaction
+		// this feature exists to replace — whereas the batch that would HAVE been
+		// those fifteen writes is one card with fifteen rows. See ToolKind,
+		// AssistantTool.confirm and ApprovalPreview in assistant-tools.ts for
+		// where the line sits and why.
 		if (needsApproval(head.name)) {
 			await suspendOn(ctx, assistant.id, head, onEvent);
 			return true;
