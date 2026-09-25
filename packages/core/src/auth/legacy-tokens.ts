@@ -57,9 +57,20 @@ export const sealLegacyOAuthTokens = async (row: {
 				.where(and(eq(account.id, row.id), eq(account[column], plaintext)));
 		}
 	} catch (error) {
+		// Never log `error` itself. drizzle-orm wraps a failed query in
+		// `DrizzleQueryError`, whose message lists the query's parameters, and
+		// the update above holds the plaintext token in its WHERE clause; the
+		// driver's error in `cause` carries the same parameters. The classes and
+		// the driver's code say what went wrong without the token.
+		const cause = error instanceof Error ? error.cause : undefined;
 		console.error("[auth] sealing a legacy OAuth token failed", {
 			accountId: row.id,
-			error,
+			error: error instanceof Error ? error.constructor.name : "unknown",
+			cause: cause instanceof Error ? cause.constructor.name : undefined,
+			code:
+				cause instanceof Error && "code" in cause
+					? String(cause.code)
+					: undefined,
 		});
 	}
 };
