@@ -369,13 +369,18 @@ describe("harvest import", () => {
 		);
 	});
 
-	test("the snapshot names an address outside the org as taken", async () => {
+	test("the snapshot does not say which addresses have an account elsewhere", async () => {
 		const snap = await harvestImportService.snapshot(admin, {
 			from: "2025-01-01",
 			to: "2025-12-31",
 			emails: [OUTSIDER_EMAIL.toUpperCase(), `${WORKER}@example.com`],
 		});
-		expect(snap.takenEmails).toEqual([OUTSIDER_EMAIL]);
+		expect(snap.takenEmails).toEqual([]);
+		expect(
+			await harvestImportService.takenEmails(admin, {
+				emails: [OUTSIDER_EMAIL],
+			}),
+		).toEqual([]);
 		expect(snap.tasks.some((t) => t.id === paidLeaveId)).toBe(true);
 	});
 
@@ -393,6 +398,38 @@ describe("harvest import", () => {
 			.from(importRun)
 			.where(eq(importRun.organizationId, ORG));
 		expect(runs).toHaveLength(0);
+	});
+
+	test("in single-org mode only the one organization hears about an address outside it", async () => {
+		// The environment wins over the stored setting, and Bun loads the
+		// developer's `.env` into the suite.
+		const envSlug = process.env.SINGLE_ORG_SLUG;
+		delete process.env.SINGLE_ORG_SLUG;
+		try {
+			setInstanceSettingsForTests({ SINGLE_ORG_SLUG: ORG });
+			const snap = await harvestImportService.snapshot(admin, {
+				from: "2025-01-01",
+				to: "2025-12-31",
+				emails: [OUTSIDER_EMAIL.toUpperCase(), `${WORKER}@example.com`],
+			});
+			expect(snap.takenEmails).toEqual([OUTSIDER_EMAIL]);
+			expect(
+				await harvestImportService.takenEmails(admin, {
+					emails: [OUTSIDER_EMAIL.toUpperCase()],
+				}),
+			).toEqual([OUTSIDER_EMAIL]);
+
+			// A workspace left from before the switch is not that organization.
+			setInstanceSettingsForTests({ SINGLE_ORG_SLUG: OTHER_ORG });
+			expect(
+				await harvestImportService.takenEmails(admin, {
+					emails: [OUTSIDER_EMAIL],
+				}),
+			).toEqual([]);
+		} finally {
+			setInstanceSettingsForTests(undefined);
+			if (envSlug !== undefined) process.env.SINGLE_ORG_SLUG = envSlug;
+		}
 	});
 
 	test("start writes the reference rows", async () => {

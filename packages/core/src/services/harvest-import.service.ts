@@ -45,7 +45,7 @@ import type {
 	HarvestSnapshot,
 } from "../lib/harvest/contract";
 import { DAY_DIGEST_LENGTH } from "../lib/harvest/keys";
-import { isSingleOrgMode } from "../lib/single-org";
+import { findSingleOrg, isSingleOrgMode } from "../lib/single-org";
 import { groupForTaskName } from "../lib/task-taxonomy";
 import { addDaysToKey } from "../lib/time";
 import type {
@@ -167,11 +167,20 @@ const loadStartedRun = async (ctx: Ctx, runId: string) => {
 };
 
 /** The addresses in `emails` that belong to a user who is not a member of
- *  this org. Lower case. */
+ *  this org. Lower case.
+ *
+ *  Only the one organization of a single-org instance gets an answer. Every
+ *  other caller administers one workspace among many, and the `user` table
+ *  holds the other workspaces' people too: answering for 500 addresses a call
+ *  says which of them have an account on the deployment. Such a caller gets
+ *  nothing here; the snapshot's `members` covers its own people, and `start`
+ *  still refuses a guessed or typed address that another user holds. */
 const takenEmailsFor = async (
 	ctx: Ctx,
 	emails: readonly string[],
 ): Promise<string[]> => {
+	const singleOrg = await findSingleOrg();
+	if (singleOrg?.id !== ctx.organizationId) return [];
 	const wanted = [...new Set(emails.map(normEmail))];
 	const out: string[] = [];
 	for (const batch of inBatches(wanted)) {
@@ -478,7 +487,8 @@ export const harvestImportService = {
 	},
 
 	/** The addresses that belong to a user outside this org, for a guess the
-	 *  admin typed after the snapshot was taken. */
+	 *  admin typed after the snapshot was taken. Empty outside the one
+	 *  organization of a single-org instance: see `takenEmailsFor`. */
 	takenEmails: async (ctx: Ctx, input: HarvestEmailsInput) => {
 		await requireAdmin(ctx);
 		return takenEmailsFor(ctx, input.emails);

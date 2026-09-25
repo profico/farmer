@@ -50,7 +50,9 @@ export interface HarvestSnapshot {
 	}[];
 	/** Addresses from the request that belong to a user who is NOT a member
 	 *  here. Lower case. A listed address may attach to such a user; a guessed
-	 *  one must not. */
+	 *  one must not. Always empty outside the one organization of a single-org
+	 *  instance, so that it does not say who has an account on the deployment;
+	 *  `start` then refuses a guessed or typed one when it writes the person. */
 	takenEmails: string[];
 	/** Source key to local id, from every earlier run that was not undone. */
 	mappings: { kind: HarvestMappingKind; sourceKey: string; localId: string }[];
