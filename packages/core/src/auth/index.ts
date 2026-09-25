@@ -1,6 +1,10 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import {
+	APIError,
+	createAuthMiddleware,
+	getSessionFromCtx,
+} from "better-auth/api";
 import { getOAuth2Tokens, refreshAccessTokenRequest } from "better-auth/oauth2";
 import {
 	admin,
@@ -38,6 +42,18 @@ import {
 import { membersService } from "../services/members.service";
 import { slackService } from "../services/slack.service";
 import {
+	assertCodeConsented,
+	assertConsentCodeOwner,
+	CONSENT_COOKIE,
+	consentRequestFor,
+	MCP_AUTHORIZE_PATH,
+	MCP_CONSENT_PAGE,
+	MCP_TOKEN_PATH,
+	mcpTokenRequest,
+	OAUTH_CONSENT_PATH,
+	oauthConsentRequest,
+} from "./mcp-consent";
+import {
 	assertMayRegister,
 	PASSWORD_SIGN_UP_PATH,
 	registrationClosed,
@@ -50,6 +66,7 @@ import {
 	type OAuthCredentials,
 } from "./sign-in-methods";
 
+export type { McpConsentRequest } from "./mcp-consent";
 export { mayClaimInvitation } from "./registration";
 export {
 	type PasswordSignIn,
@@ -435,10 +452,42 @@ const buildAuth = () => {
 			}),
 		},
 		hooks: {
-			// Refuse a production password signup before better-auth looks the
-			// email up. Its own "user already exists" answer would otherwise tell an
-			// anonymous visitor which addresses have an account.
 			before: createAuthMiddleware(async (ctx) => {
+				// MCP consent, one check per endpoint; see `./mcp-consent.ts`.
+				// `prompt` has to be exactly "consent": the plugin compares the
+				// whole string.
+				if (ctx.path === MCP_AUTHORIZE_PATH) {
+					return { context: { query: { ...ctx.query, prompt: "consent" } } };
+				}
+				if (ctx.path === MCP_TOKEN_PATH) {
+					const request = mcpTokenRequest.safeParse(
+						ctx.body instanceof FormData
+							? Object.fromEntries(ctx.body.entries())
+							: ctx.body,
+					);
+					// Not an object: the endpoint refuses it before it reads a code.
+					if (!request.success) return;
+					await assertCodeConsented(ctx.context.internalAdapter, request.data);
+					return;
+				}
+				if (ctx.path === OAUTH_CONSENT_PATH) {
+					const session = await getSessionFromCtx(ctx);
+					// Signed out: the endpoint's own session check answers.
+					if (!session) return;
+					const consentCode =
+						oauthConsentRequest.safeParse(ctx.body).data?.consent_code ||
+						(await ctx.getSignedCookie(CONSENT_COOKIE, ctx.context.secret)) ||
+						null;
+					await assertConsentCodeOwner(
+						ctx.context.internalAdapter,
+						consentCode,
+						session.user.id,
+					);
+					return;
+				}
+				// Refuse a production password signup before better-auth looks the
+				// email up. Its own "user already exists" answer would otherwise
+				// tell an anonymous visitor which addresses have an account.
 				if (ctx.path !== PASSWORD_SIGN_UP_PATH || isDevAuthEnabled()) return;
 				if (!(await isInstanceEmpty())) throw registrationClosed();
 			}),
@@ -742,15 +791,26 @@ const buildAuth = () => {
 			// whatever query it was handed and hands it to `/api/login` as a
 			// `redirect`, which is a parameter that path already carries safely.
 			//
-			// No consent screen, deliberately rather than by omission: better-auth
-			// only renders one when the client sends `prompt=consent` AND
-			// `oidcConfig.consentPage` is set. The person is already consenting twice
-			// — once in the Google flow, once in their MCP client's own connection
-			// prompt — and a third screen that says the same thing is a screen nobody
-			// reads.
+			// Every authorization stops at a consent screen, `MCP_CONSENT_PAGE`
+			// (`routes/mcp-consent.tsx` in the web app). There used to be none, on
+			// the reasoning that the person already consents in their MCP client.
+			// That holds only for a client the person runs: registration is open to
+			// anybody with any redirect, so an authorize link from a stranger sent
+			// the person's code to the stranger's server without a single prompt.
+			// better-auth shows the page only when the client asks for it with
+			// `prompt=consent`, so `hooks.before` above asks on every request, and
+			// holds the consent and token endpoints to it (`./mcp-consent.ts`).
+			// `oidcConfig.loginPage` is only there because the type requires it;
+			// the plugin takes the top-level one.
 			//
 			// Mounted whatever `MCP_ENABLED` says; see lib/mcp-flag.ts.
-			mcp({ loginPage: "/api/mcp-login" }),
+			mcp({
+				loginPage: "/api/mcp-login",
+				oidcConfig: {
+					loginPage: "/api/mcp-login",
+					consentPage: MCP_CONSENT_PAGE,
+				},
+			}),
 			// The command-line tool's sign-in: RFC 8628's device flow. `farmer login`
 			// asks `/device/code` for a pair of codes, the person approves the user
 			// code on `/device` in a browser where they are already signed in, and the
@@ -892,3 +952,11 @@ export const auth: Auth = {
 		return liveAuth().$Infer;
 	},
 };
+
+/**
+ * What the MCP consent screen shows for `consentCode`, or null when the code
+ * is not a pending request of `userId`'s. Read through better-auth's own
+ * adapter, so the code is looked up exactly as the plugin stores it.
+ */
+export const mcpConsentRequest = async (userId: string, consentCode: string) =>
+	consentRequestFor((await auth.$context).internalAdapter, userId, consentCode);
