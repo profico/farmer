@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+import { currentAuthSecret } from "./secret-box";
+
 // Signs the target organization id into an OAuth install `state` param so the
 // post-install callback can trust which org to attach the installation to, even
 // if the admin's active org changed between clicking "connect" and the redirect
@@ -31,17 +33,20 @@ export const OAUTH_STATE_MAX_AGE_SECONDS = 15 * 60;
  *  process today, but a state from the future is otherwise refused outright. */
 const CLOCK_SKEW_SECONDS = 60;
 
-const secret = () => {
-	const s = process.env.BETTER_AUTH_SECRET;
-	if (!s) throw new Error("BETTER_AUTH_SECRET not configured");
-	return s;
-};
-
+// Keyed from the CURRENT secret — the first BETTER_AUTH_SECRETS entry, or
+// BETTER_AUTH_SECRET when no rotation set is configured — and checked against
+// that one only. It used to be BETTER_AUTH_SECRET always, which a rotation
+// leaves at the old value (it still opens older stored credentials), so a
+// leaked secret that was rotated away could still forge a state for any org
+// and user. Accepting the older versions too would keep that door open for as
+// long as they stay configured; the price of refusing them is an install begun
+// in the 15 minutes before the restart that rotated, which is started again.
+//
 // JSON rather than a joined string, so no choice of separator can let one
 // (org, user, time) triple spell another's — ids are opaque to this module.
 const mac = (orgId: string, userId: string, issuedAt: number) =>
 	crypto
-		.createHmac("sha256", secret())
+		.createHmac("sha256", currentAuthSecret())
 		.update(JSON.stringify(["oauth-state/v2", orgId, userId, issuedAt]))
 		.digest("base64url");
 
