@@ -27,9 +27,10 @@ const searchSchema = z.object({
 	orgSlug: z.string().optional(),
 	role: z.string().optional(),
 	// Set by better-auth when the OAuth round-trip fails — see `errorCallbackURL`
-	// in routes/api/login.ts. snake_case because that is what OAuth sends.
+	// in routes/api/login.ts. Only the code is read. better-auth also sends an
+	// `error_description`, and it is deliberately not parsed: anybody can put
+	// one in a link to this page, and it would render as this page's own text.
 	error: z.string().optional(),
-	error_description: z.string().optional(),
 });
 
 type Search = z.infer<typeof searchSchema>;
@@ -65,11 +66,12 @@ const destination = (search: Search) => {
 };
 
 /**
- * What a failed round trip says. better-auth sends our own APIError's `code`
- * as `error` and its message as `error_description` (see
- * `packages/core/src/auth/registration.ts`), so the description is the
- * specific sentence when there is one. The titles and the fallbacks are for
- * the codes a person can do something about.
+ * What a failed round trip says. better-auth sends an APIError's `code` as
+ * `error` (see `packages/core/src/auth/registration.ts`). The page shows only
+ * the sentences written here, never text from the query string: a code this
+ * table knows gets its own title and sentence, and any other code gets
+ * `GENERIC_ERROR`. The known codes are the ones a person can do something
+ * about.
  */
 type SignInFailure = { title: string; fallback: string };
 
@@ -99,6 +101,16 @@ const ERRORS = new Map<string, SignInFailure>([
 			title: "Connect this provider first",
 			fallback:
 				"This email already has an account here, and the account is not connected to this provider. Sign in the way you did before, then connect the provider in Preferences → Sign-in methods.",
+		},
+	],
+	// The admin plugin's code: its session hook refuses a banned account. Its
+	// sentence used to arrive as `error_description`, which is no longer read.
+	[
+		"BANNED_USER",
+		{
+			title: "This account is banned",
+			fallback:
+				"An administrator banned this account on this instance. Ask an administrator if you think this is a mistake.",
 		},
 	],
 ]);
@@ -171,19 +183,13 @@ function SignInPage() {
 	const { config, passwordSignIn } = Route.useLoaderData();
 	const search = Route.useSearch();
 
-	// `error` is a code this app defined and better-auth echoed back; `error_
-	// description` is attacker-controlled query-string text once it crosses the
-	// redirect. A code this app KNOWS gets this app's own sentence, never the
-	// query string's — otherwise `?error=REGISTRATION_CLOSED&error_description=…`
-	// renders whatever text rides along. Only a code this app does not
-	// recognize falls back to showing what the provider said.
+	// `error` selects one of this app's own sentences and is never shown. No
+	// text from the query string reaches the page: a link such as
+	// `?error=x&error_description=…` would otherwise put anybody's words on the
+	// real sign-in screen. A code this app does not know gets `GENERIC_ERROR`.
 	const knownFailure = search.error ? ERRORS.get(search.error) : undefined;
 	const failure = search.error ? (knownFailure ?? GENERIC_ERROR) : null;
-	const oauthError = failure
-		? knownFailure
-			? failure.fallback
-			: (search.error_description ?? failure.fallback)
-		: null;
+	const oauthError = failure ? failure.fallback : null;
 	const providers = config.signInProviders;
 	const notConfigured = providers.length === 0 && !config.devAuth;
 	const org = config.singleOrgMode ? config.org : null;
