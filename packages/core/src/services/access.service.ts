@@ -43,6 +43,12 @@ const RANK = {
 	pm: 3,
 } satisfies Record<ProjectRole, number>;
 
+/** The role an assignment of `role` holds a project as, for a person with or
+ *  without a people list — the rule `heldAs` applies to the caller, for
+ *  anyone: a Team Lead's `team_lead` assignment holds the project as PM. */
+const heldRoleOf = (role: ProjectRole, leadsPeople: boolean): ProjectRole =>
+	leadsPeople && role === "team_lead" ? "pm" : role;
+
 export class AccessError extends UserFacingError {
 	constructor(message: string) {
 		super(message);
@@ -179,11 +185,24 @@ export class Access {
 	 *  neither promote anyone (themselves included) to PM nor touch a PM or a
 	 *  Team Lead who outranks their own assignment. `canManageProjectMembers`
 	 *  only asks whether the caller may touch the roster at all; this is the
-	 *  ceiling on what they may do to it once they can. */
-	canActOnProjectRole(projectId: string, role: ProjectRole): boolean {
+	 *  ceiling on what they may do to it once they can.
+	 *
+	 *  `targetLeadsPeople` says whether the person acted on has a people list
+	 *  (`accessService.leadsPeople`). The ceiling compares the rank that person
+	 *  holds the project as, not the raw role: a `team_lead` assignment of a
+	 *  Team Lead is PM rank. Comparing the raw role let a Team Lead below PM
+	 *  make a list-holder an effective PM, or demote or remove one. Pass false
+	 *  for an inactive row: it grants nothing, so it holds no PM rank. */
+	canActOnProjectRole(
+		projectId: string,
+		role: ProjectRole,
+		targetLeadsPeople: boolean,
+	): boolean {
 		if (this.isAdmin) return true;
 		const held = this.heldAs(projectId);
-		return held != null && RANK[role] <= RANK[held];
+		return (
+			held != null && RANK[heldRoleOf(role, targetLeadsPeople)] <= RANK[held]
+		);
 	}
 
 	/** See the project's budget and hourly price. PM and Admin only — the two
@@ -359,6 +378,23 @@ export const accessService = {
 			for (const r of rows) people.add(r.userId);
 		}
 		return people;
+	},
+
+	/** Whether `userId` has anybody on their people list — `Access.isTeamLead`
+	 *  for a person other than the caller. The role ceiling needs it to rank
+	 *  the person it acts on (see `Access.canActOnProjectRole`). */
+	leadsPeople: async (ctx: Ctx, userId: string): Promise<boolean> => {
+		const [row] = await ctxDb(ctx)
+			.select({ userId: teamLeadPerson.personUserId })
+			.from(teamLeadPerson)
+			.where(
+				and(
+					eq(teamLeadPerson.organizationId, ctx.organizationId),
+					eq(teamLeadPerson.leadUserId, userId),
+				),
+			)
+			.limit(1);
+		return row != null;
 	},
 
 	/** Convenience for the many call sites that only need the global tier. */

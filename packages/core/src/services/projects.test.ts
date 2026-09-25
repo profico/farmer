@@ -32,7 +32,7 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { memberProfile } from "../db/schema/people";
+import { memberProfile, teamLeadPerson } from "../db/schema/people";
 import { createTestDb, type TestDb } from "../test/harness";
 import { AccessError, NotAMemberError } from "./access.service";
 import { projectsService } from "./projects.service";
@@ -492,6 +492,171 @@ describe("project role escalation", () => {
 		});
 		team = await projectsService.listMembers(ctx(ADMIN), escProjectId);
 		expect(team.find((m) => m.userId === ESC_PM)?.active).toBe(false);
+	});
+});
+
+// The same ceiling, for a person with a people list. Their `team_lead`
+// assignment holds the project at PM rank (`heldAs`), so the ceiling must
+// rank them there too. It used to compare the raw role: a Team Lead without a
+// list could make a list-holder an effective PM, who could then make the
+// first one a real PM, and could demote or remove an effective PM.
+describe("project role escalation through a people list", () => {
+	// Team Lead on the project, no list: held rank team_lead.
+	const LIST_CALLER = "u-projects-list-caller";
+	// A plain member on the project who has a people list.
+	const LIST_MEMBER = "u-projects-list-member";
+	// Team Lead on the project who has a people list: effective PM.
+	const LIST_LEAD = "u-projects-list-lead";
+	// Has a people list and an INACTIVE `team_lead` row: holds nothing.
+	const LIST_GONE = "u-projects-list-gone";
+	// Nobody's lead, not on the project yet.
+	const NO_LIST = "u-projects-list-none";
+	let listProjectId: string;
+
+	const seedMember = async (id: string) => {
+		await db.insert(user).values({
+			id,
+			name: id,
+			email: `${id}@example.com`,
+			emailVerified: true,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await db.insert(member).values({
+			id: `m-${id}`,
+			organizationId: ORG,
+			userId: id,
+			role: "member",
+			createdAt: new Date(),
+		});
+	};
+
+	const rowOf = async (userId: string) => {
+		const team = await projectsService.listMembers(ctx(ADMIN), listProjectId);
+		return team.find((m) => m.userId === userId);
+	};
+
+	beforeAll(async () => {
+		for (const id of [
+			LIST_CALLER,
+			LIST_MEMBER,
+			LIST_LEAD,
+			LIST_GONE,
+			NO_LIST,
+		]) {
+			await seedMember(id);
+		}
+		const [p] = await db
+			.insert(project)
+			.values({ organizationId: ORG, clientId, name: "Escalation by list" })
+			.returning();
+		if (!p) throw new Error("project");
+		listProjectId = p.id;
+		await db.insert(projectMember).values(
+			[
+				{ userId: LIST_CALLER, role: "team_lead" as const, active: true },
+				{ userId: LIST_MEMBER, role: "member" as const, active: true },
+				{ userId: LIST_LEAD, role: "team_lead" as const, active: true },
+				{ userId: LIST_GONE, role: "team_lead" as const, active: false },
+			].map((m) => ({
+				organizationId: ORG,
+				projectId: listProjectId,
+				userId: m.userId,
+				role: m.role,
+				active: m.active,
+			})),
+		);
+		await db.insert(teamLeadPerson).values(
+			[LIST_MEMBER, LIST_LEAD, LIST_GONE].map((leadUserId) => ({
+				organizationId: ORG,
+				leadUserId,
+				personUserId: PLAIN,
+			})),
+		);
+	});
+
+	test("a team lead cannot give team_lead to a list-holder", async () => {
+		await expect(
+			projectsService.assignMember(ctx(LIST_CALLER), {
+				projectId: listProjectId,
+				userId: LIST_MEMBER,
+				role: "team_lead",
+			}),
+		).rejects.toThrow(AccessError);
+		expect((await rowOf(LIST_MEMBER))?.role).toBe("member");
+	});
+
+	test("a team lead cannot demote a list-holder's team_lead", async () => {
+		await expect(
+			projectsService.assignMember(ctx(LIST_CALLER), {
+				projectId: listProjectId,
+				userId: LIST_LEAD,
+				role: "member",
+			}),
+		).rejects.toThrow(AccessError);
+		expect((await rowOf(LIST_LEAD))?.role).toBe("team_lead");
+	});
+
+	test("a team lead cannot remove a list-holder's team_lead", async () => {
+		await expect(
+			projectsService.removeMember(ctx(LIST_CALLER), {
+				projectId: listProjectId,
+				userId: LIST_LEAD,
+			}),
+		).rejects.toThrow(AccessError);
+		expect((await rowOf(LIST_LEAD))?.active).toBe(true);
+	});
+
+	test("a team lead still manages a list-holder's member row", async () => {
+		await projectsService.assignMember(ctx(LIST_CALLER), {
+			projectId: listProjectId,
+			userId: LIST_MEMBER,
+			role: "member",
+		});
+		expect((await rowOf(LIST_MEMBER))?.role).toBe("member");
+	});
+
+	// An inactive row grants nothing, so it holds no PM rank: re-adding the
+	// person as a plain member is the Team page's add picker, and stays open.
+	// Re-adding them as team_lead would make them an effective PM again.
+	test("a team lead cannot re-add a list-holder as team_lead", async () => {
+		await expect(
+			projectsService.assignMember(ctx(LIST_CALLER), {
+				projectId: listProjectId,
+				userId: LIST_GONE,
+				role: "team_lead",
+			}),
+		).rejects.toThrow(AccessError);
+		expect((await rowOf(LIST_GONE))?.active).toBe(false);
+	});
+
+	test("a team lead re-adds a list-holder's inactive team_lead row as member", async () => {
+		await projectsService.assignMember(ctx(LIST_CALLER), {
+			projectId: listProjectId,
+			userId: LIST_GONE,
+			role: "member",
+		});
+		const row = await rowOf(LIST_GONE);
+		expect(row?.role).toBe("member");
+		expect(row?.active).toBe(true);
+	});
+
+	test("a team lead still gives team_lead to somebody with no list", async () => {
+		await projectsService.assignMember(ctx(LIST_CALLER), {
+			projectId: listProjectId,
+			userId: NO_LIST,
+			role: "team_lead",
+		});
+		expect((await rowOf(NO_LIST))?.role).toBe("team_lead");
+	});
+
+	test("an effective pm may give team_lead to a list-holder", async () => {
+		await projectsService.assignMember(ctx(LIST_LEAD), {
+			projectId: listProjectId,
+			userId: LIST_MEMBER,
+			role: "team_lead",
+		});
+		expect((await rowOf(LIST_MEMBER))?.role).toBe("team_lead");
 	});
 });
 
