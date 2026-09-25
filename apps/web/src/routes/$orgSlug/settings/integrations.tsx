@@ -38,6 +38,7 @@ import {
 import { Switch } from "#/components/ui/switch.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
+import { shellQuote } from "#/lib/shell-quote.ts";
 import { githubConnectionStatusQuery } from "#/queries/github.ts";
 import { googleCalendarStatusQuery } from "#/queries/google-calendar.ts";
 import { integrationSettingsQuery } from "#/queries/integration-settings.ts";
@@ -449,7 +450,8 @@ const copy = async (value: string, what: string) => {
 function McpSection({ appOrigin }: { appOrigin: string }) {
 	const orgSlug = useOrgSlug();
 	const url = `${appOrigin}/api/mcp/${orgSlug}`;
-	const command = `claude mcp add --transport http farmer ${url}`;
+	// Quoted: a workspace admin sets the slug, and this runs in a member's shell.
+	const command = `claude mcp add --transport http farmer ${shellQuote(url)}`;
 
 	return (
 		<PageSection>
