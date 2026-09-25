@@ -16,6 +16,14 @@ export const connectInstallationInput = z.object({
 });
 export type ConnectInstallationInput = z.infer<typeof connectInstallationInput>;
 
+// An admin confirming an installation that GitHub sent back with no signed
+// state. It names the workspace the page showed, because the server function
+// otherwise acts on the session's active one, which another tab may have moved.
+export const confirmInstallationInput = connectInstallationInput.extend({
+	organizationId: z.string().min(1),
+});
+export type ConfirmInstallationInput = z.infer<typeof confirmInstallationInput>;
+
 // Disconnecting takes the installation away from THIS workspace. `uninstall`
 // additionally removes the App from the GitHub account, for everybody — a
 // different act with a different blast radius, so it is a separate, opt-in
