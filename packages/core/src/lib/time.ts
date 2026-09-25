@@ -135,7 +135,9 @@ const evalArithmetic = (expr: string): number | null => {
 		const start = pos;
 		while (pos < expr.length && /[\d.]/.test(expr[pos] ?? "")) pos++;
 		const numStr = expr.slice(start, pos);
-		if (!/^(\d+\.?\d*|\.\d+)$/.test(numStr)) return null;
+		// "1.", "1.5" or ".5". Not `\d+\.?\d*`: its two digit runs can split one
+		// run of digits n ways, so a long "111…1.." backtracked in quadratic time.
+		if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(numStr)) return null;
 		return sign * Number.parseFloat(numStr);
 	};
 
@@ -183,26 +185,19 @@ export const parseDuration = (input: string): number | null => {
 
 	// Unit form takes priority whenever an h/m suffix is present.
 	if (/[hm]/.test(trimmed)) {
-		const unitPattern = /(\d+(?:\.\d+)?)\s*(h|m)/g;
+		// Sticky, so each "1h" is read exactly where the one before it ended and
+		// any text the pattern cannot read (the "30" in "1h30x") fails the whole
+		// input. A global scan instead tried the pattern from every position, and
+		// on a long run of digits with no unit after it that took quadratic time.
+		const unitPattern = /\s*(\d+(?:\.\d+)?)\s*(h|m)/y;
 		let totalSeconds = 0;
-		let matched = false;
-		// Where the last match ended, so a tail the pattern never looked at (the
-		// "30" in "1h30x") fails the whole input instead of vanishing.
-		let consumedTo = 0;
-		for (const match of trimmed.matchAll(unitPattern)) {
-			if (
-				match.index !== consumedTo &&
-				trimmed.slice(consumedTo, match.index).trim() !== ""
-			) {
-				return null;
-			}
-			matched = true;
+		// `trimmed` is not empty, so the loop reads at least one unit or fails.
+		while (unitPattern.lastIndex < trimmed.length) {
+			const match = unitPattern.exec(trimmed);
+			if (!match) return null;
 			const value = Number.parseFloat(match[1] ?? "0");
 			totalSeconds += match[2] === "h" ? value * 3600 : value * 60;
-			consumedTo = match.index + match[0].length;
 		}
-		if (!matched) return null;
-		if (trimmed.slice(consumedTo).trim() !== "") return null;
 		return Math.round(totalSeconds);
 	}
 
