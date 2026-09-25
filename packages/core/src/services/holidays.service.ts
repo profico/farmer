@@ -47,8 +47,16 @@ export type HolidayWithStatus = PublicHoliday & { disabled: boolean };
 // `new Holidays(country)` parses a rule set and `getHolidays(year)` evaluates
 // it, which was fine when this ran once per report and is not fine now that
 // `recomputeDayFill` consults the calendar on every entry write. The answer
-// depends on nothing but the country and the year, so it is cached for the life
-// of the process; the set is bounded by countries x years actually asked for.
+// depends on nothing but the country and the year, so it is cached across
+// requests.
+//
+// The cache holds at most `HOLIDAY_YEAR_CACHE_LIMIT` entries and drops the
+// least recently used one past that. The year comes from the caller — the
+// Settings → Holidays server function takes any integer — so "countries x
+// years actually asked for" was a set a script could grow until the process
+// ran out of memory. The limit sits far above what the orgs on one instance ask
+// for (a few countries, a few years each), so a real calendar is not evicted by
+// ordinary use; a sweep of years only costs the next reader one re-evaluation.
 //
 // Deliberately does NOT cache the org's opted-out names — those are a database
 // row an admin can toggle, and caching them would make the toggle take a
@@ -58,15 +66,29 @@ export type HolidayWithStatus = PublicHoliday & { disabled: boolean };
 // avoids re-parsing a country's rule set, this one avoids re-evaluating a year
 // against it. A write asks for a single day, so the second is what makes the
 // per-write lookup free.
+export const HOLIDAY_YEAR_CACHE_LIMIT = 1024;
+
 const yearCache = new Map<string, PublicHoliday[]>();
 
 const holidaysForYear = (country: string, year: number): PublicHoliday[] => {
 	const key = `${country}:${String(year)}`;
 	const cached = yearCache.get(key);
-	if (cached) return cached;
+	if (cached) {
+		// Delete first so a hit moves to the back of the eviction order.
+		yearCache.delete(key);
+		yearCache.set(key, cached);
+		return cached;
+	}
 	const computed = holidaysForCountry(country)
 		.getHolidays(year)
 		.map((h) => ({ date: h.date.slice(0, 10), name: h.name }));
+	// Map iteration is insertion order, so the first key is the least recently
+	// used.
+	while (yearCache.size >= HOLIDAY_YEAR_CACHE_LIMIT) {
+		const oldest = yearCache.keys().next();
+		if (oldest.done) break;
+		yearCache.delete(oldest.value);
+	}
 	yearCache.set(key, computed);
 	return computed;
 };
