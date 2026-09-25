@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 import nodemailer, { type Transporter } from "nodemailer";
 import { z } from "zod";
 
@@ -43,6 +45,26 @@ export const emailProvider = (): EmailProvider | null => {
 const fromAddress = () =>
 	setting("EMAIL_FROM") ?? setting("SMTP_FROM") ?? setting("SMTP_USER");
 
+// nodemailer aims an unset host at localhost, so this does too.
+const isLoopbackHost = (host: string | undefined): boolean => {
+	const name = host ? host.toLowerCase() : "localhost";
+	if (name === "localhost" || name === "::1") return true;
+	return isIP(name) === 4 && name.startsWith("127.");
+};
+
+/** How the SMTP connection is encrypted. Port 465 is TLS from the first byte.
+ *  Any other port must upgrade with STARTTLS before it logs in: left to
+ *  itself, nodemailer upgrades only when the server's EHLO reply offers
+ *  STARTTLS, so somebody on the path who deletes that line gets SMTP_USER,
+ *  SMTP_PASS and every message in cleartext. The exception is a server on
+ *  this machine, which no network sits in front of, and where a local mail
+ *  catcher (Mailpit and the like) speaks plain SMTP. Certificates are still
+ *  verified. Pure and exported for the tests. */
+export const smtpTls = (port: number, host: string | undefined) => {
+	const secure = port === 465;
+	return { secure, requireTLS: !secure && !isLoopbackHost(host) };
+};
+
 // Built on first use, not at import: a Resend deployment has no SMTP settings,
 // and nodemailer given none quietly aims at localhost.
 //
@@ -70,7 +92,7 @@ const smtpTransport = (): Transporter => {
 	const transporter = nodemailer.createTransport({
 		host: options.host,
 		port,
-		secure: port === 465,
+		...smtpTls(port, options.host),
 		// A deadline on every step, for the reason `externalFetch` has one:
 		// nodemailer's defaults wait two minutes to connect and ten on a quiet
 		// socket, so a mail server that stops answering holds its caller that long.

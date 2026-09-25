@@ -157,7 +157,7 @@ export const INSTANCE_SETTINGS = [
 		label: "Port",
 		kind: "port",
 		defaultValue: "465",
-		hint: "465 uses TLS from the start. Other ports use STARTTLS.",
+		hint: "465 uses TLS from the start. Other ports require STARTTLS, except on localhost.",
 	},
 	{
 		name: "SMTP_USER",
