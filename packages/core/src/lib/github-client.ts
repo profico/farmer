@@ -85,7 +85,8 @@ export type GithubInstallation = {
 // not that they control it. It is only the first half of the gate in
 // `githubService.connectInstallation`; the second half checks that the user
 // owns the account the installation is on (`getAuthenticatedUser` for a
-// personal account, `getOrgMembership` for an organization).
+// personal account, and `getOrgMembership` with the installation token for an
+// organization).
 export const listUserInstallations = async (
 	userToken: string,
 ): Promise<GithubInstallation[]> => {
@@ -337,12 +338,13 @@ export type GithubCommit = {
 
 export type GithubUser = { id: number; login: string };
 
-/** The authenticated user's own membership of one GitHub organization. `role`
- *  "admin" is an organization owner; `state` "pending" is an invitation not
- *  yet accepted. */
+/** One person's membership of one GitHub organization. `role` "admin" is an
+ *  organization owner; `state` "pending" is an invitation not yet accepted.
+ *  `user.id` is GitHub's numeric id, which a rename does not change. */
 export type GithubOrgMembership = {
 	state: "active" | "pending";
 	role: "admin" | "member" | "billing_manager";
+	user: { id: number; login: string } | null;
 };
 
 /** A 403/429 that means "slow down", not "you may not see this".
@@ -491,14 +493,21 @@ export const getCommit = (
 export const getAuthenticatedUser = (token: string) =>
 	githubGet<GithubUser>(`${GITHUB_API}/user`, token);
 
-// The user token's own membership of `org`. GitHub answers this for a GitHub
-// App user token only when the App holds the "Members: read" organization
-// permission and the organization has accepted it. Without it the answer is a
-// 403, which `githubGet` returns as null, the same as "not a member".
-export const getOrgMembership = (userToken: string, org: string) =>
+// `username`'s membership of `org`, read with the installation token of the
+// App installed on that organization. Not the person's own user token: that
+// token comes from GITHUB_CLIENT_ID, which may be a separate OAuth app with no
+// grant to read organizations. The installation token needs only the App's
+// "Members: read" organization permission, which the organization accepts
+// when it installs or updates the App. Without it the answer is a 403, and
+// for somebody who is not a member a 404; `githubGet` returns both as null.
+export const getOrgMembership = (
+	installationToken: string,
+	org: string,
+	username: string,
+) =>
 	githubGet<GithubOrgMembership>(
-		`${GITHUB_API}/user/memberships/orgs/${encodeURIComponent(org)}`,
-		userToken,
+		`${GITHUB_API}/orgs/${encodeURIComponent(org)}/memberships/${encodeURIComponent(username)}`,
+		installationToken,
 	);
 
 // ── Pull requests (GraphQL) ────────────────────────────────────────────────
