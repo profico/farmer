@@ -140,6 +140,7 @@ describe("orgContextService.organizationsFor", () => {
 	test("lists only the caller's memberships", async () => {
 		expect(await orgContextService.organizationsFor("u-member")).toEqual([
 			{
+				id: ORG,
 				slug: "ctx-org",
 				name: "Ctx Org",
 				logo: null,

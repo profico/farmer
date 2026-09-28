@@ -1,6 +1,7 @@
 import {
 	type ApiError,
 	type ApiIssue,
+	type ApiTokenScope,
 	CLI_VERSION_HEADER,
 	isCliVersionSupported,
 } from "@farmer/core/api";
@@ -8,10 +9,15 @@ import type { JsonValue } from "@farmer/core/lib/json";
 import type { Ctx } from "@farmer/core/services";
 import { z } from "zod";
 
+import { SESSION_REQUEST_HEADER } from "#/lib/api-session-header.ts";
 // Type-only, so it is erased and `posthog-node` never reaches the client graph
 // through this module. The values come from the deferred import in `serve`.
-import type { ApiRequestReport } from "#/lib/posthog-api.ts";
-import { resolveCliOrgContext, resolveCliUser } from "#/server/api-auth.ts";
+import type { ApiCredentialKind, ApiRequestReport } from "#/lib/posthog-api.ts";
+import {
+	type CliCredential,
+	resolveCliOrgContext,
+	resolveCliUser,
+} from "#/server/api-auth.ts";
 import {
 	type Admission,
 	admitCaller,
@@ -39,8 +45,9 @@ import {
  *  3. The CLI version header — 426 for a binary too old to read the answer,
  *     before it gets an answer to misread. A request without the header is a
  *     browser or a script, and is let through.
- *  4. The credential. See `authenticate` below for why the cookie counts only
- *     on a GET.
+ *  4. The credential. See `cookieUser` below for when the session cookie
+ *     counts. A read-only API token asking to write is a 403 here, before
+ *     any budget is spent on it.
  *  5. The per-user limits, and the write limit for anything that is not a GET.
  *  6. The Zod parse, with the schema from `@farmer/core/schema` that the web
  *     app's own server function uses. Never a hand-written check: that is how
@@ -95,10 +102,14 @@ export type ApiRouteSpec<
 /** The person behind a request to a route with no organization in its path. */
 export type ApiUser = {
 	userId: string;
-	/** The bearer token, or null when a signed-in browser read the route with
-	 *  its session cookie. Always set on a method other than GET. */
-	token: string | null;
+	/** The bearer credential, or null when a signed-in browser read the route
+	 *  with its session cookie. Always set on a method other than GET. */
+	credential: CliCredential | null;
 	user: { id: string; name: string; email: string };
+	scope: ApiTokenScope;
+	/** The one workspace an API token is bound to, or null for any. */
+	boundOrganizationId: string | null;
+	via: ApiCredentialKind;
 };
 
 export type UserRouteSpec<TResult> = {
@@ -149,17 +160,35 @@ const issuesOf = (error: z.core.$ZodError): ApiIssue[] =>
 	}));
 
 /**
- * The session cookie's user, for a GET without an `Authorization` header, or
- * null.
+ * Whether a write proves it came from this site's own pages, so its cookie may
+ * count. Two checks, and either alone would do today:
  *
- * **Only a GET.** A cookie rides along on a cross-site request, and a form can
- * POST `text/plain` to any origin without a CORS preflight. A write that
- * accepted the cookie would therefore be a CSRF hole: any page a signed-in
- * person opens could log time as them. A bearer token is never sent by a
- * browser on its own, so writes take nothing else. A GET is safe to answer
- * from the cookie — another origin cannot read the response — and it lets a
- * signed-in browser open the same URL the CLI calls, which is how the answers
- * get looked at during development.
+ * - **The custom header.** A cross-site form cannot set one, and a cross-site
+ *   `fetch` that sets one is preflighted — which fails, because nothing under
+ *   `api/v1` answers CORS. That is the whole defence, so **never add CORS
+ *   headers to these routes** without revisiting this.
+ * - **`Sec-Fetch-Site`**, where the browser sends it: anything but
+ *   `same-origin` is refused, so a same-site subdomain does not pass either.
+ */
+const provesSameOrigin = (request: Request) => {
+	if (request.headers.get(SESSION_REQUEST_HEADER) !== "1") return false;
+	const site = request.headers.get("sec-fetch-site");
+	return site === null || site === "same-origin";
+};
+
+/**
+ * The session cookie's user, for a request without an `Authorization` header,
+ * or null.
+ *
+ * **A GET, or a write that proves it is same-origin.** A cookie rides along on
+ * a cross-site request, and a form can POST `text/plain` to any origin without
+ * a CORS preflight. A write that accepted the cookie on its own would
+ * therefore be a CSRF hole: any page a signed-in person opens could log time
+ * as them. So a write takes the cookie only with `provesSameOrigin`, which is
+ * what `/api-docs` sends when the reader picks "Send as me"; `writes` is false
+ * for the routes that must not take it at all. A GET is safe to answer from
+ * the cookie — another origin cannot read the response — and it lets a
+ * signed-in browser open the same URL the CLI calls.
  *
  * **Not when a bearer header was sent.** A caller that presented a token asked
  * to be that token's owner. A dead token must get the 401 that sends the CLI to
@@ -167,8 +196,10 @@ const issuesOf = (error: z.core.$ZodError): ApiIssue[] =>
  */
 const cookieUser = async (
 	request: Request,
+	{ writes }: { writes: boolean },
 ): Promise<ApiUser["user"] | null> => {
-	if (request.method !== "GET" || request.headers.has("authorization")) {
+	if (request.headers.has("authorization")) return null;
+	if (request.method !== "GET" && !(writes && provesSameOrigin(request))) {
 		return null;
 	}
 	const { auth } = await import("@farmer/core/auth");
@@ -235,11 +266,19 @@ const failure = async (error: Error): Promise<Response> => {
  * `/api/v1/session` report none rather than a wrong one.
  */
 const serve = async <
-	TPrincipal extends { userId: string; organizationId?: string },
+	TPrincipal extends {
+		userId: string;
+		organizationId?: string;
+		scope: ApiTokenScope;
+		via: ApiCredentialKind;
+	},
 >(
 	request: Request,
 	authenticate: () => Promise<TPrincipal | null>,
 	handle: (principal: TPrincipal) => Promise<Response>,
+	/** Whether the request changes anything, which a read-only token may not
+	 *  ask for. */
+	writes: boolean,
 ): Promise<Response> => {
 	const startedAt = performance.now();
 	const { captureApiFailure, captureApiRequest } =
@@ -254,6 +293,7 @@ const serve = async <
 		status: 0,
 		durationMs: 0,
 		cliVersion: request.headers.get(CLI_VERSION_HEADER),
+		credential: null,
 	};
 
 	const finish = (response: Response, error?: Error): Response => {
@@ -294,13 +334,25 @@ const serve = async <
 		recordAuthFailure("cli", address);
 		return finish(
 			refuse(401, {
-				error: "Not signed in. Run `farmer login`.",
+				error:
+					"Not signed in. Run `farmer login`, or check the API token you sent.",
 				code: "unauthorized",
 			}),
 		);
 	}
 	report.userId = principal.userId;
 	report.organizationId = principal.organizationId ?? null;
+	report.credential = principal.via;
+
+	if (writes && principal.scope === "read") {
+		return finish(
+			refuse(403, {
+				error:
+					"This API token is read-only. Make a token with read and write access to change anything.",
+				code: "forbidden",
+			}),
+		);
+	}
 
 	const byUser = rateLimited(admitRequest("cli", principal.userId));
 	if (byUser) return finish(byUser);
@@ -353,13 +405,29 @@ export const apiRoute =
 			request,
 			async () => {
 				const byToken = await resolveCliOrgContext(request, params.orgSlug);
-				if (byToken) return byToken;
-				const user = await cookieUser(request);
+				if (byToken) {
+					return {
+						...byToken.ctx,
+						ctx: byToken.ctx,
+						scope: byToken.scope,
+						via: byToken.via,
+					};
+				}
+				const user = await cookieUser(request, { writes: true });
 				if (!user) return null;
 				const { orgContextService } = await import("@farmer/core/services");
-				return orgContextService.resolveBySlug(user.id, params.orgSlug);
+				const ctx = await orgContextService.resolveBySlug(
+					user.id,
+					params.orgSlug,
+				);
+				// A write reaches here only through `provesSameOrigin`, where the
+				// person is at the keyboard on this site: the full reach of their
+				// own session, as in the web app.
+				return ctx
+					? { ...ctx, ctx, scope: "write" as const, via: "cookie" as const }
+					: null;
 			},
-			async (ctx) => {
+			async ({ ctx }) => {
 				const body = await readBody(request);
 				if (body === null) {
 					return refuse(422, {
@@ -383,6 +451,7 @@ export const apiRoute =
 				}
 				return respond(await spec.run(ctx, parsed.data), 200);
 			},
+			request.method !== "GET",
 		);
 
 /**
@@ -397,9 +466,20 @@ export const userApiRoute =
 			request,
 			async (): Promise<ApiUser | null> => {
 				const byToken = await resolveCliUser(request);
-				if (byToken) return byToken;
-				const user = await cookieUser(request);
-				return user ? { userId: user.id, token: null, user } : null;
+				if (byToken) return { ...byToken, via: byToken.credential.kind };
+				// Never a write here: `DELETE /session` revokes the credential it
+				// was sent with, and a browser session has Sign out for that.
+				const user = await cookieUser(request, { writes: false });
+				return user
+					? {
+							userId: user.id,
+							credential: null,
+							user,
+							scope: "write",
+							boundOrganizationId: null,
+							via: "cookie",
+						}
+					: null;
 			},
 			async (caller) => {
 				const result = await spec.run(caller);
@@ -410,6 +490,9 @@ export const userApiRoute =
 						})
 					: respond(result ?? null, 200);
 			},
+			// `/me` reads, and `DELETE /session` ends the credential it was sent
+			// with — which a read-only token may always do to itself.
+			false,
 		);
 
 /**

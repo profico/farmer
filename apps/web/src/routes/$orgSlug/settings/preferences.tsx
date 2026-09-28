@@ -14,6 +14,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
+import { ApiTokensSection } from "#/components/api-tokens-settings.tsx";
 import { ColorWheel } from "#/components/color-wheel.tsx";
 import { FilingRulesSettings } from "#/components/filing-rules-settings.tsx";
 import { NotificationSettings } from "#/components/notification-settings.tsx";
@@ -47,6 +48,7 @@ import {
 	SelectValue,
 } from "#/components/ui/select.tsx";
 import { Switch } from "#/components/ui/switch.tsx";
+import { When } from "#/components/when.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { authClient } from "#/lib/auth-client.ts";
 import { type DisplayPref, useDisplayPref } from "#/lib/display-prefs.ts";
@@ -54,6 +56,7 @@ import { FACES, type FaceRole, useFace } from "#/lib/fonts.ts";
 import { supportsCustomPalette, usePalette } from "#/lib/palette.ts";
 import { SCALES, useScale } from "#/lib/scale.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
+import { myApiTokensQuery } from "#/queries/api-tokens.ts";
 import { notificationSettingsQuery } from "#/queries/notifications.ts";
 import { mySessionsQuery } from "#/queries/sessions.ts";
 import { hiddenTasksQuery, selectableTasksQuery } from "#/queries/tasks.ts";
@@ -69,6 +72,11 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 			context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(mySessionsQuery(orgSlug)),
+			// Only where the section renders: the tokens call the API, and the
+			// API is off with the CLI (see ApiTokensSection).
+			context.cliEnabled
+				? context.queryClient.ensureQueryData(myApiTokensQuery(orgSlug))
+				: null,
 			// Your tasks, so its chips are there on first paint instead of
 			// pushing every section below them down when they arrive.
 			context.queryClient.ensureQueryData(selectableTasksQuery(orgSlug)),
@@ -263,26 +271,6 @@ function ProviderSignInMethod({
 }
 
 type MySession = Awaited<ReturnType<typeof listMySessions>>[number];
-
-/**
- * A timestamp in the reader's own timezone and locale conventions.
- *
- * The server renders this page first, in the server's timezone, and the browser
- * then renders it in the reader's — so the two texts can differ, and the
- * browser's is the right one. `suppressHydrationWarning` says that mismatch is
- * expected, for this one element only.
- */
-function When({ date }: { date: Date }) {
-	const value = new Date(date);
-	return (
-		<time dateTime={value.toISOString()} suppressHydrationWarning>
-			{value.toLocaleString("en-US", {
-				dateStyle: "medium",
-				timeStyle: "short",
-			})}
-		</time>
-	);
-}
 
 function SessionRow({ session }: { session: MySession }) {
 	const orgSlug = useOrgSlug();
@@ -686,6 +674,7 @@ function DisplaySection() {
 
 function PreferencesSettingsPage() {
 	const { devAuth } = Route.useLoaderData();
+	const { cliEnabled } = Route.useRouteContext();
 	const orgSlug = useOrgSlug();
 	const { data: methods } = useSuspenseQuery(signInMethodsQuery(orgSlug));
 	// In development, and for an account that holds a password. Outside
@@ -710,6 +699,7 @@ function PreferencesSettingsPage() {
 			{showSignInMethods ? <SignInMethodsSection /> : null}
 
 			<SignedInDevicesSection />
+			{cliEnabled ? <ApiTokensSection /> : null}
 			<NotificationSettings />
 			<FilingRulesSettings />
 		</Page>

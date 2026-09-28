@@ -591,3 +591,46 @@ html:has(.fm-site) {
 		transform: none;
 	}
 }
+
+/* ---- API docs ----------------------------------------------------------- */
+/* Scalar's own sidebar and panes are ruled, so the header's hairline stays on
+   from the top instead of fading in with the scroll. */
+.fm-site:has(.fm-api-docs) .fm-header {
+	--s: 1;
+}
+.fm-site .fm-api-docs {
+	position: relative;
+	min-height: calc(100 * var(--svh));
+}
+/* Scalar mounts, fetches the document and lays it out in three steps, and
+   the page would sit blank for each. It stays hidden under the loader until
+   its `onLoaded`, then fades in. */
+.fm-site .fm-api-docs-body {
+	opacity: 0;
+	transition: opacity var(--dur-base) ease;
+}
+.fm-site .fm-api-docs[data-loaded] .fm-api-docs-body {
+	opacity: 1;
+}
+.fm-site .fm-api-docs-loading {
+	position: absolute;
+	inset: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding-top: 30vh;
+	color: var(--mut);
+	font-size: 14px;
+}
+.fm-site .fm-api-docs[data-loaded] .fm-api-docs-loading {
+	display: none;
+}
+.fm-site .fm-api-docs-loading svg {
+	animation: fm-spin 900ms linear infinite;
+}
+@keyframes fm-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}

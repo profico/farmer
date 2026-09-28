@@ -54,6 +54,11 @@ export const orgUse: Command = {
 		if (!slug) throw new UsageError(`Pass the slug.\nUsage: ${USE_USAGE}`);
 
 		const session = await connect(runtime, out);
+		if (session.fromEnvironment) {
+			throw new UsageError(
+				"FARMER_TOKEN is set, and farmer does not save a default for it. Pass --org <slug> to each command instead.",
+			);
+		}
 		const me = await refreshOrganizations(session);
 		const entry = session.server.orgs.find((org) => org.slug === slug);
 		if (!entry) {

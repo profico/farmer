@@ -195,6 +195,7 @@ export function PageHeader({
  * Stack the sections and the geometry is already right.
  */
 export function PageSection({
+	id,
 	title,
 	description,
 	action,
@@ -203,6 +204,8 @@ export function PageSection({
 	contentClassName,
 	standalone = false,
 }: {
+	/** An anchor, for a link that points at this section. */
+	id?: string;
 	title?: ReactNode;
 	description?: ReactNode;
 	action?: ReactNode;
@@ -236,7 +239,7 @@ export function PageSection({
 
 	if (standalone) {
 		return (
-			<section className={cn("island island-pad", className)}>
+			<section id={id} className={cn("island island-pad", className)}>
 				{head}
 				{body}
 			</section>
@@ -245,6 +248,7 @@ export function PageSection({
 
 	return (
 		<section
+			id={id}
 			className={cn(
 				"-mx-4 mt-7 border-t px-4 pt-6 sm:-mx-8 sm:px-8",
 				className,

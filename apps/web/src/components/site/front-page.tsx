@@ -339,8 +339,8 @@ function Developers() {
 						Your timesheet, <em className="fm-em">from the terminal.</em>
 					</h2>
 					<p className="fm-lede fp-ink-mut">
-						A CLI, an MCP server and an assistant, all acting as you and nothing
-						more. Each can be switched off per deployment.
+						A CLI, a REST API, an MCP server and an assistant, all acting as you
+						and nothing more. Each can be switched off per deployment.
 					</p>
 				</div>
 				<div className="fp-dev-grid">
@@ -453,7 +453,7 @@ function Developers() {
 						</div>
 					</div>
 				</div>
-				<div className="fp-rest">
+				<Link to="/api-docs" className="fp-rest">
 					<span
 						style={{
 							display: "inline-flex",
@@ -470,11 +470,12 @@ function Developers() {
 						/>
 						REST API
 					</span>
-					<code>GET /api/v1/time-entries?from=2026-07-01</code>
-					<span style={{ marginLeft: "auto" }}>
-						Read-only projects and time entries.
+					<code>POST /api/v1/orgs/acme/time-entries</code>
+					<span className="fp-rest-more">
+						Everything the CLI does. Read the API docs
+						<ArrowRightIcon size={14} aria-hidden />
 					</span>
-				</div>
+				</Link>
 			</div>
 		</section>
 	);

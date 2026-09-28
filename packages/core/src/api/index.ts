@@ -11,7 +11,7 @@
  *
  *   GET    meta                                  ApiMeta (no auth)
  *   GET    me                                    ApiMe
- *   DELETE session                               204 (revokes the token)
+ *   DELETE session                               204 (revokes the token, either kind)
  *   GET    orgs/$slug/whoami                     ApiWhoami
  *   GET    orgs/$slug/time-entries?from&to       ApiTimeEntry[]
  *   POST   orgs/$slug/time-entries               ApiTimeEntry
@@ -45,4 +45,5 @@ export * from "./me";
 export * from "./meta";
 export * from "./time-entries";
 export * from "./timer";
+export * from "./tokens";
 export * from "./webhooks";

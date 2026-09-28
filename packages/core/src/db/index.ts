@@ -3,6 +3,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
+import * as apiTokensSchema from "./schema/api-tokens";
 import * as assistantSchema from "./schema/assistant";
 import * as authSchema from "./schema/auth";
 import * as domainSchema from "./schema/domain";
@@ -31,6 +32,7 @@ export const schema = {
 	...webhooksSchema,
 	...timerSchema,
 	...instanceSchema,
+	...apiTokensSchema,
 };
 
 export type Db = PostgresJsDatabase<typeof schema>;

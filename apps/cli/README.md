@@ -40,6 +40,23 @@ The config is in `$XDG_CONFIG_HOME/farmer/config.json` (default
 
 `farmer logout` ends the session on the server and deletes the local token.
 
+## Scripts and CI
+
+For a script, a scheduled job or CI, do not log in. Make an API token in
+Farmer at Preferences → API tokens, and set two environment variables:
+
+```sh
+export FARMER_URL=https://farmer.example.com
+export FARMER_TOKEN=fmr_...
+farmer today --json
+```
+
+`FARMER_TOKEN` wins over the login that is stored on the machine. The CLI does
+not change its config for a command that uses the token, so pass `--org` when
+the token can use more than one organization. A read-only token cannot log,
+change or delete time. `farmer logout` does not revoke the token: revoke it in
+Preferences.
+
 ## Commands
 
 All commands use today when you give no date.

@@ -498,6 +498,13 @@
       "when": 1790174674682,
       "tag": "0070_oauth_provider_trusts_email",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1790604217568,
+      "tag": "0071_api_tokens",
+      "breakpoints": true
     }
   ]
 }

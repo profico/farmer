@@ -322,6 +322,7 @@ export const INSTANCE_SETTINGS = [
 		label: "Command-line tool",
 		...BOOL,
 		defaultValue: "true",
+		hint: "Also the REST API and personal API tokens. Off, they answer 404 and Preferences hides API tokens.",
 	},
 	{
 		name: "CLI_RELEASES_REPO",
