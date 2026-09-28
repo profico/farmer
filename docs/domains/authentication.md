@@ -78,6 +78,16 @@ Setting `SINGLE_ORG_SLUG=<slug>` (in the environment or on Infrastructure → Si
 - **URLs keep the `/$orgSlug` prefix.** Tenancy stays an explicit parameter, matching the service-layer rule.
 - **`/no-access` exists to break a redirect loop.** A signed-in user with no membership would otherwise bounce `/` → workspace → `/` forever. It lists their live invitations through a local server fn, because better-auth's `listUserInvitations` rejects any caller whose email isn't verified, and a development password account never is. The server fn still asks for a verified address outside development.
 
+## A Harvest import's pending claims
+
+**In multi-org mode, a membership that a Harvest import made is a pending claim until the person accepts it.** The import creates a `user` and a `member` row for a person whose address has no account yet, usually a former employee. When the owner of that address signs in later, better-auth links the sign-in to that `user` row, so without a claim they were a member of the importing organization and nobody had asked them.
+
+- **The organization sees nothing different.** People, the reports and the archived former employees read the row as before.
+- **The person cannot open the organization.** `memberProfile.claimPendingSince` is the one fact. `accessService.resolve` throws `NotAMemberError`, `membersService.getRole` answers null (the `/$orgSlug` guard), `orgContextService.organizationsFor` leaves it out (the chooser, the sidebar switcher, `farmer login`), and the session hook and `getDefaultOrgSlugForSession` never pick it. Reminders hold it back (`claim-pending` in `deliveryBlocks`).
+- **`/no-access` offers Join and Decline** (`importClaimsService`, through `server/organization.ts`). Join clears the column and runs `memberJoined`, the Slack match and `member.added` that accepting an invitation runs. Decline deletes the `member` row and clears the column: the profile and the time entries stay as the organization's history.
+- **The sidebar switcher reads `listMyOrganizations`, not better-auth's `organization.list`.** That endpoint lists every `member` row, so it offered a pending organization only for the guard to send the person away from it.
+- A person who has another workspace lands there, and sees the claim only on `/no-access`. Nothing links there from inside a workspace yet.
+
 ## Platform admins and impersonation
 
 **A platform admin operates the deployment. An org admin administers one workspace. They are different people, different columns and different grants, and nothing an org admin can reach turns one into the other.**

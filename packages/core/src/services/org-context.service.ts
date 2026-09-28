@@ -15,10 +15,11 @@
  * and `resolveCliOrgContext` in `apps/web/src/server/api-auth.ts`.
  */
 
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 import { db } from "../db";
 import { member, organization } from "../db/schema/auth";
+import { memberProfile } from "../db/schema/people";
 import { NotAMemberError } from "./access.service";
 import { ctxAccess } from "./context";
 import { membersService } from "./members.service";
@@ -83,6 +84,10 @@ export const orgContextService = {
 	 * first for the reason the session hook in `auth/index.ts` orders that way:
 	 * the same person gets the same default every time, rather than whichever
 	 * row the planner returned first.
+	 *
+	 * A membership with a pending claim is left out: it is not the person's
+	 * workspace until they accept it (`importClaimsService`), so no chooser, no
+	 * switcher and no `farmer login` offers it.
 	 */
 	organizationsFor: async (
 		userId: string,
@@ -105,7 +110,16 @@ export const orgContextService = {
 			})
 			.from(member)
 			.innerJoin(organization, eq(member.organizationId, organization.id))
-			.where(eq(member.userId, userId))
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, member.organizationId),
+					eq(memberProfile.userId, member.userId),
+				),
+			)
+			.where(
+				and(eq(member.userId, userId), isNull(memberProfile.claimPendingSince)),
+			)
 			.orderBy(asc(member.createdAt)),
 
 	/** The slug and name of the Ctx's own organization. A Ctx is only ever

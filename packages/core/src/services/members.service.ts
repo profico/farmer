@@ -147,13 +147,30 @@ const markEmailVerified = (userId: string) =>
 		.where(eq(user.id, userId));
 
 export const membersService = {
+	/** The caller's role in the org, or null when they may not enter it: no
+	 *  membership, or a membership with a pending claim (see
+	 *  `memberProfile.claimPendingSince`). The same answer
+	 *  `accessService.resolve` gives, so the guard that enters a workspace and
+	 *  the check under every server function cannot disagree. */
 	getRole: async (ctx: Ctx): Promise<string | null> => {
-		const row = await db.query.member.findFirst({
-			where: and(
-				eq(member.organizationId, ctx.organizationId),
-				eq(member.userId, ctx.userId),
-			),
-		});
+		const [row] = await db
+			.select({ role: member.role })
+			.from(member)
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, member.organizationId),
+					eq(memberProfile.userId, member.userId),
+				),
+			)
+			.where(
+				and(
+					eq(member.organizationId, ctx.organizationId),
+					eq(member.userId, ctx.userId),
+					isNull(memberProfile.claimPendingSince),
+				),
+			)
+			.limit(1);
 		return row?.role ?? null;
 	},
 

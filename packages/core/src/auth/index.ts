@@ -16,15 +16,15 @@ import {
 } from "better-auth/plugins";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { CLI_CLIENT_ID } from "../api/errors";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
+import { memberProfile } from "../db/schema/people";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
-import { invitationMail, sendMail } from "../lib/email";
 import { externalFetch } from "../lib/http";
 import { PLATFORM_ADMIN_ROLE, PLATFORM_USER_ROLE } from "../lib/platform-admin";
 import {
@@ -33,14 +33,13 @@ import {
 	singleOrgSlug,
 } from "../lib/single-org";
 import { slugify } from "../lib/slug";
-import { emitEvent, memberWebhookPayload } from "../services/events";
 import {
 	enabledOAuthProviders,
 	type OAuthProviderConfig,
 	onInstanceSettingsChanged,
 } from "../services/instance-settings.service";
-import { membersService } from "../services/members.service";
-import { slackService } from "../services/slack.service";
+import { memberJoined } from "../services/member-joined";
+import { deliverInvitation } from "./invitation-delivery";
 import {
 	assertCodeConsented,
 	assertConsentCodeOwner,
@@ -140,29 +139,6 @@ const claimPlatformAdmin = async (userId: string) => {
 			.update(schema.user)
 			.set({ role: PLATFORM_ADMIN_ROLE })
 			.where(eq(schema.user.id, userId));
-	});
-};
-
-/**
- * `member.added`, for whoever is listening on the other end of a webhook.
- *
- * The Ctx names the new member as both the organization and the actor, because
- * there is no third party here: accepting an invitation is something a person
- * does to themselves. `emitEvent` never throws, so a webhook cannot cost
- * somebody their membership.
- */
-const announceNewMember = async (newMember: {
-	organizationId: string;
-	userId: string;
-	role: string;
-}): Promise<void> => {
-	const ctx = {
-		organizationId: newMember.organizationId,
-		userId: newMember.userId,
-	};
-	await emitEvent(ctx, "member.added", async () => {
-		const payload = await memberWebhookPayload(ctx, newMember.userId);
-		return payload ? { ...payload, role: newMember.role } : null;
 	});
 };
 
@@ -567,21 +543,40 @@ const buildAuth = () => {
 						// mode was switched on — but that's exactly when picking the wrong
 						// one would be hardest to notice.
 						const theOrg = singleOrg ? await findSingleOrg() : null;
-						const membership = await db.query.member.findFirst({
-							where: theOrg
-								? and(
-										eq(schema.member.userId, session.userId),
-										eq(schema.member.organizationId, theOrg.id),
-									)
-								: eq(schema.member.userId, session.userId),
+						const [membership] = await db
+							.select({ organizationId: schema.member.organizationId })
+							.from(schema.member)
+							.leftJoin(
+								memberProfile,
+								and(
+									eq(
+										memberProfile.organizationId,
+										schema.member.organizationId,
+									),
+									eq(memberProfile.userId, schema.member.userId),
+								),
+							)
+							.where(
+								and(
+									eq(schema.member.userId, session.userId),
+									theOrg
+										? eq(schema.member.organizationId, theOrg.id)
+										: undefined,
+									// A pending claim is not a workspace the person joined
+									// (`memberProfile.claimPendingSince`), so the session is
+									// never pointed at one. With nothing else, they land on
+									// `/no-access`, which offers the claim.
+									isNull(memberProfile.claimPendingSince),
+								),
+							)
 							// Oldest membership first, so a multi-org user lands in the same
 							// workspace on every sign-in. Unordered, "whichever comes back
 							// first" is whatever the planner felt like, which meant the same
 							// person could open the app in a different org from one login to
 							// the next with nothing having changed. Matches how
 							// `getDefaultOrgSlugForSession` picks its fallback.
-							orderBy: (m, { asc }) => asc(m.createdAt),
-						});
+							.orderBy(asc(schema.member.createdAt))
+							.limit(1);
 						if (!membership) return;
 						return {
 							data: { activeOrganizationId: membership.organizationId },
@@ -624,20 +619,15 @@ const buildAuth = () => {
 				// They are also where `member.added` is emitted for outbound webhooks
 				// (issue #67), and for the same reason: joining an organization has no
 				// service function of its own, because better-auth owns both paths.
+				//
+				// A third path, accepting a Harvest import's pending claim
+				// (`importClaimsService.accept`), runs the same `memberJoined`.
 				organizationHooks: {
 					afterAcceptInvitation: async ({ member: newMember }) => {
-						await slackService.linkMember(
-							newMember.organizationId,
-							newMember.userId,
-						);
-						await announceNewMember(newMember);
+						await memberJoined(newMember);
 					},
 					afterAddMember: async ({ member: newMember }) => {
-						await slackService.linkMember(
-							newMember.organizationId,
-							newMember.userId,
-						);
-						await announceNewMember(newMember);
+						await memberJoined(newMember);
 					},
 				},
 				schema: {
@@ -663,75 +653,14 @@ const buildAuth = () => {
 						},
 					},
 				},
-				sendInvitationEmail: async (data) => {
-					const url = new URL(
-						`/accept-invite/${data.invitation.id}`,
-						process.env.BETTER_AUTH_URL,
-					);
-					url.searchParams.set("email", data.email);
-					url.searchParams.set("org", data.organization.name);
-					url.searchParams.set("orgSlug", data.organization.slug);
-					url.searchParams.set("role", data.role);
-					const link = url.toString();
-
-					const organizationId = data.organization.id;
-					const invitationId = data.invitation.id;
-
-					// "sending" is written before this returns, so the members list the
-					// dialog refetches already has a row to put a badge on.
-					await membersService.recordInvitationEmail(
-						organizationId,
-						invitationId,
-						"sending",
-					);
-
-					// The send itself is not awaited. better-auth awaits this hook before
-					// `createInvitation` returns, and the invitation row already exists
-					// by then — so a slow mail server held the admin's dialog open for as
-					// long as it took, over an invitation that had already happened. The
-					// outcome lands on `invitationEmail` instead, and the members page
-					// shows it; a failed invitation can be cancelled and sent again.
-					void sendMail(
-						invitationMail({
-							to: data.email,
-							inviterName: data.inviter.user.name,
-							organizationName: data.organization.name,
-							role: data.role,
-							link,
-						}),
-					).then(
-						() =>
-							membersService.recordInvitationEmail(
-								organizationId,
-								invitationId,
-								"sent",
-							),
-						(error) => {
-							console.error("[auth] invitation email failed", {
-								invitationId,
-								error,
-							});
-							return membersService.recordInvitationEmail(
-								organizationId,
-								invitationId,
-								"failed",
-								error instanceof Error ? error.message : String(error),
-							);
-						},
-					);
-
-					// And on Slack, when the address is somebody in the org's workspace.
-					// Not awaited, for the same reason as the email; `sendInvitation`
-					// never throws. It records nothing on `invitationEmail`, since that
-					// row is the email's delivery state and a DM is not a fallback for it.
-					void slackService.sendInvitation(organizationId, {
+				sendInvitationEmail: (data) =>
+					deliverInvitation({
+						invitationId: data.invitation.id,
 						email: data.email,
-						inviterName: data.inviter.user.name,
-						organizationName: data.organization.name,
 						role: data.role,
-						path: `${url.pathname}${url.search}`,
-					});
-				},
+						organization: data.organization,
+						inviterName: data.inviter.user.name,
+					}),
 			}),
 			// The calendar integration's OAuth grant. Same Google OAuth app as the
 			// login provider, but a distinct providerId so its account row (and thus

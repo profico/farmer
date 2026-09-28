@@ -25,6 +25,8 @@ export * from "./google-calendar.service";
 export * from "./harvest-import.service";
 export * from "./holidays.service";
 export * from "./hour-fund.service";
+// A Harvest import's pending claims, answered by the person they name.
+export * from "./import-claims.service";
 export * from "./instance-settings.service";
 export * from "./integration-settings.service";
 export * from "./mcp-tools";

@@ -1,11 +1,12 @@
 import {
+	importClaimInput,
 	setActiveOrgBySlugInput,
 	updateOrganizationSettingsInput,
 	updateOrgSettingsInput,
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 
 import { isOrgPlaceholder } from "#/lib/org-redirect.ts";
 
@@ -94,6 +95,9 @@ export const enterOrganization = createServerFn({ method: "POST" })
 		// Membership before anything else: this is what decides whether the
 		// session may be repointed at this organization at all, and it is the
 		// same question `orgMiddleware` asks on every server function underneath.
+		// A membership with a pending claim answers null here, like no
+		// membership, and `organizationsFor` leaves it out, so the reader goes
+		// to the chooser or to `/no-access`, which offers the claim.
 		const role = await membersService.getRole({
 			organizationId: org.id,
 			userId: session.user.id,
@@ -172,31 +176,39 @@ export const getDefaultOrgSlugForSession = createServerFn({
 
 		const { db } = await import("@farmer/core/db");
 		const { member, organization } = await import("@farmer/core/schema/auth");
+		const { memberProfile } = await import("@farmer/core/schema/people");
 
-		if (activeOrganizationId) {
-			const [active] = await db
+		// A membership with a pending claim does not count on either path: it
+		// is the org's record of the person until they accept it on
+		// `/no-access` (`importClaimsService`), so it is never a default.
+		const openable = (orgId?: string) =>
+			db
 				.select({ slug: organization.slug })
-				.from(organization)
-				.innerJoin(
-					member,
+				.from(member)
+				.innerJoin(organization, eq(organization.id, member.organizationId))
+				.leftJoin(
+					memberProfile,
 					and(
-						eq(member.organizationId, organization.id),
-						eq(member.userId, userId),
+						eq(memberProfile.organizationId, member.organizationId),
+						eq(memberProfile.userId, member.userId),
 					),
 				)
-				.where(eq(organization.id, activeOrganizationId))
+				.where(
+					and(
+						eq(member.userId, userId),
+						orgId ? eq(member.organizationId, orgId) : undefined,
+						isNull(memberProfile.claimPendingSince),
+					),
+				)
+				.orderBy(asc(member.createdAt))
 				.limit(1);
+
+		if (activeOrganizationId) {
+			const [active] = await openable(activeOrganizationId);
 			if (active) return active.slug;
 		}
-		const membership = await db.query.member.findFirst({
-			where: eq(member.userId, userId),
-			orderBy: (m, { asc }) => asc(m.createdAt),
-		});
-		if (!membership) return null;
-		const org = await db.query.organization.findFirst({
-			where: eq(organization.id, membership.organizationId),
-		});
-		return org?.slug ?? null;
+		const [oldest] = await openable();
+		return oldest?.slug ?? null;
 	});
 
 // Live invitations addressed to the caller, for the no-access dead end.
@@ -234,6 +246,45 @@ export const listMyPendingInvitations = createServerFn({ method: "GET" })
 					gt(invitation.expiresAt, new Date()),
 				),
 			);
+	});
+
+// A Harvest import's pending claims on the caller: memberships the import
+// made for an address that had no account yet. The person cannot open those
+// organizations until they answer here, on `/no-access`. See
+// `packages/core/src/services/import-claims.service.ts`.
+//
+// `sessionMiddleware`, not `orgMiddleware`: the organization in question is
+// exactly the one the caller may not enter yet. The person is the session's
+// own user; the client names only the organization.
+export const listMyImportClaims = createServerFn({ method: "GET" })
+	.middleware([sessionMiddleware])
+	.handler(async ({ context }) => {
+		const { importClaimsService } = await import("@farmer/core/services");
+		return importClaimsService.pendingFor(context.session.user.id);
+	});
+
+export const acceptImportClaim = createServerFn({ method: "POST" })
+	.middleware([sessionMiddleware])
+	.validator(importClaimInput)
+	.handler(async ({ data, context }) => {
+		const { importClaimsService } = await import("@farmer/core/services");
+		// No `setActiveOrganization` here: the page navigates into the slug,
+		// and `enterOrganization` repoints the session on the way in.
+		return importClaimsService.accept({
+			organizationId: data.organizationId,
+			userId: context.session.user.id,
+		});
+	});
+
+export const declineImportClaim = createServerFn({ method: "POST" })
+	.middleware([sessionMiddleware])
+	.validator(importClaimInput)
+	.handler(async ({ data, context }) => {
+		const { importClaimsService } = await import("@farmer/core/services");
+		await importClaimsService.decline({
+			organizationId: data.organizationId,
+			userId: context.session.user.id,
+		});
 	});
 
 export const getOrgSettings = createServerFn({ method: "GET" })
