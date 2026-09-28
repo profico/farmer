@@ -914,6 +914,12 @@ export interface HarvestPersonReview {
 	blocked: string | null;
 	/** The other Harvest spellings merged into this person. */
 	aliases: string[];
+	/** An existing user this import invites, or an earlier one invited: they
+	 *  join when they accept. With several organizations on the instance
+	 *  `start` never adds an existing user, so a created person can turn out
+	 *  to be one too; the screen says so after `start`, not here, because
+	 *  the plan must not learn who has an account. */
+	invited: boolean;
 }
 
 export interface HarvestDuplicatePerson {
@@ -1561,6 +1567,7 @@ export function planHarvestImport(
 			rows: p.rows,
 			blocked: null,
 			aliases: aliases.map(displayName),
+			invited: false,
 		};
 		if (mapped !== undefined || member) {
 			const localId = mapped ?? member?.userId ?? "";
@@ -1591,6 +1598,7 @@ export function planHarvestImport(
 						? "member"
 						: null;
 			review.archived = member?.archived ?? false;
+			review.invited = member?.invited ?? false;
 			drafts.push({ person: p, review, plan });
 			personUserId.set(p.sourceKey, localId);
 			personActive.set(p.sourceKey, !(member?.archived ?? false));

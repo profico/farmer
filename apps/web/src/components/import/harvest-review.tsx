@@ -472,7 +472,11 @@ export function HarvestReview({
 							A new person with an address from the Harvest people list, or an
 							address you type here, can sign in with Google at once. A guessed
 							address stays unconfirmed: that person can sign in only after an
-							admin confirms it on the People page.
+							admin confirms it on the People page. On an instance with more
+							than one workspace, a person whose address already has an account
+							gets an invitation instead, and joins when they accept. Their
+							hours are imported either way. The import says who it invited when
+							it is done.
 						</p>
 						<Table>
 							<TableHeader>
@@ -557,7 +561,11 @@ export function HarvestReview({
 											)}
 										</TableCell>
 										<TableCell>
-											<Status archived={p.archived} />
+											{p.invited ? (
+												<StatusPill tone="warning">Invited</StatusPill>
+											) : (
+												<Status archived={p.archived} />
+											)}
 										</TableCell>
 										<TableCell className="mono text-right">
 											{count(p.rows)}

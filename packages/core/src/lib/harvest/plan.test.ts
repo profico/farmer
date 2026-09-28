@@ -257,6 +257,7 @@ function member(
 		archived: false,
 		hasAccount: true,
 		startDate,
+		invited: false,
 	};
 }
 
@@ -882,6 +883,26 @@ describe("matching existing rows", () => {
 });
 
 describe("people", () => {
+	// With several organizations an existing user is invited, not added, so
+	// until they accept they are a mapped person with no membership. The
+	// snapshot lists them as invited, and a second run matches them instead of
+	// blocking on "no longer a member".
+	test("a person an earlier run invited is matched, and marked invited", async () => {
+		const snap = anaSnapshot({
+			members: [
+				{ ...member("u-ana", "Ana Horvat", "ana@example.com"), invited: true },
+			],
+			mappings: [{ kind: "person", sourceKey: "ana horvat", localId: "u-ana" }],
+		});
+		const { plan } = await planFor([timeReport([{}])], snap);
+		expect(plan.start.people[0]).toMatchObject({
+			action: "match",
+			localId: "u-ana",
+		});
+		expect(plan.review.people[0]?.invited).toBe(true);
+		expect(plan.review.people[0]?.blocked).toBeNull();
+	});
+
 	test("a listed person is created with role, type, capacity and a verified address", async () => {
 		const { plan } = await planFor([
 			timeReport([

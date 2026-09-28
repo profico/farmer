@@ -6,8 +6,9 @@
 //      fails, and a chunk naming a source key `start` never mapped fails.
 //   2. A MATCHED PERSON IS NOT CHANGED, except an empty start date.
 //   3. A GUESSED ADDRESS STAYS UNVERIFIED, and never attaches to a user that
-//      exists already (plan section 3.3). A LISTED ADDRESS attaches a user
-//      another org holds, or who has signed in, only in single-org mode.
+//      exists already (plan section 3.3). A LISTED ADDRESS attaches an
+//      existing user only in single-org mode; with several organizations the
+//      user is invited instead (harvest-import.invite.test.ts).
 //   4. A SECOND IMPORT OF THE SAME DATA ADDS NOTHING; a changed day is
 //      replaced, and a day somebody edited here is kept.
 //   5. UNDO TAKES BACK ONLY WHAT THE RUN MADE, and refuses while something
@@ -384,22 +385,6 @@ describe("harvest import", () => {
 		expect(snap.tasks.some((t) => t.id === paidLeaveId)).toBe(true);
 	});
 
-	test("with several orgs, a listed address never attaches a user of another org", async () => {
-		await expect(harvestImportService.start(admin, plan())).rejects.toThrow(
-			`${OUTSIDER_EMAIL} belongs to a user outside this organization`,
-		);
-		expect(
-			await db.query.member.findFirst({
-				where: and(eq(member.organizationId, ORG), eq(member.userId, OUTSIDER)),
-			}),
-		).toBeUndefined();
-		const runs = await db
-			.select()
-			.from(importRun)
-			.where(eq(importRun.organizationId, ORG));
-		expect(runs).toHaveLength(0);
-	});
-
 	test("in single-org mode only the one organization hears about an address outside it", async () => {
 		// The environment wins over the stored setting, and Bun loads the
 		// developer's `.env` into the suite.
@@ -447,6 +432,7 @@ describe("harvest import", () => {
 			clients: 1,
 			tasks: 1,
 			people: 3,
+			invited: 0,
 			projects: 2,
 		});
 
@@ -522,7 +508,8 @@ describe("harvest import", () => {
 		});
 		expect(again).toEqual({
 			runId,
-			created: { clients: 1, tasks: 1, people: 3, projects: 2 },
+			created: { clients: 1, tasks: 1, people: 3, invited: 0, projects: 2 },
+			invited: [],
 		});
 		const runs = await db
 			.select({ id: importRun.id })
@@ -921,78 +908,6 @@ describe("harvest import", () => {
 					where: and(eq(member.organizationId, ORG), eq(member.userId, WORKER)),
 				}),
 			).toBeDefined();
-		});
-	});
-
-	describe("with several orgs, a listed address of a user outside this org", () => {
-		/** Has signed in, and no org holds them. */
-		const SIGNED_IN = "u-hi-signed-in";
-		/** Never signed in, and no org holds them. */
-		const LOOSE = "u-hi-loose";
-
-		const listed = (email: string): HarvestStartInput => ({
-			...emptyPlan(),
-			people: [
-				{
-					action: "create",
-					sourceKey: email,
-					name: email,
-					email,
-					emailListed: true,
-					emailConfirmed: true,
-					role: "admin",
-					type: "employee_billable",
-					startDate: "2024-01-01",
-					archivedOn: null,
-				},
-			],
-		});
-		const memberHere = (userId: string) =>
-			db.query.member.findFirst({
-				where: and(eq(member.organizationId, ORG), eq(member.userId, userId)),
-			});
-
-		beforeAll(async () => {
-			await db.insert(user).values([
-				{
-					id: SIGNED_IN,
-					name: SIGNED_IN,
-					email: "signed.in@example.com",
-					emailVerified: true,
-				},
-				{
-					id: LOOSE,
-					name: LOOSE,
-					email: "loose@example.com",
-					emailVerified: false,
-				},
-			]);
-			await db.insert(account).values({
-				id: "acc-hi-signed-in",
-				accountId: "google-signed-in",
-				providerId: "google",
-				userId: SIGNED_IN,
-				updatedAt: new Date(),
-			});
-		});
-
-		test("is refused for a user who has signed in", async () => {
-			await expect(
-				harvestImportService.start(admin, listed("signed.in@example.com")),
-			).rejects.toThrow("belongs to a user outside this organization");
-			expect(await memberHere(SIGNED_IN)).toBeUndefined();
-		});
-
-		test("is refused for a user another org holds", async () => {
-			await expect(
-				harvestImportService.start(admin, listed(OUTSIDER_EMAIL)),
-			).rejects.toThrow("belongs to a user outside this organization");
-			expect(await memberHere(OUTSIDER)).toBeUndefined();
-		});
-
-		test("attaches a user nobody else holds who never signed in", async () => {
-			await harvestImportService.start(admin, listed("loose@example.com"));
-			expect((await memberHere(LOOSE))?.role).toBe("admin");
 		});
 	});
 });
