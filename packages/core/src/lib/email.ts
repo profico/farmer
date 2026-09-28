@@ -4,7 +4,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { z } from "zod";
 
 import { externalFetch } from "./http";
-import { setting } from "./instance-settings";
+import { setting, settingEnabled } from "./instance-settings";
 
 // Two ways out, one chosen per process:
 //  - resend  Resend's HTTP API, when RESEND_API_KEY is set.
@@ -59,10 +59,24 @@ const isLoopbackHost = (host: string | undefined): boolean => {
  *  SMTP_PASS and every message in cleartext. The exception is a server on
  *  this machine, which no network sits in front of, and where a local mail
  *  catcher (Mailpit and the like) speaks plain SMTP. Certificates are still
- *  verified. Pure and exported for the tests. */
-export const smtpTls = (port: number, host: string | undefined) => {
+ *  verified.
+ *
+ *  `requireTls` false (`SMTP_REQUIRE_TLS`) is the operator's switch back to
+ *  opportunistic STARTTLS, for a relay that speaks plain SMTP on a network
+ *  they trust: a compose service such as `mailpit`, or a relay on 10.x.
+ *  "Loopback" cannot be widened to cover those, because a private network is
+ *  a network, and only the operator knows who else is on it. Pure and
+ *  exported for the tests. */
+export const smtpTls = (
+	port: number,
+	host: string | undefined,
+	requireTls: boolean,
+) => {
 	const secure = port === 465;
-	return { secure, requireTLS: !secure && !isLoopbackHost(host) };
+	return {
+		secure,
+		requireTLS: requireTls && !secure && !isLoopbackHost(host),
+	};
 };
 
 // Built on first use, not at import: a Resend deployment has no SMTP settings,
@@ -85,6 +99,7 @@ const smtpTransport = (): Transporter => {
 		port,
 		user: setting("SMTP_USER"),
 		pass: setting("SMTP_PASS"),
+		requireTls: settingEnabled("SMTP_REQUIRE_TLS"),
 	};
 	const key = JSON.stringify(options);
 	if (transport?.key === key) return transport.transporter;
@@ -92,7 +107,7 @@ const smtpTransport = (): Transporter => {
 	const transporter = nodemailer.createTransport({
 		host: options.host,
 		port,
-		...smtpTls(port, options.host),
+		...smtpTls(port, options.host, options.requireTls),
 		// A deadline on every step, for the reason `externalFetch` has one:
 		// nodemailer's defaults wait two minutes to connect and ten on a quiet
 		// socket, so a mail server that stops answering holds its caller that long.

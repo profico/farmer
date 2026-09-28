@@ -159,6 +159,18 @@ export const INSTANCE_SETTINGS = [
 		defaultValue: "465",
 		hint: "465 uses TLS from the start. Other ports require STARTTLS, except on localhost.",
 	},
+	// In the lock group: with SMTP_PASS pinned in the environment, switching
+	// this off from the page would let anybody on the path read the password.
+	{
+		name: "SMTP_REQUIRE_TLS",
+		section: "email",
+		group: "SMTP",
+		lockGroup: "smtp",
+		label: "Require STARTTLS",
+		...BOOL,
+		defaultValue: "true",
+		hint: "Off: send without TLS when the server offers no STARTTLS. Only for a relay on a network you trust, such as another container.",
+	},
 	{
 		name: "SMTP_USER",
 		section: "email",

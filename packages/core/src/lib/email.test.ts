@@ -48,25 +48,33 @@ describe("invitationMail", () => {
 
 describe("smtpTls", () => {
 	test("465 is TLS from the first byte", () => {
-		expect(smtpTls(465, "smtp.example.com").secure).toBe(true);
+		expect(smtpTls(465, "smtp.example.com", true).secure).toBe(true);
 	});
 
 	test("any other port to another machine requires STARTTLS", () => {
 		for (const port of [25, 587, 2525]) {
-			expect(smtpTls(port, "smtp.example.com")).toEqual({
+			expect(smtpTls(port, "smtp.example.com", true)).toEqual({
 				secure: false,
 				requireTLS: true,
 			});
 		}
-		expect(smtpTls(587, "10.0.0.5").requireTLS).toBe(true);
+		expect(smtpTls(587, "10.0.0.5", true).requireTLS).toBe(true);
 	});
 
 	test("a server on this machine may speak plain SMTP", () => {
 		for (const host of ["localhost", "LOCALHOST", "127.0.0.1", "::1"]) {
-			expect(smtpTls(1025, host).requireTLS).toBe(false);
+			expect(smtpTls(1025, host, true).requireTLS).toBe(false);
 		}
 		// nodemailer aims an unset host at localhost.
-		expect(smtpTls(1025, undefined).requireTLS).toBe(false);
+		expect(smtpTls(1025, undefined, true).requireTLS).toBe(false);
+	});
+
+	test("SMTP_REQUIRE_TLS off leaves STARTTLS to the server", () => {
+		expect(smtpTls(587, "mailpit", false)).toEqual({
+			secure: false,
+			requireTLS: false,
+		});
+		expect(smtpTls(465, "smtp.example.com", false).secure).toBe(true);
 	});
 });
 
@@ -137,7 +145,7 @@ describe("SMTP without STARTTLS", () => {
 		const transporter = nodemailer.createTransport({
 			host: "127.0.0.1",
 			port: server.port,
-			...smtpTls(587, "smtp.example.com"),
+			...smtpTls(587, "smtp.example.com", true),
 			auth: { user: "farmer", pass: "secret" },
 		});
 		const sent = transporter.sendMail({
@@ -160,6 +168,7 @@ describe("SMTP without STARTTLS", () => {
 			"SMTP_USER",
 			"SMTP_PASS",
 			"SMTP_FROM",
+			"SMTP_REQUIRE_TLS",
 		];
 		// The developer's `.env` may set some of these, and a variable wins.
 		const saved = new Map(names.map((name) => [name, process.env[name]]));
