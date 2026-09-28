@@ -350,7 +350,11 @@ export const fetchWebhookTarget = async (
 		try {
 			return await externalFetch(pinned, pinnedInit, timeoutMs);
 		} catch (error) {
-			// Bun's codes for "no socket was ever connected".
+			// Bun's codes for "no socket was ever connected", checked on Bun
+			// 1.4.2. `FailedToOpenSocket` is what an AAAA answer gives on a box
+			// with no IPv6 route, at once, so the A answer after it still gets
+			// its turn. A timeout stays out: a packet may have left, and the
+			// deadline is shared, so no time is left for another address anyway.
 			const code =
 				error instanceof Error && "code" in error ? error.code : undefined;
 			const connected =

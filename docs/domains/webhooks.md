@@ -155,6 +155,15 @@ address and sends the name only as the `Host` header and the TLS server name,
 which is what the certificate is verified against. A refusal names the host and
 never the address it resolved to, so the URL field cannot read out internal DNS.
 
+**A host with both an A and an AAAA record still gets delivered to** on a box
+with no IPv6 route. `fetchWebhookTarget` moves to the next checked address only
+when no socket was ever connected — Bun's `ConnectionRefused` and
+`FailedToOpenSocket` — never on an ambiguous or a timed-out attempt, or a second
+copy could reach a receiver that already got the first. Verified against Bun
+1.4.2: a global IPv6 literal fails instantly with `FailedToOpenSocket` when the
+host has no route for it, so this is already the fast, unambiguous case and
+IPv4 does not need to go first.
+
 `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` switches rules 1 and 3 off, for the
 self-hosted deployment whose receiver genuinely is on the same private network
 (issue #67, question 9). It is the **operator's** decision and never an

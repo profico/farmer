@@ -223,4 +223,25 @@ describe("the connection", () => {
 			await server.stop(true);
 		}
 	});
+
+	test("moves past a checked IPv6 address a route never reaches", async () => {
+		// `2001:db8::1` is the documentation prefix (RFC 3849): never assigned,
+		// never routed. On a host with no IPv6 route at all — the case this
+		// guards against, a receiver with an AAAA record on a box that only has
+		// IPv4 — connecting to ANY global IPv6 literal fails the same way, so
+		// this stands in for the receiver's real address. If this address ever
+		// connects for some other reason, the test hits a live TLS handshake and
+		// fails loudly rather than silently passing.
+		const server = echoHost();
+		try {
+			const response = await fetchWebhookTarget(
+				targetOn(server.port ?? 0, ["2001:db8::1", "127.0.0.1"]),
+				{ method: "POST", headers: {}, body: "{}" },
+				5_000,
+			);
+			expect(response.status).toBe(200);
+		} finally {
+			await server.stop(true);
+		}
+	});
 });
