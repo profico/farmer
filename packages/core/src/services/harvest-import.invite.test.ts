@@ -51,8 +51,11 @@ let harness: TestDb;
 let taskId: string;
 
 /** The mail settings a developer's `.env` may hold. Removed for this file,
- *  so the invitation email fails fast instead of going out. */
+ *  so the invitation email fails fast instead of going out. CI has none of
+ *  them, `BETTER_AUTH_URL` included, so removing them makes a local run the
+ *  same run as CI. */
 const MAIL_NAMES = [
+	"BETTER_AUTH_URL",
 	"EMAIL_PROVIDER",
 	"RESEND_API_KEY",
 	"SMTP_HOST",
@@ -206,13 +209,14 @@ describe("harvest import with several organizations", () => {
 		});
 		expect(profile?.startDate).toBe("2024-01-01");
 
-		// The email was tried after the commit. No provider here, so it failed,
-		// and the People page shows that.
+		// The email was tried after the commit. No origin here to build the
+		// link from, so it failed, and the People page shows why.
 		const invitationId = at(await invitationsTo(OUTSIDER_EMAIL), 0).id;
 		const delivery = await db.query.invitationEmail.findFirst({
 			where: eq(invitationEmail.invitationId, invitationId),
 		});
-		expect(delivery).toBeDefined();
+		expect(delivery?.status).toBe("failed");
+		expect(delivery?.error).toContain("BETTER_AUTH_URL");
 	});
 
 	test("the invited person's hours are written at once", async () => {

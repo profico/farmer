@@ -24,18 +24,27 @@ export type InvitationToDeliver = {
 export const deliverInvitation = async (
 	input: InvitationToDeliver,
 ): Promise<void> => {
-	const url = new URL(
-		`/accept-invite/${input.invitationId}`,
-		process.env.BETTER_AUTH_URL,
-	);
+	const organizationId = input.organization.id;
+	const { invitationId } = input;
+
+	// No origin, no link. The invitation exists already, so say why on the
+	// People page rather than throw at a caller that has committed.
+	const origin = process.env.BETTER_AUTH_URL;
+	if (!origin || !URL.canParse(origin)) {
+		await membersService.recordInvitationEmail(
+			organizationId,
+			invitationId,
+			"failed",
+			"BETTER_AUTH_URL is not set, so the invitation has no link",
+		);
+		return;
+	}
+	const url = new URL(`/accept-invite/${invitationId}`, origin);
 	url.searchParams.set("email", input.email);
 	url.searchParams.set("org", input.organization.name);
 	url.searchParams.set("orgSlug", input.organization.slug);
 	url.searchParams.set("role", input.role);
 	const link = url.toString();
-
-	const organizationId = input.organization.id;
-	const { invitationId } = input;
 
 	// "sending" is written before this returns, so the members list the
 	// dialog refetches already has a row to put a badge on.
