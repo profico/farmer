@@ -82,6 +82,10 @@ export type PersonRow = ResolvedMemberType & {
 	 *  import made with a guessed email (docs/plans/harvest-import.md, 3.3).
 	 *  Restoring them is where an admin confirms it. */
 	emailUnconfirmed: boolean;
+	/** A Harvest import added them and they have not joined yet
+	 *  (`memberProfile.claimPendingSince`). They cannot open the workspace
+	 *  until they do, so the People page says so. */
+	claimPending: boolean;
 	/** People on their Team Lead list — zero for everyone who leads nobody. */
 	leadsPeople: number;
 };
@@ -285,6 +289,7 @@ export const membersService = {
 				orgRole: member.role,
 				startDate: memberProfile.startDate,
 				archivedAt: memberProfile.archivedAt,
+				claimPendingSince: memberProfile.claimPendingSince,
 				type: memberTypeHistory.type,
 				expectedSecondsOverride: memberTypeHistory.expectedSecondsOverride,
 			})
@@ -346,6 +351,7 @@ export const membersService = {
 			startDate: r.startDate ?? null,
 			archivedAt: r.archivedAt ?? null,
 			emailUnconfirmed: !r.emailVerified && !signedIn.has(r.userId),
+			claimPending: r.claimPendingSince != null,
 			// A person with no history row yet is Billable — the default, and the
 			// right one: delivery people are the common case.
 			type: r.type ?? DEFAULT_TYPE.type,

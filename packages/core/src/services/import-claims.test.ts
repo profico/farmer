@@ -158,9 +158,13 @@ describe("a pending claim is not a membership for the person", () => {
 		).toEqual(["home"]);
 	});
 
-	test("the organization still sees the person", async () => {
+	test("the organization still sees the person, marked as not joined", async () => {
 		const people = await membersService.list(ctx(ADMIN));
-		expect(people.map((p) => p.userId)).toContain(CLAIMANT);
+		const claimant = present(
+			people.find((p) => p.userId === CLAIMANT),
+			"the claimant on People",
+		);
+		expect(claimant.claimPending).toBe(true);
 	});
 
 	test("pendingFor lists the claim", async () => {
@@ -208,6 +212,10 @@ describe("accept and decline", () => {
 		const access = await accessService.resolve(ctx(CLAIMANT));
 		expect(access.isAdmin).toBe(false);
 		expect(await membersService.getRole(ctx(CLAIMANT))).toBe("member");
+		const joined = (await membersService.list(ctx(ADMIN))).find(
+			(p) => p.userId === CLAIMANT,
+		);
+		expect(joined?.claimPending).toBe(false);
 		expect(
 			(await orgContextService.organizationsFor(CLAIMANT)).map((o) => o.slug),
 		).toEqual(["importer", "home"]);
