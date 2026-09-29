@@ -188,7 +188,7 @@ const USER_INPUT = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
  * draw every state in between (see the Header block in site.css):
  *
  * - `--fm-scrolled`: 0 at the top of the page, 1 once it has scrolled, which
- *   fades in the header's bottom hairline.
+ *   fades in the header's glass and its bottom hairline.
  * - `--fm-ink`: 0 is the page's own palette, 1 is the ink palette, while the
  *   header passes over a dark band.
  *
