@@ -88,7 +88,9 @@ export function ImportProgress({
 						<p className="mt-2 text-muted-foreground">
 							Their hours are imported. They join this workspace when they
 							accept, and until then they are not on the People page. Undo
-							cancels an invitation that nobody accepted yet.
+							cancels an invitation that nobody accepted yet. An invitation
+							expires after 48 hours; to send a new one, invite the address
+							again from the People page.
 						</p>
 					</div>
 				)}
