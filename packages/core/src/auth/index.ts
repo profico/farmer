@@ -32,7 +32,12 @@ import {
 	findSingleOrg,
 	singleOrgSlug,
 } from "../lib/single-org";
-import { slugify } from "../lib/slug";
+import {
+	isReservedSlug,
+	isWellFormedSlug,
+	slugify,
+	slugProblem,
+} from "../lib/slug";
 import {
 	enabledOAuthProviders,
 	type OAuthProviderConfig,
@@ -74,14 +79,18 @@ export {
 	signInProviders,
 } from "./sign-in-methods";
 
+/** A free slug for `name`: the slug itself, else the first free `-1`, `-2`…
+ *  A reserved slug (`lib/slug.ts`) counts as taken, so "About" gets
+ *  `about-1`. */
 const uniqueSlugFor = async (name: string) => {
 	const base = slugify(name);
 	let slug = base;
 	let suffix = 1;
 	while (
-		await db.query.organization.findFirst({
+		isReservedSlug(slug) ||
+		(await db.query.organization.findFirst({
 			where: eq(schema.organization.slug, slug),
-		})
+		}))
 	) {
 		slug = `${base}-${suffix++}`;
 	}
@@ -623,6 +632,33 @@ const buildAuth = () => {
 				// A third path, accepting a Harvest import's pending claim
 				// (`importClaimsService.accept`), runs the same `memberJoined`.
 				organizationHooks: {
+					// The slug is the first path segment, so it must not be a page of
+					// the app (`RESERVED_SLUGS` in lib/slug.ts). The browser slugifies
+					// the name, but the endpoint takes any string, so the rule lives
+					// here. A reserved slug on create moves to the next free one, the
+					// way signup's `uniqueSlugFor` does, because the person only typed a
+					// name. A malformed one is refused first, `_` included: only a
+					// hand-made request sends it. better-auth checked the original slug for a duplicate before
+					// this hook, and `uniqueSlugFor` checks the replacement.
+					beforeCreateOrganization: async ({ organization: org }) => {
+						const slug = org.slug ?? "";
+						if (!isWellFormedSlug(slug)) {
+							throw new APIError("BAD_REQUEST", {
+								message: slugProblem(slug) ?? "The slug is malformed.",
+							});
+						}
+						if (isReservedSlug(slug)) {
+							return { data: { ...org, slug: await uniqueSlugFor(slug) } };
+						}
+					},
+					// A rename names its slug on purpose, so a reserved one is refused
+					// rather than moved.
+					beforeUpdateOrganization: async ({ organization: org }) => {
+						if (org.slug === undefined) return;
+						const problem = slugProblem(org.slug);
+						if (problem)
+							throw new APIError("BAD_REQUEST", { message: problem });
+					},
 					afterAcceptInvitation: async ({ member: newMember }) => {
 						await memberJoined(newMember);
 					},

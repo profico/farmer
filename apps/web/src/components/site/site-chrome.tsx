@@ -6,7 +6,7 @@ import { FarmerMark } from "#/components/farmer-mark.tsx";
 import { ThemeToggle } from "#/components/theme-toggle.tsx";
 import { githubLinks, LICENSE_NAME } from "#/lib/links.ts";
 import { getSession } from "#/server/auth.ts";
-import { getSourceRepository } from "#/server/config.ts";
+import { getSiteConfig } from "#/server/config.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
 // Every rule the public site uses, scoped under `.fm-site`.
@@ -25,19 +25,27 @@ export type SiteVisitor = {
 	user: { email: string; name: string } | null;
 	/** `owner/name`, for the GitHub links. A fork links to itself. */
 	repository: string;
+	/**
+	 * Whether `/` is the product page (`HOMEPAGE_ENABLED`). Off, `/` redirects
+	 * into the workspace, so the header and footer drop the Features link and
+	 * the brand goes where the CTA goes.
+	 */
+	homepageEnabled: boolean;
 };
 
 export async function loadSiteVisitor(): Promise<SiteVisitor> {
-	const [session, repository] = await Promise.all([
+	const [session, { repository, homepageEnabled }] = await Promise.all([
 		getSession(),
-		getSourceRepository(),
+		getSiteConfig(),
 	]);
-	if (!session) return { orgSlug: null, user: null, repository };
+	if (!session) {
+		return { orgSlug: null, user: null, repository, homepageEnabled };
+	}
 	// Server fn resolves userId/activeOrganizationId from the session itself —
 	// it no longer accepts a client-supplied identity.
 	const orgSlug = await getDefaultOrgSlugForSession();
 	const { email, name } = session.user;
-	return { orgSlug, user: { email, name }, repository };
+	return { orgSlug, user: { email, name }, repository, homepageEnabled };
 }
 
 /**
@@ -53,37 +61,85 @@ export function VisitorCta({
 	className?: string;
 }) {
 	const { orgSlug, user } = visitor;
-	// Signed in with no workspace is its own destination, not "log in again":
-	// `/no-access` explains why and lists any live invitations. `/login` would
-	// hand them a button that signs them into the account they are already in.
 	const label = orgSlug ? "Open dashboard" : user ? "Continue" : "Log in";
-	const content = (
-		<>
+	return (
+		<VisitorLink visitor={visitor} className={className}>
 			{label}
 			<ArrowRightIcon size={16} aria-hidden />
-		</>
+		</VisitorLink>
 	);
+}
+
+/** A link to where the viewer goes next: `VisitorCta`'s destination. */
+function VisitorLink({
+	visitor: { orgSlug, user },
+	className,
+	children,
+	"aria-label": ariaLabel,
+}: {
+	visitor: SiteVisitor;
+	className: string;
+	children: ReactNode;
+	"aria-label"?: string;
+}) {
 	if (orgSlug) {
 		return (
-			<Link className={className} to="/$orgSlug" params={{ orgSlug }}>
-				{content}
+			<Link
+				className={className}
+				aria-label={ariaLabel}
+				to="/$orgSlug"
+				params={{ orgSlug }}
+			>
+				{children}
 			</Link>
 		);
 	}
+	// Signed in with no workspace is its own destination, not "log in again":
+	// `/no-access` explains why and lists any live invitations. `/login` would
+	// hand them a button that signs them into the account they are already in.
 	return (
-		<Link className={className} to={user ? "/no-access" : "/login"}>
-			{content}
+		<Link
+			className={className}
+			aria-label={ariaLabel}
+			to={user ? "/no-access" : "/login"}
+		>
+			{children}
 		</Link>
 	);
 }
 
-export function SiteBrand({ size = 26 }: { size?: number }) {
-	return (
-		<Link to="/" className="fm-brand" aria-label="Farmer, front page">
+/**
+ * Farmer's mark and name, linked to the front page. Given a visitor whose
+ * deployment has no product page (`homepageEnabled` off), it links where the
+ * CTA goes instead: `/` would only redirect there, through sign-in. The error
+ * pages pass no visitor, because they call no loader; there `/` is right in
+ * either mode.
+ */
+export function SiteBrand({
+	size = 26,
+	visitor,
+}: {
+	size?: number;
+	visitor?: SiteVisitor;
+}) {
+	const content = (
+		<>
 			<FarmerMark size={size} />
 			<span className="fm-brand-name" style={{ fontSize: size + 3 }}>
 				Farmer
 			</span>
+		</>
+	);
+	if (visitor && !visitor.homepageEnabled) {
+		return (
+			<VisitorLink visitor={visitor} className="fm-brand" aria-label="Farmer">
+				{content}
+			</VisitorLink>
+		);
+	}
+	return (
+		<Link to="/" className="fm-brand" aria-label="Farmer, front page">
+			{content}
 		</Link>
 	);
 }
@@ -94,6 +150,11 @@ const NAV = [
 	{ label: "Changelog", to: "/changelog" },
 	{ label: "About", to: "/about" },
 ] as const;
+
+/** The header's links. Features is an anchor on `/`, so it goes when `/` is
+ *  not the product page. */
+const navFor = (visitor: SiteVisitor) =>
+	visitor.homepageEnabled ? NAV : NAV.filter((item) => !("hash" in item));
 
 /** How far past the top the page scrolls before the header's hairline is fully
  *  drawn. */
@@ -246,9 +307,9 @@ export function SiteHeader({ visitor }: { visitor: SiteVisitor }) {
 	return (
 		<header ref={headerRef} className="fm-header">
 			<div className="fm-container fm-header-inner">
-				<SiteBrand />
+				<SiteBrand visitor={visitor} />
 				<nav className="fm-nav fm-sm-hide" aria-label="Site">
-					{NAV.map((item) => (
+					{navFor(visitor).map((item) => (
 						<Link
 							key={item.label}
 							to={item.to}
@@ -285,13 +346,13 @@ export function SiteHeader({ visitor }: { visitor: SiteVisitor }) {
 	);
 }
 
-export function SiteFooter({ repository }: { repository: string }) {
-	const links = githubLinks(repository);
+export function SiteFooter({ visitor }: { visitor: SiteVisitor }) {
+	const links = githubLinks(visitor.repository);
 	return (
 		<footer>
 			<div className="fm-container fm-footer-grid">
 				<div className="fm-footer-about">
-					<SiteBrand />
+					<SiteBrand visitor={visitor} />
 					<p
 						className="fm-muted"
 						style={{
@@ -307,9 +368,11 @@ export function SiteFooter({ repository }: { repository: string }) {
 					</p>
 				</div>
 				<div className="fm-footer-col">
-					<Link to="/" hash="features">
-						Features
-					</Link>
+					{visitor.homepageEnabled ? (
+						<Link to="/" hash="features">
+							Features
+						</Link>
+					) : null}
 					<Link to="/changelog">Changelog</Link>
 					<Link to="/early-access">Hosted early access</Link>
 				</div>
@@ -351,10 +414,10 @@ export function SitePage({
 	children: ReactNode;
 }) {
 	return (
-		<div className="fm-site">
+		<div className="fm-site fm-page">
 			<SiteHeader visitor={visitor} />
-			<main>{children}</main>
-			<SiteFooter repository={visitor.repository} />
+			<main className="fm-page-main">{children}</main>
+			<SiteFooter visitor={visitor} />
 		</div>
 	);
 }

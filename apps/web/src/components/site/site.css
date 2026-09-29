@@ -53,6 +53,16 @@
 	overflow-x: clip;
 	-webkit-font-smoothing: antialiased;
 }
+/* A page of the public site (`SitePage`): the main column takes the height
+   the content does not, so the footer and its wheat sit on the bottom of
+   the window on a short page such as Changelog or Terms. */
+.fm-site.fm-page {
+	display: flex;
+	flex-direction: column;
+}
+.fm-site .fm-page-main {
+	flex: 1 0 auto;
+}
 :root[data-theme="dark"] .fm-site {
 	--on-acc: var(--ground);
 	--fm-shadow-window: 0 30px 60px -40px rgba(0, 0, 0, 0.8);
