@@ -23,13 +23,16 @@ export const importRunStatus = pgEnum("import_run_status", [
 
 // What an `import_mapping` row maps. `close` is no longer written (the history
 // closes went with the month-end close); the enum value stays because Postgres
-// cannot drop one, and old rows may still carry it.
+// cannot drop one, and old rows may still carry it. `invitation` maps an
+// invitation the run recorded (source key and local id are the invitation id);
+// `created` is true for one the run wrote, false for a pending one it reused.
 export const importMappingKind = pgEnum("import_mapping_kind", [
 	"client",
 	"project",
 	"task",
 	"person",
 	"close",
+	"invitation",
 ]);
 
 const ts = (name: string) =>

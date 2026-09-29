@@ -9,6 +9,7 @@ export type HarvestMappingKind =
 	| "project"
 	| "task"
 	| "person"
+	| "invitation"
 	| "close";
 
 /** What the org already holds, as far as the plan needs to know. */

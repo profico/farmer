@@ -44,6 +44,10 @@ const OUTSIDER_EMAIL = "outsider@example.com";
 /** A user nobody holds and who never signed in. Invited all the same. */
 const LONER = "u-hv-loner";
 const LONER_EMAIL = "loner@example.com";
+const LATER = "u-hv-later";
+const LATER_EMAIL = "later@example.com";
+const RETRY = "u-hv-retry";
+const RETRY_EMAIL = "retry@example.com";
 
 const admin: Ctx = { organizationId: ORG, userId: ADMIN };
 
@@ -141,6 +145,8 @@ beforeAll(async () => {
 			emailVerified: true,
 		},
 		{ id: LONER, name: "Loner", email: LONER_EMAIL, emailVerified: true },
+		{ id: LATER, name: "Later", email: LATER_EMAIL, emailVerified: true },
+		{ id: RETRY, name: "Retry", email: RETRY_EMAIL, emailVerified: true },
 	]);
 	await db.insert(member).values([
 		{
@@ -363,5 +369,69 @@ describe("harvest import with several organizations", () => {
 				),
 			}),
 		).toBeDefined();
+	});
+
+	test("undo leaves an invitation the People page sent after the run", async () => {
+		const result = await harvestImportService.start(
+			admin,
+			plan([person("later", LATER_EMAIL)]),
+		);
+		const runsOwn = present(
+			(await invitationsTo(LATER_EMAIL)).find((r) => r.status === "pending"),
+			"the run's invitation",
+		);
+		// The run's invitation lapses, and the People page invites the
+		// same address again afterwards.
+		await db
+			.update(invitation)
+			.set({ status: "canceled" })
+			.where(eq(invitation.id, runsOwn.id));
+		const laterId = "inv-hv-later";
+		await db.insert(invitation).values({
+			id: laterId,
+			organizationId: ORG,
+			email: LATER_EMAIL,
+			role: "member",
+			status: "pending",
+			expiresAt: new Date(Date.now() + 60_000),
+			inviterId: ADMIN,
+		});
+
+		await harvestImportService.undo(admin, { runId: result.runId });
+		const later = await db.query.invitation.findFirst({
+			where: eq(invitation.id, laterId),
+		});
+		expect(later?.status).toBe("pending");
+	});
+
+	test("a retried start still reports a person who accepted as invited", async () => {
+		const first = await harvestImportService.start(
+			admin,
+			plan([person("retry", RETRY_EMAIL)]),
+		);
+		expect(first.created.invited).toBe(1);
+		const sent = present(
+			(await invitationsTo(RETRY_EMAIL)).find((r) => r.status === "pending"),
+			"the run's invitation",
+		);
+		await db
+			.update(invitation)
+			.set({ status: "accepted" })
+			.where(eq(invitation.id, sent.id));
+		await db.insert(member).values({
+			id: "m-hv-retry",
+			organizationId: ORG,
+			userId: RETRY,
+			role: "member",
+			createdAt: new Date(),
+		});
+
+		const again = await harvestImportService.start(admin, {
+			...plan([person("retry", RETRY_EMAIL)]),
+			runId: first.runId,
+		});
+		expect(again.created.invited).toBe(1);
+		expect(again.created.people).toBe(0);
+		expect(again.invited).toEqual([RETRY_EMAIL]);
 	});
 });
