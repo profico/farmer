@@ -31,6 +31,9 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
 	"device",
 	"early-access",
 	"login",
+	// The MCP OAuth consent screen. An organization with this slug would hide
+	// it from everyone.
+	"mcp-consent",
 	"no-access",
 	"privacy",
 	"self-hosting",
