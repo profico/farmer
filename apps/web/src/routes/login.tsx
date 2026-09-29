@@ -15,6 +15,7 @@ import { type FormEvent, useState } from "react";
 import { z } from "zod";
 
 import { AuthSplitPanel } from "#/components/auth-split-panel.tsx";
+import { MenuPath } from "#/components/menu-path.tsx";
 import { AuthError, AuthHead } from "#/components/site/auth-parts.tsx";
 import { signIn, signUp } from "#/lib/auth-client.ts";
 import { safeRedirectPath } from "#/lib/org-redirect.ts";
@@ -98,7 +99,7 @@ const ERRORS = new Map<string, SignInFailure>([
 		{
 			title: "Connect this provider first",
 			fallback:
-				"This email already has an account here, and the account is not connected to this provider. Sign in the way you did before, then connect the provider in Preferences → Sign-in methods.",
+				"This email already has an account here, and the account is not connected to this provider. Sign in the way you did before, then connect the provider under Sign-in methods, in Preferences.",
 		},
 	],
 ]);
@@ -271,7 +272,7 @@ function SignInPage() {
 					<AuthHead icon={GearSixIcon} title="Sign-in is not configured yet">
 						This instance has no sign-in provider. The administrator signs in
 						with a password and adds Google or an OpenID Connect provider under
-						Settings → Infrastructure.
+						<MenuPath steps={["Settings", "Infrastructure"]} />.
 					</AuthHead>
 				) : (
 					<AuthHead back={back} title="Administrator sign-in">

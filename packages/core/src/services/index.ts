@@ -7,6 +7,7 @@ export * from "./account.service";
 export * from "./ai-telemetry";
 export * from "./assistant.service";
 export * from "./assistant-tools";
+export * from "./audit";
 export * from "./clients.service";
 export * from "./compliance.service";
 // The request-scoped helpers (ctxAccess, ctxTimezone, withCtxTx, …) are part of

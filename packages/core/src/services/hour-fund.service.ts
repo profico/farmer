@@ -4,6 +4,7 @@ import { db } from "../db";
 import { monthlyHourFund } from "../db/schema/settings";
 import { datesBetween, endOfMonthKey } from "../lib/time";
 import type { SetMonthlyHourFundInput } from "../schema/hour-fund";
+import { diffFields, recordAudit } from "./audit";
 import { ctxDb, requireAdmin } from "./context";
 import { holidaysService } from "./holidays.service";
 import type { Ctx } from "./types";
@@ -19,6 +20,30 @@ export const WORKING_DAY_SECONDS = 8 * 3600;
 // the other with no error until the dates came out wrong.
 export const monthStartKeyOf = (year: number, month: number) =>
 	`${year}-${String(month).padStart(2, "0")}-01`;
+
+const MONTH_NAMES = [
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December",
+];
+
+const fundTarget = (year: number, month: number) => ({
+	type: "hour_fund",
+	id: `${year}-${String(month).padStart(2, "0")}`,
+	label: `${MONTH_NAMES[month - 1] ?? month} ${year}`,
+});
+
+const fundHours = (fundSeconds: number | null | undefined) =>
+	fundSeconds === null || fundSeconds === undefined ? null : fundSeconds / 3600;
 
 export const hourFundService = {
 	/** The fund for one month, or null when the admin hasn't entered it yet.
@@ -97,6 +122,14 @@ export const hourFundService = {
 
 	set: async (ctx: Ctx, input: SetMonthlyHourFundInput) => {
 		await requireAdmin(ctx);
+		const before = await db.query.monthlyHourFund.findFirst({
+			where: and(
+				eq(monthlyHourFund.organizationId, ctx.organizationId),
+				eq(monthlyHourFund.year, input.year),
+				eq(monthlyHourFund.month, input.month),
+			),
+			columns: { fundSeconds: true },
+		});
 		await db
 			.insert(monthlyHourFund)
 			.values({
@@ -113,6 +146,18 @@ export const hourFundService = {
 				],
 				set: { fundSeconds: input.fundSeconds, updatedAt: new Date() },
 			});
+		const changes = diffFields(
+			{ hours: fundHours(before?.fundSeconds) },
+			{ hours: fundHours(input.fundSeconds) },
+			["hours"],
+		);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "hour_fund.set",
+				target: fundTarget(input.year, input.month),
+				changes,
+			});
+		}
 	},
 
 	/** Remove a month's fund entirely, returning it to "not entered yet".
@@ -125,7 +170,7 @@ export const hourFundService = {
 	 *  row — without this, one wrong figure was permanent. */
 	clear: async (ctx: Ctx, year: number, month: number) => {
 		await requireAdmin(ctx);
-		await db
+		const [removed] = await db
 			.delete(monthlyHourFund)
 			.where(
 				and(
@@ -133,7 +178,17 @@ export const hourFundService = {
 					eq(monthlyHourFund.year, year),
 					eq(monthlyHourFund.month, month),
 				),
-			);
+			)
+			.returning({ fundSeconds: monthlyHourFund.fundSeconds });
+		if (removed) {
+			await recordAudit(ctx, {
+				kind: "hour_fund.cleared",
+				target: fundTarget(year, month),
+				changes: {
+					hours: { from: fundHours(removed.fundSeconds), to: null },
+				},
+			});
+		}
 	},
 
 	/** Compute what a month's fund SHOULD be from the official holiday calendar:
@@ -206,6 +261,13 @@ export const hourFundService = {
 				],
 			})
 			.returning({ month: monthlyHourFund.month });
+		if (inserted.length > 0) {
+			await recordAudit(ctx, {
+				kind: "hour_fund.prefilled",
+				target: { type: "hour_fund", id: String(year), label: String(year) },
+				details: { filled: inserted.length },
+			});
+		}
 		return { filled: inserted.length };
 	},
 };

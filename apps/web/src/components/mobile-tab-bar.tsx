@@ -21,6 +21,7 @@ import { authClient } from "#/lib/auth-client.ts";
 import { springExpressive } from "#/lib/motion.ts";
 import {
 	activeNavTo,
+	AUDIT_LOG_ITEM,
 	isNavItemHere,
 	mobileWorkItems,
 	type NavItem,
@@ -87,6 +88,7 @@ export function MobileTabBar({
 				// Reports are for everyone: scoped by the services, a Member sees
 				// their own row.
 				REPORTS_ITEM,
+				...(isAdmin ? [AUDIT_LOG_ITEM] : []),
 			],
 		},
 		// Settings, then everything behind it, in the hub's own groups — the

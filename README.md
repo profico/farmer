@@ -76,7 +76,7 @@ docker run -p 3000:3000 --env-file .env farmer
 
 On every start the image applies pending migrations and seeds the built-in tasks (`RUN_MIGRATIONS` / `RUN_SEED` turn these off).
 
-The jobs — automation sync, log reminders, Slack reminders and the upload sweep — assume a single instance. To run them apart from the web host, set `AUTOMATION_SYNC_ENABLED`, `LOG_REMINDERS_ENABLED`, `SLACK_REMINDERS_ENABLED` and `UPLOAD_SWEEP_ENABLED` to `false` there and run exactly one `bun run worker` (from `packages/core`). `ASSISTANT_ENABLED=false`, `MCP_ENABLED=false` and `CLI_ENABLED=false` remove those features from a deployment.
+The jobs — automation sync, log reminders, Slack reminders, the upload sweep and the audit sweep — assume a single instance. To run them apart from the web host, set `AUTOMATION_SYNC_ENABLED`, `LOG_REMINDERS_ENABLED`, `SLACK_REMINDERS_ENABLED`, `UPLOAD_SWEEP_ENABLED` and `AUDIT_SWEEP_ENABLED` to `false` there and run exactly one `bun run worker` (from `packages/core`). `ASSISTANT_ENABLED=false`, `MCP_ENABLED=false` and `CLI_ENABLED=false` remove those features from a deployment.
 
 ## Development
 

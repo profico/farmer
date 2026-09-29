@@ -48,6 +48,7 @@
  */
 
 import { refreshInstanceSettings } from "../services/instance-settings.service";
+import { runAuditSweepOnce } from "./audit-sweep";
 import { runAutomationSyncOnce } from "./automation-sync";
 import { runLogRemindersOnce } from "./log-reminders";
 import { runSlackRemindersOnce } from "./slack-reminders";
@@ -184,6 +185,18 @@ function schedulerJobs(): SchedulerConfig[] {
 				const s = await runUploadSweepOnce({ logger });
 				if (!s.enabled) return "no object store configured";
 				return `${String(s.deleted)} deleted, ${String(s.failed)} failed (${String(s.listed)} objects)`;
+			},
+		},
+		{
+			name: "Audit sweep",
+			enabledEnv: "AUDIT_SWEEP_ENABLED",
+			intervalEnv: "AUDIT_SWEEP_INTERVAL_MINUTES",
+			// Daily. Retention is counted in days, so a finer interval would only
+			// delete the same few rows sooner.
+			defaultIntervalMinutes: 1440,
+			run: async () => {
+				const s = await runAuditSweepOnce();
+				return `${String(s.deleted)} deleted`;
 			},
 		},
 		{

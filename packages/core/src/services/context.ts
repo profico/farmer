@@ -132,6 +132,7 @@ export const withCtxTx = async <T>(
 		const txCtx: Ctx = {
 			organizationId: ctx.organizationId,
 			userId: ctx.userId,
+			actor: ctx.actor,
 		};
 		Object.defineProperty(txCtx, CTX_MEMO, {
 			value: {

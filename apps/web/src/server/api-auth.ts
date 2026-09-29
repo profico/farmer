@@ -17,7 +17,30 @@
  */
 
 import type { ApiTokenScope } from "@farmer/core/api";
-import type { ApiTokenPrincipal } from "@farmer/core/services";
+import type { ApiTokenPrincipal, CtxActor } from "@farmer/core/services";
+
+import { clientAddress, trustedIpHeader } from "#/lib/client-address.ts";
+
+/**
+ * The door a request came through, for the audit log: which surface, the
+ * operator behind an impersonated session, and the client's address and
+ * User-Agent. The address follows the rate limits' rule
+ * (`lib/client-address.ts`), so a caller cannot choose what the log says.
+ */
+export const requestActor = (
+	request: Request,
+	actor: Omit<CtxActor, "ip" | "userAgent">,
+): CtxActor => {
+	const ip = clientAddress(
+		request.headers,
+		trustedIpHeader(process.env.TRUSTED_IP_HEADER),
+	);
+	return {
+		...actor,
+		ip: ip === "unknown" ? null : ip,
+		userAgent: request.headers.get("user-agent"),
+	};
+};
 
 /**
  * The caller's service Ctx for a REST request, or null.
@@ -41,6 +64,10 @@ export const resolveApiOrgContext = async (request: Request) => {
 	const ctx = {
 		organizationId: session.session.activeOrganizationId,
 		userId: session.user.id,
+		actor: requestActor(request, {
+			via: "api",
+			impersonatorId: session.session.impersonatedBy ?? null,
+		}),
 	};
 
 	// The same check `orgMiddleware` makes, for the same reason: a session's
@@ -104,7 +131,14 @@ export const resolveMcpOrgContext = async (
 	if (!userId) return null;
 
 	const { orgContextService } = await import("@farmer/core/services");
-	return orgContextService.resolveBySlug(userId, orgSlug);
+	return orgContextService.resolveBySlug(
+		userId,
+		orgSlug,
+		requestActor(request, {
+			via: "mcp",
+			impersonatorId: session?.session.impersonatedBy ?? null,
+		}),
+	);
 };
 
 /**
@@ -252,7 +286,19 @@ export const resolveCliOrgContext = async (
 	if (!cliUser) return null;
 
 	const { orgContextService } = await import("@farmer/core/services");
-	const ctx = await orgContextService.resolveBySlug(cliUser.userId, orgSlug);
+	const ctx = await orgContextService.resolveBySlug(
+		cliUser.userId,
+		orgSlug,
+		requestActor(
+			request,
+			cliUser.credential.kind === "api_token"
+				? {
+						via: "api_token",
+						apiTokenId: cliUser.credential.principal.tokenId,
+					}
+				: { via: "cli" },
+		),
+	);
 	if (!ctx) return null;
 	// A token bound to one workspace answers for that one. Another slug is the
 	// same null as a slug the person is not in, so a bound token cannot tell

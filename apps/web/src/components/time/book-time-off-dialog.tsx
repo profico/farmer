@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { MenuPath } from "#/components/menu-path.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { DatePicker } from "#/components/ui/date-picker.tsx";
 import {
@@ -238,7 +239,7 @@ export function BookTimeOffDialog({
 							) : absenceTasks.length === 0 ? (
 								<p className="text-sm text-muted-foreground">
 									This workspace has no absence tasks — an admin adds Vacation
-									and Sick Leave in Settings → Tasks.
+									and Sick Leave in <MenuPath steps={["Settings", "Tasks"]} />.
 								</p>
 							) : (
 								<div className="flex flex-wrap gap-1.5">

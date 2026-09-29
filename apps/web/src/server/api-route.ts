@@ -15,6 +15,7 @@ import { SESSION_REQUEST_HEADER } from "#/lib/api-session-header.ts";
 import type { ApiCredentialKind, ApiRequestReport } from "#/lib/posthog-api.ts";
 import {
 	type CliCredential,
+	requestActor,
 	resolveCliOrgContext,
 	resolveCliUser,
 } from "#/server/api-auth.ts";
@@ -419,6 +420,7 @@ export const apiRoute =
 				const ctx = await orgContextService.resolveBySlug(
 					user.id,
 					params.orgSlug,
+					requestActor(request, { via: "api" }),
 				);
 				// A write reaches here only through `provesSameOrigin`, where the
 				// person is at the keyboard on this site: the full reach of their

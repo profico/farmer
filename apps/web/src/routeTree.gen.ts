@@ -33,6 +33,7 @@ import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes
 import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known/oauth-authorization-server'
 import { Route as OrgSlugRewindRouteImport } from './routes/$orgSlug/rewind'
 import { Route as OrgSlugReportsRouteImport } from './routes/$orgSlug/reports'
+import { Route as OrgSlugAuditLogRouteImport } from './routes/$orgSlug/audit-log'
 import { Route as OrgSlugAssistantRouteImport } from './routes/$orgSlug/assistant'
 import { Route as OrgSlugTimeRouteRouteImport } from './routes/$orgSlug/time/route'
 import { Route as OrgSlugTimeIndexRouteImport } from './routes/$orgSlug/time/index'
@@ -218,6 +219,11 @@ const OrgSlugRewindRoute = OrgSlugRewindRouteImport.update({
 const OrgSlugReportsRoute = OrgSlugReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => OrgSlugRouteRoute,
+} as any)
+const OrgSlugAuditLogRoute = OrgSlugAuditLogRouteImport.update({
+  id: '/audit-log',
+  path: '/audit-log',
   getParentRoute: () => OrgSlugRouteRoute,
 } as any)
 const OrgSlugAssistantRoute = OrgSlugAssistantRouteImport.update({
@@ -584,6 +590,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
+  '/$orgSlug/audit-log': typeof OrgSlugAuditLogRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
@@ -671,6 +678,7 @@ export interface FileRoutesByTo {
   '/self-hosting': typeof SelfHostingRoute
   '/terms': typeof TermsRoute
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
+  '/$orgSlug/audit-log': typeof OrgSlugAuditLogRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
@@ -761,6 +769,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/$orgSlug/time': typeof OrgSlugTimeRouteRouteWithChildren
   '/$orgSlug/assistant': typeof OrgSlugAssistantRoute
+  '/$orgSlug/audit-log': typeof OrgSlugAuditLogRoute
   '/$orgSlug/reports': typeof OrgSlugReportsRoute
   '/$orgSlug/rewind': typeof OrgSlugRewindRoute
   '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
@@ -852,6 +861,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
+    | '/$orgSlug/audit-log'
     | '/$orgSlug/reports'
     | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
@@ -939,6 +949,7 @@ export interface FileRouteTypes {
     | '/self-hosting'
     | '/terms'
     | '/$orgSlug/assistant'
+    | '/$orgSlug/audit-log'
     | '/$orgSlug/reports'
     | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
@@ -1028,6 +1039,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/$orgSlug/time'
     | '/$orgSlug/assistant'
+    | '/$orgSlug/audit-log'
     | '/$orgSlug/reports'
     | '/$orgSlug/rewind'
     | '/.well-known/oauth-authorization-server'
@@ -1326,6 +1338,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/$orgSlug/reports'
       preLoaderRoute: typeof OrgSlugReportsRouteImport
+      parentRoute: typeof OrgSlugRouteRoute
+    }
+    '/$orgSlug/audit-log': {
+      id: '/$orgSlug/audit-log'
+      path: '/audit-log'
+      fullPath: '/$orgSlug/audit-log'
+      preLoaderRoute: typeof OrgSlugAuditLogRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
     '/$orgSlug/assistant': {
@@ -1790,6 +1809,7 @@ const OrgSlugTimeRouteRouteWithChildren =
 interface OrgSlugRouteRouteChildren {
   OrgSlugTimeRouteRoute: typeof OrgSlugTimeRouteRouteWithChildren
   OrgSlugAssistantRoute: typeof OrgSlugAssistantRoute
+  OrgSlugAuditLogRoute: typeof OrgSlugAuditLogRoute
   OrgSlugReportsRoute: typeof OrgSlugReportsRoute
   OrgSlugRewindRoute: typeof OrgSlugRewindRoute
   OrgSlugIndexRoute: typeof OrgSlugIndexRoute
@@ -1824,6 +1844,7 @@ interface OrgSlugRouteRouteChildren {
 const OrgSlugRouteRouteChildren: OrgSlugRouteRouteChildren = {
   OrgSlugTimeRouteRoute: OrgSlugTimeRouteRouteWithChildren,
   OrgSlugAssistantRoute: OrgSlugAssistantRoute,
+  OrgSlugAuditLogRoute: OrgSlugAuditLogRoute,
   OrgSlugReportsRoute: OrgSlugReportsRoute,
   OrgSlugRewindRoute: OrgSlugRewindRoute,
   OrgSlugIndexRoute: OrgSlugIndexRoute,

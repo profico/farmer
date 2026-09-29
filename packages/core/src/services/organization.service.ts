@@ -4,6 +4,7 @@ import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { toWeekStartsOn } from "../lib/time";
 import type { UpdateOrganizationSettingsInput } from "../schema/organization";
+import { diffFields, recordAudit } from "./audit";
 import { invalidateCtxOrgCalendar, requireAdmin } from "./context";
 import type { Ctx } from "./types";
 import { assertOwnUpload } from "./uploads.service";
@@ -55,6 +56,9 @@ export const organizationService = {
 			assertOwnUpload(ctx, input.logo);
 			patch.logo = input.logo || null;
 		}
+		const before = await db.query.organization.findFirst({
+			where: eq(organization.id, ctx.organizationId),
+		});
 		const [updated] = await db
 			.update(organization)
 			.set(patch)
@@ -65,6 +69,20 @@ export const organizationService = {
 		// computing day keys and weeks the old way for the rest of this request.
 		if (input.timezone !== undefined || input.weekStartsOn !== undefined) {
 			invalidateCtxOrgCalendar(ctx);
+		}
+		const changes = diffFields(before, updated, [
+			"name",
+			"country",
+			"timezone",
+			"weekStartsOn",
+			"logo",
+		]);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "organization.updated",
+				target: { type: "organization", id: updated.id, label: updated.name },
+				changes,
+			});
 		}
 		return {
 			name: updated.name,

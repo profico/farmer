@@ -2,6 +2,7 @@ import { HardDrivesIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { MenuPath } from "#/components/menu-path.tsx";
 import { CONTACT_EMAIL, LICENSE_NAME } from "#/lib/links.ts";
 
 import "./legal.css";
@@ -83,7 +84,8 @@ const PRIVACY: LegalDoc = {
 						<li>
 							<strong>Sessions.</strong> For each signed-in device: the IP
 							address, the browser's user agent and when the session expires.
-							You can see and end every session under Settings → Preferences.
+							You can see and end every session under{" "}
+							<MenuPath steps={["Settings", "Preferences"]} />.
 						</li>
 						<li>
 							<strong>Workspace data.</strong> Clients, projects, tasks, time

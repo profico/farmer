@@ -21,6 +21,7 @@ import {
 	ToolTraceList,
 } from "#/components/assistant/primitives.tsx";
 import { PromptBar } from "#/components/assistant/prompt-bar.tsx";
+import { MenuPath } from "#/components/menu-path.tsx";
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { PageFull } from "#/components/ui/page-header.tsx";
 import { ScrollFade } from "#/components/ui/scroll-fade.tsx";
@@ -317,8 +318,8 @@ function AssistantPage() {
 					<h1 className="h2">The assistant needs to be connected again</h1>
 					<p className="lede max-w-[48ch]">
 						The stored OpenRouter key can no longer be read. An admin can paste
-						it again under Settings → Integrations, and the assistant comes back
-						with every conversation intact.
+						it again under <MenuPath steps={["Settings", "Integrations"]} />,
+						and the assistant comes back with every conversation intact.
 					</p>
 				</div>
 			</PageFull>
@@ -333,7 +334,8 @@ function AssistantPage() {
 					<h1 className="h2">The assistant isn't connected</h1>
 					<p className="lede max-w-[48ch]">
 						An admin can connect this workspace's OpenRouter account under
-						Settings → Integrations. Until then there's nothing to ask.
+						<MenuPath steps={["Settings", "Integrations"]} />. Until then
+						there's nothing to ask.
 					</p>
 				</div>
 			</PageFull>

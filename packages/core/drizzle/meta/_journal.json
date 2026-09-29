@@ -505,6 +505,20 @@
       "when": 1790604217568,
       "tag": "0071_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1790679307184,
+      "tag": "0072_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1790679307779,
+      "tag": "0073_audit_event_append_only",
+      "breakpoints": true
     }
   ]
 }

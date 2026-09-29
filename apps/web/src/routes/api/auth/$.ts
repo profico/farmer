@@ -14,7 +14,49 @@ const STOP_IMPERSONATING_PATH = "/api/auth/admin/stop-impersonating";
  *  the session now belongs to. Parsed rather than trusted, so a change in
  *  better-auth's answer costs a missing ledger entry instead of a 500 on a
  *  session swap that has already happened. */
-const impersonateResult = z.object({ user: z.object({ id: z.string() }) });
+const impersonateResult = z.object({
+	user: z.object({ id: z.string(), name: z.string().nullish() }),
+});
+
+/**
+ * The same two entries in the audit log of every workspace the impersonated
+ * person is in, where an administrator of that workspace can read them. The
+ * PostHog ledger answers the operators of the deployment; this one answers the
+ * workspace.
+ *
+ * `recordSecurityEvent` never throws, and the import is caught as well, for
+ * the reason the ledger gives: the session has already changed.
+ */
+const recordImpersonation = async (
+	kind: "impersonation.started" | "impersonation.stopped",
+	entry: {
+		operatorId: string;
+		impersonatedUserId: string;
+		impersonatedName: string | null;
+	},
+	request: Request,
+): Promise<void> => {
+	try {
+		const [{ recordSecurityEvent }, { requestActor }] = await Promise.all([
+			import("@farmer/core/services"),
+			import("#/server/api-auth.ts"),
+		]);
+		const { ip, userAgent } = requestActor(request, { via: "web" });
+		await recordSecurityEvent({
+			kind,
+			subjectUserId: entry.impersonatedUserId,
+			actorUserId: entry.operatorId,
+			actor: { via: "web", ip, userAgent },
+			target: {
+				type: "member",
+				id: entry.impersonatedUserId,
+				label: entry.impersonatedName,
+			},
+		});
+	} catch (error) {
+		console.error("[audit] could not record an impersonation", error);
+	}
+};
 
 /**
  * The ledger's two entries, written where nothing can decline to write them.
@@ -32,8 +74,12 @@ const impersonateResult = z.object({ user: z.object({ id: z.string() }) });
  */
 const writeLedgerEntry = async (
 	pathname: string,
-	before: { user: { id: string }; session: { impersonatedBy?: string | null } },
+	before: {
+		user: { id: string; name: string };
+		session: { impersonatedBy?: string | null };
+	},
 	response: Response,
+	request: Request,
 ): Promise<void> => {
 	const ledger = await import("#/lib/posthog-impersonation.ts");
 
@@ -46,6 +92,15 @@ const writeLedgerEntry = async (
 			operatorId,
 			impersonatedUserId: before.user.id,
 		});
+		await recordImpersonation(
+			"impersonation.stopped",
+			{
+				operatorId,
+				impersonatedUserId: before.user.id,
+				impersonatedName: before.user.name,
+			},
+			request,
+		);
 		return;
 	}
 
@@ -59,6 +114,15 @@ const writeLedgerEntry = async (
 		operatorId: before.user.id,
 		impersonatedUserId: parsed.data.user.id,
 	});
+	await recordImpersonation(
+		"impersonation.started",
+		{
+			operatorId: before.user.id,
+			impersonatedUserId: parsed.data.user.id,
+			impersonatedName: parsed.data.user.name ?? null,
+		},
+		request,
+	);
 };
 
 /**
@@ -95,7 +159,9 @@ const handle = async (request: Request) => {
 	// A refusal is not an entry. Both endpoints answer 4xx without touching a
 	// session, and a ledger that records attempts as events would read as
 	// impersonations that never happened.
-	if (before && response.ok) await writeLedgerEntry(pathname, before, response);
+	if (before && response.ok) {
+		await writeLedgerEntry(pathname, before, response, request);
+	}
 	return response;
 };
 

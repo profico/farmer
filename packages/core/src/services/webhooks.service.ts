@@ -33,6 +33,7 @@ import {
 	type ResendWebhookDeliveryInput,
 	type UpdateWebhookEndpointInput,
 } from "../schema/webhooks";
+import { diffFields, recordAudit } from "./audit";
 import { requireAdmin } from "./context";
 import { ctxDb } from "./db-ctx";
 import { emitEventToEndpoint, invalidateWebhookSubscriptions } from "./events";
@@ -139,6 +140,35 @@ const assertDeliverable = async (url: string): Promise<string> => {
 	return check.url.toString();
 };
 
+/** What the log calls an endpoint: its description, else host and path. Never
+ *  the query string, which may carry a token. */
+const auditLabel = (endpoint: { url: string; description: string | null }) => {
+	if (endpoint.description) return endpoint.description;
+	try {
+		const parsed = new URL(endpoint.url);
+		return `${parsed.host}${parsed.pathname}`;
+	} catch {
+		return endpoint.url;
+	}
+};
+
+const auditTarget = (endpoint: {
+	id: string;
+	url: string;
+	description: string | null;
+}) => ({
+	type: "webhook",
+	id: endpoint.id,
+	label: auditLabel(endpoint),
+});
+
+const auditableFields = (view: WebhookEndpointView) => ({
+	url: view.url,
+	description: view.description,
+	enabledEvents: view.enabledEvents,
+	disabled: view.disabledAt !== null,
+});
+
 export const webhooksService = {
 	list: async (ctx: Ctx): Promise<WebhookEndpointView[]> => {
 		await requireAdmin(ctx);
@@ -205,10 +235,13 @@ export const webhooksService = {
 		if (!row) throw new Error("Could not create the webhook endpoint");
 
 		invalidateWebhookSubscriptions(ctx.organizationId);
-		return {
-			endpoint: await webhooksService.get(ctx, row.id),
-			secret,
-		};
+		const endpoint = await webhooksService.get(ctx, row.id);
+		await recordAudit(ctx, {
+			kind: "webhook.created",
+			target: auditTarget(endpoint),
+			details: { url: auditLabel({ url: endpoint.url, description: null }) },
+		});
+		return { endpoint, secret };
 	},
 
 	update: async (
@@ -218,7 +251,7 @@ export const webhooksService = {
 		await requireAdmin(ctx);
 		// Reads through `get`, which is org-scoped, so an id from another
 		// organization is a 404 before anything is written.
-		await webhooksService.get(ctx, input.endpointId);
+		const before = await webhooksService.get(ctx, input.endpointId);
 
 		const patch: Partial<typeof webhookEndpoint.$inferInsert> = {
 			updatedAt: new Date(),
@@ -248,20 +281,44 @@ export const webhooksService = {
 				),
 			);
 		invalidateWebhookSubscriptions(ctx.organizationId);
-		return webhooksService.get(ctx, input.endpointId);
+		const after = await webhooksService.get(ctx, input.endpointId);
+		const changes = diffFields(
+			auditableFields(before),
+			auditableFields(after),
+			["url", "description", "enabledEvents", "disabled"],
+		);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "webhook.updated",
+				target: auditTarget(after),
+				changes,
+			});
+		}
+		return after;
 	},
 
 	remove: async (ctx: Ctx, endpointId: string): Promise<void> => {
 		await requireAdmin(ctx);
-		await ctxDb(ctx)
+		const [removed] = await ctxDb(ctx)
 			.delete(webhookEndpoint)
 			.where(
 				and(
 					eq(webhookEndpoint.id, endpointId),
 					eq(webhookEndpoint.organizationId, ctx.organizationId),
 				),
-			);
+			)
+			.returning({
+				id: webhookEndpoint.id,
+				url: webhookEndpoint.url,
+				description: webhookEndpoint.description,
+			});
 		invalidateWebhookSubscriptions(ctx.organizationId);
+		if (removed) {
+			await recordAudit(ctx, {
+				kind: "webhook.deleted",
+				target: auditTarget(removed),
+			});
+		}
 	},
 
 	/**
@@ -293,8 +350,16 @@ export const webhooksService = {
 					eq(webhookEndpoint.organizationId, ctx.organizationId),
 				),
 			)
-			.returning({ id: webhookEndpoint.id });
+			.returning({
+				id: webhookEndpoint.id,
+				url: webhookEndpoint.url,
+				description: webhookEndpoint.description,
+			});
 		if (!row) throw new Error("Webhook endpoint not found");
+		await recordAudit(ctx, {
+			kind: "webhook.secret_rolled",
+			target: auditTarget(row),
+		});
 		return { secret };
 	},
 

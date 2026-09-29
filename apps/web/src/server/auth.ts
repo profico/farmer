@@ -1,9 +1,15 @@
 import { redirect } from "@tanstack/react-router";
-import { createMiddleware, createServerFn } from "@tanstack/react-start";
+import {
+	createIsomorphicFn,
+	createMiddleware,
+	createServerFn,
+} from "@tanstack/react-start";
 import {
 	getRequestHeaders,
 	setResponseStatus,
 } from "@tanstack/react-start/server";
+
+import { clientAddress, trustedIpHeader } from "#/lib/client-address.ts";
 
 export const getSession = createServerFn({ method: "GET" }).handler(
 	async () => {
@@ -23,6 +29,36 @@ export const requireSession = async () => {
 	return session;
 };
 
+/**
+ * Where the request came from, for the audit log: the client's address and
+ * its User-Agent.
+ *
+ * Isomorphic, because `requireOrgContext` also runs in a route `beforeLoad` in
+ * the browser, where there is no request to read. The Ctx built there never
+ * reaches a service (a server function builds its own through the middleware
+ * below), so the client half answers nothing. The address follows the same
+ * rule as the rate limits (`lib/client-address.ts`, which imports nothing, so
+ * it is safe in this file).
+ */
+type RequestOrigin = { ip: string | null; userAgent: string | null };
+
+const requestOrigin = createIsomorphicFn()
+	.server((): RequestOrigin => {
+		const headers = new Headers(getRequestHeaders());
+		const ip = clientAddress(
+			headers,
+			trustedIpHeader(process.env.TRUSTED_IP_HEADER),
+		);
+		return {
+			ip: ip === "unknown" ? null : ip,
+			userAgent: headers.get("user-agent"),
+		};
+	})
+	.client((): RequestOrigin => ({
+		ip: null,
+		userAgent: null,
+	}));
+
 export const requireOrgContext = async () => {
 	const session = await requireSession();
 	if (!session.session.activeOrganizationId) {
@@ -31,6 +67,14 @@ export const requireOrgContext = async () => {
 	return {
 		organizationId: session.session.activeOrganizationId,
 		userId: session.user.id,
+		// The door this request came through, for the audit log. Read from the
+		// session row, never from the browser: an impersonated session names
+		// the operator behind it.
+		actor: {
+			via: "web" as const,
+			impersonatorId: session.session.impersonatedBy ?? null,
+			...requestOrigin(),
+		},
 	};
 };
 

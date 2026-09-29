@@ -14,6 +14,7 @@ import {
 	slackLink,
 	slackRedirectUri,
 } from "../lib/slack-client";
+import { recordAudit } from "./audit";
 import { requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
@@ -120,18 +121,36 @@ export const slackService = {
 				},
 			});
 
+		await recordAudit(ctx, {
+			kind: "slack.connected",
+			target: { type: "slack_workspace", id: result.team.id, label: teamName },
+		});
 		const mapped = await slackService.syncIdentities(ctx);
 		return { teamName, mapped };
 	},
 
 	disconnect: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
-		await db
+		const removed = await db
 			.delete(slackInstallation)
-			.where(eq(slackInstallation.organizationId, ctx.organizationId));
+			.where(eq(slackInstallation.organizationId, ctx.organizationId))
+			.returning({
+				teamId: slackInstallation.teamId,
+				teamName: slackInstallation.teamName,
+			});
 		await db
 			.delete(memberSlackIdentity)
 			.where(eq(memberSlackIdentity.organizationId, ctx.organizationId));
+		for (const row of removed) {
+			await recordAudit(ctx, {
+				kind: "slack.disconnected",
+				target: {
+					type: "slack_workspace",
+					id: row.teamId,
+					label: row.teamName,
+				},
+			});
+		}
 	},
 
 	/**

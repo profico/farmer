@@ -19,6 +19,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { MenuPath } from "#/components/menu-path.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
 import {
 	AlertDialog,
@@ -743,7 +744,7 @@ function OrgInstallationsSection({
 						params={{ orgSlug }}
 						className="underlined"
 					>
-						Account → Integrations
+						<MenuPath steps={["Account", "Integrations"]} />
 					</Link>{" "}
 					— it authorizes which installations you can attach.
 				</p>

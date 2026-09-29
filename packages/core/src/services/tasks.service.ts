@@ -8,9 +8,16 @@ import type {
 	SetTaskHiddenInput,
 	UpdateTaskInput,
 } from "../schema/tasks";
+import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, requireAdmin } from "./context";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
+
+const taskTarget = (row: { id: string; name: string }) => ({
+	type: "task",
+	id: row.id,
+	label: row.name,
+});
 
 // The built-in absence tasks. Site-scoped, seeded once, never archivable and
 // never logged against a project: absence carries no client and no
@@ -346,6 +353,11 @@ export const tasksService = {
 			})
 			.returning();
 		if (!created) throw new Error("Failed to create task");
+		await recordAudit(ctx, {
+			kind: "task.created",
+			target: taskTarget(created),
+			details: { group: created.group },
+		});
 		return created;
 	},
 
@@ -393,6 +405,10 @@ export const tasksService = {
 			.update(task)
 			.set({ archivedAt: null, updatedAt: new Date() })
 			.where(eq(task.id, taskId));
+		await recordAudit(ctx, {
+			kind: "task.restored",
+			target: taskTarget(existing),
+		});
 	},
 
 	update: async (ctx: Ctx, input: UpdateTaskInput) => {
@@ -425,6 +441,19 @@ export const tasksService = {
 			.set(patch)
 			.where(eq(task.id, input.taskId))
 			.returning();
+		const changes = diffFields(existing, updated, [
+			"name",
+			"group",
+			"color",
+			"description",
+		]);
+		if (updated && changes) {
+			await recordAudit(ctx, {
+				kind: "task.updated",
+				target: taskTarget(updated),
+				changes,
+			});
+		}
 		return updated;
 	},
 
@@ -452,5 +481,9 @@ export const tasksService = {
 			.update(task)
 			.set({ archivedAt: new Date(), updatedAt: new Date() })
 			.where(eq(task.id, taskId));
+		await recordAudit(ctx, {
+			kind: "task.archived",
+			target: taskTarget(existing),
+		});
 	},
 };
