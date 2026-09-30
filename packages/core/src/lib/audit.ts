@@ -82,7 +82,11 @@ export const AUDIT_KINDS = {
 		category: "change",
 		sentence: "cancelled the invitation for {target}",
 	},
-	"member.joined": { category: "change", sentence: "added {target}" },
+	"member.joined": {
+		category: "change",
+		sentence: "added {target}",
+		selfSentence: "joined the workspace",
+	},
 	"member.removed": { category: "change", sentence: "removed {target}" },
 	"member.claim_declined": {
 		category: "change",
@@ -247,7 +251,7 @@ export const AUDIT_KINDS = {
 	},
 } as const satisfies Record<
 	string,
-	{ category: AuditCategory; sentence: string }
+	{ category: AuditCategory; sentence: string; selfSentence?: string }
 >;
 
 export type AuditKind = keyof typeof AUDIT_KINDS;
@@ -264,13 +268,19 @@ export const auditCategoryOf = (kind: AuditKind): AuditCategory =>
 
 /** The sentence after the actor's name, with the target filled in. A kind
  *  this build does not know (a row written by a newer build, read by an older
- *  one) reads as its own name rather than failing the page. */
+ *  one) reads as its own name rather than failing the page. `self` is true
+ *  when the actor is also the target, as on an accepted invitation: a kind
+ *  with a `selfSentence` then uses it, so the row does not read "Bo added
+ *  Bo". */
 export const describeAuditEvent = (
 	kind: string,
 	targetLabel: string | null,
+	self = false,
 ): string => {
 	if (!isAuditKind(kind)) return kind;
-	return AUDIT_KINDS[kind].sentence.replace(
+	const spec: { sentence: string; selfSentence?: string } = AUDIT_KINDS[kind];
+	if (self && spec.selfSentence) return spec.selfSentence;
+	return spec.sentence.replace(
 		"{target}",
 		targetLabel ?? "an item that no longer exists",
 	);

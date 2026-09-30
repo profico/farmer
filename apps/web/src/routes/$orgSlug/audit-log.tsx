@@ -306,6 +306,8 @@ function AuditLogPage() {
 								const sentence = describeAuditEvent(
 									event.kind,
 									event.targetLabel,
+									event.actorUserId !== null &&
+										event.actorUserId === event.subjectUserId,
 								);
 								const security =
 									isAuditKind(event.kind) &&
