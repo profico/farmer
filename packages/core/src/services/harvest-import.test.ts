@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "../db";
+import { auditEvent } from "../db/schema/audit";
 import { account, member, organization, user } from "../db/schema/auth";
 import {
 	client,
@@ -476,6 +477,29 @@ describe("harvest import", () => {
 			where: and(eq(member.organizationId, ORG), eq(member.userId, OUTSIDER)),
 		});
 		expect(outsiderMember).toBeDefined();
+
+		// A direct add is a way in: one `member.joined` for each person the
+		// run made a member, with the admin as the actor.
+		const joined = await db
+			.select({
+				subject: auditEvent.subjectUserId,
+				actor: auditEvent.actorUserId,
+				details: auditEvent.details,
+			})
+			.from(auditEvent)
+			.where(
+				and(
+					eq(auditEvent.organizationId, ORG),
+					eq(auditEvent.kind, "member.joined"),
+				),
+			);
+		expect(joined.map((row) => row.subject).sort()).toEqual(
+			[ana.id, bo.id, OUTSIDER].sort(),
+		);
+		for (const row of joined) {
+			expect(row.actor).toBe(admin.userId);
+			expect(row.details).toMatchObject({ importRunId: runId });
+		}
 
 		const gamma = present(
 			await db.query.project.findFirst({ where: eq(project.name, "Gamma") }),

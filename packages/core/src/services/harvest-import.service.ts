@@ -680,6 +680,9 @@ export const harvestImportService = {
 		// With several organizations, an existing user is invited, not added.
 		const multiOrg = !isSingleOrgMode();
 		const newInvitations: NewInvitation[] = [];
+		// The people the run makes members at once (single-org mode). A
+		// pending claim is not here: `importClaimsService.accept` records it.
+		const directMembers: { userId: string; name: string; role: string }[] = [];
 
 		const result = await db.transaction(async (tx) => {
 			// A conflict is a first call with this id that committed while this
@@ -1017,6 +1020,8 @@ export const harvestImportService = {
 						role: p.role,
 						createdAt: new Date(),
 					});
+					if (!multiOrg)
+						directMembers.push({ userId, name: p.name, role: p.role });
 				}
 				const archivedAt = p.archivedOn ? dayToTimestamp(p.archivedOn) : null;
 				// A user this run made, with several organizations on the
@@ -1180,6 +1185,18 @@ export const harvestImportService = {
 				kind: "member.invited",
 				target: { type: "invitation", id: inv.invitationId, label: inv.email },
 				details: { role: inv.role, importRunId: result.runId },
+			});
+		}
+		// A direct add is a way in, so each person gets `member.joined`, with
+		// the admin as the actor. `import.finished` holds only counts. This
+		// goes through `recordAudit` and not `memberJoined`, because the run
+		// sends one webhook, not one for each person.
+		for (const m of directMembers) {
+			await recordAudit(ctx, {
+				kind: "member.joined",
+				subjectUserId: m.userId,
+				target: { type: "member", id: m.userId, label: m.name },
+				details: { role: m.role, importRunId: result.runId },
 			});
 		}
 
