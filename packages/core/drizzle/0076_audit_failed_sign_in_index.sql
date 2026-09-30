@@ -1,0 +1,1 @@
+CREATE INDEX "audit_event_failed_sign_in_idx" ON "audit_event" USING btree ("subject_user_id","occurred_at") WHERE "audit_event"."kind" = 'auth.sign_in_failed';

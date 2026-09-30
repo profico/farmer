@@ -533,6 +533,13 @@
       "when": 1790773570376,
       "tag": "0075_audit_event_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1790776717333,
+      "tag": "0076_audit_failed_sign_in_index",
+      "breakpoints": true
     }
   ]
 }

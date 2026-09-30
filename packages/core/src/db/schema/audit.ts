@@ -100,6 +100,13 @@ export const auditEvent = pgTable(
 			t.targetType,
 			t.targetId,
 		),
+		// The failed sign-in limit (`recordFailedSignIn`) looks up a person
+		// without an organization. The indexes above lead with the
+		// organization, and Postgres 17 has no skip scan, so without this
+		// index each failed password reads the whole index.
+		index("audit_event_failed_sign_in_idx")
+			.on(t.subjectUserId, t.occurredAt)
+			.where(sql`${t.kind} = 'auth.sign_in_failed'`),
 		check(
 			"audit_event_category_check",
 			sql`${t.category} in ('change', 'security')`,
