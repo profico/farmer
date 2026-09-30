@@ -6,6 +6,7 @@ import { API_TOKEN_PREFIX, type ApiTokenScope } from "../api/tokens";
 import { db } from "../db";
 import { apiToken } from "../db/schema/api-tokens";
 import { organization, user } from "../db/schema/auth";
+import { isBanned } from "../lib/ban";
 import { UserFacingError } from "../lib/user-facing-error";
 import type { CreateApiTokenInput } from "../schema/api-tokens";
 import type { Ctx } from "./types";
@@ -220,6 +221,8 @@ export const apiTokensService = {
 				userId: user.id,
 				name: user.name,
 				email: user.email,
+				banned: user.banned,
+				banExpires: user.banExpires,
 			})
 			.from(apiToken)
 			.innerJoin(user, eq(user.id, apiToken.userId))
@@ -227,6 +230,9 @@ export const apiTokensService = {
 			.limit(1);
 		if (!row) return null;
 		if (row.expiresAt !== null && row.expiresAt <= now) return null;
+		// A ban stops the token, as it stops a sign-in. The token stays in
+		// the table, so it works again when the ban ends.
+		if (isBanned(row, now)) return null;
 
 		const stale = new Date(now.getTime() - LAST_USED_RESOLUTION_MS);
 		if (row.lastUsedAt === null || row.lastUsedAt < stale) {
