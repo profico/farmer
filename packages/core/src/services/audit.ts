@@ -31,7 +31,7 @@
 // as either recorded or exempt with a reason, so a new function cannot slip in
 // between the two.
 
-import { and, desc, eq, gte, lt, or, type SQL, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, or, type SQL, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { auditEvent } from "../db/schema/audit";
@@ -508,15 +508,20 @@ const asRetention = (days: number | undefined): AuditRetentionDays => {
 export const sweepAuditLog = async ({
 	now = new Date(),
 }: { now?: Date } = {}): Promise<number> => {
-	const deleted = await db
-		.delete(auditEvent)
-		.where(
-			sql`${auditEvent.occurredAt} < ${now}::timestamptz - make_interval(days => coalesce(
+	// A data-modifying CTE, so the database counts the rows. A `returning`
+	// list would load every deleted id into memory.
+	const deleted = db.$with("deleted").as(
+		db
+			.delete(auditEvent)
+			.where(
+				sql`${auditEvent.occurredAt} < ${now}::timestamptz - make_interval(days => coalesce(
 				(select ${orgSettings.auditRetentionDays} from ${orgSettings}
 					where ${orgSettings.organizationId} = ${auditEvent.organizationId}),
 				${DEFAULT_AUDIT_RETENTION_DAYS}
 			))`,
-		)
-		.returning({ id: auditEvent.id });
-	return deleted.length;
+			)
+			.returning({ one: sql<number>`1`.as("one") }),
+	);
+	const [row] = await db.with(deleted).select({ total: count() }).from(deleted);
+	return row?.total ?? 0;
 };

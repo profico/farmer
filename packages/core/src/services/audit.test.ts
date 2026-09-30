@@ -329,7 +329,13 @@ describe("sweepAuditLog", () => {
 				targetLabel: "old-third",
 			},
 		]);
-		await sweepAuditLog({ now });
+		const before = (await db.select({ id: auditEvent.id }).from(auditEvent))
+			.length;
+		const swept = await sweepAuditLog({ now });
+		const after = (await db.select({ id: auditEvent.id }).from(auditEvent))
+			.length;
+		expect(swept).toBeGreaterThanOrEqual(2);
+		expect(before - after).toBe(swept);
 		const labels = (
 			await db.select({ label: auditEvent.targetLabel }).from(auditEvent)
 		).map((row) => row.label);
