@@ -31,11 +31,23 @@
 // as either recorded or exempt with a reason, so a new function cannot slip in
 // between the two.
 
-import { and, count, desc, eq, gte, lt, or, type SQL, sql } from "drizzle-orm";
+import {
+	and,
+	count,
+	desc,
+	eq,
+	gte,
+	isNull,
+	lt,
+	or,
+	type SQL,
+	sql,
+} from "drizzle-orm";
 
 import { db } from "../db";
 import { auditEvent } from "../db/schema/audit";
 import { member } from "../db/schema/auth";
+import { memberProfile } from "../db/schema/people";
 import { orgSettings } from "../db/schema/settings";
 import {
 	AUDIT_REDACTED,
@@ -147,6 +159,8 @@ export type SecurityEvent = AuditEntry & {
 
 /**
  * Write a security event to every workspace the person is a member of NOW.
+ * A workspace where the person has a pending Harvest import claim is not one
+ * of them: the person has not accepted it.
  *
  * One statement: the rows are selected from `member`, so a person in three
  * workspaces costs one insert, and a person in none costs nothing. Fanning out
@@ -169,10 +183,20 @@ export const recordSecurityEvent = async (
 					eq(member.organizationId, event.organizationId),
 				)
 			: eq(member.userId, event.subjectUserId);
+		// A Harvest import's pending claim is a `member` row too, but the
+		// person has not accepted that workspace, so it does not receive their
+		// sign-ins. A left join: a member with no profile row still counts.
 		const organizations = await db
 			.select({ organizationId: member.organizationId })
 			.from(member)
-			.where(scope);
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, member.organizationId),
+					eq(memberProfile.userId, member.userId),
+				),
+			)
+			.where(and(scope, isNull(memberProfile.claimPendingSince)));
 		if (organizations.length === 0) return;
 		await db.insert(auditEvent).values(
 			organizations.map(({ organizationId }) => ({

@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { auditEvent } from "../db/schema/audit";
 import { member, organization, user } from "../db/schema/auth";
+import { memberProfile } from "../db/schema/people";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
 import {
@@ -30,6 +31,9 @@ const THIRD_ORG = "au-third";
 const ADMIN = "u-au-admin";
 const MEMBER = "u-au-member";
 const OPERATOR = "u-au-operator";
+/** A person with a Harvest import's pending claim in ORG, and a workspace
+ *  they did accept in OTHER_ORG. */
+const CLAIMANT = "u-au-claimant";
 
 const ctx = (userId: string, organizationId = ORG): Ctx => ({
 	organizationId,
@@ -53,6 +57,7 @@ beforeAll(async () => {
 			[ADMIN, "Ana Admin"],
 			[MEMBER, "Mo Member"],
 			[OPERATOR, "Olga Operator"],
+			[CLAIMANT, "Cleo Claimant"],
 		].map(([id, name]) => ({
 			id: present(id, "id"),
 			name: present(name, "name"),
@@ -195,6 +200,59 @@ describe("recordSecurityEvent", () => {
 			[ORG, OTHER_ORG].sort(),
 		);
 		expect(at(signIns, 0).category).toBe("security");
+	});
+
+	test("skips a workspace where the person has a pending claim", async () => {
+		await db.insert(member).values([
+			{
+				id: "m-claim-pending",
+				organizationId: ORG,
+				userId: CLAIMANT,
+				role: "member",
+				createdAt: new Date(),
+			},
+			{
+				id: "m-claim-own",
+				organizationId: OTHER_ORG,
+				userId: CLAIMANT,
+				role: "member",
+				createdAt: new Date(),
+			},
+		]);
+		await db.insert(memberProfile).values([
+			{
+				organizationId: ORG,
+				userId: CLAIMANT,
+				claimPendingSince: new Date("2026-09-01T00:00:00Z"),
+			},
+			// A profile row with no claim is a workspace the person accepted.
+			{ organizationId: OTHER_ORG, userId: CLAIMANT },
+		]);
+		await recordSecurityEvent({
+			kind: "auth.signed_in",
+			subjectUserId: CLAIMANT,
+			actorUserId: CLAIMANT,
+			actor: { via: "web" },
+		});
+		const rows = await db
+			.select()
+			.from(auditEvent)
+			.where(eq(auditEvent.subjectUserId, CLAIMANT));
+		expect(rows.map((row) => row.organizationId)).toEqual([OTHER_ORG]);
+
+		// The same for a workspace named on purpose.
+		await recordSecurityEvent({
+			kind: "api_token.created",
+			subjectUserId: CLAIMANT,
+			actorUserId: CLAIMANT,
+			organizationId: ORG,
+			target: { type: "api_token", id: "t-claim", label: "Pending" },
+		});
+		const named = await db
+			.select()
+			.from(auditEvent)
+			.where(eq(auditEvent.subjectUserId, CLAIMANT));
+		expect(named).toHaveLength(1);
 	});
 
 	test("reaches only the named workspace when one is given", async () => {

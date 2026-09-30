@@ -54,7 +54,9 @@ no actor is a job, and reads as `system`.
 ## Security events
 
 `recordSecurityEvent` writes one row per workspace the person is a member of
-now, in one statement. An API token bound to one workspace writes to that one.
+now, in one statement. A workspace where the person has a pending Harvest
+import claim (`memberProfile.claimPendingSince`) gets no row, because the
+person has not accepted it. An API token bound to one workspace writes to that one.
 
 | Event | Where |
 |---|---|
