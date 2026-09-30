@@ -1,5 +1,6 @@
 import { slugify } from "@farmer/core/lib/slug";
 import { CaretUpDownIcon, CheckIcon, PlusIcon } from "@phosphor-icons/react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ import { Input } from "#/components/ui/input.tsx";
 import { Label } from "#/components/ui/label.tsx";
 import { authClient } from "#/lib/auth-client.ts";
 import { cn, getInitials } from "#/lib/utils.ts";
+import { myOrganizationsQuery } from "#/queries/organization.ts";
 
 export function OrgSwitcher({
 	orgSlug,
@@ -42,8 +44,9 @@ export function OrgSwitcher({
 	singleOrg?: boolean;
 }) {
 	const navigate = useNavigate();
-	const { data: organizations, refetch: refetchOrganizations } =
-		authClient.useListOrganizations();
+	const { data: organizations, refetch: refetchOrganizations } = useQuery(
+		myOrganizationsQuery(orgSlug),
+	);
 	const [createOpen, setCreateOpen] = useState(false);
 	const [name, setName] = useState("");
 	const [submitting, setSubmitting] = useState(false);
@@ -66,8 +69,8 @@ export function OrgSwitcher({
 		}
 		setCreateOpen(false);
 		setName("");
-		// The atom-listener refetch this triggers races the navigate() below —
-		// await it explicitly so the new org is in the list by the time we land.
+		// Refetch before the navigate() below, so the new org is in the list by
+		// the time we land.
 		await refetchOrganizations();
 		await navigate({ to: "/$orgSlug", params: { orgSlug: data.slug } });
 	};
@@ -154,7 +157,7 @@ export function OrgSwitcher({
 				<DropdownMenuContent align="start" className="w-56">
 					{organizations?.map((org) => (
 						<DropdownMenuItem
-							key={org.id}
+							key={org.slug}
 							onClick={() =>
 								navigate({
 									to: "/$orgSlug",

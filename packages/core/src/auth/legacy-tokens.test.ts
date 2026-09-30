@@ -2,10 +2,10 @@
 // plaintext before encryption was on still reads, and is encrypted the next
 // time it is used.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 import { symmetricDecrypt } from "better-auth/crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { account, user } from "../db/schema/auth";
@@ -106,5 +106,64 @@ describe("legacy plaintext OAuth tokens", () => {
 		const before = await stored();
 		await sealLegacyOAuthTokens(stale);
 		expect(await stored()).toEqual(before);
+	});
+
+	test("leave the token out of the log when the reseal fails", async () => {
+		// drizzle-orm puts a failed query's parameters in its error message, and
+		// the reseal's WHERE clause holds the plaintext token.
+		const failing = "account-legacy-failing";
+		const token = "gho_tokenThatMustNotReachTheLog";
+		await db.insert(account).values({
+			id: failing,
+			accountId: "998",
+			providerId: "github",
+			userId: USER,
+			accessToken: token,
+			refreshToken: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		// A database fault on the update, as a statement timeout or a dropped
+		// connection would give.
+		await db.execute(sql`
+			create function refuse_account_update() returns trigger
+			language plpgsql as $$
+			begin
+				raise exception 'simulated database fault';
+			end
+			$$
+		`);
+		await db.execute(sql`
+			create trigger refuse_account_update before update on account
+			for each statement execute function refuse_account_update()
+		`);
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			await sealLegacyOAuthTokens({
+				id: failing,
+				accessToken: token,
+				refreshToken: null,
+			});
+			expect(logged).toHaveBeenCalledTimes(1);
+			const line = Bun.inspect(logged.mock.calls);
+			expect(line).not.toContain(token);
+			// Still enough to act on: which account, and the database's code.
+			expect(line).toContain(failing);
+			expect(line).toContain("P0001");
+		} finally {
+			logged.mockRestore();
+			await db.execute(sql`drop trigger refuse_account_update on account`);
+			await db.execute(sql`drop function refuse_account_update()`);
+		}
+
+		// Nothing was written, so the next use tries again.
+		const row = present(
+			await db.query.account.findFirst({
+				where: eq(account.id, failing),
+				columns: { accessToken: true },
+			}),
+			"the failing account row",
+		);
+		expect(row.accessToken).toBe(token);
 	});
 });

@@ -28,7 +28,7 @@
 5. `REGISTRATION_OPEN`: allowed.
 6. Otherwise `REGISTRATION_CLOSED`.
 
-- **The `code` on the thrown `APIError` is load-bearing.** Both OAuth callbacks (the social one and genericOAuth's) turn a thrown `APIError` into a redirect to `errorCallbackURL` only when it has a `code`, with the message as `error_description`. Without it the visitor gets a raw 403 in the middle of the round trip. `/login` has a title for `REGISTRATION_CLOSED`, `INVITE_ONLY` and better-auth's `account_not_linked`.
+- **The `code` on the thrown `APIError` is load-bearing.** Both OAuth callbacks (the social one and genericOAuth's) turn a thrown `APIError` into a redirect to `errorCallbackURL` only when it has a `code`, with the message as `error_description`. Without it the visitor gets a raw 403 in the middle of the round trip. `/login` has a title and a sentence for `REGISTRATION_CLOSED`, `INVITE_ONLY`, better-auth's `account_not_linked` and the admin plugin's `BANNED_USER`, and a generic sentence for any other code. It never shows `error_description`: anybody can put one in a link to `/login`, and the page would show it as its own text.
 - **An invitation needs a verified address** (`mayClaimInvitation`). It is matched by address alone, and an OIDC source with open self-registration hands out any address unverified. The same rule guards accepting one (`requireEmailVerificationOnInvitation`) and listing one on `/no-access`. Development is the exception: no password account there is ever verified.
 - **The gate applies in development too.** A second password account on a checkout needs an invitation or `REGISTRATION_OPEN=true`.
 - "No user yet" is a read before a write. Two first signups in the same instant can both pass; the second is an ordinary account, because the admin role goes to the oldest row only.
@@ -59,7 +59,9 @@
 
 ## Links that name no workspace
 
-**`/:org/settings` (or `/_/settings`) opens the settings page in whichever workspace the reader works in.** `lib/org-redirect.ts` owns the placeholders; neither can be a real slug, because `slugify` keeps only `[a-z0-9-]`.
+**`/:org/settings` (or `/_/settings`) opens the settings page in whichever workspace the reader works in.** `lib/org-redirect.ts` owns the placeholders; neither can be a real slug, because the server refuses any slug that `slugify` would not make (only `[a-z0-9-]`).
+
+- **A slug is never a page of the app.** `/<slug>` shares the first path segment with `/about`, `/login`, `/api` and the rest, and the router prefers the static route, so an organization called "About" would never reach its own workspace. `RESERVED_SLUGS` (`packages/core/src/lib/slug.ts`) lists every top-level route, the directories under `public/` and a few names kept free for later. `apps/web/src/lib/reserved-slugs.test.ts` fails when a new top-level route is missing from it. better-auth's `beforeCreateOrganization` hook moves a reserved slug to the next free one (`about-1`), the same as signup's `uniqueSlugFor`, and refuses a malformed one; `beforeUpdateOrganization` refuses both. Infrastructure → Sign-in refuses a reserved `SINGLE_ORG_SLUG`, but a value from the environment is not checked, so the operator must not set one there.
 
 - **`/$orgSlug`'s guard resolves it**, from the answer `enterOrganization` gives: `signed-out` goes to `/login?redirect=<the page>`, so the link survives the Google round trip; `elsewhere` resolves a placeholder straight to the reader's only workspace with the rest of the path kept, and sends everything else to `/choose-organization` — a real slug the reader cannot open goes there even with one workspace, so the page can say why instead of rewriting the link in silence. With no workspace it goes to `/no-access?redirect=<the page>`, whose sign-out keeps the link. In single-org mode `enterOrganization` reports no other workspace, so a non-member always lands on `/no-access` (an `onlySlug` pointing outside the one workspace looped between the two slugs).
 - **A slug the reader cannot open takes the same path as a placeholder.** No such workspace and not a member are still one answer, so this is not a way to probe which slugs are taken. The chooser says which slug did not open.
@@ -77,6 +79,17 @@ Setting `SINGLE_ORG_SLUG=<slug>` (in the environment or on Infrastructure → Si
 - **`allowUserToCreateOrganization: false` + `disableOrganizationDeletion: true`** are what actually close those endpoints; hiding the switcher's "New organization" item is presentation.
 - **URLs keep the `/$orgSlug` prefix.** Tenancy stays an explicit parameter, matching the service-layer rule.
 - **`/no-access` exists to break a redirect loop.** A signed-in user with no membership would otherwise bounce `/` → workspace → `/` forever. It lists their live invitations through a local server fn, because better-auth's `listUserInvitations` rejects any caller whose email isn't verified, and a development password account never is. The server fn still asks for a verified address outside development.
+
+## A Harvest import's pending claims
+
+**In multi-org mode, a membership that a Harvest import made is a pending claim until the person accepts it.** The import creates a `user` and a `member` row for a person whose address has no account yet, usually a former employee. When the owner of that address signs in later, better-auth links the sign-in to that `user` row, so without a claim they were a member of the importing organization and nobody had asked them.
+
+- **The organization sees nothing different.** People, the reports and the archived former employees read the row as before.
+- **The person cannot open the organization.** `memberProfile.claimPendingSince` is the one fact. `accessService.resolve` throws `NotAMemberError`, `membersService.getRole` answers null (the `/$orgSlug` guard), `orgContextService.organizationsFor` leaves it out (the chooser, the sidebar switcher, `farmer login`), and the session hook and `getDefaultOrgSlugForSession` never pick it. Reminders hold it back (`claim-pending` in `deliveryBlocks`).
+- **`/no-access` offers Join and Decline** (`importClaimsService`, through `server/organization.ts`). Join clears the column and runs `memberJoined`, the Slack match and `member.added` that accepting an invitation runs. Decline deletes the `member` row and clears the column: the profile and the time entries stay as the organization's history.
+- **The sidebar switcher reads `listMyOrganizations`, not better-auth's `organization.list`.** That endpoint lists every `member` row, so it offered a pending organization only for the guard to send the person away from it.
+- **The organization still sees the person.** People lists them with "Not joined yet" (`PersonRow.claimPending`), and reports count their imported hours.
+- A person who has another workspace lands there, and sees the claim only on `/no-access`. Nothing links there from inside a workspace yet.
 
 ## Platform admins and impersonation
 

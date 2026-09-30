@@ -45,9 +45,8 @@ import {
 	webhookEndpoint,
 	webhookEvent,
 } from "../db/schema/webhooks";
-import { externalFetch } from "../lib/http";
 import { webhookSignatureHeader } from "../lib/webhook-signature";
-import { resolveWebhookTarget } from "../lib/webhook-url";
+import { fetchWebhookTarget, resolveWebhookTarget } from "../lib/webhook-url";
 import { notify } from "../services/notify";
 
 /**
@@ -168,8 +167,10 @@ const httpSender: WebhookSender = async (request) => {
 	}
 
 	try {
-		const response = await externalFetch(
-			request.url,
+		// To an address the check above accepted, not to a second lookup of the
+		// name, which a rebinding resolver could answer with 10.0.0.5.
+		const response = await fetchWebhookTarget(
+			target,
 			{
 				method: "POST",
 				headers: request.headers,

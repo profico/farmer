@@ -9,6 +9,7 @@ export type HarvestMappingKind =
 	| "project"
 	| "task"
 	| "person"
+	| "invitation"
 	| "close";
 
 /** What the org already holds, as far as the plan needs to know. */
@@ -47,10 +48,17 @@ export interface HarvestSnapshot {
 		/** False for a person who has never signed in (no `account` row). */
 		hasAccount: boolean;
 		startDate: string | null;
+		/** Not a member yet: an earlier run of this org invited them (an
+		 *  existing user, with several organizations on the instance), and
+		 *  they have not accepted. Their hours are here already, so a second
+		 *  run matches them as it matches a member. */
+		invited: boolean;
 	}[];
 	/** Addresses from the request that belong to a user who is NOT a member
 	 *  here. Lower case. A listed address may attach to such a user; a guessed
-	 *  one must not. */
+	 *  one must not. Always empty outside the one organization of a single-org
+	 *  instance, so that it does not say who has an account on the deployment;
+	 *  `start` then refuses a guessed or typed one when it writes the person. */
 	takenEmails: string[];
 	/** Source key to local id, from every earlier run that was not undone. */
 	mappings: { kind: HarvestMappingKind; sourceKey: string; localId: string }[];

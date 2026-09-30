@@ -133,6 +133,10 @@ const KINDS = {
  *  in this order. */
 export type DeliveryBlock =
 	| "not-a-member"
+	// A membership a Harvest import made that the person has not accepted
+	// (`memberProfile.claimPendingSince`). For the person it is not a
+	// membership yet, so every kind is held back, like `not-a-member`.
+	| "claim-pending"
 	| "archived"
 	| "never-signed-in"
 	| "opted-out";
@@ -156,9 +160,22 @@ export const deliveryBlocks = async (
 	const policy = KINDS[kind];
 
 	const [members, archived, signedIn, settings, optedOut] = await Promise.all([
+		// The claim rides along on a left join: a person whose membership a
+		// Harvest import made and who has not accepted it is not told anything
+		// by this organization, whatever the kind (see `claim-pending`).
 		db
-			.select({ userId: member.userId })
+			.select({
+				userId: member.userId,
+				claimPendingSince: memberProfile.claimPendingSince,
+			})
 			.from(member)
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, member.organizationId),
+					eq(memberProfile.userId, member.userId),
+				),
+			)
 			.where(
 				and(
 					eq(member.organizationId, organizationId),
@@ -207,6 +224,9 @@ export const deliveryBlocks = async (
 	]);
 
 	const memberIds = new Set(members.map((r) => r.userId));
+	const pendingIds = new Set(
+		members.filter((r) => r.claimPendingSince != null).map((r) => r.userId),
+	);
 	const archivedIds = new Set(archived.map((r) => r.userId));
 	const signedInIds = new Set(signedIn.map((r) => r.userId));
 	const optedOutIds = new Set(optedOut.map((r) => r.userId));
@@ -215,6 +235,7 @@ export const deliveryBlocks = async (
 
 	for (const userId of userIds) {
 		if (!memberIds.has(userId)) blocks.set(userId, "not-a-member");
+		else if (pendingIds.has(userId)) blocks.set(userId, "claim-pending");
 		else if (archivedIds.has(userId)) blocks.set(userId, "archived");
 		else if (
 			policy.reminder &&

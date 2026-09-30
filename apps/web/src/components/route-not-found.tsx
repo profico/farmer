@@ -1,7 +1,8 @@
 import { ArrowRightIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
+import { useRef } from "react";
 
-import { SiteBrand } from "#/components/site/site-chrome.tsx";
+import { SiteBrand, useEmSheen } from "#/components/site/site-chrome.tsx";
 
 import "./site/errors.css";
 
@@ -14,8 +15,10 @@ import "./site/errors.css";
  * visitor, unlike `SiteHeader` — an error boundary cannot run a loader.
  */
 export function RouteNotFound() {
+	const pageRef = useRef<HTMLDivElement>(null);
+	useEmSheen(pageRef);
 	return (
-		<div className="fm-site fm-error-page">
+		<div ref={pageRef} className="fm-site fm-error-page">
 			<header className="fm-error-header">
 				<SiteBrand size={24} />
 			</header>

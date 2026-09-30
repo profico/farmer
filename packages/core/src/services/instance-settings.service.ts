@@ -21,6 +21,7 @@ import {
 	openSecret,
 	sealSecret,
 } from "../lib/secret-box";
+import { slugProblem } from "../lib/slug";
 import { objectStore } from "../lib/storage";
 import { UserFacingError } from "../lib/user-facing-error";
 import {
@@ -366,6 +367,14 @@ export const updateInstanceSettings = async (
 			!isPort(value.trim())
 		) {
 			throw new UserFacingError(`${name} must be a port from 1 to 65535.`);
+		}
+		// The one workspace's slug is a URL segment like any other, so the rule
+		// that keeps an organization off the app's own pages applies to it too.
+		// A value from the environment skips this; `docs/domains/authentication.md`
+		// says so.
+		if (name === "SINGLE_ORG_SLUG" && value !== null && value.trim() !== "") {
+			const problem = slugProblem(value.trim());
+			if (problem) throw new UserFacingError(`${name}: ${problem}`);
 		}
 	}
 	// After the checks above, so a write that is refused anyway does not first

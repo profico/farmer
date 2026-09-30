@@ -1,0 +1,1 @@
+ALTER TABLE "member_profile" ADD COLUMN "claim_pending_since" timestamp with time zone;

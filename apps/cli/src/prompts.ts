@@ -2,13 +2,26 @@ import * as clack from "@clack/prompts";
 import { matchesSearch } from "@farmer/core/lib/search";
 
 import { CancelledError, UsageError } from "./errors";
-import type { Output } from "./output";
+import { type Output, sanitizeForTerminal } from "./output";
 
 export type Choice = { value: string; label: string; hint?: string };
 
 // Prompts draw on stderr, so a command that had to ask something still writes
 // only its result to stdout.
 const output = process.stderr;
+
+// clack writes every text it is given as it is, and a label, a hint or a
+// prefilled answer is often a server string. `print` cleans what it writes;
+// these are cleaned here, before clack gets them.
+const shown = (text: string | undefined) =>
+	text === undefined ? undefined : sanitizeForTerminal(text);
+
+const shownChoices = (choices: Choice[]): Choice[] =>
+	choices.map((choice) => ({
+		value: choice.value,
+		label: sanitizeForTerminal(choice.label),
+		hint: shown(choice.hint),
+	}));
 
 type Cancel = typeof clack.CANCEL_SYMBOL;
 
@@ -43,8 +56,8 @@ export const pickOne = async (
 ): Promise<string> =>
 	textAnswer(
 		await clack.autocomplete<string>({
-			message,
-			options: choices,
+			message: sanitizeForTerminal(message),
+			options: shownChoices(choices),
 			initialUserInput: initialSearch,
 			maxItems: 10,
 			output,
@@ -59,8 +72,8 @@ export const pickMany = async (
 ): Promise<string[]> =>
 	listAnswer(
 		await clack.autocompleteMultiselect<string>({
-			message,
-			options: choices,
+			message: sanitizeForTerminal(message),
+			options: shownChoices(choices),
 			required: true,
 			maxItems: 12,
 			output,
@@ -77,15 +90,35 @@ export const askText = async (
 	 *  itself. A caller that needs a value gets it here rather than by throwing
 	 *  after the person has already typed something. */
 	validate?: (value: string | undefined) => string | undefined,
-): Promise<string> =>
+): Promise<string> => {
+	const initial = shown(initialValue);
 	// clack answers `undefined` for an empty input with no default, whatever
 	// its type says, and every caller reads empty as "nothing typed".
-	textAnswer(
-		await clack.text({ message, initialValue, placeholder, validate, output }),
-	) ?? "";
+	const answer =
+		textAnswer(
+			await clack.text({
+				message: sanitizeForTerminal(message),
+				initialValue: initial,
+				placeholder: shown(placeholder),
+				validate: validate && ((value) => shown(validate(value))),
+				output,
+			}),
+		) ?? "";
+	// A prefilled value taken as it stood is the stored one, so a caller that
+	// compares the answer with it does not see a change nobody typed.
+	return initialValue !== undefined && answer === initial
+		? initialValue
+		: answer;
+};
 
 export const askConfirm = async (message: string): Promise<boolean> =>
-	yesNoAnswer(await clack.confirm({ message, initialValue: false, output }));
+	yesNoAnswer(
+		await clack.confirm({
+			message: sanitizeForTerminal(message),
+			initialValue: false,
+			output,
+		}),
+	);
 
 export type Progress = {
 	stop: (message: string) => void;
@@ -96,13 +129,13 @@ export type Progress = {
  *  redraws would fill a log file with frames. */
 export const startProgress = (out: Output, message: string): Progress => {
 	if (!out.interactive) {
-		process.stderr.write(`${message}\n`);
+		process.stderr.write(`${sanitizeForTerminal(message)}\n`);
 		return { stop: () => undefined, fail: () => undefined };
 	}
 	const spin = clack.spinner({ output });
-	spin.start(message);
+	spin.start(sanitizeForTerminal(message));
 	return {
-		stop: (text) => spin.stop(text),
-		fail: (text) => spin.error(text),
+		stop: (text) => spin.stop(sanitizeForTerminal(text)),
+		fail: (text) => spin.error(sanitizeForTerminal(text)),
 	};
 };

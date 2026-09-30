@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { member } from "../db/schema/auth";
 import { project, projectMember } from "../db/schema/domain";
-import { teamLeadPerson } from "../db/schema/people";
+import { memberProfile, teamLeadPerson } from "../db/schema/people";
 import { UserFacingError } from "../lib/user-facing-error";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
@@ -42,6 +42,12 @@ const RANK = {
 	team_lead: 2,
 	pm: 3,
 } satisfies Record<ProjectRole, number>;
+
+/** The role an assignment of `role` holds a project as, for a person with or
+ *  without a people list — the rule `heldAs` applies to the caller, for
+ *  anyone: a Team Lead's `team_lead` assignment holds the project as PM. */
+const heldRoleOf = (role: ProjectRole, leadsPeople: boolean): ProjectRole =>
+	leadsPeople && role === "team_lead" ? "pm" : role;
 
 export class AccessError extends UserFacingError {
 	constructor(message: string) {
@@ -179,11 +185,24 @@ export class Access {
 	 *  neither promote anyone (themselves included) to PM nor touch a PM or a
 	 *  Team Lead who outranks their own assignment. `canManageProjectMembers`
 	 *  only asks whether the caller may touch the roster at all; this is the
-	 *  ceiling on what they may do to it once they can. */
-	canActOnProjectRole(projectId: string, role: ProjectRole): boolean {
+	 *  ceiling on what they may do to it once they can.
+	 *
+	 *  `targetLeadsPeople` says whether the person acted on has a people list
+	 *  (`accessService.leadsPeople`). The ceiling compares the rank that person
+	 *  holds the project as, not the raw role: a `team_lead` assignment of a
+	 *  Team Lead is PM rank. Comparing the raw role let a Team Lead below PM
+	 *  make a list-holder an effective PM, or demote or remove one. Pass false
+	 *  for an inactive row: it grants nothing, so it holds no PM rank. */
+	canActOnProjectRole(
+		projectId: string,
+		role: ProjectRole,
+		targetLeadsPeople: boolean,
+	): boolean {
 		if (this.isAdmin) return true;
 		const held = this.heldAs(projectId);
-		return held != null && RANK[role] <= RANK[held];
+		return (
+			held != null && RANK[heldRoleOf(role, targetLeadsPeople)] <= RANK[held]
+		);
 	}
 
 	/** See the project's budget and hourly price. PM and Admin only — the two
@@ -267,18 +286,38 @@ export const accessService = {
 	 *  anyway. Membership is the precondition, not a capability, so it is
 	 *  checked once here rather than re-asserted in each of those functions.
 	 *
+	 *  A membership with a pending claim (`memberProfile.claimPendingSince`)
+	 *  throws too: it is a row the Harvest import made for the org's history,
+	 *  and the person has not accepted it yet.
+	 *
 	 *  Runs through `ctxDb`, so it stays on the transaction when one is open —
 	 *  `setWeekCell` reaches this via `create(txCtx, …)`. See ./db-ctx. */
 	resolve: async (ctx: Ctx): Promise<Access> => {
 		const client = ctxDb(ctx);
 		const [membership, assignments, led, open] = await Promise.all([
-			client.query.member.findFirst({
-				where: and(
-					eq(member.organizationId, ctx.organizationId),
-					eq(member.userId, ctx.userId),
-				),
-				columns: { role: true },
-			}),
+			// The profile rides along on a left join, so the pending-claim check
+			// costs no fifth query. A member with no profile row has no claim.
+			client
+				.select({
+					role: member.role,
+					claimPendingSince: memberProfile.claimPendingSince,
+				})
+				.from(member)
+				.leftJoin(
+					memberProfile,
+					and(
+						eq(memberProfile.organizationId, member.organizationId),
+						eq(memberProfile.userId, member.userId),
+					),
+				)
+				.where(
+					and(
+						eq(member.organizationId, ctx.organizationId),
+						eq(member.userId, ctx.userId),
+					),
+				)
+				.limit(1)
+				.then((rows) => rows[0]),
 			client
 				.select({
 					projectId: projectMember.projectId,
@@ -314,7 +353,13 @@ export const accessService = {
 				),
 		]);
 
-		if (!membership) throw new NotAMemberError(ctx.organizationId);
+		// A pending claim is the org's record of the person, not the person's
+		// membership: the Harvest import made the row, and nobody asked them.
+		// Until they accept it (`importClaimsService.accept`) they are refused
+		// the same way as somebody with no row at all.
+		if (!membership || membership.claimPendingSince != null) {
+			throw new NotAMemberError(ctx.organizationId);
+		}
 
 		// better-auth models org ownership as a distinct role; both map to the
 		// single Admin tier this product has.
@@ -359,6 +404,23 @@ export const accessService = {
 			for (const r of rows) people.add(r.userId);
 		}
 		return people;
+	},
+
+	/** Whether `userId` has anybody on their people list — `Access.isTeamLead`
+	 *  for a person other than the caller. The role ceiling needs it to rank
+	 *  the person it acts on (see `Access.canActOnProjectRole`). */
+	leadsPeople: async (ctx: Ctx, userId: string): Promise<boolean> => {
+		const [row] = await ctxDb(ctx)
+			.select({ userId: teamLeadPerson.personUserId })
+			.from(teamLeadPerson)
+			.where(
+				and(
+					eq(teamLeadPerson.organizationId, ctx.organizationId),
+					eq(teamLeadPerson.leadUserId, userId),
+				),
+			)
+			.limit(1);
+		return row != null;
 	},
 
 	/** Convenience for the many call sites that only need the global tier. */

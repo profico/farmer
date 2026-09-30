@@ -1,6 +1,10 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import {
+	APIError,
+	createAuthMiddleware,
+	getSessionFromCtx,
+} from "better-auth/api";
 import { getOAuth2Tokens, refreshAccessTokenRequest } from "better-auth/oauth2";
 import {
 	admin,
@@ -12,15 +16,15 @@ import {
 } from "better-auth/plugins";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { CLI_CLIENT_ID } from "../api/errors";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
+import { memberProfile } from "../db/schema/people";
 import { ensureOrgTasks } from "../db/seed-tasks";
 import { isDevAuthEnabled } from "../lib/dev-auth";
-import { invitationMail, sendMail } from "../lib/email";
 import { externalFetch } from "../lib/http";
 import { PLATFORM_ADMIN_ROLE, PLATFORM_USER_ROLE } from "../lib/platform-admin";
 import {
@@ -28,15 +32,31 @@ import {
 	findSingleOrg,
 	singleOrgSlug,
 } from "../lib/single-org";
-import { slugify } from "../lib/slug";
-import { emitEvent, memberWebhookPayload } from "../services/events";
+import {
+	isReservedSlug,
+	isWellFormedSlug,
+	slugify,
+	slugProblem,
+} from "../lib/slug";
 import {
 	enabledOAuthProviders,
 	type OAuthProviderConfig,
 	onInstanceSettingsChanged,
 } from "../services/instance-settings.service";
-import { membersService } from "../services/members.service";
-import { slackService } from "../services/slack.service";
+import { memberJoined } from "../services/member-joined";
+import { deliverInvitation } from "./invitation-delivery";
+import {
+	assertCodeConsented,
+	assertConsentCodeOwner,
+	CONSENT_COOKIE,
+	consentRequestFor,
+	MCP_AUTHORIZE_PATH,
+	MCP_CONSENT_PAGE,
+	MCP_TOKEN_PATH,
+	mcpTokenRequest,
+	OAUTH_CONSENT_PATH,
+	oauthConsentRequest,
+} from "./mcp-consent";
 import {
 	assertMayRegister,
 	PASSWORD_SIGN_UP_PATH,
@@ -50,6 +70,7 @@ import {
 	type OAuthCredentials,
 } from "./sign-in-methods";
 
+export type { McpConsentRequest } from "./mcp-consent";
 export { mayClaimInvitation } from "./registration";
 export {
 	type PasswordSignIn,
@@ -58,14 +79,18 @@ export {
 	signInProviders,
 } from "./sign-in-methods";
 
+/** A free slug for `name`: the slug itself, else the first free `-1`, `-2`…
+ *  A reserved slug (`lib/slug.ts`) counts as taken, so "About" gets
+ *  `about-1`. */
 const uniqueSlugFor = async (name: string) => {
 	const base = slugify(name);
 	let slug = base;
 	let suffix = 1;
 	while (
-		await db.query.organization.findFirst({
+		isReservedSlug(slug) ||
+		(await db.query.organization.findFirst({
 			where: eq(schema.organization.slug, slug),
-		})
+		}))
 	) {
 		slug = `${base}-${suffix++}`;
 	}
@@ -123,29 +148,6 @@ const claimPlatformAdmin = async (userId: string) => {
 			.update(schema.user)
 			.set({ role: PLATFORM_ADMIN_ROLE })
 			.where(eq(schema.user.id, userId));
-	});
-};
-
-/**
- * `member.added`, for whoever is listening on the other end of a webhook.
- *
- * The Ctx names the new member as both the organization and the actor, because
- * there is no third party here: accepting an invitation is something a person
- * does to themselves. `emitEvent` never throws, so a webhook cannot cost
- * somebody their membership.
- */
-const announceNewMember = async (newMember: {
-	organizationId: string;
-	userId: string;
-	role: string;
-}): Promise<void> => {
-	const ctx = {
-		organizationId: newMember.organizationId,
-		userId: newMember.userId,
-	};
-	await emitEvent(ctx, "member.added", async () => {
-		const payload = await memberWebhookPayload(ctx, newMember.userId);
-		return payload ? { ...payload, role: newMember.role } : null;
 	});
 };
 
@@ -376,11 +378,11 @@ const buildAuth = () => {
 					//
 					// It is kept for exactly one reason, so don't "tidy" it away:
 					// `GET /user/installations` is documented as working only for OAuth app
-					// and classic tokens that carry `repo`, and that call is the
-					// authorization gate in `githubService.connectInstallation` — the check
-					// that you may only attach an installation you actually administer.
-					// Remove the scope and connecting the GitHub App breaks for everyone who
-					// links their account afterwards.
+					// and classic tokens that carry `repo`, and that call is the first half
+					// of the authorization gate in `githubService.connectInstallation`. It
+					// proves only that you can see one repo of the installation; the second
+					// half checks that you own its account. Remove the scope and connecting
+					// the GitHub App breaks for everyone who links their account afterwards.
 					//
 					// (The older note here — "so commit tracking works for private repos" —
 					// stopped being true when commit reads moved to the installation token.
@@ -435,10 +437,42 @@ const buildAuth = () => {
 			}),
 		},
 		hooks: {
-			// Refuse a production password signup before better-auth looks the
-			// email up. Its own "user already exists" answer would otherwise tell an
-			// anonymous visitor which addresses have an account.
 			before: createAuthMiddleware(async (ctx) => {
+				// MCP consent, one check per endpoint; see `./mcp-consent.ts`.
+				// `prompt` has to be exactly "consent": the plugin compares the
+				// whole string.
+				if (ctx.path === MCP_AUTHORIZE_PATH) {
+					return { context: { query: { ...ctx.query, prompt: "consent" } } };
+				}
+				if (ctx.path === MCP_TOKEN_PATH) {
+					const request = mcpTokenRequest.safeParse(
+						ctx.body instanceof FormData
+							? Object.fromEntries(ctx.body.entries())
+							: ctx.body,
+					);
+					// Not an object: the endpoint refuses it before it reads a code.
+					if (!request.success) return;
+					await assertCodeConsented(ctx.context.internalAdapter, request.data);
+					return;
+				}
+				if (ctx.path === OAUTH_CONSENT_PATH) {
+					const session = await getSessionFromCtx(ctx);
+					// Signed out: the endpoint's own session check answers.
+					if (!session) return;
+					const consentCode =
+						oauthConsentRequest.safeParse(ctx.body).data?.consent_code ||
+						(await ctx.getSignedCookie(CONSENT_COOKIE, ctx.context.secret)) ||
+						null;
+					await assertConsentCodeOwner(
+						ctx.context.internalAdapter,
+						consentCode,
+						session.user.id,
+					);
+					return;
+				}
+				// Refuse a production password signup before better-auth looks the
+				// email up. Its own "user already exists" answer would otherwise
+				// tell an anonymous visitor which addresses have an account.
 				if (ctx.path !== PASSWORD_SIGN_UP_PATH || isDevAuthEnabled()) return;
 				if (!(await isInstanceEmpty())) throw registrationClosed();
 			}),
@@ -518,21 +552,40 @@ const buildAuth = () => {
 						// mode was switched on — but that's exactly when picking the wrong
 						// one would be hardest to notice.
 						const theOrg = singleOrg ? await findSingleOrg() : null;
-						const membership = await db.query.member.findFirst({
-							where: theOrg
-								? and(
-										eq(schema.member.userId, session.userId),
-										eq(schema.member.organizationId, theOrg.id),
-									)
-								: eq(schema.member.userId, session.userId),
+						const [membership] = await db
+							.select({ organizationId: schema.member.organizationId })
+							.from(schema.member)
+							.leftJoin(
+								memberProfile,
+								and(
+									eq(
+										memberProfile.organizationId,
+										schema.member.organizationId,
+									),
+									eq(memberProfile.userId, schema.member.userId),
+								),
+							)
+							.where(
+								and(
+									eq(schema.member.userId, session.userId),
+									theOrg
+										? eq(schema.member.organizationId, theOrg.id)
+										: undefined,
+									// A pending claim is not a workspace the person joined
+									// (`memberProfile.claimPendingSince`), so the session is
+									// never pointed at one. With nothing else, they land on
+									// `/no-access`, which offers the claim.
+									isNull(memberProfile.claimPendingSince),
+								),
+							)
 							// Oldest membership first, so a multi-org user lands in the same
 							// workspace on every sign-in. Unordered, "whichever comes back
 							// first" is whatever the planner felt like, which meant the same
 							// person could open the app in a different org from one login to
 							// the next with nothing having changed. Matches how
 							// `getDefaultOrgSlugForSession` picks its fallback.
-							orderBy: (m, { asc }) => asc(m.createdAt),
-						});
+							.orderBy(asc(schema.member.createdAt))
+							.limit(1);
 						if (!membership) return;
 						return {
 							data: { activeOrganizationId: membership.organizationId },
@@ -575,20 +628,42 @@ const buildAuth = () => {
 				// They are also where `member.added` is emitted for outbound webhooks
 				// (issue #67), and for the same reason: joining an organization has no
 				// service function of its own, because better-auth owns both paths.
+				//
+				// A third path, accepting a Harvest import's pending claim
+				// (`importClaimsService.accept`), runs the same `memberJoined`.
 				organizationHooks: {
+					// The slug is the first path segment, so it must not be a page of
+					// the app (`RESERVED_SLUGS` in lib/slug.ts). The browser slugifies
+					// the name, but the endpoint takes any string, so the rule lives
+					// here. A reserved slug on create moves to the next free one, the
+					// way signup's `uniqueSlugFor` does, because the person only typed a
+					// name. A malformed one is refused first, `_` included: only a
+					// hand-made request sends it. better-auth checked the original slug for a duplicate before
+					// this hook, and `uniqueSlugFor` checks the replacement.
+					beforeCreateOrganization: async ({ organization: org }) => {
+						const slug = org.slug ?? "";
+						if (!isWellFormedSlug(slug)) {
+							throw new APIError("BAD_REQUEST", {
+								message: slugProblem(slug) ?? "The slug is malformed.",
+							});
+						}
+						if (isReservedSlug(slug)) {
+							return { data: { ...org, slug: await uniqueSlugFor(slug) } };
+						}
+					},
+					// A rename names its slug on purpose, so a reserved one is refused
+					// rather than moved.
+					beforeUpdateOrganization: async ({ organization: org }) => {
+						if (org.slug === undefined) return;
+						const problem = slugProblem(org.slug);
+						if (problem)
+							throw new APIError("BAD_REQUEST", { message: problem });
+					},
 					afterAcceptInvitation: async ({ member: newMember }) => {
-						await slackService.linkMember(
-							newMember.organizationId,
-							newMember.userId,
-						);
-						await announceNewMember(newMember);
+						await memberJoined(newMember);
 					},
 					afterAddMember: async ({ member: newMember }) => {
-						await slackService.linkMember(
-							newMember.organizationId,
-							newMember.userId,
-						);
-						await announceNewMember(newMember);
+						await memberJoined(newMember);
 					},
 				},
 				schema: {
@@ -614,75 +689,14 @@ const buildAuth = () => {
 						},
 					},
 				},
-				sendInvitationEmail: async (data) => {
-					const url = new URL(
-						`/accept-invite/${data.invitation.id}`,
-						process.env.BETTER_AUTH_URL,
-					);
-					url.searchParams.set("email", data.email);
-					url.searchParams.set("org", data.organization.name);
-					url.searchParams.set("orgSlug", data.organization.slug);
-					url.searchParams.set("role", data.role);
-					const link = url.toString();
-
-					const organizationId = data.organization.id;
-					const invitationId = data.invitation.id;
-
-					// "sending" is written before this returns, so the members list the
-					// dialog refetches already has a row to put a badge on.
-					await membersService.recordInvitationEmail(
-						organizationId,
-						invitationId,
-						"sending",
-					);
-
-					// The send itself is not awaited. better-auth awaits this hook before
-					// `createInvitation` returns, and the invitation row already exists
-					// by then — so a slow mail server held the admin's dialog open for as
-					// long as it took, over an invitation that had already happened. The
-					// outcome lands on `invitationEmail` instead, and the members page
-					// shows it; a failed invitation can be cancelled and sent again.
-					void sendMail(
-						invitationMail({
-							to: data.email,
-							inviterName: data.inviter.user.name,
-							organizationName: data.organization.name,
-							role: data.role,
-							link,
-						}),
-					).then(
-						() =>
-							membersService.recordInvitationEmail(
-								organizationId,
-								invitationId,
-								"sent",
-							),
-						(error) => {
-							console.error("[auth] invitation email failed", {
-								invitationId,
-								error,
-							});
-							return membersService.recordInvitationEmail(
-								organizationId,
-								invitationId,
-								"failed",
-								error instanceof Error ? error.message : String(error),
-							);
-						},
-					);
-
-					// And on Slack, when the address is somebody in the org's workspace.
-					// Not awaited, for the same reason as the email; `sendInvitation`
-					// never throws. It records nothing on `invitationEmail`, since that
-					// row is the email's delivery state and a DM is not a fallback for it.
-					void slackService.sendInvitation(organizationId, {
+				sendInvitationEmail: (data) =>
+					deliverInvitation({
+						invitationId: data.invitation.id,
 						email: data.email,
-						inviterName: data.inviter.user.name,
-						organizationName: data.organization.name,
 						role: data.role,
-						path: `${url.pathname}${url.search}`,
-					});
-				},
+						organization: data.organization,
+						inviterName: data.inviter.user.name,
+					}),
 			}),
 			// The calendar integration's OAuth grant. Same Google OAuth app as the
 			// login provider, but a distinct providerId so its account row (and thus
@@ -742,15 +756,26 @@ const buildAuth = () => {
 			// whatever query it was handed and hands it to `/api/login` as a
 			// `redirect`, which is a parameter that path already carries safely.
 			//
-			// No consent screen, deliberately rather than by omission: better-auth
-			// only renders one when the client sends `prompt=consent` AND
-			// `oidcConfig.consentPage` is set. The person is already consenting twice
-			// — once in the Google flow, once in their MCP client's own connection
-			// prompt — and a third screen that says the same thing is a screen nobody
-			// reads.
+			// Every authorization stops at a consent screen, `MCP_CONSENT_PAGE`
+			// (`routes/mcp-consent.tsx` in the web app). There used to be none, on
+			// the reasoning that the person already consents in their MCP client.
+			// That holds only for a client the person runs: registration is open to
+			// anybody with any redirect, so an authorize link from a stranger sent
+			// the person's code to the stranger's server without a single prompt.
+			// better-auth shows the page only when the client asks for it with
+			// `prompt=consent`, so `hooks.before` above asks on every request, and
+			// holds the consent and token endpoints to it (`./mcp-consent.ts`).
+			// `oidcConfig.loginPage` is only there because the type requires it;
+			// the plugin takes the top-level one.
 			//
 			// Mounted whatever `MCP_ENABLED` says; see lib/mcp-flag.ts.
-			mcp({ loginPage: "/api/mcp-login" }),
+			mcp({
+				loginPage: "/api/mcp-login",
+				oidcConfig: {
+					loginPage: "/api/mcp-login",
+					consentPage: MCP_CONSENT_PAGE,
+				},
+			}),
 			// The command-line tool's sign-in: RFC 8628's device flow. `farmer login`
 			// asks `/device/code` for a pair of codes, the person approves the user
 			// code on `/device` in a browser where they are already signed in, and the
@@ -892,3 +917,11 @@ export const auth: Auth = {
 		return liveAuth().$Infer;
 	},
 };
+
+/**
+ * What the MCP consent screen shows for `consentCode`, or null when the code
+ * is not a pending request of `userId`'s. Read through better-auth's own
+ * adapter, so the code is looked up exactly as the plugin stores it.
+ */
+export const mcpConsentRequest = async (userId: string, consentCode: string) =>
+	consentRequestFor((await auth.$context).internalAdapter, userId, consentCode);

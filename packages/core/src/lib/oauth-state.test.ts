@@ -4,7 +4,9 @@
 // old, from the future, tampered with.
 
 import { beforeAll, describe, expect, test } from "bun:test";
+import crypto from "node:crypto";
 
+import { present } from "../test/harness";
 import {
 	OAUTH_STATE_MAX_AGE_SECONDS,
 	signOrgState,
@@ -62,5 +64,70 @@ describe("oauth state", () => {
 		expect(verifyOrgState("org-1.c2lnbmF0dXJl", "user-1", NOW)).toBeNull();
 		expect(verifyOrgState("", "user-1", NOW)).toBeNull();
 		expect(verifyOrgState("no-dots", "user-1", NOW)).toBeNull();
+	});
+});
+
+/** Run `body` with BETTER_AUTH_SECRETS set to `value` (or removed, for
+ *  undefined), and put the old value back after it. */
+const withRotation = (value: string | undefined, body: () => void) => {
+	const original = process.env.BETTER_AUTH_SECRETS;
+	if (value === undefined) delete process.env.BETTER_AUTH_SECRETS;
+	else process.env.BETTER_AUTH_SECRETS = value;
+	try {
+		body();
+	} finally {
+		if (original === undefined) delete process.env.BETTER_AUTH_SECRETS;
+		else process.env.BETTER_AUTH_SECRETS = original;
+	}
+};
+
+/** A state MACed under `secret` by hand, the way anyone holding it can. */
+const stateUnder = (
+	secret: string,
+	orgId: string,
+	userId: string,
+	issuedAt: number,
+) =>
+	`${orgId}.${issuedAt}.${crypto
+		.createHmac("sha256", secret)
+		.update(JSON.stringify(["oauth-state/v2", orgId, userId, issuedAt]))
+		.digest("base64url")}`;
+
+const OLD = "1:the-first-secret-in-the-rotation-set";
+const NEW = "2:the-second-secret-in-the-rotation-set";
+
+describe("oauth state across a BETTER_AUTH_SECRETS rotation", () => {
+	const legacySecret = () =>
+		present(process.env.BETTER_AUTH_SECRET, "BETTER_AUTH_SECRET");
+
+	test("without a rotation set, is keyed on BETTER_AUTH_SECRET as before", () => {
+		withRotation(undefined, () => {
+			const issued = stateUnder(legacySecret(), "org-1", "user-1", NOW);
+			expect(signOrgState("org-1", "user-1", NOW)).toBe(issued);
+			expect(verifyOrgState(issued, "user-1", NOW)).toBe("org-1");
+		});
+	});
+
+	test("is keyed on the current version, and a rotated-away secret cannot forge one", () => {
+		let beforeRotation = "";
+		withRotation(OLD, () => {
+			beforeRotation = signOrgState("org-1", "user-1", NOW);
+			expect(verifyOrgState(beforeRotation, "user-1", NOW)).toBe("org-1");
+		});
+		withRotation(`${NEW},${OLD}`, () => {
+			const state = signOrgState("org-1", "user-1", NOW);
+			expect(verifyOrgState(state, "user-1", NOW)).toBe("org-1");
+			// BETTER_AUTH_SECRET keeps the old value through a rotation, and
+			// version 1 stays listed until nothing is sealed under it: neither
+			// may still sign an install.
+			expect(
+				verifyOrgState(
+					stateUnder(legacySecret(), "org-1", "user-1", NOW),
+					"user-1",
+					NOW,
+				),
+			).toBeNull();
+			expect(verifyOrgState(beforeRotation, "user-1", NOW)).toBeNull();
+		});
 	});
 });

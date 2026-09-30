@@ -6,7 +6,9 @@
 //      fails, and a chunk naming a source key `start` never mapped fails.
 //   2. A MATCHED PERSON IS NOT CHANGED, except an empty start date.
 //   3. A GUESSED ADDRESS STAYS UNVERIFIED, and never attaches to a user that
-//      exists already (plan section 3.3).
+//      exists already (plan section 3.3). A LISTED ADDRESS attaches an
+//      existing user only in single-org mode; with several organizations the
+//      user is invited instead (harvest-import.invite.test.ts).
 //   4. A SECOND IMPORT OF THE SAME DATA ADDS NOTHING; a changed day is
 //      replaced, and a day somebody edited here is kept.
 //   5. UNDO TAKES BACK ONLY WHAT THE RUN MADE, and refuses while something
@@ -27,6 +29,7 @@ import {
 } from "../db/schema/domain";
 import { importRun } from "../db/schema/import";
 import { memberProfile } from "../db/schema/people";
+import { setInstanceSettingsForTests } from "../lib/instance-settings";
 import type { HarvestStartInput } from "../schema/harvest-import";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
@@ -367,14 +370,51 @@ describe("harvest import", () => {
 		);
 	});
 
-	test("the snapshot names an address outside the org as taken", async () => {
+	test("the snapshot does not say which addresses have an account elsewhere", async () => {
 		const snap = await harvestImportService.snapshot(admin, {
 			from: "2025-01-01",
 			to: "2025-12-31",
 			emails: [OUTSIDER_EMAIL.toUpperCase(), `${WORKER}@example.com`],
 		});
-		expect(snap.takenEmails).toEqual([OUTSIDER_EMAIL]);
+		expect(snap.takenEmails).toEqual([]);
+		expect(
+			await harvestImportService.takenEmails(admin, {
+				emails: [OUTSIDER_EMAIL],
+			}),
+		).toEqual([]);
 		expect(snap.tasks.some((t) => t.id === paidLeaveId)).toBe(true);
+	});
+
+	test("in single-org mode only the one organization hears about an address outside it", async () => {
+		// The environment wins over the stored setting, and Bun loads the
+		// developer's `.env` into the suite.
+		const envSlug = process.env.SINGLE_ORG_SLUG;
+		delete process.env.SINGLE_ORG_SLUG;
+		try {
+			setInstanceSettingsForTests({ SINGLE_ORG_SLUG: ORG });
+			const snap = await harvestImportService.snapshot(admin, {
+				from: "2025-01-01",
+				to: "2025-12-31",
+				emails: [OUTSIDER_EMAIL.toUpperCase(), `${WORKER}@example.com`],
+			});
+			expect(snap.takenEmails).toEqual([OUTSIDER_EMAIL]);
+			expect(
+				await harvestImportService.takenEmails(admin, {
+					emails: [OUTSIDER_EMAIL.toUpperCase()],
+				}),
+			).toEqual([OUTSIDER_EMAIL]);
+
+			// A workspace left from before the switch is not that organization.
+			setInstanceSettingsForTests({ SINGLE_ORG_SLUG: OTHER_ORG });
+			expect(
+				await harvestImportService.takenEmails(admin, {
+					emails: [OUTSIDER_EMAIL],
+				}),
+			).toEqual([]);
+		} finally {
+			setInstanceSettingsForTests(undefined);
+			if (envSlug !== undefined) process.env.SINGLE_ORG_SLUG = envSlug;
+		}
 	});
 
 	test("start writes the reference rows", async () => {
@@ -382,12 +422,17 @@ describe("harvest import", () => {
 			await db.query.user.findFirst({ where: eq(user.id, WORKER) }),
 			"worker",
 		);
-		const result = await harvestImportService.start(admin, plan());
+		// Single-org mode: the one org may attach any user of the instance.
+		setInstanceSettingsForTests({ SINGLE_ORG_SLUG: ORG });
+		const result = await harvestImportService
+			.start(admin, plan())
+			.finally(() => setInstanceSettingsForTests(undefined));
 		runId = result.runId;
 		expect(result.created).toEqual({
 			clients: 1,
 			tasks: 1,
 			people: 3,
+			invited: 0,
 			projects: 2,
 		});
 
@@ -425,7 +470,8 @@ describe("harvest import", () => {
 		});
 		expect(workerProfile?.startDate).toBe("2020-01-01");
 
-		// The listed address of a user in another org attaches that user.
+		// In single-org mode, the listed address of a user in another org
+		// attaches that user.
 		const outsiderMember = await db.query.member.findFirst({
 			where: and(eq(member.organizationId, ORG), eq(member.userId, OUTSIDER)),
 		});
@@ -462,7 +508,8 @@ describe("harvest import", () => {
 		});
 		expect(again).toEqual({
 			runId,
-			created: { clients: 1, tasks: 1, people: 3, projects: 2 },
+			created: { clients: 1, tasks: 1, people: 3, invited: 0, projects: 2 },
+			invited: [],
 		});
 		const runs = await db
 			.select({ id: importRun.id })

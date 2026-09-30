@@ -1,9 +1,9 @@
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { SiteBrand } from "#/components/site/site-chrome.tsx";
+import { SiteBrand, useEmSheen } from "#/components/site/site-chrome.tsx";
 
 import "./site/errors.css";
 
@@ -31,13 +31,15 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 	const posthog = usePostHog();
 	const message = error instanceof Error ? error.message : String(error);
 	const [errorRef] = useState(makeErrorRef);
+	const pageRef = useRef<HTMLDivElement>(null);
+	useEmSheen(pageRef);
 
 	useEffect(() => {
 		posthog.captureException(error);
 	}, [error, posthog]);
 
 	return (
-		<div className="fm-site fm-error-page">
+		<div ref={pageRef} className="fm-site fm-error-page">
 			<header className="fm-error-header">
 				<SiteBrand size={24} />
 			</header>

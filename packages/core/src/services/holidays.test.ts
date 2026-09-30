@@ -17,12 +17,14 @@
 // Also pins that repeated and interleaved year queries against one cached
 // instance stay stable — the property that makes reuse safe at all.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+
+import Holidays from "date-holidays";
 
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { createTestDb, type TestDb } from "../test/harness";
-import { holidaysService } from "./holidays.service";
+import { HOLIDAY_YEAR_CACHE_LIMIT, holidaysService } from "./holidays.service";
 import type { Ctx } from "./types";
 
 let harness: TestDb;
@@ -146,6 +148,38 @@ describe("the per-country instance cache", () => {
 			name: target.name,
 			disabled: false,
 		});
+	});
+});
+
+// The (country, year) cache is keyed by a year the caller picks, so it must not
+// grow with the number of distinct years asked for. Counting the rule
+// evaluations shows which years are still cached without reaching into the
+// module.
+describe("the per-year cache", () => {
+	test("evicts the least recently used year past its limit", async () => {
+		const evaluations = spyOn(Holidays.prototype, "getHolidays");
+		try {
+			// One Ctx, so the org's calendar inputs are read once, not per year.
+			const c = ctx(US_ORG);
+			const first = 3000;
+			const hot = 3001;
+			await holidaysService.listForYear(c, first);
+			await holidaysService.listForYear(c, hot);
+			// Fill the cache to its limit with years nobody asked for before, and
+			// keep touching `hot` so it stays recently used.
+			for (let i = 0; i < HOLIDAY_YEAR_CACHE_LIMIT; i++) {
+				await holidaysService.listForYear(c, 4000 + i);
+				await holidaysService.listForYear(c, hot);
+			}
+
+			evaluations.mockClear();
+			await holidaysService.listForYear(c, hot);
+			expect(evaluations).toHaveBeenCalledTimes(0);
+			await holidaysService.listForYear(c, first);
+			expect(evaluations).toHaveBeenCalledTimes(1);
+		} finally {
+			evaluations.mockRestore();
+		}
 	});
 });
 

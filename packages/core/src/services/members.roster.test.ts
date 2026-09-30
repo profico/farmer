@@ -200,6 +200,7 @@ describe("list", () => {
 			orgRole: "member",
 			archivedAt: null,
 			emailUnconfirmed: false,
+			claimPending: false,
 		});
 	});
 

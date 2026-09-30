@@ -296,6 +296,14 @@ function MembersSettingsPage() {
 								Archived
 							</span>
 						)}
+						{!archived && person?.claimPending && (
+							<span
+								className="block text-2xs text-muted-foreground"
+								title="A Harvest import added this person. They can open the workspace once they join it on their first sign-in."
+							>
+								Not joined yet
+							</span>
+						)}
 					</PersonCell>
 				</TableCell>
 				<TableCell>{m.user.email}</TableCell>
