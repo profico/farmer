@@ -68,9 +68,13 @@ now, in one statement. An API token bound to one workspace writes to that one.
 | `impersonation.started` / `.stopped` | `routes/api/auth/$.ts`, beside the PostHog ledger |
 
 Member management is better-auth's, so `member.invited`, `.invitation_cancelled`,
-`.joined`, `.removed` and `.role_changed` come from its `organizationHooks`. The
-hooks do not say who called; `getCurrentAuthContext()` from
-`@better-auth/core/context` does.
+`.removed` and `.role_changed` come from its `organizationHooks`. The hooks do
+not say who called; `getCurrentAuthContext()` from `@better-auth/core/context`
+does.
+
+`member.joined` comes from `memberJoined` (`services/member-joined.ts`), which
+every way in runs one time: an invitation accepted, a member added, and a
+Harvest import's pending claim accepted (`importClaimsService.accept`).
 
 ## What is not recorded
 

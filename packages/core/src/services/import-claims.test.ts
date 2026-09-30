@@ -11,10 +11,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
+import { auditEvent } from "../db/schema/audit";
 import { account, member, organization, user } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
 import { memberProfile } from "../db/schema/people";
-import { createTestDb, present, type TestDb } from "../test/harness";
+import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { accessService, NotAMemberError } from "./access.service";
 import {
 	importClaimsService,
@@ -37,6 +38,19 @@ const ctx = (userId: string, organizationId = ORG) => ({
 	organizationId,
 	userId,
 });
+
+/** The audit rows of one kind about one person in `ORG`. */
+const auditRows = (kind: string, userId: string) =>
+	db
+		.select()
+		.from(auditEvent)
+		.where(
+			and(
+				eq(auditEvent.organizationId, ORG),
+				eq(auditEvent.kind, kind),
+				eq(auditEvent.subjectUserId, userId),
+			),
+		);
 
 const memberRow = (userId: string, organizationId = ORG) =>
 	db.query.member.findFirst({
@@ -227,6 +241,14 @@ describe("accept and decline", () => {
 		await expect(
 			importClaimsService.accept(ctx(CLAIMANT)),
 		).rejects.toBeInstanceOf(NoPendingClaimError);
+
+		// A join, recorded once, with the person as the actor.
+		const joins = await auditRows("member.joined", CLAIMANT);
+		expect(joins).toHaveLength(1);
+		const row = at(joins, 0);
+		expect(row.actorUserId).toBe(CLAIMANT);
+		expect(row.targetLabel).toBe(CLAIMANT);
+		expect(row.details).toEqual({ role: "member" });
 	});
 
 	test("decline removes the member row and keeps the history", async () => {

@@ -11,7 +11,7 @@ import { auditEvent } from "../db/schema/audit";
 import * as schema from "../db/schema/auth";
 import type { AuditVia } from "../lib/audit";
 import { clientAddress, trustedIpHeader } from "../lib/client-address";
-import { recordAudit, recordSecurityEvent } from "../services/audit";
+import { recordSecurityEvent } from "../services/audit";
 import type { Ctx, CtxActor } from "../services/types";
 
 // ── The audit log ───────────────────────────────────────────────────────────
@@ -101,21 +101,6 @@ export const hookCtx = (
 	userId: caller?.userId ?? fallbackUserId ?? "",
 	actor: callerActor(caller, "web"),
 });
-
-/** `member.joined`, for both ways in: an invitation accepted, or an admin
- *  (or the creation of an organization) adding the person directly. */
-export const recordJoined = async (
-	joined: { id: string; organizationId: string; userId: string; role: string },
-	name: string,
-): Promise<void> => {
-	const caller = await currentCaller();
-	await recordAudit(hookCtx(joined.organizationId, caller, joined.userId), {
-		kind: "member.joined",
-		subjectUserId: joined.userId,
-		target: { type: "member", id: joined.userId, label: name },
-		details: { role: joined.role },
-	});
-};
 
 /** Account rows that are integrations rather than ways to sign in. They
  *  enrich time entries (see `account.service.ts`), so linking one is not a

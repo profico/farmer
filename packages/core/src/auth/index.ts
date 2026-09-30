@@ -54,7 +54,6 @@ import {
 	INTEGRATION_PROVIDERS,
 	originOf,
 	recordFailedSignIn,
-	recordJoined,
 	signInBody,
 	signInMethod,
 	signInMethodLabel,
@@ -774,13 +773,23 @@ const buildAuth = () => {
 						if (problem)
 							throw new APIError("BAD_REQUEST", { message: problem });
 					},
+					// `memberJoined` writes `member.joined`. The person who joins
+					// is the actor when no session names one.
 					afterAcceptInvitation: async ({ member: newMember, user }) => {
-						await memberJoined(newMember);
-						await recordJoined(newMember, user.name);
+						const caller = await currentCaller();
+						await memberJoined(
+							hookCtx(newMember.organizationId, caller, newMember.userId),
+							newMember,
+							user.name,
+						);
 					},
 					afterAddMember: async ({ member: newMember, user }) => {
-						await memberJoined(newMember);
-						await recordJoined(newMember, user.name);
+						const caller = await currentCaller();
+						await memberJoined(
+							hookCtx(newMember.organizationId, caller, newMember.userId),
+							newMember,
+							user.name,
+						);
 					},
 					afterCreateInvitation: async ({
 						invitation: invited,
