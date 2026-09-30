@@ -35,6 +35,9 @@ recommends a token for anything that runs without a person.
   exception is `DELETE /api/v1/session`, which `userApiRoute` passes with
   `writes = false` — a read-only token may always revoke itself. A new write
   route needs nothing: the rule reads the HTTP method.
+  The HTTP method alone decides what "read" means. `GET …/time-entries` still
+  performs the fill-block writes of `listRange` (it writes on read, see the
+  root `CLAUDE.md`). A read-only token is therefore not free of side effects.
 - **A token can be bound to one workspace** ("Only this workspace", the
   default), stored as `organization_id`. A bound token naming another slug is
   refused like an unknown slug (`resolveCliOrgContext` returns null → 401), and
