@@ -88,11 +88,11 @@ const PRIVACY: LegalDoc = {
 							<MenuPath steps={["Settings", "Preferences"]} />.
 						</li>
 						<li>
-							<strong>Audit log.</strong> For each action in a workspace, the
-							workspace keeps what was done, who did it, the IP address and the
-							browser's user agent. It also keeps every sign-in, sign-out and
-							failed sign-in. The administrators of that workspace can read this
-							log.
+							<strong>Audit log.</strong> For each change to the workspace's
+							shared data, the workspace keeps what was done, who did it, the IP
+							address and the browser's user agent. It also keeps every sign-in,
+							sign-out and failed sign-in. The administrators of that workspace
+							can read this log.
 						</li>
 						<li>
 							<strong>Workspace data.</strong> Clients, projects, tasks, time
