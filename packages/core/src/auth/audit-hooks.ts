@@ -3,10 +3,11 @@
 // `./index.ts`: the hooks are wired there, and the import would be a cycle.
 
 import { getCurrentAuthContext } from "@better-auth/core/context";
-import { sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../db";
+import { auditEvent } from "../db/schema/audit";
 import * as schema from "../db/schema/auth";
 import type { AuditVia } from "../lib/audit";
 import { recordAudit, recordSecurityEvent } from "../services/audit";
@@ -144,12 +145,20 @@ export const signInMethod = (path: string | undefined): string | null => {
 
 export const signInBody = z.object({ email: z.string().min(1) });
 
+/** One person gets at most one failed sign-in row in this window. */
+export const FAILED_SIGN_IN_WINDOW_MS = 60_000;
+
 /**
  * `auth.sign_in_failed`, for a password that did not sign anybody in.
  *
  * Only for an address that has an account. A row for an unknown address would
  * let anybody on the internet write to a workspace's log, and would say which
  * addresses have no account; neither is worth the row.
+ *
+ * At most one row per person in each `FAILED_SIGN_IN_WINDOW_MS`. The row goes
+ * to every workspace of the person, and a caller controls the address, so
+ * without this limit one caller could fill many logs with many attempts. The
+ * window keys on the person, not on the address, for that reason.
  */
 export const recordFailedSignIn = async (
 	email: string,
@@ -162,6 +171,18 @@ export const recordFailedSignIn = async (
 			columns: { id: true },
 		});
 		if (!person) return;
+		const recent = await db.query.auditEvent.findFirst({
+			where: and(
+				eq(auditEvent.kind, "auth.sign_in_failed"),
+				eq(auditEvent.subjectUserId, person.id),
+				gte(
+					auditEvent.occurredAt,
+					new Date(Date.now() - FAILED_SIGN_IN_WINDOW_MS),
+				),
+			),
+			columns: { id: true },
+		});
+		if (recent) return;
 		await recordSecurityEvent({
 			kind: "auth.sign_in_failed",
 			subjectUserId: person.id,
