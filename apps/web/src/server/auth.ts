@@ -1,3 +1,7 @@
+import {
+	clientAddress,
+	trustedIpHeader,
+} from "@farmer/core/lib/client-address";
 import { redirect } from "@tanstack/react-router";
 import {
 	createIsomorphicFn,
@@ -8,8 +12,6 @@ import {
 	getRequestHeaders,
 	setResponseStatus,
 } from "@tanstack/react-start/server";
-
-import { clientAddress, trustedIpHeader } from "#/lib/client-address.ts";
 
 export const getSession = createServerFn({ method: "GET" }).handler(
 	async () => {
@@ -37,7 +39,7 @@ export const requireSession = async () => {
  * the browser, where there is no request to read. The Ctx built there never
  * reaches a service (a server function builds its own through the middleware
  * below), so the client half answers nothing. The address follows the same
- * rule as the rate limits (`lib/client-address.ts`, which imports nothing, so
+ * rule as the rate limits (`@farmer/core/lib/client-address`, which imports nothing, so
  * it is safe in this file).
  */
 type RequestOrigin = { ip: string | null; userAgent: string | null };

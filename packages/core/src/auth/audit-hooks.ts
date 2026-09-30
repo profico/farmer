@@ -10,6 +10,7 @@ import { db } from "../db";
 import { auditEvent } from "../db/schema/audit";
 import * as schema from "../db/schema/auth";
 import type { AuditVia } from "../lib/audit";
+import { clientAddress, trustedIpHeader } from "../lib/client-address";
 import { recordAudit, recordSecurityEvent } from "../services/audit";
 import type { Ctx, CtxActor } from "../services/types";
 
@@ -22,38 +23,27 @@ import type { Ctx, CtxActor } from "../services/types";
 // `recordAudit` and `recordSecurityEvent` never throw, and every lookup of our
 // own is caught.
 
-/** The internal header the production host writes the socket address into
- *  (`SOCKET_ADDRESS_HEADER` in `apps/web/src/lib/client-address.ts`). */
-const SOCKET_ADDRESS_HEADER = "x-farmer-socket-address";
-
 /**
  * The client's address, by the rule the web app's rate limits use
- * (`apps/web/src/lib/client-address.ts`, which this package cannot import):
- * the one header `TRUSTED_IP_HEADER` names (default `cf-connecting-ip`; the
- * LAST `x-forwarded-for` entry), else the socket address the production host
- * recorded. Never better-auth's own `session.ipAddress`, which trusts the
- * first `x-forwarded-for` entry, the one a caller writes.
+ * (`lib/client-address.ts`): the one header `TRUSTED_IP_HEADER` names, else
+ * the socket address the production host recorded. Never better-auth's own
+ * `session.ipAddress`, which trusts the first `x-forwarded-for` entry, the one
+ * a caller writes. The shared rule answers `"unknown"` for no address. A row
+ * stores null for that.
  */
-const clientAddress = (headers: Headers): string | null => {
-	const configured = (process.env.TRUSTED_IP_HEADER ?? "cf-connecting-ip")
-		.trim()
-		.toLowerCase();
-	if (configured !== "" && configured !== "none") {
-		const value = headers.get(configured);
-		const address =
-			configured === "x-forwarded-for"
-				? value?.split(",").at(-1)?.trim()
-				: value?.trim();
-		if (address) return address;
-	}
-	return headers.get(SOCKET_ADDRESS_HEADER)?.trim() || null;
+const addressOf = (headers: Headers): string | null => {
+	const address = clientAddress(
+		headers,
+		trustedIpHeader(process.env.TRUSTED_IP_HEADER),
+	);
+	return address === "unknown" ? null : address;
 };
 
 type RequestOrigin = { ip: string | null; userAgent: string | null };
 
 export const originOf = (headers: Headers | null | undefined): RequestOrigin =>
 	headers
-		? { ip: clientAddress(headers), userAgent: headers.get("user-agent") }
+		? { ip: addressOf(headers), userAgent: headers.get("user-agent") }
 		: { ip: null, userAgent: null };
 
 /** `impersonatedBy` on a session, which better-auth types as `any`. */

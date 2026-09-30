@@ -17,9 +17,11 @@
  */
 
 import type { ApiTokenScope } from "@farmer/core/api";
+import {
+	clientAddress,
+	trustedIpHeader,
+} from "@farmer/core/lib/client-address";
 import type { ApiTokenPrincipal, CtxActor } from "@farmer/core/services";
-
-import { clientAddress, trustedIpHeader } from "#/lib/client-address.ts";
 
 /**
  * The door a request came through, for the audit log: which surface, the
