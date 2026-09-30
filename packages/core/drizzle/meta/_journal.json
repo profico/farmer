@@ -505,13 +505,6 @@
       "when": 1790590969435,
       "tag": "0071_member_claim_pending",
       "breakpoints": true
-    },
-    {
-      "idx": 72,
-      "version": "7",
-      "when": 1790690649405,
-      "tag": "0072_violet_human_torch",
-      "breakpoints": true
     }
   ]
 }
