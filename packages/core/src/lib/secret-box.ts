@@ -85,6 +85,19 @@ const parseRotation = (
 	return { current, secrets };
 };
 
+/** The secret new values are keyed from, picked as better-auth picks it: the
+ *  first (current) BETTER_AUTH_SECRETS entry when the set is configured, else
+ *  BETTER_AUTH_SECRET. For a MAC that must move with a rotation rather than
+ *  stay on the legacy secret (`oauth-state.ts`). */
+export const currentAuthSecret = (): string => {
+	const rotation = parseRotation(process.env.BETTER_AUTH_SECRETS);
+	const secret = rotation
+		? rotation.secrets.get(rotation.current)
+		: process.env.BETTER_AUTH_SECRET;
+	if (!secret) throw new Error("BETTER_AUTH_SECRET not configured");
+	return secret;
+};
+
 type Keyring = {
 	/** From BETTER_AUTH_SECRET; opens `enc:v1:`, and seals when there is no
 	 *  rotation set. */

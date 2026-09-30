@@ -1,6 +1,7 @@
 import {
 	attachCommitsInput,
 	attachPullRequestsInput,
+	confirmInstallationInput,
 	detachCommitInput,
 	detachPullRequestActivityInput,
 	disconnectInstallationInput,
@@ -53,6 +54,30 @@ export const getGithubInstallUrl = createServerFn({ method: "GET" })
 			signOrgState(context.ctx.organizationId, context.ctx.userId),
 		);
 		return { url: url.toString() };
+	});
+
+// The second half of an install that GitHub started. An App installed (or
+// changed) from GitHub's own settings comes back to `api/github/setup` with no
+// signed `state`, so that route cannot tell it from a crafted link and only
+// hands the installation id on to Integrations. This POST is the admin's
+// explicit choice to attach it to THIS workspace, and it sits behind the CSRF
+// check every server function has (`start.ts`). `connectInstallation` still
+// requires the installation to be in the admin's own GitHub list.
+export const connectGithubInstallation = createServerFn({ method: "POST" })
+	.middleware([orgAdminMiddleware])
+	.validator(confirmInstallationInput)
+	.handler(async ({ data, context }) => {
+		// The workspace the admin was shown, not only the session's active one:
+		// another tab can have moved that since the page was drawn.
+		if (data.organizationId !== context.ctx.organizationId) {
+			throw new Error(
+				"Your active workspace changed in another tab. Reload this page and confirm again.",
+			);
+		}
+		const { githubService } = await import("@farmer/core/services");
+		await githubService.connectInstallation(context.ctx, {
+			installationId: data.installationId,
+		});
 	});
 
 export const disconnectGithubInstallation = createServerFn({ method: "POST" })

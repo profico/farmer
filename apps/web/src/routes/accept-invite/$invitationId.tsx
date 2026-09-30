@@ -54,6 +54,13 @@ function AcceptInvitePage() {
 			toast.error(error.message ?? "Could not accept invitation");
 			return;
 		}
+		// Straight into the workspace the button names. `/` sends a person
+		// with a second workspace to the chooser instead. The slug comes from
+		// the link, so the `/$orgSlug` guard still checks the membership.
+		if (orgSlug) {
+			await navigate({ to: "/$orgSlug", params: { orgSlug } });
+			return;
+		}
 		await navigate({ to: "/" });
 	};
 

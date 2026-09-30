@@ -284,7 +284,7 @@ describe("attachPullRequests", () => {
 			getInstallationToken: async () => "installation-token",
 			getAuthenticatedUser: async () => {
 				asked.push("user");
-				return { login: "tester" };
+				return { id: 1, login: "tester" };
 			},
 			getPullRequest: async (_token, _owner, _repo, number) => {
 				asked.push(`pr-${number}`);
@@ -918,7 +918,7 @@ describe("a repo left naming a dead installation", () => {
 		await connect(DEAD, "profico");
 		await connect(LIVE, "profico");
 		setGithubClientForTests({
-			getAuthenticatedUser: async () => ({ login: "a-member" }),
+			getAuthenticatedUser: async () => ({ id: 1, login: "a-member" }),
 			getInstallationToken: async (installationId: number) => {
 				if (installationId === DEAD) {
 					throw new GithubInstallationGoneError(DEAD);
@@ -1036,7 +1036,7 @@ describe("suggestCommits", () => {
 		scanned = [];
 		setGithubClientForTests({
 			getInstallationToken: async () => "installation-token",
-			getAuthenticatedUser: async () => ({ login: "tester" }),
+			getAuthenticatedUser: async () => ({ id: 1, login: "tester" }),
 			listCommits: async (_token, owner, repo) => {
 				scanned.push(`${owner}/${repo}`);
 				return [fakeCommit(SHA)];
@@ -1119,5 +1119,211 @@ describe("linking and unlinking a repo", () => {
 				githubRepoId: 3,
 			}),
 		).rejects.toThrow("Installation not connected to this organization");
+	});
+});
+
+// `GET /user/installations` lists an installation for anybody with read access
+// to one repo it covers. That proves the caller can see it, not that they own
+// it, and on that check alone an outside collaborator could bind a company's
+// installation to a workspace of their own. So the caller must also own the
+// account the installation is on.
+describe("connecting an installation", () => {
+	const INSTALLATION_ID = 300;
+	const personal = {
+		id: INSTALLATION_ID,
+		account: { id: 42, login: "octocat", type: "User" },
+	};
+	const organizationInstall = {
+		id: INSTALLATION_ID,
+		account: { id: 99, login: "profico", type: "Organization" },
+	};
+	/** The caller's own GitHub identity, from `GET /user`. */
+	const caller = { id: 42, login: "octocat" };
+	/** Every `getOrgMembership` call: the token, the organization and the
+	 *  login it was asked about. */
+	let membershipsRead: string[] = [];
+
+	const connected = () =>
+		db.query.orgGithubInstallation.findMany({
+			where: eq(orgGithubInstallation.installationId, INSTALLATION_ID),
+		});
+
+	beforeAll(async () => {
+		await db
+			.insert(account)
+			.values({
+				id: `account-github-${ADMIN_ID}`,
+				accountId: `gh-${ADMIN_ID}`,
+				providerId: "github",
+				userId: ADMIN_ID,
+				accessToken: "user-token",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})
+			.onConflictDoNothing();
+	});
+
+	beforeEach(async () => {
+		await db.delete(orgGithubInstallation);
+		membershipsRead = [];
+	});
+
+	afterAll(async () => {
+		await db.delete(orgGithubInstallation);
+	});
+
+	test("the owner of a personal account connects its installation", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [personal],
+			getAuthenticatedUser: async () => ({ id: 42, login: "octocat" }),
+		});
+		await githubService.connectInstallation(adminCtx(), {
+			installationId: INSTALLATION_ID,
+		});
+		const rows = await connected();
+		expect(rows.map((r) => [r.organizationId, r.accountLogin])).toEqual([
+			[ORG_ID, "octocat"],
+		]);
+	});
+
+	test("a collaborator on a personal account is refused", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [personal],
+			getAuthenticatedUser: async () => ({ id: 7, login: "collaborator" }),
+		});
+		await expect(
+			githubService.connectInstallation(adminCtx(), {
+				installationId: INSTALLATION_ID,
+			}),
+		).rejects.toThrow(AccessError);
+		expect(await connected()).toEqual([]);
+	});
+
+	test("an owner of the organization connects its installation", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [organizationInstall],
+			getAuthenticatedUser: async () => caller,
+			getInstallationToken: async () => "installation-token",
+			getOrgMembership: async (token, org, username) => {
+				membershipsRead.push(`${token} ${org} ${username}`);
+				return { state: "active", role: "admin", user: caller };
+			},
+		});
+		await githubService.connectInstallation(adminCtx(), {
+			installationId: INSTALLATION_ID,
+		});
+		expect(membershipsRead).toEqual(["installation-token profico octocat"]);
+		const rows = await connected();
+		expect(rows.map((r) => [r.organizationId, r.accountLogin])).toEqual([
+			[ORG_ID, "profico"],
+		]);
+	});
+
+	test("a member of the organization who is not an owner is refused", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [organizationInstall],
+			getAuthenticatedUser: async () => caller,
+			getInstallationToken: async () => "installation-token",
+			getOrgMembership: async () => ({
+				state: "active",
+				role: "member",
+				user: caller,
+			}),
+		});
+		await expect(
+			githubService.connectInstallation(adminCtx(), {
+				installationId: INSTALLATION_ID,
+			}),
+		).rejects.toThrow("Ask an owner to connect it");
+		expect(await connected()).toEqual([]);
+	});
+
+	test("an owner whose invitation is still pending is refused", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [organizationInstall],
+			getAuthenticatedUser: async () => caller,
+			getInstallationToken: async () => "installation-token",
+			getOrgMembership: async () => ({
+				state: "pending",
+				role: "admin",
+				user: caller,
+			}),
+		});
+		await expect(
+			githubService.connectInstallation(adminCtx(), {
+				installationId: INSTALLATION_ID,
+			}),
+		).rejects.toThrow("Accept your invitation");
+		expect(await connected()).toEqual([]);
+	});
+
+	// A 403 is what GitHub answers when the App does not hold "Members: read",
+	// and the client returns it as null. The refusal names the permission.
+	test("a membership GitHub will not show is refused, naming the permission", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [organizationInstall],
+			getAuthenticatedUser: async () => caller,
+			getInstallationToken: async () => "installation-token",
+			getOrgMembership: async () => null,
+		});
+		await expect(
+			githubService.connectInstallation(adminCtx(), {
+				installationId: INSTALLATION_ID,
+			}),
+		).rejects.toThrow('"Members: read"');
+		expect(await connected()).toEqual([]);
+	});
+
+	// "Could not check" is not "may connect", and it is not "you are not an
+	// owner" either: the sentence says to try again, not to find an owner.
+	test("a membership read that fails is refused, asking to try again", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [organizationInstall],
+			getAuthenticatedUser: async () => caller,
+			getInstallationToken: async () => "installation-token",
+			getOrgMembership: async () => {
+				throw new Error("GitHub API error 503: /orgs/profico/memberships");
+			},
+		});
+		await expect(
+			githubService.connectInstallation(adminCtx(), {
+				installationId: INSTALLATION_ID,
+			}),
+		).rejects.toThrow("Try again in a few minutes");
+		expect(await connected()).toEqual([]);
+	});
+
+	// Looked up by login, so the answer must be for the caller's own id: a
+	// rename between the two calls would otherwise hand over the login.
+	test("a membership of somebody else under the caller's login is refused", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [organizationInstall],
+			getAuthenticatedUser: async () => caller,
+			getInstallationToken: async () => "installation-token",
+			getOrgMembership: async () => ({
+				state: "active",
+				role: "admin",
+				user: { id: 7, login: "octocat" },
+			}),
+		});
+		await expect(
+			githubService.connectInstallation(adminCtx(), {
+				installationId: INSTALLATION_ID,
+			}),
+		).rejects.toThrow(AccessError);
+		expect(await connected()).toEqual([]);
+	});
+
+	test("an installation missing from the caller's own list is refused", async () => {
+		setGithubClientForTests({
+			listUserInstallations: async () => [],
+			getAuthenticatedUser: async () => ({ id: 42, login: "octocat" }),
+		});
+		await expect(
+			githubService.connectInstallation(adminCtx(), {
+				installationId: INSTALLATION_ID,
+			}),
+		).rejects.toThrow(AccessError);
+		expect(await connected()).toEqual([]);
 	});
 });

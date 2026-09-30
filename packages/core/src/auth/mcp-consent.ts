@@ -1,0 +1,224 @@
+import { APIError } from "better-auth/api";
+import type { Verification } from "better-auth/types";
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
+
+import { db } from "../db";
+import { oauthApplication, oauthConsent } from "../db/schema/auth";
+
+/**
+ * The person approves every MCP connection on a Farmer screen.
+ *
+ * better-auth's mcp plugin takes dynamic client registration (RFC 7591) from
+ * anybody, with any `redirect_uris`, and it asks for consent only when the
+ * CLIENT sends `prompt=consent`. So `/mcp/authorize` was a link a stranger
+ * could send: register a client whose redirect is their own server, send a
+ * signed-in person the authorize URL with a PKCE challenge of their own, and
+ * the person's browser delivered a code for that person's account straight to
+ * them — no prompt, no click — which the stranger exchanged for a token and a
+ * refresh token.
+ *
+ * Three checks in `hooks.before` (`./index.ts`) close it, one per endpoint:
+ *
+ * - `/mcp/authorize` always runs as `prompt=consent`, whatever the client
+ *   sent, so the plugin sends the browser to `MCP_CONSENT_PAGE` rather than to
+ *   the redirect. A signed-out request is saved in a cookie with that prompt
+ *   and replayed after sign-in, so it reaches the same screen.
+ * - `/oauth2/consent` (better-auth's, which the page posts to) accepts a
+ *   consent code only from the account it was issued to. better-auth checks
+ *   that somebody is signed in, not who, so a consent code that leaked (a URL
+ *   in an analytics event, a shared screen) could otherwise be approved by the
+ *   stranger's own session, for the person's account.
+ * - `/mcp/token` refuses a code that is still waiting for consent, and one for
+ *   a client this person never approved. The plugin's token endpoint checks
+ *   neither, so without this the consent code itself was a token.
+ *
+ * Every authorization shows the screen, including the next one for a client
+ * the person approved before. The approval is recorded (`oauthConsent`) but not
+ * used to skip the screen: a connection is rare, and the screen is the one
+ * place the person sees where their access is going.
+ */
+
+/** better-auth's paths, without the `/api/auth` base. */
+export const MCP_AUTHORIZE_PATH = "/mcp/authorize";
+export const MCP_TOKEN_PATH = "/mcp/token";
+export const OAUTH_CONSENT_PATH = "/oauth2/consent";
+
+/** The web app's consent screen (`apps/web/src/routes/mcp-consent.tsx`). */
+export const MCP_CONSENT_PAGE = "/mcp-consent";
+
+/** The signed cookie better-auth keeps the pending consent code in. */
+export const CONSENT_COOKIE = "oidc_consent_prompt";
+
+/** `URL#hostname` as the WHATWG parser writes a loopback host. */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** A long client name is the client's own text; the screen needs a line. */
+const MAX_CLIENT_NAME = 80;
+
+/** What better-auth's mcp plugin stores for an authorization code (and for a
+ *  consent code, which is the same row before the person decides). Only the
+ *  fields read here. */
+const storedCode = z.object({
+	clientId: z.string(),
+	userId: z.string(),
+	redirectURI: z.string(),
+	requireConsent: z.boolean(),
+});
+type StoredCode = z.infer<typeof storedCode>;
+
+/** The one lookup this needs from better-auth's internal adapter, which
+ *  applies the configured identifier storage the same way the plugin does. */
+export type CodeStore = {
+	findVerificationValue: (identifier: string) => Promise<Verification | null>;
+};
+
+type CodeLookup =
+	| { state: "missing" }
+	| { state: "unreadable" }
+	| { state: "found"; code: StoredCode };
+
+const decode = (value: string): StoredCode | null => {
+	try {
+		const parsed = storedCode.safeParse(JSON.parse(value));
+		return parsed.success ? parsed.data : null;
+	} catch {
+		return null;
+	}
+};
+
+const lookUp = async (store: CodeStore, code: string): Promise<CodeLookup> => {
+	const row = await store.findVerificationValue(code);
+	if (!row || row.expiresAt < new Date()) return { state: "missing" };
+	const decoded = decode(row.value);
+	return decoded ? { state: "found", code: decoded } : { state: "unreadable" };
+};
+
+/**
+ * A token request read exactly the way the plugin's handler reads it, so this
+ * check sees the same code the handler would spend and turns away nothing the
+ * handler would take. A refresh is `grant_type === "refresh_token"` and
+ * nothing else; a code is any truthy value, spent as `code.toString()`, so a
+ * `null` or `""` (which JSON serializers write for an absent field) is no code
+ * at all, and `["abc"]` is the code `abc`. A body that is not an object fails
+ * the parse, and the handler refuses it before it reads a code.
+ */
+export const mcpTokenRequest = z
+	.object({
+		grant_type: z.unknown().optional(),
+		code: z.unknown().optional(),
+	})
+	.transform(({ grant_type, code }) => ({
+		refresh: grant_type === "refresh_token",
+		code: code ? String(code) : null,
+	}));
+
+/** The one field of a consent request this check reads. */
+export const oauthConsentRequest = z.object({
+	consent_code: z.string().nullish(),
+});
+
+const consentRequired = () =>
+	new APIError("UNAUTHORIZED", {
+		error: "invalid_grant",
+		error_description: "The person has not approved this connection in Farmer.",
+	});
+
+/**
+ * Refuse to spend a code the person has not approved. `/mcp/token` only; a
+ * refresh or a request with no code is left to the endpoint, which answers it
+ * the same way as before.
+ */
+export const assertCodeConsented = async (
+	store: CodeStore,
+	request: z.infer<typeof mcpTokenRequest>,
+) => {
+	if (request.refresh || !request.code) return;
+	const found = await lookUp(store, request.code);
+	// An unknown or expired code: the endpoint answers `invalid_grant` itself.
+	if (found.state === "missing") return;
+	if (found.state === "unreadable" || found.code.requireConsent) {
+		throw consentRequired();
+	}
+	const approved = await db.query.oauthConsent.findFirst({
+		columns: { id: true },
+		where: and(
+			eq(oauthConsent.clientId, found.code.clientId),
+			eq(oauthConsent.userId, found.code.userId),
+			eq(oauthConsent.consentGiven, true),
+		),
+	});
+	if (!approved) throw consentRequired();
+};
+
+/**
+ * Refuse a consent decision from any account but the one the request was made
+ * for. `/oauth2/consent` only. With no code, or an unknown one, the endpoint
+ * answers as before.
+ */
+export const assertConsentCodeOwner = async (
+	store: CodeStore,
+	consentCode: string | null,
+	userId: string,
+) => {
+	if (!consentCode) return;
+	const found = await lookUp(store, consentCode);
+	if (found.state === "missing") return;
+	if (found.state === "unreadable" || found.code.userId !== userId) {
+		throw new APIError("FORBIDDEN", {
+			error: "access_denied",
+			message: "This connection request belongs to another account.",
+		});
+	}
+};
+
+/** What the consent screen shows. */
+export type McpConsentRequest = {
+	/** The name the client registered with. Its own words, not verified. */
+	clientName: string | null;
+	/** Where the access goes: the redirect's scheme and host. */
+	destination: string;
+	/** The redirect is a loopback address, so an app on this computer. */
+	local: boolean;
+};
+
+/** The redirect as a person should read it: scheme and host, or the whole
+ *  URI for one with no host (`myapp:callback`). */
+const describeRedirect = (redirectURI: string) => {
+	if (!URL.canParse(redirectURI)) {
+		return { destination: redirectURI, local: false };
+	}
+	const url = new URL(redirectURI);
+	const local =
+		(url.protocol === "http:" || url.protocol === "https:") &&
+		LOOPBACK_HOSTS.has(url.hostname);
+	return {
+		destination: url.host ? `${url.protocol}//${url.host}` : url.href,
+		local,
+	};
+};
+
+/**
+ * The pending request behind a consent code, for the account it was issued
+ * to. Null for a code that is unknown, expired, already decided, or somebody
+ * else's — the screen says the same thing for all four.
+ */
+export const consentRequestFor = async (
+	store: CodeStore,
+	userId: string,
+	consentCode: string,
+): Promise<McpConsentRequest | null> => {
+	const found = await lookUp(store, consentCode);
+	if (found.state !== "found") return null;
+	const { code } = found;
+	if (!code.requireConsent || code.userId !== userId) return null;
+	const client = await db.query.oauthApplication.findFirst({
+		columns: { name: true },
+		where: eq(oauthApplication.clientId, code.clientId),
+	});
+	if (!client) return null;
+	return {
+		clientName: client.name?.trim().slice(0, MAX_CLIENT_NAME) || null,
+		...describeRedirect(code.redirectURI),
+	};
+};

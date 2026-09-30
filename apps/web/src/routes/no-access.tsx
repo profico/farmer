@@ -1,6 +1,10 @@
 import { ArrowRightIcon, EnvelopeSimpleIcon } from "@phosphor-icons/react";
 import { usePostHog } from "@posthog/react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	useNavigate,
+	useRouter,
+} from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -8,10 +12,15 @@ import { z } from "zod";
 import { AuthSplitPanel } from "#/components/auth-split-panel.tsx";
 import { AuthHead, OrgMark } from "#/components/site/auth-parts.tsx";
 import { authClient } from "#/lib/auth-client.ts";
-import { safeRedirectPath } from "#/lib/org-redirect.ts";
+import { orgSlugOf, safeRedirectPath } from "#/lib/org-redirect.ts";
 import { requireSession } from "#/server/auth.ts";
 import { getPublicAppConfig } from "#/server/config.ts";
-import { listMyPendingInvitations } from "#/server/organization.ts";
+import {
+	acceptImportClaim,
+	declineImportClaim,
+	listMyImportClaims,
+	listMyPendingInvitations,
+} from "#/server/organization.ts";
 
 /**
  * The dead end for a signed-in user who belongs to no organization.
@@ -24,6 +33,11 @@ import { listMyPendingInvitations } from "#/server/organization.ts";
  * It also does the recovery, not just the apology: a user who signed in from
  * `/` rather than from their invite link has a live invitation
  * sitting unaccepted, and this is where they can accept it.
+ *
+ * It also answers a Harvest import's pending claims: a workspace that imported
+ * this person's history made a membership they never asked for, and they
+ * cannot open it until they join here (`importClaimsService`). Declining
+ * leaves the workspace; the history stays with it.
  */
 const searchSchema = z.object({
 	// The page the reader was trying to open, when a workspace guard sent them
@@ -36,21 +50,24 @@ export const Route = createFileRoute("/no-access")({
 	validateSearch: searchSchema,
 	loader: async () => {
 		const session = await requireSession();
-		const [config, invitations] = await Promise.all([
+		const [config, invitations, claims] = await Promise.all([
 			getPublicAppConfig(),
 			listMyPendingInvitations(),
+			listMyImportClaims(),
 		]);
-		return { config, invitations, email: session.user.email };
+		return { config, invitations, claims, email: session.user.email };
 	},
 	component: NoAccessPage,
 });
 
 function NoAccessPage() {
-	const { config, invitations, email } = Route.useLoaderData();
+	const { config, invitations, claims, email } = Route.useLoaderData();
 	const target = safeRedirectPath(Route.useSearch().redirect);
 	const navigate = useNavigate();
+	const router = useRouter();
 	const posthog = usePostHog();
 	const [busyId, setBusyId] = useState<string | null>(null);
+	const [declining, setDeclining] = useState(false);
 
 	const handleAccept = async (invitationId: string) => {
 		setBusyId(invitationId);
@@ -66,6 +83,36 @@ function NoAccessPage() {
 		// workspace just joined.
 		if (target) await navigate({ href: target });
 		else await navigate({ to: "/" });
+	};
+
+	const handleClaim = async (
+		organizationId: string,
+		answer: "join" | "decline",
+	) => {
+		setBusyId(organizationId);
+		setDeclining(answer === "decline");
+		try {
+			if (answer === "decline") {
+				await declineImportClaim({ data: { organizationId } });
+				await router.invalidate();
+				return;
+			}
+			const { slug } = await acceptImportClaim({ data: { organizationId } });
+			// The link that was asked for when it points into this workspace,
+			// else the workspace's home. `enterOrganization` points the session
+			// at it on the way in.
+			if (target && orgSlugOf(target) === slug) {
+				await navigate({ href: target });
+			} else {
+				await navigate({ to: "/$orgSlug", params: { orgSlug: slug } });
+			}
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Could not answer the claim",
+			);
+		} finally {
+			setBusyId(null);
+		}
 	};
 
 	const handleSignOut = async () => {
@@ -91,6 +138,44 @@ function NoAccessPage() {
 					</>
 				)}
 			</AuthHead>
+
+			{claims.length > 0 && (
+				<div className="fm-auth-actions">
+					{claims.map((claim) => (
+						<div key={claim.organizationId} className="fm-auth-invite">
+							<OrgMark name={claim.name} logo={claim.logo} size="md" />
+							<div className="fm-auth-invite-text">
+								<div className="fm-auth-strong">{claim.name}</div>
+								<div className="fm-auth-ws-meta">
+									{claim.name} imported your history from Harvest. Join to see
+									it.
+								</div>
+							</div>
+							<button
+								type="button"
+								className="fm-btn fm-btn-sm fm-btn-outline"
+								onClick={() => handleClaim(claim.organizationId, "decline")}
+								disabled={busyId !== null}
+							>
+								{busyId === claim.organizationId && declining
+									? "Declining…"
+									: "Decline"}
+							</button>
+							<button
+								type="button"
+								className="fm-btn fm-btn-sm"
+								onClick={() => handleClaim(claim.organizationId, "join")}
+								disabled={busyId !== null}
+							>
+								{busyId === claim.organizationId && !declining
+									? "Joining…"
+									: "Join"}
+								<ArrowRightIcon size={14} aria-hidden />
+							</button>
+						</div>
+					))}
+				</div>
+			)}
 
 			{invitations.length ? (
 				<div className="fm-auth-actions">
@@ -122,7 +207,7 @@ function NoAccessPage() {
 						</div>
 					))}
 				</div>
-			) : (
+			) : claims.length > 0 ? null : (
 				<div className="fm-auth-callout">
 					<EnvelopeSimpleIcon size={20} weight="duotone" aria-hidden />
 					<span>

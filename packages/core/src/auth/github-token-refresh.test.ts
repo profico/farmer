@@ -219,7 +219,7 @@ test("two concurrent readers refresh once, and neither is told to reconnect", as
 	setGithubClientForTests({
 		getAuthenticatedUser: async (token: string) => {
 			if (token !== NEW_ACCESS) throw new Error(`refused token: ${token}`);
-			return { login: "octocat" };
+			return { id: 1, login: "octocat" };
 		},
 	});
 

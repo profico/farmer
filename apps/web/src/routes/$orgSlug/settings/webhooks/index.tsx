@@ -205,9 +205,9 @@ function CreateEndpointDialog() {
 			setSecret(result.secret);
 			form.reset({ url: "", description: "", enabledEvents: [] });
 		},
-		// The URL rules answer with the actual reason ("resolves to 127.0.0.1,
-		// which is not reachable from the public internet"), so show it rather
-		// than a generic failure.
+		// The URL rules answer with the actual reason ("localhost is not
+		// reachable from the public internet"), so show it rather than a
+		// generic failure.
 		onError: (error) =>
 			toast.error(error.message ?? "Could not add the endpoint"),
 	});

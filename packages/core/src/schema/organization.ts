@@ -7,6 +7,14 @@ import { uploadedFilePath } from "./uploads";
 export const setActiveOrgBySlugInput = z.string().min(1);
 export type SetActiveOrgBySlugInput = z.infer<typeof setActiveOrgBySlugInput>;
 
+// Join or decline a Harvest import's pending claim (`importClaimsService`).
+// Only the organization: the person is always the session's own user, never
+// an id the client sent.
+export const importClaimInput = z.object({
+	organizationId: z.string().min(1).max(64),
+});
+export type ImportClaimInput = z.infer<typeof importClaimInput>;
+
 export const updateOrganizationSettingsInput = z.object({
 	name: z.string().trim().min(1).max(120).optional(),
 	country: z.string().length(2).optional(),

@@ -25,7 +25,8 @@ export const harvestSnapshotInput = z
 		from: dayKeySchema,
 		to: dayKeySchema,
 		// The addresses the plan wants to use: the people list and the guesses.
-		// The answer says which of them already belong to a user outside this org.
+		// The answer says which of them already belong to a user outside this
+		// org, in the one organization of a single-org instance only.
 		emails: z.array(email).max(2000),
 	})
 	.refine((v) => v.from <= v.to, {

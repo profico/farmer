@@ -13,6 +13,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SelfHostingRouteImport } from './routes/self-hosting'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as NoAccessRouteImport } from './routes/no-access'
+import { Route as McpConsentRouteImport } from './routes/mcp-consent'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as EarlyAccessRouteImport } from './routes/early-access'
 import { Route as DeviceRouteImport } from './routes/device'
@@ -113,6 +114,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const NoAccessRoute = NoAccessRouteImport.update({
   id: '/no-access',
   path: '/no-access',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const McpConsentRoute = McpConsentRouteImport.update({
+  id: '/mcp-consent',
+  path: '/mcp-consent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -565,6 +571,7 @@ export interface FileRoutesByFullPath {
   '/device': typeof DeviceRoute
   '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
+  '/mcp-consent': typeof McpConsentRoute
   '/no-access': typeof NoAccessRoute
   '/privacy': typeof PrivacyRoute
   '/self-hosting': typeof SelfHostingRoute
@@ -651,6 +658,7 @@ export interface FileRoutesByTo {
   '/device': typeof DeviceRoute
   '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
+  '/mcp-consent': typeof McpConsentRoute
   '/no-access': typeof NoAccessRoute
   '/privacy': typeof PrivacyRoute
   '/self-hosting': typeof SelfHostingRoute
@@ -738,6 +746,7 @@ export interface FileRoutesById {
   '/device': typeof DeviceRoute
   '/early-access': typeof EarlyAccessRoute
   '/login': typeof LoginRoute
+  '/mcp-consent': typeof McpConsentRoute
   '/no-access': typeof NoAccessRoute
   '/privacy': typeof PrivacyRoute
   '/self-hosting': typeof SelfHostingRoute
@@ -827,6 +836,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/early-access'
     | '/login'
+    | '/mcp-consent'
     | '/no-access'
     | '/privacy'
     | '/self-hosting'
@@ -913,6 +923,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/early-access'
     | '/login'
+    | '/mcp-consent'
     | '/no-access'
     | '/privacy'
     | '/self-hosting'
@@ -999,6 +1010,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/early-access'
     | '/login'
+    | '/mcp-consent'
     | '/no-access'
     | '/privacy'
     | '/self-hosting'
@@ -1087,6 +1099,7 @@ export interface RootRouteChildren {
   DeviceRoute: typeof DeviceRoute
   EarlyAccessRoute: typeof EarlyAccessRoute
   LoginRoute: typeof LoginRoute
+  McpConsentRoute: typeof McpConsentRoute
   NoAccessRoute: typeof NoAccessRoute
   PrivacyRoute: typeof PrivacyRoute
   SelfHostingRoute: typeof SelfHostingRoute
@@ -1160,6 +1173,13 @@ declare module '@tanstack/react-router' {
       path: '/no-access'
       fullPath: '/no-access'
       preLoaderRoute: typeof NoAccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mcp-consent': {
+      id: '/mcp-consent'
+      path: '/mcp-consent'
+      fullPath: '/mcp-consent'
+      preLoaderRoute: typeof McpConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1831,6 +1851,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeviceRoute: DeviceRoute,
   EarlyAccessRoute: EarlyAccessRoute,
   LoginRoute: LoginRoute,
+  McpConsentRoute: McpConsentRoute,
   NoAccessRoute: NoAccessRoute,
   PrivacyRoute: PrivacyRoute,
   SelfHostingRoute: SelfHostingRoute,

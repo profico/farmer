@@ -1,4 +1,5 @@
 import { authClient } from "#/lib/auth-client.ts";
+import { withOrgSlug } from "#/lib/org-redirect.ts";
 import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
 
 /**
@@ -36,10 +37,15 @@ import { getDefaultOrgSlugForSession } from "#/server/organization.ts";
  * still the right answer when the resolve fails or the person is in no
  * workspace at all, because `/`'s own CTA then routes them to `/no-access`,
  * which explains it.
+ *
+ * The slug goes through `withOrgSlug`, which percent-encodes it into one path
+ * segment. The slug comes from the database, and an org owner can set it to
+ * "/evil.example"; spliced in raw, that is "//evil.example", a
+ * protocol-relative URL that sends the browser to another origin.
  */
 const leaveFor = async () => {
 	const slug = await getDefaultOrgSlugForSession().catch(() => null);
-	window.location.assign(slug ? `/${slug}` : "/");
+	window.location.assign(slug ? withOrgSlug("/", slug) : "/");
 };
 
 export const startImpersonating = async (userId: string) => {

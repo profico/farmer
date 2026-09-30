@@ -76,13 +76,17 @@ const appHeaders = () => githubHeaders(appJwt());
 
 export type GithubInstallation = {
 	id: number;
-	account: { login: string; type: string } | null;
+	account: { id: number; login: string; type: string } | null;
 };
 
-// Installations the *user* can administer, per their OAuth token. This is the
-// authorization gate for connecting an installation to an org: a user may only
-// attach an installation that shows up here, so they can't hijack a stranger's
-// installation_id to read repos they don't control.
+// Installations the *user* can see, per their OAuth token. GitHub lists an
+// installation here when the user has explicit read, write or admin access to
+// ANY repository it covers, so this proves the user can see the installation,
+// not that they control it. It is only the first half of the gate in
+// `githubService.connectInstallation`; the second half checks that the user
+// owns the account the installation is on (`getAuthenticatedUser` for a
+// personal account, and `getOrgMembership` with the installation token for an
+// organization).
 export const listUserInstallations = async (
 	userToken: string,
 ): Promise<GithubInstallation[]> => {
@@ -332,7 +336,16 @@ export type GithubCommit = {
 	author: { login: string } | null;
 };
 
-export type GithubUser = { login: string };
+export type GithubUser = { id: number; login: string };
+
+/** One person's membership of one GitHub organization. `role` "admin" is an
+ *  organization owner; `state` "pending" is an invitation not yet accepted.
+ *  `user.id` is GitHub's numeric id, which a rename does not change. */
+export type GithubOrgMembership = {
+	state: "active" | "pending";
+	role: "admin" | "member" | "billing_manager";
+	user: { id: number; login: string } | null;
+};
 
 /** A 403/429 that means "slow down", not "you may not see this".
  *
@@ -479,6 +492,23 @@ export const getCommit = (
 
 export const getAuthenticatedUser = (token: string) =>
 	githubGet<GithubUser>(`${GITHUB_API}/user`, token);
+
+// `username`'s membership of `org`, read with the installation token of the
+// App installed on that organization. Not the person's own user token: that
+// token comes from GITHUB_CLIENT_ID, which may be a separate OAuth app with no
+// grant to read organizations. The installation token needs only the App's
+// "Members: read" organization permission, which the organization accepts
+// when it installs or updates the App. Without it the answer is a 403, and
+// for somebody who is not a member a 404; `githubGet` returns both as null.
+export const getOrgMembership = (
+	installationToken: string,
+	org: string,
+	username: string,
+) =>
+	githubGet<GithubOrgMembership>(
+		`${GITHUB_API}/orgs/${encodeURIComponent(org)}/memberships/${encodeURIComponent(username)}`,
+		installationToken,
+	);
 
 // ── Pull requests (GraphQL) ────────────────────────────────────────────────
 // GraphQL rather than REST because REST has no way to ask "the PRs this person
