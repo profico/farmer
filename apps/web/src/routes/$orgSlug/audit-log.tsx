@@ -57,12 +57,16 @@ import { auditEventsQuery, auditRetentionQuery } from "#/queries/audit.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { directoryQuery } from "#/queries/members.ts";
 import { exportAuditEvents, setAuditRetention } from "#/server/audit.ts";
+import { requireOrgAdmin } from "#/server/auth.ts";
 
 // Audit log (issue #112): who changed what in this workspace, and
 // every sign-in of its people. Admin only. What is recorded, and what is not,
 // is in `docs/domains/audit-log.md`.
 
 export const Route = createFileRoute("/$orgSlug/audit-log")({
+	beforeLoad: async () => {
+		await requireOrgAdmin();
+	},
 	loader: async ({ context, params }) => {
 		await Promise.all([
 			context.queryClient.ensureInfiniteQueryData(
