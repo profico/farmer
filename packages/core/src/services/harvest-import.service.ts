@@ -23,6 +23,7 @@ import {
 	isNull,
 	lte,
 	ne,
+	notInArray,
 	or,
 	sql,
 } from "drizzle-orm";
@@ -343,7 +344,7 @@ type StartCounts = {
 
 /** What `start` did for a run, read back from its mappings — the answer a
  *  repeated `start` gives, since the first one's answer was lost. A person the
- *  run mapped as created but who has no membership here is one it invited. */
+ *  run mapped as created and holds an `invitation` mapping for is one it invited. */
 const startResult = async (
 	runId: string,
 	org: string,
@@ -358,29 +359,38 @@ const startResult = async (
 		.groupBy(importMapping.kind);
 	const of = (kind: HarvestMappingKind) =>
 		rows.find((r) => r.kind === kind)?.count ?? 0;
+	// From the invitations the run recorded, not from a missing `member` row:
+	// a person who accepted between two calls has one now, and would be counted
+	// as created. `created` is left out of the filter on purpose, so an
+	// invitation the org sent before the run counts as well.
 	const invited = await db
-		.select({ email: user.email })
+		.select({ email: invitation.email })
 		.from(importMapping)
-		.innerJoin(user, eq(user.id, importMapping.localId))
+		.innerJoin(invitation, eq(invitation.id, importMapping.localId))
 		.where(
 			and(
 				eq(importMapping.runId, runId),
-				eq(importMapping.kind, "person"),
-				eq(importMapping.created, true),
-				sql`not exists (select 1 from ${member} where ${member.organizationId} = ${org} and ${member.userId} = ${user.id})`,
+				eq(importMapping.kind, "invitation"),
+				eq(importMapping.organizationId, org),
 			),
 		);
 	return {
 		created: {
 			clients: of("client"),
 			tasks: of("task"),
-			people: of("person") - invited.length,
+			people: Math.max(0, of("person") - invited.length),
 			invited: invited.length,
 			projects: of("project"),
 		},
 		invited: invited.map((r) => r.email),
 	};
 };
+
+// The source key of an `invitation` mapping. The run id is part of it, so
+// each run records its own row: under the `(org, kind, sourceKey)` key, a
+// bare invitation id from an earlier run would hide this run's reuse.
+const invitationKey = (runId: string, invitationId: string) =>
+	`${runId}:${invitationId}`;
 
 const sameKeys = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
 	a.size === b.size && [...a].every((k) => b.has(k));
@@ -469,7 +479,7 @@ export const harvestImportService = {
 			.where(
 				and(
 					eq(importMapping.organizationId, org),
-					ne(importMapping.kind, "close"),
+					notInArray(importMapping.kind, ["close", "invitation"]),
 				),
 			);
 
@@ -980,6 +990,23 @@ export const harvestImportService = {
 							inviterId: ctx.userId,
 						});
 						newInvitations.push({ invitationId, email, role: p.role });
+						// The run's own invitation: undo cancels exactly this one.
+						await remember(
+							"invitation",
+							invitationKey(runId, invitationId),
+							invitationId,
+							true,
+						);
+					} else {
+						// One the org sent before. The person is still invited by this
+						// run, so the summary counts it, but it is not the run's to
+						// cancel (`created` false).
+						await remember(
+							"invitation",
+							invitationKey(runId, pending.id),
+							pending.id,
+							false,
+						);
 					}
 				} else {
 					await tx.insert(member).values({
@@ -1500,22 +1527,27 @@ export const harvestImportService = {
 		}
 
 		return db.transaction(async (tx) => {
-			const created = await tx
+			const mappings = await tx
 				.select({
 					kind: importMapping.kind,
 					localId: importMapping.localId,
-					updatedAt: importMapping.updatedAt,
+					created: importMapping.created,
 				})
 				.from(importMapping)
-				.where(
-					and(eq(importMapping.runId, run.id), eq(importMapping.created, true)),
-				);
+				.where(eq(importMapping.runId, run.id));
+			const created = mappings.filter((m) => m.created);
 			const of = (kind: HarvestMappingKind) =>
 				created.filter((m) => m.kind === kind).map((m) => m.localId);
 			const userIds = of("person");
 			const projectIds = of("project");
 			const taskIds = of("task");
 			const clientIds = of("client");
+			// Every invitation the run relied on tells who it invited. Only the
+			// ones it wrote (`created`) are the run's to cancel.
+			const runInvitationIds = mappings
+				.filter((m) => m.kind === "invitation")
+				.map((m) => m.localId);
+			const ownInvitationIds = of("invitation");
 
 			// Made by this run, or only attached to it? Both rows took `now()`
 			// from the one transaction in `start`, so an attached user is the
@@ -1589,31 +1621,59 @@ export const harvestImportService = {
 					continue;
 				}
 				// An invited user: cancel the invitation the run sent, unless the
-				// person has accepted it. Then they are a member who chose to join,
-				// and their membership, profile and assignments are theirs now;
-				// only the run's entries and mappings go. Both rows took `now()`
-				// from the one transaction in `start`, so the run's invitation is
-				// the one not older than the run.
+				// person has joined. Then they are a member who chose to join, and
+				// their membership, profile and assignments are theirs now; only
+				// the run's entries and mappings go. The run's invitations are the
+				// ones `start` recorded, by id: a pending one the People page sent
+				// the same address later is not the run's to cancel. A run from
+				// before those were recorded has none, and falls back to the
+				// address and the time of the run.
 				const [person] = await tx
 					.select({ email: user.email })
 					.from(user)
 					.where(eq(user.id, userId));
 				if (person) {
-					const sentByRun = and(
+					const byAddress = and(
 						eq(invitation.organizationId, org),
 						sql`lower(${invitation.email}) = lower(${person.email})`,
-						sql`${invitation.createdAt} >= (select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${run.id})`,
 					);
-					const [accepted] = await tx
+					const legacy = runInvitationIds.length === 0;
+					const invitedByRun = legacy
+						? and(
+								byAddress,
+								sql`${invitation.createdAt} >= (select ${importRun.createdAt} from ${importRun} where ${importRun.id} = ${run.id})`,
+							)
+						: and(byAddress, inArray(invitation.id, runInvitationIds));
+					const [invited] = await tx
 						.select({ id: invitation.id })
 						.from(invitation)
-						.where(and(sentByRun, eq(invitation.status, "accepted")))
+						.where(invitedByRun)
 						.limit(1);
-					if (accepted) continue;
-					await tx
-						.update(invitation)
-						.set({ status: "canceled" })
-						.where(and(sentByRun, eq(invitation.status, "pending")));
+					if (invited) {
+						// `start` refuses a person who is a member already, so for an
+						// invited person a `member` row can only come from a later
+						// acceptance: of this invitation, a reused one, or one the
+						// People page sent.
+						const [joined] = await tx
+							.select({ id: member.id })
+							.from(member)
+							.where(
+								and(eq(member.organizationId, org), eq(member.userId, userId)),
+							)
+							.limit(1);
+						if (joined) continue;
+						const sentByRun = legacy
+							? invitedByRun
+							: ownInvitationIds.length > 0
+								? and(byAddress, inArray(invitation.id, ownInvitationIds))
+								: null;
+						if (sentByRun) {
+							await tx
+								.update(invitation)
+								.set({ status: "canceled" })
+								.where(and(sentByRun, eq(invitation.status, "pending")));
+						}
+					}
 				}
 				// An attached user keeps their account; only this org's rows go.
 				await tx

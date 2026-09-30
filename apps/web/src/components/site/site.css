@@ -128,6 +128,40 @@ html:has(.fm-site) {
 	font-style: italic;
 	color: var(--acc);
 }
+/* One pass of light through the phrase: once when it scrolls into view, again
+   on hover (`useEmSheen` in site-chrome.tsx sets `data-sheen` and clears it on
+   `animationend`). At rest the phrase is plain `--acc`, so selection and high
+   contrast never meet the gradient. The inline padding, cancelled by the
+   margin, keeps the italic overhang inside the clipped background. */
+.fm-site .fm-em[data-sheen] {
+	padding-inline: 0.1em;
+	margin-inline: -0.1em;
+	background: linear-gradient(
+			100deg,
+			var(--acc) 40%,
+			color-mix(in oklab, var(--acc) 35%, white) 50%,
+			var(--acc) 60%
+		)
+		100% 0 / 300% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: fm-sheen 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.fm-site .fm-em[data-sheen="view"] {
+	animation-delay: 0.2s;
+}
+@keyframes fm-sheen {
+	to {
+		background-position: 0 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.fm-site .fm-em[data-sheen] {
+		animation-duration: 0.01ms;
+		animation-delay: 0s;
+	}
+}
 .fm-site .fm-eyebrow {
 	font-size: 10.5px;
 	letter-spacing: 0.14em;
@@ -403,12 +437,13 @@ html:has(.fm-site) {
 }
 
 /* ---- Header ----------------------------------------------------------- */
-/* A full-width bar on the paper's own glass. Once the page scrolls, a hairline
-   sets it off from the content passing under it.
+/* A full-width bar, clear at the top of the page. Once the page scrolls, it
+   turns to near-opaque glass with a hairline under it, set off from the
+   content passing beneath.
 
    `SiteHeader` writes `--fm-scrolled`, a spring that chases the scroll from 0
-   at the top to 1 after the first 48px, so the hairline fades in and out
-   rather than blinking at a threshold. */
+   at the top to 1 after the first 48px, so the glass and the hairline fade in
+   and out rather than blinking at a threshold. */
 .fm-site .fm-header {
 	--s: var(--fm-scrolled, 0);
 	/* Over an ink band (`data-header-ink`, the front page's Developers) the
@@ -460,9 +495,13 @@ html:has(.fm-site) {
 	inset: 0;
 	pointer-events: none;
 	z-index: -1;
-	background: color-mix(in oklab, var(--bg) 86%, transparent);
-	backdrop-filter: blur(20px) saturate(160%);
-	-webkit-backdrop-filter: blur(20px) saturate(160%);
+	background: color-mix(in oklab, var(--bg) calc(94% * var(--s)), transparent);
+	/* Slight: at 94% the paper hides most of what passes under it, and the
+	   blur only softens the rest. */
+	backdrop-filter: blur(calc(8px * var(--s)))
+		saturate(calc(100% + 40% * var(--s)));
+	-webkit-backdrop-filter: blur(calc(8px * var(--s)))
+		saturate(calc(100% + 40% * var(--s)));
 	border-bottom: 1px solid
 		color-mix(in oklab, var(--line) calc(100% * var(--s)), transparent);
 }
@@ -472,10 +511,14 @@ html:has(.fm-site) {
 	gap: 28px;
 	padding: 13px 24px;
 }
-/* Glass is a nicety. Asked for less, the bar is solid paper. */
+/* Glass is a nicety. Asked for less, the scrolled bar is solid paper. */
 @media (prefers-reduced-transparency: reduce) {
 	.fm-site .fm-header::before {
-		background: var(--bg);
+		background: color-mix(
+			in oklab,
+			var(--bg) calc(100% * var(--s)),
+			transparent
+		);
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
 	}

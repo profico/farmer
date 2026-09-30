@@ -44,6 +44,15 @@ const OUTSIDER_EMAIL = "outsider@example.com";
 /** A user nobody holds and who never signed in. Invited all the same. */
 const LONER = "u-hv-loner";
 const LONER_EMAIL = "loner@example.com";
+const LATER = "u-hv-later";
+const LATER_EMAIL = "later@example.com";
+const RETRY = "u-hv-retry";
+const RETRY_EMAIL = "retry@example.com";
+/** People the org invited before the run, so the run reuses the invitation. */
+const REUSED = "u-hv-reused";
+const REUSED_EMAIL = "reused@example.com";
+const JOINER = "u-hv-joiner";
+const JOINER_EMAIL = "joiner@example.com";
 
 const admin: Ctx = { organizationId: ORG, userId: ADMIN };
 
@@ -105,6 +114,18 @@ const membershipOf = (userId: string) =>
 		where: and(eq(member.organizationId, ORG), eq(member.userId, userId)),
 	});
 
+/** A pending invitation, as the People page writes one. */
+const invite = (id: string, email: string) =>
+	db.insert(invitation).values({
+		id,
+		organizationId: ORG,
+		email,
+		role: "member",
+		status: "pending",
+		expiresAt: new Date(Date.now() + 60_000),
+		inviterId: ADMIN,
+	});
+
 const invitationsTo = (email: string) =>
 	db
 		.select({ id: invitation.id, status: invitation.status })
@@ -141,6 +162,10 @@ beforeAll(async () => {
 			emailVerified: true,
 		},
 		{ id: LONER, name: "Loner", email: LONER_EMAIL, emailVerified: true },
+		{ id: LATER, name: "Later", email: LATER_EMAIL, emailVerified: true },
+		{ id: RETRY, name: "Retry", email: RETRY_EMAIL, emailVerified: true },
+		{ id: REUSED, name: "Reused", email: REUSED_EMAIL, emailVerified: true },
+		{ id: JOINER, name: "Joiner", email: JOINER_EMAIL, emailVerified: true },
 	]);
 	await db.insert(member).values([
 		{
@@ -360,6 +385,118 @@ describe("harvest import with several organizations", () => {
 				where: and(
 					eq(memberProfile.organizationId, ORG),
 					eq(memberProfile.userId, LONER),
+				),
+			}),
+		).toBeDefined();
+	});
+
+	test("undo leaves an invitation the People page sent after the run", async () => {
+		const result = await harvestImportService.start(
+			admin,
+			plan([person("later", LATER_EMAIL)]),
+		);
+		const runsOwn = present(
+			(await invitationsTo(LATER_EMAIL)).find((r) => r.status === "pending"),
+			"the run's invitation",
+		);
+		// The run's invitation lapses, and the People page invites the
+		// same address again afterwards.
+		await db
+			.update(invitation)
+			.set({ status: "canceled" })
+			.where(eq(invitation.id, runsOwn.id));
+		const laterId = "inv-hv-later";
+		await db.insert(invitation).values({
+			id: laterId,
+			organizationId: ORG,
+			email: LATER_EMAIL,
+			role: "member",
+			status: "pending",
+			expiresAt: new Date(Date.now() + 60_000),
+			inviterId: ADMIN,
+		});
+
+		await harvestImportService.undo(admin, { runId: result.runId });
+		const later = await db.query.invitation.findFirst({
+			where: eq(invitation.id, laterId),
+		});
+		expect(later?.status).toBe("pending");
+	});
+
+	test("a retried start still reports a person who accepted as invited", async () => {
+		const first = await harvestImportService.start(
+			admin,
+			plan([person("retry", RETRY_EMAIL)]),
+		);
+		expect(first.created.invited).toBe(1);
+		const sent = present(
+			(await invitationsTo(RETRY_EMAIL)).find((r) => r.status === "pending"),
+			"the run's invitation",
+		);
+		await db
+			.update(invitation)
+			.set({ status: "accepted" })
+			.where(eq(invitation.id, sent.id));
+		await db.insert(member).values({
+			id: "m-hv-retry",
+			organizationId: ORG,
+			userId: RETRY,
+			role: "member",
+			createdAt: new Date(),
+		});
+
+		const again = await harvestImportService.start(admin, {
+			...plan([person("retry", RETRY_EMAIL)]),
+			runId: first.runId,
+		});
+		expect(again.created.invited).toBe(1);
+		expect(again.created.people).toBe(0);
+		expect(again.invited).toEqual([RETRY_EMAIL]);
+	});
+
+	test("undo after a run that only reused an invitation leaves the People page's", async () => {
+		await invite("inv-hv-reused-before", REUSED_EMAIL);
+		const result = await harvestImportService.start(
+			admin,
+			plan([person("reused", REUSED_EMAIL)]),
+		);
+		expect(result.invited).toEqual([REUSED_EMAIL]);
+		// The People page sends the same address a second invitation.
+		await invite("inv-hv-reused-after", REUSED_EMAIL);
+
+		await harvestImportService.undo(admin, { runId: result.runId });
+		expect((await invitationsTo(REUSED_EMAIL)).map((r) => r.status)).toEqual([
+			"pending",
+			"pending",
+		]);
+	});
+
+	test("undo keeps a person who accepted a reused invitation", async () => {
+		await invite("inv-hv-joiner", JOINER_EMAIL);
+		const result = await harvestImportService.start(
+			admin,
+			plan([person("joiner", JOINER_EMAIL)]),
+		);
+		// What better-auth's acceptInvitation writes.
+		await db
+			.update(invitation)
+			.set({ status: "accepted" })
+			.where(eq(invitation.id, "inv-hv-joiner"));
+		await db.insert(member).values({
+			id: "m-hv-joiner",
+			organizationId: ORG,
+			userId: JOINER,
+			role: "member",
+			createdAt: new Date(),
+		});
+
+		await harvestImportService.undo(admin, { runId: result.runId });
+		expect(await membershipOf(JOINER)).toBeDefined();
+		expect(
+			await db.query.memberProfile.findFirst({
+				where: and(
+					eq(memberProfile.organizationId, ORG),
+					eq(memberProfile.userId, JOINER),
 				),
 			}),
 		).toBeDefined();

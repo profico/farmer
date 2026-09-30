@@ -505,6 +505,13 @@
       "when": 1790590969435,
       "tag": "0071_member_claim_pending",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1790773212552,
+      "tag": "0072_import_mapping_invitation",
+      "breakpoints": true
     }
   ]
 }
