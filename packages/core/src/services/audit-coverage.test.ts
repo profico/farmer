@@ -21,6 +21,7 @@ import { githubService } from "./github.service";
 import { harvestImportService } from "./harvest-import.service";
 import { holidaysService } from "./holidays.service";
 import { hourFundService } from "./hour-fund.service";
+import { importClaimsService } from "./import-claims.service";
 import { membersService } from "./members.service";
 import { orgSettingsService } from "./org-settings.service";
 import { organizationService } from "./organization.service";
@@ -264,15 +265,24 @@ const SERVICES = {
 	harvestImportService: {
 		service: harvestImportService,
 		coverage: {
-			recorded: { finish: true, undo: true },
+			// `start` records the invitations it writes, which better-auth's
+			// hook never sees. The import itself is recorded once, at finish.
+			recorded: { start: true, finish: true, undo: true },
 			exempt: {
-				start: "a step of one import; the import is recorded once, at finish",
 				importDays:
 					"a step of one import; the import is recorded once, at finish",
 				removeDays:
 					"a step of one import; the import is recorded once, at finish",
 			},
 			reads: ["snapshot", "takenEmails", "listRuns"],
+		},
+	},
+	importClaimsService: {
+		service: importClaimsService,
+		coverage: {
+			recorded: { accept: { via: "memberJoined" }, decline: true },
+			exempt: {},
+			reads: ["pendingFor"],
 		},
 	},
 	timeEntriesService: {

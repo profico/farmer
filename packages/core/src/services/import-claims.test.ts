@@ -273,6 +273,15 @@ describe("accept and decline", () => {
 			);
 		expect(entries).toHaveLength(1);
 
+		// A leave, recorded with the person as the actor.
+		const declines = await auditRows("member.claim_declined", DECLINER);
+		expect(declines).toHaveLength(1);
+		const row = at(declines, 0);
+		expect(row.actorUserId).toBe(DECLINER);
+		expect(row.targetLabel).toBe(DECLINER);
+		expect(row.details).toEqual({ role: "member" });
+		expect(await auditRows("member.joined", DECLINER)).toEqual([]);
+
 		await expect(importClaimsService.pendingFor(DECLINER)).resolves.toEqual([]);
 		await expect(accessService.resolve(ctx(DECLINER))).rejects.toBeInstanceOf(
 			NotAMemberError,

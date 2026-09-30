@@ -26,6 +26,7 @@ import { type DbClient, db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
 import { UserFacingError } from "../lib/user-facing-error";
+import { recordAudit } from "./audit";
 import { memberJoined } from "./member-joined";
 import { teamLeadsService } from "./team-leads.service";
 import type { Ctx } from "./types";
@@ -157,10 +158,11 @@ export const importClaimsService = {
 	 *  they are the organization's history of the person and not the person's
 	 *  account. The team lead lists go too, as they do when an admin removes
 	 *  somebody (`removeMember` in `apps/web/src/server/members.ts`), so a
-	 *  later invitation does not bring an old list back in silence. */
+	 *  later invitation does not bring an old list back in silence. The
+	 *  audit log records the decline as `member.claim_declined`. */
 	decline: async (ctx: Ctx): Promise<void> => {
-		await db.transaction(async (tx) => {
-			await pendingMembership(tx, ctx);
+		const { role, name } = await db.transaction(async (tx) => {
+			const pending = await pendingMembership(tx, ctx);
 			await tx
 				.delete(member)
 				.where(
@@ -170,6 +172,15 @@ export const importClaimsService = {
 					),
 				);
 			await clearClaim(tx, ctx);
+			return pending;
+		});
+		// After the commit: this transaction is a raw `db.transaction`, and a
+		// second connection held inside it is the deadlock `ctxDb` warns about.
+		await recordAudit(ctx, {
+			kind: "member.claim_declined",
+			subjectUserId: ctx.userId,
+			target: { type: "member", id: ctx.userId, label: name },
+			details: { role },
 		});
 		await teamLeadsService.removeFromAllLists(ctx, ctx.userId);
 	},

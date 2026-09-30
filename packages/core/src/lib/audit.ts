@@ -84,6 +84,10 @@ export const AUDIT_KINDS = {
 	},
 	"member.joined": { category: "change", sentence: "added {target}" },
 	"member.removed": { category: "change", sentence: "removed {target}" },
+	"member.claim_declined": {
+		category: "change",
+		sentence: "declined to join from a Harvest import",
+	},
 	"member.role_changed": {
 		category: "change",
 		sentence: "changed the role of {target}",

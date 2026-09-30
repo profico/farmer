@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
+import { auditEvent } from "../db/schema/audit";
 import {
 	account,
 	invitation,
@@ -113,6 +114,23 @@ const membershipOf = (userId: string) =>
 	db.query.member.findFirst({
 		where: and(eq(member.organizationId, ORG), eq(member.userId, userId)),
 	});
+
+/** The `member.invited` rows in `ORG` for one address. */
+const invitedRows = (email: string) =>
+	db
+		.select({
+			actorUserId: auditEvent.actorUserId,
+			targetId: auditEvent.targetId,
+			details: auditEvent.details,
+		})
+		.from(auditEvent)
+		.where(
+			and(
+				eq(auditEvent.organizationId, ORG),
+				eq(auditEvent.kind, "member.invited"),
+				eq(auditEvent.targetLabel, email),
+			),
+		);
 
 /** A pending invitation, as the People page writes one. */
 const invite = (id: string, email: string) =>
@@ -242,6 +260,17 @@ describe("harvest import with several organizations", () => {
 		});
 		expect(delivery?.status).toBe("failed");
 		expect(delivery?.error).toContain("BETTER_AUTH_URL");
+
+		// better-auth's hook never sees these invitations, so `start` records
+		// each one itself, with the admin as the actor.
+		expect(await invitedRows(OUTSIDER_EMAIL)).toEqual([
+			{
+				actorUserId: ADMIN,
+				targetId: invitationId,
+				details: { role: "member", importRunId: runId },
+			},
+		]);
+		expect(await invitedRows(LONER_EMAIL)).toHaveLength(1);
 	});
 
 	test("the invited person's hours are written at once", async () => {
@@ -298,6 +327,8 @@ describe("harvest import with several organizations", () => {
 		expect(again.created.invited).toBe(0);
 		// Still the one invitation.
 		expect(await invitationsTo(OUTSIDER_EMAIL)).toHaveLength(1);
+		// A reused invitation is not a new one, so the log has no second row.
+		expect(await invitedRows(OUTSIDER_EMAIL)).toHaveLength(1);
 		await harvestImportService.undo(admin, { runId: again.runId });
 	});
 

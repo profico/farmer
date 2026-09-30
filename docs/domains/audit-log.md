@@ -76,6 +76,14 @@ does.
 every way in runs one time: an invitation accepted, a member added, and a
 Harvest import's pending claim accepted (`importClaimsService.accept`).
 
+Two more rows come from outside the hooks:
+
+- `member.invited` from `harvestImportService.start`, one for each invitation
+  that the import writes. The import writes them without better-auth, so the
+  hook never sees them. `details.importRunId` names the run.
+- `member.claim_declined` from `importClaimsService.decline`, when the person
+  that a Harvest import named leaves the workspace.
+
 ## What is not recorded
 
 - A person's own time and preferences. Time is recorded only for the PM

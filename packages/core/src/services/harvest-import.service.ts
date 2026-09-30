@@ -1171,6 +1171,18 @@ export const harvestImportService = {
 			return { runId, created: counts, invited: invitedEmails };
 		});
 
+		// The import writes its invitations itself, so better-auth's
+		// `afterCreateInvitation` hook never sees them. Record each one here,
+		// after the commit: this transaction is a raw `db.transaction`, and a
+		// second connection held inside it is the deadlock `ctxDb` warns about.
+		for (const inv of newInvitations) {
+			await recordAudit(ctx, {
+				kind: "member.invited",
+				target: { type: "invitation", id: inv.invitationId, label: inv.email },
+				details: { role: inv.role, importRunId: result.runId },
+			});
+		}
+
 		// After the commit, so nobody gets an email for an invitation that a
 		// failed run rolled back. A failure costs the email, not the run: the
 		// People page shows it, and the admin can send it again there.
