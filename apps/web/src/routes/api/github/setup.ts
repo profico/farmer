@@ -5,6 +5,9 @@ import { createFileRoute } from "@tanstack/react-router";
 // state. We resolve the target org from the signed `state`, confirm the caller
 // is an admin of that org, then attach the installation (which independently
 // re-verifies the caller controls it). Then bounce back to Integrations.
+//
+// Without a state nothing is attached here: the installation id is only handed
+// on to Integrations, where the admin confirms it (see below).
 export const Route = createFileRoute("/api/github/setup")({
 	server: {
 		handlers: {
@@ -25,18 +28,22 @@ export const Route = createFileRoute("/api/github/setup")({
 				// recently. An invalid one is refused outright rather than falling
 				// back, since it can only be stale, someone else's, or forged.
 				//
-				// An ABSENT state is the one case that still falls back to the active
-				// org, because GitHub produces it legitimately: an App installed (or
-				// its repo selection changed) from GitHub's own UI rather than from
-				// our Connect button redirects to the Setup URL with no state, as
-				// GitHub only echoes a state we put on the install link. Refusing it
-				// would leave those installs unreachable. It stays safe because
-				// `connectInstallation` independently requires the installation to
-				// appear in the caller's OWN GitHub installation list, read with
-				// their own token — so a crafted link can at most attach something
-				// this admin already controls to an org they already administer,
-				// which is not a thing an attacker gains from. The Slack callback has
-				// no such second check and is strict.
+				// An ABSENT state still resolves to the active org, because GitHub
+				// produces it legitimately: an App installed (or its repo selection
+				// changed) from GitHub's own UI rather than from our Connect button
+				// redirects to the Setup URL with no state, as GitHub only echoes a
+				// state we put on the install link. But it connects NOTHING. A
+				// crafted link arrives the same way, as a top-level GET that carries
+				// the admin's cookie, and `connectInstallation`'s own check (the
+				// caller owns the installation's GitHub account) does not say which
+				// workspace the admin meant: an admin of two workspaces whose GitHub
+				// account sees another tenant's installation would attach it to
+				// whichever workspace they last opened, where every other admin of
+				// it could list the repositories. So the id only goes on to
+				// Integrations as a pending choice, and the admin's explicit POST
+				// there (`connectGithubInstallation`, behind the server functions'
+				// CSRF check) is what connects it. The Slack callback has no such
+				// second step and is strict.
 				const { verifyOrgState } = await import("@farmer/core/lib/oauth-state");
 				const orgId = state
 					? verifyOrgState(state, session.user.id)
@@ -55,26 +62,37 @@ export const Route = createFileRoute("/api/github/setup")({
 					return redirectTo("/");
 				}
 
+				// Set only for a stateless callback: the id Integrations asks about.
+				let pendingInstallationId: number | null = null;
 				if (
 					installationIdRaw &&
 					(setupAction === "install" || setupAction === "update")
 				) {
-					const { githubService } = await import("@farmer/core/services");
-					try {
-						await githubService.connectInstallation(
-							{ organizationId: orgId, userId: session.user.id },
-							{ installationId: Number(installationIdRaw) },
-						);
-					} catch (error) {
-						console.error("[github] setup connect failed", error);
+					if (!state) {
+						const id = Number(installationIdRaw);
+						if (Number.isSafeInteger(id) && id > 0) pendingInstallationId = id;
+					} else {
+						const { githubService } = await import("@farmer/core/services");
+						try {
+							await githubService.connectInstallation(
+								{ organizationId: orgId, userId: session.user.id },
+								{ installationId: Number(installationIdRaw) },
+							);
+						} catch (error) {
+							console.error("[github] setup connect failed", error);
+						}
 					}
 				}
 
 				const org = await db.query.organization.findFirst({
 					where: (o, { eq }) => eq(o.id, orgId),
 				});
+				if (!org) return redirectTo("/");
+				const back = `/${org.slug}/settings/workspace-integrations`;
 				return redirectTo(
-					org ? `/${org.slug}/settings/workspace-integrations` : "/",
+					pendingInstallationId === null
+						? back
+						: `${back}?githubInstallation=${pendingInstallationId}`,
 				);
 			},
 		},

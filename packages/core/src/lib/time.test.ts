@@ -105,6 +105,23 @@ describe("parseDuration", () => {
 	test("rejects a negative duration", () => {
 		expect(parseDuration("-1")).toBeNull();
 	});
+
+	test("reads a long run of digits in linear time", () => {
+		// A recurring rule's duration reaches this from any member, with no length
+		// limit. The unit scan and the number pattern both used to backtrack in
+		// quadratic time on these, which held the server for tens of seconds.
+		const digits = "1".repeat(100_000);
+		const start = performance.now();
+		expect(parseDuration(`${digits}xh`)).toBeNull();
+		expect(parseDuration(`${digits}..`)).toBeNull();
+		expect(performance.now() - start).toBeLessThan(1000);
+	});
+
+	test("reads several units, with or without spaces between them", () => {
+		expect(parseDuration("1h 30m")).toBe(90 * MINUTE);
+		expect(parseDuration("1.5h 15m")).toBe(HOUR + 45 * MINUTE);
+		expect(parseDuration("1h 30m x")).toBeNull();
+	});
 });
 
 describe("snapToQuarterHour", () => {

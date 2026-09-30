@@ -1,8 +1,11 @@
+# Every port is published on 127.0.0.1 only. The credentials in this file are
+# public in the repository, and a port published without a host address
+# listens on every interface, around a host firewall such as ufw.
 services:
   postgres:
     image: postgres:17-alpine
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: farmer
       POSTGRES_PASSWORD: farmer
@@ -21,7 +24,7 @@ services:
     image: dxflrs/garage:v2.4.1
     command: ["/garage", "server", "--single-node", "--default-bucket"]
     ports:
-      - "3900:3900"
+      - "127.0.0.1:3900:3900"
     environment:
       GARAGE_RPC_SECRET: 5e1f9a3c7b2d4e6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e7b9d2f4a6c8e0b1d3f
       GARAGE_DEFAULT_ACCESS_KEY: GK0f4a1c2e3b5d6a7f8e9c0b1d

@@ -23,7 +23,7 @@ import type {
 	RemoveProjectMemberInput,
 	UpdateProjectInput,
 } from "../schema/projects";
-import { AccessError, type Access } from "./access.service";
+import { AccessError, type Access, accessService } from "./access.service";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, invalidateCtxAccess } from "./context";
 import { emitEvent, projectWebhookPayload } from "./events";
@@ -454,23 +454,39 @@ export const projectsService = {
 		// that passes that check) could hand out PM, including to themselves, or
 		// re-rank an existing PM downward: one click on the new Team page. A
 		// non-admin caller may neither assign a role above their own held rank
-		// nor touch someone who already holds a role above it.
+		// nor touch someone who already holds a role above it. Both ranks are
+		// the ones the person HOLDS the project as: `team_lead` is PM rank for
+		// somebody with a people list, but only on an active row — an inactive
+		// row grants nothing.
 		if (!access.isAdmin) {
-			const existing = await db.query.projectMember.findFirst({
-				where: and(
-					eq(projectMember.organizationId, ctx.organizationId),
-					eq(projectMember.projectId, input.projectId),
-					eq(projectMember.userId, input.userId),
-				),
-				columns: { role: true },
-			});
+			const [existing, targetLeadsPeople] = await Promise.all([
+				db.query.projectMember.findFirst({
+					where: and(
+						eq(projectMember.organizationId, ctx.organizationId),
+						eq(projectMember.projectId, input.projectId),
+						eq(projectMember.userId, input.userId),
+					),
+					columns: { role: true, active: true },
+				}),
+				accessService.leadsPeople(ctx, input.userId),
+			]);
 			if (
 				existing &&
-				!access.canActOnProjectRole(input.projectId, existing.role)
+				!access.canActOnProjectRole(
+					input.projectId,
+					existing.role,
+					targetLeadsPeople && existing.active,
+				)
 			) {
 				throw new AccessError("You cannot change this person's role");
 			}
-			if (!access.canActOnProjectRole(input.projectId, input.role)) {
+			if (
+				!access.canActOnProjectRole(
+					input.projectId,
+					input.role,
+					targetLeadsPeople,
+				)
+			) {
 				throw new AccessError("You cannot assign that role");
 			}
 		}
@@ -536,17 +552,24 @@ export const projectsService = {
 		// Same ceiling as assignMember: a Team Lead may drop a plain Member but
 		// not the PM (or another Team Lead who outranks their own assignment).
 		if (!access.isAdmin) {
-			const existing = await db.query.projectMember.findFirst({
-				where: and(
-					eq(projectMember.organizationId, ctx.organizationId),
-					eq(projectMember.projectId, input.projectId),
-					eq(projectMember.userId, input.userId),
-				),
-				columns: { role: true },
-			});
+			const [existing, targetLeadsPeople] = await Promise.all([
+				db.query.projectMember.findFirst({
+					where: and(
+						eq(projectMember.organizationId, ctx.organizationId),
+						eq(projectMember.projectId, input.projectId),
+						eq(projectMember.userId, input.userId),
+					),
+					columns: { role: true, active: true },
+				}),
+				accessService.leadsPeople(ctx, input.userId),
+			]);
 			if (
 				existing &&
-				!access.canActOnProjectRole(input.projectId, existing.role)
+				!access.canActOnProjectRole(
+					input.projectId,
+					existing.role,
+					targetLeadsPeople && existing.active,
+				)
 			) {
 				throw new AccessError("You cannot remove this person");
 			}

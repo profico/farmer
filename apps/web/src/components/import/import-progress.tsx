@@ -71,6 +71,29 @@ export function ImportProgress({
 						</>
 					)}
 				</div>
+				{state.invited.length > 0 && (
+					<div className="mt-8 max-w-[68ch] text-sm">
+						<p>
+							{state.invited.length === 1
+								? "1 person already has an account on this instance, so they got an invitation instead of being added:"
+								: `${count(state.invited.length)} people already have an account on this instance, so they got an invitation instead of being added:`}
+						</p>
+						<ul className="mt-2 list-disc pl-5 text-muted-foreground">
+							{state.invited.map((email) => (
+								<li key={email} className="mono">
+									{email}
+								</li>
+							))}
+						</ul>
+						<p className="mt-2 text-muted-foreground">
+							Their hours are imported. They join this workspace when they
+							accept, and until then they are not on the People page. Undo
+							cancels an invitation that nobody accepted yet. An invitation
+							expires after 48 hours; to send a new one, invite the address
+							again from the People page.
+						</p>
+					</div>
+				)}
 				{finish && (
 					<p className="mt-8 max-w-[68ch] text-sm text-muted-foreground">
 						Calendar, commit and recurring-block automation no longer writes to{" "}

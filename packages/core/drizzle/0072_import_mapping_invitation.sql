@@ -1,0 +1,1 @@
+ALTER TYPE "public"."import_mapping_kind" ADD VALUE 'invitation';

@@ -1,140 +1,9 @@
 {
-  "id": "f5acd704-e302-45db-8445-2477ddd5943d",
+  "id": "536ed32c-a123-4cf0-910d-03030d57a921",
   "prevId": "044ffa62-41fb-4db6-ac1e-3fd81df43ef9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.api_token": {
-      "name": "api_token",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "hint": {
-          "name": "hint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "api_token_user_idx": {
-          "name": "api_token_user_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "api_token_user_id_user_id_fk": {
-          "name": "api_token_user_id_user_id_fk",
-          "tableFrom": "api_token",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "api_token_organization_id_organization_id_fk": {
-          "name": "api_token_organization_id_organization_id_fk",
-          "tableFrom": "api_token",
-          "tableTo": "organization",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "api_token_token_hash_unique": {
-          "name": "api_token_token_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "api_token_scope_check": {
-          "name": "api_token_scope_check",
-          "value": "\"api_token\".\"scope\" in ('read', 'write')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.assistant_conversation": {
       "name": "assistant_conversation",
       "schema": "",
@@ -4310,6 +4179,12 @@
         },
         "archived_at": {
           "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_pending_since": {
+          "name": "claim_pending_since",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

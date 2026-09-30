@@ -88,6 +88,11 @@ export default function ApiReference({
 			// A token that stays in the tab. Scalar would otherwise keep it in
 			// localStorage, where every script on the site can read it.
 			persistAuth: false,
+			// Scalar sends each request through https://proxy.scalar.com when
+			// this is not set. The proxy would then see the bearer token. An
+			// empty string turns the proxy off. Do not use undefined: it takes
+			// the default.
+			proxyUrl: "",
 			telemetry: false,
 			showDeveloperTools: "never" as const,
 			hideModels: false,
@@ -114,8 +119,15 @@ export default function ApiReference({
  */
 const send = (request: Request): Promise<Response> => {
 	const url = new URL(request.url);
+	// A request to another origin would carry the reader's token to a third
+	// party. Scalar can build such a request from a server entry in the
+	// document, so refuse it here.
+	if (url.origin !== window.location.origin) {
+		throw new Error(
+			`The API reference sends requests to ${window.location.origin} only. It refused a request to ${url.origin}, because the request would carry your token to another site.`,
+		);
+	}
 	if (
-		url.origin !== window.location.origin ||
 		!url.pathname.startsWith("/api/v1/") ||
 		url.pathname === "/api/v1/openapi.json"
 	) {

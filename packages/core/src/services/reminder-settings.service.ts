@@ -53,6 +53,7 @@ export type ReminderPreview = {
 
 const HELD_BACK_REASON = {
 	"not-a-member": "Not a member of this workspace",
+	"claim-pending": "Has not accepted the imported history yet",
 	archived: "Archived",
 	"never-signed-in": "Has never signed in",
 	"opted-out": "Turned log reminders off",

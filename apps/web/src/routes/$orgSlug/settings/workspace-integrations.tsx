@@ -18,6 +18,7 @@ import {
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { MenuPath } from "#/components/menu-path.tsx";
 import { SettingsEyebrow } from "#/components/settings-nav.tsx";
@@ -71,6 +72,7 @@ import {
 } from "#/server/assistant.ts";
 import { requireOrgAdmin } from "#/server/auth.ts";
 import {
+	connectGithubInstallation,
 	disconnectGithubInstallation,
 	getGithubInstallUrl,
 } from "#/server/github.ts";
@@ -90,9 +92,18 @@ import {
 // person's own connections (their GitHub identity, their calendar, MCP and the
 // CLI) stay under Account → Integrations (`integrations.tsx`).
 
+const searchSchema = z.object({
+	// A GitHub installation waiting for the admin to confirm it. Set by
+	// `api/github/setup` when GitHub came back with no signed state (an App
+	// installed from GitHub's own settings, or a crafted link: the route cannot
+	// tell them apart), so nothing was connected there.
+	githubInstallation: z.number().int().positive().optional().catch(undefined),
+});
+
 export const Route = createFileRoute(
 	"/$orgSlug/settings/workspace-integrations",
 )({
+	validateSearch: searchSchema,
 	beforeLoad: async () => {
 		await requireOrgAdmin();
 	},
@@ -681,7 +692,30 @@ function OrgInstallationsSection({
 }) {
 	const orgSlug = useOrgSlug();
 	const queryClient = useQueryClient();
+	const { organization } = Route.useRouteContext();
+	const { githubInstallation: pendingInstallationId } = Route.useSearch();
+	const navigate = Route.useNavigate();
 	const { data: installations } = useQuery(githubInstallationsQuery(orgSlug));
+
+	// Out of the URL once answered, so a reload does not ask again.
+	const clearPending = () => navigate({ search: {}, replace: true });
+
+	const connectMutation = useMutation({
+		mutationFn: (installationId: number) =>
+			connectGithubInstallation({
+				data: { installationId, organizationId: organization.id },
+			}),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: githubInstallationsQuery(orgSlug).queryKey,
+			});
+			await clearPending();
+			toast.success("GitHub account connected");
+		},
+		onError: (error) => {
+			toast.error(error.message ?? "Could not connect");
+		},
+	});
 
 	const handleConnectOrg = async () => {
 		try {
@@ -735,6 +769,33 @@ function OrgInstallationsSection({
 					</Button>
 				}
 			/>
+
+			{/* Asked, never done on arrival: the redirect that set this id carries
+			    no proof that this admin started the install, only a GET. */}
+			{pendingInstallationId !== undefined && (
+				<SettingRow
+					icon={<GithubLogoIcon className="size-5 text-muted-foreground" />}
+					title="Connect this GitHub installation?"
+					description={`GitHub sent you back after the app was installed or changed on GitHub (installation ${pendingInstallationId}). Nothing is connected to ${organization.name} until you confirm. Connect it only if you made that change on GitHub yourself.`}
+					action={
+						<div className="flex items-center gap-2">
+							<Button
+								variant="ghost"
+								disabled={connectMutation.isPending}
+								onClick={() => void clearPending()}
+							>
+								Dismiss
+							</Button>
+							<Button
+								disabled={!personalConnected || connectMutation.isPending}
+								onClick={() => connectMutation.mutate(pendingInstallationId)}
+							>
+								{connectMutation.isPending ? "Connecting…" : "Connect"}
+							</Button>
+						</div>
+					}
+				/>
+			)}
 
 			{!personalConnected && (
 				<p className="pt-3 text-sm text-faint">

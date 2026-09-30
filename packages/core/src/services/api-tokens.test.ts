@@ -27,6 +27,7 @@ const ORG = "at-org";
 const ALICE = "u-at-alice";
 const BOB = "u-at-bob";
 const CAROL = "u-at-carol";
+const DAVE = "u-at-dave";
 
 const ctx = (userId: string): Ctx => ({ organizationId: ORG, userId });
 
@@ -41,7 +42,7 @@ beforeAll(async () => {
 		.insert(organization)
 		.values({ id: ORG, name: "Acme", slug: ORG, createdAt: new Date() });
 	await db.insert(user).values(
-		[ALICE, BOB, CAROL].map((id) => ({
+		[ALICE, BOB, CAROL, DAVE].map((id) => ({
 			id,
 			name: id,
 			email: `${id}@example.com`,
@@ -175,6 +176,28 @@ describe("authenticate", () => {
 		expect(
 			await apiTokensService.authenticate(token, { now: after }),
 		).toBeNull();
+	});
+
+	test("refuses the token of a banned person until the ban ends", async () => {
+		const { token } = await make(DAVE);
+		const setBan = (banned: boolean, banExpires: Date | null) =>
+			db.update(user).set({ banned, banExpires }).where(eq(user.id, DAVE));
+
+		await setBan(true, null);
+		expect(await apiTokensService.authenticate(token, { now: NOW })).toBeNull();
+
+		await setBan(true, new Date(NOW.getTime() + DAY));
+		expect(await apiTokensService.authenticate(token, { now: NOW })).toBeNull();
+
+		await setBan(true, new Date(NOW.getTime() - DAY));
+		expect(
+			await apiTokensService.authenticate(token, { now: NOW }),
+		).not.toBeNull();
+
+		await setBan(false, null);
+		expect(
+			await apiTokensService.authenticate(token, { now: NOW }),
+		).not.toBeNull();
 	});
 
 	test("moves last_used_at at most once a minute", async () => {

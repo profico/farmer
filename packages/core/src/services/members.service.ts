@@ -83,6 +83,10 @@ export type PersonRow = ResolvedMemberType & {
 	 *  import made with a guessed email (docs/plans/harvest-import.md, 3.3).
 	 *  Restoring them is where an admin confirms it. */
 	emailUnconfirmed: boolean;
+	/** A Harvest import added them and they have not joined yet
+	 *  (`memberProfile.claimPendingSince`). They cannot open the workspace
+	 *  until they do, so the People page says so. */
+	claimPending: boolean;
 	/** People on their Team Lead list — zero for everyone who leads nobody. */
 	leadsPeople: number;
 };
@@ -157,13 +161,30 @@ const memberTarget = async (userId: string) => {
 };
 
 export const membersService = {
+	/** The caller's role in the org, or null when they may not enter it: no
+	 *  membership, or a membership with a pending claim (see
+	 *  `memberProfile.claimPendingSince`). The same answer
+	 *  `accessService.resolve` gives, so the guard that enters a workspace and
+	 *  the check under every server function cannot disagree. */
 	getRole: async (ctx: Ctx): Promise<string | null> => {
-		const row = await db.query.member.findFirst({
-			where: and(
-				eq(member.organizationId, ctx.organizationId),
-				eq(member.userId, ctx.userId),
-			),
-		});
+		const [row] = await db
+			.select({ role: member.role })
+			.from(member)
+			.leftJoin(
+				memberProfile,
+				and(
+					eq(memberProfile.organizationId, member.organizationId),
+					eq(memberProfile.userId, member.userId),
+				),
+			)
+			.where(
+				and(
+					eq(member.organizationId, ctx.organizationId),
+					eq(member.userId, ctx.userId),
+					isNull(memberProfile.claimPendingSince),
+				),
+			)
+			.limit(1);
 		return row?.role ?? null;
 	},
 
@@ -278,6 +299,7 @@ export const membersService = {
 				orgRole: member.role,
 				startDate: memberProfile.startDate,
 				archivedAt: memberProfile.archivedAt,
+				claimPendingSince: memberProfile.claimPendingSince,
 				type: memberTypeHistory.type,
 				expectedSecondsOverride: memberTypeHistory.expectedSecondsOverride,
 			})
@@ -339,6 +361,7 @@ export const membersService = {
 			startDate: r.startDate ?? null,
 			archivedAt: r.archivedAt ?? null,
 			emailUnconfirmed: !r.emailVerified && !signedIn.has(r.userId),
+			claimPending: r.claimPendingSince != null,
 			// A person with no history row yet is Billable — the default, and the
 			// right one: delivery people are the common case.
 			type: r.type ?? DEFAULT_TYPE.type,

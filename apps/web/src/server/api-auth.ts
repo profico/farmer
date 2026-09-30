@@ -230,6 +230,17 @@ export const resolveCliUser = async (
 	const found = await context.internalAdapter.findSession(token);
 	const now = Date.now();
 	if (!found || found.session.expiresAt.getTime() <= now) return null;
+	// A banned person keeps a stored session unless the ban removed it.
+	// Refuse the session here, as `authenticate` refuses an API token.
+	const { isBanned } = await import("@farmer/core/lib/ban");
+	if (
+		isBanned(
+			{ banned: found.user.banned, banExpires: found.user.banExpires },
+			new Date(now),
+		)
+	) {
+		return null;
+	}
 
 	const { expiresIn, updateAge } = context.sessionConfig;
 	const shouldBeUpdated =

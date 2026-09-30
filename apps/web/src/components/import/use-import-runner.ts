@@ -24,6 +24,9 @@ export type ImportRunnerState = {
 	total: number;
 	error: string | null;
 	created: Created | null;
+	/** Existing users `start` invited rather than added: they join when they
+	 *  accept, and their hours are imported already. */
+	invited: string[];
 	inserted: number;
 	deleted: number;
 	unchangedDays: number;
@@ -38,6 +41,7 @@ const IDLE: ImportRunnerState = {
 	total: 0,
 	error: null,
 	created: null,
+	invited: [],
 	inserted: 0,
 	deleted: 0,
 	unchangedDays: 0,
@@ -89,7 +93,11 @@ export function useImportRunner(worker: HarvestWorker, onFinished: () => void) {
 					data: { ...j.plan.start, runId: j.runToken },
 				});
 				j.runId = started.runId;
-				setState((s) => ({ ...s, created: started.created }));
+				setState((s) => ({
+					...s,
+					created: started.created,
+					invited: started.invited,
+				}));
 			}
 			const runId = j.runId;
 			while (j.next < j.chunkCount) {

@@ -23,6 +23,7 @@ import {
 	GithubTokenInvalidError,
 } from "../lib/github-client";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
+import { UserFacingError } from "../lib/user-facing-error";
 import {
 	type AttachCommitsInput,
 	type AttachPullRequestsInput,
@@ -52,6 +53,7 @@ export type GithubClient = Pick<
 	| "getAuthenticatedUser"
 	| "getCommit"
 	| "getInstallationToken"
+	| "getOrgMembership"
 	| "getPullRequest"
 	| "getRepoById"
 	| "listCommits"
@@ -599,6 +601,95 @@ const assertTimeEntryOwnedByUser = async (ctx: Ctx, timeEntryId: string) => {
 	return row;
 };
 
+/** The caller's own GitHub identity, read with their user token. */
+const callerOnGithub = (token: string) =>
+	gh()
+		.getAuthenticatedUser(token)
+		.catch((error: unknown) => {
+			if (error instanceof GithubTokenInvalidError) {
+				throw new Error(NOT_CONNECTED);
+			}
+			throw error;
+		});
+
+/** The second half of the gate in `connectInstallation`: the caller must own
+ *  the account the installation is on, not merely see one of its repos.
+ *
+ *  A personal account must BE the caller, compared by GitHub's numeric id,
+ *  which a rename does not change. An organization must answer the caller's
+ *  membership as an active admin, which is GitHub's word for an owner. The
+ *  user token only says who the caller is (`GET /user`, which every token
+ *  may read); the membership is read with the installation's own token, so
+ *  the check needs "Members: read" on the installed App and nothing from
+ *  GITHUB_CLIENT_ID, which may be a separate OAuth app. Any other account
+ *  type is refused: an App on an enterprise account reads no repos, and there
+ *  is no owner check to make for it. */
+const assertControlsAccount = async (
+	token: string,
+	installation: githubClient.GithubInstallation,
+): Promise<void> => {
+	const owner = installation.account;
+	if (owner?.type === "User") {
+		const caller = await callerOnGithub(token);
+		if (caller?.id !== owner.id) {
+			throw new AccessError(
+				`Only the owner of the GitHub account ${owner.login} can connect its installation.`,
+			);
+		}
+		return;
+	}
+	if (owner?.type === "Organization") {
+		const caller = await callerOnGithub(token);
+		if (!caller) throw new Error(NOT_CONNECTED);
+		// Every failure here is a refusal, because "could not check" is not "may
+		// connect". But the failures need different next steps, so each gets its
+		// own sentence: the admin who is not an owner cannot fix it with a
+		// permission, and the owner who hit a rate limit only has to try again.
+		const membership = await gh()
+			.getInstallationToken(installation.id)
+			.then((installationToken) =>
+				gh().getOrgMembership(installationToken, owner.login, caller.login),
+			)
+			.catch((error: unknown) => {
+				console.warn("[github] could not read the organization membership", {
+					org: owner.login,
+					error,
+				});
+				throw new UserFacingError(
+					`Farmer could not check your membership of the GitHub organization ${owner.login}. Try again in a few minutes.`,
+				);
+			});
+		// The id as well as the login: the membership was looked up by login,
+		// and a rename between the two calls would hand the login to someone
+		// else.
+		const isCaller = membership?.user?.id === caller.id;
+		if (
+			isCaller &&
+			membership.state === "active" &&
+			membership.role === "admin"
+		) {
+			return;
+		}
+		// A 403 or a 404 (null): GitHub gives the first when the App does not
+		// hold "Members: read", or the organization has not accepted it yet, and
+		// the second when the person is not a member at all. It does not say
+		// which, so the sentence names both.
+		if (!membership || !isCaller) {
+			throw new AccessError(
+				`Farmer could not read your membership of the GitHub organization ${owner.login}. Only an owner of it can connect its installation. If you are one, accept the GitHub App's "Members: read" organization permission on GitHub, then try again.`,
+			);
+		}
+		throw new AccessError(
+			membership.state === "pending"
+				? `Accept your invitation to the GitHub organization ${owner.login} first. Only an owner of it can connect its installation.`
+				: `Only an owner of the GitHub organization ${owner.login} can connect its installation. Ask an owner to connect it.`,
+		);
+	}
+	throw new AccessError(
+		"Only an installation on a GitHub user or organization account can be connected.",
+	);
+};
+
 /** What became of the "also uninstall from GitHub" half of a disconnect. Five
  *  answers rather than a boolean, because four of them are things the admin
  *  should read: nothing was asked for, another workspace still uses the
@@ -715,9 +806,15 @@ export const githubService = {
 		});
 	},
 
-	// Attach a freshly-installed installation to this org. Authorization: the
-	// installation must appear in the connecting user's own installation list,
-	// so nobody can bind a stranger's installation_id to their org.
+	// Attach a freshly-installed installation to this org. Authorization is two
+	// checks, and the first is not enough alone. The installation must appear
+	// in the connecting user's own installation list, and the user must own the
+	// account it is installed on (`assertControlsAccount`).
+	//
+	// GitHub lists an installation for anybody with read access to one of its
+	// repos. On that check alone, an outside collaborator could bind a
+	// company's installation to a workspace of their own, and the installation
+	// token would then list every private repo it covers to them.
 	connectInstallation: async (ctx: Ctx, input: ConnectInstallationInput) => {
 		const token = await getAccessToken(ctx);
 		if (!token) throw new Error("Connect your GitHub account first");
@@ -739,6 +836,7 @@ export const githubService = {
 				"You don't have access to that GitHub installation",
 			);
 		}
+		await assertControlsAccount(token, match);
 
 		const [row] = await db
 			.insert(orgGithubInstallation)
