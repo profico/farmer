@@ -47,6 +47,7 @@ import {
 } from "../services/instance-settings.service";
 import { memberJoined } from "../services/member-joined";
 import {
+	callbackProvider,
 	callerActor,
 	currentCaller,
 	hookCtx,
@@ -664,7 +665,12 @@ const buildAuth = () => {
 								userAgent: origin.userAgent ?? created.userAgent ?? null,
 							},
 							target: { type: "session", id: created.id, label: null },
-							details: { method: signInMethod(path) },
+							details: {
+								method: signInMethod(
+									path,
+									callbackProvider.parse(context?.params),
+								),
+							},
 						});
 					},
 				},

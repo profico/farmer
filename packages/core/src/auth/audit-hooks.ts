@@ -110,12 +110,38 @@ export const INTEGRATION_PROVIDERS = new Set(["github", "google-calendar"]);
 export const signInMethodLabel = (providerId: string): string =>
 	providerId === "credential" ? "password" : providerId;
 
-/** How a session was made, from the path of the endpoint that made it. */
-export const signInMethod = (path: string | undefined): string | null => {
+/**
+ * The provider a callback endpoint ran for, from its route params, which
+ * better-auth types as `any`. A social callback names it `id`, the genericOAuth
+ * plugin's callback names it `providerId`.
+ */
+export const callbackProvider = z
+	.object({
+		id: z.string().min(1).optional(),
+		providerId: z.string().min(1).optional(),
+	})
+	.transform(({ id, providerId }) => id ?? providerId ?? null)
+	.catch(null);
+
+/**
+ * How a session was made, from the endpoint that made it.
+ *
+ * `path` is the endpoint's DECLARED path, not the URL the browser asked for, so
+ * an OAuth callback arrives as the literal `/callback/:id` (and the genericOAuth
+ * plugin's as `/oauth2/callback/:providerId`). Reading the provider out of
+ * `path` therefore recorded the string `":id"` as the method of every social
+ * sign-in. It is a route param, so the caller passes it as `provider` —
+ * `callbackProvider.parse(context?.params)`, the rule better-auth's own
+ * last-login-method plugin follows.
+ */
+export const signInMethod = (
+	path: string | undefined,
+	provider: string | null,
+): string | null => {
 	if (!path) return null;
 	if (path === "/sign-in/email" || path === "/sign-up/email") return "password";
 	if (path.startsWith("/device")) return "device";
-	return /\/callback\/([^/]+)$/.exec(path)?.[1] ?? null;
+	return path.includes("/callback/") ? provider : null;
 };
 
 export const signInBody = z.object({ email: z.string().min(1) });

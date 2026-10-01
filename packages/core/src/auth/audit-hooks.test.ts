@@ -1,5 +1,6 @@
 // The failed sign-in row of the audit log (issue #112): one row per person in
-// each window, and only for an address that has an account.
+// each window, and only for an address that has an account. Plus the sign-in
+// method a row records, which better-auth describes with a route pattern.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
@@ -9,7 +10,12 @@ import { db } from "../db";
 import { auditEvent } from "../db/schema/audit";
 import { member, organization, user } from "../db/schema/auth";
 import { createTestDb, type TestDb } from "../test/harness";
-import { FAILED_SIGN_IN_WINDOW_MS, recordFailedSignIn } from "./audit-hooks";
+import {
+	callbackProvider,
+	FAILED_SIGN_IN_WINDOW_MS,
+	recordFailedSignIn,
+	signInMethod,
+} from "./audit-hooks";
 
 const USER = "u-ah-ana";
 const EMAIL = "ana-ah@example.com";
@@ -103,5 +109,39 @@ describe("recordFailedSignIn", () => {
 	test("writes nothing for an address with no account", async () => {
 		await recordFailedSignIn("nobody@example.com", new Headers(), null);
 		expect(await failedRows()).toHaveLength(ORGS.length + 2);
+	});
+});
+
+describe("signInMethod", () => {
+	test("names the provider of a social callback, not the route pattern", () => {
+		// What better-auth passes the hook: the endpoint's declared path, with
+		// the provider in the params.
+		expect(
+			signInMethod("/callback/:id", callbackProvider.parse({ id: "google" })),
+		).toBe("google");
+		expect(
+			signInMethod(
+				"/oauth2/callback/:providerId",
+				callbackProvider.parse({ providerId: "google-calendar" }),
+			),
+		).toBe("google-calendar");
+	});
+
+	test("names the password and the device flows", () => {
+		expect(signInMethod("/sign-in/email", null)).toBe("password");
+		expect(signInMethod("/sign-up/email", null)).toBe("password");
+		expect(signInMethod("/device/token", null)).toBe("device");
+	});
+
+	test("answers null for an endpoint it does not know, and for no path", () => {
+		expect(signInMethod("/magic-link/verify", null)).toBeNull();
+		expect(signInMethod(undefined, "google")).toBeNull();
+		// A callback with no usable params is unnamed rather than mislabelled.
+		expect(
+			signInMethod("/callback/:id", callbackProvider.parse({})),
+		).toBeNull();
+		expect(
+			signInMethod("/callback/:id", callbackProvider.parse(undefined)),
+		).toBeNull();
 	});
 });
