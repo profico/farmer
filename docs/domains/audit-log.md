@@ -49,7 +49,13 @@ no actor is a job, and reads as `system`.
   `impersonator` is the platform admin, from `session.impersonatedBy`.
 - **The client address** follows the rate limits' rule
   (`lib/client-address.ts`), not better-auth's `session.ipAddress`, which
-  trusts the first `X-Forwarded-For` entry that a caller writes.
+  trusts the first `X-Forwarded-For` entry that a caller writes. So a row shows
+  the proxy's own address until `TRUSTED_IP_HEADER` names the header the proxy
+  in front of this deployment writes — see `docs/domains/deployment.md`.
+- **`auth.signed_in` names the method from the endpoint's route params**, not
+  from its path (`signInMethod`). better-auth hands a hook the endpoint's
+  DECLARED path, so an OAuth callback is the literal `/callback/:id` and the
+  provider is a param. Matching the path recorded the method `":id"`.
 
 ## Security events
 

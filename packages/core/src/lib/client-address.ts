@@ -70,6 +70,13 @@ export const resetClientAddressWarningForTests = (): void => {
 	warnedHeaderMissing = false;
 };
 
+/** `::ffff:10.0.1.6` is how a dual-stack socket reports an IPv4 peer, and what
+ *  `Bun.serve`'s `requestIP` hands `server.ts`. The address it names is
+ *  `10.0.1.6`, so return that: one caller is then one bucket whichever socket
+ *  took the request, and the audit log shows an address a person recognises. */
+const unmapIpv4 = (address: string): string =>
+	/^::ffff:(\d{1,3}(\.\d{1,3}){3})$/i.exec(address)?.[1] ?? address;
+
 /** The client's address, per the rules above. */
 export const clientAddress = (
 	headers: Headers,
@@ -81,8 +88,9 @@ export const clientAddress = (
 			trustedHeader === "x-forwarded-for"
 				? value?.split(",").at(-1)?.trim()
 				: value?.trim();
-		if (address) return address;
+		if (address) return unmapIpv4(address);
 		warnIfMisconfigured(headers, trustedHeader);
 	}
-	return headers.get(SOCKET_ADDRESS_HEADER)?.trim() || "unknown";
+	const socket = headers.get(SOCKET_ADDRESS_HEADER)?.trim();
+	return socket ? unmapIpv4(socket) : "unknown";
 };

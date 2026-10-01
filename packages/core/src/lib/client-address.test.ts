@@ -56,6 +56,20 @@ describe("clientAddress", () => {
 		expect(clientAddress(new Headers(spoofed), null)).toBe("10.0.0.2");
 	});
 
+	test("unmaps the IPv4 a dual-stack socket reports as IPv6", () => {
+		const headers = new Headers({
+			"cf-connecting-ip": "::ffff:203.0.113.7",
+			[SOCKET_ADDRESS_HEADER]: "::ffff:10.0.1.6",
+		});
+		expect(clientAddress(headers, "cf-connecting-ip")).toBe("203.0.113.7");
+		expect(clientAddress(headers, null)).toBe("10.0.1.6");
+	});
+
+	test("leaves a real IPv6 address alone", () => {
+		const headers = new Headers({ "cf-connecting-ip": "2001:db8::1" });
+		expect(clientAddress(headers, "cf-connecting-ip")).toBe("2001:db8::1");
+	});
+
 	test("answers unknown with neither", () => {
 		expect(clientAddress(new Headers({ "x-real-ip": "1.2.3.4" }), null)).toBe(
 			"unknown",
