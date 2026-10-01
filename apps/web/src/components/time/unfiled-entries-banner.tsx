@@ -21,6 +21,11 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { useHeightTransition } from "#/lib/motion.ts";
+import {
+	type DeletedTimeEntry,
+	isRestorable,
+	restoreTimeEntries,
+} from "#/lib/restore-time-entries.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
@@ -309,12 +314,29 @@ function FileEntriesDialog({
 		onError: (error: Error) => toast.error(error.message),
 	});
 
+	// Puts back what the last Remove deleted, from the snapshots the delete
+	// returned. The same undo the timesheet row offers, over a batch.
+	const undoRemove = async (deleted: DeletedTimeEntry[]) => {
+		try {
+			await restoreTimeEntries(deleted);
+			await queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			});
+			const count = deleted.length;
+			toast.success(`Put back ${count} ${count === 1 ? "entry" : "entries"}`);
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Could not put them back",
+			);
+		}
+	};
+
 	// The other answer to "where does this go": nowhere, because it didn't
-	// happen. Per row, beside the length, rather than a footer button over the
-	// selection — removing is a decision about one meeting, filing is about a
-	// batch. Same delete as the timesheet row's, so a calendar meeting gets its
-	// tombstone and the next sync does not bring it back; Assemble my day can
-	// still re-offer it with "include dismissed" if that was a mistake.
+	// happen. Its own control at the end of the row, outside the label that
+	// ticks the box — see `RemoveButton`. Same delete as the timesheet row's, so
+	// a calendar meeting gets its tombstone and the next sync does not bring it
+	// back, and so the toast offers the same Undo, which clears that tombstone
+	// again. Assemble my day can also re-offer it with "include dismissed".
 	const removeMutation = useMutation({
 		mutationFn: async (ids: string[]) => {
 			// One delete per row, and a failure kept rather than thrown. A batch
@@ -324,19 +346,24 @@ function FileEntriesDialog({
 			// no pruning, so they stayed ticked and the next Add to project asked
 			// the server to file them.
 			const removed: string[] = [];
+			// What undo can put back: `remove` hands the deleted row back for
+			// exactly this, and a fill block or a rule-generated entry is not
+			// restorable by re-creating a row.
+			const restorable: DeletedTimeEntry[] = [];
 			let firstError: string | null = null;
 			for (const id of ids) {
 				try {
-					await deleteTimeEntry({ data: id });
+					const deleted = await deleteTimeEntry({ data: id });
 					removed.push(id);
+					if (deleted && isRestorable(deleted)) restorable.push(deleted);
 				} catch (error) {
 					firstError ??=
 						error instanceof Error ? error.message : "unknown reason";
 				}
 			}
-			return { removed, firstError };
+			return { removed, restorable, firstError };
 		},
-		onSuccess: async ({ removed, firstError }, ids) => {
+		onSuccess: async ({ removed, restorable, firstError }, ids) => {
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
@@ -352,10 +379,14 @@ function FileEntriesDialog({
 				return;
 			}
 			const count = removed.length;
+			const message = allMeetings
+				? `Removed ${count} ${count === 1 ? "meeting" : "meetings"} · the calendar won't bring ${count === 1 ? "it" : "them"} back`
+				: `Removed ${count} ${count === 1 ? "entry" : "entries"}`;
 			toast.success(
-				allMeetings
-					? `Removed ${count} ${count === 1 ? "meeting" : "meetings"} · the calendar won't bring ${count === 1 ? "it" : "them"} back`
-					: `Removed ${count} ${count === 1 ? "entry" : "entries"}`,
+				message,
+				restorable.length > 0
+					? { action: { label: "Undo", onClick: () => undoRemove(restorable) } }
+					: undefined,
 			);
 		},
 		onError: (error: Error) => toast.error(error.message),
@@ -481,105 +512,114 @@ function UnfiledGroupRow({
 
 	return (
 		<div className="py-1">
-			{/* The label is the whole row, not just the box: a 16px checkbox is a
-			    hard target, and everything on the row identifies the same group.
-			    Left to right: what the meeting is (Google's mark on synced rows,
-			    the title, then the task and when it was), how long, in the mono
-			    figure the timesheet uses, and the box at the far right where a
-			    list of things to tick keeps it. "Show dates" sits in the text and
-			    cancels the label's default so it does not tick the box on the way
-			    to its own handler. */}
-			<label
+			{/* Two halves, and the split is the point. The LABEL is the tick
+			    target and covers everything that identifies the group: a 16px
+			    checkbox is a hard target, and a click anywhere on the row should
+			    land on it. Left to right inside it: what the meeting is (Google's
+			    mark on synced rows, the title, then the task and when it was), how
+			    long, in the mono figure the timesheet uses, and the box at the far
+			    right where a list of things to tick keeps it.
+
+			    Remove sits OUTSIDE the label. It used to sit inside, as a word in
+			    the middle of the second line of grey metadata, which made a click
+			    aimed at the row delete the meeting instead of ticking it — and the
+			    delete tombstones a synced meeting, so the calendar never offered it
+			    again. "Show dates" is the one control still inside, and it cancels
+			    the label's default so it does not tick the box on the way to its
+			    own handler. */}
+			<div
 				className={cn(
-					"flex cursor-pointer items-center gap-4 rounded-md px-6 py-2.5 transition-colors duration-(--dur-fast) hover:bg-muted",
+					"flex items-center gap-2 rounded-md pr-3 transition-colors duration-(--dur-fast) hover:bg-muted",
 					allIn && "bg-muted/60",
 				)}
 			>
-				{group.fromCalendar ? (
-					<GoogleCalendarMark />
-				) : (
-					<span className="size-4 shrink-0" aria-hidden="true" />
-				)}
-				<span className="min-w-0 flex-1">
-					<span className="block truncate text-base font-medium">
-						{group.title}
+				<label className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 py-2.5 pl-6">
+					{group.fromCalendar ? (
+						<GoogleCalendarMark />
+					) : (
+						<span className="size-4 shrink-0" aria-hidden="true" />
+					)}
+					<span className="min-w-0 flex-1">
+						<span className="block truncate text-base font-medium">
+							{group.title}
+						</span>
+						<span className="block text-sm text-muted-foreground">
+							{group.taskName}
+							{" · "}
+							{isRecurring ? (
+								<>
+									{group.entries.length} occurrences
+									{" · "}
+									<button
+										type="button"
+										className="cursor-pointer underline underline-offset-3 hover:text-foreground"
+										onClick={(event) => {
+											event.preventDefault();
+											setExpanded((current) => !current);
+										}}
+									>
+										{expanded ? "Hide dates" : "Show dates"}
+									</button>
+								</>
+							) : first ? (
+								whenLabel(first, timezone)
+							) : null}
+						</span>
 					</span>
-					<span className="block text-sm text-muted-foreground">
-						{group.taskName}
-						{" · "}
-						{isRecurring ? (
-							<>
-								{group.entries.length} occurrences
-								{" · "}
-								<button
-									type="button"
-									className="cursor-pointer underline underline-offset-3 hover:text-foreground"
-									onClick={(event) => {
-										event.preventDefault();
-										setExpanded((current) => !current);
-									}}
-								>
-									{expanded ? "Hide dates" : "Show dates"}
-								</button>
-							</>
-						) : first ? (
-							whenLabel(first, timezone)
-						) : null}
-						{" · "}
-						<RemoveLink
-							disabled={removing}
-							what={
-								isRecurring
-									? `all ${group.entries.length} occurrences of ${group.title}`
-									: group.title
-							}
-							onClick={() => onRemove(group.entries.map((e) => e.id))}
-						/>
+					<span className="mono shrink-0 text-base tabular-nums">
+						{formatHoursShort(group.seconds)}
 					</span>
-				</span>
-				<span className="mono shrink-0 text-base tabular-nums">
-					{formatHoursShort(group.seconds)}
-				</span>
-				<input
-					type="checkbox"
-					className="size-4 shrink-0 cursor-pointer accent-primary"
-					checked={allIn}
-					ref={(node) => {
-						// The only honest state for a partly-selected group. Set through a
-						// ref because `indeterminate` is a DOM property with no attribute.
-						if (node) node.indeterminate = someIn;
-					}}
-					onChange={onToggleGroup}
-					aria-label={`Select ${group.title}`}
+					<input
+						type="checkbox"
+						className="size-4 shrink-0 cursor-pointer accent-primary"
+						checked={allIn}
+						ref={(node) => {
+							// The only honest state for a partly-selected group. Set through a
+							// ref because `indeterminate` is a DOM property with no attribute.
+							if (node) node.indeterminate = someIn;
+						}}
+						onChange={onToggleGroup}
+						aria-label={`Select ${group.title}`}
+					/>
+				</label>
+				<RemoveButton
+					disabled={removing}
+					what={
+						isRecurring
+							? `all ${group.entries.length} occurrences of ${group.title}`
+							: group.title
+					}
+					onClick={() => onRemove(group.entries.map((e) => e.id))}
 				/>
-			</label>
+			</div>
 
 			{expanded && (
 				<div className="mb-2 flex flex-col">
+					{/* Split the same way as the group row above it. */}
 					{group.entries.map((entry) => (
-						<label
+						<div
 							key={entry.id}
-							className="flex cursor-pointer items-center gap-4 rounded-md py-1.5 pr-6 pl-14 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
+							className="flex items-center gap-2 rounded-md pr-3 text-sm text-muted-foreground transition-colors duration-(--dur-fast) hover:bg-muted"
 						>
-							<span className="flex-1">
-								{whenLabel(entry, timezone)}
-								{" · "}
-								<RemoveLink
-									disabled={removing}
-									what={`${group.title} on ${whenLabel(entry, timezone)}`}
-									onClick={() => onRemove([entry.id])}
+							<label className="flex flex-1 cursor-pointer items-center gap-4 py-1.5 pl-14">
+								<span className="flex-1">{whenLabel(entry, timezone)}</span>
+								<span className="mono tabular-nums">
+									{formatHoursShort(entry.durationSeconds)}
+								</span>
+								<input
+									type="checkbox"
+									className="size-4 cursor-pointer accent-primary"
+									checked={selectedIds.has(entry.id)}
+									onChange={() => onToggleEntry(entry.id)}
 								/>
-							</span>
-							<span className="mono tabular-nums">
-								{formatHoursShort(entry.durationSeconds)}
-							</span>
-							<input
-								type="checkbox"
-								className="size-4 cursor-pointer accent-primary"
-								checked={selectedIds.has(entry.id)}
-								onChange={() => onToggleEntry(entry.id)}
+							</label>
+							<RemoveButton
+								disabled={removing}
+								size="xs"
+								what={`${group.title} on ${whenLabel(entry, timezone)}`}
+								onClick={() => onRemove([entry.id])}
 							/>
-						</label>
+						</div>
 					))}
 				</div>
 			)}
@@ -587,32 +627,38 @@ function UnfiledGroupRow({
 	);
 }
 
-/** "Remove", at the end of the row's second line, after the day and time —
- *  the same grey as that line until hovered, then red, because it deletes.
- *  Inside the row's label, so it cancels the label's default or the box would
- *  tick on the way to the handler. */
-function RemoveLink({
+/** "Remove", at the end of the row and outside its label — grey like its
+ *  neighbours until the pointer is on it, then red, because it deletes. The
+ *  same rule as Delete on a time entry.
+ *
+ *  Its own control at the row's edge, rather than a word in the row's text: the
+ *  rest of the row is one tick target, so anything destructive inside it is a
+ *  misclick waiting to happen, and this delete tombstones a synced meeting.
+ *  Being outside the label also means it needs no `preventDefault` to stop the
+ *  box ticking on the way to its handler. */
+function RemoveButton({
 	what,
 	disabled,
+	size = "sm",
 	onClick,
 }: {
 	what: string;
 	disabled: boolean;
+	/** "xs" for the per-occurrence rows, which are a line shorter. */
+	size?: "sm" | "xs";
 	onClick: () => void;
 }) {
 	return (
-		<button
-			type="button"
+		<Button
+			variant="ghost"
+			size={size}
 			disabled={disabled}
 			aria-label={`Remove ${what}`}
-			title="Didn't happen? Remove it from the timesheet. The calendar won't bring it back."
-			className="cursor-pointer underline underline-offset-3 transition-colors duration-(--dur-fast) hover:text-destructive focus-visible:text-destructive focus-visible:outline-none disabled:cursor-default disabled:opacity-50"
-			onClick={(event) => {
-				event.preventDefault();
-				onClick();
-			}}
+			title="Didn't happen? Remove it from the timesheet. The calendar won't bring it back, but you can undo."
+			className="shrink-0 text-muted-foreground hover:text-destructive"
+			onClick={onClick}
 		>
 			Remove
-		</button>
+		</Button>
 	);
 }
