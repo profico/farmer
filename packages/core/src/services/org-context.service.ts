@@ -93,6 +93,7 @@ export const orgContextService = {
 		userId: string,
 	): Promise<
 		{
+			id: string;
 			slug: string;
 			name: string;
 			logo: string | null;
@@ -102,6 +103,7 @@ export const orgContextService = {
 	> =>
 		db
 			.select({
+				id: organization.id,
 				slug: organization.slug,
 				name: organization.name,
 				logo: organization.logo,

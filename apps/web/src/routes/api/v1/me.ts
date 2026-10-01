@@ -18,9 +18,12 @@ export const Route = createFileRoute("/api/v1/me")({
 			GET: userApiRoute({
 				run: async (caller): Promise<ApiMe> => {
 					const { orgContextService } = await import("@farmer/core/services");
-					const organizations = await orgContextService.organizationsFor(
-						caller.userId,
-					);
+					const all = await orgContextService.organizationsFor(caller.userId);
+					// A token bound to one workspace lists that one, so it cannot
+					// be used to find out where else its owner works.
+					const organizations = caller.boundOrganizationId
+						? all.filter((org) => org.id === caller.boundOrganizationId)
+						: all;
 					return {
 						user: caller.user,
 						// The CLI's contract is the slug and the name. The logo and the

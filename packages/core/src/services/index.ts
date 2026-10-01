@@ -1,4 +1,5 @@
 export * from "./access.service";
+export * from "./api-tokens.service";
 export * from "./account.service";
 // The analytics seam: the event shapes a turn reports, and the setter that
 // installs a sink for them. Exported because the adapter lives in `apps/web`,

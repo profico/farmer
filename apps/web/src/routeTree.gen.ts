@@ -19,6 +19,7 @@ import { Route as EarlyAccessRouteImport } from './routes/early-access'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as ChooseOrganizationRouteImport } from './routes/choose-organization'
 import { Route as ChangelogRouteImport } from './routes/changelog'
+import { Route as ApiDocsRouteImport } from './routes/api-docs'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as OrgSlugRouteRouteImport } from './routes/$orgSlug/route'
 import { Route as IndexRouteImport } from './routes/index'
@@ -42,6 +43,7 @@ import { Route as CliDownloadAssetRouteImport } from './routes/cli/download/$ass
 import { Route as ApiV1TimeEntriesRouteImport } from './routes/api/v1/time-entries'
 import { Route as ApiV1SessionRouteImport } from './routes/api/v1/session'
 import { Route as ApiV1ProjectsRouteImport } from './routes/api/v1/projects'
+import { Route as ApiV1OpenapiDotjsonRouteImport } from './routes/api/v1/openapi[.]json'
 import { Route as ApiV1MetaRouteImport } from './routes/api/v1/meta'
 import { Route as ApiV1MeRouteImport } from './routes/api/v1/me'
 import { Route as ApiSlackCallbackRouteImport } from './routes/api/slack/callback'
@@ -144,6 +146,11 @@ const ChooseOrganizationRoute = ChooseOrganizationRouteImport.update({
 const ChangelogRoute = ChangelogRouteImport.update({
   id: '/changelog',
   path: '/changelog',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDocsRoute = ApiDocsRouteImport.update({
+  id: '/api-docs',
+  path: '/api-docs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -262,6 +269,11 @@ const ApiV1SessionRoute = ApiV1SessionRouteImport.update({
 const ApiV1ProjectsRoute = ApiV1ProjectsRouteImport.update({
   id: '/api/v1/projects',
   path: '/api/v1/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1OpenapiDotjsonRoute = ApiV1OpenapiDotjsonRouteImport.update({
+  id: '/api/v1/openapi.json',
+  path: '/api/v1/openapi.json',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiV1MetaRoute = ApiV1MetaRouteImport.update({
@@ -566,6 +578,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/about': typeof AboutRoute
+  '/api-docs': typeof ApiDocsRoute
   '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
@@ -614,6 +627,7 @@ export interface FileRoutesByFullPath {
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRoute
   '/api/v1/meta': typeof ApiV1MetaRoute
+  '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
@@ -653,6 +667,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/api-docs': typeof ApiDocsRoute
   '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
@@ -700,6 +715,7 @@ export interface FileRoutesByTo {
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRoute
   '/api/v1/meta': typeof ApiV1MetaRoute
+  '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
@@ -741,6 +757,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$orgSlug': typeof OrgSlugRouteRouteWithChildren
   '/about': typeof AboutRoute
+  '/api-docs': typeof ApiDocsRoute
   '/changelog': typeof ChangelogRoute
   '/choose-organization': typeof ChooseOrganizationRoute
   '/device': typeof DeviceRoute
@@ -789,6 +806,7 @@ export interface FileRoutesById {
   '/api/slack/callback': typeof ApiSlackCallbackRoute
   '/api/v1/me': typeof ApiV1MeRoute
   '/api/v1/meta': typeof ApiV1MetaRoute
+  '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
   '/api/v1/session': typeof ApiV1SessionRoute
   '/api/v1/time-entries': typeof ApiV1TimeEntriesRoute
@@ -831,6 +849,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$orgSlug'
     | '/about'
+    | '/api-docs'
     | '/changelog'
     | '/choose-organization'
     | '/device'
@@ -879,6 +898,7 @@ export interface FileRouteTypes {
     | '/api/slack/callback'
     | '/api/v1/me'
     | '/api/v1/meta'
+    | '/api/v1/openapi.json'
     | '/api/v1/projects'
     | '/api/v1/session'
     | '/api/v1/time-entries'
@@ -918,6 +938,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
+    | '/api-docs'
     | '/changelog'
     | '/choose-organization'
     | '/device'
@@ -965,6 +986,7 @@ export interface FileRouteTypes {
     | '/api/slack/callback'
     | '/api/v1/me'
     | '/api/v1/meta'
+    | '/api/v1/openapi.json'
     | '/api/v1/projects'
     | '/api/v1/session'
     | '/api/v1/time-entries'
@@ -1005,6 +1027,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$orgSlug'
     | '/about'
+    | '/api-docs'
     | '/changelog'
     | '/choose-organization'
     | '/device'
@@ -1053,6 +1076,7 @@ export interface FileRouteTypes {
     | '/api/slack/callback'
     | '/api/v1/me'
     | '/api/v1/meta'
+    | '/api/v1/openapi.json'
     | '/api/v1/projects'
     | '/api/v1/session'
     | '/api/v1/time-entries'
@@ -1094,6 +1118,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   OrgSlugRouteRoute: typeof OrgSlugRouteRouteWithChildren
   AboutRoute: typeof AboutRoute
+  ApiDocsRoute: typeof ApiDocsRoute
   ChangelogRoute: typeof ChangelogRoute
   ChooseOrganizationRoute: typeof ChooseOrganizationRoute
   DeviceRoute: typeof DeviceRoute
@@ -1121,6 +1146,7 @@ export interface RootRouteChildren {
   ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
   ApiV1MeRoute: typeof ApiV1MeRoute
   ApiV1MetaRoute: typeof ApiV1MetaRoute
+  ApiV1OpenapiDotjsonRoute: typeof ApiV1OpenapiDotjsonRoute
   ApiV1ProjectsRoute: typeof ApiV1ProjectsRoute
   ApiV1SessionRoute: typeof ApiV1SessionRoute
   ApiV1TimeEntriesRoute: typeof ApiV1TimeEntriesRoute
@@ -1215,6 +1241,13 @@ declare module '@tanstack/react-router' {
       path: '/changelog'
       fullPath: '/changelog'
       preLoaderRoute: typeof ChangelogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api-docs': {
+      id: '/api-docs'
+      path: '/api-docs'
+      fullPath: '/api-docs'
+      preLoaderRoute: typeof ApiDocsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -1376,6 +1409,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/projects'
       fullPath: '/api/v1/projects'
       preLoaderRoute: typeof ApiV1ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/openapi.json': {
+      id: '/api/v1/openapi.json'
+      path: '/api/v1/openapi.json'
+      fullPath: '/api/v1/openapi.json'
+      preLoaderRoute: typeof ApiV1OpenapiDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/meta': {
@@ -1846,6 +1886,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
   AboutRoute: AboutRoute,
+  ApiDocsRoute: ApiDocsRoute,
   ChangelogRoute: ChangelogRoute,
   ChooseOrganizationRoute: ChooseOrganizationRoute,
   DeviceRoute: DeviceRoute,
@@ -1875,6 +1916,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSlackCallbackRoute: ApiSlackCallbackRoute,
   ApiV1MeRoute: ApiV1MeRoute,
   ApiV1MetaRoute: ApiV1MetaRoute,
+  ApiV1OpenapiDotjsonRoute: ApiV1OpenapiDotjsonRoute,
   ApiV1ProjectsRoute: ApiV1ProjectsRoute,
   ApiV1SessionRoute: ApiV1SessionRoute,
   ApiV1TimeEntriesRoute: ApiV1TimeEntriesRoute,

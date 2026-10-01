@@ -25,6 +25,9 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
 	"about",
 	"accept-invite",
 	"api",
+	// The public API reference. An organization with this slug would hide it
+	// from everyone.
+	"api-docs",
 	"changelog",
 	"choose-organization",
 	"cli",

@@ -838,6 +838,20 @@
 	border-radius: 12px;
 	font-size: 14px;
 	color: var(--ink-mut);
+	text-decoration: none;
+	transition: border-color 150ms ease;
+}
+.fm-site .fp-rest:hover {
+	border-color: var(--ink-mut);
+}
+.fm-site .fp-rest-more {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+.fm-site .fp-rest:hover .fp-rest-more {
+	color: var(--ink-fg);
 }
 .fm-site .fp-rest code {
 	font-family: var(--mono);

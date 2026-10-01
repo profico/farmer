@@ -16,6 +16,9 @@
  * the import below stays where it belongs.
  */
 
+import type { ApiTokenScope } from "@farmer/core/api";
+import type { ApiTokenPrincipal } from "@farmer/core/services";
+
 /**
  * The caller's service Ctx for a REST request, or null.
  *
@@ -25,8 +28,9 @@
  *
  * Session cookie only. A bearer credential reaches this app through
  * `resolveMcpOrgContext` below, which is a different question in two ways —
- * see the note there — and `api/v1` deliberately stays cookie-authed until it
- * has API keys of its own.
+ * see the note there — and the two cookie-authed reads under `api/v1`
+ * (`projects`, `time-entries`) stay that way. A script with an API token uses
+ * the org-scoped routes, which go through `resolveCliOrgContext`.
  */
 export const resolveApiOrgContext = async (request: Request) => {
 	const { auth } = await import("@farmer/core/auth");
@@ -103,19 +107,42 @@ export const resolveMcpOrgContext = async (
 	return orgContextService.resolveBySlug(userId, orgSlug);
 };
 
-/** The person behind a CLI token, and the token itself — `DELETE
- *  /api/v1/session` needs it to revoke exactly this session and no other. */
+/**
+ * Which bearer credential a request presented. `DELETE /api/v1/session` needs
+ * it to revoke exactly that credential and no other.
+ *
+ *  - `session`: a device-flow token, which IS a better-auth session token.
+ *  - `api_token`: a personal API token (`fmr_…`) from Preferences → API
+ *    tokens. See `docs/domains/api-tokens.md`.
+ */
+export type CliCredential =
+	| { kind: "session"; token: string }
+	| { kind: "api_token"; principal: ApiTokenPrincipal };
+
+/** The person behind a bearer token, and what the token lets them do. */
 export type CliUser = {
 	userId: string;
-	token: string;
 	user: { id: string; name: string; email: string };
+	credential: CliCredential;
+	/** `read` only for an API token made read-only. A device-flow token can do
+	 *  everything its owner can. */
+	scope: ApiTokenScope;
+	/** The one workspace an API token is bound to, or null for any. Not named
+	 *  `organizationId`: that name on a principal means "the workspace this
+	 *  request is for", which a route with no slug does not have. */
+	boundOrganizationId: string | null;
 };
 
 /**
  * The person a CLI request's `Authorization: Bearer <token>` belongs to, or
  * null.
  *
- * The token is a better-auth session token: the device flow's `/device/token`
+ * Two kinds of token arrive here. A personal API token (`fmr_…`) is looked up
+ * by `apiTokensService.authenticate`, which also refuses an expired one. Every
+ * other token is a device-flow token, and the rest of this comment is about
+ * that kind.
+ *
+ * The device-flow token is a better-auth session token: the device flow's `/device/token`
  * answers `access_token: session.token` for a session it has just created. So
  * the lookup is the session table, through better-auth's own internal adapter,
  * and NOT the `bearer` plugin — see the note on `deviceAuthorization` in
@@ -145,11 +172,39 @@ export const resolveCliUser = async (
 	const token = match?.[1];
 	if (!token) return null;
 
+	// An API token is told apart by its prefix before anything is read, so a
+	// token never reaches the session table and a session token never reaches
+	// the token table.
+	const { isApiToken } = await import("@farmer/core/api");
+	if (isApiToken(token)) {
+		const { apiTokensService } = await import("@farmer/core/services");
+		const principal = await apiTokensService.authenticate(token);
+		if (!principal) return null;
+		return {
+			userId: principal.userId,
+			user: principal.user,
+			credential: { kind: "api_token", principal },
+			scope: principal.scope,
+			boundOrganizationId: principal.organizationId,
+		};
+	}
+
 	const { auth } = await import("@farmer/core/auth");
 	const context = await auth.$context;
 	const found = await context.internalAdapter.findSession(token);
 	const now = Date.now();
 	if (!found || found.session.expiresAt.getTime() <= now) return null;
+	// A banned person keeps a stored session unless the ban removed it.
+	// Refuse the session here, as `authenticate` refuses an API token.
+	const { isBanned } = await import("@farmer/core/lib/ban");
+	if (
+		isBanned(
+			{ banned: found.user.banned, banExpires: found.user.banExpires },
+			new Date(now),
+		)
+	) {
+		return null;
+	}
 
 	const { expiresIn, updateAge } = context.sessionConfig;
 	const shouldBeUpdated =
@@ -176,12 +231,14 @@ export const resolveCliUser = async (
 
 	return {
 		userId: found.user.id,
-		token,
 		user: {
 			id: found.user.id,
 			name: found.user.name,
 			email: found.user.email,
 		},
+		credential: { kind: "session", token },
+		scope: "write",
+		boundOrganizationId: null,
 	};
 };
 
@@ -192,7 +249,11 @@ export const resolveCliUser = async (
  * comes from the URL for MCP's reason: a device-flow session was never used to
  * enter a workspace, so its `activeOrganizationId` says nothing. A slug nobody
  * owns, a slug the caller is not in and a bad token are one null, and so one
- * 401, on purpose — see `orgContextService.resolveBySlug`.
+ * 401, on purpose — see `orgContextService.resolveBySlug`. So is a slug other
+ * than the one an API token is bound to.
+ *
+ * Returns the token's scope beside the Ctx, because the pipeline refuses a
+ * write from a read-only token before any service runs.
  */
 export const resolveCliOrgContext = async (
 	request: Request,
@@ -202,5 +263,16 @@ export const resolveCliOrgContext = async (
 	if (!cliUser) return null;
 
 	const { orgContextService } = await import("@farmer/core/services");
-	return orgContextService.resolveBySlug(cliUser.userId, orgSlug);
+	const ctx = await orgContextService.resolveBySlug(cliUser.userId, orgSlug);
+	if (!ctx) return null;
+	// A token bound to one workspace answers for that one. Another slug is the
+	// same null as a slug the person is not in, so a bound token cannot tell
+	// which other workspaces its owner belongs to.
+	if (
+		cliUser.boundOrganizationId &&
+		cliUser.boundOrganizationId !== ctx.organizationId
+	) {
+		return null;
+	}
+	return { ctx, scope: cliUser.scope, via: cliUser.credential.kind };
 };

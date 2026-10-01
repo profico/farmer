@@ -189,6 +189,9 @@ export type ApiClientOptions = {
 	token: string;
 	/** Deletes the stored token. Called when the server says it is dead. */
 	forgetToken: () => Promise<void>;
+	/** Where the token came from, for the message when it is refused:
+	 *  `farmer login` cannot fix a token from `FARMER_TOKEN`. */
+	tokenSource?: "stored" | "environment";
 };
 
 const ORG_ROUTE_PREFIX = "/api/v1/orgs/";
@@ -270,6 +273,13 @@ export class ApiClient {
 				);
 			}
 			await this.#options.forgetToken();
+			if (this.#options.tokenSource === "environment") {
+				return new CliError(
+					`${transport.origin} refused the API token in FARMER_TOKEN. It is revoked, expired or not valid. Make a new one in Preferences → API tokens.`,
+					1,
+					{ status: 401 },
+				);
+			}
 			return new CliError(
 				`Your session on ${transport.origin} has ended. Run \`farmer login\` to sign in again.`,
 				1,

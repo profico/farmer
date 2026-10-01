@@ -89,6 +89,12 @@ export const mainHelp = (): string => {
 		"Dates: today, yesterday, a weekday name (the most recent one), yyyy-MM-dd.",
 		"Durations: 1h30m, 1.5 or 90m, in 15-minute steps.",
 		"",
+		"Environment:",
+		"  FARMER_URL         The server, in place of the last one you used.",
+		"  FARMER_TOKEN       An API token from Preferences → API tokens, in",
+		"                     place of `farmer login`. Use it for a script.",
+		"  FARMER_NO_KEYRING  Set to 1 to keep the login token out of the keyring.",
+		"",
 		"Run `farmer help <command>` for the options of one command.",
 		"Run `farmer --version` for the version.",
 	].join("\n");

@@ -38,9 +38,11 @@ import { askText, pickOne, startProgress } from "../prompts";
 import {
 	credentialStoreFor,
 	currentOrigin,
+	environmentToken,
 	openOrg,
 	orgPath,
 	refreshOrganizations,
+	saveConfig,
 	type Session,
 	transportFor,
 } from "../session";
@@ -71,6 +73,9 @@ export const login: Command = {
 		"",
 		"farmer shows a code and opens the approval page in the browser. Approve",
 		"the code only when it is the one this terminal shows.",
+		"",
+		"For a script or a CI job, do not log in. Make an API token in",
+		"Preferences → API tokens and set FARMER_TOKEN and FARMER_URL.",
 	],
 	run: async (args, runtime) => {
 		const { values, positionals } = parseCommandArgs(args, {}, 1, LOGIN_USAGE);
@@ -149,6 +154,7 @@ export const login: Command = {
 				token,
 				forgetToken: () => store.delete(origin),
 			}),
+			fromEnvironment: false,
 		};
 		const me = await refreshOrganizations(session);
 		const slugs = me.organizations.map((org) => org.slug);
@@ -198,6 +204,11 @@ export const login: Command = {
 		print(
 			`Logged in to ${origin} as ${bold(out, me.user.name)} <${me.user.email}>.`,
 		);
+		if (environmentToken(runtime)) {
+			warn(
+				"FARMER_TOKEN is set, so commands in this shell use that token and not this login.",
+			);
+		}
 		if (whoami) {
 			print(
 				`Organization: ${whoami.organization.name} (${whoami.organization.slug}).`,
@@ -226,6 +237,9 @@ export const logout: Command = {
 	help: [
 		"The local token is deleted even when the server cannot be reached. In",
 		"that case, end the session in Preferences → Signed-in devices.",
+		"",
+		"An API token in FARMER_TOKEN is not touched. Revoke it in",
+		"Preferences → API tokens.",
 	],
 	run: async (args, runtime) => {
 		const { values } = parseCommandArgs(args, {}, 0, LOGOUT_USAGE);
@@ -234,6 +248,14 @@ export const logout: Command = {
 		const origin = currentOrigin(runtime, config);
 		const store = credentialStoreFor(runtime);
 		const token = origin ? await store.get(origin) : null;
+		// A token from the environment belongs to whatever set it, often a
+		// script that shares it with other jobs. Logging out of this terminal
+		// must not revoke it.
+		if (environmentToken(runtime) && !out.json) {
+			warn(
+				"FARMER_TOKEN is set. logout does not revoke it: revoke it in Preferences → API tokens.",
+			);
+		}
 
 		if (!origin || !token) {
 			if (out.json) printJson({ server: origin, revoked: false });
@@ -293,7 +315,7 @@ export const whoami: Command = {
 		) {
 			entry.timeZone = who.timezone;
 			entry.weekStartsOn = who.weekStartsOn;
-			await writeConfig(runtime.paths, session.config);
+			await saveConfig(session);
 		}
 
 		if (out.json) {

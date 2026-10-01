@@ -39,12 +39,22 @@ export const currentOrigin = (
 		? normalizeOrigin(runtime.env.FARMER_URL)
 		: config.lastServer;
 
+/** An API token from the environment, for a script or a CI job. It wins over
+ *  the stored login, the way `FARMER_URL` wins over the last server. */
+export const environmentToken = (runtime: Runtime): string | null =>
+	runtime.env.FARMER_TOKEN?.trim() || null;
+
 export type Session = {
 	runtime: Runtime;
 	out: Output;
 	config: Config;
 	server: ServerEntry;
 	api: ApiClient;
+	/** True when the token came from `FARMER_TOKEN`. Such a session leaves the
+	 *  config alone: a token bound to one workspace sees only that workspace,
+	 *  and a script must not replace the person's cached organizations and
+	 *  default with that view. */
+	fromEnvironment: boolean;
 };
 
 export const connect = async (
@@ -53,11 +63,16 @@ export const connect = async (
 ): Promise<Session> => {
 	const config = await readConfig(runtime.paths);
 	const origin = currentOrigin(runtime, config);
+	const fromEnvironment = environmentToken(runtime);
 	if (!origin) {
-		throw new CliError("You are not logged in. Run `farmer login`.");
+		throw new CliError(
+			fromEnvironment
+				? "FARMER_TOKEN is set, but no server is. Set FARMER_URL as well."
+				: "You are not logged in. Run `farmer login`.",
+		);
 	}
 	const store = credentialStoreFor(runtime);
-	const token = await store.get(origin);
+	const token = fromEnvironment ?? (await store.get(origin));
 	if (!token) {
 		throw new CliError(
 			`You are not logged in to ${origin}. Run \`farmer login\`.`,
@@ -66,13 +81,27 @@ export const connect = async (
 	const api = new ApiClient({
 		transport: transportFor(runtime, origin),
 		token,
-		forgetToken: () => store.delete(origin),
+		// Never delete the stored login because a token somebody else supplied
+		// was refused.
+		forgetToken: fromEnvironment
+			? async () => undefined
+			: () => store.delete(origin),
+		tokenSource: fromEnvironment ? "environment" : "stored",
 	});
-	return { runtime, out, config, server: serverEntryFor(config, origin), api };
+	return {
+		runtime,
+		out,
+		config,
+		server: serverEntryFor(config, origin),
+		api,
+		fromEnvironment: fromEnvironment !== null,
+	};
 };
 
-export const saveConfig = (session: Session) =>
-	writeConfig(session.runtime.paths, session.config);
+export const saveConfig = async (session: Session) => {
+	if (session.fromEnvironment) return;
+	await writeConfig(session.runtime.paths, session.config);
+};
 
 export const orgPath = (slug: string, suffix: string) =>
 	`/api/v1/orgs/${encodeURIComponent(slug)}${suffix}`;
