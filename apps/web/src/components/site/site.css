@@ -654,6 +654,11 @@ html:has(.fm-site) {
 .fm-site .fm-api-docs {
 	position: relative;
 	min-height: calc(100 * var(--svh));
+	/* Scalar paints its own panels right to the edge of this block, so without
+	   a line the sidebar and the operation list run straight into the footer
+	   and read as one surface. Every other page ends in white space, so the
+	   line is only wanted here. */
+	border-bottom: 1px solid var(--line);
 }
 /* Scalar mounts, fetches the document and lays it out in three steps, and
    the page would sit blank for each. It stays hidden under the loader until
