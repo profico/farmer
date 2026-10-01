@@ -71,6 +71,11 @@ export const Route = createFileRoute("/api/assistant/stream")({
 				if (!ctx) {
 					return Response.json({ error: "Unauthorized" }, { status: 401 });
 				}
+				// The tools run with this Ctx, so a change the assistant makes is
+				// recorded as the assistant's, on behalf of this person. Set on the
+				// Ctx itself rather than on a copy: the copy would lose the memo
+				// that `resolveApiOrgContext` warmed.
+				ctx.actor = { ...ctx.actor, via: "assistant" };
 
 				const parsed = runAssistantInput.safeParse(
 					await request.json().catch(() => null),

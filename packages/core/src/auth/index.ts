@@ -4,6 +4,7 @@ import {
 	APIError,
 	createAuthMiddleware,
 	getSessionFromCtx,
+	isAPIError,
 } from "better-auth/api";
 import { getOAuth2Tokens, refreshAccessTokenRequest } from "better-auth/oauth2";
 import {
@@ -16,7 +17,7 @@ import {
 } from "better-auth/plugins";
 import { adminAc, userAc } from "better-auth/plugins/admin/access";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { CLI_CLIENT_ID } from "../api/errors";
@@ -38,12 +39,25 @@ import {
 	slugify,
 	slugProblem,
 } from "../lib/slug";
+import { recordAudit, recordSecurityEvent } from "../services/audit";
 import {
 	enabledOAuthProviders,
 	type OAuthProviderConfig,
 	onInstanceSettingsChanged,
 } from "../services/instance-settings.service";
 import { memberJoined } from "../services/member-joined";
+import {
+	callerActor,
+	currentCaller,
+	hookCtx,
+	impersonatorOf,
+	INTEGRATION_PROVIDERS,
+	originOf,
+	recordFailedSignIn,
+	signInBody,
+	signInMethod,
+	signInMethodLabel,
+} from "./audit-hooks";
 import { deliverInvitation } from "./invitation-delivery";
 import {
 	assertCodeConsented,
@@ -438,6 +452,30 @@ const buildAuth = () => {
 		},
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
+				// `auth.signed_out`, before the endpoint deletes the session: after
+				// it, nothing says whose it was.
+				if (ctx.path === "/sign-out") {
+					try {
+						const ending = await getSessionFromCtx(ctx);
+						if (ending) {
+							await recordSecurityEvent({
+								kind: "auth.signed_out",
+								subjectUserId: ending.user.id,
+								actorUserId: ending.user.id,
+								actor: {
+									via: "web",
+									impersonatorId: impersonatorOf.parse(
+										ending.session.impersonatedBy,
+									),
+									...originOf(ctx.headers ?? ctx.request?.headers),
+								},
+							});
+						}
+					} catch (error) {
+						console.error("[audit] could not record a sign-out", error);
+					}
+					return;
+				}
 				// MCP consent, one check per endpoint; see `./mcp-consent.ts`.
 				// `prompt` has to be exactly "consent": the plugin compares the
 				// whole string.
@@ -475,6 +513,21 @@ const buildAuth = () => {
 				// tell an anonymous visitor which addresses have an account.
 				if (ctx.path !== PASSWORD_SIGN_UP_PATH || isDevAuthEnabled()) return;
 				if (!(await isInstanceEmpty())) throw registrationClosed();
+			}),
+			// `auth.sign_in_failed`. After the endpoint, because only its answer
+			// says the password was wrong (or that password sign-in is closed for
+			// the account, which is also a sign-in that did not happen).
+			after: createAuthMiddleware(async (ctx) => {
+				if (ctx.path !== "/sign-in/email") return;
+				const returned = ctx.context.returned;
+				if (!isAPIError(returned)) return;
+				const parsed = signInBody.safeParse(ctx.body);
+				if (!parsed.success) return;
+				await recordFailedSignIn(
+					parsed.data.email,
+					ctx.headers ?? ctx.request?.headers,
+					returned.body?.code ?? null,
+				);
 			}),
 		},
 		databaseHooks: {
@@ -591,6 +644,63 @@ const buildAuth = () => {
 							data: { activeOrganizationId: membership.organizationId },
 						};
 					},
+					// `auth.signed_in`, once the session exists. Not for an
+					// impersonated session: `impersonation.started` records that, as
+					// the operator's act rather than the person's sign-in.
+					after: async (created, context) => {
+						if (impersonatorOf.parse(created.impersonatedBy)) return;
+						const path = context?.path;
+						const origin = originOf(
+							context?.headers ?? context?.request?.headers,
+						);
+						await recordSecurityEvent({
+							kind: "auth.signed_in",
+							subjectUserId: created.userId,
+							actorUserId: created.userId,
+							actor: {
+								// The device flow's token endpoint makes the CLI's session.
+								via: path?.startsWith("/device") ? "cli" : "web",
+								ip: origin.ip,
+								userAgent: origin.userAgent ?? created.userAgent ?? null,
+							},
+							target: { type: "session", id: created.id, label: null },
+							details: { method: signInMethod(path) },
+						});
+					},
+				},
+			},
+			account: {
+				create: {
+					// `account.linked`: a new way in for somebody who already had one.
+					// The first account row is the signup itself, which
+					// `auth.signed_in` records, so a person with one row is skipped.
+					after: async (created, context) => {
+						if (INTEGRATION_PROVIDERS.has(created.providerId)) return;
+						try {
+							const [held] = await db
+								.select({ n: count() })
+								.from(schema.account)
+								.where(eq(schema.account.userId, created.userId));
+							if ((held?.n ?? 0) <= 1) return;
+							const caller = await currentCaller();
+							const origin = originOf(
+								context?.headers ?? context?.request?.headers,
+							);
+							await recordSecurityEvent({
+								kind: "account.linked",
+								subjectUserId: created.userId,
+								actorUserId: created.userId,
+								actor: { ...callerActor(caller, "web"), ...origin },
+								target: {
+									type: "account",
+									id: created.id,
+									label: signInMethodLabel(created.providerId),
+								},
+							});
+						} catch (error) {
+							console.error("[audit] could not record a linked account", error);
+						}
+					},
 				},
 			},
 		},
@@ -629,6 +739,10 @@ const buildAuth = () => {
 				// (issue #67), and for the same reason: joining an organization has no
 				// service function of its own, because better-auth owns both paths.
 				//
+				// And they, with the four below, are where member management reaches
+				// the audit log. The actor is the caller of the endpoint
+				// (`currentCaller`), because a hook names the member acted on.
+				//
 				// A third path, accepting a Harvest import's pending claim
 				// (`importClaimsService.accept`), runs the same `memberJoined`.
 				organizationHooks: {
@@ -659,11 +773,83 @@ const buildAuth = () => {
 						if (problem)
 							throw new APIError("BAD_REQUEST", { message: problem });
 					},
-					afterAcceptInvitation: async ({ member: newMember }) => {
-						await memberJoined(newMember);
+					// `memberJoined` writes `member.joined`. The person who joins
+					// is the actor when no session names one.
+					afterAcceptInvitation: async ({ member: newMember, user }) => {
+						const caller = await currentCaller();
+						await memberJoined(
+							hookCtx(newMember.organizationId, caller, newMember.userId),
+							newMember,
+							user.name,
+						);
 					},
-					afterAddMember: async ({ member: newMember }) => {
-						await memberJoined(newMember);
+					afterAddMember: async ({ member: newMember, user }) => {
+						const caller = await currentCaller();
+						await memberJoined(
+							hookCtx(newMember.organizationId, caller, newMember.userId),
+							newMember,
+							user.name,
+						);
+					},
+					afterCreateInvitation: async ({
+						invitation: invited,
+						inviter,
+						organization: org,
+					}) => {
+						const caller = await currentCaller();
+						await recordAudit(hookCtx(org.id, caller, inviter.id), {
+							kind: "member.invited",
+							target: {
+								type: "invitation",
+								id: invited.id,
+								label: invited.email,
+							},
+							details: { role: invited.role },
+						});
+					},
+					afterCancelInvitation: async ({
+						invitation: cancelled,
+						cancelledBy,
+						organization: org,
+					}) => {
+						const caller = await currentCaller();
+						await recordAudit(hookCtx(org.id, caller, cancelledBy.id), {
+							kind: "member.invitation_cancelled",
+							target: {
+								type: "invitation",
+								id: cancelled.id,
+								label: cancelled.email,
+							},
+							details: { role: cancelled.role },
+						});
+					},
+					afterRemoveMember: async ({
+						member: removed,
+						user,
+						organization: org,
+					}) => {
+						const caller = await currentCaller();
+						await recordAudit(hookCtx(org.id, caller, null), {
+							kind: "member.removed",
+							subjectUserId: removed.userId,
+							target: { type: "member", id: removed.userId, label: user.name },
+							details: { role: removed.role },
+						});
+					},
+					afterUpdateMemberRole: async ({
+						member: updated,
+						previousRole,
+						user,
+						organization: org,
+					}) => {
+						if (previousRole === updated.role) return;
+						const caller = await currentCaller();
+						await recordAudit(hookCtx(org.id, caller, null), {
+							kind: "member.role_changed",
+							subjectUserId: updated.userId,
+							target: { type: "member", id: updated.userId, label: user.name },
+							changes: { role: { from: previousRole, to: updated.role } },
+						});
 					},
 				},
 				schema: {

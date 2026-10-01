@@ -23,9 +23,10 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 
 import { type DbClient, db } from "../db";
-import { member, organization } from "../db/schema/auth";
+import { member, organization, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
 import { UserFacingError } from "../lib/user-facing-error";
+import { recordAudit } from "./audit";
 import { memberJoined } from "./member-joined";
 import { teamLeadsService } from "./team-leads.service";
 import type { Ctx } from "./types";
@@ -55,9 +56,9 @@ export type PendingClaim = {
 const pendingMembership = async (
 	client: DbClient,
 	ctx: Ctx,
-): Promise<{ role: string }> => {
+): Promise<{ role: string; name: string }> => {
 	const [row] = await client
-		.select({ role: member.role })
+		.select({ role: member.role, name: user.name })
 		.from(memberProfile)
 		.innerJoin(
 			member,
@@ -66,6 +67,7 @@ const pendingMembership = async (
 				eq(member.userId, memberProfile.userId),
 			),
 		)
+		.innerJoin(user, eq(user.id, memberProfile.userId))
 		.where(
 			and(
 				eq(memberProfile.organizationId, ctx.organizationId),
@@ -129,20 +131,20 @@ export const importClaimsService = {
 	},
 
 	/** Join: the membership the import made becomes the caller's own. Runs
-	 *  what joining runs on every other path (`memberJoined`: the Slack match
-	 *  and `member.added`), after the write has committed. Returns the slug to
-	 *  enter. */
+	 *  what joining runs on every other path (`memberJoined`: `member.joined`
+	 *  in the audit log, the Slack match and `member.added`), after the write
+	 *  has committed. Returns the slug to enter. */
 	accept: async (ctx: Ctx): Promise<{ slug: string }> => {
-		const role = await db.transaction(async (tx) => {
-			const { role } = await pendingMembership(tx, ctx);
+		const { role, name } = await db.transaction(async (tx) => {
+			const pending = await pendingMembership(tx, ctx);
 			await clearClaim(tx, ctx);
-			return role;
+			return pending;
 		});
-		await memberJoined({
-			organizationId: ctx.organizationId,
-			userId: ctx.userId,
-			role,
-		});
+		await memberJoined(
+			ctx,
+			{ organizationId: ctx.organizationId, userId: ctx.userId, role },
+			name,
+		);
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.id, ctx.organizationId),
 			columns: { slug: true },
@@ -156,10 +158,11 @@ export const importClaimsService = {
 	 *  they are the organization's history of the person and not the person's
 	 *  account. The team lead lists go too, as they do when an admin removes
 	 *  somebody (`removeMember` in `apps/web/src/server/members.ts`), so a
-	 *  later invitation does not bring an old list back in silence. */
+	 *  later invitation does not bring an old list back in silence. The
+	 *  audit log records the decline as `member.claim_declined`. */
 	decline: async (ctx: Ctx): Promise<void> => {
-		await db.transaction(async (tx) => {
-			await pendingMembership(tx, ctx);
+		const { role, name } = await db.transaction(async (tx) => {
+			const pending = await pendingMembership(tx, ctx);
 			await tx
 				.delete(member)
 				.where(
@@ -169,6 +172,15 @@ export const importClaimsService = {
 					),
 				);
 			await clearClaim(tx, ctx);
+			return pending;
+		});
+		// After the commit: this transaction is a raw `db.transaction`, and a
+		// second connection held inside it is the deadlock `ctxDb` warns about.
+		await recordAudit(ctx, {
+			kind: "member.claim_declined",
+			subjectUserId: ctx.userId,
+			target: { type: "member", id: ctx.userId, label: name },
+			details: { role },
 		});
 		await teamLeadsService.removeFromAllLists(ctx, ctx.userId);
 	},

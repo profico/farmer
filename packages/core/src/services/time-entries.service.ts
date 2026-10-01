@@ -15,6 +15,7 @@ import {
 import postgres from "postgres";
 
 import { db } from "../db";
+import { user } from "../db/schema/auth";
 import {
 	projectMember,
 	recurringBlockRuleSkip,
@@ -29,6 +30,7 @@ import {
 	commitFillTombstone,
 	syncedMeetingTombstone,
 } from "../db/schema/settings";
+import type { AuditChanges } from "../lib/audit";
 import {
 	automationWriteWindow,
 	enabledSinceKey,
@@ -71,6 +73,7 @@ import type {
 	UseCalendarValuesInput,
 } from "../schema/time-entries";
 import { AccessError } from "./access.service";
+import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import {
 	computeDayFillSeconds,
@@ -1251,6 +1254,46 @@ const personCtx = (ctx: Ctx, userId: string): Ctx => {
 		});
 	}
 	return person;
+};
+
+/** One audit row for a PM's absence write on ANOTHER person's day. Written
+ *  through the caller's own Ctx (the PM is the actor), never `personCtx`. A
+ *  person's own absence is their own time and is not recorded. */
+const recordAbsenceForPerson = async (
+	ctx: Ctx,
+	entry: {
+		kind:
+			| "absence.logged_for_person"
+			| "absence.changed_for_person"
+			| "absence.removed_for_person";
+		personUserId: string;
+		date: string;
+		taskName: string;
+		durationSeconds: number;
+		changes?: AuditChanges;
+	},
+) => {
+	if (entry.personUserId === ctx.userId) return;
+	const [person] = await ctxDb(ctx)
+		.select({ name: user.name })
+		.from(user)
+		.where(eq(user.id, entry.personUserId))
+		.limit(1);
+	await recordAudit(ctx, {
+		kind: entry.kind,
+		target: {
+			type: "member",
+			id: entry.personUserId,
+			label: person?.name ?? null,
+		},
+		subjectUserId: entry.personUserId,
+		changes: entry.changes ?? null,
+		details: {
+			date: entry.date,
+			task: entry.taskName,
+			durationSeconds: entry.durationSeconds,
+		},
+	});
 };
 
 /** Project ids the given person is assigned to — used to decide whether a PM may
@@ -2965,6 +3008,27 @@ export const timeEntriesService = {
 				await emitEvent(txCtx, "time_entry.updated", () =>
 					timeEntryWebhookPayload(txCtx, updated.id),
 				);
+				const changes = diffFields(
+					{
+						durationSeconds: existing.durationSeconds,
+						description: existing.description,
+					},
+					{
+						durationSeconds: updated.durationSeconds,
+						description: updated.description,
+					},
+					["durationSeconds", "description"],
+				);
+				if (changes) {
+					await recordAbsenceForPerson(txCtx, {
+						kind: "absence.changed_for_person",
+						personUserId: existing.userId,
+						date: existing.date,
+						taskName: existing.task.name,
+						durationSeconds: updated.durationSeconds,
+						changes,
+					});
+				}
 			}
 			return updated;
 		});
@@ -3005,6 +3069,18 @@ export const timeEntriesService = {
 			await emitEvent(txCtx, "absence.created", () =>
 				timeEntryWebhookPayload(txCtx, created.id),
 			);
+			const [absenceTask] = await ctxDb(txCtx)
+				.select({ name: task.name })
+				.from(task)
+				.where(eq(task.id, input.taskId))
+				.limit(1);
+			await recordAbsenceForPerson(txCtx, {
+				kind: "absence.logged_for_person",
+				personUserId: input.userId,
+				date: input.date,
+				taskName: absenceTask?.name ?? "",
+				durationSeconds: input.durationSeconds,
+			});
 			return created;
 		});
 	},
@@ -3045,6 +3121,13 @@ export const timeEntriesService = {
 				existing.date,
 				tz,
 			);
+			await recordAbsenceForPerson(txCtx, {
+				kind: "absence.removed_for_person",
+				personUserId: existing.userId,
+				date: existing.date,
+				taskName: existing.task.name,
+				durationSeconds: existing.durationSeconds,
+			});
 		});
 		return existing;
 	},

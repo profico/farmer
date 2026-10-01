@@ -2,6 +2,7 @@ import { HardDrivesIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { MenuPath } from "#/components/menu-path.tsx";
 import { CONTACT_EMAIL, LICENSE_NAME } from "#/lib/links.ts";
 
 import "./legal.css";
@@ -83,7 +84,15 @@ const PRIVACY: LegalDoc = {
 						<li>
 							<strong>Sessions.</strong> For each signed-in device: the IP
 							address, the browser's user agent and when the session expires.
-							You can see and end every session under Settings → Preferences.
+							You can see and end every session under{" "}
+							<MenuPath steps={["Settings", "Preferences"]} />.
+						</li>
+						<li>
+							<strong>Audit log.</strong> For each change to the workspace's
+							shared data, the workspace keeps what was done, who did it, the IP
+							address and the browser's user agent. It also keeps every sign-in,
+							sign-out and failed sign-in. The administrators of that workspace
+							can read this log.
 						</li>
 						<li>
 							<strong>Workspace data.</strong> Clients, projects, tasks, time
@@ -318,6 +327,11 @@ const PRIVACY: LegalDoc = {
 						</li>
 						<li>Assistant conversations: until you delete them.</li>
 						<li>
+							Audit log: the administrators of each workspace choose how long it
+							keeps the log: 90 days, 1 year, 2 years or 7 years. The default is
+							1 year. After that time, Farmer deletes the entries.
+						</li>
+						<li>
 							Webhook events: their contents are cleared after three days, and
 							the record of each delivery is deleted after 14 days.
 						</li>
@@ -330,8 +344,9 @@ const PRIVACY: LegalDoc = {
 						</li>
 					</ul>
 					<p>
-						Farmer keeps no log of your requests. Error messages go to the
-						server's console, which our hosting provider rotates.
+						Apart from the audit log, Farmer keeps no log of your requests.
+						Error messages go to the server's console, which our hosting
+						provider rotates.
 					</p>
 				</>
 			),

@@ -65,6 +65,7 @@ import type {
 	HarvestSnapshotInput,
 	HarvestStartInput,
 } from "../schema/harvest-import";
+import { recordAudit } from "./audit";
 import { clientsService } from "./clients.service";
 import { type DbClient, requireAdmin } from "./context";
 import { emitEvent } from "./events";
@@ -679,6 +680,9 @@ export const harvestImportService = {
 		// With several organizations, an existing user is invited, not added.
 		const multiOrg = !isSingleOrgMode();
 		const newInvitations: NewInvitation[] = [];
+		// The people the run makes members at once (single-org mode). A
+		// pending claim is not here: `importClaimsService.accept` records it.
+		const directMembers: { userId: string; name: string; role: string }[] = [];
 
 		const result = await db.transaction(async (tx) => {
 			// A conflict is a first call with this id that committed while this
@@ -1016,6 +1020,8 @@ export const harvestImportService = {
 						role: p.role,
 						createdAt: new Date(),
 					});
+					if (!multiOrg)
+						directMembers.push({ userId, name: p.name, role: p.role });
 				}
 				const archivedAt = p.archivedOn ? dayToTimestamp(p.archivedOn) : null;
 				// A user this run made, with several organizations on the
@@ -1169,6 +1175,30 @@ export const harvestImportService = {
 
 			return { runId, created: counts, invited: invitedEmails };
 		});
+
+		// The import writes its invitations itself, so better-auth's
+		// `afterCreateInvitation` hook never sees them. Record each one here,
+		// after the commit: this transaction is a raw `db.transaction`, and a
+		// second connection held inside it is the deadlock `ctxDb` warns about.
+		for (const inv of newInvitations) {
+			await recordAudit(ctx, {
+				kind: "member.invited",
+				target: { type: "invitation", id: inv.invitationId, label: inv.email },
+				details: { role: inv.role, importRunId: result.runId },
+			});
+		}
+		// A direct add is a way in, so each person gets `member.joined`, with
+		// the admin as the actor. `import.finished` holds only counts. This
+		// goes through `recordAudit` and not `memberJoined`, because the run
+		// sends one webhook, not one for each person.
+		for (const m of directMembers) {
+			await recordAudit(ctx, {
+				kind: "member.joined",
+				subjectUserId: m.userId,
+				target: { type: "member", id: m.userId, label: m.name },
+				details: { role: m.role, importRunId: result.runId },
+			});
+		}
 
 		// After the commit, so nobody gets an email for an invitation that a
 		// failed run rolled back. A failure costs the email, not the run: the
@@ -1456,45 +1486,50 @@ export const harvestImportService = {
 			})
 			.where(eq(importRun.id, input.runId));
 
+		// The counts come from `importMapping`, which is the record of what this
+		// run CREATED — see the header of `services/events.ts`. The audit row
+		// needs them whether or not an endpoint listens, so they are read once.
+		const created = await db
+			.select({
+				kind: importMapping.kind,
+				count: sql<number>`count(*)::int`,
+			})
+			.from(importMapping)
+			.where(
+				and(
+					eq(importMapping.runId, input.runId),
+					eq(importMapping.created, true),
+				),
+			)
+			.groupBy(importMapping.kind);
+		const countOf = (kind: string) =>
+			created.find((row) => row.kind === kind)?.count ?? 0;
+		const [entries] = await db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(timeEntry)
+			.where(
+				and(
+					eq(timeEntry.organizationId, org),
+					eq(timeEntry.importRunId, input.runId),
+				),
+			);
+		const counts = {
+			clients: countOf("client"),
+			projects: countOf("project"),
+			people: countOf("person"),
+			timeEntries: entries?.count ?? 0,
+		};
+
 		// One event for the run, not one per row. An import writes tens of
 		// thousands of entries at once, and a receiver wants to know it happened
-		// and then re-read, not to be handed the whole history as a stream. The
-		// counts come from `importMapping`, which is the record of what this run
-		// CREATED — see the header of `services/events.ts`.
-		await emitEvent(ctx, "import.finished", async () => {
-			const created = await db
-				.select({
-					kind: importMapping.kind,
-					count: sql<number>`count(*)::int`,
-				})
-				.from(importMapping)
-				.where(
-					and(
-						eq(importMapping.runId, input.runId),
-						eq(importMapping.created, true),
-					),
-				)
-				.groupBy(importMapping.kind);
-			const countOf = (kind: string) =>
-				created.find((row) => row.kind === kind)?.count ?? 0;
-			const [entries] = await db
-				.select({ count: sql<number>`count(*)::int` })
-				.from(timeEntry)
-				.where(
-					and(
-						eq(timeEntry.organizationId, org),
-						eq(timeEntry.importRunId, input.runId),
-					),
-				);
-			return {
-				import: {
-					id: input.runId,
-					clients: countOf("client"),
-					projects: countOf("project"),
-					people: countOf("person"),
-					timeEntries: entries?.count ?? 0,
-				},
-			};
+		// and then re-read, not to be handed the whole history as a stream.
+		await emitEvent(ctx, "import.finished", async () => ({
+			import: { id: input.runId, ...counts },
+		}));
+		await recordAudit(ctx, {
+			kind: "import.finished",
+			target: { type: "import", id: input.runId, label: null },
+			details: { ...counts, automationLockedThrough: locked },
 		});
 		return result;
 	},
@@ -1526,7 +1561,7 @@ export const harvestImportService = {
 			throw new Error("Only the latest import can be undone");
 		}
 
-		return db.transaction(async (tx) => {
+		const undone = await db.transaction(async (tx) => {
 			const mappings = await tx
 				.select({
 					kind: importMapping.kind,
@@ -1720,5 +1755,13 @@ export const harvestImportService = {
 				peopleRemoved: userIds.length,
 			};
 		});
+		// After the commit: this transaction is a raw `db.transaction`, and a
+		// second connection held inside it is the deadlock `ctxDb` warns about.
+		await recordAudit(ctx, {
+			kind: "import.undone",
+			target: { type: "import", id: run.id, label: null },
+			details: { ...undone },
+		});
+		return undone;
 	},
 };

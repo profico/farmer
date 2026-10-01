@@ -100,6 +100,7 @@ you are about to change before you change it** — these are not loaded for you.
 | `docs/domains/timer.md` | `timers.service.ts`, `jobs/timer-sweep.ts`, the stopwatch in the web app or the CLI |
 | `docs/domains/api-tokens.md` | `api-tokens.service.ts`, Preferences → API tokens, the bearer-token branch in `server/api-auth.ts`, or `FARMER_TOKEN` in the CLI |
 | `docs/domains/webhooks.md` | the outbound webhooks — `services/events.ts`, `webhooks.service.ts`, `jobs/webhook-delivery.ts`, the signature or the SSRF guard |
+| `docs/domains/audit-log.md` | `services/audit.ts`, `recordAudit` / `recordSecurityEvent`, the better-auth audit hooks, the Audit log page, or any new service function that changes an organization |
 | `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag or PostHog |
 
 `docs/adr/` holds the decisions that a change may contradict. `docs/plans/` holds
@@ -107,13 +108,15 @@ the design history of the Harvest import and the reminder settings.
 
 ## Rules that survive the split
 
-These four are load-bearing everywhere, so they stay here. The reason for each
+These are load-bearing everywhere, so they stay here. The reason for each
 is in the file named beside it.
 
 - **Never static-import `@farmer/core/db` / `/auth` / `/services` at the top level of a route or `apps/web/src/server/*.ts`.** Import inside the handler body. It crashes hydration silently — forms fall back to native submission instead of throwing. → `apps/web/CLAUDE.md`
 - **Tenancy is a parameter, never ambient.** Every service function takes `ctx` first; every query key names its organization. → `packages/core/CLAUDE.md`, `apps/web/CLAUDE.md`
 - **A day holds at most 24 hours** (`MAX_DAY_SECONDS`), and `services/ledger.ts` is the one definition of what counts as logged time. Never hand-roll a `sum(durationSeconds)` with its own predicate. → `packages/core/CLAUDE.md`
 - **Engines resolve tasks by `systemKey`, never by name.** A name lookup switches an engine off silently when an org renames the task. → `packages/core/CLAUDE.md`
+- **A service function that changes an organization records it.** `recordAudit(ctx, entry)` after the write, and a line in `services/audit-coverage.test.ts`, which fails the suite for a function that is neither recorded nor exempt with a reason. → `docs/domains/audit-log.md`
+- **Never type a glyph where an icon exists.** No `→`, `->`, `›`, `✓` or `×` as a mark in the UI: use the Phosphor icon (`ArrowRightIcon`, `CaretRightIcon`, `CheckIcon`, `XIcon`). A menu path in running text is `<MenuPath steps={["Settings", "Tasks"]} />` (`components/menu-path.tsx`). A glyph takes the font's weight and baseline, and a screen reader reads it out. Exceptions: text that is not drawn by React (the CLI, the OpenAPI markdown, a plain-string message), a math sign (`× 8h`), a terminal mock, and code comments. → `apps/web/src/components/menu-path.tsx`
 - **Nothing on a request path calls an organization's webhook URL.** A service writes one outbox row through `emitEvent`; `jobs/webhook-delivery.ts` sends it. The URL came from a person and the server makes the call, so `lib/webhook-url.ts` is the SSRF boundary — read it before touching anything about webhook URLs. → `docs/domains/webhooks.md`
 
 ## Gotchas

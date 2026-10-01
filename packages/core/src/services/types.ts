@@ -1,3 +1,4 @@
+import type { AuditVia } from "../lib/audit";
 import type { WeekStartsOn } from "../lib/time";
 import type { Access } from "./access.service";
 
@@ -27,9 +28,27 @@ export type CtxMemo = {
  *  The optional memo slot lets the request-scoped facts (timezone, access,
  *  the in-flight transaction) resolve ONCE and be reused by everything the
  *  request calls, without changing how a Ctx is constructed: a plain
- *  `{ organizationId, userId }` literal is still a valid Ctx. */
+ *  `{ organizationId, userId }` literal is still a valid Ctx.
+ *
+ *  `actor` says which door the request came through, for the audit log. The
+ *  entry points set it (`orgMiddleware`, the API and MCP resolvers, the
+ *  assistant); a Ctx without one is a job or a script, and reads as `system`.
+ *  A plain key rather than a memo slot, so a spread or a Ctx rebuilt for
+ *  another person carries it along. */
 export type Ctx = {
 	organizationId: string;
 	userId: string;
+	actor?: CtxActor;
 	[CTX_MEMO]?: CtxMemo;
+};
+
+/** Where a request came from, as the audit log records it. */
+export type CtxActor = {
+	via: AuditVia;
+	/** The platform admin driving an impersonated session. */
+	impersonatorId?: string | null;
+	/** The API token a request presented, when `via` is `api_token`. */
+	apiTokenId?: string | null;
+	ip?: string | null;
+	userAgent?: string | null;
 };

@@ -3,6 +3,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { client, project } from "../db/schema/domain";
 import type { CreateClientInput, UpdateClientInput } from "../schema/clients";
+import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, requireAdmin } from "./context";
 import { clientWebhookPayload, emitEvent } from "./events";
 import type { Ctx } from "./types";
@@ -89,11 +90,22 @@ export const clientsService = {
 		await emitEvent(ctx, "client.created", () =>
 			clientWebhookPayload(ctx, created.id),
 		);
+		await recordAudit(ctx, {
+			kind: "client.created",
+			target: { type: "client", id: created.id, label: created.name },
+		});
 		return created;
 	},
 
 	update: async (ctx: Ctx, input: UpdateClientInput) => {
 		await requireAdmin(ctx);
+		const before = await db.query.client.findFirst({
+			where: and(
+				eq(client.id, input.clientId),
+				eq(client.organizationId, ctx.organizationId),
+			),
+			columns: { name: true },
+		});
 		const [updated] = await db
 			.update(client)
 			.set({ name: input.name.trim(), updatedAt: new Date() })
@@ -105,6 +117,14 @@ export const clientsService = {
 			)
 			.returning();
 		if (!updated) throw new Error("Client not found");
+		const changes = diffFields(before, updated, ["name"]);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "client.updated",
+				target: { type: "client", id: updated.id, label: updated.name },
+				changes,
+			});
+		}
 		return updated;
 	},
 
@@ -150,11 +170,15 @@ export const clientsService = {
 					eq(client.organizationId, ctx.organizationId),
 				),
 			);
+		await recordAudit(ctx, {
+			kind: "client.archived",
+			target: { type: "client", id: clientId, label: target.name },
+		});
 	},
 
 	unarchive: async (ctx: Ctx, clientId: string) => {
 		await requireAdmin(ctx);
-		await db
+		const [restored] = await db
 			.update(client)
 			.set({ archivedAt: null, updatedAt: new Date() })
 			.where(
@@ -162,6 +186,13 @@ export const clientsService = {
 					eq(client.id, clientId),
 					eq(client.organizationId, ctx.organizationId),
 				),
-			);
+			)
+			.returning({ id: client.id, name: client.name });
+		if (restored) {
+			await recordAudit(ctx, {
+				kind: "client.restored",
+				target: { type: "client", id: restored.id, label: restored.name },
+			});
+		}
 	},
 };

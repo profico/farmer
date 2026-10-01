@@ -12,6 +12,7 @@ import {
 	type ReminderSettings,
 	type UpdateReminderSettingsInput,
 } from "../schema/reminder-settings";
+import { diffFields, recordAudit } from "./audit";
 import { ctxTimezone, requireAdmin } from "./context";
 import { type DeliveryBlock, deliveryBlocks } from "./notify";
 import {
@@ -96,6 +97,26 @@ const read = async (ctx: Ctx): Promise<ReminderSettings> => {
 	};
 };
 
+const AUDITED_REMINDER_FIELDS = [
+	"logEnabled",
+	"logMode",
+	"logTime",
+	"logBelowPct",
+	"nudgeEnabled",
+	"nudgeWeekdays",
+	"nudgeTime",
+	"nudgeMemberTypes",
+	"monthEndEnabled",
+	"monthEndDaysBefore",
+	"monthEndTime",
+	"monthEndOnlyBehind",
+	"monthEndMemberTypes",
+	"digestEnabled",
+	"digestWeekday",
+	"digestTime",
+	"includeNeverSignedIn",
+] as const satisfies readonly (keyof ReminderSettings)[];
+
 const uniqueSorted = <T extends number | string>(values: T[]): T[] =>
 	[...new Set(values)].sort();
 
@@ -121,6 +142,7 @@ export const reminderSettingsService = {
 			own.monthEndMemberTypes = uniqueSorted(own.monthEndMemberTypes);
 		}
 
+		const before = await read(ctx);
 		if (Object.keys(own).length > 0) {
 			await db
 				.insert(reminderSettings)
@@ -130,7 +152,20 @@ export const reminderSettingsService = {
 					set: { ...own, updatedAt: new Date() },
 				});
 		}
-		return read(ctx);
+		const after = await read(ctx);
+		const changes = diffFields(before, after, AUDITED_REMINDER_FIELDS);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "reminder_settings.updated",
+				target: {
+					type: "reminder_settings",
+					id: ctx.organizationId,
+					label: "Reminder settings",
+				},
+				changes,
+			});
+		}
+		return after;
 	},
 
 	/**

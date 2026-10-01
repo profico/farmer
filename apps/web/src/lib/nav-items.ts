@@ -8,6 +8,7 @@ import {
 	FolderSimpleIcon,
 	GearSixIcon,
 	RepeatIcon,
+	ScrollIcon,
 	SquaresFourIcon,
 	UsersIcon,
 } from "@phosphor-icons/react";
@@ -29,6 +30,7 @@ export type OrgRoutePath =
 	| "/$orgSlug/time"
 	| "/$orgSlug/assistant"
 	| "/$orgSlug/reports"
+	| "/$orgSlug/audit-log"
 	| "/$orgSlug/settings"
 	| "/$orgSlug/settings/clients"
 	| "/$orgSlug/settings/my-schedule"
@@ -166,6 +168,14 @@ export const WEBHOOKS_ITEM: NavItem = {
 	label: "Webhooks",
 	to: "/$orgSlug/settings/webhooks",
 	icon: BroadcastIcon,
+};
+
+// An admin row, under Reports rather than inside Settings: the log is read,
+// not configured, and it is read beside the reports (issue #112).
+export const AUDIT_LOG_ITEM: NavItem = {
+	label: "Audit log",
+	to: "/$orgSlug/audit-log",
+	icon: ScrollIcon,
 };
 
 export const PEOPLE_ITEM: NavItem = {

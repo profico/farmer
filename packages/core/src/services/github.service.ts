@@ -35,6 +35,7 @@ import {
 	type SuggestPullRequestsInput,
 } from "../schema/github";
 import { AccessError } from "./access.service";
+import { recordAudit } from "./audit";
 import {
 	ctxAccess,
 	ctxDb,
@@ -862,6 +863,16 @@ export const githubService = {
 		// GitHub sends an admin back through here after they change which repos
 		// the App may reach, so this is the moment the cached list went wrong.
 		repoLists.delete(input.installationId);
+		if (row) {
+			await recordAudit(ctx, {
+				kind: "github.connected",
+				target: {
+					type: "github_installation",
+					id: row.id,
+					label: row.accountLogin,
+				},
+			});
+		}
 		return row;
 	},
 
@@ -889,8 +900,23 @@ export const githubService = {
 					eq(orgGithubInstallation.organizationId, ctx.organizationId),
 				),
 			)
-			.returning({ installationId: orgGithubInstallation.installationId });
-		for (const row of removed) repoLists.delete(row.installationId);
+			.returning({
+				id: orgGithubInstallation.id,
+				installationId: orgGithubInstallation.installationId,
+				accountLogin: orgGithubInstallation.accountLogin,
+			});
+		for (const row of removed) {
+			repoLists.delete(row.installationId);
+			await recordAudit(ctx, {
+				kind: "github.disconnected",
+				target: {
+					type: "github_installation",
+					id: row.id,
+					label: row.accountLogin,
+				},
+				details: { uninstallRequested: input.uninstall === true },
+			});
+		}
 
 		const row = removed[0];
 		if (!input.uninstall || !row) return { uninstall: "not-requested" };
@@ -1075,19 +1101,47 @@ export const githubService = {
 			})
 			.returning();
 		if (!created) throw new Error("Failed to link repository");
+		const linkedProject = await db.query.project.findFirst({
+			where: eq(project.id, input.projectId),
+			columns: { name: true },
+		});
+		await recordAudit(ctx, {
+			kind: "github.repo_linked",
+			target: {
+				type: "github_repo",
+				id: created.id,
+				label: created.fullName,
+			},
+			details: {
+				projectId: input.projectId,
+				projectName: linkedProject?.name ?? null,
+			},
+		});
 		return created;
 	},
 
 	unlinkRepo: async (ctx: Ctx, projectGithubRepoId: string) => {
 		await requireAdmin(ctx);
-		await db
+		const removed = await db
 			.delete(projectGithubRepo)
 			.where(
 				and(
 					eq(projectGithubRepo.id, projectGithubRepoId),
 					eq(projectGithubRepo.organizationId, ctx.organizationId),
 				),
-			);
+			)
+			.returning({
+				id: projectGithubRepo.id,
+				fullName: projectGithubRepo.fullName,
+				projectId: projectGithubRepo.projectId,
+			});
+		for (const row of removed) {
+			await recordAudit(ctx, {
+				kind: "github.repo_unlinked",
+				target: { type: "github_repo", id: row.id, label: row.fullName },
+				details: { projectId: row.projectId },
+			});
+		}
 	},
 
 	/**

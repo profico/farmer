@@ -33,6 +33,7 @@
 		"settings:import-env": "bun run src/db/import-env-settings.ts"
 	},
 	"dependencies": {
+		"@better-auth/core": "1.6.23",
 		"@date-fns/tz": "1.5.0",
 		"aws4fetch": "1.0.20",
 		"better-auth": "1.6.23",

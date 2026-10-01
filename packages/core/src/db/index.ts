@@ -5,6 +5,7 @@ import postgres from "postgres";
 
 import * as apiTokensSchema from "./schema/api-tokens";
 import * as assistantSchema from "./schema/assistant";
+import * as auditSchema from "./schema/audit";
 import * as authSchema from "./schema/auth";
 import * as domainSchema from "./schema/domain";
 import * as githubSchema from "./schema/github";
@@ -33,6 +34,7 @@ export const schema = {
 	...timerSchema,
 	...instanceSchema,
 	...apiTokensSchema,
+	...auditSchema,
 };
 
 export type Db = PostgresJsDatabase<typeof schema>;

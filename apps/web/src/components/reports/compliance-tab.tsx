@@ -3,6 +3,7 @@ import type { TrackingRow } from "@farmer/core/services";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { MenuPath } from "#/components/menu-path.tsx";
 import { PersonCell } from "#/components/person-avatar.tsx";
 import { StatusPill } from "#/components/status-pill.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
@@ -131,7 +132,8 @@ export function ComplianceTab({
 					</div>
 					{data.fundSeconds == null && (
 						<div className="text-xs text-muted-foreground">
-							Not set for this month — Settings → Hour fund.
+							Not set for this month —{" "}
+							<MenuPath steps={["Settings", "Hour fund"]} />.
 						</div>
 					)}
 				</div>
@@ -211,17 +213,18 @@ export function ComplianceTab({
 				<span className="font-medium text-foreground">
 					How it's calculated.
 				</span>{" "}
-				The fund for the month comes from Settings → Hour fund — the official
-				monthly figure, working days × 8h. Target so far = fund × working days
-				before today ÷ working days in the month, where a working day is Monday
-				to Friday and not a public holiday, so every working day is worth 8h.
-				Today itself is not counted until it has passed, but a finished month
-				counts every one of its working days. A person's total is work plus
-				time-off, up to and including today. On track when the total reaches the
-				target; slightly behind when it is within {data.tolerancePct}% of it
-				(Settings → Organization); behind otherwise. Hourly people are listed
-				with their hours and no target unless an expected-hours figure was set
-				for them.
+				The fund for the month comes from{" "}
+				<MenuPath steps={["Settings", "Hour fund"]} /> — the official monthly
+				figure, working days × 8h. Target so far = fund × working days before
+				today ÷ working days in the month, where a working day is Monday to
+				Friday and not a public holiday, so every working day is worth 8h. Today
+				itself is not counted until it has passed, but a finished month counts
+				every one of its working days. A person's total is work plus time-off,
+				up to and including today. On track when the total reaches the target;
+				slightly behind when it is within {data.tolerancePct}% of it (
+				<MenuPath steps={["Settings", "Organization"]} />
+				); behind otherwise. Hourly people are listed with their hours and no
+				target unless an expected-hours figure was set for them.
 			</p>
 		</div>
 	);

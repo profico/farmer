@@ -275,10 +275,17 @@ export const orgSettings = pgTable(
 		// through July" is what anyone actually means, and locking non-contiguous
 		// months isn't a thing to want.
 		automationLockedThrough: text("automation_locked_through"),
+		// How long the audit log keeps a row, in days. One of
+		// `AUDIT_RETENTION_DAYS` (`lib/audit.ts`); `jobs/audit-sweep.ts` reads it.
+		auditRetentionDays: smallint("audit_retention_days").notNull().default(365),
 		...stamps,
 	},
 	(t) => [
 		unique("org_settings_org_unq").on(t.organizationId),
+		check(
+			"org_settings_audit_retention_valid",
+			sql`${t.auditRetentionDays} in (90, 365, 730, 2555)`,
+		),
 		check(
 			"org_settings_tolerance_valid",
 			sql`${t.trackingTolerancePct} >= 0 and ${t.trackingTolerancePct} <= 50`,

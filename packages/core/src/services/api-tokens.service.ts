@@ -9,7 +9,8 @@ import { organization, user } from "../db/schema/auth";
 import { isBanned } from "../lib/ban";
 import { UserFacingError } from "../lib/user-facing-error";
 import type { CreateApiTokenInput } from "../schema/api-tokens";
-import type { Ctx } from "./types";
+import { recordSecurityEvent } from "./audit";
+import type { Ctx, CtxActor } from "./types";
 
 /**
  * Preferences → API tokens: long-lived credentials a person makes for a script.
@@ -81,6 +82,14 @@ export const hashApiToken = (token: string): string =>
 /** 32 random bytes is 43 base64url characters after the prefix. */
 export const generateApiToken = (): string =>
 	`${API_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
+
+/** What a revoke reads back from the deleted row, for `api_token.revoked`,
+ *  which is written in the token's workspace when it was bound to one. */
+const revokedColumns = {
+	id: apiToken.id,
+	name: apiToken.name,
+	organizationId: apiToken.organizationId,
+};
 
 export const apiTokensService = {
 	/**
@@ -161,6 +170,22 @@ export const apiTokensService = {
 			.returning({ id: apiToken.id });
 		if (!row) throw new Error("The token was not saved.");
 
+		// A security event rather than a change: a token is a way in. A token
+		// bound to one workspace is news there only.
+		await recordSecurityEvent({
+			kind: "api_token.created",
+			subjectUserId: ctx.userId,
+			actorUserId: ctx.userId,
+			actor: ctx.actor,
+			organizationId,
+			target: { type: "api_token", id: row.id, label: input.name },
+			details: {
+				scope: input.scope,
+				expiresInDays: input.expiresInDays,
+				workspace: input.workspace,
+			},
+		});
+
 		const org = organizationId
 			? await db.query.organization.findFirst({
 					where: eq(organization.id, organizationId),
@@ -194,7 +219,17 @@ export const apiTokensService = {
 		const deleted = await db
 			.delete(apiToken)
 			.where(and(eq(apiToken.id, tokenId), eq(apiToken.userId, ctx.userId)))
-			.returning({ id: apiToken.id });
+			.returning(revokedColumns);
+		for (const token of deleted) {
+			await recordSecurityEvent({
+				kind: "api_token.revoked",
+				subjectUserId: ctx.userId,
+				actorUserId: ctx.userId,
+				actor: ctx.actor,
+				organizationId: token.organizationId,
+				target: { type: "api_token", id: token.id, label: token.name },
+			});
+		}
 		return { revoked: deleted.length > 0 };
 	},
 
@@ -263,16 +298,31 @@ export const apiTokensService = {
 	/**
 	 * Revoke the token a request was made with — `DELETE /api/v1/session`
 	 * called with an API token. No `Ctx`: the caller proved who they are by
-	 * holding the token, and the id came from `authenticate`.
+	 * holding the token, and the id came from `authenticate`. `actor` is the
+	 * audit log's record of the request; by default, the token itself.
 	 */
-	revokePresented: async (principal: ApiTokenPrincipal): Promise<void> => {
-		await db
+	revokePresented: async (
+		principal: ApiTokenPrincipal,
+		actor: CtxActor = { via: "api_token", apiTokenId: principal.tokenId },
+	): Promise<void> => {
+		const deleted = await db
 			.delete(apiToken)
 			.where(
 				and(
 					eq(apiToken.id, principal.tokenId),
 					eq(apiToken.userId, principal.userId),
 				),
-			);
+			)
+			.returning(revokedColumns);
+		for (const token of deleted) {
+			await recordSecurityEvent({
+				kind: "api_token.revoked",
+				subjectUserId: principal.userId,
+				actorUserId: principal.userId,
+				actor,
+				organizationId: token.organizationId,
+				target: { type: "api_token", id: token.id, label: token.name },
+			});
+		}
 	},
 };

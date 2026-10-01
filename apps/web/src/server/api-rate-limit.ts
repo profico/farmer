@@ -27,7 +27,10 @@
  * to stop a runaway loop rather than to shape traffic.
  */
 
-import { clientAddress, trustedIpHeader } from "#/lib/client-address.ts";
+import {
+	clientAddress,
+	trustedIpHeader,
+} from "@farmer/core/lib/client-address";
 
 /** The surfaces that keep their own buckets. */
 export type RateLimitSurface = "mcp" | "cli";

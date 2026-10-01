@@ -23,7 +23,7 @@ import { memberProfile } from "../db/schema/people";
 import { NotAMemberError } from "./access.service";
 import { ctxAccess } from "./context";
 import { membersService } from "./members.service";
-import type { Ctx } from "./types";
+import type { Ctx, CtxActor } from "./types";
 
 export const orgContextService = {
 	/**
@@ -46,10 +46,15 @@ export const orgContextService = {
 	 * `ctxAccess` runs before returning so the request's memo is warm: the
 	 * service calls under it then answer from one resolution instead of
 	 * repeating it.
+	 *
+	 * `actor` is the door the request came through (MCP, the CLI, an API
+	 * token), for the audit log. The transport knows it; this function only
+	 * carries it onto the Ctx.
 	 */
 	resolveBySlug: async (
 		userId: string,
 		orgSlug: string,
+		actor?: CtxActor,
 	): Promise<Ctx | null> => {
 		const org = await db.query.organization.findFirst({
 			where: eq(organization.slug, orgSlug),
@@ -62,7 +67,7 @@ export const orgContextService = {
 		});
 		if (!role) return null;
 
-		const ctx = { organizationId: org.id, userId };
+		const ctx: Ctx = { organizationId: org.id, userId, actor };
 		try {
 			await ctxAccess(ctx);
 		} catch (error) {

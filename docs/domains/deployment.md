@@ -4,7 +4,7 @@ Dev is `vite dev`. **Production is a Bun-native host, not Nitro/srvx** — `apps
 
 The `Dockerfile` bundles with `bun build` into `app.js` (better-auth, framer-motion and the `#tanstack-*` entries stay external), `migrate.js` and `seed-tasks.js`, and installs runtime dependencies from `docker/runtime.package.json` + `docker/bun.lock`. `docker-entrypoint.sh` applies migrations under an advisory lock (`RUN_MIGRATIONS`), seeds tasks (`RUN_SEED`), then starts `app.js`. CI (`.github/workflows/ci.yml`) runs check, typecheck, test and build, then builds the image, pushes it to GHCR and triggers a Coolify deploy. The CLI has its own release workflow (see `apps/cli/CLAUDE.md`).
 
-**This backend is a long-lived process, not a serverless function — background work goes in a job, never in a request handler.** There are six jobs: the automation sweep, log reminders, Slack reminders, the timer sweep (`docs/domains/timer.md`), the upload sweep and webhook delivery (`docs/domains/webhooks.md`). The scheduler lives in `@farmer/core/jobs/scheduler.ts` rather than in `server.ts` so it can run three ways off one implementation:
+**This backend is a long-lived process, not a serverless function — background work goes in a job, never in a request handler.** There are seven jobs: the automation sweep, log reminders, Slack reminders, the timer sweep (`docs/domains/timer.md`), the upload sweep, the audit sweep (`docs/domains/audit-log.md`) and webhook delivery (`docs/domains/webhooks.md`). The scheduler lives in `@farmer/core/jobs/scheduler.ts` rather than in `server.ts` so it can run three ways off one implementation:
 
 | Where | How | Why |
 |---|---|---|

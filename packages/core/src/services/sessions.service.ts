@@ -4,6 +4,7 @@ import { CLI_USER_AGENT_PREFIX } from "../api/errors";
 import { db } from "../db";
 import { session } from "../db/schema/auth";
 import { UserFacingError } from "../lib/user-facing-error";
+import { recordSecurityEvent } from "./audit";
 import type { Ctx } from "./types";
 
 /**
@@ -179,7 +180,20 @@ export const sessionsService = {
 		const deleted = await db
 			.delete(session)
 			.where(and(eq(session.id, sessionId), eq(session.userId, ctx.userId)))
-			.returning({ id: session.id });
+			.returning({ id: session.id, userAgent: session.userAgent });
+		for (const ended of deleted) {
+			await recordSecurityEvent({
+				kind: "session.revoked",
+				subjectUserId: ctx.userId,
+				actorUserId: ctx.userId,
+				actor: ctx.actor,
+				target: {
+					type: "session",
+					id: ended.id,
+					label: describeUserAgent(ended.userAgent).label,
+				},
+			});
+		}
 		return { revoked: deleted.length > 0 };
 	},
 };

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 
 import { disabledHoliday } from "../db/schema/schedule";
 import { orgCountry } from "../lib/org-country";
+import { recordAudit } from "./audit";
 import { ctxMemo } from "./context";
 import { ctxDb } from "./db-ctx";
 import type { Ctx } from "./types";
@@ -163,20 +164,27 @@ export const holidaysService = {
 		input: { name: string; disabled: boolean },
 	): Promise<void> => {
 		const client = ctxDb(ctx);
-		if (input.disabled) {
-			await client
-				.insert(disabledHoliday)
-				.values({ organizationId: ctx.organizationId, name: input.name })
-				.onConflictDoNothing();
-		} else {
-			await client
-				.delete(disabledHoliday)
-				.where(
-					and(
-						eq(disabledHoliday.organizationId, ctx.organizationId),
-						eq(disabledHoliday.name, input.name),
-					),
-				);
+		// Whether a row was written or removed, so a repeat call records nothing.
+		const changed = input.disabled
+			? await client
+					.insert(disabledHoliday)
+					.values({ organizationId: ctx.organizationId, name: input.name })
+					.onConflictDoNothing()
+					.returning({ id: disabledHoliday.id })
+			: await client
+					.delete(disabledHoliday)
+					.where(
+						and(
+							eq(disabledHoliday.organizationId, ctx.organizationId),
+							eq(disabledHoliday.name, input.name),
+						),
+					)
+					.returning({ id: disabledHoliday.id });
+		if (changed.length > 0) {
+			await recordAudit(ctx, {
+				kind: input.disabled ? "holiday.disabled" : "holiday.enabled",
+				target: { type: "holiday", id: input.name, label: input.name },
+			});
 		}
 		// The Ctx memo would otherwise answer this same request from the picture
 		// as it was before the toggle.

@@ -38,6 +38,7 @@ import {
 	systemPrompt,
 	toolDefinitions,
 } from "./assistant-tools";
+import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
 import { safeErrorMessage } from "./error-message";
 import type { Ctx } from "./types";
@@ -277,6 +278,12 @@ export type AssistantSettingsView = {
 	connectedAt: Date | null;
 };
 
+const ASSISTANT_SETTINGS_TARGET = (ctx: Ctx) => ({
+	type: "assistant_settings",
+	id: ctx.organizationId,
+	label: "Assistant settings",
+});
+
 const settings = {
 	/** Never returns the key — see the note on the table. Readable by any member
 	 *  because the chat page needs to know whether to render itself; only the
@@ -335,13 +342,24 @@ const settings = {
 					updatedAt: new Date(),
 				})
 				.where(eq(assistantSettings.id, existing.id));
-			return { configured: true };
+		} else {
+			await db.insert(assistantSettings).values({
+				organizationId: ctx.organizationId,
+				apiKey,
+				defaultModel: input.defaultModel,
+				connectedByUserId: ctx.userId,
+			});
 		}
-		await db.insert(assistantSettings).values({
-			organizationId: ctx.organizationId,
-			apiKey,
-			defaultModel: input.defaultModel,
-			connectedByUserId: ctx.userId,
+		// `apiKey` is redacted by `diffFields`; a sealed key differs on every
+		// seal, so a reconnect always reads as a change, which it is.
+		await recordAudit(ctx, {
+			kind: "assistant_settings.updated",
+			target: ASSISTANT_SETTINGS_TARGET(ctx),
+			changes: diffFields(
+				existing,
+				{ apiKey, defaultModel: input.defaultModel, enabled: true },
+				["apiKey", "defaultModel", "enabled"],
+			),
 		});
 		return { configured: true };
 	},
@@ -365,6 +383,18 @@ const settings = {
 			.update(assistantSettings)
 			.set(patch)
 			.where(eq(assistantSettings.id, existing.id));
+		const changes = diffFields(existing, { ...existing, ...patch }, [
+			"defaultModel",
+			"enabled",
+			"systemPrompt",
+		]);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "assistant_settings.updated",
+				target: ASSISTANT_SETTINGS_TARGET(ctx),
+				changes,
+			});
+		}
 		return { ok: true };
 	},
 
@@ -379,9 +409,18 @@ const settings = {
 	 *  revoke from inside the app. */
 	disconnect: async (ctx: Ctx) => {
 		await requireAdmin(ctx);
-		await db
+		const [removed] = await db
 			.delete(assistantSettings)
-			.where(eq(assistantSettings.organizationId, ctx.organizationId));
+			.where(eq(assistantSettings.organizationId, ctx.organizationId))
+			.returning({ apiKey: assistantSettings.apiKey });
+		if (removed) {
+			await recordAudit(ctx, {
+				kind: "assistant_settings.updated",
+				target: ASSISTANT_SETTINGS_TARGET(ctx),
+				changes: diffFields(removed, { apiKey: null }, ["apiKey"]),
+				details: { disconnected: true },
+			});
+		}
 		return { ok: true };
 	},
 

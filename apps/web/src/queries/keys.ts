@@ -46,6 +46,7 @@ export const queryKeys = (org: string) =>
 		access: ["access", org],
 		account: ["account", org],
 		assistant: ["assistant", org],
+		audit: ["audit", org],
 		clients: ["clients", org],
 		compliance: ["compliance", org],
 		dayAssembly: ["day-assembly", org],

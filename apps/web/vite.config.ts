@@ -72,7 +72,8 @@ const WORKER_SCRIPT = fileURLToPath(
 // a colleague. The upload sweep DELETES from the bucket, and a local .env can
 // pair a database with a bucket that was never its own. The timer sweep drops
 // somebody's running stopwatch and DMs them about it, and a measurement is not
-// recoverable. The automation sweep is
+// recoverable. The audit sweep deletes audit rows, and a shared database's
+// history is not yours to trim. The automation sweep is
 // the one that has to run locally anyway, since it is what replaced the
 // write-on-read engines.
 //
@@ -83,6 +84,7 @@ const DEV_WORKER_JOB_DEFAULTS = {
 	SLACK_REMINDERS_ENABLED: "false",
 	TIMER_SWEEP_ENABLED: "false",
 	UPLOAD_SWEEP_ENABLED: "false",
+	AUDIT_SWEEP_ENABLED: "false",
 } satisfies Record<string, string>;
 
 function devWorker(): Plugin {

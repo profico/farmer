@@ -519,6 +519,27 @@
       "when": 1790773380210,
       "tag": "0073_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1790773566174,
+      "tag": "0074_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1790773570376,
+      "tag": "0075_audit_event_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1790776717333,
+      "tag": "0076_audit_failed_sign_in_index",
+      "breakpoints": true
     }
   ]
 }

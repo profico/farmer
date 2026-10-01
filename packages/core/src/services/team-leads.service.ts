@@ -5,6 +5,7 @@ import { member, user } from "../db/schema/auth";
 import { memberProfile, teamLeadPerson } from "../db/schema/people";
 import type { SetTeamLeadPeopleInput } from "../schema/team-leads";
 import { AccessError } from "./access.service";
+import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
@@ -89,6 +90,7 @@ export const teamLeadsService = {
 				"An archived person cannot be on a Team Lead's list",
 			);
 		}
+		const previous = await teamLeadsService.listPeople(ctx, input.leadUserId);
 		await db.transaction(async (tx) => {
 			await tx
 				.delete(teamLeadPerson)
@@ -108,7 +110,29 @@ export const teamLeadsService = {
 				);
 			}
 		});
-		return teamLeadsService.listPeople(ctx, input.leadUserId);
+		const current = await teamLeadsService.listPeople(ctx, input.leadUserId);
+		const changes = diffFields(
+			{ people: previous.map((p) => p.name).sort() },
+			{ people: current.map((p) => p.name).sort() },
+			["people"],
+		);
+		if (changes) {
+			const lead = await db.query.user.findFirst({
+				where: eq(user.id, input.leadUserId),
+				columns: { name: true },
+			});
+			await recordAudit(ctx, {
+				kind: "team_lead.people_changed",
+				target: {
+					type: "member",
+					id: input.leadUserId,
+					label: lead?.name ?? null,
+				},
+				subjectUserId: input.leadUserId,
+				changes,
+			});
+		}
+		return current;
 	},
 
 	/** Drop a person from every Team Lead list in the organization, as lead and

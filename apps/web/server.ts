@@ -74,9 +74,9 @@ import path from "node:path";
 // Type-only, so this erases at runtime and the postgres client is still only
 // loaded by the deferred import inside startBackgroundSchedulers().
 import type { SchedulerHandle } from "@farmer/core/jobs";
+import { SOCKET_ADDRESS_HEADER } from "@farmer/core/lib/client-address";
 
 import { acceptsGzip } from "./src/lib/accept-encoding.ts";
-import { SOCKET_ADDRESS_HEADER } from "./src/lib/client-address.ts";
 import { applySecurityHeaders } from "./src/lib/security-headers.ts";
 
 // Configuration

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { orgSettings } from "../db/schema/settings";
+import { diffFields, recordAudit } from "./audit";
 import { requireAdmin } from "./context";
 import type { Ctx } from "./types";
 
@@ -40,6 +41,7 @@ export const orgSettingsService = {
 
 	update: async (ctx: Ctx, patch: Partial<OrgSettings>) => {
 		await requireAdmin(ctx);
+		const before = await orgSettingsService.get(ctx);
 		// `undefined` means "not in this patch"; `null` is a real value here and
 		// means "clear the lock", so the two cannot be collapsed.
 		const updateSet: Partial<typeof orgSettings.$inferInsert> = {
@@ -65,5 +67,21 @@ export const orgSettingsService = {
 				target: orgSettings.organizationId,
 				set: updateSet,
 			});
+		const after = await orgSettingsService.get(ctx);
+		const changes = diffFields(before, after, [
+			"trackingTolerancePct",
+			"automationLockedThrough",
+		]);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "org_settings.updated",
+				target: {
+					type: "org_settings",
+					id: ctx.organizationId,
+					label: "Tracking settings",
+				},
+				changes,
+			});
+		}
 	},
 };

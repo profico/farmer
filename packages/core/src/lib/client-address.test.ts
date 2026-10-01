@@ -6,7 +6,7 @@ import {
 	resetClientAddressWarningForTests,
 	SOCKET_ADDRESS_HEADER,
 	trustedIpHeader,
-} from "./client-address.ts";
+} from "./client-address";
 
 const spoofed = {
 	"cf-connecting-ip": "203.0.113.7",

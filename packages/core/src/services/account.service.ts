@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { googleCredentials, signInProviders } from "../auth/sign-in-methods";
 import { db } from "../db";
 import { account } from "../db/schema/auth";
+import { recordSecurityEvent } from "./audit";
 import type { Ctx } from "./types";
 
 // Sign-in methods = how the user authenticates, distinct from the GitHub/Google
@@ -65,10 +66,24 @@ export const accountService = {
 				"Set a password before disconnecting Google — it's your only way to sign in.",
 			);
 		}
-		await db
+		const removed = await db
 			.delete(account)
 			.where(
 				and(eq(account.userId, ctx.userId), eq(account.providerId, "google")),
-			);
+			)
+			.returning({ id: account.id });
+		// The one place a sign-in method is disconnected. better-auth's
+		// `/unlink-account` is reached only for the GitHub and Google Calendar
+		// grants, which are integrations, not ways in (see `account.linked` in
+		// `auth/index.ts`, which skips them for the same reason).
+		for (const row of removed) {
+			await recordSecurityEvent({
+				kind: "account.unlinked",
+				subjectUserId: ctx.userId,
+				actorUserId: ctx.userId,
+				actor: ctx.actor,
+				target: { type: "account", id: row.id, label: "google" },
+			});
+		}
 	},
 };

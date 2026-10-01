@@ -24,6 +24,7 @@ import type {
 	UpdateProjectInput,
 } from "../schema/projects";
 import { AccessError, type Access, accessService } from "./access.service";
+import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, invalidateCtxAccess } from "./context";
 import { emitEvent, projectWebhookPayload } from "./events";
 import { assertProjectInOrg, assertUserInOrg } from "./guards";
@@ -31,6 +32,48 @@ import { membersService } from "./members.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
 import { assertOwnUpload } from "./uploads.service";
+
+/** The columns of a project the audit log compares. */
+const AUDITED_PROJECT_FIELDS = [
+	"name",
+	"clientId",
+	"code",
+	"type",
+	"icon",
+	"openToOrg",
+	"budgetSeconds",
+	"budgetAmount",
+	"hourlyPrice",
+] as const;
+
+const projectTarget = (row: { id: string; name: string }) => ({
+	type: "project",
+	id: row.id,
+	label: row.name,
+});
+
+/** Archive and restore share one write, so they share one recording. */
+const setProjectStatus = async (
+	ctx: Ctx,
+	projectId: string,
+	status: "active" | "archived",
+) => {
+	const [row] = await db
+		.update(project)
+		.set({ status, updatedAt: new Date() })
+		.where(
+			and(
+				eq(project.id, projectId),
+				eq(project.organizationId, ctx.organizationId),
+			),
+		)
+		.returning({ id: project.id, name: project.name });
+	if (!row) return;
+	await recordAudit(ctx, {
+		kind: status === "archived" ? "project.archived" : "project.restored",
+		target: projectTarget(row),
+	});
+};
 
 export type ProjectMemberRow = {
 	userId: string;
@@ -448,6 +491,15 @@ export const projectsService = {
 			}
 		}
 
+		const before = await db.query.projectMember.findFirst({
+			where: and(
+				eq(projectMember.organizationId, ctx.organizationId),
+				eq(projectMember.projectId, input.projectId),
+				eq(projectMember.userId, input.userId),
+			),
+			columns: { role: true, active: true },
+		});
+
 		await db
 			.insert(projectMember)
 			.values({
@@ -468,6 +520,26 @@ export const projectsService = {
 		// The assignment may be the caller's own, which would leave the memoized
 		// authorization picture describing the world before this write.
 		invalidateCtxAccess(ctx);
+
+		const [named] = await db
+			.select({ projectName: project.name, personName: user.name })
+			.from(project)
+			.innerJoin(user, eq(user.id, input.userId))
+			.where(eq(project.id, input.projectId));
+		await recordAudit(ctx, {
+			kind: "project.member_assigned",
+			target: {
+				type: "project",
+				id: input.projectId,
+				label: named?.projectName ?? null,
+			},
+			subjectUserId: input.userId,
+			changes:
+				before?.active && before.role !== input.role
+					? { role: { from: before.role, to: input.role } }
+					: null,
+			details: { role: input.role, person: named?.personName ?? null },
+		});
 	},
 
 	/** Deactivates rather than deletes: the person stays on historical close
@@ -503,7 +575,7 @@ export const projectsService = {
 			}
 		}
 
-		await db
+		const [removed] = await db
 			.update(projectMember)
 			.set({ active: false, updatedAt: new Date() })
 			.where(
@@ -512,9 +584,28 @@ export const projectsService = {
 					eq(projectMember.projectId, input.projectId),
 					eq(projectMember.userId, input.userId),
 				),
-			);
+			)
+			.returning({ role: projectMember.role });
 
 		invalidateCtxAccess(ctx);
+
+		if (removed) {
+			const [named] = await db
+				.select({ projectName: project.name, personName: user.name })
+				.from(project)
+				.innerJoin(user, eq(user.id, input.userId))
+				.where(eq(project.id, input.projectId));
+			await recordAudit(ctx, {
+				kind: "project.member_removed",
+				target: {
+					type: "project",
+					id: input.projectId,
+					label: named?.projectName ?? null,
+				},
+				subjectUserId: input.userId,
+				details: { role: removed.role, person: named?.personName ?? null },
+			});
+		}
 	},
 
 	create: async (ctx: Ctx, input: CreateProjectInput) => {
@@ -570,6 +661,11 @@ export const projectsService = {
 		await emitEvent(ctx, "project.created", () =>
 			projectWebhookPayload(ctx, created.id),
 		);
+		await recordAudit(ctx, {
+			kind: "project.created",
+			target: projectTarget(created),
+			details: { type: created.type },
+		});
 		return projectsService.get(ctx, created.id);
 	},
 
@@ -583,7 +679,13 @@ export const projectsService = {
 		// A patch: only the keys the caller sent are written, so a rename doesn't
 		// have to carry the budget, the client and the task subset along with it
 		// just to keep them. See updateProjectInput.
-		await db.transaction(async (tx) => {
+		const changes = await db.transaction(async (tx) => {
+			const before = await tx.query.project.findFirst({
+				where: and(
+					eq(project.id, input.projectId),
+					eq(project.organizationId, ctx.organizationId),
+				),
+			});
 			if (input.clientId !== undefined) {
 				const ownedClient = await tx.query.client.findFirst({
 					where: and(
@@ -617,7 +719,7 @@ export const projectsService = {
 				patch.hourlyPrice = input.hourlyPrice ?? null;
 			}
 
-			await tx
+			const [after] = await tx
 				.update(project)
 				.set(patch)
 				// The organization again, not only the id: `assertProjectInOrg`
@@ -628,12 +730,24 @@ export const projectsService = {
 						eq(project.id, input.projectId),
 						eq(project.organizationId, ctx.organizationId),
 					),
-				);
+				)
+				.returning();
+			return {
+				name: after?.name ?? before?.name ?? "",
+				diff: diffFields(before, after, AUDITED_PROJECT_FIELDS),
+			};
 		});
 
 		// Opening or closing the project changes what the caller may track on,
 		// and the memoized picture was resolved before the write.
 		if (input.openToOrg !== undefined) invalidateCtxAccess(ctx);
+		if (changes.diff) {
+			await recordAudit(ctx, {
+				kind: "project.updated",
+				target: projectTarget({ id: input.projectId, name: changes.name }),
+				changes: changes.diff,
+			});
+		}
 		await emitEvent(ctx, "project.updated", () =>
 			projectWebhookPayload(ctx, input.projectId),
 		);
@@ -645,29 +759,13 @@ export const projectsService = {
 	archive: async (ctx: Ctx, projectId: string) => {
 		const access = await ctxAccess(ctx);
 		access.assertCanManageProject(projectId);
-		await db
-			.update(project)
-			.set({ status: "archived", updatedAt: new Date() })
-			.where(
-				and(
-					eq(project.id, projectId),
-					eq(project.organizationId, ctx.organizationId),
-				),
-			);
+		await setProjectStatus(ctx, projectId, "archived");
 	},
 
 	unarchive: async (ctx: Ctx, projectId: string) => {
 		const access = await ctxAccess(ctx);
 		access.assertCanManageProject(projectId);
-		await db
-			.update(project)
-			.set({ status: "active", updatedAt: new Date() })
-			.where(
-				and(
-					eq(project.id, projectId),
-					eq(project.organizationId, ctx.organizationId),
-				),
-			);
+		await setProjectStatus(ctx, projectId, "active");
 	},
 
 	/** The tasks selectable on this project — its cherry-picked subset. */

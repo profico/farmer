@@ -62,6 +62,7 @@ import {
 import {
 	activeNavTo,
 	ASSISTANT_ITEM,
+	AUDIT_LOG_ITEM,
 	isNavItemActive,
 	isNavItemHere,
 	type NavItem,
@@ -205,12 +206,13 @@ export function AppSidebar({
 		isPlatformAdmin,
 	});
 
-	// The nav's own rows: the four work screens, then the assistant where it is
-	// available. Reports joins the work group rather than standing alone — a
+	// The nav's own rows: the four work screens, the audit log for an admin,
+	// then the assistant where it is available. Reports joins the work group rather than standing alone — a
 	// report is read off the same work the three rows above it are about.
 	const navItems: NavItem[] = [
 		...WORK_ITEMS,
 		REPORTS_ITEM,
+		...(isAdmin ? [AUDIT_LOG_ITEM] : []),
 		...(assistantAvailable ? [ASSISTANT_ITEM] : []),
 	];
 

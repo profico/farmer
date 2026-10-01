@@ -29,6 +29,7 @@ import type {
 	SetMemberTypeInput,
 	MemberTypeValue,
 } from "../schema/members";
+import { diffFields, recordAudit } from "./audit";
 import { ctxDb, ctxTimezone, requireAdmin } from "./context";
 import { emitEvent, memberWebhookPayload } from "./events";
 import { assertUserInOrg } from "./guards";
@@ -149,6 +150,15 @@ const markEmailVerified = (userId: string) =>
 		.update(user)
 		.set({ emailVerified: true, updatedAt: new Date() })
 		.where(eq(user.id, userId));
+
+/** The audit target for a person: their name now, kept on the row. */
+const memberTarget = async (userId: string) => {
+	const row = await db.query.user.findFirst({
+		where: eq(user.id, userId),
+		columns: { name: true },
+	});
+	return { type: "member", id: userId, label: row?.name ?? null };
+};
 
 export const membersService = {
 	/** The caller's role in the org, or null when they may not enter it: no
@@ -442,7 +452,7 @@ export const membersService = {
 		await requireAdmin(ctx);
 		await assertUserInOrg(ctx, input.userId);
 
-		await db.transaction(async (tx) => {
+		const { before, after } = await db.transaction(async (tx) => {
 			const current = await tx.query.memberTypeHistory.findFirst({
 				where: and(
 					eq(memberTypeHistory.organizationId, ctx.organizationId),
@@ -456,16 +466,16 @@ export const membersService = {
 			// override would litter the history with zero-length rows (which the
 			// mth_range_valid CHECK rejects anyway). Same date only: a different one
 			// is a real change of history and falls through.
+			const next = {
+				type: input.type,
+				expectedSecondsOverride: input.expectedSecondsOverride ?? null,
+			};
 			if (current && current.effectiveFrom === input.effectiveFrom) {
 				await tx
 					.update(memberTypeHistory)
-					.set({
-						type: input.type,
-						expectedSecondsOverride: input.expectedSecondsOverride ?? null,
-						updatedAt: new Date(),
-					})
+					.set({ ...next, updatedAt: new Date() })
 					.where(eq(memberTypeHistory.id, current.id));
-				return;
+				return { before: current, after: next };
 			}
 
 			// Everything from `effectiveFrom` on is now the new type, so any segment
@@ -508,7 +518,22 @@ export const membersService = {
 				expectedSecondsOverride: input.expectedSecondsOverride ?? null,
 				effectiveFrom: input.effectiveFrom,
 			});
+			return { before: current, after: next };
 		});
+
+		const changes = diffFields(before, after, [
+			"type",
+			"expectedSecondsOverride",
+		]);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "member.type_changed",
+				target: await memberTarget(input.userId),
+				subjectUserId: input.userId,
+				changes,
+				details: { effectiveFrom: input.effectiveFrom },
+			});
+		}
 	},
 
 	/** The people who have left. Every forward-looking surface — compliance, the
@@ -559,6 +584,7 @@ export const membersService = {
 		if (archived && userId === ctx.userId) {
 			throw new Error("You cannot archive yourself");
 		}
+		const target = await memberTarget(userId);
 		const archivedAt = archived ? new Date() : null;
 		await db
 			.insert(memberProfile)
@@ -576,8 +602,18 @@ export const membersService = {
 			await emitEvent(ctx, "member.archived", () =>
 				memberWebhookPayload(ctx, userId),
 			);
+			await recordAudit(ctx, {
+				kind: "member.archived",
+				target,
+				subjectUserId: userId,
+			});
 			return { emailConfirmed: false };
 		}
+		await recordAudit(ctx, {
+			kind: "member.restored",
+			target,
+			subjectUserId: userId,
+		});
 
 		// Restoring a person who has never signed in is where an admin confirms
 		// an address an import guessed. Silent when that is not allowed: the
@@ -619,6 +655,11 @@ export const membersService = {
 				);
 			case null:
 				await markEmailVerified(userId);
+				await recordAudit(ctx, {
+					kind: "member.email_confirmed",
+					target: await memberTarget(userId),
+					subjectUserId: userId,
+				});
 				return { emailConfirmed: true };
 		}
 	},
@@ -626,6 +667,13 @@ export const membersService = {
 	setStartDate: async (ctx: Ctx, userId: string, startDate: string | null) => {
 		await requireAdmin(ctx);
 		await assertUserInOrg(ctx, userId);
+		const before = await db.query.memberProfile.findFirst({
+			where: and(
+				eq(memberProfile.organizationId, ctx.organizationId),
+				eq(memberProfile.userId, userId),
+			),
+			columns: { startDate: true },
+		});
 		await db
 			.insert(memberProfile)
 			.values({ organizationId: ctx.organizationId, userId, startDate })
@@ -633,6 +681,15 @@ export const membersService = {
 				target: [memberProfile.organizationId, memberProfile.userId],
 				set: { startDate, updatedAt: new Date() },
 			});
+		const changes = diffFields(before, { startDate }, ["startDate"]);
+		if (changes) {
+			await recordAudit(ctx, {
+				kind: "member.start_date_changed",
+				target: await memberTarget(userId),
+				subjectUserId: userId,
+				changes,
+			});
+		}
 	},
 
 	/** Type history for one person, newest first — the audit trail behind
