@@ -2,7 +2,7 @@ import { timeKeyInTz } from "@farmer/core/lib/time";
 import { TrayIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 
 import { GoogleCalendarMark } from "#/components/google-calendar-mark.tsx";
@@ -505,6 +505,7 @@ function UnfiledGroupRow({
 	onToggleEntry: (id: string) => void;
 }) {
 	const [expanded, setExpanded] = useState(false);
+	const checkboxId = useId();
 	const allIn = group.entries.every((e) => selectedIds.has(e.id));
 	const someIn = !allIn && group.entries.some((e) => selectedIds.has(e.id));
 	const isRecurring = group.entries.length > 1;
@@ -526,14 +527,22 @@ function UnfiledGroupRow({
 			    delete tombstones a synced meeting, so the calendar never offered it
 			    again. "Show dates" is the one control still inside, and it cancels
 			    the label's default so it does not tick the box on the way to its
-			    own handler. */}
+			    own handler.
+
+			    The label names the box with `htmlFor`. Without it, the control of a
+			    label is its first labelable descendant, and a button is labelable.
+			    "Show dates" comes before the box, so a click on the title of a
+			    recurring group opened the dates and did not tick the box. */}
 			<div
 				className={cn(
 					"flex items-center gap-2 rounded-md pr-3 transition-colors duration-(--dur-fast) hover:bg-muted",
 					allIn && "bg-muted/60",
 				)}
 			>
-				<label className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 py-2.5 pl-6">
+				<label
+					htmlFor={checkboxId}
+					className="flex min-w-0 flex-1 cursor-pointer items-center gap-4 py-2.5 pl-6"
+				>
 					{group.fromCalendar ? (
 						<GoogleCalendarMark />
 					) : (
@@ -570,6 +579,7 @@ function UnfiledGroupRow({
 						{formatHoursShort(group.seconds)}
 					</span>
 					<input
+						id={checkboxId}
 						type="checkbox"
 						className="size-4 shrink-0 cursor-pointer accent-primary"
 						checked={allIn}
