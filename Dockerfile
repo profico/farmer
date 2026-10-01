@@ -144,14 +144,7 @@ USER bun
 EXPOSE 3000
 
 # Liveness/readiness: the server must answer HTTP, not just have a live process.
-#
-# Docker runs the first probe one interval after the container starts, so the
-# interval is the earliest time a deploy can see a healthy container. The start
-# period does not delay a probe. It only keeps a failed probe out of the retry
-# count. The entrypoint runs the migrations and the seed before the server
-# starts, so the retries are the budget for a slow start: 5s + 12 x 5s is
-# approximately 65 seconds before the container is unhealthy. Do not lower the
-# retries with the interval, or a long migration fails the deploy.
+# The retries are the budget for a slow migration. Keep them high.
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=12 \
 	CMD bun -e "fetch('http://localhost:'+(process.env.PORT??3000)).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
