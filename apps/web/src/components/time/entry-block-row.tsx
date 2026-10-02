@@ -28,11 +28,15 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { formatDateKeyShort } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { useHeightTransition } from "#/lib/motion.ts";
+import {
+	type DeletedTimeEntry,
+	isRestorable,
+	restoreTimeEntries,
+} from "#/lib/restore-time-entries.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import {
 	acknowledgeCalendarChange,
-	createTimeEntry,
 	deleteTimeEntry,
 	setTimeEntryOvertime,
 	updateTimeEntryDescription,
@@ -326,35 +330,11 @@ export function EntryBlockRow({
 	});
 
 	// Re-creates a just-deleted entry from its server snapshot, used by the undo
-	// toast. Under the duration-only model this is a straight field copy — there
-	// are no timestamps to reconstruct.
-	const restore = async (deleted: {
-		projectId: string | null;
-		taskId: string;
-		description: string;
-		date: string;
-		durationSeconds: number;
-		overtime: boolean;
-		meetingUrl: string | null;
-		calendarEventId: string | null;
-	}) => {
+	// toast. The copy itself is `lib/restore-time-entries.ts`, shared with the
+	// unfiled-entries dialog, which deletes the same rows from its own list.
+	const restore = async (deleted: DeletedTimeEntry) => {
 		try {
-			await createTimeEntry({
-				data: {
-					taskId: deleted.taskId,
-					projectId: deleted.projectId ?? undefined,
-					description: deleted.description || undefined,
-					date: deleted.date,
-					durationSeconds: deleted.durationSeconds,
-					overtime: deleted.overtime,
-					fillsDay: false,
-					// Carried so a restored meeting keeps its link — and so the service
-					// clears the tombstone the delete just wrote, which is what makes
-					// undo work at all for a synced meeting.
-					meetingUrl: deleted.meetingUrl ?? undefined,
-					calendarEventId: deleted.calendarEventId ?? undefined,
-				},
-			});
+			await restoreTimeEntries([deleted]);
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
@@ -386,18 +366,9 @@ export function EntryBlockRow({
 			await queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).timeEntries],
 			});
-			// Fill blocks are derived, and a rule-generated entry leaves a skip behind
-			// (re-creating it as a manual copy would double up) — neither can be
-			// restored by re-creating a row, so neither offers undo.
-			//
-			// A calendar-linked entry USED to be in that list, because deleting one
-			// writes a tombstone the sync engine honours forever. It offers undo now:
-			// re-creating an entry with its `calendarEventId` clears that tombstone
-			// (timeEntriesService.create), so the restore is real and the meeting is
-			// not lost to one misclick.
-			const undoable =
-				deleted && !deleted.fillsDay && !deleted.generatedFromRuleId;
-			if (undoable) {
+			// `isRestorable` says which rows undo can put back, and why — a fill
+			// block and a rule-generated entry cannot, a calendar meeting can.
+			if (deleted && isRestorable(deleted)) {
 				toast("Entry deleted", {
 					action: { label: "Undo", onClick: () => restore(deleted) },
 				});
