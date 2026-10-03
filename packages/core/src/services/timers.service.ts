@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { organization } from "../db/schema/auth";
 import { project, task, timeEntry } from "../db/schema/domain";
@@ -109,6 +109,17 @@ const elapsedOf = (
 	return Math.max(0, row.accumulatedSeconds + Math.round(current));
 };
 
+// A timer that continues an entry reads the entry's project, task and note on
+// every read, as it reads the entry's hours. The copy in `running_timer` was
+// taken at start, and an edit to the entry while the clock runs would be lost
+// when the stale copy was confirmed over it (issue #121). The entry is the
+// one source while it exists. The copy is used when no entry is joined.
+const projectIdOf = sql<
+	string | null
+>`case when ${timeEntry.id} is null then ${runningTimer.projectId} else ${timeEntry.projectId} end`;
+const taskIdOf = sql<string>`coalesce(${timeEntry.taskId}, ${runningTimer.taskId})`;
+const descriptionOf = sql<string>`coalesce(${timeEntry.description}, ${runningTimer.description})`;
+
 const rowOf = async (ctx: Ctx, userId: string) =>
 	ctxDb(ctx)
 		.select({
@@ -116,13 +127,13 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 			organizationId: runningTimer.organizationId,
 			organizationSlug: organization.slug,
 			organizationName: organization.name,
-			projectId: runningTimer.projectId,
+			projectId: projectIdOf.as("project_id"),
 			projectName: project.name,
-			taskId: runningTimer.taskId,
+			taskId: taskIdOf.as("task_id"),
 			taskName: task.name,
 			taskIsAbsence: task.isAbsence,
 			taskSystemKey: task.systemKey,
-			description: runningTimer.description,
+			description: descriptionOf.as("description"),
 			timeEntryId: timeEntry.id,
 			entryDate: timeEntry.date,
 			entryDurationSeconds: timeEntry.durationSeconds,
@@ -133,9 +144,9 @@ const rowOf = async (ctx: Ctx, userId: string) =>
 		})
 		.from(runningTimer)
 		.innerJoin(organization, eq(organization.id, runningTimer.organizationId))
-		.innerJoin(task, eq(task.id, runningTimer.taskId))
-		.leftJoin(project, eq(project.id, runningTimer.projectId))
 		.leftJoin(timeEntry, eq(timeEntry.id, runningTimer.timeEntryId))
+		.innerJoin(task, eq(task.id, taskIdOf))
+		.leftJoin(project, eq(project.id, projectIdOf))
 		.where(eq(runningTimer.userId, userId))
 		.limit(1);
 
@@ -313,6 +324,13 @@ export const timersService = {
 		if (!running.here) {
 			throw new Error(
 				`This timer belongs to ${running.organizationName}. Change it there.`,
+			);
+		}
+		// The entry owns these fields while the timer continues it, so a change
+		// here would be invisible on the next read.
+		if (running.timeEntryId) {
+			throw new Error(
+				"This timer continues an entry. Edit the entry to change its project, task or note.",
 			);
 		}
 

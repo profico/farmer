@@ -643,6 +643,122 @@ describe("continuing an entry (issue #107)", () => {
 		expect(view.elapsedSeconds).toBe(2 * HOUR + 15 * 60);
 	});
 
+	// Issue #121: the timer kept the note it copied at start, so the stale
+	// copy was shown, sent back by Stop and written over the edited entry.
+	test("shows the note, project and task the entry holds now", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({
+				description: "Edited while running",
+				projectId: null,
+				taskId: breakTaskId,
+			})
+			.where(eq(timeEntry.id, entry.id));
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(15 * 60) }),
+			"the running timer",
+		);
+		expect(view.description).toBe("Edited while running");
+		expect(view.projectId).toBeNull();
+		expect(view.projectName).toBeNull();
+		expect(view.taskId).toBe(breakTaskId);
+		expect(view.taskName).toBe("Break");
+	});
+
+	test("keeps a note edited while the clock runs when the timer stops", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ description: "Edited while running" })
+			.where(eq(timeEntry.id, entry.id));
+
+		// Both clients send back what the timer read, as the Stop form shows it.
+		const view = present(
+			await timersService.get(ctx(), { now: later(30 * 60) }),
+			"the running timer",
+		);
+		await timersService.confirm(ctx(), {
+			date: "2026-08-10",
+			projectId: view.projectId,
+			taskId: view.taskId,
+			description: view.description,
+			durationSeconds: view.snappedSeconds,
+			overtime: false,
+		});
+
+		const [row] = await db
+			.select()
+			.from(timeEntry)
+			.where(eq(timeEntry.id, entry.id));
+		expect(present(row, "the continued entry").description).toBe(
+			"Edited while running",
+		);
+	});
+
+	test("an edit made while the clock was held is kept as well", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await timersService.pause(ctx(), { now: later(10 * 60) });
+		await db
+			.update(timeEntry)
+			.set({ description: "Edited while held" })
+			.where(eq(timeEntry.id, entry.id));
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(HOUR) }),
+			"the held timer",
+		);
+		expect(view.paused).toBe(true);
+		expect(view.description).toBe("Edited while held");
+	});
+
+	test("an emptied note on the entry reads as empty, not as the copy", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ description: "" })
+			.where(eq(timeEntry.id, entry.id));
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(60) }),
+			"the running timer",
+		);
+		expect(view.description).toBe("");
+	});
+
+	test("refuses to change the fields of a timer that continues an entry", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+
+		await expect(
+			timersService.update(
+				ctx(),
+				{ description: "Typed on the timer" },
+				{ now: later(60) },
+			),
+		).rejects.toThrow(/continues an entry/);
+	});
+
+	test("a timer started without an entry still reads its own note", async () => {
+		await startDev();
+		await timersService.update(
+			ctx(),
+			{ description: "Changed" },
+			{ now: later(60) },
+		);
+
+		const view = present(
+			await timersService.get(ctx(), { now: later(120) }),
+			"the running timer",
+		);
+		expect(view.description).toBe("Changed");
+	});
+
 	test("an entry deleted while the clock ran becomes a new one", async () => {
 		const entry = await insertEntry();
 		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });

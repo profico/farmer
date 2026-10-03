@@ -39,7 +39,7 @@ import { formatClock } from "#/lib/format-hours.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
-import { timerSettingsQuery } from "#/queries/timer.ts";
+import { timerQuery, timerSettingsQuery } from "#/queries/timer.ts";
 import type { getTimer } from "#/server/timer.ts";
 import {
 	confirmTimer,
@@ -384,12 +384,29 @@ export function StopTimerDialog({
 		}
 		if (filled.current) return;
 		filled.current = true;
-		setDuration(formatClock(timer.snappedSeconds));
-		setDate(timer.entryDate ?? dayKeyInTz(timer.startedAt, timezone));
-		setProjectId(timer.projectId);
-		setTaskId(timer.taskId);
-		setDescription(timer.description);
-	}, [open, timer, timezone]);
+		const fill = (current: RunningTimer) => {
+			setDuration(formatClock(current.snappedSeconds));
+			setDate(current.entryDate ?? dayKeyInTz(current.startedAt, timezone));
+			setProjectId(current.projectId);
+			setTaskId(current.taskId);
+			setDescription(current.description);
+		};
+		fill(timer);
+		// A continued entry can be edited while the clock runs, and nothing
+		// refreshes the timer query when it is. Read the timer again, so the
+		// form starts from the entry as it is now and not as it was at start
+		// (issue #121). The answer comes in a few milliseconds, before a
+		// person can type.
+		if (timer.timeEntryId == null) return;
+		void queryClient
+			.refetchQueries({ queryKey: [...queryKeys(orgSlug).timer] })
+			.then(() => {
+				const fresh = queryClient.getQueryData(timerQuery(orgSlug).queryKey);
+				if (fresh && fresh.timeEntryId === timer.timeEntryId) {
+					fill(fresh);
+				}
+			});
+	}, [open, timer, timezone, queryClient, orgSlug]);
 
 	const projectsQ = useQuery({ ...myProjectsQuery(orgSlug), enabled: open });
 	const tasksQ = useQuery({
