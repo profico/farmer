@@ -534,11 +534,14 @@ export const sweepAuditLog = async ({
 }: { now?: Date } = {}): Promise<number> => {
 	// A data-modifying CTE, so the database counts the rows. A `returning`
 	// list would load every deleted id into memory.
+	// The raw template gets an ISO string, not a Date. The postgres-js
+	// driver cannot serialize a Date inside a raw sql template. PGLite can,
+	// so the tests do not show it.
 	const deleted = db.$with("deleted").as(
 		db
 			.delete(auditEvent)
 			.where(
-				sql`${auditEvent.occurredAt} < ${now}::timestamptz - make_interval(days => coalesce(
+				sql`${auditEvent.occurredAt} < ${now.toISOString()}::timestamptz - make_interval(days => coalesce(
 				(select ${orgSettings.auditRetentionDays} from ${orgSettings}
 					where ${orgSettings.organizationId} = ${auditEvent.organizationId}),
 				${DEFAULT_AUDIT_RETENTION_DAYS}

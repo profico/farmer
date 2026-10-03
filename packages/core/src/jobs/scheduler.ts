@@ -261,7 +261,13 @@ const startIntervalScheduler = (
 			const summary = await config.run(logger);
 			logger.info(`${config.name}: ${summary}`);
 		} catch (error) {
-			logger.error(`${config.name} run failed: ${String(error)}`);
+			// A Drizzle query error has only the SQL and the parameters in its
+			// message. The real database error is in `cause`, so name it too.
+			const cause =
+				error instanceof Error && error.cause instanceof Error
+					? ` (cause: ${error.cause.message})`
+					: "";
+			logger.error(`${config.name} run failed: ${String(error)}${cause}`);
 		} finally {
 			running = false;
 			const waiters = idleWaiters;

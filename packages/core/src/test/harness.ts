@@ -15,6 +15,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 
@@ -131,4 +132,32 @@ export const present = <T>(value: T | null | undefined, what: string): T => {
 		throw new Error(`expected ${what} to be present`);
 	}
 	return value;
+};
+
+/**
+ * Run `work` and count the parameters that Drizzle built into its queries.
+ * The postgres-js driver cannot serialize a `Date` in a raw sql template,
+ * but PGLite can. A test uses this to see what the production driver would
+ * receive. A typed column has already turned its `Date` into a string at
+ * this point, so a `Date` here came from a raw template.
+ */
+export const countQueryParams = async <T>(
+	work: () => Promise<T>,
+): Promise<{ total: number; dates: number }> => {
+	const original = PgDialect.prototype.sqlToQuery;
+	const counts = { total: 0, dates: 0 };
+	PgDialect.prototype.sqlToQuery = function (this: PgDialect, ...args) {
+		const query = original.apply(this, args);
+		for (const param of query.params) {
+			counts.total += 1;
+			if (param instanceof Date) counts.dates += 1;
+		}
+		return query;
+	};
+	try {
+		await work();
+	} finally {
+		PgDialect.prototype.sqlToQuery = original;
+	}
+	return counts;
 };
