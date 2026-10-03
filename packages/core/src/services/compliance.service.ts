@@ -311,6 +311,9 @@ export type PeriodTarget = {
 	/** Working days strictly before today — the same "elapsed" the Tracking
 	 *  report counts — so a partly-worked today is never claimed early. */
 	workingDaysElapsed: number;
+	/** `workingDaysElapsed` plus today, when today is a working day. This is
+	 *  the day count that goes with `targetThroughTodaySeconds`. */
+	workingDaysThroughToday: number;
 	/** The whole period's target, or null when no target applies. */
 	targetSeconds: number | null;
 	/** Where they should be by today, from the working days elapsed above. This
@@ -469,6 +472,7 @@ export const complianceService = {
 				to: weekTo,
 				workingDays: weekDays,
 				workingDaysElapsed: weekElapsed,
+				workingDaysThroughToday: weekElapsed + todayWorks,
 				targetSeconds: weekTarget,
 				targetSoFarSeconds: weekSoFar,
 				targetThroughTodaySeconds: weekThroughToday,
@@ -486,6 +490,7 @@ export const complianceService = {
 				to: monthRange.to,
 				workingDays: report.workingDaysInMonth,
 				workingDaysElapsed: report.workingDaysElapsed,
+				workingDaysThroughToday: report.workingDaysElapsed + todayWorks,
 				targetSeconds: me?.monthTargetSeconds ?? null,
 				targetSoFarSeconds: me?.targetSeconds ?? null,
 				targetThroughTodaySeconds:

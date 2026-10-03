@@ -469,6 +469,9 @@ describe("my targets", () => {
 			// Working days strictly before Thursday: Monday to Wednesday, 3 of
 			// the week's 5 — matching the Tracking report's own elapsed count.
 			workingDaysElapsed: 3,
+			// Thursday is a working day, so it counts in the day count that
+			// goes with the goal.
+			workingDaysThroughToday: 4,
 			targetSeconds: 40 * H,
 			targetSoFarSeconds: 24 * H,
 			workSeconds: 24 * H,
@@ -484,6 +487,7 @@ describe("my targets", () => {
 			to: "2026-04-30",
 			workingDays: 22,
 			workingDaysElapsed: 11,
+			workingDaysThroughToday: 12,
 			targetSeconds: 176 * H,
 			targetSoFarSeconds: 88 * H,
 			totalSeconds: 32 * H,

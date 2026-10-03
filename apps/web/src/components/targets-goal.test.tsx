@@ -16,6 +16,7 @@ const period = (over: Partial<PeriodTarget>): PeriodTarget => ({
 	to: "2026-04-19",
 	workingDays: 5,
 	workingDaysElapsed: 0,
+	workingDaysThroughToday: 1,
 	targetSeconds: 40 * H,
 	targetSoFarSeconds: 0,
 	targetThroughTodaySeconds: 8 * H,
