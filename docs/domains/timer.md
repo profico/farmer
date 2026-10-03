@@ -155,6 +155,13 @@ through `timersService.start`, and both still end in `confirm`.
   is recomputed from the day, and would overwrite the clock. Time off cannot
   either, and `farmer continue` refuses both before it posts anything.
 
+  The entry's project, task and note are joined the same way (issue #121):
+  the copy in `running_timer` is used only once the entry is gone. The Stop
+  form and `farmer stop` send back what the read showed, so a stale copy
+  would be written over a note edited while the clock ran. For the same
+  reason `update` refuses a timer that continues an entry, and the Stop
+  dialog reads the timer again when it opens.
+
   `update` is a full-form edit, so `confirm` fills what the caller left out
   from the entry: an ABSENT `projectId` or `description` keeps the entry's,
   `null` clears the project and `""` clears the note. Both clients send what
