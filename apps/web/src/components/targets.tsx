@@ -38,9 +38,11 @@ export const TARGET_STATUS = {
 	{ label: string; tone: "positive" | "warning" | "negative" }
 >;
 
-/** "5,00 short of today's 24,00", or "1,50 ahead of today's 24,00". Read from
- *  work + time off through today, never a day booked off later in the
- *  period — the same total the Tracking report itself would show. */
+/** "5,00 short of the 24,00 due before today", or "1,50 ahead of the 24,00 due
+ *  before today". The target counts the working days before today, so the day
+ *  in progress is not in it — the same count the Tracking report uses. The
+ *  words say so, because "today's" read as the target through today. The hours
+ *  are work + time off through today, never a day booked off later. */
 export function TargetGap({ period }: { period: PeriodTarget }) {
 	if (period.targetSoFarSeconds == null) {
 		return <span className="text-muted-foreground">No target</span>;
@@ -60,7 +62,7 @@ export function TargetGap({ period }: { period: PeriodTarget }) {
 			>
 				{formatReportHours(Math.abs(delta))} {delta >= 0 ? "ahead" : "short"}
 			</span>{" "}
-			of today's {formatReportHours(period.targetSoFarSeconds)}
+			of the {formatReportHours(period.targetSoFarSeconds)} due before today
 		</span>
 	);
 }

@@ -8,6 +8,7 @@
 
 import {
 	afterAll,
+	afterEach,
 	beforeAll,
 	beforeEach,
 	describe,
@@ -547,6 +548,180 @@ describe("my targets", () => {
 		const mine = await complianceService.myTargets(ctxOf(DILIGENT), AT);
 		expect(mine.daySeconds).toBe(7 * H);
 		expect(mine.week.targetSeconds).toBe(35 * H);
+	});
+});
+
+// ── the running target ─────────────────────────────────────────────────────
+//
+// "Where you should be by today" is the working days strictly BEFORE today,
+// times a day's worth. On a Thursday that is Monday to Wednesday: 24h, not 32h.
+// The screens say "due before today" for this reason. These tests pin the
+// count at the edges where a wrong day key would move it by a day: the org
+// timezone, the first day of the week, and month, year and DST boundaries.
+describe("the running target", () => {
+	const ctxOf = (userId: string): Ctx => ({ organizationId: ORG, userId });
+	const mineAt = (iso: string) =>
+		complianceService.myTargets(ctxOf(DILIGENT), { now: new Date(iso) });
+	const setOrg = (values: { timezone?: string; weekStartsOn?: number }) =>
+		db.update(organization).set(values).where(eq(organization.id, ORG));
+
+	afterEach(async () => {
+		await setOrg({ timezone: "UTC", weekStartsOn: 1 });
+	});
+
+	test("Thursday counts Monday to Wednesday, not Thursday", async () => {
+		const mine = await mineAt("2026-04-16T12:00:00Z");
+		expect(mine.week.workingDaysElapsed).toBe(3);
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+		expect(mine.week.targetSeconds).toBe(40 * H);
+	});
+
+	test("every weekday adds one day to the target so far", async () => {
+		const expected = [
+			["2026-04-13", 0],
+			["2026-04-14", 8],
+			["2026-04-15", 16],
+			["2026-04-16", 24],
+			["2026-04-17", 32],
+			// A finished weekend counts the whole working week.
+			["2026-04-18", 40],
+			["2026-04-19", 40],
+		] as const;
+		for (const [day, hours] of expected) {
+			const mine = await mineAt(`${day}T12:00:00Z`);
+			expect(mine.week.targetSoFarSeconds).toBe(hours * H);
+		}
+	});
+
+	test("Monday has nothing due yet and nothing logged is not behind", async () => {
+		const mine = await mineAt("2026-04-13T12:00:00Z");
+		expect(mine.week.workingDaysElapsed).toBe(0);
+		expect(mine.week.targetSoFarSeconds).toBe(0);
+		expect(mine.week.totalSoFarSeconds).toBe(0);
+		expect(mine.week.status).toBe("on_track");
+	});
+
+	test("hours logged today count in the total but not in the target", async () => {
+		await logEntry(DILIGENT, "2026-04-16", devTaskId, 3 * H);
+		const mine = await mineAt("2026-04-16T12:00:00Z");
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+		expect(mine.week.totalSoFarSeconds).toBe(3 * H);
+	});
+
+	test("the org timezone decides which day is today (Europe/Zagreb)", async () => {
+		await setOrg({ timezone: "Europe/Zagreb" });
+		// 23:30 UTC on Wednesday is 01:30 on Thursday in Zagreb (UTC+2).
+		const ahead = await mineAt("2026-04-15T23:30:00Z");
+		expect(ahead.today).toBe("2026-04-16");
+		expect(ahead.week.targetSoFarSeconds).toBe(24 * H);
+		// 22:30 UTC on Wednesday is still Thursday 00:30 there; 21:30 UTC is not.
+		const behind = await mineAt("2026-04-15T21:30:00Z");
+		expect(behind.today).toBe("2026-04-15");
+		expect(behind.week.targetSoFarSeconds).toBe(16 * H);
+	});
+
+	test("a zone behind UTC is still on the previous day (America/Los_Angeles)", async () => {
+		await setOrg({ timezone: "America/Los_Angeles" });
+		// 03:00 UTC on Thursday is 20:00 on Wednesday in Los Angeles (UTC-7).
+		const mine = await mineAt("2026-04-16T03:00:00Z");
+		expect(mine.today).toBe("2026-04-15");
+		expect(mine.week.targetSoFarSeconds).toBe(16 * H);
+	});
+
+	test("Sunday in a zone behind UTC is still the end of the week before", async () => {
+		await setOrg({ timezone: "America/Los_Angeles" });
+		// Monday 02:00 UTC is Sunday 19:00 in Los Angeles: the Monday-to-Sunday
+		// week that just ended, with all five working days elapsed.
+		const mine = await mineAt("2026-04-20T02:00:00Z");
+		expect(mine.today).toBe("2026-04-19");
+		expect(mine.week.from).toBe("2026-04-13");
+		expect(mine.week.targetSoFarSeconds).toBe(40 * H);
+	});
+
+	test("a week that starts on Sunday has the same working days", async () => {
+		await setOrg({ weekStartsOn: 0 });
+		const mine = await mineAt("2026-04-16T12:00:00Z");
+		expect(mine.week.from).toBe("2026-04-12");
+		expect(mine.week.to).toBe("2026-04-18");
+		expect(mine.week.workingDays).toBe(5);
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+	});
+
+	test("on a Sunday, a Sunday-start week has just begun with nothing due", async () => {
+		await setOrg({ weekStartsOn: 0 });
+		const mine = await mineAt("2026-04-19T12:00:00Z");
+		expect(mine.week.from).toBe("2026-04-19");
+		expect(mine.week.workingDays).toBe(5);
+		expect(mine.week.workingDaysElapsed).toBe(0);
+		expect(mine.week.targetSoFarSeconds).toBe(0);
+	});
+
+	test("a week across a month boundary counts days of both months", async () => {
+		// Thursday 2 April 2026: the week began on Monday 30 March.
+		await logEntry(DILIGENT, "2026-03-30", devTaskId, 8 * H);
+		await logEntry(DILIGENT, "2026-04-01", devTaskId, 8 * H);
+		const mine = await mineAt("2026-04-02T12:00:00Z");
+		expect(mine.week.from).toBe("2026-03-30");
+		expect(mine.week.workingDaysElapsed).toBe(3);
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+		expect(mine.week.totalSoFarSeconds).toBe(16 * H);
+		// The month has only its own day: Wednesday 1 April.
+		expect(mine.month.from).toBe("2026-04-01");
+		expect(mine.month.totalSoFarSeconds).toBe(8 * H);
+	});
+
+	test("the first of the month has no month days elapsed", async () => {
+		const mine = await mineAt("2026-04-01T12:00:00Z");
+		expect(mine.month.workingDaysElapsed).toBe(0);
+		expect(mine.week.workingDaysElapsed).toBe(2);
+	});
+
+	test("a week across New Year skips the holiday (US, 1 January)", async () => {
+		// Thursday 1 January 2026 is a US public holiday: Monday to Wednesday of
+		// the week of 29 December are the three days before it.
+		const mine = await mineAt("2026-01-01T12:00:00Z");
+		expect(mine.week.from).toBe("2025-12-29");
+		expect(mine.week.to).toBe("2026-01-04");
+		expect(mine.week.workingDays).toBe(4);
+		expect(mine.week.workingDaysElapsed).toBe(3);
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+		expect(mine.week.targetSeconds).toBe(32 * H);
+	});
+
+	test("the day after a holiday does not count the holiday", async () => {
+		const mine = await mineAt("2026-01-02T12:00:00Z");
+		expect(mine.week.workingDaysElapsed).toBe(3);
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+	});
+
+	test("the DST change in Europe/Zagreb does not move a day (29 March 2026)", async () => {
+		await setOrg({ timezone: "Europe/Zagreb" });
+		// 00:30 on the Sunday the clocks go forward, before the change at 01:00 UTC.
+		const before = await mineAt("2026-03-28T23:30:00Z");
+		expect(before.today).toBe("2026-03-29");
+		expect(before.week.from).toBe("2026-03-23");
+		expect(before.week.targetSoFarSeconds).toBe(40 * H);
+		// Monday morning after the change.
+		const after = await mineAt("2026-03-30T06:00:00Z");
+		expect(after.today).toBe("2026-03-30");
+		expect(after.week.workingDaysElapsed).toBe(0);
+	});
+
+	test("the DST change in Los Angeles does not move a day (8 March 2026)", async () => {
+		await setOrg({ timezone: "America/Los_Angeles" });
+		// 23:30 on Sunday 8 March, after the clocks went forward (UTC-7).
+		const mine = await mineAt("2026-03-09T06:30:00Z");
+		expect(mine.today).toBe("2026-03-08");
+		expect(mine.week.from).toBe("2026-03-02");
+		expect(mine.week.targetSoFarSeconds).toBe(40 * H);
+	});
+
+	test("no target at all for an hourly person, in any week", async () => {
+		const mine = await complianceService.myTargets(ctxOf(CONTRACTOR), {
+			now: new Date("2026-04-16T12:00:00Z"),
+		});
+		expect(mine.week.targetSoFarSeconds).toBeNull();
+		expect(mine.week.status).toBeNull();
 	});
 });
 
