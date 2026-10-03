@@ -4,7 +4,11 @@ import type { ErrorComponentProps } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { SiteBrand, useEmSheen } from "#/components/site/site-chrome.tsx";
-import { browserEnv, reloadIfStaleChunk } from "#/lib/stale-chunk.ts";
+import {
+	browserEnv,
+	isReloadPending,
+	reloadIfStaleChunk,
+} from "#/lib/stale-chunk.ts";
 
 import "./site/errors.css";
 
@@ -39,7 +43,10 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 		// A chunk that a deploy removed is not a fault: reload to get the new
 		// index. The page that loads next sends one `stale_chunk_reloaded` event.
 		// When the guard blocks the reload, the error is a real fault and goes on.
-		if (reloadIfStaleChunk(error, browserEnv())) return;
+		// A follow-on error of a pending reload (a module that came back empty)
+		// is part of the same event and is not a fault either.
+		const env = browserEnv();
+		if (reloadIfStaleChunk(error, env) || isReloadPending(env)) return;
 		posthog.captureException(error);
 	}, [error, posthog]);
 

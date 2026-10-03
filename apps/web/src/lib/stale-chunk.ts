@@ -57,9 +57,25 @@ export function isStaleChunkError(error: Thrown): error is { message: string } {
 	);
 }
 
-/** The browser's reload environment. Storage is missing when the browser
+/** Envs with a reload under way. The page unloads soon, so more failures
+ *  from the same page are part of that reload and not new faults. */
+const reloading = new WeakSet<ReloadEnv>();
+
+let cachedEnv: ReloadEnv | undefined;
+
+/** Whether this page started a reload that has not yet unloaded it. */
+export function isReloadPending(env: ReloadEnv): boolean {
+	return reloading.has(env);
+}
+
+/** The browser's reload environment (one object, so the flag is shared). Storage is missing when the browser
  *  blocks it, and then no reload happens, because the guard cannot work. */
 export function browserEnv(): ReloadEnv {
+	cachedEnv ??= createBrowserEnv();
+	return cachedEnv;
+}
+
+function createBrowserEnv(): ReloadEnv {
 	let storage: Storage | undefined;
 	try {
 		storage = window.sessionStorage;
@@ -75,12 +91,16 @@ export function browserEnv(): ReloadEnv {
 
 /**
  * Reload the page when the error is a stale chunk and the guard allows it.
- * Returns true when a reload started, and then the caller must not report the
+ * Returns true when a reload started or is already under way in this page,
+ * and then the caller must not report the
  * error as a fault: the page that loads next reports it with
  * `takeStaleChunkReport`.
  */
 export function reloadIfStaleChunk(error: Thrown, env: ReloadEnv): boolean {
-	if (!isStaleChunkError(error) || !env.storage) return false;
+	if (!isStaleChunkError(error)) return false;
+	// A reload is under way: this failure is part of it. Do not report it.
+	if (reloading.has(env)) return true;
+	if (!env.storage) return false;
 	const { storage } = env;
 	const now = env.now();
 	try {
@@ -96,6 +116,7 @@ export function reloadIfStaleChunk(error: Thrown, env: ReloadEnv): boolean {
 		// Storage that throws cannot hold the guard, so a reload could loop.
 		return false;
 	}
+	reloading.add(env);
 	env.reload();
 	return true;
 }

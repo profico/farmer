@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
 	installStaleChunkHandler,
+	isReloadPending,
 	isStaleChunkError,
 	RELOAD_WINDOW_MS,
 	reloadIfStaleChunk,
@@ -24,6 +25,9 @@ const memoryStorage = () => {
 		removeItem: (key: string) => void values.delete(key),
 	};
 };
+
+/** The same storage and clock in a new page: the old page has unloaded. */
+const nextPage = (env: ReloadEnv): ReloadEnv => ({ ...env });
 
 /** An env with a clock the test moves and a count of reload calls. */
 const makeEnv = (overrides: Partial<ReloadEnv> = {}) => {
@@ -102,23 +106,37 @@ describe("reloadIfStaleChunk", () => {
 		const { env, state } = makeEnv();
 		expect(reloadIfStaleChunk(new TypeError(CHROME), env)).toBe(true);
 		state.now += RELOAD_WINDOW_MS - 1;
-		expect(reloadIfStaleChunk(new TypeError(CHROME), env)).toBe(false);
+		expect(reloadIfStaleChunk(new TypeError(CHROME), nextPage(env))).toBe(
+			false,
+		);
 		expect(state.reloads).toBe(1);
 	});
 
-	test("a different chunk inside the window does not reload either", () => {
+	test("a different chunk in the same page is handled, not reloaded", () => {
 		const { env, state } = makeEnv();
+		expect(isReloadPending(env)).toBe(false);
 		reloadIfStaleChunk(new TypeError(CHROME), env);
+		expect(isReloadPending(env)).toBe(true);
 		const other = new TypeError(CHROME.replace("_orgSlug", "route"));
-		expect(reloadIfStaleChunk(other, env)).toBe(false);
+		expect(reloadIfStaleChunk(other, env)).toBe(true);
 		expect(state.reloads).toBe(1);
+	});
+
+	test("a new page inside the window does not reload", () => {
+		const { env, storage, state } = makeEnv();
+		reloadIfStaleChunk(new TypeError(CHROME), env);
+		const fresh = nextPage(env);
+		expect(reloadIfStaleChunk(new TypeError(CHROME), fresh)).toBe(false);
+		expect(isReloadPending(fresh)).toBe(false);
+		expect(state.reloads).toBe(1);
+		expect(storage.values.size).toBeGreaterThan(0);
 	});
 
 	test("reloads again once the window has passed", () => {
 		const { env, state } = makeEnv();
 		reloadIfStaleChunk(new TypeError(CHROME), env);
 		state.now += RELOAD_WINDOW_MS;
-		expect(reloadIfStaleChunk(new TypeError(CHROME), env)).toBe(true);
+		expect(reloadIfStaleChunk(new TypeError(CHROME), nextPage(env))).toBe(true);
 		expect(state.reloads).toBe(2);
 	});
 
@@ -189,7 +207,9 @@ describe("takeStaleChunkReport", () => {
 		const { env, storage, state } = makeEnv();
 		reloadIfStaleChunk(new TypeError(CHROME), env);
 		takeStaleChunkReport(storage);
-		expect(reloadIfStaleChunk(new TypeError(CHROME), env)).toBe(false);
+		expect(reloadIfStaleChunk(new TypeError(CHROME), nextPage(env))).toBe(
+			false,
+		);
 		expect(state.reloads).toBe(1);
 	});
 
@@ -243,7 +263,9 @@ describe("installStaleChunkHandler", () => {
 		const target = fakeTarget();
 		installStaleChunkHandler(target, env);
 		target.fire(new TypeError(CHROME));
-		const second = target.fire(new TypeError(CHROME));
+		const newTarget = fakeTarget();
+		installStaleChunkHandler(newTarget, nextPage(env));
+		const second = newTarget.fire(new TypeError(CHROME));
 		expect(state.reloads).toBe(1);
 		expect(second.prevented).toBe(false);
 	});
