@@ -80,6 +80,23 @@ export class OpenRouterError extends Error {
 	}
 }
 
+/** A stream that ended on its own with no finish reason.
+ *
+ *  The connection closed with no error and no `finish_reason`, so the answer is
+ *  cut at an unknown point. An upstream (OpenRouter or the provider behind it)
+ *  that gives up on a slow call does this. It is not a model that chose to stop
+ *  and not a person who pressed Stop.
+ *
+ *  `partial` is what arrived before the close, with its tokens and cost, which
+ *  the organization paid for. The message is for the log and for telemetry. It
+ *  is not for the person: the loop words that itself. */
+export class OpenRouterStreamCutError extends OpenRouterError {
+	constructor(readonly partial: ChatTurn) {
+		super("stream ended without a finish reason");
+		this.name = "OpenRouterStreamCutError";
+	}
+}
+
 const headers = (apiKey: string) => ({
 	Authorization: `Bearer ${apiKey}`,
 	"Content-Type": "application/json",
@@ -341,7 +358,12 @@ export const streamChatCompletion = async (opts: {
 		reader.releaseLock();
 	}
 
-	return {
+	// A close with the signal already fired is the caller's doing, however the
+	// runtime ended the read. Without this a clean close after a Stop would be
+	// reported as the upstream cutting the answer.
+	if (finishReason === null && opts.signal?.aborted) finishReason = ABORTED;
+
+	const turn: ChatTurn = {
 		content,
 		costUsd,
 		toolCalls: [...slots.entries()]
@@ -352,4 +374,13 @@ export const streamChatCompletion = async (opts: {
 		completionTokens,
 		finishReason,
 	};
+
+	// The stream ended and nobody stopped it, yet the model never said why it
+	// stopped. A model that is done always sends a finish reason, so this is an
+	// upstream that closed the connection on a slow call. Returning it as a
+	// turn made a cut answer, or no answer at all, look like a success. Even
+	// tool calls that look whole are not trusted: the close can come before the
+	// last fragment of their arguments.
+	if (finishReason === null) throw new OpenRouterStreamCutError(turn);
+	return turn;
 };

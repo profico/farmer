@@ -23,6 +23,7 @@
 
 import {
 	afterAll,
+	afterEach,
 	beforeAll,
 	beforeEach,
 	describe,
@@ -47,11 +48,13 @@ import {
 	task,
 	timeEntry,
 } from "../db/schema/domain";
-import { ABORTED } from "../lib/openrouter-client";
+import { ABORTED, OpenRouterStreamCutError } from "../lib/openrouter-client";
 import type { ChatMessage, ChatTool, ChatTurn } from "../lib/openrouter-client";
 import { isSealed, openSecret } from "../lib/secret-box";
 import { at, createTestDb, present, type TestDb } from "../test/harness";
 import { type Access, AccessError, accessService } from "./access.service";
+import type { AiGeneration } from "./ai-telemetry";
+import { setAiTelemetrySink } from "./ai-telemetry";
 import { findTool, toolDefinitions, toolsFor } from "./assistant-tools";
 import {
 	type AssistantEvent,
@@ -88,7 +91,7 @@ const ctxFor = (userId: string, organizationId = ORG): Ctx => ({
 // Every call's outgoing messages are recorded so the tests can assert on what
 // the model was actually shown — which is the only way to check property 4.
 
-let script: ChatTurn[] = [];
+let script: (ChatTurn | Error)[] = [];
 let seen: ChatMessage[][] = [];
 /** The tool list each call was sent, so a call made deliberately WITHOUT tools
  *  can be told from one that simply had none to offer. */
@@ -126,6 +129,12 @@ beforeAll(async () => {
 			seenKeys.push(opts.apiKey);
 			const next = script.shift();
 			if (!next) throw new Error("scripted model ran out of turns");
+			// An error is thrown as the real client would throw it, after the
+			// partial text it had streamed.
+			if (next instanceof OpenRouterStreamCutError && next.partial.content) {
+				opts.onDelta?.(next.partial.content);
+			}
+			if (next instanceof Error) throw next;
 			if (next.content) opts.onDelta?.(next.content);
 			return next;
 		},
@@ -1857,6 +1866,229 @@ describe("an empty answer", () => {
 
 		expect(events.some((event) => event.type === "done")).toBe(true);
 		expect(events.some((event) => event.type === "error")).toBe(false);
+	});
+});
+
+describe("a stream that ends without a finish reason", () => {
+	// An upstream closes the connection with no error and no finish reason.
+	// In production the call ran for 120 s, carried no tokens and was reported
+	// as a success. The loop must treat it as a failed turn.
+	const cut = (over: Partial<ChatTurn> = {}) =>
+		new OpenRouterStreamCutError(turn(over));
+
+	const reported: AiGeneration[] = [];
+	beforeEach(() => {
+		reported.length = 0;
+		setAiTelemetrySink({
+			generation: (event) => reported.push(event),
+			span: () => {},
+		});
+	});
+	afterEach(() => setAiTelemetrySink(null));
+
+	const rowsOf = (conversationId: string) =>
+		db
+			.select()
+			.from(assistantMessage)
+			.where(eq(assistantMessage.conversationId, conversationId));
+
+	test("an empty cut is a failed turn, not a done", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [cut()];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "how was March?",
+		});
+
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		const failure = events.find((event) => event.type === "error");
+		// It says what happened, not that the model "kept working".
+		expect(failure?.type === "error" && failure.message).toMatch(
+			/connection.*closed/i,
+		);
+		expect(failure?.type === "error" && failure.message).not.toContain(
+			"kept working",
+		);
+		expect((await rowsOf(chat.id)).map((row) => row.role)).toEqual(["user"]);
+		// One model call: the loop did not retry or take another step.
+		expect(seen).toHaveLength(1);
+	});
+
+	test("the cut is reported as an error with a clear string", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [cut({ promptTokens: 900, completionTokens: 0, costUsd: 0.01 })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "how was March?",
+		});
+
+		expect(reported).toHaveLength(1);
+		expect(reported[0]?.error).toBe("stream ended without a finish reason");
+		// What the organization was billed for is still counted.
+		expect(reported[0]?.inputTokens).toBe(900);
+		expect(reported[0]?.costUsd).toBe(0.01);
+	});
+
+	test("the partial text is kept, as it is for a stop", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [cut({ content: "Your March looks like ", completionTokens: 5 })];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "how was March?",
+		});
+
+		const rows = await rowsOf(chat.id);
+		const answer = rows.find((row) => row.role === "assistant");
+		expect(answer?.content).toBe("Your March looks like ");
+		expect(answer?.completionTokens).toBe(5);
+		// Kept, but the person is still told the answer is not whole.
+		expect(events.some((event) => event.type === "error")).toBe(true);
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		expect(reported[0]?.outputText).toBe("Your March looks like ");
+	});
+
+	test("half-arrived tool calls are dropped and never run", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			cut({
+				content: "Let me check. ",
+				toolCalls: [{ id: "call-cut", name: "list_projects", arguments: "{}" }],
+			}),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what projects are there",
+		});
+
+		const rows = await rowsOf(chat.id);
+		expect(rows.some((row) => row.role === "tool")).toBe(false);
+		expect(rows.find((row) => row.role === "assistant")?.toolCalls).toBeNull();
+		expect(events.some((event) => event.type === "tool_start")).toBe(false);
+	});
+
+	test("a cut right after tool results fails the turn and keeps the thread valid", async () => {
+		// The production shape: step 1 asks for a tool, step 2 is cut.
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [{ id: "call-a", name: "list_projects", arguments: "{}" }],
+				finishReason: "tool_calls",
+			}),
+			cut(),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "what projects are there",
+		});
+
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		expect(events.at(-1)?.type).toBe("error");
+		expect(reported.map((event) => event.error)).toEqual([
+			null,
+			"stream ended without a finish reason",
+		]);
+		// The tool call and its result stay paired, so the next request is valid.
+		expect((await rowsOf(chat.id)).map((row) => row.role)).toEqual([
+			"user",
+			"assistant",
+			"tool",
+		]);
+
+		script = [turn({ content: "One project.", finishReason: "stop" })];
+		const retry = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "try again",
+		});
+		expect(retry.at(-1)?.type).toBe("done");
+	});
+
+	test("repeated cuts each fail, and a later good turn still works", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [cut(), cut(), turn({ content: "Fine.", finishReason: "stop" })];
+		for (const message of ["one", "two"]) {
+			const events = await collect(ctxFor(WORKER), {
+				conversationId: chat.id,
+				message,
+			});
+			expect(events.at(-1)?.type).toBe("error");
+		}
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "three",
+		});
+		expect(events.at(-1)?.type).toBe("done");
+		expect(reported.map((event) => event.error === null)).toEqual([
+			false,
+			false,
+			true,
+		]);
+	});
+
+	test("a cut on the closing out-of-steps call fails the turn", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			...Array.from({ length: 8 }, (_, i) =>
+				turn({
+					toolCalls: [
+						{ id: `call-${i}`, name: "list_projects", arguments: "{}" },
+					],
+				}),
+			),
+			cut({ content: "Partly " }),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "go forever",
+		});
+
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		const failure = events.find((event) => event.type === "error");
+		expect(failure?.type === "error" && failure.message).toMatch(/closed/i);
+		const { messages } = await assistantService.conversations.get(
+			ctxFor(WORKER),
+			chat.id,
+		);
+		expect(messages.at(-1)?.content).toBe("Partly ");
+	});
+
+	test("a cut is not followed by a title call", async () => {
+		const chat = await assistantService.conversations.create(ctxFor(WORKER));
+		script = [cut(), turn({ content: "A title" })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "hi",
+		});
+		expect(seen).toHaveLength(1);
+		expect(script).toHaveLength(1);
+	});
+
+	test("a stop stays a success in telemetry and shows no error", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		const stop = new AbortController();
+		script = [turn({ content: "Half", finishReason: ABORTED })];
+		const events: AssistantEvent[] = [];
+		await assistantService.run(
+			ctxFor(WORKER),
+			{ conversationId: chat.id, message: "how was March?" },
+			(event) => {
+				events.push(event);
+				if (event.type === "delta") stop.abort();
+			},
+			stop.signal,
+		);
+		expect(events.some((event) => event.type === "error")).toBe(false);
+		expect(reported[0]?.error).toBeNull();
+		expect(reported[0]?.finishReason).toBe(ABORTED);
+	});
+
+	test("a finished turn reports no error", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [turn({ content: "Done.", finishReason: "stop" })];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "hi",
+		});
+		expect(reported[0]?.error).toBeNull();
 	});
 });
 
