@@ -4,6 +4,7 @@ import type { ErrorComponentProps } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { SiteBrand, useEmSheen } from "#/components/site/site-chrome.tsx";
+import { browserEnv, reloadIfStaleChunk } from "#/lib/stale-chunk.ts";
 
 import "./site/errors.css";
 
@@ -35,6 +36,10 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 	useEmSheen(pageRef);
 
 	useEffect(() => {
+		// A chunk that a deploy removed is not a fault: reload to get the new
+		// index. The page that loads next sends one `stale_chunk_reloaded` event.
+		// When the guard blocks the reload, the error is a real fault and goes on.
+		if (reloadIfStaleChunk(error, browserEnv())) return;
 		posthog.captureException(error);
 	}, [error, posthog]);
 

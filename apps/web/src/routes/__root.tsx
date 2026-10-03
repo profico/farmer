@@ -24,6 +24,7 @@ import { displayInitScript } from "../lib/display-prefs";
 import { unzoomPagePoint } from "../lib/motion";
 import { navInitScript } from "../lib/nav-collapse";
 import { isResizeObserverLoop } from "../lib/posthog-noise";
+import { browserEnv, takeStaleChunkReport } from "../lib/stale-chunk";
 import { themeInitScript } from "../lib/theme";
 import { startThemeColorSync, themeColorInitScript } from "../lib/theme-color";
 
@@ -279,6 +280,14 @@ function PostHogIdentity() {
 	const posthog = usePostHog();
 	const { data: session } = authClient.useSession();
 	const identifiedUserId = useRef<string | null>(null);
+
+	// The tab reloaded because a deploy removed a chunk (`lib/stale-chunk.ts`).
+	// The old page cannot be sure to send an event before it unloads, so this
+	// page sends it, one time.
+	useEffect(() => {
+		const report = takeStaleChunkReport(browserEnv().storage);
+		if (report) posthog.capture("stale_chunk_reloaded", report);
+	}, [posthog]);
 
 	useEffect(() => {
 		const user = session?.user;
