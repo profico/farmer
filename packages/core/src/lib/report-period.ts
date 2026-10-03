@@ -15,6 +15,18 @@ import {
 	type WeekStartsOn,
 } from "./time";
 
+// The widest span a range report may cover.
+//
+// `from <= to` was the only constraint, so `2000-01-01 → 2099-12-31` was a
+// request any Team Lead could make and the server would answer by scanning and
+// grouping the entire entry table. The month and week presets are bounded by
+// construction; Custom is free text and is what needed a ceiling.
+//
+// 366 rather than something tighter because a full calendar year — including a
+// leap year — is a report somebody genuinely runs. This is a backstop against
+// the pathological case, not an opinion about how people should slice time.
+export const MAX_REPORT_SPAN_DAYS = 366;
+
 export type PeriodPreset = "week" | "month" | "quarter" | "year" | "custom";
 
 /** Harvest's order, which the COO signed off screen by screen: shortest to
@@ -114,7 +126,12 @@ export const resolveReportPeriod = (
 		const to = selection.to ?? today;
 		// An inverted range is a half-finished edit in the date pickers, not an
 		// error worth a screen: collapse it to the single day the user has set.
-		return { preset, from, to: to < from ? from : to };
+		const ordered = to < from ? from : to;
+		// A range wider than the report limit comes from a bookmark or a hand-edited
+		// URL. It is not worth an error screen. Show the widest allowed range from
+		// `from`.
+		const limit = addDaysToKey(from, MAX_REPORT_SPAN_DAYS);
+		return { preset, from, to: ordered > limit ? limit : ordered };
 	}
 
 	const month = selection.month ?? thisMonth;

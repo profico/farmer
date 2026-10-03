@@ -1,6 +1,7 @@
 import {
 	formatQuarterKey,
 	isCurrentPeriod,
+	MAX_REPORT_SPAN_DAYS,
 	monthsPerStep,
 	PERIOD_PRESETS,
 	resolveReportPeriod,
@@ -326,6 +327,7 @@ function CustomRangeFields({
 				aria-label="From date"
 				className="w-40 text-xs"
 				value={from}
+				min={addDaysToKey(to, -MAX_REPORT_SPAN_DAYS)}
 				max={to}
 				onValueChange={(next) => next && onChange({ from: next })}
 			/>
@@ -335,6 +337,7 @@ function CustomRangeFields({
 				className="w-40 text-xs"
 				value={to}
 				min={from}
+				max={addDaysToKey(from, MAX_REPORT_SPAN_DAYS)}
 				onValueChange={(next) => next && onChange({ to: next })}
 			/>
 		</div>
