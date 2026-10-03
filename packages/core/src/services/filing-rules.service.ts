@@ -32,6 +32,11 @@ import type { Ctx } from "./types";
  *  matching things the person never agreed to. */
 export const filingRuleKey = (title: string) => title.trim().toLowerCase();
 
+/** The longest key that becomes a rule. The unique index on the key has a
+ *  btree row limit of 2704 bytes. A character takes at most 4 bytes in UTF-8,
+ *  so 500 characters and three uuids stay under the limit. */
+export const MAX_FILING_RULE_KEY_LENGTH = 500;
+
 /** Where a matching entry goes: a project, and the task it is filed under. */
 export type FilingTarget = { projectId: string; taskId: string };
 
@@ -107,6 +112,12 @@ export const filingRulesService = {
 			// of.
 			if (!title) continue;
 			const titleKey = filingRuleKey(title);
+			// A very long title is a list of commit subjects, not a meeting. It never
+			// repeats word for word, so it is not a useful rule. It also does not fit
+			// the btree limit of the unique index, and one such row used to fail the
+			// insert for the whole batch. The entry itself is already filed; a later
+			// entry with the same title only gets no rule.
+			if (titleKey.length > MAX_FILING_RULE_KEY_LENGTH) continue;
 			byKey.set(`${entry.taskId}|${titleKey}`, {
 				taskId: entry.taskId,
 				titleKey,

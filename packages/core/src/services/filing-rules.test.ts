@@ -293,6 +293,32 @@ describe("remembering a rule from what was just filed", () => {
 		expect(await filingRulesService.list(ctx)).toHaveLength(0);
 	});
 
+	// Postgres compresses a repetitive value before it checks the index limit.
+	// A random string stays large, as a list of real commit subjects does.
+	const noisy = (length: number) =>
+		Array.from({ length }, () =>
+			String.fromCharCode(97 + Math.floor(Math.random() * 26)),
+		).join("");
+
+	// A GitHub commit entry can carry hundreds of subjects in one description.
+	// Its key is too big for the unique index, and one such row used to fail the
+	// insert for the whole batch.
+	test("an overlong title is skipped and does not lose the batch", async () => {
+		const remembered = await filingRulesService.rememberFrom(
+			ctx,
+			{ projectId },
+			[
+				{ taskId: meetingTaskId, description: "Daily standup" },
+				{ taskId: meetingTaskId, description: noisy(3000) },
+			],
+		);
+
+		expect(remembered).toBe(1);
+		const rules = await filingRulesService.list(ctx);
+		expect(rules).toHaveLength(1);
+		expect(present(rules[0], "the rule").title).toBe("Daily standup");
+	});
+
 	test("re-filing the same meeting elsewhere moves the rule", async () => {
 		await filingRulesService.rememberFrom(ctx, { projectId: otherProjectId }, [
 			{ taskId: meetingTaskId, description: "Daily standup" },
