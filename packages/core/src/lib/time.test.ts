@@ -3,8 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { automationWriteWindow } from "./automation-window";
 import {
 	countWorkingDays,
+	dayKeyInTz,
 	formatDurationInput,
 	isValidDayKey,
+	msUntilNextDay,
 	MAX_DAY_SECONDS,
 	parseDuration,
 	parseHeadStart,
@@ -330,5 +332,85 @@ describe("isValidDayKey", () => {
 		expect(isValidDayKey("2026-8-10")).toBe(false);
 		expect(isValidDayKey("10/08/2026")).toBe(false);
 		expect(isValidDayKey("")).toBe(false);
+	});
+});
+
+describe("msUntilNextDay", () => {
+	const at = (iso: string) => new Date(iso);
+	const HOUR_MS = 3_600_000;
+
+	test("counts to local midnight in Europe/Zagreb", () => {
+		// 2026-10-03 21:30 UTC is 23:30 in Zagreb (UTC+2), so 30 minutes remain.
+		expect(msUntilNextDay(at("2026-10-03T21:30:00Z"), "Europe/Zagreb")).toBe(
+			30 * 60_000,
+		);
+	});
+
+	test("is a whole day at the first instant of a day", () => {
+		// 2026-10-02 22:00 UTC is 00:00 on 3 October in Zagreb.
+		expect(msUntilNextDay(at("2026-10-02T22:00:00Z"), "Europe/Zagreb")).toBe(
+			24 * HOUR_MS,
+		);
+	});
+
+	test("reads the zone, not UTC", () => {
+		const now = at("2026-10-03T23:30:00Z");
+		// Zagreb is already on 4 October; Los Angeles (UTC-7) is at 16:30.
+		expect(msUntilNextDay(now, "Europe/Zagreb")).toBe(22.5 * HOUR_MS);
+		expect(msUntilNextDay(now, "UTC")).toBe(30 * 60_000);
+		expect(msUntilNextDay(now, "America/Los_Angeles")).toBe(7.5 * HOUR_MS);
+	});
+
+	test("a spring-forward day is 23 hours long", () => {
+		// Zagreb 2026-03-29: 02:00 CET becomes 03:00 CEST.
+		// 2026-03-28 23:00 UTC is 00:00 on 29 March (UTC+1).
+		expect(msUntilNextDay(at("2026-03-28T23:00:00Z"), "Europe/Zagreb")).toBe(
+			23 * HOUR_MS,
+		);
+	});
+
+	test("a fall-back day is 25 hours long", () => {
+		// Zagreb 2026-10-25: 03:00 CEST becomes 02:00 CET.
+		// 2026-10-24 22:00 UTC is 00:00 on 25 October (UTC+2).
+		expect(msUntilNextDay(at("2026-10-24T22:00:00Z"), "Europe/Zagreb")).toBe(
+			25 * HOUR_MS,
+		);
+	});
+
+	test("crosses a month end", () => {
+		// 2026-01-31 22:00 UTC is 23:00 in Zagreb (UTC+1).
+		expect(msUntilNextDay(at("2026-01-31T22:00:00Z"), "Europe/Zagreb")).toBe(
+			HOUR_MS,
+		);
+	});
+
+	test("crosses a year end", () => {
+		expect(msUntilNextDay(at("2026-12-31T23:59:30Z"), "UTC")).toBe(30_000);
+		// 31 December 20:00 in Los Angeles (UTC-8) is 2027-01-01 04:00 UTC.
+		expect(
+			msUntilNextDay(at("2027-01-01T04:00:00Z"), "America/Los_Angeles"),
+		).toBe(4 * HOUR_MS);
+	});
+
+	test("crosses a leap day", () => {
+		expect(msUntilNextDay(at("2028-02-29T12:00:00Z"), "UTC")).toBe(
+			12 * HOUR_MS,
+		);
+	});
+
+	test("is always positive and ends on the next day key", () => {
+		for (const tz of ["Europe/Zagreb", "UTC", "America/Los_Angeles"]) {
+			for (let hour = 0; hour < 48; hour++) {
+				const now = new Date(Date.UTC(2026, 9, 24, hour, 15));
+				const wait = msUntilNextDay(now, tz);
+				expect(wait).toBeGreaterThan(0);
+				expect(dayKeyInTz(new Date(now.getTime() + wait), tz)).not.toBe(
+					dayKeyInTz(now, tz),
+				);
+				expect(dayKeyInTz(new Date(now.getTime() + wait - 1), tz)).toBe(
+					dayKeyInTz(now, tz),
+				);
+			}
+		}
 	});
 });

@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { DayView } from "#/components/time/day-view.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useToday } from "#/hooks/use-today.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
@@ -59,7 +60,9 @@ function DayRoute() {
 	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
-	const date = search.date ?? dayKeyInTz(new Date(), organization.timezone);
+	// Live, so a tab left open past midnight moves to the new day by itself.
+	const today = useToday(organization.timezone);
+	const date = search.date ?? today;
 	const weekStart = startOfWeekKey(date, organization.weekStartsOn);
 	const weekEnd = addDaysToKey(weekStart, 6);
 	const { data: weekEntries } = useSuspenseQuery(

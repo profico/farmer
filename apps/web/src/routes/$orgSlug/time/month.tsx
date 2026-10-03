@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { MonthView } from "#/components/time/month-view.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useToday } from "#/hooks/use-today.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
@@ -44,7 +45,8 @@ function MonthRoute() {
 	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
-	const month = search.month ?? currentMonthKey(organization.timezone);
+	const today = useToday(organization.timezone);
+	const month = search.month ?? today.slice(0, 7);
 	const monthStart = `${month}-01`;
 	const monthEnd = endOfMonthKey(monthStart);
 	const { data: entries } = useSuspenseQuery(

@@ -1,4 +1,4 @@
-import { addDaysToKey, dayKeyInTz } from "@farmer/core/lib/time";
+import { addDaysToKey } from "@farmer/core/lib/time";
 import {
 	ArrowLeftIcon,
 	ArrowRightIcon,
@@ -29,6 +29,7 @@ import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { useTimedEntryId } from "#/hooks/use-timer.ts";
+import { useToday } from "#/hooks/use-today.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
@@ -67,7 +68,7 @@ export function DayView({
 	const sortedEntries = [...entries].sort(
 		(a, b) => Number(a.fillsDay) - Number(b.fillsDay),
 	);
-	const today = dayKeyInTz(new Date(), timezone);
+	const today = useToday(timezone);
 	const isToday = date === today;
 	const holidayName = holidays.get(date);
 
@@ -215,7 +216,7 @@ export function DayView({
 					dates={weekDates}
 					activeDate={date}
 					secondsByDay={secondsByDay}
-					today={dayKeyInTz(new Date(), timezone)}
+					today={today}
 					dayTargetSeconds={
 						targets?.week.targetSeconds == null ? null : targets.daySeconds
 					}

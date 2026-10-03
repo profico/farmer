@@ -1,6 +1,5 @@
 import {
 	datesBetween,
-	dayKeyInTz,
 	endOfMonthKey,
 	weekdayInTz,
 } from "@farmer/core/lib/time";
@@ -19,6 +18,7 @@ import {
 	TimeToolbar,
 } from "#/components/time/time-toolbar.tsx";
 import { Button } from "#/components/ui/button.tsx";
+import { useToday } from "#/hooks/use-today.ts";
 import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { formatMonthKey } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
@@ -59,7 +59,7 @@ export function MonthView({
 	const leadingBlanks =
 		(weekdayInTz(monthStart, timezone) - weekStartsOn + 7) % 7;
 	const byDay = new Map(groupByDay(entries));
-	const today = dayKeyInTz(new Date(), timezone);
+	const today = useToday(timezone);
 	const weekRows = Math.ceil((leadingBlanks + days.length) / 7);
 
 	return (

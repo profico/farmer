@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { WeekView } from "#/components/time/week-view.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useToday } from "#/hooks/use-today.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
@@ -58,12 +59,9 @@ function WeekRoute() {
 	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
-	const weekStart =
-		search.weekStart ??
-		startOfWeekKey(
-			dayKeyInTz(new Date(), organization.timezone),
-			organization.weekStartsOn,
-		);
+	const today = useToday(organization.timezone);
+	const currentWeekStart = startOfWeekKey(today, organization.weekStartsOn);
+	const weekStart = search.weekStart ?? currentWeekStart;
 	const weekEnd = addDaysToKey(weekStart, 6);
 	const { data: entries } = useSuspenseQuery(
 		timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
@@ -72,10 +70,6 @@ function WeekRoute() {
 		holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 	);
 	const dates = datesBetween(weekStart, weekEnd);
-	const currentWeekStart = startOfWeekKey(
-		dayKeyInTz(new Date(), organization.timezone),
-		organization.weekStartsOn,
-	);
 
 	return (
 		<WeekView

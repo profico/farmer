@@ -1,6 +1,5 @@
 import {
 	addDaysToKey,
-	dayKeyInTz,
 	endOfMonthKey,
 	startOfWeekKey,
 } from "@farmer/core/lib/time";
@@ -19,6 +18,7 @@ import {
 	SegmentedControl,
 	SegmentedControlItem,
 } from "#/components/ui/segmented-control.tsx";
+import { useToday } from "#/hooks/use-today.ts";
 
 export const Route = createFileRoute("/$orgSlug/time")({
 	component: TimeLayout,
@@ -40,7 +40,7 @@ function TimeLayout() {
 	// layout reads whichever is there; the Day view's banner covers the day's
 	// whole week, since that is what the strip above it shows.
 	const search = useSearch({ strict: false });
-	const todayKey = dayKeyInTz(new Date(), organization.timezone);
+	const todayKey = useToday(organization.timezone);
 	const viewed = (() => {
 		if (pathname.endsWith("/time/month")) {
 			const month = search.month ?? todayKey.slice(0, 7);
