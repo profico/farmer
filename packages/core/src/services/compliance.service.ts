@@ -133,6 +133,17 @@ export const workingDaysIn = (
 	}).length;
 };
 
+/** The part of a month's fund that `days` of its `daysInMonth` working days
+ *  are worth. To the nearest quarter hour, the unit every other figure in the
+ *  app is in. With the official fund this is a whole number of 8h days; it
+ *  only rounds when an admin entered a fund that is not a multiple of the
+ *  days. */
+const prorateFund = (fund: number, days: number, daysInMonth: number) =>
+	daysInMonth === 0
+		? 0
+		: Math.round((fund * (days / daysInMonth)) / QUARTER_HOUR_SECONDS) *
+			QUARTER_HOUR_SECONDS;
+
 /** The three-way verdict. Pure, so the report and the reminders share it. */
 export const trackingStatusFor = (
 	totalSeconds: number,
@@ -207,13 +218,8 @@ const computeTracking = async (
 	const elapsedThrough = complete ? to : addDaysToKey(today, -1);
 	const workingDaysElapsed =
 		today < from ? 0 : workingDaysIn(from, elapsedThrough, holidays);
-	const share =
-		workingDaysInMonth === 0 ? 0 : workingDaysElapsed / workingDaysInMonth;
-	// To the nearest quarter hour, the unit every other figure in the app is
-	// in. With the official fund this is a whole number of 8h days; it only
-	// rounds when an admin entered a fund that is not a multiple of the days.
 	const prorate = (fund: number) =>
-		Math.round((fund * share) / QUARTER_HOUR_SECONDS) * QUARTER_HOUR_SECONDS;
+		prorateFund(fund, workingDaysElapsed, workingDaysInMonth);
 
 	const [cohort, fundSeconds] = await Promise.all([
 		complianceCohort(ctx, { year, month }, opts.onlyUserIds ?? null),
@@ -307,8 +313,15 @@ export type PeriodTarget = {
 	workingDaysElapsed: number;
 	/** The whole period's target, or null when no target applies. */
 	targetSeconds: number | null;
-	/** Where they should be by today, from the working days elapsed above. */
+	/** Where they should be by today, from the working days elapsed above. This
+	 *  is the figure the verdict is read from. */
 	targetSoFarSeconds: number | null;
+	/** The goal the person reads: `targetSoFarSeconds` plus today's own
+	 *  working day, or the same figure when today is a weekend or a public
+	 *  holiday. On the first working day of a week this is one day, not 0.
+	 *  The verdict does not read it, because the day in progress must not
+	 *  count against anyone. */
+	targetThroughTodaySeconds: number | null;
 	workSeconds: number;
 	timeOffSeconds: number;
 	/** work + time off — everything in the period, booked days ahead included.
@@ -429,6 +442,12 @@ export const complianceService = {
 		const weekElapsed = workingDaysIn(weekFrom, yesterday, holidays);
 		const weekTarget = weekApplies ? weekDays * daySeconds : null;
 		const weekSoFar = weekApplies ? weekElapsed * daySeconds : null;
+		// Today is always inside the week, so the week's own holidays say
+		// whether today is a working day.
+		const todayWorks = workingDaysIn(today, today, holidays);
+		const weekThroughToday = weekApplies
+			? (weekElapsed + todayWorks) * daySeconds
+			: null;
 		const weekTotal = sumOf(weekWork, ctx.userId) + sumOf(weekOff, ctx.userId);
 		const weekTotalSoFar =
 			sumOf(weekWorkSoFar, ctx.userId) + sumOf(weekOffSoFar, ctx.userId);
@@ -452,6 +471,7 @@ export const complianceService = {
 				workingDaysElapsed: weekElapsed,
 				targetSeconds: weekTarget,
 				targetSoFarSeconds: weekSoFar,
+				targetThroughTodaySeconds: weekThroughToday,
 				workSeconds: sumOf(weekWork, ctx.userId),
 				timeOffSeconds: sumOf(weekOff, ctx.userId),
 				totalSeconds: weekTotal,
@@ -468,6 +488,14 @@ export const complianceService = {
 				workingDaysElapsed: report.workingDaysElapsed,
 				targetSeconds: me?.monthTargetSeconds ?? null,
 				targetSoFarSeconds: me?.targetSeconds ?? null,
+				targetThroughTodaySeconds:
+					me?.monthTargetSeconds == null
+						? null
+						: prorateFund(
+								me.monthTargetSeconds,
+								report.workingDaysElapsed + todayWorks,
+								report.workingDaysInMonth,
+							),
 				workSeconds: sumOf(monthWork, ctx.userId),
 				timeOffSeconds: sumOf(monthOff, ctx.userId),
 				totalSeconds: monthTotal,
