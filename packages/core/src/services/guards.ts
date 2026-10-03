@@ -11,6 +11,11 @@ import type { Ctx } from "./types";
 // on a service because both time-entries and recurring-block-rules need them,
 // and importing one service from the other would make the pair circular.
 
+// The exact messages of the two id guards. `mcpErrorMessage` matches on them to
+// add a hint for an agent, so both sides use these constants.
+export const PROJECT_NOT_FOUND_MESSAGE = "Project not found";
+export const TASK_NOT_AVAILABLE_MESSAGE = "Task not available";
+
 /**
  * Cross-tenant guard: a projectId supplied by the client must belong to the
  * caller's org, or a user in one org could reach another org's project by
@@ -27,7 +32,7 @@ export const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
 		),
 		columns: { id: true },
 	});
-	if (!row) throw new Error("Project not found");
+	if (!row) throw new Error(PROJECT_NOT_FOUND_MESSAGE);
 };
 
 /**
@@ -105,7 +110,7 @@ export const assertTaskAvailable = async (
 			archivedAt: true,
 		},
 	});
-	if (!row || row.archivedAt) throw new Error("Task not available");
+	if (!row || row.archivedAt) throw new Error(TASK_NOT_AVAILABLE_MESSAGE);
 
 	if (row.isAbsence) {
 		if (projectId) {
