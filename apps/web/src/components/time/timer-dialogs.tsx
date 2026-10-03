@@ -395,16 +395,33 @@ export function StopTimerDialog({
 		// A continued entry can be edited while the clock runs, and nothing
 		// refreshes the timer query when it is. Read the timer again, so the
 		// form starts from the entry as it is now and not as it was at start
-		// (issue #121). The answer comes in a few milliseconds, before a
-		// person can type.
+		// (issue #121). The answer can come late on a slow network. Replace
+		// only a field that the person has not changed since the form filled.
 		if (timer.timeEntryId == null) return;
 		void queryClient
 			.refetchQueries({ queryKey: [...queryKeys(orgSlug).timer] })
 			.then(() => {
 				const fresh = queryClient.getQueryData(timerQuery(orgSlug).queryKey);
-				if (fresh && fresh.timeEntryId === timer.timeEntryId) {
-					fill(fresh);
-				}
+				if (!fresh || fresh.timeEntryId !== timer.timeEntryId) return;
+				const keep =
+					<T,>(from: T, to: T) =>
+					(value: T) =>
+						value === from ? to : value;
+				setDuration(
+					keep(
+						formatClock(timer.snappedSeconds),
+						formatClock(fresh.snappedSeconds),
+					),
+				);
+				setDate(
+					keep(
+						timer.entryDate ?? dayKeyInTz(timer.startedAt, timezone),
+						fresh.entryDate ?? dayKeyInTz(fresh.startedAt, timezone),
+					),
+				);
+				setProjectId(keep(timer.projectId, fresh.projectId));
+				setTaskId(keep(timer.taskId, fresh.taskId));
+				setDescription(keep(timer.description, fresh.description));
 			});
 	}, [open, timer, timezone, queryClient, orgSlug]);
 
