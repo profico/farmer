@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import { absenceReportInput } from "../schema/reports";
 import {
 	isCurrentPeriod,
+	MAX_REPORT_SPAN_DAYS,
 	parseMonthKey,
 	resolveReportPeriod,
 	shiftMonthKey,
@@ -116,6 +118,32 @@ describe("resolving a period", () => {
 				MONDAY,
 			),
 		).toEqual({ preset: "custom", from: "2026-08-20", to: "2026-08-20" });
+	});
+
+	// A bookmark or a hand-edited URL can ask for years. The server refuses that
+	// span, so the period shows the widest range it allows.
+	test("a too-wide custom range clamps to the span limit", () => {
+		const period = resolveReportPeriod(
+			{ preset: "custom", from: "2024-07-01", to: "2026-12-31" },
+			TODAY,
+			MONDAY,
+		);
+		expect(period).toEqual({
+			preset: "custom",
+			from: "2024-07-01",
+			to: "2025-07-02",
+		});
+		expect(absenceReportInput.safeParse(period).success).toBe(true);
+	});
+
+	test("a custom range of exactly the span limit is unchanged", () => {
+		const range = {
+			preset: "custom" as const,
+			from: "2025-01-01",
+			to: "2026-01-02",
+		};
+		expect(MAX_REPORT_SPAN_DAYS).toBe(366);
+		expect(resolveReportPeriod(range, TODAY, MONDAY)).toEqual(range);
 	});
 
 	test("from never comes after to", () => {
