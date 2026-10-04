@@ -14,7 +14,13 @@ import { db } from "../db";
 import { auditEvent } from "../db/schema/audit";
 import { member, organization, user } from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
-import { at, createTestDb, present, type TestDb } from "../test/harness";
+import {
+	at,
+	countQueryParams,
+	createTestDb,
+	present,
+	type TestDb,
+} from "../test/harness";
 import { AccessError } from "./access.service";
 import {
 	auditService,
@@ -347,6 +353,14 @@ describe("auditService", () => {
 });
 
 describe("sweepAuditLog", () => {
+	// PGLite accepts a Date in a raw sql template and postgres-js does not,
+	// so the rows alone cannot show this.
+	test("sends no Date to the driver", async () => {
+		const counts = await countQueryParams(() => sweepAuditLog());
+		expect(counts.total).toBeGreaterThan(0);
+		expect(counts.dates).toBe(0);
+	});
+
 	test("deletes what each organization no longer keeps, and nothing else", async () => {
 		const now = new Date("2030-01-01T00:00:00Z");
 		const daysAgo = (days: number) =>
