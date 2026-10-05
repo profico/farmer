@@ -865,7 +865,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 		name: "my_targets",
 		kind: "read",
 		description:
-			'The caller\'s own week and month against their target: the target for the period, where they should be by today, what they have logged, how much of it is time off, and the verdict (on_track, slightly_behind or behind). Use this for "am I behind", "how many hours do I still owe" and anything about a full day being short — never work a target out from hours alone, because the target is the month hour fund prorated over working days, minus public holidays and days off. A null target means the person has no target at all (an hourly student or contractor without an override, or an overhead employee), which is not the same as a target of zero.',
+			'The caller\'s own week and month against their target: the target for the period, what they have logged, how much of it is time off, and the verdict (on_track, slightly_behind or behind). targetSoFarHours is the target for the working days BEFORE today, and the verdict compares against it. targetThroughTodayHours is the goal including today, which is what the person should have logged by the end of today. On the first working day of a period targetSoFarHours is 0 and targetThroughTodayHours is one day, so never tell a person that they owe nothing from targetSoFarHours alone. Use this for "am I behind", "how many hours do I still owe" and anything about a full day being short — never work a target out from hours alone, because the target is the month hour fund prorated over working days, minus public holidays and days off. A null target means the person has no target at all (an hourly student or contractor without an override, or an overhead employee), which is not the same as a target of zero.',
 		schema: z.object({}),
 		available: anyone,
 		run: async (ctx) => {
@@ -875,8 +875,10 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				to: p.to,
 				workingDays: p.workingDays,
 				workingDaysElapsed: p.workingDaysElapsed,
+				workingDaysThroughToday: p.workingDaysThroughToday,
 				targetHours: nullableHours(p.targetSeconds),
 				targetSoFarHours: nullableHours(p.targetSoFarSeconds),
+				targetThroughTodayHours: nullableHours(p.targetThroughTodaySeconds),
 				workedHours: p.workSeconds / 3600,
 				timeOffHours: p.timeOffSeconds / 3600,
 				totalHours: p.totalSeconds / 3600,
