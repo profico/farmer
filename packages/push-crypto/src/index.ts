@@ -21,6 +21,11 @@
  * (`0x04 || x || y`). On iOS that is `P256.KeyAgreement.PublicKey
  * .x963Representation`, not `rawRepresentation` (64 bytes, no prefix).
  * `sealForDevice` also accepts the 64-byte form and adds the prefix.
+ *
+ * The mobile app does not import this file: Hermes has no WebCrypto and no
+ * `Buffer`. It imports `@farmer/push-crypto/device` (`device.ts`), which
+ * opens the same sealed value in pure JavaScript. `device.test.ts` seals here
+ * and opens there.
  */
 import {
 	Aes256Gcm,
