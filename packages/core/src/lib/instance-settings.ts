@@ -367,6 +367,27 @@ export const INSTANCE_SETTINGS = [
 		kind: "text",
 		hint: "A mailto: or https: URL that identifies you to the push service.",
 	},
+	// Native push to the mobile app goes through Profico's relay (ADR 0006).
+	// Off by default: an operator who does not want a third party in the path
+	// leaves it off, and the app then works without remote push.
+	{
+		name: "PUSH_RELAY_ENABLED",
+		section: "features",
+		group: "Mobile push",
+		label: "Send native push through the relay",
+		...BOOL,
+		defaultValue: "false",
+		hint: "On: the server sends encrypted pushes to the mobile app through the relay. The relay cannot read them.",
+	},
+	{
+		name: "PUSH_RELAY_URL",
+		section: "features",
+		group: "Mobile push",
+		label: "Relay URL",
+		kind: "text",
+		defaultValue: "https://push.farmer.profi.co",
+		hint: "Change it only for a relay that you run yourself.",
+	},
 	{
 		name: "POSTHOG_PROJECT_TOKEN",
 		section: "features",

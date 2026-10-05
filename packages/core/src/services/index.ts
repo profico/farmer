@@ -33,6 +33,8 @@ export * from "./instance-settings.service";
 export * from "./integration-settings.service";
 export * from "./mcp-tools";
 export * from "./members.service";
+// A person's phones for native push. Per person, like the timer: see the header.
+export * from "./mobile-devices.service";
 export * from "./notifications.service";
 export * from "./notify";
 export * from "./org-context.service";

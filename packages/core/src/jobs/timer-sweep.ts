@@ -5,6 +5,7 @@ import { organization } from "../db/schema/auth";
 import { task } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
 import { formatDurationShort, timeKeyInTz } from "../lib/time";
+import { publishTimerChange } from "../services/native-push";
 import { notify } from "../services/notify";
 import { DEFAULT_TIMER_MAX_SECONDS } from "../services/timers.service";
 
@@ -93,6 +94,8 @@ export const runTimerSweepOnce = async (
 					and(eq(runningTimer.id, row.id), isNull(runningTimer.droppedAt)),
 				);
 			summary.dropped += 1;
+			// The phone's Live Activity ends now. It returns at once.
+			publishTimerChange(row.userId, { type: "end" });
 
 			const startedAtLabel = timeKeyInTz(row.startedAt, row.timezone ?? "UTC");
 			await notify(

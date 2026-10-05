@@ -11,6 +11,7 @@ import * as domainSchema from "./schema/domain";
 import * as githubSchema from "./schema/github";
 import * as importSchema from "./schema/import";
 import * as instanceSchema from "./schema/instance";
+import * as mobileSchema from "./schema/mobile";
 import * as notificationsSchema from "./schema/notifications";
 import * as peopleSchema from "./schema/people";
 import * as scheduleSchema from "./schema/schedule";
@@ -35,6 +36,7 @@ export const schema = {
 	...instanceSchema,
 	...apiTokensSchema,
 	...auditSchema,
+	...mobileSchema,
 };
 
 export type Db = PostgresJsDatabase<typeof schema>;

@@ -109,6 +109,7 @@ you are about to change before you change it** — these are not loaded for you.
 | `docs/domains/api-tokens.md` | `api-tokens.service.ts`, Preferences → API tokens, the bearer-token branch in `server/api-auth.ts`, or `FARMER_TOKEN` in the CLI |
 | `docs/domains/webhooks.md` | the outbound webhooks — `services/events.ts`, `webhooks.service.ts`, `jobs/webhook-delivery.ts`, the signature or the SSRF guard |
 | `docs/domains/audit-log.md` | `services/audit.ts`, `recordAudit` / `recordSecurityEvent`, the better-auth audit hooks, the Audit log page, or any new service function that changes an organization |
+| `docs/domains/mobile.md` | `mobile-devices.service.ts`, `native-push.ts`, `lib/push-relay.ts`, the `native` channel in `notify.ts`, `api/v1/me/devices` or the timer's Live Activity |
 | `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag or PostHog |
 
 `docs/adr/` holds the decisions that a change may contradict. `docs/plans/` holds

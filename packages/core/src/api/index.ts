@@ -11,6 +11,9 @@
  *
  *   GET    meta                                  ApiMeta (no auth)
  *   GET    me                                    ApiMe
+ *   POST   me/devices                            ApiMobileDevice (register a phone)
+ *   PATCH  me/devices/$installationId            ApiMobileDevice
+ *   DELETE me/devices/$installationId            204
  *   DELETE session                               204 (revokes the token, either kind)
  *   GET    orgs/$slug/whoami                     ApiWhoami
  *   GET    orgs/$slug/time-entries?from&to       ApiTimeEntry[]
@@ -27,6 +30,8 @@
  *   GET    orgs/$slug/clients                    ApiClient[]
  *   GET    orgs/$slug/tasks                      ApiTaskList
  *   GET    orgs/$slug/tracking                   ApiTracking
+ *   GET    orgs/$slug/notification-preferences   ApiNotificationPreferences
+ *   PATCH  orgs/$slug/notification-preferences   ApiNotificationPreferences
  *   POST   orgs/$slug/sync                       ApiSyncResult
  *   GET    orgs/$slug/timer                      ApiTimerState
  *   POST   orgs/$slug/timer                      ApiTimerState (start)
@@ -44,6 +49,7 @@ export * from "./catalogue";
 export * from "./errors";
 export * from "./me";
 export * from "./meta";
+export * from "./mobile";
 export * from "./time-entries";
 export * from "./timer";
 export * from "./tokens";

@@ -17,12 +17,19 @@ import type {
 } from "../schema/notifications";
 import type { Ctx } from "./types";
 
+export type RemindersChannel = "app" | "slack";
+
 export type NotificationSettings = {
 	logReminders: boolean;
+	/** Where the Slack kinds go for a person with the mobile app: "app" sends
+	 *  them as a native push when a phone allows notifications, "slack" keeps
+	 *  them on Slack (ADR 0006). */
+	remindersChannel: RemindersChannel;
 };
 
 const DEFAULTS: NotificationSettings = {
 	logReminders: true,
+	remindersChannel: "app",
 };
 
 // The payload the service worker's `push` handler expects (see
@@ -66,6 +73,7 @@ const settingsFor = async (
 	if (!row) return { ...DEFAULTS };
 	return {
 		logReminders: row.logReminders,
+		remindersChannel: row.remindersChannel,
 	};
 };
 
@@ -131,6 +139,7 @@ export const notificationsService = {
 				organizationId: ctx.organizationId,
 				userId: ctx.userId,
 				logReminders: input.logReminders ?? undefined,
+				remindersChannel: input.remindersChannel ?? undefined,
 			})
 			.onConflictDoUpdate({
 				target: [
@@ -139,6 +148,7 @@ export const notificationsService = {
 				],
 				set: {
 					logReminders: input.logReminders,
+					remindersChannel: input.remindersChannel,
 					updatedAt: new Date(),
 				},
 			})
@@ -146,6 +156,7 @@ export const notificationsService = {
 		if (!row) throw new Error("Failed to save notification settings");
 		return {
 			logReminders: row.logReminders,
+			remindersChannel: row.remindersChannel,
 		};
 	},
 

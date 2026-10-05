@@ -73,6 +73,7 @@ describe("the OpenAPI document", () => {
 				"minMobileVersion",
 				"signInMethods",
 				"passwordSignIn",
+				"pushRelay",
 			]),
 		);
 		expect(Whoami?.required).toContain("capabilities");

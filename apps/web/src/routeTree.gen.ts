@@ -80,6 +80,7 @@ import { Route as OrgSlugSettingsInstanceFeaturesRouteImport } from './routes/$o
 import { Route as OrgSlugSettingsInstanceEmailRouteImport } from './routes/$orgSlug/settings/instance/email'
 import { Route as OrgSlugProjectsProjectIdTeamRouteImport } from './routes/$orgSlug/projects/$projectId/team'
 import { Route as OrgSlugProjectsProjectIdSettingsRouteImport } from './routes/$orgSlug/projects/$projectId/settings'
+import { Route as ApiV1MeDevicesIndexRouteImport } from './routes/api/v1/me/devices/index'
 import { Route as ApiV1OrgsOrgSlugWhoamiRouteImport } from './routes/api/v1/orgs/$orgSlug/whoami'
 import { Route as ApiV1OrgsOrgSlugUnfiledRouteImport } from './routes/api/v1/orgs/$orgSlug/unfiled'
 import { Route as ApiV1OrgsOrgSlugTrackingRouteImport } from './routes/api/v1/orgs/$orgSlug/tracking'
@@ -87,7 +88,9 @@ import { Route as ApiV1OrgsOrgSlugTasksRouteImport } from './routes/api/v1/orgs/
 import { Route as ApiV1OrgsOrgSlugSyncRouteImport } from './routes/api/v1/orgs/$orgSlug/sync'
 import { Route as ApiV1OrgsOrgSlugRepositoryProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/repository-projects'
 import { Route as ApiV1OrgsOrgSlugProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/projects'
+import { Route as ApiV1OrgsOrgSlugNotificationPreferencesRouteImport } from './routes/api/v1/orgs/$orgSlug/notification-preferences'
 import { Route as ApiV1OrgsOrgSlugClientsRouteImport } from './routes/api/v1/orgs/$orgSlug/clients'
+import { Route as ApiV1MeDevicesInstallationIdRouteImport } from './routes/api/v1/me/devices/$installationId'
 import { Route as ApiV1OrgsOrgSlugTimerIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/index'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/index'
 import { Route as ApiV1OrgsOrgSlugAbsencesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/index'
@@ -476,6 +479,11 @@ const OrgSlugProjectsProjectIdSettingsRoute =
     path: '/projects/$projectId/settings',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const ApiV1MeDevicesIndexRoute = ApiV1MeDevicesIndexRouteImport.update({
+  id: '/devices/',
+  path: '/devices/',
+  getParentRoute: () => ApiV1MeRoute,
+} as any)
 const ApiV1OrgsOrgSlugWhoamiRoute = ApiV1OrgsOrgSlugWhoamiRouteImport.update({
   id: '/api/v1/orgs/$orgSlug/whoami',
   path: '/api/v1/orgs/$orgSlug/whoami',
@@ -514,11 +522,23 @@ const ApiV1OrgsOrgSlugProjectsRoute =
     path: '/api/v1/orgs/$orgSlug/projects',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugNotificationPreferencesRoute =
+  ApiV1OrgsOrgSlugNotificationPreferencesRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/notification-preferences',
+    path: '/api/v1/orgs/$orgSlug/notification-preferences',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugClientsRoute = ApiV1OrgsOrgSlugClientsRouteImport.update({
   id: '/api/v1/orgs/$orgSlug/clients',
   path: '/api/v1/orgs/$orgSlug/clients',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1MeDevicesInstallationIdRoute =
+  ApiV1MeDevicesInstallationIdRouteImport.update({
+    id: '/devices/$installationId',
+    path: '/devices/$installationId',
+    getParentRoute: () => ApiV1MeRoute,
+  } as any)
 const ApiV1OrgsOrgSlugTimerIndexRoute =
   ApiV1OrgsOrgSlugTimerIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/timer/',
@@ -638,7 +658,7 @@ export interface FileRoutesByFullPath {
   '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
-  '/api/v1/me': typeof ApiV1MeRoute
+  '/api/v1/me': typeof ApiV1MeRouteWithChildren
   '/api/v1/meta': typeof ApiV1MetaRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -658,7 +678,9 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
   '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
+  '/api/v1/orgs/$orgSlug/notification-preferences': typeof ApiV1OrgsOrgSlugNotificationPreferencesRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -666,6 +688,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
+  '/api/v1/me/devices/': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id': typeof ApiV1OrgsOrgSlugTimeEntriesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
@@ -728,7 +751,7 @@ export interface FileRoutesByTo {
   '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
-  '/api/v1/me': typeof ApiV1MeRoute
+  '/api/v1/me': typeof ApiV1MeRouteWithChildren
   '/api/v1/meta': typeof ApiV1MetaRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -748,7 +771,9 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
   '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
+  '/api/v1/orgs/$orgSlug/notification-preferences': typeof ApiV1OrgsOrgSlugNotificationPreferencesRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -756,6 +781,7 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
+  '/api/v1/me/devices': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id': typeof ApiV1OrgsOrgSlugTimeEntriesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
@@ -821,7 +847,7 @@ export interface FileRoutesById {
   '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
-  '/api/v1/me': typeof ApiV1MeRoute
+  '/api/v1/me': typeof ApiV1MeRouteWithChildren
   '/api/v1/meta': typeof ApiV1MetaRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -841,7 +867,9 @@ export interface FileRoutesById {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
   '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
+  '/api/v1/orgs/$orgSlug/notification-preferences': typeof ApiV1OrgsOrgSlugNotificationPreferencesRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -849,6 +877,7 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
+  '/api/v1/me/devices/': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id': typeof ApiV1OrgsOrgSlugTimeEntriesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
@@ -935,7 +964,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
+    | '/api/v1/me/devices/$installationId'
     | '/api/v1/orgs/$orgSlug/clients'
+    | '/api/v1/orgs/$orgSlug/notification-preferences'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -943,6 +974,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/tracking'
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
+    | '/api/v1/me/devices/'
     | '/api/v1/orgs/$orgSlug/absences/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
@@ -1025,7 +1057,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId'
     | '/$orgSlug/settings/webhooks'
+    | '/api/v1/me/devices/$installationId'
     | '/api/v1/orgs/$orgSlug/clients'
+    | '/api/v1/orgs/$orgSlug/notification-preferences'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -1033,6 +1067,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/tracking'
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
+    | '/api/v1/me/devices'
     | '/api/v1/orgs/$orgSlug/absences/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
@@ -1117,7 +1152,9 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
+    | '/api/v1/me/devices/$installationId'
     | '/api/v1/orgs/$orgSlug/clients'
+    | '/api/v1/orgs/$orgSlug/notification-preferences'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -1125,6 +1162,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/tracking'
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
+    | '/api/v1/me/devices/'
     | '/api/v1/orgs/$orgSlug/absences/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
@@ -1168,7 +1206,7 @@ export interface RootRouteChildren {
   ApiGithubWebhookRoute: typeof ApiGithubWebhookRoute
   ApiMcpOrgSlugRoute: typeof ApiMcpOrgSlugRoute
   ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
-  ApiV1MeRoute: typeof ApiV1MeRoute
+  ApiV1MeRoute: typeof ApiV1MeRouteWithChildren
   ApiV1MetaRoute: typeof ApiV1MetaRoute
   ApiV1OpenapiDotjsonRoute: typeof ApiV1OpenapiDotjsonRoute
   ApiV1ProjectsRoute: typeof ApiV1ProjectsRoute
@@ -1176,6 +1214,7 @@ export interface RootRouteChildren {
   ApiV1TimeEntriesRoute: typeof ApiV1TimeEntriesRoute
   CliDownloadAssetRoute: typeof CliDownloadAssetRoute
   ApiV1OrgsOrgSlugClientsRoute: typeof ApiV1OrgsOrgSlugClientsRoute
+  ApiV1OrgsOrgSlugNotificationPreferencesRoute: typeof ApiV1OrgsOrgSlugNotificationPreferencesRoute
   ApiV1OrgsOrgSlugProjectsRoute: typeof ApiV1OrgsOrgSlugProjectsRoute
   ApiV1OrgsOrgSlugRepositoryProjectsRoute: typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   ApiV1OrgsOrgSlugSyncRoute: typeof ApiV1OrgsOrgSlugSyncRoute
@@ -1695,6 +1734,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugProjectsProjectIdSettingsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/api/v1/me/devices/': {
+      id: '/api/v1/me/devices/'
+      path: '/devices'
+      fullPath: '/api/v1/me/devices/'
+      preLoaderRoute: typeof ApiV1MeDevicesIndexRouteImport
+      parentRoute: typeof ApiV1MeRoute
+    }
     '/api/v1/orgs/$orgSlug/whoami': {
       id: '/api/v1/orgs/$orgSlug/whoami'
       path: '/api/v1/orgs/$orgSlug/whoami'
@@ -1744,12 +1790,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/notification-preferences': {
+      id: '/api/v1/orgs/$orgSlug/notification-preferences'
+      path: '/api/v1/orgs/$orgSlug/notification-preferences'
+      fullPath: '/api/v1/orgs/$orgSlug/notification-preferences'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugNotificationPreferencesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/clients': {
       id: '/api/v1/orgs/$orgSlug/clients'
       path: '/api/v1/orgs/$orgSlug/clients'
       fullPath: '/api/v1/orgs/$orgSlug/clients'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugClientsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/me/devices/$installationId': {
+      id: '/api/v1/me/devices/$installationId'
+      path: '/devices/$installationId'
+      fullPath: '/api/v1/me/devices/$installationId'
+      preLoaderRoute: typeof ApiV1MeDevicesInstallationIdRouteImport
+      parentRoute: typeof ApiV1MeRoute
     }
     '/api/v1/orgs/$orgSlug/timer/': {
       id: '/api/v1/orgs/$orgSlug/timer/'
@@ -1923,6 +1983,19 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
   OrgSlugRouteRouteChildren,
 )
 
+interface ApiV1MeRouteChildren {
+  ApiV1MeDevicesInstallationIdRoute: typeof ApiV1MeDevicesInstallationIdRoute
+  ApiV1MeDevicesIndexRoute: typeof ApiV1MeDevicesIndexRoute
+}
+
+const ApiV1MeRouteChildren: ApiV1MeRouteChildren = {
+  ApiV1MeDevicesInstallationIdRoute: ApiV1MeDevicesInstallationIdRoute,
+  ApiV1MeDevicesIndexRoute: ApiV1MeDevicesIndexRoute,
+}
+
+const ApiV1MeRouteWithChildren =
+  ApiV1MeRoute._addFileChildren(ApiV1MeRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
@@ -1955,7 +2028,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGithubWebhookRoute: ApiGithubWebhookRoute,
   ApiMcpOrgSlugRoute: ApiMcpOrgSlugRoute,
   ApiSlackCallbackRoute: ApiSlackCallbackRoute,
-  ApiV1MeRoute: ApiV1MeRoute,
+  ApiV1MeRoute: ApiV1MeRouteWithChildren,
   ApiV1MetaRoute: ApiV1MetaRoute,
   ApiV1OpenapiDotjsonRoute: ApiV1OpenapiDotjsonRoute,
   ApiV1ProjectsRoute: ApiV1ProjectsRoute,
@@ -1963,6 +2036,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1TimeEntriesRoute: ApiV1TimeEntriesRoute,
   CliDownloadAssetRoute: CliDownloadAssetRoute,
   ApiV1OrgsOrgSlugClientsRoute: ApiV1OrgsOrgSlugClientsRoute,
+  ApiV1OrgsOrgSlugNotificationPreferencesRoute:
+    ApiV1OrgsOrgSlugNotificationPreferencesRoute,
   ApiV1OrgsOrgSlugProjectsRoute: ApiV1OrgsOrgSlugProjectsRoute,
   ApiV1OrgsOrgSlugRepositoryProjectsRoute:
     ApiV1OrgsOrgSlugRepositoryProjectsRoute,
@@ -1988,3 +2063,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
