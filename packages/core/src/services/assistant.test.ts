@@ -2959,12 +2959,19 @@ describe("what an error that ends a turn may say", () => {
 		).toBeNull();
 	});
 
-	test("a stream cut keeps the provider's text out of the answer", () => {
+	test("a stream cut gets the loop's own line, not the provider's text", () => {
 		const cut = new OpenRouterStreamCutError(turn(), {
 			code: 502,
 			message: "upstream host 10.0.0.5 refused the request",
 		});
 		expect(cut.message).toContain("10.0.0.5");
-		expect(userFacingAssistantError(cut)).toBeNull();
+		const text = userFacingAssistantError(cut);
+		expect(text).not.toContain("10.0.0.5");
+		expect(text).toMatch(/closed before the answer was complete/);
+		expect(
+			userFacingAssistantError(
+				new OpenRouterStreamCutError(turn(), null, true),
+			),
+		).toMatch(/took too long/);
 	});
 });
