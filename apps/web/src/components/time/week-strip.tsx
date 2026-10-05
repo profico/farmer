@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 
 import { formatClock } from "#/lib/format-hours.ts";
 import { springLayout } from "#/lib/motion.ts";
+import { dateSearch } from "#/lib/time-search.ts";
 import { cn } from "#/lib/utils.ts";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -30,7 +31,7 @@ export function WeekStrip({
 	 *  from it — unless the rest of its week has made up for it
 	 *  (`@farmer/core/lib/day-marks`). Omitted for people the rule does not
 	 *  apply to. */
-	today?: string;
+	today: string;
 	dayTargetSeconds?: number | null;
 }) {
 	const weekTotal = dates.reduce(
@@ -38,7 +39,7 @@ export function WeekStrip({
 		0,
 	);
 	const marks =
-		today == null || dayTargetSeconds == null
+		dayTargetSeconds == null
 			? null
 			: weekDayMarks({
 					dates,
@@ -67,7 +68,7 @@ export function WeekStrip({
 						key={date}
 						to="/$orgSlug/time"
 						params={{ orgSlug }}
-						search={{ date }}
+						search={dateSearch(date, today)}
 						title={holidayName}
 						// The active day is marked by a 2px accent underscore sitting on
 						// the strip's own hairline, not by a filled tab — the strip is

@@ -36,6 +36,7 @@ import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { useTimedEntryId } from "#/hooks/use-timer.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
+import { dateSearch } from "#/lib/time-search.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { copyTimeEntriesDay } from "#/server/time-entries.ts";
@@ -151,7 +152,7 @@ export function DayView({
 					<Link
 						to="/$orgSlug/time"
 						params={{ orgSlug }}
-						search={{ date: previousDay }}
+						search={dateSearch(previousDay, today)}
 						className={stepperClass}
 						aria-label="Previous day"
 					>
@@ -172,7 +173,7 @@ export function DayView({
 					<Link
 						to="/$orgSlug/time"
 						params={{ orgSlug }}
-						search={{ date: addDaysToKey(date, 1) }}
+						search={dateSearch(addDaysToKey(date, 1), today)}
 						className={stepperClass}
 						aria-label="Next day"
 					>
@@ -185,7 +186,7 @@ export function DayView({
 						navigate({
 							to: "/$orgSlug/time",
 							params: { orgSlug },
-							search: { date: picked },
+							search: dateSearch(picked, today),
 						}),
 				}}
 				returnLink={

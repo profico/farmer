@@ -97,6 +97,7 @@ function WeekRoute() {
 			entries={entries}
 			weekStart={weekStart}
 			isCurrentWeek={weekStart === currentWeekStart}
+			today={today}
 			holidays={new Map(holidayEntries)}
 		/>
 	);

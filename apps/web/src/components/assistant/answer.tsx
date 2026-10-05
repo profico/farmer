@@ -1,10 +1,12 @@
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouteContext } from "@tanstack/react-router";
 import { Fragment, useEffect, useState } from "react";
 
 import { FadeSwap } from "#/components/ui/fade-swap.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { useToday } from "#/hooks/use-today.ts";
+import { dateSearch } from "#/lib/time-search.ts";
 
 import {
 	AnswerChart,
@@ -419,13 +421,18 @@ export const printDayKey = (day: string) => {
  */
 function DayCitation({ day, reveal }: { day: string; reveal: boolean }) {
 	const orgSlug = useOrgSlug();
+	const timezone = useRouteContext({
+		from: "/$orgSlug",
+		select: (context) => context.organization.timezone,
+	});
+	const today = useToday(timezone);
 	const label = printDayKey(day);
 	if (!label) return <>{day}</>;
 	return (
 		<Link
 			to="/$orgSlug/time"
 			params={{ orgSlug }}
-			search={{ date: day }}
+			search={dateSearch(day, today)}
 			className={word(reveal, "underlined text-ink")}
 		>
 			{label}
