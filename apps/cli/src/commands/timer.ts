@@ -5,7 +5,6 @@ import type {
 	ApiTimer,
 	ApiTimerState,
 } from "@farmer/core/api";
-import { dayKeyInTz } from "@farmer/core/lib/time";
 import type { ConfirmTimerInput, StartTimerInput } from "@farmer/core/schema";
 
 import { parseDay } from "../dates";
@@ -387,21 +386,28 @@ export const continueEntry: Command = {
 };
 
 /**
- * The figure `farmer stop` sends, which `confirm` writes as the entry's TOTAL.
+ * The measured part `farmer stop` sends as `measuredSeconds`. The server adds
+ * the hours the entry holds when it saves, so an edit made to the entry while
+ * the command waited at its prompt is kept.
  *
- * A typed `--duration` is the time this timer stands for, never that total: on
- * a timer that continues an entry it is added to what the entry held, the way
- * `farmer edit --add` adds. Sent as it was typed, `farmer stop --duration 0:30`
- * on an entry of 3:00 would leave the entry at 0:30 and the 3:00 gone.
+ * A typed `--duration` is the time this timer stands for, never the entry's
+ * total: on a timer that continues an entry it is added to what the entry held,
+ * the way `farmer edit --add` adds. That meaning is unchanged, so a typed
+ * figure is sent as the measured part. A sum past a day is refused here, from
+ * the hours as read, and again by the server from the live hours.
  */
-export const stoppedDuration = (
+export const stoppedMeasured = (
 	timer: Pick<ApiTimer, "snappedSeconds" | "entry">,
 	typed: string | undefined,
 ): number => {
-	if (typed === undefined) return timer.snappedSeconds;
-	return timer.entry
-		? addToDuration(timer.entry.durationSeconds, typed)
-		: parseQuarterHours(typed);
+	if (typed === undefined) {
+		return Math.max(
+			0,
+			timer.snappedSeconds - (timer.entry?.durationSeconds ?? 0),
+		);
+	}
+	if (timer.entry) addToDuration(timer.entry.durationSeconds, typed);
+	return parseQuarterHours(typed);
 };
 
 const STOP_USAGE =
@@ -465,17 +471,15 @@ export const stop: Command = {
 		}
 
 		const body: ConfirmTimerInput = {
-			// A continued entry stays on its own day unless -d moves it.
-			date:
-				values.date === undefined
-					? (timer.entry?.date ??
-						dayKeyInTz(new Date(timer.startedAt), scope.clock.timeZone))
-					: parseDay(values.date, scope.clock),
-			taskId: timer.task.id,
-			durationSeconds: stoppedDuration(timer, values.duration),
+			measuredSeconds: stoppedMeasured(timer, values.duration),
 			overtime: values.overtime === true,
 		};
-		if (timer.project) body.projectId = timer.project.id;
+		if (values.date !== undefined) {
+			body.date = parseDay(values.date, scope.clock);
+		}
+		// The timer's own day, project and task are left out, so the server
+		// keeps the live ones: a continued entry stays on its own day unless -d
+		// moves it. The note is sent as before: it is asked for below.
 		if (timer.description) body.description = timer.description;
 
 		if (values.project !== undefined) {

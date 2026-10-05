@@ -24,8 +24,8 @@ import type { Ctx } from "./types";
  * so every rule an entry has — the day's 24 hours, the mandatory note, the task
  * taxonomy — applies to a measured hour exactly as it does to a typed one.
  * That is the whole answer to "a stopwatch produces figures like 2:12": the
- * figure is snapped before anybody sees it, and what is saved is what they
- * confirmed.
+ * figure is snapped before anybody sees it, and the measured part they saw is saved, and
+ * an edit of the entry hours is kept.
  *
  * One timer per PERSON, not per workspace — see `db/schema/timer.ts`. Every
  * function still takes a Ctx, and a function that writes still names the
@@ -451,8 +451,8 @@ export const timersService = {
 	 * task or note takes the live value, read under the lock: the entry's own,
 	 * or the timer's copy once the entry is gone. The duration is the entry's
 	 * live hours plus the measured part, snapped. A caller that read the timer
-	 * sends that part as `measuredSeconds`, so what is saved is what the person
-	 * saw. Without it the server uses its own measured time. `durationSeconds`
+	 * sends that part as `measuredSeconds`, so the measured part that the person saw
+	 * is saved, and an inline edit of the entry's hours is kept and added to. Without it the server uses its own measured time. `durationSeconds`
 	 * wins when sent.
 	 *
 	 * Everything is read INSIDE the transaction, and the continued entry is
@@ -509,7 +509,10 @@ export const timersService = {
 
 			// An absent field takes the live value. The locked read gives the
 			// entry's own, so an edit that committed after `rowOf` read is seen.
-			// With no entry, `rowOf` gives the timer's copy.
+			// When the timer has no entry, or the entry was deleted before the
+			// lock, `continued` is empty and the field falls back to `rowOf`. That
+			// is the timer's copy, or the entry's values as `rowOf` read them if
+			// the entry was deleted between the two reads.
 			const projectId =
 				input.projectId === undefined
 					? continued

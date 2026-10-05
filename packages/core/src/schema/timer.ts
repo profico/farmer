@@ -79,7 +79,15 @@ export const confirmTimerInput = z.object({
 	// The measured part of the figure a caller showed, without the entry's
 	// hours. The server adds the entry's live hours and snaps the sum. Ignored
 	// when `durationSeconds` is sent. Absent: the server's own measured time.
-	measuredSeconds: z.number().int().min(0).max(MAX_DAY_SECONDS).optional(),
+	measuredSeconds: z
+		.number()
+		.int()
+		.min(0)
+		.max(MAX_DAY_SECONDS, "A single entry cannot exceed 24 hours")
+		.describe(
+			"The measured part of the figure shown, without the entry's hours: snappedSeconds minus entry.durationSeconds. The server adds the live entry hours.",
+		)
+		.optional(),
 	overtime: z.boolean().default(false),
 });
 export type ConfirmTimerInput = z.infer<typeof confirmTimerInput>;

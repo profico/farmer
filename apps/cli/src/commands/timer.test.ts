@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { ApiTimeEntry } from "@farmer/core/api";
 
-import { stoppedDuration, whyNotContinued } from "./timer";
+import { stoppedMeasured, whyNotContinued } from "./timer";
 
 const HOUR = 3600;
 
@@ -20,31 +20,43 @@ const entry = (over: Partial<ApiTimeEntry> = {}): ApiTimeEntry => ({
 	...over,
 });
 
-describe("stoppedDuration", () => {
+describe("stoppedMeasured", () => {
 	const continued = {
 		snappedSeconds: 3 * HOUR + 30 * 60,
 		entry: { id: "e", date: "2026-09-14", durationSeconds: 3 * HOUR },
 	};
 
-	test("sends the measured figure when nothing was typed", () => {
-		expect(stoppedDuration(continued, undefined)).toBe(3 * HOUR + 30 * 60);
+	test("sends the measured part when nothing was typed", () => {
+		expect(stoppedMeasured(continued, undefined)).toBe(30 * 60);
+	});
+
+	test("never sends a negative measured part", () => {
+		expect(
+			stoppedMeasured(
+				{ snappedSeconds: HOUR, entry: { ...continued.entry } },
+				undefined,
+			),
+		).toBe(0);
 	});
 
 	// The reviewer's case: the entry held 3:00, `farmer continue` ran 0:30,
 	// and `--duration 0:30` meant the new part. It must not become the total.
-	test("adds a typed duration to what a continued entry held", () => {
-		expect(stoppedDuration(continued, "0:30")).toBe(3 * HOUR + 30 * 60);
+	test("sends a typed duration as the part to add to a continued entry", () => {
+		expect(stoppedMeasured(continued, "0:30")).toBe(30 * 60);
 	});
 
 	test("a typed duration on a new entry is the entry", () => {
-		expect(stoppedDuration({ snappedSeconds: HOUR, entry: null }, "0:30")).toBe(
+		expect(stoppedMeasured({ snappedSeconds: HOUR, entry: null }, "0:30")).toBe(
 			30 * 60,
 		);
+		expect(
+			stoppedMeasured({ snappedSeconds: HOUR, entry: null }, undefined),
+		).toBe(HOUR);
 	});
 
 	test("refuses a sum past a day", () => {
 		expect(() =>
-			stoppedDuration(
+			stoppedMeasured(
 				{
 					...continued,
 					entry: { ...continued.entry, durationSeconds: 23 * HOUR },
