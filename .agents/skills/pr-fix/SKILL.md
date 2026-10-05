@@ -98,5 +98,4 @@ For each request, report:
 - The test result.
 
 End the report with the pushed SHA and the resolved threads. List any thread
-that is still open and needs a
-reply from the author.
+that is still open and needs a reply from the author.
