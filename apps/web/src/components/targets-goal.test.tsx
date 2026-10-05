@@ -58,9 +58,23 @@ describe("the target gap on a Monday", () => {
 
 	test("the zero caption has no color", () => {
 		const html = renderToStaticMarkup(
-			<TargetGap period={period({ status: "behind" })} />,
+			<TargetGap period={period({ status: "on_track" })} />,
 		);
 		expect(html).not.toMatch(/text-(ok|warn|bad)/);
+	});
+
+	test("a Wednesday with nothing logged is still short, in red", () => {
+		const wed = period({
+			status: "behind",
+			targetSoFarSeconds: 16 * H,
+			targetThroughTodaySeconds: 24 * H,
+		});
+		expect(textOf(wed)).toBe(
+			"24,00 short of the 24,00 due by the end of today",
+		);
+		expect(renderToStaticMarkup(<TargetGap period={wed} />)).toContain(
+			"text-bad",
+		);
 	});
 
 	test("a goal of 0 with nothing logged is not rewritten", () => {
