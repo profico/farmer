@@ -20,8 +20,8 @@ import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { client, project, task } from "../db/schema/domain";
 import { createTestDb, present, type TestDb } from "../test/harness";
+import { agentErrorMessage } from "./error-message";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
-import { mcpErrorMessage } from "./mcp-tools";
 import type { Ctx } from "./types";
 
 let harness: TestDb;
@@ -209,10 +209,10 @@ describe("assertTaskAvailable", () => {
 	});
 });
 
-// What an MCP agent reads when a guard refuses an id. The guards keep their
-// short message; `mcpErrorMessage` adds the hint. Real guard errors are used,
+// What a model reads (the MCP server and the assistant) when a guard refuses an id. The guards keep their
+// short message; `agentErrorMessage` adds the hint. Real guard errors are used,
 // so a changed guard message fails here.
-describe("mcpErrorMessage on a real guard refusal", () => {
+describe("agentErrorMessage on a real guard refusal", () => {
 	const refusal = async (run: () => Promise<object | void>) => {
 		const error = await run().then(
 			() => null,
@@ -225,7 +225,7 @@ describe("mcpErrorMessage on a real guard refusal", () => {
 		const error = await refusal(() =>
 			assertTaskAvailable(ctxForOrgA, crypto.randomUUID(), projectInAId),
 		);
-		const message = mcpErrorMessage(error);
+		const message = agentErrorMessage(error);
 		expect(message).toStartWith("Task not available: ");
 		expect(message).toContain("archived or does not exist");
 		expect(message).toContain("list_tasks");
@@ -245,7 +245,7 @@ describe("mcpErrorMessage on a real guard refusal", () => {
 		const error = await refusal(() =>
 			assertTaskAvailable(ctxForOrgA, row.id, projectInAId),
 		);
-		expect(mcpErrorMessage(error)).toContain("list_tasks");
+		expect(agentErrorMessage(error)).toContain("list_tasks");
 	});
 
 	test("gives the same answer for another organization's task and for an unknown one", async () => {
@@ -255,9 +255,9 @@ describe("mcpErrorMessage on a real guard refusal", () => {
 		const unknown = await refusal(() =>
 			assertTaskAvailable(ctxForOrgA, crypto.randomUUID(), projectInBId),
 		);
-		expect(mcpErrorMessage(other)).toBe(mcpErrorMessage(unknown));
-		expect(mcpErrorMessage(other)).not.toContain(orgBId);
-		expect(mcpErrorMessage(other)).not.toContain(taskInBId);
+		expect(agentErrorMessage(other)).toBe(agentErrorMessage(unknown));
+		expect(agentErrorMessage(other)).not.toContain(orgBId);
+		expect(agentErrorMessage(other)).not.toContain(taskInBId);
 	});
 
 	test("gives the same answer on a repeated failure", async () => {
@@ -267,7 +267,7 @@ describe("mcpErrorMessage on a real guard refusal", () => {
 		const second = await refusal(() =>
 			assertTaskAvailable(ctxForOrgA, taskInBId, undefined),
 		);
-		expect(mcpErrorMessage(first)).toBe(mcpErrorMessage(second));
+		expect(agentErrorMessage(first)).toBe(agentErrorMessage(second));
 	});
 
 	test("tells the agent to call list_projects for a refused project", async () => {
@@ -277,9 +277,9 @@ describe("mcpErrorMessage on a real guard refusal", () => {
 		const unknown = await refusal(() =>
 			assertProjectInOrg(ctxForOrgA, crypto.randomUUID()),
 		);
-		expect(mcpErrorMessage(other)).toStartWith("Project not found: ");
-		expect(mcpErrorMessage(other)).toContain("list_projects");
-		expect(mcpErrorMessage(other)).toBe(mcpErrorMessage(unknown));
+		expect(agentErrorMessage(other)).toStartWith("Project not found: ");
+		expect(agentErrorMessage(other)).toContain("list_projects");
+		expect(agentErrorMessage(other)).toBe(agentErrorMessage(unknown));
 	});
 
 	test("leaves the guard's own message short for the web app, the API and the CLI", async () => {
@@ -293,6 +293,6 @@ describe("mcpErrorMessage on a real guard refusal", () => {
 		const error = await refusal(() =>
 			assertTaskAvailable(ctxForOrgA, absenceTaskId, projectInAId),
 		);
-		expect(mcpErrorMessage(error)).toBe(error.message);
+		expect(agentErrorMessage(error)).toBe(error.message);
 	});
 });

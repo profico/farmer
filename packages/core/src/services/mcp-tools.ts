@@ -39,11 +39,6 @@ import {
 	toolInputSchema,
 	toolsFor,
 } from "./assistant-tools";
-import { safeErrorMessage } from "./error-message";
-import {
-	PROJECT_NOT_FOUND_MESSAGE,
-	TASK_NOT_AVAILABLE_MESSAGE,
-} from "./guards";
 
 /**
  * MCP's `ToolAnnotations`, narrowed to the two hints this registry can honestly
@@ -92,30 +87,3 @@ export const mcpToolDefinitions = (access: Access): McpToolDefinition[] =>
 		inputSchema: toolInputSchema(tool),
 		annotations: annotationsFor(tool),
 	}));
-
-// How an agent recovers from a refused id. The id guards keep a short message
-// for the web app, the REST API and the CLI; only this layer adds the hint. The
-// text is the same for an id that is missing and an id of another organization,
-// so it does not tell the caller which one it was.
-const RECOVERY_HINTS = new Map([
-	[
-		TASK_NOT_AVAILABLE_MESSAGE,
-		"it is archived or does not exist in this organization. Call list_tasks to get the current task ids.",
-	],
-	[
-		PROJECT_NOT_FOUND_MESSAGE,
-		"it does not exist in this organization. Call list_projects to get the current project ids.",
-	],
-]);
-
-/**
- * The message an MCP client may read for a failed tool call, or null when it
- * must not see it. It is `safeErrorMessage` plus a recovery hint for a refused
- * task or project id. Any other message is unchanged.
- */
-export const mcpErrorMessage = (error: Error): string | null => {
-	const message = safeErrorMessage(error);
-	if (message === null) return null;
-	const hint = RECOVERY_HINTS.get(message);
-	return hint === undefined ? message : `${message}: ${hint}`;
-};

@@ -154,7 +154,7 @@ const handle = async (request: Request, orgSlug: string) => {
 	const admitted = admitRequest("mcp", ctx.userId);
 	if (!admitted.ok) return tooManyRequests(admitted.retryAfterSeconds);
 
-	const { ctxAccess, findTool, mcpErrorMessage, mcpToolDefinitions } =
+	const { ctxAccess, findTool, agentErrorMessage, mcpToolDefinitions } =
 		await import("@farmer/core/services");
 	// Already resolved and memoized at the boundary; this reads the memo.
 	const access = await ctxAccess(ctx);
@@ -230,8 +230,8 @@ const handle = async (request: Request, orgSlug: string) => {
 			// tool result rather than a JSON-RPC error. Only a message written for
 			// the person passes (`classifyServiceError`): a `DrizzleQueryError`
 			// carries the SQL and its parameters, and that stays in the log.
-			// `mcpErrorMessage` adds how to recover from a refused task or project id.
-			const message = error instanceof Error ? mcpErrorMessage(error) : null;
+			// `agentErrorMessage` adds how to recover from a refused task or project id.
+			const message = error instanceof Error ? agentErrorMessage(error) : null;
 			if (message === null) {
 				console.error(`[mcp] tool "${call.params.name}" failed`, error);
 			}

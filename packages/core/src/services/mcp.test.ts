@@ -21,7 +21,8 @@ import {
 	toolDefinitions,
 	toolsFor,
 } from "./assistant-tools";
-import { mcpErrorMessage, mcpToolDefinitions } from "./mcp-tools";
+import { agentErrorMessage } from "./error-message";
+import { mcpToolDefinitions } from "./mcp-tools";
 
 // ── The mapping: a fixed Access in, a stable tool list out ──────────────────
 
@@ -123,30 +124,30 @@ describe("mcpToolDefinitions", () => {
 
 // ── The error message a client reads ────────────────────────────────────────
 
-describe("mcpErrorMessage", () => {
+describe("agentErrorMessage", () => {
 	test("adds the recovery hint to a refused task", () => {
-		expect(mcpErrorMessage(new Error("Task not available"))).toBe(
+		expect(agentErrorMessage(new Error("Task not available"))).toBe(
 			"Task not available: it is archived or does not exist in this organization. Call list_tasks to get the current task ids.",
 		);
 	});
 
 	test("adds the recovery hint to a refused project", () => {
-		expect(mcpErrorMessage(new Error("Project not found"))).toBe(
+		expect(agentErrorMessage(new Error("Project not found"))).toBe(
 			"Project not found: it does not exist in this organization. Call list_projects to get the current project ids.",
 		);
 	});
 
 	test("leaves any other readable message unchanged", () => {
-		expect(mcpErrorMessage(new Error("Time entry not found"))).toBe(
+		expect(agentErrorMessage(new Error("Time entry not found"))).toBe(
 			"Time entry not found",
 		);
-		expect(mcpErrorMessage(new Error("Task not available now"))).toBe(
+		expect(agentErrorMessage(new Error("Task not available now"))).toBe(
 			"Task not available now",
 		);
 	});
 
 	test("never reveals an unsafe error", () => {
-		expect(mcpErrorMessage(new TypeError("x is undefined"))).toBeNull();
+		expect(agentErrorMessage(new TypeError("x is undefined"))).toBeNull();
 	});
 
 	test("names tools that the registry really offers", () => {
