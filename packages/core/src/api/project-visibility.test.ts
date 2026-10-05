@@ -24,6 +24,7 @@ const ORG = "org-api-project";
 const PM = "u-api-project-pm";
 const LEAD = "u-api-project-lead";
 const PLAIN = "u-api-project-plain";
+const ADMIN = "u-api-project-admin";
 
 const HOUR = 3600;
 
@@ -45,7 +46,7 @@ beforeAll(async () => {
 		createdAt: new Date(),
 	});
 	await db.insert(user).values(
-		[PM, LEAD, PLAIN].map((id) => ({
+		[PM, LEAD, PLAIN, ADMIN].map((id) => ({
 			id,
 			name: id,
 			email: `${id}@example.com`,
@@ -55,11 +56,11 @@ beforeAll(async () => {
 		})),
 	);
 	await db.insert(member).values(
-		[PM, LEAD, PLAIN].map((userId) => ({
+		[PM, LEAD, PLAIN, ADMIN].map((userId) => ({
 			id: `m-${userId}`,
 			organizationId: ORG,
 			userId,
-			role: "member",
+			role: userId === ADMIN ? "admin" : "member",
 			createdAt: new Date(),
 		})),
 	);
@@ -166,9 +167,13 @@ describe("the overview", () => {
 		).rejects.toBeInstanceOf(AccessError);
 	});
 
-	test("a team lead reads the whole project", async () => {
+	test.each([
+		["a team lead", LEAD],
+		["a PM", PM],
+		["an admin with no assignment", ADMIN],
+	])("%s reads the whole project", async (_who, userId) => {
 		const overview = toApiProjectOverview(
-			await projectsService.overview(ctx(LEAD), projectId),
+			await projectsService.overview(ctx(userId), projectId),
 		);
 		expect(overview.allTimeSeconds).toBe(6 * HOUR);
 		expect(overview.peopleCount).toBe(2);
