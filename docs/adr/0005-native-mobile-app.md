@@ -89,6 +89,13 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
   URL. `auth/mobile-sign-in.ts` allows only Google and the origin of each
   OIDC source, so a source whose authorization endpoint is on a different
   host fails closed.
+- **Open for the owner:** the session travels in the `farmer://` deep link.
+  Another Android app that claims the same scheme can receive it, and a
+  self-hosted server cannot use verified https App Links. The app refuses a
+  callback for a flow it did not start (a nonce it keeps until the callback),
+  which stops a forced sign-in but not a hostile app on the device. A real
+  fix is an exchange: the link carries a one-time code, and only the app that
+  holds the matching secret can turn it into a session.
 - The timer surfaces on the phone (the Live Activity and the ongoing Android
   notification) show the elapsed time only. Stop opens the confirm form with
   the snapped figure, as ADR 0003 requires. Nothing confirms an entry from the
