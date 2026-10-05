@@ -38,31 +38,36 @@ export const TARGET_STATUS = {
 	{ label: string; tone: "positive" | "warning" | "negative" }
 >;
 
-/** "5,00 short of the 24,00 due before today", or "1,50 ahead of the 24,00 due
- *  before today". The target counts the working days before today, so the day
- *  in progress is not in it — the same count the Tracking report uses. The
- *  words say so, because "today's" read as the target through today. The hours
- *  are work + time off through today, never a day booked off later. */
+/** The color of the gap. Ahead is green. Short follows the verdict, and the
+ *  verdict does not count today's own working day, so a person who is short
+ *  only by hours of today that are not yet over has no color: the day is still
+ *  in progress, and red would contradict the "On track" pill beside it. */
+export function targetGapTone(period: PeriodTarget, delta: number) {
+	if (delta >= 0) return "text-ok";
+	if (period.status === "slightly_behind") return "text-warn";
+	if (period.status === "behind") return "text-bad";
+	return "text-foreground";
+}
+
+/** "5,00 short of the 32,00 due by the end of today", or "1,50 ahead of the
+ *  32,00 due by the end of today". The number is the goal through the end of
+ *  today, so it includes today's own working day: on a Monday it is one day,
+ *  not 0. "Today's" is not used, because people read it two ways: the hours
+ *  due before today, or the hours due through today. The hours logged are
+ *  work + time off through today, never a day booked off later in the
+ *  period. */
 export function TargetGap({ period }: { period: PeriodTarget }) {
 	if (period.targetSoFarSeconds == null) {
 		return <span className="text-muted-foreground">No target</span>;
 	}
-	const delta = period.totalSoFarSeconds - period.targetSoFarSeconds;
+	const goal = period.targetThroughTodaySeconds ?? period.targetSoFarSeconds;
+	const delta = period.totalSoFarSeconds - goal;
 	return (
 		<span className="text-muted-foreground">
-			<span
-				className={cn(
-					"font-medium",
-					delta >= 0
-						? "text-ok"
-						: period.status === "slightly_behind"
-							? "text-warn"
-							: "text-bad",
-				)}
-			>
+			<span className={cn("font-medium", targetGapTone(period, delta))}>
 				{formatReportHours(Math.abs(delta))} {delta >= 0 ? "ahead" : "short"}
 			</span>{" "}
-			of the {formatReportHours(period.targetSoFarSeconds)} due before today
+			of the {formatReportHours(goal)} due by the end of today
 		</span>
 	);
 }

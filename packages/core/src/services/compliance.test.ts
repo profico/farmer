@@ -13,6 +13,7 @@ import {
 	beforeEach,
 	describe,
 	expect,
+	setSystemTime,
 	test,
 } from "bun:test";
 
@@ -469,6 +470,9 @@ describe("my targets", () => {
 			// Working days strictly before Thursday: Monday to Wednesday, 3 of
 			// the week's 5 — matching the Tracking report's own elapsed count.
 			workingDaysElapsed: 3,
+			// Thursday is a working day, so it counts in the day count that
+			// goes with the goal.
+			workingDaysThroughToday: 4,
 			targetSeconds: 40 * H,
 			targetSoFarSeconds: 24 * H,
 			workSeconds: 24 * H,
@@ -484,6 +488,7 @@ describe("my targets", () => {
 			to: "2026-04-30",
 			workingDays: 22,
 			workingDaysElapsed: 11,
+			workingDaysThroughToday: 12,
 			targetSeconds: 176 * H,
 			targetSoFarSeconds: 88 * H,
 			totalSeconds: 32 * H,
@@ -556,7 +561,8 @@ describe("my targets", () => {
 //
 // "Where you should be by today" is the working days strictly BEFORE today,
 // times a day's worth. On a Thursday that is Monday to Wednesday: 24h, not 32h.
-// The screens say "due before today" for this reason. These tests pin the
+// This is the verdict's target, not the goal the screens show (that adds
+// today's own working day, see `targetThroughTodaySeconds`). These tests pin the
 // count at the edges where a wrong day key would move it by a day: the org
 // timezone, the first day of the week, and month, year and DST boundaries.
 describe("the running target", () => {
@@ -766,6 +772,32 @@ describe("the tools that carry the rule to the assistant", () => {
 		expect(diligent?.monthTargetHours).toBe(176);
 	});
 
+	test("my_targets on a Monday carries the goal through today, not only the verdict's 0", async () => {
+		// Issue #105 on the assistant path. On the first working day of a week
+		// the target so far is 0, and a model that read only that figure told
+		// the person that they owed nothing.
+		await setFund(176 * H);
+		setSystemTime(new Date("2026-04-13T09:00:00Z"));
+		let result: unknown;
+		try {
+			result = await findTool("my_targets")?.run(ctxOf(DILIGENT), {});
+		} finally {
+			setSystemTime();
+		}
+		// SAFETY: the projection is fixed in assistant-tools.ts, and the
+		// expectations name every field they read.
+		const mine = result as {
+			week: {
+				workingDaysThroughToday: number;
+				targetSoFarHours: number | null;
+				targetThroughTodayHours: number | null;
+			};
+		};
+		expect(mine.week.targetSoFarHours).toBe(0);
+		expect(mine.week.targetThroughTodayHours).toBe(8);
+		expect(mine.week.workingDaysThroughToday).toBe(1);
+	});
+
 	test("the report goes to the people who act on it, my_targets to everyone", async () => {
 		// `available` decides what the model is TOLD it can do, not what it may
 		// do. A Member gets their own targets; the team report is a lead's
@@ -775,5 +807,223 @@ describe("the tools that carry the rule to the assistant", () => {
 		expect(findTool("my_targets")?.available?.(access)).toBe(true);
 		expect(findTool("tracking_report")?.available?.(access)).toBe(false);
 		expect(findTool("tracking_report")?.available?.(adminAccess)).toBe(true);
+	});
+});
+
+// ── the goal through today (issue #105) ────────────────────────────────────
+//
+// The tile said "ahead of today's X". On the first working day of a week X was
+// 0, because the verdict counts only the days strictly BEFORE today. The goal
+// the person reads must include today's own working day. The verdict
+// (`targetSoFarSeconds`, `status`) stays as Tracking and the reminders have it.
+describe("the goal through today", () => {
+	const ctxOf = (userId: string): Ctx => ({ organizationId: ORG, userId });
+	const mineAt = (iso: string, userId = DILIGENT) =>
+		complianceService.myTargets(ctxOf(userId), { now: new Date(iso) });
+	const setOrg = (values: { timezone?: string; weekStartsOn?: number }) =>
+		db.update(organization).set(values).where(eq(organization.id, ORG));
+	/** A fund of 8h for each working day of the month, holidays out. */
+	const fundForMonth = async (year: number, month: number) => {
+		const days = (
+			await complianceService.tracking(
+				adminCtx(),
+				{ year, month },
+				{ now: new Date(Date.UTC(year, month - 1, 15)) },
+			)
+		).workingDaysInMonth;
+		await db
+			.insert(monthlyHourFund)
+			.values({
+				organizationId: ORG,
+				year,
+				month,
+				fundSeconds: days * 8 * H,
+			})
+			.onConflictDoNothing();
+		return days;
+	};
+
+	afterEach(async () => {
+		await setOrg({ timezone: "UTC", weekStartsOn: 1 });
+	});
+
+	test("Monday: the goal is one day, the verdict has nothing due yet", async () => {
+		const mine = await mineAt("2026-04-13T09:00:00Z");
+		expect(mine.week.targetThroughTodaySeconds).toBe(8 * H);
+		expect(mine.week.targetSoFarSeconds).toBe(0);
+		expect(mine.week.status).toBe("on_track");
+	});
+
+	test("the goal grows by one day each weekday and stops at the weekend", async () => {
+		const expected = [
+			["2026-04-13", 8],
+			["2026-04-14", 16],
+			["2026-04-15", 24],
+			["2026-04-16", 32],
+			["2026-04-17", 40],
+			["2026-04-18", 40],
+			["2026-04-19", 40],
+		] as const;
+		for (const [day, hours] of expected) {
+			const mine = await mineAt(`${day}T12:00:00Z`);
+			expect(mine.week.targetThroughTodaySeconds).toBe(hours * H);
+		}
+	});
+
+	test("Thursday is four days, the case in issue #92", async () => {
+		const mine = await mineAt("2026-04-16T12:00:00Z");
+		expect(mine.week.targetThroughTodaySeconds).toBe(32 * H);
+		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
+	});
+
+	test("a week that starts on Sunday gives nothing for the Sunday", async () => {
+		await setOrg({ weekStartsOn: 0 });
+		const sunday = await mineAt("2026-04-19T12:00:00Z");
+		expect(sunday.week.from).toBe("2026-04-19");
+		expect(sunday.week.targetThroughTodaySeconds).toBe(0);
+		const monday = await mineAt("2026-04-20T12:00:00Z");
+		expect(monday.week.from).toBe("2026-04-19");
+		expect(monday.week.targetThroughTodaySeconds).toBe(8 * H);
+	});
+
+	test("a public holiday Monday has no goal, the Tuesday has one day", async () => {
+		// Memorial Day, Monday 25 May 2026.
+		const monday = await mineAt("2026-05-25T12:00:00Z");
+		expect(monday.week.workingDays).toBe(4);
+		expect(monday.week.targetThroughTodaySeconds).toBe(0);
+		const tuesday = await mineAt("2026-05-26T12:00:00Z");
+		expect(tuesday.week.targetThroughTodaySeconds).toBe(8 * H);
+	});
+
+	test("a Saturday goal is the five weekdays and nothing more", async () => {
+		const mine = await mineAt("2026-04-18T12:00:00Z");
+		expect(mine.week.targetThroughTodaySeconds).toBe(40 * H);
+		expect(mine.week.targetThroughTodaySeconds).toBe(mine.week.targetSeconds);
+	});
+
+	test("the goal never passes the whole target of the period", async () => {
+		for (const day of ["13", "14", "15", "16", "17", "18", "19"]) {
+			const mine = await mineAt(`2026-04-${day}T12:00:00Z`);
+			expect(mine.week.targetThroughTodaySeconds ?? 0).toBeLessThanOrEqual(
+				mine.week.targetSeconds ?? 0,
+			);
+		}
+	});
+
+	test("the month goal counts today: 12 of 22 days on the 16th", async () => {
+		await setFund(176 * H);
+		const mine = await mineAt("2026-04-16T12:00:00Z");
+		expect(mine.month.targetThroughTodaySeconds).toBe(96 * H);
+		expect(mine.month.targetSoFarSeconds).toBe(88 * H);
+	});
+
+	test("the first working day of a month (Thursday 1 October 2026)", async () => {
+		await fundForMonth(2026, 10);
+		const mine = await mineAt("2026-10-01T09:00:00Z");
+		expect(mine.month.targetSoFarSeconds).toBe(0);
+		expect(mine.month.targetThroughTodaySeconds).toBe(8 * H);
+		// The week began on Monday 28 September: four days through Thursday.
+		expect(mine.week.targetThroughTodaySeconds).toBe(32 * H);
+	});
+
+	test("a month that starts on a Sunday: no goal until Monday 2 November", async () => {
+		await fundForMonth(2026, 11);
+		const sunday = await mineAt("2026-11-01T12:00:00Z");
+		expect(sunday.month.targetThroughTodaySeconds).toBe(0);
+		const monday = await mineAt("2026-11-02T12:00:00Z");
+		expect(monday.month.targetThroughTodaySeconds).toBe(8 * H);
+		expect(monday.week.from).toBe("2026-11-02");
+		expect(monday.week.targetThroughTodaySeconds).toBe(8 * H);
+	});
+
+	test("the last day of a month has the whole fund as its goal", async () => {
+		await setFund(176 * H);
+		const mine = await mineAt("2026-04-30T12:00:00Z");
+		expect(mine.month.targetThroughTodaySeconds).toBe(176 * H);
+	});
+
+	test("a week over a year boundary counts the days of both years", async () => {
+		await fundForMonth(2026, 12);
+		await fundForMonth(2027, 1);
+		// Thursday 31 December: Monday to Thursday of 28 December - 3 January.
+		const thursday = await mineAt("2026-12-31T12:00:00Z");
+		expect(thursday.week.from).toBe("2026-12-28");
+		expect(thursday.week.targetThroughTodaySeconds).toBe(32 * H);
+		// Friday 1 January is a holiday, so the week has no new day.
+		const friday = await mineAt("2027-01-01T12:00:00Z");
+		expect(friday.week.targetThroughTodaySeconds).toBe(32 * H);
+		expect(friday.month.targetThroughTodaySeconds).toBe(0);
+		// Monday 4 January is the first working day of January.
+		const monday = await mineAt("2027-01-04T12:00:00Z");
+		expect(monday.week.targetThroughTodaySeconds).toBe(8 * H);
+		expect(monday.month.targetThroughTodaySeconds).toBe(8 * H);
+	});
+
+	test("Europe/Zagreb: Sunday 23:30 UTC is already Monday", async () => {
+		await setOrg({ timezone: "Europe/Zagreb" });
+		const mine = await mineAt("2026-04-12T23:30:00Z");
+		expect(mine.today).toBe("2026-04-13");
+		expect(mine.week.targetThroughTodaySeconds).toBe(8 * H);
+	});
+
+	test("America/New_York: Monday 03:00 UTC is still Sunday", async () => {
+		await setOrg({ timezone: "America/New_York" });
+		const mine = await mineAt("2026-04-13T03:00:00Z");
+		expect(mine.today).toBe("2026-04-12");
+		expect(mine.week.from).toBe("2026-04-06");
+		expect(mine.week.targetThroughTodaySeconds).toBe(40 * H);
+	});
+
+	test("UTC: one second before and after midnight", async () => {
+		const before = await mineAt("2026-04-12T23:59:59Z");
+		expect(before.week.targetThroughTodaySeconds).toBe(40 * H);
+		const after = await mineAt("2026-04-13T00:00:00Z");
+		expect(after.week.targetThroughTodaySeconds).toBe(8 * H);
+	});
+
+	test("DST: the clock change on Sunday 25 October 2026 does not move the day", async () => {
+		await setOrg({ timezone: "Europe/Zagreb" });
+		// 22:30 UTC is 23:30 in Zagreb, still Sunday.
+		const sunday = await mineAt("2026-10-25T22:30:00Z");
+		expect(sunday.today).toBe("2026-10-25");
+		expect(sunday.week.targetThroughTodaySeconds).toBe(40 * H);
+		// 23:30 UTC is 00:30 Monday.
+		const monday = await mineAt("2026-10-25T23:30:00Z");
+		expect(monday.today).toBe("2026-10-26");
+		expect(monday.week.targetThroughTodaySeconds).toBe(8 * H);
+	});
+
+	test("DST: the clock change on Sunday 29 March 2026 does not move the day", async () => {
+		await setOrg({ timezone: "Europe/Zagreb" });
+		const monday = await mineAt("2026-03-29T22:30:00Z");
+		expect(monday.today).toBe("2026-03-30");
+		expect(monday.week.targetThroughTodaySeconds).toBe(8 * H);
+	});
+
+	test("without a fund the week still has 8h days and the month has no goal", async () => {
+		const mine = await mineAt("2026-04-13T09:00:00Z");
+		expect(mine.week.targetThroughTodaySeconds).toBe(8 * H);
+		expect(mine.month.targetThroughTodaySeconds).toBeNull();
+	});
+
+	test("an unofficial fund gives a shorter day", async () => {
+		await setFund(154 * H);
+		const mine = await mineAt("2026-04-16T12:00:00Z");
+		expect(mine.week.targetThroughTodaySeconds).toBe(28 * H);
+	});
+
+	test("an hourly person without an override has no goal", async () => {
+		await setFund(176 * H);
+		const mine = await mineAt("2026-04-13T09:00:00Z", CONTRACTOR);
+		expect(mine.week.targetThroughTodaySeconds).toBeNull();
+		expect(mine.month.targetThroughTodaySeconds).toBeNull();
+	});
+
+	test("logged hours do not change the goal", async () => {
+		await setFund(176 * H);
+		await logEntry(DILIGENT, "2026-04-13", devTaskId, 5 * H);
+		const mine = await mineAt("2026-04-13T12:00:00Z");
+		expect(mine.week.targetThroughTodaySeconds).toBe(8 * H);
+		expect(mine.week.totalSoFarSeconds).toBe(5 * H);
 	});
 });

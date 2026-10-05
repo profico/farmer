@@ -222,12 +222,7 @@ export function HomePreview() {
 							label="This week"
 							value="14.50"
 							of="40.00"
-							sub={
-								<>
-									<span style={{ color: "var(--acc)" }}>6.50 ahead</span> of the
-									8.00 due before today
-								</>
-							}
+							sub="1.50 short of the 16.00 due by the end of today"
 							percent={36}
 						/>
 						<Metric
@@ -236,8 +231,8 @@ export function HomePreview() {
 							of="184.00"
 							sub={
 								<>
-									<span style={{ color: "var(--bad)" }}>10.00 short</span> of
-									the 48.00 due before today · 6 of 23 working days done
+									10.00 short of the 48.00 due by the end of today · 5 of 23
+									working days done
 								</>
 							}
 							percent={21}
@@ -460,7 +455,7 @@ export function TimesheetMock() {
 						sub={
 							<>
 								<span style={{ color: "var(--bad)" }}>1.75 short</span> of the
-								40.00 due before today
+								40.00 due by the end of today
 							</>
 						}
 						percent={96}
@@ -471,8 +466,8 @@ export function TimesheetMock() {
 						of="184.00"
 						sub={
 							<>
-								<span style={{ color: "var(--bad)" }}>1.75 short</span> of the
-								64.00 due before today
+								<span style={{ color: "var(--bad)" }}>9.75 short</span> of the
+								72.00 due by the end of today
 							</>
 						}
 						percent={34}
