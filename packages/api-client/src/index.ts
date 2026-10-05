@@ -22,6 +22,18 @@ export {
 } from "./errors";
 export { assertUsable, fetchMeta } from "./meta";
 export { normalizeOrigin } from "./origin";
+export * from "./bodies";
+export { type JsonValue, jsonValueSchema } from "./json";
 export * from "./schemas";
-export { type FetchLike, type Transport } from "./transport";
+export * from "./schemas-admin";
+export * from "./schemas-assistant";
+export * from "./schemas-member";
+export * from "./schemas-people";
+export { parseAssistantEvent, readAssistantEvents, SseDecoder } from "./sse";
+export {
+	type FetchInit,
+	type FetchLike,
+	type FetchResponse,
+	type Transport,
+} from "./transport";
 export { isVersionAtLeast } from "./version";

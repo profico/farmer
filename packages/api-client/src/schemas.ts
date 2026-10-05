@@ -11,6 +11,7 @@
 
 import { z } from "zod";
 
+import type { Expect, Parses } from "./contract";
 import type { components } from "./openapi.gen";
 
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -33,6 +34,29 @@ export const meSchema = z.object({
 export type Me = z.output<typeof meSchema>;
 export type Workspace = Me["organizations"][number];
 
+/** What the person may do in a workspace. A server from before API version
+ *  2 sends none, and then the app shows only the member's screens. */
+export const capabilitiesSchema = z.object({
+	isAdmin: z.boolean(),
+	/** Admin, or a PM or Team Lead on any project. */
+	canManageClients: z.boolean(),
+	/** Admin, or a PM or Team Lead on any project. */
+	canManageProjects: z.boolean(),
+	/** The person has people on a Team Lead list. */
+	leadsPeople: z.boolean(),
+	/** Reports for everybody, not only for the person's own scope. */
+	canSeeAllReports: z.boolean(),
+});
+export type Capabilities = z.output<typeof capabilitiesSchema>;
+
+export const NO_CAPABILITIES: Capabilities = {
+	isAdmin: false,
+	canManageClients: false,
+	canManageProjects: false,
+	leadsPeople: false,
+	canSeeAllReports: false,
+};
+
 export const whoamiSchema = z.object({
 	userId: z.string(),
 	name: z.string().nullable(),
@@ -40,6 +64,7 @@ export const whoamiSchema = z.object({
 	organization: z.object({ slug: z.string(), name: z.string() }),
 	orgRole: z.string().nullable(),
 	isAdmin: z.boolean(),
+	capabilities: capabilitiesSchema.default(NO_CAPABILITIES),
 	timezone: z.string(),
 	today: dayKey,
 	weekStartsOn: z.number().int().min(0).max(6),
@@ -207,15 +232,7 @@ export type ConfirmTimer = Omit<Schemas["ConfirmTimer"], "overtime"> & {
 	overtime?: boolean;
 };
 
-// Each answer the document describes must parse with the schema above. A
-// check that fails turns its line into a type error.
-type Expect<T extends true> = T;
-type Parses<Answer, Schema extends z.ZodType> = [Answer] extends [
-	z.input<Schema>,
-]
-	? true
-	: false;
-
+// Each answer the document describes must parse with the schema above.
 export type ContractChecks = [
 	Expect<Parses<Schemas["Meta"], typeof metaSchema>>,
 	Expect<Parses<Schemas["Me"], typeof meSchema>>,
