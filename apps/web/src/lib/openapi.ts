@@ -1,40 +1,77 @@
 import {
+	type ApiAbsenceEntry,
+	type ApiAbsenceReport,
 	type ApiAbsenceResult,
 	type ApiCopyResult,
 	type ApiDeleted,
 	type ApiClient,
 	type ApiError,
 	type ApiFileResult,
+	type ApiFilingRule,
+	type ApiHiddenTasks,
+	type ApiHoliday,
+	type ApiHolidayDay,
+	type ApiHome,
+	type ApiIntegrations,
+	type ApiIntegrationSettingsResult,
 	type ApiMe,
 	type ApiMeta,
+	type ApiNotificationSettings,
+	type ApiOvertimeReport,
 	type ApiPeriod,
 	type ApiProject,
+	type ApiProjectDetail,
+	type ApiProjectOverview,
 	type ApiProjectRef,
+	type ApiRecurringBlock,
+	type ApiRewind,
 	type ApiSyncResult,
 	type ApiTask,
 	type ApiTaskList,
 	type ApiTaskRef,
 	type ApiTimeEntry,
 	type ApiTimer,
+	type ApiTimerSettings,
 	type ApiTimerState,
+	type ApiTimeReport,
+	type ApiTimeReportDetail,
 	type ApiTracking,
+	type ApiTrackingReport,
 	type ApiUnfiledEntry,
 	type ApiWhoami,
+	type ApiWorkingHoursDay,
 	API_TOKEN_PREFIX,
 	CLI_CLIENT_ID,
 	CLI_VERSION_HEADER,
 } from "@farmer/core/api";
 import {
+	absenceReportInput,
 	confirmTimerInput,
 	copyTimeEntriesInput,
 	copyWeekEntriesInput,
+	createRecurringBlockRuleInput,
 	createTimeEntryInput,
 	fileTimeEntriesInput,
+	holidaysYearQueryInput,
+	listHolidaysForRangeInput,
+	listMyAbsenceInput,
 	listTimeEntriesRangeInput,
 	logAbsenceRangeInput,
+	monthReportInput,
+	overtimeReportInput,
 	repositoryProjectsInput,
+	rewindInput,
+	setTaskHiddenInput,
 	startTimerInput,
+	timeReportDetailInput,
+	timeReportSummaryInput,
+	timerSettingsInput,
+	updateFilingRuleInput,
+	updateIntegrationSettingsInput,
+	updateNotificationSettingsInput,
+	updateRecurringBlockRuleInput,
 	updateTimeEntryInput,
+	upsertWorkingHoursDayInput,
 } from "@farmer/core/schema";
 import { z } from "zod";
 
@@ -486,6 +523,512 @@ const apiTimerState = named(
 	),
 );
 
+// ── The member screens: preferences, schedule, integrations, the project
+// page, reports, Rewind and the home page. ─────────────────────────────────
+
+const ref2 = z.object({ id: uuid, name: z.string() });
+
+const apiNotificationSettings = named(
+	"NotificationSettings",
+	mirror<ApiNotificationSettings>()(
+		z.object({
+			logReminders: z
+				.boolean()
+				.describe("Reminders to log time, by push and by Slack."),
+		}),
+	),
+);
+
+const apiTimerSettings = named(
+	"TimerSettings",
+	mirror<ApiTimerSettings>()(
+		z.object({
+			maxSeconds: z
+				.number()
+				.int()
+				.describe(
+					"A timer that runs longer than this is dropped and logs nothing.",
+				),
+		}),
+	),
+);
+
+const apiHiddenTasks = named(
+	"HiddenTasks",
+	mirror<ApiHiddenTasks>()(
+		z.object({
+			taskIds: z
+				.array(uuid)
+				.describe(
+					"The tasks the person switched off. They only narrow the task picker.",
+				),
+		}),
+	),
+);
+
+const apiFilingRule = named(
+	"FilingRule",
+	mirror<ApiFilingRule>()(
+		z.object({
+			id: uuid,
+			title: z.string().describe("The meeting title the rule matches."),
+			task: ref2.describe("The task the meeting arrives with."),
+			targetTask: ref2
+				.nullable()
+				.describe("The task the meeting is filed under. Null keeps its own."),
+			project: z.object({
+				id: uuid,
+				name: z.string(),
+				code: z.string().nullable(),
+			}),
+			createdAt: iso,
+		}),
+	),
+);
+
+const apiWorkingHoursDay = named(
+	"WorkingHoursDay",
+	mirror<ApiWorkingHoursDay>()(
+		z.object({
+			dayOfWeek: z.number().int().describe("0 is Sunday."),
+			enabled: z.boolean(),
+			startTime: z.string().nullable().describe("HH:mm."),
+			endTime: z.string().nullable().describe("HH:mm."),
+		}),
+	),
+);
+
+const apiRecurringBlock = named(
+	"RecurringBlock",
+	mirror<ApiRecurringBlock>()(
+		z.object({
+			id: uuid,
+			task: ref2,
+			project: z
+				.object({ id: uuid, name: z.string(), code: z.string().nullable() })
+				.nullable(),
+			description: z.string(),
+			daysOfWeek: z.array(z.number().int()).describe("0 is Sunday."),
+			durationSeconds: z.number().int(),
+			effectiveFrom: dayKey.nullable(),
+			effectiveUntil: dayKey.nullable(),
+			active: z.boolean().describe("False while the rule is paused."),
+		}),
+	),
+);
+
+const apiHoliday = named(
+	"Holiday",
+	mirror<ApiHoliday>()(
+		z.object({
+			date: dayKey,
+			name: z.string(),
+			disabled: z.boolean().describe("An admin made the day a working day."),
+		}),
+	),
+);
+
+const apiHolidayDay = named(
+	"HolidayDay",
+	mirror<ApiHolidayDay>()(z.object({ date: dayKey, name: z.string() })),
+);
+
+const integrationSettings = z.object({
+	googleAutoSyncMeetings: z.boolean(),
+	githubAutoLoadCommits: z.boolean(),
+	githubSyncCommitsAsWorkTime: z.boolean(),
+	googleAutoSyncMeetingsSince: iso
+		.nullable()
+		.describe("When the meeting sync went on: the first day it may write to."),
+	githubSyncCommitsAsWorkTimeSince: iso
+		.nullable()
+		.describe("When the commit sync went on: the first day it may write to."),
+});
+
+const apiIntegrations = named(
+	"Integrations",
+	mirror<ApiIntegrations>()(
+		z.object({
+			github: z.object({
+				connected: z.boolean(),
+				login: z.string().nullable(),
+				unreachable: z
+					.boolean()
+					.describe("GitHub did not answer. The account is still linked."),
+				needsReconnect: z
+					.boolean()
+					.describe(
+						"GitHub refuses the stored grant. Only a new connection in the web app fixes it.",
+					),
+			}),
+			googleCalendar: z.object({
+				connected: z.boolean(),
+				email: z.string().nullable(),
+				unreachable: z
+					.boolean()
+					.describe("Google did not answer. The account is still linked."),
+			}),
+			settings: integrationSettings,
+		}),
+	),
+);
+
+const apiIntegrationSettingsResult = named(
+	"IntegrationSettings",
+	mirror<ApiIntegrationSettingsResult>()(
+		integrationSettings.extend({
+			synced: z
+				.boolean()
+				.describe(
+					"A sync went on and its first pass finished during the save. False when it continues on the server.",
+				),
+		}),
+	),
+);
+
+const apiProjectDetail = named(
+	"ProjectDetail",
+	mirror<ApiProjectDetail>()(
+		z.object({
+			id: uuid,
+			name: z.string(),
+			code: z.string().nullable(),
+			icon: z.string().nullable().describe("An emoji."),
+			type: z
+				.string()
+				.describe(
+					"`product_team`, `fixed_scope`, `hourly`, `maintenance` or `internal`.",
+				),
+			status: z.string().describe("`active` or `archived`."),
+			openToOrg: z
+				.boolean()
+				.describe("Every member may log time here without an assignment."),
+			client,
+			role: projectRole.nullable(),
+			statsScope: z
+				.enum(["project", "own"])
+				.describe(
+					"Whose hours the figures sum. `own` below Team Lead rank: a plain member sees only their own hours.",
+				),
+			monthlyTotalSeconds: z.number().int(),
+			allTimeSeconds: z.number().int(),
+			contributorCount: z.number().int(),
+			budgetSeconds: z
+				.number()
+				.int()
+				.nullable()
+				.describe("PM and Admin only. Null for anyone else."),
+			budgetAmount: z
+				.string()
+				.nullable()
+				.describe("PM and Admin only. A decimal, for display."),
+			hourlyPrice: z
+				.string()
+				.nullable()
+				.describe("PM and Admin only. A decimal, for display."),
+		}),
+	),
+);
+
+const apiProjectOverview = named(
+	"ProjectOverview",
+	mirror<ApiProjectOverview>()(
+		z.object({
+			allTimeSeconds: z.number().int(),
+			entryCount: z.number().int(),
+			peopleCount: z
+				.number()
+				.int()
+				.describe("People who ever logged time here. Not the roster."),
+			firstEntry: dayKey.nullable(),
+			lastEntry: dayKey.nullable(),
+			overtimeSeconds: z.number().int(),
+			monthSeconds: z.number().int(),
+			monthPeople: z.number().int(),
+		}),
+	),
+);
+
+const apiTimeReport = named(
+	"TimeReport",
+	mirror<ApiTimeReport>()(
+		z.object({
+			rows: z.array(
+				z.object({
+					id: z.string(),
+					name: z.string(),
+					secondsTotal: z.number().int(),
+					timeOffSeconds: z
+						.number()
+						.int()
+						.describe("The teammates tab only. Zero on the others."),
+					count: z
+						.number()
+						.int()
+						.describe(
+							"Clients: projects with time. Projects: people with time. Teammates: projects.",
+						),
+					clientName: z.string().nullable(),
+					code: z.string().nullable(),
+					archived: z.boolean(),
+				}),
+			),
+			totalSeconds: z.number().int(),
+			unfiledSeconds: z
+				.number()
+				.int()
+				.describe(
+					"Worked time with no project, which the rows leave out. Only for an unfiltered report over the whole organization.",
+				),
+		}),
+	),
+);
+
+const apiTimeReportDetail = named(
+	"TimeReportDetail",
+	mirror<ApiTimeReportDetail>()(
+		z.object({
+			rows: z.array(
+				z.object({
+					id: uuid,
+					date: dayKey,
+					client: ref2,
+					project: z.object({
+						id: uuid,
+						name: z.string(),
+						code: z.string().nullable(),
+					}),
+					task: ref2,
+					description: z.string(),
+					user: z.object({ id: z.string(), name: z.string() }),
+					overtime: z.boolean(),
+					durationSeconds: z.number().int(),
+				}),
+			),
+			totalRows: z.number().int(),
+			totalSeconds: z.number().int(),
+			truncated: z
+				.boolean()
+				.describe(
+					"The rows stop at a cap. The two totals still count every matching entry.",
+				),
+		}),
+	),
+);
+
+const apiOvertimeReport = named(
+	"OvertimeReport",
+	mirror<ApiOvertimeReport>()(
+		z.object({
+			rows: z.array(
+				z.object({
+					userId: z.string(),
+					name: z.string(),
+					count: z.number().int(),
+					seconds: z.number().int(),
+					entries: z.array(
+						z.object({
+							id: uuid,
+							date: dayKey,
+							projectName: z.string(),
+							projectCode: z.string().nullable(),
+							taskName: z.string(),
+							description: z.string(),
+							durationSeconds: z.number().int(),
+						}),
+					),
+				}),
+			),
+			totalSeconds: z.number().int(),
+			totalEntries: z.number().int(),
+		}),
+	),
+);
+
+const apiAbsenceReport = named(
+	"AbsenceReport",
+	mirror<ApiAbsenceReport>()(
+		z.object({
+			workingDaySeconds: z.number().int(),
+			columns: z
+				.array(z.object({ key: z.string(), label: z.string() }))
+				.describe(
+					"One for each absence task. `key` is the system key, or the task id.",
+				),
+			rows: z.array(
+				z.object({
+					userId: z.string(),
+					name: z.string(),
+					seconds: z.number().int(),
+					byTask: z
+						.record(z.string(), z.number())
+						.describe("Seconds for each column, by `key`."),
+					entries: z.array(
+						z.object({
+							id: uuid,
+							date: dayKey,
+							taskKey: z.string(),
+							taskName: z.string(),
+							description: z.string(),
+							durationSeconds: z.number().int(),
+						}),
+					),
+				}),
+			),
+		}),
+	),
+);
+
+const apiTrackingReport = named(
+	"TrackingReport",
+	mirror<ApiTrackingReport>()(
+		z.object({
+			year: z.number().int(),
+			month: z.number().int(),
+			asOf: dayKey.describe("The last day the figures cover."),
+			complete: z.boolean(),
+			fundSeconds: z
+				.number()
+				.int()
+				.nullable()
+				.describe("The month's hour fund. Null when none is set."),
+			workingDaysInMonth: z.number().int(),
+			workingDaysElapsed: z.number().int(),
+			targetSeconds: z.number().int().nullable(),
+			tolerancePct: z.number(),
+			rows: z.array(
+				z.object({
+					userId: z.string(),
+					name: z.string(),
+					email: z.string(),
+					memberType: z.string(),
+					workSeconds: z.number().int(),
+					timeOffSeconds: z.number().int(),
+					totalSeconds: z.number().int(),
+					targetSeconds: z.number().int().nullable(),
+					monthTargetSeconds: z.number().int().nullable(),
+					deltaSeconds: z
+						.number()
+						.int()
+						.nullable()
+						.describe("Total minus target. Negative is short."),
+					status: z
+						.enum(["on_track", "slightly_behind", "behind"])
+						.nullable()
+						.describe("Null when no target applies to the person."),
+				}),
+			),
+		}),
+	),
+);
+
+const apiAbsenceEntry = named(
+	"AbsenceEntry",
+	mirror<ApiAbsenceEntry>()(
+		z.object({
+			id: uuid,
+			date: dayKey,
+			task: ref2,
+			description: z.string(),
+			durationSeconds: z.number().int(),
+		}),
+	),
+);
+
+const apiRewind = named(
+	"Rewind",
+	mirror<ApiRewind>()(
+		z.object({
+			year: z.number().int(),
+			asOf: dayKey,
+			complete: z.boolean(),
+			workedSeconds: z.number().int(),
+			projectedWorkedSeconds: z.number().int().nullable(),
+			previousYearWorkedSeconds: z.number().int().nullable(),
+			firstDay: dayKey.nullable(),
+			daysWorked: z.number().int(),
+			longestStreak: z
+				.object({ days: z.number().int(), from: dayKey, to: dayKey })
+				.nullable(),
+			busiestDay: z
+				.object({ date: dayKey, seconds: z.number().int() })
+				.nullable(),
+			months: z.array(
+				z.object({
+					month: z.number().int(),
+					seconds: z.number().int(),
+					projectedSeconds: z.number().int(),
+				}),
+			),
+			weekdays: z
+				.array(z.number().int())
+				.describe("Worked seconds by weekday. Index 0 is Sunday."),
+			weekendDaysWorked: z.number().int(),
+			overtimeSeconds: z.number().int(),
+			projects: z.array(
+				z.object({
+					id: uuid,
+					name: z.string(),
+					icon: z.string().nullable(),
+					clientName: z.string(),
+					seconds: z.number().int(),
+				}),
+			),
+			projectCount: z.number().int(),
+			clientCount: z.number().int(),
+			tasks: z.array(
+				z.object({ id: uuid, name: z.string(), seconds: z.number().int() }),
+			),
+			groups: z.array(
+				z.object({ group: z.string(), seconds: z.number().int() }),
+			),
+			meetingSeconds: z.number().int(),
+			codeReviewSeconds: z.number().int(),
+			timeOff: z.object({
+				vacationDays: z.number(),
+				sickDays: z.number(),
+				otherDays: z.number(),
+				aheadDays: z.number(),
+			}),
+			commits: z.number().int(),
+			pullRequests: z.object({
+				opened: z.number().int(),
+				merged: z.number().int(),
+				reviewed: z.number().int(),
+			}),
+			words: z.array(z.object({ word: z.string(), count: z.number().int() })),
+		}),
+	),
+);
+
+const apiHome = named(
+	"Home",
+	mirror<ApiHome>()(
+		z.object({
+			today: dayKey,
+			from: dayKey,
+			to: dayKey,
+			daySeconds: z
+				.number()
+				.int()
+				.describe("What one working day is worth for the person this month."),
+			days: z.array(
+				z.object({
+					date: dayKey,
+					seconds: z.number().int(),
+					holiday: z.string().nullable(),
+					mark: z
+						.enum(["done", "covered", "short"])
+						.nullable()
+						.describe(
+							"Null for a weekend, a holiday or a day after today. `covered` is a short day that the rest of the week made up for.",
+						),
+				}),
+			),
+		}),
+	),
+);
+
 // The request bodies the routes parse, under the names the document shows.
 named("NewTimeEntry", createTimeEntryInput);
 named("TimeEntryPatch", updateTimeEntryInput);
@@ -495,6 +1038,14 @@ named("CopyWeek", copyWeekEntriesInput);
 named("AbsenceRange", logAbsenceRangeInput);
 named("StartTimer", startTimerInput);
 named("ConfirmTimer", confirmTimerInput);
+named("NotificationSettingsPatch", updateNotificationSettingsInput);
+named("TaskHidden", setTaskHiddenInput);
+named("FilingRulePatch", updateFilingRuleInput);
+named("TimerSettingsPatch", timerSettingsInput);
+named("WorkingHoursDayPatch", upsertWorkingHoursDayInput);
+named("NewRecurringBlock", createRecurringBlockRuleInput);
+named("RecurringBlockPatch", updateRecurringBlockRuleInput);
+named("IntegrationSettingsPatch", updateIntegrationSettingsInput);
 
 type JsonSchema = z.core.JSONSchema.JSONSchema;
 
@@ -519,6 +1070,21 @@ const componentSchemas = () => {
 		schemas,
 	)) {
 		clean[id] = rest;
+	}
+
+	// The routes take the row's id from the path, so it is not in the body.
+	for (const [id, key] of [
+		["FilingRulePatch", "id"],
+		["RecurringBlockPatch", "ruleId"],
+	] as const) {
+		const body = clean[id];
+		if (!body?.properties) continue;
+		const { [key]: _fromPath, ...properties } = body.properties;
+		clean[id] = {
+			...body,
+			properties,
+			required: body.required?.filter((name) => name !== key),
+		};
 	}
 
 	// A PATCH body is any subset of the fields, merged over the stored entry.
@@ -546,7 +1112,16 @@ const ref = (schema: z.ZodType): SchemaRef => {
 
 type Method = "get" | "post" | "patch" | "delete";
 
-type Tag = "Account" | "Time entries" | "Timer" | "Time off" | "Projects";
+type Tag =
+	| "Account"
+	| "Time entries"
+	| "Timer"
+	| "Time off"
+	| "Projects"
+	| "Reports"
+	| "Schedule"
+	| "Preferences"
+	| "Integrations";
 
 type Operation = {
 	method: Method;
@@ -568,6 +1143,9 @@ type Operation = {
 };
 
 const rangeQuery = { schema: listTimeEntriesRangeInput, optional: true };
+
+const REPORT_TEXT =
+	"Limited to the caller's scope: an Admin sees everybody, a PM their projects, a Team Lead their people and their projects, and a member only their own time. `from` and `to` are required, and the range can span 366 days at most.";
 
 const RANGE_TEXT =
 	"`from` and `to` are optional and default to today in the organization's timezone. The range can span 62 days at most.";
@@ -698,6 +1276,17 @@ export const OPERATIONS: Operation[] = [
 		response: apiCopyResult,
 	},
 	{
+		method: "get",
+		path: "/orgs/{orgSlug}/absences",
+		operationId: "listAbsences",
+		summary: "List time off in a month",
+		description: "The caller's own absence entries in one month.",
+		tag: "Time off",
+		query: { schema: listMyAbsenceInput, optional: false },
+		response: apiAbsenceEntry,
+		list: true,
+	},
+	{
 		method: "post",
 		path: "/orgs/{orgSlug}/absences",
 		operationId: "logAbsence",
@@ -715,6 +1304,329 @@ export const OPERATIONS: Operation[] = [
 		summary: "Delete time off",
 		tag: "Time off",
 		response: apiDeleted,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/home",
+		operationId: "getHome",
+		summary: "Get the week chart of the home page",
+		description:
+			"The time logged on each day of this week, the public holidays and the mark of each working day. The day totals are read like `GET /time-entries`, which also computes the fill blocks of the week again.",
+		tag: "Time entries",
+		response: apiHome,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/timer/settings",
+		operationId: "getTimerSettings",
+		summary: "Get the timer limit",
+		tag: "Timer",
+		response: apiTimerSettings,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/timer/settings",
+		operationId: "updateTimerSettings",
+		summary: "Change the timer limit",
+		description: "From one hour (3600) to 24 hours (86400).",
+		tag: "Timer",
+		body: timerSettingsInput,
+		response: apiTimerSettings,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/preferences/notifications",
+		operationId: "getNotificationSettings",
+		summary: "Get the reminder settings",
+		tag: "Preferences",
+		response: apiNotificationSettings,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/preferences/notifications",
+		operationId: "updateNotificationSettings",
+		summary: "Change the reminder settings",
+		description: "A field that is not sent keeps its value.",
+		tag: "Preferences",
+		body: updateNotificationSettingsInput,
+		response: apiNotificationSettings,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/preferences/hidden-tasks",
+		operationId: "listHiddenTasks",
+		summary: "List the switched-off tasks",
+		tag: "Preferences",
+		response: apiHiddenTasks,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/preferences/hidden-tasks",
+		operationId: "setTaskHidden",
+		summary: "Switch a task off or on",
+		description:
+			"`hidden: true` takes the task out of the person's task picker. Absence tasks cannot be switched off. Answers the list after the change.",
+		tag: "Preferences",
+		body: setTaskHiddenInput,
+		response: apiHiddenTasks,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/preferences/hidden-tasks",
+		operationId: "showAllTasks",
+		summary: "Switch every task on",
+		tag: "Preferences",
+		response: apiHiddenTasks,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/filing-rules",
+		operationId: "listFilingRules",
+		summary: "List the filing rules",
+		description:
+			"Where the person's synced meetings go. A rule is made by filing a meeting with `remember`.",
+		tag: "Preferences",
+		response: apiFilingRule,
+		list: true,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/filing-rules/{id}",
+		operationId: "updateFilingRule",
+		summary: "Change where a filing rule files",
+		description:
+			"Send both fields. The title and the task the rule matches cannot change.",
+		tag: "Preferences",
+		body: updateFilingRuleInput,
+		response: apiFilingRule,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/filing-rules/{id}",
+		operationId: "deleteFilingRule",
+		summary: "Delete a filing rule",
+		tag: "Preferences",
+		response: apiDeleted,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/working-hours",
+		operationId: "listWorkingHours",
+		summary: "Get the working hours",
+		description:
+			"All seven days, 0 (Sunday) to 6. The hours shape the fill blocks and when a reminder comes. They are not a target.",
+		tag: "Schedule",
+		response: apiWorkingHoursDay,
+		list: true,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/working-hours",
+		operationId: "updateWorkingHoursDay",
+		summary: "Change one day of the working hours",
+		description:
+			"The body replaces the whole day named by `dayOfWeek`. A time that is not sent is cleared, so send both times for an enabled day.",
+		tag: "Schedule",
+		body: upsertWorkingHoursDayInput,
+		response: apiWorkingHoursDay,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/recurring-blocks",
+		operationId: "listRecurringBlocks",
+		summary: "List the recurring blocks",
+		tag: "Schedule",
+		response: apiRecurringBlock,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/recurring-blocks",
+		operationId: "createRecurringBlock",
+		summary: "Add a recurring block",
+		description:
+			"`duration` is text such as `30m` or `1h 30m`, at most 24 hours. The same checks as logging time by hand apply.",
+		tag: "Schedule",
+		body: createRecurringBlockRuleInput,
+		response: apiRecurringBlock,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/recurring-blocks/break",
+		operationId: "enableBreakBlock",
+		summary: "Switch on the daily break",
+		description:
+			"30 minutes of Break, Monday to Friday. A break rule that exists is switched on again, never copied.",
+		tag: "Schedule",
+		response: apiRecurringBlock,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/recurring-blocks/{id}",
+		operationId: "updateRecurringBlock",
+		summary: "Change a recurring block",
+		description:
+			"Any subset of the fields. `projectId: null` takes the project off, and `active: false` pauses the rule. The blocks already written do not change.",
+		tag: "Schedule",
+		body: updateRecurringBlockRuleInput,
+		response: apiRecurringBlock,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/recurring-blocks/{id}",
+		operationId: "deleteRecurringBlock",
+		summary: "Delete a recurring block",
+		description: "The blocks the rule already wrote stay.",
+		tag: "Schedule",
+		response: apiDeleted,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/holidays",
+		operationId: "listHolidays",
+		summary: "List the public holidays of a year",
+		description:
+			"The holidays of the organization's country. `disabled` marks a day an admin made a working day.",
+		tag: "Schedule",
+		query: { schema: holidaysYearQueryInput, optional: false },
+		response: apiHoliday,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/holidays/range",
+		operationId: "listHolidaysInRange",
+		summary: "List the holidays between two days",
+		description:
+			"Only the holidays that are days off. `from` and `to` are optional and default to today in the organization's timezone. The range can span 366 days at most.",
+		tag: "Schedule",
+		query: { schema: listHolidaysForRangeInput, optional: true },
+		response: apiHolidayDay,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/integrations",
+		operationId: "getIntegrations",
+		summary: "Get the GitHub and Google Calendar connections",
+		description:
+			"To connect an account, open Settings → Integrations in the web app. That is an OAuth flow in the browser.",
+		tag: "Integrations",
+		response: apiIntegrations,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/integrations/settings",
+		operationId: "updateIntegrationSettings",
+		summary: "Change the integration switches",
+		description:
+			"A field that is not sent keeps its value. When a sync goes on, its first pass starts at once.",
+		tag: "Integrations",
+		body: updateIntegrationSettingsInput,
+		response: apiIntegrationSettingsResult,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/integrations/github",
+		operationId: "disconnectGithub",
+		summary: "Disconnect GitHub",
+		description:
+			"404 when GitHub is not connected. Refused when the account is the person's only way to sign in.",
+		tag: "Integrations",
+		response: apiIntegrations,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/integrations/google-calendar",
+		operationId: "disconnectGoogleCalendar",
+		summary: "Disconnect Google Calendar",
+		description:
+			"404 when Google Calendar is not connected. Sign in with Google is a different connection and stays.",
+		tag: "Integrations",
+		response: apiIntegrations,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/projects/{id}",
+		operationId: "getProject",
+		summary: "Get a project",
+		description:
+			"For an Admin, a person on the project, or a project open to everybody. Below PM rank the three money fields are null. Below Team Lead rank the hours are the caller's own.",
+		tag: "Projects",
+		response: apiProjectDetail,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/projects/{id}/overview",
+		operationId: "getProjectOverview",
+		summary: "Get a project's all-time figures",
+		description:
+			"Team Lead rank and up; a plain member gets 403. The entries of the project are `GET /orgs/{orgSlug}/reports/time/detail?projectId=`.",
+		tag: "Projects",
+		response: apiProjectOverview,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/reports/time",
+		operationId: "getTimeReport",
+		summary: "Get the Time report",
+		description: `Hours by client, project or person (\`tab\`). ${REPORT_TEXT}`,
+		tag: "Reports",
+		query: { schema: timeReportSummaryInput, optional: false },
+		response: apiTimeReport,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/reports/time/detail",
+		operationId: "getTimeReportDetail",
+		summary: "Get the entries behind the Time report",
+		description: `The rows stop at a cap; \`truncated\` says so, and the totals count every entry. ${REPORT_TEXT}`,
+		tag: "Reports",
+		query: { schema: timeReportDetailInput, optional: false },
+		response: apiTimeReportDetail,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/reports/overtime",
+		operationId: "getOvertimeReport",
+		summary: "Get the Overtime report",
+		description: REPORT_TEXT,
+		tag: "Reports",
+		query: { schema: overtimeReportInput, optional: false },
+		response: apiOvertimeReport,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/reports/tracking",
+		operationId: "getTrackingReport",
+		summary: "Get the Tracking report",
+		description:
+			"Work and time off against the month's hour fund, for each person the caller may see. A member sees only their own row.",
+		tag: "Reports",
+		query: { schema: monthReportInput, optional: false },
+		response: apiTrackingReport,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/reports/absence",
+		operationId: "getAbsenceReport",
+		summary: "Get the Absence report",
+		description:
+			"Time off by person and by absence task, for each person the caller may see. The range can span 366 days at most.",
+		tag: "Reports",
+		query: { schema: absenceReportInput, optional: false },
+		response: apiAbsenceReport,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/rewind",
+		operationId: "getRewind",
+		summary: "Get the year in review",
+		description:
+			"The caller's own year. A year that has not opened yet gets `invalid_input`. `asOf` has an effect on a development server only.",
+		tag: "Reports",
+		query: { schema: rewindInput, optional: false },
+		response: apiRewind,
 	},
 	{
 		method: "get",
@@ -837,7 +1749,14 @@ const TAG_TEXT = {
 	"Time entries": "The timesheet: read it, log time, file it and copy it.",
 	Timer: "The stopwatch. One per person, across every organization.",
 	"Time off": "Vacation, sick leave and the other absence tasks.",
-	Projects: "What a person can log time against.",
+	Projects: "What a person can log time against, and a project's page.",
+	Reports:
+		"The four Reports tabs and Rewind. Each report is limited to the people and the projects the caller may see.",
+	Schedule:
+		"The person's working hours, recurring blocks and the public holidays.",
+	Preferences: "The person's own settings.",
+	Integrations:
+		"The person's GitHub and Google Calendar connections. Connecting is a browser flow in the web app.",
 } satisfies Record<Tag, string>;
 
 /** Preferences → API tokens in the reader's own workspace: `:org` is the

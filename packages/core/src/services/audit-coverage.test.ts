@@ -339,7 +339,10 @@ const SERVICES = {
 		service: accountService,
 		coverage: {
 			recorded: { unlinkGoogle: true },
-			exempt: {},
+			exempt: {
+				unlinkIntegration:
+					"removes a GitHub or Google Calendar grant, which is an integration and not a sign-in method (docs/domains/audit-log.md)",
+			},
 			reads: ["signInMethods"],
 		},
 	},
