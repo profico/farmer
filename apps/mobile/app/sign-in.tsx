@@ -12,6 +12,7 @@ import { ActivityIndicator, Platform, View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
 import { useSession } from "../src/session/session";
+import { FarmerMark } from "../src/ui/brand";
 import {
 	ActionButton,
 	Card,
@@ -134,6 +135,7 @@ export default function SignInScreen() {
 					/>
 				</View>
 				<View style={{ gap: SPACE.xs }}>
+					<FarmerMark size={48} />
 					<Text variant="headlineMedium">Sign in</Text>
 					<Text variant="bodyLarge" color={palette.onSurfaceVariant}>
 						{server}

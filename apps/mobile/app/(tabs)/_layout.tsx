@@ -114,6 +114,10 @@ function SignedInTabs() {
 				Platform.OS === "android" ? palette.secondaryContainer : undefined
 			}
 			tintColor={palette.primary}
+			// Every tab shows its label, always. Material hides the label of a
+			// tab that is not selected when there are four tabs or more; iOS
+			// shows every label by default.
+			labelVisibilityMode="labeled"
 		>
 			<NativeTabs.Trigger name="index" contentStyle={scene}>
 				<NativeTabs.Trigger.Label>Time</NativeTabs.Trigger.Label>

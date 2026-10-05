@@ -27,8 +27,9 @@ type Entry = {
 	href: Href;
 };
 
-/** The person's own settings and records. They need API version 2. */
-const YOU: Entry[] = [
+/** The person's own settings and records. They need API version 2, except
+ *  a `local` one, which stays on the phone. */
+const YOU: (Entry & { local?: true })[] = [
 	{
 		title: "Preferences",
 		icon: "preferences",
@@ -51,6 +52,13 @@ const YOU: Entry[] = [
 	{ title: "Holidays", icon: "holiday", tint: "orange", href: "/you/holidays" },
 	{ title: "Absences", icon: "absence", tint: "red", href: "/you/absences" },
 	{ title: "Rewind", icon: "rewind", tint: "purple", href: "/you/rewind" },
+	{
+		title: "Display",
+		icon: "display",
+		tint: "indigo",
+		href: "/you/display",
+		local: true,
+	},
 ];
 
 /** The workspace's settings, each behind the capability its routes check. */
@@ -140,6 +148,7 @@ export default function MoreScreen() {
 	const assistant = useAssistantAvailable();
 	const { origin, slug } = useWorkspace();
 	const { setWorkspace, signOut } = useSession();
+	const youRows = YOU.filter((entry) => access.fullApi || entry.local);
 	const workspaceRows = WORKSPACE.filter((entry) => entry.allowed(access));
 
 	const confirmSignOut = () =>
@@ -169,9 +178,9 @@ export default function MoreScreen() {
 					/>
 				</SettingsSection>
 			) : null}
-			{access.fullApi ? (
+			{youRows.length > 0 ? (
 				<SettingsSection title="You">
-					{YOU.map((entry) => (
+					{youRows.map((entry) => (
 						<SettingsLink
 							key={entry.title}
 							icon={entry.icon}
