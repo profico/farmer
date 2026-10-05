@@ -36,8 +36,10 @@ import type { Ctx } from "./types";
  * A timer may continue an entry (issue #107): it then measures on top of the
  * entry's own duration, and confirming it rewrites that entry through
  * `timeEntriesService.update` instead of writing a new one. The entry's
- * duration is joined on every read rather than copied at start, so the clock
- * and the timesheet never disagree about what the entry already holds.
+ * duration, project, task and note are joined on every read (issue #121)
+ * rather than copied at start, so the clock and the timesheet never disagree
+ * about what the entry holds. The copy in `running_timer` is used only when
+ * the entry is gone.
  */
 
 /** The default cap on a timer nobody stopped. A missing `timer_settings` row
@@ -117,7 +119,9 @@ const elapsedOf = (
 const projectIdOf = sql<
 	string | null
 >`case when ${timeEntry.id} is null then ${runningTimer.projectId} else ${timeEntry.projectId} end`;
-const taskIdOf = sql<string>`coalesce(${timeEntry.taskId}, ${runningTimer.taskId})`;
+// Exported for `jobs/timer-sweep.ts`, which names the task in its notice by the
+// same rule, so the notice and the card cannot disagree.
+export const taskIdOf = sql<string>`coalesce(${timeEntry.taskId}, ${runningTimer.taskId})`;
 const descriptionOf = sql<string>`coalesce(${timeEntry.description}, ${runningTimer.description})`;
 
 const rowOf = async (ctx: Ctx, userId: string) =>
@@ -232,8 +236,10 @@ export const timersService = {
 	 * time worked before somebody remembered the timer: it is banked as if the
 	 * clock had measured it, `startedAt` moves back by it, and it must leave room
 	 * under the person's cap, or the sweep would drop the timer on its next
-	 * pass. Continuing an entry takes the entry's project, task and note, and
-	 * measures on top of what it holds; the entry's own hours do not count
+	 * pass. Continuing an entry copies the entry's project, task and note into
+	 * the row as a fallback, and measures on top of what it holds. Every read
+	 * joins the entry again and shows its current values, and the copy is shown
+	 * only when the entry is gone. The entry's own hours do not count
 	 * towards the cap, which is a limit on a clock nobody stopped.
 	 */
 	start: async (

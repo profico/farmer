@@ -88,6 +88,7 @@ import { myProjectsQuery } from "#/queries/projects.ts";
 import { recurringBlockRulesQuery } from "#/queries/recurring-block-rules.ts";
 import { recentTasksQuery, tasksForProjectQuery } from "#/queries/tasks.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
+import { invalidateTimer } from "#/queries/timer.ts";
 import {
 	attachCommitsToEntry,
 	attachPullRequestsToEntry,
@@ -939,9 +940,13 @@ function AddBlockDialogBody({
 			// back. The other refetches run behind the exit: the dialog used to
 			// wait for all five, one after another, with its Save button disabled
 			// and nothing else to say so, and people pressed it again.
-			await queryClient.invalidateQueries({
-				queryKey: [...queryKeys(orgSlug).timeEntries],
-			});
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: [...queryKeys(orgSlug).timeEntries],
+				}),
+				// A timed entry's task and note show on the timer card.
+				invalidateTimer(queryClient, orgSlug),
+			]);
 			setOpen(false);
 			void Promise.all([
 				// The attached lists sit in the cache under the entry's id, fresh for

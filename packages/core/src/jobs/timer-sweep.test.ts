@@ -154,6 +154,47 @@ test("tells the person when it started and what the limit was", async () => {
 	expect(present(sent[0], "the first notification").text).toContain("12h");
 });
 
+// Issue #121: the row keeps the task it had when the timer started, and the
+// entry can change task while the clock runs. The notice names the task that
+// the card showed.
+test("names the continued entry's task, not the copy", async () => {
+	const [filed] = await db
+		.insert(task)
+		.values({
+			scope: "organization" as const,
+			organizationId: ORG_ID,
+			name: "Code review",
+			isAbsence: false,
+		})
+		.returning();
+	const [entry] = await db
+		.insert(timeEntry)
+		.values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			date: "2026-08-11",
+			taskId: present(filed, "review task").id,
+			description: "Forgotten",
+			durationSeconds: HOUR,
+		})
+		.returning();
+	await db.insert(runningTimer).values({
+		organizationId: ORG_ID,
+		userId: USER_ID,
+		taskId: devTaskId,
+		timeEntryId: present(entry, "the entry").id,
+		description: "Forgotten",
+		startedAt: START,
+		runningSince: START,
+	});
+
+	await runTimerSweepOnce({ now: later(13 * HOUR) });
+
+	const text = present(sent[0], "the first notification").text;
+	expect(text).toContain("on Code review");
+	expect(text).not.toContain("Development");
+});
+
 // A held timer measures nothing, so it cannot grow into the cap and nobody
 // forgot it — holding one is a thing somebody chose.
 test("never drops a timer that is held", async () => {

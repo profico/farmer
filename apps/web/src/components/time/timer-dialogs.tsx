@@ -39,7 +39,7 @@ import { formatClock } from "#/lib/format-hours.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
-import { timerQuery, timerSettingsQuery } from "#/queries/timer.ts";
+import { invalidateTimer, timerSettingsQuery } from "#/queries/timer.ts";
 import type { getTimer } from "#/server/timer.ts";
 import {
 	confirmTimer,
@@ -58,9 +58,7 @@ const invalidateAfterTimer = async (
 	orgSlug: string,
 	wroteAnEntry: boolean,
 ) => {
-	await queryClient.invalidateQueries({
-		queryKey: [...queryKeys(orgSlug).timer],
-	});
+	await invalidateTimer(queryClient, orgSlug);
 	if (wroteAnEntry) {
 		await queryClient.invalidateQueries({
 			queryKey: [...queryKeys(orgSlug).timeEntries],
@@ -327,6 +325,14 @@ export function StartTimerDialog({
 	);
 }
 
+type StopFormValues = {
+	duration: string;
+	date: string;
+	projectId: string | null;
+	taskId: string;
+	description: string;
+};
+
 /**
  * Stopping it (issue #59).
  *
@@ -371,59 +377,47 @@ export function StopTimerDialog({
 	const [taskId, setTaskId] = useState(timer.taskId);
 	const [description, setDescription] = useState(timer.description);
 
-	// Every OPENING reads the timer as it stands: the figure grew while the
-	// dialog was closed, and the person is about to confirm this one. Once only,
-	// which the ref is for — the timer query refetches on window focus and the
-	// pause that opening this dialog performs invalidates it as well, and either
-	// answer arriving would otherwise wipe out what somebody had typed.
-	const filled = useRef(false);
+	// The form follows the timer prop while the dialog is open. Opening fills
+	// every field from it. A later change of the prop (the refetch that the
+	// pause behind this dialog starts, a refetch on window focus, an edit of the
+	// entry saved elsewhere) takes a field only if the person has not edited it:
+	// a field that still holds the value the form was last filled with takes the
+	// new server value, and an edited field stays (issue #121). The dialog starts
+	// no refetch of its own. One that raced with the pause's invalidation would
+	// be cancelled, and the form would keep the stale note.
+	const filledFrom = useRef<StopFormValues | null>(null);
 	useEffect(() => {
 		if (!open) {
-			filled.current = false;
+			filledFrom.current = null;
 			return;
 		}
-		if (filled.current) return;
-		filled.current = true;
-		const fill = (current: RunningTimer) => {
-			setDuration(formatClock(current.snappedSeconds));
-			setDate(current.entryDate ?? dayKeyInTz(current.startedAt, timezone));
-			setProjectId(current.projectId);
-			setTaskId(current.taskId);
-			setDescription(current.description);
+		const next: StopFormValues = {
+			duration: formatClock(timer.snappedSeconds),
+			date: timer.entryDate ?? dayKeyInTz(timer.startedAt, timezone),
+			projectId: timer.projectId,
+			taskId: timer.taskId,
+			description: timer.description,
 		};
-		fill(timer);
-		// A continued entry can be edited while the clock runs, and nothing
-		// refreshes the timer query when it is. Read the timer again, so the
-		// form starts from the entry as it is now and not as it was at start
-		// (issue #121). The answer can come late on a slow network. Replace
-		// only a field that the person has not changed since the form filled.
-		if (timer.timeEntryId == null) return;
-		void queryClient
-			.refetchQueries({ queryKey: [...queryKeys(orgSlug).timer] })
-			.then(() => {
-				const fresh = queryClient.getQueryData(timerQuery(orgSlug).queryKey);
-				if (!fresh || fresh.timeEntryId !== timer.timeEntryId) return;
-				const keep =
-					<T,>(from: T, to: T) =>
-					(value: T) =>
-						value === from ? to : value;
-				setDuration(
-					keep(
-						formatClock(timer.snappedSeconds),
-						formatClock(fresh.snappedSeconds),
-					),
-				);
-				setDate(
-					keep(
-						timer.entryDate ?? dayKeyInTz(timer.startedAt, timezone),
-						fresh.entryDate ?? dayKeyInTz(fresh.startedAt, timezone),
-					),
-				);
-				setProjectId(keep(timer.projectId, fresh.projectId));
-				setTaskId(keep(timer.taskId, fresh.taskId));
-				setDescription(keep(timer.description, fresh.description));
-			});
-	}, [open, timer, timezone, queryClient, orgSlug]);
+		const from = filledFrom.current;
+		filledFrom.current = next;
+		if (!from) {
+			setDuration(next.duration);
+			setDate(next.date);
+			setProjectId(next.projectId);
+			setTaskId(next.taskId);
+			setDescription(next.description);
+			return;
+		}
+		const keep =
+			<T,>(was: T, now: T) =>
+			(value: T) =>
+				value === was ? now : value;
+		setDuration(keep(from.duration, next.duration));
+		setDate(keep(from.date, next.date));
+		setProjectId(keep(from.projectId, next.projectId));
+		setTaskId(keep(from.taskId, next.taskId));
+		setDescription(keep(from.description, next.description));
+	}, [open, timer, timezone]);
 
 	const projectsQ = useQuery({ ...myProjectsQuery(orgSlug), enabled: open });
 	const tasksQ = useQuery({

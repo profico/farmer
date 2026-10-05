@@ -50,6 +50,7 @@ import { formatClock } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
+import { invalidateTimer } from "#/queries/timer.ts";
 import {
 	copyTimeEntriesWeek,
 	deleteTimeEntry,
@@ -186,9 +187,12 @@ export function WeekView({
 	const weekTotal = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 
 	const invalidate = () =>
-		queryClient.invalidateQueries({
-			queryKey: [...queryKeys(orgSlug).timeEntries],
-		});
+		Promise.all([
+			queryClient.invalidateQueries({
+				queryKey: [...queryKeys(orgSlug).timeEntries],
+			}),
+			invalidateTimer(queryClient, orgSlug),
+		]);
 
 	// Cell-to-cell keyboard movement. Scoped to this table's own node rather than
 	// the document, so a second grid on the page could never be walked into, and

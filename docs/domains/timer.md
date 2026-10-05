@@ -159,8 +159,19 @@ through `timersService.start`, and both still end in `confirm`.
   the copy in `running_timer` is used only once the entry is gone. The Stop
   form and `farmer stop` send back what the read showed, so a stale copy
   would be written over a note edited while the clock ran. For the same
-  reason `update` refuses a timer that continues an entry, and the Stop
-  dialog reads the timer again when it opens.
+  reason `update` refuses a timer that continues an entry. The sweep names
+  the task in its notice by the same rule (`taskIdOf` in
+  `timers.service.ts`).
+
+  The web app keeps the one query fresh. A write that can change a timed
+  entry (a note, hours, task or project edit, a delete, the assistant)
+  refetches the timer row with `invalidateTimer`, which uses the exact key.
+  The bare `queryKeys(org).timer` root is a prefix of the settings query
+  too, so do not use it for the row alone. The Stop dialog starts no
+  refetch of its own, because the pause that opens it invalidates the same
+  query and cancels a refetch that is in flight. The dialog follows its
+  `timer` prop instead: a field that the person has not edited takes the new
+  server value, and an edited field stays.
 
   `update` is a full-form edit, so `confirm` fills what the caller left out
   from the entry: an ABSENT `projectId` or `description` keeps the entry's,
