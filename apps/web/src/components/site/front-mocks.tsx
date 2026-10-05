@@ -457,7 +457,7 @@ export function TimesheetMock() {
 						label="This month"
 						value="62.25"
 						of="184.00"
-						sub="1.75 short of the 64.00 due by the end of today · day 8 of 23"
+						sub="1.75 short of the 64.00 due by the end of today"
 						percent={34}
 					/>
 				</div>
