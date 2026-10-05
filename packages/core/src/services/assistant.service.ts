@@ -1046,7 +1046,10 @@ const generate = async (
 		// The person gets a fixed line, so this is the only place that records
 		// why the stream was cut. The message holds the provider's own text.
 		if (error instanceof OpenRouterStreamCutError)
-			console.error("[assistant] stream cut", error.message);
+			console.error(
+				`[assistant] stream cut (trace ${common.traceId}, conversation ${common.conversationId}, model ${common.model}, step ${common.step ?? "none"})`,
+				error.message,
+			);
 		reportGeneration({
 			...common,
 			latencySeconds: (Date.now() - startedAt) / 1000,

@@ -350,6 +350,7 @@ describe("a stream that ends without a finish reason", () => {
 		}) as typeof globalThis.fetch;
 		await expect(call(new AbortController().signal)).rejects.toMatchObject({
 			name: "OpenRouterStreamCutError",
+			message: "request timed out before the response headers",
 			timedOut: true,
 			partial: { content: "", finishReason: null },
 		});

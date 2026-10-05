@@ -91,31 +91,41 @@ const upstreamErrorSchema = z.object({
 	message: z.string().optional(),
 });
 
-/** A stream that ended in a failure after the 200 was committed.
+/** A call that failed to finish an answer.
  *
- *  Two shapes reach this class. In the first, OpenRouter sent an error frame:
- *  a top-level `error: { code, message }` and `finish_reason: "error"`. The
- *  reason is in `upstream`. In the second, the connection closed with no
- *  error and no `finish_reason`. The answer is cut at an unknown point and
- *  `upstream` is null. It is not a model that chose to stop and not a person
- *  who pressed Stop.
+ *  Four causes reach this class:
+ *  - OpenRouter sent an error frame after the 200: a top-level
+ *    `error: { code, message }` and `finish_reason: "error"`. The reason is
+ *    in `upstream`.
+ *  - The connection closed with no error and no `finish_reason`. The answer
+ *    is cut at an unknown point and `upstream` is null.
+ *  - The app's own deadline fired mid-body. `timedOut` is true.
+ *  - The deadline fired before the response headers. `timedOut` is true and
+ *    `partial` is empty.
+ *
+ *  It is not a model that chose to stop and not a person who pressed Stop.
  *
  *  `partial` is what arrived before the failure, with its tokens and cost,
  *  which the organization paid for. The message is for the log and for
- *  telemetry. `generate` writes it to the log. It can carry the provider's own text, so it is not for the
- *  person: the loop words that itself. */
+ *  telemetry, and `generate` writes it to the log. It can carry the
+ *  provider's own text, so it is not for the person: the loop words that
+ *  itself. */
 export class OpenRouterStreamCutError extends OpenRouterError {
 	constructor(
 		readonly partial: ChatTurn,
 		readonly upstream: UpstreamError | null = null,
 		/** Set when the app's own deadline cut the stream, not the provider. */
 		readonly timedOut = false,
+		/** Set with `timedOut` when no response headers had arrived. */
+		beforeHeaders = false,
 	) {
 		super(
 			upstream
 				? `stream failed upstream (${upstream.code ?? "no code"}): ${upstream.message}`
 				: timedOut
-					? "stream timed out before a finish reason"
+					? beforeHeaders
+						? "request timed out before the response headers"
+						: "stream timed out before a finish reason"
 					: "stream ended without a finish reason",
 		);
 		this.name = "OpenRouterStreamCutError";
@@ -261,6 +271,7 @@ export const streamChatCompletion = async (opts: {
 					finishReason: null,
 				},
 				null,
+				true,
 				true,
 			);
 		}

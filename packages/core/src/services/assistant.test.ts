@@ -2114,6 +2114,48 @@ describe("a stream that ends without a finish reason", () => {
 		expect(messages.at(-1)?.content).toBe("Partly ");
 	});
 
+	test("a timeout on the closing call tells the person it took too long", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			...Array.from({ length: 8 }, (_, i) =>
+				turn({
+					toolCalls: [
+						{ id: `call-${i}`, name: "list_projects", arguments: "{}" },
+					],
+				}),
+			),
+			new OpenRouterStreamCutError(turn(), null, true),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "go forever",
+		});
+
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		const failure = events.find((event) => event.type === "error");
+		expect(failure?.type === "error" && failure.message).toMatch(
+			/too long.*narrower/i,
+		);
+	});
+
+	test("a timeout before the headers stores nothing and says it took too long", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [new OpenRouterStreamCutError(turn(), null, true, true)];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "how was March?",
+		});
+
+		const failure = events.find((event) => event.type === "error");
+		expect(failure?.type === "error" && failure.message).toMatch(
+			/too long.*narrower/i,
+		);
+		expect(reported[0]?.error).toBe(
+			"request timed out before the response headers",
+		);
+		expect((await rowsOf(chat.id)).map((row) => row.role)).toEqual(["user"]);
+	});
+
 	test("a cut is not followed by a title call", async () => {
 		const chat = await assistantService.conversations.create(ctxFor(WORKER));
 		script = [cut(), turn({ content: "A title" })];
