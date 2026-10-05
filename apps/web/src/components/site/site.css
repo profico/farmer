@@ -366,6 +366,13 @@ html:has(.fm-site) {
 .fm-site .fm-input::placeholder {
 	color: var(--faint);
 }
+/* iOS zooms into a field under 16px. The rule in styles.css loses to the
+   literal size above, so this block sets the size again. */
+@media (pointer: coarse) {
+	.fm-site .fm-input {
+		font-size: max(16px, calc(16px / var(--ui-scale, 1)));
+	}
+}
 .fm-site .fm-field {
 	display: flex;
 	flex-direction: column;
@@ -402,8 +409,10 @@ html:has(.fm-site) {
 	font: inherit;
 	cursor: pointer;
 }
-.fm-site .fm-codeblock-copy:hover {
-	color: var(--fg);
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fm-codeblock-copy:hover {
+		color: var(--fg);
+	}
 }
 .fm-site .fm-codeblock-copy:focus-visible {
 	outline: 2px solid var(--acc);
@@ -560,11 +569,17 @@ html:has(.fm-site) {
 		background-color var(--dur-base) var(--ease-out),
 		color var(--dur-base) var(--ease-out);
 }
-.fm-site .fm-nav a:hover,
 .fm-site .fm-nav a:active {
 	color: var(--fg);
 	background: color-mix(in oklab, var(--fg) 6%, transparent);
 	text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fm-nav a:hover {
+		color: var(--fg);
+		background: color-mix(in oklab, var(--fg) 6%, transparent);
+		text-decoration: none;
+	}
 }
 .fm-site .fm-nav a[aria-current="page"] {
 	color: var(--fg);
