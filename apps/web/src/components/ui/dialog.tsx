@@ -1,11 +1,23 @@
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer";
 import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import * as React from "react";
 
 import { Button } from "#/components/ui/button.tsx";
+import { DrawerContent } from "#/components/ui/drawer.tsx";
+import {
+	type ModalChangeEventDetails,
+	type ModalMode,
+	ModalModeContext,
+	sheetBodyClassName,
+	sheetFooterClassName,
+	sheetPopupClassName,
+	useModalMode,
+	useModalModeContext,
+} from "#/components/ui/modal-mode.ts";
 import {
 	backdropVariants,
 	dialogPopupVariants,
@@ -20,37 +32,72 @@ import { cn } from "#/lib/utils.ts";
 // store, not a boolean) and shares it — plus the actionsRef used to finalize
 // unmount after the exit spring — with DialogContent. Every call site keeps
 // passing `open`/`onOpenChange`/`defaultOpen` to <Dialog> unchanged.
-const DialogPresenceContext =
-	React.createContext<PopupPresence<DialogPrimitive.Root.Actions> | null>(null);
+//
+// On a phone the same <Dialog> is a bottom sheet (see `modal-mode.ts`). The
+// mode is in this context too, because DialogContent draws different markup
+// for each mode, and only the dialog mode uses the motion exit.
+const DialogPresenceContext = React.createContext<
+	(PopupPresence<DialogPrimitive.Root.Actions> & { mode: ModalMode }) | null
+>(null);
+
+type DialogProps = Omit<DialogPrimitive.Root.Props, "onOpenChange"> & {
+	onOpenChange?: (open: boolean, details: ModalChangeEventDetails) => void;
+};
 
 function Dialog({
 	open,
 	defaultOpen,
 	onOpenChange,
+	onOpenChangeComplete,
 	children,
 	...props
-}: DialogPrimitive.Root.Props) {
-	const [value, setOpen] =
-		useControllableOpen<DialogPrimitive.Root.ChangeEventDetails>({
-			open,
-			defaultOpen,
-			onOpenChange,
-		});
+}: DialogProps) {
+	const [value, setOpen] = useControllableOpen<ModalChangeEventDetails>({
+		open,
+		defaultOpen,
+		onOpenChange,
+	});
+	const { mode, release } = useModalMode(value);
 	const actionsRef = React.useRef<DialogPrimitive.Root.Actions | null>(null);
-	const presence = React.useMemo(() => ({ open: value, actionsRef }), [value]);
+	const presence = React.useMemo(
+		() => ({ open: value, actionsRef, mode }),
+		[value, mode],
+	);
+	// Base UI calls this with `false` when the popup unmounts: after the CSS
+	// exit of the sheet, or after `actionsRef.unmount()` at the end of the
+	// motion exit. That is the moment the mode lock can end.
+	const handleOpenChangeComplete = (next: boolean) => {
+		if (!next) release();
+		onOpenChangeComplete?.(next);
+	};
 
 	return (
-		<DialogPresenceContext.Provider value={presence}>
-			<DialogPrimitive.Root
-				data-slot="dialog"
-				open={value}
-				onOpenChange={setOpen}
-				actionsRef={actionsRef}
-				{...props}
-			>
-				{children}
-			</DialogPrimitive.Root>
-		</DialogPresenceContext.Provider>
+		<ModalModeContext.Provider value={mode}>
+			<DialogPresenceContext.Provider value={presence}>
+				{mode === "drawer" ? (
+					<DrawerPrimitive.Root
+						data-slot="dialog"
+						{...props}
+						open={value}
+						onOpenChange={setOpen}
+						onOpenChangeComplete={handleOpenChangeComplete}
+					>
+						{children}
+					</DrawerPrimitive.Root>
+				) : (
+					<DialogPrimitive.Root
+						data-slot="dialog"
+						{...props}
+						open={value}
+						onOpenChange={setOpen}
+						onOpenChangeComplete={handleOpenChangeComplete}
+						actionsRef={actionsRef}
+					>
+						{children}
+					</DialogPrimitive.Root>
+				)}
+			</DialogPresenceContext.Provider>
+		</ModalModeContext.Provider>
 	);
 }
 
@@ -96,14 +143,37 @@ function DialogContent({
 	children,
 	showCloseButton = true,
 	...props
-}: DialogPrimitive.Popup.Props & {
+}: Omit<DialogPrimitive.Popup.Props, "className" | "render" | "style"> & {
+	className?: string;
 	showCloseButton?: boolean;
 }) {
 	const presence = React.useContext(DialogPresenceContext);
 	if (!presence) {
 		throw new Error("DialogContent must be used within <Dialog>");
 	}
-	const { open, actionsRef } = presence;
+	const { open, actionsRef, mode } = presence;
+
+	if (mode === "drawer") {
+		// The sheet animates with CSS, not with motion (drawer.tsx tells why),
+		// so none of the motion path below applies: Base UI waits for the CSS
+		// exit and then unmounts the portal itself. The keyboard provider keeps
+		// the focused field in view, and it writes the keyboard height that
+		// lifts the sheet above the keyboard.
+		return (
+			<DrawerPrimitive.VirtualKeyboardProvider>
+				<DrawerContent
+					data-slot="dialog-content"
+					showCloseButton={showCloseButton}
+					className={cn(sheetPopupClassName, "sm:max-w-lg", className)}
+					{...props}
+				>
+					<div data-slot="dialog-body" className={sheetBodyClassName}>
+						{children}
+					</div>
+				</DrawerContent>
+			</DrawerPrimitive.VirtualKeyboardProvider>
+		);
+	}
 
 	return (
 		// keepMounted holds Base UI's portal/scroll-lock/focus infra alive across
@@ -199,6 +269,7 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
 	showCloseButton?: boolean;
 }) {
+	const mode = useModalModeContext();
 	return (
 		<div
 			data-slot="dialog-footer"
@@ -212,8 +283,11 @@ function DialogFooter({
 			// inside of — the same 1.5rem the `-mb-6` bleed already spends. Pinning
 			// at 0 parks the footer that far above the popup's edge and leaves a
 			// stripe of scrolled content showing underneath it.
+			// In a sheet, the footer of `sheetFooterClassName` (modal-mode.ts).
 			className={cn(
-				"-mx-6 -mb-6 -bottom-6 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-6 sm:flex-row sm:justify-end",
+				mode === "drawer"
+					? sheetFooterClassName
+					: "-mx-6 -mb-6 -bottom-6 sticky z-10 mt-1 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t border-line2 bg-popover p-4 px-6 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}

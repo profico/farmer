@@ -47,14 +47,26 @@ function DrawerContent({
 			/>
 			<DrawerPrimitive.Viewport
 				data-slot="drawer-viewport"
-				className="fixed inset-0 z-50 flex items-end justify-center"
+				// The bottom padding lifts the sheet above the software keyboard.
+				// `Drawer.VirtualKeyboardProvider` writes the keyboard height to
+				// `--drawer-keyboard-inset` on this element, and only while a field
+				// has focus, so the `0px` fallback is necessary. The height is in
+				// viewport pixels, and this element is inside the `--ui-scale` zoom,
+				// so the value is divided by the scale.
+				className="fixed inset-0 z-50 flex items-end justify-center pb-[calc(var(--drawer-keyboard-inset,0px)/var(--ui-scale,1))]"
 			>
 				<DrawerPrimitive.Popup
 					data-slot="drawer-content"
 					className={cn(
 						// The `after:` strip is the bleed: it hangs below the popup in its
 						// color, so an upward over-drag never shows the page underneath.
-						"relative flex w-full flex-col gap-4 rounded-t-2xl border-t bg-popover bg-clip-padding text-base text-popover-foreground shadow-[var(--lift)] outline-none after:absolute after:inset-x-0 after:top-full after:h-12 after:bg-popover [transform:translateY(var(--drawer-swipe-movement-y))] transition-transform duration-300 ease-(--ease-drawer) data-ending-style:[transform:translateY(calc(100%+2px))] data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:[transform:translateY(calc(100%+2px))] data-swiping:select-none motion-reduce:transition-none motion-reduce:data-ending-style:[transform:none] motion-reduce:data-starting-style:[transform:none]",
+						//
+						// The `before:` layer is the dim for a nested drawer. A nested
+						// drawer has no backdrop of its own (Base UI renders one only for
+						// the outermost drawer), so without the dim the sheet behind it
+						// stays at full contrast. The sheet behind also shrinks a little
+						// from its top edge, so the two sheets read as a stack.
+						"relative flex w-full origin-top flex-col gap-4 rounded-t-2xl border-t bg-popover bg-clip-padding text-base text-popover-foreground shadow-[var(--lift)] outline-none before:pointer-events-none before:absolute before:inset-0 before:z-20 before:rounded-[inherit] before:bg-black/0 before:transition-colors before:duration-300 after:absolute after:inset-x-0 after:top-full after:h-12 after:bg-popover [transform:translateY(var(--drawer-swipe-movement-y))] transition-transform duration-300 ease-(--ease-drawer) data-ending-style:[transform:translateY(calc(100%+2px))] data-ending-style:duration-[calc(var(--drawer-swipe-strength)*300ms)] data-starting-style:[transform:translateY(calc(100%+2px))] data-nested-drawer-open:[transform:translateY(calc(var(--drawer-swipe-movement-y)-0.5rem))_scale(0.95)] data-nested-drawer-open:before:bg-black/25 data-nested-drawer-swiping:duration-0 data-swiping:select-none motion-reduce:transition-none motion-reduce:data-ending-style:[transform:none] motion-reduce:data-starting-style:[transform:none] motion-reduce:data-nested-drawer-open:[transform:none]",
 						className,
 					)}
 					{...props}
