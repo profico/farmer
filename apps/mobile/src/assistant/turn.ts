@@ -1,0 +1,167 @@
+import type { AssistantEvent, AssistantMessage } from "@farmer/api-client";
+
+/**
+ * The state of one assistant turn, and how each streamed event changes it.
+ * No React here, so `bun test` reads it directly. The web app's run store
+ * (`apps/web/src/components/assistant/assistant-runs.tsx`) has the same
+ * rules.
+ */
+
+export type ToolTrace = {
+	toolCallId: string;
+	name: string;
+	/** Null while the tool runs. */
+	ok: boolean | null;
+	/** The raw JSON that the model sent. */
+	arguments: string;
+};
+
+export type ApprovalPreview = {
+	columns: string[];
+	rows: { id: string; cells: string[] }[];
+	note: string | null;
+};
+
+export type PendingApproval = {
+	toolCallId: string;
+	name: string;
+	summary: string;
+	arguments: string;
+	selectable: boolean;
+	preview: ApprovalPreview | null;
+};
+
+export type Run = {
+	/** The text of the answer so far. */
+	text: string;
+	/** What the person sent, until the stored copy arrives. */
+	sentMessage: string | null;
+	/** The id of the stored copy: the server's receipt. */
+	sentMessageId: string | null;
+	traces: ToolTrace[];
+	pending: PendingApproval | null;
+	error: string | null;
+	isStreaming: boolean;
+	/** At least one `delta` arrived. */
+	streamed: boolean;
+};
+
+export const IDLE: Run = {
+	text: "",
+	sentMessage: null,
+	sentMessageId: null,
+	traces: [],
+	pending: null,
+	error: null,
+	isStreaming: false,
+	streamed: false,
+};
+
+/** The run at the start of a turn. */
+export const startRun = (sentMessage: string | null): Run => ({
+	...IDLE,
+	sentMessage,
+	isStreaming: true,
+});
+
+/** The run after one event of the stream. */
+export const applyEvent = (run: Run, event: AssistantEvent): Run => {
+	switch (event.type) {
+		case "message":
+			// The server stores the person's message before it calls the
+			// model. The id is the receipt that the message landed.
+			return event.role === "user"
+				? { ...run, sentMessageId: event.messageId }
+				: run;
+		case "delta":
+			return { ...run, text: run.text + event.text, streamed: true };
+		case "tool_start":
+			return {
+				...run,
+				traces: [
+					...run.traces,
+					{
+						toolCallId: event.toolCallId,
+						name: event.name,
+						ok: null,
+						arguments: event.arguments,
+					},
+				],
+			};
+		case "tool_result":
+			return {
+				...run,
+				traces: run.traces.map((trace) =>
+					trace.toolCallId === event.toolCallId
+						? { ...trace, ok: event.ok }
+						: trace,
+				),
+			};
+		case "approval_required":
+			return {
+				...run,
+				pending: {
+					toolCallId: event.toolCallId,
+					name: event.name,
+					summary: event.summary,
+					arguments: event.arguments,
+					selectable: event.selectable,
+					preview: event.preview
+						? { ...event.preview, note: event.preview.note ?? null }
+						: null,
+				},
+			};
+		case "error":
+			return { ...run, error: event.message };
+		case "title":
+		case "done":
+			return run;
+	}
+};
+
+/**
+ * The approval that a stored thread still waits for, or null. The waiting
+ * call is the one in the row's `toolCalls` that no `tool` row answers before
+ * the next assistant row. A card read from the thread works after the app
+ * was closed, because approving is a second request.
+ */
+export const storedPending = (
+	messages: AssistantMessage[],
+): PendingApproval | null => {
+	const index = messages.findIndex((message) => message.pendingApproval);
+	const row = messages[index];
+	if (!row) return null;
+	const after = messages.slice(index + 1);
+	const end = after.findIndex((message) => message.role === "assistant");
+	const answered = new Set(
+		(end === -1 ? after : after.slice(0, end))
+			.filter((message) => message.role === "tool")
+			.map((message) => message.toolCallId),
+	);
+	const call = row.toolCalls?.find((entry) => !answered.has(entry.id));
+	if (!call) return null;
+	return {
+		toolCallId: call.id,
+		name: call.name,
+		summary: row.approvalSummary ?? call.name.replaceAll("_", " "),
+		arguments: call.arguments,
+		preview: row.approvalPreview
+			? {
+					columns: row.approvalPreview.columns,
+					rows: row.approvalPreview.rows,
+					note: row.approvalPreview.note,
+				}
+			: null,
+		selectable: Boolean(row.approvalPreview?.selectable),
+	};
+};
+
+/** The rows of a stored thread that the transcript draws: the person's
+ *  messages and the assistant's text. A tool row and a pure tool turn are
+ *  not drawn. */
+export const visibleMessages = (messages: AssistantMessage[]) =>
+	messages.filter(
+		(message) =>
+			message.role === "user" ||
+			(message.role === "assistant" && message.content.trim() !== ""),
+	);
