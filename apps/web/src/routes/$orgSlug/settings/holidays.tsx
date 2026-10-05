@@ -115,8 +115,9 @@ function HolidaysSettingsPage() {
 			}
 			toast.error(error.message ?? "Could not update holiday");
 		},
-		// Every other reader of the calendar — the timesheet's week strip, the
-		// targets, the fund's prefill — needs the server's answer.
+		// Every other reader of the calendar — the timesheet's week strip and the
+		// fund's prefill — needs the server's answer. The targets are in the
+		// time-entries family and refresh on the next open.
 		onSettled: () =>
 			queryClient.invalidateQueries({
 				queryKey: [...queryKeys(orgSlug).holidays],

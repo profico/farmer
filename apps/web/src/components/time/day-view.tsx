@@ -6,7 +6,12 @@ import {
 	SparkleIcon,
 	UmbrellaSimpleIcon,
 } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	keepPreviousData,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 // `useNavigate` for the toolbar's jump-to-date; no AnimatePresence — the list
 // stopped using it (see the note over the rows below).
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -67,7 +72,10 @@ export function DayView({
 	const timedEntryId = useTimedEntryId(orgSlug);
 	// Read without suspending: the strip's "short" marks are a courtesy, and the
 	// day must never wait on them.
-	const { data: targets } = useQuery(myTargetsQuery(orgSlug, today));
+	const { data: targets } = useQuery({
+		...myTargetsQuery(orgSlug, today),
+		placeholderData: keepPreviousData,
+	});
 	const total = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 	// A fill ("rest of day") block is a catch-all, so it always sorts last; the
 	// stable sort otherwise preserves the server's insertion ordering.
