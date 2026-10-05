@@ -1,6 +1,6 @@
-// The project page as `GET /api/v1/…/projects/$id` sends it. The service
-// decides what each role may see; this file pins that the projection keeps the
-// decision on the way out. A plain member must not get the money fields or the
+// A project as `GET /api/v1/…/projects` and `…/projects/$id` send it. The
+// service decides what each role may see; this file pins that the projection
+// keeps the decision on the way out. `project-admin.test.ts` pins the shape. A plain member must not get the money fields or the
 // project's real hours, and a Team Lead must not get the money fields.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -18,7 +18,7 @@ import { AccessError } from "../services/access.service";
 import { projectsService } from "../services/projects.service";
 import type { Ctx } from "../services/types";
 import { createTestDb, type TestDb } from "../test/harness";
-import { toApiProjectDetail, toApiProjectOverview } from "./project-detail";
+import { toApiProjectDetail, toApiProjectOverview } from "./project-admin";
 
 const ORG = "org-api-project";
 const PM = "u-api-project-pm";
@@ -128,57 +128,13 @@ afterAll(async () => {
 	await harness.close();
 });
 
-describe("toApiProjectDetail", () => {
-	test("keeps exactly the fields it names", () => {
-		const row = {
-			id: "p-1",
-			organizationId: "org-1",
-			clientId: "c-1",
-			name: "Apollo",
-			code: "APL",
-			icon: null,
-			type: "hourly",
-			status: "active",
-			openToOrg: false,
-			client: { id: "c-1", name: "Acme", organizationId: "org-1" },
-			myRole: "pm" as const,
-			statsScope: "project" as const,
-			monthlyTotalSeconds: 7200,
-			allTimeSeconds: 14_400,
-			contributors: [{ id: "u-1", name: "Ana" }],
-			contributorCount: 1,
-			budgetSeconds: null,
-			budgetAmount: null,
-			hourlyPrice: "85.00",
-			createdAt: new Date("2026-09-14T08:00:00Z"),
-		};
-		expect(toApiProjectDetail(row)).toStrictEqual({
-			id: "p-1",
-			name: "Apollo",
-			code: "APL",
-			icon: null,
-			type: "hourly",
-			status: "active",
-			openToOrg: false,
-			client: { id: "c-1", name: "Acme" },
-			role: "pm",
-			statsScope: "project",
-			monthlyTotalSeconds: 7200,
-			allTimeSeconds: 14_400,
-			contributorCount: 1,
-			budgetSeconds: null,
-			budgetAmount: null,
-			hourlyPrice: "85.00",
-		});
-	});
-});
-
 describe("what each role gets", () => {
 	test("a plain member gets no money and only their own hours", async () => {
 		const detail = await detailFor(PLAIN);
 		expect(detail.role).toBe("member");
-		expect(detail.statsScope).toBe("own");
-		expect(detail.allTimeSeconds).toBe(4 * HOUR);
+		expect(detail.stats.scope).toBe("own");
+		expect(detail.stats.allTimeSeconds).toBe(4 * HOUR);
+		expect(detail.stats.contributors).toEqual([]);
 		expect([
 			detail.budgetSeconds,
 			detail.budgetAmount,
@@ -188,8 +144,8 @@ describe("what each role gets", () => {
 
 	test("a team lead gets the project's hours and no money", async () => {
 		const detail = await detailFor(LEAD);
-		expect(detail.statsScope).toBe("project");
-		expect(detail.allTimeSeconds).toBe(6 * HOUR);
+		expect(detail.stats.scope).toBe("project");
+		expect(detail.stats.allTimeSeconds).toBe(6 * HOUR);
 		expect([detail.budgetAmount, detail.hourlyPrice]).toEqual([null, null]);
 	});
 

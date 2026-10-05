@@ -84,21 +84,25 @@ import { Route as ApiV1OrgsOrgSlugWorkingHoursRouteImport } from './routes/api/v
 import { Route as ApiV1OrgsOrgSlugWhoamiRouteImport } from './routes/api/v1/orgs/$orgSlug/whoami'
 import { Route as ApiV1OrgsOrgSlugUnfiledRouteImport } from './routes/api/v1/orgs/$orgSlug/unfiled'
 import { Route as ApiV1OrgsOrgSlugTrackingRouteImport } from './routes/api/v1/orgs/$orgSlug/tracking'
-import { Route as ApiV1OrgsOrgSlugTasksRouteImport } from './routes/api/v1/orgs/$orgSlug/tasks'
 import { Route as ApiV1OrgsOrgSlugSyncRouteImport } from './routes/api/v1/orgs/$orgSlug/sync'
 import { Route as ApiV1OrgsOrgSlugRewindRouteImport } from './routes/api/v1/orgs/$orgSlug/rewind'
 import { Route as ApiV1OrgsOrgSlugRepositoryProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/repository-projects'
+import { Route as ApiV1OrgsOrgSlugOrganizationRouteImport } from './routes/api/v1/orgs/$orgSlug/organization'
 import { Route as ApiV1OrgsOrgSlugHomeRouteImport } from './routes/api/v1/orgs/$orgSlug/home'
-import { Route as ApiV1OrgsOrgSlugClientsRouteImport } from './routes/api/v1/orgs/$orgSlug/clients'
 import { Route as ApiV1OrgsOrgSlugWebhooksIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/webhooks/index'
 import { Route as ApiV1OrgsOrgSlugTimerIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/index'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/index'
+import { Route as ApiV1OrgsOrgSlugTasksIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/tasks/index'
 import { Route as ApiV1OrgsOrgSlugRemindersIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/reminders/index'
 import { Route as ApiV1OrgsOrgSlugRecurringBlocksIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/recurring-blocks/index'
 import { Route as ApiV1OrgsOrgSlugProjectsIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/index'
+import { Route as ApiV1OrgsOrgSlugPeopleIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/people/index'
+import { Route as ApiV1OrgsOrgSlugInvitationsIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/invitations/index'
 import { Route as ApiV1OrgsOrgSlugIntegrationsIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/integrations/index'
+import { Route as ApiV1OrgsOrgSlugHourFundIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/hour-fund/index'
 import { Route as ApiV1OrgsOrgSlugHolidaysIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/holidays/index'
 import { Route as ApiV1OrgsOrgSlugFilingRulesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/filing-rules/index'
+import { Route as ApiV1OrgsOrgSlugClientsIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/clients/index'
 import { Route as ApiV1OrgsOrgSlugAuditLogIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/audit-log/index'
 import { Route as ApiV1OrgsOrgSlugAbsencesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/index'
 import { Route as ApiV1OrgsOrgSlugTimerSettingsRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/settings'
@@ -109,6 +113,7 @@ import { Route as ApiV1OrgsOrgSlugTimeEntriesFileRouteImport } from './routes/ap
 import { Route as ApiV1OrgsOrgSlugTimeEntriesCopyWeekRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/copy-week'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesCopyDayRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/copy-day'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIdRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/$id'
+import { Route as ApiV1OrgsOrgSlugTasksManagedRouteImport } from './routes/api/v1/orgs/$orgSlug/tasks/managed'
 import { Route as ApiV1OrgsOrgSlugReportsTrackingRouteImport } from './routes/api/v1/orgs/$orgSlug/reports/tracking'
 import { Route as ApiV1OrgsOrgSlugReportsOvertimeRouteImport } from './routes/api/v1/orgs/$orgSlug/reports/overtime'
 import { Route as ApiV1OrgsOrgSlugReportsAbsenceRouteImport } from './routes/api/v1/orgs/$orgSlug/reports/absence'
@@ -120,6 +125,9 @@ import { Route as ApiV1OrgsOrgSlugPreferencesHiddenTasksRouteImport } from './ro
 import { Route as ApiV1OrgsOrgSlugIntegrationsSettingsRouteImport } from './routes/api/v1/orgs/$orgSlug/integrations/settings'
 import { Route as ApiV1OrgsOrgSlugIntegrationsGoogleCalendarRouteImport } from './routes/api/v1/orgs/$orgSlug/integrations/google-calendar'
 import { Route as ApiV1OrgsOrgSlugIntegrationsGithubRouteImport } from './routes/api/v1/orgs/$orgSlug/integrations/github'
+import { Route as ApiV1OrgsOrgSlugHourFundSuggestionRouteImport } from './routes/api/v1/orgs/$orgSlug/hour-fund/suggestion'
+import { Route as ApiV1OrgsOrgSlugHourFundPrefillRouteImport } from './routes/api/v1/orgs/$orgSlug/hour-fund/prefill'
+import { Route as ApiV1OrgsOrgSlugHourFundClearRouteImport } from './routes/api/v1/orgs/$orgSlug/hour-fund/clear'
 import { Route as ApiV1OrgsOrgSlugHolidaysRangeRouteImport } from './routes/api/v1/orgs/$orgSlug/holidays/range'
 import { Route as ApiV1OrgsOrgSlugFilingRulesIdRouteImport } from './routes/api/v1/orgs/$orgSlug/filing-rules/$id'
 import { Route as ApiV1OrgsOrgSlugAuditLogRetentionRouteImport } from './routes/api/v1/orgs/$orgSlug/audit-log/retention'
@@ -130,8 +138,12 @@ import { Route as ApiV1OrgsOrgSlugAbsencesIdRouteImport } from './routes/api/v1/
 import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/workspace-integrations/slack/index'
 import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/workspace-integrations/github/index'
 import { Route as ApiV1OrgsOrgSlugWebhooksIdIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/webhooks/$id/index'
+import { Route as ApiV1OrgsOrgSlugTasksIdIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/tasks/$id/index'
 import { Route as ApiV1OrgsOrgSlugReportsTimeIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/reports/time/index'
 import { Route as ApiV1OrgsOrgSlugProjectsIdIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/index'
+import { Route as ApiV1OrgsOrgSlugPeopleUserIdIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/people/$userId/index'
+import { Route as ApiV1OrgsOrgSlugInvitationsIdIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/invitations/$id/index'
+import { Route as ApiV1OrgsOrgSlugClientsIdIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/clients/$id/index'
 import { Route as ApiV1OrgsOrgSlugAssistantThreadsIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/index'
 import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackTestRouteImport } from './routes/api/v1/orgs/$orgSlug/workspace-integrations/slack/test'
 import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackMatchPeopleRouteImport } from './routes/api/v1/orgs/$orgSlug/workspace-integrations/slack/match-people'
@@ -140,11 +152,29 @@ import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallUrlRouteImpo
 import { Route as ApiV1OrgsOrgSlugWebhooksIdTestRouteImport } from './routes/api/v1/orgs/$orgSlug/webhooks/$id/test'
 import { Route as ApiV1OrgsOrgSlugWebhooksIdRollSecretRouteImport } from './routes/api/v1/orgs/$orgSlug/webhooks/$id/roll-secret'
 import { Route as ApiV1OrgsOrgSlugWebhooksIdDeliveriesRouteImport } from './routes/api/v1/orgs/$orgSlug/webhooks/$id/deliveries'
+import { Route as ApiV1OrgsOrgSlugTasksIdRestoreRouteImport } from './routes/api/v1/orgs/$orgSlug/tasks/$id/restore'
+import { Route as ApiV1OrgsOrgSlugTasksIdArchiveRouteImport } from './routes/api/v1/orgs/$orgSlug/tasks/$id/archive'
 import { Route as ApiV1OrgsOrgSlugReportsTimeDetailRouteImport } from './routes/api/v1/orgs/$orgSlug/reports/time/detail'
+import { Route as ApiV1OrgsOrgSlugProjectsIdTasksRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/tasks'
+import { Route as ApiV1OrgsOrgSlugProjectsIdRestoreRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/restore'
 import { Route as ApiV1OrgsOrgSlugProjectsIdOverviewRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/overview'
+import { Route as ApiV1OrgsOrgSlugProjectsIdAssignableRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/assignable'
+import { Route as ApiV1OrgsOrgSlugProjectsIdArchiveRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/archive'
+import { Route as ApiV1OrgsOrgSlugPeopleUserIdTypeRouteImport } from './routes/api/v1/orgs/$orgSlug/people/$userId/type'
+import { Route as ApiV1OrgsOrgSlugPeopleUserIdTeamRouteImport } from './routes/api/v1/orgs/$orgSlug/people/$userId/team'
+import { Route as ApiV1OrgsOrgSlugPeopleUserIdStartDateRouteImport } from './routes/api/v1/orgs/$orgSlug/people/$userId/start-date'
+import { Route as ApiV1OrgsOrgSlugPeopleUserIdRoleRouteImport } from './routes/api/v1/orgs/$orgSlug/people/$userId/role'
+import { Route as ApiV1OrgsOrgSlugPeopleUserIdRestoreRouteImport } from './routes/api/v1/orgs/$orgSlug/people/$userId/restore'
+import { Route as ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRouteImport } from './routes/api/v1/orgs/$orgSlug/people/$userId/confirm-email'
+import { Route as ApiV1OrgsOrgSlugPeopleUserIdArchiveRouteImport } from './routes/api/v1/orgs/$orgSlug/people/$userId/archive'
+import { Route as ApiV1OrgsOrgSlugInvitationsIdResendRouteImport } from './routes/api/v1/orgs/$orgSlug/invitations/$id/resend'
+import { Route as ApiV1OrgsOrgSlugClientsIdRestoreRouteImport } from './routes/api/v1/orgs/$orgSlug/clients/$id/restore'
+import { Route as ApiV1OrgsOrgSlugClientsIdArchiveRouteImport } from './routes/api/v1/orgs/$orgSlug/clients/$id/archive'
+import { Route as ApiV1OrgsOrgSlugProjectsIdMembersIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/members/index'
 import { Route as ApiV1OrgsOrgSlugAssistantThreadsIdIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/$id/index'
 import { Route as ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRouteImport } from './routes/api/v1/orgs/$orgSlug/workspace-integrations/github/installations/$id'
 import { Route as ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRouteImport } from './routes/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend'
+import { Route as ApiV1OrgsOrgSlugProjectsIdMembersUserIdRouteImport } from './routes/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
 import { Route as ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/$id/messages'
 import { Route as ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRouteImport } from './routes/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals'
 
@@ -546,11 +576,6 @@ const ApiV1OrgsOrgSlugTrackingRoute =
     path: '/api/v1/orgs/$orgSlug/tracking',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiV1OrgsOrgSlugTasksRoute = ApiV1OrgsOrgSlugTasksRouteImport.update({
-  id: '/api/v1/orgs/$orgSlug/tasks',
-  path: '/api/v1/orgs/$orgSlug/tasks',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiV1OrgsOrgSlugSyncRoute = ApiV1OrgsOrgSlugSyncRouteImport.update({
   id: '/api/v1/orgs/$orgSlug/sync',
   path: '/api/v1/orgs/$orgSlug/sync',
@@ -567,14 +592,15 @@ const ApiV1OrgsOrgSlugRepositoryProjectsRoute =
     path: '/api/v1/orgs/$orgSlug/repository-projects',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugOrganizationRoute =
+  ApiV1OrgsOrgSlugOrganizationRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/organization',
+    path: '/api/v1/orgs/$orgSlug/organization',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugHomeRoute = ApiV1OrgsOrgSlugHomeRouteImport.update({
   id: '/api/v1/orgs/$orgSlug/home',
   path: '/api/v1/orgs/$orgSlug/home',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiV1OrgsOrgSlugClientsRoute = ApiV1OrgsOrgSlugClientsRouteImport.update({
-  id: '/api/v1/orgs/$orgSlug/clients',
-  path: '/api/v1/orgs/$orgSlug/clients',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiV1OrgsOrgSlugWebhooksIndexRoute =
@@ -595,6 +621,12 @@ const ApiV1OrgsOrgSlugTimeEntriesIndexRoute =
     path: '/api/v1/orgs/$orgSlug/time-entries/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugTasksIndexRoute =
+  ApiV1OrgsOrgSlugTasksIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/tasks/',
+    path: '/api/v1/orgs/$orgSlug/tasks/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugRemindersIndexRoute =
   ApiV1OrgsOrgSlugRemindersIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/reminders/',
@@ -613,10 +645,28 @@ const ApiV1OrgsOrgSlugProjectsIndexRoute =
     path: '/api/v1/orgs/$orgSlug/projects/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugPeopleIndexRoute =
+  ApiV1OrgsOrgSlugPeopleIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/',
+    path: '/api/v1/orgs/$orgSlug/people/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugInvitationsIndexRoute =
+  ApiV1OrgsOrgSlugInvitationsIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/invitations/',
+    path: '/api/v1/orgs/$orgSlug/invitations/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugIntegrationsIndexRoute =
   ApiV1OrgsOrgSlugIntegrationsIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/integrations/',
     path: '/api/v1/orgs/$orgSlug/integrations/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugHourFundIndexRoute =
+  ApiV1OrgsOrgSlugHourFundIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/hour-fund/',
+    path: '/api/v1/orgs/$orgSlug/hour-fund/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugHolidaysIndexRoute =
@@ -629,6 +679,12 @@ const ApiV1OrgsOrgSlugFilingRulesIndexRoute =
   ApiV1OrgsOrgSlugFilingRulesIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/filing-rules/',
     path: '/api/v1/orgs/$orgSlug/filing-rules/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugClientsIndexRoute =
+  ApiV1OrgsOrgSlugClientsIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/clients/',
+    path: '/api/v1/orgs/$orgSlug/clients/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugAuditLogIndexRoute =
@@ -689,6 +745,12 @@ const ApiV1OrgsOrgSlugTimeEntriesIdRoute =
   ApiV1OrgsOrgSlugTimeEntriesIdRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/time-entries/$id',
     path: '/api/v1/orgs/$orgSlug/time-entries/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugTasksManagedRoute =
+  ApiV1OrgsOrgSlugTasksManagedRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/tasks/managed',
+    path: '/api/v1/orgs/$orgSlug/tasks/managed',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugReportsTrackingRoute =
@@ -757,6 +819,24 @@ const ApiV1OrgsOrgSlugIntegrationsGithubRoute =
     path: '/api/v1/orgs/$orgSlug/integrations/github',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugHourFundSuggestionRoute =
+  ApiV1OrgsOrgSlugHourFundSuggestionRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/hour-fund/suggestion',
+    path: '/api/v1/orgs/$orgSlug/hour-fund/suggestion',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugHourFundPrefillRoute =
+  ApiV1OrgsOrgSlugHourFundPrefillRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/hour-fund/prefill',
+    path: '/api/v1/orgs/$orgSlug/hour-fund/prefill',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugHourFundClearRoute =
+  ApiV1OrgsOrgSlugHourFundClearRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/hour-fund/clear',
+    path: '/api/v1/orgs/$orgSlug/hour-fund/clear',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugHolidaysRangeRoute =
   ApiV1OrgsOrgSlugHolidaysRangeRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/holidays/range',
@@ -817,6 +897,12 @@ const ApiV1OrgsOrgSlugWebhooksIdIndexRoute =
     path: '/api/v1/orgs/$orgSlug/webhooks/$id/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugTasksIdIndexRoute =
+  ApiV1OrgsOrgSlugTasksIdIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/tasks/$id/',
+    path: '/api/v1/orgs/$orgSlug/tasks/$id/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugReportsTimeIndexRoute =
   ApiV1OrgsOrgSlugReportsTimeIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/reports/time/',
@@ -827,6 +913,24 @@ const ApiV1OrgsOrgSlugProjectsIdIndexRoute =
   ApiV1OrgsOrgSlugProjectsIdIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/projects/$id/',
     path: '/api/v1/orgs/$orgSlug/projects/$id/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugPeopleUserIdIndexRoute =
+  ApiV1OrgsOrgSlugPeopleUserIdIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/$userId/',
+    path: '/api/v1/orgs/$orgSlug/people/$userId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugInvitationsIdIndexRoute =
+  ApiV1OrgsOrgSlugInvitationsIdIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/invitations/$id/',
+    path: '/api/v1/orgs/$orgSlug/invitations/$id/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugClientsIdIndexRoute =
+  ApiV1OrgsOrgSlugClientsIdIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/clients/$id/',
+    path: '/api/v1/orgs/$orgSlug/clients/$id/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugAssistantThreadsIndexRoute =
@@ -877,16 +981,118 @@ const ApiV1OrgsOrgSlugWebhooksIdDeliveriesRoute =
     path: '/api/v1/orgs/$orgSlug/webhooks/$id/deliveries',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugTasksIdRestoreRoute =
+  ApiV1OrgsOrgSlugTasksIdRestoreRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/tasks/$id/restore',
+    path: '/api/v1/orgs/$orgSlug/tasks/$id/restore',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugTasksIdArchiveRoute =
+  ApiV1OrgsOrgSlugTasksIdArchiveRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/tasks/$id/archive',
+    path: '/api/v1/orgs/$orgSlug/tasks/$id/archive',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugReportsTimeDetailRoute =
   ApiV1OrgsOrgSlugReportsTimeDetailRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/reports/time/detail',
     path: '/api/v1/orgs/$orgSlug/reports/time/detail',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugProjectsIdTasksRoute =
+  ApiV1OrgsOrgSlugProjectsIdTasksRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/projects/$id/tasks',
+    path: '/api/v1/orgs/$orgSlug/projects/$id/tasks',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugProjectsIdRestoreRoute =
+  ApiV1OrgsOrgSlugProjectsIdRestoreRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/projects/$id/restore',
+    path: '/api/v1/orgs/$orgSlug/projects/$id/restore',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1OrgsOrgSlugProjectsIdOverviewRoute =
   ApiV1OrgsOrgSlugProjectsIdOverviewRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/projects/$id/overview',
     path: '/api/v1/orgs/$orgSlug/projects/$id/overview',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugProjectsIdAssignableRoute =
+  ApiV1OrgsOrgSlugProjectsIdAssignableRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/projects/$id/assignable',
+    path: '/api/v1/orgs/$orgSlug/projects/$id/assignable',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugProjectsIdArchiveRoute =
+  ApiV1OrgsOrgSlugProjectsIdArchiveRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/projects/$id/archive',
+    path: '/api/v1/orgs/$orgSlug/projects/$id/archive',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugPeopleUserIdTypeRoute =
+  ApiV1OrgsOrgSlugPeopleUserIdTypeRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/$userId/type',
+    path: '/api/v1/orgs/$orgSlug/people/$userId/type',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugPeopleUserIdTeamRoute =
+  ApiV1OrgsOrgSlugPeopleUserIdTeamRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/$userId/team',
+    path: '/api/v1/orgs/$orgSlug/people/$userId/team',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugPeopleUserIdStartDateRoute =
+  ApiV1OrgsOrgSlugPeopleUserIdStartDateRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/$userId/start-date',
+    path: '/api/v1/orgs/$orgSlug/people/$userId/start-date',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugPeopleUserIdRoleRoute =
+  ApiV1OrgsOrgSlugPeopleUserIdRoleRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/$userId/role',
+    path: '/api/v1/orgs/$orgSlug/people/$userId/role',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugPeopleUserIdRestoreRoute =
+  ApiV1OrgsOrgSlugPeopleUserIdRestoreRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/$userId/restore',
+    path: '/api/v1/orgs/$orgSlug/people/$userId/restore',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRoute =
+  ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/$userId/confirm-email',
+    path: '/api/v1/orgs/$orgSlug/people/$userId/confirm-email',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugPeopleUserIdArchiveRoute =
+  ApiV1OrgsOrgSlugPeopleUserIdArchiveRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/people/$userId/archive',
+    path: '/api/v1/orgs/$orgSlug/people/$userId/archive',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugInvitationsIdResendRoute =
+  ApiV1OrgsOrgSlugInvitationsIdResendRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/invitations/$id/resend',
+    path: '/api/v1/orgs/$orgSlug/invitations/$id/resend',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugClientsIdRestoreRoute =
+  ApiV1OrgsOrgSlugClientsIdRestoreRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/clients/$id/restore',
+    path: '/api/v1/orgs/$orgSlug/clients/$id/restore',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugClientsIdArchiveRoute =
+  ApiV1OrgsOrgSlugClientsIdArchiveRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/clients/$id/archive',
+    path: '/api/v1/orgs/$orgSlug/clients/$id/archive',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute =
+  ApiV1OrgsOrgSlugProjectsIdMembersIndexRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/projects/$id/members/',
+    path: '/api/v1/orgs/$orgSlug/projects/$id/members/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugAssistantThreadsIdIndexRoute =
@@ -905,6 +1111,12 @@ const ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute =
   ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend',
     path: '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute =
+  ApiV1OrgsOrgSlugProjectsIdMembersUserIdRouteImport.update({
+    id: '/api/v1/orgs/$orgSlug/projects/$id/members/$userId',
+    path: '/api/v1/orgs/$orgSlug/projects/$id/members/$userId',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute =
@@ -992,12 +1204,11 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
-  '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
+  '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/rewind': typeof ApiV1OrgsOrgSlugRewindRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
-  '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
@@ -1009,6 +1220,9 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/audit-log/retention': typeof ApiV1OrgsOrgSlugAuditLogRetentionRoute
   '/api/v1/orgs/$orgSlug/filing-rules/$id': typeof ApiV1OrgsOrgSlugFilingRulesIdRoute
   '/api/v1/orgs/$orgSlug/holidays/range': typeof ApiV1OrgsOrgSlugHolidaysRangeRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/clear': typeof ApiV1OrgsOrgSlugHourFundClearRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/prefill': typeof ApiV1OrgsOrgSlugHourFundPrefillRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/suggestion': typeof ApiV1OrgsOrgSlugHourFundSuggestionRoute
   '/api/v1/orgs/$orgSlug/integrations/github': typeof ApiV1OrgsOrgSlugIntegrationsGithubRoute
   '/api/v1/orgs/$orgSlug/integrations/google-calendar': typeof ApiV1OrgsOrgSlugIntegrationsGoogleCalendarRoute
   '/api/v1/orgs/$orgSlug/integrations/settings': typeof ApiV1OrgsOrgSlugIntegrationsSettingsRoute
@@ -1020,6 +1234,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/reports/absence': typeof ApiV1OrgsOrgSlugReportsAbsenceRoute
   '/api/v1/orgs/$orgSlug/reports/overtime': typeof ApiV1OrgsOrgSlugReportsOvertimeRoute
   '/api/v1/orgs/$orgSlug/reports/tracking': typeof ApiV1OrgsOrgSlugReportsTrackingRoute
+  '/api/v1/orgs/$orgSlug/tasks/managed': typeof ApiV1OrgsOrgSlugTasksManagedRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id': typeof ApiV1OrgsOrgSlugTimeEntriesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
@@ -1030,17 +1245,38 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/timer/settings': typeof ApiV1OrgsOrgSlugTimerSettingsRoute
   '/api/v1/orgs/$orgSlug/absences/': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/audit-log/': typeof ApiV1OrgsOrgSlugAuditLogIndexRoute
+  '/api/v1/orgs/$orgSlug/clients/': typeof ApiV1OrgsOrgSlugClientsIndexRoute
   '/api/v1/orgs/$orgSlug/filing-rules/': typeof ApiV1OrgsOrgSlugFilingRulesIndexRoute
   '/api/v1/orgs/$orgSlug/holidays/': typeof ApiV1OrgsOrgSlugHolidaysIndexRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/': typeof ApiV1OrgsOrgSlugHourFundIndexRoute
   '/api/v1/orgs/$orgSlug/integrations/': typeof ApiV1OrgsOrgSlugIntegrationsIndexRoute
+  '/api/v1/orgs/$orgSlug/invitations/': typeof ApiV1OrgsOrgSlugInvitationsIndexRoute
+  '/api/v1/orgs/$orgSlug/people/': typeof ApiV1OrgsOrgSlugPeopleIndexRoute
   '/api/v1/orgs/$orgSlug/projects/': typeof ApiV1OrgsOrgSlugProjectsIndexRoute
   '/api/v1/orgs/$orgSlug/recurring-blocks/': typeof ApiV1OrgsOrgSlugRecurringBlocksIndexRoute
   '/api/v1/orgs/$orgSlug/reminders/': typeof ApiV1OrgsOrgSlugRemindersIndexRoute
+  '/api/v1/orgs/$orgSlug/tasks/': typeof ApiV1OrgsOrgSlugTasksIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
   '/api/v1/orgs/$orgSlug/timer/': typeof ApiV1OrgsOrgSlugTimerIndexRoute
   '/api/v1/orgs/$orgSlug/webhooks/': typeof ApiV1OrgsOrgSlugWebhooksIndexRoute
+  '/api/v1/orgs/$orgSlug/clients/$id/archive': typeof ApiV1OrgsOrgSlugClientsIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/clients/$id/restore': typeof ApiV1OrgsOrgSlugClientsIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/invitations/$id/resend': typeof ApiV1OrgsOrgSlugInvitationsIdResendRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/archive': typeof ApiV1OrgsOrgSlugPeopleUserIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/confirm-email': typeof ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/restore': typeof ApiV1OrgsOrgSlugPeopleUserIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/role': typeof ApiV1OrgsOrgSlugPeopleUserIdRoleRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/start-date': typeof ApiV1OrgsOrgSlugPeopleUserIdStartDateRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/team': typeof ApiV1OrgsOrgSlugPeopleUserIdTeamRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/type': typeof ApiV1OrgsOrgSlugPeopleUserIdTypeRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/archive': typeof ApiV1OrgsOrgSlugProjectsIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/assignable': typeof ApiV1OrgsOrgSlugProjectsIdAssignableRoute
   '/api/v1/orgs/$orgSlug/projects/$id/overview': typeof ApiV1OrgsOrgSlugProjectsIdOverviewRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/restore': typeof ApiV1OrgsOrgSlugProjectsIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/tasks': typeof ApiV1OrgsOrgSlugProjectsIdTasksRoute
   '/api/v1/orgs/$orgSlug/reports/time/detail': typeof ApiV1OrgsOrgSlugReportsTimeDetailRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id/archive': typeof ApiV1OrgsOrgSlugTasksIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id/restore': typeof ApiV1OrgsOrgSlugTasksIdRestoreRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/deliveries': typeof ApiV1OrgsOrgSlugWebhooksIdDeliveriesRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/roll-secret': typeof ApiV1OrgsOrgSlugWebhooksIdRollSecretRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/test': typeof ApiV1OrgsOrgSlugWebhooksIdTestRoute
@@ -1049,16 +1285,22 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/match-people': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackMatchPeopleRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/test': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackTestRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/': typeof ApiV1OrgsOrgSlugAssistantThreadsIndexRoute
+  '/api/v1/orgs/$orgSlug/clients/$id/': typeof ApiV1OrgsOrgSlugClientsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/invitations/$id/': typeof ApiV1OrgsOrgSlugInvitationsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/': typeof ApiV1OrgsOrgSlugPeopleUserIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects/$id/': typeof ApiV1OrgsOrgSlugProjectsIdIndexRoute
   '/api/v1/orgs/$orgSlug/reports/time/': typeof ApiV1OrgsOrgSlugReportsTimeIndexRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id/': typeof ApiV1OrgsOrgSlugTasksIdIndexRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/': typeof ApiV1OrgsOrgSlugWebhooksIdIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals': typeof ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/members/$userId': typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute
   '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend': typeof ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/installations/$id': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/': typeof ApiV1OrgsOrgSlugAssistantThreadsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/members/': typeof ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1130,12 +1372,11 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks': typeof OrgSlugSettingsWebhooksIndexRoute
-  '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
+  '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/rewind': typeof ApiV1OrgsOrgSlugRewindRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
-  '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
@@ -1147,6 +1388,9 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/audit-log/retention': typeof ApiV1OrgsOrgSlugAuditLogRetentionRoute
   '/api/v1/orgs/$orgSlug/filing-rules/$id': typeof ApiV1OrgsOrgSlugFilingRulesIdRoute
   '/api/v1/orgs/$orgSlug/holidays/range': typeof ApiV1OrgsOrgSlugHolidaysRangeRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/clear': typeof ApiV1OrgsOrgSlugHourFundClearRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/prefill': typeof ApiV1OrgsOrgSlugHourFundPrefillRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/suggestion': typeof ApiV1OrgsOrgSlugHourFundSuggestionRoute
   '/api/v1/orgs/$orgSlug/integrations/github': typeof ApiV1OrgsOrgSlugIntegrationsGithubRoute
   '/api/v1/orgs/$orgSlug/integrations/google-calendar': typeof ApiV1OrgsOrgSlugIntegrationsGoogleCalendarRoute
   '/api/v1/orgs/$orgSlug/integrations/settings': typeof ApiV1OrgsOrgSlugIntegrationsSettingsRoute
@@ -1158,6 +1402,7 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/reports/absence': typeof ApiV1OrgsOrgSlugReportsAbsenceRoute
   '/api/v1/orgs/$orgSlug/reports/overtime': typeof ApiV1OrgsOrgSlugReportsOvertimeRoute
   '/api/v1/orgs/$orgSlug/reports/tracking': typeof ApiV1OrgsOrgSlugReportsTrackingRoute
+  '/api/v1/orgs/$orgSlug/tasks/managed': typeof ApiV1OrgsOrgSlugTasksManagedRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id': typeof ApiV1OrgsOrgSlugTimeEntriesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
@@ -1168,17 +1413,38 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/timer/settings': typeof ApiV1OrgsOrgSlugTimerSettingsRoute
   '/api/v1/orgs/$orgSlug/absences': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/audit-log': typeof ApiV1OrgsOrgSlugAuditLogIndexRoute
+  '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsIndexRoute
   '/api/v1/orgs/$orgSlug/filing-rules': typeof ApiV1OrgsOrgSlugFilingRulesIndexRoute
   '/api/v1/orgs/$orgSlug/holidays': typeof ApiV1OrgsOrgSlugHolidaysIndexRoute
+  '/api/v1/orgs/$orgSlug/hour-fund': typeof ApiV1OrgsOrgSlugHourFundIndexRoute
   '/api/v1/orgs/$orgSlug/integrations': typeof ApiV1OrgsOrgSlugIntegrationsIndexRoute
+  '/api/v1/orgs/$orgSlug/invitations': typeof ApiV1OrgsOrgSlugInvitationsIndexRoute
+  '/api/v1/orgs/$orgSlug/people': typeof ApiV1OrgsOrgSlugPeopleIndexRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsIndexRoute
   '/api/v1/orgs/$orgSlug/recurring-blocks': typeof ApiV1OrgsOrgSlugRecurringBlocksIndexRoute
   '/api/v1/orgs/$orgSlug/reminders': typeof ApiV1OrgsOrgSlugRemindersIndexRoute
+  '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
   '/api/v1/orgs/$orgSlug/timer': typeof ApiV1OrgsOrgSlugTimerIndexRoute
   '/api/v1/orgs/$orgSlug/webhooks': typeof ApiV1OrgsOrgSlugWebhooksIndexRoute
+  '/api/v1/orgs/$orgSlug/clients/$id/archive': typeof ApiV1OrgsOrgSlugClientsIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/clients/$id/restore': typeof ApiV1OrgsOrgSlugClientsIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/invitations/$id/resend': typeof ApiV1OrgsOrgSlugInvitationsIdResendRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/archive': typeof ApiV1OrgsOrgSlugPeopleUserIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/confirm-email': typeof ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/restore': typeof ApiV1OrgsOrgSlugPeopleUserIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/role': typeof ApiV1OrgsOrgSlugPeopleUserIdRoleRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/start-date': typeof ApiV1OrgsOrgSlugPeopleUserIdStartDateRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/team': typeof ApiV1OrgsOrgSlugPeopleUserIdTeamRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/type': typeof ApiV1OrgsOrgSlugPeopleUserIdTypeRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/archive': typeof ApiV1OrgsOrgSlugProjectsIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/assignable': typeof ApiV1OrgsOrgSlugProjectsIdAssignableRoute
   '/api/v1/orgs/$orgSlug/projects/$id/overview': typeof ApiV1OrgsOrgSlugProjectsIdOverviewRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/restore': typeof ApiV1OrgsOrgSlugProjectsIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/tasks': typeof ApiV1OrgsOrgSlugProjectsIdTasksRoute
   '/api/v1/orgs/$orgSlug/reports/time/detail': typeof ApiV1OrgsOrgSlugReportsTimeDetailRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id/archive': typeof ApiV1OrgsOrgSlugTasksIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id/restore': typeof ApiV1OrgsOrgSlugTasksIdRestoreRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/deliveries': typeof ApiV1OrgsOrgSlugWebhooksIdDeliveriesRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/roll-secret': typeof ApiV1OrgsOrgSlugWebhooksIdRollSecretRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/test': typeof ApiV1OrgsOrgSlugWebhooksIdTestRoute
@@ -1187,16 +1453,22 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/match-people': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackMatchPeopleRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/test': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackTestRoute
   '/api/v1/orgs/$orgSlug/assistant/threads': typeof ApiV1OrgsOrgSlugAssistantThreadsIndexRoute
+  '/api/v1/orgs/$orgSlug/clients/$id': typeof ApiV1OrgsOrgSlugClientsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/invitations/$id': typeof ApiV1OrgsOrgSlugInvitationsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/people/$userId': typeof ApiV1OrgsOrgSlugPeopleUserIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects/$id': typeof ApiV1OrgsOrgSlugProjectsIdIndexRoute
   '/api/v1/orgs/$orgSlug/reports/time': typeof ApiV1OrgsOrgSlugReportsTimeIndexRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id': typeof ApiV1OrgsOrgSlugTasksIdIndexRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id': typeof ApiV1OrgsOrgSlugWebhooksIdIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals': typeof ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/members/$userId': typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute
   '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend': typeof ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/installations/$id': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id': typeof ApiV1OrgsOrgSlugAssistantThreadsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/members': typeof ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1271,12 +1543,11 @@ export interface FileRoutesById {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
-  '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
+  '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/rewind': typeof ApiV1OrgsOrgSlugRewindRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
-  '/api/v1/orgs/$orgSlug/tasks': typeof ApiV1OrgsOrgSlugTasksRoute
   '/api/v1/orgs/$orgSlug/tracking': typeof ApiV1OrgsOrgSlugTrackingRoute
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
@@ -1288,6 +1559,9 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/audit-log/retention': typeof ApiV1OrgsOrgSlugAuditLogRetentionRoute
   '/api/v1/orgs/$orgSlug/filing-rules/$id': typeof ApiV1OrgsOrgSlugFilingRulesIdRoute
   '/api/v1/orgs/$orgSlug/holidays/range': typeof ApiV1OrgsOrgSlugHolidaysRangeRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/clear': typeof ApiV1OrgsOrgSlugHourFundClearRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/prefill': typeof ApiV1OrgsOrgSlugHourFundPrefillRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/suggestion': typeof ApiV1OrgsOrgSlugHourFundSuggestionRoute
   '/api/v1/orgs/$orgSlug/integrations/github': typeof ApiV1OrgsOrgSlugIntegrationsGithubRoute
   '/api/v1/orgs/$orgSlug/integrations/google-calendar': typeof ApiV1OrgsOrgSlugIntegrationsGoogleCalendarRoute
   '/api/v1/orgs/$orgSlug/integrations/settings': typeof ApiV1OrgsOrgSlugIntegrationsSettingsRoute
@@ -1299,6 +1573,7 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/reports/absence': typeof ApiV1OrgsOrgSlugReportsAbsenceRoute
   '/api/v1/orgs/$orgSlug/reports/overtime': typeof ApiV1OrgsOrgSlugReportsOvertimeRoute
   '/api/v1/orgs/$orgSlug/reports/tracking': typeof ApiV1OrgsOrgSlugReportsTrackingRoute
+  '/api/v1/orgs/$orgSlug/tasks/managed': typeof ApiV1OrgsOrgSlugTasksManagedRoute
   '/api/v1/orgs/$orgSlug/time-entries/$id': typeof ApiV1OrgsOrgSlugTimeEntriesIdRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-day': typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
   '/api/v1/orgs/$orgSlug/time-entries/copy-week': typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
@@ -1309,17 +1584,38 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/timer/settings': typeof ApiV1OrgsOrgSlugTimerSettingsRoute
   '/api/v1/orgs/$orgSlug/absences/': typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   '/api/v1/orgs/$orgSlug/audit-log/': typeof ApiV1OrgsOrgSlugAuditLogIndexRoute
+  '/api/v1/orgs/$orgSlug/clients/': typeof ApiV1OrgsOrgSlugClientsIndexRoute
   '/api/v1/orgs/$orgSlug/filing-rules/': typeof ApiV1OrgsOrgSlugFilingRulesIndexRoute
   '/api/v1/orgs/$orgSlug/holidays/': typeof ApiV1OrgsOrgSlugHolidaysIndexRoute
+  '/api/v1/orgs/$orgSlug/hour-fund/': typeof ApiV1OrgsOrgSlugHourFundIndexRoute
   '/api/v1/orgs/$orgSlug/integrations/': typeof ApiV1OrgsOrgSlugIntegrationsIndexRoute
+  '/api/v1/orgs/$orgSlug/invitations/': typeof ApiV1OrgsOrgSlugInvitationsIndexRoute
+  '/api/v1/orgs/$orgSlug/people/': typeof ApiV1OrgsOrgSlugPeopleIndexRoute
   '/api/v1/orgs/$orgSlug/projects/': typeof ApiV1OrgsOrgSlugProjectsIndexRoute
   '/api/v1/orgs/$orgSlug/recurring-blocks/': typeof ApiV1OrgsOrgSlugRecurringBlocksIndexRoute
   '/api/v1/orgs/$orgSlug/reminders/': typeof ApiV1OrgsOrgSlugRemindersIndexRoute
+  '/api/v1/orgs/$orgSlug/tasks/': typeof ApiV1OrgsOrgSlugTasksIndexRoute
   '/api/v1/orgs/$orgSlug/time-entries/': typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
   '/api/v1/orgs/$orgSlug/timer/': typeof ApiV1OrgsOrgSlugTimerIndexRoute
   '/api/v1/orgs/$orgSlug/webhooks/': typeof ApiV1OrgsOrgSlugWebhooksIndexRoute
+  '/api/v1/orgs/$orgSlug/clients/$id/archive': typeof ApiV1OrgsOrgSlugClientsIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/clients/$id/restore': typeof ApiV1OrgsOrgSlugClientsIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/invitations/$id/resend': typeof ApiV1OrgsOrgSlugInvitationsIdResendRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/archive': typeof ApiV1OrgsOrgSlugPeopleUserIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/confirm-email': typeof ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/restore': typeof ApiV1OrgsOrgSlugPeopleUserIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/role': typeof ApiV1OrgsOrgSlugPeopleUserIdRoleRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/start-date': typeof ApiV1OrgsOrgSlugPeopleUserIdStartDateRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/team': typeof ApiV1OrgsOrgSlugPeopleUserIdTeamRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/type': typeof ApiV1OrgsOrgSlugPeopleUserIdTypeRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/archive': typeof ApiV1OrgsOrgSlugProjectsIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/assignable': typeof ApiV1OrgsOrgSlugProjectsIdAssignableRoute
   '/api/v1/orgs/$orgSlug/projects/$id/overview': typeof ApiV1OrgsOrgSlugProjectsIdOverviewRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/restore': typeof ApiV1OrgsOrgSlugProjectsIdRestoreRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/tasks': typeof ApiV1OrgsOrgSlugProjectsIdTasksRoute
   '/api/v1/orgs/$orgSlug/reports/time/detail': typeof ApiV1OrgsOrgSlugReportsTimeDetailRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id/archive': typeof ApiV1OrgsOrgSlugTasksIdArchiveRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id/restore': typeof ApiV1OrgsOrgSlugTasksIdRestoreRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/deliveries': typeof ApiV1OrgsOrgSlugWebhooksIdDeliveriesRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/roll-secret': typeof ApiV1OrgsOrgSlugWebhooksIdRollSecretRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/test': typeof ApiV1OrgsOrgSlugWebhooksIdTestRoute
@@ -1328,16 +1624,22 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/match-people': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackMatchPeopleRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/test': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackTestRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/': typeof ApiV1OrgsOrgSlugAssistantThreadsIndexRoute
+  '/api/v1/orgs/$orgSlug/clients/$id/': typeof ApiV1OrgsOrgSlugClientsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/invitations/$id/': typeof ApiV1OrgsOrgSlugInvitationsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/people/$userId/': typeof ApiV1OrgsOrgSlugPeopleUserIdIndexRoute
   '/api/v1/orgs/$orgSlug/projects/$id/': typeof ApiV1OrgsOrgSlugProjectsIdIndexRoute
   '/api/v1/orgs/$orgSlug/reports/time/': typeof ApiV1OrgsOrgSlugReportsTimeIndexRoute
+  '/api/v1/orgs/$orgSlug/tasks/$id/': typeof ApiV1OrgsOrgSlugTasksIdIndexRoute
   '/api/v1/orgs/$orgSlug/webhooks/$id/': typeof ApiV1OrgsOrgSlugWebhooksIdIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/slack/': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals': typeof ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/members/$userId': typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute
   '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend': typeof ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute
   '/api/v1/orgs/$orgSlug/workspace-integrations/github/installations/$id': typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRoute
   '/api/v1/orgs/$orgSlug/assistant/threads/$id/': typeof ApiV1OrgsOrgSlugAssistantThreadsIdIndexRoute
+  '/api/v1/orgs/$orgSlug/projects/$id/members/': typeof ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1413,12 +1715,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
-    | '/api/v1/orgs/$orgSlug/clients'
     | '/api/v1/orgs/$orgSlug/home'
+    | '/api/v1/orgs/$orgSlug/organization'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/rewind'
     | '/api/v1/orgs/$orgSlug/sync'
-    | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
@@ -1430,6 +1731,9 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/audit-log/retention'
     | '/api/v1/orgs/$orgSlug/filing-rules/$id'
     | '/api/v1/orgs/$orgSlug/holidays/range'
+    | '/api/v1/orgs/$orgSlug/hour-fund/clear'
+    | '/api/v1/orgs/$orgSlug/hour-fund/prefill'
+    | '/api/v1/orgs/$orgSlug/hour-fund/suggestion'
     | '/api/v1/orgs/$orgSlug/integrations/github'
     | '/api/v1/orgs/$orgSlug/integrations/google-calendar'
     | '/api/v1/orgs/$orgSlug/integrations/settings'
@@ -1441,6 +1745,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/reports/absence'
     | '/api/v1/orgs/$orgSlug/reports/overtime'
     | '/api/v1/orgs/$orgSlug/reports/tracking'
+    | '/api/v1/orgs/$orgSlug/tasks/managed'
     | '/api/v1/orgs/$orgSlug/time-entries/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
@@ -1451,17 +1756,38 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/timer/settings'
     | '/api/v1/orgs/$orgSlug/absences/'
     | '/api/v1/orgs/$orgSlug/audit-log/'
+    | '/api/v1/orgs/$orgSlug/clients/'
     | '/api/v1/orgs/$orgSlug/filing-rules/'
     | '/api/v1/orgs/$orgSlug/holidays/'
+    | '/api/v1/orgs/$orgSlug/hour-fund/'
     | '/api/v1/orgs/$orgSlug/integrations/'
+    | '/api/v1/orgs/$orgSlug/invitations/'
+    | '/api/v1/orgs/$orgSlug/people/'
     | '/api/v1/orgs/$orgSlug/projects/'
     | '/api/v1/orgs/$orgSlug/recurring-blocks/'
     | '/api/v1/orgs/$orgSlug/reminders/'
+    | '/api/v1/orgs/$orgSlug/tasks/'
     | '/api/v1/orgs/$orgSlug/time-entries/'
     | '/api/v1/orgs/$orgSlug/timer/'
     | '/api/v1/orgs/$orgSlug/webhooks/'
+    | '/api/v1/orgs/$orgSlug/clients/$id/archive'
+    | '/api/v1/orgs/$orgSlug/clients/$id/restore'
+    | '/api/v1/orgs/$orgSlug/invitations/$id/resend'
+    | '/api/v1/orgs/$orgSlug/people/$userId/archive'
+    | '/api/v1/orgs/$orgSlug/people/$userId/confirm-email'
+    | '/api/v1/orgs/$orgSlug/people/$userId/restore'
+    | '/api/v1/orgs/$orgSlug/people/$userId/role'
+    | '/api/v1/orgs/$orgSlug/people/$userId/start-date'
+    | '/api/v1/orgs/$orgSlug/people/$userId/team'
+    | '/api/v1/orgs/$orgSlug/people/$userId/type'
+    | '/api/v1/orgs/$orgSlug/projects/$id/archive'
+    | '/api/v1/orgs/$orgSlug/projects/$id/assignable'
     | '/api/v1/orgs/$orgSlug/projects/$id/overview'
+    | '/api/v1/orgs/$orgSlug/projects/$id/restore'
+    | '/api/v1/orgs/$orgSlug/projects/$id/tasks'
     | '/api/v1/orgs/$orgSlug/reports/time/detail'
+    | '/api/v1/orgs/$orgSlug/tasks/$id/archive'
+    | '/api/v1/orgs/$orgSlug/tasks/$id/restore'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/deliveries'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/roll-secret'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/test'
@@ -1470,16 +1796,22 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/match-people'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/test'
     | '/api/v1/orgs/$orgSlug/assistant/threads/'
+    | '/api/v1/orgs/$orgSlug/clients/$id/'
+    | '/api/v1/orgs/$orgSlug/invitations/$id/'
+    | '/api/v1/orgs/$orgSlug/people/$userId/'
     | '/api/v1/orgs/$orgSlug/projects/$id/'
     | '/api/v1/orgs/$orgSlug/reports/time/'
+    | '/api/v1/orgs/$orgSlug/tasks/$id/'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github/'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages'
+    | '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
     | '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github/installations/$id'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/'
+    | '/api/v1/orgs/$orgSlug/projects/$id/members/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1551,12 +1883,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId'
     | '/$orgSlug/settings/webhooks'
-    | '/api/v1/orgs/$orgSlug/clients'
     | '/api/v1/orgs/$orgSlug/home'
+    | '/api/v1/orgs/$orgSlug/organization'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/rewind'
     | '/api/v1/orgs/$orgSlug/sync'
-    | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
@@ -1568,6 +1899,9 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/audit-log/retention'
     | '/api/v1/orgs/$orgSlug/filing-rules/$id'
     | '/api/v1/orgs/$orgSlug/holidays/range'
+    | '/api/v1/orgs/$orgSlug/hour-fund/clear'
+    | '/api/v1/orgs/$orgSlug/hour-fund/prefill'
+    | '/api/v1/orgs/$orgSlug/hour-fund/suggestion'
     | '/api/v1/orgs/$orgSlug/integrations/github'
     | '/api/v1/orgs/$orgSlug/integrations/google-calendar'
     | '/api/v1/orgs/$orgSlug/integrations/settings'
@@ -1579,6 +1913,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/reports/absence'
     | '/api/v1/orgs/$orgSlug/reports/overtime'
     | '/api/v1/orgs/$orgSlug/reports/tracking'
+    | '/api/v1/orgs/$orgSlug/tasks/managed'
     | '/api/v1/orgs/$orgSlug/time-entries/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
@@ -1589,17 +1924,38 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/timer/settings'
     | '/api/v1/orgs/$orgSlug/absences'
     | '/api/v1/orgs/$orgSlug/audit-log'
+    | '/api/v1/orgs/$orgSlug/clients'
     | '/api/v1/orgs/$orgSlug/filing-rules'
     | '/api/v1/orgs/$orgSlug/holidays'
+    | '/api/v1/orgs/$orgSlug/hour-fund'
     | '/api/v1/orgs/$orgSlug/integrations'
+    | '/api/v1/orgs/$orgSlug/invitations'
+    | '/api/v1/orgs/$orgSlug/people'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/recurring-blocks'
     | '/api/v1/orgs/$orgSlug/reminders'
+    | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/time-entries'
     | '/api/v1/orgs/$orgSlug/timer'
     | '/api/v1/orgs/$orgSlug/webhooks'
+    | '/api/v1/orgs/$orgSlug/clients/$id/archive'
+    | '/api/v1/orgs/$orgSlug/clients/$id/restore'
+    | '/api/v1/orgs/$orgSlug/invitations/$id/resend'
+    | '/api/v1/orgs/$orgSlug/people/$userId/archive'
+    | '/api/v1/orgs/$orgSlug/people/$userId/confirm-email'
+    | '/api/v1/orgs/$orgSlug/people/$userId/restore'
+    | '/api/v1/orgs/$orgSlug/people/$userId/role'
+    | '/api/v1/orgs/$orgSlug/people/$userId/start-date'
+    | '/api/v1/orgs/$orgSlug/people/$userId/team'
+    | '/api/v1/orgs/$orgSlug/people/$userId/type'
+    | '/api/v1/orgs/$orgSlug/projects/$id/archive'
+    | '/api/v1/orgs/$orgSlug/projects/$id/assignable'
     | '/api/v1/orgs/$orgSlug/projects/$id/overview'
+    | '/api/v1/orgs/$orgSlug/projects/$id/restore'
+    | '/api/v1/orgs/$orgSlug/projects/$id/tasks'
     | '/api/v1/orgs/$orgSlug/reports/time/detail'
+    | '/api/v1/orgs/$orgSlug/tasks/$id/archive'
+    | '/api/v1/orgs/$orgSlug/tasks/$id/restore'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/deliveries'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/roll-secret'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/test'
@@ -1608,16 +1964,22 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/match-people'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/test'
     | '/api/v1/orgs/$orgSlug/assistant/threads'
+    | '/api/v1/orgs/$orgSlug/clients/$id'
+    | '/api/v1/orgs/$orgSlug/invitations/$id'
+    | '/api/v1/orgs/$orgSlug/people/$userId'
     | '/api/v1/orgs/$orgSlug/projects/$id'
     | '/api/v1/orgs/$orgSlug/reports/time'
+    | '/api/v1/orgs/$orgSlug/tasks/$id'
     | '/api/v1/orgs/$orgSlug/webhooks/$id'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages'
+    | '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
     | '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github/installations/$id'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id'
+    | '/api/v1/orgs/$orgSlug/projects/$id/members'
   id:
     | '__root__'
     | '/'
@@ -1691,12 +2053,11 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
-    | '/api/v1/orgs/$orgSlug/clients'
     | '/api/v1/orgs/$orgSlug/home'
+    | '/api/v1/orgs/$orgSlug/organization'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/rewind'
     | '/api/v1/orgs/$orgSlug/sync'
-    | '/api/v1/orgs/$orgSlug/tasks'
     | '/api/v1/orgs/$orgSlug/tracking'
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
@@ -1708,6 +2069,9 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/audit-log/retention'
     | '/api/v1/orgs/$orgSlug/filing-rules/$id'
     | '/api/v1/orgs/$orgSlug/holidays/range'
+    | '/api/v1/orgs/$orgSlug/hour-fund/clear'
+    | '/api/v1/orgs/$orgSlug/hour-fund/prefill'
+    | '/api/v1/orgs/$orgSlug/hour-fund/suggestion'
     | '/api/v1/orgs/$orgSlug/integrations/github'
     | '/api/v1/orgs/$orgSlug/integrations/google-calendar'
     | '/api/v1/orgs/$orgSlug/integrations/settings'
@@ -1719,6 +2083,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/reports/absence'
     | '/api/v1/orgs/$orgSlug/reports/overtime'
     | '/api/v1/orgs/$orgSlug/reports/tracking'
+    | '/api/v1/orgs/$orgSlug/tasks/managed'
     | '/api/v1/orgs/$orgSlug/time-entries/$id'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-day'
     | '/api/v1/orgs/$orgSlug/time-entries/copy-week'
@@ -1729,17 +2094,38 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/timer/settings'
     | '/api/v1/orgs/$orgSlug/absences/'
     | '/api/v1/orgs/$orgSlug/audit-log/'
+    | '/api/v1/orgs/$orgSlug/clients/'
     | '/api/v1/orgs/$orgSlug/filing-rules/'
     | '/api/v1/orgs/$orgSlug/holidays/'
+    | '/api/v1/orgs/$orgSlug/hour-fund/'
     | '/api/v1/orgs/$orgSlug/integrations/'
+    | '/api/v1/orgs/$orgSlug/invitations/'
+    | '/api/v1/orgs/$orgSlug/people/'
     | '/api/v1/orgs/$orgSlug/projects/'
     | '/api/v1/orgs/$orgSlug/recurring-blocks/'
     | '/api/v1/orgs/$orgSlug/reminders/'
+    | '/api/v1/orgs/$orgSlug/tasks/'
     | '/api/v1/orgs/$orgSlug/time-entries/'
     | '/api/v1/orgs/$orgSlug/timer/'
     | '/api/v1/orgs/$orgSlug/webhooks/'
+    | '/api/v1/orgs/$orgSlug/clients/$id/archive'
+    | '/api/v1/orgs/$orgSlug/clients/$id/restore'
+    | '/api/v1/orgs/$orgSlug/invitations/$id/resend'
+    | '/api/v1/orgs/$orgSlug/people/$userId/archive'
+    | '/api/v1/orgs/$orgSlug/people/$userId/confirm-email'
+    | '/api/v1/orgs/$orgSlug/people/$userId/restore'
+    | '/api/v1/orgs/$orgSlug/people/$userId/role'
+    | '/api/v1/orgs/$orgSlug/people/$userId/start-date'
+    | '/api/v1/orgs/$orgSlug/people/$userId/team'
+    | '/api/v1/orgs/$orgSlug/people/$userId/type'
+    | '/api/v1/orgs/$orgSlug/projects/$id/archive'
+    | '/api/v1/orgs/$orgSlug/projects/$id/assignable'
     | '/api/v1/orgs/$orgSlug/projects/$id/overview'
+    | '/api/v1/orgs/$orgSlug/projects/$id/restore'
+    | '/api/v1/orgs/$orgSlug/projects/$id/tasks'
     | '/api/v1/orgs/$orgSlug/reports/time/detail'
+    | '/api/v1/orgs/$orgSlug/tasks/$id/archive'
+    | '/api/v1/orgs/$orgSlug/tasks/$id/restore'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/deliveries'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/roll-secret'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/test'
@@ -1748,16 +2134,22 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/match-people'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/test'
     | '/api/v1/orgs/$orgSlug/assistant/threads/'
+    | '/api/v1/orgs/$orgSlug/clients/$id/'
+    | '/api/v1/orgs/$orgSlug/invitations/$id/'
+    | '/api/v1/orgs/$orgSlug/people/$userId/'
     | '/api/v1/orgs/$orgSlug/projects/$id/'
     | '/api/v1/orgs/$orgSlug/reports/time/'
+    | '/api/v1/orgs/$orgSlug/tasks/$id/'
     | '/api/v1/orgs/$orgSlug/webhooks/$id/'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github/'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/slack/'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/approvals'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages'
+    | '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
     | '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend'
     | '/api/v1/orgs/$orgSlug/workspace-integrations/github/installations/$id'
     | '/api/v1/orgs/$orgSlug/assistant/threads/$id/'
+    | '/api/v1/orgs/$orgSlug/projects/$id/members/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1797,12 +2189,11 @@ export interface RootRouteChildren {
   ApiV1SessionRoute: typeof ApiV1SessionRoute
   ApiV1TimeEntriesRoute: typeof ApiV1TimeEntriesRoute
   CliDownloadAssetRoute: typeof CliDownloadAssetRoute
-  ApiV1OrgsOrgSlugClientsRoute: typeof ApiV1OrgsOrgSlugClientsRoute
   ApiV1OrgsOrgSlugHomeRoute: typeof ApiV1OrgsOrgSlugHomeRoute
+  ApiV1OrgsOrgSlugOrganizationRoute: typeof ApiV1OrgsOrgSlugOrganizationRoute
   ApiV1OrgsOrgSlugRepositoryProjectsRoute: typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   ApiV1OrgsOrgSlugRewindRoute: typeof ApiV1OrgsOrgSlugRewindRoute
   ApiV1OrgsOrgSlugSyncRoute: typeof ApiV1OrgsOrgSlugSyncRoute
-  ApiV1OrgsOrgSlugTasksRoute: typeof ApiV1OrgsOrgSlugTasksRoute
   ApiV1OrgsOrgSlugTrackingRoute: typeof ApiV1OrgsOrgSlugTrackingRoute
   ApiV1OrgsOrgSlugUnfiledRoute: typeof ApiV1OrgsOrgSlugUnfiledRoute
   ApiV1OrgsOrgSlugWhoamiRoute: typeof ApiV1OrgsOrgSlugWhoamiRoute
@@ -1814,6 +2205,9 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugAuditLogRetentionRoute: typeof ApiV1OrgsOrgSlugAuditLogRetentionRoute
   ApiV1OrgsOrgSlugFilingRulesIdRoute: typeof ApiV1OrgsOrgSlugFilingRulesIdRoute
   ApiV1OrgsOrgSlugHolidaysRangeRoute: typeof ApiV1OrgsOrgSlugHolidaysRangeRoute
+  ApiV1OrgsOrgSlugHourFundClearRoute: typeof ApiV1OrgsOrgSlugHourFundClearRoute
+  ApiV1OrgsOrgSlugHourFundPrefillRoute: typeof ApiV1OrgsOrgSlugHourFundPrefillRoute
+  ApiV1OrgsOrgSlugHourFundSuggestionRoute: typeof ApiV1OrgsOrgSlugHourFundSuggestionRoute
   ApiV1OrgsOrgSlugIntegrationsGithubRoute: typeof ApiV1OrgsOrgSlugIntegrationsGithubRoute
   ApiV1OrgsOrgSlugIntegrationsGoogleCalendarRoute: typeof ApiV1OrgsOrgSlugIntegrationsGoogleCalendarRoute
   ApiV1OrgsOrgSlugIntegrationsSettingsRoute: typeof ApiV1OrgsOrgSlugIntegrationsSettingsRoute
@@ -1825,6 +2219,7 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugReportsAbsenceRoute: typeof ApiV1OrgsOrgSlugReportsAbsenceRoute
   ApiV1OrgsOrgSlugReportsOvertimeRoute: typeof ApiV1OrgsOrgSlugReportsOvertimeRoute
   ApiV1OrgsOrgSlugReportsTrackingRoute: typeof ApiV1OrgsOrgSlugReportsTrackingRoute
+  ApiV1OrgsOrgSlugTasksManagedRoute: typeof ApiV1OrgsOrgSlugTasksManagedRoute
   ApiV1OrgsOrgSlugTimeEntriesIdRoute: typeof ApiV1OrgsOrgSlugTimeEntriesIdRoute
   ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute: typeof ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute
   ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute: typeof ApiV1OrgsOrgSlugTimeEntriesCopyWeekRoute
@@ -1835,17 +2230,38 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugTimerSettingsRoute: typeof ApiV1OrgsOrgSlugTimerSettingsRoute
   ApiV1OrgsOrgSlugAbsencesIndexRoute: typeof ApiV1OrgsOrgSlugAbsencesIndexRoute
   ApiV1OrgsOrgSlugAuditLogIndexRoute: typeof ApiV1OrgsOrgSlugAuditLogIndexRoute
+  ApiV1OrgsOrgSlugClientsIndexRoute: typeof ApiV1OrgsOrgSlugClientsIndexRoute
   ApiV1OrgsOrgSlugFilingRulesIndexRoute: typeof ApiV1OrgsOrgSlugFilingRulesIndexRoute
   ApiV1OrgsOrgSlugHolidaysIndexRoute: typeof ApiV1OrgsOrgSlugHolidaysIndexRoute
+  ApiV1OrgsOrgSlugHourFundIndexRoute: typeof ApiV1OrgsOrgSlugHourFundIndexRoute
   ApiV1OrgsOrgSlugIntegrationsIndexRoute: typeof ApiV1OrgsOrgSlugIntegrationsIndexRoute
+  ApiV1OrgsOrgSlugInvitationsIndexRoute: typeof ApiV1OrgsOrgSlugInvitationsIndexRoute
+  ApiV1OrgsOrgSlugPeopleIndexRoute: typeof ApiV1OrgsOrgSlugPeopleIndexRoute
   ApiV1OrgsOrgSlugProjectsIndexRoute: typeof ApiV1OrgsOrgSlugProjectsIndexRoute
   ApiV1OrgsOrgSlugRecurringBlocksIndexRoute: typeof ApiV1OrgsOrgSlugRecurringBlocksIndexRoute
   ApiV1OrgsOrgSlugRemindersIndexRoute: typeof ApiV1OrgsOrgSlugRemindersIndexRoute
+  ApiV1OrgsOrgSlugTasksIndexRoute: typeof ApiV1OrgsOrgSlugTasksIndexRoute
   ApiV1OrgsOrgSlugTimeEntriesIndexRoute: typeof ApiV1OrgsOrgSlugTimeEntriesIndexRoute
   ApiV1OrgsOrgSlugTimerIndexRoute: typeof ApiV1OrgsOrgSlugTimerIndexRoute
   ApiV1OrgsOrgSlugWebhooksIndexRoute: typeof ApiV1OrgsOrgSlugWebhooksIndexRoute
+  ApiV1OrgsOrgSlugClientsIdArchiveRoute: typeof ApiV1OrgsOrgSlugClientsIdArchiveRoute
+  ApiV1OrgsOrgSlugClientsIdRestoreRoute: typeof ApiV1OrgsOrgSlugClientsIdRestoreRoute
+  ApiV1OrgsOrgSlugInvitationsIdResendRoute: typeof ApiV1OrgsOrgSlugInvitationsIdResendRoute
+  ApiV1OrgsOrgSlugPeopleUserIdArchiveRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdArchiveRoute
+  ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRoute
+  ApiV1OrgsOrgSlugPeopleUserIdRestoreRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdRestoreRoute
+  ApiV1OrgsOrgSlugPeopleUserIdRoleRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdRoleRoute
+  ApiV1OrgsOrgSlugPeopleUserIdStartDateRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdStartDateRoute
+  ApiV1OrgsOrgSlugPeopleUserIdTeamRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdTeamRoute
+  ApiV1OrgsOrgSlugPeopleUserIdTypeRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdTypeRoute
+  ApiV1OrgsOrgSlugProjectsIdArchiveRoute: typeof ApiV1OrgsOrgSlugProjectsIdArchiveRoute
+  ApiV1OrgsOrgSlugProjectsIdAssignableRoute: typeof ApiV1OrgsOrgSlugProjectsIdAssignableRoute
   ApiV1OrgsOrgSlugProjectsIdOverviewRoute: typeof ApiV1OrgsOrgSlugProjectsIdOverviewRoute
+  ApiV1OrgsOrgSlugProjectsIdRestoreRoute: typeof ApiV1OrgsOrgSlugProjectsIdRestoreRoute
+  ApiV1OrgsOrgSlugProjectsIdTasksRoute: typeof ApiV1OrgsOrgSlugProjectsIdTasksRoute
   ApiV1OrgsOrgSlugReportsTimeDetailRoute: typeof ApiV1OrgsOrgSlugReportsTimeDetailRoute
+  ApiV1OrgsOrgSlugTasksIdArchiveRoute: typeof ApiV1OrgsOrgSlugTasksIdArchiveRoute
+  ApiV1OrgsOrgSlugTasksIdRestoreRoute: typeof ApiV1OrgsOrgSlugTasksIdRestoreRoute
   ApiV1OrgsOrgSlugWebhooksIdDeliveriesRoute: typeof ApiV1OrgsOrgSlugWebhooksIdDeliveriesRoute
   ApiV1OrgsOrgSlugWebhooksIdRollSecretRoute: typeof ApiV1OrgsOrgSlugWebhooksIdRollSecretRoute
   ApiV1OrgsOrgSlugWebhooksIdTestRoute: typeof ApiV1OrgsOrgSlugWebhooksIdTestRoute
@@ -1854,16 +2270,22 @@ export interface RootRouteChildren {
   ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackMatchPeopleRoute: typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackMatchPeopleRoute
   ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackTestRoute: typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackTestRoute
   ApiV1OrgsOrgSlugAssistantThreadsIndexRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIndexRoute
+  ApiV1OrgsOrgSlugClientsIdIndexRoute: typeof ApiV1OrgsOrgSlugClientsIdIndexRoute
+  ApiV1OrgsOrgSlugInvitationsIdIndexRoute: typeof ApiV1OrgsOrgSlugInvitationsIdIndexRoute
+  ApiV1OrgsOrgSlugPeopleUserIdIndexRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdIndexRoute
   ApiV1OrgsOrgSlugProjectsIdIndexRoute: typeof ApiV1OrgsOrgSlugProjectsIdIndexRoute
   ApiV1OrgsOrgSlugReportsTimeIndexRoute: typeof ApiV1OrgsOrgSlugReportsTimeIndexRoute
+  ApiV1OrgsOrgSlugTasksIdIndexRoute: typeof ApiV1OrgsOrgSlugTasksIdIndexRoute
   ApiV1OrgsOrgSlugWebhooksIdIndexRoute: typeof ApiV1OrgsOrgSlugWebhooksIdIndexRoute
   ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute: typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute
   ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute: typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackIndexRoute
   ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute
   ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute
+  ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute: typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute
   ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute: typeof ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute
   ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRoute: typeof ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRoute
   ApiV1OrgsOrgSlugAssistantThreadsIdIndexRoute: typeof ApiV1OrgsOrgSlugAssistantThreadsIdIndexRoute
+  ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute: typeof ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2393,13 +2815,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugTrackingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/v1/orgs/$orgSlug/tasks': {
-      id: '/api/v1/orgs/$orgSlug/tasks'
-      path: '/api/v1/orgs/$orgSlug/tasks'
-      fullPath: '/api/v1/orgs/$orgSlug/tasks'
-      preLoaderRoute: typeof ApiV1OrgsOrgSlugTasksRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/v1/orgs/$orgSlug/sync': {
       id: '/api/v1/orgs/$orgSlug/sync'
       path: '/api/v1/orgs/$orgSlug/sync'
@@ -2421,18 +2836,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugRepositoryProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/organization': {
+      id: '/api/v1/orgs/$orgSlug/organization'
+      path: '/api/v1/orgs/$orgSlug/organization'
+      fullPath: '/api/v1/orgs/$orgSlug/organization'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugOrganizationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/home': {
       id: '/api/v1/orgs/$orgSlug/home'
       path: '/api/v1/orgs/$orgSlug/home'
       fullPath: '/api/v1/orgs/$orgSlug/home'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugHomeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/v1/orgs/$orgSlug/clients': {
-      id: '/api/v1/orgs/$orgSlug/clients'
-      path: '/api/v1/orgs/$orgSlug/clients'
-      fullPath: '/api/v1/orgs/$orgSlug/clients'
-      preLoaderRoute: typeof ApiV1OrgsOrgSlugClientsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/webhooks/': {
@@ -2456,6 +2871,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/tasks/': {
+      id: '/api/v1/orgs/$orgSlug/tasks/'
+      path: '/api/v1/orgs/$orgSlug/tasks'
+      fullPath: '/api/v1/orgs/$orgSlug/tasks/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTasksIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/reminders/': {
       id: '/api/v1/orgs/$orgSlug/reminders/'
       path: '/api/v1/orgs/$orgSlug/reminders'
@@ -2477,11 +2899,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/people/': {
+      id: '/api/v1/orgs/$orgSlug/people/'
+      path: '/api/v1/orgs/$orgSlug/people'
+      fullPath: '/api/v1/orgs/$orgSlug/people/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/invitations/': {
+      id: '/api/v1/orgs/$orgSlug/invitations/'
+      path: '/api/v1/orgs/$orgSlug/invitations'
+      fullPath: '/api/v1/orgs/$orgSlug/invitations/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugInvitationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/integrations/': {
       id: '/api/v1/orgs/$orgSlug/integrations/'
       path: '/api/v1/orgs/$orgSlug/integrations'
       fullPath: '/api/v1/orgs/$orgSlug/integrations/'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugIntegrationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/hour-fund/': {
+      id: '/api/v1/orgs/$orgSlug/hour-fund/'
+      path: '/api/v1/orgs/$orgSlug/hour-fund'
+      fullPath: '/api/v1/orgs/$orgSlug/hour-fund/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugHourFundIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/holidays/': {
@@ -2496,6 +2939,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/orgs/$orgSlug/filing-rules'
       fullPath: '/api/v1/orgs/$orgSlug/filing-rules/'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugFilingRulesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/clients/': {
+      id: '/api/v1/orgs/$orgSlug/clients/'
+      path: '/api/v1/orgs/$orgSlug/clients'
+      fullPath: '/api/v1/orgs/$orgSlug/clients/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugClientsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/audit-log/': {
@@ -2566,6 +3016,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/orgs/$orgSlug/time-entries/$id'
       fullPath: '/api/v1/orgs/$orgSlug/time-entries/$id'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugTimeEntriesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/tasks/managed': {
+      id: '/api/v1/orgs/$orgSlug/tasks/managed'
+      path: '/api/v1/orgs/$orgSlug/tasks/managed'
+      fullPath: '/api/v1/orgs/$orgSlug/tasks/managed'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTasksManagedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/reports/tracking': {
@@ -2645,6 +3102,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugIntegrationsGithubRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/hour-fund/suggestion': {
+      id: '/api/v1/orgs/$orgSlug/hour-fund/suggestion'
+      path: '/api/v1/orgs/$orgSlug/hour-fund/suggestion'
+      fullPath: '/api/v1/orgs/$orgSlug/hour-fund/suggestion'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugHourFundSuggestionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/hour-fund/prefill': {
+      id: '/api/v1/orgs/$orgSlug/hour-fund/prefill'
+      path: '/api/v1/orgs/$orgSlug/hour-fund/prefill'
+      fullPath: '/api/v1/orgs/$orgSlug/hour-fund/prefill'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugHourFundPrefillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/hour-fund/clear': {
+      id: '/api/v1/orgs/$orgSlug/hour-fund/clear'
+      path: '/api/v1/orgs/$orgSlug/hour-fund/clear'
+      fullPath: '/api/v1/orgs/$orgSlug/hour-fund/clear'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugHourFundClearRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/holidays/range': {
       id: '/api/v1/orgs/$orgSlug/holidays/range'
       path: '/api/v1/orgs/$orgSlug/holidays/range'
@@ -2715,6 +3193,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugWebhooksIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/tasks/$id/': {
+      id: '/api/v1/orgs/$orgSlug/tasks/$id/'
+      path: '/api/v1/orgs/$orgSlug/tasks/$id'
+      fullPath: '/api/v1/orgs/$orgSlug/tasks/$id/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTasksIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/reports/time/': {
       id: '/api/v1/orgs/$orgSlug/reports/time/'
       path: '/api/v1/orgs/$orgSlug/reports/time'
@@ -2727,6 +3212,27 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/orgs/$orgSlug/projects/$id'
       fullPath: '/api/v1/orgs/$orgSlug/projects/$id/'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/people/$userId/': {
+      id: '/api/v1/orgs/$orgSlug/people/$userId/'
+      path: '/api/v1/orgs/$orgSlug/people/$userId'
+      fullPath: '/api/v1/orgs/$orgSlug/people/$userId/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/invitations/$id/': {
+      id: '/api/v1/orgs/$orgSlug/invitations/$id/'
+      path: '/api/v1/orgs/$orgSlug/invitations/$id'
+      fullPath: '/api/v1/orgs/$orgSlug/invitations/$id/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugInvitationsIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/clients/$id/': {
+      id: '/api/v1/orgs/$orgSlug/clients/$id/'
+      path: '/api/v1/orgs/$orgSlug/clients/$id'
+      fullPath: '/api/v1/orgs/$orgSlug/clients/$id/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugClientsIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/assistant/threads/': {
@@ -2785,6 +3291,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugWebhooksIdDeliveriesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/tasks/$id/restore': {
+      id: '/api/v1/orgs/$orgSlug/tasks/$id/restore'
+      path: '/api/v1/orgs/$orgSlug/tasks/$id/restore'
+      fullPath: '/api/v1/orgs/$orgSlug/tasks/$id/restore'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTasksIdRestoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/tasks/$id/archive': {
+      id: '/api/v1/orgs/$orgSlug/tasks/$id/archive'
+      path: '/api/v1/orgs/$orgSlug/tasks/$id/archive'
+      fullPath: '/api/v1/orgs/$orgSlug/tasks/$id/archive'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugTasksIdArchiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/reports/time/detail': {
       id: '/api/v1/orgs/$orgSlug/reports/time/detail'
       path: '/api/v1/orgs/$orgSlug/reports/time/detail'
@@ -2792,11 +3312,116 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugReportsTimeDetailRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/projects/$id/tasks': {
+      id: '/api/v1/orgs/$orgSlug/projects/$id/tasks'
+      path: '/api/v1/orgs/$orgSlug/projects/$id/tasks'
+      fullPath: '/api/v1/orgs/$orgSlug/projects/$id/tasks'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIdTasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/projects/$id/restore': {
+      id: '/api/v1/orgs/$orgSlug/projects/$id/restore'
+      path: '/api/v1/orgs/$orgSlug/projects/$id/restore'
+      fullPath: '/api/v1/orgs/$orgSlug/projects/$id/restore'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIdRestoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/projects/$id/overview': {
       id: '/api/v1/orgs/$orgSlug/projects/$id/overview'
       path: '/api/v1/orgs/$orgSlug/projects/$id/overview'
       fullPath: '/api/v1/orgs/$orgSlug/projects/$id/overview'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIdOverviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/projects/$id/assignable': {
+      id: '/api/v1/orgs/$orgSlug/projects/$id/assignable'
+      path: '/api/v1/orgs/$orgSlug/projects/$id/assignable'
+      fullPath: '/api/v1/orgs/$orgSlug/projects/$id/assignable'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIdAssignableRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/projects/$id/archive': {
+      id: '/api/v1/orgs/$orgSlug/projects/$id/archive'
+      path: '/api/v1/orgs/$orgSlug/projects/$id/archive'
+      fullPath: '/api/v1/orgs/$orgSlug/projects/$id/archive'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIdArchiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/people/$userId/type': {
+      id: '/api/v1/orgs/$orgSlug/people/$userId/type'
+      path: '/api/v1/orgs/$orgSlug/people/$userId/type'
+      fullPath: '/api/v1/orgs/$orgSlug/people/$userId/type'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdTypeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/people/$userId/team': {
+      id: '/api/v1/orgs/$orgSlug/people/$userId/team'
+      path: '/api/v1/orgs/$orgSlug/people/$userId/team'
+      fullPath: '/api/v1/orgs/$orgSlug/people/$userId/team'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdTeamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/people/$userId/start-date': {
+      id: '/api/v1/orgs/$orgSlug/people/$userId/start-date'
+      path: '/api/v1/orgs/$orgSlug/people/$userId/start-date'
+      fullPath: '/api/v1/orgs/$orgSlug/people/$userId/start-date'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdStartDateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/people/$userId/role': {
+      id: '/api/v1/orgs/$orgSlug/people/$userId/role'
+      path: '/api/v1/orgs/$orgSlug/people/$userId/role'
+      fullPath: '/api/v1/orgs/$orgSlug/people/$userId/role'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdRoleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/people/$userId/restore': {
+      id: '/api/v1/orgs/$orgSlug/people/$userId/restore'
+      path: '/api/v1/orgs/$orgSlug/people/$userId/restore'
+      fullPath: '/api/v1/orgs/$orgSlug/people/$userId/restore'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdRestoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/people/$userId/confirm-email': {
+      id: '/api/v1/orgs/$orgSlug/people/$userId/confirm-email'
+      path: '/api/v1/orgs/$orgSlug/people/$userId/confirm-email'
+      fullPath: '/api/v1/orgs/$orgSlug/people/$userId/confirm-email'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/people/$userId/archive': {
+      id: '/api/v1/orgs/$orgSlug/people/$userId/archive'
+      path: '/api/v1/orgs/$orgSlug/people/$userId/archive'
+      fullPath: '/api/v1/orgs/$orgSlug/people/$userId/archive'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugPeopleUserIdArchiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/invitations/$id/resend': {
+      id: '/api/v1/orgs/$orgSlug/invitations/$id/resend'
+      path: '/api/v1/orgs/$orgSlug/invitations/$id/resend'
+      fullPath: '/api/v1/orgs/$orgSlug/invitations/$id/resend'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugInvitationsIdResendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/clients/$id/restore': {
+      id: '/api/v1/orgs/$orgSlug/clients/$id/restore'
+      path: '/api/v1/orgs/$orgSlug/clients/$id/restore'
+      fullPath: '/api/v1/orgs/$orgSlug/clients/$id/restore'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugClientsIdRestoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/clients/$id/archive': {
+      id: '/api/v1/orgs/$orgSlug/clients/$id/archive'
+      path: '/api/v1/orgs/$orgSlug/clients/$id/archive'
+      fullPath: '/api/v1/orgs/$orgSlug/clients/$id/archive'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugClientsIdArchiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/projects/$id/members/': {
+      id: '/api/v1/orgs/$orgSlug/projects/$id/members/'
+      path: '/api/v1/orgs/$orgSlug/projects/$id/members'
+      fullPath: '/api/v1/orgs/$orgSlug/projects/$id/members/'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIdMembersIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/assistant/threads/$id/': {
@@ -2818,6 +3443,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend'
       fullPath: '/api/v1/orgs/$orgSlug/webhooks/deliveries/$id/resend'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/orgs/$orgSlug/projects/$id/members/$userId': {
+      id: '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
+      path: '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
+      fullPath: '/api/v1/orgs/$orgSlug/projects/$id/members/$userId'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsIdMembersUserIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/orgs/$orgSlug/assistant/threads/$id/messages': {
@@ -2968,13 +3600,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1SessionRoute: ApiV1SessionRoute,
   ApiV1TimeEntriesRoute: ApiV1TimeEntriesRoute,
   CliDownloadAssetRoute: CliDownloadAssetRoute,
-  ApiV1OrgsOrgSlugClientsRoute: ApiV1OrgsOrgSlugClientsRoute,
   ApiV1OrgsOrgSlugHomeRoute: ApiV1OrgsOrgSlugHomeRoute,
+  ApiV1OrgsOrgSlugOrganizationRoute: ApiV1OrgsOrgSlugOrganizationRoute,
   ApiV1OrgsOrgSlugRepositoryProjectsRoute:
     ApiV1OrgsOrgSlugRepositoryProjectsRoute,
   ApiV1OrgsOrgSlugRewindRoute: ApiV1OrgsOrgSlugRewindRoute,
   ApiV1OrgsOrgSlugSyncRoute: ApiV1OrgsOrgSlugSyncRoute,
-  ApiV1OrgsOrgSlugTasksRoute: ApiV1OrgsOrgSlugTasksRoute,
   ApiV1OrgsOrgSlugTrackingRoute: ApiV1OrgsOrgSlugTrackingRoute,
   ApiV1OrgsOrgSlugUnfiledRoute: ApiV1OrgsOrgSlugUnfiledRoute,
   ApiV1OrgsOrgSlugWhoamiRoute: ApiV1OrgsOrgSlugWhoamiRoute,
@@ -2988,6 +3619,10 @@ const rootRouteChildren: RootRouteChildren = {
     ApiV1OrgsOrgSlugAuditLogRetentionRoute,
   ApiV1OrgsOrgSlugFilingRulesIdRoute: ApiV1OrgsOrgSlugFilingRulesIdRoute,
   ApiV1OrgsOrgSlugHolidaysRangeRoute: ApiV1OrgsOrgSlugHolidaysRangeRoute,
+  ApiV1OrgsOrgSlugHourFundClearRoute: ApiV1OrgsOrgSlugHourFundClearRoute,
+  ApiV1OrgsOrgSlugHourFundPrefillRoute: ApiV1OrgsOrgSlugHourFundPrefillRoute,
+  ApiV1OrgsOrgSlugHourFundSuggestionRoute:
+    ApiV1OrgsOrgSlugHourFundSuggestionRoute,
   ApiV1OrgsOrgSlugIntegrationsGithubRoute:
     ApiV1OrgsOrgSlugIntegrationsGithubRoute,
   ApiV1OrgsOrgSlugIntegrationsGoogleCalendarRoute:
@@ -3006,6 +3641,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1OrgsOrgSlugReportsAbsenceRoute: ApiV1OrgsOrgSlugReportsAbsenceRoute,
   ApiV1OrgsOrgSlugReportsOvertimeRoute: ApiV1OrgsOrgSlugReportsOvertimeRoute,
   ApiV1OrgsOrgSlugReportsTrackingRoute: ApiV1OrgsOrgSlugReportsTrackingRoute,
+  ApiV1OrgsOrgSlugTasksManagedRoute: ApiV1OrgsOrgSlugTasksManagedRoute,
   ApiV1OrgsOrgSlugTimeEntriesIdRoute: ApiV1OrgsOrgSlugTimeEntriesIdRoute,
   ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute:
     ApiV1OrgsOrgSlugTimeEntriesCopyDayRoute,
@@ -3018,21 +3654,50 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1OrgsOrgSlugTimerSettingsRoute: ApiV1OrgsOrgSlugTimerSettingsRoute,
   ApiV1OrgsOrgSlugAbsencesIndexRoute: ApiV1OrgsOrgSlugAbsencesIndexRoute,
   ApiV1OrgsOrgSlugAuditLogIndexRoute: ApiV1OrgsOrgSlugAuditLogIndexRoute,
+  ApiV1OrgsOrgSlugClientsIndexRoute: ApiV1OrgsOrgSlugClientsIndexRoute,
   ApiV1OrgsOrgSlugFilingRulesIndexRoute: ApiV1OrgsOrgSlugFilingRulesIndexRoute,
   ApiV1OrgsOrgSlugHolidaysIndexRoute: ApiV1OrgsOrgSlugHolidaysIndexRoute,
+  ApiV1OrgsOrgSlugHourFundIndexRoute: ApiV1OrgsOrgSlugHourFundIndexRoute,
   ApiV1OrgsOrgSlugIntegrationsIndexRoute:
     ApiV1OrgsOrgSlugIntegrationsIndexRoute,
+  ApiV1OrgsOrgSlugInvitationsIndexRoute: ApiV1OrgsOrgSlugInvitationsIndexRoute,
+  ApiV1OrgsOrgSlugPeopleIndexRoute: ApiV1OrgsOrgSlugPeopleIndexRoute,
   ApiV1OrgsOrgSlugProjectsIndexRoute: ApiV1OrgsOrgSlugProjectsIndexRoute,
   ApiV1OrgsOrgSlugRecurringBlocksIndexRoute:
     ApiV1OrgsOrgSlugRecurringBlocksIndexRoute,
   ApiV1OrgsOrgSlugRemindersIndexRoute: ApiV1OrgsOrgSlugRemindersIndexRoute,
+  ApiV1OrgsOrgSlugTasksIndexRoute: ApiV1OrgsOrgSlugTasksIndexRoute,
   ApiV1OrgsOrgSlugTimeEntriesIndexRoute: ApiV1OrgsOrgSlugTimeEntriesIndexRoute,
   ApiV1OrgsOrgSlugTimerIndexRoute: ApiV1OrgsOrgSlugTimerIndexRoute,
   ApiV1OrgsOrgSlugWebhooksIndexRoute: ApiV1OrgsOrgSlugWebhooksIndexRoute,
+  ApiV1OrgsOrgSlugClientsIdArchiveRoute: ApiV1OrgsOrgSlugClientsIdArchiveRoute,
+  ApiV1OrgsOrgSlugClientsIdRestoreRoute: ApiV1OrgsOrgSlugClientsIdRestoreRoute,
+  ApiV1OrgsOrgSlugInvitationsIdResendRoute:
+    ApiV1OrgsOrgSlugInvitationsIdResendRoute,
+  ApiV1OrgsOrgSlugPeopleUserIdArchiveRoute:
+    ApiV1OrgsOrgSlugPeopleUserIdArchiveRoute,
+  ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRoute:
+    ApiV1OrgsOrgSlugPeopleUserIdConfirmEmailRoute,
+  ApiV1OrgsOrgSlugPeopleUserIdRestoreRoute:
+    ApiV1OrgsOrgSlugPeopleUserIdRestoreRoute,
+  ApiV1OrgsOrgSlugPeopleUserIdRoleRoute: ApiV1OrgsOrgSlugPeopleUserIdRoleRoute,
+  ApiV1OrgsOrgSlugPeopleUserIdStartDateRoute:
+    ApiV1OrgsOrgSlugPeopleUserIdStartDateRoute,
+  ApiV1OrgsOrgSlugPeopleUserIdTeamRoute: ApiV1OrgsOrgSlugPeopleUserIdTeamRoute,
+  ApiV1OrgsOrgSlugPeopleUserIdTypeRoute: ApiV1OrgsOrgSlugPeopleUserIdTypeRoute,
+  ApiV1OrgsOrgSlugProjectsIdArchiveRoute:
+    ApiV1OrgsOrgSlugProjectsIdArchiveRoute,
+  ApiV1OrgsOrgSlugProjectsIdAssignableRoute:
+    ApiV1OrgsOrgSlugProjectsIdAssignableRoute,
   ApiV1OrgsOrgSlugProjectsIdOverviewRoute:
     ApiV1OrgsOrgSlugProjectsIdOverviewRoute,
+  ApiV1OrgsOrgSlugProjectsIdRestoreRoute:
+    ApiV1OrgsOrgSlugProjectsIdRestoreRoute,
+  ApiV1OrgsOrgSlugProjectsIdTasksRoute: ApiV1OrgsOrgSlugProjectsIdTasksRoute,
   ApiV1OrgsOrgSlugReportsTimeDetailRoute:
     ApiV1OrgsOrgSlugReportsTimeDetailRoute,
+  ApiV1OrgsOrgSlugTasksIdArchiveRoute: ApiV1OrgsOrgSlugTasksIdArchiveRoute,
+  ApiV1OrgsOrgSlugTasksIdRestoreRoute: ApiV1OrgsOrgSlugTasksIdRestoreRoute,
   ApiV1OrgsOrgSlugWebhooksIdDeliveriesRoute:
     ApiV1OrgsOrgSlugWebhooksIdDeliveriesRoute,
   ApiV1OrgsOrgSlugWebhooksIdRollSecretRoute:
@@ -3048,8 +3713,14 @@ const rootRouteChildren: RootRouteChildren = {
     ApiV1OrgsOrgSlugWorkspaceIntegrationsSlackTestRoute,
   ApiV1OrgsOrgSlugAssistantThreadsIndexRoute:
     ApiV1OrgsOrgSlugAssistantThreadsIndexRoute,
+  ApiV1OrgsOrgSlugClientsIdIndexRoute: ApiV1OrgsOrgSlugClientsIdIndexRoute,
+  ApiV1OrgsOrgSlugInvitationsIdIndexRoute:
+    ApiV1OrgsOrgSlugInvitationsIdIndexRoute,
+  ApiV1OrgsOrgSlugPeopleUserIdIndexRoute:
+    ApiV1OrgsOrgSlugPeopleUserIdIndexRoute,
   ApiV1OrgsOrgSlugProjectsIdIndexRoute: ApiV1OrgsOrgSlugProjectsIdIndexRoute,
   ApiV1OrgsOrgSlugReportsTimeIndexRoute: ApiV1OrgsOrgSlugReportsTimeIndexRoute,
+  ApiV1OrgsOrgSlugTasksIdIndexRoute: ApiV1OrgsOrgSlugTasksIdIndexRoute,
   ApiV1OrgsOrgSlugWebhooksIdIndexRoute: ApiV1OrgsOrgSlugWebhooksIdIndexRoute,
   ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute:
     ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubIndexRoute,
@@ -3059,12 +3730,16 @@ const rootRouteChildren: RootRouteChildren = {
     ApiV1OrgsOrgSlugAssistantThreadsIdApprovalsRoute,
   ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute:
     ApiV1OrgsOrgSlugAssistantThreadsIdMessagesRoute,
+  ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute:
+    ApiV1OrgsOrgSlugProjectsIdMembersUserIdRoute,
   ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute:
     ApiV1OrgsOrgSlugWebhooksDeliveriesIdResendRoute,
   ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRoute:
     ApiV1OrgsOrgSlugWorkspaceIntegrationsGithubInstallationsIdRoute,
   ApiV1OrgsOrgSlugAssistantThreadsIdIndexRoute:
     ApiV1OrgsOrgSlugAssistantThreadsIdIndexRoute,
+  ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute:
+    ApiV1OrgsOrgSlugProjectsIdMembersIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

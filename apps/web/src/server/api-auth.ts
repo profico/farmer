@@ -322,5 +322,13 @@ export const resolveCliOrgContext = async (
 	) {
 		return null;
 	}
-	return { ctx, scope: cliUser.scope, via: cliUser.credential.kind };
+	return {
+		ctx,
+		scope: cliUser.scope,
+		via: cliUser.credential.kind,
+		// The member management routes sign a cookie from it, because only
+		// better-auth's endpoints may write those rows (see `memberAdmin`).
+		sessionToken:
+			cliUser.credential.kind === "session" ? cliUser.credential.token : null,
+	};
 };

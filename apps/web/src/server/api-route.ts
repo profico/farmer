@@ -97,7 +97,24 @@ export type ApiRouteSpec<
 	 */
 	raw?: (request: ApiRequest<TParams>) => JsonValue | Promise<JsonValue>;
 	/** The service call. Returns the projection, never a row. */
-	run: (ctx: Ctx, input: z.output<TSchema>) => Promise<TResult>;
+	run: (
+		ctx: Ctx,
+		input: z.output<TSchema>,
+		caller: ApiCaller,
+	) => Promise<TResult>;
+};
+
+/** What a route may know about the credential, past its Ctx. */
+export type ApiCaller = {
+	via: ApiCredentialKind;
+	/**
+	 * Request headers that name the caller's better-auth session, for a write
+	 * that only a better-auth endpoint may make (invitations, roles, removal).
+	 * A browser sends its own cookie. A device-flow or mobile token IS a
+	 * session token, so a cookie is signed from it. An API token has no
+	 * session, so it gets an `AccessError` that says so.
+	 */
+	sessionHeaders: () => Promise<Headers>;
 };
 
 /** The person behind a request to a route with no organization in its path. */
@@ -400,6 +417,7 @@ const orgPrincipal = async (request: Request, orgSlug: string) => {
 			ctx: byToken.ctx,
 			scope: byToken.scope,
 			via: byToken.via,
+			sessionToken: byToken.sessionToken,
 		};
 	}
 	const user = await cookieUser(request, { writes: true });
@@ -414,7 +432,13 @@ const orgPrincipal = async (request: Request, orgSlug: string) => {
 	// person is at the keyboard on this site: the full reach of their
 	// own session, as in the web app.
 	return ctx
-		? { ...ctx, ctx, scope: "write" as const, via: "cookie" as const }
+		? {
+				...ctx,
+				ctx,
+				scope: "write" as const,
+				via: "cookie" as const,
+				sessionToken: null,
+			}
 		: null;
 };
 
@@ -459,6 +483,54 @@ const parseInput = async <TParams extends OrgParams, TSchema extends z.ZodType>(
 };
 
 /**
+ * The headers `ApiCaller.sessionHeaders` answers. The request's own headers
+ * are kept, so better-auth's audit hooks see the caller's address and
+ * browser, but never its bearer token.
+ */
+const sessionHeadersOf = async (
+	request: Request,
+	via: ApiCredentialKind,
+	sessionToken: string | null,
+): Promise<Headers> => {
+	if (via === "cookie") return request.headers;
+	if (via === "session" && sessionToken) {
+		const { sessionCookieHeader } = await import("@farmer/core/auth");
+		const headers = new Headers(request.headers);
+		headers.delete("authorization");
+		headers.set("cookie", await sessionCookieHeader(sessionToken));
+		return headers;
+	}
+	const { AccessError } = await import("@farmer/core/services");
+	throw new AccessError(
+		"An API token cannot manage people or invitations. Sign in with `farmer login` or the mobile app.",
+	);
+};
+
+/** A JSON body with the fields a route takes from its path laid over it.
+ *  The path wins, so a body cannot point a write at another row. Only the
+ *  shape is checked here; the route's schema checks the rest. */
+export const bodyWithPath = (
+	body: JsonValue,
+	fromPath: { [key: string]: string },
+): JsonValue => {
+	const object = jsonObject.safeParse(body);
+	if (!object.success) {
+		throw new Error("The request body must be a JSON object.");
+	}
+	return { ...object.data, ...fromPath };
+};
+
+const jsonObject = z.record(z.string(), z.json());
+
+/** A positive whole number from the query string, or the raw text when it is
+ *  not one, so that the schema refuses it with its own message. */
+export const queryNumber = (query: URLSearchParams, name: string) => {
+	const text = query.get(name);
+	if (text === null) return null;
+	return /^\d+$/.test(text) ? Number(text) : text;
+};
+
+/**
  * A handler for an org-scoped route: `/api/v1/orgs/$orgSlug/…`.
  *
  * Returns the handler itself, so a route reads
@@ -473,10 +545,14 @@ export const apiRoute =
 		serve(
 			request,
 			() => orgPrincipal(request, params.orgSlug),
-			async ({ ctx }) => {
+			async ({ ctx, via, sessionToken }) => {
 				const input = await parseInput(spec, request, ctx, params);
 				if (!input.ok) return input.response;
-				return respond(await spec.run(ctx, input.data), 200);
+				const caller: ApiCaller = {
+					via,
+					sessionHeaders: () => sessionHeadersOf(request, via, sessionToken),
+				};
+				return respond(await spec.run(ctx, input.data, caller), 200);
 			},
 			request.method !== "GET",
 		);

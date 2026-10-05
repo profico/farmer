@@ -63,6 +63,40 @@ describe("the OpenAPI document", () => {
 		expect(TimeEntryPatch?.required).toBeUndefined();
 	});
 
+	// A route takes these ids from its path and overwrites a value in the
+	// body, so a body that lists them would tell a client to send them.
+	test("leaves the path's ids out of every body", () => {
+		const { schemas } = buildOpenApiDocument().components;
+		const cases = [
+			["ClientPatch", ["clientId"]],
+			["ProjectPatch", ["projectId"]],
+			["NewProjectMember", ["projectId"]],
+			["ProjectMemberRole", ["projectId", "userId"]],
+			["TaskPatch", ["taskId"]],
+			["PersonRole", ["userId"]],
+			["TeamLeadPeople", ["leadUserId"]],
+		] as const;
+		for (const [id, fields] of cases) {
+			const properties = Object.keys(schemas[id]?.properties ?? {});
+			expect(properties.length).toBeGreaterThan(0);
+			for (const field of fields) {
+				expect(properties).not.toContain(field);
+				expect(schemas[id]?.required ?? []).not.toContain(field);
+			}
+		}
+		expect(schemas.ProjectMemberRole?.required).toContain("role");
+	});
+
+	// A route that only some people may call says who, and documents its 403.
+	test("names who may call a restricted read", () => {
+		const document = buildOpenApiDocument();
+		const people = document.paths["/orgs/{orgSlug}/people"]?.get;
+		expect(people?.description).toContain("**Who:** An admin.");
+		expect(Object.keys(people?.responses ?? {})).toContain("403");
+		const entries = document.paths["/orgs/{orgSlug}/time-entries"]?.get;
+		expect(Object.keys(entries?.responses ?? {})).not.toContain("403");
+	});
+
 	// The mobile app reads these before it shows a screen. A field that falls out
 	// of the document falls out of the generated client with it.
 	test("documents the mobile contract in Meta and Whoami", () => {

@@ -1,24 +1,25 @@
 import { type ApiProjectDetail, toApiProjectDetail } from "@farmer/core/api";
-import { projectIdInput } from "@farmer/core/schema";
+import { projectIdInput, updateProjectInput } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 import {
 	type ApiRequest,
 	apiRoute,
+	bodyWithPath,
 	type OrgRowParams,
 } from "#/server/api-route.ts";
 
 const byId = z.object({ projectId: projectIdInput });
 
 /**
- * `GET /api/v1/orgs/$orgSlug/projects/$id` — the head of a project's page.
+ * `/api/v1/orgs/$orgSlug/projects/$id` — one project, and its settings.
  *
- * On the same scope as the list: an Admin, an assignment, or a project open
- * to the organization. The service decides each figure. Below PM rank the
- * three money fields are null. Below Team Lead rank the hours are the
- * caller's own (`statsScope: "own"`), because a plain member sees nothing at
- * project level.
+ * Reading needs the same right as logging time on it: an admin, an
+ * assignment, or a project open to the organization. A change is a patch: the
+ * fields that are not sent stay as they are. The budget, the hourly price and
+ * the code need a PM or an admin (`assertCanManageProject`), and the type must
+ * come with its budget or price, as on the settings page.
  */
 export const Route = createFileRoute("/api/v1/orgs/$orgSlug/projects/$id/")({
 	server: {
@@ -31,6 +32,15 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/projects/$id/")({
 				run: async (ctx, { projectId }): Promise<ApiProjectDetail> => {
 					const { projectsService } = await import("@farmer/core/services");
 					return toApiProjectDetail(await projectsService.get(ctx, projectId));
+				},
+			}),
+			PATCH: apiRoute({
+				input: updateProjectInput,
+				raw: ({ params, body }: ApiRequest<OrgRowParams>) =>
+					bodyWithPath(body, { projectId: params.id }),
+				run: async (ctx, input): Promise<ApiProjectDetail> => {
+					const { projectsService } = await import("@farmer/core/services");
+					return toApiProjectDetail(await projectsService.update(ctx, input));
 				},
 			}),
 		},

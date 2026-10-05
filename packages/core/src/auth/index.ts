@@ -86,6 +86,8 @@ import {
 } from "./sign-in-methods";
 
 export type { McpConsentRequest } from "./mcp-consent";
+export { memberAdmin } from "./member-admin";
+export { sessionCookieHeader } from "./session-cookie";
 export { mayClaimInvitation } from "./registration";
 export {
 	type PasswordSignIn,

@@ -20,6 +20,17 @@ describe("toApiClient", () => {
 			id: "c-1",
 			name: "Acme",
 			isInternal: false,
+			archivedAt: null,
 		});
+	});
+
+	test("sends the archive date as ISO 8601", () => {
+		const row = {
+			id: "c-2",
+			name: "Gone",
+			isInternal: false,
+			archivedAt: new Date("2026-09-20T10:00:00Z"),
+		};
+		expect(toApiClient(row).archivedAt).toBe("2026-09-20T10:00:00.000Z");
 	});
 });

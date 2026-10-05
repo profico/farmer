@@ -16,8 +16,9 @@ const byId = z.object({ projectId: projectIdInput });
 
 /**
  * `GET /api/v1/orgs/$orgSlug/projects/$id/overview` — the all-time figures at
- * the top of a project's page. Team Lead rank and up, as on the web page; a
- * plain member gets 403.
+ * the top of a project's page. A team lead or a PM on the project, or an
+ * admin, as on the web page: a plain member gets 403, because a plain member
+ * sees nothing at project level.
  *
  * The entries below those figures on the web page are the Time report's
  * detail for the project: `GET …/reports/time/detail?projectId=`.
