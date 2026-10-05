@@ -545,3 +545,69 @@ describe("the tools that carry the rules to the assistant", () => {
 		).toBe("Remove a filing rule");
 	});
 });
+
+describe("the reasons a batch filing reports", () => {
+	const entryId = async () =>
+		(
+			await timeEntriesService.create(ctx, {
+				date: DATE,
+				taskId: designTaskId,
+				description: "Rest of day",
+				durationSeconds: 3600,
+				overtime: false,
+				fillsDay: false,
+			})
+		).id;
+
+	test("a database error is not passed to the caller", async () => {
+		// Not a uuid, so the query fails inside the database with the SQL and
+		// the parameters in the message.
+		const originalError = console.error;
+		console.error = () => {};
+		try {
+			const result = await timeEntriesService.fileMany(ctx, {
+				timeEntryIds: ["not-a-uuid"],
+				projectId,
+				taskId: designTaskId,
+				remember: false,
+			});
+			expect(result.failed).toBe(1);
+			expect(result.firstError).toBe("Could not file entry");
+		} finally {
+			console.error = originalError;
+		}
+	});
+
+	test("a refused task keeps its short message", async () => {
+		const id = await entryId();
+		await db
+			.update(task)
+			.set({ archivedAt: new Date() })
+			.where(eq(task.id, designTaskId));
+		const result = await timeEntriesService.fileMany(ctx, {
+			timeEntryIds: [id],
+			projectId,
+			taskId: designTaskId,
+			remember: false,
+		});
+		expect(result.firstError).toBe("Task not available");
+	});
+
+	test("the file_time_entries tool adds the recovery hint", async () => {
+		const id = await entryId();
+		await db
+			.update(task)
+			.set({ archivedAt: new Date() })
+			.where(eq(task.id, designTaskId));
+		const tool = present(findTool("file_time_entries"), "the tool");
+		const result = await tool.run(ctx, {
+			timeEntryIds: [id],
+			projectId,
+			taskId: designTaskId,
+		});
+		// SAFETY: the tool returns the `fileMany` result, and the expectation
+		// reads only `firstError` from it.
+		const { firstError } = result as { firstError: string };
+		expect(firstError).toContain("Call list_tasks");
+	});
+});

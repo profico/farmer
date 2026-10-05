@@ -27,7 +27,11 @@ import { AccessError, type Access, accessService } from "./access.service";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, invalidateCtxAccess } from "./context";
 import { emitEvent, projectWebhookPayload } from "./events";
-import { assertProjectInOrg, assertUserInOrg } from "./guards";
+import {
+	assertProjectInOrg,
+	assertUserInOrg,
+	PROJECT_NOT_FOUND_MESSAGE,
+} from "./guards";
 import { membersService } from "./members.service";
 import { tasksService } from "./tasks.service";
 import type { Ctx } from "./types";
@@ -318,7 +322,7 @@ export const projectsService = {
 		access.assertCanTrackOn(projectId);
 		const rows = await enrichedProjects(ctx, access, [projectId]);
 		const row = rows[0];
-		if (!row) throw new Error("Project not found");
+		if (!row) throw new Error(PROJECT_NOT_FOUND_MESSAGE);
 		return row;
 	},
 

@@ -2,6 +2,10 @@ import { z } from "zod";
 
 import { UserFacingError } from "../lib/user-facing-error";
 import { AccessError } from "./access.service";
+import {
+	PROJECT_NOT_FOUND_MESSAGE,
+	TASK_NOT_AVAILABLE_MESSAGE,
+} from "./guards";
 import { DayCapacityError } from "./time-entries.service";
 
 /**
@@ -71,6 +75,44 @@ export const classifyServiceError = (error: Error): ServiceErrorVerdict => {
 export const safeErrorMessage = (error: Error): string | null => {
 	const verdict = classifyServiceError(error);
 	return verdict.kind === "unsafe" ? null : verdict.message;
+};
+
+// How an agent recovers from a refused id. The id guards keep a short message
+// for the web app, the REST API and the CLI; only an agent gets the hint. The
+// text is the same for an id that is missing and an id of another organization,
+// so it does not tell the caller which one it was. Both tool names exist in the
+// registry that the MCP server and the assistant share.
+const RECOVERY_HINTS = new Map([
+	[
+		TASK_NOT_AVAILABLE_MESSAGE,
+		"it is archived or does not exist in this organization. Call list_tasks to get the current task ids.",
+	],
+	[
+		PROJECT_NOT_FOUND_MESSAGE,
+		"it does not exist in this organization. Call list_projects to get the current project ids.",
+	],
+]);
+
+/**
+ * The message a model may read for a failed tool call, or null when it must not
+ * see it. It is `safeErrorMessage` plus a recovery hint for a refused task or
+ * project id. Any other message is unchanged. The MCP server and the assistant
+ * both send a tool failure to a model, so both use this function.
+ */
+export const agentErrorMessage = (error: Error): string | null => {
+	const message = safeErrorMessage(error);
+	return message === null ? null : withRecoveryHint(message);
+};
+
+/**
+ * Adds the recovery hint to a message that a person may already read. Use it
+ * for a reason that a service collected as text, such as the `firstError` of a
+ * batch filing, where there is no error object left to give to
+ * `agentErrorMessage`.
+ */
+export const withRecoveryHint = (message: string): string => {
+	const hint = RECOVERY_HINTS.get(message);
+	return hint === undefined ? message : `${message}: ${hint}`;
 };
 
 // Re-exported so a caller of the services barrel can extend or test for it

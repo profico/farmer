@@ -17,6 +17,7 @@ import {
 	beforeEach,
 	describe,
 	expect,
+	spyOn,
 	test,
 } from "bun:test";
 
@@ -25,8 +26,9 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { task, timeEntry } from "../db/schema/domain";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
 import { AccessError } from "./access.service";
+import { findTool } from "./assistant-tools";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
 
@@ -203,6 +205,52 @@ describe("logAbsenceRange", () => {
 				to: "2026-05-27",
 			}),
 		).rejects.toThrow(/Only absence tasks can be logged this way/);
+	});
+});
+
+describe("the reasons an absence range reports", () => {
+	// A subclass, so it is not a bare `Error`: the filter treats it as unsafe.
+	class FakeDatabaseError extends Error {}
+	const failWith = (error: Error) =>
+		spyOn(timeEntriesService, "create").mockRejectedValue(error);
+
+	test("a database error is not passed to the caller", async () => {
+		const create = failWith(
+			new FakeDatabaseError('Failed query: insert into "time_entry" params: x'),
+		);
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			const result = await timeEntriesService.logAbsenceRange(ctx(ME), {
+				taskId: vacationTaskId,
+				from: "2026-05-26",
+				to: "2026-05-26",
+			});
+			expect(result.booked).toEqual([]);
+			expect(result.skipped).toEqual([
+				{ date: "2026-05-26", reason: "could not be logged" },
+			]);
+		} finally {
+			create.mockRestore();
+			logged.mockRestore();
+		}
+	});
+
+	test("the log_absence tool adds the recovery hint", async () => {
+		const create = failWith(new Error("Task not available"));
+		try {
+			const tool = present(findTool("log_absence"), "the tool");
+			const result = await tool.run(ctx(ME), {
+				taskId: vacationTaskId,
+				from: "2026-05-26",
+				to: "2026-05-26",
+			});
+			// SAFETY: the tool returns the `logAbsenceRange` result, and the
+			// expectation reads only `skipped` from it.
+			const { skipped } = result as { skipped: { reason: string }[] };
+			expect(skipped[0]?.reason).toContain("Call list_tasks");
+		} finally {
+			create.mockRestore();
+		}
 	});
 });
 

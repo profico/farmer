@@ -1433,6 +1433,43 @@ describe("approval tiers", () => {
 	});
 });
 
+describe("a tool that refuses an id", () => {
+	test("the model is told how to recover", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			turn({
+				toolCalls: [
+					{
+						id: "call-stale",
+						name: "create_time_entry",
+						arguments: JSON.stringify({
+							date: "2026-03-04",
+							projectId,
+							taskId: crypto.randomUUID(),
+							durationSeconds: 3600,
+							description: "stale task id",
+						}),
+					},
+				],
+			}),
+			turn({ content: "That task is gone." }),
+		];
+		await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "log an hour",
+		});
+		const toolRow = (
+			await db.query.assistantMessage.findMany({
+				where: eq(assistantMessage.conversationId, chat.id),
+			})
+		).find((row) => row.role === "tool");
+		expect(present(toolRow, "the tool message").content).toStartWith(
+			"Error: Task not available: ",
+		);
+		expect(toolRow?.content).toContain("list_tasks");
+	});
+});
+
 describe("a batch write, approved row by row", () => {
 	// `file_time_entries` is the shape the diff table exists for: one call that
 	// touches N rows, where "yes, but not that one" is a thing people mean and

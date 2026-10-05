@@ -40,7 +40,7 @@ import {
 } from "./assistant-tools";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
-import { safeErrorMessage } from "./error-message";
+import { agentErrorMessage } from "./error-message";
 import type { Ctx } from "./types";
 
 export class AssistantError extends UserFacingError {
@@ -816,8 +816,9 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 	} catch (error) {
 		// The content goes to the model provider, so only a message written for
 		// a person may pass. A database error carries the SQL and its
-		// parameters; that stays in the server log.
-		const message = error instanceof Error ? safeErrorMessage(error) : null;
+		// parameters; that stays in the server log. A refused id also gets how to
+		// recover from it.
+		const message = error instanceof Error ? agentErrorMessage(error) : null;
 		if (message === null) {
 			console.error(`[assistant] tool "${call.name}" failed`, error);
 		}
