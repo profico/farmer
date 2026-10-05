@@ -2,16 +2,20 @@
 //
 // Each deploy replaces the hashed files in `/assets/`. A tab that loaded the
 // old index still names the old files, so the first lazy route chunk it needs
-// is gone. The server answers that URL with the app's 404 page: a 404 status
-// with `text/html` (the `/*` fallback in `server.ts`, because no static route
-// matches). The browser refuses it as a module, and the import fails with
-// "Failed to fetch dynamically imported module". The fix is a reload, which
-// fetches the new index.
+// is gone. The server answers that URL with a bare 404 (the `/assets/*` route
+// in `server.ts`, because no static route matches). The browser refuses it as
+// a module, and the import fails with "Failed to fetch dynamically imported
+// module". The fix is a reload, which fetches the new index.
 //
-// Two paths see the failure: Vite's `vite:preloadError` event, and the error
-// that a route loader or component throws to the route error screen. Both use
-// `reloadIfStaleChunk`. It reloads once per time window, so a file that is
-// really missing, or a network that is down, cannot cause a reload loop.
+// The route error screen calls `reloadIfStaleChunk` for the error that a route
+// loader or component throws on a real navigation. It reloads once per time
+// window, so a file that is really missing, or a network that is down, cannot
+// cause a reload loop.
+//
+// Vite's `vite:preloadError` event has no handler on purpose. TanStack Router
+// preloads a route on link intent (hover or touch) and only logs a failed
+// preload. The event cannot tell a preload from a navigation, so a reload there
+// would drop the unsaved input of a person who only moved the pointer.
 
 import { z } from "zod";
 
@@ -136,52 +140,4 @@ export function takeStaleChunkReport(
 		// A corrupt report is not worth an event.
 	}
 	return undefined;
-}
-
-/** The part of a `vite:preloadError` event that this file uses. */
-type PreloadErrorEvent = { payload: Thrown; preventDefault: () => void };
-
-type PreloadErrorTarget = {
-	addEventListener: (
-		type: "vite:preloadError",
-		listener: (event: PreloadErrorEvent) => void,
-	) => void;
-};
-
-/**
- * Reload on Vite's `vite:preloadError`. Vite throws the error again after the
- * event unless a listener calls `preventDefault`, so the listener calls it only
- * when a reload starts. When the guard blocks the reload, the error goes on to
- * the route error screen and to PostHog as before.
- */
-export function installStaleChunkHandler(
-	target: PreloadErrorTarget,
-	env: ReloadEnv,
-): void {
-	target.addEventListener("vite:preloadError", (event) => {
-		if (reloadIfStaleChunk(event.payload, env)) event.preventDefault();
-	});
-}
-
-const preloadEvent = z.object({ payload: thrown });
-
-let installed = false;
-
-/** Install the handler on `window`, one time. Does nothing on the server. */
-export function installBrowserStaleChunkHandler(): void {
-	if (installed || globalThis.window === undefined) return;
-	installed = true;
-	installStaleChunkHandler(
-		{
-			// Vite dispatches a plain `Event` with the error in `payload`.
-			addEventListener: (type, listener) =>
-				window.addEventListener(type, (event) =>
-					listener({
-						payload: preloadEvent.safeParse(event).data?.payload,
-						preventDefault: () => event.preventDefault(),
-					}),
-				),
-		},
-		browserEnv(),
-	);
 }

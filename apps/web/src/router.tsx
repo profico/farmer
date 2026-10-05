@@ -5,14 +5,9 @@ import { RouteError } from "./components/route-error";
 import { RouteNotFound } from "./components/route-not-found";
 import { RoutePending } from "./components/route-pending";
 import { getContext } from "./integrations/tanstack-query/root-provider";
-import { installBrowserStaleChunkHandler } from "./lib/stale-chunk";
 import { routeTree } from "./routeTree.gen";
 
 export function getRouter() {
-	// A tab opened before a deploy asks for chunks that no longer exist; reload
-	// once to get the new index (`lib/stale-chunk.ts`). No effect on the server.
-	installBrowserStaleChunkHandler();
-
 	const context = getContext();
 
 	// Instant navigations. Two gaps make a click feel slow: the client→server

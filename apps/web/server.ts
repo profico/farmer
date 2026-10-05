@@ -640,6 +640,19 @@ async function initializeServer() {
 			// Serve static assets (preloaded or on-demand)
 			...routes,
 
+			// A hashed asset that is not in the map above is gone, for example a
+			// chunk that a deploy replaced. It can never be a page, so answer a bare
+			// 404 and skip the SSR handler. The exact routes above win over this
+			// wildcard. A short `no-cache` keeps a proxy from holding the 404 after
+			// a rollback puts the file back.
+			"/assets/*": () =>
+				new Response(null, {
+					status: 404,
+					headers: applySecurityHeaders(
+						new Headers({ "Cache-Control": "no-cache" }),
+					),
+				}),
+
 			// Fallback to TanStack Start handler for all other routes.
 			//
 			// Everything reaching this fallback is dynamic — the SSR HTML document,

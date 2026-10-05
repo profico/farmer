@@ -2,14 +2,12 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-	installStaleChunkHandler,
 	isReloadPending,
 	isStaleChunkError,
 	RELOAD_WINDOW_MS,
 	reloadIfStaleChunk,
 	takeStaleChunkReport,
 	type ReloadEnv,
-	type Thrown,
 } from "./stale-chunk.ts";
 
 const CHROME =
@@ -218,64 +216,5 @@ describe("takeStaleChunkReport", () => {
 		storage.setItem("farmer-stale-chunk-report", "{not json");
 		expect(takeStaleChunkReport(storage)).toBeUndefined();
 		expect(takeStaleChunkReport(undefined)).toBeUndefined();
-	});
-});
-
-describe("installStaleChunkHandler", () => {
-	/** A target that records its listener and fires events at it. */
-	const fakeTarget = () => {
-		let listener: ((event: PreloadEvent) => void) | undefined;
-		return {
-			addEventListener: (name: string, fn: (event: PreloadEvent) => void) => {
-				expect(name).toBe("vite:preloadError");
-				listener = fn;
-			},
-			fire: (payload: Thrown) => {
-				const event: PreloadEvent = {
-					payload,
-					prevented: false,
-					preventDefault() {
-						this.prevented = true;
-					},
-				};
-				listener?.(event);
-				return event;
-			},
-		};
-	};
-	type PreloadEvent = {
-		payload: Thrown;
-		prevented: boolean;
-		preventDefault: () => void;
-	};
-
-	test("reloads and suppresses the throw for a stale chunk", () => {
-		const { env, state } = makeEnv();
-		const target = fakeTarget();
-		installStaleChunkHandler(target, env);
-		const event = target.fire(new TypeError(CHROME));
-		expect(state.reloads).toBe(1);
-		expect(event.prevented).toBe(true);
-	});
-
-	test("lets the error through when the guard blocks the reload", () => {
-		const { env, state } = makeEnv();
-		const target = fakeTarget();
-		installStaleChunkHandler(target, env);
-		target.fire(new TypeError(CHROME));
-		const newTarget = fakeTarget();
-		installStaleChunkHandler(newTarget, nextPage(env));
-		const second = newTarget.fire(new TypeError(CHROME));
-		expect(state.reloads).toBe(1);
-		expect(second.prevented).toBe(false);
-	});
-
-	test("ignores a payload that is not a stale chunk error", () => {
-		const { env, state } = makeEnv();
-		const target = fakeTarget();
-		installStaleChunkHandler(target, env);
-		const event = target.fire(new Error("boom"));
-		expect(state.reloads).toBe(0);
-		expect(event.prevented).toBe(false);
 	});
 });
