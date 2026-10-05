@@ -7,6 +7,10 @@ export default defineConfig({
 		"**/routeTree.gen.ts",
 		"**/src/db/schema/auth.ts",
 		"**/dist/**",
+		"apps/mobile/android/**",
+		"apps/mobile/ios/**",
+		"apps/mobile/.expo/**",
+		"packages/api-client/src/openapi.gen.ts",
 	],
 	plugins: ["react", "react-hooks", "jsx-a11y", "typescript", "oxc", "import"],
 	categories: { correctness: "error" },
@@ -62,6 +66,36 @@ export default defineConfig({
 		"stella/require-suppression-description": "error",
 	},
 	overrides: [
+		{
+			// The mobile app and its API client are clients of `api/v1` only
+			// (ADR 0005). Unlike the CLI they take nothing from the server, not
+			// even types: a store build outlives the server it was built against,
+			// so the shapes it reads are its own, parsed at the boundary.
+			files: ["apps/mobile/**", "packages/api-client/**"],
+			rules: {
+				"no-restricted-imports": [
+					"error",
+					{
+						patterns: [
+							{
+								group: [
+									"@farmer/core",
+									"@farmer/core/**",
+									"**/packages/core/**",
+								],
+								message:
+									"The mobile app and the API client talk to the server only through api/v1. Declare the shape in @farmer/api-client.",
+							},
+							{
+								group: ["web", "web/**", "**/apps/web/**", "\\#/**"],
+								message:
+									"The mobile app and the API client must not import the web app.",
+							},
+						],
+					},
+				],
+			},
+		},
 		{
 			// The CLI compiles into a binary that people download, so a runtime
 			// import of the server graph would ship the database driver, the auth
