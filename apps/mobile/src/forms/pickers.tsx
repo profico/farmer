@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { View } from "react-native";
 
 import { useProjects, useTasks } from "../api/queries";
+import { useHiddenTasks } from "../api/you";
 import {
 	ErrorState,
 	Field,
@@ -156,7 +157,9 @@ const byGroup = (tasks: Task[]) => {
 	return [...groups.entries()];
 };
 
-/** The work tasks, by group. With `includeAbsence`, time off too. */
+/** The work tasks, by group. With `includeAbsence`, time off too. The tasks
+ *  that the person hid in "Your tasks" do not show, but the chosen task
+ *  always shows, as in the task picker of the web app. */
 export function TaskPicker({
 	value,
 	onChange,
@@ -168,6 +171,7 @@ export function TaskPicker({
 }) {
 	const palette = usePalette();
 	const tasks = useTasks();
+	const hidden = useHiddenTasks();
 	// Folded until the person opens it, so the list does not push the rest
 	// of the form down before a project is chosen.
 	const [open, setOpen] = useState(false);
@@ -182,6 +186,12 @@ export function TaskPicker({
 		? [...tasks.data.tasks, ...tasks.data.absenceTasks]
 		: tasks.data.tasks;
 	const chosen = all.find((task) => task.id === value);
+	// Before the hidden list arrives, or on a server without it, every
+	// task shows.
+	const hiddenIds = new Set(hidden.data?.taskIds);
+	const offered = all.filter(
+		(task) => !hiddenIds.has(task.id) || task.id === value,
+	);
 
 	return (
 		<Choice
@@ -190,7 +200,7 @@ export function TaskPicker({
 			open={open}
 			onToggle={() => setOpen(!open)}
 		>
-			{byGroup(all).map(([group, members]) => (
+			{byGroup(offered).map(([group, members]) => (
 				<View key={group}>
 					<SectionHeader>{group}</SectionHeader>
 					{members.map((task) => (
