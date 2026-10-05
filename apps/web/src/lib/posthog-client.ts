@@ -14,7 +14,7 @@ export type PostHogCredentials = { token: string; host: string };
  * commit hit a client that was not started, and PostHog dropped it. This
  * function starts the client during the render of the provider, before any
  * child effect runs, and the provider gets it as its `client` prop. A second
- * call does nothing, because `init` of a started client does nothing.
+ * call does nothing, because the `__loaded` guard skips `init`.
  *
  * On the server it returns the client without a start, because the server
  * sends no event from it and has no `window`.
