@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { ApiTimeEntry } from "@farmer/core/api";
 
-import { stoppedMeasured, whyNotContinued } from "./timer";
+import { stoppedMeasured, stoppedNote, whyNotContinued } from "./timer";
 
 const HOUR = 3600;
 
@@ -64,6 +64,44 @@ describe("stoppedMeasured", () => {
 				"2h",
 			),
 		).toThrow("more than 24 hours");
+	});
+});
+
+describe("stoppedNote", () => {
+	const read = "Old note";
+
+	test("sends -m", () => {
+		expect(stoppedNote({ message: "From -m", answer: undefined, read })).toBe(
+			"From -m",
+		);
+	});
+
+	test("sends nothing for an unchanged answer", () => {
+		expect(
+			stoppedNote({ message: undefined, answer: " Old note ", read }),
+		).toBeUndefined();
+	});
+
+	test("sends a changed answer", () => {
+		expect(
+			stoppedNote({ message: undefined, answer: " New note ", read }),
+		).toBe("New note");
+	});
+
+	test("sends an emptied answer, which clears the note", () => {
+		expect(stoppedNote({ message: undefined, answer: "", read })).toBe("");
+	});
+
+	test("sends a typed note when the timer had none", () => {
+		expect(stoppedNote({ message: undefined, answer: "Typed", read: "" })).toBe(
+			"Typed",
+		);
+	});
+
+	test("sends nothing from a script without -m", () => {
+		expect(
+			stoppedNote({ message: undefined, answer: undefined, read }),
+		).toBeUndefined();
 	});
 });
 

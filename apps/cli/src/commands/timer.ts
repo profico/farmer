@@ -410,6 +410,29 @@ export const stoppedMeasured = (
 	return parseQuarterHours(typed);
 };
 
+/**
+ * The note `farmer stop` sends, or undefined to leave the live one alone.
+ *
+ * The timer's note was read before the prompt, and the person may have edited
+ * the entry's note on the web while the command waited. So the read note is
+ * never sent back as it was. `-m` is sent. A prompt answer is sent only when it
+ * differs from the default the prompt offered. An emptied answer differs, so ""
+ * still clears the note. A script without `-m` sends nothing.
+ */
+export const stoppedNote = ({
+	message,
+	answer,
+	read,
+}: {
+	message: string | undefined;
+	answer: string | undefined;
+	read: string;
+}): string | undefined => {
+	if (message !== undefined) return message;
+	if (answer === undefined) return undefined;
+	return answer.trim() === read.trim() ? undefined : answer.trim();
+};
+
 const STOP_USAGE =
 	"farmer stop [-m text] [-p project] [-t task] [--duration <d>] [-d date] [--overtime]";
 
@@ -479,8 +502,7 @@ export const stop: Command = {
 		}
 		// The timer's own day, project and task are left out, so the server
 		// keeps the live ones: a continued entry stays on its own day unless -d
-		// moves it. The note is sent as before: it is asked for below.
-		if (timer.description) body.description = timer.description;
+		// moves it. The note is left out too, unless -m or the prompt gives one.
 
 		if (values.project !== undefined) {
 			const projects = await session.api.get<ApiProject[]>(
@@ -497,8 +519,6 @@ export const stop: Command = {
 				await chooseTask(out, taskList.tasks, values.task, "-t")
 			).id;
 		}
-		if (values.message !== undefined) body.description = values.message;
-
 		// The note. `-m` answers it, and the timer's own note is the default; with
 		// neither, ask, because the task this timer is on usually requires one and
 		// a refusal after the fact costs the person the command. Nothing is asked
@@ -508,9 +528,10 @@ export const stop: Command = {
 		// `needsDescription` is the timer's own task. A `-t` override logs against
 		// another one, whose rule this binary cannot read, so the answer is
 		// optional there and the server stays the authority.
+		let answer: string | undefined;
 		if (values.message === undefined && out.interactive) {
 			const needed = timer.task.needsDescription && values.task === undefined;
-			const answer = await askText(
+			answer = await askText(
 				"What did you work on?",
 				timer.description,
 				needed ? `Required on ${timer.task.name}` : "Optional",
@@ -519,10 +540,13 @@ export const stop: Command = {
 						? `${timer.task.name} needs a note. Type one, or stop with -m.`
 						: undefined,
 			);
-			// "" rather than absent: an emptied answer clears the note, where an
-			// absent one would keep a continued entry's.
-			body.description = answer.trim();
 		}
+		const note = stoppedNote({
+			message: values.message,
+			answer,
+			read: timer.description,
+		});
+		if (note !== undefined) body.description = note;
 
 		const entry = await session.api.post<ApiTimeEntry, ConfirmTimerInput>(
 			scope.path("/timer/confirm"),
