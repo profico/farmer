@@ -541,7 +541,7 @@ Every function starts with `requireAdmin(ctx)`.
   created.
 - Paid Leave: the migration makes the task, and the Absence report shows a
   third column.
-- Update the coverage list in `packages/core/AGENTS.md`.
+- Update the coverage list in `packages/core/CLAUDE.md`.
 
 ## 10. Phases
 

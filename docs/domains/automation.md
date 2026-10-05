@@ -34,4 +34,4 @@ Two engine details that differ and should stay differing: the MEETING path upser
 
 ---
 
-See also: `packages/core/AGENTS.md` (the ledger, tasks and authorization the engines obey), `docs/domains/integrations.md` (the GitHub, Calendar and Slack credentials the engines read through).
+See also: `packages/core/CLAUDE.md` (the ledger, tasks and authorization the engines obey), `docs/domains/integrations.md` (the GitHub, Calendar and Slack credentials the engines read through).

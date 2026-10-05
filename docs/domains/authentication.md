@@ -114,4 +114,4 @@ Setting `SINGLE_ORG_SLUG=<slug>` (in the environment or on Infrastructure → Si
 
 ---
 
-See also: `docs/domains/deployment.md` (the env vars), `apps/web/AGENTS.md` (the login and no-access routes), issue #75 (the Infrastructure page this role will gate).
+See also: `docs/domains/deployment.md` (the env vars), `apps/web/CLAUDE.md` (the login and no-access routes), issue #75 (the Infrastructure page this role will gate).
