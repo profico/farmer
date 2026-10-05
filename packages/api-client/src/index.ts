@@ -27,7 +27,9 @@ export { type JsonValue, jsonValueSchema } from "./json";
 export * from "./schemas";
 export * from "./schemas-admin";
 export * from "./schemas-assistant";
+export * from "./schemas-day";
 export * from "./schemas-member";
+export * from "./schemas-onboarding";
 export * from "./schemas-people";
 export { parseAssistantEvent, readAssistantEvents, SseDecoder } from "./sse";
 export {

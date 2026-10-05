@@ -24,6 +24,12 @@ export const metaSchema = z.object({
 	minCliVersion: z.string().optional(),
 	apiVersion: z.number().int().positive().default(1),
 	minMobileVersion: z.string().nullable().optional(),
+	/** The server stores images (`uploadImage`). Absent on a server from
+	 *  before API version 3: read it as false. */
+	uploadsEnabled: z.boolean().optional(),
+	/** A person may make a workspace (`createOrganization`). False in
+	 *  single-org mode. Absent before API version 3: read it as false. */
+	organizationCreation: z.boolean().optional(),
 });
 export type Meta = z.output<typeof metaSchema>;
 
@@ -83,6 +89,24 @@ export type Whoami = z.output<typeof whoamiSchema>;
 
 const clientRef = z.object({ id: z.string(), name: z.string() });
 
+/** The calendar event of a synced meeting changed after the person edited
+ *  the entry. API version 3. */
+export const calendarChangeSchema = z.object({
+	/** An instant, ISO 8601. */
+	changedAt: z.string(),
+	/** The values the sync wrote before the person's edit. */
+	from: z.object({
+		date: z.string().optional(),
+		durationSeconds: z.number().optional(),
+		description: z.string().optional(),
+	}),
+	/** What the calendar says now, or null when the event is gone. */
+	calendar: z
+		.object({ date: z.string(), durationSeconds: z.number() })
+		.nullable(),
+});
+export type CalendarChange = z.output<typeof calendarChangeSchema>;
+
 export const timeEntrySchema = z.object({
 	id: z.string(),
 	date: dayKey,
@@ -101,6 +125,9 @@ export const timeEntrySchema = z.object({
 			client: clientRef,
 		})
 		.nullable(),
+	/** Null when there is nothing to choose. Absent on a server from before
+	 *  API version 3. */
+	calendarChange: calendarChangeSchema.nullable().optional(),
 });
 export type TimeEntry = z.output<typeof timeEntrySchema>;
 

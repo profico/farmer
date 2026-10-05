@@ -60,3 +60,14 @@ export type HourFundEntry = Schemas["HourFundEntry"];
 export type HourFundMonthRef = Schemas["HourFundMonthRef"];
 export type HourFundYear = Schemas["HourFundYear"];
 export type OrganizationPatch = Schemas["OrganizationPatch"];
+export type ApplyDayAssembly = Schemas["ApplyDayAssembly"];
+export type AttachCommits = Schemas["AttachCommits"];
+export type AttachPullRequests = Schemas["AttachPullRequests"];
+export type LinkRepository = Schemas["LinkRepository"];
+export type ImageUpload = Schemas["ImageUpload"];
+export type OrgPolicyPatch = Schemas["OrgPolicyPatch"];
+export type HolidaySwitchChange = Schemas["HolidaySwitchChange"];
+export type NewOrganization = WithDefaults<
+	Schemas["NewOrganization"],
+	"timezone" | "country" | "weekStartsOn"
+>;
