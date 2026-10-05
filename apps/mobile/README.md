@@ -38,5 +38,12 @@ Rules:
   items.
 - Use an icon from `src/ui/icons.ts`. Do not type an arrow, a chevron or a
   check mark as text.
+- Take every colour from `usePalette()` (`src/ui/theme.ts`). Do not type a
+  hex colour in a screen. The palette follows More, "Display": the farmer
+  palette, a seed theme or Material You, light or dark, and high contrast.
+  `useTheme()` also gives the scheme and the seed for a native `Host`;
+  `ControlHost` and `useHostTheme()` (`src/ui/host.tsx`) apply them.
+- Before an animation, read `useMotionPreference()` (`src/ui/motion.ts`).
+  When `reduceMotion` is true, use a fade or no animation.
 - Use a method of `FarmerClient` (`@farmer/api-client`) for each route.
   Put each query in `src/api/`, with a key that starts with `scope(w)`.

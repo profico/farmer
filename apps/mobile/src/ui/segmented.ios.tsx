@@ -1,6 +1,7 @@
 import { Host, Picker, Text } from "@expo/ui/swift-ui";
 import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 
+import { useHostTheme } from "./host";
 import type { SegmentedControlProps } from "./segmented";
 
 export function SegmentedControl<T extends string>({
@@ -8,8 +9,13 @@ export function SegmentedControl<T extends string>({
 	value,
 	onChange,
 }: SegmentedControlProps<T>) {
+	const hostTheme = useHostTheme();
 	return (
-		<Host matchContents={{ vertical: true }} style={{ alignSelf: "stretch" }}>
+		<Host
+			matchContents={{ vertical: true }}
+			style={{ alignSelf: "stretch" }}
+			{...hostTheme}
+		>
 			<Picker<string>
 				selection={value}
 				onSelectionChange={(selection) => {

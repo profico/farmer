@@ -6,6 +6,7 @@ import {
 } from "@expo/ui/jetpack-compose";
 import { fillMaxWidth } from "@expo/ui/jetpack-compose/modifiers";
 
+import { useHostTheme } from "./host";
 import type { SegmentedControlProps } from "./segmented";
 
 export function SegmentedControl<T extends string>({
@@ -13,8 +14,13 @@ export function SegmentedControl<T extends string>({
 	value,
 	onChange,
 }: SegmentedControlProps<T>) {
+	const hostTheme = useHostTheme();
 	return (
-		<Host matchContents={{ vertical: true }} style={{ alignSelf: "stretch" }}>
+		<Host
+			matchContents={{ vertical: true }}
+			style={{ alignSelf: "stretch" }}
+			{...hostTheme}
+		>
 			<SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
 				{options.map((option) => (
 					<SegmentedButton

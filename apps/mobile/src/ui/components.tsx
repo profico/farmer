@@ -16,6 +16,7 @@ import {
 import { ControlHost } from "./host";
 import { Icon } from "./icon";
 import type { IconName } from "./icons";
+import { useMotionPreference } from "./motion";
 import { usePalette } from "./theme";
 import { SPACE, TYPE, type TypeVariant } from "./type";
 
@@ -295,7 +296,8 @@ export function Field({
 	);
 }
 
-/** A grey block that pulses while content loads. */
+/** A grey block that pulses while content loads. With less motion it stays
+ *  still: a pulse is not the information, the block is. */
 export function Skeleton({
 	height,
 	width = "100%",
@@ -306,8 +308,13 @@ export function Skeleton({
 	radius?: number;
 }) {
 	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
 	const [opacity] = useState(() => new Animated.Value(0.5));
 	useEffect(() => {
+		if (reduceMotion) {
+			opacity.setValue(0.75);
+			return;
+		}
 		const loop = Animated.loop(
 			Animated.sequence([
 				Animated.timing(opacity, {
@@ -324,7 +331,7 @@ export function Skeleton({
 		);
 		loop.start();
 		return () => loop.stop();
-	}, [opacity]);
+	}, [opacity, reduceMotion]);
 	return (
 		<Animated.View
 			accessibilityLabel="Loading"

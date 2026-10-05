@@ -48,6 +48,10 @@ export const ICONS = {
 	audit: { md: "fact-check", sf: "list.bullet.clipboard" },
 	assistant: { md: "auto-awesome", sf: "sparkles" },
 	settings: { md: "settings", sf: "gearshape" },
+	display: { md: "brightness-medium", sf: "circle.lefthalf.filled" },
+	wallpaper: { md: "wallpaper", sf: "photo" },
+	contrast: { md: "contrast", sf: "circle.righthalf.filled" },
+	motion: { md: "animation", sf: "figure.walk.motion" },
 } as const;
 
 export type IconName = keyof typeof ICONS;

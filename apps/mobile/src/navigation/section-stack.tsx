@@ -2,12 +2,15 @@ import { Redirect, Stack } from "expo-router";
 import { Platform } from "react-native";
 
 import { useSignedIn } from "../session/session";
+import { useMotionPreference } from "../ui/motion";
 import { usePalette } from "../ui/theme";
 
 /** The header of a pushed screen, in the theme of the app. */
 export const useStackOptions = () => {
 	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
 	return {
+		animation: reduceMotion ? ("fade" as const) : ("default" as const),
 		contentStyle: { backgroundColor: palette.background },
 		headerStyle: { backgroundColor: palette.background },
 		// iOS tints the back button with the accent by itself, and its

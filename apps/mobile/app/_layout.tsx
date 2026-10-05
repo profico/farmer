@@ -6,12 +6,16 @@ import { Platform } from "react-native";
 
 import { DataProvider } from "../src/api/data-provider";
 import { SessionProvider, useSession } from "../src/session/session";
+import { useMotionPreference } from "../src/ui/motion";
 import { usePalette } from "../src/ui/theme";
 
 function Navigator() {
 	const { state } = useSession();
 	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
 
+	// The window behind every screen follows the theme, so a transition
+	// never shows a colour from another theme behind a screen.
 	useEffect(() => {
 		void SystemUI.setBackgroundColorAsync(palette.background);
 	}, [palette.background]);
@@ -36,6 +40,8 @@ function Navigator() {
 			screenOptions={{
 				headerShown: false,
 				contentStyle: { backgroundColor: palette.background },
+				// Less motion: a screen fades in, and nothing slides.
+				animation: reduceMotion ? "fade" : "default",
 			}}
 		>
 			<Stack.Protected guard={signedIn}>
