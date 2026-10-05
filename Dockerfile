@@ -42,6 +42,12 @@ COPY packages/core/package.json packages/core/
 # shipped in the runtime stage below. Its binaries come from GitHub Releases
 # (.github/workflows/cli-release.yml).
 COPY apps/cli/package.json apps/cli/
+# The same is true of the mobile app and its API client. Their manifests make
+# this stage download the Expo dependencies, but nothing from either is built
+# here, and the runtime stage below installs only docker/runtime.package.json,
+# so the shipped image does not grow.
+COPY apps/mobile/package.json apps/mobile/
+COPY packages/api-client/package.json packages/api-client/
 # Cap network concurrency and retry: the default 48 parallel requests saturate
 # a shared/constrained builder (the Coolify arm64 host runs many containers and
 # builds --no-cache, re-downloading everything each time), which has corrupted a
