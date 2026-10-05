@@ -222,14 +222,24 @@ export function HomePreview() {
 							label="This week"
 							value="14.50"
 							of="40.00"
-							sub="25.50 to go"
+							sub={
+								<>
+									<span style={{ color: "var(--acc)" }}>6.50 ahead</span> of the
+									8.00 due before today
+								</>
+							}
 							percent={36}
 						/>
 						<Metric
 							label="This month"
 							value="38.00"
 							of="184.00"
-							sub="6 of 23 working days done"
+							sub={
+								<>
+									<span style={{ color: "var(--bad)" }}>10.00 short</span> of
+									the 48.00 due before today · 6 of 23 working days done
+								</>
+							}
 							percent={21}
 						/>
 					</div>
