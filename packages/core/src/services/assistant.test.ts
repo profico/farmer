@@ -2958,4 +2958,13 @@ describe("what an error that ends a turn may say", () => {
 			userFacingAssistantError(new Error("connect ECONNREFUSED 10.0.0.5:5432")),
 		).toBeNull();
 	});
+
+	test("a stream cut keeps the provider's text out of the answer", () => {
+		const cut = new OpenRouterStreamCutError(turn(), {
+			code: 502,
+			message: "upstream host 10.0.0.5 refused the request",
+		});
+		expect(cut.message).toContain("10.0.0.5");
+		expect(userFacingAssistantError(cut)).toBeNull();
+	});
 });
