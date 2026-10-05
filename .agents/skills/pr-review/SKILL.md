@@ -3,7 +3,7 @@ name: pr-review
 description: "Review a farmer branch or pull request for correctness before it is marked ready, or review another person's PR. Checks each dependency claim against its source, sweeps for sibling sites and other paths into the changed code, and runs the tests on main and on the branch. Use before marking a PR ready, after pushing a review fix, or when asked to review a PR."
 argument-hint: "[PR number | branch | commit] [--post]"
 context: fork
-model: fable
+model: opus
 effort: xhigh
 ---
 
