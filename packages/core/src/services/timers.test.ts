@@ -943,6 +943,47 @@ describe("continuing an entry (issue #107)", () => {
 		expect(saved.date).toBe("2026-08-09");
 	});
 
+	test("a confirm with no project is refused when the project was archived", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(project)
+			.set({ status: "archived" })
+			.where(eq(project.id, projectId));
+
+		try {
+			await expect(
+				timersService.confirm(ctx(), { overtime: false }, { now: later(HOUR) }),
+			).rejects.toThrow(/archived/);
+			expect(
+				await timersService.get(ctx(), { now: later(HOUR) }),
+			).not.toBeNull();
+		} finally {
+			await db
+				.update(project)
+				.set({ status: "active" })
+				.where(eq(project.id, projectId));
+		}
+	});
+
+	test("a confirm with measuredSeconds adds them to the live entry hours", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ durationSeconds: 2 * HOUR })
+			.where(eq(timeEntry.id, entry.id));
+
+		// The clock still runs for 90 minutes, but the person saw 30.
+		const saved = await timersService.confirm(
+			ctx(),
+			{ measuredSeconds: 30 * 60, overtime: false },
+			{ now: later(90 * 60) },
+		);
+
+		expect(saved.durationSeconds).toBe(2 * HOUR + 30 * 60);
+	});
+
 	test("refuses a work-time block", async () => {
 		const entry = await insertEntry({ fillsDay: true });
 

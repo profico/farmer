@@ -444,11 +444,12 @@ export function StopTimerDialog({
 						form: { duration, date, projectId, taskId, description },
 						filled: filledFrom.current,
 						seconds,
+						entrySeconds: timer.entrySeconds,
 					}),
 					overtime: false,
 				},
 			}),
-		onSuccess: async () => {
+		onSuccess: async (entry) => {
 			// What was LOGGED is the habit, not what was started: somebody who
 			// starts on one project and files the measurement against another has
 			// told you where the next timer belongs.
@@ -456,8 +457,8 @@ export function StopTimerDialog({
 			await invalidateAfterTimer(queryClient, orgSlug, true);
 			toast.success(
 				continuing
-					? `Updated the entry to ${formatClock(seconds)}`
-					: `Logged ${formatClock(seconds)}`,
+					? `Updated the entry to ${formatClock(entry.durationSeconds)}`
+					: `Logged ${formatClock(entry.durationSeconds)}`,
 			);
 			onOpenChange(false);
 		},

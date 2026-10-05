@@ -18,16 +18,20 @@ export type StopPayloadFields = {
 	taskId?: string;
 	description?: string;
 	durationSeconds?: number;
+	measuredSeconds?: number;
 };
 
 export const stopPayloadFields = ({
 	form,
 	filled,
 	seconds,
+	entrySeconds,
 }: {
 	form: StopFields;
 	/** The form's duration, read and snapped. */
 	seconds: number;
+	/** What the entry held, which the figure already includes. */
+	entrySeconds: number;
 	/** The values the form was last filled with from the timer. */
 	filled: StopFields | null;
 }): StopPayloadFields => {
@@ -38,6 +42,12 @@ export const stopPayloadFields = ({
 	if (!untouched("projectId")) fields.projectId = form.projectId;
 	if (!untouched("taskId")) fields.taskId = form.taskId;
 	if (!untouched("description")) fields.description = form.description.trim();
-	if (!untouched("duration")) fields.durationSeconds = seconds;
+	// An untouched figure is sent as its measured part, so the server adds the
+	// entry's live hours and the person's inline edit survives.
+	if (untouched("duration")) {
+		fields.measuredSeconds = Math.max(0, seconds - entrySeconds);
+	} else {
+		fields.durationSeconds = seconds;
+	}
 	return fields;
 };

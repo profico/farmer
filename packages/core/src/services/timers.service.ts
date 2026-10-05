@@ -447,6 +447,14 @@ export const timersService = {
 	 * taken from the entry: an absent project or note keeps the entry's, and the
 	 * overtime mark is kept, since no surface that confirms a timer shows it.
 	 *
+	 * Every input field but `overtime` is optional, and an absent date, project,
+	 * task or note takes the live value, read under the lock: the entry's own,
+	 * or the timer's copy once the entry is gone. The duration is the entry's
+	 * live hours plus the measured part, snapped. A caller that read the timer
+	 * sends that part as `measuredSeconds`, so what is saved is what the person
+	 * saw. Without it the server uses its own measured time. `durationSeconds`
+	 * wins when sent.
+	 *
 	 * Everything is read INSIDE the transaction, and the continued entry is
 	 * locked there before it is written. An entry deleted in another tab has
 	 * then either gone already — the lock finds nothing, and the figure becomes
@@ -475,31 +483,6 @@ export const timersService = {
 				);
 			}
 
-			// An absent field takes the live value. `rowOf` already gives the
-			// entry's own, or the timer's copy once the entry is gone.
-			const projectId =
-				input.projectId === undefined ? row.projectId : input.projectId;
-			const taskId = input.taskId ?? row.taskId;
-			const description = input.description ?? row.description;
-			const durationSeconds =
-				input.durationSeconds ?? viewOf(txCtx, row, now).snappedSeconds;
-
-			if (input.projectId) {
-				const live = await ctxDb(txCtx).query.project.findFirst({
-					where: and(
-						eq(project.id, input.projectId),
-						eq(project.organizationId, ctx.organizationId),
-						eq(project.status, "active"),
-					),
-					columns: { id: true },
-				});
-				if (!live) {
-					throw new Error(
-						"That project is archived. Pick another one for this time.",
-					);
-				}
-			}
-
 			// FOR UPDATE, and a query of its own: Postgres cannot lock the
 			// nullable side of the outer join `rowOf` reads the entry through.
 			const [continued] = row.timeEntryId
@@ -508,7 +491,9 @@ export const timersService = {
 							id: timeEntry.id,
 							date: timeEntry.date,
 							projectId: timeEntry.projectId,
+							taskId: timeEntry.taskId,
 							description: timeEntry.description,
+							durationSeconds: timeEntry.durationSeconds,
 							overtime: timeEntry.overtime,
 						})
 						.from(timeEntry)
@@ -522,6 +507,42 @@ export const timersService = {
 						.for("update")
 				: [];
 
+			// An absent field takes the live value. The locked read gives the
+			// entry's own, so an edit that committed after `rowOf` read is seen.
+			// With no entry, `rowOf` gives the timer's copy.
+			const projectId =
+				input.projectId === undefined
+					? continued
+						? continued.projectId
+						: row.projectId
+					: input.projectId;
+			const taskId = input.taskId ?? continued?.taskId ?? row.taskId;
+			const description = input.description ?? row.description;
+			// The measured part the person saw, else the server's own. The
+			// entry's hours are the live ones, from the locked read.
+			const durationSeconds =
+				input.durationSeconds ??
+				snapToQuarterHour(
+					(continued?.durationSeconds ?? 0) +
+						(input.measuredSeconds ?? elapsedOf(row, now)),
+				);
+
+			if (projectId) {
+				const live = await ctxDb(txCtx).query.project.findFirst({
+					where: and(
+						eq(project.id, projectId),
+						eq(project.organizationId, ctx.organizationId),
+						eq(project.status, "active"),
+					),
+					columns: { id: true },
+				});
+				if (!live) {
+					throw new Error(
+						"That project is archived. Pick another one for this time.",
+					);
+				}
+			}
+
 			const date =
 				input.date ??
 				continued?.date ??
@@ -530,10 +551,7 @@ export const timersService = {
 				? await timeEntriesService.update(txCtx, {
 						timeEntryId: continued.id,
 						date,
-						projectId:
-							(input.projectId === undefined
-								? continued.projectId
-								: input.projectId) ?? undefined,
+						projectId: projectId ?? undefined,
 						taskId,
 						description: input.description ?? continued.description,
 						durationSeconds,

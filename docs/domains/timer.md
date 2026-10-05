@@ -177,12 +177,14 @@ through `timersService.start`, and both still end in `confirm`.
   ABSENT one takes the live value: the entry's own for a timer that continues
   one, and the timer's copy once the entry is gone. That covers `date`,
   `projectId`, `taskId`, `description` and `durationSeconds`. The duration
-  absent is the live entry hours plus the measured time, snapped to a quarter
-  hour. Without an entry the date is the day the clock started, in the
+  absent is the live entry hours (read under the lock) plus the measured
+  part, snapped to a quarter hour. The Stop dialog sends the part it showed as
+  `measuredSeconds`, so what is saved is what the person saw. Without it the
+  server uses its own measured time. `durationSeconds` wins when sent. Without an entry the date is the day the clock started, in the
   organization's timezone. `null` clears the project and `""` clears the note.
   The Stop dialog leaves out each field that the person did not edit
   (`stopPayloadFields`), because its copy can be older than an edit that is
-  still in flight. The CLI and REST keep sending all fields.
+  still in flight. The CLI and REST may keep sending all fields.
   `durationSeconds` is the entry's new total, so `farmer stop --duration` on a
   continued entry adds the typed figure to what the entry held, as
   `farmer edit --add` does.

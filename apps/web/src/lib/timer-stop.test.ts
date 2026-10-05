@@ -12,9 +12,14 @@ const filled = {
 
 describe("stopPayloadFields", () => {
 	test("leaves out every field the person did not edit", () => {
-		expect(stopPayloadFields({ form: filled, filled, seconds: 3600 })).toEqual(
-			{},
-		);
+		expect(
+			stopPayloadFields({
+				form: filled,
+				filled,
+				seconds: 3600,
+				entrySeconds: 1800,
+			}),
+		).toEqual({ measuredSeconds: 1800 });
 	});
 
 	test("sends a field the person edited", () => {
@@ -28,6 +33,7 @@ describe("stopPayloadFields", () => {
 				},
 				filled,
 				seconds: 5400,
+				entrySeconds: 1800,
 			}),
 		).toEqual({
 			projectId: "p2",
@@ -42,8 +48,9 @@ describe("stopPayloadFields", () => {
 				form: { ...filled, description: "", projectId: null },
 				filled,
 				seconds: 3600,
+				entrySeconds: 1800,
 			}),
-		).toEqual({ description: "", projectId: null });
+		).toEqual({ description: "", projectId: null, measuredSeconds: 1800 });
 	});
 
 	test("sends the date and the task when edited", () => {
@@ -52,13 +59,19 @@ describe("stopPayloadFields", () => {
 				form: { ...filled, date: "2026-08-09", taskId: "t2" },
 				filled,
 				seconds: 3600,
+				entrySeconds: 1800,
 			}),
-		).toEqual({ date: "2026-08-09", taskId: "t2" });
+		).toEqual({ date: "2026-08-09", taskId: "t2", measuredSeconds: 1800 });
 	});
 
 	test("sends every field before the form was filled", () => {
 		expect(
-			stopPayloadFields({ form: filled, filled: null, seconds: 3600 }),
+			stopPayloadFields({
+				form: filled,
+				filled: null,
+				seconds: 3600,
+				entrySeconds: 1800,
+			}),
 		).toEqual({
 			date: "2026-08-10",
 			projectId: "p1",
