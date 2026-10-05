@@ -175,8 +175,10 @@ through `timersService.start`, and both still end in `confirm`.
 
   `update` is a full-form edit, so `confirm` fills what the caller left out
   from the entry: an ABSENT `projectId` or `description` keeps the entry's,
-  `null` clears the project and `""` clears the note. Both clients send what
-  their form holds. `durationSeconds` is the entry's new total, so
+  `null` clears the project and `""` clears the note. The CLI sends what its
+  form holds. The Stop dialog leaves out a project or note that the person did
+  not edit (`stopPayloadFields`), because its copy can be older than an inline
+  edit that is still in flight. The server then keeps the live value. `durationSeconds` is the entry's new total, so
   `farmer stop --duration` on a continued entry adds the typed figure to what
   the entry held, as `farmer edit --add` does.
 

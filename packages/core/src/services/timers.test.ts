@@ -699,6 +699,35 @@ describe("continuing an entry (issue #107)", () => {
 		);
 	});
 
+	test("keeps the live note when the confirm sends no note", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ description: "Edited while running" })
+			.where(eq(timeEntry.id, entry.id));
+
+		// The Stop form held the old note and the person did not edit it.
+		const view = present(
+			await timersService.get(ctx(), { now: later(30 * 60) }),
+			"the running timer",
+		);
+		await timersService.confirm(ctx(), {
+			date: "2026-08-10",
+			taskId: view.taskId,
+			durationSeconds: view.snappedSeconds,
+			overtime: false,
+		});
+
+		const [row] = await db
+			.select()
+			.from(timeEntry)
+			.where(eq(timeEntry.id, entry.id));
+		expect(present(row, "the continued entry").description).toBe(
+			"Edited while running",
+		);
+	});
+
 	test("an edit made while the clock was held is kept as well", async () => {
 		const entry = await insertEntry();
 		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });

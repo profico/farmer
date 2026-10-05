@@ -36,6 +36,7 @@ import { Label } from "#/components/ui/label.tsx";
 import { Textarea } from "#/components/ui/textarea.tsx";
 import { readLastPick, rememberLastPick } from "#/lib/entry-options.ts";
 import { formatClock } from "#/lib/format-hours.ts";
+import { stopPayloadFields } from "#/lib/timer-stop.ts";
 import { queryKeys } from "#/queries/keys.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
 import { tasksForProjectQuery } from "#/queries/tasks.ts";
@@ -437,12 +438,18 @@ export function StopTimerDialog({
 			confirmTimer({
 				data: {
 					date,
-					// Null and "" rather than absent: on a timer that continues an
-					// entry, an absent project or note keeps the entry's, and this
-					// form shows both, so what it holds is what is meant.
-					projectId,
+					// A field the person did not edit is left out on a timer that
+					// continues an entry, so the server keeps the entry's live value.
+					// Null and "" still clear the project and the note.
+					...stopPayloadFields({
+						continuing,
+						form: { projectId, description },
+						filled: filledFrom.current && {
+							projectId: filledFrom.current.projectId,
+							description: filledFrom.current.description,
+						},
+					}),
 					taskId,
-					description: description.trim(),
 					durationSeconds: seconds,
 					overtime: false,
 				},
