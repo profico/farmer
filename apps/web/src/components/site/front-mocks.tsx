@@ -229,7 +229,7 @@ export function HomePreview() {
 							label="This month"
 							value="38.00"
 							of="184.00"
-							sub="day 6 of 23"
+							sub="6 of 23 working days done"
 							percent={21}
 						/>
 					</div>
@@ -459,7 +459,12 @@ export function TimesheetMock() {
 						label="This month"
 						value="62.25"
 						of="184.00"
-						sub="day 9 of 23"
+						sub={
+							<>
+								<span style={{ color: "var(--bad)" }}>1.75 short</span> of the
+								64.00 due before today
+							</>
+						}
 						percent={34}
 					/>
 				</div>

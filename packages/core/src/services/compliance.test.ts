@@ -538,6 +538,7 @@ describe("my targets", () => {
 		const mine = await complianceService.myTargets(ctxOf(CONTRACTOR), AT);
 		expect(mine.week.totalSeconds).toBe(5 * H);
 		expect(mine.week.targetSeconds).toBeNull();
+		expect(mine.week.targetSoFarSeconds).toBeNull();
 		expect(mine.week.status).toBeNull();
 		expect(mine.month.targetSeconds).toBeNull();
 		expect(mine.month.status).toBeNull();
@@ -567,13 +568,6 @@ describe("the running target", () => {
 
 	afterEach(async () => {
 		await setOrg({ timezone: "UTC", weekStartsOn: 1 });
-	});
-
-	test("Thursday counts Monday to Wednesday, not Thursday", async () => {
-		const mine = await mineAt("2026-04-16T12:00:00Z");
-		expect(mine.week.workingDaysElapsed).toBe(3);
-		expect(mine.week.targetSoFarSeconds).toBe(24 * H);
-		expect(mine.week.targetSeconds).toBe(40 * H);
 	});
 
 	test("every weekday adds one day to the target so far", async () => {
@@ -714,14 +708,6 @@ describe("the running target", () => {
 		expect(mine.today).toBe("2026-03-08");
 		expect(mine.week.from).toBe("2026-03-02");
 		expect(mine.week.targetSoFarSeconds).toBe(40 * H);
-	});
-
-	test("no target at all for an hourly person, in any week", async () => {
-		const mine = await complianceService.myTargets(ctxOf(CONTRACTOR), {
-			now: new Date("2026-04-16T12:00:00Z"),
-		});
-		expect(mine.week.targetSoFarSeconds).toBeNull();
-		expect(mine.week.status).toBeNull();
 	});
 });
 

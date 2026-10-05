@@ -58,7 +58,7 @@ describe("the target gap sentence", () => {
 		const text = textOf(
 			period({ targetSoFarSeconds: 0, workingDaysElapsed: 0 }),
 		);
-		expect(text).toContain("due before today");
+		expect(text).toBe("0,00 ahead of the 0,00 due before today");
 	});
 
 	test("no target stays No target", () => {
