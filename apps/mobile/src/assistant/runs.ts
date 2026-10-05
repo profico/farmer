@@ -162,7 +162,9 @@ export const useRunActions = (): RunActions => {
 				const error =
 					caught instanceof Error ? caught : new Error(String(caught));
 				// A stop aborts the request. It is not a failure to explain.
-				if (mine() && error.name !== "AbortError") {
+				// `expo/fetch` reports an abort as a `FetchError` or as the
+				// signal's reason, so the signal is the test, not the error.
+				if (mine() && !controller.signal.aborted) {
 					patch(key, (state) => ({ ...state, error: failureText(error) }));
 				}
 			} finally {

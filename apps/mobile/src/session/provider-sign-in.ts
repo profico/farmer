@@ -4,6 +4,7 @@ import { createAuthClient } from "better-auth/client";
 import { randomUUID } from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
+import { Platform } from "react-native";
 import { z } from "zod";
 
 import { callbackUrlFor, FlowKeeper } from "./auth-flow";
@@ -123,6 +124,15 @@ export const signInWithProvider = async (
 		const answer = startAnswer.safeParse(started.data);
 		if (!answer.success) return { kind: "error", message: START_FAILED };
 
+		// An auth session that is still open on Android makes the next one
+		// fail. The expo client closes it the same way.
+		if (Platform.OS === "android") {
+			try {
+				WebBrowser.dismissAuthSession();
+			} catch {
+				// Nothing was open.
+			}
+		}
 		const proxy = `${origin}/api/auth/expo-authorization-proxy?${new URLSearchParams({ authorizationURL: answer.data.url })}`;
 		const result = await WebBrowser.openAuthSessionAsync(proxy, callbackURL);
 		if (result.type !== "success") return { kind: "cancelled" };
