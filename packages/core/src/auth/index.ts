@@ -1,3 +1,4 @@
+import { expo } from "@better-auth/expo";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import {
@@ -72,6 +73,12 @@ import {
 	OAUTH_CONSENT_PATH,
 	oauthConsentRequest,
 } from "./mcp-consent";
+import {
+	assertExpoProxyTarget,
+	EXPO_PROXY_PATH,
+	expoProxyQuery,
+	MOBILE_TRUSTED_ORIGINS,
+} from "./mobile-sign-in";
 import {
 	assertMayRegister,
 	PASSWORD_SIGN_UP_PATH,
@@ -317,6 +324,8 @@ const buildAuth = () => {
 	const singleOrg = singleOrgSlug() !== null;
 	return betterAuth({
 		database: drizzleAdapter(db, { provider: "pg", schema }),
+		// The mobile app's scheme, and nothing else. See `./mobile-sign-in.ts`.
+		trustedOrigins: MOBILE_TRUSTED_ORIGINS,
 		// On in every environment, and closed by two gates rather than by this
 		// switch, because production needs it for exactly one person:
 		//
@@ -478,6 +487,20 @@ const buildAuth = () => {
 					} catch (error) {
 						console.error("[audit] could not record a sign-out", error);
 					}
+					return;
+				}
+				// The mobile sign-in's browser leg; see `./mobile-sign-in.ts`.
+				// A query that does not parse is the endpoint's own 400.
+				if (ctx.path === EXPO_PROXY_PATH) {
+					const query = expoProxyQuery.safeParse(ctx.query);
+					if (!query.success) return;
+					await assertExpoProxyTarget(
+						query.data,
+						async (state) =>
+							(await ctx.context.internalAdapter.findVerificationValue(state))
+								?.value ?? null,
+						(url) => ctx.context.isTrustedOrigin(url),
+					);
 					return;
 				}
 				// MCP consent, one check per endpoint; see `./mcp-consent.ts`.
@@ -1041,6 +1064,8 @@ const buildAuth = () => {
 				// session instead of leaving them at the login screen.
 				impersonationSessionDuration: 60 * 60,
 			}),
+			// The mobile app's sign-in (ADR 0005). See `./mobile-sign-in.ts`.
+			expo(),
 			// tanstackStartCookies MUST stay last — see better-auth/better-auth#5639
 			tanstackStartCookies(),
 		],

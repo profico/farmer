@@ -14,6 +14,8 @@ import {
 	test,
 } from "bun:test";
 
+import { z } from "zod";
+
 import { db } from "../db";
 import { user } from "../db/schema/auth";
 import { setInstanceSettingsForTests } from "../lib/instance-settings";
@@ -119,5 +121,77 @@ describe("the device flow client ids", () => {
 		const response = await start("somebody-else");
 		expect(response.status).toBe(400);
 		expect(await response.json()).toMatchObject({ error: "invalid_client" });
+	});
+});
+
+// The callback check itself is not here: better-auth skips the origin check
+// under NODE_ENV=test. `scripts/mobile-sign-in-spike.ts` covers it against a
+// running server.
+describe("the Expo sign-in", () => {
+	const ORIGIN = "http://localhost:3000";
+	const APP = "farmer://auth-callback";
+
+	const startGoogle = (callbackURL: string) =>
+		auth.handler(
+			new Request(`${ORIGIN}/api/auth/sign-in/social`, {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"expo-origin": "farmer://",
+				},
+				body: JSON.stringify({ provider: "google", callbackURL }),
+			}),
+		);
+
+	const proxy = (query: Record<string, string>) =>
+		auth.handler(
+			new Request(
+				`${ORIGIN}/api/auth/expo-authorization-proxy?${new URLSearchParams(query)}`,
+			),
+		);
+
+	const googleConfigured = () =>
+		setInstanceSettingsForTests({
+			GOOGLE_CLIENT_ID: "client-id",
+			GOOGLE_CLIENT_SECRET: "client-secret",
+		});
+
+	test("starts a sign-in that returns to the app", async () => {
+		googleConfigured();
+		const started = await startGoogle(APP);
+		expect(started.status).toBe(200);
+		const { url } = z.object({ url: z.string() }).parse(await started.json());
+		const sent = await proxy({ authorizationURL: url });
+		expect(sent.status).toBe(302);
+		expect(sent.headers.get("location")).toBe(url);
+	});
+
+	test("the proxy sends a browser only to a configured provider", async () => {
+		googleConfigured();
+		const started = await startGoogle(APP);
+		const { url } = z.object({ url: z.string() }).parse(await started.json());
+		const state = new URL(url).searchParams.get("state") ?? "";
+		const queries: Record<string, string>[] = [
+			{ authorizationURL: `https://evil.example/?state=${state}` },
+			{ authorizationURL: url, oauthState: "x" },
+			{
+				authorizationURL:
+					"https://accounts.google.com/o/oauth2/v2/auth?state=forged",
+			},
+		];
+		for (const query of queries) {
+			const sent = await proxy(query);
+			expect(sent.status).toBe(400);
+			expect(await sent.json()).toMatchObject({
+				code: "INVALID_AUTHORIZATION_URL",
+			});
+		}
+	});
+
+	test("the proxy refuses a web sign-in's state", async () => {
+		googleConfigured();
+		const started = await startGoogle("/");
+		const { url } = z.object({ url: z.string() }).parse(await started.json());
+		expect((await proxy({ authorizationURL: url })).status).toBe(400);
 	});
 });
