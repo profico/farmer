@@ -9,7 +9,7 @@ import { apiRoute, NO_INPUT } from "#/server/api-route.ts";
  * put these hours", and the projection leaves out the stats and money that
  * `enrichedProjects` carries.
  */
-export const Route = createFileRoute("/api/v1/orgs/$orgSlug/projects")({
+export const Route = createFileRoute("/api/v1/orgs/$orgSlug/projects/")({
 	server: {
 		handlers: {
 			GET: apiRoute({
