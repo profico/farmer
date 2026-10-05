@@ -885,6 +885,64 @@ describe("continuing an entry (issue #107)", () => {
 		expect(await timersService.get(ctx(), { now: later(HOUR) })).toBeNull();
 	});
 
+	// The Stop form leaves out a field the person did not edit, and the entry
+	// the timer continued was deleted before Save. The timer's own copy stands.
+	test("a confirm with no project or note keeps the timer's copy once the entry is gone", async () => {
+		const entry = await insertEntry({ taskId: breakTaskId });
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db.delete(timeEntry).where(eq(timeEntry.id, entry.id));
+
+		const saved = await timersService.confirm(
+			ctx(),
+			{ overtime: false },
+			{ now: later(30 * 60) },
+		);
+
+		expect(saved.projectId).toBe(projectId);
+		expect(saved.taskId).toBe(breakTaskId);
+		expect(saved.description).toBe("Yesterday's work");
+		// The entry's day went with it, so the day the clock started stands.
+		expect(saved.date).toBe("2026-08-11");
+		expect(saved.durationSeconds).toBe(30 * 60);
+	});
+
+	test("a confirm with no duration adds the clock to the hours the entry holds now", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ durationSeconds: 2 * HOUR })
+			.where(eq(timeEntry.id, entry.id));
+
+		const saved = await timersService.confirm(
+			ctx(),
+			{ overtime: false },
+			{ now: later(30 * 60) },
+		);
+
+		expect(saved.id).toBe(entry.id);
+		expect(saved.durationSeconds).toBe(2 * HOUR + 30 * 60);
+	});
+
+	test("a confirm with no task, project or day keeps what the entry holds now", async () => {
+		const entry = await insertEntry();
+		await timersService.start(ctx(), { timeEntryId: entry.id }, { now: START });
+		await db
+			.update(timeEntry)
+			.set({ taskId: breakTaskId, projectId: null, date: "2026-08-09" })
+			.where(eq(timeEntry.id, entry.id));
+
+		const saved = await timersService.confirm(
+			ctx(),
+			{ overtime: false },
+			{ now: later(30 * 60) },
+		);
+
+		expect(saved.taskId).toBe(breakTaskId);
+		expect(saved.projectId).toBeNull();
+		expect(saved.date).toBe("2026-08-09");
+	});
+
 	test("refuses a work-time block", async () => {
 		const entry = await insertEntry({ fillsDay: true });
 

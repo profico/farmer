@@ -4,14 +4,14 @@ import { organization } from "../db/schema/auth";
 import { project, task, timeEntry } from "../db/schema/domain";
 import { runningTimer, timerSettings } from "../db/schema/timer";
 import { descriptionRequiredFor } from "../lib/task-rules";
-import { headStartTooLong, snapToQuarterHour } from "../lib/time";
+import { dayKeyInTz, headStartTooLong, snapToQuarterHour } from "../lib/time";
 import type {
 	ConfirmTimerInput,
 	StartTimerInput,
 	TimerSettingsInput,
 	UpdateTimerInput,
 } from "../schema/timer";
-import { ctxAccess, ctxDb, withCtxTx } from "./context";
+import { ctxAccess, ctxDb, ctxTimezone, withCtxTx } from "./context";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import { timeEntriesService } from "./time-entries.service";
 import type { Ctx } from "./types";
@@ -454,8 +454,16 @@ export const timersService = {
 	 * write to commit. Deleting the timer's row last, and requiring that it
 	 * still be there, is what stops two surfaces confirming one timer twice.
 	 */
-	confirm: async (ctx: Ctx, input: ConfirmTimerInput) =>
-		withCtxTx(ctx, async (txCtx) => {
+	confirm: async (
+		ctx: Ctx,
+		input: ConfirmTimerInput,
+		opts: { now?: Date } = {},
+	) => {
+		const now = opts.now ?? new Date();
+		// Resolved before the transaction opens: a cold lookup from inside it
+		// would queue behind the transaction on a single connection.
+		const timezone = input.date ? null : await ctxTimezone(ctx);
+		return withCtxTx(ctx, async (txCtx) => {
 			const [row] = await rowOf(txCtx, ctx.userId);
 			if (!row) throw new Error("No timer is running");
 			if (row.droppedAt) {
@@ -466,6 +474,15 @@ export const timersService = {
 					`This timer belongs to ${row.organizationName}. Stop it there.`,
 				);
 			}
+
+			// An absent field takes the live value. `rowOf` already gives the
+			// entry's own, or the timer's copy once the entry is gone.
+			const projectId =
+				input.projectId === undefined ? row.projectId : input.projectId;
+			const taskId = input.taskId ?? row.taskId;
+			const description = input.description ?? row.description;
+			const durationSeconds =
+				input.durationSeconds ?? viewOf(txCtx, row, now).snappedSeconds;
 
 			if (input.projectId) {
 				const live = await ctxDb(txCtx).query.project.findFirst({
@@ -489,6 +506,7 @@ export const timersService = {
 				? await ctxDb(txCtx)
 						.select({
 							id: timeEntry.id,
+							date: timeEntry.date,
 							projectId: timeEntry.projectId,
 							description: timeEntry.description,
 							overtime: timeEntry.overtime,
@@ -504,26 +522,30 @@ export const timersService = {
 						.for("update")
 				: [];
 
+			const date =
+				input.date ??
+				continued?.date ??
+				dayKeyInTz(row.startedAt, timezone ?? "UTC");
 			const entry = continued
 				? await timeEntriesService.update(txCtx, {
 						timeEntryId: continued.id,
-						date: input.date,
+						date,
 						projectId:
 							(input.projectId === undefined
 								? continued.projectId
 								: input.projectId) ?? undefined,
-						taskId: input.taskId,
+						taskId,
 						description: input.description ?? continued.description,
-						durationSeconds: input.durationSeconds,
+						durationSeconds,
 						overtime: input.overtime || continued.overtime,
 						fillsDay: false,
 					})
 				: await timeEntriesService.create(txCtx, {
-						date: input.date,
-						projectId: input.projectId ?? undefined,
-						taskId: input.taskId,
-						description: input.description,
-						durationSeconds: input.durationSeconds,
+						date,
+						projectId: projectId ?? undefined,
+						taskId,
+						description,
+						durationSeconds,
 						overtime: input.overtime,
 						fillsDay: false,
 					});
@@ -538,7 +560,8 @@ export const timersService = {
 			if (cleared.length === 0) throw new Error("No timer is running");
 
 			return entry;
-		}),
+		});
+	},
 
 	/** Throw the timer away — or clear the notice a dropped one left. */
 	discard: async (ctx: Ctx): Promise<void> => {

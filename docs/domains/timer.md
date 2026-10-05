@@ -173,14 +173,19 @@ through `timersService.start`, and both still end in `confirm`.
   `timer` prop instead: a field that the person has not edited takes the new
   server value, and an edited field stays.
 
-  `update` is a full-form edit, so `confirm` fills what the caller left out
-  from the entry: an ABSENT `projectId` or `description` keeps the entry's,
-  `null` clears the project and `""` clears the note. The CLI sends what its
-  form holds. The Stop dialog leaves out a project or note that the person did
-  not edit (`stopPayloadFields`), because its copy can be older than an inline
-  edit that is still in flight. The server then keeps the live value. `durationSeconds` is the entry's new total, so
-  `farmer stop --duration` on a continued entry adds the typed figure to what
-  the entry held, as `farmer edit --add` does.
+  Every field of the confirm input except `overtime` is optional, and an
+  ABSENT one takes the live value: the entry's own for a timer that continues
+  one, and the timer's copy once the entry is gone. That covers `date`,
+  `projectId`, `taskId`, `description` and `durationSeconds`. The duration
+  absent is the live entry hours plus the measured time, snapped to a quarter
+  hour. Without an entry the date is the day the clock started, in the
+  organization's timezone. `null` clears the project and `""` clears the note.
+  The Stop dialog leaves out each field that the person did not edit
+  (`stopPayloadFields`), because its copy can be older than an edit that is
+  still in flight. The CLI and REST keep sending all fields.
+  `durationSeconds` is the entry's new total, so `farmer stop --duration` on a
+  continued entry adds the typed figure to what the entry held, as
+  `farmer edit --add` does.
 
   `confirm` reads the timer inside its transaction and locks the continued
   entry (`FOR UPDATE`) before it writes. An entry deleted in another tab is

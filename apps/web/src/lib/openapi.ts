@@ -746,7 +746,7 @@ export const OPERATIONS: Operation[] = [
 		operationId: "confirmTimer",
 		summary: "Stop the timer and log the time",
 		description:
-			"Logs the entry and clears the timer. Send `snappedSeconds` from the timer as `durationSeconds`, or a figure the person corrected.",
+			"Logs the entry and clears the timer. Every field is optional, and an absent one takes the live value: the entry's own for a timer that continues one, else the timer's. Send `snappedSeconds` from the timer as `durationSeconds`, or a figure the person corrected.",
 		tag: "Timer",
 		body: confirmTimerInput,
 		response: apiTimeEntry,

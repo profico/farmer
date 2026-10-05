@@ -437,20 +437,14 @@ export function StopTimerDialog({
 		mutationFn: () =>
 			confirmTimer({
 				data: {
-					date,
-					// A field the person did not edit is left out on a timer that
-					// continues an entry, so the server keeps the entry's live value.
-					// Null and "" still clear the project and the note.
+					// A field the person did not edit is left out, so the server
+					// fills it with the live value. Null and "" still clear the
+					// project and the note.
 					...stopPayloadFields({
-						continuing,
-						form: { projectId, description },
-						filled: filledFrom.current && {
-							projectId: filledFrom.current.projectId,
-							description: filledFrom.current.description,
-						},
+						form: { duration, date, projectId, taskId, description },
+						filled: filledFrom.current,
+						seconds,
 					}),
-					taskId,
-					durationSeconds: seconds,
 					overtime: false,
 				},
 			}),
