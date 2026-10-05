@@ -1,40 +1,69 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Linking, View } from "react-native";
+import { useCallback, useState } from "react";
+import { View } from "react-native";
 
+import { useAccess } from "../../src/api/capabilities";
 import {
 	useEntries,
-	useStartTimer,
 	useTimer,
+	useTracking,
 	useUnfiled,
 	useWhoami,
-	useWorkspace,
 } from "../../src/api/queries";
-import { addDays, dayTitle, weekOf } from "../../src/lib/days";
-import { formatHours } from "../../src/lib/duration";
-import { canContinue, EntryRow } from "../../src/time/entry-row";
-import { TimerCard } from "../../src/time/timer-card";
-import { WeekStrip } from "../../src/time/week-strip";
+import {
+	useCopyDay,
+	useCopyWeek,
+	useHolidays,
+	useHome,
+	useSyncNow,
+} from "../../src/api/time";
+import { addDays, dayTitle, periodTitle, weekOf } from "../../src/lib/days";
+import {
+	daysOfMonth,
+	monthOf,
+	monthTitle,
+	shiftMonth,
+} from "../../src/time/calendar";
+import { DateJump } from "../../src/time/components/date-field";
+import { MoreMenu } from "../../src/time/components/more-menu";
+import { type Notice, Snackbar } from "../../src/time/components/snackbar";
+import { TargetsStrip } from "../../src/time/components/targets-strip";
+import { UnfiledBanner } from "../../src/time/components/unfiled-banner";
+import {
+	copyDayBody,
+	copyDayMessage,
+	copyWeekBody,
+	copyWeekMessage,
+} from "../../src/time/copy";
+import { DayView } from "../../src/time/day-view";
+import { committed } from "../../src/time/haptics";
+import { MonthView } from "../../src/time/month-view";
+import { syncMessage } from "../../src/time/sync";
+import { WeekView } from "../../src/time/week-view";
 import {
 	ActionButton,
-	Card,
-	EmptyState,
-	ErrorBanner,
 	ErrorState,
 	IconButton,
 	Skeleton,
 	Text,
 } from "../../src/ui/components";
 import { messageOf } from "../../src/ui/errors";
-import { Icon } from "../../src/ui/icon";
 import { Inset, Screen } from "../../src/ui/screen";
-import { usePalette } from "../../src/ui/theme";
+import { SegmentedControl } from "../../src/ui/segmented";
 import { SPACE } from "../../src/ui/type";
 
+type View3 = "day" | "week" | "month";
+
+const VIEWS: { value: View3; label: string }[] = [
+	{ value: "day", label: "Day" },
+	{ value: "week", label: "Week" },
+	{ value: "month", label: "Month" },
+];
+
 /**
- * The Time tab: one day of the person's own time, in the workspace's
- * calendar. The week around it is read in one request, so moving between
- * its days costs nothing.
+ * The Time tab: the person's own time, in the workspace's calendar, as a
+ * day, a week of rows or a month. The three views share one day, so a
+ * change of view keeps the place.
  */
 export default function TimeScreen() {
 	const whoami = useWhoami();
@@ -44,6 +73,7 @@ export default function TimeScreen() {
 			<Screen>
 				<Inset>
 					<Skeleton height={56} width="70%" />
+					<Skeleton height={40} />
 					<Skeleton height={72} />
 					<Skeleton height={132} radius={16} />
 				</Inset>
@@ -61,7 +91,7 @@ export default function TimeScreen() {
 		);
 	}
 	return (
-		<Day
+		<Timesheet
 			today={whoami.data.today}
 			weekStartsOn={whoami.data.weekStartsOn}
 			workspaceName={whoami.data.organization.name}
@@ -70,7 +100,7 @@ export default function TimeScreen() {
 	);
 }
 
-function Day({
+function Timesheet({
 	today,
 	weekStartsOn,
 	workspaceName,
@@ -81,172 +111,217 @@ function Day({
 	workspaceName: string;
 	onRefreshToday: () => void;
 }) {
-	const palette = usePalette();
 	const router = useRouter();
-	const { origin } = useWorkspace();
+	const { fullApi } = useAccess();
+	const [view, setView] = useState<View3>("day");
 	const [selected, setSelected] = useState(today);
-	const days = weekOf(selected, weekStartsOn);
-	const from = days[0] ?? selected;
-	const to = days[6] ?? selected;
-	const entries = useEntries(from, to);
-	const unfiled = useUnfiled(from, to);
-	const timer = useTimer();
-	const start = useStartTimer();
-
-	const totals = new Map<string, number>();
-	for (const entry of entries.data ?? []) {
-		totals.set(
-			entry.date,
-			(totals.get(entry.date) ?? 0) + entry.durationSeconds,
-		);
-	}
-	const dayEntries = (entries.data ?? []).filter(
-		(entry) => entry.date === selected,
+	const [notice, setNotice] = useState<Notice | null>(null);
+	const hideNotice = useCallback(() => setNotice(null), []);
+	const notify = useCallback(
+		(message: string, tone: "plain" | "warning" = "plain") =>
+			setNotice({ id: Date.now(), message, tone }),
+		[],
 	);
-	const timerFree = timer.isSuccess && timer.data.timer === null;
-	const unfiledCount = unfiled.data?.length ?? 0;
+
+	const days = weekOf(selected, weekStartsOn);
+	const weekFrom = days[0] ?? selected;
+	const weekTo = days[6] ?? selected;
+	const month = monthOf(selected);
+	const monthDays = daysOfMonth(month);
+	const monthFrom = monthDays[0] ?? selected;
+	const monthTo = monthDays.at(-1) ?? selected;
+	const from = view === "month" ? monthFrom : weekFrom;
+	const to = view === "month" ? monthTo : weekTo;
+
+	// One read of the range on screen. The day and the week share the key.
+	const entries = useEntries(from, to);
+	const holidays = useHolidays(from, to);
+	const unfiled = useUnfiled(from, to);
+	const tracking = useTracking();
+	const timer = useTimer();
+	const home = useHome(view === "week" && days.includes(today));
+	const copyDay = useCopyDay();
+	const copyWeek = useCopyWeek();
+	const sync = useSyncNow();
 
 	const refresh = () => {
 		onRefreshToday();
 		void entries.refetch();
 		void unfiled.refetch();
+		void tracking.refetch();
 		void timer.refetch();
+		if (view === "week" && days.includes(today)) void home.refetch();
+	};
+
+	const copyPreviousDay = () =>
+		copyDay.mutate(copyDayBody(selected), {
+			onSuccess: (result) => {
+				committed();
+				notify(copyDayMessage(result));
+			},
+			onError: (error) => notify(messageOf(error) ?? "", "warning"),
+		});
+	const copyPreviousWeek = () =>
+		copyWeek.mutate(copyWeekBody(weekFrom), {
+			onSuccess: (result) => {
+				const { message, warning } = copyWeekMessage(result);
+				committed();
+				notify(message, warning ? "warning" : "plain");
+			},
+			onError: (error) => notify(messageOf(error) ?? "", "warning"),
+		});
+	const syncNow = () =>
+		sync.mutate(undefined, {
+			onSuccess: (result) => {
+				const { message, warning } = syncMessage(result);
+				notify(message, warning ? "warning" : "plain");
+			},
+			onError: (error) => notify(messageOf(error) ?? "", "warning"),
+		});
+
+	const step = (direction: 1 | -1) => {
+		if (view === "day") setSelected(addDays(selected, direction));
+		else if (view === "week") setSelected(addDays(selected, 7 * direction));
+		else setSelected(`${shiftMonth(month, direction)}-01`);
+	};
+	const atNow =
+		view === "day"
+			? selected === today
+			: view === "week"
+				? days.includes(today)
+				: month === monthOf(today);
+	const label =
+		view === "day"
+			? dayTitle(selected, today)
+			: view === "week"
+				? periodTitle(weekFrom, weekTo)
+				: monthTitle(month);
+	const unit = view === "day" ? "day" : view === "week" ? "week" : "month";
+
+	const actions = [
+		{ id: "log", title: "Log time" },
+		...(fullApi
+			? [
+					view === "day"
+						? {
+								id: "copy-day",
+								title: "Copy the previous day",
+								disabled: copyDay.isPending,
+							}
+						: view === "week"
+							? {
+									id: "copy-week",
+									title: "Copy the previous week",
+									disabled: copyWeek.isPending,
+								}
+							: null,
+					{ id: "time-off", title: "Book time off" },
+					{ id: "sync", title: "Sync now", disabled: sync.isPending },
+				].flatMap((action) => (action ? [action] : []))
+			: []),
+	];
+	const onAction = (id: string) => {
+		switch (id) {
+			case "log":
+				router.push({
+					pathname: "/entry",
+					params: { date: selected, from: weekFrom, to: weekTo },
+				});
+				return;
+			case "copy-day":
+				copyPreviousDay();
+				return;
+			case "copy-week":
+				copyPreviousWeek();
+				return;
+			case "time-off":
+				router.push({ pathname: "/time/time-off", params: { date: selected } });
+				return;
+			case "sync":
+				syncNow();
+		}
 	};
 
 	return (
 		<Screen
 			overline={workspaceName}
-			title={dayTitle(selected, today)}
+			title="Time"
 			refreshing={entries.isRefetching}
 			onRefresh={refresh}
-			actions={
-				<View style={{ flexDirection: "row" }}>
-					<IconButton
-						icon="back"
-						label="The day before"
-						onPress={() => setSelected(addDays(selected, -1))}
-					/>
-					<IconButton
-						icon="calendar"
-						label="Today"
-						disabled={selected === today}
-						onPress={() => setSelected(today)}
-					/>
-					<IconButton
-						icon="forward"
-						label="The day after"
-						onPress={() => setSelected(addDays(selected, 1))}
-					/>
-				</View>
-			}
+			actions={<MoreMenu actions={actions} onAction={onAction} />}
 		>
 			<Inset>
-				<WeekStrip
-					days={days}
-					selected={selected}
-					today={today}
-					totals={totals}
-					onSelect={setSelected}
-				/>
-				<TimerCard />
-				{start.error ? (
-					<ErrorBanner message={messageOf(start.error) ?? ""} />
-				) : null}
-				{unfiledCount > 0 ? (
-					<Card>
-						<View
-							style={{
-								flexDirection: "row",
-								gap: SPACE.m,
-								alignItems: "center",
-							}}
-						>
-							<Icon name="inbox" color={palette.onSurfaceVariant} />
-							<View style={{ flex: 1 }}>
-								<Text variant="bodyMedium">
-									{unfiledCount === 1
-										? "1 entry this week has no project yet."
-										: `${unfiledCount} entries this week have no project yet.`}
-								</Text>
-							</View>
-							<IconButton
-								icon="web"
-								label="File them in Farmer on the web"
-								onPress={() => void Linking.openURL(origin)}
-							/>
-						</View>
-					</Card>
-				) : null}
+				<SegmentedControl options={VIEWS} value={view} onChange={setView} />
 				<View
-					style={{
-						flexDirection: "row",
-						alignItems: "center",
-						justifyContent: "space-between",
-					}}
+					style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}
 				>
-					<Text variant="titleMedium">
-						{formatHours(totals.get(selected) ?? 0)} logged
-					</Text>
-					<ActionButton
-						label="Log time"
-						variant="text"
-						onPress={() =>
-							router.push({ pathname: "/entry", params: { date: selected } })
-						}
+					<IconButton
+						icon="back"
+						label={`The ${unit} before`}
+						onPress={() => step(-1)}
+					/>
+					<View style={{ flex: 1 }}>
+						<Text variant="titleMedium" numberOfLines={1}>
+							{label}
+						</Text>
+					</View>
+					{atNow ? null : (
+						<ActionButton
+							label="Today"
+							variant="text"
+							onPress={() => setSelected(today)}
+						/>
+					)}
+					<DateJump value={selected} onPick={setSelected} />
+					<IconButton
+						icon="forward"
+						label={`The ${unit} after`}
+						onPress={() => step(1)}
 					/>
 				</View>
-			</Inset>
-
-			{entries.isPending ? (
-				<Inset>
-					<Skeleton height={64} />
-					<Skeleton height={64} />
-				</Inset>
-			) : entries.isError ? (
-				<ErrorState
-					error={entries.error}
-					onRetry={() => void entries.refetch()}
+				<TargetsStrip />
+				<UnfiledBanner
+					from={from}
+					to={to}
+					scope={view === "month" ? "this month" : "this week"}
 				/>
-			) : dayEntries.length === 0 ? (
-				<EmptyState
-					icon="timer"
-					title="Nothing logged"
-					message="Log time for this day, or start the timer."
+				<Snackbar notice={notice} onHide={hideNotice} />
+			</Inset>
+			{view === "day" ? (
+				<DayView
+					selected={selected}
+					today={today}
+					days={days}
+					entries={entries}
+					holidays={holidays.data}
+					onSelect={setSelected}
+					onCopyPreviousDay={fullApi ? copyPreviousDay : undefined}
+					copying={copyDay.isPending}
+				/>
+			) : view === "week" ? (
+				<WeekView
+					days={days}
+					today={today}
+					selected={selected}
+					entries={entries}
+					holidays={holidays.data}
+					onSelect={setSelected}
+					onNotify={notify}
+					onCopyPreviousWeek={fullApi ? copyPreviousWeek : undefined}
+					copying={copyWeek.isPending}
 				/>
 			) : (
-				<View
-					style={{
-						marginHorizontal: SPACE.l,
-						borderRadius: 16,
-						overflow: "hidden",
-						backgroundColor: palette.surfaceContainer,
+				<MonthView
+					month={month}
+					today={today}
+					weekStartsOn={weekStartsOn}
+					entries={entries}
+					holidays={holidays.data}
+					onOpenDay={(day) => {
+						setSelected(day);
+						setView("day");
 					}}
-				>
-					{dayEntries.map((entry, index) => (
-						<View
-							key={entry.id}
-							style={{
-								borderTopWidth: index === 0 ? 0 : 1,
-								borderTopColor: palette.outlineVariant,
-							}}
-						>
-							<EntryRow
-								entry={entry}
-								onPress={() =>
-									router.push({
-										pathname: "/entry",
-										params: { id: entry.id, date: entry.date, from, to },
-									})
-								}
-								onContinue={
-									timerFree && canContinue(entry)
-										? () => start.mutate({ timeEntryId: entry.id })
-										: undefined
-								}
-							/>
-						</View>
-					))}
-				</View>
+				/>
 			)}
 		</Screen>
 	);

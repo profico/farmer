@@ -3,17 +3,14 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { View } from "react-native";
 
-import {
-	useConfirmTimer,
-	useTimer,
-	useTimerAction,
-	useWhoami,
-} from "../src/api/queries";
+import { useTimer, useTimerAction, useWhoami } from "../src/api/queries";
+import { useConfirmTimerEntry } from "../src/api/time";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
 import { FormSection, Sheet } from "../src/forms/sheet";
 import { DayStepper, DurationStepper } from "../src/forms/steppers";
 import { dayKeyInTimeZone } from "../src/lib/days";
 import { formatStopwatch, toQuarter } from "../src/lib/duration";
+import { committed } from "../src/time/haptics";
 import {
 	ActionButton,
 	Card,
@@ -96,8 +93,9 @@ function StopForm({
 }) {
 	const palette = usePalette();
 	const router = useRouter();
-	const confirm = useConfirmTimer({
+	const confirm = useConfirmTimerEntry({
 		onSaved: () => {
+			committed();
 			onSaved();
 			router.back();
 		},

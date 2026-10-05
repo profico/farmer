@@ -1,0 +1,230 @@
+import type { AbsenceResult } from "@farmer/api-client";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import { View } from "react-native";
+
+import { useTasks, useWhoami } from "../../src/api/queries";
+import { useBookTimeOff } from "../../src/api/time";
+import { FormSection, Sheet } from "../../src/forms/sheet";
+import { addDays } from "../../src/lib/days";
+import { formatHours } from "../../src/lib/duration";
+import { DateField } from "../../src/time/components/date-field";
+import { committed } from "../../src/time/haptics";
+import {
+	MAX_SPAN_DAYS,
+	skipReasonLabel,
+	spanError,
+	withFirstDay,
+} from "../../src/time/time-off";
+import {
+	ErrorBanner,
+	ErrorState,
+	Field,
+	ListRow,
+	Skeleton,
+	Text,
+} from "../../src/ui/components";
+import { messageOf } from "../../src/ui/errors";
+import { Icon } from "../../src/ui/icon";
+import { usePalette } from "../../src/ui/theme";
+import { SPACE } from "../../src/ui/type";
+
+const longDay = (day: string) =>
+	new Intl.DateTimeFormat(undefined, {
+		weekday: "short",
+		day: "numeric",
+		month: "long",
+		timeZone: "UTC",
+	}).format(new Date(`${day}T12:00:00Z`));
+
+/**
+ * Book time off over a range of days, as "I am off from the 4th to the
+ * 15th". The server books each working day in the range at the person's own
+ * hours, and leaves weekends, public holidays and days already off alone.
+ * Half a day is an entry, not a range. When the server skipped a day, the
+ * sheet stays open and shows which days and why.
+ */
+export default function TimeOffSheet() {
+	const params = useLocalSearchParams<{ date?: string }>();
+	const whoami = useWhoami();
+	const start = params.date ?? whoami.data?.today;
+	if (!start) {
+		return (
+			<Sheet
+				title="Book time off"
+				actionLabel="Book"
+				onAction={() => undefined}
+				busy
+			>
+				<Skeleton height={56} radius={16} />
+			</Sheet>
+		);
+	}
+	return <TimeOffForm start={start} />;
+}
+
+function TimeOffForm({ start }: { start: string }) {
+	const palette = usePalette();
+	const router = useRouter();
+	const tasks = useTasks();
+	const book = useBookTimeOff();
+	const [range, setRange] = useState({ from: start, to: start });
+	const [chosen, setChosen] = useState<string | null>(null);
+	const [note, setNote] = useState("");
+	const [result, setResult] = useState<AbsenceResult | null>(null);
+
+	const absenceTasks = tasks.data?.absenceTasks ?? [];
+	// With one kind of time off there is nothing to choose. With two
+	// (vacation and sick leave), the person chooses: the app does not guess.
+	const taskId =
+		chosen ??
+		(absenceTasks.length === 1 ? (absenceTasks[0]?.id ?? null) : null);
+	const invalid = spanError(range.from, range.to);
+
+	if (result) {
+		const bookedSeconds = result.booked.reduce(
+			(sum, day) => sum + day.durationSeconds,
+			0,
+		);
+		return (
+			<Sheet title="Time off" actionLabel="Done" onAction={() => router.back()}>
+				<Text variant="titleMedium">
+					{result.booked.length === 0
+						? "Nothing was booked."
+						: `Booked ${result.booked.length === 1 ? "1 day" : `${result.booked.length} days`}, ${formatHours(bookedSeconds)}.`}
+				</Text>
+				<FormSection
+					label={
+						result.skipped.length === 1
+							? "Skipped 1 day"
+							: `Skipped ${result.skipped.length} days`
+					}
+				>
+					<View
+						style={{
+							borderRadius: 16,
+							overflow: "hidden",
+							backgroundColor: palette.surfaceContainer,
+						}}
+					>
+						{result.skipped.map((day) => (
+							<ListRow
+								key={day.date}
+								title={longDay(day.date)}
+								subtitle={skipReasonLabel(day.reason)}
+							/>
+						))}
+					</View>
+				</FormSection>
+			</Sheet>
+		);
+	}
+
+	const submit = () => {
+		if (!taskId || invalid) return;
+		book.mutate(
+			{
+				taskId,
+				from: range.from,
+				to: range.to,
+				description: note.trim() || undefined,
+			},
+			{
+				onSuccess: (data) => {
+					committed();
+					if (data.skipped.length === 0) router.back();
+					else setResult(data);
+				},
+			},
+		);
+	};
+
+	return (
+		<Sheet
+			title="Book time off"
+			actionLabel="Book"
+			onAction={submit}
+			busy={book.isPending}
+			actionDisabled={!taskId || invalid !== null}
+		>
+			{book.error ? (
+				<ErrorBanner message={messageOf(book.error) ?? ""} />
+			) : null}
+			<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+				Pick the first and the last day. Each working day between them is booked
+				at your own hours. Public holidays, days you do not work and days
+				already off stay as they are.
+			</Text>
+			<FormSection label="Type">
+				{tasks.isPending ? (
+					<Skeleton height={56} radius={16} />
+				) : tasks.isError ? (
+					<ErrorState
+						error={tasks.error}
+						onRetry={() => void tasks.refetch()}
+					/>
+				) : absenceTasks.length === 0 ? (
+					<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+						This workspace has no kinds of time off. An admin adds them in the
+						task settings.
+					</Text>
+				) : (
+					<View
+						style={{
+							borderRadius: 16,
+							overflow: "hidden",
+							backgroundColor: palette.surfaceContainer,
+						}}
+					>
+						{absenceTasks.map((task) => (
+							<ListRow
+								key={task.id}
+								title={task.name}
+								selected={task.id === taskId}
+								onPress={() => setChosen(task.id)}
+								trailing={
+									task.id === taskId ? (
+										<Icon name="check" size={20} color={palette.primary} />
+									) : undefined
+								}
+							/>
+						))}
+					</View>
+				)}
+			</FormSection>
+			<View style={{ gap: SPACE.m }}>
+				<DateField
+					label="First day"
+					value={range.from}
+					onChange={(from) =>
+						setRange((current) => withFirstDay(current, from))
+					}
+				/>
+				<DateField
+					label="Last day"
+					value={range.to}
+					minimum={range.from}
+					maximum={addDays(range.from, MAX_SPAN_DAYS)}
+					onChange={(to) => setRange((current) => ({ ...current, to }))}
+				/>
+				{invalid ? (
+					<Text variant="bodySmall" color={palette.error}>
+						{invalid}
+					</Text>
+				) : null}
+			</View>
+			<Field
+				label="Note"
+				hint="Optional."
+				value={note}
+				onChangeText={setNote}
+				placeholder="Anything your team must know"
+				multiline
+			/>
+			<Text variant="bodySmall" color={palette.onSurfaceVariant}>
+				For half a day, log an entry on the timesheet. This books whole working
+				days.
+			</Text>
+		</Sheet>
+	);
+}
