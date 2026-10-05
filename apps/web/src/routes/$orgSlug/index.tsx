@@ -311,9 +311,9 @@ function OrgHome() {
 					}
 					caption={
 						<>
-							<TargetGap period={targets.month} /> · day{" "}
-							{targets.month.workingDaysThroughToday} of{" "}
-							{targets.month.workingDays}
+							<TargetGap period={targets.month} /> ·{" "}
+							{targets.month.workingDaysElapsed} of {targets.month.workingDays}{" "}
+							working days done
 						</>
 					}
 				/>
