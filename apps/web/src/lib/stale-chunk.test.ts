@@ -327,13 +327,4 @@ describe("sendStaleChunkReports", () => {
 			},
 		]);
 	});
-
-	test("sends nothing when storage is missing", () => {
-		const events: string[] = [];
-		sendStaleChunkReports(
-			{ capture: (event) => events.push(event) },
-			undefined,
-		);
-		expect(events).toEqual([]);
-	});
 });

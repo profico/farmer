@@ -23,8 +23,7 @@ import { logConsoleGreeting } from "../lib/console-greeting";
 import { displayInitScript } from "../lib/display-prefs";
 import { unzoomPagePoint } from "../lib/motion";
 import { navInitScript } from "../lib/nav-collapse";
-import { isResizeObserverLoop } from "../lib/posthog-noise";
-import { browserEnv, sendStaleChunkReports } from "../lib/stale-chunk";
+import { startPostHog } from "../lib/posthog-client";
 import { themeInitScript } from "../lib/theme";
 import { startThemeColorSync, themeColorInitScript } from "../lib/theme-color";
 
@@ -254,28 +253,7 @@ function PostHogRoot({ children }: { children: React.ReactNode }) {
 	if (!config) return children;
 
 	return (
-		<PostHogProvider
-			apiKey={config.token}
-			options={{
-				api_host: config.host,
-				defaults: "2026-05-30",
-				capture_exceptions: {
-					capture_unhandled_errors: true,
-					capture_unhandled_rejections: true,
-					capture_console_errors: false,
-				},
-				before_send: (event) =>
-					event && isResizeObserverLoop(event) ? null : event,
-				// The tab reloaded because a deploy removed a chunk
-				// (`lib/stale-chunk.ts`). The old page cannot be sure to send an event
-				// before it unloads, so this page sends it, one time. A child effect
-				// runs before the provider's `init`, and `capture` drops an event
-				// before `init`, so the report is sent from `loaded`.
-				loaded: (client) => sendStaleChunkReports(client, browserEnv().storage),
-				debug: import.meta.env.DEV,
-				tracing_headers: import.meta.env.SSR ? [] : [window.location.hostname],
-			}}
-		>
+		<PostHogProvider client={startPostHog(config)}>
 			<PostHogIdentity />
 			{children}
 		</PostHogProvider>
