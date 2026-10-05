@@ -21,9 +21,12 @@ import { assistantService } from "../services/assistant.service";
 import { auditService } from "../services/audit";
 import { classifyServiceError } from "../services/error-message";
 import { githubService } from "../services/github.service";
+import { holidaysService } from "../services/holidays.service";
+import { orgSettingsService } from "../services/org-settings.service";
 import { reminderSettingsService } from "../services/reminder-settings.service";
 import { slackService } from "../services/slack.service";
 import type { Ctx } from "../services/types";
+import { uploadsService } from "../services/uploads.service";
 import { webhooksService } from "../services/webhooks.service";
 import { createTestDb, present, type TestDb } from "../test/harness";
 
@@ -147,6 +150,52 @@ const ADMIN_CALLS: [string, (ctx: Ctx) => Promise<object | number | void>][] = [
 	],
 	["assistant: disconnect", (ctx) => assistantService.settings.disconnect(ctx)],
 	["assistant: models", (ctx) => assistantService.settings.listModels(ctx)],
+	// API version 3. Each of these had `orgAdminMiddleware` in the web app,
+	// and the holiday switch had no check of its own before.
+	[
+		"holidays: switch one off",
+		(ctx) =>
+			holidaysService.setHolidayDisabled(ctx, {
+				name: "New Year's Day",
+				disabled: true,
+			}),
+	],
+	["policy: read", (ctx) => orgSettingsService.getForAdmin(ctx)],
+	[
+		"policy: change",
+		(ctx) => orgSettingsService.update(ctx, { trackingTolerancePct: 10 }),
+	],
+	["github: repositories", (ctx) => githubService.listAvailableRepos(ctx)],
+	[
+		"github: repositories, read again",
+		(ctx) => githubService.listAvailableRepos(ctx, { refresh: true }),
+	],
+	[
+		"github: link a repository",
+		(ctx) =>
+			githubService.linkRepo(ctx, {
+				projectId: UUID,
+				githubRepoId: 1,
+				installationId: 1,
+			}),
+	],
+	["github: unlink a repository", (ctx) => githubService.unlinkRepo(ctx, UUID)],
+	[
+		"uploads: an organization logo",
+		(ctx) =>
+			uploadsService.uploadImage(ctx, {
+				purpose: "org-logo",
+				bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+			}),
+	],
+	[
+		"uploads: a project icon",
+		(ctx) =>
+			uploadsService.uploadImage(ctx, {
+				purpose: "project-icon",
+				bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+			}),
+	],
 ];
 
 describe("the admin routes refuse a plain member", () => {
@@ -179,6 +228,21 @@ describe("the reads the admin check was added to still answer an admin", () => {
 
 	test("the Slack re-match, with nothing installed", async () => {
 		expect(await slackService.syncIdentities(adminCtx())).toBe(0);
+	});
+
+	test("the organization policy, and a holiday switched off", async () => {
+		expect(await orgSettingsService.getForAdmin(adminCtx())).toEqual({
+			trackingTolerancePct: 5,
+			automationLockedThrough: null,
+		});
+		await holidaysService.setHolidayDisabled(adminCtx(), {
+			name: "New Year's Day",
+			disabled: true,
+		});
+		const year = await holidaysService.listForYearWithStatus(adminCtx(), 2026);
+		expect(year.find((day) => day.name === "New Year's Day")?.disabled).toBe(
+			true,
+		);
 	});
 });
 

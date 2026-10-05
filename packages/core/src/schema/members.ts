@@ -11,6 +11,13 @@ export type InviteMemberInput = z.infer<typeof inviteMemberInput>;
 // better-auth owns the invitation row and generates its id with its own
 // generator, not as a UUID — the column is `text`, so anything narrower than a
 // non-empty string rejects a valid id.
+// An invitation that the caller answers: accept or decline. Only the id. The
+// person is always the session's own user.
+export const answerInvitationInput = z.object({
+	invitationId: z.string().min(1).max(64),
+});
+export type AnswerInvitationInput = z.infer<typeof answerInvitationInput>;
+
 export const cancelInvitationInput = z.string().min(1);
 export type CancelInvitationInput = z.infer<typeof cancelInvitationInput>;
 

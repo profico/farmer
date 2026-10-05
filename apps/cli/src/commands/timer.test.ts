@@ -17,6 +17,7 @@ const entry = (over: Partial<ApiTimeEntry> = {}): ApiTimeEntry => ({
 	commitCount: 0,
 	task: { id: "task-1", name: "Development", isAbsence: false },
 	project: null,
+	calendarChange: null,
 	...over,
 });
 

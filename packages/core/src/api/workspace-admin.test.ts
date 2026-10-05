@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	toApiHourFundMonth,
 	toApiManagedTask,
+	toApiOrgPolicy,
 	toApiOrganizationSettings,
 } from "./workspace-admin";
 
@@ -74,5 +75,17 @@ describe("toApiOrganizationSettings", () => {
 		expect(
 			toApiOrganizationSettings({ ...settings, ...{ slug: "profico" } }),
 		).toStrictEqual(settings);
+	});
+});
+
+describe("toApiOrgPolicy", () => {
+	test("keeps the two policies only", () => {
+		const policy = {
+			trackingTolerancePct: 10,
+			automationLockedThrough: "2026-09-30",
+		};
+		expect(
+			toApiOrgPolicy({ ...policy, ...{ organizationId: "org-1" } }),
+		).toStrictEqual(policy);
 	});
 });

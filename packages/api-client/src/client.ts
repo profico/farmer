@@ -42,6 +42,14 @@ import type {
 	HourFundMonthRef,
 	HourFundYear,
 	OrganizationPatch,
+	ApplyDayAssembly,
+	AttachCommits,
+	AttachPullRequests,
+	LinkRepository,
+	ImageUpload,
+	OrgPolicyPatch,
+	HolidaySwitchChange,
+	NewOrganization,
 } from "./bodies";
 import { ApiClientError } from "./errors";
 import type { operations } from "./openapi.gen";
@@ -69,15 +77,18 @@ import {
 	githubDisconnectSchema,
 	githubWorkspaceSchema,
 	hourFundMonthSchema,
+	holidaySwitchSchema,
 	hourFundSuggestionSchema,
 	installUrlSchema,
 	managedTaskSchema,
 	organizationSettingsSchema,
+	orgPolicySchema,
 	reminderPreviewSchema,
 	reminderSettingsSchema,
 	slackMatchSchema,
 	slackStatusSchema,
 	slackTestSchema,
+	uploadedImageSchema,
 	webhookDeliverySchema,
 	webhookEndpointCreatedSchema,
 	webhookEndpointSchema,
@@ -91,6 +102,17 @@ import {
 	assistantThreadDetailSchema,
 	assistantThreadSchema,
 } from "./schemas-assistant";
+import {
+	attachedCommitSchema,
+	attachedPullRequestSchema,
+	availableRepositoriesSchema,
+	calendarEventSchema,
+	commitSuggestionSchema,
+	dayAssemblyResultSchema,
+	dayAssemblySchema,
+	projectRepositorySchema,
+	pullRequestSuggestionSchema,
+} from "./schemas-day";
 import {
 	absenceEntrySchema,
 	absenceReportSchema,
@@ -117,6 +139,12 @@ import {
 	trackingReportSchema,
 	workingHoursDaySchema,
 } from "./schemas-member";
+import {
+	createdOrganizationSchema,
+	importClaimSchema,
+	joinedOrganizationSchema,
+	myInvitationSchema,
+} from "./schemas-onboarding";
 import {
 	archiveResultSchema,
 	clientSchema,
@@ -1450,6 +1478,298 @@ export class FarmerClient {
 
 	/** One assistant turn as a stream of events. A non-2xx answer throws
 	 *  before the first event, as every other call does. */
+
+	// API version 3: the Day view's helpers, GitHub on an entry and on a
+	// project, images, the organization's policy, and the steps of a person
+	// before a workspace.
+
+	/** Suggest the entries that the day is missing, from the calendar and
+	 *  GitHub. */
+	suggestDayAssembly(slug: string, query: QueryOf<"suggestDayAssembly">) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/day-assembly${search(query)}`),
+			dayAssemblySchema,
+		);
+	}
+
+	/** Make the chosen suggestions into entries. One that fails does not stop
+	 *  the others. */
+	applyDayAssembly(slug: string, body: ApplyDayAssembly) {
+		return this.#request(
+			"POST",
+			orgPath(slug, "/day-assembly"),
+			dayAssemblyResultSchema,
+			body,
+		);
+	}
+
+	/** List the timed meetings of a day from the person's Google Calendar. */
+	listCalendarEvents(slug: string, query: QueryOf<"listCalendarEvents">) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/calendar/events${search(query)}`),
+			calendarEventSchema.array(),
+		);
+	}
+
+	/** Replace the entry's values with what the calendar says now. */
+	useCalendarValues(slug: string, id: string) {
+		return this.#request(
+			"POST",
+			orgPath(slug, `/time-entries/${encodeURIComponent(id)}/calendar-values`),
+			timeEntrySchema,
+		);
+	}
+
+	/** Keep the entry as the person edited it, and clear the calendar
+	 *  notice. */
+	dismissCalendarChange(slug: string, id: string) {
+		return this.#request(
+			"DELETE",
+			orgPath(slug, `/time-entries/${encodeURIComponent(id)}/calendar-change`),
+			timeEntrySchema,
+		);
+	}
+
+	/** List the person's commits of a day in the project's repositories. */
+	suggestCommits(slug: string, query: QueryOf<"suggestCommits">) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/github/commits${search(query)}`),
+			commitSuggestionSchema.array(),
+		);
+	}
+
+	/** List the pull requests the person worked on that day. */
+	suggestPullRequests(slug: string, query: QueryOf<"suggestPullRequests">) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/github/pull-requests${search(query)}`),
+			pullRequestSuggestionSchema.array(),
+		);
+	}
+
+	/** List the commits attached to an entry. */
+	listAttachedCommits(slug: string, id: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/time-entries/${encodeURIComponent(id)}/commits`),
+			attachedCommitSchema.array(),
+		);
+	}
+
+	/** Attach commits to an entry. Answers all the entry's commits. */
+	attachCommits(slug: string, id: string, body: AttachCommits) {
+		return this.#request(
+			"POST",
+			orgPath(slug, `/time-entries/${encodeURIComponent(id)}/commits`),
+			attachedCommitSchema.array(),
+			body,
+		);
+	}
+
+	/** Remove one commit from an entry. Answers the commits that stay. */
+	detachCommit(slug: string, id: string, commitId: string) {
+		return this.#request(
+			"DELETE",
+			orgPath(
+				slug,
+				`/time-entries/${encodeURIComponent(id)}/commits/${encodeURIComponent(commitId)}`,
+			),
+			attachedCommitSchema.array(),
+		);
+	}
+
+	/** List the pull request events attached to an entry. */
+	listAttachedPullRequests(slug: string, id: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/time-entries/${encodeURIComponent(id)}/pull-requests`),
+			attachedPullRequestSchema.array(),
+		);
+	}
+
+	/** Attach pull requests to an entry. Answers all the entry's events. */
+	attachPullRequests(slug: string, id: string, body: AttachPullRequests) {
+		return this.#request(
+			"POST",
+			orgPath(slug, `/time-entries/${encodeURIComponent(id)}/pull-requests`),
+			attachedPullRequestSchema.array(),
+			body,
+		);
+	}
+
+	/** Remove one pull request event from an entry. */
+	detachPullRequest(slug: string, id: string, activityId: string) {
+		return this.#request(
+			"DELETE",
+			orgPath(
+				slug,
+				`/time-entries/${encodeURIComponent(id)}/pull-requests/${encodeURIComponent(activityId)}`,
+			),
+			attachedPullRequestSchema.array(),
+		);
+	}
+
+	/** List the repositories linked to a project. */
+	listProjectRepositories(slug: string, id: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, `/projects/${encodeURIComponent(id)}/repositories`),
+			projectRepositorySchema.array(),
+		);
+	}
+
+	/** Link a repository to a project. Admin only. */
+	linkProjectRepository(slug: string, id: string, body: LinkRepository) {
+		return this.#request(
+			"POST",
+			orgPath(slug, `/projects/${encodeURIComponent(id)}/repositories`),
+			projectRepositorySchema.array(),
+			body,
+		);
+	}
+
+	/** Unlink a repository from a project. Admin only. */
+	unlinkProjectRepository(slug: string, id: string, repositoryId: string) {
+		return this.#request(
+			"DELETE",
+			orgPath(
+				slug,
+				`/projects/${encodeURIComponent(id)}/repositories/${encodeURIComponent(repositoryId)}`,
+			),
+			projectRepositorySchema.array(),
+		);
+	}
+
+	/** List the repositories the GitHub installations can read. Admin
+	 *  only. */
+	listAvailableRepositories(slug: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, "/workspace-integrations/github/repositories"),
+			availableRepositoriesSchema,
+		);
+	}
+
+	/** Read the repositories from GitHub again, past the cache. Admin only. */
+	refreshAvailableRepositories(slug: string) {
+		return this.#request(
+			"POST",
+			orgPath(slug, "/workspace-integrations/github/repositories/refresh"),
+			availableRepositoriesSchema,
+		);
+	}
+
+	/** Store an image as base64. Send the answer's `url` as the project's
+	 *  `icon` or the organization's `logo`. Needs `meta.uploadsEnabled`. */
+	uploadImage(slug: string, body: ImageUpload) {
+		return this.#request(
+			"POST",
+			orgPath(slug, "/uploads"),
+			uploadedImageSchema,
+			body,
+		);
+	}
+
+	/** Get the tracking tolerance and the automation lock. Admin only. */
+	getOrgPolicy(slug: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, "/organization/policy"),
+			orgPolicySchema,
+		);
+	}
+
+	/** Change the tracking tolerance or the automation lock. Admin only. */
+	updateOrgPolicy(slug: string, body: OrgPolicyPatch) {
+		return this.#request(
+			"PATCH",
+			orgPath(slug, "/organization/policy"),
+			orgPolicySchema,
+			body,
+		);
+	}
+
+	/** Make a public holiday a working day, or a holiday again. Admin
+	 *  only. */
+	setHolidayDisabled(slug: string, body: HolidaySwitchChange) {
+		return this.#request(
+			"PATCH",
+			orgPath(slug, "/holidays"),
+			holidaySwitchSchema,
+			body,
+		);
+	}
+
+	/** List the live invitations to the person's address. */
+	listMyInvitations() {
+		return this.#request(
+			"GET",
+			"/api/v1/me/invitations",
+			myInvitationSchema.array(),
+		);
+	}
+
+	/** Join a workspace through an invitation. Answers the workspace to
+	 *  open. Needs a session, not an API token. */
+	acceptInvitation(id: string) {
+		return this.#request(
+			"POST",
+			`/api/v1/me/invitations/${encodeURIComponent(id)}/accept`,
+			joinedOrganizationSchema,
+		);
+	}
+
+	/** Say no to an invitation. Needs a session, not an API token. */
+	declineInvitation(id: string) {
+		return this.#request(
+			"POST",
+			`/api/v1/me/invitations/${encodeURIComponent(id)}/decline`,
+			deletedSchema,
+		);
+	}
+
+	/** List the workspaces whose Harvest import waits for the person's
+	 *  answer. */
+	listMyImportClaims() {
+		return this.#request(
+			"GET",
+			"/api/v1/me/import-claims",
+			importClaimSchema.array(),
+		);
+	}
+
+	/** Take the membership a Harvest import made. Needs a session. */
+	acceptImportClaim(organizationId: string) {
+		return this.#request(
+			"POST",
+			`/api/v1/me/import-claims/${encodeURIComponent(organizationId)}/accept`,
+			joinedOrganizationSchema,
+		);
+	}
+
+	/** Refuse the membership a Harvest import made. Needs a session. */
+	declineImportClaim(organizationId: string) {
+		return this.#request(
+			"POST",
+			`/api/v1/me/import-claims/${encodeURIComponent(organizationId)}/decline`,
+			deletedSchema,
+		);
+	}
+
+	/** Make a workspace that the person owns. Needs a session and
+	 *  `meta.organizationCreation`. */
+	createOrganization(body: NewOrganization) {
+		return this.#request(
+			"POST",
+			"/api/v1/me/organizations",
+			createdOrganizationSchema,
+			body,
+		);
+	}
+
 	async *#stream<Body>(
 		path: string,
 		body: Body,

@@ -181,7 +181,11 @@ const SERVICES = {
 	},
 	orgSettingsService: {
 		service: orgSettingsService,
-		coverage: { recorded: { update: true }, exempt: {}, reads: ["get"] },
+		coverage: {
+			recorded: { update: true },
+			exempt: {},
+			reads: ["get", "getForAdmin"],
+		},
 	},
 	reminderSettingsService: {
 		service: reminderSettingsService,

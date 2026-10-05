@@ -20,6 +20,7 @@ const entry = (
 	commitCount: 0,
 	task: { id: "task-1", name: "Development", isAbsence: false },
 	project: null,
+	calendarChange: null,
 });
 
 /** The `#` column of every row, the total row left out. */

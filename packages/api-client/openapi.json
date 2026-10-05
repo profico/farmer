@@ -2645,6 +2645,87 @@
 						}
 					}
 				}
+			},
+			"patch": {
+				"operationId": "setHolidayDisabled",
+				"summary": "Switch a public holiday off or on",
+				"description": "Names the holiday by its `name` from `GET …/holidays`. `disabled: true` makes the day a working day.\n\n**Who:** An admin.",
+				"tags": [
+					"Schedule"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/HolidaySwitchChange"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HolidaySwitch"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
 			}
 		},
 		"/orgs/{orgSlug}/holidays/range": {
@@ -6156,6 +6237,7 @@
 						"schema": {
 							"type": "string",
 							"enum": [
+								"organization.created",
 								"organization.updated",
 								"org_settings.updated",
 								"reminder_settings.updated",
@@ -6164,6 +6246,7 @@
 								"audit_log.exported",
 								"member.invited",
 								"member.invitation_cancelled",
+								"member.invitation_declined",
 								"member.joined",
 								"member.removed",
 								"member.claim_declined",
@@ -10560,6 +10643,2052 @@
 					}
 				}
 			}
+		},
+		"/orgs/{orgSlug}/day-assembly": {
+			"get": {
+				"operationId": "suggestDayAssembly",
+				"summary": "Propose entries for a day",
+				"description": "\"Assemble my day\": entries for one day from the caller's calendar, their GitHub work and the rest of the day. Writes nothing. `includeDismissed=true` also proposes what the person deleted before.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "date",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+						}
+					},
+					{
+						"name": "includeDismissed",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "boolean"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DayAssembly"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "applyDayAssembly",
+				"summary": "Make the proposed entries",
+				"description": "Makes the entries the person kept, from `GET …/day-assembly`. The whole set must fit in the day's 24 hours. After that each entry is best effort: one that fails is in `errors` and does not stop the others.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApplyDayAssembly"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DayAssemblyResult"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/calendar/events": {
+			"get": {
+				"operationId": "listCalendarEvents",
+				"summary": "List a day's calendar meetings",
+				"description": "The timed meetings on the caller's Google Calendar on one day of the organization, for the meeting picker of the entry form. 422 when the calendar is not connected.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "date",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/CalendarEvent"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/time-entries/{id}/calendar-values": {
+			"post": {
+				"operationId": "useCalendarValues",
+				"summary": "Take the calendar's day and length",
+				"description": "Answers the \"updated by calendar\" notice: the entry takes the day and the length the calendar has now. The caller's own entry only. Refused when the day would change and the entry holds commits or pull requests.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TimeEntry"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/time-entries/{id}/calendar-change": {
+			"delete": {
+				"operationId": "dismissCalendarChange",
+				"summary": "Keep the entry as it is",
+				"description": "Dismisses the \"updated by calendar\" notice. Nothing else changes. The caller's own entry only.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TimeEntry"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/github/commits": {
+			"get": {
+				"operationId": "suggestCommits",
+				"summary": "List the caller's commits on a day",
+				"description": "In the repositories of a project the caller is assigned to. 422 when the caller has not connected GitHub.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "projectId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+						}
+					},
+					{
+						"name": "date",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/CommitSuggestion"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/github/pull-requests": {
+			"get": {
+				"operationId": "suggestPullRequests",
+				"summary": "List the caller's pull requests on a day",
+				"description": "What the caller opened, merged, closed or reviewed, in the repositories of a project they are assigned to. 422 when the caller has not connected GitHub.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "projectId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+						}
+					},
+					{
+						"name": "date",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/PullRequestSuggestion"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/time-entries/{id}/commits": {
+			"get": {
+				"operationId": "listAttachedCommits",
+				"summary": "List the commits on an entry",
+				"description": "The caller's own entry only.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/AttachedCommit"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "attachCommits",
+				"summary": "Attach commits to an entry",
+				"description": "Names each commit by its repository and sha, from `GET …/github/commits`. The server reads each one again from GitHub. Answers the entry's commits.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AttachCommits"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/AttachedCommit"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/time-entries/{id}/commits/{commitId}": {
+			"delete": {
+				"operationId": "detachCommit",
+				"summary": "Take a commit off an entry",
+				"description": "`commitId` is the attachment's `id`. Answers the entry's commits.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					},
+					{
+						"name": "commitId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/AttachedCommit"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/time-entries/{id}/pull-requests": {
+			"get": {
+				"operationId": "listAttachedPullRequests",
+				"summary": "List the pull request events on an entry",
+				"description": "One row for each event. The caller's own entry only.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/AttachedPullRequest"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "attachPullRequests",
+				"summary": "Attach pull requests to an entry",
+				"description": "Names each pull request by its repository and number. The server keeps only what the caller did on it on the entry's day. Answers the entry's events.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AttachPullRequests"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/AttachedPullRequest"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/time-entries/{id}/pull-requests/{activityId}": {
+			"delete": {
+				"operationId": "detachPullRequest",
+				"summary": "Take a pull request event off an entry",
+				"description": "`activityId` is the attachment's `id`. Answers the entry's events.",
+				"tags": [
+					"Time entries"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					},
+					{
+						"name": "activityId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/AttachedPullRequest"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/projects/{id}/repositories": {
+			"get": {
+				"operationId": "listProjectRepositories",
+				"summary": "List a project's GitHub repositories",
+				"description": "For each person who may log time on the project. A member who reaches the project only because it is open to the organization gets an empty list.",
+				"tags": [
+					"Projects"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ProjectRepository"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"operationId": "linkProjectRepository",
+				"summary": "Link a GitHub repository",
+				"description": "A repository from `GET …/workspace-integrations/github/repositories`. A repository belongs to one project. Answers the project's repositories.\n\n**Who:** An admin.",
+				"tags": [
+					"Projects"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/LinkRepository"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ProjectRepository"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/projects/{id}/repositories/{repositoryId}": {
+			"delete": {
+				"operationId": "unlinkProjectRepository",
+				"summary": "Unlink a GitHub repository",
+				"description": "`repositoryId` is the link's `id`. The commits already on entries stay. Answers the project's repositories.\n\n**Who:** An admin.",
+				"tags": [
+					"Projects"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					},
+					{
+						"name": "repositoryId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ProjectRepository"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/workspace-integrations/github/repositories": {
+			"get": {
+				"operationId": "listAvailableRepositories",
+				"summary": "List the repositories to link",
+				"description": "Each repository a connected installation can read, private ones too, with the project that holds it. The server keeps the list for a few minutes.\n\n**Who:** An admin.",
+				"tags": [
+					"Workspace integrations"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AvailableRepositories"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The caller's role does not allow this.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/workspace-integrations/github/repositories/refresh": {
+			"post": {
+				"operationId": "refreshAvailableRepositories",
+				"summary": "Read the repositories again",
+				"description": "The same list, read again from GitHub.\n\n**Who:** An admin.",
+				"tags": [
+					"Workspace integrations"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AvailableRepositories"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/uploads": {
+			"post": {
+				"operationId": "uploadImage",
+				"summary": "Upload a project icon or a logo",
+				"description": "Stores a PNG, JPEG, GIF, WebP or SVG image of 1 MB at most, sent as base64. The upload changes nothing: send the `url` as the project's `icon` or the organization's `logo`. 422 when the server has no store (`uploadsEnabled` in `/meta`).\n\n**Who:** An admin for `org-logo`. An admin, a PM or a team lead for `project-icon`.",
+				"tags": [
+					"Workspace"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ImageUpload"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UploadedImage"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/orgs/{orgSlug}/organization/policy": {
+			"get": {
+				"operationId": "getOrgPolicy",
+				"summary": "Get the tracking tolerance and the automation lock",
+				"description": "**Who:** An admin.",
+				"tags": [
+					"Workspace"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OrgPolicy"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The caller's role does not allow this.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"patch": {
+				"operationId": "updateOrgPolicy",
+				"summary": "Change the tracking tolerance or the automation lock",
+				"description": "A patch. `automationLockedThrough: null` removes the lock.\n\n**Who:** An admin.",
+				"tags": [
+					"Workspace"
+				],
+				"parameters": [
+					{
+						"name": "orgSlug",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The organization's slug, from `GET /me`."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/OrgPolicyPatch"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OrgPolicy"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/invitations": {
+			"get": {
+				"operationId": "listMyInvitations",
+				"summary": "List the invitations to the caller",
+				"description": "The live invitations to the caller's address. Empty for an address that is not verified, and for an API token bound to one workspace.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/MyInvitation"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/invitations/{id}/accept": {
+			"post": {
+				"operationId": "acceptInvitation",
+				"summary": "Accept an invitation",
+				"description": "Joins the workspace that sent it and answers its slug. Needs a sign-in session token, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/JoinedOrganization"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/invitations/{id}/decline": {
+			"post": {
+				"operationId": "declineInvitation",
+				"summary": "Decline an invitation",
+				"description": "The workspace that sent it sees this in its audit log. Needs a sign-in session token, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Deleted"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/import-claims": {
+			"get": {
+				"operationId": "listMyImportClaims",
+				"summary": "List the Harvest imports that wait for the caller",
+				"description": "Workspaces whose Harvest import made a membership for the caller. The caller cannot open one until they accept. Empty for an API token bound to one workspace.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ImportClaim"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/import-claims/{organizationId}/accept": {
+			"post": {
+				"operationId": "acceptImportClaim",
+				"summary": "Join a workspace that imported the caller",
+				"description": "Answers the slug to open. Needs a sign-in session token, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "organizationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/JoinedOrganization"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/import-claims/{organizationId}/decline": {
+			"post": {
+				"operationId": "declineImportClaim",
+				"summary": "Leave a workspace that imported the caller",
+				"description": "The membership goes. The imported history stays with the workspace. Needs a sign-in session token, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "organizationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The row's id."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Deleted"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/organizations": {
+			"post": {
+				"operationId": "createOrganization",
+				"summary": "Create a workspace",
+				"description": "The caller owns it. The slug comes from the name unless it is given, and a slug that is a page of the app moves to the next free one. Refused in single-org mode (`organizationCreation` in `/meta`). Needs a sign-in session token, not an API token.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/NewOrganization"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreatedOrganization"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -10696,6 +12825,14 @@
 							"url"
 						],
 						"description": "Whether this server sends native push to the mobile app, and through which relay. A server from before the mobile push sends no `pushRelay`: read its absence as off."
+					},
+					"uploadsEnabled": {
+						"type": "boolean",
+						"description": "True when this server stores uploaded images. A server before API version 3 sends no field: read it as off."
+					},
+					"organizationCreation": {
+						"type": "boolean",
+						"description": "True when a person may make a new workspace. False in single-org mode. A server before API version 3 sends no field: read it as off."
 					}
 				},
 				"required": [
@@ -10706,7 +12843,9 @@
 					"minMobileVersion",
 					"signInMethods",
 					"passwordSignIn",
-					"pushRelay"
+					"pushRelay",
+					"uploadsEnabled",
+					"organizationCreation"
 				]
 			},
 			"Me": {
@@ -11009,6 +13148,64 @@
 					"client"
 				]
 			},
+			"CalendarChange": {
+				"type": "object",
+				"properties": {
+					"changedAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"from": {
+						"type": "object",
+						"properties": {
+							"date": {
+								"type": "string",
+								"description": "A day, yyyy-MM-dd."
+							},
+							"durationSeconds": {
+								"type": "integer",
+								"minimum": -9007199254740991,
+								"maximum": 9007199254740991
+							},
+							"description": {
+								"type": "string"
+							}
+						},
+						"description": "The values before the change. Only the fields that the change wrote are here."
+					},
+					"calendar": {
+						"anyOf": [
+							{
+								"type": "object",
+								"properties": {
+									"date": {
+										"type": "string",
+										"description": "A day, yyyy-MM-dd."
+									},
+									"durationSeconds": {
+										"type": "integer",
+										"minimum": -9007199254740991,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": [
+									"date",
+									"durationSeconds"
+								]
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The calendar's day and length now."
+					}
+				},
+				"required": [
+					"changedAt",
+					"from",
+					"calendar"
+				]
+			},
 			"TimeEntry": {
 				"type": "object",
 				"properties": {
@@ -11057,6 +13254,17 @@
 							}
 						],
 						"description": "Null for time off, a Break, and anything not yet filed."
+					},
+					"calendarChange": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/CalendarChange"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The meeting sync changed the entry and the person did not answer yet. Keep it with `DELETE …/calendar-change`, or take the calendar's values with `POST …/calendar-values`."
 					}
 				},
 				"required": [
@@ -11069,7 +13277,8 @@
 					"synced",
 					"commitCount",
 					"task",
-					"project"
+					"project",
+					"calendarChange"
 				]
 			},
 			"UnfiledEntry": {
@@ -15704,6 +17913,862 @@
 					"updatedAt"
 				]
 			},
+			"DayAssembly": {
+				"type": "object",
+				"properties": {
+					"date": {
+						"type": "string",
+						"description": "A day, yyyy-MM-dd."
+					},
+					"targetSeconds": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991
+					},
+					"loggedSeconds": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991
+					},
+					"suggestions": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"key": {
+									"type": "string",
+									"description": "Stable in one answer: `meeting:<eventId>`, `work:<projectId>`, `review:<url>`, `break` or `fill`."
+								},
+								"kind": {
+									"type": "string",
+									"enum": [
+										"meeting",
+										"work",
+										"review",
+										"break",
+										"fill"
+									]
+								},
+								"taskId": {
+									"type": "string",
+									"description": "A UUID."
+								},
+								"taskName": {
+									"type": "string"
+								},
+								"projectId": {
+									"anyOf": [
+										{
+											"type": "string",
+											"description": "A UUID."
+										},
+										{
+											"type": "null"
+										}
+									]
+								},
+								"projectName": {
+									"anyOf": [
+										{
+											"type": "string"
+										},
+										{
+											"type": "null"
+										}
+									]
+								},
+								"description": {
+									"type": "string"
+								},
+								"durationSeconds": {
+									"type": "integer",
+									"minimum": -9007199254740991,
+									"maximum": 9007199254740991
+								},
+								"fillsDay": {
+									"type": "boolean"
+								},
+								"meetingUrl": {
+									"anyOf": [
+										{
+											"type": "string"
+										},
+										{
+											"type": "null"
+										}
+									]
+								},
+								"calendarEventId": {
+									"anyOf": [
+										{
+											"type": "string"
+										},
+										{
+											"type": "null"
+										}
+									]
+								},
+								"commits": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"projectGithubRepoId": {
+												"type": "string",
+												"description": "A UUID."
+											},
+											"sha": {
+												"type": "string"
+											},
+											"message": {
+												"type": "string"
+											},
+											"repoFullName": {
+												"type": "string"
+											}
+										},
+										"required": [
+											"projectGithubRepoId",
+											"sha",
+											"message",
+											"repoFullName"
+										]
+									}
+								},
+								"pullRequests": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"projectGithubRepoId": {
+												"type": "string",
+												"description": "A UUID."
+											},
+											"number": {
+												"type": "integer",
+												"minimum": -9007199254740991,
+												"maximum": 9007199254740991
+											},
+											"title": {
+												"type": "string"
+											},
+											"repoFullName": {
+												"type": "string"
+											},
+											"kinds": {
+												"type": "array",
+												"items": {
+													"type": "string",
+													"enum": [
+														"opened",
+														"merged",
+														"closed",
+														"reviewed"
+													]
+												},
+												"description": "What the person did on it that day, oldest first."
+											}
+										},
+										"required": [
+											"projectGithubRepoId",
+											"number",
+											"title",
+											"repoFullName",
+											"kinds"
+										]
+									}
+								},
+								"dismissed": {
+									"type": "boolean",
+									"description": "The person deleted it before. Show it, but not selected."
+								}
+							},
+							"required": [
+								"key",
+								"kind",
+								"taskId",
+								"taskName",
+								"projectId",
+								"projectName",
+								"description",
+								"durationSeconds",
+								"fillsDay",
+								"meetingUrl",
+								"calendarEventId",
+								"commits",
+								"pullRequests",
+								"dismissed"
+							]
+						}
+					},
+					"sources": {
+						"type": "object",
+						"properties": {
+							"calendar": {
+								"type": "string",
+								"enum": [
+									"ok",
+									"unavailable"
+								]
+							},
+							"github": {
+								"type": "string",
+								"enum": [
+									"ok",
+									"unavailable"
+								]
+							}
+						},
+						"required": [
+							"calendar",
+							"github"
+						],
+						"description": "`unavailable`: the account is not connected, so that source said nothing."
+					},
+					"dismissedCount": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991,
+						"description": "How many suggestions `includeDismissed=true` adds."
+					}
+				},
+				"required": [
+					"date",
+					"targetSeconds",
+					"loggedSeconds",
+					"suggestions",
+					"sources",
+					"dismissedCount"
+				]
+			},
+			"DayAssemblyResult": {
+				"type": "object",
+				"properties": {
+					"created": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991
+					},
+					"errors": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "A sentence for each entry that was not made."
+					}
+				},
+				"required": [
+					"created",
+					"errors"
+				]
+			},
+			"CalendarEvent": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"title": {
+						"type": "string"
+					},
+					"start": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"end": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"meetingUrl": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"htmlLink": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"required": [
+					"id",
+					"title",
+					"start",
+					"end",
+					"meetingUrl",
+					"htmlLink"
+				]
+			},
+			"CommitSuggestion": {
+				"type": "object",
+				"properties": {
+					"projectGithubRepoId": {
+						"type": "string",
+						"description": "A UUID."
+					},
+					"repoFullName": {
+						"type": "string"
+					},
+					"sha": {
+						"type": "string"
+					},
+					"message": {
+						"type": "string"
+					},
+					"authorLogin": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"committedAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"url": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"projectGithubRepoId",
+					"repoFullName",
+					"sha",
+					"message",
+					"authorLogin",
+					"committedAt",
+					"url"
+				]
+			},
+			"AttachedCommit": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "The attachment's id."
+					},
+					"sha": {
+						"type": "string"
+					},
+					"message": {
+						"type": "string"
+					},
+					"authorLogin": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"committedAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"url": {
+						"type": "string"
+					},
+					"repoFullName": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Null when the repository was unlinked later."
+					}
+				},
+				"required": [
+					"id",
+					"sha",
+					"message",
+					"authorLogin",
+					"committedAt",
+					"url",
+					"repoFullName"
+				]
+			},
+			"PullRequestSuggestion": {
+				"type": "object",
+				"properties": {
+					"projectGithubRepoId": {
+						"type": "string",
+						"description": "A UUID."
+					},
+					"repoFullName": {
+						"type": "string"
+					},
+					"number": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991
+					},
+					"title": {
+						"type": "string"
+					},
+					"url": {
+						"type": "string"
+					},
+					"activity": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"kind": {
+									"type": "string",
+									"enum": [
+										"opened",
+										"merged",
+										"closed",
+										"reviewed"
+									]
+								},
+								"reviewState": {
+									"anyOf": [
+										{
+											"type": "string",
+											"enum": [
+												"approved",
+												"changes_requested",
+												"commented",
+												"dismissed"
+											]
+										},
+										{
+											"type": "null"
+										}
+									],
+									"description": "Only on `reviewed`."
+								},
+								"occurredAt": {
+									"type": "string",
+									"description": "An instant, ISO 8601 in UTC."
+								}
+							},
+							"required": [
+								"kind",
+								"reviewState",
+								"occurredAt"
+							]
+						}
+					}
+				},
+				"required": [
+					"projectGithubRepoId",
+					"repoFullName",
+					"number",
+					"title",
+					"url",
+					"activity"
+				]
+			},
+			"AttachedPullRequest": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "The attachment's id."
+					},
+					"kind": {
+						"type": "string",
+						"enum": [
+							"opened",
+							"merged",
+							"closed",
+							"reviewed"
+						]
+					},
+					"reviewState": {
+						"anyOf": [
+							{
+								"type": "string",
+								"enum": [
+									"approved",
+									"changes_requested",
+									"commented",
+									"dismissed"
+								]
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Only on `reviewed`."
+					},
+					"number": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991
+					},
+					"title": {
+						"type": "string"
+					},
+					"pullRequestUrl": {
+						"type": "string"
+					},
+					"url": {
+						"type": "string",
+						"description": "The review's own link for `reviewed`, the pull request's otherwise."
+					},
+					"occurredAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"repoFullName": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"required": [
+					"id",
+					"kind",
+					"reviewState",
+					"number",
+					"title",
+					"pullRequestUrl",
+					"url",
+					"occurredAt",
+					"repoFullName"
+				]
+			},
+			"ProjectRepository": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "The link's id."
+					},
+					"projectId": {
+						"type": "string",
+						"description": "A UUID."
+					},
+					"githubRepoId": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991
+					},
+					"installationId": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"minimum": -9007199254740991,
+								"maximum": 9007199254740991
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"owner": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"fullName": {
+						"type": "string"
+					},
+					"private": {
+						"type": "boolean"
+					},
+					"createdAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					}
+				},
+				"required": [
+					"id",
+					"projectId",
+					"githubRepoId",
+					"installationId",
+					"owner",
+					"name",
+					"fullName",
+					"private",
+					"createdAt"
+				]
+			},
+			"AvailableRepositories": {
+				"type": "object",
+				"properties": {
+					"repositories": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"githubRepoId": {
+									"type": "integer",
+									"minimum": -9007199254740991,
+									"maximum": 9007199254740991
+								},
+								"installationId": {
+									"type": "integer",
+									"minimum": -9007199254740991,
+									"maximum": 9007199254740991
+								},
+								"owner": {
+									"type": "string"
+								},
+								"name": {
+									"type": "string"
+								},
+								"fullName": {
+									"type": "string"
+								},
+								"private": {
+									"type": "boolean"
+								},
+								"linkedTo": {
+									"anyOf": [
+										{
+											"type": "object",
+											"properties": {
+												"projectId": {
+													"type": "string",
+													"description": "A UUID."
+												},
+												"projectName": {
+													"anyOf": [
+														{
+															"type": "string"
+														},
+														{
+															"type": "null"
+														}
+													]
+												}
+											},
+											"required": [
+												"projectId",
+												"projectName"
+											]
+										},
+										{
+											"type": "null"
+										}
+									],
+									"description": "The project that holds it. A repository has one."
+								}
+							},
+							"required": [
+								"githubRepoId",
+								"installationId",
+								"owner",
+								"name",
+								"fullName",
+								"private",
+								"linkedTo"
+							]
+						}
+					},
+					"fetchedAt": {
+						"anyOf": [
+							{
+								"type": "string",
+								"description": "An instant, ISO 8601 in UTC."
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "When the oldest list in the answer came from GitHub."
+					}
+				},
+				"required": [
+					"repositories",
+					"fetchedAt"
+				]
+			},
+			"UploadedImage": {
+				"type": "object",
+				"properties": {
+					"url": {
+						"type": "string",
+						"description": "The path of the image. Send it as the project's `icon` or the organization's `logo`."
+					}
+				},
+				"required": [
+					"url"
+				]
+			},
+			"OrgPolicy": {
+				"type": "object",
+				"properties": {
+					"trackingTolerancePct": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991,
+						"description": "A total this share or less below the target so far is slightly behind, not behind."
+					},
+					"automationLockedThrough": {
+						"anyOf": [
+							{
+								"type": "string",
+								"description": "A day, yyyy-MM-dd."
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The automations write nothing on or before this day."
+					}
+				},
+				"required": [
+					"trackingTolerancePct",
+					"automationLockedThrough"
+				]
+			},
+			"HolidaySwitch": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string"
+					},
+					"disabled": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"name",
+					"disabled"
+				]
+			},
+			"MyInvitation": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"role": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"organization": {
+						"type": "object",
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							}
+						},
+						"required": [
+							"id",
+							"name"
+						]
+					},
+					"expiresAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					}
+				},
+				"required": [
+					"id",
+					"role",
+					"organization",
+					"expiresAt"
+				]
+			},
+			"JoinedOrganization": {
+				"type": "object",
+				"properties": {
+					"organizationId": {
+						"type": "string"
+					},
+					"slug": {
+						"type": "string",
+						"description": "The `orgSlug` to open."
+					}
+				},
+				"required": [
+					"organizationId",
+					"slug"
+				]
+			},
+			"ImportClaim": {
+				"type": "object",
+				"properties": {
+					"organizationId": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"slug": {
+						"type": "string"
+					},
+					"logo": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"since": {
+						"type": "string",
+						"description": "When the import made the membership."
+					}
+				},
+				"required": [
+					"organizationId",
+					"name",
+					"slug",
+					"logo",
+					"since"
+				]
+			},
+			"CreatedOrganization": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"slug": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"name",
+					"slug"
+				]
+			},
 			"NewTimeEntry": {
 				"type": "object",
 				"properties": {
@@ -16366,6 +19431,7 @@
 					"kind": {
 						"type": "string",
 						"enum": [
+							"organization.created",
 							"organization.updated",
 							"org_settings.updated",
 							"reminder_settings.updated",
@@ -16374,6 +19440,7 @@
 							"audit_log.exported",
 							"member.invited",
 							"member.invitation_cancelled",
+							"member.invitation_declined",
 							"member.joined",
 							"member.removed",
 							"member.claim_declined",
@@ -17089,6 +20156,291 @@
 						]
 					}
 				}
+			},
+			"ApplyDayAssembly": {
+				"type": "object",
+				"properties": {
+					"date": {
+						"type": "string",
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+					},
+					"entries": {
+						"minItems": 1,
+						"maxItems": 50,
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"taskId": {
+									"type": "string",
+									"format": "uuid",
+									"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+								},
+								"projectId": {
+									"type": "string",
+									"format": "uuid",
+									"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+								},
+								"description": {
+									"type": "string"
+								},
+								"durationSeconds": {
+									"type": "integer",
+									"exclusiveMinimum": 0,
+									"maximum": 9007199254740991
+								},
+								"fillsDay": {
+									"type": "boolean"
+								},
+								"overtime": {
+									"type": "boolean"
+								},
+								"meetingUrl": {
+									"type": "string",
+									"format": "uri"
+								},
+								"calendarEventId": {
+									"type": "string"
+								},
+								"commits": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"projectGithubRepoId": {
+												"type": "string",
+												"format": "uuid",
+												"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+											},
+											"sha": {
+												"type": "string"
+											}
+										},
+										"required": [
+											"projectGithubRepoId",
+											"sha"
+										]
+									}
+								},
+								"pullRequests": {
+									"maxItems": 50,
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"projectGithubRepoId": {
+												"type": "string",
+												"format": "uuid",
+												"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+											},
+											"number": {
+												"type": "integer",
+												"exclusiveMinimum": 0,
+												"maximum": 9007199254740991
+											}
+										},
+										"required": [
+											"projectGithubRepoId",
+											"number"
+										]
+									}
+								}
+							},
+							"required": [
+								"taskId"
+							]
+						}
+					}
+				},
+				"required": [
+					"date",
+					"entries"
+				]
+			},
+			"AttachCommits": {
+				"type": "object",
+				"properties": {
+					"commits": {
+						"minItems": 1,
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"projectGithubRepoId": {
+									"type": "string",
+									"format": "uuid",
+									"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+								},
+								"sha": {
+									"type": "string",
+									"pattern": "^[0-9a-f]{7,40}$"
+								}
+							},
+							"required": [
+								"projectGithubRepoId",
+								"sha"
+							]
+						}
+					}
+				},
+				"required": [
+					"commits"
+				]
+			},
+			"AttachPullRequests": {
+				"type": "object",
+				"properties": {
+					"pullRequests": {
+						"minItems": 1,
+						"maxItems": 50,
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"projectGithubRepoId": {
+									"type": "string",
+									"format": "uuid",
+									"pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+								},
+								"number": {
+									"type": "integer",
+									"exclusiveMinimum": 0,
+									"maximum": 9007199254740991
+								}
+							},
+							"required": [
+								"projectGithubRepoId",
+								"number"
+							]
+						}
+					}
+				},
+				"required": [
+					"pullRequests"
+				]
+			},
+			"LinkRepository": {
+				"type": "object",
+				"properties": {
+					"githubRepoId": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991
+					},
+					"installationId": {
+						"type": "integer",
+						"minimum": -9007199254740991,
+						"maximum": 9007199254740991
+					}
+				},
+				"required": [
+					"githubRepoId",
+					"installationId"
+				]
+			},
+			"ImageUpload": {
+				"type": "object",
+				"properties": {
+					"purpose": {
+						"type": "string",
+						"enum": [
+							"project-icon",
+							"org-logo"
+						]
+					},
+					"data": {
+						"type": "string",
+						"maxLength": 1398104,
+						"format": "base64",
+						"contentEncoding": "base64",
+						"pattern": "^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$",
+						"description": "The image bytes, base64. No `data:` prefix. 1 MB at most."
+					}
+				},
+				"required": [
+					"purpose",
+					"data"
+				]
+			},
+			"OrgPolicyPatch": {
+				"type": "object",
+				"properties": {
+					"trackingTolerancePct": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 50
+					},
+					"automationLockedThrough": {
+						"anyOf": [
+							{
+								"type": "string",
+								"pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				}
+			},
+			"HolidaySwitchChange": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1
+					},
+					"disabled": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"name",
+					"disabled"
+				]
+			},
+			"NewOrganization": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 120
+					},
+					"slug": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 64
+					},
+					"timezone": {
+						"default": "UTC",
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"country": {
+						"default": "US",
+						"type": "string",
+						"minLength": 2,
+						"maxLength": 2
+					},
+					"weekStartsOn": {
+						"default": 1,
+						"anyOf": [
+							{
+								"type": "number",
+								"const": 0
+							},
+							{
+								"type": "number",
+								"const": 1
+							}
+						]
+					}
+				},
+				"required": [
+					"name"
+				]
 			},
 			"NewMobileDevice": {
 				"type": "object",

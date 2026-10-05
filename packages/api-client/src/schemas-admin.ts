@@ -298,6 +298,27 @@ export const organizationSettingsSchema = z.object({
 });
 export type OrganizationSettings = z.output<typeof organizationSettingsSchema>;
 
+export const orgPolicySchema = z.object({
+	/** How far below the target a person may be and still count as on track. */
+	trackingTolerancePct: z.number(),
+	/** The last day the automation may not change, yyyy-MM-dd, or null. */
+	automationLockedThrough: z.string().nullable(),
+});
+export type OrgPolicy = z.output<typeof orgPolicySchema>;
+
+export const holidaySwitchSchema = z.object({
+	name: z.string(),
+	/** True: the holiday is a working day in this organization. */
+	disabled: z.boolean(),
+});
+export type HolidaySwitch = z.output<typeof holidaySwitchSchema>;
+
+export const uploadedImageSchema = z.object({
+	/** Send it as the project's `icon` or the organization's `logo`. */
+	url: z.string(),
+});
+export type UploadedImage = z.output<typeof uploadedImageSchema>;
+
 // Each answer the document describes must parse with the schema above.
 export type AdminContractChecks = [
 	Expect<Parses<Schemas["ManagedTask"], typeof managedTaskSchema>>,
@@ -334,4 +355,7 @@ export type AdminContractChecks = [
 	Expect<
 		Parses<Schemas["OrganizationSettings"], typeof organizationSettingsSchema>
 	>,
+	Expect<Parses<Schemas["OrgPolicy"], typeof orgPolicySchema>>,
+	Expect<Parses<Schemas["HolidaySwitch"], typeof holidaySwitchSchema>>,
+	Expect<Parses<Schemas["UploadedImage"], typeof uploadedImageSchema>>,
 ];

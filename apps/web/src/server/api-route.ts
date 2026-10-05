@@ -6,7 +6,7 @@ import {
 	isCliVersionSupported,
 } from "@farmer/core/api";
 import type { JsonValue } from "@farmer/core/lib/json";
-import type { Ctx } from "@farmer/core/services";
+import type { Ctx, CtxActor } from "@farmer/core/services";
 import { z } from "zod";
 
 import { SESSION_REQUEST_HEADER } from "#/lib/api-session-header.ts";
@@ -128,6 +128,12 @@ export type ApiUser = {
 	/** The one workspace an API token is bound to, or null for any. */
 	boundOrganizationId: string | null;
 	via: ApiCredentialKind;
+	/** The door of the request, for a Ctx that a `/me` route builds itself
+	 *  (a Harvest import's claim names its organization in the path). */
+	actor: CtxActor;
+	/** As `ApiCaller.sessionHeaders`: a cookie signed from a session token,
+	 *  else an `AccessError` that says an API token cannot do this. */
+	sessionHeaders: () => Promise<Headers>;
 };
 
 export type UserRouteSpec<TResult> = {
@@ -502,7 +508,7 @@ const sessionHeadersOf = async (
 	}
 	const { AccessError } = await import("@farmer/core/services");
 	throw new AccessError(
-		"An API token cannot manage people or invitations. Sign in with `farmer login` or the mobile app.",
+		"An API token cannot manage people, invitations or workspaces. Sign in with `farmer login` or the mobile app.",
 	);
 };
 
@@ -573,7 +579,25 @@ export const apiStreamRoute =
  *  registration), and a browser session has its own pages for that. */
 const userPrincipal = async (request: Request): Promise<ApiUser | null> => {
 	const byToken = await resolveCliUser(request);
-	if (byToken) return { ...byToken, via: byToken.credential.kind };
+	if (byToken) {
+		const { credential } = byToken;
+		return {
+			...byToken,
+			via: credential.kind,
+			actor: requestActor(
+				request,
+				credential.kind === "api_token"
+					? { via: "api_token", apiTokenId: credential.principal.tokenId }
+					: { via: "cli" },
+			),
+			sessionHeaders: () =>
+				sessionHeadersOf(
+					request,
+					credential.kind,
+					credential.kind === "session" ? credential.token : null,
+				),
+		};
+	}
 	const user = await cookieUser(request, { writes: false });
 	return user
 		? {
@@ -583,6 +607,8 @@ const userPrincipal = async (request: Request): Promise<ApiUser | null> => {
 				scope: "write",
 				boundOrganizationId: null,
 				via: "cookie",
+				actor: requestActor(request, { via: "api" }),
+				sessionHeaders: () => sessionHeadersOf(request, "cookie", null),
 			}
 		: null;
 };

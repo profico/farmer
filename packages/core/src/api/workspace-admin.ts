@@ -83,3 +83,27 @@ export const toApiOrganizationSettings = (
 	weekStartsOn: row.weekStartsOn,
 	logo: row.logo,
 });
+
+/** `GET /api/v1/orgs/$slug/organization/policy` — the Tracking rule and the
+ *  automation lock, on Settings → Organization. Admins only. */
+export type ApiOrgPolicy = {
+	/** A total this share or less below the target so far is "slightly
+	 *  behind", not "behind". The report and the reminders read it. */
+	trackingTolerancePct: number;
+	/** yyyy-MM-dd. The automations write nothing on or before it. Null for no
+	 *  lock. */
+	automationLockedThrough: string | null;
+};
+
+export const toApiOrgPolicy = (row: ApiOrgPolicy): ApiOrgPolicy => ({
+	trackingTolerancePct: row.trackingTolerancePct,
+	automationLockedThrough: row.automationLockedThrough,
+});
+
+/** `POST /api/v1/orgs/$slug/uploads` — the path of the stored image. Send it
+ *  as the project's `icon` or the organization's `logo`: the upload itself
+ *  changes nothing. */
+export type ApiUploadedImage = { url: string };
+
+/** `PATCH /api/v1/orgs/$slug/holidays` — the holiday as it is now. */
+export type ApiHolidaySwitch = { name: string; disabled: boolean };

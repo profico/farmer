@@ -23,6 +23,10 @@ const fullRow = () => ({
 	syncLocked: true,
 	meetingUrl: "https://meet.example.com/abc",
 	calendarEventId: "evt-1",
+	syncedDate: "2026-09-14",
+	syncedDurationSeconds: 5400,
+	calendarChangedAt: null,
+	calendarChangeFrom: null,
 	createdAt,
 	updatedAt: createdAt,
 	commitCount: 3,
@@ -65,6 +69,7 @@ describe("toApiTimeEntry", () => {
 				code: "PRT",
 				client: { id: "c-1", name: "Acme" },
 			},
+			calendarChange: null,
 		});
 	});
 
@@ -99,6 +104,41 @@ describe("toApiTimeEntry", () => {
 		expect(projected.synced).toBe(false);
 		expect(projected.project).toBe(null);
 		expect(projected.commitCount).toBe(0);
+	});
+});
+
+describe("the calendar notice on an entry", () => {
+	test("names only the fields the sync changed, and the calendar's values", () => {
+		const projected = toApiTimeEntry({
+			...fullRow(),
+			syncedDate: "2026-09-15",
+			syncedDurationSeconds: 3600,
+			calendarChangedAt: new Date("2026-09-14T09:30:00Z"),
+			calendarChangeFrom: { date: "2026-09-14" },
+		});
+		expect(projected.calendarChange).toStrictEqual({
+			changedAt: "2026-09-14T09:30:00.000Z",
+			from: { date: "2026-09-14" },
+			calendar: { date: "2026-09-15", durationSeconds: 3600 },
+		});
+	});
+
+	test("is null when the sync changed nothing", () => {
+		expect(toApiTimeEntry(fullRow()).calendarChange).toBeNull();
+	});
+
+	test("has no calendar values for an entry without a copy of them", () => {
+		const projected = toApiTimeEntry({
+			...fullRow(),
+			syncedDate: null,
+			syncedDurationSeconds: null,
+			calendarChangedAt: new Date("2026-09-14T09:30:00Z"),
+			calendarChangeFrom: { description: "Stand-up" },
+		});
+		expect(projected.calendarChange?.calendar).toBeNull();
+		expect(projected.calendarChange?.from).toStrictEqual({
+			description: "Stand-up",
+		});
 	});
 });
 

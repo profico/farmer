@@ -94,6 +94,7 @@ import {
 
 export type { McpConsentRequest } from "./mcp-consent";
 export { memberAdmin } from "./member-admin";
+export { type MyInvitation, onboarding } from "./onboarding";
 export { sessionCookieHeader } from "./session-cookie";
 export { mayClaimInvitation } from "./registration";
 export {
@@ -804,6 +805,34 @@ const buildAuth = () => {
 						const problem = slugProblem(org.slug);
 						if (problem)
 							throw new APIError("BAD_REQUEST", { message: problem });
+					},
+					// The first row of the new workspace's log. The org switcher
+					// and `POST /api/v1/me/organizations` both come here. A signup's
+					// own workspace does not: the user hook writes it directly.
+					afterCreateOrganization: async ({ organization: org, user }) => {
+						const caller = await currentCaller();
+						await recordAudit(hookCtx(org.id, caller, user.id), {
+							kind: "organization.created",
+							target: { type: "organization", id: org.id, label: org.name },
+						});
+					},
+					// The person who was invited said no. The workspace that sent
+					// the invitation sees it in its log.
+					afterRejectInvitation: async ({
+						invitation: declined,
+						user,
+						organization: org,
+					}) => {
+						const caller = await currentCaller();
+						await recordAudit(hookCtx(org.id, caller, user.id), {
+							kind: "member.invitation_declined",
+							target: {
+								type: "invitation",
+								id: declined.id,
+								label: declined.email,
+							},
+							details: { role: declined.role },
+						});
 					},
 					// `memberJoined` writes `member.joined`. The person who joins
 					// is the actor when no session names one.

@@ -522,7 +522,13 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Switch a public holiday off or on
+         * @description Names the holiday by its `name` from `GET …/holidays`. `disabled: true` makes the day a working day.
+         *
+         *     **Who:** An admin.
+         */
+        patch: operations["setHolidayDisabled"];
         trace?: never;
     };
     "/orgs/{orgSlug}/holidays/range": {
@@ -2265,6 +2271,498 @@ export interface paths {
         patch: operations["updateOrganization"];
         trace?: never;
     };
+    "/orgs/{orgSlug}/day-assembly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Propose entries for a day
+         * @description "Assemble my day": entries for one day from the caller's calendar, their GitHub work and the rest of the day. Writes nothing. `includeDismissed=true` also proposes what the person deleted before.
+         */
+        get: operations["suggestDayAssembly"];
+        put?: never;
+        /**
+         * Make the proposed entries
+         * @description Makes the entries the person kept, from `GET …/day-assembly`. The whole set must fit in the day's 24 hours. After that each entry is best effort: one that fails is in `errors` and does not stop the others.
+         */
+        post: operations["applyDayAssembly"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/calendar/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a day's calendar meetings
+         * @description The timed meetings on the caller's Google Calendar on one day of the organization, for the meeting picker of the entry form. 422 when the calendar is not connected.
+         */
+        get: operations["listCalendarEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/time-entries/{id}/calendar-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take the calendar's day and length
+         * @description Answers the "updated by calendar" notice: the entry takes the day and the length the calendar has now. The caller's own entry only. Refused when the day would change and the entry holds commits or pull requests.
+         */
+        post: operations["useCalendarValues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/time-entries/{id}/calendar-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Keep the entry as it is
+         * @description Dismisses the "updated by calendar" notice. Nothing else changes. The caller's own entry only.
+         */
+        delete: operations["dismissCalendarChange"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/github/commits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's commits on a day
+         * @description In the repositories of a project the caller is assigned to. 422 when the caller has not connected GitHub.
+         */
+        get: operations["suggestCommits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/github/pull-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's pull requests on a day
+         * @description What the caller opened, merged, closed or reviewed, in the repositories of a project they are assigned to. 422 when the caller has not connected GitHub.
+         */
+        get: operations["suggestPullRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/time-entries/{id}/commits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the commits on an entry
+         * @description The caller's own entry only.
+         */
+        get: operations["listAttachedCommits"];
+        put?: never;
+        /**
+         * Attach commits to an entry
+         * @description Names each commit by its repository and sha, from `GET …/github/commits`. The server reads each one again from GitHub. Answers the entry's commits.
+         */
+        post: operations["attachCommits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/time-entries/{id}/commits/{commitId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Take a commit off an entry
+         * @description `commitId` is the attachment's `id`. Answers the entry's commits.
+         */
+        delete: operations["detachCommit"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/time-entries/{id}/pull-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the pull request events on an entry
+         * @description One row for each event. The caller's own entry only.
+         */
+        get: operations["listAttachedPullRequests"];
+        put?: never;
+        /**
+         * Attach pull requests to an entry
+         * @description Names each pull request by its repository and number. The server keeps only what the caller did on it on the entry's day. Answers the entry's events.
+         */
+        post: operations["attachPullRequests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/time-entries/{id}/pull-requests/{activityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Take a pull request event off an entry
+         * @description `activityId` is the attachment's `id`. Answers the entry's events.
+         */
+        delete: operations["detachPullRequest"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/projects/{id}/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a project's GitHub repositories
+         * @description For each person who may log time on the project. A member who reaches the project only because it is open to the organization gets an empty list.
+         */
+        get: operations["listProjectRepositories"];
+        put?: never;
+        /**
+         * Link a GitHub repository
+         * @description A repository from `GET …/workspace-integrations/github/repositories`. A repository belongs to one project. Answers the project's repositories.
+         *
+         *     **Who:** An admin.
+         */
+        post: operations["linkProjectRepository"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/projects/{id}/repositories/{repositoryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink a GitHub repository
+         * @description `repositoryId` is the link's `id`. The commits already on entries stay. Answers the project's repositories.
+         *
+         *     **Who:** An admin.
+         */
+        delete: operations["unlinkProjectRepository"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/workspace-integrations/github/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the repositories to link
+         * @description Each repository a connected installation can read, private ones too, with the project that holds it. The server keeps the list for a few minutes.
+         *
+         *     **Who:** An admin.
+         */
+        get: operations["listAvailableRepositories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/workspace-integrations/github/repositories/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the repositories again
+         * @description The same list, read again from GitHub.
+         *
+         *     **Who:** An admin.
+         */
+        post: operations["refreshAvailableRepositories"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a project icon or a logo
+         * @description Stores a PNG, JPEG, GIF, WebP or SVG image of 1 MB at most, sent as base64. The upload changes nothing: send the `url` as the project's `icon` or the organization's `logo`. 422 when the server has no store (`uploadsEnabled` in `/meta`).
+         *
+         *     **Who:** An admin for `org-logo`. An admin, a PM or a team lead for `project-icon`.
+         */
+        post: operations["uploadImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/organization/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the tracking tolerance and the automation lock
+         * @description **Who:** An admin.
+         */
+        get: operations["getOrgPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the tracking tolerance or the automation lock
+         * @description A patch. `automationLockedThrough: null` removes the lock.
+         *
+         *     **Who:** An admin.
+         */
+        patch: operations["updateOrgPolicy"];
+        trace?: never;
+    };
+    "/me/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the invitations to the caller
+         * @description The live invitations to the caller's address. Empty for an address that is not verified, and for an API token bound to one workspace.
+         */
+        get: operations["listMyInvitations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/invitations/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation
+         * @description Joins the workspace that sent it and answers its slug. Needs a sign-in session token, not an API token.
+         */
+        post: operations["acceptInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/invitations/{id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline an invitation
+         * @description The workspace that sent it sees this in its audit log. Needs a sign-in session token, not an API token.
+         */
+        post: operations["declineInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/import-claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the Harvest imports that wait for the caller
+         * @description Workspaces whose Harvest import made a membership for the caller. The caller cannot open one until they accept. Empty for an API token bound to one workspace.
+         */
+        get: operations["listMyImportClaims"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/import-claims/{organizationId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join a workspace that imported the caller
+         * @description Answers the slug to open. Needs a sign-in session token, not an API token.
+         */
+        post: operations["acceptImportClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/import-claims/{organizationId}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Leave a workspace that imported the caller
+         * @description The membership goes. The imported history stays with the workspace. Needs a sign-in session token, not an API token.
+         */
+        post: operations["declineImportClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a workspace
+         * @description The caller owns it. The slug comes from the name unless it is given, and a slug that is a page of the app moves to the next free one. Refused in single-org mode (`organizationCreation` in `/meta`). Needs a sign-in session token, not an API token.
+         */
+        post: operations["createOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2312,6 +2810,10 @@ export interface components {
                 /** @description The relay's base URL, or null while push is off. */
                 url: string | null;
             };
+            /** @description True when this server stores uploaded images. A server before API version 3 sends no field: read it as off. */
+            uploadsEnabled: boolean;
+            /** @description True when a person may make a new workspace. False in single-org mode. A server before API version 3 sends no field: read it as off. */
+            organizationCreation: boolean;
         };
         Me: {
             user: {
@@ -2388,6 +2890,23 @@ export interface components {
                 name: string;
             };
         };
+        CalendarChange: {
+            /** @description An instant, ISO 8601 in UTC. */
+            changedAt: string;
+            /** @description The values before the change. Only the fields that the change wrote are here. */
+            from: {
+                /** @description A day, yyyy-MM-dd. */
+                date?: string;
+                durationSeconds?: number;
+                description?: string;
+            };
+            /** @description The calendar's day and length now. */
+            calendar: {
+                /** @description A day, yyyy-MM-dd. */
+                date: string;
+                durationSeconds: number;
+            } | null;
+        };
         TimeEntry: {
             /** @description A UUID. */
             id: string;
@@ -2404,6 +2923,8 @@ export interface components {
             task: components["schemas"]["TaskRef"];
             /** @description Null for time off, a Break, and anything not yet filed. */
             project: components["schemas"]["ProjectRef"] | null;
+            /** @description The meeting sync changed the entry and the person did not answer yet. Keep it with `DELETE …/calendar-change`, or take the calendar's values with `POST …/calendar-values`. */
+            calendarChange: components["schemas"]["CalendarChange"] | null;
         };
         UnfiledEntry: {
             /** @description A UUID. */
@@ -3398,6 +3919,199 @@ export interface components {
             /** @description An instant, ISO 8601 in UTC. */
             updatedAt: string;
         };
+        DayAssembly: {
+            /** @description A day, yyyy-MM-dd. */
+            date: string;
+            targetSeconds: number;
+            loggedSeconds: number;
+            suggestions: {
+                /** @description Stable in one answer: `meeting:<eventId>`, `work:<projectId>`, `review:<url>`, `break` or `fill`. */
+                key: string;
+                /** @enum {string} */
+                kind: "meeting" | "work" | "review" | "break" | "fill";
+                /** @description A UUID. */
+                taskId: string;
+                taskName: string;
+                projectId: string | null;
+                projectName: string | null;
+                description: string;
+                durationSeconds: number;
+                fillsDay: boolean;
+                meetingUrl: string | null;
+                calendarEventId: string | null;
+                commits: {
+                    /** @description A UUID. */
+                    projectGithubRepoId: string;
+                    sha: string;
+                    message: string;
+                    repoFullName: string;
+                }[];
+                pullRequests: {
+                    /** @description A UUID. */
+                    projectGithubRepoId: string;
+                    number: number;
+                    title: string;
+                    repoFullName: string;
+                    /** @description What the person did on it that day, oldest first. */
+                    kinds: ("opened" | "merged" | "closed" | "reviewed")[];
+                }[];
+                /** @description The person deleted it before. Show it, but not selected. */
+                dismissed: boolean;
+            }[];
+            /** @description `unavailable`: the account is not connected, so that source said nothing. */
+            sources: {
+                /** @enum {string} */
+                calendar: "ok" | "unavailable";
+                /** @enum {string} */
+                github: "ok" | "unavailable";
+            };
+            /** @description How many suggestions `includeDismissed=true` adds. */
+            dismissedCount: number;
+        };
+        DayAssemblyResult: {
+            created: number;
+            /** @description A sentence for each entry that was not made. */
+            errors: string[];
+        };
+        CalendarEvent: {
+            id: string;
+            title: string;
+            /** @description An instant, ISO 8601 in UTC. */
+            start: string;
+            /** @description An instant, ISO 8601 in UTC. */
+            end: string;
+            meetingUrl: string | null;
+            htmlLink: string | null;
+        };
+        CommitSuggestion: {
+            /** @description A UUID. */
+            projectGithubRepoId: string;
+            repoFullName: string;
+            sha: string;
+            message: string;
+            authorLogin: string | null;
+            /** @description An instant, ISO 8601 in UTC. */
+            committedAt: string;
+            url: string;
+        };
+        AttachedCommit: {
+            /** @description The attachment's id. */
+            id: string;
+            sha: string;
+            message: string;
+            authorLogin: string | null;
+            /** @description An instant, ISO 8601 in UTC. */
+            committedAt: string;
+            url: string;
+            /** @description Null when the repository was unlinked later. */
+            repoFullName: string | null;
+        };
+        PullRequestSuggestion: {
+            /** @description A UUID. */
+            projectGithubRepoId: string;
+            repoFullName: string;
+            number: number;
+            title: string;
+            url: string;
+            activity: {
+                /** @enum {string} */
+                kind: "opened" | "merged" | "closed" | "reviewed";
+                /** @description Only on `reviewed`. */
+                reviewState: ("approved" | "changes_requested" | "commented" | "dismissed") | null;
+                /** @description An instant, ISO 8601 in UTC. */
+                occurredAt: string;
+            }[];
+        };
+        AttachedPullRequest: {
+            /** @description The attachment's id. */
+            id: string;
+            /** @enum {string} */
+            kind: "opened" | "merged" | "closed" | "reviewed";
+            /** @description Only on `reviewed`. */
+            reviewState: ("approved" | "changes_requested" | "commented" | "dismissed") | null;
+            number: number;
+            title: string;
+            pullRequestUrl: string;
+            /** @description The review's own link for `reviewed`, the pull request's otherwise. */
+            url: string;
+            /** @description An instant, ISO 8601 in UTC. */
+            occurredAt: string;
+            repoFullName: string | null;
+        };
+        ProjectRepository: {
+            /** @description The link's id. */
+            id: string;
+            /** @description A UUID. */
+            projectId: string;
+            githubRepoId: number;
+            installationId: number | null;
+            owner: string;
+            name: string;
+            fullName: string;
+            private: boolean;
+            /** @description An instant, ISO 8601 in UTC. */
+            createdAt: string;
+        };
+        AvailableRepositories: {
+            repositories: {
+                githubRepoId: number;
+                installationId: number;
+                owner: string;
+                name: string;
+                fullName: string;
+                private: boolean;
+                /** @description The project that holds it. A repository has one. */
+                linkedTo: {
+                    /** @description A UUID. */
+                    projectId: string;
+                    projectName: string | null;
+                } | null;
+            }[];
+            /** @description When the oldest list in the answer came from GitHub. */
+            fetchedAt: string | null;
+        };
+        UploadedImage: {
+            /** @description The path of the image. Send it as the project's `icon` or the organization's `logo`. */
+            url: string;
+        };
+        OrgPolicy: {
+            /** @description A total this share or less below the target so far is slightly behind, not behind. */
+            trackingTolerancePct: number;
+            /** @description The automations write nothing on or before this day. */
+            automationLockedThrough: string | null;
+        };
+        HolidaySwitch: {
+            name: string;
+            disabled: boolean;
+        };
+        MyInvitation: {
+            id: string;
+            role: string | null;
+            organization: {
+                id: string;
+                name: string;
+            };
+            /** @description An instant, ISO 8601 in UTC. */
+            expiresAt: string;
+        };
+        JoinedOrganization: {
+            organizationId: string;
+            /** @description The `orgSlug` to open. */
+            slug: string;
+        };
+        ImportClaim: {
+            organizationId: string;
+            name: string;
+            slug: string;
+            logo: string | null;
+            /** @description When the import made the membership. */
+            since: string;
+        };
+        CreatedOrganization: {
+            id: string;
+            name: string;
+            slug: string;
+        };
         NewTimeEntry: {
             date: string;
             /** Format: uuid */
@@ -3564,7 +4278,7 @@ export interface components {
             /** @enum {string} */
             category?: "change" | "security";
             /** @enum {string} */
-            kind?: "organization.updated" | "org_settings.updated" | "reminder_settings.updated" | "assistant_settings.updated" | "audit_log.retention_changed" | "audit_log.exported" | "member.invited" | "member.invitation_cancelled" | "member.joined" | "member.removed" | "member.claim_declined" | "member.role_changed" | "member.archived" | "member.restored" | "member.type_changed" | "member.start_date_changed" | "member.email_confirmed" | "team_lead.people_changed" | "client.created" | "client.updated" | "client.archived" | "client.restored" | "project.created" | "project.updated" | "project.archived" | "project.restored" | "project.member_assigned" | "project.member_removed" | "task.created" | "task.updated" | "task.archived" | "task.restored" | "hour_fund.set" | "hour_fund.cleared" | "hour_fund.prefilled" | "holiday.disabled" | "holiday.enabled" | "absence.logged_for_person" | "absence.changed_for_person" | "absence.removed_for_person" | "webhook.created" | "webhook.updated" | "webhook.deleted" | "webhook.secret_rolled" | "github.connected" | "github.disconnected" | "github.repo_linked" | "github.repo_unlinked" | "slack.connected" | "slack.disconnected" | "import.finished" | "import.undone" | "auth.signed_in" | "auth.sign_in_failed" | "auth.signed_out" | "session.revoked" | "account.linked" | "account.unlinked" | "api_token.created" | "api_token.revoked" | "impersonation.started" | "impersonation.stopped";
+            kind?: "organization.created" | "organization.updated" | "org_settings.updated" | "reminder_settings.updated" | "assistant_settings.updated" | "audit_log.retention_changed" | "audit_log.exported" | "member.invited" | "member.invitation_cancelled" | "member.invitation_declined" | "member.joined" | "member.removed" | "member.claim_declined" | "member.role_changed" | "member.archived" | "member.restored" | "member.type_changed" | "member.start_date_changed" | "member.email_confirmed" | "team_lead.people_changed" | "client.created" | "client.updated" | "client.archived" | "client.restored" | "project.created" | "project.updated" | "project.archived" | "project.restored" | "project.member_assigned" | "project.member_removed" | "task.created" | "task.updated" | "task.archived" | "task.restored" | "hour_fund.set" | "hour_fund.cleared" | "hour_fund.prefilled" | "holiday.disabled" | "holiday.enabled" | "absence.logged_for_person" | "absence.changed_for_person" | "absence.removed_for_person" | "webhook.created" | "webhook.updated" | "webhook.deleted" | "webhook.secret_rolled" | "github.connected" | "github.disconnected" | "github.repo_linked" | "github.repo_unlinked" | "slack.connected" | "slack.disconnected" | "import.finished" | "import.undone" | "auth.signed_in" | "auth.sign_in_failed" | "auth.signed_out" | "session.revoked" | "account.linked" | "account.unlinked" | "api_token.created" | "api_token.revoked" | "impersonation.started" | "impersonation.stopped";
             userId?: string;
             from: string;
             to: string;
@@ -3697,6 +4411,77 @@ export interface components {
             timezone?: string;
             weekStartsOn?: 0 | 1;
             logo?: ((string) | "") | null;
+        };
+        ApplyDayAssembly: {
+            date: string;
+            entries: {
+                /** Format: uuid */
+                taskId: string;
+                /** Format: uuid */
+                projectId?: string;
+                description?: string;
+                durationSeconds?: number;
+                fillsDay?: boolean;
+                overtime?: boolean;
+                /** Format: uri */
+                meetingUrl?: string;
+                calendarEventId?: string;
+                commits?: {
+                    /** Format: uuid */
+                    projectGithubRepoId: string;
+                    sha: string;
+                }[];
+                pullRequests?: {
+                    /** Format: uuid */
+                    projectGithubRepoId: string;
+                    number: number;
+                }[];
+            }[];
+        };
+        AttachCommits: {
+            commits: {
+                /** Format: uuid */
+                projectGithubRepoId: string;
+                sha: string;
+            }[];
+        };
+        AttachPullRequests: {
+            pullRequests: {
+                /** Format: uuid */
+                projectGithubRepoId: string;
+                number: number;
+            }[];
+        };
+        LinkRepository: {
+            githubRepoId: number;
+            installationId: number;
+        };
+        ImageUpload: {
+            /** @enum {string} */
+            purpose: "project-icon" | "org-logo";
+            /**
+             * Format: base64
+             * @description The image bytes, base64. No `data:` prefix. 1 MB at most.
+             */
+            data: string;
+        };
+        OrgPolicyPatch: {
+            trackingTolerancePct?: number;
+            automationLockedThrough?: string | null;
+        };
+        HolidaySwitchChange: {
+            name: string;
+            disabled: boolean;
+        };
+        NewOrganization: {
+            name: string;
+            slug?: string;
+            /** @default UTC */
+            timezone: string;
+            /** @default US */
+            country: string;
+            /** @default 1 */
+            weekStartsOn: 0 | 1;
         };
         NewMobileDevice: {
             installationId: string;
@@ -5633,6 +6418,69 @@ export interface operations {
             };
             /** @description No token, or a bad or expired one. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setHolidayDisabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HolidaySwitchChange"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HolidaySwitch"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8138,7 +8986,7 @@ export interface operations {
         parameters: {
             query?: {
                 category?: "change" | "security";
-                kind?: "organization.updated" | "org_settings.updated" | "reminder_settings.updated" | "assistant_settings.updated" | "audit_log.retention_changed" | "audit_log.exported" | "member.invited" | "member.invitation_cancelled" | "member.joined" | "member.removed" | "member.claim_declined" | "member.role_changed" | "member.archived" | "member.restored" | "member.type_changed" | "member.start_date_changed" | "member.email_confirmed" | "team_lead.people_changed" | "client.created" | "client.updated" | "client.archived" | "client.restored" | "project.created" | "project.updated" | "project.archived" | "project.restored" | "project.member_assigned" | "project.member_removed" | "task.created" | "task.updated" | "task.archived" | "task.restored" | "hour_fund.set" | "hour_fund.cleared" | "hour_fund.prefilled" | "holiday.disabled" | "holiday.enabled" | "absence.logged_for_person" | "absence.changed_for_person" | "absence.removed_for_person" | "webhook.created" | "webhook.updated" | "webhook.deleted" | "webhook.secret_rolled" | "github.connected" | "github.disconnected" | "github.repo_linked" | "github.repo_unlinked" | "slack.connected" | "slack.disconnected" | "import.finished" | "import.undone" | "auth.signed_in" | "auth.sign_in_failed" | "auth.signed_out" | "session.revoked" | "account.linked" | "account.unlinked" | "api_token.created" | "api_token.revoked" | "impersonation.started" | "impersonation.stopped";
+                kind?: "organization.created" | "organization.updated" | "org_settings.updated" | "reminder_settings.updated" | "assistant_settings.updated" | "audit_log.retention_changed" | "audit_log.exported" | "member.invited" | "member.invitation_cancelled" | "member.invitation_declined" | "member.joined" | "member.removed" | "member.claim_declined" | "member.role_changed" | "member.archived" | "member.restored" | "member.type_changed" | "member.start_date_changed" | "member.email_confirmed" | "team_lead.people_changed" | "client.created" | "client.updated" | "client.archived" | "client.restored" | "project.created" | "project.updated" | "project.archived" | "project.restored" | "project.member_assigned" | "project.member_removed" | "task.created" | "task.updated" | "task.archived" | "task.restored" | "hour_fund.set" | "hour_fund.cleared" | "hour_fund.prefilled" | "holiday.disabled" | "holiday.enabled" | "absence.logged_for_person" | "absence.changed_for_person" | "absence.removed_for_person" | "webhook.created" | "webhook.updated" | "webhook.deleted" | "webhook.secret_rolled" | "github.connected" | "github.disconnected" | "github.repo_linked" | "github.repo_unlinked" | "slack.connected" | "slack.disconnected" | "import.finished" | "import.undone" | "auth.signed_in" | "auth.sign_in_failed" | "auth.signed_out" | "session.revoked" | "account.linked" | "account.unlinked" | "api_token.created" | "api_token.revoked" | "impersonation.started" | "impersonation.stopped";
                 userId?: string;
                 from?: string;
                 to?: string;
@@ -11246,6 +12094,1482 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationSettings"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    suggestDayAssembly: {
+        parameters: {
+            query: {
+                date: string;
+                includeDismissed?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayAssembly"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    applyDayAssembly: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyDayAssembly"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DayAssemblyResult"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCalendarEvents: {
+        parameters: {
+            query: {
+                date: string;
+            };
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEvent"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    useCalendarValues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntry"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    dismissCalendarChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeEntry"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    suggestCommits: {
+        parameters: {
+            query: {
+                projectId: string;
+                date: string;
+            };
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitSuggestion"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    suggestPullRequests: {
+        parameters: {
+            query: {
+                projectId: string;
+                date: string;
+            };
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullRequestSuggestion"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAttachedCommits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedCommit"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    attachCommits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachCommits"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedCommit"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    detachCommit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+                /** @description The row's id. */
+                commitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedCommit"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAttachedPullRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedPullRequest"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    attachPullRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachPullRequests"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedPullRequest"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    detachPullRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+                /** @description The row's id. */
+                activityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedPullRequest"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listProjectRepositories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    linkProjectRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRepository"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    unlinkProjectRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+                /** @description The row's id. */
+                repositoryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRepository"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAvailableRepositories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableRepositories"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The caller's role does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    refreshAvailableRepositories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableRepositories"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    uploadImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageUpload"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadedImage"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getOrgPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgPolicy"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The caller's role does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateOrgPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgPolicyPatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgPolicy"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listMyInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyInvitation"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    acceptInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinedOrganization"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    declineInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deleted"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listMyImportClaims: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportClaim"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    acceptImportClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's id. */
+                organizationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinedOrganization"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    declineImportClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's id. */
+                organizationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deleted"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewOrganization"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedOrganization"];
                 };
             };
             /** @description No token, or a bad or expired one. */
