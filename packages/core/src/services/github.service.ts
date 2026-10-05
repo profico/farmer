@@ -43,6 +43,7 @@ import {
 	requireAdmin,
 	withCtxTx,
 } from "./context";
+import { PROJECT_NOT_FOUND_MESSAGE } from "./guards";
 import { refuseReviewBlocks, reviewsHeldBy } from "./pr-reviews";
 import { projectsService } from "./projects.service";
 import type { Ctx } from "./types";
@@ -252,7 +253,7 @@ const assertProjectInOrg = async (ctx: Ctx, projectId: string) => {
 			eq(project.organizationId, ctx.organizationId),
 		),
 	});
-	if (!row) throw new Error("Project not found");
+	if (!row) throw new Error(PROJECT_NOT_FOUND_MESSAGE);
 };
 
 /**

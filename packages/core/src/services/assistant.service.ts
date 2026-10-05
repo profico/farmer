@@ -18,6 +18,7 @@ import {
 	listModels as listOpenRouterModels,
 	OpenRouterError,
 	type OpenRouterModel,
+	OpenRouterStreamCutError,
 	streamChatCompletion,
 	verifyKey,
 } from "../lib/openrouter-client";
@@ -40,7 +41,7 @@ import {
 } from "./assistant-tools";
 import { diffFields, recordAudit } from "./audit";
 import { ctxAccess, ctxTimezone, requireAdmin } from "./context";
-import { safeErrorMessage } from "./error-message";
+import { agentErrorMessage } from "./error-message";
 import type { Ctx } from "./types";
 
 export class AssistantError extends UserFacingError {
@@ -175,6 +176,20 @@ const OUT_OF_STEPS =
 /** What the person is told when even that closing answer does not arrive. */
 const NO_ANSWER =
 	"The assistant kept working without reaching an answer. Everything it read is still in this thread — ask again more specifically and it will carry on from here.";
+
+/** What the person is told when the provider closes a stream part-way.
+ *
+ *  The log and the telemetry keep the technical string. This line says what
+ *  the person can do: nothing is lost, and a second try is safe. */
+const STREAM_CUT =
+	"The connection to the model was closed before the answer was complete. Nothing was lost from this thread - ask again in a moment.";
+
+/** What the person is told when the app's own deadline cut the call.
+ *
+ *  A retry of the same prompt is likely to time out again and bill again, so
+ *  this line does not say "try again". It asks for a narrower question. */
+const TIMED_OUT =
+	"The model took too long to answer. Nothing was lost from this thread - try a narrower question.";
 
 /** Tool output that goes back to the model, capped.
  *
@@ -816,8 +831,9 @@ const executeTool = async (ctx: Ctx, call: AssistantToolCall) => {
 	} catch (error) {
 		// The content goes to the model provider, so only a message written for
 		// a person may pass. A database error carries the SQL and its
-		// parameters; that stays in the server log.
-		const message = error instanceof Error ? safeErrorMessage(error) : null;
+		// parameters; that stays in the server log. A refused id also gets how to
+		// recover from it.
+		const message = error instanceof Error ? agentErrorMessage(error) : null;
 		if (message === null) {
 			console.error(`[assistant] tool "${call.name}" failed`, error);
 		}
@@ -1024,15 +1040,26 @@ const generate = async (
 		});
 		return turn;
 	} catch (error) {
+		// A cut stream still billed for what it sent, so its tokens, cost and
+		// text are reported with the error. Any other failure sent nothing.
+		const partial =
+			error instanceof OpenRouterStreamCutError ? error.partial : null;
+		// The person gets a fixed line, so this is the only place that records
+		// why the stream was cut. The message holds the provider's own text.
+		if (error instanceof OpenRouterStreamCutError)
+			console.error(
+				`[assistant] stream cut (trace ${common.traceId}, conversation ${common.conversationId}, model ${common.model}, step ${common.step ?? "none"})`,
+				error.message,
+			);
 		reportGeneration({
 			...common,
 			latencySeconds: (Date.now() - startedAt) / 1000,
-			inputTokens: null,
-			outputTokens: null,
-			costUsd: null,
+			inputTokens: partial?.promptTokens ?? null,
+			outputTokens: partial?.completionTokens ?? null,
+			costUsd: partial?.costUsd ?? null,
 			finishReason: null,
-			toolCalls: [],
-			outputText: "",
+			toolCalls: partial?.toolCalls ?? [],
+			outputText: partial?.content ?? "",
 			error: error instanceof Error ? error.message : String(error),
 		});
 		throw error;
@@ -1446,6 +1473,36 @@ const abandonPendingCalls = async (ctx: Ctx, conversationId: string) =>
 		}
 	});
 
+/**
+ * Store what a turn wrote before it was stopped or cut, text only.
+ *
+ * What arrived is kept, because it was paid for and because a half answer
+ * beats the question sitting there alone. The HALF-ARRIVED TOOL CALLS ARE
+ * DROPPED. A stored `tool_calls` row with no `tool` result under it 400s the
+ * next request for the rest of the thread's life, and the calls never ran.
+ * An empty partial stores nothing.
+ */
+const keepPartial = async (
+	ctx: Ctx,
+	conversation: { id: string; model: string },
+	turn: ChatTurn,
+): Promise<void> => {
+	if (!turn.content.trim()) return;
+	await insertMessage(ctx, conversation.id, {
+		role: "assistant",
+		content: turn.content,
+		toolCalls: null,
+		model: conversation.model,
+		promptTokens: turn.promptTokens,
+		completionTokens: turn.completionTokens,
+		pendingApproval: false,
+	});
+	await db
+		.update(assistantConversation)
+		.set({ updatedAt: new Date() })
+		.where(eq(assistantConversation.id, conversation.id));
+};
+
 const runTurn = async (
 	ctx: Ctx,
 	input: RunAssistantInput,
@@ -1617,6 +1674,17 @@ const runTurn = async (
 				onDelta: (text) => onEvent({ type: "delta", text }),
 			});
 		} catch (error) {
+			if (error instanceof OpenRouterStreamCutError) {
+				// Cut by the provider. What arrived is kept under the same rule as
+				// a stop. A person who stopped the turn is told nothing.
+				await keepPartial(ctx, conversation, error.partial);
+				if (!signal?.aborted)
+					onEvent({
+						type: "error",
+						message: error.timedOut ? TIMED_OUT : STREAM_CUT,
+					});
+				return;
+			}
 			if (error instanceof OpenRouterError) {
 				onEvent({ type: "error", message: error.message });
 				return;
@@ -1634,21 +1702,7 @@ const runTurn = async (
 		// An empty partial stores nothing and reports nothing: stopping a turn
 		// before it said anything is not a failure to explain.
 		if (signal?.aborted) {
-			if (turn.content.trim()) {
-				await insertMessage(ctx, conversation.id, {
-					role: "assistant",
-					content: turn.content,
-					toolCalls: null,
-					model: conversation.model,
-					promptTokens: turn.promptTokens,
-					completionTokens: turn.completionTokens,
-					pendingApproval: false,
-				});
-				await db
-					.update(assistantConversation)
-					.set({ updatedAt: new Date() })
-					.where(eq(assistantConversation.id, conversation.id));
-			}
+			await keepPartial(ctx, conversation, turn);
 			return;
 		}
 
@@ -1723,6 +1777,17 @@ const runTurn = async (
 		// the stream route keeps rather than swallowed here. `NO_ANSWER` covers
 		// the rest below.
 		if (!(error instanceof OpenRouterError)) throw error;
+		if (error instanceof OpenRouterStreamCutError) {
+			// A cut closing answer is a failure of its own: the person is told
+			// the connection closed, not that the model kept working.
+			await keepPartial(ctx, conversation, error.partial);
+			if (!signal?.aborted)
+				onEvent({
+					type: "error",
+					message: error.timedOut ? TIMED_OUT : STREAM_CUT,
+				});
+			return;
+		}
 	}
 
 	// The nudge itself is deliberately NOT stored: it is this loop talking to the

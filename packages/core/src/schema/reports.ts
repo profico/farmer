@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { MAX_REPORT_SPAN_DAYS } from "../lib/report-period";
 import { dayKeySchema } from "./day-key";
 
 const year = z.number().int().min(2000).max(2100);
@@ -12,18 +13,6 @@ const range = {
 	from: dayKeySchema,
 	to: dayKeySchema,
 };
-
-// The widest span a range report may cover.
-//
-// `from <= to` was the only constraint, so `2000-01-01 → 2099-12-31` was a
-// request any Team Lead could make and the server would answer by scanning and
-// grouping the entire entry table. The month and week presets are bounded by
-// construction; Custom is free text and is what needed a ceiling.
-//
-// 366 rather than something tighter because a full calendar year — including a
-// leap year — is a report somebody genuinely runs. This is a backstop against
-// the pathological case, not an opinion about how people should slice time.
-const MAX_REPORT_SPAN_DAYS = 366;
 
 const spanWithinLimit = (data: { from: string; to: string }) => {
 	const from = new Date(`${data.from}T00:00:00Z`).getTime();

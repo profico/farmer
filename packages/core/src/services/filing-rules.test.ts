@@ -293,6 +293,32 @@ describe("remembering a rule from what was just filed", () => {
 		expect(await filingRulesService.list(ctx)).toHaveLength(0);
 	});
 
+	// Postgres compresses a repetitive value before it checks the index limit.
+	// A random string stays large, as a list of real commit subjects does.
+	const noisy = (length: number) =>
+		Array.from({ length }, () =>
+			String.fromCharCode(97 + Math.floor(Math.random() * 26)),
+		).join("");
+
+	// A GitHub commit entry can carry hundreds of subjects in one description.
+	// Its key is too big for the unique index, and one such row used to fail the
+	// insert for the whole batch.
+	test("an overlong title is skipped and does not lose the batch", async () => {
+		const remembered = await filingRulesService.rememberFrom(
+			ctx,
+			{ projectId },
+			[
+				{ taskId: meetingTaskId, description: "Daily standup" },
+				{ taskId: meetingTaskId, description: noisy(3000) },
+			],
+		);
+
+		expect(remembered).toBe(1);
+		const rules = await filingRulesService.list(ctx);
+		expect(rules).toHaveLength(1);
+		expect(present(rules[0], "the rule").title).toBe("Daily standup");
+	});
+
 	test("re-filing the same meeting elsewhere moves the rule", async () => {
 		await filingRulesService.rememberFrom(ctx, { projectId: otherProjectId }, [
 			{ taskId: meetingTaskId, description: "Daily standup" },
@@ -517,5 +543,71 @@ describe("the tools that carry the rules to the assistant", () => {
 				id: "00000000-0000-4000-8000-000000000000",
 			}),
 		).toBe("Remove a filing rule");
+	});
+});
+
+describe("the reasons a batch filing reports", () => {
+	const entryId = async () =>
+		(
+			await timeEntriesService.create(ctx, {
+				date: DATE,
+				taskId: designTaskId,
+				description: "Rest of day",
+				durationSeconds: 3600,
+				overtime: false,
+				fillsDay: false,
+			})
+		).id;
+
+	test("a database error is not passed to the caller", async () => {
+		// Not a uuid, so the query fails inside the database with the SQL and
+		// the parameters in the message.
+		const originalError = console.error;
+		console.error = () => {};
+		try {
+			const result = await timeEntriesService.fileMany(ctx, {
+				timeEntryIds: ["not-a-uuid"],
+				projectId,
+				taskId: designTaskId,
+				remember: false,
+			});
+			expect(result.failed).toBe(1);
+			expect(result.firstError).toBe("Could not file entry");
+		} finally {
+			console.error = originalError;
+		}
+	});
+
+	test("a refused task keeps its short message", async () => {
+		const id = await entryId();
+		await db
+			.update(task)
+			.set({ archivedAt: new Date() })
+			.where(eq(task.id, designTaskId));
+		const result = await timeEntriesService.fileMany(ctx, {
+			timeEntryIds: [id],
+			projectId,
+			taskId: designTaskId,
+			remember: false,
+		});
+		expect(result.firstError).toBe("Task not available");
+	});
+
+	test("the file_time_entries tool adds the recovery hint", async () => {
+		const id = await entryId();
+		await db
+			.update(task)
+			.set({ archivedAt: new Date() })
+			.where(eq(task.id, designTaskId));
+		const tool = present(findTool("file_time_entries"), "the tool");
+		const result = await tool.run(ctx, {
+			timeEntryIds: [id],
+			projectId,
+			taskId: designTaskId,
+		});
+		// SAFETY: the tool returns the `fileMany` result, and the expectation
+		// reads only `firstError` from it.
+		const { firstError } = result as { firstError: string };
+		expect(firstError).toContain("Call list_tasks");
 	});
 });

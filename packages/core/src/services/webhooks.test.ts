@@ -41,7 +41,13 @@ import {
 	parseWebhookSignature,
 	verifyWebhookSignature,
 } from "../lib/webhook-signature";
-import { at, createTestDb, present, type TestDb } from "../test/harness";
+import {
+	at,
+	countQueryParams,
+	createTestDb,
+	present,
+	type TestDb,
+} from "../test/harness";
 import { clearWebhookSubscriptionCacheForTests, emitEvent } from "./events";
 import { setNotifyAdaptersForTests } from "./notify";
 import type { Ctx } from "./types";
@@ -369,6 +375,19 @@ describe("the retry schedule", () => {
 		const summary = await runWebhookDeliveryOnce();
 		expect(summary.failed).toBe(1);
 		expect(at(await deliveriesFor(endpoint.id), 0).statusCode).toBe(302);
+	});
+
+	// PGLite accepts a Date in a raw sql template and postgres-js does not,
+	// so the rows alone cannot show this.
+	test("a failure sends no Date to the driver", async () => {
+		await anEndpoint(adminCtx, "https://8.8.8.8/hook");
+		recorder(500);
+		await emitEvent(adminCtx, "client.created", () => ({
+			client: { id: "client-date", name: "Acme" },
+		}));
+		const counts = await countQueryParams(() => runWebhookDeliveryOnce());
+		expect(counts.total).toBeGreaterThan(0);
+		expect(counts.dates).toBe(0);
 	});
 
 	test("a success clears the failure run", async () => {

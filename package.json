@@ -27,6 +27,7 @@
 	},
 	"dependencies": {
 		"@posthog/react": "1.11.0",
+		"posthog-js": "1.433.5",
 		"posthog-node": "5.52.4"
 	},
 	"devDependencies": {

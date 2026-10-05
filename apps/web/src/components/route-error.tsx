@@ -4,6 +4,13 @@ import type { ErrorComponentProps } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { SiteBrand, useEmSheen } from "#/components/site/site-chrome.tsx";
+import {
+	browserEnv,
+	claimStaleChunkFault,
+	isStaleChunkError,
+	isReloadPending,
+	reloadIfStaleChunk,
+} from "#/lib/stale-chunk.ts";
 
 import "./site/errors.css";
 
@@ -35,7 +42,16 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 	useEmSheen(pageRef);
 
 	useEffect(() => {
-		posthog.captureException(error);
+		// A chunk that a deploy removed is not a fault: reload to get the new
+		// index. The page that loads next sends one `stale_chunk_reloaded` event.
+		// When the guard blocks the reload, the error is a real fault and goes on.
+		// A follow-on error of a pending reload (a module that came back empty)
+		// is part of the same event and is not a fault either.
+		const env = browserEnv();
+		if (reloadIfStaleChunk(error, env) || isReloadPending(env)) return;
+		// A stale chunk error is cached by the lazy component and thrown again on
+		// each render, so it is captured once per page load.
+		if (claimStaleChunkFault(error)) posthog.captureException(error);
 	}, [error, posthog]);
 
 	return (
@@ -57,7 +73,10 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
 						className="fm-btn"
 						onClick={() => {
 							posthog.capture("route_error_retry_clicked");
-							reset();
+							// A stale chunk error is cached by the lazy component, so a
+							// re-render throws it again. Only a new page can fix it.
+							if (isStaleChunkError(error)) browserEnv().reload();
+							else reset();
 						}}
 					>
 						<ArrowsClockwiseIcon size={16} aria-hidden />

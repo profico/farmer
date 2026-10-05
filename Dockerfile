@@ -144,7 +144,9 @@ USER bun
 EXPOSE 3000
 
 # Liveness/readiness: the server must answer HTTP, not just have a live process.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+# The start period is the budget for a slow migration and seed. During it,
+# --start-interval probes every 2s and a failed probe does not count.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=120s --start-interval=2s --retries=3 \
 	CMD bun -e "fetch('http://localhost:'+(process.env.PORT??3000)).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]

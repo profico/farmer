@@ -4,11 +4,13 @@ import { dayKeySchema } from "@farmer/core/schema";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import {
 	createFileRoute,
+	type ErrorComponentProps,
 	Link,
 	useCanGoBack,
 	useNavigate,
 	useRouter,
 } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { z } from "zod";
 
 import {
@@ -19,6 +21,7 @@ import {
 } from "#/components/rewind/rewind-story.tsx";
 import { THEMES } from "#/components/rewind/slides.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
+import { browserEnv, reloadIfStaleChunk } from "#/lib/stale-chunk.ts";
 import { myRewindQuery } from "#/queries/rewind.ts";
 
 const searchSchema = z.object({
@@ -47,11 +50,19 @@ export const Route = createFileRoute("/$orgSlug/rewind")({
 		return { year, open, today };
 	},
 	pendingComponent: () => <RewindMessage title="Rewinding your year…" />,
-	errorComponent: ({ error }) => (
-		<RewindMessage title="This Rewind did not load." line={error.message} />
-	),
+	errorComponent: RewindError,
 	component: RewindPage,
 });
+
+function RewindError({ error }: ErrorComponentProps) {
+	// Same recovery as `RouteError`: a chunk that a deploy removed needs a reload.
+	useEffect(() => {
+		reloadIfStaleChunk(error, browserEnv());
+	}, [error]);
+	return (
+		<RewindMessage title="This Rewind did not load." line={error.message} />
+	);
+}
 
 function useClose() {
 	const orgSlug = useOrgSlug();

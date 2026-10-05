@@ -19,7 +19,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { client, project, task } from "../db/schema/domain";
-import { createTestDb, type TestDb } from "../test/harness";
+import { createTestDb, present, type TestDb } from "../test/harness";
+import { agentErrorMessage } from "./error-message";
 import { assertProjectInOrg, assertTaskAvailable } from "./guards";
 import type { Ctx } from "./types";
 
@@ -205,5 +206,93 @@ describe("assertTaskAvailable", () => {
 		await expect(
 			assertTaskAvailable(ctxForOrgA, archived.id, projectInAId),
 		).rejects.toThrow("Task not available");
+	});
+});
+
+// What a model reads (the MCP server and the assistant) when a guard refuses an id. The guards keep their
+// short message; `agentErrorMessage` adds the hint. Real guard errors are used,
+// so a changed guard message fails here.
+describe("agentErrorMessage on a real guard refusal", () => {
+	const refusal = async (run: () => Promise<object | void>) => {
+		const error = await run().then(
+			() => null,
+			(caught: Error) => caught,
+		);
+		return present(error, "the guard error");
+	};
+
+	test("tells the agent to call list_tasks for an unknown task", async () => {
+		const error = await refusal(() =>
+			assertTaskAvailable(ctxForOrgA, crypto.randomUUID(), projectInAId),
+		);
+		const message = agentErrorMessage(error);
+		expect(message).toStartWith("Task not available: ");
+		expect(message).toContain("archived or does not exist");
+		expect(message).toContain("list_tasks");
+	});
+
+	test("tells the agent to call list_tasks for an archived task", async () => {
+		const [archived] = await db
+			.insert(task)
+			.values({
+				scope: "organization" as const,
+				organizationId: orgAId,
+				name: "Retired for hint",
+				archivedAt: new Date(),
+			})
+			.returning();
+		const row = present(archived, "the archived task");
+		const error = await refusal(() =>
+			assertTaskAvailable(ctxForOrgA, row.id, projectInAId),
+		);
+		expect(agentErrorMessage(error)).toContain("list_tasks");
+	});
+
+	test("gives the same answer for another organization's task and for an unknown one", async () => {
+		const other = await refusal(() =>
+			assertTaskAvailable(ctxForOrgA, taskInBId, projectInBId),
+		);
+		const unknown = await refusal(() =>
+			assertTaskAvailable(ctxForOrgA, crypto.randomUUID(), projectInBId),
+		);
+		expect(agentErrorMessage(other)).toBe(agentErrorMessage(unknown));
+		expect(agentErrorMessage(other)).not.toContain(orgBId);
+		expect(agentErrorMessage(other)).not.toContain(taskInBId);
+	});
+
+	test("gives the same answer on a repeated failure", async () => {
+		const first = await refusal(() =>
+			assertTaskAvailable(ctxForOrgA, taskInBId, undefined),
+		);
+		const second = await refusal(() =>
+			assertTaskAvailable(ctxForOrgA, taskInBId, undefined),
+		);
+		expect(agentErrorMessage(first)).toBe(agentErrorMessage(second));
+	});
+
+	test("tells the agent to call list_projects for a refused project", async () => {
+		const other = await refusal(() =>
+			assertProjectInOrg(ctxForOrgA, projectInBId),
+		);
+		const unknown = await refusal(() =>
+			assertProjectInOrg(ctxForOrgA, crypto.randomUUID()),
+		);
+		expect(agentErrorMessage(other)).toStartWith("Project not found: ");
+		expect(agentErrorMessage(other)).toContain("list_projects");
+		expect(agentErrorMessage(other)).toBe(agentErrorMessage(unknown));
+	});
+
+	test("leaves the guard's own message short for the web app, the API and the CLI", async () => {
+		const error = await refusal(() =>
+			assertTaskAvailable(ctxForOrgA, taskInBId, projectInBId),
+		);
+		expect(error.message).toBe("Task not available");
+	});
+
+	test("leaves the absence refusal without a hint", async () => {
+		const error = await refusal(() =>
+			assertTaskAvailable(ctxForOrgA, absenceTaskId, projectInAId),
+		);
+		expect(agentErrorMessage(error)).toBe(error.message);
 	});
 });

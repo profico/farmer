@@ -38,6 +38,7 @@ import {
 } from "../db/schema/settings";
 import { emptyCalendar } from "../test/calendar";
 import { createTestDb, present, type TestDb } from "../test/harness";
+import { findTool } from "./assistant-tools";
 import { dayAssemblyService } from "./day-assembly.service";
 import { pullRequestActivityRow } from "./github.service";
 import {
@@ -481,6 +482,49 @@ describe("the 24-hour ceiling on an accepted proposal", () => {
 		expect(errors).toHaveLength(1);
 		expect(errors[0]).toMatch(/more than 24 hours/);
 		expect(await mondayRows()).toHaveLength(1);
+	});
+
+	test("a database error is not passed to the caller", async () => {
+		// 1000 seconds passes the schema and fails the granularity check, so
+		// the insert fails with its SQL and parameters in the message.
+		const originalError = console.error;
+		console.error = () => {};
+		try {
+			const { created, errors } = await dayAssemblyService.apply(ctx, {
+				date: MONDAY,
+				entries: [
+					{
+						taskId: devTaskId,
+						projectId,
+						description: "Secret note",
+						durationSeconds: 1000,
+					},
+				],
+			});
+			expect(created).toBe(0);
+			expect(errors).toEqual(["Failed to create entry"]);
+		} finally {
+			console.error = originalError;
+		}
+	});
+
+	test("the apply_day_assembly tool adds the recovery hint", async () => {
+		const tool = present(findTool("apply_day_assembly"), "the tool");
+		const result = await tool.run(ctx, {
+			date: MONDAY,
+			entries: [
+				{
+					taskId: "00000000-0000-4000-8000-000000000000",
+					description: "Stale",
+					durationSeconds: 1800,
+				},
+			],
+		});
+		// SAFETY: the tool returns the `apply` result, and the expectation reads
+		// only `errors` from it.
+		const { errors } = result as { errors: string[] };
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toContain("Call list_tasks");
 	});
 
 	test("an accepted rest-of-day block does not count against it", async () => {

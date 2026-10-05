@@ -48,6 +48,7 @@ const skipReasonLabel = (reason: string) => {
 	if (reason === "not a working day for this person")
 		return "Not a working day for you";
 	if (reason === "absence already logged") return "Already booked off";
+	if (reason === "could not be logged") return "Could not be logged";
 	return reason;
 };
 
