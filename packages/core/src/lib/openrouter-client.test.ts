@@ -306,6 +306,40 @@ describe("a stream that ends without a finish reason", () => {
 		});
 	});
 
+	test("the app's own timeout keeps the partial turn", async () => {
+		// A fetch body rejects with `TimeoutError`, not `AbortError`, when the
+		// deadline passed through `AbortSignal.any` fires mid-read.
+		// SAFETY: a test stub for `fetch`. It ignores its arguments and answers
+		// one shape: a stream that fails with a timeout after two frames.
+		globalThis.fetch = (async (_input: string | URL | Request) =>
+			new Response(
+				new ReadableStream<Uint8Array>({
+					start(controller) {
+						const encoder = new TextEncoder();
+						controller.enqueue(encoder.encode(`data: ${delta("Half ")}\n\n`));
+						controller.enqueue(encoder.encode(`data: ${delta("way")}\n\n`));
+						// `error()` drops queued chunks, so the failure comes later.
+						setTimeout(() => {
+							controller.error(
+								new DOMException("The operation timed out.", "TimeoutError"),
+							);
+						}, 10);
+					},
+				}),
+				{ status: 200, headers: { "Content-Type": "text/event-stream" } },
+			)) as typeof globalThis.fetch;
+		const error = await call(new AbortController().signal).then(
+			() => null,
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(OpenRouterStreamCutError);
+		expect(error).toMatchObject({
+			message: "stream timed out before a finish reason",
+			timedOut: true,
+			partial: { content: "Half way", finishReason: null },
+		});
+	});
+
 	test("an error frame after a Stop is still an abort", async () => {
 		serve([delta("Half"), finish("error")]);
 		const controller = new AbortController();

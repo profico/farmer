@@ -108,11 +108,15 @@ export class OpenRouterStreamCutError extends OpenRouterError {
 	constructor(
 		readonly partial: ChatTurn,
 		readonly upstream: UpstreamError | null = null,
+		/** Set when the app's own deadline cut the stream, not the provider. */
+		readonly timedOut = false,
 	) {
 		super(
 			upstream
 				? `stream failed upstream (${upstream.code ?? "no code"}): ${upstream.message}`
-				: "stream ended without a finish reason",
+				: timedOut
+					? "stream timed out before a finish reason"
+					: "stream ended without a finish reason",
 		);
 		this.name = "OpenRouterStreamCutError";
 	}
@@ -271,6 +275,7 @@ export const streamChatCompletion = async (opts: {
 	let completionTokens: number | null = null;
 	let costUsd: number | null = null;
 	let finishReason: string | null = null;
+	let timedOut = false;
 	let upstream: UpstreamError | null = null;
 
 	const reader = response.body.getReader();
@@ -386,8 +391,16 @@ export const streamChatCompletion = async (opts: {
 		const aborted =
 			opts.signal?.aborted === true ||
 			(error instanceof Error && error.name === "AbortError");
-		if (!aborted) throw error;
-		finishReason = ABORTED;
+		// The app's own deadline reaches the body read through `AbortSignal.any`
+		// in `externalFetch`. It rejects with a `TimeoutError`, not an
+		// `AbortError`, and the caller's signal stays unfired. It is a cut, so
+		// the partial turn is kept and reported below.
+		timedOut =
+			!aborted &&
+			error instanceof DOMException &&
+			error.name === "TimeoutError";
+		if (!aborted && !timedOut) throw error;
+		if (aborted) finishReason = ABORTED;
 	} finally {
 		// Releasing the lock lets the connection be torn down when the caller
 		// aborts mid-answer, which is the common case for a user who navigates away.
@@ -431,7 +444,8 @@ export const streamChatCompletion = async (opts: {
 				message: 'finish reason "error" with no error object',
 			});
 		}
-		if (finishReason === null) throw new OpenRouterStreamCutError(turn);
+		if (finishReason === null)
+			throw new OpenRouterStreamCutError(turn, null, timedOut);
 	}
 	return turn;
 };
