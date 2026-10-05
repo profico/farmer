@@ -15,7 +15,10 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useToday } from "#/hooks/use-today.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
-import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
+import {
+	timeEntriesRangeQuery,
+	WARM_RANGE_GC_MS,
+} from "#/queries/time-entries.ts";
 
 const searchSchema = z.object({
 	weekStart: dayKeySchema.optional(),
@@ -46,11 +49,23 @@ export const Route = createFileRoute("/$orgSlug/time/week")({
 		// Warm the weeks either side without holding this navigation up, so a step
 		// with the ‹ / › buttons is a cache hit rather than a blocking fetch that
 		// swaps the grid out for the pending state. Same reasoning as the Day route.
+		// The next week and its holidays also get a long gcTime: a prefetch has no
+		// observer, and with the default 5 minutes it is gone before a tab that
+		// stays open reaches midnight.
 		for (const offset of [-7, 7]) {
 			const start = addDaysToKey(weekStart, offset);
-			void context.queryClient.prefetchQuery(
-				timeEntriesRangeQuery(orgSlug, start, addDaysToKey(start, 6)),
-			);
+			const end = addDaysToKey(start, 6);
+			const warm = offset > 0 ? { gcTime: WARM_RANGE_GC_MS } : {};
+			void context.queryClient.prefetchQuery({
+				...timeEntriesRangeQuery(orgSlug, start, end),
+				...warm,
+			});
+			if (offset > 0) {
+				void context.queryClient.prefetchQuery({
+					...holidaysForRangeQuery(orgSlug, { from: start, to: end }),
+					...warm,
+				});
+			}
 		}
 	},
 	component: WeekRoute,

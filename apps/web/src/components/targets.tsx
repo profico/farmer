@@ -1,6 +1,6 @@
 import { formatReportHours } from "@farmer/core/lib/report-format";
 import type { PeriodTarget, TrackingStatus } from "@farmer/core/services";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { StatusPill } from "#/components/status-pill.tsx";
 import { Skeleton } from "#/components/ui/skeleton.tsx";
@@ -84,8 +84,19 @@ function Pill({ status }: { status: TrackingStatus | null }) {
  *
  * Read without suspending, so the timesheet never waits on it.
  */
-export function TargetsStrip({ orgSlug }: { orgSlug: string }) {
-	const { data } = useQuery(myTargetsQuery(orgSlug));
+export function TargetsStrip({
+	orgSlug,
+	today,
+}: {
+	orgSlug: string;
+	today: string;
+}) {
+	// The previous day's figures stay until the new day's arrive, so the tiles
+	// do not blink at midnight.
+	const { data } = useQuery({
+		...myTargetsQuery(orgSlug, today),
+		placeholderData: keepPreviousData,
+	});
 	const cells = [
 		{ key: "week", title: "This week", period: data?.week },
 		{ key: "month", title: "This month", period: data?.month },

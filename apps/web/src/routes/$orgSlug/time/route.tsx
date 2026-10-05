@@ -10,6 +10,7 @@ import {
 	useLocation,
 	useSearch,
 } from "@tanstack/react-router";
+import { useDeferredValue } from "react";
 
 import { TargetsStrip } from "#/components/targets.tsx";
 import { UnfiledEntriesBanner } from "#/components/time/unfiled-entries-banner.tsx";
@@ -40,7 +41,9 @@ function TimeLayout() {
 	// layout reads whichever is there; the Day view's banner covers the day's
 	// whole week, since that is what the strip above it shows.
 	const search = useSearch({ strict: false });
-	const todayKey = useToday(organization.timezone);
+	// The same deferred day as the child routes, so the banner and the grid
+	// always show the same week.
+	const todayKey = useDeferredValue(useToday(organization.timezone));
 	const viewed = (() => {
 		if (pathname.endsWith("/time/month")) {
 			const month = search.month ?? todayKey.slice(0, 7);
@@ -86,7 +89,7 @@ function TimeLayout() {
 			</div>
 			{/* This week and this month against the rule, on every view — the
 			    figure a person is filling the timesheet towards. */}
-			<TargetsStrip orgSlug={organization.slug} />
+			<TargetsStrip orgSlug={organization.slug} today={todayKey} />
 			{/* Above the tabs' content, scoped to the week or month on screen: it is
 			    about the time you are looking at, and goes away when that range is
 			    clean. The nav badge keeps the wider count, so nothing older is lost

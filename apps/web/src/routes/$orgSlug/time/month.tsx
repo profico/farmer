@@ -9,7 +9,10 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useToday } from "#/hooks/use-today.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
-import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
+import {
+	timeEntriesRangeQuery,
+	WARM_RANGE_GC_MS,
+} from "#/queries/time-entries.ts";
 
 const searchSchema = z.object({
 	month: z
@@ -39,13 +42,20 @@ export const Route = createFileRoute("/$orgSlug/time/month")({
 			),
 		]);
 
-		// The next month, warmed but NOT awaited, as the Day and Week routes warm
-		// the next week. A tab left open past the end of the month then finds the
-		// new month in the cache.
+		// The next month and its holidays, warmed but NOT awaited, as the Day and
+		// Week routes warm the next week. A prefetch has no observer, so the long
+		// gcTime keeps it for a tab that stays open until the month ends. With the
+		// default 5 minutes it would be gone by then.
 		const nextStart = addDaysToKey(monthEnd, 1);
-		void context.queryClient.prefetchQuery(
-			timeEntriesRangeQuery(orgSlug, nextStart, endOfMonthKey(nextStart)),
-		);
+		const nextEnd = endOfMonthKey(nextStart);
+		void context.queryClient.prefetchQuery({
+			...timeEntriesRangeQuery(orgSlug, nextStart, nextEnd),
+			gcTime: WARM_RANGE_GC_MS,
+		});
+		void context.queryClient.prefetchQuery({
+			...holidaysForRangeQuery(orgSlug, { from: nextStart, to: nextEnd }),
+			gcTime: WARM_RANGE_GC_MS,
+		});
 	},
 	component: MonthRoute,
 });
@@ -56,7 +66,7 @@ function MonthRoute() {
 	const search = Route.useSearch();
 	// Deferred, so a day that opens a new month loads that month in the
 	// background while the old month stays on screen (see the Day route).
-	// MonthView reads the live day itself for its today mark.
+	// MonthView gets this same day as a prop, so the page uses one day.
 	const today = useDeferredValue(useToday(organization.timezone));
 	const month = search.month ?? today.slice(0, 7);
 	const monthStart = `${month}-01`;
@@ -73,6 +83,7 @@ function MonthRoute() {
 			orgSlug={organization.slug}
 			month={month}
 			timezone={organization.timezone}
+			today={today}
 			entries={entries}
 			holidays={new Map(holidayEntries)}
 		/>

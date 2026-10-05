@@ -43,7 +43,10 @@ import { orderedWeekdays } from "#/lib/weekdays.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
-import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
+import {
+	timeEntriesRangeQuery,
+	WARM_RANGE_GC_MS,
+} from "#/queries/time-entries.ts";
 
 export const Route = createFileRoute("/$orgSlug/")({
 	loader: async ({ context, params }) => {
@@ -56,18 +59,25 @@ export const Route = createFileRoute("/$orgSlug/")({
 				timeEntriesRangeQuery(orgSlug, weekStart, weekEnd),
 			),
 			context.queryClient.ensureQueryData(myProjectsQuery(orgSlug)),
-			context.queryClient.ensureQueryData(myTargetsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(myTargetsQuery(orgSlug, today)),
 			context.queryClient.ensureQueryData(
 				holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 			),
 		]);
 
-		// The next week, warmed but NOT awaited. A tab left open past the end of
-		// the week then finds the new week in the cache.
+		// The next week and its holidays, warmed but NOT awaited. A prefetch has no
+		// observer, so the long gcTime keeps it for a tab that stays open until
+		// the week ends. With the default 5 minutes it would be gone by then.
 		const nextStart = addDaysToKey(weekStart, 7);
-		void context.queryClient.prefetchQuery(
-			timeEntriesRangeQuery(orgSlug, nextStart, addDaysToKey(nextStart, 6)),
-		);
+		const nextEnd = addDaysToKey(nextStart, 6);
+		void context.queryClient.prefetchQuery({
+			...timeEntriesRangeQuery(orgSlug, nextStart, nextEnd),
+			gcTime: WARM_RANGE_GC_MS,
+		});
+		void context.queryClient.prefetchQuery({
+			...holidaysForRangeQuery(orgSlug, { from: nextStart, to: nextEnd }),
+			gcTime: WARM_RANGE_GC_MS,
+		});
 	},
 	// The generic page placeholder is a header over a ruled list, which is the
 	// shape of most screens here and not of this one — it put four ragged lines
@@ -103,7 +113,7 @@ function OrgHome() {
 	);
 	// The two yardsticks are the fund rule, read for this person: the week and
 	// the month, each with where they should be by today.
-	const { data: targets } = useSuspenseQuery(myTargetsQuery(orgSlug));
+	const { data: targets } = useSuspenseQuery(myTargetsQuery(orgSlug, today));
 	const { data: holidayEntries } = useSuspenseQuery(
 		holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 	);
@@ -111,9 +121,13 @@ function OrgHome() {
 	const timedEntryId = useTimedEntryId(orgSlug);
 
 	// The "by day" bars are clickable; the day the user picks drives the entry
-	// list beside them. Null means today, so a pick-less page follows the day.
+	// list beside them. Null means today, so a pick-less page follows the day. A
+	// pick outside the week on screen (the week moved on at midnight) is dropped.
 	const [pickedDay, setSelectedDay] = useState<string | null>(null);
-	const selectedDay = pickedDay ?? today;
+	const selectedDay =
+		pickedDay && pickedDay >= weekStart && pickedDay <= weekEnd
+			? pickedDay
+			: today;
 
 	const todayEntries = weekEntries.filter((entry) => entry.date === today);
 	const todayTotal = todayEntries.reduce(

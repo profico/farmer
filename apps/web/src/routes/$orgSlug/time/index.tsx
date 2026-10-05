@@ -15,7 +15,10 @@ import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useToday } from "#/hooks/use-today.ts";
 import { holidaysForRangeQuery } from "#/queries/holidays.ts";
 import { myProjectsQuery } from "#/queries/projects.ts";
-import { timeEntriesRangeQuery } from "#/queries/time-entries.ts";
+import {
+	timeEntriesRangeQuery,
+	WARM_RANGE_GC_MS,
+} from "#/queries/time-entries.ts";
 
 const searchSchema = z.object({
 	date: dayKeySchema.optional(),
@@ -47,11 +50,23 @@ export const Route = createFileRoute("/$orgSlug/time/")({
 		// week boundary used to miss, and the loader blocks navigation, so the whole
 		// view was replaced by the pending state for at least 300ms while it
 		// fetched. Prefetching removes the miss without holding up this navigation.
+		// The next week and its holidays also get a long gcTime: a prefetch has no
+		// observer, and with the default 5 minutes it is gone before a tab that
+		// stays open reaches midnight.
 		for (const offset of [-7, 7]) {
 			const start = addDaysToKey(weekStart, offset);
-			void context.queryClient.prefetchQuery(
-				timeEntriesRangeQuery(orgSlug, start, addDaysToKey(start, 6)),
-			);
+			const end = addDaysToKey(start, 6);
+			const warm = offset > 0 ? { gcTime: WARM_RANGE_GC_MS } : {};
+			void context.queryClient.prefetchQuery({
+				...timeEntriesRangeQuery(orgSlug, start, end),
+				...warm,
+			});
+			if (offset > 0) {
+				void context.queryClient.prefetchQuery({
+					...holidaysForRangeQuery(orgSlug, { from: start, to: end }),
+					...warm,
+				});
+			}
 		}
 	},
 	component: DayRoute,
@@ -66,7 +81,8 @@ function DayRoute() {
 	// whose range is not in the cache. The live value would show the pending
 	// state at once and, with no network, the error page. The deferred render
 	// suspends in the background and the old day stays on screen until the new
-	// range loads. DayView reads the live day itself for its today marks.
+	// range loads. The view gets this same day as a prop, so the date, the today
+	// mark and "Return to today" all come from one day.
 	const today = useDeferredValue(useToday(organization.timezone));
 	const date = search.date ?? today;
 	const weekStart = startOfWeekKey(date, organization.weekStartsOn);
@@ -83,6 +99,7 @@ function DayRoute() {
 			orgSlug={organization.slug}
 			date={date}
 			timezone={organization.timezone}
+			today={today}
 			entries={weekEntries.filter((entry) => entry.date === date)}
 			weekDates={datesBetween(weekStart, weekEnd)}
 			weekEntries={weekEntries}

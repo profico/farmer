@@ -29,7 +29,6 @@ import { WeekStrip } from "#/components/time/week-strip.tsx";
 import { Button } from "#/components/ui/button.tsx";
 import { GhostRow } from "#/components/ui/ghost-row.tsx";
 import { useTimedEntryId } from "#/hooks/use-timer.ts";
-import { useToday } from "#/hooks/use-today.ts";
 import { formatDateKeyLong } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { myTargetsQuery } from "#/queries/compliance.ts";
@@ -40,6 +39,7 @@ export function DayView({
 	orgSlug,
 	date,
 	timezone,
+	today,
 	entries,
 	weekDates,
 	weekEntries,
@@ -48,6 +48,12 @@ export function DayView({
 	orgSlug: string;
 	date: string;
 	timezone: string;
+	/**
+	 * The day the page treats as today. The route passes its deferred day, so
+	 * the date, the today mark and the targets all come from one day while a
+	 * new range loads.
+	 */
+	today: string;
 	/** This day's entries. */
 	entries: EntryBlockRowEntry[];
 	/** The seven day keys of the week `date` falls in, for the strip above. */
@@ -61,14 +67,13 @@ export function DayView({
 	const timedEntryId = useTimedEntryId(orgSlug);
 	// Read without suspending: the strip's "short" marks are a courtesy, and the
 	// day must never wait on them.
-	const { data: targets } = useQuery(myTargetsQuery(orgSlug));
+	const { data: targets } = useQuery(myTargetsQuery(orgSlug, today));
 	const total = entries.reduce((sum, e) => sum + e.durationSeconds, 0);
 	// A fill ("rest of day") block is a catch-all, so it always sorts last; the
 	// stable sort otherwise preserves the server's insertion ordering.
 	const sortedEntries = [...entries].sort(
 		(a, b) => Number(a.fillsDay) - Number(b.fillsDay),
 	);
-	const today = useToday(timezone);
 	const isToday = date === today;
 	const holidayName = holidays.get(date);
 
