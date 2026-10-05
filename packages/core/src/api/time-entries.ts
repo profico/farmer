@@ -63,16 +63,16 @@ export type TimeEntrySource = {
 	fillsDay: boolean;
 	calendarEventId: string | null;
 	commitCount?: number;
-	/** The four columns of the calendar notice. Every column of the row is
-	 *  there in each read, so a caller that leaves them out is a test. */
-	calendarChangedAt?: Date | null;
-	calendarChangeFrom?: {
+	/** The four columns of the calendar notice. Required, so that a read
+	 *  with a narrow select cannot drop the notice without an error. */
+	calendarChangedAt: Date | null;
+	calendarChangeFrom: {
 		date?: string;
 		durationSeconds?: number;
 		description?: string;
 	} | null;
-	syncedDate?: string | null;
-	syncedDurationSeconds?: number | null;
+	syncedDate: string | null;
+	syncedDurationSeconds: number | null;
 	task: { id: string; name: string; isAbsence: boolean };
 	project: {
 		id: string;
