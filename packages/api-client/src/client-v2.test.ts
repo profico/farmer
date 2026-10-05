@@ -74,6 +74,40 @@ describe("the api/v1 routes", () => {
 		);
 	});
 
+	test("the project list keeps the stats and the money", async () => {
+		const { transport, requests } = scriptedServer([
+			jsonReply(200, [
+				{
+					id: "p1",
+					name: "Site",
+					code: "ST",
+					status: "archived",
+					client: { id: "c1", name: "Acme" },
+					role: "pm",
+					type: "hourly",
+					icon: null,
+					openToOrg: false,
+					budgetSeconds: null,
+					budgetAmount: null,
+					hourlyPrice: "85.00",
+					stats: {
+						scope: "project",
+						monthSeconds: 7200,
+						allTimeSeconds: 36000,
+						contributorCount: 2,
+						contributors: [{ id: "u1", name: "Ana" }],
+					},
+				},
+			]),
+		]);
+		const projects = await new FarmerClient(transport, "tok").listProjects(
+			"acme",
+		);
+		expect(projects[0]?.stats.monthSeconds).toBe(7200);
+		expect(projects[0]?.hourlyPrice).toBe("85.00");
+		expect(requests[0]?.url).toBe(`${ORIGIN}/api/v1/orgs/acme/projects`);
+	});
+
 	test("a write sends its body as JSON", async () => {
 		const { transport, requests } = scriptedServer([
 			jsonReply(200, [
