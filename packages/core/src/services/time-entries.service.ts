@@ -80,6 +80,7 @@ import {
 	recomputeDayFill,
 	rehomeDroppedFillEvidence,
 } from "./day-fill";
+import { safeErrorMessage } from "./error-message";
 import {
 	emitEvent,
 	timeEntryWebhookPayload,
@@ -2085,9 +2086,14 @@ export const timeEntriesService = {
 				});
 				filed++;
 			} catch (error) {
-				reasons.push(
-					error instanceof Error ? error.message : "Could not file entry",
-				);
+				// `firstError` reaches the REST API, the CLI, the MCP server and the
+				// assistant's model provider, so only a message written for a person
+				// may pass. A database error carries its SQL and parameters.
+				const message = error instanceof Error ? safeErrorMessage(error) : null;
+				if (message === null) {
+					console.error("[time-entries] could not file an entry", error);
+				}
+				reasons.push(message ?? "Could not file entry");
 			}
 		}
 

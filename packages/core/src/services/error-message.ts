@@ -101,7 +101,16 @@ const RECOVERY_HINTS = new Map([
  */
 export const agentErrorMessage = (error: Error): string | null => {
 	const message = safeErrorMessage(error);
-	if (message === null) return null;
+	return message === null ? null : withRecoveryHint(message);
+};
+
+/**
+ * Adds the recovery hint to a message that a person may already read. Use it
+ * for a reason that a service collected as text, such as the `firstError` of a
+ * batch filing, where there is no error object left to give to
+ * `agentErrorMessage`.
+ */
+export const withRecoveryHint = (message: string): string => {
 	const hint = RECOVERY_HINTS.get(message);
 	return hint === undefined ? message : `${message}: ${hint}`;
 };

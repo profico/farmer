@@ -75,6 +75,7 @@ import { clientsService } from "./clients.service";
 import { complianceService, type PeriodTarget } from "./compliance.service";
 import { ctxAccess, ctxDb, ctxTimezone, ctxWeekStartsOn } from "./context";
 import { dayAssemblyService } from "./day-assembly.service";
+import { withRecoveryHint } from "./error-message";
 import { filingRulesService } from "./filing-rules.service";
 import { githubService } from "./github.service";
 import { googleCalendarService } from "./google-calendar.service";
@@ -1122,8 +1123,17 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				.parse(args.timeEntryIds)
 				.filter((id) => !unticked.has(id)),
 		}),
-		run: async (ctx, args) =>
-			timeEntriesService.fileMany(ctx, fileTimeEntriesInput.parse(args)),
+		run: async (ctx, args) => {
+			const result = await timeEntriesService.fileMany(
+				ctx,
+				fileTimeEntriesInput.parse(args),
+			);
+			// A stale task id fails each entry with the guard's short message. The
+			// agent gets the same recovery hint as a failed create or update.
+			return result.firstError === undefined
+				? result
+				: { ...result, firstError: withRecoveryHint(result.firstError) };
+		},
 	},
 	{
 		name: "sync_now",
