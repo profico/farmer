@@ -1,16 +1,24 @@
 import {
 	type DeviceCode,
 	FarmerClient,
+	fetchMeta,
 	formatUserCode,
 	pollForToken,
 	requestDeviceCode,
+	type SignInMethod,
 } from "@farmer/api-client";
+import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
+import {
+	type SignInOutcome,
+	signInWithPassword,
+	signInWithProvider,
+} from "../src/session/provider-sign-in";
 import { useSession } from "../src/session/session";
 import { FarmerMark } from "../src/ui/brand";
 import {
@@ -28,6 +36,9 @@ import { SPACE } from "../src/ui/type";
 
 const API_TOKEN_PREFIX = "fmr_";
 
+/** The API version whose `/meta` lists the sign-in methods. */
+const METHODS_API_VERSION = 2;
+
 const openApproval = (url: string) =>
 	WebBrowser.openBrowserAsync(url, {
 		// Android: a Custom Tab in the app's own task, so Back returns here.
@@ -36,20 +47,30 @@ const openApproval = (url: string) =>
 	}).catch(() => undefined);
 
 /**
- * Sign-in, two ways. The browser runs the device flow, as `farmer login`
- * does: the approval page opens with the code filled in, and the app polls
- * until the person approves it. An API token is the other way, for a person
- * who made one in Preferences.
+ * Sign-in. A server of API version 2 lists its methods in `/meta`: one
+ * button for each provider, and the email and password form when it offers
+ * one (ADR 0005). Two fallbacks stay for every server: the device flow in
+ * the browser, as `farmer login` does, and an API token from Preferences.
+ * A server before version 2 gets only the two fallbacks, as before.
  */
 export default function SignInScreen() {
 	const palette = usePalette();
 	const router = useRouter();
 	const { signIn } = useSession();
 	const { server } = useLocalSearchParams<{ server?: string }>();
+	const meta = useQuery({
+		queryKey: ["farmer", server ?? "", "meta"],
+		queryFn: () => fetchMeta(transportFor(server ?? "")),
+		enabled: Boolean(server),
+		staleTime: 60_000,
+	});
 	const [code, setCode] = useState<DeviceCode | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [token, setToken] = useState("");
+	const [email, setEmail] = useState("");
+	const [password, setPassword] = useState("");
+	const [showOthers, setShowOthers] = useState(false);
 	// Each attempt has a number. A poll stops once a newer attempt, a cancel
 	// or leaving the screen changed it.
 	const attempt = useRef(0);
@@ -64,6 +85,13 @@ export default function SignInScreen() {
 	if (!server) return <Redirect href="/server" />;
 	const transport = transportFor(server);
 
+	const version = meta.data?.apiVersion ?? 1;
+	const providers: SignInMethod[] =
+		version >= METHODS_API_VERSION ? (meta.data?.signInMethods ?? []) : [];
+	const passwordForm =
+		version >= METHODS_API_VERSION && meta.data?.passwordSignIn === true;
+	const hasMethods = providers.length > 0 || passwordForm;
+
 	/** Checks a token with `GET /me`, then keeps it. */
 	const finish = async (candidate: string) => {
 		await new FarmerClient(transport, candidate).me();
@@ -75,6 +103,42 @@ export default function SignInScreen() {
 		setError(failure.message);
 		setCode(null);
 		setBusy(false);
+	};
+
+	/** The end of a provider or a password sign-in. */
+	const settle = async (outcome: SignInOutcome) => {
+		if (outcome.kind === "cancelled") {
+			setBusy(false);
+			return;
+		}
+		if (outcome.kind === "error") {
+			setError(outcome.message);
+			setBusy(false);
+			return;
+		}
+		try {
+			await finish(outcome.token);
+		} catch (failure) {
+			fail(failure instanceof Error ? failure : new Error(String(failure)));
+		}
+	};
+
+	const withProvider = async (method: SignInMethod) => {
+		setError(null);
+		setBusy(true);
+		attempt.current += 1;
+		await settle(await signInWithProvider(server, method));
+	};
+
+	const withPassword = async () => {
+		setError(null);
+		if (!email.trim() || !password) {
+			setError("Enter your email and your password.");
+			return;
+		}
+		setBusy(true);
+		attempt.current += 1;
+		await settle(await signInWithPassword(server, email.trim(), password));
 	};
 
 	const withBrowser = async () => {
@@ -124,6 +188,91 @@ export default function SignInScreen() {
 		setBusy(false);
 	};
 
+	const browserCard = (
+		<Card>
+			<View
+				style={{ flexDirection: "row", gap: SPACE.m, alignItems: "center" }}
+			>
+				<Icon name="browser" color={palette.primary} />
+				<Text variant="titleMedium">Sign in with the browser</Text>
+			</View>
+			<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+				Sign in on the server's own page, with any method it offers.
+			</Text>
+			<ActionButton
+				label="Sign in with the browser"
+				variant={hasMethods ? "outlined" : "filled"}
+				onPress={() => void withBrowser()}
+				disabled={busy}
+			/>
+		</Card>
+	);
+
+	const tokenCard = (
+		<Card>
+			<View
+				style={{ flexDirection: "row", gap: SPACE.m, alignItems: "center" }}
+			>
+				<Icon name="key" color={palette.primary} />
+				<Text variant="titleMedium">Use an API token</Text>
+			</View>
+			<Field
+				label="API token"
+				hint="Make one in Farmer on the web, in Preferences, API tokens."
+				value={token}
+				onChangeText={setToken}
+				placeholder="fmr_..."
+				autoCapitalize="none"
+				autoCorrect={false}
+				secureTextEntry
+				editable={!busy}
+				onSubmitEditing={() => void withToken()}
+			/>
+			<ActionButton
+				label="Sign in with the token"
+				variant="outlined"
+				onPress={() => void withToken()}
+				disabled={busy || !token.trim()}
+			/>
+		</Card>
+	);
+
+	const waitingCard = code ? (
+		<Card tone="primary">
+			<Text variant="titleMedium" color={palette.onPrimaryContainer}>
+				Approve the sign-in in the browser
+			</Text>
+			<Text variant="bodyMedium" color={palette.onPrimaryContainer}>
+				Approve it only if the page shows this code:
+			</Text>
+			<Text
+				variant="displaySmall"
+				color={palette.onPrimaryContainer}
+				align="center"
+			>
+				{formatUserCode(code.userCode)}
+			</Text>
+			<View
+				style={{ flexDirection: "row", alignItems: "center", gap: SPACE.m }}
+			>
+				<ActivityIndicator color={palette.onPrimaryContainer} />
+				<View style={{ flex: 1 }}>
+					<Text variant="bodyMedium" color={palette.onPrimaryContainer}>
+						Waiting for approval. Come back to the app when you are done.
+					</Text>
+				</View>
+			</View>
+			<View style={{ flexDirection: "row", gap: SPACE.s }}>
+				<ActionButton
+					label="Open the page again"
+					variant="outlined"
+					onPress={() => void openApproval(code.verificationUriComplete)}
+				/>
+				<ActionButton label="Cancel" variant="text" onPress={cancel} />
+			</View>
+		</Card>
+	) : null;
+
 	return (
 		<Screen>
 			<Inset>
@@ -143,93 +292,91 @@ export default function SignInScreen() {
 				</View>
 				{error ? <ErrorBanner message={error} /> : null}
 
-				{code ? (
-					<Card tone="primary">
-						<Text variant="titleMedium" color={palette.onPrimaryContainer}>
-							Approve the sign-in in the browser
-						</Text>
-						<Text variant="bodyMedium" color={palette.onPrimaryContainer}>
-							Approve it only if the page shows this code:
-						</Text>
-						<Text
-							variant="displaySmall"
-							color={palette.onPrimaryContainer}
-							align="center"
-						>
-							{formatUserCode(code.userCode)}
-						</Text>
-						<View
-							style={{
-								flexDirection: "row",
-								alignItems: "center",
-								gap: SPACE.m,
-							}}
-						>
-							<ActivityIndicator color={palette.onPrimaryContainer} />
-							<View style={{ flex: 1 }}>
-								<Text variant="bodyMedium" color={palette.onPrimaryContainer}>
-									Waiting for approval. Come back to the app when you are done.
-								</Text>
-							</View>
-						</View>
-						<View style={{ flexDirection: "row", gap: SPACE.s }}>
-							<ActionButton
-								label="Open the page again"
-								variant="outlined"
-								onPress={() => void openApproval(code.verificationUriComplete)}
-							/>
-							<ActionButton label="Cancel" variant="text" onPress={cancel} />
-						</View>
-					</Card>
-				) : (
-					<Card>
-						<View
-							style={{
-								flexDirection: "row",
-								gap: SPACE.m,
-								alignItems: "center",
-							}}
-						>
-							<Icon name="browser" color={palette.primary} />
-							<Text variant="titleMedium">Sign in with the browser</Text>
-						</View>
-						<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-							Sign in on the server's own page, with any method it offers.
-						</Text>
-						<ActionButton
-							label="Sign in with the browser"
-							onPress={() => void withBrowser()}
-							disabled={busy}
-						/>
-					</Card>
-				)}
-
-				<Card>
-					<View
-						style={{ flexDirection: "row", gap: SPACE.m, alignItems: "center" }}
-					>
-						<Icon name="key" color={palette.primary} />
-						<Text variant="titleMedium">Use an API token</Text>
+				{meta.isPending ? (
+					<View style={{ paddingVertical: SPACE.xl, alignItems: "center" }}>
+						<ActivityIndicator color={palette.primary} />
 					</View>
-					<Field
-						label="API token"
-						hint="Make one in Farmer on the web, in Preferences, API tokens."
-						value={token}
-						onChangeText={setToken}
-						placeholder="fmr_..."
-						autoCapitalize="none"
-						autoCorrect={false}
-						secureTextEntry
-						editable={!busy}
-						onSubmitEditing={() => void withToken()}
-					/>
-					<ActionButton
-						label="Sign in with the token"
-						variant="outlined"
-						onPress={() => void withToken()}
-						disabled={busy || !token.trim()}
-					/>
-				</Card>
+				) : waitingCard ? (
+					waitingCard
+				) : hasMethods ? (
+					<>
+						{providers.length > 0 ? (
+							<View style={{ gap: SPACE.s }}>
+								{providers.map((method) => (
+									<ActionButton
+										key={method.id}
+										label={`Continue with ${method.name}`}
+										onPress={() => void withProvider(method)}
+										disabled={busy}
+									/>
+								))}
+							</View>
+						) : null}
+						{passwordForm ? (
+							<Card>
+								<Field
+									label="Email"
+									value={email}
+									onChangeText={setEmail}
+									placeholder="you@example.com"
+									keyboardType="email-address"
+									autoCapitalize="none"
+									autoCorrect={false}
+									autoComplete="email"
+									textContentType="username"
+									returnKeyType="next"
+									editable={!busy}
+								/>
+								<Field
+									label="Password"
+									value={password}
+									onChangeText={setPassword}
+									secureTextEntry
+									autoCapitalize="none"
+									autoCorrect={false}
+									autoComplete="current-password"
+									textContentType="password"
+									returnKeyType="go"
+									onSubmitEditing={() => void withPassword()}
+									editable={!busy}
+								/>
+								<ActionButton
+									label="Sign in"
+									variant={providers.length > 0 ? "outlined" : "filled"}
+									onPress={() => void withPassword()}
+									disabled={busy || !email.trim() || !password}
+								/>
+							</Card>
+						) : null}
+						{busy ? (
+							<View style={{ alignItems: "center" }}>
+								<ActivityIndicator color={palette.primary} />
+							</View>
+						) : null}
+						<View style={{ flexDirection: "row", paddingTop: SPACE.s }}>
+							<ActionButton
+								label={
+									showOthers
+										? "Hide the other ways to sign in"
+										: "Other ways to sign in"
+								}
+								variant="text"
+								onPress={() => setShowOthers((shown) => !shown)}
+							/>
+						</View>
+						{showOthers ? (
+							<>
+								{browserCard}
+								{tokenCard}
+							</>
+						) : null}
+					</>
+				) : (
+					<>
+						{browserCard}
+						{tokenCard}
+					</>
+				)}
 			</Inset>
 		</Screen>
 	);

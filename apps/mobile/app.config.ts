@@ -122,6 +122,16 @@ const config: ExpoConfig = {
 			},
 		],
 		[
+			"expo-camera",
+			{
+				// The camera reads the server's QR code on the Server screen.
+				cameraPermission:
+					"Farmer uses the camera to read the QR code of your server.",
+				microphonePermission: false,
+				recordAudioAndroid: false,
+			},
+		],
+		[
 			"expo-build-properties",
 			{
 				android: {
