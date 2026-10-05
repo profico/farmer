@@ -198,7 +198,7 @@ export function HomePreview() {
 				<div className="fp-page">
 					<div className="fp-page-head">
 						<div style={{ flex: 1, minWidth: 200 }}>
-							<div className="fm-eyebrow">Tue, Jul 8, 2026</div>
+							<div className="fm-eyebrow">Fri, Jul 10, 2026</div>
 							<div className="fp-greeting">Good morning, Omar</div>
 						</div>
 						<span className="fp-chip-btn">
@@ -335,7 +335,7 @@ export function AssembleMock() {
 					<div style={{ flex: 1 }}>
 						<div className="fp-mock-title">Assemble my day</div>
 						<div className="fp-small" style={{ fontSize: 12 }}>
-							Wed, Jul 9 · proposed from 3 sources
+							Fri, Jul 10 · proposed from 3 sources
 						</div>
 					</div>
 					<span
@@ -444,22 +444,17 @@ export function TimesheetMock() {
 				<div className="fp-metrics fp-ts-metrics">
 					<Metric
 						label="This week"
-						status="Behind"
+						status="On track"
 						value="38.25"
 						of="40.00"
-						sub={
-							<>
-								<span style={{ color: "var(--bad)" }}>1.75 short</span> of the
-								40.00 due by the end of today
-							</>
-						}
+						sub={<>1.75 short of the 40.00 due by the end of today</>}
 						percent={96}
 					/>
 					<Metric
 						label="This month"
 						value="62.25"
 						of="184.00"
-						sub="day 9 of 23"
+						sub="day 8 of 23"
 						percent={34}
 					/>
 				</div>
@@ -473,7 +468,7 @@ export function TimesheetMock() {
 						</span>
 						<span className="fp-ts-range-label">
 							<CalendarBlankIcon weight="duotone" color="var(--mut)" />
-							July 7 – 13, 2026
+							July 6 – 12, 2026
 						</span>
 						<span>
 							<ArrowRightIcon />
@@ -491,7 +486,7 @@ export function TimesheetMock() {
 							{DAYS.map((day, i) => (
 								<span key={day} className="fp-ts-day">
 									{day}
-									<span>{7 + i}</span>
+									<span>{6 + i}</span>
 								</span>
 							))}
 							<span className="fp-ts-day fp-ts-total">TOTAL</span>
