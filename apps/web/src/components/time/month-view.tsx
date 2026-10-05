@@ -22,7 +22,7 @@ import { useWeekStartsOn } from "#/hooks/use-week-starts-on.ts";
 import { formatMonthKey } from "#/lib/format-date.ts";
 import { formatClock } from "#/lib/format-hours.ts";
 import { groupByDay } from "#/lib/group-by-day.ts";
-import { dateSearch, monthSearch } from "#/lib/time-search.ts";
+import { dateSearch, monthSearch, EXACT_LINK } from "#/lib/time-search.ts";
 import { cn } from "#/lib/utils.ts";
 import { orderedWeekdays } from "#/lib/weekdays.ts";
 
@@ -72,6 +72,7 @@ export function MonthView({
 						to="/$orgSlug/time/month"
 						params={{ orgSlug }}
 						search={monthSearch(shiftMonthKey(month, -1), today)}
+						activeOptions={EXACT_LINK}
 						className={stepperClass}
 						aria-label="Previous month"
 					>
@@ -84,6 +85,7 @@ export function MonthView({
 						to="/$orgSlug/time/month"
 						params={{ orgSlug }}
 						search={monthSearch(shiftMonthKey(month, 1), today)}
+						activeOptions={EXACT_LINK}
 						className={stepperClass}
 						aria-label="Next month"
 					>
@@ -105,6 +107,7 @@ export function MonthView({
 							to="/$orgSlug/time/month"
 							params={{ orgSlug }}
 							search={{}}
+							activeOptions={EXACT_LINK}
 							className={returnLinkClass}
 						>
 							Return to this month
@@ -179,6 +182,7 @@ export function MonthView({
 								to="/$orgSlug/time"
 								params={{ orgSlug }}
 								search={dateSearch(date, today)}
+								activeOptions={EXACT_LINK}
 								title={holidayName}
 								className={cn(
 									"overflow-hidden border-r border-b border-line2 p-2 text-left transition-colors duration-(--dur-fast) hover:bg-[var(--sel)]",

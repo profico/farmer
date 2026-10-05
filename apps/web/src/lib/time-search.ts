@@ -28,3 +28,12 @@ export function weekSearch(
 export function monthSearch(month: string, today: string): { month?: string } {
 	return month === today.slice(0, 7) ? {} : { month };
 }
+
+/**
+ * The `activeOptions` of every link to a timesheet route.
+ *
+ * The router marks a link active when its search is a partial match of the
+ * current search. An empty search matches every search, so a link to today
+ * would show as the current page on every day. Exact matching fixes this.
+ */
+export const EXACT_LINK = { exact: true, includeSearch: true } as const;
