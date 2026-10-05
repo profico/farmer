@@ -32,6 +32,8 @@ export type RemovePushSubscriptionInput = z.infer<
 // present in the payload change.
 export const updateNotificationSettingsInput = z.object({
 	logReminders: z.boolean().optional(),
+	// Where the Slack kinds go for a person with the mobile app (ADR 0006).
+	remindersChannel: z.enum(["app", "slack"]).optional(),
 });
 export type UpdateNotificationSettingsInput = z.infer<
 	typeof updateNotificationSettingsInput

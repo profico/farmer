@@ -6,12 +6,25 @@
  * pick fields by name and turn each instant into an ISO string.
  */
 
-/** `GET` and `PATCH …/preferences/notifications`. */
-export type ApiNotificationSettings = { logReminders: boolean };
+/** "app": the compliance nudge, the month-end reminder and the admin digest
+ *  go to the phone when it allows notifications, else to Slack. "slack":
+ *  always to Slack (ADR 0006). */
+export type ApiRemindersChannel = "app" | "slack";
+
+/** `GET` and `PATCH …/preferences/notifications` — the caller's settings in
+ *  one workspace. */
+export type ApiNotificationSettings = {
+	logReminders: boolean;
+	remindersChannel: ApiRemindersChannel;
+};
 
 export const toApiNotificationSettings = (row: {
 	logReminders: boolean;
-}): ApiNotificationSettings => ({ logReminders: row.logReminders });
+	remindersChannel: ApiRemindersChannel;
+}): ApiNotificationSettings => ({
+	logReminders: row.logReminders,
+	remindersChannel: row.remindersChannel,
+});
 
 /** `GET` and `PATCH …/timer/settings` — the longest a timer may run before
  *  the sweep drops it. */

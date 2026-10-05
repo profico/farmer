@@ -44,6 +44,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a phone for native push
+         * @description The mobile app sends its relay id and public key. Send it again each time the app comes to the foreground: it replaces the row of the installation. Needs a sign-in session token, not an API token; the row ends with that session.
+         */
+        post: operations["registerDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/devices/{installationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget a phone
+         * @description The phone gets no more pushes. A phone that is not registered is not an error.
+         */
+        delete: operations["removeDevice"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a phone
+         * @description A new Live Activity token, a change of the notification permission or a new app version.
+         */
+        patch: operations["updateDevice"];
+        trace?: never;
+    };
     "/session": {
         parameters: {
             query?: never;
@@ -2262,6 +2306,12 @@ export interface components {
             }[];
             /** @description True when this server offers an email and password form. */
             passwordSignIn: boolean;
+            /** @description Whether this server sends native push to the mobile app, and through which relay. A server from before the mobile push sends no `pushRelay`: read its absence as off. */
+            pushRelay: {
+                enabled: boolean;
+                /** @description The relay's base URL, or null while push is off. */
+                url: string | null;
+            };
         };
         Me: {
             user: {
@@ -2512,6 +2562,11 @@ export interface components {
         NotificationSettings: {
             /** @description Reminders to log time, by push and by Slack. */
             logReminders: boolean;
+            /**
+             * @description `app`: the compliance nudge, the month-end reminder and the admin digest go to the phone when it allows notifications, else to Slack. `slack`: always to Slack.
+             * @enum {string}
+             */
+            remindersChannel: "app" | "slack";
         };
         TimerSettings: {
             /** @description A timer that runs longer than this is dropped and logs nothing. */
@@ -3330,6 +3385,19 @@ export interface components {
             weekStartsOn: 0 | 1;
             logo: string | null;
         };
+        MobileDevice: {
+            installationId: string;
+            /** @enum {string} */
+            platform: "ios" | "android";
+            appVersion: string;
+            notificationsAllowed: boolean;
+            /** @description True when the server holds a Live Activity token. */
+            liveActivity: boolean;
+            /** @description An instant, ISO 8601 in UTC. */
+            createdAt: string;
+            /** @description An instant, ISO 8601 in UTC. */
+            updatedAt: string;
+        };
         NewTimeEntry: {
             date: string;
             /** Format: uuid */
@@ -3409,6 +3477,8 @@ export interface components {
         };
         NotificationSettingsPatch: {
             logReminders?: boolean;
+            /** @enum {string} */
+            remindersChannel?: "app" | "slack";
         };
         TaskHidden: {
             /** Format: uuid */
@@ -3628,6 +3698,22 @@ export interface components {
             weekStartsOn?: 0 | 1;
             logo?: ((string) | "") | null;
         };
+        NewMobileDevice: {
+            installationId: string;
+            /** @enum {string} */
+            platform: "ios" | "android";
+            relayId: string;
+            publicKey: string;
+            appVersion: string;
+            notificationsAllowed: boolean;
+            liveActivityToken?: string | null;
+        };
+        /** @description One or more of the fields. `null` clears the Live Activity token. */
+        MobileDevicePatch: {
+            liveActivityToken?: string | null;
+            notificationsAllowed?: boolean;
+            appVersion?: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -3677,6 +3763,177 @@ export interface operations {
             };
             /** @description No token, or a bad or expired one. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    registerDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewMobileDevice"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileDevice"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id the app made for its installation. */
+                installationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id the app made for its installation. */
+                installationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MobileDevicePatch"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileDevice"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

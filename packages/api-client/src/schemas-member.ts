@@ -95,6 +95,9 @@ export type TimerSettings = z.output<typeof timerSettingsSchema>;
 export const notificationSettingsSchema = z.object({
 	/** Reminders to log time, by push and by Slack. */
 	logReminders: z.boolean(),
+	/** `app`: the Slack kinds go to the phone when it allows notifications,
+	 *  else to Slack. `slack`: always to Slack. */
+	remindersChannel: z.enum(["app", "slack"]),
 });
 export type NotificationSettings = z.output<typeof notificationSettingsSchema>;
 

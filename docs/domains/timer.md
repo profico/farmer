@@ -112,7 +112,15 @@ A dropped timer is announced where the person works — the sidebar row, the
 Stop button, `farmer timer` — and a push and a Slack message go out as well.
 `notify` reaches neither a person without a granted push permission nor one
 without a Slack identity, so the read path is the promise and the notification
-is the courtesy.
+is the courtesy. The mobile app gets it as a native push too.
+
+## The phone
+
+Each change of the timer, from any client, goes to the person's phones after
+the write: the Live Activity on iOS and the ongoing notification on Android.
+`publishTimerChange` (`services/native-push.ts`) returns at once and never
+throws, so the relay cannot fail a timer write. The sweep sends the end of a
+dropped timer. See `docs/domains/mobile.md`.
 
 ## What is deliberately absent
 

@@ -567,6 +567,26 @@ export const apiStreamRoute =
 			request.method !== "GET",
 		);
 
+/** The person behind a request to a route with no organization in its path:
+ *  a bearer token, or the cookie on a GET. Never the cookie on a write: the
+ *  writes here act on the credential itself (`DELETE /session`, a phone's
+ *  registration), and a browser session has its own pages for that. */
+const userPrincipal = async (request: Request): Promise<ApiUser | null> => {
+	const byToken = await resolveCliUser(request);
+	if (byToken) return { ...byToken, via: byToken.credential.kind };
+	const user = await cookieUser(request, { writes: false });
+	return user
+		? {
+				userId: user.id,
+				credential: null,
+				user,
+				scope: "write",
+				boundOrganizationId: null,
+				via: "cookie",
+			}
+		: null;
+};
+
 /**
  * A handler for a route with no organization in its path: `/api/v1/me` and
  * `/api/v1/session`. The same pipeline, with the person as the principal
@@ -577,23 +597,7 @@ export const userApiRoute =
 	({ request }: { request: Request }): Promise<Response> =>
 		serve(
 			request,
-			async (): Promise<ApiUser | null> => {
-				const byToken = await resolveCliUser(request);
-				if (byToken) return { ...byToken, via: byToken.credential.kind };
-				// Never a write here: `DELETE /session` revokes the credential it
-				// was sent with, and a browser session has Sign out for that.
-				const user = await cookieUser(request, { writes: false });
-				return user
-					? {
-							userId: user.id,
-							credential: null,
-							user,
-							scope: "write",
-							boundOrganizationId: null,
-							via: "cookie",
-						}
-					: null;
-			},
+			() => userPrincipal(request),
 			async (caller) => {
 				const result = await spec.run(caller);
 				return spec.status === 204
@@ -626,3 +630,63 @@ export const rangeFromQuery = async ({
 	const today = dayKeyInTz(new Date(), await ctxTimezone(ctx));
 	return { from: query.get("from") ?? today, to: query.get("to") ?? today };
 };
+
+export type UserWriteRouteSpec<
+	TParams extends Record<string, string>,
+	TSchema extends z.ZodType,
+	TResult,
+> = {
+	input: TSchema;
+	/** Builds the value the schema parses from the path and the JSON body.
+	 *  Without it, the value is the body. It shapes; the schema validates. */
+	raw?: (request: { params: TParams; body: JsonValue }) => JsonValue;
+	run: (caller: ApiUser, input: z.output<TSchema>) => Promise<TResult>;
+	/** 204 answers with no body, whatever `run` returns. */
+	status?: 200 | 204;
+};
+
+/**
+ * A handler for a write with no organization in its path: the phone routes
+ * under `/api/v1/me/devices`. The pipeline of `userApiRoute`, plus the Zod
+ * parse of `apiRoute`, and counted as a write: a read-only API token gets
+ * the 403 before any service runs.
+ */
+export const userWriteRoute =
+	<
+		TSchema extends z.ZodType,
+		TResult,
+		TParams extends Record<string, string> = Record<string, never>,
+	>(
+		spec: UserWriteRouteSpec<TParams, TSchema, TResult>,
+	) =>
+	({ request, params }: RouteArgs<TParams>): Promise<Response> =>
+		serve(
+			request,
+			() => userPrincipal(request),
+			async (caller) => {
+				const body = await readBody(request);
+				if (body === null) {
+					return refuse(422, {
+						error: "The request body is not JSON.",
+						code: "invalid_input",
+					});
+				}
+				const raw = spec.raw ? spec.raw({ params, body }) : body;
+				const parsed = spec.input.safeParse(raw);
+				if (!parsed.success) {
+					return refuse(422, {
+						error: "The input is not valid.",
+						code: "invalid_input",
+						issues: issuesOf(parsed.error),
+					});
+				}
+				const result = await spec.run(caller, parsed.data);
+				return spec.status === 204
+					? new Response(null, {
+							status: 204,
+							headers: { "Cache-Control": "no-store" },
+						})
+					: respond(result ?? null, 200);
+			},
+			true,
+		);

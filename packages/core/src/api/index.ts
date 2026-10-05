@@ -11,6 +11,9 @@
  *
  *   GET    meta                                  ApiMeta (no auth)
  *   GET    me                                    ApiMe
+ *   POST   me/devices                            ApiMobileDevice (register a phone)
+ *   PATCH  me/devices/$installationId            ApiMobileDevice
+ *   DELETE me/devices/$installationId            204
  *   DELETE session                               204 (revokes the token, either kind)
  *   GET    orgs/$slug/whoami                     ApiWhoami
  *   GET    orgs/$slug/time-entries?from&to       ApiTimeEntry[]
@@ -175,6 +178,7 @@ export * from "./rewind";
 export * from "./schedule";
 export * from "./people";
 export * from "./project-admin";
+export * from "./mobile";
 export * from "./time-entries";
 export * from "./timer";
 export * from "./tokens";

@@ -13,6 +13,7 @@ export * from "./instance-settings";
 export * from "./hour-fund";
 export * from "./integration-settings";
 export * from "./members";
+export * from "./mobile-devices";
 export * from "./notifications";
 export * from "./organization";
 export * from "./projects";

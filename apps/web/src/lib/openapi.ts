@@ -49,6 +49,7 @@ import {
 	type ApiNotificationSettings,
 	type ApiOvertimeReport,
 	type ApiOrganizationSettings,
+	type ApiMobileDevice,
 	type ApiPeriod,
 	type ApiPerson,
 	type ApiPersonProfile,
@@ -117,6 +118,7 @@ import {
 	memberTypeEnum,
 	monthPeriodInput,
 	projectRoleEnum,
+	registerMobileDeviceInput,
 	repositoryProjectsInput,
 	rewindInput,
 	setTaskHiddenInput,
@@ -142,6 +144,7 @@ import {
 	updateOrganizationSettingsInput,
 	updateProjectInput,
 	updateTaskInput,
+	updateMobileDeviceInput,
 	updateTimeEntryInput,
 	upsertWorkingHoursDayInput,
 	updateWebhookEndpointInput,
@@ -264,6 +267,17 @@ const apiMeta = named(
 			passwordSignIn: z
 				.boolean()
 				.describe("True when this server offers an email and password form."),
+			pushRelay: z
+				.object({
+					enabled: z.boolean(),
+					url: z
+						.string()
+						.nullable()
+						.describe("The relay's base URL, or null while push is off."),
+				})
+				.describe(
+					"Whether this server sends native push to the mobile app, and through which relay. A server from before the mobile push sends no `pushRelay`: read its absence as off.",
+				),
 		}),
 	),
 );
@@ -610,6 +624,11 @@ const apiNotificationSettings = named(
 			logReminders: z
 				.boolean()
 				.describe("Reminders to log time, by push and by Slack."),
+			remindersChannel: z
+				.enum(["app", "slack"])
+				.describe(
+					"`app`: the compliance nudge, the month-end reminder and the admin digest go to the phone when it allows notifications, else to Slack. `slack`: always to Slack.",
+				),
 		}),
 	),
 );
@@ -1732,6 +1751,23 @@ const apiOrganizationSettings = named(
 	),
 );
 
+const apiMobileDevice = named(
+	"MobileDevice",
+	mirror<ApiMobileDevice>()(
+		z.object({
+			installationId: z.string(),
+			platform: z.enum(["ios", "android"]),
+			appVersion: z.string(),
+			notificationsAllowed: z.boolean(),
+			liveActivity: z
+				.boolean()
+				.describe("True when the server holds a Live Activity token."),
+			createdAt: iso,
+			updatedAt: iso,
+		}),
+	),
+);
+
 // The request bodies the routes parse, under the names the document shows.
 named("NewTimeEntry", createTimeEntryInput);
 named("TimeEntryPatch", updateTimeEntryInput);
@@ -1805,6 +1841,8 @@ const FROM_PATH = {
 	PersonRole: ["userId"],
 	TeamLeadPeople: ["leadUserId"],
 } satisfies { [id: string]: string[] };
+named("NewMobileDevice", registerMobileDeviceInput);
+named("MobileDevicePatch", updateMobileDeviceInput);
 
 type JsonSchema = z.core.JSONSchema.JSONSchema;
 
@@ -1856,6 +1894,17 @@ const componentSchemas = () => {
 			properties: patch.properties,
 			description:
 				"Any subset of the entry's fields. Each one replaces the stored value; `null` clears an optional field.",
+		};
+	}
+	// The same for a phone: the route takes the installation id from the path.
+	const devicePatch = clean.MobileDevicePatch;
+	if (devicePatch?.properties) {
+		const { installationId: _fromPath, ...properties } = devicePatch.properties;
+		clean.MobileDevicePatch = {
+			type: "object",
+			properties,
+			description:
+				"One or more of the fields. `null` clears the Live Activity token.",
 		};
 	}
 	return clean;
@@ -1942,6 +1991,38 @@ export const OPERATIONS: Operation[] = [
 			"The person the token belongs to, and the organizations they can use.",
 		tag: "Account",
 		response: apiMe,
+	},
+	{
+		method: "post",
+		path: "/me/devices",
+		operationId: "registerDevice",
+		summary: "Register a phone for native push",
+		description:
+			"The mobile app sends its relay id and public key. Send it again each time the app comes to the foreground: it replaces the row of the installation. Needs a sign-in session token, not an API token; the row ends with that session.",
+		tag: "Account",
+		body: registerMobileDeviceInput,
+		response: apiMobileDevice,
+	},
+	{
+		method: "patch",
+		path: "/me/devices/{installationId}",
+		operationId: "updateDevice",
+		summary: "Update a phone",
+		description:
+			"A new Live Activity token, a change of the notification permission or a new app version.",
+		tag: "Account",
+		body: updateMobileDeviceInput,
+		response: apiMobileDevice,
+	},
+	{
+		method: "delete",
+		path: "/me/devices/{installationId}",
+		operationId: "removeDevice",
+		summary: "Forget a phone",
+		description:
+			"The phone gets no more pushes. A phone that is not registered is not an error.",
+		tag: "Account",
+		response: null,
 	},
 	{
 		method: "delete",
@@ -3528,7 +3609,9 @@ const pathParameters = (path: string, orgSlug: string | undefined) =>
 				? "The organization's slug, from `GET /me`."
 				: name === "userId"
 					? "The person's user id."
-					: "The row's id.",
+					: name === "installationId"
+						? "The id the app made for its installation."
+						: "The row's id.",
 		example: name === "orgSlug" ? orgSlug : undefined,
 	}));
 

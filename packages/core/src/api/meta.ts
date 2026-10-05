@@ -5,6 +5,8 @@
  * binary asking is new enough to read the answers.
  */
 
+import type { ApiPushRelay } from "./mobile";
+
 /**
  * The oldest CLI that can read this server's responses.
  *
@@ -48,6 +50,10 @@ export type ApiMeta = {
 	signInMethods: ApiSignInMethod[];
 	/** Whether this server offers an email and password form. */
 	passwordSignIn: boolean;
+	/** Whether this server sends native push, and through which relay. A
+	 *  server from before the mobile push sends no `pushRelay`, so a client
+	 *  reads it as optional and treats its absence as off. */
+	pushRelay: ApiPushRelay;
 };
 
 const parts = (version: string): [number, number, number] | null => {

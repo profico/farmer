@@ -26,11 +26,15 @@ import { account, member } from "../db/schema/auth";
 import { notificationSettings } from "../db/schema/notifications";
 import { memberProfile } from "../db/schema/people";
 import { reminderSettings } from "../db/schema/settings";
+import { pushRelayUrl } from "../lib/push-relay";
 import { slackEscape, slackLink } from "../lib/slack-client";
+import { hasNotifiableDevice, sendNativeAlert } from "./native-push";
 import { notificationsService } from "./notifications.service";
 import { slackService } from "./slack.service";
 
-export type NotifyChannel = "push" | "slack";
+/** `push` is web push to a browser, `native` is a push to the mobile app
+ *  through the relay (ADR 0006), and `slack` is a Slack DM. */
+export type NotifyChannel = "push" | "native" | "slack";
 
 /** Who to tell. Always org-scoped: a notification is something an organization
  *  says to one of its members, and a person who has left is not one. */
@@ -89,15 +93,36 @@ export type NotifyKind =
 // extra gates (see `deliveryBlocks`): nobody archived gets one, and nobody who
 // has never signed in unless the org's reminder settings say so. A kind that is
 // not a reminder (the test notification) keeps the membership rule alone.
+//
+// `appInsteadOfSlack` marks the Slack kinds that the mobile app takes over
+// (ADR 0006). For a person with a phone that allows notifications, and whose
+// `remindersChannel` is "app", such a kind goes as a native push and not as a
+// Slack DM. When every native push fails, that one message goes to Slack.
 const KINDS = {
 	"log-reminder": {
-		channels: ["push"],
+		channels: ["push", "native"],
 		preference: "logReminders",
 		reminder: true,
+		appInsteadOfSlack: false,
 	},
-	"compliance-nudge": { channels: ["slack"], preference: null, reminder: true },
-	"month-end": { channels: ["slack"], preference: null, reminder: true },
-	"admin-digest": { channels: ["slack"], preference: null, reminder: true },
+	"compliance-nudge": {
+		channels: ["slack"],
+		preference: null,
+		reminder: true,
+		appInsteadOfSlack: true,
+	},
+	"month-end": {
+		channels: ["slack"],
+		preference: null,
+		reminder: true,
+		appInsteadOfSlack: true,
+	},
+	"admin-digest": {
+		channels: ["slack"],
+		preference: null,
+		reminder: true,
+		appInsteadOfSlack: true,
+	},
 	// An outbound endpoint that stopped accepting deliveries (issue #67). Not a
 	// reminder: it is a fact about the organization's plumbing, and holding it
 	// back from an admin who has never signed in — which is exactly the person
@@ -108,24 +133,32 @@ const KINDS = {
 		channels: ["slack", "push"],
 		preference: null,
 		reminder: false,
+		appInsteadOfSlack: false,
 	},
 	// A stopwatch nobody stopped, dropped by `jobs/timer-sweep.ts` (issues #59
 	// and #43). Not a reminder: it is a thing that already happened to time the
 	// person meant to log. Both channels, and neither is the promise — the
 	// notice `timersService.get` returns is what reaches a person with no push
-	// permission and no Slack identity.
+	// permission and no Slack identity. The phone gets it as well (ADR 0006).
 	"timer-dropped": {
-		channels: ["slack", "push"],
+		channels: ["slack", "push", "native"],
 		preference: null,
 		reminder: false,
+		appInsteadOfSlack: false,
 	},
-	test: { channels: ["slack"], preference: null, reminder: false },
+	test: {
+		channels: ["slack"],
+		preference: null,
+		reminder: false,
+		appInsteadOfSlack: false,
+	},
 } satisfies Record<
 	NotifyKind,
 	{
 		channels: readonly NotifyChannel[];
 		preference: "logReminders" | null;
 		reminder: boolean;
+		appInsteadOfSlack: boolean;
 	}
 >;
 
@@ -289,20 +322,51 @@ export const slackText = (event: NotifyEvent): string => {
 const slackAdapter: NotifyAdapter = (to, event) =>
 	slackService.sendDm(to.organizationId, to.userId, slackText(event));
 
-let adapters = {
+// The transport reads no database while `PUSH_RELAY_ENABLED` is off, and
+// answers false for a person with no phone that allows notifications.
+const nativeAdapter: NotifyAdapter = (to, event) =>
+	sendNativeAlert(to.userId, {
+		kind: event.kind,
+		title: event.title ?? "Farmer",
+		body: event.body,
+		url: event.url,
+	});
+
+const REAL_ADAPTERS = {
 	push: pushAdapter,
+	native: nativeAdapter,
 	slack: slackAdapter,
 } satisfies Record<NotifyChannel, NotifyAdapter>;
+
+let adapters = { ...REAL_ADAPTERS };
 
 /** Substitute the wire in tests — the same seam `services/ports.ts` puts in
  *  front of Google Calendar and GitHub. Pass nothing to restore the real ones. */
 export const setNotifyAdaptersForTests = (
 	overrides?: Partial<Record<NotifyChannel, NotifyAdapter>>,
 ): void => {
-	adapters = { push: pushAdapter, slack: slackAdapter, ...overrides };
+	adapters = { ...REAL_ADAPTERS, ...overrides };
 };
 
-const NOTHING_SENT = { push: false, slack: false } satisfies NotifyOutcome;
+const NOTHING_SENT = {
+	push: false,
+	native: false,
+	slack: false,
+} satisfies NotifyOutcome;
+
+/** Whether the mobile app takes this person's Slack kinds: the relay is on,
+ *  the person did not ask for Slack, and a phone of theirs allows
+ *  notifications. The relay check comes first, so a server with push off
+ *  reads nothing more. */
+const appTakesSlackKinds = async (to: NotifyRecipient): Promise<boolean> => {
+	if (!pushRelayUrl()) return false;
+	const settings = await notificationsService.settingsFor(
+		to.organizationId,
+		to.userId,
+	);
+	if (settings.remindersChannel === "slack") return false;
+	return hasNotifiableDevice(to.userId);
+};
 
 /**
  * Tell one member of one organization one thing.
@@ -327,21 +391,44 @@ export const notify = async (
 	);
 	if (blocks.has(to.userId)) return { ...NOTHING_SENT };
 
+	const attempt = async (channel: NotifyChannel): Promise<ChannelResult> => {
+		try {
+			return await adapters[channel](to, event);
+		} catch (error) {
+			console.error("[notify] channel failed", {
+				channel,
+				kind: event.kind,
+				organizationId: to.organizationId,
+				userId: to.userId,
+				error,
+			});
+			return false;
+		}
+	};
+
+	// The app instead of Slack, and Slack again for this one message when
+	// every push to the person failed.
+	let takenByApp = false;
+	try {
+		takenByApp = kind.appInsteadOfSlack && (await appTakesSlackKinds(to));
+	} catch (error) {
+		console.error("[notify] could not choose the channel", {
+			kind: event.kind,
+			organizationId: to.organizationId,
+			userId: to.userId,
+			error,
+		});
+	}
+	if (takenByApp) {
+		const native = await attempt("native");
+		if (native === true) return { ...NOTHING_SENT, native };
+		return { ...NOTHING_SENT, native, slack: await attempt("slack") };
+	}
+
 	const results = await Promise.all(
-		kind.channels.map(async (channel) => {
-			try {
-				return [channel, await adapters[channel](to, event)] as const;
-			} catch (error) {
-				console.error("[notify] channel failed", {
-					channel,
-					kind: event.kind,
-					organizationId: to.organizationId,
-					userId: to.userId,
-					error,
-				});
-				return [channel, false] as const;
-			}
-		}),
+		kind.channels.map(
+			async (channel) => [channel, await attempt(channel)] as const,
+		),
 	);
 
 	return { ...NOTHING_SENT, ...Object.fromEntries(results) };

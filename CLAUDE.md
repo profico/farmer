@@ -74,11 +74,19 @@ bun run generate-routes      # tsr generate — regenerates routeTree.gen.ts
 
 ## Architecture
 
-Three workspaces — `apps/web` (TanStack Start/React), `apps/cli` (`@farmer/cli`, the `farmer` command-line tool, see `apps/cli/CLAUDE.md`) and `packages/core` (`@farmer/core`). The split is deliberate: `packages/core` must stay reusable from another process.
+Five workspaces:
+
+- `apps/web` — the TanStack Start/React app and its Bun production host.
+- `apps/cli` — `@farmer/cli`, the `farmer` command-line tool (see `apps/cli/CLAUDE.md`).
+- `packages/core` — `@farmer/core`, the services, the schema, the jobs and the auth config.
+- `apps/push-relay` — `@farmer/push-relay`, the push relay at `push.farmer.profi.co`, its own image, never imports the server (see `apps/push-relay/README.md`, ADR 0006).
+- `packages/push-crypto` — `@farmer/push-crypto`, the HPKE seal/open for a push payload, shared by the server and the app, no `@farmer/core` imports.
+
+The split is deliberate: `packages/core` must stay reusable from another process.
 
 **Boundary rule:** `packages/core` never imports TanStack/React. All business logic lives in `src/services/`, one file per aggregate. Every exported service function takes an explicit `ctx: { organizationId, userId }` (`src/services/types.ts`) as its first argument — **tenancy is a parameter, never ambient** — so the same function is callable from a server function, a REST route, a background job or an MCP tool.
 
-The three workspaces each carry their own `CLAUDE.md`, loaded when you touch a
+`apps/web`, `apps/cli` and `packages/core` each carry their own `CLAUDE.md`, loaded when you touch a
 file in them: `packages/core/CLAUDE.md`, `apps/web/CLAUDE.md` and
 `apps/cli/CLAUDE.md`. They hold the layout of the workspace and the rules that
 only apply inside it.
@@ -101,6 +109,7 @@ you are about to change before you change it** — these are not loaded for you.
 | `docs/domains/api-tokens.md` | `api-tokens.service.ts`, Preferences → API tokens, the bearer-token branch in `server/api-auth.ts`, or `FARMER_TOKEN` in the CLI |
 | `docs/domains/webhooks.md` | the outbound webhooks — `services/events.ts`, `webhooks.service.ts`, `jobs/webhook-delivery.ts`, the signature or the SSRF guard |
 | `docs/domains/audit-log.md` | `services/audit.ts`, `recordAudit` / `recordSecurityEvent`, the better-auth audit hooks, the Audit log page, or any new service function that changes an organization |
+| `docs/domains/mobile.md` | `mobile-devices.service.ts`, `native-push.ts`, `lib/push-relay.ts`, the `native` channel in `notify.ts`, `api/v1/me/devices` or the timer's Live Activity |
 | `docs/domains/deployment.md` | the Dockerfile, CI, the job schedulers, an env flag or PostHog |
 
 `docs/adr/` holds the decisions that a change may contradict. `docs/plans/` holds

@@ -13,9 +13,14 @@ import {
 
 describe("toApiNotificationSettings", () => {
 	test("keeps exactly the fields it names", () => {
-		const row = { logReminders: false, userId: "u-1" };
+		const row = {
+			logReminders: false,
+			remindersChannel: "slack" as const,
+			userId: "u-1",
+		};
 		expect(toApiNotificationSettings(row)).toStrictEqual({
 			logReminders: false,
+			remindersChannel: "slack",
 		});
 	});
 });

@@ -149,6 +149,216 @@
 				}
 			}
 		},
+		"/me/devices": {
+			"post": {
+				"operationId": "registerDevice",
+				"summary": "Register a phone for native push",
+				"description": "The mobile app sends its relay id and public key. Send it again each time the app comes to the foreground: it replaces the row of the installation. Needs a sign-in session token, not an API token; the row ends with that session.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/NewMobileDevice"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MobileDevice"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/me/devices/{installationId}": {
+			"patch": {
+				"operationId": "updateDevice",
+				"summary": "Update a phone",
+				"description": "A new Live Activity token, a change of the notification permission or a new app version.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The id the app made for its installation."
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/MobileDevicePatch"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "OK",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MobileDevice"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The input is not valid.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"operationId": "removeDevice",
+				"summary": "Forget a phone",
+				"description": "The phone gets no more pushes. A phone that is not registered is not an error.",
+				"tags": [
+					"Account"
+				],
+				"parameters": [
+					{
+						"name": "installationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "The id the app made for its installation."
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "No content"
+					},
+					"401": {
+						"description": "No token, or a bad or expired one.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Not allowed, or a read-only API token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/session": {
 			"delete": {
 				"operationId": "signOut",
@@ -10462,6 +10672,30 @@
 					"passwordSignIn": {
 						"type": "boolean",
 						"description": "True when this server offers an email and password form."
+					},
+					"pushRelay": {
+						"type": "object",
+						"properties": {
+							"enabled": {
+								"type": "boolean"
+							},
+							"url": {
+								"anyOf": [
+									{
+										"type": "string"
+									},
+									{
+										"type": "null"
+									}
+								],
+								"description": "The relay's base URL, or null while push is off."
+							}
+						},
+						"required": [
+							"enabled",
+							"url"
+						],
+						"description": "Whether this server sends native push to the mobile app, and through which relay. A server from before the mobile push sends no `pushRelay`: read its absence as off."
 					}
 				},
 				"required": [
@@ -10471,7 +10705,8 @@
 					"apiVersion",
 					"minMobileVersion",
 					"signInMethods",
-					"passwordSignIn"
+					"passwordSignIn",
+					"pushRelay"
 				]
 			},
 			"Me": {
@@ -11514,10 +11749,19 @@
 					"logReminders": {
 						"type": "boolean",
 						"description": "Reminders to log time, by push and by Slack."
+					},
+					"remindersChannel": {
+						"type": "string",
+						"enum": [
+							"app",
+							"slack"
+						],
+						"description": "`app`: the compliance nudge, the month-end reminder and the admin digest go to the phone when it allows notifications, else to Slack. `slack`: always to Slack."
 					}
 				},
 				"required": [
-					"logReminders"
+					"logReminders",
+					"remindersChannel"
 				]
 			},
 			"TimerSettings": {
@@ -15418,6 +15662,48 @@
 					"logo"
 				]
 			},
+			"MobileDevice": {
+				"type": "object",
+				"properties": {
+					"installationId": {
+						"type": "string"
+					},
+					"platform": {
+						"type": "string",
+						"enum": [
+							"ios",
+							"android"
+						]
+					},
+					"appVersion": {
+						"type": "string"
+					},
+					"notificationsAllowed": {
+						"type": "boolean"
+					},
+					"liveActivity": {
+						"type": "boolean",
+						"description": "True when the server holds a Live Activity token."
+					},
+					"createdAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					},
+					"updatedAt": {
+						"type": "string",
+						"description": "An instant, ISO 8601 in UTC."
+					}
+				},
+				"required": [
+					"installationId",
+					"platform",
+					"appVersion",
+					"notificationsAllowed",
+					"liveActivity",
+					"createdAt",
+					"updatedAt"
+				]
+			},
 			"NewTimeEntry": {
 				"type": "object",
 				"properties": {
@@ -15681,6 +15967,13 @@
 				"properties": {
 					"logReminders": {
 						"type": "boolean"
+					},
+					"remindersChannel": {
+						"type": "string",
+						"enum": [
+							"app",
+							"slack"
+						]
 					}
 				}
 			},
@@ -16796,6 +17089,91 @@
 						]
 					}
 				}
+			},
+			"NewMobileDevice": {
+				"type": "object",
+				"properties": {
+					"installationId": {
+						"type": "string",
+						"minLength": 8,
+						"maxLength": 128,
+						"pattern": "^[A-Za-z0-9._:-]+$"
+					},
+					"platform": {
+						"type": "string",
+						"enum": [
+							"ios",
+							"android"
+						]
+					},
+					"relayId": {
+						"type": "string",
+						"minLength": 16,
+						"maxLength": 64,
+						"pattern": "^[A-Za-z0-9_-]+$"
+					},
+					"publicKey": {
+						"type": "string",
+						"pattern": "^[A-Za-z0-9_-]+$"
+					},
+					"appVersion": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 32
+					},
+					"notificationsAllowed": {
+						"type": "boolean"
+					},
+					"liveActivityToken": {
+						"anyOf": [
+							{
+								"type": "string",
+								"minLength": 8,
+								"maxLength": 512,
+								"pattern": "^[\\x21-\\x7e]+$"
+							},
+							{
+								"type": "null"
+							}
+						]
+					}
+				},
+				"required": [
+					"installationId",
+					"platform",
+					"relayId",
+					"publicKey",
+					"appVersion",
+					"notificationsAllowed"
+				],
+				"additionalProperties": false
+			},
+			"MobileDevicePatch": {
+				"type": "object",
+				"properties": {
+					"liveActivityToken": {
+						"anyOf": [
+							{
+								"type": "string",
+								"minLength": 8,
+								"maxLength": 512,
+								"pattern": "^[\\x21-\\x7e]+$"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"notificationsAllowed": {
+						"type": "boolean"
+					},
+					"appVersion": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 32
+					}
+				},
+				"description": "One or more of the fields. `null` clears the Live Activity token."
 			}
 		}
 	}

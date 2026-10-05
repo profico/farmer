@@ -22,6 +22,10 @@ import { createFileRoute } from "@tanstack/react-router";
  * queries and none in development. Nothing in the answer names a person or
  * holds a secret.
  *
+ * `pushRelay` tells the app whether to register with the push relay (ADR
+ * 0006). The relay URL is public: it is the same for every server that uses
+ * Profico's relay.
+ *
  * No rate limit and no credential, so the password answer is kept for
  * `PASSWORD_TTL_MS`: a loop on this URL costs at most two queries in that time.
  */
@@ -41,11 +45,16 @@ export const Route = createFileRoute("/api/v1/meta")({
 	server: {
 		handlers: {
 			GET: async () => {
-				const [{ isCliEnabled }, { signInProviders, passwordOffered }] =
-					await Promise.all([
-						import("@farmer/core/lib/cli-flag"),
-						import("@farmer/core/auth"),
-					]);
+				const [
+					{ isCliEnabled },
+					{ signInProviders, passwordOffered },
+					{ pushRelayUrl },
+				] = await Promise.all([
+					import("@farmer/core/lib/cli-flag"),
+					import("@farmer/core/auth"),
+					import("@farmer/core/lib/push-relay"),
+				]);
+				const relayUrl = pushRelayUrl();
 				const meta: ApiMeta = {
 					app: "farmer",
 					cliEnabled: isCliEnabled(),
@@ -54,6 +63,7 @@ export const Route = createFileRoute("/api/v1/meta")({
 					minMobileVersion: MIN_MOBILE_VERSION,
 					signInMethods: signInProviders(),
 					passwordSignIn: await cachedPasswordOffered(passwordOffered),
+					pushRelay: { enabled: relayUrl !== null, url: relayUrl },
 				};
 				return Response.json(meta, {
 					headers: { "Cache-Control": "no-store" },

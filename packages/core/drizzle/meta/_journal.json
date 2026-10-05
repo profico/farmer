@@ -540,6 +540,13 @@
       "when": 1790776717333,
       "tag": "0076_audit_failed_sign_in_index",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1791240324689,
+      "tag": "0077_mobile_device",
+      "breakpoints": true
     }
   ]
 }

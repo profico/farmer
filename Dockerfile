@@ -48,6 +48,11 @@ COPY apps/cli/package.json apps/cli/
 # so the shipped image does not grow.
 COPY apps/mobile/package.json apps/mobile/
 COPY packages/api-client/package.json packages/api-client/
+# The same is true for the push relay and its crypto package. The relay has its
+# own image (apps/push-relay/Dockerfile), and the runtime stage below copies
+# nothing from either workspace.
+COPY apps/push-relay/package.json apps/push-relay/
+COPY packages/push-crypto/package.json packages/push-crypto/
 # Cap network concurrency and retry: the default 48 parallel requests saturate
 # a shared/constrained builder (the Coolify arm64 host runs many containers and
 # builds --no-cache, re-downloading everything each time), which has corrupted a

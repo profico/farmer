@@ -80,6 +80,7 @@ import { Route as OrgSlugSettingsInstanceFeaturesRouteImport } from './routes/$o
 import { Route as OrgSlugSettingsInstanceEmailRouteImport } from './routes/$orgSlug/settings/instance/email'
 import { Route as OrgSlugProjectsProjectIdTeamRouteImport } from './routes/$orgSlug/projects/$projectId/team'
 import { Route as OrgSlugProjectsProjectIdSettingsRouteImport } from './routes/$orgSlug/projects/$projectId/settings'
+import { Route as ApiV1MeDevicesIndexRouteImport } from './routes/api/v1/me/devices/index'
 import { Route as ApiV1OrgsOrgSlugWorkingHoursRouteImport } from './routes/api/v1/orgs/$orgSlug/working-hours'
 import { Route as ApiV1OrgsOrgSlugWhoamiRouteImport } from './routes/api/v1/orgs/$orgSlug/whoami'
 import { Route as ApiV1OrgsOrgSlugUnfiledRouteImport } from './routes/api/v1/orgs/$orgSlug/unfiled'
@@ -89,6 +90,7 @@ import { Route as ApiV1OrgsOrgSlugRewindRouteImport } from './routes/api/v1/orgs
 import { Route as ApiV1OrgsOrgSlugRepositoryProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/repository-projects'
 import { Route as ApiV1OrgsOrgSlugOrganizationRouteImport } from './routes/api/v1/orgs/$orgSlug/organization'
 import { Route as ApiV1OrgsOrgSlugHomeRouteImport } from './routes/api/v1/orgs/$orgSlug/home'
+import { Route as ApiV1MeDevicesInstallationIdRouteImport } from './routes/api/v1/me/devices/$installationId'
 import { Route as ApiV1OrgsOrgSlugWebhooksIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/webhooks/index'
 import { Route as ApiV1OrgsOrgSlugTimerIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/index'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/index'
@@ -554,6 +556,11 @@ const OrgSlugProjectsProjectIdSettingsRoute =
     path: '/projects/$projectId/settings',
     getParentRoute: () => OrgSlugRouteRoute,
   } as any)
+const ApiV1MeDevicesIndexRoute = ApiV1MeDevicesIndexRouteImport.update({
+  id: '/devices/',
+  path: '/devices/',
+  getParentRoute: () => ApiV1MeRoute,
+} as any)
 const ApiV1OrgsOrgSlugWorkingHoursRoute =
   ApiV1OrgsOrgSlugWorkingHoursRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/working-hours',
@@ -603,6 +610,12 @@ const ApiV1OrgsOrgSlugHomeRoute = ApiV1OrgsOrgSlugHomeRouteImport.update({
   path: '/api/v1/orgs/$orgSlug/home',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1MeDevicesInstallationIdRoute =
+  ApiV1MeDevicesInstallationIdRouteImport.update({
+    id: '/devices/$installationId',
+    path: '/devices/$installationId',
+    getParentRoute: () => ApiV1MeRoute,
+  } as any)
 const ApiV1OrgsOrgSlugWebhooksIndexRoute =
   ApiV1OrgsOrgSlugWebhooksIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/webhooks/',
@@ -1184,7 +1197,7 @@ export interface FileRoutesByFullPath {
   '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
-  '/api/v1/me': typeof ApiV1MeRoute
+  '/api/v1/me': typeof ApiV1MeRouteWithChildren
   '/api/v1/meta': typeof ApiV1MetaRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -1204,6 +1217,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
   '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
@@ -1213,6 +1227,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
   '/api/v1/orgs/$orgSlug/working-hours': typeof ApiV1OrgsOrgSlugWorkingHoursRoute
+  '/api/v1/me/devices/': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
   '/api/v1/orgs/$orgSlug/assistant/models': typeof ApiV1OrgsOrgSlugAssistantModelsRoute
   '/api/v1/orgs/$orgSlug/assistant/settings': typeof ApiV1OrgsOrgSlugAssistantSettingsRoute
@@ -1352,7 +1367,7 @@ export interface FileRoutesByTo {
   '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
-  '/api/v1/me': typeof ApiV1MeRoute
+  '/api/v1/me': typeof ApiV1MeRouteWithChildren
   '/api/v1/meta': typeof ApiV1MetaRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -1372,6 +1387,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
   '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
@@ -1381,6 +1397,7 @@ export interface FileRoutesByTo {
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
   '/api/v1/orgs/$orgSlug/working-hours': typeof ApiV1OrgsOrgSlugWorkingHoursRoute
+  '/api/v1/me/devices': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
   '/api/v1/orgs/$orgSlug/assistant/models': typeof ApiV1OrgsOrgSlugAssistantModelsRoute
   '/api/v1/orgs/$orgSlug/assistant/settings': typeof ApiV1OrgsOrgSlugAssistantSettingsRoute
@@ -1523,7 +1540,7 @@ export interface FileRoutesById {
   '/api/github/webhook': typeof ApiGithubWebhookRoute
   '/api/mcp/$orgSlug': typeof ApiMcpOrgSlugRoute
   '/api/slack/callback': typeof ApiSlackCallbackRoute
-  '/api/v1/me': typeof ApiV1MeRoute
+  '/api/v1/me': typeof ApiV1MeRouteWithChildren
   '/api/v1/meta': typeof ApiV1MetaRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/projects': typeof ApiV1ProjectsRoute
@@ -1543,6 +1560,7 @@ export interface FileRoutesById {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/me/devices/$installationId': typeof ApiV1MeDevicesInstallationIdRoute
   '/api/v1/orgs/$orgSlug/home': typeof ApiV1OrgsOrgSlugHomeRoute
   '/api/v1/orgs/$orgSlug/organization': typeof ApiV1OrgsOrgSlugOrganizationRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
@@ -1552,6 +1570,7 @@ export interface FileRoutesById {
   '/api/v1/orgs/$orgSlug/unfiled': typeof ApiV1OrgsOrgSlugUnfiledRoute
   '/api/v1/orgs/$orgSlug/whoami': typeof ApiV1OrgsOrgSlugWhoamiRoute
   '/api/v1/orgs/$orgSlug/working-hours': typeof ApiV1OrgsOrgSlugWorkingHoursRoute
+  '/api/v1/me/devices/': typeof ApiV1MeDevicesIndexRoute
   '/api/v1/orgs/$orgSlug/absences/$id': typeof ApiV1OrgsOrgSlugAbsencesIdRoute
   '/api/v1/orgs/$orgSlug/assistant/models': typeof ApiV1OrgsOrgSlugAssistantModelsRoute
   '/api/v1/orgs/$orgSlug/assistant/settings': typeof ApiV1OrgsOrgSlugAssistantSettingsRoute
@@ -1715,6 +1734,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
+    | '/api/v1/me/devices/$installationId'
     | '/api/v1/orgs/$orgSlug/home'
     | '/api/v1/orgs/$orgSlug/organization'
     | '/api/v1/orgs/$orgSlug/repository-projects'
@@ -1724,6 +1744,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
     | '/api/v1/orgs/$orgSlug/working-hours'
+    | '/api/v1/me/devices/'
     | '/api/v1/orgs/$orgSlug/absences/$id'
     | '/api/v1/orgs/$orgSlug/assistant/models'
     | '/api/v1/orgs/$orgSlug/assistant/settings'
@@ -1883,6 +1904,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId'
     | '/$orgSlug/settings/webhooks'
+    | '/api/v1/me/devices/$installationId'
     | '/api/v1/orgs/$orgSlug/home'
     | '/api/v1/orgs/$orgSlug/organization'
     | '/api/v1/orgs/$orgSlug/repository-projects'
@@ -1892,6 +1914,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
     | '/api/v1/orgs/$orgSlug/working-hours'
+    | '/api/v1/me/devices'
     | '/api/v1/orgs/$orgSlug/absences/$id'
     | '/api/v1/orgs/$orgSlug/assistant/models'
     | '/api/v1/orgs/$orgSlug/assistant/settings'
@@ -2053,6 +2076,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
+    | '/api/v1/me/devices/$installationId'
     | '/api/v1/orgs/$orgSlug/home'
     | '/api/v1/orgs/$orgSlug/organization'
     | '/api/v1/orgs/$orgSlug/repository-projects'
@@ -2062,6 +2086,7 @@ export interface FileRouteTypes {
     | '/api/v1/orgs/$orgSlug/unfiled'
     | '/api/v1/orgs/$orgSlug/whoami'
     | '/api/v1/orgs/$orgSlug/working-hours'
+    | '/api/v1/me/devices/'
     | '/api/v1/orgs/$orgSlug/absences/$id'
     | '/api/v1/orgs/$orgSlug/assistant/models'
     | '/api/v1/orgs/$orgSlug/assistant/settings'
@@ -2182,7 +2207,7 @@ export interface RootRouteChildren {
   ApiGithubWebhookRoute: typeof ApiGithubWebhookRoute
   ApiMcpOrgSlugRoute: typeof ApiMcpOrgSlugRoute
   ApiSlackCallbackRoute: typeof ApiSlackCallbackRoute
-  ApiV1MeRoute: typeof ApiV1MeRoute
+  ApiV1MeRoute: typeof ApiV1MeRouteWithChildren
   ApiV1MetaRoute: typeof ApiV1MetaRoute
   ApiV1OpenapiDotjsonRoute: typeof ApiV1OpenapiDotjsonRoute
   ApiV1ProjectsRoute: typeof ApiV1ProjectsRoute
@@ -2787,6 +2812,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgSlugProjectsProjectIdSettingsRouteImport
       parentRoute: typeof OrgSlugRouteRoute
     }
+    '/api/v1/me/devices/': {
+      id: '/api/v1/me/devices/'
+      path: '/devices'
+      fullPath: '/api/v1/me/devices/'
+      preLoaderRoute: typeof ApiV1MeDevicesIndexRouteImport
+      parentRoute: typeof ApiV1MeRoute
+    }
     '/api/v1/orgs/$orgSlug/working-hours': {
       id: '/api/v1/orgs/$orgSlug/working-hours'
       path: '/api/v1/orgs/$orgSlug/working-hours'
@@ -2849,6 +2881,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/v1/orgs/$orgSlug/home'
       preLoaderRoute: typeof ApiV1OrgsOrgSlugHomeRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/me/devices/$installationId': {
+      id: '/api/v1/me/devices/$installationId'
+      path: '/devices/$installationId'
+      fullPath: '/api/v1/me/devices/$installationId'
+      preLoaderRoute: typeof ApiV1MeDevicesInstallationIdRouteImport
+      parentRoute: typeof ApiV1MeRoute
     }
     '/api/v1/orgs/$orgSlug/webhooks/': {
       id: '/api/v1/orgs/$orgSlug/webhooks/'
@@ -3561,6 +3600,19 @@ const OrgSlugRouteRouteWithChildren = OrgSlugRouteRoute._addFileChildren(
   OrgSlugRouteRouteChildren,
 )
 
+interface ApiV1MeRouteChildren {
+  ApiV1MeDevicesInstallationIdRoute: typeof ApiV1MeDevicesInstallationIdRoute
+  ApiV1MeDevicesIndexRoute: typeof ApiV1MeDevicesIndexRoute
+}
+
+const ApiV1MeRouteChildren: ApiV1MeRouteChildren = {
+  ApiV1MeDevicesInstallationIdRoute: ApiV1MeDevicesInstallationIdRoute,
+  ApiV1MeDevicesIndexRoute: ApiV1MeDevicesIndexRoute,
+}
+
+const ApiV1MeRouteWithChildren =
+  ApiV1MeRoute._addFileChildren(ApiV1MeRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   OrgSlugRouteRoute: OrgSlugRouteRouteWithChildren,
@@ -3593,7 +3645,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGithubWebhookRoute: ApiGithubWebhookRoute,
   ApiMcpOrgSlugRoute: ApiMcpOrgSlugRoute,
   ApiSlackCallbackRoute: ApiSlackCallbackRoute,
-  ApiV1MeRoute: ApiV1MeRoute,
+  ApiV1MeRoute: ApiV1MeRouteWithChildren,
   ApiV1MetaRoute: ApiV1MetaRoute,
   ApiV1OpenapiDotjsonRoute: ApiV1OpenapiDotjsonRoute,
   ApiV1ProjectsRoute: ApiV1ProjectsRoute,

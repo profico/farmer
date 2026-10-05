@@ -174,3 +174,55 @@ jobs:
           API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
         run: |
           curl --fail-with-body -sS -H "Authorization: Bearer $API_TOKEN" "$WEBHOOK_URL"
+
+  # The push relay's image (apps/push-relay, ADR 0006). It has the same
+  # conditions as `deploy`: only a push to main, and only where `deploy-gate`
+  # found the Coolify secret. It does not call the web app's Coolify webhook.
+  # The relay is a separate Coolify resource that pulls
+  # ghcr.io/<owner>/farmer-push-relay:latest.
+  #
+  # The build context is the repo root, because the frozen install needs the
+  # root lockfile. The cache has its own scope, so the two images do not push
+  # each other out of the GitHub Actions cache.
+  push-relay-image:
+    name: Build and push the push relay image
+    needs: [ci, deploy-gate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.deploy-gate.outputs.enabled == 'true'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/farmer-push-relay
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/push-relay/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=push-relay
+          cache-to: type=gha,mode=max,scope=push-relay
