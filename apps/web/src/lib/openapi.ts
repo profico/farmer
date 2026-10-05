@@ -2,6 +2,31 @@ import {
 	type ApiAbsenceEntry,
 	type ApiAbsenceReport,
 	type ApiAbsenceResult,
+	type ApiAssistantEvent,
+	type ApiAssistantMessage,
+	type ApiAssistantModel,
+	type ApiAssistantSettings,
+	type ApiAssistantThread,
+	type ApiAssistantThreadDetail,
+	type ApiAuditEvent,
+	type ApiAuditExport,
+	type ApiAuditPage,
+	type ApiAuditRetention,
+	type ApiGithubDisconnect,
+	type ApiGithubInstallation,
+	type ApiGithubWorkspace,
+	type ApiInstallUrl,
+	type ApiReminderPreview,
+	type ApiReminderSettings,
+	type ApiSlackMatch,
+	type ApiSlackStatus,
+	type ApiSlackTest,
+	type ApiWebhookDelivery,
+	type ApiWebhookEndpoint,
+	type ApiWebhookEndpointCreated,
+	type ApiWebhookResend,
+	type ApiWebhookSecret,
+	type ApiWebhookTest,
 	type ApiCopyResult,
 	type ApiDeleted,
 	type ApiClient,
@@ -44,24 +69,39 @@ import {
 	CLI_CLIENT_ID,
 	CLI_VERSION_HEADER,
 } from "@farmer/core/api";
+import type { JsonValue } from "@farmer/core/lib/json";
 import {
 	absenceReportInput,
+	assistantResolveInput,
+	assistantSendInput,
 	confirmTimerInput,
 	copyTimeEntriesInput,
 	copyWeekEntriesInput,
 	createRecurringBlockRuleInput,
+	createConversationInput,
 	createTimeEntryInput,
+	createWebhookEndpointInput,
+	exportAuditEventsInput,
 	fileTimeEntriesInput,
 	holidaysYearQueryInput,
 	listHolidaysForRangeInput,
 	listMyAbsenceInput,
+	listAuditEventsInput,
 	listTimeEntriesRangeInput,
+	listWebhookDeliveriesInput,
 	logAbsenceRangeInput,
 	monthReportInput,
 	overtimeReportInput,
+	reminderKind,
+	reminderPreviewInput,
+	reminderSettingsInput,
+	renameConversationInput,
 	repositoryProjectsInput,
 	rewindInput,
 	setTaskHiddenInput,
+	sendTestSlackMessageInput,
+	setAssistantSettingsInput,
+	setAuditRetentionInput,
 	startTimerInput,
 	timeReportDetailInput,
 	timeReportSummaryInput,
@@ -70,8 +110,12 @@ import {
 	updateIntegrationSettingsInput,
 	updateNotificationSettingsInput,
 	updateRecurringBlockRuleInput,
+	updateAssistantSettingsInput,
+	updateReminderSettingsInput,
 	updateTimeEntryInput,
 	upsertWorkingHoursDayInput,
+	updateWebhookEndpointInput,
+	webhookEventKind,
 } from "@farmer/core/schema";
 import { z } from "zod";
 
@@ -1029,6 +1073,463 @@ const apiHome = named(
 	),
 );
 
+// ── The workspace admin ──────────────────────────────────────────────────────
+
+const apiReminderSettings = named(
+	"ReminderSettings",
+	mirror<ApiReminderSettings>()(reminderSettingsInput),
+);
+
+const reminderPerson = {
+	userId: uuid,
+	name: z.string(),
+	email: z.string(),
+	reason: z.string(),
+};
+
+const apiReminderPreview = named(
+	"ReminderPreview",
+	mirror<ApiReminderPreview>()(
+		z.object({
+			kind: reminderKind,
+			date: dayKey,
+			skipped: z
+				.string()
+				.nullable()
+				.describe("Why nothing of this kind goes out on `date`, or null."),
+			sendsAt: z
+				.string()
+				.nullable()
+				.describe(
+					"HH:mm in the organization's timezone, or null for the end of each person's own workday.",
+				),
+			recipients: z.array(z.object({ ...reminderPerson, message: z.string() })),
+			heldBack: z
+				.array(z.object(reminderPerson))
+				.describe(
+					"People the rules picked and a delivery rule holds back, with the reason.",
+				),
+		}),
+	),
+);
+
+const apiInstallUrl = named(
+	"InstallUrl",
+	mirror<ApiInstallUrl>()(
+		z.object({
+			url: z
+				.string()
+				.describe(
+					"Open it in the system browser. The provider's callback lands on the web app, which needs a signed-in session there.",
+				),
+		}),
+	),
+);
+
+const apiGithubInstallation = named(
+	"GithubInstallation",
+	mirror<ApiGithubInstallation>()(
+		z.object({
+			id: uuid,
+			installationId: z.number().int().describe("GitHub's own id."),
+			accountLogin: z.string(),
+			accountType: z.string().describe('"Organization" or "User".'),
+			connectedAt: iso,
+		}),
+	),
+);
+
+const apiGithubWorkspace = named(
+	"GithubWorkspace",
+	mirror<ApiGithubWorkspace>()(
+		z.object({
+			appConfigured: z
+				.boolean()
+				.describe("False when the deployment has no GitHub App."),
+			installations: z.array(apiGithubInstallation),
+		}),
+	),
+);
+
+const apiGithubDisconnect = named(
+	"GithubDisconnect",
+	mirror<ApiGithubDisconnect>()(
+		z.object({
+			uninstall: z
+				.enum([
+					"not-requested",
+					"uninstalled",
+					"already-gone",
+					"shared",
+					"not-configured",
+					"failed",
+				])
+				.describe(
+					"What happened to the App on GitHub. `shared`: another workspace still uses the installation, so it stays.",
+				),
+		}),
+	),
+);
+
+const apiSlackStatus = named(
+	"SlackStatus",
+	mirror<ApiSlackStatus>()(
+		z.object({
+			appConfigured: z
+				.boolean()
+				.describe("False when the deployment has no Slack app."),
+			connected: z.boolean(),
+			needsReconnect: z
+				.boolean()
+				.describe(
+					"An install is stored and cannot send. Install again to fix it.",
+				),
+			reason: z.enum(["rejected", "unreadable"]).nullable(),
+			teamId: z.string().nullable(),
+			teamName: z.string().nullable(),
+			connectedAt: iso.nullable(),
+			mappedPeople: z.number().int().nullable(),
+		}),
+	),
+);
+
+const apiSlackMatch = named(
+	"SlackMatch",
+	mirror<ApiSlackMatch>()(
+		z.object({
+			mapped: z.number().int().describe("People found in Slack by email."),
+		}),
+	),
+);
+
+const apiSlackTest = named(
+	"SlackTest",
+	mirror<ApiSlackTest>()(z.object({ sent: z.literal(true) })),
+);
+
+const apiWebhookEndpoint = named(
+	"WebhookEndpoint",
+	mirror<ApiWebhookEndpoint>()(
+		z.object({
+			id: uuid,
+			url: z.string(),
+			description: z.string().nullable(),
+			enabledEvents: z.array(webhookEventKind),
+			secretHint: z
+				.string()
+				.describe("The last four characters of the signing secret."),
+			previousSecretExpiresAt: iso
+				.nullable()
+				.describe("Set while the secret before a roll still signs."),
+			disabledAt: iso.nullable(),
+			disabledReason: z.string().nullable(),
+			lastSuccessAt: iso.nullable(),
+			failingSince: iso.nullable(),
+			createdAt: iso,
+			createdByName: z.string().nullable(),
+		}),
+	),
+);
+
+const apiWebhookEndpointCreated = named(
+	"WebhookEndpointCreated",
+	mirror<ApiWebhookEndpointCreated>()(
+		z.object({
+			endpoint: apiWebhookEndpoint,
+			secret: z
+				.string()
+				.describe("The signing secret. Readable only in this answer."),
+		}),
+	),
+);
+
+const apiWebhookSecret = named(
+	"WebhookSecret",
+	mirror<ApiWebhookSecret>()(
+		z.object({
+			secret: z
+				.string()
+				.describe("The new signing secret. Readable only in this answer."),
+		}),
+	),
+);
+
+const apiWebhookDelivery = named(
+	"WebhookDelivery",
+	mirror<ApiWebhookDelivery>()(
+		z.object({
+			id: uuid,
+			eventId: uuid,
+			kind: z.string(),
+			attempt: z.number().int(),
+			manual: z.boolean().describe("Queued by Resend, not by the schedule."),
+			nextAttemptAt: iso
+				.nullable()
+				.describe("Set only while the attempt waits to be sent."),
+			attemptedAt: iso.nullable(),
+			statusCode: z.number().int().nullable(),
+			error: z.string().nullable(),
+			responseSample: z.string().nullable(),
+			durationMs: z.number().int().nullable(),
+			createdAt: iso,
+			canResend: z
+				.boolean()
+				.describe("False once the payload was deleted, or before a send."),
+		}),
+	),
+);
+
+const apiWebhookTest = named(
+	"WebhookTest",
+	mirror<ApiWebhookTest>()(z.object({ eventId: uuid })),
+);
+
+const apiWebhookResend = named(
+	"WebhookResend",
+	mirror<ApiWebhookResend>()(
+		z.object({ deliveryId: uuid.describe("The new attempt.") }),
+	),
+);
+
+/** Any JSON value. Typed to `JsonValue`, so `mirror` can compare it. */
+const jsonValue: z.ZodType<JsonValue> = named(
+	"JsonValue",
+	z.lazy(() =>
+		z.union([
+			z.string(),
+			z.number(),
+			z.boolean(),
+			z.null(),
+			z.array(jsonValue),
+			z.record(z.string(), jsonValue),
+		]),
+	),
+);
+
+const auditValue = z.union([
+	z.string(),
+	z.number(),
+	z.boolean(),
+	z.null(),
+	z.array(z.string()),
+]);
+
+const apiAuditEvent = named(
+	"AuditEvent",
+	mirror<ApiAuditEvent>()(
+		z.object({
+			id: uuid,
+			occurredAt: iso,
+			kind: z.string(),
+			category: z.string().describe("`change` or `security`."),
+			summary: z.string().describe("The sentence the web app shows."),
+			actorUserId: z.string().nullable(),
+			actorName: z.string().nullable(),
+			impersonatorName: z.string().nullable(),
+			via: z.string(),
+			ip: z.string().nullable(),
+			userAgent: z.string().nullable(),
+			targetType: z.string().nullable(),
+			targetId: z.string().nullable(),
+			targetLabel: z.string().nullable(),
+			subjectUserId: z.string().nullable(),
+			changes: z
+				.record(z.string(), z.object({ from: auditValue, to: auditValue }))
+				.nullable()
+				.describe("Each changed field. A secret reads `[redacted]`."),
+			details: z.record(z.string(), jsonValue).nullable(),
+		}),
+	),
+);
+
+const apiAuditPage = named(
+	"AuditPage",
+	mirror<ApiAuditPage>()(
+		z.object({
+			events: z.array(apiAuditEvent),
+			nextCursor: z
+				.string()
+				.nullable()
+				.describe("Send it as `cursor` for the next page. Null on the last."),
+		}),
+	),
+);
+
+const apiAuditExport = named(
+	"AuditExport",
+	mirror<ApiAuditExport>()(
+		z.object({
+			csv: z.string(),
+			rows: z.number().int(),
+			truncated: z
+				.boolean()
+				.describe("True when the range held more than 10,000 rows."),
+		}),
+	),
+);
+
+const apiAuditRetention = named(
+	"AuditRetention",
+	mirror<ApiAuditRetention>()(z.object({ days: z.number().int() })),
+);
+
+// ── The assistant ────────────────────────────────────────────────────────────
+
+const apiAssistantSettings = named(
+	"AssistantSettings",
+	mirror<ApiAssistantSettings>()(
+		z.object({
+			available: z
+				.boolean()
+				.describe(
+					"False when the deployment has the assistant switched off. The thread routes then answer 404.",
+				),
+			configured: z.boolean().describe("A usable key is stored."),
+			keyUnreadable: z
+				.boolean()
+				.describe("A key is stored and does not decrypt. Paste it again."),
+			enabled: z
+				.boolean()
+				.describe("False when an admin paused the assistant here."),
+			defaultModel: z.string().nullable(),
+			keyHint: z
+				.string()
+				.nullable()
+				.describe("The first characters of the key. Never the key."),
+			systemPrompt: z.string().nullable(),
+			connectedAt: iso.nullable(),
+		}),
+	),
+);
+
+const apiAssistantModel = named(
+	"AssistantModel",
+	mirror<ApiAssistantModel>()(
+		z.object({
+			id: z.string(),
+			name: z.string(),
+			contextLength: z.number().int().nullable(),
+			promptPrice: z
+				.number()
+				.nullable()
+				.describe("USD per million prompt tokens."),
+			supportsTools: z.boolean(),
+		}),
+	),
+);
+
+const apiAssistantThread = named(
+	"AssistantThread",
+	mirror<ApiAssistantThread>()(
+		z.object({
+			id: uuid,
+			title: z.string(),
+			model: z.string(),
+			updatedAt: iso,
+		}),
+	),
+);
+
+const toolCall = z.object({
+	id: z.string(),
+	name: z.string(),
+	arguments: z.string().describe("The raw JSON the model sent."),
+});
+
+const apiAssistantMessage = named(
+	"AssistantMessage",
+	mirror<ApiAssistantMessage>()(
+		z.object({
+			id: uuid,
+			role: z.enum(["user", "assistant", "tool"]),
+			content: z.string(),
+			toolCalls: z.array(toolCall).nullable(),
+			toolCallId: z
+				.string()
+				.nullable()
+				.describe("On a `tool` row: the call it answers."),
+			toolName: z.string().nullable(),
+			pendingApproval: z
+				.boolean()
+				.describe(
+					"A card waits for an answer. The waiting call is the one in `toolCalls` that no `tool` row answers.",
+				),
+			approvalDecision: z.enum(["approved", "rejected"]).nullable(),
+			approvalSummary: z.string().nullable(),
+			approvalPreview: z
+				.object({
+					columns: z.array(z.string()),
+					rows: z.array(
+						z.object({ id: z.string(), cells: z.array(z.string()) }),
+					),
+					note: z.string().nullable(),
+					selectable: z.boolean(),
+				})
+				.nullable(),
+			createdAt: iso,
+		}),
+	),
+);
+
+const apiAssistantThreadDetail = named(
+	"AssistantThreadDetail",
+	mirror<ApiAssistantThreadDetail>()(
+		z.object({
+			thread: apiAssistantThread,
+			messages: z.array(apiAssistantMessage).describe("Oldest first."),
+		}),
+	),
+);
+
+const approvalPreview = z.object({
+	columns: z.array(z.string()),
+	rows: z.array(z.object({ id: z.string(), cells: z.array(z.string()) })),
+	note: z.string().optional(),
+});
+
+const apiAssistantEvent = named(
+	"AssistantEvent",
+	mirror<ApiAssistantEvent>()(
+		z
+			.discriminatedUnion("type", [
+				z.object({
+					type: z.literal("message"),
+					messageId: uuid,
+					role: z.literal("user"),
+				}),
+				z.object({ type: z.literal("delta"), text: z.string() }),
+				z.object({
+					type: z.literal("tool_start"),
+					toolCallId: z.string(),
+					name: z.string(),
+					arguments: z.string(),
+				}),
+				z.object({
+					type: z.literal("tool_result"),
+					toolCallId: z.string(),
+					name: z.string(),
+					ok: z.boolean(),
+				}),
+				z.object({
+					type: z.literal("approval_required"),
+					messageId: uuid,
+					toolCallId: z.string(),
+					name: z.string(),
+					summary: z.string(),
+					arguments: z.string(),
+					preview: approvalPreview.nullable(),
+					selectable: z.boolean(),
+				}),
+				z.object({ type: z.literal("title"), title: z.string() }),
+				z.object({ type: z.literal("done") }),
+				z.object({ type: z.literal("error"), message: z.string() }),
+			])
+			.describe(
+				"One Server-Sent Event: each `data:` line is one of these, as JSON. The turn ends after `done` or `error`.",
+			),
+	),
+);
+
 // The request bodies the routes parse, under the names the document shows.
 named("NewTimeEntry", createTimeEntryInput);
 named("TimeEntryPatch", updateTimeEntryInput);
@@ -1046,6 +1547,26 @@ named("WorkingHoursDayPatch", upsertWorkingHoursDayInput);
 named("NewRecurringBlock", createRecurringBlockRuleInput);
 named("RecurringBlockPatch", updateRecurringBlockRuleInput);
 named("IntegrationSettingsPatch", updateIntegrationSettingsInput);
+named("ReminderSettingsPatch", updateReminderSettingsInput);
+named("SlackTestMessage", sendTestSlackMessageInput);
+named("NewWebhookEndpoint", createWebhookEndpointInput);
+// The route takes the endpoint's id from the path.
+const webhookEndpointPatch = named(
+	"WebhookEndpointPatch",
+	updateWebhookEndpointInput.omit({ endpointId: true }),
+);
+named("AuditExportRange", exportAuditEventsInput);
+named("AuditRetentionChange", setAuditRetentionInput);
+named("AssistantConnect", setAssistantSettingsInput);
+named("AssistantSettingsPatch", updateAssistantSettingsInput);
+named("NewAssistantThread", createConversationInput);
+// The route takes the thread's id from the path.
+const assistantThreadRename = named(
+	"AssistantThreadRename",
+	renameConversationInput.omit({ conversationId: true }),
+);
+named("AssistantSend", assistantSendInput);
+named("AssistantApproval", assistantResolveInput);
 
 type JsonSchema = z.core.JSONSchema.JSONSchema;
 
@@ -1121,7 +1642,12 @@ type Tag =
 	| "Reports"
 	| "Schedule"
 	| "Preferences"
-	| "Integrations";
+	| "Integrations"
+	| "Reminders"
+	| "Workspace integrations"
+	| "Webhooks"
+	| "Audit log"
+	| "Assistant";
 
 type Operation = {
 	method: Method;
@@ -1140,6 +1666,10 @@ type Operation = {
 	/** The 200 body, or `null` for a 204. */
 	response: z.ZodType | null;
 	list?: true;
+	/** The 200 body is `text/event-stream`, one `response` per event. */
+	stream?: true;
+	/** Only an admin of the organization may call it: a 403 for anyone else. */
+	admin?: true;
 };
 
 const rangeQuery = { schema: listTimeEntriesRangeInput, optional: true };
@@ -1742,6 +2272,411 @@ export const OPERATIONS: Operation[] = [
 		tag: "Timer",
 		response: apiTimerState,
 	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/reminders",
+		operationId: "getReminderSettings",
+		summary: "Get the reminder settings",
+		description:
+			"The defaults when the organization never saved any. Admin only.",
+		tag: "Reminders",
+		admin: true,
+		response: apiReminderSettings,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/reminders",
+		operationId: "updateReminderSettings",
+		summary: "Change the reminder settings",
+		description:
+			"Saves the fields it sends and leaves the others alone. Times are HH:mm on a quarter hour, from 07:00 to 20:00. Admin only.",
+		tag: "Reminders",
+		admin: true,
+		body: updateReminderSettingsInput,
+		response: apiReminderSettings,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/reminders/preview",
+		operationId: "previewReminder",
+		summary: "Preview who gets a reminder",
+		description:
+			"Who gets one kind of reminder on one day, by the rules the job sends by, and who a delivery rule holds back. Admin only.",
+		tag: "Reminders",
+		admin: true,
+		query: { schema: reminderPreviewInput, optional: false },
+		response: apiReminderPreview,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/workspace-integrations/github",
+		operationId: "getGithubWorkspace",
+		summary: "List the GitHub installations",
+		description:
+			"The GitHub App installations connected to this workspace. Admin only.",
+		tag: "Workspace integrations",
+		admin: true,
+		response: apiGithubWorkspace,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/workspace-integrations/github/install-url",
+		operationId: "getGithubInstallUrl",
+		summary: "Get the GitHub App install page",
+		description:
+			"Open the URL in the system browser. GitHub then sends the browser to the web app, which connects the installation. Admin only.",
+		tag: "Workspace integrations",
+		admin: true,
+		response: apiInstallUrl,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/workspace-integrations/github/installations/{id}",
+		operationId: "disconnectGithubInstallation",
+		summary: "Disconnect a GitHub installation",
+		description:
+			"`?uninstall=true` also removes the App from the GitHub account, unless another workspace still uses it. Admin only.",
+		tag: "Workspace integrations",
+		admin: true,
+		query: {
+			schema: z.object({
+				uninstall: z
+					.boolean()
+					.describe("Also remove the App from the GitHub account."),
+			}),
+			optional: true,
+		},
+		response: apiGithubDisconnect,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/workspace-integrations/slack",
+		operationId: "getSlackStatus",
+		summary: "Get the Slack connection",
+		description: "The bot token is never in the answer. Admin only.",
+		tag: "Workspace integrations",
+		admin: true,
+		response: apiSlackStatus,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/workspace-integrations/slack",
+		operationId: "disconnectSlack",
+		summary: "Disconnect Slack",
+		description:
+			"Forgets the bot token and every Slack match. Answers the status after it. Admin only.",
+		tag: "Workspace integrations",
+		admin: true,
+		response: apiSlackStatus,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/workspace-integrations/slack/install-url",
+		operationId: "getSlackInstallUrl",
+		summary: "Get the Add to Slack page",
+		description:
+			"Open the URL in the system browser. Slack then sends the browser to the web app, which stores the install. Admin only.",
+		tag: "Workspace integrations",
+		admin: true,
+		response: apiInstallUrl,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/workspace-integrations/slack/match-people",
+		operationId: "matchSlackPeople",
+		summary: "Match people to Slack",
+		description:
+			"Finds the Slack account of each active member by email. Admin only.",
+		tag: "Workspace integrations",
+		admin: true,
+		response: apiSlackMatch,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/workspace-integrations/slack/test",
+		operationId: "sendSlackTest",
+		summary: "Send a test message on Slack",
+		description:
+			"Sends one member a test message, through the path the reminders take. Admin only.",
+		tag: "Workspace integrations",
+		admin: true,
+		body: sendTestSlackMessageInput,
+		response: apiSlackTest,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/webhooks",
+		operationId: "listWebhookEndpoints",
+		summary: "List webhook endpoints",
+		description: "Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		response: apiWebhookEndpoint,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/webhooks",
+		operationId: "createWebhookEndpoint",
+		summary: "Add a webhook endpoint",
+		description:
+			"The URL must be HTTPS and reach a public address. The answer holds the signing secret, and no later answer does. An organization can have five endpoints. Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		body: createWebhookEndpointInput,
+		response: apiWebhookEndpointCreated,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/webhooks/{id}",
+		operationId: "getWebhookEndpoint",
+		summary: "Get a webhook endpoint",
+		description: "Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		response: apiWebhookEndpoint,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/webhooks/{id}",
+		operationId: "updateWebhookEndpoint",
+		summary: "Change a webhook endpoint",
+		description:
+			"Changes the fields it sends. `disabled` switches the endpoint off and on. Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		body: webhookEndpointPatch,
+		response: apiWebhookEndpoint,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/webhooks/{id}",
+		operationId: "deleteWebhookEndpoint",
+		summary: "Delete a webhook endpoint",
+		description: "Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		response: apiDeleted,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/webhooks/{id}/roll-secret",
+		operationId: "rollWebhookSecret",
+		summary: "Roll the signing secret",
+		description:
+			"The answer holds the new secret, and no later answer does. The old secret also signs for 24 hours. Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		response: apiWebhookSecret,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/webhooks/{id}/test",
+		operationId: "sendWebhookTest",
+		summary: "Send a test event",
+		description:
+			"Queues a `webhook.test` event for this endpoint. The delivery job sends it; read the delivery log for the result. Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		response: apiWebhookTest,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/webhooks/{id}/deliveries",
+		operationId: "listWebhookDeliveries",
+		summary: "List the delivery log",
+		description: "The attempts for one endpoint, newest first. Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		query: {
+			schema: listWebhookDeliveriesInput.omit({ endpointId: true }),
+			optional: true,
+		},
+		response: apiWebhookDelivery,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/webhooks/deliveries/{id}/resend",
+		operationId: "resendWebhookDelivery",
+		summary: "Send a delivery again",
+		description:
+			"Queues one more attempt at the event behind a logged delivery. Refused once the payload was deleted, after three days. Admin only.",
+		tag: "Webhooks",
+		admin: true,
+		response: apiWebhookResend,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/audit-log",
+		operationId: "listAuditEvents",
+		summary: "List the audit log",
+		description:
+			"One page of 50 events, newest first. `userId` matches the person who did it or the person it happened to. `from` and `to` are days in the organization's timezone. Admin only.",
+		tag: "Audit log",
+		admin: true,
+		query: { schema: listAuditEventsInput, optional: true },
+		response: apiAuditPage,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/audit-log/export",
+		operationId: "exportAuditEvents",
+		summary: "Export the audit log",
+		description:
+			"The events as CSV, for at most a year and 10,000 rows. The export is itself recorded in the log. Admin only.",
+		tag: "Audit log",
+		admin: true,
+		body: exportAuditEventsInput,
+		response: apiAuditExport,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/audit-log/retention",
+		operationId: "getAuditRetention",
+		summary: "Get how long the log is kept",
+		description: "In days. Admin only.",
+		tag: "Audit log",
+		admin: true,
+		response: apiAuditRetention,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/audit-log/retention",
+		operationId: "setAuditRetention",
+		summary: "Change how long the log is kept",
+		description: "90, 365, 730 or 2555 days. Admin only.",
+		tag: "Audit log",
+		admin: true,
+		body: setAuditRetentionInput,
+		response: apiAuditRetention,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/assistant/settings",
+		operationId: "getAssistantSettings",
+		summary: "Get the assistant settings",
+		description:
+			"Any member. Show the chat only when `available`, `configured` and `enabled` are all true.",
+		tag: "Assistant",
+		response: apiAssistantSettings,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/assistant/settings",
+		operationId: "connectAssistant",
+		summary: "Connect the AI provider",
+		description:
+			"Stores an OpenRouter key and the default model. The server checks the key with OpenRouter first, and never sends it back. Admin only.",
+		tag: "Assistant",
+		admin: true,
+		body: setAssistantSettingsInput,
+		response: apiAssistantSettings,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/assistant/settings",
+		operationId: "updateAssistantSettings",
+		summary: "Change the assistant settings",
+		description:
+			"The default model, the pause switch and the house rules. `systemPrompt: null` clears the rules. Admin only.",
+		tag: "Assistant",
+		admin: true,
+		body: updateAssistantSettingsInput,
+		response: apiAssistantSettings,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/assistant/settings",
+		operationId: "disconnectAssistant",
+		summary: "Disconnect the AI provider",
+		description:
+			"Forgets the key. Threads stay. Works also when the deployment has the assistant switched off. Admin only.",
+		tag: "Assistant",
+		admin: true,
+		response: apiAssistantSettings,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/assistant/models",
+		operationId: "listAssistantModels",
+		summary: "List the models",
+		description: "The OpenRouter models that can call tools. Admin only.",
+		tag: "Assistant",
+		admin: true,
+		response: apiAssistantModel,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/assistant/threads",
+		operationId: "listAssistantThreads",
+		summary: "List your threads",
+		description: "The caller's own threads, newest first, at most 100.",
+		tag: "Assistant",
+		response: apiAssistantThread,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/assistant/threads",
+		operationId: "createAssistantThread",
+		summary: "Start a thread",
+		description: "The thread uses the organization's default model.",
+		tag: "Assistant",
+		body: createConversationInput,
+		response: apiAssistantThread,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}",
+		operationId: "getAssistantThread",
+		summary: "Read a thread",
+		description: "Another person's thread is a 404.",
+		tag: "Assistant",
+		response: apiAssistantThreadDetail,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}",
+		operationId: "renameAssistantThread",
+		summary: "Rename a thread",
+		tag: "Assistant",
+		body: assistantThreadRename,
+		response: apiAssistantThread,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}",
+		operationId: "deleteAssistantThread",
+		summary: "Delete a thread",
+		tag: "Assistant",
+		response: apiDeleted,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}/messages",
+		operationId: "sendAssistantMessage",
+		summary: "Send a message",
+		description:
+			"Streams the answer as Server-Sent Events. A message sent while an approval waits declines it. Each person can start 20 turns a minute.",
+		tag: "Assistant",
+		body: assistantSendInput,
+		response: apiAssistantEvent,
+		stream: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/assistant/threads/{id}/approvals",
+		operationId: "answerAssistantApproval",
+		summary: "Approve or reject a write",
+		description:
+			"Answers the call that `approval_required` named, and streams the rest of the turn. For a batch, `selectedRowIds` keeps only those rows; an empty list rejects. An approval counts as a turn.",
+		tag: "Assistant",
+		body: assistantResolveInput,
+		response: apiAssistantEvent,
+		stream: true,
+	},
 ];
 
 const TAG_TEXT = {
@@ -1757,6 +2692,15 @@ const TAG_TEXT = {
 	Preferences: "The person's own settings.",
 	Integrations:
 		"The person's GitHub and Google Calendar connections. Connecting is a browser flow in the web app.",
+	Reminders: "When the reminders go out, and to whom. Admin only.",
+	"Workspace integrations":
+		"The workspace's GitHub App and Slack. Admin only. A secret is never in an answer.",
+	Webhooks:
+		"Outbound webhook endpoints and their delivery log. Admin only. A signing secret is readable only when it is made.",
+	"Audit log":
+		"Who changed what in the workspace, and every sign-in. Admin only.",
+	Assistant:
+		"The AI assistant: its provider settings, your threads, and a turn streamed as Server-Sent Events.",
 } satisfies Record<Tag, string>;
 
 /** Preferences → API tokens in the reader's own workspace: `:org` is the
@@ -1841,11 +2785,13 @@ A response can get new fields at any time. Ignore the fields you do not know.`;
 
 type ResponseObject = {
 	description: string;
-	content?: {
-		"application/json": {
-			schema: SchemaRef | { type: "array"; items: SchemaRef };
-		};
-	};
+	content?:
+		| {
+				"application/json": {
+					schema: SchemaRef | { type: "array"; items: SchemaRef };
+				};
+		  }
+		| { "text/event-stream": { schema: SchemaRef } };
 };
 
 /** An operation's responses, keyed by status code. */
@@ -1886,7 +2832,13 @@ const pathParameters = (path: string, orgSlug: string | undefined) =>
 
 const operation = (op: Operation, orgSlug: string | undefined) => {
 	const responses: Responses = {};
-	if (op.response) {
+	if (op.response && op.stream) {
+		responses["200"] = {
+			description:
+				"A stream of Server-Sent Events. Each `data:` line is one event, as JSON.",
+			content: { "text/event-stream": { schema: ref(op.response) } },
+		};
+	} else if (op.response) {
 		const body = ref(op.response);
 		responses["200"] = {
 			description: "OK",
@@ -1906,7 +2858,13 @@ const operation = (op: Operation, orgSlug: string | undefined) => {
 	// Every write but revoking the token itself, which `userApiRoute` lets a
 	// read-only token do (see `serve` in server/api-route.ts).
 	if (op.method !== "get" && op.auth !== false && op.path !== "/session") {
-		responses["403"] = errorResponse("Not allowed, or a read-only API token.");
+		responses["403"] = errorResponse(
+			op.admin
+				? "Not an admin of the organization, or a read-only API token."
+				: "Not allowed, or a read-only API token.",
+		);
+	} else if (op.admin) {
+		responses["403"] = errorResponse("Not an admin of the organization.");
 	}
 	if (op.body || op.query) {
 		responses["422"] = errorResponse("The input is not valid.");

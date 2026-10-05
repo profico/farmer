@@ -77,4 +77,46 @@ describe("the OpenAPI document", () => {
 		);
 		expect(Whoami?.required).toContain("capabilities");
 	});
+
+	// A secret goes out only in the two answers that make one. A field named
+	// like a secret on any other response is a leak waiting for a client. A
+	// request body may carry one: that is how a key goes in.
+	test("puts a secret only in the answers that make one", () => {
+		const document = buildOpenApiDocument();
+		const responses = JSON.stringify(
+			Object.values(document.paths).flatMap((methods) =>
+				Object.values(methods).map((op) => op.responses["200"]),
+			),
+		);
+		const answered = new Set(
+			[...responses.matchAll(/"#\/components\/schemas\/(\w+)"/g)].map(
+				([, id]) => id,
+			),
+		);
+		const withSecret = Object.entries(document.components.schemas)
+			.filter(
+				([id, schema]) =>
+					answered.has(id) &&
+					Object.keys(schema.properties ?? {}).some((field) =>
+						/secret$|token$|apikey$|password$/i.test(field),
+					),
+			)
+			.map(([id]) => id)
+			.sort();
+		expect(withSecret).toEqual(["WebhookEndpointCreated", "WebhookSecret"]);
+	});
+
+	test("documents the assistant's turn as a stream of events", () => {
+		const { paths } = buildOpenApiDocument();
+		for (const path of [
+			"/orgs/{orgSlug}/assistant/threads/{id}/messages",
+			"/orgs/{orgSlug}/assistant/threads/{id}/approvals",
+		]) {
+			expect(paths[path]?.post?.responses["200"]?.content).toEqual({
+				"text/event-stream": {
+					schema: { $ref: "#/components/schemas/AssistantEvent" },
+				},
+			});
+		}
+	});
 });

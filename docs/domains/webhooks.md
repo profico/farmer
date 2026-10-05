@@ -210,9 +210,12 @@ entries, with their notes, so registering one is a decision about the whole
 organization's data — the same tier as adding a person. Enforced at
 `orgAdminMiddleware` and again in the service.
 
-The web UI is the only surface (issue #67, question 10). The CLI and the MCP
-server do not read the delivery log: it is an administrative screen, not
-something an agent loop or a terminal needs.
+The web UI and the REST API (`api/v1/orgs/$orgSlug/webhooks/…`, for the
+mobile app, ADR 0005) are the surfaces. The API calls the same service
+functions, so a test event and a resend go through the outbox there too. The
+CLI and the MCP server do not read the delivery log: it is an administrative
+screen, not something an agent loop or a terminal needs (issue #67, question
+10).
 
 ## Environment
 

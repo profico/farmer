@@ -68,11 +68,55 @@
  *   GET    orgs/$slug/absences?year&month        ApiAbsenceEntry[]
  *   GET    orgs/$slug/rewind?year                ApiRewind
  *
+ * The workspace admin (admin only, see `admin.ts`):
+ *
+ *   GET    orgs/$slug/reminders                  ApiReminderSettings
+ *   PATCH  orgs/$slug/reminders                  ApiReminderSettings
+ *   GET    orgs/$slug/reminders/preview          ApiReminderPreview
+ *   GET    orgs/$slug/workspace-integrations/github        ApiGithubWorkspace
+ *   GET    orgs/$slug/workspace-integrations/github/install-url              ApiInstallUrl
+ *   DELETE orgs/$slug/workspace-integrations/github/installations/$id        ApiGithubDisconnect
+ *   GET    orgs/$slug/workspace-integrations/slack         ApiSlackStatus
+ *   DELETE orgs/$slug/workspace-integrations/slack         ApiSlackStatus
+ *   GET    orgs/$slug/workspace-integrations/slack/install-url               ApiInstallUrl
+ *   POST   orgs/$slug/workspace-integrations/slack/match-people              ApiSlackMatch
+ *   POST   orgs/$slug/workspace-integrations/slack/test    ApiSlackTest
+ *   GET    orgs/$slug/webhooks                   ApiWebhookEndpoint[]
+ *   POST   orgs/$slug/webhooks                   ApiWebhookEndpointCreated
+ *   GET    orgs/$slug/webhooks/$id               ApiWebhookEndpoint
+ *   PATCH  orgs/$slug/webhooks/$id               ApiWebhookEndpoint
+ *   DELETE orgs/$slug/webhooks/$id               ApiDeleted
+ *   POST   orgs/$slug/webhooks/$id/roll-secret   ApiWebhookSecret
+ *   POST   orgs/$slug/webhooks/$id/test          ApiWebhookTest
+ *   GET    orgs/$slug/webhooks/$id/deliveries    ApiWebhookDelivery[]
+ *   POST   orgs/$slug/webhooks/deliveries/$id/resend               ApiWebhookResend
+ *   GET    orgs/$slug/audit-log                  ApiAuditPage
+ *   POST   orgs/$slug/audit-log/export           ApiAuditExport
+ *   GET    orgs/$slug/audit-log/retention        ApiAuditRetention
+ *   PATCH  orgs/$slug/audit-log/retention        ApiAuditRetention
+ *
+ * The assistant (see `assistant.ts`):
+ *
+ *   GET    orgs/$slug/assistant/settings         ApiAssistantSettings (any member)
+ *   POST   orgs/$slug/assistant/settings         ApiAssistantSettings (admin: the key)
+ *   PATCH  orgs/$slug/assistant/settings         ApiAssistantSettings (admin)
+ *   DELETE orgs/$slug/assistant/settings         ApiAssistantSettings (admin)
+ *   GET    orgs/$slug/assistant/models           ApiAssistantModel[] (admin)
+ *   GET    orgs/$slug/assistant/threads          ApiAssistantThread[]
+ *   POST   orgs/$slug/assistant/threads          ApiAssistantThread
+ *   GET    orgs/$slug/assistant/threads/$id      ApiAssistantThreadDetail
+ *   PATCH  orgs/$slug/assistant/threads/$id      ApiAssistantThread
+ *   DELETE orgs/$slug/assistant/threads/$id      ApiDeleted
+ *   POST   orgs/$slug/assistant/threads/$id/messages               text/event-stream
+ *   POST   orgs/$slug/assistant/threads/$id/approvals              text/event-stream
+ *
  * Any failure answers `ApiError` with a status: 401 unauthorized, 403
  * forbidden, 404 not_found, 422 invalid_input, 426 cli_outdated, 429
  * rate_limited (with `Retry-After`), 500 server_error.
  */
 
+export * from "./admin";
+export * from "./assistant";
 export * from "./catalogue";
 export * from "./errors";
 export * from "./home";

@@ -123,6 +123,13 @@ const uniqueSorted = <T extends number | string>(values: T[]): T[] =>
 export const reminderSettingsService = {
 	get: read,
 
+	/** `get` for the settings page and the REST API, which have no admin
+	 *  middleware of their own to lean on. `get` stays open for the jobs. */
+	getForAdmin: async (ctx: Ctx): Promise<ReminderSettings> => {
+		await requireAdmin(ctx);
+		return read(ctx);
+	},
+
 	/** Save the fields in `patch` and leave the others alone. */
 	update: async (
 		ctx: Ctx,
