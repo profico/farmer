@@ -7,7 +7,10 @@ import {
 	ScrollView,
 	View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+	SafeAreaView,
+	useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { ActionButton, IconButton, Text } from "../ui/components";
 import { usePalette } from "../ui/theme";
@@ -37,45 +40,57 @@ export function Sheet({
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
 	const top = Platform.OS === "ios" ? SPACE.m : insets.top;
+	// The bottom edge comes from a native safe area view: inside a modal the
+	// insets of the hook can be zero, and the end of the form then sat under
+	// the gesture bar.
 	return (
-		<KeyboardAvoidingView
+		<SafeAreaView
+			edges={["bottom"]}
 			style={{ flex: 1, backgroundColor: palette.surface }}
-			behavior={Platform.OS === "ios" ? "padding" : undefined}
 		>
-			<View
-				style={{
-					flexDirection: "row",
-					alignItems: "center",
-					gap: SPACE.s,
-					paddingTop: top,
-					paddingHorizontal: SPACE.s,
-					paddingBottom: SPACE.s,
-				}}
+			<KeyboardAvoidingView
+				style={{ flex: 1 }}
+				behavior={Platform.OS === "ios" ? "padding" : undefined}
 			>
-				<IconButton icon="close" label="Close" onPress={() => router.back()} />
-				<View style={{ flex: 1 }}>
-					<Text variant="titleLarge" numberOfLines={1}>
-						{title}
-					</Text>
+				<View
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						gap: SPACE.s,
+						paddingTop: top,
+						paddingHorizontal: SPACE.s,
+						paddingBottom: SPACE.s,
+					}}
+				>
+					<IconButton
+						icon="close"
+						label="Close"
+						onPress={() => router.back()}
+					/>
+					<View style={{ flex: 1 }}>
+						<Text variant="titleLarge" numberOfLines={1}>
+							{title}
+						</Text>
+					</View>
+					{busy ? <ActivityIndicator color={palette.primary} /> : null}
+					<ActionButton
+						label={actionLabel}
+						onPress={onAction}
+						disabled={busy || actionDisabled}
+					/>
 				</View>
-				{busy ? <ActivityIndicator color={palette.primary} /> : null}
-				<ActionButton
-					label={actionLabel}
-					onPress={onAction}
-					disabled={busy || actionDisabled}
-				/>
-			</View>
-			<ScrollView
-				contentContainerStyle={{
-					padding: SPACE.l,
-					paddingBottom: insets.bottom + SPACE.xxl,
-					gap: SPACE.xl,
-				}}
-				keyboardShouldPersistTaps="handled"
-			>
-				{children}
-			</ScrollView>
-		</KeyboardAvoidingView>
+				<ScrollView
+					contentContainerStyle={{
+						padding: SPACE.l,
+						paddingBottom: SPACE.xxl,
+						gap: SPACE.xl,
+					}}
+					keyboardShouldPersistTaps="handled"
+				>
+					{children}
+				</ScrollView>
+			</KeyboardAvoidingView>
+		</SafeAreaView>
 	);
 }
 

@@ -27,10 +27,30 @@ export function EntryRow({
 	const detail = [project?.client.name, entry.task.name]
 		.filter(Boolean)
 		.join(" · ");
+	const title =
+		project?.name ?? (entry.task.isAbsence ? "Time off" : "No project");
 	return (
 		<Pressable
 			accessibilityRole="button"
+			accessibilityLabel={[
+				title,
+				detail,
+				entry.description,
+				formatHours(entry.durationSeconds),
+			]
+				.filter((part) => part)
+				.join(", ")}
 			accessibilityHint="Edit the entry"
+			// The row is one element for a screen reader, so the continue button
+			// inside it is offered as an action of the row.
+			accessibilityActions={
+				onContinue
+					? [{ name: "continue", label: "Continue this entry with the timer" }]
+					: undefined
+			}
+			onAccessibilityAction={(event) => {
+				if (event.nativeEvent.actionName === "continue") onContinue?.();
+			}}
 			onPress={onPress}
 			android_ripple={{ color: palette.outlineVariant }}
 			style={({ pressed }) => ({
@@ -44,7 +64,7 @@ export function EntryRow({
 		>
 			<View style={{ flex: 1, gap: 2 }}>
 				<Text variant="titleMedium" numberOfLines={1}>
-					{project?.name ?? (entry.task.isAbsence ? "Time off" : "No project")}
+					{title}
 				</Text>
 				<Text
 					variant="bodyMedium"

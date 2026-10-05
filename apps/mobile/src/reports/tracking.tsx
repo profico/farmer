@@ -36,6 +36,9 @@ const statusColor = (status: string | null, palette: Palette) =>
 function PeriodCard({ title, period }: { title: string; period: Period }) {
 	const palette = usePalette();
 	const target = period.targetSoFarSeconds;
+	// Before the first working day of the period is over, there is nothing
+	// to be on track against: no verdict and no "of 0:00".
+	const noTargetYet = target === 0;
 	return (
 		<Card>
 			<View style={{ flexDirection: "row", alignItems: "baseline" }}>
@@ -45,7 +48,7 @@ function PeriodCard({ title, period }: { title: string; period: Period }) {
 						{periodTitle(period.from, period.to)}
 					</Text>
 				</View>
-				{period.status ? (
+				{period.status && !noTargetYet ? (
 					<Text
 						variant="labelLarge"
 						color={statusColor(period.status, palette)}
@@ -56,7 +59,7 @@ function PeriodCard({ title, period }: { title: string; period: Period }) {
 			</View>
 			<Text variant="headlineSmall">
 				{formatHours(period.totalSoFarSeconds)}
-				{target !== null ? (
+				{target !== null && !noTargetYet ? (
 					<Text variant="titleMedium" color={palette.onSurfaceVariant}>
 						{` of ${formatHours(target)} so far`}
 					</Text>
@@ -64,6 +67,11 @@ function PeriodCard({ title, period }: { title: string; period: Period }) {
 			</Text>
 			{target ? (
 				<ProgressBar value={period.totalSoFarSeconds / target} />
+			) : null}
+			{noTargetYet ? (
+				<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+					No target yet {title.toLowerCase()}.
+				</Text>
 			) : null}
 			<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
 				{formatHours(period.workSeconds)} work,{" "}

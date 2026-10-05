@@ -142,18 +142,34 @@ export function TimerCard() {
 			],
 		);
 
+	// A paused timer has its own colour and a pause icon, so it does not
+	// look like one that runs. The API calls the state "held"; the button
+	// and the label say "Pause", as the web app does.
+	const ink = timer.paused
+		? palette.onSecondaryContainer
+		: palette.onPrimaryContainer;
+
 	return (
-		<Card tone="primary">
+		<Card tone={timer.paused ? "secondary" : "primary"}>
 			<View style={{ flexDirection: "row", alignItems: "center" }}>
 				<View style={{ flex: 1 }}>
-					<Text variant="labelLarge" color={palette.onPrimaryContainer}>
-						{timer.paused ? "Held" : "Running"}
-					</Text>
-					<Text
-						variant="displaySmall"
-						color={palette.onPrimaryContainer}
-						numberOfLines={1}
+					<View
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							gap: SPACE.xs,
+						}}
 					>
+						<Icon
+							name={timer.paused ? "pause" : "timer"}
+							size={16}
+							color={ink}
+						/>
+						<Text variant="labelLarge" color={ink}>
+							{timer.paused ? "Paused" : "Running"}
+						</Text>
+					</View>
+					<Text variant="displaySmall" color={ink} numberOfLines={1}>
 						{formatStopwatch(elapsed)}
 					</Text>
 				</View>
@@ -164,16 +180,12 @@ export function TimerCard() {
 					disabled={action.isPending}
 				/>
 			</View>
-			<Text
-				variant="bodyMedium"
-				color={palette.onPrimaryContainer}
-				numberOfLines={2}
-			>
+			<Text variant="bodyMedium" color={ink} numberOfLines={2}>
 				{whatItMeasures(timer)}
 				{timer.description ? `: ${timer.description}` : ""}
 			</Text>
 			{timer.entry ? (
-				<Text variant="bodySmall" color={palette.onPrimaryContainer}>
+				<Text variant="bodySmall" color={ink}>
 					Adds to an entry that held {formatHours(timer.entry.durationSeconds)}.
 				</Text>
 			) : null}

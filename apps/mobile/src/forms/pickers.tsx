@@ -168,7 +168,9 @@ export function TaskPicker({
 }) {
 	const palette = usePalette();
 	const tasks = useTasks();
-	const [open, setOpen] = useState(value === null);
+	// Folded until the person opens it, so the list does not push the rest
+	// of the form down before a project is chosen.
+	const [open, setOpen] = useState(false);
 
 	if (tasks.isPending) return <Skeleton height={56} radius={16} />;
 	if (tasks.isError) {

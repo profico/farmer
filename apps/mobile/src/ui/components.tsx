@@ -57,15 +57,17 @@ export function Card({
 }: {
 	children: ReactNode;
 	style?: StyleProp<ViewStyle>;
-	tone?: "surface" | "primary" | "error";
+	tone?: "surface" | "primary" | "secondary" | "error";
 }) {
 	const palette = usePalette();
 	const backgroundColor =
 		tone === "primary"
 			? palette.primaryContainer
-			: tone === "error"
-				? palette.errorContainer
-				: palette.surfaceContainer;
+			: tone === "secondary"
+				? palette.secondaryContainer
+				: tone === "error"
+					? palette.errorContainer
+					: palette.surfaceContainer;
 	return (
 		<View
 			style={[
@@ -168,6 +170,7 @@ export function ListRow({
 	trailing,
 	onPress,
 	selected,
+	accessibilityLabel,
 }: {
 	icon?: IconName;
 	title: string;
@@ -175,10 +178,23 @@ export function ListRow({
 	trailing?: ReactNode;
 	onPress?: () => void;
 	selected?: boolean;
+	/** What a screen reader says for the row. The title and the subtitle
+	 *  when not given. */
+	accessibilityLabel?: string;
 }) {
 	const palette = usePalette();
 	return (
 		<Pressable
+			// A row that opens or picks something is one element with one label.
+			// A row without a press stays open, so a button at its end is
+			// reachable on its own.
+			accessible={Boolean(onPress)}
+			accessibilityLabel={
+				onPress
+					? (accessibilityLabel ??
+						[title, subtitle].filter((part) => part).join(", "))
+					: undefined
+			}
 			accessibilityRole={onPress ? "button" : undefined}
 			accessibilityState={{ selected }}
 			onPress={onPress}

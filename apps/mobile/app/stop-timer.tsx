@@ -35,6 +35,9 @@ import { usePalette } from "../src/ui/theme";
 export default function StopTimerSheet() {
 	const timer = useTimer();
 	const whoami = useWhoami();
+	// The timer as the person saved it. The save clears the cached timer
+	// while the sheet closes, and the form stays on screen until it is gone.
+	const [saved, setSaved] = useState<Timer | null>(null);
 
 	if (timer.isPending || whoami.isPending) {
 		return (
@@ -48,7 +51,7 @@ export default function StopTimerSheet() {
 			</Sheet>
 		);
 	}
-	const current = timer.data?.timer ?? null;
+	const current = saved ?? timer.data?.timer ?? null;
 	if (
 		!current ||
 		current.droppedAt ||
@@ -75,6 +78,7 @@ export default function StopTimerSheet() {
 			timer={current}
 			today={whoami.data.today}
 			timeZone={whoami.data.timezone}
+			onSaved={() => setSaved(current)}
 		/>
 	);
 }
@@ -83,14 +87,21 @@ function StopForm({
 	timer,
 	today,
 	timeZone,
+	onSaved,
 }: {
 	timer: Timer;
 	today: string;
 	timeZone: string;
+	onSaved: () => void;
 }) {
 	const palette = usePalette();
 	const router = useRouter();
-	const confirm = useConfirmTimer();
+	const confirm = useConfirmTimer({
+		onSaved: () => {
+			onSaved();
+			router.back();
+		},
+	});
 	const resume = useTimerAction();
 	// A continued entry stays on its own day; a new one lands on the day the
 	// timer started, in the workspace's timezone.
@@ -111,19 +122,16 @@ function StopForm({
 
 	const save = () => {
 		if (missingNote) return;
-		confirm.mutate(
-			{
-				date,
-				taskId,
-				durationSeconds: seconds,
-				// Sent always: on a continued entry an absent project keeps the
-				// entry's, and the form holds what the person chose.
-				projectId,
-				// "" rather than absent, so an emptied note clears the entry's.
-				description: note.trim(),
-			},
-			{ onSuccess: () => router.back() },
-		);
+		confirm.mutate({
+			date,
+			taskId,
+			durationSeconds: seconds,
+			// Sent always: on a continued entry an absent project keeps the
+			// entry's, and the form holds what the person chose.
+			projectId,
+			// "" rather than absent, so an emptied note clears the entry's.
+			description: note.trim(),
+		});
 	};
 
 	return (
@@ -145,7 +153,7 @@ function StopForm({
 				<Text variant="bodyMedium" color={palette.onPrimaryContainer}>
 					{timer.entry
 						? "This is the entry's new total, with the time it held before."
-						: "Entries are kept in 15-minute steps, so the time below is the measured time on the nearest quarter hour."}
+						: "Entries are kept in 15-minute steps, so the time below is the measured time on the nearest quarter hour, and at least 0:15."}
 				</Text>
 			</Card>
 			<FormSection label="Time to log">

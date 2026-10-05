@@ -105,12 +105,14 @@ export default function ProjectScreen() {
 
 	return (
 		<>
-			<Stack.Screen options={{ title: project.code ?? "" }} />
+			<Stack.Screen options={{ title: project.name }} />
 			<Screen topInset={false}>
 				<Inset>
 					<View style={{ gap: SPACE.xs }}>
 						<Text variant="labelLarge" color={palette.onSurfaceVariant}>
-							{project.client.name}
+							{project.code
+								? `${project.client.name}, ${project.code}`
+								: project.client.name}
 						</Text>
 						<Text variant="headlineSmall">{project.name}</Text>
 						{project.role ? (

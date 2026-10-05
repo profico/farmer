@@ -10,6 +10,9 @@ export function Icon({ name, size = 22, color }: IconProps) {
 			size={size}
 			tintColor={color}
 			resizeMode="scaleAspectFit"
+			accessible={false}
+			accessibilityElementsHidden
+			importantForAccessibility="no-hide-descendants"
 		/>
 	);
 }

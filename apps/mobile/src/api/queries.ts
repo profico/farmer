@@ -187,12 +187,18 @@ export const useStartTimer = () => {
 	});
 };
 
-export const useConfirmTimer = () => {
+/**
+ * Stops the timer and logs the entry. `onSaved` runs before the cached
+ * timer is cleared: a screen that shows the timer would otherwise lose it
+ * and unmount before a callback of `mutate` could run.
+ */
+export const useConfirmTimer = ({ onSaved }: { onSaved?: () => void } = {}) => {
 	const w = useWorkspace();
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: (body: ConfirmTimer) => w.client.confirmTimer(w.slug, body),
 		onSuccess: async () => {
+			onSaved?.();
 			queryClient.setQueryData([...scope(w), "timer"], { timer: null });
 			await invalidateDay(queryClient, w);
 		},
