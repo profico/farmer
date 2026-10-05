@@ -506,30 +506,6 @@ const sessionHeadersOf = async (
 	);
 };
 
-/** A JSON body with the fields a route takes from its path laid over it.
- *  The path wins, so a body cannot point a write at another row. Only the
- *  shape is checked here; the route's schema checks the rest. */
-export const bodyWithPath = (
-	body: JsonValue,
-	fromPath: { [key: string]: string },
-): JsonValue => {
-	const object = jsonObject.safeParse(body);
-	if (!object.success) {
-		throw new Error("The request body must be a JSON object.");
-	}
-	return { ...object.data, ...fromPath };
-};
-
-const jsonObject = z.record(z.string(), z.json());
-
-/** A positive whole number from the query string, or the raw text when it is
- *  not one, so that the schema refuses it with its own message. */
-export const queryNumber = (query: URLSearchParams, name: string) => {
-	const text = query.get(name);
-	if (text === null) return null;
-	return /^\d+$/.test(text) ? Number(text) : text;
-};
-
 /**
  * A handler for an org-scoped route: `/api/v1/orgs/$orgSlug/…`.
  *

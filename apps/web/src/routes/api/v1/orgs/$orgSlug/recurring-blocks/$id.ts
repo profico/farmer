@@ -6,7 +6,7 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
-import { bodyWithPathId } from "#/server/api-query.ts";
+import { bodyWithPath } from "#/server/api-query.ts";
 import { ownRecurringBlock } from "#/server/api-recurring-blocks.ts";
 import {
 	type ApiRequest,
@@ -35,7 +35,8 @@ export const Route = createFileRoute(
 		handlers: {
 			PATCH: apiRoute({
 				input: updateRecurringBlockRuleInput,
-				raw: bodyWithPathId("ruleId"),
+				raw: ({ params, body }: ApiRequest<OrgRowParams>) =>
+					bodyWithPath(body, { ruleId: params.id }),
 				run: async (ctx, input): Promise<ApiRecurringBlock> => {
 					const { recurringBlockRulesService } =
 						await import("@farmer/core/services");

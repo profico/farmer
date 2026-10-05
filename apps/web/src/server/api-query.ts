@@ -1,11 +1,7 @@
 import type { JsonRecord, JsonValue } from "@farmer/core/lib/json";
 import { z } from "zod";
 
-import type {
-	ApiRequest,
-	OrgParams,
-	OrgRowParams,
-} from "#/server/api-route.ts";
+import type { ApiRequest, OrgParams } from "#/server/api-route.ts";
 
 /**
  * The query string of a GET, values for a schema that expects numbers or
@@ -52,13 +48,14 @@ export const typedQuery =
 const bodyObject = z.record(z.string(), z.json());
 
 /**
- * The JSON body of a write to one row, with the row's id from the path under
- * `key`. The id is set last, so a body cannot point the write at another row.
- * A body that is not an object goes to the schema as it is, which refuses it.
+ * A JSON body with the fields of a route's path laid over it. The path
+ * fields are set last, so a body cannot point the write at another row. A
+ * body that is not an object goes to the schema as it is, which refuses it.
  */
-export const bodyWithPathId =
-	(key: string) =>
-	({ params, body }: ApiRequest<OrgRowParams>): JsonValue => {
-		const parsed = bodyObject.safeParse(body);
-		return parsed.success ? { ...parsed.data, [key]: params.id } : body;
-	};
+export const bodyWithPath = (
+	body: JsonValue,
+	fromPath: { [key: string]: string },
+): JsonValue => {
+	const parsed = bodyObject.safeParse(body);
+	return parsed.success ? { ...parsed.data, ...fromPath } : body;
+};

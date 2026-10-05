@@ -2,10 +2,10 @@ import { type ApiClient, toApiClient } from "@farmer/core/api";
 import { updateClientInput } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 
+import { bodyWithPath } from "#/server/api-query.ts";
 import {
 	type ApiRequest,
 	apiRoute,
-	bodyWithPath,
 	type OrgRowParams,
 } from "#/server/api-route.ts";
 

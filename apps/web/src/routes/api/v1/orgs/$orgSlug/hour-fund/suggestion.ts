@@ -2,7 +2,8 @@ import type { ApiHourFundSuggestion } from "@farmer/core/api";
 import { monthPeriodInput } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { apiRoute, queryNumber } from "#/server/api-route.ts";
+import { typedQuery } from "#/server/api-query.ts";
+import { apiRoute } from "#/server/api-route.ts";
 
 /**
  * `GET /api/v1/orgs/$orgSlug/hour-fund/suggestion?year&month` — what the
@@ -16,10 +17,7 @@ export const Route = createFileRoute(
 		handlers: {
 			GET: apiRoute({
 				input: monthPeriodInput,
-				raw: ({ query }) => ({
-					year: queryNumber(query, "year"),
-					month: queryNumber(query, "month"),
-				}),
+				raw: typedQuery({ numbers: ["year", "month"] }),
 				run: async (ctx, { year, month }): Promise<ApiHourFundSuggestion> => {
 					const { hourFundService } = await import("@farmer/core/services");
 					const suggestion = await hourFundService.suggestForMonth(

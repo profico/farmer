@@ -6,7 +6,8 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
-import { type ApiRequest, apiRoute, bodyWithPath } from "#/server/api-route.ts";
+import { bodyWithPath } from "#/server/api-query.ts";
+import { type ApiRequest, apiRoute } from "#/server/api-route.ts";
 
 type PersonParams = { orgSlug: string; userId: string };
 

@@ -2,7 +2,8 @@ import { type ApiPersonProfile, toApiPersonProfile } from "@farmer/core/api";
 import { setMemberTypeInput } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { type ApiRequest, apiRoute, bodyWithPath } from "#/server/api-route.ts";
+import { bodyWithPath } from "#/server/api-query.ts";
+import { type ApiRequest, apiRoute } from "#/server/api-route.ts";
 
 type PersonParams = { orgSlug: string; userId: string };
 

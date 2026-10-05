@@ -5,7 +5,8 @@ import {
 } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { apiRoute, queryNumber } from "#/server/api-route.ts";
+import { typedQuery } from "#/server/api-query.ts";
+import { apiRoute } from "#/server/api-route.ts";
 
 /**
  * `/api/v1/orgs/$orgSlug/hour-fund` — the monthly hour fund of one year, and
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/hour-fund/")({
 		handlers: {
 			GET: apiRoute({
 				input: hourFundYearInput,
-				raw: ({ query }) => ({ year: queryNumber(query, "year") }),
+				raw: typedQuery({ numbers: ["year"] }),
 				run: async (ctx, { year }): Promise<ApiHourFundMonth[]> => {
 					const { hourFundService } = await import("@farmer/core/services");
 					const rows = await hourFundService.listForYear(ctx, year);

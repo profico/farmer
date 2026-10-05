@@ -5,7 +5,7 @@ import {
 } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { bodyWithPathId } from "#/server/api-query.ts";
+import { bodyWithPath } from "#/server/api-query.ts";
 import {
 	type ApiRequest,
 	apiRoute,
@@ -22,7 +22,8 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/filing-rules/$id")({
 		handlers: {
 			PATCH: apiRoute({
 				input: updateFilingRuleInput,
-				raw: bodyWithPathId("id"),
+				raw: ({ params, body }: ApiRequest<OrgRowParams>) =>
+					bodyWithPath(body, { id: params.id }),
 				run: async (ctx, input): Promise<ApiFilingRule> => {
 					const { filingRulesService } = await import("@farmer/core/services");
 					await filingRulesService.update(ctx, input);

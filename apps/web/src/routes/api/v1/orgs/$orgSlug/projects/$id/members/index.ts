@@ -6,10 +6,10 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { bodyWithPath } from "#/server/api-query.ts";
 import {
 	type ApiRequest,
 	apiRoute,
-	bodyWithPath,
 	type OrgRowParams,
 } from "#/server/api-route.ts";
 

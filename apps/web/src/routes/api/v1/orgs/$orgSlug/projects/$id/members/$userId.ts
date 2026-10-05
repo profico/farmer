@@ -5,7 +5,8 @@ import {
 } from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { type ApiRequest, apiRoute, bodyWithPath } from "#/server/api-route.ts";
+import { bodyWithPath } from "#/server/api-query.ts";
+import { type ApiRequest, apiRoute } from "#/server/api-route.ts";
 
 type MemberParams = { orgSlug: string; id: string; userId: string };
 
