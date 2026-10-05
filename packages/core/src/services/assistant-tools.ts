@@ -1252,7 +1252,14 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 				: [],
 		}),
 		run: async (ctx, args) =>
-			dayAssemblyService.apply(ctx, applyDayAssemblyInput.parse(args)),
+			// An entry with a stale task id fails with the guard's short message.
+			// The agent gets the same recovery hint as a failed create or update.
+			dayAssemblyService
+				.apply(ctx, applyDayAssemblyInput.parse(args))
+				.then((result) => ({
+					...result,
+					errors: result.errors.map(withRecoveryHint),
+				})),
 	},
 	{
 		name: "attach_commits",

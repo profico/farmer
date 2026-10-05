@@ -29,6 +29,7 @@ import type {
 	SuggestDayAssemblyInput,
 } from "../schema/day-assembly";
 import { ctxAccess, ctxTimezone } from "./context";
+import { safeErrorMessage } from "./error-message";
 import { filingRulesService, ruleKeyFor } from "./filing-rules.service";
 import {
 	githubService,
@@ -775,9 +776,18 @@ export const dayAssemblyService = {
 						);
 				}
 			} catch (error) {
-				errors.push(
-					error instanceof Error ? error.message : "Failed to create entry",
-				);
+				// `errors` reaches the MCP client, the assistant's model provider and
+				// the web app, so only a message written for a person may pass. A
+				// database error carries its SQL and parameters.
+				const message = error instanceof Error ? safeErrorMessage(error) : null;
+				if (message === null) {
+					console.error("[day-assembly] could not create an entry", {
+						organizationId: ctx.organizationId,
+						taskId: entry.taskId,
+						error,
+					});
+				}
+				errors.push(message ?? "Failed to create entry");
 			}
 		}
 		return { created, errors };

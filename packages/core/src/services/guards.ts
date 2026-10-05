@@ -11,7 +11,7 @@ import type { Ctx } from "./types";
 // on a service because both time-entries and recurring-block-rules need them,
 // and importing one service from the other would make the pair circular.
 
-// The exact messages of the two id guards. `mcpErrorMessage` matches on them to
+// The exact messages of the two id guards. `agentErrorMessage` matches on them to
 // add a hint for an agent, so both sides use these constants.
 export const PROJECT_NOT_FOUND_MESSAGE = "Project not found";
 export const TASK_NOT_AVAILABLE_MESSAGE = "Task not available";
