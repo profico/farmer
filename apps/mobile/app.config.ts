@@ -5,6 +5,8 @@ import {
 	withAndroidColorsNight,
 } from "expo/config-plugins";
 
+import { withPush } from "./plugins/with-push.js";
+
 // The window behind every screen, before the app draws and during a screen
 // transition: the background of the Material 3 baseline (`src/ui/theme.ts`).
 // At runtime the app sets the exact colour of the theme (`app/_layout.tsx`).
@@ -71,4 +73,4 @@ const config: ExpoConfig = {
 	},
 };
 
-export default withDarkWindowBackground(config);
+export default withPush(withDarkWindowBackground(config));

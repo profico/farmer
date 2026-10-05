@@ -1,0 +1,304 @@
+import Constants from "expo-constants";
+import { randomUUID } from "expo-crypto";
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
+import { z } from "zod";
+
+import { LiveActivity } from "../../modules/live-activity";
+import { APP_VERSION } from "../config";
+import { devicePublicKey, forgetDeviceKey } from "./keys";
+import {
+	type ApnsEnvironment,
+	registerWithRelay,
+	removeFromRelay,
+	updateRelay,
+	type RelayUpdate,
+} from "./relay";
+import {
+	type DevicePatch,
+	registerDevice,
+	serverRelayUrl,
+	updateDevice,
+} from "./server";
+import {
+	deleteItem,
+	KEYS,
+	readItem,
+	readRelay,
+	type RelayRegistration,
+	writeItem,
+	writeRelay,
+} from "./storage";
+import { forgetCredential } from "./timer-surface";
+
+/**
+ * Registration for native push (ADR 0006, `apps/push-relay/README.md`).
+ *
+ * 1. The Server says whether it uses a relay (`/meta` `pushRelay`). If not,
+ *    the app does nothing more.
+ * 2. The app gets the native push token (APNs or FCM) and registers with the
+ *    relay. The relay answers a `relayId` and a `deviceSecret`.
+ * 3. The app gives the Server `{ relayId, publicKey }` with
+ *    `POST /api/v1/me/devices`, an upsert, each time it comes to the
+ *    foreground.
+ *
+ * The re-registration contract: the relay forgets a device that it has not
+ * seen for 180 days, or whose token died. The app sends a `PUT` with its
+ * token at most every few hours, and a `401` answer starts a new
+ * registration. The Server deletes its row on a `404` or a `410` from the
+ * relay, and the next foreground `POST` writes it again.
+ *
+ * Without a Firebase configuration (no `google-services.json`) the native
+ * token does not exist. The app logs that one time and goes on without push.
+ */
+
+/** How often the app checks its relay registration with a `PUT`. The relay
+ *  allows 60 registration requests in 10 minutes for one address, and a
+ *  whole office can share an address. */
+const RELAY_CHECK_MS = 6 * 60 * 60 * 1000;
+
+export type PushSession = { origin: string; token: string };
+
+const logged = new Set<string>();
+const logOnce = (key: string, message: string) => {
+	if (logged.has(key)) return;
+	logged.add(key);
+	console.warn(`[push] ${message}`);
+};
+
+const extraSchema = z.object({
+	apnsEnvironment: z.enum(["production", "sandbox"]).optional(),
+});
+
+/** The APNs environment of this build. The iOS config plugin writes it to
+ *  `extra.apnsEnvironment`, with the same value as the entitlement. */
+const apnsEnvironment = (): ApnsEnvironment =>
+	extraSchema.safeParse(Constants.expoConfig?.extra ?? {}).data
+		?.apnsEnvironment ?? "production";
+
+export const installationId = async (): Promise<string> => {
+	const stored = await readItem(KEYS.installation);
+	if (stored) return stored;
+	const created = randomUUID();
+	await writeItem(KEYS.installation, created);
+	return created;
+};
+
+/** Whether the person allows notifications. iOS counts a provisional grant. */
+const notificationsAllowed = async (): Promise<boolean> => {
+	const permission = await Notifications.getPermissionsAsync();
+	return (
+		permission.granted ||
+		permission.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
+	);
+};
+
+/**
+ * Ask for the notification permission. Call it at a moment when the reason
+ * is clear: after the first timer start, or from Preferences. Never at
+ * launch. Returns whether notifications are allowed now.
+ */
+export const requestNotificationPermission = async (): Promise<boolean> => {
+	try {
+		const current = await Notifications.getPermissionsAsync();
+		if (current.granted || !current.canAskAgain) return current.granted;
+		const answer = await Notifications.requestPermissionsAsync({
+			ios: { allowAlert: true, allowBadge: false, allowSound: true },
+		});
+		return answer.granted;
+	} catch (error) {
+		logOnce("permission", `could not ask for notifications: ${String(error)}`);
+		return false;
+	}
+};
+
+/** Ask one time, after the first timer that the person starts in the app:
+ *  the ongoing notification on Android needs the permission too. Returns
+ *  true when the app asked now. */
+export const askAfterFirstTimer = async (): Promise<boolean> => {
+	if (await readItem(KEYS.permissionAsked)) return false;
+	await writeItem(KEYS.permissionAsked, "1");
+	await requestNotificationPermission();
+	return true;
+};
+
+/** The native push token, or null when this build cannot have one. */
+const nativePushToken = async (): Promise<string | null> => {
+	try {
+		const token = await Notifications.getDevicePushTokenAsync();
+		return String(token.data);
+	} catch (error) {
+		// Android without `google-services.json`: Firebase is not set up.
+		logOnce("token", `no native push token, so no push: ${String(error)}`);
+		return null;
+	}
+};
+
+const pushToStartToken = (): string | null => {
+	try {
+		return LiveActivity?.pushToStartToken() ?? null;
+	} catch {
+		return null;
+	}
+};
+
+/** A relay registration that is valid now, made or checked as needed. */
+const ensureRelay = async (
+	relayUrl: string,
+	pushToken: string,
+): Promise<RelayRegistration | null> => {
+	const platform = Platform.OS === "ios" ? "ios" : "android";
+	const startToken = platform === "ios" ? pushToStartToken() : null;
+	const stored = await readRelay();
+	const now = Date.now();
+
+	if (stored && stored.relayUrl === relayUrl) {
+		const changed =
+			stored.pushToken !== pushToken || stored.pushToStartToken !== startToken;
+		if (!changed && now - stored.checkedAt < RELAY_CHECK_MS) return stored;
+		const update: RelayUpdate = { pushToken };
+		if (platform === "ios") {
+			update.apnsEnvironment = apnsEnvironment();
+			update.liveActivityPushToStartToken = startToken;
+		}
+		const answer = await updateRelay(relayUrl, stored, update);
+		if (answer === "ok") {
+			const next = {
+				...stored,
+				pushToken,
+				pushToStartToken: startToken,
+				checkedAt: now,
+			};
+			await writeRelay(next);
+			return next;
+		}
+		// A relay that is down keeps the old registration; only a 401 means
+		// that the relay forgot the device.
+		if (answer === "failed") return stored;
+	} else if (stored) {
+		// The Server now names another relay. Forget the old registration.
+		await removeFromRelay(stored.relayUrl, stored);
+	}
+
+	try {
+		const credentials = await registerWithRelay(relayUrl, {
+			platform,
+			pushToken,
+			apnsEnvironment: apnsEnvironment(),
+			liveActivityPushToStartToken: startToken,
+		});
+		const next: RelayRegistration = {
+			relayUrl,
+			...credentials,
+			pushToken,
+			pushToStartToken: startToken,
+			checkedAt: now,
+		};
+		await writeRelay(next);
+		return next;
+	} catch (error) {
+		logOnce("relay", `the relay registration failed: ${String(error)}`);
+		return null;
+	}
+};
+
+let inFlight: Promise<void> | null = null;
+
+/**
+ * Register the phone for native push, or check the registration. Safe to
+ * call on each foreground: it does nothing when push is off, and it never
+ * throws. Two calls at the same time share one run.
+ */
+export const syncPush = (session: PushSession): Promise<void> => {
+	inFlight ??= runSync(session).finally(() => {
+		inFlight = null;
+	});
+	return inFlight;
+};
+
+const runSync = async (session: PushSession): Promise<void> => {
+	try {
+		let relayUrl: string | null;
+		try {
+			relayUrl = await serverRelayUrl(session.origin);
+		} catch {
+			return; // The Server is not reachable now. The next foreground tries.
+		}
+		if (!relayUrl) {
+			await dropRelay();
+			return;
+		}
+		const pushToken = await nativePushToken();
+		if (!pushToken) return;
+		const relay = await ensureRelay(relayUrl, pushToken);
+		if (!relay) return;
+		const answer = await registerDevice(session.origin, session.token, {
+			installationId: await installationId(),
+			platform: Platform.OS === "ios" ? "ios" : "android",
+			relayId: relay.relayId,
+			publicKey: await devicePublicKey(),
+			appVersion: APP_VERSION,
+			notificationsAllowed: await notificationsAllowed(),
+		});
+		if (answer === "refused") {
+			// An API token cannot register a phone (403). Not an error to show.
+			logOnce("server", "the Server refused the phone registration");
+		}
+	} catch (error) {
+		logOnce("sync", `push registration failed: ${String(error)}`);
+	}
+};
+
+/** Tell the Server about this phone's Live Activity token (iOS). */
+export const reportLiveActivityToken = async (
+	session: PushSession,
+	patch: DevicePatch,
+): Promise<void> => {
+	if (!(await readRelay())) return;
+	await updateDevice(
+		session.origin,
+		session.token,
+		await installationId(),
+		patch,
+	);
+};
+
+/** Tell the relay about a new push-to-start token (iOS). */
+export const reportPushToStartToken = async (token: string): Promise<void> => {
+	const stored = await readRelay();
+	if (!stored || stored.pushToStartToken === token) return;
+	const answer = await updateRelay(stored.relayUrl, stored, {
+		liveActivityPushToStartToken: token,
+	});
+	if (answer === "ok") {
+		await writeRelay({
+			...stored,
+			pushToStartToken: token,
+			checkedAt: Date.now(),
+		});
+	}
+};
+
+/** Forget the relay registration, here and on the relay. */
+const dropRelay = async (): Promise<void> => {
+	const stored = await readRelay();
+	if (!stored) return;
+	await removeFromRelay(stored.relayUrl, stored);
+	await deleteItem(KEYS.relay);
+};
+
+/**
+ * Sign-out. The Server deletes the phone's row with the session
+ * (`mobile_device.session_id` cascades), so only the relay registration, the
+ * device key and the shared credential are left to remove here. A new
+ * person on this phone gets a new key and a new relay id.
+ */
+export const teardownPush = async (): Promise<void> => {
+	try {
+		await dropRelay();
+		await forgetDeviceKey();
+		await forgetCredential();
+	} catch (error) {
+		logOnce("teardown", `push sign-out failed: ${String(error)}`);
+	}
+};

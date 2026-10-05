@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Pause and Resume on the ongoing timer notification. Only this app
+         sends these broadcasts, so the receiver is not exported. -->
+    <receiver
+      android:name="com.profico.farmer.timernotification.TimerActionReceiver"
+      android:exported="false" />
+  </application>
+</manifest>
