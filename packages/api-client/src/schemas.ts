@@ -24,8 +24,17 @@ export const metaSchema = z.object({
 	minCliVersion: z.string().optional(),
 	apiVersion: z.number().int().positive().default(1),
 	minMobileVersion: z.string().nullable().optional(),
+	/** The provider buttons, in the order of the login page. A server before
+	 *  API version 2 sends none. `kind` is an open set: a client draws a
+	 *  kind it does not know as an OpenID Connect source. */
+	signInMethods: z
+		.array(z.object({ id: z.string(), name: z.string(), kind: z.string() }))
+		.default([]),
+	/** True when the server offers an email and password form. */
+	passwordSignIn: z.boolean().default(false),
 });
 export type Meta = z.output<typeof metaSchema>;
+export type SignInMethod = Meta["signInMethods"][number];
 
 export const meSchema = z.object({
 	user: z.object({ id: z.string(), name: z.string(), email: z.string() }),
