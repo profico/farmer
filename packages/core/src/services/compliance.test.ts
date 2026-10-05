@@ -651,7 +651,7 @@ describe("the tools that carry the rule to the assistant", () => {
 
 // ── the goal through today (issue #105) ────────────────────────────────────
 //
-// The tile says "ahead of today's X". On the first working day of a week X was
+// The tile said "ahead of today's X". On the first working day of a week X was
 // 0, because the verdict counts only the days strictly BEFORE today. The goal
 // the person reads must include today's own working day. The verdict
 // (`targetSoFarSeconds`, `status`) stays as Tracking and the reminders have it.

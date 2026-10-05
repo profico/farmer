@@ -449,8 +449,8 @@ export function TimesheetMock() {
 						of="40.00"
 						sub={
 							<>
-								<span style={{ color: "var(--bad)" }}>1.75 short</span> of
-								today's 40.00
+								<span style={{ color: "var(--bad)" }}>1.75 short</span> of the
+								40.00 due by the end of today
 							</>
 						}
 						percent={96}

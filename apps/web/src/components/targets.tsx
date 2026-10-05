@@ -49,10 +49,13 @@ export function targetGapTone(period: PeriodTarget, delta: number) {
 	return "text-foreground";
 }
 
-/** "5,00 short of today's 32,00", or "1,50 ahead of today's 32,00". The goal
- *  includes today's own working day, so on a Monday it is one day, not 0. The
- *  hours are work + time off through today, never a day booked off later in
- *  the period. */
+/** "5,00 short of the 32,00 due by the end of today", or "1,50 ahead of the
+ *  32,00 due by the end of today". The number is the goal through the end of
+ *  today, so it includes today's own working day: on a Monday it is one day,
+ *  not 0. "Today's" is not used, because people read it two ways: the hours
+ *  due before today, or the hours due through today. The hours logged are
+ *  work + time off through today, never a day booked off later in the
+ *  period. */
 export function TargetGap({ period }: { period: PeriodTarget }) {
 	if (period.targetSoFarSeconds == null) {
 		return <span className="text-muted-foreground">No target</span>;
@@ -64,7 +67,7 @@ export function TargetGap({ period }: { period: PeriodTarget }) {
 			<span className={cn("font-medium", targetGapTone(period, delta))}>
 				{formatReportHours(Math.abs(delta))} {delta >= 0 ? "ahead" : "short"}
 			</span>{" "}
-			of today's {formatReportHours(goal)}
+			of the {formatReportHours(goal)} due by the end of today
 		</span>
 	);
 }

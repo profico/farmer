@@ -37,7 +37,7 @@ const textOf = (value: PeriodTarget) =>
 describe("the target gap on a Monday", () => {
 	test("the goal is a day's worth, not 0", () => {
 		const text = textOf(period({ totalSoFarSeconds: 3.5 * H }));
-		expect(text).toMatch(/^4,50 short of today.{1,6}s 8,00$/);
+		expect(text).toBe("4,50 short of the 8,00 due by the end of today");
 	});
 
 	test("an empty Monday is short by the whole day", () => {
@@ -45,7 +45,9 @@ describe("the target gap on a Monday", () => {
 	});
 
 	test("hours above the goal are ahead", () => {
-		expect(textOf(period({ totalSoFarSeconds: 9 * H }))).toContain("ahead");
+		expect(textOf(period({ totalSoFarSeconds: 9 * H }))).toBe(
+			"1,00 ahead of the 8,00 due by the end of today",
+		);
 	});
 
 	test("no target still says so", () => {
