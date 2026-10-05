@@ -15,7 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 
 import { AutoTrackNag } from "#/components/auto-track-nag.tsx";
 import { GithubReconnectBanner } from "#/components/github-reconnect-banner.tsx";
@@ -36,6 +36,7 @@ import { Page, PageHeader } from "#/components/ui/page-header.tsx";
 import { Of, StatTile, StatTiles } from "#/components/ui/stat-tile.tsx";
 import { useOrgSlug } from "#/hooks/use-org-slug.ts";
 import { useTimedEntryId } from "#/hooks/use-timer.ts";
+import { useToday } from "#/hooks/use-today.ts";
 import { formatHoursShort } from "#/lib/format-hours.ts";
 import { cn } from "#/lib/utils.ts";
 import { orderedWeekdays } from "#/lib/weekdays.ts";
@@ -60,6 +61,13 @@ export const Route = createFileRoute("/$orgSlug/")({
 				holidaysForRangeQuery(orgSlug, { from: weekStart, to: weekEnd }),
 			),
 		]);
+
+		// The next week, warmed but NOT awaited. A tab left open past the end of
+		// the week then finds the new week in the cache.
+		const nextStart = addDaysToKey(weekStart, 7);
+		void context.queryClient.prefetchQuery(
+			timeEntriesRangeQuery(orgSlug, nextStart, addDaysToKey(nextStart, 6)),
+		);
 	},
 	// The generic page placeholder is a header over a ruled list, which is the
 	// shape of most screens here and not of this one — it put four ragged lines
@@ -81,7 +89,13 @@ function greetingForHour(hour: number): string {
 function OrgHome() {
 	const orgSlug = useOrgSlug();
 	const { organization, session } = Route.useRouteContext();
-	const today = dayKeyInTz(new Date(), organization.timezone);
+	// Live, so a tab left open past midnight moves to the new day by itself.
+	// The whole page reads the deferred value, so its figures, bars and marks
+	// all come from one day. A new day can be a new week, whose range is not in
+	// the cache. The live value would show the pending state at once and, with
+	// no network, the error page. The deferred render suspends in the
+	// background and the old day stays on screen until the new week loads.
+	const today = useDeferredValue(useToday(organization.timezone));
 	const weekStart = startOfWeekKey(today, organization.weekStartsOn);
 	const weekEnd = addDaysToKey(weekStart, 6);
 	const { data: weekEntries } = useSuspenseQuery(
@@ -97,8 +111,9 @@ function OrgHome() {
 	const timedEntryId = useTimedEntryId(orgSlug);
 
 	// The "by day" bars are clickable; the day the user picks drives the entry
-	// list beside them. Defaults to today.
-	const [selectedDay, setSelectedDay] = useState(today);
+	// list beside them. Null means today, so a pick-less page follows the day.
+	const [pickedDay, setSelectedDay] = useState<string | null>(null);
+	const selectedDay = pickedDay ?? today;
 
 	const todayEntries = weekEntries.filter((entry) => entry.date === today);
 	const todayTotal = todayEntries.reduce(

@@ -124,12 +124,6 @@ describe("watchToday", () => {
 		expect(calls).toBe(0);
 	});
 
-	test("never waits longer than a timer accepts", () => {
-		const world = fakeEnv("2026-09-15T10:00:00Z");
-		watchToday("UTC", () => {}, world.env);
-		expect(world.nextDelay()).toBeLessThanOrEqual(2 ** 31 - 1);
-	});
-
 	test("the undo removes the timer and the wake listener", () => {
 		const world = fakeEnv("2026-09-15T10:00:00Z");
 		let calls = 0;

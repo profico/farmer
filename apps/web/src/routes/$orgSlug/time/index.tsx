@@ -7,6 +7,7 @@ import {
 import { dayKeySchema } from "@farmer/core/schema";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useDeferredValue } from "react";
 import { z } from "zod";
 
 import { DayView } from "#/components/time/day-view.tsx";
@@ -61,7 +62,12 @@ function DayRoute() {
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
 	// Live, so a tab left open past midnight moves to the new day by itself.
-	const today = useToday(organization.timezone);
+	// The range queries read the deferred value. A new day can be a new week,
+	// whose range is not in the cache. The live value would show the pending
+	// state at once and, with no network, the error page. The deferred render
+	// suspends in the background and the old day stays on screen until the new
+	// range loads. DayView reads the live day itself for its today marks.
+	const today = useDeferredValue(useToday(organization.timezone));
 	const date = search.date ?? today;
 	const weekStart = startOfWeekKey(date, organization.weekStartsOn);
 	const weekEnd = addDaysToKey(weekStart, 6);

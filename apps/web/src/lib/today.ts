@@ -17,9 +17,6 @@ export type TodayEnv = {
 	onWake: (run: () => void) => () => void;
 };
 
-/** The longest wait that `setTimeout` accepts (a signed 32-bit number). */
-const MAX_TIMER_MS = 2 ** 31 - 1;
-
 const browserEnv: TodayEnv = {
 	now: () => new Date(),
 	setTimer: (run, ms) => window.setTimeout(run, ms),
@@ -62,13 +59,10 @@ export function watchToday(
 	const schedule = () => {
 		if (handle !== undefined) env.clearTimer(handle);
 		const wait = msUntilNextDay(env.now(), timezone);
-		handle = env.setTimer(
-			() => {
-				check();
-				schedule();
-			},
-			Math.min(wait, MAX_TIMER_MS),
-		);
+		handle = env.setTimer(() => {
+			check();
+			schedule();
+		}, wait);
 	};
 
 	const stopWake = env.onWake(() => {

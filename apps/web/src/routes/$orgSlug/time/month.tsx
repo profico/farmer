@@ -1,6 +1,7 @@
-import { dayKeyInTz, endOfMonthKey } from "@farmer/core/lib/time";
+import { addDaysToKey, dayKeyInTz, endOfMonthKey } from "@farmer/core/lib/time";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useDeferredValue } from "react";
 import { z } from "zod";
 
 import { MonthView } from "#/components/time/month-view.tsx";
@@ -37,6 +38,14 @@ export const Route = createFileRoute("/$orgSlug/time/month")({
 				holidaysForRangeQuery(orgSlug, { from: monthStart, to: monthEnd }),
 			),
 		]);
+
+		// The next month, warmed but NOT awaited, as the Day and Week routes warm
+		// the next week. A tab left open past the end of the month then finds the
+		// new month in the cache.
+		const nextStart = addDaysToKey(monthEnd, 1);
+		void context.queryClient.prefetchQuery(
+			timeEntriesRangeQuery(orgSlug, nextStart, endOfMonthKey(nextStart)),
+		);
 	},
 	component: MonthRoute,
 });
@@ -45,7 +54,10 @@ function MonthRoute() {
 	const orgSlug = useOrgSlug();
 	const { organization } = Route.useRouteContext();
 	const search = Route.useSearch();
-	const today = useToday(organization.timezone);
+	// Deferred, so a day that opens a new month loads that month in the
+	// background while the old month stays on screen (see the Day route).
+	// MonthView reads the live day itself for its today mark.
+	const today = useDeferredValue(useToday(organization.timezone));
 	const month = search.month ?? today.slice(0, 7);
 	const monthStart = `${month}-01`;
 	const monthEnd = endOfMonthKey(monthStart);

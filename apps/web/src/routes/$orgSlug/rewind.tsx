@@ -33,6 +33,8 @@ export const Route = createFileRoute("/$orgSlug/rewind")({
 	validateSearch: searchSchema,
 	loaderDeps: ({ search }) => ({ year: search.year, asOf: search.asOf }),
 	loader: async ({ context, params, deps }) => {
+		// Read once per navigation and kept in the loader data: Rewind is a
+		// whole-year view, so a day that passes in an open tab does not matter.
 		const today =
 			deps.asOf ?? dayKeyInTz(new Date(), context.organization.timezone);
 		const year = deps.year ?? defaultRewindYear(today);
