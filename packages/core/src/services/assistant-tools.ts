@@ -1195,8 +1195,21 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 			);
 			return `Book ${what} from ${args.from} to ${args.to}`;
 		},
-		run: async (ctx, args) =>
-			timeEntriesService.logAbsenceRange(ctx, logAbsenceRangeInput.parse(args)),
+		run: async (ctx, args) => {
+			const result = await timeEntriesService.logAbsenceRange(
+				ctx,
+				logAbsenceRangeInput.parse(args),
+			);
+			// A refused task fails each day with the guard's short message. The
+			// agent gets the same recovery hint as the other write tools.
+			return {
+				...result,
+				skipped: result.skipped.map((day) => ({
+					...day,
+					reason: withRecoveryHint(day.reason),
+				})),
+			};
+		},
 	},
 	{
 		name: "apply_day_assembly",
