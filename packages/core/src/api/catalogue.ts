@@ -34,6 +34,19 @@ export const toApiProject = (row: {
 	role: row.myRole,
 });
 
+/** `GET /api/v1/orgs/$slug/clients` — the active clients of the organization. */
+export type ApiClient = {
+	id: string;
+	name: string;
+	isInternal: boolean;
+};
+
+export const toApiClient = (row: {
+	id: string;
+	name: string;
+	isInternal: boolean;
+}): ApiClient => ({ id: row.id, name: row.name, isInternal: row.isInternal });
+
 export type ApiTask = {
 	id: string;
 	name: string;

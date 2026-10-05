@@ -318,7 +318,11 @@ const metaBody = z.object({
 
 /** `GET /api/v1/meta`, parsed: the answer is also the proof that the address
  *  the person typed is a Farmer server at all. */
-export const fetchMeta = async (transport: Transport): Promise<ApiMeta> => {
+/** The part of `/meta` the CLI reads. A server from before the mobile app
+ *  sends nothing else, and the CLI must still talk to it. */
+type CliMeta = Pick<ApiMeta, "app" | "cliEnabled" | "minCliVersion">;
+
+export const fetchMeta = async (transport: Transport): Promise<CliMeta> => {
 	const notFarmer = new CliError(
 		`${transport.origin} does not look like a Farmer server. Check the address.`,
 	);
@@ -338,7 +342,7 @@ export const fetchMeta = async (transport: Transport): Promise<ApiMeta> => {
 	return parsed.data;
 };
 
-export const assertCliSupported = (meta: ApiMeta, transport: Transport) => {
+export const assertCliSupported = (meta: CliMeta, transport: Transport) => {
 	if (!meta.cliEnabled) {
 		throw new CliError(
 			`The command-line tool is switched off on ${transport.origin}. Ask the administrator of that server.`,

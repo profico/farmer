@@ -62,4 +62,19 @@ describe("the OpenAPI document", () => {
 		);
 		expect(TimeEntryPatch?.required).toBeUndefined();
 	});
+
+	// The mobile app reads these before it shows a screen. A field that falls out
+	// of the document falls out of the generated client with it.
+	test("documents the mobile contract in Meta and Whoami", () => {
+		const { Meta, Whoami } = buildOpenApiDocument().components.schemas;
+		expect(Object.keys(Meta?.properties ?? {})).toEqual(
+			expect.arrayContaining([
+				"apiVersion",
+				"minMobileVersion",
+				"signInMethods",
+				"passwordSignIn",
+			]),
+		);
+		expect(Whoami?.required).toContain("capabilities");
+	});
 });

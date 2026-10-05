@@ -87,6 +87,7 @@ import { Route as ApiV1OrgsOrgSlugTasksRouteImport } from './routes/api/v1/orgs/
 import { Route as ApiV1OrgsOrgSlugSyncRouteImport } from './routes/api/v1/orgs/$orgSlug/sync'
 import { Route as ApiV1OrgsOrgSlugRepositoryProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/repository-projects'
 import { Route as ApiV1OrgsOrgSlugProjectsRouteImport } from './routes/api/v1/orgs/$orgSlug/projects'
+import { Route as ApiV1OrgsOrgSlugClientsRouteImport } from './routes/api/v1/orgs/$orgSlug/clients'
 import { Route as ApiV1OrgsOrgSlugTimerIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/timer/index'
 import { Route as ApiV1OrgsOrgSlugTimeEntriesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/time-entries/index'
 import { Route as ApiV1OrgsOrgSlugAbsencesIndexRouteImport } from './routes/api/v1/orgs/$orgSlug/absences/index'
@@ -513,6 +514,11 @@ const ApiV1OrgsOrgSlugProjectsRoute =
     path: '/api/v1/orgs/$orgSlug/projects',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiV1OrgsOrgSlugClientsRoute = ApiV1OrgsOrgSlugClientsRouteImport.update({
+  id: '/api/v1/orgs/$orgSlug/clients',
+  path: '/api/v1/orgs/$orgSlug/clients',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1OrgsOrgSlugTimerIndexRoute =
   ApiV1OrgsOrgSlugTimerIndexRouteImport.update({
     id: '/api/v1/orgs/$orgSlug/timer/',
@@ -652,6 +658,7 @@ export interface FileRoutesByFullPath {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -741,6 +748,7 @@ export interface FileRoutesByTo {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -833,6 +841,7 @@ export interface FileRoutesById {
   '/$orgSlug/settings/webhooks/$endpointId': typeof OrgSlugSettingsWebhooksEndpointIdRoute
   '/$orgSlug/projects/$projectId/': typeof OrgSlugProjectsProjectIdIndexRoute
   '/$orgSlug/settings/webhooks/': typeof OrgSlugSettingsWebhooksIndexRoute
+  '/api/v1/orgs/$orgSlug/clients': typeof ApiV1OrgsOrgSlugClientsRoute
   '/api/v1/orgs/$orgSlug/projects': typeof ApiV1OrgsOrgSlugProjectsRoute
   '/api/v1/orgs/$orgSlug/repository-projects': typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   '/api/v1/orgs/$orgSlug/sync': typeof ApiV1OrgsOrgSlugSyncRoute
@@ -926,6 +935,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
+    | '/api/v1/orgs/$orgSlug/clients'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -1015,6 +1025,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId'
     | '/$orgSlug/settings/webhooks'
+    | '/api/v1/orgs/$orgSlug/clients'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -1106,6 +1117,7 @@ export interface FileRouteTypes {
     | '/$orgSlug/settings/webhooks/$endpointId'
     | '/$orgSlug/projects/$projectId/'
     | '/$orgSlug/settings/webhooks/'
+    | '/api/v1/orgs/$orgSlug/clients'
     | '/api/v1/orgs/$orgSlug/projects'
     | '/api/v1/orgs/$orgSlug/repository-projects'
     | '/api/v1/orgs/$orgSlug/sync'
@@ -1163,6 +1175,7 @@ export interface RootRouteChildren {
   ApiV1SessionRoute: typeof ApiV1SessionRoute
   ApiV1TimeEntriesRoute: typeof ApiV1TimeEntriesRoute
   CliDownloadAssetRoute: typeof CliDownloadAssetRoute
+  ApiV1OrgsOrgSlugClientsRoute: typeof ApiV1OrgsOrgSlugClientsRoute
   ApiV1OrgsOrgSlugProjectsRoute: typeof ApiV1OrgsOrgSlugProjectsRoute
   ApiV1OrgsOrgSlugRepositoryProjectsRoute: typeof ApiV1OrgsOrgSlugRepositoryProjectsRoute
   ApiV1OrgsOrgSlugSyncRoute: typeof ApiV1OrgsOrgSlugSyncRoute
@@ -1731,6 +1744,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1OrgsOrgSlugProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/orgs/$orgSlug/clients': {
+      id: '/api/v1/orgs/$orgSlug/clients'
+      path: '/api/v1/orgs/$orgSlug/clients'
+      fullPath: '/api/v1/orgs/$orgSlug/clients'
+      preLoaderRoute: typeof ApiV1OrgsOrgSlugClientsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/orgs/$orgSlug/timer/': {
       id: '/api/v1/orgs/$orgSlug/timer/'
       path: '/api/v1/orgs/$orgSlug/timer'
@@ -1942,6 +1962,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1SessionRoute: ApiV1SessionRoute,
   ApiV1TimeEntriesRoute: ApiV1TimeEntriesRoute,
   CliDownloadAssetRoute: CliDownloadAssetRoute,
+  ApiV1OrgsOrgSlugClientsRoute: ApiV1OrgsOrgSlugClientsRoute,
   ApiV1OrgsOrgSlugProjectsRoute: ApiV1OrgsOrgSlugProjectsRoute,
   ApiV1OrgsOrgSlugRepositoryProjectsRoute:
     ApiV1OrgsOrgSlugRepositoryProjectsRoute,
@@ -1967,13 +1988,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

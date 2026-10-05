@@ -2,6 +2,7 @@ import {
 	type ApiAbsenceResult,
 	type ApiCopyResult,
 	type ApiDeleted,
+	type ApiClient,
 	type ApiError,
 	type ApiFileResult,
 	type ApiMe,
@@ -127,6 +128,31 @@ const apiMeta = named(
 					"False when this deployment has the API switched off. Every other route then answers 404.",
 				),
 			minCliVersion: z.string(),
+			apiVersion: z
+				.number()
+				.int()
+				.describe(
+					"The version of this contract. A server that sends no `apiVersion` is version 1.",
+				),
+			minMobileVersion: z
+				.string()
+				.describe("The oldest mobile app this server can serve."),
+			signInMethods: z
+				.array(
+					z.object({
+						id: z.string(),
+						name: z.string(),
+						kind: z
+							.enum(["social", "oidc"])
+							.describe(
+								"`social` is Google. `oidc` is an OpenID Connect source.",
+							),
+					}),
+				)
+				.describe("The provider buttons, in the order of the login page."),
+			passwordSignIn: z
+				.boolean()
+				.describe("True when this server offers an email and password form."),
 		}),
 	),
 );
@@ -153,6 +179,27 @@ const apiWhoami = named(
 			organization: z.object({ slug: z.string(), name: z.string() }),
 			orgRole: z.string().nullable(),
 			isAdmin: z.boolean(),
+			capabilities: z
+				.object({
+					isAdmin: z.boolean(),
+					canManageClients: z
+						.boolean()
+						.describe("Admin, or a PM or Team Lead on any project."),
+					canManageProjects: z
+						.boolean()
+						.describe("Admin, or a PM or Team Lead on any project."),
+					leadsPeople: z
+						.boolean()
+						.describe("The caller has people on a Team Lead list."),
+					canSeeAllReports: z
+						.boolean()
+						.describe(
+							"Reports for everybody, not only for the caller's own scope.",
+						),
+				})
+				.describe(
+					"What the caller may do here. Show a section only when its capability is true. The route still checks the permission.",
+				),
 			timezone: z.string().describe("The organization's IANA timezone."),
 			today: dayKey.describe("Today, in `timezone`."),
 			weekStartsOn: z
@@ -292,6 +339,19 @@ const apiProject = named(
 			status: z.string(),
 			client,
 			role: projectRole.nullable(),
+		}),
+	),
+);
+
+const apiClient = named(
+	"Client",
+	mirror<ApiClient>()(
+		z.object({
+			id: uuid,
+			name: z.string(),
+			isInternal: z
+				.boolean()
+				.describe("True for the organization's own client."),
 		}),
 	),
 );
@@ -519,7 +579,7 @@ export const OPERATIONS: Operation[] = [
 		operationId: "getMeta",
 		summary: "Check the server",
 		description:
-			"Confirms that the URL is a Farmer server and that the API is switched on. Takes no credential.",
+			"Confirms that the URL is a Farmer server and that the API is switched on. Also gives the contract version, the oldest mobile app it serves and the sign-in methods. Takes no credential.",
 		tag: "Account",
 		auth: false,
 		response: apiMeta,
@@ -550,7 +610,7 @@ export const OPERATIONS: Operation[] = [
 		operationId: "whoami",
 		summary: "Get the person in an organization",
 		description:
-			"Their role, the organization's timezone and first day of the week, their working days and their projects.",
+			"Their role and capabilities, the organization's timezone and first day of the week, their working days and their projects.",
 		tag: "Account",
 		response: apiWhoami,
 	},
@@ -664,6 +724,16 @@ export const OPERATIONS: Operation[] = [
 		description: "The projects the caller can log time to.",
 		tag: "Projects",
 		response: apiProject,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/clients",
+		operationId: "listClients",
+		summary: "List clients",
+		description: "The active clients of the organization.",
+		tag: "Projects",
+		response: apiClient,
 		list: true,
 	},
 	{

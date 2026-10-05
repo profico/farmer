@@ -30,8 +30,19 @@ export type ApiError = {
 	issues?: ApiIssue[];
 };
 
-/** The OAuth client id the device flow accepts, and the only one. */
+/** The OAuth client id of the CLI in the device flow. */
 export const CLI_CLIENT_ID = "farmer-cli";
+
+/** The OAuth client id of the mobile app in the device flow. It is the
+ *  fallback for a sign-in provider that fails in the system auth sheet. */
+export const MOBILE_CLIENT_ID = "farmer-mobile";
+
+/** Every client id that the device flow accepts. Nothing else may start a
+ *  code. */
+export const DEVICE_CLIENT_IDS: readonly string[] = [
+	CLI_CLIENT_ID,
+	MOBILE_CLIENT_ID,
+];
 
 /** Sent by the CLI on every request, so the server can refuse a binary that
  *  can no longer read its answers before it misreads one. */

@@ -24,6 +24,7 @@
  *   POST   orgs/$slug/absences                   ApiAbsenceResult
  *   DELETE orgs/$slug/absences/$id               ApiDeleted
  *   GET    orgs/$slug/projects                   ApiProject[]
+ *   GET    orgs/$slug/clients                    ApiClient[]
  *   GET    orgs/$slug/tasks                      ApiTaskList
  *   GET    orgs/$slug/tracking                   ApiTracking
  *   POST   orgs/$slug/sync                       ApiSyncResult

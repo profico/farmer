@@ -17,6 +17,34 @@ export type ApiMe = {
 };
 
 /**
+ * What the caller may do in one organization, decided by the server. A client
+ * shows a section only when the capability is true. The route behind it still
+ * checks the permission, so a wrong guess is a 403 and not a leak.
+ */
+export type ApiCapabilities = {
+	isAdmin: boolean;
+	/** Admin, or a PM or Team Lead on any project. Gates Clients. */
+	canManageClients: boolean;
+	/** Admin, or a PM or Team Lead on any project. Gates creating projects. */
+	canManageProjects: boolean;
+	/** The caller has people on a Team Lead list. */
+	leadsPeople: boolean;
+	/** Reports for everybody. Anyone else sees themselves and the people they
+	 *  lead. */
+	canSeeAllReports: boolean;
+};
+
+/** The capabilities, read from `Access` and nothing else. Each one reuses a
+ *  rule the web app already applies. */
+export const toApiCapabilities = (access: Access): ApiCapabilities => ({
+	isAdmin: access.isAdmin,
+	canManageClients: access.isAdmin || access.isLeadSomewhere,
+	canManageProjects: access.canCreateProjects(),
+	leadsPeople: access.isTeamLead,
+	canSeeAllReports: access.isAdmin,
+});
+
+/**
  * `GET /api/v1/orgs/$slug/whoami` — the person inside one organization.
  *
  * `timezone` and `today` are here because the CLI resolves `yesterday`,
@@ -31,6 +59,7 @@ export type ApiWhoami = {
 	organization: { slug: string; name: string };
 	orgRole: string | null;
 	isAdmin: boolean;
+	capabilities: ApiCapabilities;
 	timezone: string;
 	/** yyyy-MM-dd in `timezone`, at the moment of the request. */
 	today: string;
