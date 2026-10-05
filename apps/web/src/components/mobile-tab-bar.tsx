@@ -159,9 +159,9 @@ export function MobileTabBar({
 									// One shared layoutId across every tab + the More button →
 									// motion springs this pill between tabs on navigation
 									// instead of the old static bg-accent class snapping.
-									// `isolate` on the tab is what keeps the `-z-10` pill above
-									// the bar's own background. Without it, the pill showed only
-									// while a transform gave it a stacking context mid-move.
+									// `isolate` on the tab keeps the `-z-10` pill above the bar's
+									// background. Without it, the pill shows only during a move,
+									// while its transform makes a stacking context.
 									<motion.div
 										layoutId="tab-bar-active-pill"
 										transition={springExpressive}

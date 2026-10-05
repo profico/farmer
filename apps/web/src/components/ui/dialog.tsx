@@ -7,17 +7,14 @@ import { AnimatePresence, motion } from "motion/react";
 import * as React from "react";
 
 import { Button } from "#/components/ui/button.tsx";
-import { DrawerContent } from "#/components/ui/drawer.tsx";
 import {
 	type ModalChangeEventDetails,
-	type ModalMode,
 	ModalModeContext,
-	sheetBodyClassName,
+	ModalSheetContent,
 	sheetFooterClassName,
-	sheetPopupClassName,
 	useModalMode,
 	useModalModeContext,
-} from "#/components/ui/modal-mode.ts";
+} from "#/components/ui/modal-mode.tsx";
 import {
 	backdropVariants,
 	dialogPopupVariants,
@@ -33,12 +30,9 @@ import { cn } from "#/lib/utils.ts";
 // unmount after the exit spring — with DialogContent. Every call site keeps
 // passing `open`/`onOpenChange`/`defaultOpen` to <Dialog> unchanged.
 //
-// On a phone the same <Dialog> is a bottom sheet (see `modal-mode.ts`). The
-// mode is in this context too, because DialogContent draws different markup
-// for each mode, and only the dialog mode uses the motion exit.
-const DialogPresenceContext = React.createContext<
-	(PopupPresence<DialogPrimitive.Root.Actions> & { mode: ModalMode }) | null
->(null);
+// On a phone the same <Dialog> is a bottom sheet (see `modal-mode.tsx`).
+const DialogPresenceContext =
+	React.createContext<PopupPresence<DialogPrimitive.Root.Actions> | null>(null);
 
 type DialogProps = Omit<DialogPrimitive.Root.Props, "onOpenChange"> & {
 	onOpenChange?: (open: boolean, details: ModalChangeEventDetails) => void;
@@ -57,19 +51,12 @@ function Dialog({
 		defaultOpen,
 		onOpenChange,
 	});
-	const { mode, release } = useModalMode(value);
-	const actionsRef = React.useRef<DialogPrimitive.Root.Actions | null>(null);
-	const presence = React.useMemo(
-		() => ({ open: value, actionsRef, mode }),
-		[value, mode],
+	const { mode, onOpenChangeComplete: handleOpenChangeComplete } = useModalMode(
+		value,
+		onOpenChangeComplete,
 	);
-	// Base UI calls this with `false` when the popup unmounts: after the CSS
-	// exit of the sheet, or after `actionsRef.unmount()` at the end of the
-	// motion exit. That is the moment the mode lock can end.
-	const handleOpenChangeComplete = (next: boolean) => {
-		if (!next) release();
-		onOpenChangeComplete?.(next);
-	};
+	const actionsRef = React.useRef<DialogPrimitive.Root.Actions | null>(null);
+	const presence = React.useMemo(() => ({ open: value, actionsRef }), [value]);
 
 	return (
 		<ModalModeContext.Provider value={mode}>
@@ -148,30 +135,24 @@ function DialogContent({
 	showCloseButton?: boolean;
 }) {
 	const presence = React.useContext(DialogPresenceContext);
+	const mode = useModalModeContext();
 	if (!presence) {
 		throw new Error("DialogContent must be used within <Dialog>");
 	}
-	const { open, actionsRef, mode } = presence;
+	const { open, actionsRef } = presence;
 
 	if (mode === "drawer") {
-		// The sheet animates with CSS, not with motion (drawer.tsx tells why),
-		// so none of the motion path below applies: Base UI waits for the CSS
-		// exit and then unmounts the portal itself. The keyboard provider keeps
-		// the focused field in view, and it writes the keyboard height that
-		// lifts the sheet above the keyboard.
+		// The sheet animates with CSS (drawer.tsx tells why), so Base UI
+		// unmounts it after the exit and the motion path below does not apply.
 		return (
-			<DrawerPrimitive.VirtualKeyboardProvider>
-				<DrawerContent
-					data-slot="dialog-content"
-					showCloseButton={showCloseButton}
-					className={cn(sheetPopupClassName, "sm:max-w-lg", className)}
-					{...props}
-				>
-					<div data-slot="dialog-body" className={sheetBodyClassName}>
-						{children}
-					</div>
-				</DrawerContent>
-			</DrawerPrimitive.VirtualKeyboardProvider>
+			<ModalSheetContent
+				kind="dialog"
+				showCloseButton={showCloseButton}
+				className={cn("sm:max-w-lg", className)}
+				{...props}
+			>
+				{children}
+			</ModalSheetContent>
 		);
 	}
 
@@ -283,7 +264,6 @@ function DialogFooter({
 			// inside of — the same 1.5rem the `-mb-6` bleed already spends. Pinning
 			// at 0 parks the footer that far above the popup's edge and leaves a
 			// stripe of scrolled content showing underneath it.
-			// In a sheet, the footer of `sheetFooterClassName` (modal-mode.ts).
 			className={cn(
 				mode === "drawer"
 					? sheetFooterClassName

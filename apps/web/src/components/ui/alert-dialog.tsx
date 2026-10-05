@@ -3,16 +3,14 @@ import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer";
 import type * as React from "react";
 
 import { Button } from "#/components/ui/button.tsx";
-import { DrawerContent } from "#/components/ui/drawer.tsx";
 import {
 	type ModalChangeEventDetails,
 	ModalModeContext,
-	sheetBodyClassName,
+	ModalSheetContent,
 	sheetFooterClassName,
-	sheetPopupClassName,
 	useModalMode,
 	useModalModeContext,
-} from "#/components/ui/modal-mode.ts";
+} from "#/components/ui/modal-mode.tsx";
 import { useControllableOpen } from "#/lib/motion.ts";
 import { cn } from "#/lib/utils.ts";
 
@@ -23,15 +21,13 @@ type AlertDialogProps = Omit<
 	onOpenChange?: (open: boolean, details: ModalChangeEventDetails) => void;
 };
 
-// On a phone a confirmation is a bottom sheet, as a Dialog is (see
-// `modal-mode.ts`). The wrapper owns the open state, because the mode has to
-// lock in the render that opens the root, and some call sites leave the state
-// to the Trigger.
+// On a phone a confirmation is a bottom sheet (see `modal-mode.tsx`). The
+// wrapper owns the open state, because the mode locks in the render that
+// opens the root, and some call sites leave the state to the Trigger.
 //
-// The sheet keeps the two rules of an alert dialog that Base UI applies only
-// in its own root: a tap on the backdrop does not dismiss it
-// (`disablePointerDismissal`), and the popup keeps `role="alertdialog"` (see
-// AlertDialogContent). A swipe down still cancels, as the Cancel button does.
+// The sheet keeps two rules that Base UI applies only in the alert dialog
+// root: a tap on the backdrop does not dismiss it, and the popup keeps
+// `role="alertdialog"`. A swipe down still cancels, as Cancel does.
 function AlertDialog({
 	open,
 	defaultOpen,
@@ -46,11 +42,10 @@ function AlertDialog({
 		defaultOpen,
 		onOpenChange,
 	});
-	const { mode, release } = useModalMode(value);
-	const handleOpenChangeComplete = (next: boolean) => {
-		if (!next) release();
-		onOpenChangeComplete?.(next);
-	};
+	const { mode, onOpenChangeComplete: handleOpenChangeComplete } = useModalMode(
+		value,
+		onOpenChangeComplete,
+	);
 
 	return (
 		<ModalModeContext.Provider value={mode}>
@@ -121,30 +116,19 @@ function AlertDialogContent({
 	const mode = useModalModeContext();
 
 	if (mode === "drawer") {
-		// The same sheet as a Dialog on a phone (see the class names in
-		// modal-mode.ts), at the width of this dialog above `sm`. The group name and
-		// `data-size` stay, because the header, the media and the title select
-		// on them. There is no close button: the footer has Cancel.
+		// The header, the media and the title select on the group name and
+		// `data-size`. There is no close button, because the footer has Cancel.
 		return (
-			<DrawerPrimitive.VirtualKeyboardProvider>
-				<DrawerContent
-					data-slot="alert-dialog-content"
-					data-size={size}
-					role="alertdialog"
-					showCloseButton={false}
-					className={cn(
-						"group/alert-dialog-content",
-						sheetPopupClassName,
-						"sm:max-w-md",
-						className,
-					)}
-					{...props}
-				>
-					<div data-slot="alert-dialog-body" className={sheetBodyClassName}>
-						{children}
-					</div>
-				</DrawerContent>
-			</DrawerPrimitive.VirtualKeyboardProvider>
+			<ModalSheetContent
+				kind="alert-dialog"
+				data-size={size}
+				role="alertdialog"
+				showCloseButton={false}
+				className={cn("group/alert-dialog-content sm:max-w-md", className)}
+				{...props}
+			>
+				{children}
+			</ModalSheetContent>
 		);
 	}
 
@@ -198,7 +182,6 @@ function AlertDialogFooter({
 	return (
 		<div
 			data-slot="alert-dialog-footer"
-			// In a sheet, the footer of `sheetFooterClassName` (modal-mode.ts).
 			className={cn(
 				mode === "drawer"
 					? sheetFooterClassName

@@ -1050,11 +1050,8 @@ html {
   scrollbar-gutter: stable;
 }
 
-/* The mobile baseline. It makes a phone feel like an app and not a web page.
-
-   The gray flash on a tap fights the app's own press states (`Button` scales
-   down, `.row` shades), so it goes. `text-size-adjust` stops the browser from
-   making text larger when the phone turns to landscape. */
+/* The gray flash on a tap fights the app's own press states.
+   `text-size-adjust` stops the browser from making text larger in landscape. */
 html {
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
@@ -1077,8 +1074,8 @@ label,
 }
 
 /* A long press on a control must not select its label or open the callout.
-   Only controls get this. Never put `user-select: none` on `body`, on `a` or on
-   text content, because a person must be able to select and copy that. */
+   Do not add `body`, `a` or text content here: a person must be able to copy
+   that text. */
 button,
 [role="button"],
 [role="tab"],
@@ -1091,22 +1088,18 @@ button,
 }
 
 /* iOS Safari zooms into any input with text under 16px, and it never zooms
-   back out. The base text is 14px, so every input would trigger it.
+   back out. Only a touch screen needs this, so a mouse keeps 14px.
 
-   16px is a MINIMUM, not a size. A field drawn larger (the 30px Duration box
-   in Log time) must keep its own size. So this rule does not set `font-size`
-   on the field. It raises the three small text tokens on the field itself.
-   The `text-*` utilities are compiled from `@theme inline`, so `text-sm` on a
-   field reads `--fs-caption` from the field and now gets 16px. An arbitrary
-   size such as `text-[30px]` does not read a token and is not changed. A field
-   with no text class takes the base-layer rule below.
+   16px is a minimum, not a size: a larger field keeps its own size. So this
+   rule raises the three small text tokens on the field, not `font-size`. The
+   `text-*` utilities come from `@theme inline`, so `text-sm` on a field reads
+   `--fs-caption` from the field itself. An arbitrary `text-[30px]` reads no
+   token and does not change. A field with no text class takes the base rule.
 
-   `zoom` (see "Scale" above) multiplies every length. At a scale under 1, 16px
-   would be DRAWN smaller than 16px. The `max()` keeps the drawn size at 16px or
-   more at every scale. Do not use `maximum-scale` or `user-scalable=no` in the
-   viewport meta instead, because that blocks pinch zoom for everyone.
-
-   Only a touch screen needs it, so a mouse keeps the compact size. */
+   `zoom` (see "Scale" above) multiplies every length, so at a scale under 1,
+   16px draws smaller than 16px. The `max()` keeps the drawn size at 16px or
+   more. Do not use `maximum-scale` in the viewport meta, because it blocks
+   pinch zoom. */
 @media (pointer: coarse) {
   input:not(
       [type="checkbox"],
