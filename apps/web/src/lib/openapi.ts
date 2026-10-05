@@ -1,14 +1,26 @@
 import {
 	type ApiAbsenceResult,
+	type ApiArchiveResult,
 	type ApiCopyResult,
 	type ApiDeleted,
 	type ApiClient,
 	type ApiError,
 	type ApiFileResult,
+	type ApiHourFundMonth,
+	type ApiHourFundSuggestion,
+	type ApiInvitation,
+	type ApiManagedTask,
 	type ApiMe,
 	type ApiMeta,
+	type ApiOrganizationSettings,
 	type ApiPeriod,
+	type ApiPerson,
+	type ApiPersonProfile,
+	type ApiPersonRef,
 	type ApiProject,
+	type ApiProjectDetail,
+	type ApiProjectMember,
+	type ApiProjectOverview,
 	type ApiProjectRef,
 	type ApiSyncResult,
 	type ApiTask,
@@ -25,15 +37,35 @@ import {
 	CLI_VERSION_HEADER,
 } from "@farmer/core/api";
 import {
+	assignProjectMemberInput,
+	changeProjectMemberRoleInput,
 	confirmTimerInput,
 	copyTimeEntriesInput,
 	copyWeekEntriesInput,
+	createClientInput,
+	createProjectInput,
+	createTaskInput,
 	createTimeEntryInput,
 	fileTimeEntriesInput,
+	hourFundYearInput,
+	inviteMemberInput,
+	listClientsInput,
 	listTimeEntriesRangeInput,
 	logAbsenceRangeInput,
+	memberTypeEnum,
+	monthPeriodInput,
+	projectRoleEnum,
 	repositoryProjectsInput,
+	setMemberRoleInput,
+	setMemberStartDateInput,
+	setMemberTypeInput,
+	setMonthlyHourFundInput,
+	setTeamLeadPeopleInput,
 	startTimerInput,
+	updateClientInput,
+	updateOrganizationSettingsInput,
+	updateProjectInput,
+	updateTaskInput,
 	updateTimeEntryInput,
 } from "@farmer/core/schema";
 import { z } from "zod";
@@ -352,6 +384,7 @@ const apiClient = named(
 			isInternal: z
 				.boolean()
 				.describe("True for the organization's own client."),
+			archivedAt: iso.nullable().describe("Null for an active client."),
 		}),
 	),
 );
@@ -486,6 +519,240 @@ const apiTimerState = named(
 	),
 );
 
+// The PM, team lead and People screens. The service decides what each caller
+// sees; these only describe it.
+
+const apiProjectDetail = named(
+	"ProjectDetail",
+	mirror<ApiProjectDetail>()(
+		apiProject.extend({
+			type: z
+				.string()
+				.describe(
+					"`product_team`, `fixed_scope`, `hourly`, `maintenance` or `internal`.",
+				),
+			icon: z
+				.string()
+				.nullable()
+				.describe("An emoji, or the path of an uploaded image."),
+			openToOrg: z
+				.boolean()
+				.describe("Every member may log time on it without an assignment."),
+			budgetSeconds: z
+				.number()
+				.int()
+				.nullable()
+				.describe(
+					"Fixed scope only. Null also for a caller who may not see money.",
+				),
+			budgetAmount: z
+				.string()
+				.nullable()
+				.describe("A decimal. Null for a caller who may not see money."),
+			hourlyPrice: z
+				.string()
+				.nullable()
+				.describe("A decimal. Null for a caller who may not see money."),
+			stats: z.object({
+				scope: z
+					.enum(["project", "own"])
+					.describe(
+						"`own` when the caller may not see the project's hours: the figures are the caller's own.",
+					),
+				monthSeconds: z.number().int(),
+				allTimeSeconds: z.number().int(),
+				contributorCount: z.number().int(),
+				contributors: z
+					.array(z.object({ id: uuid, name: z.string() }))
+					.describe("At most five. Empty when `scope` is `own`."),
+			}),
+		}),
+	),
+);
+
+const apiProjectOverview = named(
+	"ProjectOverview",
+	mirror<ApiProjectOverview>()(
+		z.object({
+			allTimeSeconds: z.number().int(),
+			entryCount: z.number().int(),
+			peopleCount: z
+				.number()
+				.int()
+				.describe("The people who ever logged on it, not the team."),
+			firstEntry: dayKey.nullable(),
+			lastEntry: dayKey.nullable(),
+			overtimeSeconds: z.number().int(),
+			monthSeconds: z.number().int(),
+			monthPeople: z.number().int(),
+		}),
+	),
+);
+
+const apiProjectMember = named(
+	"ProjectMember",
+	mirror<ApiProjectMember>()(
+		z.object({
+			userId: z.string(),
+			name: z.string(),
+			email: z.string(),
+			role: projectRoleEnum,
+			active: z
+				.boolean()
+				.describe("False for a person who was removed. Their hours stay."),
+			allTimeSeconds: z.number().int(),
+			lastEntry: dayKey.nullable(),
+		}),
+	),
+);
+
+const apiPersonRef = named(
+	"PersonRef",
+	mirror<ApiPersonRef>()(
+		z.object({ userId: z.string(), name: z.string(), email: z.string() }),
+	),
+);
+
+const apiManagedTask = named(
+	"ManagedTask",
+	mirror<ApiManagedTask>()(
+		apiTask.extend({
+			scope: z
+				.string()
+				.describe("`site` for a built-in, which cannot be changed."),
+			color: z.string().nullable(),
+			description: z.string().nullable(),
+			archivedAt: iso.nullable(),
+			entryCount: z
+				.number()
+				.int()
+				.describe("The organization's entries on the task."),
+		}),
+	),
+);
+
+const apiPerson = named(
+	"Person",
+	mirror<ApiPerson>()(
+		z.object({
+			userId: z.string(),
+			name: z.string(),
+			email: z.string(),
+			orgRole: z.string().describe("`owner`, `admin` or `member`."),
+			type: memberTypeEnum,
+			expectedSecondsOverride: z
+				.number()
+				.int()
+				.nullable()
+				.describe("The monthly target of an hourly person, or null."),
+			startDate: dayKey.nullable(),
+			archivedAt: iso.nullable().describe("Null for an active person."),
+			emailUnconfirmed: z
+				.boolean()
+				.describe("Never signed in, and nobody confirmed the address."),
+			claimPending: z
+				.boolean()
+				.describe("A Harvest import added them, and they have not joined."),
+			leadsPeople: z
+				.number()
+				.int()
+				.describe("The number of people on their team lead list."),
+		}),
+	),
+);
+
+const apiPersonProfile = named(
+	"PersonProfile",
+	mirror<ApiPersonProfile>()(
+		z.object({
+			person: apiPerson,
+			typeHistory: z
+				.array(
+					z.object({
+						type: memberTypeEnum,
+						expectedSecondsOverride: z.number().int().nullable(),
+						effectiveFrom: dayKey,
+						effectiveUntil: dayKey
+							.nullable()
+							.describe("Exclusive. Null for the current type."),
+					}),
+				)
+				.describe("Oldest first."),
+			leads: z
+				.array(apiPersonRef)
+				.describe("The people on their team lead list."),
+		}),
+	),
+);
+
+const apiArchiveResult = named(
+	"ArchiveResult",
+	mirror<ApiArchiveResult>()(
+		z.object({
+			emailConfirmed: z
+				.boolean()
+				.describe("True when the call also confirmed the person's address."),
+		}),
+	),
+);
+
+const apiInvitation = named(
+	"Invitation",
+	mirror<ApiInvitation>()(
+		z.object({
+			id: z.string(),
+			email: z.string(),
+			role: z.string().nullable(),
+			status: z.string(),
+			expiresAt: iso,
+			createdAt: iso,
+			emailDelivery: z
+				.object({
+					status: z.enum(["sending", "sent", "failed"]),
+					error: z.string().nullable(),
+				})
+				.nullable()
+				.describe("Null for an invitation from before delivery was tracked."),
+		}),
+	),
+);
+
+const apiHourFundMonth = named(
+	"HourFundMonth",
+	mirror<ApiHourFundMonth>()(
+		z.object({
+			year: z.number().int(),
+			month: z.number().int().describe("1 is January."),
+			fundSeconds: z.number().int(),
+		}),
+	),
+);
+
+const apiHourFundSuggestion = named(
+	"HourFundSuggestion",
+	mirror<ApiHourFundSuggestion>()(
+		z.object({
+			workingDays: z.number().int(),
+			fundSeconds: z.number().int(),
+		}),
+	),
+);
+
+const apiOrganizationSettings = named(
+	"OrganizationSettings",
+	mirror<ApiOrganizationSettings>()(
+		z.object({
+			name: z.string(),
+			country: z.string().describe("ISO 3166-1 alpha-2."),
+			timezone: z.string().describe("An IANA timezone."),
+			weekStartsOn: z
+				.union([z.literal(0), z.literal(1)])
+				.describe("1 is Monday, 0 is Sunday."),
+			logo: z.string().nullable(),
+		}),
+	),
+);
+
 // The request bodies the routes parse, under the names the document shows.
 named("NewTimeEntry", createTimeEntryInput);
 named("TimeEntryPatch", updateTimeEntryInput);
@@ -495,6 +762,40 @@ named("CopyWeek", copyWeekEntriesInput);
 named("AbsenceRange", logAbsenceRangeInput);
 named("StartTimer", startTimerInput);
 named("ConfirmTimer", confirmTimerInput);
+named("NewClient", createClientInput);
+named("ClientPatch", updateClientInput);
+named("NewProject", createProjectInput);
+named("ProjectPatch", updateProjectInput);
+named("NewProjectMember", assignProjectMemberInput);
+named("ProjectMemberRole", changeProjectMemberRoleInput);
+named("NewTask", createTaskInput);
+named("TaskPatch", updateTaskInput);
+named("PersonType", setMemberTypeInput);
+named("PersonStartDate", setMemberStartDateInput);
+named("PersonRole", setMemberRoleInput);
+named("TeamLeadPeople", setTeamLeadPeopleInput);
+named("NewInvitation", inviteMemberInput);
+named("HourFundEntry", setMonthlyHourFundInput);
+named("HourFundMonthRef", monthPeriodInput);
+named("HourFundYear", hourFundYearInput);
+named("OrganizationPatch", updateOrganizationSettingsInput);
+
+/**
+ * The fields of a body that a route takes from its path, by the body's name.
+ * The document leaves them out, because a value in the body is overwritten.
+ */
+const FROM_PATH = {
+	TimeEntryPatch: ["timeEntryId"],
+	ClientPatch: ["clientId"],
+	ProjectPatch: ["projectId"],
+	NewProjectMember: ["projectId"],
+	ProjectMemberRole: ["projectId", "userId"],
+	TaskPatch: ["taskId"],
+	PersonType: ["userId"],
+	PersonStartDate: ["userId"],
+	PersonRole: ["userId"],
+	TeamLeadPeople: ["leadUserId"],
+} satisfies { [id: string]: string[] };
 
 type JsonSchema = z.core.JSONSchema.JSONSchema;
 
@@ -521,14 +822,29 @@ const componentSchemas = () => {
 		clean[id] = rest;
 	}
 
+	// A route takes these ids from its path, so the body leaves them out.
+	for (const [id, fields] of Object.entries(FROM_PATH)) {
+		const body = clean[id];
+		if (!body?.properties) continue;
+		const properties = Object.fromEntries(
+			Object.entries(body.properties).filter(
+				([name]) => !fields.includes(name),
+			),
+		);
+		const required = body.required?.filter((name) => !fields.includes(name));
+		clean[id] = {
+			...body,
+			properties,
+			required: required?.length ? required : undefined,
+		};
+	}
+
 	// A PATCH body is any subset of the fields, merged over the stored entry.
-	// The route takes the id from the path.
 	const patch = clean.TimeEntryPatch;
 	if (patch?.properties) {
-		const { timeEntryId: _fromPath, ...properties } = patch.properties;
 		clean.TimeEntryPatch = {
 			type: "object",
-			properties,
+			properties: patch.properties,
 			description:
 				"Any subset of the entry's fields. Each one replaces the stored value; `null` clears an optional field.",
 		};
@@ -546,7 +862,14 @@ const ref = (schema: z.ZodType): SchemaRef => {
 
 type Method = "get" | "post" | "patch" | "delete";
 
-type Tag = "Account" | "Time entries" | "Timer" | "Time off" | "Projects";
+type Tag =
+	| "Account"
+	| "Time entries"
+	| "Timer"
+	| "Time off"
+	| "Projects"
+	| "People"
+	| "Workspace";
 
 type Operation = {
 	method: Method;
@@ -565,6 +888,9 @@ type Operation = {
 	/** The 200 body, or `null` for a 204. */
 	response: z.ZodType | null;
 	list?: true;
+	/** Who may call it, when not every member may. It goes into the
+	 *  description, and the operation gets a 403. */
+	who?: string;
 };
 
 const rangeQuery = { schema: listTimeEntriesRangeInput, optional: true };
@@ -721,9 +1047,10 @@ export const OPERATIONS: Operation[] = [
 		path: "/orgs/{orgSlug}/projects",
 		operationId: "listProjects",
 		summary: "List projects",
-		description: "The projects the caller can log time to.",
+		description:
+			"The projects the caller can open: every project for an admin, else the caller's own projects and the ones open to the organization. The money is null for a caller who may not see it, and `stats.scope` says whose hours the figures sum.",
 		tag: "Projects",
-		response: apiProject,
+		response: apiProjectDetail,
 		list: true,
 	},
 	{
@@ -731,8 +1058,10 @@ export const OPERATIONS: Operation[] = [
 		path: "/orgs/{orgSlug}/clients",
 		operationId: "listClients",
 		summary: "List clients",
-		description: "The active clients of the organization.",
+		description:
+			"The active clients of the organization. Send `includeArchived=true` for the archived ones too.",
 		tag: "Projects",
+		query: { schema: listClientsInput, optional: true },
 		response: apiClient,
 		list: true,
 	},
@@ -830,6 +1159,473 @@ export const OPERATIONS: Operation[] = [
 		tag: "Timer",
 		response: apiTimerState,
 	},
+	// The PM, team lead and People screens.
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/projects",
+		operationId: "createProject",
+		summary: "Create a project",
+		description:
+			"The caller becomes its PM. The type decides which of the budget and the hourly price it may carry.",
+		tag: "Projects",
+		body: createProjectInput,
+		response: apiProjectDetail,
+		who: "An admin, or a PM or team lead on any project.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/projects/{id}",
+		operationId: "getProject",
+		summary: "Get a project",
+		tag: "Projects",
+		response: apiProjectDetail,
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/projects/{id}",
+		operationId: "updateProject",
+		summary: "Change a project",
+		description:
+			"A patch: a field that is not sent stays. Send `type` with its budget or price.",
+		tag: "Projects",
+		body: updateProjectInput,
+		response: apiProjectDetail,
+		who: "An admin, or a PM on the project.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/projects/{id}/archive",
+		operationId: "archiveProject",
+		summary: "Archive a project",
+		description: "Its entries and reports stay.",
+		tag: "Projects",
+		response: apiProjectDetail,
+		who: "An admin, or a PM on the project.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/projects/{id}/restore",
+		operationId: "restoreProject",
+		summary: "Restore a project",
+		tag: "Projects",
+		response: apiProjectDetail,
+		who: "An admin, or a PM on the project.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/projects/{id}/overview",
+		operationId: "getProjectOverview",
+		summary: "Get a project's all-time figures",
+		tag: "Projects",
+		response: apiProjectOverview,
+		who: "An admin, or a PM or team lead on the project.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/projects/{id}/tasks",
+		operationId: "listProjectTasks",
+		summary: "List the tasks of a project",
+		description: "Every live task of the organization and the built-ins.",
+		tag: "Projects",
+		response: apiTask,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/projects/{id}/assignable",
+		operationId: "listAssignable",
+		summary: "List the people who can join a project",
+		description: "Every active member of the organization.",
+		tag: "Projects",
+		response: apiPersonRef,
+		list: true,
+		who: "An admin, or a PM or team lead on the project.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/projects/{id}/members",
+		operationId: "listProjectMembers",
+		summary: "List a project's team",
+		description: "Removed people stay in the list with `active` false.",
+		tag: "Projects",
+		response: apiProjectMember,
+		list: true,
+		who: "An admin, or a PM or team lead on the project.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/projects/{id}/members",
+		operationId: "addProjectMember",
+		summary: "Add a person to a project",
+		description:
+			"A non-admin can give a role up to their own rank, never above it. An archived person is refused. Answers the team.",
+		tag: "Projects",
+		body: assignProjectMemberInput,
+		response: apiProjectMember,
+		list: true,
+		who: "An admin, or a PM or team lead on the project.",
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/projects/{id}/members/{userId}",
+		operationId: "changeProjectRole",
+		summary: "Change a person's role on a project",
+		description:
+			"Capped at the caller's own rank, for the role the person has and the role they get. Answers the team.",
+		tag: "Projects",
+		body: changeProjectMemberRoleInput,
+		response: apiProjectMember,
+		list: true,
+		who: "An admin, or a PM or team lead on the project.",
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/projects/{id}/members/{userId}",
+		operationId: "removeProjectMember",
+		summary: "Remove a person from a project",
+		description:
+			"The assignment becomes inactive and the person keeps their hours. Answers the team.",
+		tag: "Projects",
+		response: apiProjectMember,
+		list: true,
+		who: "An admin, or a PM or team lead on the project.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/clients",
+		operationId: "createClient",
+		summary: "Create a client",
+		tag: "Projects",
+		body: createClientInput,
+		response: apiClient,
+		who: "An admin, or a PM or team lead on any project.",
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/clients/{id}",
+		operationId: "updateClient",
+		summary: "Rename a client",
+		tag: "Projects",
+		body: updateClientInput,
+		response: apiClient,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/clients/{id}/archive",
+		operationId: "archiveClient",
+		summary: "Archive a client",
+		description: "Refused while the client has an active project.",
+		tag: "Projects",
+		response: apiClient,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/clients/{id}/restore",
+		operationId: "restoreClient",
+		summary: "Restore a client",
+		tag: "Projects",
+		response: apiClient,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/tasks/managed",
+		operationId: "listManagedTasks",
+		summary: "List the tasks to manage",
+		description:
+			"The built-ins and the organization's own tasks, archived ones too.",
+		tag: "Workspace",
+		response: apiManagedTask,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/tasks",
+		operationId: "createTask",
+		summary: "Create a task",
+		tag: "Workspace",
+		body: createTaskInput,
+		response: apiManagedTask,
+		who: "An admin.",
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/tasks/{id}",
+		operationId: "updateTask",
+		summary: "Change a task",
+		description: "A built-in is refused.",
+		tag: "Workspace",
+		body: updateTaskInput,
+		response: apiManagedTask,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/tasks/{id}/archive",
+		operationId: "archiveTask",
+		summary: "Archive a task",
+		description: "A built-in is refused. The entries keep the task.",
+		tag: "Workspace",
+		response: apiManagedTask,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/tasks/{id}/restore",
+		operationId: "restoreTask",
+		summary: "Restore a task",
+		description: "Refused while a live task has the same name.",
+		tag: "Workspace",
+		response: apiManagedTask,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/people",
+		operationId: "listPeople",
+		summary: "List the people",
+		tag: "People",
+		response: apiPerson,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/people/{userId}",
+		operationId: "getPerson",
+		summary: "Get a person",
+		description:
+			"Their row, the history of their type and their team lead list.",
+		tag: "People",
+		response: apiPersonProfile,
+		who: "An admin.",
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/people/{userId}",
+		operationId: "removePerson",
+		summary: "Remove a person",
+		description:
+			"Ends the membership. Archive a person who has left instead; their history stays either way. Nobody removes themselves or the only owner.",
+		tag: "People",
+		response: apiDeleted,
+		who: "An admin. A device-flow or browser session only: an API token gets 403, because better-auth makes the change.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/people/{userId}/role",
+		operationId: "setPersonRole",
+		summary: "Change a person's role",
+		description: "Nobody changes their own role or the owner's.",
+		tag: "People",
+		body: setMemberRoleInput,
+		response: apiPerson,
+		who: "An admin. A device-flow or browser session only: an API token gets 403, because better-auth makes the change.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/people/{userId}/type",
+		operationId: "setPersonType",
+		summary: "Change a person's type",
+		description:
+			"From `effectiveFrom` on. Earlier months keep the type they had.",
+		tag: "People",
+		body: setMemberTypeInput,
+		response: apiPersonProfile,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/people/{userId}/start-date",
+		operationId: "setPersonStartDate",
+		summary: "Set a person's start date",
+		description: "`null` clears it.",
+		tag: "People",
+		body: setMemberStartDateInput,
+		response: apiPersonProfile,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/people/{userId}/archive",
+		operationId: "archivePerson",
+		summary: "Archive a person",
+		description:
+			"They keep every entry and leave every team lead list. Nobody archives themselves.",
+		tag: "People",
+		response: apiArchiveResult,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/people/{userId}/restore",
+		operationId: "restorePerson",
+		summary: "Restore a person",
+		description:
+			"For a person who never signed in, this also confirms the address.",
+		tag: "People",
+		response: apiArchiveResult,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/people/{userId}/confirm-email",
+		operationId: "confirmPersonEmail",
+		summary: "Confirm a person's address",
+		description:
+			"Only for a person who never signed in and is in no other organization.",
+		tag: "People",
+		response: apiArchiveResult,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/people/{userId}/team",
+		operationId: "listTeamLeadPeople",
+		summary: "List a team lead's people",
+		tag: "People",
+		response: apiPersonRef,
+		list: true,
+		who: "An admin, or the team lead themselves.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/people/{userId}/team",
+		operationId: "setTeamLeadPeople",
+		summary: "Replace a team lead's people",
+		description:
+			"The whole list. An archived person is refused, and the lead is never on their own list.",
+		tag: "People",
+		body: setTeamLeadPeopleInput,
+		response: apiPersonRef,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/invitations",
+		operationId: "listInvitations",
+		summary: "List the pending invitations",
+		tag: "People",
+		response: apiInvitation,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/invitations",
+		operationId: "invite",
+		summary: "Invite a person",
+		description:
+			"Sends the email, and a Slack message when the address is in the workspace's Slack.",
+		tag: "People",
+		body: inviteMemberInput,
+		response: apiInvitation,
+		who: "An admin. A device-flow or browser session only: an API token gets 403, because better-auth makes the change.",
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/invitations/{id}",
+		operationId: "cancelInvitation",
+		summary: "Cancel an invitation",
+		tag: "People",
+		response: apiDeleted,
+		who: "An admin. A device-flow or browser session only: an API token gets 403, because better-auth makes the change.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/invitations/{id}/resend",
+		operationId: "resendInvitation",
+		summary: "Send an invitation again",
+		description: "Moves its expiry forward.",
+		tag: "People",
+		response: apiInvitation,
+		who: "An admin. A device-flow or browser session only: an API token gets 403, because better-auth makes the change.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/hour-fund",
+		operationId: "listHourFund",
+		summary: "List the hour fund of a year",
+		description:
+			"A month with no row has no fund, which is not a fund of zero.",
+		tag: "Workspace",
+		query: { schema: hourFundYearInput, optional: false },
+		response: apiHourFundMonth,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/hour-fund",
+		operationId: "setHourFund",
+		summary: "Set the fund of a month",
+		description: "Answers the year.",
+		tag: "Workspace",
+		body: setMonthlyHourFundInput,
+		response: apiHourFundMonth,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/hour-fund/clear",
+		operationId: "clearHourFund",
+		summary: "Clear the fund of a month",
+		description: "The month has no fund again. Answers the year.",
+		tag: "Workspace",
+		body: monthPeriodInput,
+		response: apiHourFundMonth,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/hour-fund/prefill",
+		operationId: "prefillHourFund",
+		summary: "Fill a year from the holiday calendar",
+		description: "Only the months with no fund. Answers the year.",
+		tag: "Workspace",
+		body: hourFundYearInput,
+		response: apiHourFundMonth,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/hour-fund/suggestion",
+		operationId: "suggestHourFund",
+		summary: "Suggest the fund of a month",
+		description:
+			"The weekdays that are not public holidays, at 8 hours each. Nothing is stored.",
+		tag: "Workspace",
+		query: { schema: monthPeriodInput, optional: false },
+		response: apiHourFundSuggestion,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/organization",
+		operationId: "getOrganization",
+		summary: "Get the organization's settings",
+		tag: "Workspace",
+		response: apiOrganizationSettings,
+		who: "An admin.",
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/organization",
+		operationId: "updateOrganization",
+		summary: "Change the organization's settings",
+		description: "A patch. A timezone that is not an IANA name is refused.",
+		tag: "Workspace",
+		body: updateOrganizationSettingsInput,
+		response: apiOrganizationSettings,
+		who: "An admin.",
+	},
 ];
 
 const TAG_TEXT = {
@@ -837,7 +1633,12 @@ const TAG_TEXT = {
 	"Time entries": "The timesheet: read it, log time, file it and copy it.",
 	Timer: "The stopwatch. One per person, across every organization.",
 	"Time off": "Vacation, sick leave and the other absence tasks.",
-	Projects: "What a person can log time against.",
+	Projects:
+		"What a person can log time against, and, for a PM or a team lead, the projects, their teams and the clients.",
+	People:
+		"Settings → People: the people of the workspace, their invitations and the team lead lists.",
+	Workspace:
+		"The workspace settings an admin keeps: the task list, the hour fund and the organization.",
 } satisfies Record<Tag, string>;
 
 /** Preferences → API tokens in the reader's own workspace: `:org` is the
@@ -961,7 +1762,9 @@ const pathParameters = (path: string, orgSlug: string | undefined) =>
 		description:
 			name === "orgSlug"
 				? "The organization's slug, from `GET /me`."
-				: "The row's id.",
+				: name === "userId"
+					? "The person's user id."
+					: "The row's id.",
 		example: name === "orgSlug" ? orgSlug : undefined,
 	}));
 
@@ -988,6 +1791,8 @@ const operation = (op: Operation, orgSlug: string | undefined) => {
 	// read-only token do (see `serve` in server/api-route.ts).
 	if (op.method !== "get" && op.auth !== false && op.path !== "/session") {
 		responses["403"] = errorResponse("Not allowed, or a read-only API token.");
+	} else if (op.who) {
+		responses["403"] = errorResponse("The caller's role does not allow this.");
 	}
 	if (op.body || op.query) {
 		responses["422"] = errorResponse("The input is not valid.");
@@ -996,7 +1801,9 @@ const operation = (op: Operation, orgSlug: string | undefined) => {
 	return {
 		operationId: op.operationId,
 		summary: op.summary,
-		description: op.description,
+		description: op.who
+			? [op.description, `**Who:** ${op.who}`].filter(Boolean).join("\n\n")
+			: op.description,
 		tags: [op.tag],
 		security: op.auth === false ? [] : undefined,
 		parameters: [

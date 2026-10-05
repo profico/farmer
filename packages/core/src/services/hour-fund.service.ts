@@ -111,14 +111,18 @@ export const hourFundService = {
 		);
 	},
 
-	listForYear: async (ctx: Ctx, year: number) =>
-		db.query.monthlyHourFund.findMany({
+	/** Admin only, like the Settings screen that is its one reader. The REST
+	 *  route calls it too, so the check is here and not only in a middleware. */
+	listForYear: async (ctx: Ctx, year: number) => {
+		await requireAdmin(ctx);
+		return db.query.monthlyHourFund.findMany({
 			where: and(
 				eq(monthlyHourFund.organizationId, ctx.organizationId),
 				eq(monthlyHourFund.year, year),
 			),
 			orderBy: asc(monthlyHourFund.month),
-		}),
+		});
+	},
 
 	set: async (ctx: Ctx, input: SetMonthlyHourFundInput) => {
 		await requireAdmin(ctx);
@@ -202,6 +206,7 @@ export const hourFundService = {
 		year: number,
 		month: number,
 	): Promise<{ workingDays: number; fundSeconds: number }> => {
+		await requireAdmin(ctx);
 		const first = monthStartKeyOf(year, month);
 		const last = endOfMonthKey(first);
 		const holidays = await holidaysService.holidaySetForRange(ctx, first, last);
