@@ -25,9 +25,11 @@
 	font-size: 13px;
 	color: var(--mut);
 }
-.fm-site .fp-release:hover {
-	text-decoration: none;
-	border-color: color-mix(in srgb, var(--mut) 60%, transparent);
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-release:hover {
+		text-decoration: none;
+		border-color: color-mix(in srgb, var(--mut) 60%, transparent);
+	}
 }
 .fm-site .fp-release-tag {
 	padding: 2px 8px;
@@ -549,8 +551,10 @@
 	align-items: end;
 	padding-bottom: 8px;
 }
-.fm-site .fp-ts-labels:hover {
-	background: none;
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-ts-labels:hover {
+		background: none;
+	}
 }
 .fm-site .fp-ts-day {
 	display: flex;
@@ -841,8 +845,10 @@
 	text-decoration: none;
 	transition: border-color 150ms ease;
 }
-.fm-site .fp-rest:hover {
-	border-color: var(--ink-mut);
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-rest:hover {
+		border-color: var(--ink-mut);
+	}
 }
 .fm-site .fp-rest-more {
 	display: inline-flex;
@@ -850,8 +856,10 @@
 	gap: 6px;
 	margin-left: auto;
 }
-.fm-site .fp-rest:hover .fp-rest-more {
-	color: var(--ink-fg);
+@media (hover: hover) and (pointer: fine) {
+	.fm-site .fp-rest:hover .fp-rest-more {
+		color: var(--ink-fg);
+	}
 }
 .fm-site .fp-rest code {
 	font-family: var(--mono);

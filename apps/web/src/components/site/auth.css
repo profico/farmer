@@ -446,7 +446,12 @@ html:has(.fm-auth) body {
 	outline-offset: -2px;
 	transition: background-color var(--dur-base);
 }
-.fm-auth .fm-auth-ws:hover,
+@media (hover: hover) and (pointer: fine) {
+	.fm-auth .fm-auth-ws:hover {
+		background: var(--acc-soft);
+		text-decoration: none;
+	}
+}
 .fm-auth .fm-auth-ws:focus-visible {
 	background: var(--acc-soft);
 	text-decoration: none;

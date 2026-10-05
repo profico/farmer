@@ -151,7 +151,7 @@ export function MobileTabBar({
 									}
 								}}
 								className={cn(
-									"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform duration-(--dur-fast) active:scale-[0.97]",
+									"relative isolate flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform duration-(--dur-fast) active:scale-[0.97]",
 									active ? "text-primary" : "text-muted-foreground",
 								)}
 							>
@@ -159,6 +159,9 @@ export function MobileTabBar({
 									// One shared layoutId across every tab + the More button →
 									// motion springs this pill between tabs on navigation
 									// instead of the old static bg-accent class snapping.
+									// `isolate` on the tab is what keeps the `-z-10` pill above
+									// the bar's own background. Without it, the pill showed only
+									// while a transform gave it a stacking context mid-move.
 									<motion.div
 										layoutId="tab-bar-active-pill"
 										transition={springExpressive}
@@ -186,7 +189,7 @@ export function MobileTabBar({
 						type="button"
 						onClick={() => setMoreOpen(true)}
 						className={cn(
-							"relative flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform duration-(--dur-fast) active:scale-[0.97]",
+							"relative isolate flex h-full w-16 flex-col items-center justify-center gap-0.5 rounded-full transition-transform duration-(--dur-fast) active:scale-[0.97]",
 							isMoreActive ? "text-primary" : "text-muted-foreground",
 						)}
 					>
