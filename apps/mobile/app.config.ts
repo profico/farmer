@@ -1,4 +1,29 @@
 import type { ExpoConfig } from "expo/config";
+import {
+	AndroidConfig,
+	type ConfigPlugin,
+	withAndroidColorsNight,
+} from "expo/config-plugins";
+
+// The window behind every screen, before the app draws and during a screen
+// transition: the background of the Material 3 baseline (`src/ui/theme.ts`).
+// At runtime the app sets the exact colour of the theme (`app/_layout.tsx`).
+const BACKGROUND_LIGHT = "#fef7ff";
+const BACKGROUND_DARK = "#141218";
+
+/**
+ * `expo-system-ui` writes one window colour (`activityBackground`). This adds
+ * the dark one in `values-night`, so a phone in dark mode never shows a light
+ * frame behind a screen as it slides in.
+ */
+const withDarkWindowBackground: ConfigPlugin = (config) =>
+	withAndroidColorsNight(config, (night) => {
+		night.modResults = AndroidConfig.Colors.assignColorValue(night.modResults, {
+			name: "activityBackground",
+			value: BACKGROUND_DARK,
+		});
+		return night;
+	});
 
 // The app is one client for every Server (ADR 0005), so nothing here names a
 // server. The person gives the Server address on the first screen.
@@ -9,6 +34,7 @@ const config: ExpoConfig = {
 	scheme: "farmer",
 	orientation: "portrait",
 	userInterfaceStyle: "automatic",
+	backgroundColor: BACKGROUND_LIGHT,
 	ios: {
 		bundleIdentifier: "com.profico.farmer",
 		// ADR 0005: iOS 18 or later.
@@ -17,9 +43,11 @@ const config: ExpoConfig = {
 	},
 	android: {
 		package: "com.profico.farmer",
+		backgroundColor: BACKGROUND_LIGHT,
 	},
 	plugins: [
 		"expo-router",
+		"expo-system-ui",
 		"expo-secure-store",
 		"expo-web-browser",
 		[
@@ -43,4 +71,4 @@ const config: ExpoConfig = {
 	},
 };
 
-export default config;
+export default withDarkWindowBackground(config);

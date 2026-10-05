@@ -101,6 +101,10 @@ function SignedInTabs() {
 	}
 	if (!valid) return <Loading />;
 
+	// The scene behind each tab, in the theme: without it a tab switch can
+	// show the white default for a frame.
+	const scene = { backgroundColor: palette.background };
+
 	return (
 		<NativeTabs
 			backgroundColor={
@@ -111,19 +115,19 @@ function SignedInTabs() {
 			}
 			tintColor={palette.primary}
 		>
-			<NativeTabs.Trigger name="index">
+			<NativeTabs.Trigger name="index" contentStyle={scene}>
 				<NativeTabs.Trigger.Label>Time</NativeTabs.Trigger.Label>
 				<NativeTabs.Trigger.Icon sf="clock" md="schedule" />
 			</NativeTabs.Trigger>
-			<NativeTabs.Trigger name="projects">
+			<NativeTabs.Trigger name="projects" contentStyle={scene}>
 				<NativeTabs.Trigger.Label>Projects</NativeTabs.Trigger.Label>
 				<NativeTabs.Trigger.Icon sf="folder" md="folder" />
 			</NativeTabs.Trigger>
-			<NativeTabs.Trigger name="reports">
+			<NativeTabs.Trigger name="reports" contentStyle={scene}>
 				<NativeTabs.Trigger.Label>Reports</NativeTabs.Trigger.Label>
 				<NativeTabs.Trigger.Icon sf="chart.bar" md="bar_chart" />
 			</NativeTabs.Trigger>
-			<NativeTabs.Trigger name="more">
+			<NativeTabs.Trigger name="more" contentStyle={scene}>
 				<NativeTabs.Trigger.Label>More</NativeTabs.Trigger.Label>
 				<NativeTabs.Trigger.Icon sf="ellipsis.circle" md="more_horiz" />
 			</NativeTabs.Trigger>
