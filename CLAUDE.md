@@ -74,11 +74,19 @@ bun run generate-routes      # tsr generate — regenerates routeTree.gen.ts
 
 ## Architecture
 
-Three workspaces — `apps/web` (TanStack Start/React), `apps/cli` (`@farmer/cli`, the `farmer` command-line tool, see `apps/cli/CLAUDE.md`) and `packages/core` (`@farmer/core`). The split is deliberate: `packages/core` must stay reusable from another process.
+Five workspaces:
+
+- `apps/web` — the TanStack Start/React app and its Bun production host.
+- `apps/cli` — `@farmer/cli`, the `farmer` command-line tool (see `apps/cli/CLAUDE.md`).
+- `packages/core` — `@farmer/core`, the services, the schema, the jobs and the auth config.
+- `apps/push-relay` — `@farmer/push-relay`, the push relay at `push.farmer.profi.co`, its own image, never imports the server (see `apps/push-relay/README.md`, ADR 0006).
+- `packages/push-crypto` — `@farmer/push-crypto`, the HPKE seal/open for a push payload, shared by the server and the app, no `@farmer/core` imports.
+
+The split is deliberate: `packages/core` must stay reusable from another process.
 
 **Boundary rule:** `packages/core` never imports TanStack/React. All business logic lives in `src/services/`, one file per aggregate. Every exported service function takes an explicit `ctx: { organizationId, userId }` (`src/services/types.ts`) as its first argument — **tenancy is a parameter, never ambient** — so the same function is callable from a server function, a REST route, a background job or an MCP tool.
 
-The three workspaces each carry their own `CLAUDE.md`, loaded when you touch a
+`apps/web`, `apps/cli` and `packages/core` each carry their own `CLAUDE.md`, loaded when you touch a
 file in them: `packages/core/CLAUDE.md`, `apps/web/CLAUDE.md` and
 `apps/cli/CLAUDE.md`. They hold the layout of the workspace and the rules that
 only apply inside it.
