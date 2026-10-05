@@ -79,6 +79,16 @@ server**, as `farmer login` does. Bundle id `com.profico.farmer`, scheme
 - The OIDC path of `@better-auth/expo` (`signIn.oauth2`) has no documented
   proof. A spike against a local server must pass before the sign-in screen
   is built on it.
+- Spike, 6 October 2026: pass. `packages/core/scripts/mobile-sign-in-spike.ts`
+  drove `signIn.oauth2` against a mock OIDC provider, as `expoClient` does. The
+  callback sent the browser to `farmer://auth-callback?cookie=<Set-Cookie>`,
+  and the session token from that cookie gave a 200 on `GET /api/v1/me` as a
+  bearer. The Google start and proxy pass too; the Google callback runs
+  through the same hook. The device flow stays the fallback.
+- The plugin's `/expo-authorization-proxy` was an open redirect to any https
+  URL. `auth/mobile-sign-in.ts` allows only Google and the origin of each
+  OIDC source, so a source whose authorization endpoint is on a different
+  host fails closed.
 - The timer surfaces on the phone (the Live Activity and the ongoing Android
   notification) show the elapsed time only. Stop opens the confirm form with
   the snapped figure, as ADR 0003 requires. Nothing confirms an entry from the
