@@ -55,9 +55,9 @@ export function targetGapTone(period: PeriodTarget, delta: number) {
  *  not 0. "Today's" is not used, because people read it two ways: the hours
  *  due before today, or the hours due through today. The hours logged are
  *  work + time off through today, never a day booked off later in the
- *  period. On the first working day, with nothing due before today and nothing
- *  logged, it reads "0,00 of the 32,00 due by the
- *  end of today", with no color: "short" before the day starts reads badly. */
+ *  period. On the first working day, with nothing due before today and
+ *  nothing logged, it reads "0,00 of the 8,00 due by the end of today", with
+ *  no color: "short" before the day starts reads badly. */
 export function TargetGap({ period }: { period: PeriodTarget }) {
 	if (period.targetSoFarSeconds == null) {
 		return <span className="text-muted-foreground">No target</span>;
