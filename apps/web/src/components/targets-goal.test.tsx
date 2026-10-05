@@ -40,8 +40,32 @@ describe("the target gap on a Monday", () => {
 		expect(text).toBe("4,50 short of the 8,00 due by the end of today");
 	});
 
-	test("an empty Monday is short by the whole day", () => {
-		expect(textOf(period({}))).toContain("short");
+	test("an empty Monday says nothing is logged, not short", () => {
+		expect(textOf(period({}))).toBe("0,00 of the 8,00 due by the end of today");
+	});
+
+	test("an empty month says nothing is logged, not short", () => {
+		const text = textOf(
+			period({
+				from: "2026-04-01",
+				to: "2026-04-30",
+				targetSeconds: 176 * H,
+				targetThroughTodaySeconds: 24 * H,
+			}),
+		);
+		expect(text).toBe("0,00 of the 24,00 due by the end of today");
+	});
+
+	test("the zero caption has no color", () => {
+		const html = renderToStaticMarkup(
+			<TargetGap period={period({ status: "behind" })} />,
+		);
+		expect(html).not.toMatch(/text-(ok|warn|bad)/);
+	});
+
+	test("a goal of 0 with nothing logged is not rewritten", () => {
+		const text = textOf(period({ targetThroughTodaySeconds: 0 }));
+		expect(text).toBe("0,00 ahead of the 0,00 due by the end of today");
 	});
 
 	test("hours above the goal are ahead", () => {
