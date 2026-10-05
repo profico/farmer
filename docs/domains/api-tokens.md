@@ -37,7 +37,7 @@ recommends a token for anything that runs without a person.
   route needs nothing: the rule reads the HTTP method.
   The HTTP method alone decides what "read" means. `GET …/time-entries` still
   performs the fill-block writes of `listRange` (it writes on read, see the
-  root `CLAUDE.md`). A read-only token is therefore not free of side effects.
+  root `AGENTS.md`). A read-only token is therefore not free of side effects.
 - **A token can be bound to one workspace** ("Only this workspace", the
   default), stored as `organization_id`. A bound token naming another slug is
   refused like an unknown slug (`resolveCliOrgContext` returns null → 401), and
@@ -56,7 +56,7 @@ recommends a token for anything that runs without a person.
 - **The two credentials are told apart by prefix, not by lookup order.**
   `resolveCliUser` sends an `fmr_` token to `apiTokensService.authenticate` and
   anything else to better-auth's session table. The `bearer` plugin stays off
-  (see `apps/cli/CLAUDE.md`). PostHog's `api_request` event records which kind
+  (see `apps/cli/AGENTS.md`). PostHog's `api_request` event records which kind
   answered as `api_credential` (`session`, `api_token` or `cookie`).
 
 ## The API reference
@@ -73,7 +73,7 @@ The scheme is the header `x-farmer-session: 1`, and `customFetch` sends the
 cookie with it and drops any `Authorization`. With `bearer` chosen, it sends no
 cookie and drops the header, so a request with no token gets the 401 a script
 would. The server side is `provesSameOrigin` in `server/api-route.ts`, and
-`apps/cli/CLAUDE.md` says why a write with the cookie is not CSRF.
+`apps/cli/AGENTS.md` says why a write with the cookie is not CSRF.
 
 ## The CLI
 

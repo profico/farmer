@@ -16,4 +16,4 @@ An admin drops the Harvest CSV exports on Settings → Import (`settings/import.
 
 ---
 
-See also: `docs/plans/harvest-import.md` (the design and the owner's decisions), `packages/core/CLAUDE.md` (the ledger and the tasks an import writes against).
+See also: `docs/plans/harvest-import.md` (the design and the owner's decisions), `packages/core/AGENTS.md` (the ledger and the tasks an import writes against).

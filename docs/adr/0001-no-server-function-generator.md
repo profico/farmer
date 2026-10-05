@@ -61,7 +61,7 @@ The failure mode is the dangerous one. If the helper module contains nothing but
 silently**: no build error, no registered server function, and the untransformed
 chain ships to the browser where `handler` receives one argument instead of two
 and runs the server body client-side. That is the same silent class as the
-static-`@farmer/core/db`-import hydration crash documented in `apps/web/CLAUDE.md` — it
+static-`@farmer/core/db`-import hydration crash documented in `apps/web/AGENTS.md` — it
 passes typecheck, lint and build. If the same file happens to also mention
 `createMiddleware` or `createIsomorphicFn`, the full traversal runs instead and
 it becomes a hard build error. Which of the two you get depends on unrelated

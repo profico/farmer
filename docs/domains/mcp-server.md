@@ -16,4 +16,4 @@ The same tool layer as the assistant, over Streamable HTTP, for Claude Code and 
 
 ---
 
-See also: `docs/domains/assistant.md` (the shared tool registry), `apps/web/CLAUDE.md` (the route and its client-bundle rule).
+See also: `docs/domains/assistant.md` (the shared tool registry), `apps/web/AGENTS.md` (the route and its client-bundle rule).
