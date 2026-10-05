@@ -150,7 +150,7 @@ const todayEntries: MockEntry[] = [
 		source: { kind: "pulls", count: 2 },
 	},
 	{ ...INTERNAL, task: "Meetings", note: "Daily stand-up", time: "0:15" },
-	{ ...INTERNAL, task: "Planning", time: "1:45", source: { kind: "fill" } },
+	{ ...INTERNAL, task: "Planning", time: "1:15", source: { kind: "fill" } },
 ];
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -213,24 +213,24 @@ export function HomePreview() {
 					<div className="fp-metrics">
 						<Metric
 							label="Today"
-							value="6.50"
+							value="6.00"
 							of="8.00"
-							sub="1.50 to go"
-							percent={81}
+							sub="2.00 to go"
+							percent={75}
 						/>
 						<Metric
 							label="This week"
-							value="14.50"
+							value="38.25"
 							of="40.00"
-							sub="25.50 to go"
-							percent={36}
+							sub="1.75 short of the 40.00 due by the end of today"
+							percent={96}
 						/>
 						<Metric
 							label="This month"
-							value="38.00"
+							value="62.25"
 							of="184.00"
-							sub="day 6 of 23"
-							percent={21}
+							sub="1.75 short of the 64.00 due by the end of today · 7 of 23 working days done"
+							percent={34}
 						/>
 					</div>
 					<div style={{ display: "flex", flexWrap: "wrap" }}>
@@ -238,7 +238,7 @@ export function HomePreview() {
 							<div className="fp-list-head">
 								<span className="fm-eyebrow">Today's entries</span>
 								<span className="fp-small" style={{ marginLeft: "auto" }}>
-									<span className="fm-mono">6:30</span> logged
+									<span className="fm-mono">6:00</span> logged
 								</span>
 							</div>
 							{todayEntries.map((entry) => (
@@ -252,17 +252,20 @@ export function HomePreview() {
 									className="fm-mono"
 									style={{ marginLeft: "auto", fontSize: 13 }}
 								>
-									14.50
+									38.25
 								</span>
 							</div>
 							<div className="fp-week-plot">
 								<div className="fp-week-target" />
 								<div className="fp-week-cols">
+									<div className="fp-week-bar" style={{ height: "97%" }} />
+									<div className="fp-week-bar" style={{ height: "100%" }} />
+									<div className="fp-week-bar" style={{ height: "100%" }} />
 									<div className="fp-week-bar" style={{ height: "100%" }} />
 									<div
 										className="fp-week-bar"
 										data-today
-										style={{ height: "81%" }}
+										style={{ height: "75%" }}
 									/>
 								</div>
 							</div>
@@ -270,18 +273,18 @@ export function HomePreview() {
 								{DAYS.map((day, i) => (
 									<span
 										key={day}
-										style={i === 1 ? { color: "var(--acc)" } : undefined}
+										style={i === 4 ? { color: "var(--acc)" } : undefined}
 									>
 										{day}
 									</span>
 								))}
 							</div>
 							<div className="fp-week-hours fm-mono">
+								<span>7.75</span>
+								<span>8.25</span>
 								<span>8.00</span>
-								<span className="fp-under">6.50</span>
-								<span>–</span>
-								<span>–</span>
-								<span>–</span>
+								<span>8.25</span>
+								<span className="fp-under">6.00</span>
 								<span>–</span>
 								<span>–</span>
 							</div>
@@ -447,14 +450,14 @@ export function TimesheetMock() {
 						status="On track"
 						value="38.25"
 						of="40.00"
-						sub={<>1.75 short of the 40.00 due by the end of today</>}
+						sub="1.75 short of the 40.00 due by the end of today"
 						percent={96}
 					/>
 					<Metric
 						label="This month"
 						value="62.25"
 						of="184.00"
-						sub="day 8 of 23"
+						sub="1.75 short of the 64.00 due by the end of today · day 8 of 23"
 						percent={34}
 					/>
 				</div>
