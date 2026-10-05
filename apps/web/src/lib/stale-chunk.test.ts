@@ -6,9 +6,13 @@ import {
 	isStaleChunkError,
 	RELOAD_WINDOW_MS,
 	reloadIfStaleChunk,
-	takeStaleChunkReport,
+	claimStaleChunkFault,
+	takeStaleChunkReports,
 	type ReloadEnv,
 } from "./stale-chunk.ts";
+
+const CSS = "Unable to preload CSS for /assets/route-AbCdEf12.css";
+const ROUTER_KEY = "tanstack_router_reload:";
 
 const CHROME =
 	"Failed to fetch dynamically imported module: https://farmer.profi.co/assets/_orgSlug-BlkH4Rvi.js";
@@ -21,8 +25,26 @@ const memoryStorage = () => {
 		getItem: (key: string) => values.get(key) ?? null,
 		setItem: (key: string, value: string) => void values.set(key, value),
 		removeItem: (key: string) => void values.delete(key),
+		key: (index: number) => [...values.keys()][index] ?? null,
+		get length() {
+			return values.size;
+		},
 	};
 };
+
+/** A storage whose reads and writes can throw. */
+const brokenStorage = (broken: "read" | "write") => ({
+	getItem: () => {
+		if (broken === "read") throw new Error("denied");
+		return null;
+	},
+	setItem: () => {
+		if (broken === "write") throw new Error("quota");
+	},
+	removeItem: () => {},
+	key: () => null,
+	length: 0,
+});
 
 /** The same storage and clock in a new page: the old page has unloaded. */
 const nextPage = (env: ReloadEnv): ReloadEnv => ({ ...env });
@@ -160,51 +182,115 @@ describe("reloadIfStaleChunk", () => {
 	});
 
 	test("does not reload when storage throws on read", () => {
-		const { env, state } = makeEnv({
-			storage: {
-				getItem: () => {
-					throw new Error("denied");
-				},
-				setItem: () => {},
-				removeItem: () => {},
-			},
-		});
+		const { env, state } = makeEnv({ storage: brokenStorage("read") });
 		expect(reloadIfStaleChunk(new TypeError(CHROME), env)).toBe(false);
 		expect(state.reloads).toBe(0);
 	});
 
 	test("does not reload when storage throws on write", () => {
-		const { env, state } = makeEnv({
-			storage: {
-				getItem: () => null,
-				setItem: () => {
-					throw new Error("quota");
-				},
-				removeItem: () => {},
-			},
-		});
+		const { env, state } = makeEnv({ storage: brokenStorage("write") });
 		expect(reloadIfStaleChunk(new TypeError(CHROME), env)).toBe(false);
 		expect(state.reloads).toBe(0);
 	});
 });
 
-describe("takeStaleChunkReport", () => {
+describe("reloadIfStaleChunk after TanStack", () => {
+	test("does not reload when TanStack already reloaded for the message", () => {
+		const { env, state, storage } = makeEnv();
+		storage.setItem(`${ROUTER_KEY}${CHROME}`, "1");
+		expect(reloadIfStaleChunk(new TypeError(CHROME), env)).toBe(false);
+		expect(state.reloads).toBe(0);
+		expect(isReloadPending(env)).toBe(false);
+	});
+
+	test("a TanStack key for another message does not block", () => {
+		const { env, state, storage } = makeEnv();
+		storage.setItem(`${ROUTER_KEY}${CHROME.replace("_orgSlug", "x")}`, "1");
+		expect(reloadIfStaleChunk(new TypeError(CHROME), env)).toBe(true);
+		expect(state.reloads).toBe(1);
+	});
+
+	test("the stylesheet failure reloads once per window", () => {
+		const { env, state } = makeEnv();
+		expect(reloadIfStaleChunk(new Error(CSS), env)).toBe(true);
+		state.now += RELOAD_WINDOW_MS - 1;
+		expect(reloadIfStaleChunk(new Error(CSS), nextPage(env))).toBe(false);
+		state.now += 1;
+		expect(reloadIfStaleChunk(new Error(CSS), nextPage(env))).toBe(true);
+		expect(state.reloads).toBe(2);
+	});
+});
+
+describe("claimStaleChunkFault", () => {
+	test("claims a stale chunk message once", () => {
+		const message = `${CHROME}?claim`;
+		expect(claimStaleChunkFault(new TypeError(message))).toBe(true);
+		expect(claimStaleChunkFault(new TypeError(message))).toBe(false);
+	});
+
+	test("always claims another error", () => {
+		const error = new Error("boom");
+		expect(claimStaleChunkFault(error)).toBe(true);
+		expect(claimStaleChunkFault(error)).toBe(true);
+	});
+});
+
+describe("takeStaleChunkReports", () => {
+	test("reports each TanStack reload once and keeps its key", () => {
+		const { storage } = makeEnv();
+		storage.setItem(`${ROUTER_KEY}${CHROME}`, "1");
+		expect(takeStaleChunkReports(storage)).toEqual([
+			{ message: CHROME, source: "router" },
+		]);
+		expect(takeStaleChunkReports(storage)).toEqual([]);
+		expect(storage.getItem(`${ROUTER_KEY}${CHROME}`)).toBe("1");
+		storage.setItem(`${ROUTER_KEY}other`, "1");
+		expect(takeStaleChunkReports(storage)).toEqual([
+			{ message: "other", source: "router" },
+		]);
+	});
+
+	test("reports the error screen reload and the router reload", () => {
+		const { env, storage } = makeEnv();
+		reloadIfStaleChunk(new Error(CSS), env);
+		storage.setItem(`${ROUTER_KEY}${CHROME}`, "1");
+		expect(takeStaleChunkReports(storage)).toEqual([
+			{ message: CSS, source: "error-screen" },
+			{ message: CHROME, source: "router" },
+		]);
+	});
+
+	test("ignores a corrupt reported list", () => {
+		const { storage } = makeEnv();
+		storage.setItem("farmer-stale-chunk-router-reported", "{not json");
+		storage.setItem(`${ROUTER_KEY}${CHROME}`, "1");
+		expect(takeStaleChunkReports(storage)).toEqual([]);
+		storage.setItem("farmer-stale-chunk-router-reported", '{"a":1}');
+		expect(takeStaleChunkReports(storage)).toEqual([
+			{ message: CHROME, source: "router" },
+		]);
+	});
+});
+
+describe("takeStaleChunkReport (error screen)", () => {
 	test("returns nothing when no reload happened", () => {
 		const { storage } = makeEnv();
-		expect(takeStaleChunkReport(storage)).toBeUndefined();
+		expect(takeStaleChunkReports(storage)).toEqual([]);
 	});
 
 	test("returns the failed module once and then clears it", () => {
 		const { env, storage } = makeEnv();
 		reloadIfStaleChunk(new TypeError(CHROME), env);
-		expect(takeStaleChunkReport(storage)).toEqual({ message: CHROME });
-		expect(takeStaleChunkReport(storage)).toBeUndefined();
+		expect(takeStaleChunkReports(storage)).toEqual([
+			{ message: CHROME, source: "error-screen" },
+		]);
+		expect(takeStaleChunkReports(storage)).toEqual([]);
 	});
 
 	test("keeps the reload guard after the report is taken", () => {
 		const { env, storage, state } = makeEnv();
 		reloadIfStaleChunk(new TypeError(CHROME), env);
-		takeStaleChunkReport(storage);
+		takeStaleChunkReports(storage);
 		expect(reloadIfStaleChunk(new TypeError(CHROME), nextPage(env))).toBe(
 			false,
 		);
@@ -214,7 +300,7 @@ describe("takeStaleChunkReport", () => {
 	test("ignores a corrupt report and undefined storage", () => {
 		const { storage } = makeEnv();
 		storage.setItem("farmer-stale-chunk-report", "{not json");
-		expect(takeStaleChunkReport(storage)).toBeUndefined();
-		expect(takeStaleChunkReport(undefined)).toBeUndefined();
+		expect(takeStaleChunkReports(storage)).toEqual([]);
+		expect(takeStaleChunkReports(undefined)).toEqual([]);
 	});
 });

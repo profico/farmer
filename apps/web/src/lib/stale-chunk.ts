@@ -7,14 +7,20 @@
 // a module, and the import fails with "Failed to fetch dynamically imported
 // module". The fix is a reload, which fetches the new index.
 //
-// The route error screen calls `reloadIfStaleChunk` for the error that a route
-// loader or component throws on a real navigation. It reloads once per time
-// window, so a file that is really missing, or a network that is down, cannot
-// cause a reload loop.
+// There are two reload paths.
+//
+// 1. TanStack's `lazyRouteComponent` reloads once for each message of a missing
+//    JS chunk. It keeps its own guard in `sessionStorage`. This file never
+//    removes that guard, because a removed guard can cause a reload loop.
+// 2. The route error screen calls `reloadIfStaleChunk` for the error that a
+//    route loader or component throws. It reloads once per time window, but
+//    only for an error that TanStack does not handle (the Vite stylesheet
+//    failure). It never repeats a reload that TanStack already did.
 //
 // Vite's `vite:preloadError` event has no handler on purpose. TanStack Router
-// preloads a route on link intent (hover or touch) and only logs a failed
-// preload. The event cannot tell a preload from a navigation, so a reload there
+// preloads a route on link intent (hover or touch). A failed preload of a
+// component chunk is swallowed there and the reload happens on the later
+// render. The event cannot tell a preload from a navigation, so a reload there
 // would drop the unsaved input of a person who only moved the pointer.
 
 import { z } from "zod";
@@ -24,9 +30,22 @@ export const RELOAD_WINDOW_MS = 30_000;
 
 const GUARD_KEY = "farmer-stale-chunk-reload";
 const REPORT_KEY = "farmer-stale-chunk-report";
+/** The router guard keys that an event already reported. */
+const ROUTER_REPORTED_KEY = "farmer-stale-chunk-router-reported";
+
+/**
+ * Dependency contract: `lazyRouteComponent.js` in `@tanstack/react-router`
+ * writes `tanstack_router_reload:<error.message>` before it reloads, and a
+ * second failure with the same message throws. Check this prefix again when
+ * the package is upgraded.
+ */
+const TANSTACK_RELOAD_PREFIX = "tanstack_router_reload:";
 
 /** The part of `Storage` that this file uses. */
-export type ChunkStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+export type ChunkStorage = Pick<
+	Storage,
+	"getItem" | "setItem" | "removeItem" | "key" | "length"
+>;
 
 /** What a reload needs. Tests give fakes; the browser gives `browserEnv()`. */
 export type ReloadEnv = {
@@ -108,6 +127,11 @@ export function reloadIfStaleChunk(error: Thrown, env: ReloadEnv): boolean {
 	const { storage } = env;
 	const now = env.now();
 	try {
+		// TanStack already reloaded once for this message. A second reload
+		// would not help: show the error screen.
+		if (storage.getItem(`${TANSTACK_RELOAD_PREFIX}${error.message}`) !== null) {
+			return false;
+		}
 		const last = Number(storage.getItem(GUARD_KEY));
 		// A stamp from the future (the clock moved) or a corrupt one does not block.
 		if (Number.isFinite(last) && last > 0) {
@@ -125,19 +149,79 @@ export function reloadIfStaleChunk(error: Thrown, env: ReloadEnv): boolean {
 	return true;
 }
 
-/** Read the failure that caused the last reload, one time. */
-export function takeStaleChunkReport(
+/** Which path reloaded the page. */
+export type ReloadSource = "router" | "error-screen";
+
+export type StaleChunkReport = { message: string; source: ReloadSource };
+
+/** Messages of stale chunk errors that the error screen already captured. */
+const capturedFaults = new Set<string>();
+
+/**
+ * Whether the error screen must capture this error as a fault. Returns true
+ * once for each stale chunk message in a page load. A later render or a click
+ * on "Try again" gets false. Other errors always get true.
+ */
+export function claimStaleChunkFault(error: Thrown): boolean {
+	if (!isStaleChunkError(error)) return true;
+	if (capturedFaults.has(error.message)) return false;
+	capturedFaults.add(error.message);
+	return true;
+}
+
+const reportedKeys = z.array(z.string());
+
+function readReportedKeys(storage: ChunkStorage): string[] {
+	const raw = storage.getItem(ROUTER_REPORTED_KEY);
+	if (raw === null) return [];
+	const parsed = reportedKeys.safeParse(JSON.parse(raw));
+	return parsed.success ? parsed.data : [];
+}
+
+/** The failures that TanStack reloaded for, each one not yet reported. */
+function takeRouterReports(storage: ChunkStorage): StaleChunkReport[] {
+	const reported = new Set(readReportedKeys(storage));
+	const fresh: string[] = [];
+	for (let i = 0; i < storage.length; i += 1) {
+		const key = storage.key(i);
+		if (key?.startsWith(TANSTACK_RELOAD_PREFIX) && !reported.has(key)) {
+			fresh.push(key);
+		}
+	}
+	if (fresh.length === 0) return [];
+	// The router keys stay in place: they are the router's own loop guard.
+	storage.setItem(ROUTER_REPORTED_KEY, JSON.stringify([...reported, ...fresh]));
+	return fresh.map((key) => ({
+		message: key.slice(TANSTACK_RELOAD_PREFIX.length),
+		source: "router",
+	}));
+}
+
+/**
+ * Read the failures that caused a reload, one time each: the one that the
+ * error screen stored, and each one that TanStack reloaded for.
+ */
+export function takeStaleChunkReports(
 	storage: ChunkStorage | undefined,
-): { message: string } | undefined {
-	if (!storage) return undefined;
+): StaleChunkReport[] {
+	if (!storage) return [];
+	const reports: StaleChunkReport[] = [];
 	try {
 		const raw = storage.getItem(REPORT_KEY);
-		if (raw === null) return undefined;
-		storage.removeItem(REPORT_KEY);
-		const parsed = thrown.safeParse(JSON.parse(raw));
-		if (parsed.success) return { message: parsed.data.message };
+		if (raw !== null) {
+			storage.removeItem(REPORT_KEY);
+			const parsed = thrown.safeParse(JSON.parse(raw));
+			if (parsed.success) {
+				reports.push({ message: parsed.data.message, source: "error-screen" });
+			}
+		}
 	} catch {
 		// A corrupt report is not worth an event.
 	}
-	return undefined;
+	try {
+		reports.push(...takeRouterReports(storage));
+	} catch {
+		// Storage that throws or a corrupt list: no router report.
+	}
+	return reports;
 }
