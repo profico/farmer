@@ -97,5 +97,34 @@ export default defineConfig({
 				],
 			},
 		},
+		{
+			// The push relay serves every farmer server, and the push crypto
+			// package also goes into the mobile app. Neither may contain the
+			// server: not @farmer/core, not the web app. `import type` stays
+			// allowed, because the build erases it.
+			files: ["apps/push-relay/**", "packages/push-crypto/**"],
+			rules: {
+				"no-restricted-imports": [
+					"error",
+					{
+						patterns: [
+							{
+								group: [
+									"@farmer/core",
+									"@farmer/core/**",
+									"web",
+									"web/**",
+									"**/core/src/**",
+									"**/web/src/**",
+								],
+								allowTypeImports: true,
+								message:
+									"The push relay and @farmer/push-crypto must not import the farmer server (@farmer/core or apps/web).",
+							},
+						],
+					},
+				],
+			},
+		},
 	],
 });

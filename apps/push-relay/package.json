@@ -1,0 +1,23 @@
+{
+	"name": "@farmer/push-relay",
+	"private": true,
+	"license": "AGPL-3.0-only",
+	"type": "module",
+	"scripts": {
+		"dev": "bun --watch src/main.ts",
+		"start": "bun run src/main.ts",
+		"build": "bun build src/main.ts --target=bun --outfile dist/relay.js",
+		"test": "bun test",
+		"lint": "oxlint --config ../../oxlint.config.ts .",
+		"format": "oxfmt --write",
+		"check": "oxfmt --check && oxlint --config ../../oxlint.config.ts .",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
+	},
+	"dependencies": {
+		"zod": "4.4.3"
+	},
+	"devDependencies": {
+		"bun-types": "1.4.2",
+		"typescript": "^6.0.2"
+	}
+}

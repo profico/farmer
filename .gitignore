@@ -10,6 +10,10 @@ dist/
 !.env.example
 .DS_Store
 
+# The push relay's SQLite file when it runs from apps/push-relay
+# (RELAY_DB_PATH defaults to ./data/relay.sqlite).
+apps/push-relay/data/
+
 # Agent worktrees. Each one is a full checkout, including a second copy of
 # tools/oxlint/**, which oxlint loads as a duplicate plugin and refuses to run.
 .claude/worktrees/
