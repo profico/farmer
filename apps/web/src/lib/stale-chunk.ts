@@ -225,3 +225,22 @@ export function takeStaleChunkReports(
 	}
 	return reports;
 }
+
+/** The part of a PostHog client that `sendStaleChunkReports` uses. */
+export type ReportSink = {
+	capture: (event: string, properties: StaleChunkReport) => void;
+};
+
+/**
+ * Send one `stale_chunk_reloaded` event for each stored report. Call it only
+ * when the client can capture: before `init` ends, `capture` drops the event,
+ * and the report is already gone from storage.
+ */
+export function sendStaleChunkReports(
+	sink: ReportSink,
+	storage: ChunkStorage | undefined,
+): void {
+	for (const report of takeStaleChunkReports(storage)) {
+		sink.capture("stale_chunk_reloaded", report);
+	}
+}

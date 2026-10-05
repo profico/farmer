@@ -7,6 +7,7 @@ import {
 	RELOAD_WINDOW_MS,
 	reloadIfStaleChunk,
 	claimStaleChunkFault,
+	sendStaleChunkReports,
 	takeStaleChunkReports,
 	type ReloadEnv,
 } from "./stale-chunk.ts";
@@ -302,5 +303,37 @@ describe("takeStaleChunkReport (error screen)", () => {
 		storage.setItem("farmer-stale-chunk-report", "{not json");
 		expect(takeStaleChunkReports(storage)).toEqual([]);
 		expect(takeStaleChunkReports(undefined)).toEqual([]);
+	});
+});
+
+describe("sendStaleChunkReports", () => {
+	test("captures each report as a stale_chunk_reloaded event", () => {
+		const { env, storage } = makeEnv();
+		reloadIfStaleChunk(new Error(CSS), env);
+		storage.setItem(`${ROUTER_KEY}${CHROME}`, "1");
+		const events: { event: string; properties: object }[] = [];
+		sendStaleChunkReports(
+			{ capture: (event, properties) => events.push({ event, properties }) },
+			storage,
+		);
+		expect(events).toEqual([
+			{
+				event: "stale_chunk_reloaded",
+				properties: { message: CSS, source: "error-screen" },
+			},
+			{
+				event: "stale_chunk_reloaded",
+				properties: { message: CHROME, source: "router" },
+			},
+		]);
+	});
+
+	test("sends nothing when storage is missing", () => {
+		const events: string[] = [];
+		sendStaleChunkReports(
+			{ capture: (event) => events.push(event) },
+			undefined,
+		);
+		expect(events).toEqual([]);
 	});
 });
