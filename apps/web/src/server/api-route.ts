@@ -97,7 +97,24 @@ export type ApiRouteSpec<
 	 */
 	raw?: (request: ApiRequest<TParams>) => JsonValue | Promise<JsonValue>;
 	/** The service call. Returns the projection, never a row. */
-	run: (ctx: Ctx, input: z.output<TSchema>) => Promise<TResult>;
+	run: (
+		ctx: Ctx,
+		input: z.output<TSchema>,
+		caller: ApiCaller,
+	) => Promise<TResult>;
+};
+
+/** What a route may know about the credential, past its Ctx. */
+export type ApiCaller = {
+	via: ApiCredentialKind;
+	/**
+	 * Request headers that name the caller's better-auth session, for a write
+	 * that only a better-auth endpoint may make (invitations, roles, removal).
+	 * A browser sends its own cookie. A device-flow or mobile token IS a
+	 * session token, so a cookie is signed from it. An API token has no
+	 * session, so it gets an `AccessError` that says so.
+	 */
+	sessionHeaders: () => Promise<Headers>;
 };
 
 /** The person behind a request to a route with no organization in its path. */
@@ -390,6 +407,105 @@ const readBody = async (request: Request): Promise<JsonValue | null> => {
 	}
 };
 
+/** Step 4 for an org-scoped route: a bearer credential, else the session
+ *  cookie under `cookieUser`'s rules. */
+const orgPrincipal = async (request: Request, orgSlug: string) => {
+	const byToken = await resolveCliOrgContext(request, orgSlug);
+	if (byToken) {
+		return {
+			...byToken.ctx,
+			ctx: byToken.ctx,
+			scope: byToken.scope,
+			via: byToken.via,
+			sessionToken: byToken.sessionToken,
+		};
+	}
+	const user = await cookieUser(request, { writes: true });
+	if (!user) return null;
+	const { orgContextService } = await import("@farmer/core/services");
+	const ctx = await orgContextService.resolveBySlug(
+		user.id,
+		orgSlug,
+		requestActor(request, { via: "api" }),
+	);
+	// A write reaches here only through `provesSameOrigin`, where the
+	// person is at the keyboard on this site: the full reach of their
+	// own session, as in the web app.
+	return ctx
+		? {
+				...ctx,
+				ctx,
+				scope: "write" as const,
+				via: "cookie" as const,
+				sessionToken: null,
+			}
+		: null;
+};
+
+/** Step 6: the body, the `raw` step and the schema. A refusal is a Response;
+ *  anything else is the parsed input. */
+const parseInput = async <TParams extends OrgParams, TSchema extends z.ZodType>(
+	spec: Pick<ApiRouteSpec<TParams, TSchema, never>, "input" | "raw">,
+	request: Request,
+	ctx: Ctx,
+	params: TParams,
+): Promise<
+	{ ok: true; data: z.output<TSchema> } | { ok: false; response: Response }
+> => {
+	const body = await readBody(request);
+	if (body === null) {
+		return {
+			ok: false,
+			response: refuse(422, {
+				error: "The request body is not JSON.",
+				code: "invalid_input",
+			}),
+		};
+	}
+	const query = new URL(request.url).searchParams;
+	const raw = spec.raw
+		? await spec.raw({ ctx, params, query, body })
+		: request.method === "GET"
+			? Object.fromEntries(query)
+			: body;
+	const parsed = spec.input.safeParse(raw);
+	if (!parsed.success) {
+		return {
+			ok: false,
+			response: refuse(422, {
+				error: "The input is not valid.",
+				code: "invalid_input",
+				issues: issuesOf(parsed.error),
+			}),
+		};
+	}
+	return { ok: true, data: parsed.data };
+};
+
+/**
+ * The headers `ApiCaller.sessionHeaders` answers. The request's own headers
+ * are kept, so better-auth's audit hooks see the caller's address and
+ * browser, but never its bearer token.
+ */
+const sessionHeadersOf = async (
+	request: Request,
+	via: ApiCredentialKind,
+	sessionToken: string | null,
+): Promise<Headers> => {
+	if (via === "cookie") return request.headers;
+	if (via === "session" && sessionToken) {
+		const { sessionCookieHeader } = await import("@farmer/core/auth");
+		const headers = new Headers(request.headers);
+		headers.delete("authorization");
+		headers.set("cookie", await sessionCookieHeader(sessionToken));
+		return headers;
+	}
+	const { AccessError } = await import("@farmer/core/services");
+	throw new AccessError(
+		"An API token cannot manage people or invitations. Sign in with `farmer login` or the mobile app.",
+	);
+};
+
 /**
  * A handler for an org-scoped route: `/api/v1/orgs/$orgSlug/…`.
  *
@@ -404,54 +520,49 @@ export const apiRoute =
 	({ request, params }: RouteArgs<TParams>): Promise<Response> =>
 		serve(
 			request,
-			async () => {
-				const byToken = await resolveCliOrgContext(request, params.orgSlug);
-				if (byToken) {
-					return {
-						...byToken.ctx,
-						ctx: byToken.ctx,
-						scope: byToken.scope,
-						via: byToken.via,
-					};
-				}
-				const user = await cookieUser(request, { writes: true });
-				if (!user) return null;
-				const { orgContextService } = await import("@farmer/core/services");
-				const ctx = await orgContextService.resolveBySlug(
-					user.id,
-					params.orgSlug,
-					requestActor(request, { via: "api" }),
-				);
-				// A write reaches here only through `provesSameOrigin`, where the
-				// person is at the keyboard on this site: the full reach of their
-				// own session, as in the web app.
-				return ctx
-					? { ...ctx, ctx, scope: "write" as const, via: "cookie" as const }
-					: null;
+			() => orgPrincipal(request, params.orgSlug),
+			async ({ ctx, via, sessionToken }) => {
+				const input = await parseInput(spec, request, ctx, params);
+				if (!input.ok) return input.response;
+				const caller: ApiCaller = {
+					via,
+					sessionHeaders: () => sessionHeadersOf(request, via, sessionToken),
+				};
+				return respond(await spec.run(ctx, input.data, caller), 200);
 			},
+			request.method !== "GET",
+		);
+
+export type ApiStreamRouteSpec<
+	TParams extends OrgParams,
+	TSchema extends z.ZodType,
+> = Pick<ApiRouteSpec<TParams, TSchema, never>, "input" | "raw"> & {
+	/** Answers with its own Response, a stream. An error it throws before the
+	 *  stream starts is mapped like any other route's. */
+	stream: (
+		ctx: Ctx,
+		input: z.output<TSchema>,
+		request: Request,
+	) => Promise<Response>;
+};
+
+/**
+ * `apiRoute` for a route that streams its answer: the same pipeline (the flag,
+ * the limits, the credential, the read-only refusal, the parse), and then a
+ * Response the route builds itself. Today only the assistant's turn.
+ */
+export const apiStreamRoute =
+	<TSchema extends z.ZodType, TParams extends OrgParams = OrgParams>(
+		spec: ApiStreamRouteSpec<TParams, TSchema>,
+	) =>
+	({ request, params }: RouteArgs<TParams>): Promise<Response> =>
+		serve(
+			request,
+			() => orgPrincipal(request, params.orgSlug),
 			async ({ ctx }) => {
-				const body = await readBody(request);
-				if (body === null) {
-					return refuse(422, {
-						error: "The request body is not JSON.",
-						code: "invalid_input",
-					});
-				}
-				const query = new URL(request.url).searchParams;
-				const raw = spec.raw
-					? await spec.raw({ ctx, params, query, body })
-					: request.method === "GET"
-						? Object.fromEntries(query)
-						: body;
-				const parsed = spec.input.safeParse(raw);
-				if (!parsed.success) {
-					return refuse(422, {
-						error: "The input is not valid.",
-						code: "invalid_input",
-						issues: issuesOf(parsed.error),
-					});
-				}
-				return respond(await spec.run(ctx, parsed.data), 200);
+				const input = await parseInput(spec, request, ctx, params);
+				if (!input.ok) return input.response;
+				return spec.stream(ctx, input.data, request);
 			},
 			request.method !== "GET",
 		);

@@ -15,10 +15,39 @@
  */
 export const MIN_CLI_VERSION = "0.1.0";
 
+/**
+ * The version of the `/api/v1` contract. A `/meta` answer with no
+ * `apiVersion` comes from a server older than the mobile app: treat it as
+ * version 1, which is the member's time loop that the CLI uses.
+ *
+ * Raise it when a route group is added that the mobile app must find. Version
+ * 2 adds capabilities in `whoami`, the clients list and the sign-in methods in
+ * `/meta`.
+ */
+export const API_VERSION = 2;
+
+/** The oldest mobile app that can read this server's responses. Raise it for
+ *  the same reasons as `MIN_CLI_VERSION`. */
+export const MIN_MOBILE_VERSION = "0.1.0";
+
+/** `social` is a built-in provider such as Google. `oidc` is an OpenID
+ *  Connect source that an administrator added. */
+export type ApiSignInMethod = {
+	id: string;
+	name: string;
+	kind: "social" | "oidc";
+};
+
 export type ApiMeta = {
 	app: "farmer";
 	cliEnabled: boolean;
 	minCliVersion: string;
+	apiVersion: number;
+	minMobileVersion: string;
+	/** The provider buttons, in the order the login page draws them. */
+	signInMethods: ApiSignInMethod[];
+	/** Whether this server offers an email and password form. */
+	passwordSignIn: boolean;
 };
 
 const parts = (version: string): [number, number, number] | null => {

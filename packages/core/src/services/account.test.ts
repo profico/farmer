@@ -23,6 +23,8 @@ const GOOGLE_ONLY = "u-ac-google-only";
 const BOTH = "u-ac-both";
 const INTEGRATIONS_ONLY = "u-ac-integrations";
 const OTHER = "u-ac-other";
+const GITHUB_ONLY = "u-ac-github-only";
+const MIXED = "u-ac-mixed";
 
 let harness: TestDb;
 
@@ -45,14 +47,16 @@ beforeAll(async () => {
 		.insert(organization)
 		.values({ id: ORG, name: "Accounts", slug: ORG, createdAt: new Date() });
 	await db.insert(user).values(
-		[GOOGLE_ONLY, BOTH, INTEGRATIONS_ONLY, OTHER].map((id) => ({
-			id,
-			name: id,
-			email: `${id}@example.com`,
-			emailVerified: true,
-			createdAt: new Date(),
-			updatedAt: new Date(),
-		})),
+		[GOOGLE_ONLY, BOTH, INTEGRATIONS_ONLY, OTHER, GITHUB_ONLY, MIXED].map(
+			(id) => ({
+				id,
+				name: id,
+				email: `${id}@example.com`,
+				emailVerified: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			}),
+		),
 	);
 
 	const rows: [string, string][] = [
@@ -63,6 +67,11 @@ beforeAll(async () => {
 		[INTEGRATIONS_ONLY, "github"],
 		[INTEGRATIONS_ONLY, "google-calendar"],
 		[OTHER, "google"],
+		[GITHUB_ONLY, "github"],
+		[MIXED, "credential"],
+		[MIXED, "google"],
+		[MIXED, "github"],
+		[MIXED, "google-calendar"],
 	];
 	await db.insert(account).values(
 		rows.map(([userId, providerId]) => ({
@@ -127,5 +136,39 @@ describe("unlinkGoogle", () => {
 			"github",
 			"google-calendar",
 		]);
+	});
+});
+
+// The REST API's disconnect for an integration. The web page goes through
+// better-auth, which refuses the last account row; this keeps that rule, and it
+// never reaches the Google sign-in row.
+describe("unlinkIntegration", () => {
+	test("removes only the named grant of the caller", async () => {
+		expect(await accountService.unlinkIntegration(ctx(MIXED), "github")).toBe(
+			true,
+		);
+		expect(await providersOf(MIXED)).toEqual([
+			"credential",
+			"google",
+			"google-calendar",
+		]);
+		expect(
+			await accountService.unlinkIntegration(ctx(MIXED), "google-calendar"),
+		).toBe(true);
+		expect(await providersOf(MIXED)).toEqual(["credential", "google"]);
+	});
+
+	test("answers false when the grant is not there", async () => {
+		expect(await accountService.unlinkIntegration(ctx(OTHER), "github")).toBe(
+			false,
+		);
+		expect(await providersOf(OTHER)).toEqual(["google"]);
+	});
+
+	test("refuses the last account row of a person", async () => {
+		await expect(
+			accountService.unlinkIntegration(ctx(GITHUB_ONLY), "github"),
+		).rejects.toThrow("This is your only way to sign in.");
+		expect(await providersOf(GITHUB_ONLY)).toEqual(["github"]);
 	});
 });

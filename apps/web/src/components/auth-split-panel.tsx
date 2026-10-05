@@ -25,6 +25,7 @@ export function AuthSplitPanel({
 	kind = "web",
 	brand,
 	terminalCode,
+	client = "cli",
 	children,
 }: {
 	kind?: "web" | "device";
@@ -41,6 +42,9 @@ export function AuthSplitPanel({
 	brand?: { name: string; logo: string | null } | null;
 	/** The code on the device screens, shown in the terminal card. */
 	terminalCode?: string | null;
+	/** What asks for the sign-in on a device screen. The mobile app has no
+	 *  terminal card, so it gets the day card. */
+	client?: "cli" | "mobile";
 	children: ReactNode;
 }) {
 	return (
@@ -67,7 +71,7 @@ export function AuthSplitPanel({
 					)}
 
 					<div className="fm-auth-preview" aria-hidden>
-						{kind === "device" ? (
+						{kind === "device" && client === "cli" ? (
 							<TerminalCard code={terminalCode ?? null} />
 						) : (
 							<DayCard />
@@ -77,7 +81,12 @@ export function AuthSplitPanel({
 					<div className="fm-auth-foot">
 						{kind === "device" ? (
 							<p className="fm-auth-tagline">
-								Your timesheet, <em>from the terminal.</em>
+								Your timesheet,{" "}
+								<em>
+									{client === "mobile"
+										? "from your phone."
+										: "from the terminal."}
+								</em>
 							</p>
 						) : (
 							<p className="fm-auth-tagline">

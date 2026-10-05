@@ -105,3 +105,11 @@ export const setMemberArchivedInput = z.object({
 	archived: z.boolean(),
 });
 export type SetMemberArchivedInput = z.infer<typeof setMemberArchivedInput>;
+
+// The REST route's role change. It names the person by user id, as every
+// other People route does; the service finds the membership row.
+export const setMemberRoleInput = z.object({
+	userId: z.string().min(1),
+	role: z.enum(["admin", "member"]),
+});
+export type SetMemberRoleInput = z.infer<typeof setMemberRoleInput>;

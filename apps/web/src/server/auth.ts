@@ -117,11 +117,7 @@ export const getMyAccess = createServerFn({ method: "GET" }).handler(
 			canCreateProjects: access.canCreateProjects(),
 			projectRoles,
 			isPmSomewhere: Object.values(projectRoles).includes("pm"),
-			isLeadSomewhere:
-				access.isTeamLead ||
-				Object.values(projectRoles).some(
-					(r) => r === "pm" || r === "team_lead",
-				),
+			isLeadSomewhere: access.isLeadSomewhere,
 			isTeamLead: access.isTeamLead,
 		};
 	},

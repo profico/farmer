@@ -72,7 +72,7 @@ export type PublicAppConfig = {
 	 * (`signInProviders` in `packages/core/src/auth/sign-in-methods.ts`). An id
 	 * and a label each, never a secret. Empty means no provider is configured.
 	 */
-	signInProviders: { id: string; name: string }[];
+	signInProviders: { id: string; name: string; kind: "social" | "oidc" }[];
 	/**
 	 * Whether Google is one of them. `/login` bounces straight to Google, with
 	 * no page, when it is the only way in; see `routes/login.tsx`.

@@ -4,7 +4,12 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { isCliVersionSupported, MIN_CLI_VERSION } from "./meta";
+import {
+	API_VERSION,
+	isCliVersionSupported,
+	MIN_CLI_VERSION,
+	MIN_MOBILE_VERSION,
+} from "./meta";
 
 describe("isCliVersionSupported", () => {
 	test("accepts the minimum itself", () => {
@@ -52,5 +57,18 @@ describe("isCliVersionSupported", () => {
 
 	test("refuses everything when the minimum does not parse", () => {
 		expect(isCliVersionSupported("9.9.9", "not-a-version")).toBe(false);
+	});
+});
+
+describe("the mobile contract", () => {
+	// A server without `apiVersion` counts as version 1, so the first version
+	// that sends the field must be above it.
+	test("API_VERSION is an integer above 1", () => {
+		expect(Number.isInteger(API_VERSION)).toBe(true);
+		expect(API_VERSION).toBeGreaterThan(1);
+	});
+
+	test("MIN_MOBILE_VERSION is a version that the comparison reads", () => {
+		expect(isCliVersionSupported("9.9.9", MIN_MOBILE_VERSION)).toBe(true);
 	});
 });

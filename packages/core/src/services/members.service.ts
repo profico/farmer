@@ -796,4 +796,54 @@ export const membersService = {
 			orderBy: asc(memberTypeHistory.effectiveFrom),
 		});
 	},
+
+	/** The People page: `list`, for an admin only. `list` itself has no check,
+	 *  because `whoami` and the assistant read the caller's own row from it.
+	 *  The REST route reads this one. */
+	people: async (ctx: Ctx): Promise<PersonRow[]> => {
+		await requireAdmin(ctx);
+		return membersService.list(ctx);
+	},
+
+	/** One person for an admin: their row, the history of their type and the
+	 *  people on their team lead list. */
+	profile: async (ctx: Ctx, userId: string) => {
+		await requireAdmin(ctx);
+		const [people, typeHistory, leads] = await Promise.all([
+			membersService.list(ctx),
+			membersService.typeHistory(ctx, userId),
+			teamLeadsService.listPeople(ctx, userId),
+		]);
+		const person = people.find((row) => row.userId === userId);
+		if (!person) throw new Error("Person not found");
+		return { person, typeHistory, leads };
+	},
+
+	/** The pending invitations of the organization, with the state of each
+	 *  email. Read from the table and not through better-auth's
+	 *  `listInvitations`, because that endpoint needs a browser session and a
+	 *  REST caller can hold an API token. Nothing is written here. */
+	listInvitations: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
+		const [rows, emails] = await Promise.all([
+			db.query.invitation.findMany({
+				where: and(
+					eq(invitation.organizationId, ctx.organizationId),
+					eq(invitation.status, "pending"),
+				),
+				orderBy: asc(invitation.createdAt),
+			}),
+			membersService.invitationEmails(ctx),
+		]);
+		return rows.map((row) => ({
+			id: row.id,
+			email: row.email,
+			role: row.role,
+			status: row.status,
+			expiresAt: row.expiresAt,
+			createdAt: row.createdAt,
+			// Null for an invitation made before delivery was tracked.
+			emailDelivery: emails.get(row.id) ?? null,
+		}));
+	},
 };

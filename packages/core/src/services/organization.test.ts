@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { member, organization, user } from "../db/schema/auth";
 import { createTestDb, present, type TestDb } from "../test/harness";
-import { AccessError } from "./access.service";
+import { AccessError, NotAMemberError } from "./access.service";
 import { ctxTimezone, ctxWeekStartsOn } from "./context";
 import { organizationService } from "./organization.service";
 import type { Ctx } from "./types";
@@ -84,10 +84,18 @@ describe("getSettings", () => {
 		});
 	});
 
+	// The admin check runs first, so an org the caller is not in is refused
+	// before the read, and never answers empty.
 	test("an org id that does not exist is an error, not an empty answer", async () => {
 		await expect(
 			organizationService.getSettings(ctx(ADMIN, "og-missing")),
-		).rejects.toThrow("Organization not found");
+		).rejects.toBeInstanceOf(NotAMemberError);
+	});
+
+	test("a member who is not an admin is refused", async () => {
+		await expect(
+			organizationService.getSettings(ctx(MEM)),
+		).rejects.toBeInstanceOf(AccessError);
 	});
 });
 

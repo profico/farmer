@@ -133,15 +133,12 @@ export const inviteMember = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(inviteMemberInput)
 	.handler(async ({ data, context }) => {
-		const { auth } = await import("@farmer/core/auth");
-		const invitation = await auth.api.createInvitation({
-			body: {
-				email: data.email,
-				role: data.role,
-				organizationId: context.ctx.organizationId,
-			},
-			headers: getRequestHeaders(),
-		});
+		const { memberAdmin } = await import("@farmer/core/auth");
+		const invitation = await memberAdmin.invite(
+			context.ctx,
+			getRequestHeaders(),
+			data,
+		);
 		const { getPostHogClient } = await import("../lib/posthog-server");
 		const posthog = getPostHogClient();
 		if (posthog) {
@@ -162,80 +159,52 @@ export const inviteMember = createServerFn({ method: "POST" })
 export const cancelInvitation = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(cancelInvitationInput)
-	.handler(async ({ data: invitationId }) => {
-		const { auth } = await import("@farmer/core/auth");
-		return auth.api.cancelInvitation({
-			body: { invitationId },
-			headers: getRequestHeaders(),
-		});
+	.handler(async ({ data: invitationId, context }) => {
+		const { memberAdmin } = await import("@farmer/core/auth");
+		await memberAdmin.cancel(context.ctx, getRequestHeaders(), invitationId);
 	});
 
-// better-auth's own resend: `createInvitation` with `resend: true` moves the
-// expiry forward and runs `sendInvitationEmail` again, which sends both the
-// email and the Slack DM. It takes the address rather than the id, so the id is
-// resolved first, inside this org.
+// `memberAdmin.resend` is better-auth's own resend: it moves the expiry
+// forward and sends the email and the Slack DM again.
 export const resendInvitation = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(resendInvitationInput)
 	.handler(async ({ data: invitationId, context }) => {
-		const [{ auth }, { membersService }] = await Promise.all([
-			import("@farmer/core/auth"),
-			import("@farmer/core/services"),
-		]);
-		const pending = await membersService.pendingInvitation(
-			context.ctx,
-			invitationId,
-		);
-		if (!pending) throw new Error("This invitation is no longer pending.");
-		return auth.api.createInvitation({
-			body: {
-				email: pending.email,
-				role: pending.role,
-				organizationId: context.ctx.organizationId,
-				resend: true,
-			},
-			headers: getRequestHeaders(),
-		});
+		const { memberAdmin } = await import("@farmer/core/auth");
+		await memberAdmin.resend(context.ctx, getRequestHeaders(), invitationId);
 	});
+
+// The People page names a person by membership row id (or email), and
+// `memberAdmin` by user id, so the id is resolved first, inside this org.
+const userIdOf = async (
+	ctx: { organizationId: string; userId: string },
+	memberIdOrEmail: string,
+) => {
+	const { membersService } = await import("@farmer/core/services");
+	const userId = await membersService.resolveUserId(ctx, memberIdOrEmail);
+	if (!userId) throw new Error("Person not found");
+	return userId;
+};
 
 export const removeMember = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(removeMemberInput)
 	.handler(async ({ data: memberIdOrEmail, context }) => {
-		const [{ auth }, { membersService, teamLeadsService }] = await Promise.all([
-			import("@farmer/core/auth"),
-			import("@farmer/core/services"),
-		]);
-		// Resolved before the removal, since `team_lead_person` is keyed on user
-		// id and the membership row (the only thing that maps memberIdOrEmail to
-		// it) is gone once `removeMember` succeeds.
-		const userId = await membersService.resolveUserId(
+		const { memberAdmin } = await import("@farmer/core/auth");
+		await memberAdmin.remove(
 			context.ctx,
-			memberIdOrEmail,
+			getRequestHeaders(),
+			await userIdOf(context.ctx, memberIdOrEmail),
 		);
-		const result = await auth.api.removeMember({
-			body: { memberIdOrEmail, organizationId: context.ctx.organizationId },
-			headers: getRequestHeaders(),
-		});
-		// A stale list row is what let a re-invited lead silently regain their
-		// old people, or a returning person silently reappear on one.
-		if (userId) {
-			await teamLeadsService.removeFromAllLists(context.ctx, userId);
-		}
-		return result;
 	});
 
 export const updateMemberRole = createServerFn({ method: "POST" })
 	.middleware([orgAdminMiddleware])
 	.validator(updateMemberRoleInput)
 	.handler(async ({ data, context }) => {
-		const { auth } = await import("@farmer/core/auth");
-		return auth.api.updateMemberRole({
-			body: {
-				memberId: data.memberId,
-				role: data.role,
-				organizationId: context.ctx.organizationId,
-			},
-			headers: getRequestHeaders(),
+		const { memberAdmin } = await import("@farmer/core/auth");
+		await memberAdmin.setRole(context.ctx, getRequestHeaders(), {
+			userId: await userIdOf(context.ctx, data.memberId),
+			role: data.role,
 		});
 	});

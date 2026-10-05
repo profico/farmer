@@ -20,7 +20,7 @@ import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { CLI_CLIENT_ID } from "../api/errors";
+import { DEVICE_CLIENT_IDS } from "../api/errors";
 import { db } from "../db";
 import * as schema from "../db/schema/auth";
 import { memberProfile } from "../db/schema/people";
@@ -86,9 +86,12 @@ import {
 } from "./sign-in-methods";
 
 export type { McpConsentRequest } from "./mcp-consent";
+export { memberAdmin } from "./member-admin";
+export { sessionCookieHeader } from "./session-cookie";
 export { mayClaimInvitation } from "./registration";
 export {
 	type PasswordSignIn,
+	passwordOffered,
 	passwordSignIn,
 	type SignInProvider,
 	signInProviders,
@@ -982,9 +985,10 @@ const buildAuth = () => {
 			// one API surface needs, and it would break the credential order that
 			// `resolveMcpOrgContext` relies on.
 			//
-			// `validateClient` accepts only the CLI's own id. Nothing else in this app
-			// runs the device flow, and an open client list is a code any third party
-			// can start and then phish somebody into approving.
+			// `validateClient` accepts only the ids in `DEVICE_CLIENT_IDS`: the CLI
+			// and the mobile app. Nothing else in this app runs the device flow, and
+			// an open client list is a code any third party can start and then phish
+			// somebody into approving.
 			//
 			// `expiresIn: "10m"`, down from the plugin's 30. The code lifetime is the
 			// phishing window: an attacker who starts a flow must get the person to
@@ -994,7 +998,7 @@ const buildAuth = () => {
 			// Mounted whatever `CLI_ENABLED` says, like `mcp` above; the catch-all
 			// auth route answers 404 for these paths when the flag is off.
 			deviceAuthorization({
-				validateClient: (clientId) => clientId === CLI_CLIENT_ID,
+				validateClient: (clientId) => DEVICE_CLIENT_IDS.includes(clientId),
 				expiresIn: "10m",
 				verificationUri: "/device",
 			}),

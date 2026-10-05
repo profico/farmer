@@ -1,4 +1,4 @@
-import type { ApiWhoami } from "@farmer/core/api";
+import { type ApiWhoami, toApiCapabilities } from "@farmer/core/api";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { apiRoute, NO_INPUT } from "#/server/api-route.ts";
@@ -55,6 +55,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/whoami")({
 						organization: org,
 						orgRole: me?.orgRole ?? null,
 						isAdmin: access.isAdmin,
+						capabilities: toApiCapabilities(access),
 						timezone,
 						today: dayKeyInTz(new Date(), timezone),
 						weekStartsOn,

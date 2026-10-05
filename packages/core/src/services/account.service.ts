@@ -25,6 +25,9 @@ export type SignInMethods = {
 	providers: { id: string; name: string; linked: boolean }[];
 };
 
+/** The account rows that connect an integration, not a way to sign in. */
+export type IntegrationProvider = "github" | "google-calendar";
+
 export const accountService = {
 	signInMethods: async (ctx: Ctx): Promise<SignInMethods> => {
 		// Read the account table directly rather than auth.api.listUserAccounts,
@@ -48,6 +51,42 @@ export const accountService = {
 					linked: providers.has(provider.id),
 				})),
 		};
+	},
+
+	/**
+	 * Disconnect the caller's GitHub or Google Calendar grant. The web page
+	 * does this through better-auth's `/unlink-account`, which needs a browser
+	 * session; the REST API has only a `Ctx`, so it comes here.
+	 *
+	 * The same rule as better-auth: the last account row of a person is
+	 * refused, because without it the person has no way to sign in. Only the
+	 * two integration providers are accepted, so this can never remove the
+	 * Google sign-in row (that is `unlinkGoogle`, with its own rule).
+	 *
+	 * Not in the audit log: an integration grant is not a sign-in method (see
+	 * `docs/domains/audit-log.md`). Answers whether a row was removed.
+	 */
+	unlinkIntegration: async (
+		ctx: Ctx,
+		providerId: IntegrationProvider,
+	): Promise<boolean> => {
+		const rows = await db.query.account.findMany({
+			where: eq(account.userId, ctx.userId),
+			columns: { providerId: true },
+		});
+		if (!rows.some((row) => row.providerId === providerId)) return false;
+		if (rows.length === 1) {
+			throw new Error(
+				"This is your only way to sign in. Add another sign-in method before you disconnect it.",
+			);
+		}
+		const removed = await db
+			.delete(account)
+			.where(
+				and(eq(account.userId, ctx.userId), eq(account.providerId, providerId)),
+			)
+			.returning({ id: account.id });
+		return removed.length > 0;
 	},
 
 	// Guarded server-side unlink for the Google login identity. Refuses to remove

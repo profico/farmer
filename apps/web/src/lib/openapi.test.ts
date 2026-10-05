@@ -62,4 +62,95 @@ describe("the OpenAPI document", () => {
 		);
 		expect(TimeEntryPatch?.required).toBeUndefined();
 	});
+
+	// A route takes these ids from its path and overwrites a value in the
+	// body, so a body that lists them would tell a client to send them.
+	test("leaves the path's ids out of every body", () => {
+		const { schemas } = buildOpenApiDocument().components;
+		const cases = [
+			["ClientPatch", ["clientId"]],
+			["ProjectPatch", ["projectId"]],
+			["NewProjectMember", ["projectId"]],
+			["ProjectMemberRole", ["projectId", "userId"]],
+			["TaskPatch", ["taskId"]],
+			["PersonRole", ["userId"]],
+			["TeamLeadPeople", ["leadUserId"]],
+		] as const;
+		for (const [id, fields] of cases) {
+			const properties = Object.keys(schemas[id]?.properties ?? {});
+			expect(properties.length).toBeGreaterThan(0);
+			for (const field of fields) {
+				expect(properties).not.toContain(field);
+				expect(schemas[id]?.required ?? []).not.toContain(field);
+			}
+		}
+		expect(schemas.ProjectMemberRole?.required).toContain("role");
+	});
+
+	// A route that only some people may call says who, and documents its 403.
+	test("names who may call a restricted read", () => {
+		const document = buildOpenApiDocument();
+		const people = document.paths["/orgs/{orgSlug}/people"]?.get;
+		expect(people?.description).toContain("**Who:** An admin.");
+		expect(Object.keys(people?.responses ?? {})).toContain("403");
+		const entries = document.paths["/orgs/{orgSlug}/time-entries"]?.get;
+		expect(Object.keys(entries?.responses ?? {})).not.toContain("403");
+	});
+
+	// The mobile app reads these before it shows a screen. A field that falls out
+	// of the document falls out of the generated client with it.
+	test("documents the mobile contract in Meta and Whoami", () => {
+		const { Meta, Whoami } = buildOpenApiDocument().components.schemas;
+		expect(Object.keys(Meta?.properties ?? {})).toEqual(
+			expect.arrayContaining([
+				"apiVersion",
+				"minMobileVersion",
+				"signInMethods",
+				"passwordSignIn",
+			]),
+		);
+		expect(Whoami?.required).toContain("capabilities");
+	});
+
+	// A secret goes out only in the two answers that make one. A field named
+	// like a secret on any other response is a leak waiting for a client. A
+	// request body may carry one: that is how a key goes in.
+	test("puts a secret only in the answers that make one", () => {
+		const document = buildOpenApiDocument();
+		const responses = JSON.stringify(
+			Object.values(document.paths).flatMap((methods) =>
+				Object.values(methods).map((op) => op.responses["200"]),
+			),
+		);
+		const answered = new Set(
+			[...responses.matchAll(/"#\/components\/schemas\/(\w+)"/g)].map(
+				([, id]) => id,
+			),
+		);
+		const withSecret = Object.entries(document.components.schemas)
+			.filter(
+				([id, schema]) =>
+					answered.has(id) &&
+					Object.keys(schema.properties ?? {}).some((field) =>
+						/secret$|token$|apikey$|password$/i.test(field),
+					),
+			)
+			.map(([id]) => id)
+			.sort();
+		expect(withSecret).toEqual(["WebhookEndpointCreated", "WebhookSecret"]);
+	});
+
+	test("documents the assistant's turn as a stream of events", () => {
+		const { paths } = buildOpenApiDocument();
+		for (const path of [
+			"/orgs/{orgSlug}/assistant/threads/{id}/messages",
+			"/orgs/{orgSlug}/assistant/threads/{id}/approvals",
+		]) {
+			expect(paths[path]?.post?.responses["200"]?.content).toEqual({
+				"text/event-stream": {
+					schema: { $ref: "#/components/schemas/AssistantEvent" },
+				},
+			});
+		}
+	});
 });
