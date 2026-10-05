@@ -24,7 +24,9 @@ WORKDIR /app
 COPY package.json bun.lock turbo.json ./
 COPY apps/web/package.json apps/web/
 COPY apps/cli/package.json apps/cli/
+COPY apps/mobile/package.json apps/mobile/
 COPY apps/push-relay/package.json apps/push-relay/
+COPY packages/api-client/package.json packages/api-client/
 COPY packages/core/package.json packages/core/
 COPY packages/push-crypto/package.json packages/push-crypto/
 # The same retry loop as the root Dockerfile, for the same reason: a shared
