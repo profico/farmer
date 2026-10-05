@@ -251,6 +251,14 @@ export const listAbsenceForUserInput = z.object({
 });
 export type ListAbsenceForUserInput = z.infer<typeof listAbsenceForUserInput>;
 
+// The caller's own month of absence (`GET /api/v1/…/absences`). The same read
+// with no `userId`: the route fills in the caller, so a token cannot ask for
+// another person's time off through it.
+export const listMyAbsenceInput = listAbsenceForUserInput.omit({
+	userId: true,
+});
+export type ListMyAbsenceInput = z.infer<typeof listMyAbsenceInput>;
+
 // "How much vacation have I taken this year" — a whole year, grouped by task,
 // which is the question people actually ask and which the month-shaped read
 // above answers only twelve calls at a time. `userId` defaults to the caller.

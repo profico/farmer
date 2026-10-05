@@ -34,6 +34,39 @@
  *   POST   orgs/$slug/timer/resume               ApiTimerState
  *   POST   orgs/$slug/timer/confirm              ApiTimeEntry (stop and log)
  *   DELETE orgs/$slug/timer                      ApiTimerState (discard or dismiss)
+ *   GET    orgs/$slug/timer/settings             ApiTimerSettings
+ *   PATCH  orgs/$slug/timer/settings             ApiTimerSettings
+ *   GET    orgs/$slug/home                       ApiHome
+ *   GET    orgs/$slug/preferences/notifications  ApiNotificationSettings
+ *   PATCH  orgs/$slug/preferences/notifications  ApiNotificationSettings
+ *   GET    orgs/$slug/preferences/hidden-tasks   ApiHiddenTasks
+ *   POST   orgs/$slug/preferences/hidden-tasks   ApiHiddenTasks (hide or show one)
+ *   DELETE orgs/$slug/preferences/hidden-tasks   ApiHiddenTasks (show all)
+ *   GET    orgs/$slug/filing-rules               ApiFilingRule[]
+ *   PATCH  orgs/$slug/filing-rules/$id           ApiFilingRule
+ *   DELETE orgs/$slug/filing-rules/$id           ApiDeleted
+ *   GET    orgs/$slug/working-hours              ApiWorkingHoursDay[]
+ *   PATCH  orgs/$slug/working-hours              ApiWorkingHoursDay (one day)
+ *   GET    orgs/$slug/recurring-blocks           ApiRecurringBlock[]
+ *   POST   orgs/$slug/recurring-blocks           ApiRecurringBlock
+ *   POST   orgs/$slug/recurring-blocks/break     ApiRecurringBlock
+ *   PATCH  orgs/$slug/recurring-blocks/$id       ApiRecurringBlock
+ *   DELETE orgs/$slug/recurring-blocks/$id       ApiDeleted
+ *   GET    orgs/$slug/holidays?year              ApiHoliday[]
+ *   GET    orgs/$slug/holidays/range?from&to     ApiHolidayDay[]
+ *   GET    orgs/$slug/integrations               ApiIntegrations
+ *   PATCH  orgs/$slug/integrations/settings      ApiIntegrationSettingsResult
+ *   DELETE orgs/$slug/integrations/github        ApiIntegrations
+ *   DELETE orgs/$slug/integrations/google-calendar ApiIntegrations
+ *   GET    orgs/$slug/projects/$id               ApiProjectDetail
+ *   GET    orgs/$slug/projects/$id/overview      ApiProjectOverview
+ *   GET    orgs/$slug/reports/time               ApiTimeReport
+ *   GET    orgs/$slug/reports/time/detail        ApiTimeReportDetail
+ *   GET    orgs/$slug/reports/overtime           ApiOvertimeReport
+ *   GET    orgs/$slug/reports/tracking           ApiTrackingReport
+ *   GET    orgs/$slug/reports/absence            ApiAbsenceReport
+ *   GET    orgs/$slug/absences?year&month        ApiAbsenceEntry[]
+ *   GET    orgs/$slug/rewind?year                ApiRewind
  *
  * Any failure answers `ApiError` with a status: 401 unauthorized, 403
  * forbidden, 404 not_found, 422 invalid_input, 426 cli_outdated, 429
@@ -42,8 +75,14 @@
 
 export * from "./catalogue";
 export * from "./errors";
+export * from "./home";
 export * from "./me";
 export * from "./meta";
+export * from "./preferences";
+export * from "./project-detail";
+export * from "./reports";
+export * from "./rewind";
+export * from "./schedule";
 export * from "./time-entries";
 export * from "./timer";
 export * from "./tokens";
