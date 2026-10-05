@@ -641,6 +641,16 @@ export class FarmerClient {
 		);
 	}
 
+	/** List projects, with their stats, type, icon and money. `projects`
+	 *  reads the same route with the short shape of API version 1. */
+	listProjects(slug: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, "/projects"),
+			projectDetailSchema.array(),
+		);
+	}
+
 	/** Create a project. */
 	createProject(slug: string, body: NewProject) {
 		return this.#request(
