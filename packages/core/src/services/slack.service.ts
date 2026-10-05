@@ -222,6 +222,7 @@ export const slackService = {
 	 *  timeout. A match they already have is kept, so restoring one needs no
 	 *  re-match unless their Slack account changed. */
 	syncIdentities: async (ctx: Ctx): Promise<number> => {
+		await requireAdmin(ctx);
 		const installation = await slackService.installationFor(ctx.organizationId);
 		if (!installation) return 0;
 

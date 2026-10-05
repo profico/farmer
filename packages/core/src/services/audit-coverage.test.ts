@@ -184,7 +184,7 @@ const SERVICES = {
 		coverage: {
 			recorded: { update: true },
 			exempt: {},
-			reads: ["get", "preview"],
+			reads: ["get", "getForAdmin", "preview"],
 		},
 	},
 	assistantSettings: {
@@ -227,6 +227,7 @@ const SERVICES = {
 			reads: [
 				"connectionStatus",
 				"listInstallations",
+				"installUrl",
 				"listAvailableRepos",
 				"listLinkedRepos",
 				"projectsForRepository",

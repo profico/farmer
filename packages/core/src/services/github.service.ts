@@ -22,6 +22,8 @@ import {
 	GithubRateLimitError,
 	GithubTokenInvalidError,
 } from "../lib/github-client";
+import { setting } from "../lib/instance-settings";
+import { signOrgState } from "../lib/oauth-state";
 import { dayBoundsInTz, dayKeyInTz } from "../lib/time";
 import { UserFacingError } from "../lib/user-facing-error";
 import {
@@ -800,11 +802,28 @@ export const githubService = {
 	},
 
 	// ── Org installations (per org, one-or-many) ─────────────────────────────
+	// Admin only, here and not only at the web middleware: the REST API reads
+	// this too, and it has no admin middleware in front of it.
 	listInstallations: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
 		return db.query.orgGithubInstallation.findMany({
 			where: eq(orgGithubInstallation.organizationId, ctx.organizationId),
 			orderBy: desc(orgGithubInstallation.createdAt),
 		});
+	},
+
+	/**
+	 * The "Install the GitHub App" URL. The org and the admin are signed into
+	 * `state`, so `api/github/setup` attaches the installation to the workspace
+	 * the admin started from. The same shape as `slackService.installUrl`.
+	 */
+	installUrl: async (ctx: Ctx) => {
+		await requireAdmin(ctx);
+		const slug = setting("GITHUB_APP_SLUG");
+		if (!slug) throw new Error("GITHUB_APP_SLUG not configured");
+		const url = new URL(`https://github.com/apps/${slug}/installations/new`);
+		url.searchParams.set("state", signOrgState(ctx.organizationId, ctx.userId));
+		return { url: url.toString() };
 	},
 
 	// Attach a freshly-installed installation to this org. Authorization is two
