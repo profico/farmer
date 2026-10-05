@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { appTargetOf, timerPayload } from "./payload";
+import { appTargetOf, isSurfaceStop, timerPayload } from "./payload";
 
 describe("appTargetOf", () => {
 	test("maps the Server's web paths to app routes", () => {
@@ -51,5 +51,30 @@ describe("timerPayload", () => {
 		expect(timerPayload.parse({ kind: "timer", event: "end" }).event).toBe(
 			"end",
 		);
+	});
+});
+
+describe("isSurfaceStop", () => {
+	test("matches Stop from a timer surface in every URL form", () => {
+		for (const url of [
+			"farmer://stop-timer?source=timer-surface",
+			"farmer:///stop-timer?source=timer-surface",
+			"farmer://stop-timer/?source=timer-surface&x=1",
+			"exp://192.168.1.2:8081/--/stop-timer?source=timer-surface",
+		]) {
+			expect(isSurfaceStop(url)).toBe(true);
+		}
+	});
+
+	test("does not match another link", () => {
+		for (const url of [
+			"farmer://stop-timer",
+			"farmer://stop-timer?source=other",
+			"farmer://start-timer?source=timer-surface",
+			"farmer://",
+			"exp://192.168.1.2:8081/--/?source=timer-surface",
+		]) {
+			expect(isSurfaceStop(url)).toBe(false);
+		}
 	});
 });

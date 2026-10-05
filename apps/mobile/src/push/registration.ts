@@ -148,8 +148,14 @@ const ensureRelay = async (
 	pushToken: string,
 ): Promise<RelayRegistration | null> => {
 	const platform = Platform.OS === "ios" ? "ios" : "android";
-	const startToken = platform === "ios" ? pushToStartToken() : null;
 	const stored = await readRelay();
+	// ActivityKit can answer no push-to-start token early in a process, while
+	// the stored one is still valid. Keep the stored one then: a null here
+	// would clear it on the relay. Only a sign-out removes it (DELETE).
+	const startToken =
+		platform === "ios"
+			? (pushToStartToken() ?? stored?.pushToStartToken ?? null)
+			: null;
 	const now = Date.now();
 
 	if (stored && stored.relayUrl === relayUrl) {
@@ -159,7 +165,7 @@ const ensureRelay = async (
 		const update: RelayUpdate = { pushToken };
 		if (platform === "ios") {
 			update.apnsEnvironment = apnsEnvironment();
-			update.liveActivityPushToStartToken = startToken;
+			if (startToken) update.liveActivityPushToStartToken = startToken;
 		}
 		const answer = await updateRelay(relayUrl, stored, update);
 		if (answer === "ok") {

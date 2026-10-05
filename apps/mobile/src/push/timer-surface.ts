@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 import { LiveActivity } from "../../modules/live-activity";
 import { TimerNotification } from "../../modules/timer-notification";
 import { USER_AGENT } from "../config";
-import type { TimerContentState } from "./payload";
+import { SURFACE_SOURCE, type TimerContentState } from "./payload";
 import { deleteItem, KEYS, writeItem } from "./storage";
 
 /**
@@ -26,9 +26,6 @@ export type TimerSurface = {
 	project: string | null;
 	task: string;
 };
-
-/** The query parameter that marks a link from a timer surface. */
-export const SURFACE_SOURCE = "timer-surface";
 
 /** The surface of a timer that the API answered at `receivedAt`. Null for a
  *  dropped timer: it measures nothing, and the app shows its notice. */

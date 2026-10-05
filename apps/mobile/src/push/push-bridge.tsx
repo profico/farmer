@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { LiveActivity } from "../../modules/live-activity";
 import { useSession } from "../session/session";
-import { appTargetOf, localAlertData } from "./payload";
+import { appTargetOf, isSurfaceStop, localAlertData } from "./payload";
 import { onTimerPush } from "./receive";
 import {
 	askAfterFirstTimer,
@@ -27,7 +27,6 @@ import {
 	clearTimerSurface,
 	shareCredential,
 	showTimerSurface,
-	SURFACE_SOURCE,
 	surfaceOfTimer,
 } from "./timer-surface";
 
@@ -116,6 +115,8 @@ export function PushBridge() {
 
 	// Each change of a cached timer updates the surface.
 	useEffect(() => {
+		// Whether each cached timer query held a timer, to find a start.
+		const hadTimer = new Map<string, boolean>();
 		return queryClient.getQueryCache().subscribe((event) => {
 			if (event.type !== "updated" || event.action.type !== "success") return;
 			if (!isTimerKey(event.query.queryKey)) return;
@@ -127,9 +128,16 @@ export function PushBridge() {
 				: null;
 			if (surface) showTimerSurface(surface);
 			else clearTimerSurface();
-			// A start in the app sets the answer by hand (`setQueryData`). The
-			// first one is the moment to ask for notifications.
-			if (timer && !timer.paused && event.action.manual) {
+			// A start in the app sets the answer by hand (`setQueryData`), on a
+			// query that held no timer. The first one is the moment to ask for
+			// notifications.
+			const started =
+				timer !== null &&
+				!timer.paused &&
+				event.action.manual === true &&
+				hadTimer.get(event.query.queryHash) === false;
+			hadTimer.set(event.query.queryHash, timer !== null);
+			if (started) {
 				void askAfterFirstTimer().then((asked) => {
 					const { origin: o, token: t } = live.current;
 					if (asked && o && t) void syncPush({ origin: o, token: t });
@@ -201,13 +209,7 @@ export function PushBridge() {
 		if (!signedIn) return;
 		const hold = async (url: string | null) => {
 			if (!url) return;
-			const parsed = Linking.parse(url);
-			if (
-				parsed.path !== "stop-timer" ||
-				parsed.queryParams?.source !== SURFACE_SOURCE
-			) {
-				return;
-			}
+			if (!isSurfaceStop(url)) return;
 			const { client: c, origin: o, workspace: current } = live.current;
 			if (!c || !o || !current) return;
 			try {

@@ -78,3 +78,24 @@ export const appTargetOf = (url: string | undefined): AppTarget => {
 			return { path: "/", workspace };
 	}
 };
+
+/** The query parameter that marks a link from a timer surface (the
+ *  notification or the Live Activity). */
+export const SURFACE_SOURCE = "timer-surface";
+
+/**
+ * Whether a link is Stop on a timer surface. Parsed here as a string:
+ * `expo-linking` puts the first segment of `farmer://stop-timer` in the host
+ * and not in the path, and a development build adds an `exp://host/--/`
+ * prefix.
+ */
+export const isSurfaceStop = (url: string): boolean => {
+	const [location = "", query = ""] = url.split("?", 2);
+	const afterScheme = location.replace(/^[a-z][a-z0-9+.-]*:/i, "");
+	const marker = afterScheme.lastIndexOf("/--/");
+	const path = (marker >= 0 ? afterScheme.slice(marker + 4) : afterScheme)
+		.replace(/^\/+/, "")
+		.replace(/\/+$/, "");
+	if (path !== "stop-timer") return false;
+	return query.split("&").some((pair) => pair === `source=${SURFACE_SOURCE}`);
+};
