@@ -316,8 +316,9 @@ export type PeriodTarget = {
 	workingDaysThroughToday: number;
 	/** The whole period's target, or null when no target applies. */
 	targetSeconds: number | null;
-	/** Where they should be by today, from the working days elapsed above. This
-	 *  is the figure the verdict is read from. */
+	/** The target for the working days BEFORE today, from the working days
+	 *  elapsed above. The verdict is read from this figure. On the first
+	 *  working day of a period it is 0. It is not the goal through today. */
 	targetSoFarSeconds: number | null;
 	/** The goal the person reads: `targetSoFarSeconds` plus today's own
 	 *  working day, or the same figure when today is a weekend or a public

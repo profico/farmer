@@ -328,9 +328,31 @@ const apiPeriod = named(
 			from: dayKey,
 			to: dayKey,
 			workingDays: z.number().int(),
-			workingDaysElapsed: z.number().int(),
+			workingDaysElapsed: z
+				.number()
+				.int()
+				.describe("Working days before today."),
+			workingDaysThroughToday: z
+				.number()
+				.int()
+				.describe(
+					"Working days before today, plus today when today is a working day.",
+				),
 			targetSeconds: z.number().int().nullable(),
-			targetSoFarSeconds: z.number().int().nullable(),
+			targetSoFarSeconds: z
+				.number()
+				.int()
+				.nullable()
+				.describe(
+					"The target for the working days before today. The status compares against this. It is 0 on the first working day of a period.",
+				),
+			targetThroughTodaySeconds: z
+				.number()
+				.int()
+				.nullable()
+				.describe(
+					"The goal including today: what the person should have logged by the end of today. The status does not read it.",
+				),
 			workSeconds: z.number().int(),
 			timeOffSeconds: z.number().int(),
 			totalSeconds: z.number().int(),

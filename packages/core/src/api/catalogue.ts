@@ -65,8 +65,10 @@ export type ApiPeriod = {
 	to: string;
 	workingDays: number;
 	workingDaysElapsed: number;
+	workingDaysThroughToday: number;
 	targetSeconds: number | null;
 	targetSoFarSeconds: number | null;
+	targetThroughTodaySeconds: number | null;
 	workSeconds: number;
 	timeOffSeconds: number;
 	totalSeconds: number;
@@ -80,8 +82,10 @@ export const toApiPeriod = (period: PeriodTarget): ApiPeriod => ({
 	to: period.to,
 	workingDays: period.workingDays,
 	workingDaysElapsed: period.workingDaysElapsed,
+	workingDaysThroughToday: period.workingDaysThroughToday,
 	targetSeconds: period.targetSeconds,
 	targetSoFarSeconds: period.targetSoFarSeconds,
+	targetThroughTodaySeconds: period.targetThroughTodaySeconds,
 	workSeconds: period.workSeconds,
 	timeOffSeconds: period.timeOffSeconds,
 	totalSeconds: period.totalSeconds,

@@ -13,6 +13,7 @@ import {
 	beforeEach,
 	describe,
 	expect,
+	setSystemTime,
 	test,
 } from "bun:test";
 
@@ -608,6 +609,32 @@ describe("the tools that carry the rule to the assistant", () => {
 
 		const diligent = report.rows.find((row) => row.userId === DILIGENT);
 		expect(diligent?.monthTargetHours).toBe(176);
+	});
+
+	test("my_targets on a Monday carries the goal through today, not only the verdict's 0", async () => {
+		// Issue #105 on the assistant path. On the first working day of a week
+		// the target so far is 0, and a model that read only that figure told
+		// the person that they owed nothing.
+		await setFund(176 * H);
+		setSystemTime(new Date("2026-04-13T09:00:00Z"));
+		let result: unknown;
+		try {
+			result = await findTool("my_targets")?.run(ctxOf(DILIGENT), {});
+		} finally {
+			setSystemTime();
+		}
+		// SAFETY: the projection is fixed in assistant-tools.ts, and the
+		// expectations name every field they read.
+		const mine = result as {
+			week: {
+				workingDaysThroughToday: number;
+				targetSoFarHours: number | null;
+				targetThroughTodayHours: number | null;
+			};
+		};
+		expect(mine.week.targetSoFarHours).toBe(0);
+		expect(mine.week.targetThroughTodayHours).toBe(8);
+		expect(mine.week.workingDaysThroughToday).toBe(1);
 	});
 
 	test("the report goes to the people who act on it, my_targets to everyone", async () => {
