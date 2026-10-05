@@ -181,6 +181,29 @@ describe("memberAdmin", () => {
 		).rejects.toBeInstanceOf(AccessError);
 	});
 
+	test("a member who is not an admin cannot tell a real invitation id from an unknown one", async () => {
+		const created = await memberAdmin.invite(ctx(ownerId), headers, {
+			email: "probe@example.com",
+			role: "member",
+		});
+		const answer = async (call: Promise<unknown>) =>
+			call.then(
+				() => null,
+				(error: Error) => error,
+			);
+		for (const action of ["resend", "cancel"] as const) {
+			const real = await answer(
+				memberAdmin[action](ctx(BOB), headers, created.id),
+			);
+			const unknown = await answer(
+				memberAdmin[action](ctx(BOB), headers, "i-ma-unknown"),
+			);
+			expect(real).toBeInstanceOf(AccessError);
+			expect(unknown).toBeInstanceOf(AccessError);
+			expect(real?.message).toBe(unknown?.message);
+		}
+	});
+
 	test("cancel takes only an invitation of this organization", async () => {
 		await expect(
 			memberAdmin.cancel(ctx(ownerId), headers, "i-ma-owner"),

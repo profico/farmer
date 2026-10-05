@@ -81,6 +81,7 @@ export const memberAdmin = {
 	 *  the expiry forward and sends the email and the Slack message again. It
 	 *  takes the address, so the id is resolved first, inside this org. */
 	resend: async (ctx: Ctx, headers: Headers, invitationId: string) => {
+		await requireAdmin(ctx);
 		const pending = await membersService.pendingInvitation(ctx, invitationId);
 		if (!pending) throw new Error("Invitation not found");
 		return viaBetterAuth(() =>
@@ -99,6 +100,7 @@ export const memberAdmin = {
 	/** Only a pending invitation of this org. An id from another org is the
 	 *  same 404 as an id that does not exist. */
 	cancel: async (ctx: Ctx, headers: Headers, invitationId: string) => {
+		await requireAdmin(ctx);
 		const pending = await membersService.pendingInvitation(ctx, invitationId);
 		if (!pending) throw new Error("Invitation not found");
 		await viaBetterAuth(() =>
