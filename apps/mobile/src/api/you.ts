@@ -217,8 +217,11 @@ export const useDeleteFilingRule = () => {
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: (id: string) => w.client.deleteFilingRule(w.slug, id),
-		onSuccess: () =>
-			queryClient.invalidateQueries({ queryKey: keys(w).filingRules }),
+		// Not awaited: the sheet of the rule closes first, so it does not
+		// show "gone" while the list is read again.
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: keys(w).filingRules });
+		},
 	});
 };
 
@@ -347,7 +350,11 @@ export const useDeleteRecurringBlock = () => {
 	const settled = useBlockSettled();
 	return useMutation({
 		mutationFn: (id: string) => w.client.deleteRecurringBlock(w.slug, id),
-		onSuccess: settled,
+		// Not awaited, so the sheet of the block closes before the list is
+		// read again.
+		onSuccess: () => {
+			void settled();
+		},
 	});
 };
 
