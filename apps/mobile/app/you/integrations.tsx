@@ -184,7 +184,7 @@ export default function IntegrationsScreen() {
 				) : null}
 				{github.connected && !github.needsReconnect ? (
 					<SettingsSwitch
-						title="Load commits"
+						title="Auto-load commits"
 						subtitle="Show the commits of the day when you add a block."
 						value={settings.githubAutoLoadCommits}
 						onValueChange={(githubAutoLoadCommits) =>
@@ -233,7 +233,7 @@ export default function IntegrationsScreen() {
 				)}
 				{googleCalendar.connected ? (
 					<SettingsSwitch
-						title="Sync meetings as entries"
+						title="Auto-sync meetings as entries"
 						subtitle="Turn meetings into entries, rounded to 15 minutes."
 						value={settings.googleAutoSyncMeetings}
 						onValueChange={(googleAutoSyncMeetings) =>

@@ -92,10 +92,10 @@ export default function PreferencesScreen() {
 							onValueChange={(logReminders) => update.mutate({ logReminders })}
 						/>
 					</SettingsSection>
-					{pushRelay && notifications.data.logReminders ? (
+					{pushRelay ? (
 						<SettingsSection
 							title="Send reminders to"
-							footer="The app gets a reminder only when this phone allows notifications from Farmer. If it does not, the reminder goes to Slack."
+							footer="The month-end reminders and the nudges go to the app only when this phone allows notifications from Farmer. If it does not, they go to Slack."
 						>
 							<SettingsChoice
 								title="The app"

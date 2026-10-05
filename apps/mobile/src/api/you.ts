@@ -285,8 +285,14 @@ export const useUpdateTimerSettings = () => {
 	return useMutation({
 		mutationFn: (maxSeconds: number) =>
 			w.client.updateTimerSettings(w.slug, { maxSeconds }),
-		onSuccess: (settings) =>
-			queryClient.setQueryData(keys(w).timerSettings, settings),
+		// The timer card shows when a running timer is dropped, so it is read
+		// again with the new limit.
+		onSuccess: (settings) => {
+			queryClient.setQueryData(keys(w).timerSettings, settings);
+			return queryClient.invalidateQueries({
+				queryKey: [...scope(w), "timer"],
+			});
+		},
 	});
 };
 
@@ -440,7 +446,8 @@ export const useHolidays = (year: number) => {
 	return useQuery({
 		queryKey: keys(w).holidays(year),
 		queryFn: () => w.client.listHolidays(w.slug, { year }),
-		enabled: fullApi,
+		// The year comes from `whoami`; 0 is a year not known yet.
+		enabled: fullApi && year > 0,
 		staleTime: 60 * MINUTE,
 	});
 };
@@ -451,7 +458,7 @@ export const useAbsences = (year: number, month: number) => {
 	return useQuery({
 		queryKey: keys(w).absenceMonth(year, month),
 		queryFn: () => w.client.listAbsences(w.slug, { year, month }),
-		enabled: fullApi,
+		enabled: fullApi && year > 0,
 	});
 };
 

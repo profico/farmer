@@ -242,28 +242,34 @@ export function RewindStoryView({
 				{slides.map((kind, i) => {
 					const slideTheme = SLIDE_THEMES[kind];
 					return (
-						<Pressable
+						// A slide scrolls up and down when its content is taller than
+						// the screen, as with large system text on a small phone.
+						<ScrollView
 							key={kind}
-							// A tap on the left third goes back, anywhere else goes on.
-							// The buttons of a slide take their own taps first.
-							accessible={false}
-							onPress={(event) =>
-								go(event.nativeEvent.locationX < width / 3 ? i - 1 : i + 1)
-							}
-							style={{
-								width,
-								height,
-								backgroundColor: slideTheme.bg,
-								paddingTop: insets.top + 72,
-								paddingBottom: insets.bottom + 32,
-								paddingHorizontal: 28,
-								justifyContent: "center",
-							}}
+							style={{ width, height, backgroundColor: slideTheme.bg }}
+							contentContainerStyle={{ flexGrow: 1 }}
+							showsVerticalScrollIndicator={false}
 						>
-							<SlideMotionProvider active={i === index} reduce={reduce}>
-								{content(kind)}
-							</SlideMotionProvider>
-						</Pressable>
+							<Pressable
+								// A tap on the left third goes back, anywhere else goes on.
+								// The buttons of a slide take their own taps first.
+								accessible={false}
+								onPress={(event) =>
+									go(event.nativeEvent.pageX < width / 3 ? i - 1 : i + 1)
+								}
+								style={{
+									flexGrow: 1,
+									paddingTop: insets.top + 72,
+									paddingBottom: insets.bottom + 32,
+									paddingHorizontal: 28,
+									justifyContent: "center",
+								}}
+							>
+								<SlideMotionProvider active={i === index} reduce={reduce}>
+									{content(kind)}
+								</SlideMotionProvider>
+							</Pressable>
+						</ScrollView>
 					);
 				})}
 			</ScrollView>
