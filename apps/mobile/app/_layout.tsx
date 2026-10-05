@@ -40,6 +40,10 @@ function Navigator() {
 		>
 			<Stack.Protected guard={signedIn}>
 				<Stack.Screen name="(tabs)" />
+				{/* One stack for each group of screens; see the README. */}
+				<Stack.Screen name="you" />
+				<Stack.Screen name="workspace" />
+				<Stack.Screen name="assistant" />
 				<Stack.Screen name="entry" options={form} />
 				<Stack.Screen name="start-timer" options={form} />
 				<Stack.Screen name="stop-timer" options={form} />

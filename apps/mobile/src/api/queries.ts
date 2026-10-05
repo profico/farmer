@@ -31,7 +31,8 @@ export const useWorkspace = (): Workspace => {
 	return { origin, client, slug: workspace };
 };
 
-const scope = (w: Workspace) => ["farmer", w.origin, w.slug] as const;
+/** The key every query of the workspace starts with. */
+export const scope = (w: Workspace) => ["farmer", w.origin, w.slug] as const;
 
 export const useMe = () => {
 	const { origin, client } = useSignedIn();

@@ -1,12 +1,13 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { View } from "react-native";
 
+import { useAccess } from "../../../../src/api/capabilities";
 import {
 	useProjects,
 	useStartTimer,
 	useTasks,
 	useTimer,
-} from "../../../src/api/queries";
+} from "../../../../src/api/queries";
 import {
 	ActionButton,
 	EmptyState,
@@ -17,11 +18,15 @@ import {
 	SectionHeader,
 	Skeleton,
 	Text,
-} from "../../../src/ui/components";
-import { messageOf } from "../../../src/ui/errors";
-import { Inset, Screen } from "../../../src/ui/screen";
-import { usePalette } from "../../../src/ui/theme";
-import { SPACE } from "../../../src/ui/type";
+} from "../../../../src/ui/components";
+import { messageOf } from "../../../../src/ui/errors";
+import { Inset, Screen } from "../../../../src/ui/screen";
+import {
+	SettingsLink,
+	SettingsSection,
+} from "../../../../src/ui/settings-list";
+import { usePalette } from "../../../../src/ui/theme";
+import { SPACE } from "../../../../src/ui/type";
 
 /** The role on the project, in words. A role this app does not know yet
  *  is shown as the server names it. */
@@ -50,6 +55,7 @@ export default function ProjectScreen() {
 	const tasks = useTasks();
 	const timer = useTimer();
 	const start = useStartTimer();
+	const access = useAccess();
 	const running = timer.data?.timer ?? null;
 
 	if (projects.isPending) {
@@ -84,6 +90,12 @@ export default function ProjectScreen() {
 			</Screen>
 		);
 	}
+
+	// A PM runs the project, and a Team Lead on it holds it as a PM. The
+	// routes check the same; an admin may manage every project.
+	const manages =
+		access.fullApi &&
+		(access.isAdmin || project.role === "pm" || project.role === "team_lead");
 
 	const startOn = (taskId: string) =>
 		start.mutate(
@@ -140,6 +152,34 @@ export default function ProjectScreen() {
 						</Text>
 					) : null}
 				</Inset>
+				{manages ? (
+					<SettingsSection title="Manage">
+						<SettingsLink
+							icon="settings"
+							tint="gray"
+							title="Settings"
+							subtitle="Name, code, client, budget and access"
+							onPress={() =>
+								router.push({
+									pathname: "/projects/[id]/settings",
+									params: { id: project.id },
+								})
+							}
+						/>
+						<SettingsLink
+							icon="team"
+							tint="blue"
+							title="Team"
+							subtitle="The people on the project and their roles"
+							onPress={() =>
+								router.push({
+									pathname: "/projects/[id]/team",
+									params: { id: project.id },
+								})
+							}
+						/>
+					</SettingsSection>
+				) : null}
 				<SectionHeader>Tasks</SectionHeader>
 				{tasks.isPending ? (
 					<Inset>
