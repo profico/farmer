@@ -45,5 +45,8 @@ Rules:
   `ControlHost` and `useHostTheme()` (`src/ui/host.tsx`) apply them.
 - Before an animation, read `useMotionPreference()` (`src/ui/motion.ts`).
   When `reduceMotion` is true, use a fade or no animation.
+- The app icon, the splash and the notification icon come from
+  `scripts/make-icons.ts` (`bun run make-icons`). Do not edit the PNG files
+  in `assets/`.
 - Use a method of `FarmerClient` (`@farmer/api-client`) for each route.
   Put each query in `src/api/`, with a key that starts with `scope(w)`.

@@ -6,8 +6,8 @@ import { ActivityIndicator, View } from "react-native";
 import { transportFor } from "../src/api/transport";
 import { APP_VERSION } from "../src/config";
 import { useSession } from "../src/session/session";
+import { FarmerLogo } from "../src/ui/brand";
 import { ActionButton, ErrorBanner, Field, Text } from "../src/ui/components";
-import { Icon } from "../src/ui/icon";
 import { Inset, Screen } from "../src/ui/screen";
 import { usePalette } from "../src/ui/theme";
 import { SPACE } from "../src/ui/type";
@@ -48,7 +48,7 @@ export default function ServerScreen() {
 		<Screen>
 			<Inset>
 				<View style={{ paddingTop: SPACE.xxl, gap: SPACE.m }}>
-					<Icon name="server" size={40} color={palette.primary} />
+					<FarmerLogo height={40} />
 					<Text variant="headlineMedium">Connect to your server</Text>
 					<Text variant="bodyLarge" color={palette.onSurfaceVariant}>
 						Enter the address of your Farmer server. It is the address you open
