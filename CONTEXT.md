@@ -14,3 +14,23 @@ _Avoid_: repository defaults, project link
 
 **Workspace**:
 What the web app calls an organization. Not a synonym for a repository or a directory.
+
+**Server**:
+One running farmer deployment, with its own database and its own sign-in methods. Profico runs one, and any operator can run another. The CLI and the **Mobile app** each talk to one server at a time.
+_Avoid_: instance (in user-facing text), host, backend
+
+**Server address**:
+The origin of a **Server**, for example `https://farmer.example.com`. The CLI reads it from the argument or `FARMER_URL`, and the **Mobile app** asks the person for it. Both check it with `GET /api/v1/meta`.
+_Avoid_: instance URL, base URL (in user-facing text)
+
+**Mobile app**:
+The native iOS and Android app in `apps/mobile`. It is a client of `api/v1` only, like the CLI, and it never imports `@farmer/core`. See `docs/adr/0005-native-mobile-app.md`.
+_Avoid_: PWA, the mobile web view (that is the web app on a phone)
+
+**Push relay**:
+The service at `push.farmer.profi.co` (`apps/push-relay`) that holds Profico's APNs and FCM credentials and forwards a push for any **Server**. It cannot read the content. See `docs/adr/0006-push-relay.md`.
+_Avoid_: push server, notification proxy
+
+**Relay id**:
+The opaque id that the **Push relay** gives one installation of the **Mobile app**. A **Server** sends a push to a relay id, never to an APNs or FCM token.
+_Avoid_: push token, device token (those are the APNs and FCM values that only the relay holds)
