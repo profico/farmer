@@ -6,6 +6,8 @@
 // streaming runtime to carry them. OpenRouter is OpenAI-compatible, so what
 // follows is the chat-completions wire format and nothing else.
 
+import { z } from "zod";
+
 import { externalFetch } from "./http";
 import type { JsonRecord } from "./json";
 
@@ -80,19 +82,38 @@ export class OpenRouterError extends Error {
 	}
 }
 
-/** A stream that ended on its own with no finish reason.
+/** What OpenRouter says in the `error` object of a mid-stream error frame. */
+export type UpstreamError = { code: string | number | null; message: string };
+
+/** The `error` object of an SSE frame. Both fields are optional on the wire. */
+const upstreamErrorSchema = z.object({
+	code: z.union([z.string(), z.number()]).optional(),
+	message: z.string().optional(),
+});
+
+/** A stream that ended in a failure after the 200 was committed.
  *
- *  The connection closed with no error and no `finish_reason`, so the answer is
- *  cut at an unknown point. An upstream (OpenRouter or the provider behind it)
- *  that gives up on a slow call does this. It is not a model that chose to stop
- *  and not a person who pressed Stop.
+ *  Two shapes reach this class. In the first, OpenRouter sent an error frame:
+ *  a top-level `error: { code, message }` and `finish_reason: "error"`. The
+ *  reason is in `upstream`. In the second, the connection closed with no
+ *  error and no `finish_reason`. The answer is cut at an unknown point and
+ *  `upstream` is null. It is not a model that chose to stop and not a person
+ *  who pressed Stop.
  *
- *  `partial` is what arrived before the close, with its tokens and cost, which
- *  the organization paid for. The message is for the log and for telemetry. It
- *  is not for the person: the loop words that itself. */
+ *  `partial` is what arrived before the failure, with its tokens and cost,
+ *  which the organization paid for. The message is for the log and for
+ *  telemetry. It can carry the provider's own text, so it is not for the
+ *  person: the loop words that itself. */
 export class OpenRouterStreamCutError extends OpenRouterError {
-	constructor(readonly partial: ChatTurn) {
-		super("stream ended without a finish reason");
+	constructor(
+		readonly partial: ChatTurn,
+		readonly upstream: UpstreamError | null = null,
+	) {
+		super(
+			upstream
+				? `stream failed upstream (${upstream.code ?? "no code"}): ${upstream.message}`
+				: "stream ended without a finish reason",
+		);
 		this.name = "OpenRouterStreamCutError";
 	}
 }
@@ -250,6 +271,7 @@ export const streamChatCompletion = async (opts: {
 	let completionTokens: number | null = null;
 	let costUsd: number | null = null;
 	let finishReason: string | null = null;
+	let upstream: UpstreamError | null = null;
 
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
@@ -275,6 +297,8 @@ export const streamChatCompletion = async (opts: {
 				if (payload === "[DONE]") continue;
 
 				let chunk: {
+					/** Parsed below: the wire shape is not trusted. */
+					error?: JsonRecord;
 					choices?: {
 						delta?: {
 							content?: string | null;
@@ -307,6 +331,18 @@ export const streamChatCompletion = async (opts: {
 					promptTokens = chunk.usage.prompt_tokens ?? promptTokens;
 					completionTokens = chunk.usage.completion_tokens ?? completionTokens;
 					costUsd = chunk.usage.cost ?? costUsd;
+				}
+
+				// A failure after the 200 is committed arrives as a top-level `error`
+				// object, usually with `finish_reason: "error"` on the same frame.
+				if (chunk.error) {
+					const parsed = upstreamErrorSchema.safeParse(chunk.error);
+					upstream = {
+						code: (parsed.success ? parsed.data.code : undefined) ?? null,
+						message:
+							(parsed.success ? parsed.data.message : undefined) ??
+							"no message",
+					};
 				}
 
 				const choice = chunk.choices?.[0];
@@ -361,7 +397,11 @@ export const streamChatCompletion = async (opts: {
 	// A close with the signal already fired is the caller's doing, however the
 	// runtime ended the read. Without this a clean close after a Stop would be
 	// reported as the upstream cutting the answer.
-	if (finishReason === null && opts.signal?.aborted) finishReason = ABORTED;
+	if (
+		(finishReason === null || finishReason === "error") &&
+		opts.signal?.aborted
+	)
+		finishReason = ABORTED;
 
 	const turn: ChatTurn = {
 		content,
@@ -375,12 +415,23 @@ export const streamChatCompletion = async (opts: {
 		finishReason,
 	};
 
-	// The stream ended and nobody stopped it, yet the model never said why it
-	// stopped. A model that is done always sends a finish reason, so this is an
-	// upstream that closed the connection on a slow call. Returning it as a
-	// turn made a cut answer, or no answer at all, look like a success. Even
-	// tool calls that look whole are not trusted: the close can come before the
+	// A close with the signal fired is a Stop, not a failure. Past that, two
+	// things fail the call. The first is an error frame, or the finish reason
+	// "error" that OpenRouter documents for it: the provider said it gave up.
+	// The second is a stream that ended with no finish reason at all, which is
+	// an upstream that closed the connection on a slow call. Returning either
+	// as a turn made a cut answer, or no answer, look like a success. Even tool
+	// calls that look whole are not trusted: the failure can come before the
 	// last fragment of their arguments.
-	if (finishReason === null) throw new OpenRouterStreamCutError(turn);
+	if (finishReason !== ABORTED) {
+		if (upstream) throw new OpenRouterStreamCutError(turn, upstream);
+		if (finishReason === "error") {
+			throw new OpenRouterStreamCutError(turn, {
+				code: null,
+				message: 'finish reason "error" with no error object',
+			});
+		}
+		if (finishReason === null) throw new OpenRouterStreamCutError(turn);
+	}
 	return turn;
 };

@@ -14,6 +14,7 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import {
 	ABORTED,
 	OpenRouterError,
+	OpenRouterStreamCutError,
 	streamChatCompletion,
 } from "./openrouter-client";
 
@@ -255,6 +256,62 @@ describe("a stream that ends without a finish reason", () => {
 			expect(turn.finishReason).toBe(reason);
 			expect(turn.content).toBe("Whole");
 		}
+	});
+
+	test("an error frame is an error that carries the reason and the partial", async () => {
+		serve([
+			delta("Half"),
+			usage,
+			JSON.stringify({
+				error: {
+					code: "server_error",
+					message: "Provider disconnected unexpectedly",
+				},
+				choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }],
+			}),
+			"[DONE]",
+		]);
+		const error = await call(new AbortController().signal).then(
+			() => null,
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(OpenRouterStreamCutError);
+		expect(error).toMatchObject({
+			message:
+				"stream failed upstream (server_error): Provider disconnected unexpectedly",
+			upstream: {
+				code: "server_error",
+				message: "Provider disconnected unexpectedly",
+			},
+			partial: { content: "Half", finishReason: "error", promptTokens: 12 },
+		});
+	});
+
+	test("an error object with no finish reason is still an error", async () => {
+		serve([
+			delta("Half"),
+			JSON.stringify({ error: { code: 429, message: "Rate limited" } }),
+		]);
+		await expect(call(new AbortController().signal)).rejects.toMatchObject({
+			upstream: { code: 429, message: "Rate limited" },
+		});
+	});
+
+	test("the finish reason error with no error object is an error", async () => {
+		serve([delta("Half"), finish("error"), "[DONE]"]);
+		await expect(call(new AbortController().signal)).rejects.toMatchObject({
+			name: "OpenRouterStreamCutError",
+			upstream: { code: null },
+			partial: { content: "Half", finishReason: "error" },
+		});
+	});
+
+	test("an error frame after a Stop is still an abort", async () => {
+		serve([delta("Half"), finish("error")]);
+		const controller = new AbortController();
+		controller.abort();
+		const turn = await call(controller.signal);
+		expect(turn.finishReason).toBe(ABORTED);
 	});
 
 	test("a finish reason with no [DONE] is a success", async () => {

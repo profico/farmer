@@ -1929,6 +1929,40 @@ describe("a stream that ends without a finish reason", () => {
 		expect(reported[0]?.costUsd).toBe(0.01);
 	});
 
+	test("an error frame is reported with its reason, not shown to the person", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			new OpenRouterStreamCutError(
+				turn({ content: "Half ", promptTokens: 700, finishReason: "error" }),
+				{ code: "server_error", message: "Provider disconnected unexpectedly" },
+			),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "how was March?",
+		});
+
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		const failure = events.find((event) => event.type === "error");
+		expect(failure?.type === "error" && failure.message).toMatch(
+			/connection.*closed/i,
+		);
+		// The provider's own text stays in the log and the telemetry.
+		expect(failure?.type === "error" && failure.message).not.toContain(
+			"Provider disconnected",
+		);
+		expect(reported).toHaveLength(1);
+		expect(reported[0]?.error).toBe(
+			"stream failed upstream (server_error): Provider disconnected unexpectedly",
+		);
+		expect(reported[0]?.inputTokens).toBe(700);
+		const answer = (await rowsOf(chat.id)).find(
+			(row) => row.role === "assistant",
+		);
+		expect(answer?.content).toBe("Half ");
+		expect(seen).toHaveLength(1);
+	});
+
 	test("the partial text is kept, as it is for a stop", async () => {
 		const chat = await startChat(ctxFor(WORKER));
 		script = [cut({ content: "Your March looks like ", completionTokens: 5 })];
