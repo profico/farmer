@@ -184,6 +184,13 @@ const NO_ANSWER =
 const STREAM_CUT =
 	"The connection to the model was closed before the answer was complete. Nothing was lost from this thread - ask again in a moment.";
 
+/** What the person is told when the app's own deadline cut the call.
+ *
+ *  A retry of the same prompt is likely to time out again and bill again, so
+ *  this line does not say "try again". It asks for a narrower question. */
+const TIMED_OUT =
+	"The model took too long to answer. Nothing was lost from this thread - try a narrower question.";
+
 /** Tool output that goes back to the model, capped.
  *
  *  `list_time_entries` over 62 days is legitimately hundreds of rows, and the
@@ -1036,6 +1043,10 @@ const generate = async (
 		// text are reported with the error. Any other failure sent nothing.
 		const partial =
 			error instanceof OpenRouterStreamCutError ? error.partial : null;
+		// The person gets a fixed line, so this is the only place that records
+		// why the stream was cut. The message holds the provider's own text.
+		if (error instanceof OpenRouterStreamCutError)
+			console.error("[assistant] stream cut", error.message);
 		reportGeneration({
 			...common,
 			latencySeconds: (Date.now() - startedAt) / 1000,
@@ -1663,7 +1674,11 @@ const runTurn = async (
 				// Cut by the provider. What arrived is kept under the same rule as
 				// a stop. A person who stopped the turn is told nothing.
 				await keepPartial(ctx, conversation, error.partial);
-				if (!signal?.aborted) onEvent({ type: "error", message: STREAM_CUT });
+				if (!signal?.aborted)
+					onEvent({
+						type: "error",
+						message: error.timedOut ? TIMED_OUT : STREAM_CUT,
+					});
 				return;
 			}
 			if (error instanceof OpenRouterError) {
@@ -1762,7 +1777,11 @@ const runTurn = async (
 			// A cut closing answer is a failure of its own: the person is told
 			// the connection closed, not that the model kept working.
 			await keepPartial(ctx, conversation, error.partial);
-			if (!signal?.aborted) onEvent({ type: "error", message: STREAM_CUT });
+			if (!signal?.aborted)
+				onEvent({
+					type: "error",
+					message: error.timedOut ? TIMED_OUT : STREAM_CUT,
+				});
 			return;
 		}
 	}

@@ -102,7 +102,7 @@ const upstreamErrorSchema = z.object({
  *
  *  `partial` is what arrived before the failure, with its tokens and cost,
  *  which the organization paid for. The message is for the log and for
- *  telemetry. It can carry the provider's own text, so it is not for the
+ *  telemetry. `generate` writes it to the log. It can carry the provider's own text, so it is not for the
  *  person: the loop words that itself. */
 export class OpenRouterStreamCutError extends OpenRouterError {
 	constructor(
@@ -226,6 +226,8 @@ export const streamChatCompletion = async (opts: {
 	signal?: AbortSignal;
 	onDelta?: (text: string) => void;
 }): Promise<ChatTurn> => {
+	// The deadline can also fire before the headers arrive. That is the same
+	// cut with nothing received, so it takes the same path as a mid-body one.
 	const response = await externalFetch(
 		`${BASE}/chat/completions`,
 		{
@@ -243,7 +245,27 @@ export const streamChatCompletion = async (opts: {
 			}),
 		},
 		OPENROUTER_STREAM_TIMEOUT_MS,
-	);
+	).catch((error: unknown) => {
+		if (
+			opts.signal?.aborted !== true &&
+			error instanceof DOMException &&
+			error.name === "TimeoutError"
+		) {
+			throw new OpenRouterStreamCutError(
+				{
+					content: "",
+					costUsd: null,
+					toolCalls: [],
+					promptTokens: null,
+					completionTokens: null,
+					finishReason: null,
+				},
+				null,
+				true,
+			);
+		}
+		throw error;
+	});
 
 	if (!response.ok || !response.body) {
 		// The error body is JSON on a well-formed rejection and an HTML error page

@@ -1914,6 +1914,35 @@ describe("a stream that ends without a finish reason", () => {
 		expect(seen).toHaveLength(1);
 	});
 
+	test("a timeout tells the person to narrow the question, and keeps the text", async () => {
+		const chat = await startChat(ctxFor(WORKER));
+		script = [
+			new OpenRouterStreamCutError(
+				turn({ content: "Half an answer", promptTokens: 900 }),
+				null,
+				true,
+			),
+		];
+		const events = await collect(ctxFor(WORKER), {
+			conversationId: chat.id,
+			message: "how was March?",
+		});
+
+		const failure = events.find((event) => event.type === "error");
+		expect(failure?.type === "error" && failure.message).toMatch(
+			/too long.*narrower/i,
+		);
+		expect(failure?.type === "error" && failure.message).not.toMatch(
+			/connection/i,
+		);
+		expect(events.some((event) => event.type === "done")).toBe(false);
+		expect(reported[0]?.error).toBe("stream timed out before a finish reason");
+		expect((await rowsOf(chat.id)).map((row) => row.role)).toEqual([
+			"user",
+			"assistant",
+		]);
+	});
+
 	test("the cut is reported as an error with a clear string", async () => {
 		const chat = await startChat(ctxFor(WORKER));
 		script = [cut({ promptTokens: 900, completionTokens: 0, costUsd: 0.01 })];

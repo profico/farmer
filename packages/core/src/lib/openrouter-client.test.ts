@@ -340,6 +340,21 @@ describe("a stream that ends without a finish reason", () => {
 		});
 	});
 
+	test("the app's own timeout before the headers is a cut with no text", async () => {
+		// SAFETY: a test stub for `fetch`. It ignores its arguments and fails
+		// the way a fetch does when the deadline fires before the headers.
+		globalThis.fetch = (async (
+			_input: string | URL | Request,
+		): Promise<Response> => {
+			throw new DOMException("The operation timed out.", "TimeoutError");
+		}) as typeof globalThis.fetch;
+		await expect(call(new AbortController().signal)).rejects.toMatchObject({
+			name: "OpenRouterStreamCutError",
+			timedOut: true,
+			partial: { content: "", finishReason: null },
+		});
+	});
+
 	test("an error frame after a Stop is still an abort", async () => {
 		serve([delta("Half"), finish("error")]);
 		const controller = new AbortController();
