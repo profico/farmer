@@ -157,8 +157,43 @@
  *   GET    orgs/$slug/organization               ApiOrganizationSettings
  *   PATCH  orgs/$slug/organization               ApiOrganizationSettings
  *
+ * The last screens of the web app (API version 3). `TL` and `PM` as above;
+ * "own" is the caller's own entries only:
+ *
+ *   GET    orgs/$slug/day-assembly?date          ApiDayAssembly
+ *   POST   orgs/$slug/day-assembly               ApiDayAssemblyResult
+ *   GET    orgs/$slug/calendar/events?date       ApiCalendarEvent[]
+ *   POST   orgs/$slug/time-entries/$id/calendar-values      ApiTimeEntry (own)
+ *   DELETE orgs/$slug/time-entries/$id/calendar-change      ApiTimeEntry (own)
+ *   GET    orgs/$slug/github/commits?projectId&date         ApiCommitSuggestion[]
+ *   GET    orgs/$slug/github/pull-requests?projectId&date   ApiPullRequestSuggestion[]
+ *   GET    orgs/$slug/time-entries/$id/commits   ApiAttachedCommit[] (own)
+ *   POST   orgs/$slug/time-entries/$id/commits   ApiAttachedCommit[] (own)
+ *   DELETE orgs/$slug/time-entries/$id/commits/$commitId    ApiAttachedCommit[] (own)
+ *   GET    orgs/$slug/time-entries/$id/pull-requests        ApiAttachedPullRequest[] (own)
+ *   POST   orgs/$slug/time-entries/$id/pull-requests        ApiAttachedPullRequest[] (own)
+ *   DELETE orgs/$slug/time-entries/$id/pull-requests/$activityId  ApiAttachedPullRequest[] (own)
+ *   GET    orgs/$slug/projects/$id/repositories  ApiProjectRepository[]
+ *   POST   orgs/$slug/projects/$id/repositories  ApiProjectRepository[] (admin)
+ *   DELETE orgs/$slug/projects/$id/repositories/$repositoryId  ApiProjectRepository[] (admin)
+ *   GET    orgs/$slug/workspace-integrations/github/repositories          ApiAvailableRepositories (admin)
+ *   POST   orgs/$slug/workspace-integrations/github/repositories/refresh  ApiAvailableRepositories (admin)
+ *   POST   orgs/$slug/uploads                    ApiUploadedImage (admin: a logo, TL: an icon)
+ *   GET    orgs/$slug/organization/policy        ApiOrgPolicy (admin)
+ *   PATCH  orgs/$slug/organization/policy        ApiOrgPolicy (admin)
+ *   PATCH  orgs/$slug/holidays                   ApiHolidaySwitch (admin)
+ *   GET    me/invitations                        ApiMyInvitation[]
+ *   POST   me/invitations/$id/accept             ApiJoinedOrganization (session only)
+ *   POST   me/invitations/$id/decline            ApiDeleted (session only)
+ *   GET    me/import-claims                      ApiImportClaim[]
+ *   POST   me/import-claims/$organizationId/accept   ApiJoinedOrganization (session only)
+ *   POST   me/import-claims/$organizationId/decline  ApiDeleted (session only)
+ *   POST   me/organizations                      ApiCreatedOrganization (session only)
+ *
  * "Session only": better-auth makes the write and needs a session, so an
- * API token gets 403 there.
+ * API token gets 403 there. The `/me` writes ask for a session for the same
+ * reason as the web app's `sessionMiddleware`: a person who joins or makes a
+ * workspace signs in to do it.
  *
  * Any failure answers `ApiError` with a status: 401 unauthorized, 403
  * forbidden, 404 not_found, 422 invalid_input, 426 cli_outdated, 429
@@ -168,10 +203,13 @@
 export * from "./admin";
 export * from "./assistant";
 export * from "./catalogue";
+export * from "./day-assembly";
 export * from "./errors";
+export * from "./github";
 export * from "./home";
 export * from "./me";
 export * from "./meta";
+export * from "./onboarding";
 export * from "./preferences";
 export * from "./reports";
 export * from "./rewind";

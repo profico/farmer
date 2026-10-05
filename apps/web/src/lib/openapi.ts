@@ -12,6 +12,23 @@ import {
 	type ApiAuditExport,
 	type ApiAuditPage,
 	type ApiAuditRetention,
+	type ApiAttachedCommit,
+	type ApiAttachedPullRequest,
+	type ApiAvailableRepositories,
+	type ApiCalendarChange,
+	type ApiCalendarEvent,
+	type ApiCommitSuggestion,
+	type ApiCreatedOrganization,
+	type ApiDayAssembly,
+	type ApiDayAssemblyResult,
+	type ApiHolidaySwitch,
+	type ApiImportClaim,
+	type ApiJoinedOrganization,
+	type ApiMyInvitation,
+	type ApiOrgPolicy,
+	type ApiProjectRepository,
+	type ApiPullRequestSuggestion,
+	type ApiUploadedImage,
 	type ApiGithubDisconnect,
 	type ApiGithubInstallation,
 	type ApiGithubWorkspace,
@@ -83,6 +100,17 @@ import {
 import type { JsonValue } from "@farmer/core/lib/json";
 import {
 	absenceReportInput,
+	applyDayAssemblyInput,
+	attachCommitsInput,
+	attachPullRequestsInput,
+	createOrganizationInput,
+	linkProjectRepoInput,
+	listCalendarEventsInput,
+	setHolidayDisabledInput,
+	suggestCommitsInput,
+	suggestDayAssemblyInput,
+	updateOrgSettingsInput,
+	uploadImageInput,
 	assistantResolveInput,
 	assistantSendInput,
 	assignProjectMemberInput,
@@ -278,6 +306,16 @@ const apiMeta = named(
 				.describe(
 					"Whether this server sends native push to the mobile app, and through which relay. A server from before the mobile push sends no `pushRelay`: read its absence as off.",
 				),
+			uploadsEnabled: z
+				.boolean()
+				.describe(
+					"True when this server stores uploaded images. A server before API version 3 sends no field: read it as off.",
+				),
+			organizationCreation: z
+				.boolean()
+				.describe(
+					"True when a person may make a new workspace. False in single-org mode. A server before API version 3 sends no field: read it as off.",
+				),
 		}),
 	),
 );
@@ -391,6 +429,31 @@ const apiTimeEntry = named(
 			project: apiProjectRef
 				.nullable()
 				.describe("Null for time off, a Break, and anything not yet filed."),
+			calendarChange: named(
+				"CalendarChange",
+				mirror<ApiCalendarChange>()(
+					z.object({
+						changedAt: iso,
+						from: z
+							.object({
+								date: dayKey.optional(),
+								durationSeconds: z.number().int().optional(),
+								description: z.string().optional(),
+							})
+							.describe(
+								"The values before the change. Only the fields that the change wrote are here.",
+							),
+						calendar: z
+							.object({ date: dayKey, durationSeconds: z.number().int() })
+							.nullable()
+							.describe("The calendar's day and length now."),
+					}),
+				),
+			)
+				.nullable()
+				.describe(
+					"The meeting sync changed the entry and the person did not answer yet. Keep it with `DELETE …/calendar-change`, or take the calendar's values with `POST …/calendar-values`.",
+				),
 		}),
 	),
 );
@@ -1768,6 +1831,298 @@ const apiMobileDevice = named(
 	),
 );
 
+const prKind = z.enum(["opened", "merged", "closed", "reviewed"]);
+const reviewState = z
+	.enum(["approved", "changes_requested", "commented", "dismissed"])
+	.nullable()
+	.describe("Only on `reviewed`.");
+
+const apiDayAssembly = named(
+	"DayAssembly",
+	mirror<ApiDayAssembly>()(
+		z.object({
+			date: dayKey,
+			targetSeconds: z.number().int(),
+			loggedSeconds: z.number().int(),
+			suggestions: z.array(
+				z.object({
+					key: z
+						.string()
+						.describe(
+							"Stable in one answer: `meeting:<eventId>`, `work:<projectId>`, `review:<url>`, `break` or `fill`.",
+						),
+					kind: z.enum(["meeting", "work", "review", "break", "fill"]),
+					taskId: uuid,
+					taskName: z.string(),
+					projectId: uuid.nullable(),
+					projectName: z.string().nullable(),
+					description: z.string(),
+					durationSeconds: z.number().int(),
+					fillsDay: z.boolean(),
+					meetingUrl: z.string().nullable(),
+					calendarEventId: z.string().nullable(),
+					commits: z.array(
+						z.object({
+							projectGithubRepoId: uuid,
+							sha: z.string(),
+							message: z.string(),
+							repoFullName: z.string(),
+						}),
+					),
+					pullRequests: z.array(
+						z.object({
+							projectGithubRepoId: uuid,
+							number: z.number().int(),
+							title: z.string(),
+							repoFullName: z.string(),
+							kinds: z
+								.array(prKind)
+								.describe("What the person did on it that day, oldest first."),
+						}),
+					),
+					dismissed: z
+						.boolean()
+						.describe(
+							"The person deleted it before. Show it, but not selected.",
+						),
+				}),
+			),
+			sources: z
+				.object({
+					calendar: z.enum(["ok", "unavailable"]),
+					github: z.enum(["ok", "unavailable"]),
+				})
+				.describe(
+					"`unavailable`: the account is not connected, so that source said nothing.",
+				),
+			dismissedCount: z
+				.number()
+				.int()
+				.describe("How many suggestions `includeDismissed=true` adds."),
+		}),
+	),
+);
+
+const apiDayAssemblyResult = named(
+	"DayAssemblyResult",
+	mirror<ApiDayAssemblyResult>()(
+		z.object({
+			created: z.number().int(),
+			errors: z
+				.array(z.string())
+				.describe("A sentence for each entry that was not made."),
+		}),
+	),
+);
+
+const apiCalendarEvent = named(
+	"CalendarEvent",
+	mirror<ApiCalendarEvent>()(
+		z.object({
+			id: z.string(),
+			title: z.string(),
+			start: iso,
+			end: iso,
+			meetingUrl: z.string().nullable(),
+			htmlLink: z.string().nullable(),
+		}),
+	),
+);
+
+const apiCommitSuggestion = named(
+	"CommitSuggestion",
+	mirror<ApiCommitSuggestion>()(
+		z.object({
+			projectGithubRepoId: uuid,
+			repoFullName: z.string(),
+			sha: z.string(),
+			message: z.string(),
+			authorLogin: z.string().nullable(),
+			committedAt: iso,
+			url: z.string(),
+		}),
+	),
+);
+
+const apiAttachedCommit = named(
+	"AttachedCommit",
+	mirror<ApiAttachedCommit>()(
+		z.object({
+			id: uuid.describe("The attachment's id."),
+			sha: z.string(),
+			message: z.string(),
+			authorLogin: z.string().nullable(),
+			committedAt: iso,
+			url: z.string(),
+			repoFullName: z
+				.string()
+				.nullable()
+				.describe("Null when the repository was unlinked later."),
+		}),
+	),
+);
+
+const apiPullRequestSuggestion = named(
+	"PullRequestSuggestion",
+	mirror<ApiPullRequestSuggestion>()(
+		z.object({
+			projectGithubRepoId: uuid,
+			repoFullName: z.string(),
+			number: z.number().int(),
+			title: z.string(),
+			url: z.string(),
+			activity: z.array(
+				z.object({ kind: prKind, reviewState, occurredAt: iso }),
+			),
+		}),
+	),
+);
+
+const apiAttachedPullRequest = named(
+	"AttachedPullRequest",
+	mirror<ApiAttachedPullRequest>()(
+		z.object({
+			id: uuid.describe("The attachment's id."),
+			kind: prKind,
+			reviewState,
+			number: z.number().int(),
+			title: z.string(),
+			pullRequestUrl: z.string(),
+			url: z
+				.string()
+				.describe(
+					"The review's own link for `reviewed`, the pull request's otherwise.",
+				),
+			occurredAt: iso,
+			repoFullName: z.string().nullable(),
+		}),
+	),
+);
+
+const apiProjectRepository = named(
+	"ProjectRepository",
+	mirror<ApiProjectRepository>()(
+		z.object({
+			id: uuid.describe("The link's id."),
+			projectId: uuid,
+			githubRepoId: z.number().int(),
+			installationId: z.number().int().nullable(),
+			owner: z.string(),
+			name: z.string(),
+			fullName: z.string(),
+			private: z.boolean(),
+			createdAt: iso,
+		}),
+	),
+);
+
+const apiAvailableRepositories = named(
+	"AvailableRepositories",
+	mirror<ApiAvailableRepositories>()(
+		z.object({
+			repositories: z.array(
+				z.object({
+					githubRepoId: z.number().int(),
+					installationId: z.number().int(),
+					owner: z.string(),
+					name: z.string(),
+					fullName: z.string(),
+					private: z.boolean(),
+					linkedTo: z
+						.object({
+							projectId: uuid,
+							projectName: z.string().nullable(),
+						})
+						.nullable()
+						.describe("The project that holds it. A repository has one."),
+				}),
+			),
+			fetchedAt: iso
+				.nullable()
+				.describe("When the oldest list in the answer came from GitHub."),
+		}),
+	),
+);
+
+const apiUploadedImage = named(
+	"UploadedImage",
+	mirror<ApiUploadedImage>()(
+		z.object({
+			url: z
+				.string()
+				.describe(
+					"The path of the image. Send it as the project's `icon` or the organization's `logo`.",
+				),
+		}),
+	),
+);
+
+const apiOrgPolicy = named(
+	"OrgPolicy",
+	mirror<ApiOrgPolicy>()(
+		z.object({
+			trackingTolerancePct: z
+				.number()
+				.int()
+				.describe(
+					"A total this share or less below the target so far is slightly behind, not behind.",
+				),
+			automationLockedThrough: dayKey
+				.nullable()
+				.describe("The automations write nothing on or before this day."),
+		}),
+	),
+);
+
+const apiHolidaySwitch = named(
+	"HolidaySwitch",
+	mirror<ApiHolidaySwitch>()(
+		z.object({ name: z.string(), disabled: z.boolean() }),
+	),
+);
+
+const apiMyInvitation = named(
+	"MyInvitation",
+	mirror<ApiMyInvitation>()(
+		z.object({
+			id: z.string(),
+			role: z.string().nullable(),
+			organization: z.object({ id: z.string(), name: z.string() }),
+			expiresAt: iso,
+		}),
+	),
+);
+
+const apiJoinedOrganization = named(
+	"JoinedOrganization",
+	mirror<ApiJoinedOrganization>()(
+		z.object({
+			organizationId: z.string(),
+			slug: z.string().describe("The `orgSlug` to open."),
+		}),
+	),
+);
+
+const apiImportClaim = named(
+	"ImportClaim",
+	mirror<ApiImportClaim>()(
+		z.object({
+			organizationId: z.string(),
+			name: z.string(),
+			slug: z.string(),
+			logo: z.string().nullable(),
+			since: iso.describe("When the import made the membership."),
+		}),
+	),
+);
+
+const apiCreatedOrganization = named(
+	"CreatedOrganization",
+	mirror<ApiCreatedOrganization>()(
+		z.object({ id: z.string(), name: z.string(), slug: z.string() }),
+	),
+);
+
 // The request bodies the routes parse, under the names the document shows.
 named("NewTimeEntry", createTimeEntryInput);
 named("TimeEntryPatch", updateTimeEntryInput);
@@ -1822,6 +2177,14 @@ named("HourFundEntry", setMonthlyHourFundInput);
 named("HourFundMonthRef", monthPeriodInput);
 named("HourFundYear", hourFundYearInput);
 named("OrganizationPatch", updateOrganizationSettingsInput);
+named("ApplyDayAssembly", applyDayAssemblyInput);
+named("AttachCommits", attachCommitsInput);
+named("AttachPullRequests", attachPullRequestsInput);
+named("LinkRepository", linkProjectRepoInput);
+named("ImageUpload", uploadImageInput);
+named("OrgPolicyPatch", updateOrgSettingsInput);
+named("HolidaySwitchChange", setHolidayDisabledInput);
+named("NewOrganization", createOrganizationInput);
 
 /**
  * The fields of a body that a route takes from its path, by the body's name.
@@ -1840,6 +2203,9 @@ const FROM_PATH = {
 	PersonStartDate: ["userId"],
 	PersonRole: ["userId"],
 	TeamLeadPeople: ["leadUserId"],
+	AttachCommits: ["timeEntryId"],
+	AttachPullRequests: ["timeEntryId"],
+	LinkRepository: ["projectId"],
 } satisfies { [id: string]: string[] };
 named("NewMobileDevice", registerMobileDeviceInput);
 named("MobileDevicePatch", updateMobileDeviceInput);
@@ -3452,6 +3818,325 @@ export const OPERATIONS: Operation[] = [
 		body: updateOrganizationSettingsInput,
 		response: apiOrganizationSettings,
 		who: "An admin.",
+	},
+	// ── API version 3: the last screens of the web app ──────────────────────
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/day-assembly",
+		operationId: "suggestDayAssembly",
+		summary: "Propose entries for a day",
+		description:
+			'"Assemble my day": entries for one day from the caller\'s calendar, their GitHub work and the rest of the day. Writes nothing. `includeDismissed=true` also proposes what the person deleted before.',
+		tag: "Time entries",
+		query: { schema: suggestDayAssemblyInput, optional: false },
+		response: apiDayAssembly,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/day-assembly",
+		operationId: "applyDayAssembly",
+		summary: "Make the proposed entries",
+		description:
+			"Makes the entries the person kept, from `GET …/day-assembly`. The whole set must fit in the day's 24 hours. After that each entry is best effort: one that fails is in `errors` and does not stop the others.",
+		tag: "Time entries",
+		body: applyDayAssemblyInput,
+		response: apiDayAssemblyResult,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/calendar/events",
+		operationId: "listCalendarEvents",
+		summary: "List a day's calendar meetings",
+		description:
+			"The timed meetings on the caller's Google Calendar on one day of the organization, for the meeting picker of the entry form. 422 when the calendar is not connected.",
+		tag: "Time entries",
+		query: { schema: listCalendarEventsInput, optional: false },
+		response: apiCalendarEvent,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/time-entries/{id}/calendar-values",
+		operationId: "useCalendarValues",
+		summary: "Take the calendar's day and length",
+		description:
+			'Answers the "updated by calendar" notice: the entry takes the day and the length the calendar has now. The caller\'s own entry only. Refused when the day would change and the entry holds commits or pull requests.',
+		tag: "Time entries",
+		response: apiTimeEntry,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/time-entries/{id}/calendar-change",
+		operationId: "dismissCalendarChange",
+		summary: "Keep the entry as it is",
+		description:
+			'Dismisses the "updated by calendar" notice. Nothing else changes. The caller\'s own entry only.',
+		tag: "Time entries",
+		response: apiTimeEntry,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/github/commits",
+		operationId: "suggestCommits",
+		summary: "List the caller's commits on a day",
+		description:
+			"In the repositories of a project the caller is assigned to. 422 when the caller has not connected GitHub.",
+		tag: "Time entries",
+		query: { schema: suggestCommitsInput, optional: false },
+		response: apiCommitSuggestion,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/github/pull-requests",
+		operationId: "suggestPullRequests",
+		summary: "List the caller's pull requests on a day",
+		description:
+			"What the caller opened, merged, closed or reviewed, in the repositories of a project they are assigned to. 422 when the caller has not connected GitHub.",
+		tag: "Time entries",
+		query: { schema: suggestCommitsInput, optional: false },
+		response: apiPullRequestSuggestion,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/time-entries/{id}/commits",
+		operationId: "listAttachedCommits",
+		summary: "List the commits on an entry",
+		description: "The caller's own entry only.",
+		tag: "Time entries",
+		response: apiAttachedCommit,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/time-entries/{id}/commits",
+		operationId: "attachCommits",
+		summary: "Attach commits to an entry",
+		description:
+			"Names each commit by its repository and sha, from `GET …/github/commits`. The server reads each one again from GitHub. Answers the entry's commits.",
+		tag: "Time entries",
+		body: attachCommitsInput,
+		response: apiAttachedCommit,
+		list: true,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/time-entries/{id}/commits/{commitId}",
+		operationId: "detachCommit",
+		summary: "Take a commit off an entry",
+		description:
+			"`commitId` is the attachment's `id`. Answers the entry's commits.",
+		tag: "Time entries",
+		response: apiAttachedCommit,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/time-entries/{id}/pull-requests",
+		operationId: "listAttachedPullRequests",
+		summary: "List the pull request events on an entry",
+		description: "One row for each event. The caller's own entry only.",
+		tag: "Time entries",
+		response: apiAttachedPullRequest,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/time-entries/{id}/pull-requests",
+		operationId: "attachPullRequests",
+		summary: "Attach pull requests to an entry",
+		description:
+			"Names each pull request by its repository and number. The server keeps only what the caller did on it on the entry's day. Answers the entry's events.",
+		tag: "Time entries",
+		body: attachPullRequestsInput,
+		response: apiAttachedPullRequest,
+		list: true,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/time-entries/{id}/pull-requests/{activityId}",
+		operationId: "detachPullRequest",
+		summary: "Take a pull request event off an entry",
+		description:
+			"`activityId` is the attachment's `id`. Answers the entry's events.",
+		tag: "Time entries",
+		response: apiAttachedPullRequest,
+		list: true,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/projects/{id}/repositories",
+		operationId: "listProjectRepositories",
+		summary: "List a project's GitHub repositories",
+		description:
+			"For each person who may log time on the project. A member who reaches the project only because it is open to the organization gets an empty list.",
+		tag: "Projects",
+		response: apiProjectRepository,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/projects/{id}/repositories",
+		operationId: "linkProjectRepository",
+		summary: "Link a GitHub repository",
+		description:
+			"A repository from `GET …/workspace-integrations/github/repositories`. A repository belongs to one project. Answers the project's repositories.",
+		tag: "Projects",
+		body: linkProjectRepoInput,
+		response: apiProjectRepository,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/projects/{id}/repositories/{repositoryId}",
+		operationId: "unlinkProjectRepository",
+		summary: "Unlink a GitHub repository",
+		description:
+			"`repositoryId` is the link's `id`. The commits already on entries stay. Answers the project's repositories.",
+		tag: "Projects",
+		response: apiProjectRepository,
+		list: true,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/workspace-integrations/github/repositories",
+		operationId: "listAvailableRepositories",
+		summary: "List the repositories to link",
+		description:
+			"Each repository a connected installation can read, private ones too, with the project that holds it. The server keeps the list for a few minutes.",
+		tag: "Workspace integrations",
+		response: apiAvailableRepositories,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/workspace-integrations/github/repositories/refresh",
+		operationId: "refreshAvailableRepositories",
+		summary: "Read the repositories again",
+		description: "The same list, read again from GitHub.",
+		tag: "Workspace integrations",
+		response: apiAvailableRepositories,
+		who: "An admin.",
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/uploads",
+		operationId: "uploadImage",
+		summary: "Upload a project icon or a logo",
+		description:
+			"Stores a PNG, JPEG, GIF, WebP or SVG image of 1 MB at most, sent as base64. The upload changes nothing: send the `url` as the project's `icon` or the organization's `logo`. 422 when the server has no store (`uploadsEnabled` in `/meta`).",
+		tag: "Workspace",
+		body: uploadImageInput,
+		response: apiUploadedImage,
+		who: "An admin for `org-logo`. An admin, a PM or a team lead for `project-icon`.",
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/organization/policy",
+		operationId: "getOrgPolicy",
+		summary: "Get the tracking tolerance and the automation lock",
+		tag: "Workspace",
+		response: apiOrgPolicy,
+		who: "An admin.",
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/organization/policy",
+		operationId: "updateOrgPolicy",
+		summary: "Change the tracking tolerance or the automation lock",
+		description: "A patch. `automationLockedThrough: null` removes the lock.",
+		tag: "Workspace",
+		body: updateOrgSettingsInput,
+		response: apiOrgPolicy,
+		who: "An admin.",
+	},
+	{
+		method: "patch",
+		path: "/orgs/{orgSlug}/holidays",
+		operationId: "setHolidayDisabled",
+		summary: "Switch a public holiday off or on",
+		description:
+			"Names the holiday by its `name` from `GET …/holidays`. `disabled: true` makes the day a working day.",
+		tag: "Schedule",
+		body: setHolidayDisabledInput,
+		response: apiHolidaySwitch,
+		who: "An admin.",
+	},
+	{
+		method: "get",
+		path: "/me/invitations",
+		operationId: "listMyInvitations",
+		summary: "List the invitations to the caller",
+		description:
+			"The live invitations to the caller's address. Empty for an address that is not verified, and for an API token bound to one workspace.",
+		tag: "Account",
+		response: apiMyInvitation,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/me/invitations/{id}/accept",
+		operationId: "acceptInvitation",
+		summary: "Accept an invitation",
+		description:
+			"Joins the workspace that sent it and answers its slug. Needs a sign-in session token, not an API token.",
+		tag: "Account",
+		response: apiJoinedOrganization,
+	},
+	{
+		method: "post",
+		path: "/me/invitations/{id}/decline",
+		operationId: "declineInvitation",
+		summary: "Decline an invitation",
+		description:
+			"The workspace that sent it sees this in its audit log. Needs a sign-in session token, not an API token.",
+		tag: "Account",
+		response: apiDeleted,
+	},
+	{
+		method: "get",
+		path: "/me/import-claims",
+		operationId: "listMyImportClaims",
+		summary: "List the Harvest imports that wait for the caller",
+		description:
+			"Workspaces whose Harvest import made a membership for the caller. The caller cannot open one until they accept. Empty for an API token bound to one workspace.",
+		tag: "Account",
+		response: apiImportClaim,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/me/import-claims/{organizationId}/accept",
+		operationId: "acceptImportClaim",
+		summary: "Join a workspace that imported the caller",
+		description:
+			"Answers the slug to open. Needs a sign-in session token, not an API token.",
+		tag: "Account",
+		response: apiJoinedOrganization,
+	},
+	{
+		method: "post",
+		path: "/me/import-claims/{organizationId}/decline",
+		operationId: "declineImportClaim",
+		summary: "Leave a workspace that imported the caller",
+		description:
+			"The membership goes. The imported history stays with the workspace. Needs a sign-in session token, not an API token.",
+		tag: "Account",
+		response: apiDeleted,
+	},
+	{
+		method: "post",
+		path: "/me/organizations",
+		operationId: "createOrganization",
+		summary: "Create a workspace",
+		description:
+			"The caller owns it. The slug comes from the name unless it is given, and a slug that is a page of the app moves to the next free one. Refused in single-org mode (`organizationCreation` in `/meta`). Needs a sign-in session token, not an API token.",
+		tag: "Account",
+		body: createOrganizationInput,
+		response: apiCreatedOrganization,
 	},
 ];
 

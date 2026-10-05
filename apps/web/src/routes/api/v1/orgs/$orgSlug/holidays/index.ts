@@ -1,5 +1,8 @@
-import type { ApiHoliday } from "@farmer/core/api";
-import { holidaysYearQueryInput } from "@farmer/core/schema";
+import type { ApiHoliday, ApiHolidaySwitch } from "@farmer/core/api";
+import {
+	holidaysYearQueryInput,
+	setHolidayDisabledInput,
+} from "@farmer/core/schema";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { typedQuery } from "#/server/api-query.ts";
@@ -10,7 +13,8 @@ import { apiRoute } from "#/server/api-route.ts";
  * organization's country in one year, as Settings → Holidays lists them.
  * `disabled` marks a day that an admin made a working day.
  *
- * Read-only here. Only an admin may switch a holiday off.
+ * PATCH switches one holiday off (`disabled: true`), so the day is a working
+ * day, or on again. It names the holiday by its `name`. Admins only.
  */
 export const Route = createFileRoute("/api/v1/orgs/$orgSlug/holidays/")({
 	server: {
@@ -26,6 +30,14 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/holidays/")({
 						name: row.name,
 						disabled: row.disabled,
 					}));
+				},
+			}),
+			PATCH: apiRoute({
+				input: setHolidayDisabledInput,
+				run: async (ctx, input): Promise<ApiHolidaySwitch> => {
+					const { holidaysService } = await import("@farmer/core/services");
+					await holidaysService.setHolidayDisabled(ctx, input);
+					return { name: input.name, disabled: input.disabled };
 				},
 			}),
 		},

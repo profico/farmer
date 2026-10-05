@@ -24,9 +24,12 @@ export const MIN_CLI_VERSION = "0.1.0";
  *
  * Raise it when a route group is added that the mobile app must find. Version
  * 2 adds capabilities in `whoami`, the clients list and the sign-in methods in
- * `/meta`.
+ * `/meta`. Version 3 adds the routes of the web app's last screens: "Assemble
+ * my day", the calendar picker and its notice, GitHub on an entry and on a
+ * project, image uploads, the organization policy, the holiday switch, and
+ * `/me/...` for a person before a workspace.
  */
-export const API_VERSION = 2;
+export const API_VERSION = 3;
 
 /** The oldest mobile app that can read this server's responses. Raise it for
  *  the same reasons as `MIN_CLI_VERSION`. */
@@ -54,6 +57,14 @@ export type ApiMeta = {
 	 *  server from before the mobile push sends no `pushRelay`, so a client
 	 *  reads it as optional and treats its absence as off. */
 	pushRelay: ApiPushRelay;
+	/** Whether this server stores uploaded images (a project icon, an
+	 *  organization logo). Without a store, `POST …/uploads` refuses each
+	 *  file. A server before API version 3 sends no field: read it as off. */
+	uploadsEnabled: boolean;
+	/** Whether a person may make a new workspace (`POST /me/organizations`).
+	 *  False in single-org mode. A server before API version 3 sends no
+	 *  field: read it as off. */
+	organizationCreation: boolean;
 };
 
 const parts = (version: string): [number, number, number] | null => {

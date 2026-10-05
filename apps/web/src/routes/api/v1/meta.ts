@@ -26,6 +26,10 @@ import { createFileRoute } from "@tanstack/react-router";
  * 0006). The relay URL is public: it is the same for every server that uses
  * Profico's relay.
  *
+ * `uploadsEnabled` and `organizationCreation` are what `getPublicAppConfig`
+ * tells the browser: whether an upload control may show, and whether "New
+ * workspace" may show. Two facts about the deployment, not about a person.
+ *
  * No rate limit and no credential, so the password answer is kept for
  * `PASSWORD_TTL_MS`: a loop on this URL costs at most two queries in that time.
  */
@@ -49,10 +53,14 @@ export const Route = createFileRoute("/api/v1/meta")({
 					{ isCliEnabled },
 					{ signInProviders, passwordOffered },
 					{ pushRelayUrl },
+					{ isStorageEnabled },
+					{ isSingleOrgMode },
 				] = await Promise.all([
 					import("@farmer/core/lib/cli-flag"),
 					import("@farmer/core/auth"),
 					import("@farmer/core/lib/push-relay"),
+					import("@farmer/core/lib/storage"),
+					import("@farmer/core/lib/single-org"),
 				]);
 				const relayUrl = pushRelayUrl();
 				const meta: ApiMeta = {
@@ -64,6 +72,8 @@ export const Route = createFileRoute("/api/v1/meta")({
 					signInMethods: signInProviders(),
 					passwordSignIn: await cachedPasswordOffered(passwordOffered),
 					pushRelay: { enabled: relayUrl !== null, url: relayUrl },
+					uploadsEnabled: isStorageEnabled(),
+					organizationCreation: !isSingleOrgMode(),
 				};
 				return Response.json(meta, {
 					headers: { "Cache-Control": "no-store" },

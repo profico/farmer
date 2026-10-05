@@ -6,7 +6,7 @@ import {
 } from "@farmer/core/schema";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
-import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 import { isOrgPlaceholder } from "#/lib/org-redirect.ts";
 
@@ -211,41 +211,14 @@ export const getDefaultOrgSlugForSession = createServerFn({
 		return oldest?.slug ?? null;
 	});
 
-// Live invitations addressed to the caller, for the no-access dead end.
-//
-// Not better-auth's own `listUserInvitations`: that endpoint rejects any caller
-// whose email isn't verified — unconditionally, unlike `acceptInvitation`,
-// which only checks when `requireEmailVerificationOnInvitation` is set. This
-// app has no verification flow, so every password user would get a 403 on the
-// one screen whose entire job is to show them their way in.
-//
-// The address must be verified all the same (`mayClaimInvitation`): an
-// invitation is matched by address alone, and an OpenID Connect source can
-// hand out an address it never checked. Accepting refuses the same person.
+// Live invitations addressed to the caller, for the no-access dead end. The
+// query and its verified-address rule are `onboarding.pendingInvitationsFor`,
+// which `GET /api/v1/me/invitations` reads too.
 export const listMyPendingInvitations = createServerFn({ method: "GET" })
 	.middleware([sessionMiddleware])
 	.handler(async ({ context }) => {
-		const { mayClaimInvitation } = await import("@farmer/core/auth");
-		if (!mayClaimInvitation(context.session.user.emailVerified)) return [];
-		const email = context.session.user.email.toLowerCase();
-		const { db } = await import("@farmer/core/db");
-		const { invitation, organization } =
-			await import("@farmer/core/schema/auth");
-		return db
-			.select({
-				id: invitation.id,
-				role: invitation.role,
-				organizationName: organization.name,
-			})
-			.from(invitation)
-			.innerJoin(organization, eq(organization.id, invitation.organizationId))
-			.where(
-				and(
-					sql`lower(${invitation.email}) = ${email}`,
-					eq(invitation.status, "pending"),
-					gt(invitation.expiresAt, new Date()),
-				),
-			);
+		const { onboarding } = await import("@farmer/core/auth");
+		return onboarding.pendingInvitationsFor(context.session.user);
 	});
 
 // A Harvest import's pending claims on the caller: memberships the import
