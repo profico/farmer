@@ -61,8 +61,11 @@ const YOU: (Entry & { local?: true })[] = [
 	},
 ];
 
-/** The workspace's settings, each behind the capability its routes check. */
-const WORKSPACE: (Entry & { allowed: (access: Access) => boolean })[] = [
+/** The workspace's settings, each behind the capability its routes check.
+ *  `assistant` is true when the chat can be used in the workspace. */
+const WORKSPACE: (Entry & {
+	allowed: (access: Access, assistant: boolean) => boolean;
+})[] = [
 	{
 		title: "People",
 		icon: "people",
@@ -131,7 +134,9 @@ const WORKSPACE: (Entry & { allowed: (access: Access) => boolean })[] = [
 		icon: "assistant",
 		tint: "purple",
 		href: "/workspace/assistant",
-		allowed: (access) => access.isAdmin,
+		// An admin edits the settings. A member reads them, but only when the
+		// assistant is available: otherwise the row has nothing to show.
+		allowed: (access, assistant) => access.isAdmin || assistant,
 	},
 ];
 
@@ -149,7 +154,9 @@ export default function MoreScreen() {
 	const { origin, slug } = useWorkspace();
 	const { setWorkspace, signOut } = useSession();
 	const youRows = YOU.filter((entry) => access.fullApi || entry.local);
-	const workspaceRows = WORKSPACE.filter((entry) => entry.allowed(access));
+	const workspaceRows = WORKSPACE.filter((entry) =>
+		entry.allowed(access, assistant),
+	);
 
 	const confirmSignOut = () =>
 		Alert.alert(

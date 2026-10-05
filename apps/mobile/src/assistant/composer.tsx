@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../ui/icon";
 import { usePalette } from "../ui/theme";
 import { SPACE, TYPE } from "../ui/type";
-import { SendIcon } from "./send-icon";
 
 /** The server refuses a longer message. */
 const MAX_LENGTH = 10_000;
@@ -132,7 +131,9 @@ export function Composer({
 						opacity: pressed ? 0.7 : 1,
 					})}
 				>
-					<SendIcon
+					<Icon
+						name="send"
+						size={22}
 						color={canSend ? palette.onPrimary : palette.onSurfaceVariant}
 					/>
 				</Pressable>
