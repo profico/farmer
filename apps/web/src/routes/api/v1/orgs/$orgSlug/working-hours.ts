@@ -11,7 +11,8 @@ import { apiRoute, NO_INPUT } from "#/server/api-route.ts";
  * `GET` and `PATCH /api/v1/orgs/$orgSlug/working-hours` — the caller's week on
  * Settings → My schedule. The GET answers all seven days, 0 (Sunday) to 6, with
  * the default for a day that was never saved. The PATCH saves one day, named
- * by `dayOfWeek`.
+ * by `dayOfWeek`. It is not a partial patch: it replaces the whole day, and a
+ * time that is not sent is cleared.
  *
  * The schedule shapes the fill blocks, the time-off spans and when a reminder
  * reaches the person. It is not a target: the target is the hour fund.

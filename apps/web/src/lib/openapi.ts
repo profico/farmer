@@ -1424,6 +1424,8 @@ export const OPERATIONS: Operation[] = [
 		path: "/orgs/{orgSlug}/working-hours",
 		operationId: "updateWorkingHoursDay",
 		summary: "Change one day of the working hours",
+		description:
+			"The body replaces the whole day named by `dayOfWeek`. A time that is not sent is cleared, so send both times for an enabled day.",
 		tag: "Schedule",
 		body: upsertWorkingHoursDayInput,
 		response: apiWorkingHoursDay,
