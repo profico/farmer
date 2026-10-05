@@ -1,10 +1,8 @@
 import type {
-	AbsenceRange,
 	ConfirmTimer,
 	CopyDay,
 	CopyWeek,
 	FileTimeEntries,
-	NewRecurringBlock,
 	NewTimeEntry,
 	TimeEntry,
 	TimeEntryPatch,
@@ -42,9 +40,13 @@ export const refreshTime = (queryClient: QueryClient, w: Workspace) =>
 		),
 	);
 
-/** The recurring blocks, as the "You" screens read them. */
+/** The recurring blocks. The "You" screens own the hooks of this key. */
 export const recurringBlocksKey = (w: Workspace) =>
 	[...scope(w), "recurring-blocks"] as const;
+
+/** The person's timer limit. The "You" screens write it. */
+export const timerSettingsKey = (w: Workspace) =>
+	[...scope(w), "timer-settings"] as const;
 
 /** The public holidays between two days, by day. */
 export const useHolidays = (from: string, to: string) => {
@@ -78,7 +80,7 @@ export const useTimerSettings = (enabled = true) => {
 	const w = useWorkspace();
 	const { fullApi } = useAccess();
 	return useQuery({
-		queryKey: [...scope(w), "timer-settings"],
+		queryKey: timerSettingsKey(w),
 		queryFn: () => w.client.getTimerSettings(w.slug),
 		enabled: fullApi && enabled,
 		staleTime: 5 * MINUTE,
@@ -130,22 +132,6 @@ export const useConfirmTimerEntry = ({
 	});
 };
 
-/** A repeating entry: a recurring block from the day of the form on. */
-export const useCreateRecurringBlock = () => {
-	const w = useWorkspace();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (body: NewRecurringBlock) =>
-			w.client.createRecurringBlock(w.slug, body),
-		onSuccess: () =>
-			Promise.all([
-				queryClient.invalidateQueries({ queryKey: recurringBlocksKey(w) }),
-				// A rule writes its blocks onto the days it covers.
-				refreshTime(queryClient, w),
-			]),
-	});
-};
-
 export const useCopyDay = () => {
 	const w = useWorkspace();
 	const queryClient = useQueryClient();
@@ -161,21 +147,6 @@ export const useCopyWeek = () => {
 	return useMutation({
 		mutationFn: (body: CopyWeek) => w.client.copyWeek(w.slug, body),
 		onSuccess: () => refreshTime(queryClient, w),
-	});
-};
-
-/** Books whole working days off over a range. */
-export const useBookTimeOff = () => {
-	const w = useWorkspace();
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: (body: AbsenceRange) => w.client.logAbsence(w.slug, body),
-		onSuccess: () =>
-			Promise.all([
-				refreshTime(queryClient, w),
-				queryClient.invalidateQueries({ queryKey: [...scope(w), "absences"] }),
-				queryClient.invalidateQueries({ queryKey: [...scope(w), "reports"] }),
-			]),
 	});
 };
 

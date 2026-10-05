@@ -6,11 +6,11 @@ import { Alert, View } from "react-native";
 import { useAccess } from "../src/api/capabilities";
 import { useEntries, useWhoami } from "../src/api/queries";
 import {
-	useCreateRecurringBlock,
 	useCreateTimeEntry,
 	useDeleteTimeEntry,
 	useUpdateTimeEntry,
 } from "../src/api/time";
+import { useCreateRecurringBlock } from "../src/api/you";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
 import { FormSection, Sheet } from "../src/forms/sheet";
 import { DayStepper, DurationStepper } from "../src/forms/steppers";

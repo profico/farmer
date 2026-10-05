@@ -2,11 +2,8 @@ import type { WorkingHoursDay } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 
 import { useWhoami } from "../../src/api/queries";
-import {
-	useTimerSettings,
-	useUpdateWorkingHoursDay,
-	useWorkingHours,
-} from "../../src/api/you";
+import { useTimerSettings } from "../../src/api/time";
+import { useUpdateWorkingHoursDay, useWorkingHours } from "../../src/api/you";
 import { ErrorBanner, ErrorState } from "../../src/ui/components";
 import { messageOf } from "../../src/ui/errors";
 import { Inset } from "../../src/ui/screen";

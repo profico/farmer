@@ -4,7 +4,7 @@ import { useState } from "react";
 import { View } from "react-native";
 
 import { useTasks, useWhoami } from "../../src/api/queries";
-import { useBookTimeOff } from "../../src/api/time";
+import { useLogAbsence } from "../../src/api/you";
 import { FormSection, Sheet } from "../../src/forms/sheet";
 import { addDays } from "../../src/lib/days";
 import { formatHours } from "../../src/lib/duration";
@@ -67,7 +67,7 @@ function TimeOffForm({ start }: { start: string }) {
 	const palette = usePalette();
 	const router = useRouter();
 	const tasks = useTasks();
-	const book = useBookTimeOff();
+	const book = useLogAbsence();
 	const [range, setRange] = useState({ from: start, to: start });
 	const [chosen, setChosen] = useState<string | null>(null);
 	const [note, setNote] = useState("");

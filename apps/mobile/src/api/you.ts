@@ -24,6 +24,7 @@ import { USER_AGENT } from "../config";
 import { useSignedIn } from "../session/session";
 import { useAccess } from "./capabilities";
 import { scope, type Workspace, useWorkspace } from "./queries";
+import { recurringBlocksKey, timerSettingsKey } from "./time";
 
 // The queries and the writes of the "You" screens: the person's own
 // settings and records. Each key starts with `scope(w)`. Each query waits
@@ -35,16 +36,17 @@ const MINUTE = 60_000;
 const keys = (w: Workspace) => ({
 	notifications: [...scope(w), "you", "notifications"],
 	hiddenTasks: [...scope(w), "you", "hidden-tasks"],
-	filingRules: [...scope(w), "you", "filing-rules"],
 	workingHours: [...scope(w), "you", "working-hours"],
-	timerSettings: [...scope(w), "you", "timer-settings"],
-	recurringBlocks: [...scope(w), "you", "recurring-blocks"],
+	// The Time screens read or change these resources too, so the two
+	// areas share one key for each.
+	filingRules: [...scope(w), "filing-rules"],
+	timerSettings: timerSettingsKey(w),
+	recurringBlocks: recurringBlocksKey(w),
 	integrations: [...scope(w), "you", "integrations"],
 	holidays: (year: number) => [...scope(w), "you", "holidays", year],
-	absences: [...scope(w), "you", "absences"],
+	absences: [...scope(w), "absences"],
 	absenceMonth: (year: number, month: number) => [
 		...scope(w),
-		"you",
 		"absences",
 		year,
 		month,
@@ -56,7 +58,7 @@ const keys = (w: Workspace) => ({
  *  time makes them old. */
 const invalidateTime = (queryClient: QueryClient, w: Workspace) =>
 	Promise.all(
-		["entries", "unfiled", "tracking", "reports"].map((part) =>
+		["entries", "unfiled", "tracking", "home", "reports"].map((part) =>
 			queryClient.invalidateQueries({ queryKey: [...scope(w), part] }),
 		),
 	);
@@ -266,16 +268,6 @@ export const useUpdateWorkingHoursDay = () => {
 				queryClient.invalidateQueries({ queryKey: [...scope(w), "whoami"] }),
 				queryClient.invalidateQueries({ queryKey: [...scope(w), "tracking"] }),
 			]),
-	});
-};
-
-export const useTimerSettings = () => {
-	const w = useWorkspace();
-	const { fullApi } = useAccess();
-	return useQuery({
-		queryKey: keys(w).timerSettings,
-		queryFn: () => w.client.getTimerSettings(w.slug),
-		enabled: fullApi,
 	});
 };
 

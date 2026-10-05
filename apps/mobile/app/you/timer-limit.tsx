@@ -1,4 +1,5 @@
-import { useTimerSettings, useUpdateTimerSettings } from "../../src/api/you";
+import { useTimerSettings } from "../../src/api/time";
+import { useUpdateTimerSettings } from "../../src/api/you";
 import { ErrorBanner, ErrorState } from "../../src/ui/components";
 import { messageOf } from "../../src/ui/errors";
 import { Inset } from "../../src/ui/screen";
