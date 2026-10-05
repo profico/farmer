@@ -121,7 +121,7 @@ export const status: Command = {
 	help: [
 		"Logged time counts work and time off through today. The target so far",
 		"counts the working days before today, and the status compares against",
-		"it. The goal today counts today as well.",
+		"it. The goal counts today as well.",
 	],
 	run: async (args, runtime) => {
 		const { values } = parseCommandArgs(args, {}, 0, STATUS_USAGE);
@@ -156,7 +156,7 @@ export const status: Command = {
 				{ header: "Logged", align: "right" },
 				{ header: "Target so far", align: "right" },
 				{ header: "Difference", align: "right" },
-				{ header: "Goal today", align: "right" },
+				{ header: "Goal", align: "right" },
 				{ header: "Full target", align: "right" },
 				{ header: "Status" },
 			],
