@@ -13,8 +13,9 @@ is true, and explain what is not.
 
 - This skill changes code, runs tests, commits, and pushes to the PR's own
   branch. Do not force-push.
-- Do not reply to a thread, resolve a thread, re-request a review, or mark the
-  PR ready unless the user asks.
+- After the push, resolve each thread that the push fixed (see step 7).
+- Do not reply to a thread, re-request a review, or mark the PR ready unless
+  the user asks.
 - Do not change the base branch, merge, or close the PR.
 
 ## 1. Read the review
@@ -77,7 +78,18 @@ head. Fix what `pr-review` finds before you push.
   imperative subject. In the body, say why the change is necessary.
 - `git push`. Do not force-push.
 
-## 7. Report
+## 7. Resolve the fixed threads
+
+An open thread that the code already fixes makes the PR look unfinished.
+
+1. Find the thread IDs:
+   `gh api graphql -f query='{ repository(owner:"profico", name:"farmer") { pullRequest(number:<n>) { reviewThreads(first:100) { nodes { id isResolved path comments(first:1) { nodes { body } } } } } } }'`
+2. For each thread that the pushed commit really fixed, run:
+   `gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<id>"}) { thread { isResolved } } }'`
+3. Leave a thread open when the request was not valid or the fix is not
+   complete. The author must answer it.
+
+## 8. Report
 
 For each request, report:
 
@@ -85,5 +97,6 @@ For each request, report:
 - What changed (`file:line`).
 - The test result.
 
-End the report with the pushed SHA, and list any thread that still needs a
+End the report with the pushed SHA and the resolved threads. List any thread
+that is still open and needs a
 reply from the author.
