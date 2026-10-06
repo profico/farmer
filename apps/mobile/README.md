@@ -17,9 +17,9 @@ do not need to change the navigation to build a screen.
 | `app/you/` | The person's own settings and records | More, "You" |
 | `app/workspace/` | The workspace settings | More, "Workspace" |
 | `app/assistant/` | The conversations and one conversation (`[id]`) | More |
-| `app/onboarding/` | The invitations and Harvest claims that wait, and a new workspace | More, "Workspaces", and the screen of a person without a workspace |
+| `app/onboarding/` | The invitations and Harvest claims that wait | More, "Workspaces" |
 | `src/reports/` | One component for each part of the Reports tab | The segmented control |
-| `app/*.tsx` | The forms (`entry`, `start-timer`, `stop-timer`) and the sign-in | Sheets and the start |
+| `app/*.tsx` | The forms (`entry`, `start-timer`, `stop-timer`, `new-workspace`) and the sign-in | Sheets and the start |
 
 Rules:
 
@@ -29,8 +29,10 @@ Rules:
 - To add a screen to a folder, add a file. For a new folder at the root,
   add a `_layout.tsx` with `<SectionStack />`, and add the folder to the
   `Stack.Protected` list of signed-in screens in `app/_layout.tsx`.
-  `app/onboarding/` is the one exception: a person without a workspace
-  opens it, so its layout does not send that person to the tabs.
+  `app/onboarding/` is the one exception: its layout does not send a
+  person without a workspace to the tabs. A form that the tabs or the
+  screen of a person without a workspace open directly goes in the root
+  stack (`app/new-workspace.tsx`), with the sheet options there.
 - Show an entry only when the person can use it. Use `useAccess()`
   (`src/api/capabilities.ts`): `fullApi` is false for a Server before API
   version 2, and the capabilities come from `whoami`. `setupApi` is false

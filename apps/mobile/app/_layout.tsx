@@ -56,6 +56,7 @@ function Navigator() {
 				<Stack.Screen name="start-timer" options={form} />
 				<Stack.Screen name="stop-timer" options={form} />
 				<Stack.Screen name="time" options={form} />
+				<Stack.Screen name="new-workspace" options={form} />
 			</Stack.Protected>
 			<Stack.Protected guard={!signedIn}>
 				<Stack.Screen name="server" />

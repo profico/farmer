@@ -1,14 +1,11 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 
-import { useServerFeatures } from "../../src/api/capabilities";
-import {
-	useCreateWorkspace,
-	useEnterWorkspace,
-} from "../../src/api/onboarding";
-import { Sheet } from "../../src/forms/sheet";
-import { EmptyState, ErrorBanner, Field } from "../../src/ui/components";
-import { messageOf } from "../../src/ui/errors";
+import { useServerFeatures } from "../src/api/capabilities";
+import { useCreateWorkspace, useEnterWorkspace } from "../src/api/onboarding";
+import { Sheet } from "../src/forms/sheet";
+import { EmptyState, ErrorBanner, Field } from "../src/ui/components";
+import { messageOf } from "../src/ui/errors";
 
 const NAME_MAX_LENGTH = 120;
 

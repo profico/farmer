@@ -250,7 +250,7 @@ export default function MoreScreen() {
 								icon="add"
 								tint="green"
 								title="New workspace"
-								onPress={() => router.push("/onboarding/new-workspace")}
+								onPress={() => router.push("/new-workspace")}
 							/>
 						) : null}
 					</SettingsSection>
