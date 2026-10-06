@@ -218,3 +218,67 @@ link carries a one-time code, not the session (ADR 0005). The code is in
   the app reads a code and nothing else from it. The app always sends `cc`.
 - The password sign-in, the device flow and API tokens do not use the link
   and did not change.
+
+## Builds
+
+`.github/workflows/mobile-release.yml` builds the app on GitHub runners. It
+does not use EAS, and it needs no Apple Developer account and no Google Play
+account.
+
+| Trigger | Result |
+|---|---|
+| Push to `main` that changes `apps/mobile`, `packages/api-client`, `packages/push-crypto`, `bun.lock` or the workflow | Builds both platforms. Replaces the prerelease `mobile-latest` (the old release and its tag are deleted, and made again on the new commit). |
+| Tag `mobile-v<version>` | Builds both platforms. Publishes a normal release. The job fails when the tag is not the `version` of `app.config.ts`. |
+| Push to `feat/mobile` | Builds both platforms. Keeps the files as workflow artifacts. No release. Remove this trigger after the mobile pull request merges. |
+| `workflow_dispatch` | Builds. Releases only on `main`. |
+
+The files of a release:
+
+- `farmer-<version>-<versionCode>.apk` is signed with the release keystore.
+  The file name ends in `-debug-signed` when a secret is missing, and the
+  job prints a warning. A debug-signed APK does not install over a
+  release-signed app.
+- `farmer-<version>-unsigned.ipa` has no signature, for AltStore or
+  SideStore. It holds the widget and the notification service extension
+  (`PlugIns`). A free Apple ID gives an app that expires after 7 days and
+  has no push.
+- `farmer-<version>-simulator.zip` holds `Farmer.app` for the iOS Simulator.
+- `SHA256SUMS`.
+
+### The version code
+
+`FARMER_VERSION_CODE` sets the Android `versionCode` and the iOS
+`buildNumber` (`app.config.ts`). CI sets it to `github.run_number`, which
+only goes up, so a new APK installs over the old one. Without the variable
+the prebuild default (1) stays. The `version` is still the one in
+`app.config.ts`.
+
+### Android signing
+
+`android/` is made by `expo prebuild` and is not in the repository.
+`plugins/with-android-signing.js` adds a `release` signing config to
+`app/build.gradle`. The release build type uses it when
+`FARMER_KEYSTORE_PATH` is set, with `FARMER_KEYSTORE_PASSWORD`,
+`FARMER_KEY_ALIAS` and `FARMER_KEY_PASSWORD`. Without
+`FARMER_KEYSTORE_PATH` the build signs with the debug keystore, as before.
+
+The repository secrets: `ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+`GOOGLE_SERVICES_JSON_BASE64` is optional. Without it the build has no FCM
+and the app gets no push token (`plugins/with-push.js`). Keep one release
+keystore for every build. Android refuses an update that another key signed.
+
+### iOS
+
+The runner builds two things with no signing: a Release build for the
+simulator, and an archive for a device (`CODE_SIGNING_ALLOWED=NO`). The
+unsigned archive has no entitlements, so the app group and push of the app
+and the extensions are not in the IPA. The signing step of AltStore or
+SideStore applies the entitlements that the account allows. A free account
+allows no app group, so the widget and the extension cannot share the
+Keychain with the app, and there is no push.
+
+The workflow selects Xcode with `maxim-lobanov/setup-xcode`: the newest
+stable one, or the repository variable `XCODE_VERSION`. The iOS 27 SDK needs
+the UIScene life cycle, and `plugins/with-ios-scene.js` adds it. The plugin
+does not depend on the Xcode version.

@@ -1,0 +1,457 @@
+name: Mobile release
+
+# Builds the Expo app (`apps/mobile`) for Android and iOS on GitHub runners,
+# with no EAS and with no Apple Developer account:
+#
+#   Android  an APK, signed with the release keystore from the secrets.
+#   iOS      an unsigned IPA for AltStore or SideStore, and a zip of the
+#            app for the iOS Simulator.
+#
+# What each trigger does:
+#
+#   push to main     builds both platforms, then replaces the one rolling
+#                    prerelease `mobile-latest`. Only when the app, a package
+#                    that it uses, `bun.lock` or this file changed.
+#   tag `mobile-v*`  builds both platforms and publishes a normal release.
+#                    Push the tag after you raise `version` in
+#                    `apps/mobile/app.config.ts`:
+#
+#                      git tag mobile-v0.1.0 && git push origin mobile-v0.1.0
+#
+#   push to feat/mobile  builds both platforms and keeps the files as workflow
+#                    artifacts. It publishes nothing.
+#   workflow_dispatch    the same as a push to the branch that you pick: a
+#                    release only on main.
+#
+# A fork runs this as is. Without the Android secrets the APK is signed with
+# the debug keystore (see "Check the signing secrets"), and the file name
+# says so. Nothing else here needs a secret.
+#
+# Secrets (Settings -> Secrets and variables -> Actions):
+#
+#   ANDROID_KEYSTORE_BASE64    the release keystore, as one line of base64.
+#   ANDROID_KEYSTORE_PASSWORD  the password of the keystore.
+#   ANDROID_KEY_ALIAS          the alias of the key.
+#   ANDROID_KEY_PASSWORD       the password of the key.
+#   GOOGLE_SERVICES_JSON_BASE64  optional: `google-services.json` of the
+#                              Firebase project, for push on Android. Without
+#                              it the APK builds and starts, and gets no
+#                              push token (`plugins/with-push.js`).
+#
+# Keep the same release keystore for every build. Android refuses to install
+# an APK over an app that another key signed, and the person must then
+# uninstall the app and lose its data.
+
+on:
+  push:
+    branches:
+      - main
+      # Remove this branch after the mobile pull request (#146) merges.
+      - feat/mobile
+    tags: ["mobile-v*"]
+    paths:
+      - "apps/mobile/**"
+      - "packages/api-client/**"
+      - "packages/push-crypto/**"
+      - "bun.lock"
+      - ".github/workflows/mobile-release.yml"
+  workflow_dispatch:
+
+# A newer push replaces an older run on the same ref. A tag is never
+# cancelled: a cancelled release run can leave a release with only some of
+# its assets.
+concurrency:
+  group: mobile-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: read
+
+env:
+  # The Android build reads it in `apps/mobile/app.config.ts`. A new APK
+  # installs over an old one only when its version code is higher, and the
+  # run number only goes up. The iOS build number takes the same value.
+  FARMER_VERSION_CODE: ${{ github.run_number }}
+
+jobs:
+  version:
+    name: Read the app version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The tag is what the release title shows, and `app.config.ts` is what
+      # the app reports as its own version. A release where the two disagree
+      # fails here, before the two builds, as `cli-release.yml` does for the
+      # CLI.
+      - name: Read the version, and check the tag matches it
+        id: version
+        working-directory: apps/mobile
+        run: |
+          config_version="$(bunx expo config --type public --json | bun -e 'console.log(JSON.parse(await Bun.stdin.text()).version)')"
+          if [ -z "$config_version" ] || [ "$config_version" = undefined ]; then
+            echo "::error::apps/mobile/app.config.ts has no version"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag_version="${GITHUB_REF_NAME#mobile-v}"
+            if [ "$tag_version" != "$config_version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME is version $tag_version, but apps/mobile/app.config.ts is $config_version"
+              exit 1
+            fi
+          fi
+          echo "version=$config_version" >> "$GITHUB_OUTPUT"
+
+  android:
+    name: Build the Android APK
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      # JDK 17: the version that the Android build of React Native is tested
+      # with. The runner's default JDK is newer.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache the Bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      # `android/` is not in the repository: prebuild makes it, so the Gradle
+      # cache key cannot use its files. The lockfile and the app config are
+      # what change the native build.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # A secret is not readable in an `if`, so this step reads the three
+      # that decide the signing into an output. A fork, or a repository
+      # before the secrets exist, gets the debug keystore.
+      - name: Check the signing secrets
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Android signing::An ANDROID_KEYSTORE_* or ANDROID_KEY_* secret is missing, so the APK is signed with the debug keystore. It will not install over a release-signed app."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write the release keystore
+        if: steps.signing.outputs.release == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/farmer-release.keystore"
+          echo "FARMER_KEYSTORE_PATH=$RUNNER_TEMP/farmer-release.keystore" >> "$GITHUB_ENV"
+
+      # `plugins/with-push.js` reads this file when it exists. Without it the
+      # build has no FCM, and the app logs that one time.
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > apps/mobile/google-services.json
+          else
+            echo "::notice title=Android push::GOOGLE_SERVICES_JSON_BASE64 is not set, so the APK is built without FCM."
+          fi
+
+      # `--no-install`: the install above already ran for the workspace.
+      - name: Prebuild the Android project
+        working-directory: apps/mobile
+        run: bunx expo prebuild -p android --no-install
+
+      # `with-android-signing.js` reads the keystore from these variables when
+      # FARMER_KEYSTORE_PATH is set. Only this step sees the passwords.
+      - name: Build the APK
+        working-directory: apps/mobile/android
+        env:
+          FARMER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FARMER_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          FARMER_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Name the APK and write its checksum
+        env:
+          RELEASE_SIGNED: ${{ steps.signing.outputs.release }}
+        run: |
+          suffix="$FARMER_VERSION_CODE"
+          if [ "$RELEASE_SIGNED" != true ]; then
+            suffix="$FARMER_VERSION_CODE-debug-signed"
+          fi
+          mkdir -p out
+          apk="out/farmer-$VERSION-$suffix.apk"
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "$apk"
+          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$apk" | grep -E 'certificate (DN|SHA-256)'
+          (cd out && sha256sum "$(basename "$apk")" | tee "$(basename "$apk").sha256")
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-android
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: Build the iOS app
+    needs: version
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Xcode is chosen here, not left to the image. The newest stable Xcode
+      # builds this app: `plugins/with-ios-scene.js` adds the UIScene life
+      # cycle that the iOS 27 SDK needs, and that life cycle also works with
+      # an older SDK. Set the repository variable XCODE_VERSION (for example
+      # `27.0` or `latest`) to build with another one.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ vars.XCODE_VERSION || 'latest-stable' }}
+
+      - name: Show the Xcode version
+        run: xcodebuild -version
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - name: Cache the Bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      # The download cache of CocoaPods, not `ios/Pods`: prebuild makes the
+      # `ios/` folder, and a `Pods/` folder restored before it would sit in a
+      # folder that prebuild does not expect.
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: pods-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**') }}
+          restore-keys: pods-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Prebuild also runs `pod install`. It warns that there is no Apple team:
+      # the two builds below do not sign, so no team is needed.
+      - name: Prebuild the iOS project
+        working-directory: apps/mobile
+        run: bunx expo prebuild -p ios
+
+      # The simulator build runs on any Mac and needs no signing.
+      - name: Build for the iOS Simulator
+        working-directory: apps/mobile/ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace Farmer.xcworkspace \
+            -scheme Farmer \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/simulator \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build-simulator.log | tail -n 25
+
+      # The device build is an archive with no signature. The app group and
+      # push entitlements of the app and the two extensions are not applied
+      # when nothing signs: the signing step of the person who installs the
+      # IPA applies the ones that the person's account allows.
+      - name: Archive for a device, with no signing
+        working-directory: apps/mobile/ios
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -workspace Farmer.xcworkspace \
+            -scheme Farmer \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Farmer.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | tee build-archive.log | tail -n 25
+
+      # `ditto` keeps the layout of a bundle. The IPA must hold the widget
+      # and the notification service extension, so a missing `PlugIns` folder
+      # fails the job.
+      - name: Package the zip and the IPA
+        run: |
+          ios=apps/mobile/ios/build
+          sim_app="$ios/simulator/Build/Products/Release-iphonesimulator/Farmer.app"
+          device_app="$ios/Farmer.xcarchive/Products/Applications/Farmer.app"
+          for app in "$sim_app" "$device_app"; do
+            if [ ! -d "$app/PlugIns" ]; then
+              echo "::error::$app has no PlugIns folder, so the extensions are missing"
+              exit 1
+            fi
+            ls "$app/PlugIns"
+          done
+          mkdir -p out stage/Payload
+          ditto -c -k --sequesterRsrc --keepParent "$sim_app" "out/farmer-$VERSION-simulator.zip"
+          ditto "$device_app" stage/Payload/Farmer.app
+          (cd stage && ditto -c -k --sequesterRsrc --keepParent Payload "../out/farmer-$VERSION-unsigned.ipa")
+          unzip -l "out/farmer-$VERSION-unsigned.ipa" | grep -E 'PlugIns/[^/]+\.appex/$'
+          (cd out && shasum -a 256 -- * | tee SHA256SUMS-ios)
+
+      - name: Upload the iOS builds
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-ios
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish the release
+    needs: [version, android, ios]
+    # A push to the branch feat/mobile, or a manual run on another branch,
+    # keeps the artifacts and stops here.
+    if: github.ref == 'refs/heads/main' || (github.ref_type == 'tag' && startsWith(github.ref_name, 'mobile-v'))
+    runs-on: ubuntu-latest
+    permissions:
+      # `gh release create` writes a release and uploads its assets.
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # First, because `actions/checkout` cleans the workspace and would take
+      # the downloaded files with it. The history is here for the notes.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download the builds
+        uses: actions/download-artifact@v8
+        with:
+          pattern: mobile-*
+          path: release
+          merge-multiple: true
+
+      - name: Write SHA256SUMS
+        working-directory: release
+        run: |
+          rm -f ./*.sha256 SHA256SUMS-ios
+          ls -la
+          sha256sum farmer-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Write the release notes
+        run: |
+          paths="apps/mobile packages/api-client packages/push-crypto"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            previous="$(git describe --tags --abbrev=0 --match 'mobile-v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+            if [ -n "$previous" ]; then
+              range="$previous..$GITHUB_REF_NAME"
+            else
+              range="$GITHUB_REF_NAME"
+            fi
+            # shellcheck disable=SC2086 -- the paths are a fixed list
+            entries="$(git log --no-merges --format='- %s' "$range" -- $paths)"
+            heading="Farmer mobile $VERSION."
+          else
+            # shellcheck disable=SC2086 -- the paths are a fixed list
+            entries="$(git log --no-merges -n 15 --format='- %h %s' "$GITHUB_SHA" -- $paths)"
+            heading="The newest build from main, version $VERSION (build $FARMER_VERSION_CODE). This prerelease is replaced on each push to main."
+          fi
+          {
+            echo "$heading"
+            echo
+            echo "Commit: \`$GITHUB_SHA\`"
+            echo
+            echo "## Files"
+            echo
+            echo "- \`farmer-$VERSION-*.apk\` is for Android. It installs directly. Allow installs from unknown sources for the app that opens the file. If the name ends in \`-debug-signed\`, a debug key signed it, and it does not install over a release-signed build."
+            echo "- \`farmer-$VERSION-unsigned.ipa\` is for iPhone. It is unsigned. Sign and install it with AltStore or SideStore. With a free Apple ID the app expires after 7 days, and it has no push."
+            echo "- \`farmer-$VERSION-simulator.zip\` is for the iOS Simulator. Unzip it, and drop \`Farmer.app\` on a running simulator."
+            echo "- \`SHA256SUMS\` has the checksum of each file."
+            echo
+            echo "## Changes"
+            echo
+            if [ -n "$entries" ]; then
+              echo "$entries"
+            else
+              echo "- No commit under the app or its packages. The files are built again from the same source."
+            fi
+          } > notes.md
+          cat notes.md
+
+      # The rolling prerelease is deleted and made again, so its tag moves to
+      # the new commit and its date is the date of this build. `--cleanup-tag`
+      # deletes the tag with the release. The first run has nothing to delete.
+      - name: Replace the rolling prerelease
+        if: github.ref_type == 'branch'
+        run: |
+          gh release delete mobile-latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create mobile-latest release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Farmer mobile, newest build from main" \
+            --notes-file notes.md
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Farmer mobile $VERSION" \
+            --notes-file notes.md
