@@ -72,6 +72,10 @@ env:
   # installs over an old one only when its version code is higher, and the
   # run number only goes up. The iOS build number takes the same value.
   FARMER_VERSION_CODE: ${{ github.run_number }}
+  # The Server screen of both apps starts with this address when the app has
+  # no saved server. The person can still change it
+  # (`apps/mobile/app.config.ts`). Remove the line for a build with no default.
+  FARMER_DEFAULT_SERVER: https://farmer.profi.co
 
 jobs:
   version:
@@ -137,8 +141,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # The default package list holds `tools`, which the SDK repository no
+      # longer has, and sdkmanager fails on it. Gradle installs the platform,
+      # the build tools and the NDK that the project asks for.
       - name: Setup the Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Cache the Bun packages
         uses: actions/cache@v4
@@ -415,6 +424,17 @@ jobs:
             echo "$heading"
             echo
             echo "Commit: \`$GITHUB_SHA\`"
+            echo
+            echo "## Install on Android"
+            echo
+            echo "1. Download the APK from this release on the phone."
+            echo "2. Open the file. Allow installs from this source when Android asks."
+            echo "3. Open Farmer. It starts with farmer.profi.co. Tap Continue."
+            echo "4. Sign in as you do on the web."
+            echo
+            echo "To update, download the newer APK from the same release (\`mobile-latest\`). It installs over the old app, and you keep your sign-in."
+            echo
+            echo "Push notifications are not on yet. Reminders still come through Slack."
             echo
             echo "## Files"
             echo
