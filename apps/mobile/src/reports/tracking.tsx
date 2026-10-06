@@ -4,6 +4,7 @@ import { View } from "react-native";
 import { useEntries, useTracking, useWhoami } from "../api/queries";
 import { periodTitle, weekdayShort, weekOf } from "../lib/days";
 import { formatHours } from "../lib/duration";
+import { daySeconds } from "../time/seconds";
 import { Card, ErrorState, Skeleton, Text } from "../ui/components";
 import type { Palette } from "../ui/palette";
 import { ProgressBar } from "../ui/progress";
@@ -98,11 +99,7 @@ function WeekBars({
 	const entries = useEntries(days[0] ?? today, days[6] ?? today);
 	if (entries.isPending) return <Skeleton height={160} radius={16} />;
 	if (entries.isError) return null;
-	const totals = days.map((day) =>
-		entries.data
-			.filter((entry) => entry.date === day)
-			.reduce((sum, entry) => sum + entry.durationSeconds, 0),
-	);
+	const totals = days.map((day) => daySeconds(entries.data, day));
 	const highest = Math.max(8 * 3600, ...totals);
 	return (
 		<Card>

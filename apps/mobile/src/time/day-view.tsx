@@ -40,6 +40,7 @@ import { useConfirmDeleteEntry } from "./delete-entry";
 import { canContinue, EntryRow } from "./entry-row";
 import { EntrySurface } from "./entry-surface";
 import { committed } from "./haptics";
+import { secondsByDay } from "./seconds";
 import { TimerCard } from "./timer-card";
 import { WeekStrip } from "./week-strip";
 
@@ -103,13 +104,7 @@ export function DayView({
 	const from = days[0] ?? selected;
 	const to = days[6] ?? selected;
 
-	const totals = new Map<string, number>();
-	for (const entry of entries.data ?? []) {
-		totals.set(
-			entry.date,
-			(totals.get(entry.date) ?? 0) + entry.durationSeconds,
-		);
-	}
+	const totals = secondsByDay(entries.data ?? []);
 	// A rest-of-day block takes what the day has left, so it is last.
 	const dayEntries = (entries.data ?? [])
 		.filter((entry) => entry.date === selected)

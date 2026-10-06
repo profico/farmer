@@ -1,6 +1,7 @@
 import type { TimeEntry } from "@farmer/api-client";
 
 import { MAX_DAY_SECONDS, QUARTER_HOUR_SECONDS } from "../lib/duration";
+import { sumSeconds } from "./seconds";
 
 /**
  * The week as rows of work: one row for each project and task, one cell for
@@ -68,20 +69,13 @@ export const buildRows = (
 	);
 };
 
-const sum = (entries: readonly TimeEntry[]) =>
-	entries.reduce((total, entry) => total + entry.durationSeconds, 0);
-
 /** The time in one cell. */
 export const cellSeconds = (row: GridRow, date: string) =>
-	sum(row.byDate.get(date) ?? []);
+	sumSeconds(row.byDate.get(date) ?? []);
 
 /** The time in a row over the week. */
 export const rowSeconds = (row: GridRow, dates: readonly string[]) =>
 	dates.reduce((total, date) => total + cellSeconds(row, date), 0);
-
-/** Everything logged on a day. */
-export const daySeconds = (entries: readonly TimeEntry[], date: string) =>
-	sum(entries.filter((entry) => entry.date === date));
 
 /**
  * One 15-minute step of a cell, up or down. A cell can go to zero, which

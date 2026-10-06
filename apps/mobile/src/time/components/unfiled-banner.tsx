@@ -7,6 +7,7 @@ import { ActionButton, Card, Text } from "../../ui/components";
 import { Icon } from "../../ui/icon";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
+import { sumSeconds } from "../seconds";
 import { unfiledHeadline } from "../unfiled";
 
 /**
@@ -30,10 +31,7 @@ export function UnfiledBanner({
 	const unfiled = useUnfiled(from, to);
 	const entries = unfiled.data ?? [];
 	if (entries.length === 0) return null;
-	const seconds = entries.reduce(
-		(sum, entry) => sum + entry.durationSeconds,
-		0,
-	);
+	const seconds = sumSeconds(entries);
 	return (
 		<Card tone="secondary">
 			<View

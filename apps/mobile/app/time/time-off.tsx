@@ -16,6 +16,7 @@ import { addDays } from "../../src/lib/days";
 import { formatHours } from "../../src/lib/duration";
 import { DateField } from "../../src/time/components/date-field";
 import { committed } from "../../src/time/haptics";
+import { sumSeconds } from "../../src/time/seconds";
 import {
 	MAX_SPAN_DAYS,
 	skipReasonLabel,
@@ -86,10 +87,7 @@ function TimeOffForm({ start }: { start: string }) {
 	const invalid = spanError(range.from, range.to);
 
 	if (result) {
-		const bookedSeconds = result.booked.reduce(
-			(sum, day) => sum + day.durationSeconds,
-			0,
-		);
+		const bookedSeconds = sumSeconds(result.booked);
 		const skippedLabel =
 			result.skipped.length === 1
 				? "Skipped 1 day"

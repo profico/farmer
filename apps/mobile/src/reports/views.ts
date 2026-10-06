@@ -8,6 +8,7 @@
 import type { AbsenceReport, TimeReportDetail } from "@farmer/api-client";
 
 import { addDays } from "../lib/days";
+import { sumSeconds } from "../time/seconds";
 import { dayHeading, monthLabel, shiftMonth, spanDays } from "./period";
 
 export type DetailRow = TimeReportDetail["rows"][number];
@@ -207,7 +208,7 @@ export const absenceView = (
 			return {
 				userId: row.userId,
 				name: row.name,
-				seconds: entries.reduce((sum, entry) => sum + entry.durationSeconds, 0),
+				seconds: sumSeconds(entries),
 				entries,
 			};
 		})

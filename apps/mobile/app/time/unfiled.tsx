@@ -17,6 +17,7 @@ import { CheckRow } from "../../src/time/components/check-row";
 import { type Notice, Snackbar } from "../../src/time/components/snackbar";
 import { SwitchRow } from "../../src/time/components/switch-row";
 import { committed } from "../../src/time/haptics";
+import { sumSeconds } from "../../src/time/seconds";
 import {
 	groupUnfiled,
 	restoreBody,
@@ -73,9 +74,9 @@ export default function UnfiledSheet() {
 
 	const list = unfiled.data ?? [];
 	const groups = groupUnfiled(list);
-	const selectedSeconds = list
-		.filter((entry) => selected.has(entry.id))
-		.reduce((sum, entry) => sum + entry.durationSeconds, 0);
+	const selectedSeconds = sumSeconds(
+		list.filter((entry) => selected.has(entry.id)),
+	);
 	const busy = file.isPending || remove.isPending || restore.isPending;
 	const fills = new Set(
 		(entries.data ?? [])

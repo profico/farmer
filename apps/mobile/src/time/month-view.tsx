@@ -15,6 +15,7 @@ import {
 	orderedWeekdays,
 	weekdayName,
 } from "./calendar";
+import { secondsByDay } from "./seconds";
 
 const longDay = (day: string) =>
 	new Intl.DateTimeFormat(undefined, {
@@ -46,13 +47,7 @@ export function MonthView({
 	const palette = usePalette();
 	const days = daysOfMonth(month);
 	const blanks = leadingBlanks(month, weekStartsOn);
-	const totals = new Map<string, number>();
-	for (const entry of entries.data ?? []) {
-		totals.set(
-			entry.date,
-			(totals.get(entry.date) ?? 0) + entry.durationSeconds,
-		);
-	}
+	const totals = secondsByDay(entries.data ?? []);
 	const monthTotal = [...totals.values()].reduce(
 		(sum, value) => sum + value,
 		0,

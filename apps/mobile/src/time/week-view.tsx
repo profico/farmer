@@ -34,10 +34,10 @@ import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 import { type ChartDay, WeekChart } from "./components/week-chart";
 import { dayTargets, weekDayMarks } from "./day-marks";
+import { daySeconds, sumSeconds } from "./seconds";
 import {
 	buildRows,
 	cellSeconds,
-	daySeconds,
 	type DraftRow,
 	type GridRow,
 	rowDeletions,
@@ -460,7 +460,7 @@ export function WeekView({
 
 	const list = entries.data ?? [];
 	const rows = buildRows(list, drafts);
-	const weekTotal = list.reduce((sum, entry) => sum + entry.durationSeconds, 0);
+	const weekTotal = sumSeconds(list);
 
 	// The chart. Each day is held to the person's working hours, as
 	// "Assemble my day" and the day view read them. The server's home gives

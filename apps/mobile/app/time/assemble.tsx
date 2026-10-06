@@ -21,6 +21,7 @@ import { CheckRow } from "../../src/time/components/check-row";
 import { type Notice, Snackbar } from "../../src/time/components/snackbar";
 import { SwitchRow } from "../../src/time/components/switch-row";
 import { committed } from "../../src/time/haptics";
+import { sumSeconds } from "../../src/time/seconds";
 import {
 	ActionButton,
 	EmptyState,
@@ -113,7 +114,7 @@ export default function AssembleSheet() {
 	};
 
 	const chosen = suggestions.filter((s) => current.keys.has(s.key));
-	const chosenSeconds = chosen.reduce((sum, s) => sum + s.durationSeconds, 0);
+	const chosenSeconds = sumSeconds(chosen);
 	const missing = data ? missingSources(data.sources) : [];
 
 	const add = () => {
