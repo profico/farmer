@@ -3,7 +3,8 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { View } from "react-native";
 
-import { EmptyState, ErrorState, Field, Skeleton } from "../ui/components";
+import { EmptyState, ErrorState, Skeleton } from "../ui/components";
+import { ListSearch } from "../ui/list-search";
 import { Inset } from "../ui/screen";
 import { SegmentedControl } from "../ui/segmented";
 import { SPACE } from "../ui/type";
@@ -193,13 +194,11 @@ export function TimeReport({
 				) : (
 					<>
 						<Inset>
-							<Field
+							<ListSearch
 								label="Search"
 								value={query}
 								onChangeText={setQuery}
 								placeholder="Name, client or code"
-								autoCorrect={false}
-								clearButtonMode="while-editing"
 							/>
 						</Inset>
 						{rows.length === 0 ? (

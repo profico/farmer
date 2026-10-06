@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { View } from "react-native";
 
-import { EmptyState, ErrorState, Field, Skeleton } from "../ui/components";
+import { EmptyState, ErrorState, Skeleton } from "../ui/components";
+import { ListSearch } from "../ui/list-search";
 import { Inset } from "../ui/screen";
 import { SPACE } from "../ui/type";
 import {
@@ -107,13 +108,11 @@ export function AbsenceReport({ period }: { period: PeriodState }) {
 				) : (
 					<>
 						<Inset>
-							<Field
+							<ListSearch
 								label="Search"
 								value={query}
 								onChangeText={setQuery}
 								placeholder="Name"
-								autoCorrect={false}
-								clearButtonMode="while-editing"
 							/>
 						</Inset>
 						{rows.length === 0 ? (

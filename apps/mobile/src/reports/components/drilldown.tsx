@@ -5,10 +5,10 @@ import {
 	ActionButton,
 	EmptyState,
 	ErrorState,
-	Field,
 	Skeleton,
 	Text,
 } from "../../ui/components";
+import { ListSearch } from "../../ui/list-search";
 import { Inset } from "../../ui/screen";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
@@ -156,13 +156,11 @@ export function EntriesDrilldown({
 			) : (
 				<>
 					<Inset>
-						<Field
+						<ListSearch
 							label="Search entries"
 							value={query}
 							onChangeText={setQuery}
 							placeholder="Description, person, project or task"
-							autoCorrect={false}
-							clearButtonMode="while-editing"
 						/>
 						{data.truncated ? (
 							<Text variant="bodyMedium" color={palette.tertiary}>

@@ -31,7 +31,6 @@ import {
 	ActionButton,
 	EmptyState,
 	ErrorState,
-	Field,
 	IconButton,
 	ListRow,
 	SectionHeader,
@@ -40,6 +39,7 @@ import {
 import { showDialog } from "../../../src/ui/dialog";
 import { messageOf } from "../../../src/ui/errors";
 import { Icon } from "../../../src/ui/icon";
+import { ListSearch } from "../../../src/ui/list-search";
 import { Inset, Screen } from "../../../src/ui/screen";
 import { SegmentedControl } from "../../../src/ui/segmented";
 import { usePalette } from "../../../src/ui/theme";
@@ -357,13 +357,11 @@ export default function ProjectsScreen() {
 			onRefresh={() => void list.refetch()}
 		>
 			<Inset>
-				<Field
+				<ListSearch
 					label="Search"
 					value={search}
 					onChangeText={setSearch}
 					placeholder="Project, code or client"
-					autoCorrect={false}
-					clearButtonMode="while-editing"
 				/>
 				{access.fullApi ? (
 					<SegmentedControl
