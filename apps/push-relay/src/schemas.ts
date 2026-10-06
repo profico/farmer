@@ -65,12 +65,15 @@ export const updateDeviceBody = z
 		apnsEnvironment: apnsEnvironment.optional(),
 		/** Null clears the token. */
 		liveActivityPushToStartToken: pushToken.nullable().optional(),
+		/** Binds a per-activity token to the device. Null unbinds all of them. */
+		liveActivityToken: pushToken.nullable().optional(),
 	})
 	.refine(
 		(body) =>
 			body.pushToken !== undefined ||
 			body.apnsEnvironment !== undefined ||
-			body.liveActivityPushToStartToken !== undefined,
+			body.liveActivityPushToStartToken !== undefined ||
+			body.liveActivityToken !== undefined,
 		"Send at least one field to change.",
 	);
 export type UpdateDeviceBody = z.infer<typeof updateDeviceBody>;

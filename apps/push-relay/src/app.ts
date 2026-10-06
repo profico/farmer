@@ -24,6 +24,11 @@ export type RelayDependencies = {
 	limiters: RelayLimiters;
 	/** The header `TRUSTED_IP_HEADER` names, or null for the socket only. */
 	trustedIpHeader: string | null;
+	/** True: a push refuses a per-activity token that the device did not bind
+	 *  with its secret. False (the default) still sends an unbound token, for
+	 *  an app that does not bind yet. A token bound to another device is
+	 *  always refused. */
+	requireBoundActivityToken?: boolean;
 	log: Log;
 	now: () => number;
 };
@@ -157,9 +162,22 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 			const tokens = [
 				body.value.pushToken,
 				body.value.liveActivityPushToStartToken,
+				body.value.liveActivityToken,
 			];
 			if (tokens.some((token) => token != null && !isApnsToken(token))) {
 				return bodyError("invalid_body");
+			}
+		} else if (body.value.liveActivityToken !== undefined) {
+			return bodyError("invalid_body");
+		}
+		const activityToken = body.value.liveActivityToken;
+		const at = now();
+		// A token that another device holds is refused before any change, so
+		// a refused update changes nothing.
+		if (activityToken) {
+			const owner = store.activityTokenOwner(activityToken);
+			if (owner !== null && owner !== device.relayId) {
+				return error(409, "activity_token_bound_elsewhere");
 			}
 		}
 		store.update(
@@ -171,8 +189,20 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 					? body.value.liveActivityPushToStartToken
 					: undefined,
 			},
-			now(),
+			at,
 		);
+		// A new APNs environment makes every old activity token invalid.
+		const newEnvironment = ios ? body.value.apnsEnvironment : undefined;
+		if (
+			newEnvironment !== undefined &&
+			newEnvironment !== device.apnsEnvironment
+		) {
+			store.clearActivityTokens(device.relayId);
+		}
+		if (activityToken === null) store.clearActivityTokens(device.relayId);
+		else if (activityToken !== undefined) {
+			store.bindActivityToken(device.relayId, activityToken, at);
+		}
 		return json(200, { status: "updated" });
 	};
 
@@ -197,6 +227,18 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 			!isApnsToken(activityToken)
 		) {
 			return bodyError("invalid_body");
+		}
+		if (activityToken !== undefined) {
+			const owner = store.activityTokenOwner(activityToken);
+			if (owner !== null && owner !== device.relayId) {
+				log(
+					`[push-relay] refused activity token of another device relay=${relayIdHint(device.relayId)}`,
+				);
+				return error(403, "activity_token_mismatch");
+			}
+			if (owner === null && deps.requireBoundActivityToken) {
+				return error(403, "activity_token_unbound");
+			}
 		}
 
 		const budget =
@@ -223,11 +265,17 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 
 		if (result.outcome === "delivered" || result.outcome === "dry_run") {
 			store.touch(device.relayId, now());
+			// An end push closes the activity, so its token has no more use.
+			if (message.liveActivity?.event === "end" && activityToken) {
+				store.removeActivityToken(device.relayId, activityToken);
+			}
 		} else if (result.outcome === "device_gone") {
 			store.delete(device.relayId);
 			log(
 				`[push-relay] token dead, device forgotten platform=${device.platform} relay=${relayIdHint(device.relayId)}`,
 			);
+		} else if (result.outcome === "activity_gone" && activityToken) {
+			store.removeActivityToken(device.relayId, activityToken);
 		} else if (result.outcome === "start_token_gone") {
 			store.clearStartToken(device.relayId, now());
 		} else if (result.outcome === "failed") {

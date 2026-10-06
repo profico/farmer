@@ -38,6 +38,7 @@ const setup = (
 		android?: Sender;
 		limits?: Partial<RelayLimits>;
 		trustedIpHeader?: string | null;
+		requireBoundActivityToken?: boolean;
 	} = {},
 ) => {
 	const store = DeviceStore.open(":memory:");
@@ -55,6 +56,7 @@ const setup = (
 			options.trustedIpHeader === undefined
 				? "cf-connecting-ip"
 				: options.trustedIpHeader,
+		requireBoundActivityToken: options.requireBoundActivityToken,
 		log: (line) => logs.push(line),
 		now: () => clock,
 	});
@@ -683,5 +685,289 @@ describe("routes", () => {
 		expect((await call("GET", "/v2/push")).status).toBe(404);
 		expect((await call("GET", "/v1/push")).status).toBe(405);
 		expect((await call("GET", "/v1/devices")).status).toBe(405);
+	});
+});
+
+describe("Live Activity token binding", () => {
+	const ACTIVITY_A = "1".repeat(64);
+	const ACTIVITY_B = "2".repeat(64);
+
+	const bind = (
+		call: ReturnType<typeof setup>["call"],
+		credentials: { relayId: string; deviceSecret: string },
+		liveActivityToken: string | null,
+	) =>
+		call(
+			"PUT",
+			`/v1/devices/${credentials.relayId}`,
+			{ liveActivityToken },
+			{ authorization: `Bearer ${credentials.deviceSecret}` },
+		);
+
+	const pushActivity = (
+		call: ReturnType<typeof setup>["call"],
+		relayId: string,
+		token: string,
+	) =>
+		call("POST", "/v1/push", {
+			relayId,
+			kind: "liveactivity",
+			ciphertext: CIPHERTEXT,
+			liveActivity: { token, event: "update", contentState: { paused: false } },
+		});
+
+	test("a bound update with the device secret succeeds", async () => {
+		const { call, store } = setup();
+		const device = await register(call);
+
+		const response = await bind(call, device, ACTIVITY_A);
+
+		expect(response.status).toBe(200);
+		expect(store.activityTokenOwner(ACTIVITY_A)).toBe(device.relayId);
+	});
+
+	test("an update with a wrong secret binds nothing", async () => {
+		const { call, store } = setup();
+		const device = await register(call);
+
+		const response = await bind(
+			call,
+			{ relayId: device.relayId, deviceSecret: "wrong-secret-value" },
+			ACTIVITY_A,
+		);
+
+		expect(response.status).toBe(401);
+		expect(store.activityTokenOwner(ACTIVITY_A)).toBeNull();
+	});
+
+	test("an update for another device's token is refused and changes nothing", async () => {
+		const { call, store } = setup();
+		const first = await register(call);
+		const second = await register(call);
+		await bind(call, first, ACTIVITY_A);
+
+		const response = await call(
+			"PUT",
+			`/v1/devices/${second.relayId}`,
+			{ liveActivityToken: ACTIVITY_A, pushToken: "d".repeat(64) },
+			{ authorization: `Bearer ${second.deviceSecret}` },
+		);
+
+		expect(response.status).toBe(409);
+		expect(await errorOf(response)).toBe("activity_token_bound_elsewhere");
+		expect(store.activityTokenOwner(ACTIVITY_A)).toBe(first.relayId);
+		expect(store.find(second.relayId)?.pushToken).toBe(IOS_TOKEN);
+	});
+
+	test("the first device's secret cannot bind a token to the second device", async () => {
+		const { call, store } = setup();
+		const first = await register(call);
+		const second = await register(call);
+
+		const response = await call(
+			"PUT",
+			`/v1/devices/${second.relayId}`,
+			{ liveActivityToken: ACTIVITY_A },
+			{ authorization: `Bearer ${first.deviceSecret}` },
+		);
+
+		expect(response.status).toBe(401);
+		expect(store.activityTokens(second.relayId)).toEqual([]);
+	});
+
+	test("an Android device cannot bind a Live Activity token", async () => {
+		const { call } = setup();
+		const device = await register(call, {
+			platform: "android",
+			pushToken: ANDROID_TOKEN,
+		});
+
+		const response = await bind(call, device, ACTIVITY_A);
+
+		expect(response.status).toBe(400);
+	});
+
+	test("a null token unbinds every token of the device", async () => {
+		const { call, store } = setup();
+		const device = await register(call);
+		await bind(call, device, ACTIVITY_A);
+		await bind(call, device, ACTIVITY_B);
+
+		await bind(call, device, null);
+
+		expect(store.activityTokens(device.relayId)).toEqual([]);
+	});
+
+	test("removing a device removes its tokens, and not the tokens of another", async () => {
+		const { call, store } = setup();
+		const first = await register(call);
+		const second = await register(call);
+		await bind(call, first, ACTIVITY_A);
+		await bind(call, second, ACTIVITY_B);
+
+		const response = await call(
+			"DELETE",
+			`/v1/devices/${first.relayId}`,
+			undefined,
+			{
+				authorization: `Bearer ${first.deviceSecret}`,
+			},
+		);
+
+		expect(response.status).toBe(204);
+		expect(store.activityTokenOwner(ACTIVITY_A)).toBeNull();
+		expect(store.activityTokenOwner(ACTIVITY_B)).toBe(second.relayId);
+	});
+
+	test("a device that the relay prunes loses its tokens", async () => {
+		const { call, store } = setup();
+		const device = await register(call);
+		await bind(call, device, ACTIVITY_A);
+
+		store.pruneUnseenSince(Number.MAX_SAFE_INTEGER);
+
+		expect(store.activityTokenOwner(ACTIVITY_A)).toBeNull();
+	});
+
+	test("a dead device removes its tokens", async () => {
+		const { call, store } = setup({
+			ios: async () => ({ outcome: "device_gone" }),
+		});
+		const device = await register(call);
+		await bind(call, device, ACTIVITY_A);
+
+		await call("POST", "/v1/push", {
+			relayId: device.relayId,
+			kind: "alert",
+			ciphertext: CIPHERTEXT,
+		});
+
+		expect(store.activityTokenOwner(ACTIVITY_A)).toBeNull();
+	});
+
+	test("a new APNs environment unbinds the tokens", async () => {
+		const { call, store } = setup();
+		const device = await register(call);
+		await bind(call, device, ACTIVITY_A);
+
+		await call(
+			"PUT",
+			`/v1/devices/${device.relayId}`,
+			{ apnsEnvironment: "production" },
+			{ authorization: `Bearer ${device.deviceSecret}` },
+		);
+
+		expect(store.activityTokens(device.relayId)).toEqual([]);
+	});
+
+	test("a device keeps at most four tokens, and the oldest go first", async () => {
+		const { call, store, advance } = setup();
+		const device = await register(call);
+		for (const digit of ["1", "2", "3", "4", "5"]) {
+			advance(1_000);
+			await bind(call, device, digit.repeat(64));
+		}
+
+		expect(store.activityTokens(device.relayId)).toEqual(
+			["5", "4", "3", "2"].map((digit) => digit.repeat(64)),
+		);
+	});
+
+	test("a push sends to a token that the device bound", async () => {
+		const { call, sent } = setup();
+		const device = await register(call);
+		await bind(call, device, ACTIVITY_A);
+
+		const response = await pushActivity(call, device.relayId, ACTIVITY_A);
+
+		expect(response.status).toBe(200);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.device.relayId).toBe(device.relayId);
+		expect(sent[0]?.push.liveActivity?.token).toBe(ACTIVITY_A);
+	});
+
+	test("a push for one device refuses the token of another device", async () => {
+		const { call, sent } = setup();
+		const first = await register(call);
+		const second = await register(call);
+		await bind(call, second, ACTIVITY_B);
+
+		const response = await pushActivity(call, first.relayId, ACTIVITY_B);
+
+		expect(response.status).toBe(403);
+		expect(await errorOf(response)).toBe("activity_token_mismatch");
+		expect(sent).toHaveLength(0);
+	});
+
+	test("an unbound token still goes through, for an app that does not bind", async () => {
+		const { call, sent } = setup();
+		const device = await register(call);
+
+		const response = await pushActivity(call, device.relayId, ACTIVITY_A);
+
+		expect(response.status).toBe(200);
+		expect(sent).toHaveLength(1);
+	});
+
+	test("an unbound token is refused when the relay requires binding", async () => {
+		const { call, sent } = setup({ requireBoundActivityToken: true });
+		const device = await register(call);
+
+		const response = await pushActivity(call, device.relayId, ACTIVITY_A);
+
+		expect(response.status).toBe(403);
+		expect(await errorOf(response)).toBe("activity_token_unbound");
+		expect(sent).toHaveLength(0);
+	});
+
+	test("a dead activity token is unbound", async () => {
+		const { call, store } = setup({
+			ios: async () => ({ outcome: "activity_gone" }),
+		});
+		const device = await register(call);
+		await bind(call, device, ACTIVITY_A);
+
+		await pushActivity(call, device.relayId, ACTIVITY_A);
+
+		expect(store.activityTokens(device.relayId)).toEqual([]);
+	});
+
+	test("a delivered end event unbinds the token", async () => {
+		const { call, store } = setup();
+		const device = await register(call);
+		await bind(call, device, ACTIVITY_A);
+
+		await call("POST", "/v1/push", {
+			relayId: device.relayId,
+			kind: "liveactivity",
+			ciphertext: CIPHERTEXT,
+			liveActivity: { token: ACTIVITY_A, event: "end", contentState: {} },
+		});
+
+		expect(store.activityTokens(device.relayId)).toEqual([]);
+	});
+
+	test("a push-to-start uses the start token of its own device", async () => {
+		const { call, sent } = setup();
+		const first = await register(call);
+		await register(call, {
+			platform: "ios",
+			pushToken: IOS_TOKEN,
+			liveActivityPushToStartToken: "f".repeat(64),
+		});
+
+		await call("POST", "/v1/push", {
+			relayId: first.relayId,
+			kind: "liveactivity",
+			ciphertext: CIPHERTEXT,
+			liveActivity: {
+				event: "start",
+				contentState: {},
+				attributesType: "TimerAttributes",
+				attributes: { version: 1 },
+			},
+		});
+
+		expect(sent[0]?.device.liveActivityStartToken).toBe(START_TOKEN);
 	});
 });

@@ -33,6 +33,7 @@ accounts exist.
 | `APNS_TEAM_ID` | (none) | The Apple team id. |
 | `APNS_TOPIC` | `com.profico.farmer` | The bundle id of the app. Live Activity pushes use `<topic>.push-type.liveactivity`. |
 | `FCM_SERVICE_ACCOUNT_JSON` | (none) | The full JSON key file of a Google service account that can send FCM messages. |
+| `REQUIRE_BOUND_ACTIVITY_TOKEN` | `false` | `true` or `1`: a Live Activity push refuses a per-activity token that the device did not bind (see "Live Activity tokens"). Set it when every app version binds its tokens. |
 
 Set all three of `APNS_KEY_P8`, `APNS_KEY_ID` and `APNS_TEAM_ID`, or none of
 them. A half-set APNs configuration, a key that does not import, or
@@ -72,10 +73,43 @@ gives only the relay id (and its public key) to its server.
 
 The app sends a new token, with `Authorization: Bearer <deviceSecret>`. Send
 one or more of `pushToken`, `apnsEnvironment` and
-`liveActivityPushToStartToken`. A `null` push-to-start token clears it.
+`liveActivityPushToStartToken` and `liveActivityToken`. A `null` push-to-start
+token clears it. `liveActivityToken` binds a per-activity token to the
+device (iOS only, hex). A `null` `liveActivityToken` unbinds all of them. See
+"Live Activity tokens".
 
 The answer is `200`. A missing or wrong secret and an unknown relay id all
-get the same `401 unauthorized`.
+get the same `401 unauthorized`. A `liveActivityToken` that another device
+holds gets `409 activity_token_bound_elsewhere`, and the update changes
+nothing.
+
+### Live Activity tokens
+
+A Live Activity token tells APNs which activity to change. The relay binds
+each token to the device registration that proved ownership with its device
+secret:
+
+- The push-to-start token is one column of the device row. Only the holder
+  of the secret sets it.
+- A per-activity token goes in a table with the relay id of its device. The
+  token is unique, so a second device cannot take it. A device keeps at most
+  four, and the oldest go first.
+- The relay removes the tokens of a device when it removes the device: a
+  `DELETE`, a `410`, or the 180-day expiry. A new `apnsEnvironment` removes
+  them too, because a token is valid in one environment only.
+- The relay removes a token on `activity_gone` and after a delivered `end`.
+- A push that carries a token bound to another device gets
+  `403 activity_token_mismatch`. The relay sends nothing.
+- A push sends only to the tokens of its own `relayId`: the device token, the
+  push-to-start token of that device, or a per-activity token that the
+  device owns.
+
+**Compatibility.** An app that does not bind yet sends its per-activity
+token only to its farmer server, which puts the token in `POST /v1/push`. The
+relay still sends such an unbound token (a token that no device holds).
+When `REQUIRE_BOUND_ACTIVITY_TOKEN` is `true`, the relay refuses it with
+`403 activity_token_unbound`. Set the flag after the app sends
+`liveActivityToken` with each new activity token.
 
 ### `DELETE /v1/devices/:relayId`
 
@@ -128,6 +162,7 @@ own server knows the relay id (ADR 0006).
 | `400` | `invalid_body`, `invalid_json` | The body is wrong. | Fix the request. |
 | `404` | `unknown_relay_id` | The relay does not know the id. | Delete the `mobile_device` row. |
 | `409` | `activity_gone` | The per-activity token is dead: the Live Activity ended. | Forget the activity token. Keep the row. |
+| `403` | `activity_token_mismatch`, `activity_token_unbound` | The per-activity token belongs to another device, or is not bound and the relay needs a bound token. | Do not retry. Keep the row. |
 | `409` | `start_token_gone` | The push-to-start token is dead. The relay cleared it. | Keep the row. |
 | `409` | `no_start_token` | A push-to-start, but the device gave no push-to-start token. | Keep the row. |
 | `410` | `device_gone` | APNs or FCM says that the device token is dead. The relay deleted the device. | Delete the `mobile_device` row. |
