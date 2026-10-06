@@ -382,7 +382,11 @@ function Timesheet({
 				<LogTimeFab
 					extended={fabState.extended}
 					onPress={logTime}
-					onAssistant={assistant ? () => router.push("/assistant") : undefined}
+					onAssistant={
+						assistant
+							? () => router.push("/assistant/new", { withAnchor: true })
+							: undefined
+					}
 				/>
 			) : null}
 			<Snackbar

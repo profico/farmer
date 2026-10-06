@@ -37,11 +37,14 @@ export const useAssistantThreads = () => {
 	});
 };
 
-export const useAssistantThread = (id: string) => {
+/** One thread. With a null `id` (a new chat that has no thread yet) the
+ *  query stays off. */
+export const useAssistantThread = (id: string | null) => {
 	const w = useWorkspace();
 	return useQuery({
-		queryKey: threadKey(w, id),
-		queryFn: () => w.client.getAssistantThread(w.slug, id),
+		queryKey: threadKey(w, id ?? ""),
+		queryFn: () => w.client.getAssistantThread(w.slug, id ?? ""),
+		enabled: id !== null,
 	});
 };
 

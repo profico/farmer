@@ -6,19 +6,25 @@ import {
 	Alert,
 	FlatList,
 	Platform,
+	Pressable,
 	RefreshControl,
 	View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
 	useAssistantThreads,
-	useCreateThread,
 	useDeleteThread,
 	useRenameThread,
 } from "../../src/api/assistant";
 import { AssistantGate, useAssistantReady } from "../../src/assistant/gate";
 import { RenameDialog } from "../../src/assistant/rename-dialog";
 import { useThreadRunning } from "../../src/assistant/runs";
+import {
+	FAB_CLEARANCE,
+	FAB_MARGIN,
+	FAB_SIZE,
+} from "../../src/time/components/log-time-fab";
 import {
 	ActionButton,
 	EmptyState,
@@ -27,11 +33,60 @@ import {
 	IconButton,
 	ListRow,
 	Skeleton,
+	Text,
 } from "../../src/ui/components";
+import { RADIUS } from "../../src/ui/corner";
+import { Icon } from "../../src/ui/icon";
 import { LoadingIndicator } from "../../src/ui/loading";
 import { Inset, usePullToRefresh } from "../../src/ui/screen";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
+
+/** The gap between the icon and the label of the pill. */
+const PILL_GAP = SPACE.m;
+
+/** "New chat": an extended FAB at the bottom right, in the style of the
+ *  Log time pill of the Time tab. */
+function NewChatPill({ onPress }: { onPress: () => void }) {
+	const palette = usePalette();
+	const insets = useSafeAreaInsets();
+	return (
+		<View
+			pointerEvents="box-none"
+			style={{
+				position: "absolute",
+				right: FAB_MARGIN,
+				bottom: FAB_MARGIN + insets.bottom,
+			}}
+		>
+			<Pressable
+				accessibilityRole="button"
+				accessibilityLabel="New chat"
+				onPress={onPress}
+				android_ripple={{
+					color: palette.onPrimaryContainer,
+					borderless: false,
+				}}
+				style={{
+					flexDirection: "row",
+					alignItems: "center",
+					gap: PILL_GAP,
+					height: FAB_SIZE,
+					paddingHorizontal: SPACE.l,
+					borderRadius: RADIUS.fab,
+					overflow: "hidden",
+					backgroundColor: palette.primaryContainer,
+					elevation: 3,
+				}}
+			>
+				<Icon name="add" color={palette.onPrimaryContainer} />
+				<Text variant="labelLarge" color={palette.onPrimaryContainer}>
+					New chat
+				</Text>
+			</Pressable>
+		</View>
+	);
+}
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -94,7 +149,6 @@ export default function AssistantThreadsScreen() {
 	const router = useRouter();
 	const palette = usePalette();
 	const threads = useAssistantThreads();
-	const create = useCreateThread();
 	const ready = useAssistantReady();
 	const rename = useRenameThread();
 	const remove = useDeleteThread();
@@ -106,17 +160,8 @@ export default function AssistantThreadsScreen() {
 		() => void threads.refetch(),
 	);
 
-	const start = () => {
-		setError(null);
-		create.mutate(undefined, {
-			onSuccess: (thread) =>
-				router.push({
-					pathname: "/assistant/[id]",
-					params: { id: thread.id },
-				}),
-			onError: (failure) => setError(failure.message),
-		});
-	};
+	// A chat with no thread yet: the thread is made at the first message.
+	const start = () => router.push("/assistant/new");
 
 	const confirmDelete = (thread: AssistantThread) =>
 		Alert.alert(
@@ -167,23 +212,12 @@ export default function AssistantThreadsScreen() {
 			<Stack.Screen
 				options={{
 					title: "Assistant",
-					// No new conversation while the gate below says why the
-					// assistant cannot answer.
-					headerRight: ready
-						? () => (
-								<IconButton
-									icon="add"
-									label="New conversation"
-									onPress={start}
-									disabled={create.isPending}
-								/>
-							)
-						: () => null,
 				}}
 			/>
 			<AssistantGate>
 				<FlatList
 					data={threads.data ?? []}
+					contentContainerStyle={{ paddingBottom: FAB_CLEARANCE }}
 					keyExtractor={(thread) => thread.id}
 					contentInsetAdjustmentBehavior="automatic"
 					refreshControl={
@@ -222,11 +256,7 @@ export default function AssistantThreadsScreen() {
 								title="No conversations yet"
 								message="Ask about your tracked time, or ask the assistant to log more of it. It shows you every change first."
 								action={
-									<ActionButton
-										label="Start a conversation"
-										onPress={start}
-										disabled={create.isPending}
-									/>
+									<ActionButton label="Start a conversation" onPress={start} />
 								}
 							/>
 						)
@@ -246,6 +276,9 @@ export default function AssistantThreadsScreen() {
 					)}
 				/>
 			</AssistantGate>
+			{/* No new chat while the gate above says why the assistant
+			    cannot answer. */}
+			{ready ? <NewChatPill onPress={start} /> : null}
 			<RenameDialog
 				// A new key gives each rename a fresh field.
 				key={renaming?.id ?? "closed"}

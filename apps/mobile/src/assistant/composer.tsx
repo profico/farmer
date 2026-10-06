@@ -21,6 +21,7 @@ export function Composer({
 	locked,
 	keyboardOpen,
 	placeholder,
+	autoFocus = false,
 }: {
 	/** True when the message reached the server. */
 	onSend: (text: string) => Promise<boolean>;
@@ -31,6 +32,8 @@ export function Composer({
 	/** The keyboard covers the home indicator, so the inset goes. */
 	keyboardOpen: boolean;
 	placeholder: string;
+	/** Open the keyboard at once, for a new chat. */
+	autoFocus?: boolean;
 }) {
 	const palette = usePalette();
 	const insets = useSafeAreaInsets();
@@ -74,6 +77,7 @@ export function Composer({
 				selectionColor={palette.primary}
 				cursorColor={palette.primary}
 				editable={!locked}
+				autoFocus={autoFocus}
 				multiline
 				maxLength={MAX_LENGTH}
 				accessibilityLabel="Message"
