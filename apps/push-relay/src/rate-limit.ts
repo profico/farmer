@@ -123,6 +123,11 @@ export type RelayLimits = {
 	pushPerAddressPerMinute: number;
 	/** Registrations, token updates and removals from one address. */
 	devicePerAddressPer10Minutes: number;
+	/** Binding checks from one address. One farmer server is one address
+	 *  for all of its users, so this is high. */
+	verifyPerAddressPerMinute: number;
+	/** Binding checks for one relay id. This stops a guess of a proof. */
+	verifyPerRelayPer10Minutes: number;
 };
 
 export const DEFAULT_LIMITS: RelayLimits = {
@@ -132,6 +137,8 @@ export const DEFAULT_LIMITS: RelayLimits = {
 	liveActivityPerDay: 2_000,
 	pushPerAddressPerMinute: 6_000,
 	devicePerAddressPer10Minutes: 60,
+	verifyPerAddressPerMinute: 6_000,
+	verifyPerRelayPer10Minutes: 10,
 };
 
 export type RelayLimiters = {
@@ -139,6 +146,8 @@ export type RelayLimiters = {
 	liveActivity: { minute: FixedWindowLimiter; day: FixedWindowLimiter };
 	pushByAddress: FixedWindowLimiter;
 	deviceByAddress: FixedWindowLimiter;
+	verifyByAddress: FixedWindowLimiter;
+	verifyByRelayId: FixedWindowLimiter;
 };
 
 export const createLimiters = (limits: RelayLimits): RelayLimiters => ({
@@ -153,6 +162,14 @@ export const createLimiters = (limits: RelayLimits): RelayLimiters => ({
 	pushByAddress: new FixedWindowLimiter(limits.pushPerAddressPerMinute, MINUTE),
 	deviceByAddress: new FixedWindowLimiter(
 		limits.devicePerAddressPer10Minutes,
+		10 * MINUTE,
+	),
+	verifyByAddress: new FixedWindowLimiter(
+		limits.verifyPerAddressPerMinute,
+		MINUTE,
+	),
+	verifyByRelayId: new FixedWindowLimiter(
+		limits.verifyPerRelayPer10Minutes,
 		10 * MINUTE,
 	),
 });

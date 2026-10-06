@@ -1029,6 +1029,68 @@ describe("registration proof", () => {
 		}
 	});
 
+	test("verify calls do not use the device limit of the address", async () => {
+		const { call } = setup({ limits: { devicePerAddressPer10Minutes: 1 } });
+		const { relayId, deviceSecret } = await register(call);
+		for (let i = 0; i < 5; i += 1) {
+			const response = await call("POST", `/v1/devices/${relayId}/verify`, {
+				publicKey: KEY,
+				proof: proofOf(deviceSecret, relayId),
+			});
+			expect(response.status).toBe(204);
+		}
+		const refused = await call("POST", "/v1/devices", {
+			platform: "android",
+			pushToken: ANDROID_TOKEN,
+		});
+		expect(refused.status).toBe(429);
+	});
+
+	test("junk verify calls do not block a registration", async () => {
+		const { call } = setup({ limits: { devicePerAddressPer10Minutes: 2 } });
+		for (let i = 0; i < 20; i += 1) {
+			const id = `junk-${i}`.padEnd(22, "x");
+			await call("POST", `/v1/devices/${id}/verify`, {
+				publicKey: KEY,
+				proof: proofOf("secret", id),
+			});
+		}
+		const { relayId } = await register(call);
+		expect(relayId).toBeTruthy();
+	});
+
+	test("verify calls for one relay id stop at their limit", async () => {
+		const { call } = setup({ limits: { verifyPerRelayPer10Minutes: 2 } });
+		const { relayId, deviceSecret } = await register(call);
+		const verify = () =>
+			call("POST", `/v1/devices/${relayId}/verify`, {
+				publicKey: KEY,
+				proof: proofOf(deviceSecret, relayId),
+			});
+		expect((await verify()).status).toBe(204);
+		expect((await verify()).status).toBe(204);
+		const refused = await verify();
+		expect(refused.status).toBe(429);
+		expect(refused.headers.get("retry-after")).not.toBeNull();
+		const other = await register(call);
+		const response = await call("POST", `/v1/devices/${other.relayId}/verify`, {
+			publicKey: KEY,
+			proof: proofOf(other.deviceSecret, other.relayId),
+		});
+		expect(response.status).toBe(204);
+	});
+
+	test("verify calls from one address stop at the address limit", async () => {
+		const { call } = setup({ limits: { verifyPerAddressPerMinute: 1 } });
+		const { relayId, deviceSecret } = await register(call);
+		const body = { publicKey: KEY, proof: proofOf(deviceSecret, relayId) };
+		expect(
+			(await call("POST", `/v1/devices/${relayId}/verify`, body)).status,
+		).toBe(204);
+		const refused = await call("POST", `/v1/devices/${relayId}/verify`, body);
+		expect(refused.status).toBe(429);
+	});
+
 	test("a malformed body is a 400, and another method is a 405", async () => {
 		const { call } = setup();
 		const { relayId } = await register(call);

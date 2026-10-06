@@ -9,7 +9,11 @@ import {
 	relayIdHint,
 	secretMatches,
 } from "./ids";
-import { admit, type RelayLimiters } from "./rate-limit";
+import {
+	admit,
+	type FixedWindowLimiter,
+	type RelayLimiters,
+} from "./rate-limit";
 import {
 	isApnsToken,
 	pushBody,
@@ -324,19 +328,26 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 
 		const deviceMatch = DEVICE_PATH.exec(pathname);
 		const verifyMatch = VERIFY_PATH.exec(pathname);
-		const isDevices =
-			pathname === "/v1/devices" ||
-			deviceMatch !== null ||
-			verifyMatch !== null;
-		if (!isDevices && pathname !== "/v1/push") {
+		const isDevices = pathname === "/v1/devices" || deviceMatch !== null;
+		if (!isDevices && verifyMatch === null && pathname !== "/v1/push") {
 			return error(404, "not_found");
 		}
 
 		const address = addressOf(request, socketAddress);
-		const byAddress = isDevices
-			? limiters.deviceByAddress
-			: limiters.pushByAddress;
-		const admission = admit([[byAddress, address]], now());
+		// A verify has its own limits. The farmer server makes all of them from
+		// one address, so the device limit for an address must not count them.
+		const byAddress = verifyMatch
+			? limiters.verifyByAddress
+			: isDevices
+				? limiters.deviceByAddress
+				: limiters.pushByAddress;
+		const checks: Array<readonly [FixedWindowLimiter, string]> = [
+			[byAddress, address],
+		];
+		if (verifyMatch && method === "POST") {
+			checks.push([limiters.verifyByRelayId, verifyMatch[1] ?? ""]);
+		}
+		const admission = admit(checks, now());
 		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
 
 		if (pathname === "/v1/push") {
