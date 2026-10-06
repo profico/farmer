@@ -1,6 +1,6 @@
 import type { AssistantSettings } from "@farmer/api-client";
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 
 import {
 	useAssistantModels,
@@ -16,6 +16,7 @@ import {
 	Field,
 	Text,
 } from "../ui/components";
+import { showDialog } from "../ui/dialog";
 import { Inset } from "../ui/screen";
 import {
 	SettingsLink,
@@ -176,7 +177,7 @@ export function AssistantSettingsSections({
 	const needsKey = !settings.configured || settings.keyUnreadable;
 
 	const confirmDisconnect = () =>
-		Alert.alert(
+		showDialog(
 			"Disconnect the assistant?",
 			"The key is deleted from the server, and nobody in this workspace can use the assistant until an admin connects it again. The conversations stay.",
 			[

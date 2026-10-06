@@ -1,6 +1,5 @@
-import { Alert } from "react-native";
-
 import { useDeleteFilingRule, useDeleteRecurringBlock } from "../api/you";
+import { showDialog } from "../ui/dialog";
 
 /**
  * Gives `confirm`, which asks "Delete this recurring block?" and deletes it
@@ -10,7 +9,7 @@ import { useDeleteFilingRule, useDeleteRecurringBlock } from "../api/you";
 export function useConfirmDeleteBlock() {
 	const remove = useDeleteRecurringBlock();
 	const confirm = (block: { id: string }, onDone?: () => void) =>
-		Alert.alert("Delete this recurring block?", "This cannot be undone.", [
+		showDialog("Delete this recurring block?", "This cannot be undone.", [
 			{ text: "Cancel", style: "cancel" },
 			{
 				text: "Delete",
@@ -25,7 +24,7 @@ export function useConfirmDeleteBlock() {
 export function useConfirmRemoveRule() {
 	const remove = useDeleteFilingRule();
 	const confirm = (rule: { id: string }, onDone?: () => void) =>
-		Alert.alert(
+		showDialog(
 			"Remove this rule?",
 			"Entries it filed stay where they are. New ones with this name wait for you in File your time again.",
 			[

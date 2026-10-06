@@ -1,6 +1,5 @@
 import { type GithubInstallation } from "@farmer/api-client";
 import { Stack, useRouter } from "expo-router";
-import { Alert } from "react-native";
 
 import { useAssistantSettings, useAccess } from "../../../src/api/capabilities";
 import {
@@ -13,6 +12,7 @@ import {
 	useSlackStatus,
 } from "../../../src/api/workspace";
 import { ErrorState } from "../../../src/ui/components";
+import { showDialog } from "../../../src/ui/dialog";
 import { Screen } from "../../../src/ui/screen";
 import {
 	SettingsLink,
@@ -148,7 +148,7 @@ function InstallationSection({
 	// Two destructive choices, so the dialog has three buttons. The web
 	// asks the same question with a switch.
 	const ask = () =>
-		Alert.alert(
+		showDialog(
 			`Disconnect ${accountLogin}?`,
 			"Projects linked to repositories from this account will stop suggesting commits. The app stays installed on GitHub unless you also remove it. Removing it uninstalls it from the account for everyone, not just this workspace. This is skipped if another workspace is still connected to it.",
 			[

@@ -1,6 +1,6 @@
 import type { Integrations, SyncResult } from "@farmer/api-client";
 import { useRouter } from "expo-router";
-import { Alert, Linking } from "react-native";
+import { Linking } from "react-native";
 
 import { useAccess } from "../../src/api/capabilities";
 import { useWorkspace } from "../../src/api/queries";
@@ -12,6 +12,7 @@ import {
 	useUpdateIntegrationSettings,
 } from "../../src/api/you";
 import { ErrorBanner, ErrorState } from "../../src/ui/components";
+import { showDialog } from "../../src/ui/dialog";
 import { messageOf } from "../../src/ui/errors";
 import { Inset } from "../../src/ui/screen";
 import {
@@ -105,7 +106,7 @@ export default function IntegrationsScreen() {
 
 	const confirmDisconnect = (provider: Provider) => {
 		const name = NAMES[provider];
-		Alert.alert(
+		showDialog(
 			`Disconnect ${name}?`,
 			provider === "github"
 				? "Commits and pull requests are no longer matched to you when you log time. You can connect again at any time."
@@ -123,7 +124,7 @@ export default function IntegrationsScreen() {
 
 	const syncNow = () =>
 		sync.mutate(undefined, {
-			onSuccess: (result) => Alert.alert("Sync now", syncMessage(result)),
+			onSuccess: (result) => showDialog("Sync now", syncMessage(result)),
 		});
 
 	if (integrations.isPending) {

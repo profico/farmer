@@ -1,7 +1,7 @@
 import type { TimeEntry } from "@farmer/api-client";
-import { Alert } from "react-native";
 
 import { useDeleteTimeEntry } from "../api/time";
+import { showDialog } from "../ui/dialog";
 import { removed } from "./haptics";
 
 /**
@@ -13,7 +13,7 @@ import { removed } from "./haptics";
 export function useConfirmDeleteEntry() {
 	const remove = useDeleteTimeEntry();
 	const confirm = (entry: Pick<TimeEntry, "id">, onDeleted?: () => void) =>
-		Alert.alert("Delete this entry?", "This cannot be undone.", [
+		showDialog("Delete this entry?", "This cannot be undone.", [
 			{ text: "Cancel", style: "cancel" },
 			{
 				text: "Delete",

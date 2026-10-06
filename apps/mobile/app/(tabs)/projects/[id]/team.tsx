@@ -1,7 +1,7 @@
 import type { ProjectDetail, ProjectMember } from "@farmer/api-client";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 
 import { useAccess } from "../../../../src/api/capabilities";
 import {
@@ -35,6 +35,7 @@ import {
 	SectionHeader,
 	Skeleton,
 } from "../../../../src/ui/components";
+import { showDialog } from "../../../../src/ui/dialog";
 import { messageOf } from "../../../../src/ui/errors";
 import { Icon } from "../../../../src/ui/icon";
 import { Inset, Screen } from "../../../../src/ui/screen";
@@ -129,7 +130,7 @@ function MemberRow({
 									busy
 										? undefined
 										: () =>
-												Alert.alert(
+												showDialog(
 													`Remove ${member.name}?`,
 													"Removing someone keeps their history on the project; they just cannot log more time on it.",
 													[

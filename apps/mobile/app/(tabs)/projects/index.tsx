@@ -1,7 +1,7 @@
 import type { Project, ProjectDetail } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
 import {
@@ -37,6 +37,7 @@ import {
 	SectionHeader,
 	Skeleton,
 } from "../../../src/ui/components";
+import { showDialog } from "../../../src/ui/dialog";
 import { messageOf } from "../../../src/ui/errors";
 import { Icon } from "../../../src/ui/icon";
 import { Inset, Screen } from "../../../src/ui/screen";
@@ -174,7 +175,7 @@ export default function ProjectsScreen() {
 			: [];
 
 	const restore = (project: ProjectDetail) =>
-		Alert.alert(
+		showDialog(
 			`Restore ${project.name}?`,
 			"People assigned to it can log time on it again.",
 			[
@@ -186,7 +187,7 @@ export default function ProjectsScreen() {
 							{ id: project.id, archive: false },
 							{
 								onError: (error) =>
-									Alert.alert(
+									showDialog(
 										"Could not restore the project",
 										messageOf(error) ?? "",
 									),

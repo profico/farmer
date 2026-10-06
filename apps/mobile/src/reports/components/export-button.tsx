@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Alert } from "react-native";
 
 import { ActionButton } from "../../ui/components";
+import { showDialog } from "../../ui/dialog";
 import type { Csv } from "../csv";
 import { shareCsv } from "../share";
 
@@ -25,7 +25,7 @@ export function ExportButton({
 		setBusy(true);
 		shareCsv(name, build())
 			.catch((error: Error) =>
-				Alert.alert("Could not export", error.message || "Try again."),
+				showDialog("Could not export", error.message || "Try again."),
 			)
 			.finally(() => setBusy(false));
 	};

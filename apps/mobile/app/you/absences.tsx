@@ -1,7 +1,7 @@
 import type { AbsenceEntry } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 
 import { useWhoami } from "../../src/api/queries";
 import { useAbsences, useDeleteAbsence } from "../../src/api/you";
@@ -13,6 +13,7 @@ import {
 	IconButton,
 	Text,
 } from "../../src/ui/components";
+import { showDialog } from "../../src/ui/dialog";
 import { messageOf } from "../../src/ui/errors";
 import { Inset } from "../../src/ui/screen";
 import {
@@ -55,7 +56,7 @@ export default function AbsencesScreen() {
 		today.slice(0, 7) === startOfMonth.slice(0, 7) ? today : startOfMonth;
 
 	const confirmDelete = (entry: AbsenceEntry) =>
-		Alert.alert(
+		showDialog(
 			"Delete this time off?",
 			`${entry.task.name} on ${weekdayOfKey(entry.date)}, ${dayMonth(entry.date)}.`,
 			[

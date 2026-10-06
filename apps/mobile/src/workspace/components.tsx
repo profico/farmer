@@ -1,7 +1,6 @@
 import DateTimePicker from "@expo/ui/community/datetime-picker";
 import { type ReactNode, useState } from "react";
 import {
-	Alert,
 	type ColorValue,
 	Platform,
 	Pressable,
@@ -11,6 +10,7 @@ import {
 } from "react-native";
 
 import { Skeleton, Text } from "../ui/components";
+import { showDialog } from "../ui/dialog";
 import { ControlHost } from "../ui/host";
 import { Icon } from "../ui/icon";
 import { LoadingIndicator } from "../ui/loading";
@@ -45,7 +45,7 @@ export const confirmDestructive = ({
 	action: string;
 	onConfirm: () => void;
 }) =>
-	Alert.alert(title, message, [
+	showDialog(title, message, [
 		{ text: "Cancel", style: "cancel" },
 		{ text: action, style: "destructive", onPress: onConfirm },
 	]);
@@ -62,7 +62,7 @@ export const confirmAction = ({
 	action: string;
 	onConfirm: () => void;
 }) =>
-	Alert.alert(title, message, [
+	showDialog(title, message, [
 		{ text: "Cancel", style: "cancel" },
 		{ text: action, onPress: onConfirm },
 	]);
@@ -76,13 +76,13 @@ export const notify = (message: string) => {
 		ToastAndroid.show(message, ToastAndroid.SHORT);
 		return;
 	}
-	Alert.alert(message);
+	showDialog(message);
 };
 
 /** The failure of a change, in the system's dialog, with the server's own
  *  sentence. A 403 for an API token arrives here too. */
 export const notifyError = (title: string, error: Error) =>
-	Alert.alert(title, error.message || "Something went wrong. Try again.");
+	showDialog(title, error.message || "Something went wrong. Try again.");
 
 /** A search box above a list. */
 export function SearchField({

@@ -1,7 +1,7 @@
 import type { ProjectDetail } from "@farmer/api-client";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 
 import { useAccess } from "../../../../src/api/capabilities";
 import {
@@ -29,6 +29,7 @@ import {
 	Skeleton,
 	Text,
 } from "../../../../src/ui/components";
+import { showDialog } from "../../../../src/ui/dialog";
 import { messageOf } from "../../../../src/ui/errors";
 import { Inset, Screen } from "../../../../src/ui/screen";
 import {
@@ -169,7 +170,7 @@ function SettingsForm({ project }: { project: ProjectDetail }) {
 							{ openToOrg: value },
 							{
 								onError: (error) =>
-									Alert.alert("Could not save", messageOf(error) ?? ""),
+									showDialog("Could not save", messageOf(error) ?? ""),
 							},
 						)
 					}

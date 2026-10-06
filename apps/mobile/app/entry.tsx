@@ -1,7 +1,7 @@
 import type { CalendarEvent, TimeEntry } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 
 import { useAccess } from "../src/api/capabilities";
 import { useAttachActivity } from "../src/api/day";
@@ -37,6 +37,7 @@ import {
 	Skeleton,
 	Text,
 } from "../src/ui/components";
+import { showDialog } from "../src/ui/dialog";
 import { messageOf } from "../src/ui/errors";
 import { usePalette } from "../src/ui/theme";
 import { SPACE } from "../src/ui/type";
@@ -271,7 +272,7 @@ function EntryForm({
 					{
 						onSuccess: done.onSuccess,
 						onError: (error) => {
-							Alert.alert(
+							showDialog(
 								"The entry is saved",
 								`Its GitHub activity was not attached: ${messageOf(error) ?? ""}`,
 							);

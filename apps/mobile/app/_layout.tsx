@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 import { DataProvider } from "../src/api/data-provider";
 import { PushBridge } from "../src/push/push-bridge";
 import { SessionProvider, useSession } from "../src/session/session";
+import { DialogHost } from "../src/ui/dialog-host";
 import { reapplyScheme } from "../src/ui/display-prefs";
 import { useMotionPreference } from "../src/ui/motion";
 import { RowMenuProvider } from "../src/ui/row-menu";
@@ -82,6 +83,7 @@ export default function RootLayout() {
 				<RowMenuProvider>
 					<Navigator />
 				</RowMenuProvider>
+				<DialogHost />
 			</DataProvider>
 		</SessionProvider>
 	);

@@ -1,7 +1,7 @@
 import type { AssistantThread } from "@farmer/api-client";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, FlatList, Pressable, RefreshControl, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -28,6 +28,7 @@ import {
 	Text,
 } from "../../src/ui/components";
 import { RADIUS } from "../../src/ui/corner";
+import { showDialog } from "../../src/ui/dialog";
 import { Icon } from "../../src/ui/icon";
 import { LoadingIndicator } from "../../src/ui/loading";
 import { useOpenRowMenu } from "../../src/ui/row-menu";
@@ -166,7 +167,7 @@ export default function AssistantThreadsScreen() {
 	const start = () => router.push("/assistant/new");
 
 	const confirmDelete = (thread: AssistantThread) =>
-		Alert.alert(
+		showDialog(
 			"Delete the conversation?",
 			`"${thread.title}" and its messages go. This cannot be undone.`,
 			[

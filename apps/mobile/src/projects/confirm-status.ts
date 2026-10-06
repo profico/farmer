@@ -1,7 +1,7 @@
 import type { ProjectDetail } from "@farmer/api-client";
-import { Alert } from "react-native";
 
 import { useArchiveProject } from "../api/projects";
+import { showDialog } from "../ui/dialog";
 import { messageOf } from "../ui/errors";
 
 /**
@@ -13,7 +13,7 @@ export function useConfirmProjectStatus() {
 	const archive = useArchiveProject();
 	const confirm = (project: Pick<ProjectDetail, "id" | "name" | "status">) => {
 		const archived = project.status === "archived";
-		Alert.alert(
+		showDialog(
 			archived ? `Restore ${project.name}?` : `Archive ${project.name}?`,
 			archived
 				? "People assigned to it can log time on it again."
@@ -28,7 +28,7 @@ export function useConfirmProjectStatus() {
 							{ id: project.id, archive: !archived },
 							{
 								onError: (error) =>
-									Alert.alert(
+									showDialog(
 										"Could not change the project's status",
 										messageOf(error) ?? "",
 									),

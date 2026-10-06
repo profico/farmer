@@ -8,7 +8,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { useProjects, useTasks, useTracking } from "../api/queries";
 import { useHome, useRemoveRow, useWriteCell } from "../api/time";
@@ -25,6 +25,7 @@ import {
 	Skeleton,
 	Text,
 } from "../ui/components";
+import { showDialog } from "../ui/dialog";
 import { messageOf } from "../ui/errors";
 import { useRowMenu } from "../ui/row-menu";
 import { Inset } from "../ui/screen";
@@ -487,7 +488,7 @@ export function WeekView({
 			setDrafts((current) => current.filter((draft) => draft.key !== row.key));
 			return;
 		}
-		Alert.alert(
+		showDialog(
 			`Remove ${row.heading}?`,
 			`This deletes ${formatHours(rowSeconds(row, days))} of this week's time in the row.`,
 			[

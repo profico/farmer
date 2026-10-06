@@ -1,7 +1,7 @@
 import { ApiClientError, type Timer } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { useLayoutEffect, useRef, useState } from "react";
-import { Alert, Animated, type ColorValue, Linking, View } from "react-native";
+import { Animated, type ColorValue, Linking, View } from "react-native";
 
 import { useTimer, useTimerAction } from "../api/queries";
 import { formatHours, formatStopwatch } from "../lib/duration";
@@ -15,6 +15,7 @@ import {
 	Skeleton,
 	Text,
 } from "../ui/components";
+import { showDialog } from "../ui/dialog";
 import { messageOf } from "../ui/errors";
 import { Icon } from "../ui/icon";
 import { EASE_OUT, MOTION_MS } from "../ui/motion";
@@ -168,7 +169,7 @@ function TimerCardBody() {
 	};
 
 	const discard = () =>
-		Alert.alert(
+		showDialog(
 			"Discard the timer?",
 			timer.entry
 				? "The time measured since you started is thrown away. The entry keeps what it held."

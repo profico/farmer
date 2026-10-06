@@ -1,5 +1,5 @@
 import { type Href, useRouter } from "expo-router";
-import { Alert, Linking } from "react-native";
+import { Linking } from "react-native";
 
 import {
 	type Access,
@@ -11,6 +11,7 @@ import { useMe, useWorkspace } from "../../src/api/queries";
 import { APP_VERSION } from "../../src/config";
 import { useSession } from "../../src/session/session";
 import { ErrorState, Skeleton } from "../../src/ui/components";
+import { showDialog } from "../../src/ui/dialog";
 import type { IconName } from "../../src/ui/icons";
 import { Inset, Screen } from "../../src/ui/screen";
 import {
@@ -195,7 +196,7 @@ export default function MoreScreen() {
 	const workspaceRows = WORKSPACE.filter((entry) => entry.allowed(access));
 
 	const confirmSignOut = () =>
-		Alert.alert(
+		showDialog(
 			"Sign out?",
 			`The app forgets ${origin} and your sign-in on this phone.`,
 			[
