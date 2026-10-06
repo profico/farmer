@@ -1,16 +1,16 @@
 import { Host, ModalBottomSheet, RNHostView } from "@expo/ui/jetpack-compose";
-import { Pressable, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
-import { Text } from "./components";
 import { useHostTheme } from "./host";
 import { Icon } from "./icon";
 import type { RowMenuSheetProps } from "./row-menu-sheet";
 import { usePalette } from "./theme";
-import { SPACE } from "./type";
+import { SPACE, TYPE } from "./type";
 
 /**
  * The Material 3 modal bottom sheet, with one row for each item. The sheet is
  * Compose. The rows are React Native, so they use the icon set of the app.
+ * The file does not import `components.tsx`, which would make a cycle.
  * An item runs after the sheet is gone, so a confirmation opens on a clear
  * screen.
  */
@@ -33,9 +33,8 @@ export function RowMenuSheet({ title, items, onClose }: RowMenuSheetProps) {
 							}}
 						>
 							<Text
-								variant="titleSmall"
-								color={palette.onSurfaceVariant}
 								numberOfLines={1}
+								style={[TYPE.titleSmall, { color: palette.onSurfaceVariant }]}
 							>
 								{title}
 							</Text>
@@ -63,9 +62,7 @@ export function RowMenuSheet({ title, items, onClose }: RowMenuSheetProps) {
 									}}
 								>
 									<Icon name={item.icon} size={24} color={color} />
-									<Text variant="bodyLarge" color={color}>
-										{item.label}
-									</Text>
+									<Text style={[TYPE.bodyLarge, { color }]}>{item.label}</Text>
 								</Pressable>
 							);
 						})}
