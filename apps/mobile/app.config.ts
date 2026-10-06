@@ -12,6 +12,7 @@ import {
 	withMainActivity,
 } from "expo/config-plugins";
 
+import { withAndroidSigning } from "./plugins/with-android-signing.js";
 import { withPush } from "./plugins/with-push.js";
 
 // The window behind every screen, before the app draws and during a screen
@@ -152,6 +153,20 @@ const withNightMode: ConfigPlugin = (config) =>
 		return activity;
 	});
 
+/**
+ * The version code of the Android build and the build number of the iOS build,
+ * from `FARMER_VERSION_CODE`. Android installs an APK over an older one only
+ * when its version code is higher, so CI sets it from the run number
+ * (`.github/workflows/mobile-release.yml`). Without it, or with a value that
+ * is not a positive whole number, the prebuild default (1) stays.
+ */
+function readVersionCode(value: string | undefined): number | undefined {
+	const code = Number(value);
+	return Number.isSafeInteger(code) && code > 0 ? code : undefined;
+}
+
+const versionCode = readVersionCode(process.env.FARMER_VERSION_CODE);
+
 // The app is one client for every Server (ADR 0005), so nothing here names a
 // server. The person gives the Server address on the first screen.
 const config: ExpoConfig = {
@@ -169,12 +184,14 @@ const config: ExpoConfig = {
 		// ADR 0005: iOS 18 or later.
 		deploymentTarget: "18.0",
 		supportsTablet: true,
+		buildNumber: versionCode === undefined ? undefined : String(versionCode),
 	},
 	android: {
 		package: "com.profico.farmer",
 		// Lets Android play the back-to-home preview. `modules/back-gesture`
 		// hands the gesture to the system where the app would only exit.
 		predictiveBackGestureEnabled: true,
+		versionCode,
 		backgroundColor: BACKGROUND_LIGHT,
 		adaptiveIcon: {
 			foregroundImage: "./assets/adaptive-icon.png",
@@ -257,8 +274,13 @@ const config: ExpoConfig = {
 // `withPush` adds the one `expo-notifications` entry, with the brand's icon
 // (`assets/notification-icon.png`). `withNotificationIcon` writes the drawn
 // sizes of the same icon under the same resource names.
+//
+// `withAndroidSigning` reads the release keystore from the environment
+// (`plugins/with-android-signing.js`).
 export default withPush(
-	withNotificationIcon(
-		withNightMode(withDialogAccent(withDarkWindowBackground(config))),
+	withAndroidSigning(
+		withNotificationIcon(
+			withNightMode(withDialogAccent(withDarkWindowBackground(config))),
+		),
 	),
 );
