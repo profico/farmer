@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { Appearance } from "react-native";
 import { z } from "zod";
 
+import { NightMode } from "../../modules/night-mode";
 import { THEME_IDS } from "./farmer-theme";
 
 // More, "Display": how the app looks on this phone. The choices belong to the
@@ -49,9 +50,14 @@ const read = (): DisplayPrefs => {
 };
 
 /** The phone's light or dark mode, set for the whole app. The native
- *  controls, the system colours and `useColorScheme` all follow it. */
-const applyScheme = (scheme: SchemePref) =>
+ *  controls, the system colours and `useColorScheme` all follow it. On
+ *  Android a copy goes to the native side, which sets it before the next
+ *  start of the activity (`modules/night-mode`). Without the copy, a cold
+ *  start showed the native dialogs in the phone's mode. */
+const applyScheme = (scheme: SchemePref) => {
+	NightMode?.save(scheme);
 	Appearance.setColorScheme(scheme === "system" ? "unspecified" : scheme);
+};
 
 let current = read();
 applyScheme(current.scheme);

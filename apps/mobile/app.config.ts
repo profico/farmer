@@ -9,6 +9,7 @@ import {
 	withAndroidColorsNight,
 	withAndroidStyles,
 	withDangerousMod,
+	withMainActivity,
 } from "expo/config-plugins";
 
 import { withPush } from "./plugins/with-push.js";
@@ -114,6 +115,43 @@ const withDialogAccent: ConfigPlugin = (config) =>
 		},
 	);
 
+const NIGHT_MODE = "com.profico.farmer.nightmode.NightMode";
+
+/**
+ * Sets the light or dark choice of More, Display before the activity starts
+ * (`modules/night-mode`). AppCompat fixes the theme of the native dialogs in
+ * `attachBaseContext`, and the JavaScript loads later. Then `expo-system-ui`
+ * sets the mode of `userInterfaceStyle` in `onCreate`, so the choice goes
+ * back after `super.onCreate`. The keyboard is a different app: it follows
+ * the phone's mode, and Android gives no way to change that.
+ */
+const withNightMode: ConfigPlugin = (config) =>
+	withMainActivity(config, (activity) => {
+		if (activity.modResults.language !== "kt") {
+			throw new Error("withNightMode: MainActivity must be Kotlin.");
+		}
+		let source = activity.modResults.contents;
+		if (source.includes(NIGHT_MODE)) return activity;
+		const onCreate = "    super.onCreate(null)\n";
+		const classLine = "class MainActivity : ReactActivity() {\n";
+		if (!source.includes(onCreate) || !source.includes(classLine)) {
+			throw new Error("withNightMode: MainActivity has an unknown shape.");
+		}
+		source = source.replace(
+			onCreate,
+			`${onCreate}    ${NIGHT_MODE}.apply(this)\n`,
+		);
+		source = source.replace(
+			classLine,
+			`${classLine}  override fun attachBaseContext(newBase: android.content.Context) {\n` +
+				`    ${NIGHT_MODE}.apply(newBase)\n` +
+				"    super.attachBaseContext(newBase)\n" +
+				"  }\n\n",
+		);
+		activity.modResults.contents = source;
+		return activity;
+	});
+
 // The app is one client for every Server (ADR 0005), so nothing here names a
 // server. The person gives the Server address on the first screen.
 const config: ExpoConfig = {
@@ -213,5 +251,7 @@ const config: ExpoConfig = {
 // (`assets/notification-icon.png`). `withNotificationIcon` writes the drawn
 // sizes of the same icon under the same resource names.
 export default withPush(
-	withNotificationIcon(withDialogAccent(withDarkWindowBackground(config))),
+	withNotificationIcon(
+		withNightMode(withDialogAccent(withDarkWindowBackground(config))),
+	),
 );
