@@ -26,6 +26,7 @@ import {
 	Text,
 } from "../ui/components";
 import { messageOf } from "../ui/errors";
+import { useRowMenu } from "../ui/row-menu";
 import { Inset } from "../ui/screen";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
@@ -202,12 +203,29 @@ function RowCard({
 }) {
 	const palette = usePalette();
 	const total = rowSeconds(row, days);
+	// A long press on the heading opens the same actions as the buttons.
+	const menu = useRowMenu(row.heading, [
+		total > 0 && { label: "Edit notes", icon: "edit", onPress: onNotes },
+		!row.locked && {
+			label: "Remove",
+			icon: "delete",
+			destructive: true,
+			onPress: onRemove,
+		},
+	]);
 	return (
 		<Card style={{ gap: SPACE.m }}>
 			<View
 				style={{ flexDirection: "row", alignItems: "center", gap: SPACE.s }}
 			>
-				<View style={{ flex: 1 }}>
+				<Pressable
+					{...menu}
+					accessible={menu.onLongPress != null}
+					accessibilityLabel={[row.heading, row.taskName]
+						.filter((part) => part)
+						.join(", ")}
+					style={{ flex: 1 }}
+				>
 					<Text variant="titleMedium" numberOfLines={1}>
 						{row.heading}
 					</Text>
@@ -220,7 +238,7 @@ function RowCard({
 							{row.taskName}
 						</Text>
 					) : null}
-				</View>
+				</Pressable>
 				<Text variant="titleMedium">{formatHours(total)}</Text>
 				{total > 0 ? (
 					<IconButton

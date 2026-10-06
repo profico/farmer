@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Platform, Pressable, View } from "react-native";
 
 import { Icon } from "../../ui/icon";
+import { useRowMenu } from "../../ui/row-menu";
+import type { RowMenuEntry } from "../../ui/row-menu-items";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
 
@@ -16,6 +18,7 @@ export function CheckRow({
 	label,
 	children,
 	indent = 0,
+	menu,
 }: {
 	checked: boolean | "mixed";
 	onPress: () => void;
@@ -23,11 +26,16 @@ export function CheckRow({
 	label: string;
 	children: ReactNode;
 	indent?: number;
+	/** The long-press menu. The caller leaves out an action that the person
+	 *  may not do. */
+	menu?: { title: string; items: readonly RowMenuEntry[] };
 }) {
 	const palette = usePalette();
+	const menuProps = useRowMenu(menu?.title ?? label, menu?.items ?? []);
 	const on = checked !== false;
 	return (
 		<Pressable
+			{...menuProps}
 			accessibilityRole="checkbox"
 			accessibilityState={{ checked }}
 			accessibilityLabel={label}

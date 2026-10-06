@@ -6,11 +6,7 @@ import { Alert, View } from "react-native";
 import { useAccess } from "../src/api/capabilities";
 import { useAttachActivity } from "../src/api/day";
 import { useEntries, useTasks, useWhoami } from "../src/api/queries";
-import {
-	useCreateTimeEntry,
-	useDeleteTimeEntry,
-	useUpdateTimeEntry,
-} from "../src/api/time";
+import { useCreateTimeEntry, useUpdateTimeEntry } from "../src/api/time";
 import { useCreateRecurringBlock, useIntegrations } from "../src/api/you";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
 import { FormSection, Sheet } from "../src/forms/sheet";
@@ -31,7 +27,8 @@ import {
 import { MeetingPicker } from "../src/time/components/meeting-picker";
 import { SwitchRow } from "../src/time/components/switch-row";
 import { WeekdayChips } from "../src/time/components/weekday-chips";
-import { committed, removed } from "../src/time/haptics";
+import { useConfirmDeleteEntry } from "../src/time/delete-entry";
+import { committed } from "../src/time/haptics";
 import {
 	ActionButton,
 	EmptyState,
@@ -159,7 +156,7 @@ function EntryForm({
 	const attach = useAttachActivity();
 	const create = useCreateTimeEntry();
 	const update = useUpdateTimeEntry();
-	const remove = useDeleteTimeEntry();
+	const remove = useConfirmDeleteEntry();
 	const repeat = useCreateRecurringBlock();
 	const [date, setDay] = useState(initialDate);
 	const [projectId, setProjectId] = useState(initialProjectId);
@@ -197,7 +194,7 @@ function EntryForm({
 	const busy =
 		create.isPending ||
 		update.isPending ||
-		remove.isPending ||
+		remove.pending ||
 		repeat.isPending ||
 		attach.isPending;
 	const failure = messageOf(
@@ -336,21 +333,7 @@ function EntryForm({
 	};
 
 	const confirmDelete = () => {
-		if (!entry) return;
-		Alert.alert("Delete this entry?", "This cannot be undone.", [
-			{ text: "Cancel", style: "cancel" },
-			{
-				text: "Delete",
-				style: "destructive",
-				onPress: () =>
-					remove.mutate(entry.id, {
-						onSuccess: () => {
-							removed();
-							router.back();
-						},
-					}),
-			},
-		]);
+		if (entry) remove.confirm(entry, () => router.back());
 	};
 
 	return (

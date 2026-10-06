@@ -5,6 +5,7 @@ import { useAccess } from "../api/capabilities";
 import { formatHours } from "../lib/duration";
 import { ProjectMark } from "../projects/components/project-mark";
 import { IconButton, Text } from "../ui/components";
+import { useRowMenu } from "../ui/row-menu";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 
@@ -57,6 +58,7 @@ export function EntryRow({
 	projectIcon = null,
 	onPress,
 	onContinue,
+	onDelete,
 }: {
 	entry: TimeEntry;
 	/** The icon of the entry's project, from the project list. An entry
@@ -65,6 +67,8 @@ export function EntryRow({
 	onPress: () => void;
 	/** Absent when the entry cannot be continued, or a timer runs. */
 	onContinue?: () => void;
+	/** Asks to delete the entry. Absent when the row may not delete. */
+	onDelete?: () => void;
 }) {
 	const palette = usePalette();
 	const { dayApi } = useAccess();
@@ -77,8 +81,19 @@ export function EntryRow({
 		.join(" · ");
 	const title =
 		project?.name ?? (entry.task.isAbsence ? "Time off" : "No project");
+	// A long press opens Edit and Delete, the actions of the edit sheet.
+	const menu = useRowMenu(title, [
+		{ label: "Edit", icon: "edit", onPress },
+		onDelete && {
+			label: "Delete",
+			icon: "delete",
+			destructive: true,
+			onPress: onDelete,
+		},
+	]);
 	return (
 		<Pressable
+			onLongPress={menu.onLongPress}
 			accessibilityRole="button"
 			accessibilityLabel={[
 				title,
@@ -92,13 +107,15 @@ export function EntryRow({
 			accessibilityHint="Edit the entry"
 			// The row is one element for a screen reader, so the continue button
 			// inside it is offered as an action of the row.
-			accessibilityActions={
-				onContinue
+			accessibilityActions={[
+				...(onContinue
 					? [{ name: "continue", label: "Continue this entry with the timer" }]
-					: undefined
-			}
+					: []),
+				...(menu.accessibilityActions ?? []),
+			]}
 			onAccessibilityAction={(event) => {
 				if (event.nativeEvent.actionName === "continue") onContinue?.();
+				else menu.onAccessibilityAction?.(event);
 			}}
 			onPress={onPress}
 			android_ripple={{ color: palette.outlineVariant }}

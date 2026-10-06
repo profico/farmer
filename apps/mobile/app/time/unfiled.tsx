@@ -83,11 +83,13 @@ export default function UnfiledSheet() {
 			.map((entry) => entry.id),
 	);
 
-	const fileSelected = () => {
-		if (!projectId || selected.size === 0) return;
+	const fileSelected = () => fileIds([...selected]);
+
+	const fileIds = (ids: string[]) => {
+		if (!projectId || ids.length === 0) return;
 		file.mutate(
 			{
-				timeEntryIds: [...selected],
+				timeEntryIds: ids,
 				projectId,
 				taskId: changeTask ? (taskId ?? undefined) : undefined,
 				remember,
@@ -120,6 +122,17 @@ export default function UnfiledSheet() {
 					}),
 			},
 		);
+	};
+
+	// A long-press "File" files at once when a project is picked. Without
+	// one, it ticks the entries, so the person picks the project next.
+	const fileFromMenu = (ids: string[]) => {
+		if (projectId) {
+			fileIds(ids);
+			return;
+		}
+		setSelected(new Set(ids));
+		setNotice({ id: Date.now(), message: "Pick a project, then tap File." });
 	};
 
 	const removeEntries = (removed: UnfiledEntry[]) =>
@@ -240,6 +253,7 @@ export default function UnfiledSheet() {
 										setSelected((current) => toggleIds(current, ids))
 									}
 									onRemove={removeEntries}
+									onFile={fullApi ? fileFromMenu : undefined}
 								/>
 							))}
 						</View>
@@ -298,6 +312,7 @@ function GroupRows({
 	onToggleOpen,
 	onToggle,
 	onRemove,
+	onFile,
 }: {
 	group: UnfiledGroup;
 	first: boolean;
@@ -307,6 +322,8 @@ function GroupRows({
 	onToggleOpen: () => void;
 	onToggle: (ids: string[]) => void;
 	onRemove: (entries: UnfiledEntry[]) => void;
+	/** Absent when the server cannot file time from the app. */
+	onFile?: (ids: string[]) => void;
 }) {
 	const palette = usePalette();
 	const ids = group.entries.map((entry) => entry.id);
@@ -330,6 +347,22 @@ function GroupRows({
 					checked={state === "all" ? true : state === "some" ? "mixed" : false}
 					onPress={() => onToggle(ids)}
 					label={`${group.title}, ${group.taskName}, ${when}, ${formatHours(group.seconds)}`}
+					menu={{
+						title: group.title,
+						items: [
+							onFile && {
+								label: "File",
+								icon: "folder",
+								onPress: () => onFile(ids),
+							},
+							{
+								label: "Remove",
+								icon: "delete",
+								destructive: true,
+								onPress: () => onRemove(group.entries),
+							},
+						],
+					}}
 				>
 					<Text variant="bodyLarge" numberOfLines={1}>
 						{group.title}
@@ -375,6 +408,22 @@ function GroupRows({
 								checked={selected.has(entry.id)}
 								onPress={() => onToggle([entry.id])}
 								label={`${group.title} on ${shortDay(entry.date)}, ${formatHours(entry.durationSeconds)}`}
+								menu={{
+									title: `${group.title}, ${shortDay(entry.date)}`,
+									items: [
+										onFile && {
+											label: "File",
+											icon: "folder",
+											onPress: () => onFile([entry.id]),
+										},
+										{
+											label: "Remove",
+											icon: "delete",
+											destructive: true,
+											onPress: () => onRemove([entry]),
+										},
+									],
+								}}
 							>
 								<Text variant="bodyMedium">
 									{shortDay(entry.date)}, {formatHours(entry.durationSeconds)}

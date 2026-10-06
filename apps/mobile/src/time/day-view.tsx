@@ -36,6 +36,7 @@ import { Inset } from "../ui/screen";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 import { dayTargets, weekDayMarks } from "./day-marks";
+import { useConfirmDeleteEntry } from "./delete-entry";
 import { canContinue, EntryRow } from "./entry-row";
 import { committed } from "./haptics";
 import { TimerCard } from "./timer-card";
@@ -92,6 +93,7 @@ export function DayView({
 	const timer = useTimer();
 	const start = useStartTimer();
 	const projects = useProjects();
+	const deleteEntry = useConfirmDeleteEntry();
 	// An entry names its project without the icon; the project list has it.
 	const icons = new Map(
 		(projects.data ?? []).map((project) => [project.id, project.icon ?? null]),
@@ -235,6 +237,7 @@ export function DayView({
 											params: { id: entry.id, date: entry.date, from, to },
 										})
 									}
+									onDelete={() => deleteEntry.confirm(entry)}
 									onContinue={
 										timerFree && canContinue(entry)
 											? () =>
