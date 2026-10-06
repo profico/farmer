@@ -9,16 +9,14 @@
  * - The app keeps a nonce for the one flow it started, puts it in the
  *   callback URL, and refuses a callback without an active flow or with
  *   another nonce. This stops a forced sign-in into somebody else's account.
- * - A server that has the exchange (`/meta` says `signInExchange`) puts a
- *   one-time code in the link, not the session. The app made a random
- *   verifier before the browser opened and sent only its S256 challenge
- *   (`cc`). The code works only with the verifier, which never leaves the
- *   app until the exchange request. A hostile app that reads the link has
- *   the code and the challenge, and cannot redeem the code.
+ * - The server puts a one-time code in the link, never the session. The app
+ *   made a random verifier before the browser opened and sent only its S256
+ *   challenge (`cc`). The code works only with the verifier, which never
+ *   leaves the app until the exchange request. A hostile app that reads the
+ *   link has the code and the challenge, and cannot redeem the code.
  *
- * A server from before the exchange still puts the session in the link
- * (`cookie`). The app reads that only for a flow that has no verifier, so a
- * link with a session cannot downgrade a flow that asked for the exchange.
+ * The app reads a code and nothing else. A session in the link is not an
+ * answer to the flow.
  */
 
 export const AUTH_CALLBACK = "farmer://auth-callback";
@@ -38,9 +36,8 @@ export type ActiveFlow = {
 	/** The server that the flow signs in to. */
 	origin: string;
 	startedAt: number;
-	/** The secret of an exchange flow. Null for a flow with a server from
-	 *  before the exchange. It is sent once, to the exchange endpoint. */
-	verifier: string | null;
+	/** The secret of the flow. It is sent once, to the exchange endpoint. */
+	verifier: string;
 };
 
 /** Bytes as base64url with no padding, the encoding of RFC 7636. */
@@ -68,46 +65,27 @@ export const challengeFor = (
 	sha256: (text: string) => Uint8Array,
 ): string => base64UrlFromBytes(sha256(verifier));
 
+/** The start of every link that answers the flow: the callback with the
+ *  nonce. The server removes `cc` and adds `code` after the nonce, so the
+ *  answer starts with this text and the `callbackURL` is not a prefix of it.
+ *  The auth session of the browser module compares the link with this prefix
+ *  (`startsWith`). */
+export const redirectPrefixFor = (flow: ActiveFlow) =>
+	`${AUTH_CALLBACK}?${FLOW_PARAM}=${encodeURIComponent(flow.nonce)}`;
+
 /** The `callbackURL` (and `errorCallbackURL`) of a flow. `challenge` is the
- *  S256 challenge of an exchange flow, and null for the old link. */
-export const callbackUrlFor = (flow: ActiveFlow, challenge: string | null) => {
-	const base = `${AUTH_CALLBACK}?${FLOW_PARAM}=${encodeURIComponent(flow.nonce)}`;
-	return challenge === null
-		? base
-		: `${base}&${CHALLENGE_PARAM}=${encodeURIComponent(challenge)}`;
-};
+ *  S256 challenge of the flow's verifier. */
+export const callbackUrlFor = (flow: ActiveFlow, challenge: string) =>
+	`${redirectPrefixFor(flow)}&${CHALLENGE_PARAM}=${encodeURIComponent(challenge)}`;
 
 export type CallbackResult =
-	/** The session token, ready to use as `Authorization: Bearer`. */
-	| { kind: "session"; token: string }
-	/** The one-time code of an exchange flow. The app sends it, with the
-	 *  flow's verifier, to the exchange endpoint. */
+	/** The one-time code of the flow. The app sends it, with the flow's
+	 *  verifier, to the exchange endpoint. */
 	| { kind: "code"; code: string }
 	/** The provider or the server refused. `message` is app text. */
 	| { kind: "error"; message: string }
 	/** The link is not the answer to the active flow. Ignore it. */
 	| { kind: "refused"; reason: "no_flow" | "not_callback" | "wrong_flow" };
-
-const SESSION_COOKIE =
-	/(?:^|[\s,;])(?:__Secure-)?better-auth\.session_token=([^;,\s]+)/;
-
-/**
- * The session token in a `Set-Cookie` header. The cookie holds the signed
- * value `<token>.<signature>`, URL-encoded. `/api/v1` takes the token part
- * as a bearer. An empty string when the header has no session cookie, such
- * as the expired state cookie of a refused sign-in.
- */
-export const sessionTokenFrom = (setCookie: string): string => {
-	const match = SESSION_COOKIE.exec(setCookie);
-	if (!match?.[1]) return "";
-	let signed: string;
-	try {
-		signed = decodeURIComponent(match[1]);
-	} catch {
-		return "";
-	}
-	return signed.split(".")[0] ?? "";
-};
 
 const GENERIC_ERROR =
 	"The sign-in did not complete. Try again, or use another way to sign in.";
@@ -193,16 +171,10 @@ export const readCallback = (
 	}
 	const error = params.get("error");
 	if (error) return { kind: "error", message: errorTextFor(error) };
-	if (flow.verifier !== null) {
-		// An exchange flow reads a code and nothing else: a session in the
-		// link is not what this flow asked for.
-		const code = params.get("code");
-		if (!code) return { kind: "error", message: GENERIC_ERROR };
-		return { kind: "code", code };
-	}
-	const token = sessionTokenFrom(params.get("cookie") ?? "");
-	if (!token) return { kind: "error", message: GENERIC_ERROR };
-	return { kind: "session", token };
+	// A code and nothing else: a session in the link is not an answer.
+	const code = params.get("code");
+	if (!code) return { kind: "error", message: GENERIC_ERROR };
+	return { kind: "code", code };
 };
 
 /**
@@ -216,7 +188,7 @@ export class FlowKeeper {
 		origin: string,
 		nonce: string,
 		now: number,
-		verifier: string | null = null,
+		verifier: string,
 	): ActiveFlow {
 		this.#active = { nonce, origin, startedAt: now, verifier };
 		return this.#active;

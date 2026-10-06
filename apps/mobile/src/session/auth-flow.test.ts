@@ -10,23 +10,25 @@ import {
 	FLOW_LIFETIME_MS,
 	FlowKeeper,
 	readCallback,
-	sessionTokenFrom,
+	redirectPrefixFor,
 } from "./auth-flow";
 
 const NOW = 1_800_000_000_000;
+const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const flow: ActiveFlow = {
 	nonce: "n-123",
 	origin: "https://farmer.example.com",
 	startedAt: NOW,
-	verifier: null,
+	verifier: VERIFIER,
 };
 
-/** The `Set-Cookie` header that the server's expo plugin puts in the link. */
+/** A session cookie as `expo()` writes it into the link. The server must
+ *  never leave it there. */
 const SET_COOKIE =
-	"better-auth.session_token=tok123.c2lnbmF0dXJl%3D; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax, better-auth.state=; Max-Age=0; Path=/";
+	"better-auth.session_token=tok123.c2lnbmF0dXJl%3D; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax";
 
 /** The link as the server writes it: the callback URL of the flow, with the
- *  cookie added by `URLSearchParams.set`. */
+ *  code added by `URLSearchParams.set`. */
 const linkFor = (callback: string, extra: Record<string, string>) => {
 	const [base = "", query = ""] = callback.split("?");
 	const params = new URLSearchParams(query);
@@ -34,44 +36,19 @@ const linkFor = (callback: string, extra: Record<string, string>) => {
 	return `${base}?${params}`;
 };
 
-describe("sessionTokenFrom", () => {
-	test("takes the token part of the signed cookie", () => {
-		expect(sessionTokenFrom(SET_COOKIE)).toBe("tok123");
-	});
-
-	test("reads the __Secure- cookie of an https server", () => {
-		expect(
-			sessionTokenFrom(
-				"__Secure-better-auth.session_token=abc.def%2B%3D; Path=/; Secure",
-			),
-		).toBe("abc");
-	});
-
-	test("gives nothing for a header without a session cookie", () => {
-		expect(sessionTokenFrom("better-auth.state=; Max-Age=0; Path=/")).toBe("");
-		expect(sessionTokenFrom("")).toBe("");
-	});
-
-	test("does not read a cookie whose name only ends the same way", () => {
-		expect(sessionTokenFrom("evil-better-auth.session_token=x.y; Path=/")).toBe(
-			"",
-		);
-	});
-});
-
 describe("readCallback", () => {
-	const callback = callbackUrlFor(flow, null);
+	const callback = callbackUrlFor(flow, "the-challenge");
 
-	test("gives the token of a callback for the active flow", () => {
-		const link = linkFor(callback, { cookie: SET_COOKIE });
+	test("gives the code of a callback for the active flow", () => {
+		const link = linkFor(callback, { code: "one-time" });
 		expect(readCallback(link, flow, NOW + 1000)).toEqual({
-			kind: "session",
-			token: "tok123",
+			kind: "code",
+			code: "one-time",
 		});
 	});
 
 	test("refuses any callback when no flow is active", () => {
-		const link = linkFor(callback, { cookie: SET_COOKIE });
+		const link = linkFor(callback, { code: "one-time" });
 		expect(readCallback(link, null, NOW)).toEqual({
 			kind: "refused",
 			reason: "no_flow",
@@ -79,14 +56,12 @@ describe("readCallback", () => {
 	});
 
 	test("refuses a callback without the nonce, or with another one", () => {
-		const bare = `farmer://auth-callback?${new URLSearchParams({ cookie: SET_COOKIE })}`;
+		const bare = `farmer://auth-callback?${new URLSearchParams({ code: "x" })}`;
 		expect(readCallback(bare, flow, NOW)).toEqual({
 			kind: "refused",
 			reason: "wrong_flow",
 		});
-		const other = linkFor("farmer://auth-callback?flow=n-999", {
-			cookie: SET_COOKIE,
-		});
+		const other = linkFor("farmer://auth-callback?flow=n-999", { code: "x" });
 		expect(readCallback(other, flow, NOW)).toEqual({
 			kind: "refused",
 			reason: "wrong_flow",
@@ -94,7 +69,7 @@ describe("readCallback", () => {
 	});
 
 	test("refuses a callback after the flow expired", () => {
-		const link = linkFor(callback, { cookie: SET_COOKIE });
+		const link = linkFor(callback, { code: "one-time" });
 		expect(readCallback(link, flow, NOW + FLOW_LIFETIME_MS + 1)).toEqual({
 			kind: "refused",
 			reason: "no_flow",
@@ -103,7 +78,7 @@ describe("readCallback", () => {
 
 	test("refuses a link that is not the sign-in callback", () => {
 		for (const link of [
-			`farmer://connect?flow=n-123&cookie=x`,
+			`farmer://connect?flow=n-123&code=x`,
 			`https://evil.example/auth-callback?flow=n-123`,
 			`farmer://auth-callbackx?flow=n-123`,
 			"not a link",
@@ -138,20 +113,34 @@ describe("readCallback", () => {
 		expect(errorTextFor("access_denied")).toBe("You cancelled the sign-in.");
 	});
 
-	test("a callback with no session cookie is an error, not a session", () => {
-		const link = linkFor(callback, {
-			cookie: "better-auth.state=; Max-Age=0; Path=/",
-		});
+	test("does not take a session from the link", () => {
+		const link = linkFor(callback, { cookie: SET_COOKIE });
 		expect(readCallback(link, flow, NOW).kind).toBe("error");
+	});
+
+	test("the error of exchange_failed is the generic text", () => {
+		const link = linkFor(callback, { error: "exchange_failed" });
+		expect(readCallback(link, flow, NOW)).toEqual({
+			kind: "error",
+			message: errorTextFor("exchange_failed"),
+		});
+	});
+
+	test("a refusal in the link is an error, even with a code", () => {
+		const link = linkFor(callback, { error: "access_denied", code: "x" });
+		expect(readCallback(link, flow, NOW)).toEqual({
+			kind: "error",
+			message: errorTextFor("access_denied"),
+		});
 	});
 });
 
 describe("FlowKeeper", () => {
 	test("ends the flow on its callback, so the link works once", () => {
 		const keeper = new FlowKeeper();
-		const started = keeper.start("https://a.example", "nonce-1", NOW);
-		const link = linkFor(callbackUrlFor(started, null), { cookie: SET_COOKIE });
-		expect(keeper.finish(link, NOW).kind).toBe("session");
+		const started = keeper.start("https://a.example", "nonce-1", NOW, VERIFIER);
+		const link = linkFor(callbackUrlFor(started, "c"), { code: "one-time" });
+		expect(keeper.finish(link, NOW).kind).toBe("code");
 		expect(keeper.active).toBeNull();
 		expect(keeper.finish(link, NOW)).toEqual({
 			kind: "refused",
@@ -161,9 +150,9 @@ describe("FlowKeeper", () => {
 
 	test("keeps the flow when a stray link arrives", () => {
 		const keeper = new FlowKeeper();
-		const started = keeper.start("https://a.example", "nonce-1", NOW);
+		const started = keeper.start("https://a.example", "nonce-1", NOW, VERIFIER);
 		const stray = linkFor("farmer://auth-callback?flow=other", {
-			cookie: SET_COOKIE,
+			code: "one-time",
 		});
 		expect(keeper.finish(stray, NOW).kind).toBe("refused");
 		expect(keeper.active).toBe(started);
@@ -171,9 +160,9 @@ describe("FlowKeeper", () => {
 
 	test("a new flow replaces the old one, and its callback is refused", () => {
 		const keeper = new FlowKeeper();
-		const first = keeper.start("https://a.example", "nonce-1", NOW);
-		keeper.start("https://a.example", "nonce-2", NOW);
-		const late = linkFor(callbackUrlFor(first, null), { cookie: SET_COOKIE });
+		const first = keeper.start("https://a.example", "nonce-1", NOW, VERIFIER);
+		keeper.start("https://a.example", "nonce-2", NOW, VERIFIER);
+		const late = linkFor(callbackUrlFor(first, "c"), { code: "one-time" });
 		expect(keeper.finish(late, NOW)).toEqual({
 			kind: "refused",
 			reason: "wrong_flow",
@@ -182,8 +171,8 @@ describe("FlowKeeper", () => {
 
 	test("cancel ends only the flow it names", () => {
 		const keeper = new FlowKeeper();
-		const first = keeper.start("https://a.example", "nonce-1", NOW);
-		const second = keeper.start("https://a.example", "nonce-2", NOW);
+		const first = keeper.start("https://a.example", "nonce-1", NOW, VERIFIER);
+		const second = keeper.start("https://a.example", "nonce-2", NOW, VERIFIER);
 		keeper.cancel(first);
 		expect(keeper.active).toBe(second);
 		keeper.cancel(second);
@@ -192,9 +181,8 @@ describe("FlowKeeper", () => {
 });
 
 describe("the exchange flow", () => {
-	const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-	const exchangeFlow: ActiveFlow = { ...flow, verifier };
-	const callback = callbackUrlFor(exchangeFlow, "the-challenge");
+	const verifier = VERIFIER;
+	const callback = callbackUrlFor(flow, "the-challenge");
 
 	test("makes the S256 challenge of RFC 7636 appendix B", () => {
 		const sha256 = (text: string) =>
@@ -214,30 +202,30 @@ describe("the exchange flow", () => {
 		expect(callback).toBe("farmer://auth-callback?flow=n-123&cc=the-challenge");
 		expect(callback).not.toContain(verifier);
 	});
+});
 
-	test("gives the code of a callback for the active flow", () => {
-		const link = linkFor(callback, { code: "one-time" });
-		expect(readCallback(link, exchangeFlow, NOW)).toEqual({
-			kind: "code",
-			code: "one-time",
-		});
+describe("the redirect prefix", () => {
+	/** What the server does to the link (`mobile-exchange.ts`): `cookie` and
+	 *  `cc` out, `code` in. `URL` keeps the order of the other parameters. */
+	const answerFor = (callback: string) => {
+		const url = new URL(callback);
+		url.searchParams.delete("cc");
+		url.searchParams.set("code", "one-time");
+		return url.toString();
+	};
+
+	test("starts the link that answers the flow", () => {
+		const callback = callbackUrlFor(flow, "the-challenge");
+		const answer = answerFor(callback);
+		expect(answer.startsWith(redirectPrefixFor(flow))).toBe(true);
+		// The bug this guards: the browser module waits for a link that starts
+		// with the `callbackURL`, which holds `cc`, and the answer does not.
+		expect(answer.startsWith(callback)).toBe(false);
 	});
 
-	test("does not take a session from the link of an exchange flow", () => {
-		const link = linkFor(callback, { cookie: SET_COOKIE });
-		expect(readCallback(link, exchangeFlow, NOW).kind).toBe("error");
-	});
-
-	test("does not take a code from the link of an old flow", () => {
-		const link = linkFor(callbackUrlFor(flow, null), { code: "one-time" });
-		expect(readCallback(link, flow, NOW).kind).toBe("error");
-	});
-
-	test("a refusal in the link is an error, even with a code", () => {
-		const link = linkFor(callback, { error: "access_denied", code: "x" });
-		expect(readCallback(link, exchangeFlow, NOW)).toEqual({
-			kind: "error",
-			message: errorTextFor("access_denied"),
-		});
+	test("is the start of the callback URL", () => {
+		expect(callbackUrlFor(flow, "c").startsWith(redirectPrefixFor(flow))).toBe(
+			true,
+		);
 	});
 });

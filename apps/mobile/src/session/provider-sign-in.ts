@@ -12,7 +12,12 @@ import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { z } from "zod";
 
-import { base64UrlFromBytes, callbackUrlFor, FlowKeeper } from "./auth-flow";
+import {
+	base64UrlFromBytes,
+	callbackUrlFor,
+	FlowKeeper,
+	redirectPrefixFor,
+} from "./auth-flow";
 
 /**
  * The sign-in through `@better-auth/expo` (ADR 0005): one button for each
@@ -130,25 +135,17 @@ const redeemCode = async (
 /**
  * Signs in with a provider: the server's start, the provider's page in the
  * system auth session, and the callback, checked against the flow's nonce.
- *
- * `exchange` is `meta.signInExchange`. With a server that lacks it (the
- * field is absent), the flow sends no challenge and reads the session from
- * the link, as before the exchange.
+ * The link of the callback carries a one-time code. The app redeems the code
+ * with the verifier that made the challenge in the `callbackURL`.
  */
 export const signInWithProvider = async (
 	origin: string,
 	method: SignInMethod,
-	exchange: boolean,
 ): Promise<SignInOutcome> => {
 	const { auth } = clientFor(origin);
-	const secret = exchange ? await makeVerifier() : null;
-	const flow = flows.start(
-		origin,
-		randomUUID(),
-		Date.now(),
-		secret?.verifier ?? null,
-	);
-	const callbackURL = callbackUrlFor(flow, secret?.challenge ?? null);
+	const secret = await makeVerifier();
+	const flow = flows.start(origin, randomUUID(), Date.now(), secret.verifier);
+	const callbackURL = callbackUrlFor(flow, secret.challenge);
 	try {
 		const body = {
 			callbackURL,
@@ -179,12 +176,16 @@ export const signInWithProvider = async (
 			}
 		}
 		const proxy = `${origin}/api/auth/expo-authorization-proxy?${new URLSearchParams({ authorizationURL: answer.data.url })}`;
-		const result = await WebBrowser.openAuthSessionAsync(proxy, callbackURL);
+		// The link that answers carries `code`, not `cc`, so the callback URL is
+		// not its prefix. The nonce prefix is (see `redirectPrefixFor`).
+		const result = await WebBrowser.openAuthSessionAsync(
+			proxy,
+			redirectPrefixFor(flow),
+		);
 		if (result.type !== "success") return { kind: "cancelled" };
 
 		const read = flows.finish(result.url, Date.now());
-		if (read.kind === "session") return { kind: "token", token: read.token };
-		if (read.kind === "code" && flow.verifier !== null) {
+		if (read.kind === "code") {
 			return await redeemCode(origin, read.code, flow.verifier);
 		}
 		if (read.kind === "error") return read;
