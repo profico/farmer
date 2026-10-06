@@ -28,16 +28,58 @@ type Entry = {
 	href: Href;
 };
 
-/** The person's own settings and records. They need API version 2, except
- *  a `local` one, which stays on the phone. */
-const YOU: (Entry & { local?: true })[] = [
+const always = () => true;
+
+/** The pages that are not settings. On the web, each is its own page, not a
+ *  row of the settings hub. They need API version 2. */
+const PAGES: (Entry & { allowed: (access: Access) => boolean })[] = [
+	{
+		title: "Absences",
+		icon: "absence",
+		tint: "red",
+		href: "/you/absences",
+		allowed: always,
+	},
+	{
+		title: "Rewind",
+		icon: "rewind",
+		tint: "purple",
+		href: "/you/rewind",
+		allowed: always,
+	},
+	{
+		title: "Audit log",
+		icon: "audit",
+		tint: "gray",
+		href: "/workspace/audit-log",
+		allowed: (access) => access.isAdmin,
+	},
+];
+
+/** The person's own settings, in the groups and the order of the web's
+ *  settings hub (`settings-nav.tsx`). They need API version 2, except a
+ *  `local` one, which stays on the phone. The web shows Display as a part
+ *  of Preferences, so it comes next to Preferences here. */
+const ACCOUNT: (Entry & { local?: true })[] = [
 	{
 		title: "Preferences",
 		icon: "preferences",
 		tint: "gray",
 		href: "/you/preferences",
 	},
-	{ title: "Schedule", icon: "schedule", tint: "blue", href: "/you/schedule" },
+	{
+		title: "Display",
+		icon: "display",
+		tint: "indigo",
+		href: "/you/display",
+		local: true,
+	},
+	{
+		title: "My schedule",
+		icon: "schedule",
+		tint: "blue",
+		href: "/you/schedule",
+	},
 	{
 		title: "Recurring blocks",
 		icon: "repeat",
@@ -50,28 +92,19 @@ const YOU: (Entry & { local?: true })[] = [
 		tint: "teal",
 		href: "/you/integrations",
 	},
-	{ title: "Holidays", icon: "holiday", tint: "orange", href: "/you/holidays" },
-	{ title: "Absences", icon: "absence", tint: "red", href: "/you/absences" },
-	{ title: "Rewind", icon: "rewind", tint: "purple", href: "/you/rewind" },
-	{
-		title: "Display",
-		icon: "display",
-		tint: "indigo",
-		href: "/you/display",
-		local: true,
-	},
 ];
 
-/** The workspace's settings, each behind the capability its routes check.
- *  `assistant` is true when the chat can be used in the workspace. */
+/** The workspace's settings, in the order of the web's settings hub, each
+ *  behind the capability its routes check. `assistant` is true when the
+ *  chat can be used in the workspace. */
 const WORKSPACE: (Entry & {
 	allowed: (access: Access, assistant: boolean) => boolean;
 })[] = [
 	{
-		title: "People",
-		icon: "people",
-		tint: "blue",
-		href: "/workspace/people",
+		title: "Organization",
+		icon: "organization",
+		tint: "gray",
+		href: "/workspace/organization",
 		allowed: (access) => access.isAdmin,
 	},
 	{
@@ -80,6 +113,13 @@ const WORKSPACE: (Entry & {
 		tint: "indigo",
 		href: "/workspace/clients",
 		allowed: (access) => access.canManageClients,
+	},
+	{
+		title: "People",
+		icon: "people",
+		tint: "blue",
+		href: "/workspace/people",
+		allowed: (access) => access.isAdmin,
 	},
 	{
 		title: "Tasks",
@@ -96,13 +136,6 @@ const WORKSPACE: (Entry & {
 		allowed: (access) => access.isAdmin,
 	},
 	{
-		title: "Organization",
-		icon: "organization",
-		tint: "gray",
-		href: "/workspace/organization",
-		allowed: (access) => access.isAdmin,
-	},
-	{
 		title: "Reminders",
 		icon: "reminder",
 		tint: "red",
@@ -110,11 +143,21 @@ const WORKSPACE: (Entry & {
 		allowed: (access) => access.isAdmin,
 	},
 	{
-		title: "Workspace integrations",
+		title: "Integrations",
 		icon: "integration",
 		tint: "teal",
 		href: "/workspace/integrations",
 		allowed: (access) => access.isAdmin,
+	},
+	{
+		title: "Assistant settings",
+		icon: "assistant",
+		tint: "purple",
+		href: "/workspace/assistant",
+		// The web keeps these in the workspace integrations. An admin edits
+		// them. A member reads them, but only when the assistant is
+		// available: otherwise the row has nothing to show.
+		allowed: (access, assistant) => access.isAdmin || assistant,
 	},
 	{
 		title: "Webhooks",
@@ -124,20 +167,13 @@ const WORKSPACE: (Entry & {
 		allowed: (access) => access.isAdmin,
 	},
 	{
-		title: "Audit log",
-		icon: "audit",
-		tint: "gray",
-		href: "/workspace/audit-log",
-		allowed: (access) => access.isAdmin,
-	},
-	{
-		title: "Assistant settings",
-		icon: "assistant",
-		tint: "purple",
-		href: "/workspace/assistant",
-		// An admin edits the settings. A member reads them, but only when the
-		// assistant is available: otherwise the row has nothing to show.
-		allowed: (access, assistant) => access.isAdmin || assistant,
+		title: "Holidays",
+		icon: "holiday",
+		tint: "orange",
+		href: "/you/holidays",
+		// Everyone reads the holidays of the workspace, as on the web. An
+		// admin also turns one off.
+		allowed: (access) => access.fullApi,
 	},
 ];
 
@@ -145,7 +181,7 @@ const WORKSPACE: (Entry & {
  * The menu of every screen that is not a tab, the workspace switcher with
  * the invitations that wait and a new workspace, the account, the server
  * and sign-out. A section shows only what the person
- * may use: "You" needs a Server with API version 2, and each row of
+ * may use: "Account" needs a Server with API version 2, and each row of
  * "Workspace" needs its capability from `whoami`.
  */
 export default function MoreScreen() {
@@ -156,7 +192,10 @@ export default function MoreScreen() {
 	const pendingCount = usePendingCount();
 	const { origin, slug } = useWorkspace();
 	const { setWorkspace, signOut } = useSession();
-	const youRows = YOU.filter((entry) => access.fullApi || entry.local);
+	const pageRows = access.fullApi
+		? PAGES.filter((entry) => entry.allowed(access))
+		: [];
+	const accountRows = ACCOUNT.filter((entry) => access.fullApi || entry.local);
 	const workspaceRows = WORKSPACE.filter((entry) =>
 		entry.allowed(access, assistant),
 	);
@@ -177,20 +216,40 @@ export default function MoreScreen() {
 
 	return (
 		<Screen title="More">
-			{assistant ? (
+			{assistant || pageRows.length > 0 ? (
 				<SettingsSection>
-					<SettingsLink
-						icon="assistant"
-						tint="purple"
-						title="Assistant"
-						subtitle="Ask about your time, or let it log time for you"
-						onPress={() => router.push("/assistant")}
-					/>
+					{assistant ? (
+						<SettingsLink
+							icon="assistant"
+							tint="purple"
+							title="Assistant"
+							subtitle="Ask about your time, or let it log time for you"
+							onPress={() => router.push("/assistant")}
+						/>
+					) : null}
+					{pageRows.map((entry) => (
+						<SettingsLink
+							key={entry.title}
+							icon={entry.icon}
+							tint={entry.tint}
+							title={entry.title}
+							onPress={() => router.push(entry.href)}
+						/>
+					))}
 				</SettingsSection>
 			) : null}
-			{youRows.length > 0 ? (
-				<SettingsSection title="You">
-					{youRows.map((entry) => (
+			{me.data || accountRows.length > 0 ? (
+				<SettingsSection title="Account">
+					{me.data ? (
+						<SettingsValue
+							icon="person"
+							tint="gray"
+							title={me.data.user.name}
+							subtitle={me.data.user.email}
+							value=""
+						/>
+					) : null}
+					{accountRows.map((entry) => (
 						<SettingsLink
 							key={entry.title}
 							icon={entry.icon}
@@ -253,15 +312,6 @@ export default function MoreScreen() {
 								onPress={() => router.push("/new-workspace")}
 							/>
 						) : null}
-					</SettingsSection>
-					<SettingsSection title="Account">
-						<SettingsValue
-							icon="person"
-							tint="gray"
-							title={me.data.user.name}
-							subtitle={me.data.user.email}
-							value=""
-						/>
 					</SettingsSection>
 				</>
 			)}

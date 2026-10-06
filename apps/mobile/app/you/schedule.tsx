@@ -61,7 +61,7 @@ export default function ScheduleScreen() {
 
 	return (
 		<YouScreen
-			title="Schedule"
+			title="My schedule"
 			refreshing={days.isRefetching}
 			onRefresh={refresh}
 		>
