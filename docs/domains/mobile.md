@@ -28,6 +28,16 @@ answers `pushRelay: { enabled, url }`, and the app registers with the relay
 only when `enabled` is true. A server from before this feature sends no
 `pushRelay`, and the app reads that as off.
 
+## The API switch
+
+The mobile app uses `api/v1` for everything, sign-in included. `serve()` in
+`apps/web/src/server/api-route.ts` answers 404 for each `api/v1` route when
+`CLI_ENABLED` is false. A server with `CLI_ENABLED` off therefore gives the
+app no sign-in, no timer and no device registration, and it gets no push.
+Keep `CLI_ENABLED` on for each instance that serves the mobile app. The
+setting has the name of the CLI for a historical reason: it switches the
+whole `api/v1` surface.
+
 ## The phone table
 
 `mobile_device` is unique on `(user_id, installation_id)` and has **no

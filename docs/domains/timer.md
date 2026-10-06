@@ -122,6 +122,21 @@ the write: the Live Activity on iOS and the ongoing notification on Android.
 throws, so the relay cannot fail a timer write. The sweep sends the end of a
 dropped timer. See `docs/domains/mobile.md`.
 
+**The phone can show old figures after an edit of a continued entry.** Since
+#133 a continued timer reads the project, task, note and hours from its entry
+live. The phone gets a push only for start, update, pause, resume and end, so
+an edit of the entry in the web app does not reach the Live Activity. The
+phone shows the new figures at the next of those changes. This is deliberate.
+A push from `timeEntriesService.update` is not clean, for three reasons:
+
+- `timeEntriesService` would import `timersService`, which already imports it.
+- `confirm` calls `update` inside its transaction, so the push would go before
+  the commit and the Live Activity would receive an `update` and then an `end`.
+- Other writers also change the entry: delete, filing and the sync engines. A
+  push from `update` alone would cover only one of them.
+
+A later change needs one hook that all writers of an entry share.
+
 ## What is deliberately absent
 
 - **No MCP tool and no assistant tool.** An agent should not start a wall clock
