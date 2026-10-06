@@ -17,6 +17,7 @@ import { messageOf } from "../ui/errors";
 import { Icon } from "../ui/icon";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
+import { removed, toggled } from "./haptics";
 import { useElapsed } from "./use-elapsed";
 
 const whatItMeasures = (timer: Timer) =>
@@ -137,7 +138,7 @@ export function TimerCard() {
 				{
 					text: "Discard",
 					style: "destructive",
-					onPress: () => action.mutate("discard"),
+					onPress: () => action.mutate("discard", { onSuccess: removed }),
 				},
 			],
 		);
@@ -195,14 +196,14 @@ export function TimerCard() {
 					<ActionButton
 						label="Resume"
 						variant="outlined"
-						onPress={() => action.mutate("resume")}
+						onPress={() => action.mutate("resume", { onSuccess: toggled })}
 						disabled={action.isPending}
 					/>
 				) : (
 					<ActionButton
 						label="Pause"
 						variant="outlined"
-						onPress={() => action.mutate("pause")}
+						onPress={() => action.mutate("pause", { onSuccess: toggled })}
 						disabled={action.isPending}
 					/>
 				)}

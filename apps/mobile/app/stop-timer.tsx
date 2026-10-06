@@ -10,7 +10,7 @@ import { FormSection, Sheet } from "../src/forms/sheet";
 import { DayStepper, DurationStepper } from "../src/forms/steppers";
 import { dayKeyInTimeZone } from "../src/lib/days";
 import { formatStopwatch, toQuarter } from "../src/lib/duration";
-import { committed } from "../src/time/haptics";
+import { committed, toggled } from "../src/time/haptics";
 import {
 	ActionButton,
 	Card,
@@ -180,7 +180,12 @@ function StopForm({
 					label="Resume the timer instead"
 					variant="text"
 					onPress={() =>
-						resume.mutate("resume", { onSuccess: () => router.back() })
+						resume.mutate("resume", {
+							onSuccess: () => {
+								toggled();
+								router.back();
+							},
+						})
 					}
 					disabled={confirm.isPending || resume.isPending}
 				/>

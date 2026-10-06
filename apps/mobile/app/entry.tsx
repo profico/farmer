@@ -31,7 +31,7 @@ import {
 import { MeetingPicker } from "../src/time/components/meeting-picker";
 import { SwitchRow } from "../src/time/components/switch-row";
 import { WeekdayChips } from "../src/time/components/weekday-chips";
-import { committed } from "../src/time/haptics";
+import { committed, removed } from "../src/time/haptics";
 import {
 	ActionButton,
 	EmptyState,
@@ -343,7 +343,12 @@ function EntryForm({
 				text: "Delete",
 				style: "destructive",
 				onPress: () =>
-					remove.mutate(entry.id, { onSuccess: () => router.back() }),
+					remove.mutate(entry.id, {
+						onSuccess: () => {
+							removed();
+							router.back();
+						},
+					}),
 			},
 		]);
 	};
