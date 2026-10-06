@@ -54,7 +54,11 @@ export function ProjectRow({
 					minHeight: 64,
 					paddingHorizontal: SPACE.l,
 					paddingVertical: SPACE.s,
-					opacity: Platform.OS === "ios" && pressed ? 0.6 : archived ? 0.7 : 1,
+					opacity: archived ? 0.7 : 1,
+					backgroundColor:
+						Platform.OS === "ios" && pressed
+							? palette.surfaceContainerHigh
+							: undefined,
 				})}
 			>
 				<ProjectMark icon={project.icon} name={project.name} />

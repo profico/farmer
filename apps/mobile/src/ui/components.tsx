@@ -208,8 +208,12 @@ export function ListRow({
 				minHeight: 56,
 				paddingHorizontal: SPACE.l,
 				paddingVertical: SPACE.s,
-				backgroundColor: selected ? palette.secondaryContainer : undefined,
-				opacity: Platform.OS === "ios" && pressed ? 0.6 : 1,
+				backgroundColor:
+					Platform.OS === "ios" && pressed
+						? palette.surfaceContainerHigh
+						: selected
+							? palette.secondaryContainer
+							: undefined,
 			})}
 		>
 			{icon ? (

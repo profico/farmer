@@ -42,7 +42,10 @@ export function CheckRow({
 				paddingLeft: SPACE.l + indent,
 				paddingRight: SPACE.s,
 				paddingVertical: SPACE.s,
-				opacity: Platform.OS === "ios" && pressed ? 0.6 : 1,
+				backgroundColor:
+					Platform.OS === "ios" && pressed
+						? palette.surfaceContainerHigh
+						: undefined,
 			})}
 		>
 			<View style={{ flex: 1 }}>{children}</View>

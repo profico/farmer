@@ -65,7 +65,10 @@ export function EntryRow({
 				gap: SPACE.m,
 				paddingHorizontal: SPACE.l,
 				paddingVertical: SPACE.m,
-				opacity: Platform.OS === "ios" && pressed ? 0.6 : 1,
+				backgroundColor:
+					Platform.OS === "ios" && pressed
+						? palette.surfaceContainerHigh
+						: undefined,
 			})}
 		>
 			<View style={{ flex: 1, gap: 2 }}>
