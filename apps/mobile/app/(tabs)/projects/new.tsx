@@ -5,8 +5,10 @@ import { View } from "react-native";
 import { useAccess } from "../../../src/api/capabilities";
 import { useClients, useCreateProject } from "../../../src/api/projects";
 import { ProjectFields } from "../../../src/projects/components/project-fields";
+import { useIconUpload } from "../../../src/projects/icon-upload";
 import {
 	EMPTY_FORM,
+	isUploadedIcon,
 	newProjectOf,
 	type ProjectForm,
 	validateForm,
@@ -34,6 +36,9 @@ export default function NewProjectScreen() {
 	const [form, setForm] = useState<ProjectForm>(EMPTY_FORM);
 	const [tried, setTried] = useState(false);
 	const errors = tried ? validateForm(form) : {};
+	const upload = useIconUpload((icon) =>
+		setForm((current) => ({ ...current, icon })),
+	);
 
 	const submit = () => {
 		setTried(true);
@@ -97,6 +102,8 @@ export default function NewProjectScreen() {
 					errors={errors}
 					clients={clients.data}
 					showMoney
+					iconIsUpload={isUploadedIcon(form.icon)}
+					upload={upload}
 				/>
 				{create.error ? (
 					<ErrorBanner message={messageOf(create.error) ?? ""} />

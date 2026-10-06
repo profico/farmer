@@ -24,6 +24,7 @@ export const ICONS = {
 	workspace: { md: "workspaces-outline", sf: "square.grid.2x2" },
 	web: { md: "open-in-new", sf: "safari" },
 	signOut: { md: "logout", sf: "rectangle.portrait.and.arrow.right" },
+	invitation: { md: "mail-outline", sf: "envelope" },
 	key: { md: "vpn-key", sf: "key" },
 	browser: { md: "language", sf: "globe" },
 	info: { md: "info-outline", sf: "info.circle" },

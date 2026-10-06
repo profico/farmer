@@ -1,6 +1,7 @@
 import type {
 	AbsenceRange,
 	FilingRulePatch,
+	Holiday,
 	Integrations,
 	IntegrationSettingsPatch,
 	NewRecurringBlock,
@@ -420,6 +421,54 @@ export const useHolidays = (year: number) => {
 		// The year comes from `whoami`; 0 is a year not known yet.
 		enabled: fullApi && year > 0,
 		staleTime: 60 * MINUTE,
+	});
+};
+
+/**
+ * Makes a public holiday a working day (`disabled: true`), or a holiday
+ * again. Admin only, API version 3. The switch moves at once in the cached
+ * year, as on the web, and goes back if the server refuses it. Then every
+ * reader of the calendar reads again: the holidays of the Time tab, the
+ * targets and the reports.
+ */
+export const useSetHolidayDisabled = (year: number) => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	const yearKey = keys(w).holidays(year);
+	return useMutation({
+		mutationFn: (change: { name: string; disabled: boolean }) =>
+			w.client.setHolidayDisabled(w.slug, change),
+		onMutate: async (change) => {
+			await queryClient.cancelQueries({ queryKey: yearKey });
+			const previous = queryClient.getQueryData<Holiday[]>(yearKey);
+			queryClient.setQueryData<Holiday[]>(yearKey, (days) =>
+				days?.map((day) =>
+					day.name === change.name
+						? { ...day, disabled: change.disabled }
+						: day,
+				),
+			);
+			// The key goes in the context: the person can open another year
+			// before the answer arrives.
+			return { queryKey: yearKey, previous };
+		},
+		onError: (_error, _change, context) => {
+			if (context) {
+				queryClient.setQueryData(context.queryKey, context.previous);
+			}
+		},
+		onSettled: () =>
+			Promise.all(
+				[
+					["you", "holidays"],
+					["holidays"],
+					["tracking"],
+					["home"],
+					["reports"],
+				].map((part) =>
+					queryClient.invalidateQueries({ queryKey: [...scope(w), ...part] }),
+				),
+			),
 	});
 };
 

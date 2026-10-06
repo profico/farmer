@@ -134,6 +134,20 @@ const config: ExpoConfig = {
 			},
 		],
 		[
+			"expo-image-picker",
+			{
+				// The photo library gives a project icon or the organization's
+				// logo. The camera string is the one of `expo-camera`, so the
+				// two plugins write the same text. `false` would remove the
+				// Android camera permission that the QR scanner needs.
+				photosPermission:
+					"Farmer uses your photos to set a project icon or the organization's logo.",
+				cameraPermission:
+					"Farmer uses the camera to read the QR code of your server.",
+				microphonePermission: false,
+			},
+		],
+		[
 			"expo-build-properties",
 			{
 				android: {

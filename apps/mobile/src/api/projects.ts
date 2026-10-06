@@ -1,8 +1,11 @@
 import type {
+	AvailableRepositories,
+	AvailableRepository,
 	NewProject,
 	ProjectDetail,
 	ProjectMemberRole,
 	ProjectPatch,
+	ProjectRepository,
 } from "@farmer/api-client";
 import {
 	type QueryClient,
@@ -174,6 +177,125 @@ export const useChangeTeam = (id: string) => {
 				}),
 				invalidateProjects(queryClient, w),
 			]);
+		},
+	});
+};
+
+// The GitHub repositories of a project. Admin only, API version 3.
+
+const repositoriesKey = (w: Workspace, id: string) =>
+	[...projectKey(w, id), "repositories"] as const;
+
+/** Under the key of the GitHub screen of the workspace, so that a change
+ *  of the installations there reads this list again too. */
+const availableKey = (w: Workspace) =>
+	[...scope(w), "admin", "github", "repositories"] as const;
+
+export const useProjectRepositories = (id: string, enabled: boolean) => {
+	const w = useWorkspace();
+	const { setupApi } = useAccess();
+	return useQuery({
+		queryKey: repositoriesKey(w, id),
+		queryFn: () => w.client.listProjectRepositories(w.slug, id),
+		enabled: setupApi && enabled,
+		staleTime: MINUTE,
+	});
+};
+
+/**
+ * Each repository that the GitHub installations of the workspace can read,
+ * with the project that holds it. The server keeps the list for a few
+ * minutes. Each read without the cache is a call to GitHub for each
+ * installation, so a link or an unlink changes the cached list by hand.
+ */
+export const useAvailableRepositories = (enabled: boolean) => {
+	const w = useWorkspace();
+	const { setupApi } = useAccess();
+	return useQuery({
+		queryKey: availableKey(w),
+		queryFn: () => w.client.listAvailableRepositories(w.slug),
+		enabled: setupApi && enabled,
+		staleTime: 5 * MINUTE,
+	});
+};
+
+/** Writes the project that holds a repository into the cached list. */
+const setHolder = (
+	queryClient: QueryClient,
+	w: Workspace,
+	githubRepoId: number,
+	linkedTo: AvailableRepository["linkedTo"],
+) =>
+	queryClient.setQueryData<AvailableRepositories>(
+		availableKey(w),
+		(list) =>
+			list && {
+				...list,
+				repositories: list.repositories.map((repo) =>
+					repo.githubRepoId === githubRepoId ? { ...repo, linkedTo } : repo,
+				),
+			},
+	);
+
+/**
+ * Links a repository to the project. The answer is every repository of the
+ * project. A refusal usually means that the cached list was old about the
+ * project that holds the repository, so then the list is read again.
+ */
+export const useLinkRepository = (id: string, projectName: string) => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (repo: AvailableRepository) =>
+			w.client.linkProjectRepository(w.slug, id, {
+				githubRepoId: repo.githubRepoId,
+				installationId: repo.installationId,
+			}),
+		// A read already in flight would land without this link.
+		onMutate: () => queryClient.cancelQueries({ queryKey: availableKey(w) }),
+		onSuccess: (rows, repo) => {
+			queryClient.setQueryData(repositoriesKey(w, id), rows);
+			setHolder(queryClient, w, repo.githubRepoId, {
+				projectId: id,
+				projectName,
+			});
+		},
+		onError: () => queryClient.invalidateQueries({ queryKey: availableKey(w) }),
+	});
+};
+
+/** Unlinks a repository. The commits already on entries stay. */
+export const useUnlinkRepository = (id: string) => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (link: ProjectRepository) =>
+			w.client.unlinkProjectRepository(w.slug, id, link.id),
+		onSuccess: (rows, link) => {
+			queryClient.setQueryData(repositoriesKey(w, id), rows);
+			setHolder(queryClient, w, link.githubRepoId, null);
+		},
+		onError: () =>
+			Promise.all([
+				queryClient.invalidateQueries({ queryKey: repositoriesKey(w, id) }),
+				queryClient.invalidateQueries({ queryKey: availableKey(w) }),
+			]),
+	});
+};
+
+/**
+ * Reads the repositories from GitHub again, past the cache of the server,
+ * for a repository made after the last read. The screen does not offer it
+ * while a link is in flight: the answer would not hold that link yet.
+ */
+export const useRefreshRepositories = () => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: () => w.client.refreshAvailableRepositories(w.slug),
+		onMutate: () => queryClient.cancelQueries({ queryKey: availableKey(w) }),
+		onSuccess: (fresh) => {
+			queryClient.setQueryData(availableKey(w), fresh);
 		},
 	});
 };

@@ -6,6 +6,7 @@ import type { ProjectDetail } from "@farmer/api-client";
 import { canActOnProjectRole, projectPageAccess } from "./access";
 import {
 	EMPTY_FORM,
+	formatAge,
 	formOf,
 	groupByClient,
 	markOf,
@@ -166,5 +167,16 @@ describe("the project form", () => {
 			budgetAmount: "32000",
 			hourlyPrice: undefined,
 		});
+	});
+});
+
+describe("formatAge", () => {
+	const at = "2026-10-06T12:00:00.000Z";
+	const now = Date.parse(at);
+	test("counts minutes, hours and days, as the web does", () => {
+		expect(formatAge(at, now + 30_000)).toBe("just now");
+		expect(formatAge(at, now + 12 * 60_000)).toBe("12 min ago");
+		expect(formatAge(at, now + 3 * 3_600_000)).toBe("3 h ago");
+		expect(formatAge(at, now + 50 * 3_600_000)).toBe("2 d ago");
 	});
 });

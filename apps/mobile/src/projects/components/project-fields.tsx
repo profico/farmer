@@ -2,7 +2,7 @@ import type { Client } from "@farmer/api-client";
 import { View } from "react-native";
 
 import { MenuPicker } from "../../reports/components/menu-picker";
-import { Field, Text } from "../../ui/components";
+import { ActionButton, Field, Text } from "../../ui/components";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
 import {
@@ -30,15 +30,19 @@ export function ProjectFields({
 	clients,
 	showMoney,
 	iconIsUpload = false,
+	upload,
 }: {
 	form: ProjectForm;
 	onChange: (form: ProjectForm) => void;
 	errors: FormErrors;
 	clients: Client[];
 	showMoney: boolean;
-	/** The project has an uploaded image, which the app cannot show or
-	 *  change yet. */
+	/** The icon is the path of an uploaded image. */
 	iconIsUpload?: boolean;
+	/** The Server stores images (`uploads`): the icon can be an uploaded
+	 *  image. `onPress` lets the person choose one, and puts its path in
+	 *  the form; Save stores it, as on the web. */
+	upload?: { busy: boolean; onPress: () => void };
 }) {
 	const palette = usePalette();
 	const set = (patch: Partial<ProjectForm>) => onChange({ ...form, ...patch });
@@ -97,7 +101,7 @@ export function ProjectFields({
 			>
 				<View style={{ paddingTop: SPACE.l + SPACE.xs }}>
 					<ProjectMark
-						icon={iconIsUpload ? null : form.icon.trim() || null}
+						icon={form.icon.trim() || null}
 						name={form.name}
 						size="large"
 					/>
@@ -112,12 +116,40 @@ export function ProjectFields({
 						autoCorrect={false}
 						hint={
 							iconIsUpload
-								? "An uploaded image. Type an emoji to put one in its place, or use the web to change the image."
-								: "Optional. The first letter of the name stands in."
+								? "An uploaded image. Type an emoji to use it in place of the image."
+								: upload
+									? "Optional. An emoji or an image. The first letter of the name stands in."
+									: "Optional. The first letter of the name stands in."
 						}
 					/>
 				</View>
 			</View>
+			{upload || iconIsUpload ? (
+				<View
+					style={{
+						flexDirection: "row",
+						justifyContent: "flex-end",
+						gap: SPACE.s,
+					}}
+				>
+					{iconIsUpload ? (
+						<ActionButton
+							label="Remove image"
+							variant="text"
+							disabled={upload?.busy}
+							onPress={() => set({ icon: "" })}
+						/>
+					) : null}
+					{upload ? (
+						<ActionButton
+							label={upload.busy ? "Uploading" : "Upload image"}
+							variant="outlined"
+							disabled={upload.busy}
+							onPress={upload.onPress}
+						/>
+					) : null}
+				</View>
+			) : null}
 			{showMoney && form.type === "fixed_scope" ? (
 				<>
 					<Field

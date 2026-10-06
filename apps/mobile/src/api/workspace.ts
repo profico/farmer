@@ -9,6 +9,7 @@ import type {
 	NewTask,
 	NewWebhookEndpoint,
 	OrganizationPatch,
+	OrgPolicyPatch,
 	PersonRole,
 	PersonStartDate,
 	PersonType,
@@ -25,6 +26,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 
+import { useServerFeatures } from "./capabilities";
 import { scope, useWorkspace, type Workspace } from "./queries";
 
 // The queries and the changes of the workspace administration screens
@@ -309,6 +311,34 @@ export const useUpdateOrganization = () => {
 					queryKey: ["farmer", w.origin, "me"],
 				}),
 			]);
+		},
+	});
+};
+
+/** The tracking tolerance and the automation lock. Admin only, API
+ *  version 3. */
+export const useOrgPolicy = () => {
+	const w = useWorkspace();
+	const { setupApi } = useServerFeatures();
+	return useQuery({
+		queryKey: key(w, "organization", "policy"),
+		queryFn: () => w.client.getOrgPolicy(w.slug),
+		enabled: setupApi,
+		staleTime: 5 * MINUTE,
+	});
+};
+
+/** The tolerance decides who is behind on the Tracking report, so a change
+ *  reads the tracking and the reports again. */
+export const useUpdateOrgPolicy = () => {
+	const w = useWorkspace();
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (body: OrgPolicyPatch) =>
+			w.client.updateOrgPolicy(w.slug, body),
+		onSuccess: async (policy) => {
+			queryClient.setQueryData(key(w, "organization", "policy"), policy);
+			await invalidate(queryClient, w, ["tracking"], ["reports"]);
 		},
 	});
 };

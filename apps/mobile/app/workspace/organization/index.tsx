@@ -1,12 +1,17 @@
+import type { OrgPolicy } from "@farmer/api-client";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Image, View } from "react-native";
 
 import { useAccess } from "../../../src/api/capabilities";
+import { useUploadImage } from "../../../src/api/uploads";
 import {
 	useOrganization,
+	useOrgPolicy,
 	useUpdateOrganization,
+	useUpdateOrgPolicy,
 } from "../../../src/api/workspace";
+import { useSignedIn } from "../../../src/session/session";
 import {
 	ActionButton,
 	EmptyState,
@@ -24,11 +29,14 @@ import {
 } from "../../../src/ui/settings-list";
 import { usePalette } from "../../../src/ui/theme";
 import { SPACE } from "../../../src/ui/type";
+import { isSvgUpload } from "../../../src/uploads/limits";
 import {
+	ActionRow,
 	ChoiceSection,
 	ListSkeleton,
 	notify,
 	notifyError,
+	PickerRow,
 } from "../../../src/workspace/components";
 
 const NAME_MAX_LENGTH = 120;
@@ -43,7 +51,8 @@ const WEEK_START_OPTIONS = [
 const isHttpUrl = (value: string) => /^https?:\/\/\S+$/i.test(value);
 
 /** The general settings of the workspace: name, country, timezone, the
- *  first day of the week and the logo address. Admins only, as on the web. */
+ *  first day of the week, the logo, and on API version 3 the tracking
+ *  tolerance and the automation lock. Admins only, as on the web. */
 export default function OrganizationScreen() {
 	const access = useAccess();
 	if (access.ready && !access.isAdmin) {
@@ -65,6 +74,7 @@ export default function OrganizationScreen() {
 
 function OrganizationSettings() {
 	const settings = useOrganization();
+	const access = useAccess();
 	return (
 		<>
 			<Stack.Screen options={{ title: "Organization" }} />
@@ -81,7 +91,10 @@ function OrganizationSettings() {
 						onRetry={() => void settings.refetch()}
 					/>
 				) : (
-					<OrganizationForm settings={settings.data} />
+					<>
+						<OrganizationForm settings={settings.data} />
+						{access.setupApi ? <PolicySections /> : null}
+					</>
 				)}
 			</Screen>
 		</>
@@ -101,7 +114,10 @@ function OrganizationForm({
 }) {
 	const router = useRouter();
 	const palette = usePalette();
+	const { origin } = useSignedIn();
+	const { uploads } = useAccess();
 	const update = useUpdateOrganization();
+	const upload = useUploadImage("org-logo");
 	const [name, setName] = useState(settings.name);
 	const [logo, setLogo] = useState(settings.logo ?? "");
 
@@ -126,6 +142,18 @@ function OrganizationForm({
 		update.mutate(body, {
 			onSuccess: () => notify(saved),
 			onError: (error) => notifyError(failed, error),
+		});
+
+	// Saved as soon as it is on the Server, as on the web: the choice of
+	// the image was the decision.
+	const uploadLogo = () =>
+		upload.mutate(undefined, {
+			onSuccess: (path) => {
+				if (!path) return;
+				setLogo(path);
+				save({ logo: path }, "Logo saved", "Could not save the logo");
+			},
+			onError: (error) => notifyError("Could not upload the logo", error),
 		});
 
 	const weekStart = settings.weekStartsOn === 0 ? 0 : 1;
@@ -203,12 +231,35 @@ function OrganizationForm({
 
 			<Inset>
 				<Text variant="titleSmall" color={palette.primary}>
-					Logo URL
+					{uploads ? "Logo" : "Logo URL"}
 				</Text>
-				{uploadedLogo ? (
-					<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-						An uploaded image. Remove it to use an address instead.
-					</Text>
+				{uploadedLogo && settings.logo ? (
+					<View
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							gap: SPACE.m,
+						}}
+					>
+						{isSvgUpload(settings.logo) ? null : (
+							<Image
+								accessibilityIgnoresInvertColors
+								source={{ uri: `${origin}${settings.logo}` }}
+								style={{
+									width: 44,
+									height: 44,
+									borderRadius: 8,
+									backgroundColor: palette.surfaceContainerHigh,
+								}}
+								resizeMode="contain"
+							/>
+						)}
+						<View style={{ flex: 1 }}>
+							<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
+								An uploaded image. Remove it to use an address instead.
+							</Text>
+						</View>
+					</View>
 				) : (
 					<Field
 						label="Logo URL"
@@ -225,7 +276,11 @@ function OrganizationForm({
 								? null
 								: "Enter an address that starts with http:// or https://."
 						}
-						hint="A public image address (SVG or PNG work best). Leave it empty to use the organization initials."
+						hint={
+							uploads
+								? "The logo of the organization. Upload an image, or enter a public image address (SVG or PNG work best). Leave it empty to use the organization initials."
+								: "A public image address (SVG or PNG work best). Leave it empty to use the organization initials."
+						}
 					/>
 				)}
 				<View
@@ -246,6 +301,14 @@ function OrganizationForm({
 							}}
 						/>
 					) : null}
+					{uploads ? (
+						<ActionButton
+							label={upload.isPending ? "Uploading" : "Upload image"}
+							variant="outlined"
+							disabled={upload.isPending || update.isPending}
+							onPress={uploadLogo}
+						/>
+					) : null}
 					{uploadedLogo ? null : (
 						<ActionButton
 							label="Save logo"
@@ -259,6 +322,142 @@ function OrganizationForm({
 							}
 						/>
 					)}
+				</View>
+			</Inset>
+		</>
+	);
+}
+
+/** The tolerance the web allows, in percent. */
+const TOLERANCE_MAX = 50;
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The tracking tolerance and the automation lock, once they are read. */
+function PolicySections() {
+	const policy = useOrgPolicy();
+	if (policy.isPending) return <ListSkeleton rows={2} />;
+	if (policy.isError) {
+		return (
+			<ErrorState error={policy.error} onRetry={() => void policy.refetch()} />
+		);
+	}
+	return <PolicyForm policy={policy.data} />;
+}
+
+/**
+ * The two knobs of the organization policy, each with its own Save, as on
+ * the web. The tolerance is the only knob of the Tracking rule. The lock
+ * stops the automations on and before a day, so a closed month gets no
+ * more hours. It does not stop people: they can still edit their entries.
+ */
+function PolicyForm({ policy }: { policy: OrgPolicy }) {
+	const palette = usePalette();
+	const update = useUpdateOrgPolicy();
+	const [pct, setPct] = useState(String(policy.trackingTolerancePct));
+	const [lock, setLock] = useState<string | null>(
+		policy.automationLockedThrough,
+	);
+
+	const parsed = Number(pct);
+	const pctValid =
+		pct.trim() !== "" &&
+		Number.isInteger(parsed) &&
+		parsed >= 0 &&
+		parsed <= TOLERANCE_MAX;
+	const pctChanged = pctValid && parsed !== policy.trackingTolerancePct;
+
+	const lockValid = lock === null || DAY_KEY.test(lock);
+	const lockChanged =
+		lockValid && lock !== (policy.automationLockedThrough ?? null);
+
+	const saveTolerance = () =>
+		update.mutate(
+			{ trackingTolerancePct: parsed },
+			{
+				onSuccess: () => notify("Tracking tolerance saved"),
+				onError: (error) => {
+					setPct(String(policy.trackingTolerancePct));
+					notifyError("Could not save the tolerance", error);
+				},
+			},
+		);
+
+	const saveLock = () =>
+		update.mutate(
+			{ automationLockedThrough: lock },
+			{
+				onSuccess: () =>
+					notify(
+						lock
+							? `Automation locked through ${lock}`
+							: "Automation lock removed",
+					),
+				onError: (error) => {
+					setLock(policy.automationLockedThrough);
+					notifyError("Could not save the lock", error);
+				},
+			},
+		);
+
+	return (
+		<>
+			<Inset>
+				<Text variant="titleSmall" color={palette.primary}>
+					Tracking tolerance
+				</Text>
+				<Field
+					label="Tolerance, percent"
+					value={pct}
+					onChangeText={setPct}
+					keyboardType="number-pad"
+					maxLength={2}
+					returnKeyType="done"
+					error={
+						pct.trim() === "" || pctValid
+							? null
+							: `Enter a whole number from 0 to ${TOLERANCE_MAX}.`
+					}
+					hint="How far below the target so far a person can be and still count as only slightly behind. Past it, the person is behind, on the Tracking report and in every reminder. The target is the hour fund of the month, spread over its working days (8 h each, without public holidays). The total of a person is work plus time off."
+				/>
+				<View style={{ alignItems: "flex-end" }}>
+					<ActionButton
+						label="Save tolerance"
+						disabled={!pctChanged || update.isPending}
+						onPress={saveTolerance}
+					/>
+				</View>
+			</Inset>
+
+			<SettingsSection
+				title="Automation lock"
+				footer="The last day that the sync engines may not change. Recurring blocks, calendar meetings and commit blocks stop at this day, so a month that you closed cannot get more hours. People can still edit their own entries in those months: the lock stops only the automations."
+			>
+				<PickerRow
+					title="Locked through"
+					mode="date"
+					value={lock}
+					placeholder="No lock"
+					disabled={update.isPending}
+					onChange={setLock}
+				/>
+				{lock !== null ? (
+					<ActionRow
+						label="Remove the lock"
+						icon="lock"
+						destructive
+						disabled={update.isPending}
+						onPress={() => setLock(null)}
+					/>
+				) : null}
+			</SettingsSection>
+			<Inset>
+				<View style={{ alignItems: "flex-end" }}>
+					<ActionButton
+						label="Save lock"
+						disabled={!lockChanged || update.isPending}
+						onPress={saveLock}
+					/>
 				</View>
 			</Inset>
 		</>
