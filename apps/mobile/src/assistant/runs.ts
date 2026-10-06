@@ -18,8 +18,33 @@ type Entry = { run: Run; controller: AbortController | null };
 const entries = new Map<string, Entry>();
 const listeners = new Set<() => void>();
 
-const notify = () => {
+/** The frame that will tell the screens about the stream, if one waits. */
+let frame: ReturnType<typeof requestAnimationFrame> | null = null;
+
+const tell = () => {
 	for (const listener of listeners) listener();
+};
+
+/** Tell the screens now. A frame that waits is not needed any more. */
+const notify = () => {
+	if (frame !== null) {
+		cancelAnimationFrame(frame);
+		frame = null;
+	}
+	tell();
+};
+
+/**
+ * Tell the screens at the next frame. A model can send many deltas in one
+ * frame, and the screen can show only one of them, so one render for each
+ * frame is enough.
+ */
+const notifySoon = () => {
+	if (frame !== null) return;
+	frame = requestAnimationFrame(() => {
+		frame = null;
+		tell();
+	});
 };
 
 const subscribe = (listener: () => void) => {
@@ -41,6 +66,15 @@ const patch = (key: string, change: (run: Run) => Run) => {
 	const entry = entries.get(key);
 	if (!entry) return;
 	set(key, change(entry.run), entry.controller);
+};
+
+/** `patch` for an event of the stream: the screens hear of it at the next
+ *  frame. */
+const patchSoon = (key: string, change: (run: Run) => Run) => {
+	const entry = entries.get(key);
+	if (!entry) return;
+	entries.set(key, { run: change(entry.run), controller: entry.controller });
+	notifySoon();
 };
 
 /** A stored answer can arrive a moment after the stream ends. */
@@ -156,7 +190,7 @@ export const useRunActions = (): RunActions => {
 					if (event.type === "message" && event.role === "user") {
 						delivered = true;
 					}
-					patch(key, (state) => applyEvent(state, event));
+					patchSoon(key, (state) => applyEvent(state, event));
 				}
 			} catch (caught) {
 				const error =
