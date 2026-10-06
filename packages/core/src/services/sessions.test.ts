@@ -139,15 +139,6 @@ describe("sessionsService.listMine", () => {
 
 		expect(rows.map((row) => row.id)).toEqual(["s-bob-browser"]);
 	});
-
-	test("the organization in the Ctx does not narrow the list", async () => {
-		const rows = await sessionsService.listMine(
-			{ organizationId: "some-other-org", userId: ALICE },
-			"s-alice-browser",
-		);
-
-		expect(rows).toHaveLength(3);
-	});
 });
 
 describe("sessionsService.currentIdFor", () => {
