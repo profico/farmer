@@ -47,44 +47,47 @@ export function ProjectRow({
 		.join(", ");
 	return (
 		<View style={{ flexDirection: "row", alignItems: "center" }}>
-			<Pressable
-				{...menu}
-				accessible
-				accessibilityRole="button"
-				accessibilityLabel={`${projectTitle(project)}, ${subtitle}, ${month} hours this month`}
-				onPress={onPress}
-				android_ripple={{ color: palette.outlineVariant }}
-				style={({ pressed }) => ({
-					flex: 1,
-					flexDirection: "row",
-					alignItems: "center",
-					gap: SPACE.l,
-					minHeight: 64,
-					paddingHorizontal: SPACE.l,
-					paddingVertical: SPACE.s,
-					opacity: archived ? 0.7 : 1,
-					backgroundColor:
-						Platform.OS === "ios" && pressed
-							? palette.surfaceContainerHigh
-							: undefined,
-				})}
-			>
-				<ProjectMark icon={project.icon} name={project.name} />
-				<View style={{ flex: 1 }}>
-					<Text variant="bodyLarge" numberOfLines={2}>
-						{projectTitle(project)}
-					</Text>
-					<Text variant="bodySmall" color={palette.onSurfaceVariant}>
-						{subtitle}
-					</Text>
-				</View>
-				<View style={{ alignItems: "flex-end" }}>
-					<Text variant="titleSmall">{month}</Text>
-					<Text variant="labelMedium" color={palette.onSurfaceVariant}>
-						this month
-					</Text>
-				</View>
-			</Pressable>
+			{menu.wrap(
+				<Pressable
+					{...menu.props}
+					accessible
+					accessibilityRole="button"
+					accessibilityLabel={`${projectTitle(project)}, ${subtitle}, ${month} hours this month`}
+					onPress={onPress}
+					android_ripple={{ color: palette.outlineVariant }}
+					style={({ pressed }) => ({
+						flex: 1,
+						flexDirection: "row",
+						alignItems: "center",
+						gap: SPACE.l,
+						minHeight: 64,
+						paddingHorizontal: SPACE.l,
+						paddingVertical: SPACE.s,
+						opacity: archived ? 0.7 : 1,
+						backgroundColor:
+							Platform.OS === "ios" && pressed
+								? palette.surfaceContainerHigh
+								: undefined,
+					})}
+				>
+					<ProjectMark icon={project.icon} name={project.name} />
+					<View style={{ flex: 1 }}>
+						<Text variant="bodyLarge" numberOfLines={2}>
+							{projectTitle(project)}
+						</Text>
+						<Text variant="bodySmall" color={palette.onSurfaceVariant}>
+							{subtitle}
+						</Text>
+					</View>
+					<View style={{ alignItems: "flex-end" }}>
+						<Text variant="titleSmall">{month}</Text>
+						<Text variant="labelMedium" color={palette.onSurfaceVariant}>
+							this month
+						</Text>
+					</View>
+				</Pressable>,
+				{ style: { flex: 1 } },
+			)}
 			{trailing ? (
 				<View style={{ paddingRight: SPACE.s }}>{trailing}</View>
 			) : null}

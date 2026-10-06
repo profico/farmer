@@ -106,9 +106,9 @@ export function EntryRow({
 			onPress: onDelete,
 		},
 	]);
-	return (
+	return menu.wrap(
 		<Pressable
-			onLongPress={menu.onLongPress}
+			onLongPress={menu.props.onLongPress}
 			accessibilityRole="button"
 			accessibilityLabel={[
 				title,
@@ -126,11 +126,11 @@ export function EntryRow({
 				...(onContinue
 					? [{ name: "continue", label: "Continue this entry with the timer" }]
 					: []),
-				...(menu.accessibilityActions ?? []),
+				...(menu.props.accessibilityActions ?? []),
 			]}
 			onAccessibilityAction={(event) => {
 				if (event.nativeEvent.actionName === "continue") onContinue?.();
-				else menu.onAccessibilityAction?.(event);
+				else menu.props.onAccessibilityAction?.(event);
 			}}
 			onPress={onPress}
 			onPressIn={onPressIn}
@@ -183,6 +183,6 @@ export function EntryRow({
 					onPress={onContinue}
 				/>
 			) : null}
-		</Pressable>
+		</Pressable>,
 	);
 }

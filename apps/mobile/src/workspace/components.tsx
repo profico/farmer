@@ -166,19 +166,19 @@ function RowFrame({
 	const palette = usePalette();
 	const { last } = useRowPosition();
 	const menuProps = useRowMenu(menu?.title ?? "", menu?.items ?? []);
-	return (
+	return menuProps.wrap(
 		<Pressable
-			{...menuProps}
+			{...menuProps.props}
 			accessible={
 				Boolean(onPress) ||
 				accessibilityLabel !== undefined ||
-				menuProps.onLongPress != null
+				menuProps.props.accessibilityActions != null
 			}
 			accessibilityRole={onPress ? (accessibilityRole ?? "button") : undefined}
 			accessibilityLabel={accessibilityLabel}
 			accessibilityState={onPress ? { disabled: Boolean(disabled) } : undefined}
 			onPress={onPress}
-			disabled={(!onPress && !menuProps.onLongPress) || disabled}
+			disabled={(!onPress && !menuProps.props.accessibilityActions) || disabled}
 			android_ripple={{ color: palette.outlineVariant }}
 			style={({ pressed }) => ({
 				paddingLeft: SPACE.l,
@@ -201,7 +201,7 @@ function RowFrame({
 			>
 				{children}
 			</View>
-		</Pressable>
+		</Pressable>,
 	);
 }
 

@@ -119,15 +119,15 @@ function Row({
 	const palette = usePalette();
 	const menu = useRowMenu(title, actions ?? []);
 	const { last } = useRowPosition();
-	return (
+	return menu.wrap(
 		<Pressable
-			{...menu}
+			{...menu.props}
 			accessible={grouped}
 			accessibilityRole={onPress ? "button" : undefined}
 			accessibilityState={selected !== undefined ? { selected } : undefined}
 			accessibilityLabel={grouped ? accessibilityLabel : undefined}
 			onPress={onPress}
-			disabled={!onPress && !menu.onLongPress}
+			disabled={!onPress && !menu.props.accessibilityActions}
 			style={({ pressed }) => ({
 				flexDirection: "row",
 				alignItems: "center",
@@ -171,7 +171,7 @@ function Row({
 				</View>
 				{trailing}
 			</View>
-		</Pressable>
+		</Pressable>,
 	);
 }
 

@@ -230,27 +230,30 @@ function RowCard({
 			<View
 				style={{ flexDirection: "row", alignItems: "center", gap: SPACE.s }}
 			>
-				<Pressable
-					{...menu}
-					accessible={menu.onLongPress != null}
-					accessibilityLabel={[row.heading, row.taskName]
-						.filter((part) => part)
-						.join(", ")}
-					style={{ flex: 1 }}
-				>
-					<Text variant="titleMedium" numberOfLines={1}>
-						{row.heading}
-					</Text>
-					{row.taskName ? (
-						<Text
-							variant="bodyMedium"
-							color={palette.onSurfaceVariant}
-							numberOfLines={1}
-						>
-							{row.taskName}
+				{menu.wrap(
+					<Pressable
+						{...menu.props}
+						accessible={menu.props.accessibilityActions != null}
+						accessibilityLabel={[row.heading, row.taskName]
+							.filter((part) => part)
+							.join(", ")}
+						style={{ flex: 1 }}
+					>
+						<Text variant="titleMedium" numberOfLines={1}>
+							{row.heading}
 						</Text>
-					) : null}
-				</Pressable>
+						{row.taskName ? (
+							<Text
+								variant="bodyMedium"
+								color={palette.onSurfaceVariant}
+								numberOfLines={1}
+							>
+								{row.taskName}
+							</Text>
+						) : null}
+					</Pressable>,
+					{ style: { flex: 1 } },
+				)}
 				<Text variant="titleMedium">{formatHours(total)}</Text>
 				{total > 0 ? (
 					<IconButton

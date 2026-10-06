@@ -125,9 +125,9 @@ export function ListRow({
 }) {
 	const palette = usePalette();
 	const menu = useRowMenu(title, actions ?? []);
-	return (
+	return menu.wrap(
 		<Pressable
-			{...menu}
+			{...menu.props}
 			// A row that opens or picks something is one element with one label.
 			// A row without a press stays open, so a button at its end is
 			// reachable on its own.
@@ -181,7 +181,7 @@ export function ListRow({
 				) : null}
 			</View>
 			{trailing}
-		</Pressable>
+		</Pressable>,
 	);
 }
 

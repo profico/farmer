@@ -33,9 +33,9 @@ export function CheckRow({
 	const palette = usePalette();
 	const menuProps = useRowMenu(menu?.title ?? label, menu?.items ?? []);
 	const on = checked !== false;
-	return (
+	return menuProps.wrap(
 		<Pressable
-			{...menuProps}
+			{...menuProps.props}
 			accessibilityRole="checkbox"
 			accessibilityState={{ checked }}
 			accessibilityLabel={label}
@@ -77,6 +77,7 @@ export function CheckRow({
 					/>
 				) : null}
 			</View>
-		</Pressable>
+		</Pressable>,
+		{ style: { flex: 1 } },
 	);
 }

@@ -110,7 +110,7 @@ function Row({
 			]}
 		>
 			<Pressable
-				{...menu}
+				{...menu.props}
 				accessible
 				accessibilityRole={
 					checked !== undefined ? "switch" : onPress ? "button" : undefined
@@ -126,7 +126,7 @@ function Row({
 				onPress={onPress}
 				onPressIn={onPress ? morph.onPressIn : undefined}
 				onPressOut={onPress ? morph.onPressOut : undefined}
-				disabled={!onPress && !menu.onLongPress}
+				disabled={!onPress && !menu.props.onLongPress}
 				android_ripple={{ color: palette.outlineVariant }}
 				style={{
 					flexDirection: "row",

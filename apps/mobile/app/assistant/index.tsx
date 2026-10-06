@@ -22,7 +22,6 @@ import {
 	EmptyState,
 	ErrorBanner,
 	ErrorState,
-	IconButton,
 	ListRow,
 	Skeleton,
 	Text,
@@ -31,7 +30,7 @@ import { RADIUS } from "../../src/ui/corner";
 import { showDialog } from "../../src/ui/dialog";
 import { Icon } from "../../src/ui/icon";
 import { LoadingIndicator } from "../../src/ui/loading";
-import { useOpenRowMenu } from "../../src/ui/row-menu";
+import { RowMoreMenu } from "../../src/ui/row-more-menu";
 import { Inset, usePullToRefresh } from "../../src/ui/screen";
 import { usePalette } from "../../src/ui/theme";
 import { SPACE } from "../../src/ui/type";
@@ -115,7 +114,6 @@ function ThreadRow({
 }) {
 	const palette = usePalette();
 	const running = useThreadRunning(thread.id);
-	const openMenu = useOpenRowMenu();
 	// A long press and the "more" button open the same menu.
 	const actions = [
 		{ label: "Rename", icon: "edit", onPress: onRename },
@@ -133,11 +131,7 @@ function ThreadRow({
 					{running ? (
 						<LoadingIndicator size={24} color={palette.primary} />
 					) : null}
-					<IconButton
-						icon="more"
-						label={`Actions for ${thread.title}`}
-						onPress={() => openMenu(thread.title, actions)}
-					/>
+					<RowMoreMenu title={thread.title} entries={actions} />
 				</View>
 			}
 		/>
