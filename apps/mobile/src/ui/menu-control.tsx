@@ -10,6 +10,8 @@ export type MenuControlProps<T extends string> = {
 	/** Android: the field fills the width of the form. iOS keeps the menu
 	 *  button of the system, which is as wide as its value. */
 	fill: boolean;
+	/** Android: the floating label of the outlined field. */
+	label?: string;
 };
 
 /**

@@ -65,8 +65,9 @@ export type SettingsValueProps = RowBase & {
 	onPress?: () => void;
 };
 
-/** Whether a row is the last of its section. iOS draws no line under it. */
-export const RowPosition = createContext({ last: true });
+/** The place of a row in its section. iOS draws no line under the last
+ *  row. Android rounds the outer corners of the first and the last. */
+export const RowPosition = createContext({ last: true, index: 0, count: 1 });
 
 export const useRowPosition = () => use(RowPosition);
 
@@ -76,7 +77,11 @@ export function rowsWithPosition(children: ReactNode) {
 	return rows.map((row, index) => (
 		<RowPosition
 			key={isValidElement(row) ? row.key : index}
-			value={{ last: index === rows.length - 1 }}
+			value={{
+				last: index === rows.length - 1,
+				index,
+				count: rows.length,
+			}}
 		>
 			{row}
 		</RowPosition>

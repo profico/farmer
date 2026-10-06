@@ -1,10 +1,13 @@
 import { Switch } from "@expo/ui";
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
+import Animated from "react-native-reanimated";
 
 import { Text } from "./components";
+import { groupedCorners, RADIUS } from "./corner";
 import { ControlHost } from "./host";
 import { Icon } from "./icon";
+import { useCornerMorph } from "./press-morph";
 import {
 	type RowBase,
 	rowsWithPosition,
@@ -13,6 +16,7 @@ import {
 	type SettingsSectionProps,
 	type SettingsSwitchProps,
 	type SettingsValueProps,
+	useRowPosition,
 } from "./settings-list.shared";
 import { usePalette } from "./theme";
 import { SPACE } from "./type";
@@ -20,7 +24,7 @@ import { SPACE } from "./type";
 /**
  * A small kit for a settings screen: a section of rows, a row that opens a
  * screen, a row with a switch and a row with a value. This file draws them
- * as Material 3 list items, for Android; `settings-list.ios.tsx` draws the
+ * as the Material 3 Expressive segmented list, for Android; `settings-list.ios.tsx` draws the
  * grouped lists of the iOS Settings app. Both take the same props
  * (`settings-list.shared.tsx`).
  */
@@ -36,20 +40,20 @@ export function SettingsSection({
 	return (
 		<View style={{ gap: SPACE.xs }}>
 			{title ? (
-				<View style={{ paddingHorizontal: SPACE.xl, paddingTop: SPACE.s }}>
-					<Text variant="titleSmall" color={palette.primary}>
+				<View
+					style={{
+						paddingHorizontal: SPACE.xl,
+						paddingTop: SPACE.m,
+						paddingBottom: SPACE.xs,
+					}}
+				>
+					<Text variant="titleSmallEmphasized" color={palette.primary}>
 						{title}
 					</Text>
 				</View>
 			) : null}
-			<View
-				style={{
-					marginHorizontal: SPACE.l,
-					borderRadius: 16,
-					overflow: "hidden",
-					backgroundColor: palette.surfaceContainer,
-				}}
-			>
+			{/* The rows are 2dp apart. Each row is its own surface. */}
+			<View style={{ marginHorizontal: SPACE.l, gap: 2 }}>
 				{rowsWithPosition(children)}
 			</View>
 			{footer ? (
@@ -84,64 +88,100 @@ function Row({
 	selected?: boolean;
 }) {
 	const palette = usePalette();
+	const { index, count } = useRowPosition();
+	const corners = groupedCorners(index, count);
+	// The Expressive list item: a pressed row morphs toward a large corner.
+	const morph = useCornerMorph(corners, RADIUS.listGroup);
 	const color = destructive ? palette.error : palette.onSurface;
 	return (
-		<Pressable
-			accessible
-			accessibilityRole={
-				checked !== undefined ? "switch" : onPress ? "button" : undefined
-			}
-			accessibilityState={
-				checked !== undefined
-					? { checked }
-					: selected !== undefined
-						? { selected }
-						: undefined
-			}
-			accessibilityLabel={accessibilityLabel}
-			onPress={onPress}
-			disabled={!onPress}
-			android_ripple={{ color: palette.outlineVariant }}
-			style={{
-				flexDirection: "row",
-				alignItems: "center",
-				gap: SPACE.l,
-				minHeight: subtitle ? 72 : 56,
-				paddingHorizontal: SPACE.l,
-				paddingVertical: SPACE.s,
-			}}
+		<Animated.View
+			style={[
+				{
+					overflow: "hidden",
+					// The rows sit on a lighter step than the screen, so each
+					// one reads as its own surface.
+					backgroundColor: palette.surfaceContainer,
+				},
+				corners,
+				onPress ? morph.style : null,
+			]}
 		>
-			{icon ? (
-				<Icon
-					name={icon}
-					size={24}
-					color={destructive ? palette.error : palette.onSurfaceVariant}
-				/>
-			) : null}
-			<View style={{ flex: 1 }}>
-				<Text variant="bodyLarge" color={color} numberOfLines={1}>
-					{title}
-				</Text>
-				{subtitle ? (
-					<Text
-						variant="bodyMedium"
-						color={palette.onSurfaceVariant}
-						numberOfLines={2}
+			<Pressable
+				accessible
+				accessibilityRole={
+					checked !== undefined ? "switch" : onPress ? "button" : undefined
+				}
+				accessibilityState={
+					checked !== undefined
+						? { checked }
+						: selected !== undefined
+							? { selected }
+							: undefined
+				}
+				accessibilityLabel={accessibilityLabel}
+				onPress={onPress}
+				onPressIn={onPress ? morph.onPressIn : undefined}
+				onPressOut={onPress ? morph.onPressOut : undefined}
+				disabled={!onPress}
+				android_ripple={{ color: palette.outlineVariant }}
+				style={{
+					flexDirection: "row",
+					alignItems: "center",
+					gap: SPACE.l,
+					minHeight: subtitle ? 72 : 64,
+					paddingHorizontal: SPACE.l,
+					paddingVertical: SPACE.m,
+				}}
+			>
+				{icon ? (
+					<View
+						style={{
+							width: 40,
+							height: 40,
+							borderRadius: 20,
+							alignItems: "center",
+							justifyContent: "center",
+							backgroundColor: destructive
+								? palette.errorContainer
+								: palette.secondaryContainer,
+						}}
 					>
-						{subtitle}
-					</Text>
+						<Icon
+							name={icon}
+							size={22}
+							color={
+								destructive
+									? palette.onErrorContainer
+									: palette.onSecondaryContainer
+							}
+						/>
+					</View>
 				) : null}
-			</View>
-			{trailing}
-		</Pressable>
+				<View style={{ flex: 1 }}>
+					<Text variant="bodyLarge" color={color} numberOfLines={1}>
+						{title}
+					</Text>
+					{subtitle ? (
+						<Text
+							variant="bodyMedium"
+							color={palette.onSurfaceVariant}
+							numberOfLines={2}
+						>
+							{subtitle}
+						</Text>
+					) : null}
+				</View>
+				{trailing}
+			</Pressable>
+		</Animated.View>
 	);
 }
 
 const labelOf = (...parts: (string | undefined)[]) =>
 	parts.filter((part) => part).join(", ");
 
-/** A row that opens a screen. Material draws no chevron on a list item, so
- *  only a link out of the app has a trailing icon here. */
+/** A row that opens a screen. A link out of the app has the open icon, and
+ *  a link into a screen has a chevron. */
 export function SettingsLink({
 	value,
 	destructive,
@@ -163,9 +203,13 @@ export function SettingsLink({
 							{value}
 						</Text>
 					) : null}
-					{external ? (
-						<Icon name="web" size={20} color={palette.onSurfaceVariant} />
-					) : null}
+					{destructive ? null : (
+						<Icon
+							name={external ? "web" : "forward"}
+							size={20}
+							color={palette.onSurfaceVariant}
+						/>
+					)}
 				</>
 			}
 		/>

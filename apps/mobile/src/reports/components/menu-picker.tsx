@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { Text } from "../../ui/components";
 import { MenuControl } from "../../ui/menu-control";
@@ -12,7 +12,7 @@ export type MenuOption<T extends string> = { value: T; label: string };
  * button of iOS and the exposed dropdown menu of Material 3
  * (`ui/menu-control`). The value must be one of the options; a value that
  * the person cannot change still needs its option, with `enabled` false.
- * In a form, `fill` makes the Android field as wide as the other fields.
+ * On Android the label floats on the field. In a form, `fill` makes the Android field as wide as the other fields.
  */
 export function MenuPicker<T extends string>({
 	label,
@@ -34,15 +34,18 @@ export function MenuPicker<T extends string>({
 		<View
 			style={{ gap: SPACE.xs, alignItems: fill ? "stretch" : "flex-start" }}
 		>
-			<Text variant="labelMedium" color={palette.onSurfaceVariant}>
-				{label}
-			</Text>
+			{Platform.OS === "android" ? null : (
+				<Text variant="labelMedium" color={palette.onSurfaceVariant}>
+					{label}
+				</Text>
+			)}
 			<MenuControl
 				options={options}
 				value={value}
 				onChange={onChange}
 				enabled={enabled}
 				fill={fill}
+				label={label}
 			/>
 		</View>
 	);

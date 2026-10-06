@@ -4,7 +4,7 @@ import {
 	ExposedDropdownMenuBox,
 	Host,
 	Text,
-	TextField,
+	OutlinedTextField,
 	type TextFieldRef,
 } from "@expo/ui/jetpack-compose";
 import {
@@ -13,15 +13,25 @@ import {
 	onVisibilityChanged,
 } from "@expo/ui/jetpack-compose/modifiers";
 import { useEffect, useRef, useState } from "react";
+import { View } from "react-native";
+import Animated, {
+	useAnimatedStyle,
+	useSharedValue,
+	withSpring,
+	withTiming,
+} from "react-native-reanimated";
 
 import { useHostTheme } from "./host";
+import { Icon } from "./icon";
 import type { MenuControlProps } from "./menu-control";
+import { springOrFade, useMotionPreference } from "./motion";
+import { usePalette } from "./theme";
 
 /**
- * The exposed dropdown menu of Material 3. This is the `Picker` of
- * `@expo/ui` for Android, with one change: the field can fill the width
- * of the form. The `Picker` gives no way to set the width of its field, so
- * it was as wide as a default text field, about half of a phone.
+ * The exposed dropdown menu of Material 3, with an outlined field and a
+ * floating label, as `Field` looks. The field can fill the width of the
+ * form. The arrow is React Native, drawn over the field, so that it turns
+ * with a spring when the menu opens.
  */
 export function MenuControl<T extends string>({
 	options,
@@ -29,8 +39,12 @@ export function MenuControl<T extends string>({
 	onChange,
 	enabled,
 	fill,
+	label: fieldLabel,
 }: MenuControlProps<T>) {
 	const hostTheme = useHostTheme();
+	const palette = usePalette();
+	const { reduceMotion } = useMotionPreference();
+	const turn = useSharedValue(0);
 	const [expanded, setExpanded] = useState(false);
 	const [visible, setVisible] = useState(false);
 	const field = useRef<TextFieldRef>(null);
@@ -42,49 +56,80 @@ export function MenuControl<T extends string>({
 		if (visible) field.current?.setText(label);
 	}, [label, visible]);
 
+	useEffect(() => {
+		const target = expanded ? 1 : 0;
+		const choice = springOrFade("fastSpatial", reduceMotion);
+		turn.set(
+			choice.reduced
+				? withTiming(target, { duration: choice.fadeMs })
+				: withSpring(target, choice.spring),
+		);
+	}, [expanded, reduceMotion, turn]);
+	const arrow = useAnimatedStyle(() => ({
+		transform: [{ rotate: `${turn.value * 180}deg` }],
+	}));
+
 	return (
-		<Host
-			matchContents={fill ? { vertical: true } : true}
-			style={fill ? { alignSelf: "stretch" } : undefined}
-			{...hostTheme}
-		>
-			<ExposedDropdownMenuBox
-				expanded={expanded}
-				onExpandedChange={enabled ? setExpanded : undefined}
+		<View style={fill ? { alignSelf: "stretch" } : undefined}>
+			<Host
+				matchContents={fill ? { vertical: true } : true}
+				style={fill ? { alignSelf: "stretch" } : undefined}
+				{...hostTheme}
 			>
-				<TextField
-					ref={field}
-					readOnly
-					enabled={enabled}
-					modifiers={[
-						menuAnchor(),
-						...(fill ? [fillMaxWidth()] : []),
-						onVisibilityChanged(setVisible),
-					]}
-				/>
-				<ExposedDropdownMenu
+				<ExposedDropdownMenuBox
 					expanded={expanded}
-					onDismissRequest={() => setExpanded(false)}
+					onExpandedChange={enabled ? setExpanded : undefined}
 				>
-					{options.map((option) => (
-						<DropdownMenuItem
-							key={option.value}
-							onClick={
-								enabled
-									? () => {
-											onChange(option.value);
-											setExpanded(false);
-										}
-									: undefined
-							}
-						>
-							<DropdownMenuItem.Text>
-								<Text>{option.label}</Text>
-							</DropdownMenuItem.Text>
-						</DropdownMenuItem>
-					))}
-				</ExposedDropdownMenu>
-			</ExposedDropdownMenuBox>
-		</Host>
+					<OutlinedTextField
+						ref={field}
+						readOnly
+						enabled={enabled}
+						modifiers={[
+							menuAnchor(),
+							...(fill ? [fillMaxWidth()] : []),
+							onVisibilityChanged(setVisible),
+						]}
+					>
+						{fieldLabel ? (
+							<OutlinedTextField.Label>
+								<Text>{fieldLabel}</Text>
+							</OutlinedTextField.Label>
+						) : null}
+					</OutlinedTextField>
+					<ExposedDropdownMenu
+						expanded={expanded}
+						onDismissRequest={() => setExpanded(false)}
+					>
+						{options.map((option) => (
+							<DropdownMenuItem
+								key={option.value}
+								onClick={
+									enabled
+										? () => {
+												onChange(option.value);
+												setExpanded(false);
+											}
+										: undefined
+								}
+							>
+								<DropdownMenuItem.Text>
+									<Text>{option.label}</Text>
+								</DropdownMenuItem.Text>
+							</DropdownMenuItem>
+						))}
+					</ExposedDropdownMenu>
+				</ExposedDropdownMenuBox>
+			</Host>
+			<Animated.View
+				pointerEvents="none"
+				style={[
+					{ position: "absolute", right: 12, top: 0, bottom: 0 },
+					{ justifyContent: "center" },
+					arrow,
+				]}
+			>
+				<Icon name="expand" size={24} color={palette.onSurfaceVariant} />
+			</Animated.View>
+		</View>
 	);
 }
