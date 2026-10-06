@@ -1,10 +1,9 @@
 import { type ReactNode, use } from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 
-import { Text } from "../ui/components";
 import { rowsWithPosition } from "../ui/settings-list.shared";
 import { usePalette } from "../ui/theme";
-import { SPACE } from "../ui/type";
+import { SPACE, TYPE } from "../ui/type";
 import { InFormGroup } from "./form-context";
 import type { FormGroupProps } from "./form-group";
 
@@ -23,8 +22,10 @@ export function GroupCaption({
 	return (
 		<View style={{ paddingHorizontal: ROW_INSET }}>
 			<Text
-				variant="bodySmall"
-				color={error ? palette.error : palette.onSurfaceVariant}
+				style={[
+					TYPE.bodySmall,
+					{ color: error ? palette.error : palette.onSurfaceVariant },
+				]}
 			>
 				{children}
 			</Text>
