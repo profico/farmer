@@ -25,6 +25,7 @@ import {
 } from "../../src/ui/components";
 import { showDialog } from "../../src/ui/dialog";
 import { LoadingIndicator } from "../../src/ui/loading";
+import { usePlainBackground } from "../../src/ui/plain-background";
 import { RowMoreMenu } from "../../src/ui/row-more-menu";
 import { Inset, usePullToRefresh } from "../../src/ui/screen";
 import { usePalette } from "../../src/ui/theme";
@@ -94,6 +95,7 @@ function ThreadRow({
 export default function AssistantThreadsScreen() {
 	const router = useRouter();
 	const palette = usePalette();
+	const plain = usePlainBackground();
 	const threads = useAssistantThreads();
 	const ready = useAssistantReady();
 	const rename = useRenameThread();
@@ -131,6 +133,7 @@ export default function AssistantThreadsScreen() {
 			<Stack.Screen
 				options={{
 					title: "Assistant",
+					contentStyle: { backgroundColor: plain },
 				}}
 			/>
 			<AssistantGate>

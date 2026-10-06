@@ -182,3 +182,8 @@ export const iosSystemColors = (
 	scheme: Scheme,
 	contrast: Contrast,
 ): Readonly<System> => SYSTEM[contrast][scheme];
+
+/** `systemBackground`: the ground of a plain list, which has no cards on
+ *  it. A grouped list uses `palette.background` instead. */
+export const iosPlainBackground = (scheme: Scheme) =>
+	scheme === "dark" ? "#000000" : "#ffffff";
