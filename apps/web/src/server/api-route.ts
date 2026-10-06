@@ -27,6 +27,11 @@ import {
 	callerAddress,
 	recordAuthFailure,
 } from "#/server/api-rate-limit.ts";
+import {
+	type BodyRead,
+	MAX_BODY_BYTES,
+	readBody,
+} from "#/server/request-body.ts";
 
 /**
  * The one pipeline every CLI route runs — `/api/v1/me`, `/api/v1/session` and
@@ -399,19 +404,18 @@ const serve = async <
 	}
 };
 
-/** The JSON body of a request that is not a GET, `{}` when it is empty, or
- *  null when it does not parse. */
-const readBody = async (request: Request): Promise<JsonValue | null> => {
-	if (request.method === "GET") return {};
-	const text = await request.text();
-	if (!text.trim()) return {};
-	try {
-		const body: JsonValue = JSON.parse(text);
-		return body;
-	} catch {
-		return null;
-	}
-};
+/** The refusal of a body that `readBody` could not take: 413 over the
+ *  limit, 422 when it is not JSON. */
+const bodyRefusal = (read: Exclude<BodyRead, { kind: "json" }>): Response =>
+	read.kind === "too_large"
+		? refuse(413, {
+				error: `The request body is over ${MAX_BODY_BYTES / (1024 * 1024)} MB.`,
+				code: "invalid_input",
+			})
+		: refuse(422, {
+				error: "The request body is not JSON.",
+				code: "invalid_input",
+			});
 
 /** Step 4 for an org-scoped route: a bearer credential, else the session
  *  cookie under `cookieUser`'s rules. */
@@ -458,16 +462,9 @@ const parseInput = async <TParams extends OrgParams, TSchema extends z.ZodType>(
 ): Promise<
 	{ ok: true; data: z.output<TSchema> } | { ok: false; response: Response }
 > => {
-	const body = await readBody(request);
-	if (body === null) {
-		return {
-			ok: false,
-			response: refuse(422, {
-				error: "The request body is not JSON.",
-				code: "invalid_input",
-			}),
-		};
-	}
+	const read = await readBody(request);
+	if (read.kind !== "json") return { ok: false, response: bodyRefusal(read) };
+	const body = read.value;
 	const query = new URL(request.url).searchParams;
 	const raw = spec.raw
 		? await spec.raw({ ctx, params, query, body })
@@ -690,13 +687,9 @@ export const userWriteRoute =
 			request,
 			() => userPrincipal(request),
 			async (caller) => {
-				const body = await readBody(request);
-				if (body === null) {
-					return refuse(422, {
-						error: "The request body is not JSON.",
-						code: "invalid_input",
-					});
-				}
+				const read = await readBody(request);
+				if (read.kind !== "json") return bodyRefusal(read);
+				const body = read.value;
 				const raw = spec.raw ? spec.raw({ params, body }) : body;
 				const parsed = spec.input.safeParse(raw);
 				if (!parsed.success) {
