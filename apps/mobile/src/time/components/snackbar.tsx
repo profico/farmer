@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
-import { AccessibilityInfo, Animated, Pressable, View } from "react-native";
+import {
+	AccessibilityInfo,
+	Animated,
+	Platform,
+	Pressable,
+	View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Text } from "../../ui/components";
+import { RADIUS } from "../../ui/corner";
 import { EASE_OUT, MOTION_MS, useMotionPreference } from "../../ui/motion";
 import { usePalette } from "../../ui/theme";
 import { SPACE } from "../../ui/type";
@@ -69,9 +76,24 @@ export function Snackbar({
 	if (!shown) return null;
 	const warning = shown.tone === "warning";
 	// Material draws a snackbar in the inverse colours, so that it stands
-	// out from the cards under it. The palette has no inverse roles, and
-	// the surface and its ink, swapped, are the same pair.
-	const ink = warning ? palette.onErrorContainer : palette.surface;
+	// out from the cards under it. Android uses the inverse roles. iOS keeps
+	// the surface and its ink, swapped.
+	const android = Platform.OS === "android";
+	const ink = warning
+		? palette.onErrorContainer
+		: android
+			? palette.inverseOnSurface
+			: palette.surface;
+	const background = warning
+		? palette.errorContainer
+		: android
+			? palette.inverseSurface
+			: palette.onSurface;
+	const actionInk = warning
+		? palette.primary
+		: android
+			? palette.inversePrimary
+			: palette.primaryContainer;
 	const motion = {
 		opacity: progress,
 		transform: [
@@ -91,12 +113,12 @@ export function Snackbar({
 					flexDirection: "row",
 					alignItems: "center",
 					gap: SPACE.m,
-					borderRadius: 12,
+					borderRadius: android ? RADIUS.snackbar : 12,
 					paddingLeft: SPACE.l,
 					paddingRight: SPACE.s,
 					paddingVertical: SPACE.s,
 					minHeight: 48,
-					backgroundColor: warning ? palette.errorContainer : palette.onSurface,
+					backgroundColor: background,
 					elevation: 3,
 				},
 				floating ? { margin: SPACE.l } : null,
@@ -119,10 +141,7 @@ export function Snackbar({
 					hitSlop={8}
 					style={{ paddingHorizontal: SPACE.m, paddingVertical: SPACE.s }}
 				>
-					<Text
-						variant="labelLarge"
-						color={warning ? palette.primary : palette.primaryContainer}
-					>
+					<Text variant="labelLarge" color={actionInk}>
 						{shown.action.label}
 					</Text>
 				</Pressable>
