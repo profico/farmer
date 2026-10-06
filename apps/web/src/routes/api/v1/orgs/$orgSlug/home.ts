@@ -12,9 +12,10 @@ import { apiRoute, NO_INPUT } from "#/server/api-route.ts";
  * browser, so the two cannot disagree. The figures of the week and the month
  * are on `GET …/tracking`, and the entries are on `GET …/time-entries`.
  *
- * The day totals are read through `listRange`, as the web page reads them.
- * That read also writes: it computes the fill blocks of the week again (see
- * `GET …/time-entries`).
+ * The day totals come from `listRange` in its read-only variant. It computes
+ * the fill blocks of the week in memory, as the web page sees them, and it
+ * writes nothing. The mobile app calls this route on every refresh, and a
+ * read-only API token can reach it.
  */
 export const Route = createFileRoute("/api/v1/orgs/$orgSlug/home")({
 	server: {
@@ -49,7 +50,7 @@ export const Route = createFileRoute("/api/v1/orgs/$orgSlug/home")({
 					);
 
 					const [entries, holidays, targets] = await Promise.all([
-						timeEntriesService.listRange(ctx, { from, to }),
+						timeEntriesService.listRange(ctx, { from, to }, { persist: false }),
 						holidaysService.holidaySetForRange(ctx, from, to),
 						complianceService.myTargets(ctx),
 					]);
