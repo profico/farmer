@@ -8,7 +8,7 @@ import {
 	useCreateClient,
 	useRenameClient,
 } from "../../../src/api/workspace";
-import { FormSection, Sheet } from "../../../src/forms/sheet";
+import { Sheet } from "../../../src/forms/sheet";
 import {
 	EmptyState,
 	ErrorBanner,
@@ -132,16 +132,14 @@ function ClientForm({
 			}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			<FormSection label="Name">
-				<Field
-					label="Name"
-					value={name}
-					onChangeText={setName}
-					maxLength={NAME_MAX_LENGTH}
-					returnKeyType="done"
-					onSubmitEditing={save}
-				/>
-			</FormSection>
+			<Field
+				label="Name"
+				value={name}
+				onChangeText={setName}
+				maxLength={NAME_MAX_LENGTH}
+				returnKeyType="done"
+				onSubmitEditing={save}
+			/>
 			{id ? (
 				<SettingsSection>
 					{isInternal ? (

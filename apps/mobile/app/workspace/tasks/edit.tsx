@@ -178,15 +178,13 @@ function TaskForm({
 			actionDisabled={trimmed === ""}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			<FormSection label="Name">
-				<Field
-					label="Name"
-					value={name}
-					onChangeText={setName}
-					maxLength={NAME_MAX_LENGTH}
-					returnKeyType="next"
-				/>
-			</FormSection>
+			<Field
+				label="Name"
+				value={name}
+				onChangeText={setName}
+				maxLength={NAME_MAX_LENGTH}
+				returnKeyType="next"
+			/>
 			<View style={{ marginHorizontal: -SPACE.l }}>
 				<ChoiceSection
 					title="Group"
@@ -198,15 +196,13 @@ function TaskForm({
 			<FormSection label="Colour">
 				<ColourChoice value={color} onChange={setColor} />
 			</FormSection>
-			<FormSection label="Description (optional)">
-				<Field
-					label="Description"
-					value={description}
-					onChangeText={setDescription}
-					maxLength={DESCRIPTION_MAX_LENGTH}
-					multiline
-				/>
-			</FormSection>
+			<Field
+				label="Description (optional)"
+				value={description}
+				onChangeText={setDescription}
+				maxLength={DESCRIPTION_MAX_LENGTH}
+				multiline
+			/>
 			{id ? (
 				<View style={{ marginHorizontal: -SPACE.l }}>
 					<SettingsSection footer="Its entries keep the task, so the history stays readable.">
