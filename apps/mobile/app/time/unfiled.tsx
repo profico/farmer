@@ -3,7 +3,6 @@ import { useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 
-import { useAccess } from "../../src/api/capabilities";
 import { useEntries, useUnfiled } from "../../src/api/queries";
 import {
 	useFileEntries,
@@ -55,7 +54,6 @@ const shortDay = (day: string) =>
 export default function UnfiledSheet() {
 	const params = useLocalSearchParams<Params>();
 	const palette = usePalette();
-	const { fullApi } = useAccess();
 	const unfiled = useUnfiled(params.from, params.to);
 	// The same range as the screen behind. It tells a rest-of-day block,
 	// which Undo cannot put back, from the other entries.
@@ -207,10 +205,7 @@ export default function UnfiledSheet() {
 				onAction={fileSelected}
 				busy={busy}
 				actionDisabled={
-					!fullApi ||
-					selected.size === 0 ||
-					!projectId ||
-					(changeTask && !taskId)
+					selected.size === 0 || !projectId || (changeTask && !taskId)
 				}
 			>
 				{unfiled.isPending ? (
@@ -254,45 +249,36 @@ export default function UnfiledSheet() {
 										setSelected((current) => toggleIds(current, ids))
 									}
 									onRemove={removeEntries}
-									onFile={fullApi ? fileFromMenu : undefined}
+									onFile={fileFromMenu}
 								/>
 							))}
 						</View>
-						{fullApi ? (
-							<>
-								<Text variant="labelLarge">{fileLabel}</Text>
-								<ProjectPicker
-									value={projectId}
-									onChange={setProjectId}
-									allowNone={false}
-								/>
-								<SwitchRow
-									title="Change the task"
-									description={
-										changeTask ? undefined : "Each entry keeps its own task."
-									}
-									value={changeTask}
-									onValueChange={setChangeTask}
-								/>
-								{changeTask ? (
-									<TaskPicker
-										value={taskId}
-										onChange={(task) => setTaskId(task.id)}
-									/>
-								) : null}
-								<SwitchRow
-									title="Always file these here"
-									description="File the next meetings with the same title to this project. You can change this in your preferences."
-									value={remember}
-									onValueChange={setRemember}
-								/>
-							</>
-						) : (
-							<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-								This server cannot file time from the app yet. Use Farmer on the
-								web.
-							</Text>
-						)}
+						<Text variant="labelLarge">{fileLabel}</Text>
+						<ProjectPicker
+							value={projectId}
+							onChange={setProjectId}
+							allowNone={false}
+						/>
+						<SwitchRow
+							title="Change the task"
+							description={
+								changeTask ? undefined : "Each entry keeps its own task."
+							}
+							value={changeTask}
+							onValueChange={setChangeTask}
+						/>
+						{changeTask ? (
+							<TaskPicker
+								value={taskId}
+								onChange={(task) => setTaskId(task.id)}
+							/>
+						) : null}
+						<SwitchRow
+							title="Always file these here"
+							description="File the next meetings with the same title to this project. You can change this in your preferences."
+							value={remember}
+							onValueChange={setRemember}
+						/>
 					</>
 				)}
 				{/* Room for the snackbar over the end of the list. */}
@@ -323,8 +309,7 @@ function GroupRows({
 	onToggleOpen: () => void;
 	onToggle: (ids: string[]) => void;
 	onRemove: (entries: UnfiledEntry[]) => void;
-	/** Absent when the server cannot file time from the app. */
-	onFile?: (ids: string[]) => void;
+	onFile: (ids: string[]) => void;
 }) {
 	const palette = usePalette();
 	const ids = group.entries.map((entry) => entry.id);
@@ -351,7 +336,7 @@ function GroupRows({
 					menu={{
 						title: group.title,
 						items: [
-							onFile && {
+							{
 								label: "File",
 								icon: "folder",
 								onPress: () => onFile(ids),
@@ -412,7 +397,7 @@ function GroupRows({
 								menu={{
 									title: `${group.title}, ${shortDay(entry.date)}`,
 									items: [
-										onFile && {
+										{
 											label: "File",
 											icon: "folder",
 											onPress: () => onFile([entry.id]),

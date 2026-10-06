@@ -40,7 +40,7 @@ describe("the targets", () => {
 		expect(targetGap(period({ targetSoFarSeconds: null }))).toBeNull();
 	});
 
-	test("fall back to the target before today on an old server", () => {
+	test("fall back to the target before today without the target through today", () => {
 		const old = period({
 			workingDaysThroughToday: undefined,
 			targetThroughTodaySeconds: undefined,

@@ -3,13 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { useSession, useSignedIn } from "../session/session";
-import { useServerFeatures } from "./capabilities";
 
 // The routes of a person before a workspace: the invitations to them, the
 // claims of a Harvest import, and a new workspace. They belong to the
 // person, not to a workspace, so each key sits under the key of `useMe`:
-// one read of `me` again also reads these. Each route needs API version 3
-// and a sign-in session (an API token gets 403).
+// one read of `me` again also reads these. Each route needs a sign-in session (an API token gets 403).
 
 const MINUTE = 60_000;
 
@@ -17,22 +15,18 @@ const meKey = (origin: string) => ["farmer", origin, "me"] as const;
 
 export const useMyInvitations = () => {
 	const { origin, client } = useSignedIn();
-	const { setupApi } = useServerFeatures();
 	return useQuery({
 		queryKey: [...meKey(origin), "invitations"],
 		queryFn: () => client.listMyInvitations(),
-		enabled: setupApi,
 		staleTime: MINUTE,
 	});
 };
 
 export const useMyImportClaims = () => {
 	const { origin, client } = useSignedIn();
-	const { setupApi } = useServerFeatures();
 	return useQuery({
 		queryKey: [...meKey(origin), "import-claims"],
 		queryFn: () => client.listMyImportClaims(),
-		enabled: setupApi,
 		staleTime: MINUTE,
 	});
 };

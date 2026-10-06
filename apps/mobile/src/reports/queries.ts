@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { useAccess } from "../api/capabilities";
 import { scope, useWorkspace } from "../api/queries";
 import type { TimeTab } from "./csv";
 
@@ -33,7 +32,6 @@ export const useTimeReport = (
 	activeOnly: boolean,
 ) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "reports", "time", range, tab, activeOnly],
 		queryFn: () =>
@@ -42,14 +40,13 @@ export const useTimeReport = (
 				tab,
 				activeOnly: flag(activeOnly),
 			}),
-		enabled: fullApi && range.from !== "",
+		enabled: range.from !== "",
 		staleTime: MINUTE,
 	});
 };
 
 export const useTimeDetail = (filters: DetailFilters, enabled = true) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "reports", "detail", filters],
 		queryFn: () =>
@@ -57,14 +54,13 @@ export const useTimeDetail = (filters: DetailFilters, enabled = true) => {
 				...filters,
 				activeOnly: flag(filters.activeOnly),
 			}),
-		enabled: fullApi && enabled && filters.from !== "",
+		enabled: enabled && filters.from !== "",
 		staleTime: MINUTE,
 	});
 };
 
 export const useOvertimeReport = (range: Range, activeOnly: boolean) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "reports", "overtime", range, activeOnly],
 		queryFn: () =>
@@ -72,7 +68,7 @@ export const useOvertimeReport = (range: Range, activeOnly: boolean) => {
 				...range,
 				activeOnly: flag(activeOnly),
 			}),
-		enabled: fullApi && range.from !== "",
+		enabled: range.from !== "",
 		staleTime: MINUTE,
 		placeholderData: (previous) => previous,
 	});
@@ -80,11 +76,10 @@ export const useOvertimeReport = (range: Range, activeOnly: boolean) => {
 
 export const useAbsenceReport = (range: Range) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "reports", "absence", range],
 		queryFn: () => w.client.getAbsenceReport(w.slug, range),
-		enabled: fullApi && range.from !== "",
+		enabled: range.from !== "",
 		staleTime: MINUTE,
 		placeholderData: (previous) => previous,
 	});

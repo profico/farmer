@@ -11,14 +11,12 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 
-import { useAccess } from "./capabilities";
 import { refreshTime, scope, useWorkspace, type Workspace } from "./queries";
 
 /**
- * The helpers of the day, from API version 3: "Assemble my day", the
- * meetings of the person's calendar, the calendar notice on an entry, and
- * the GitHub commits and pull requests on an entry. Each read waits for
- * `dayApi`, so an older Server gets no request.
+ * The helpers of the day: "Assemble my day", the meetings of the
+ * person's calendar, the calendar notice on an entry, and the GitHub
+ * commits and pull requests on an entry.
  */
 
 const MINUTE = 60_000;
@@ -35,12 +33,10 @@ const attachedPullRequestsKey = (w: Workspace, id: string) =>
  *  is logged now, so each opening of the sheet reads them again. */
 export const useDayAssembly = (date: string, includeDismissed: boolean) => {
 	const w = useWorkspace();
-	const { dayApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "day-assembly", date, includeDismissed],
 		queryFn: () =>
 			w.client.suggestDayAssembly(w.slug, { date, includeDismissed }),
-		enabled: dayApi,
 		staleTime: 0,
 	});
 };
@@ -64,11 +60,10 @@ export const useApplyDayAssembly = () => {
 /** The timed meetings of a day in the person's Google Calendar. */
 export const useCalendarEvents = (date: string, enabled: boolean) => {
 	const w = useWorkspace();
-	const { dayApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "calendar", "events", date],
 		queryFn: () => w.client.listCalendarEvents(w.slug, { date }),
-		enabled: dayApi && enabled,
+		enabled: enabled,
 		staleTime: MINUTE,
 	});
 };
@@ -110,11 +105,10 @@ export const useProjectRepositories = (
 	enabled: boolean,
 ) => {
 	const w = useWorkspace();
-	const { dayApi } = useAccess();
 	return useQuery({
 		queryKey: [...githubKey(w), "project-repos", projectId],
 		queryFn: () => w.client.listProjectRepositories(w.slug, projectId ?? ""),
-		enabled: dayApi && enabled && projectId !== null,
+		enabled: enabled && projectId !== null,
 		staleTime: 5 * MINUTE,
 	});
 };
@@ -126,12 +120,11 @@ export const useSuggestedCommits = (
 	enabled: boolean,
 ) => {
 	const w = useWorkspace();
-	const { dayApi } = useAccess();
 	return useQuery({
 		queryKey: [...githubKey(w), "suggested-commits", projectId, date],
 		queryFn: () =>
 			w.client.suggestCommits(w.slug, { projectId: projectId ?? "", date }),
-		enabled: dayApi && enabled && projectId !== null,
+		enabled: enabled && projectId !== null,
 		staleTime: MINUTE,
 	});
 };
@@ -143,7 +136,6 @@ export const useSuggestedPullRequests = (
 	enabled: boolean,
 ) => {
 	const w = useWorkspace();
-	const { dayApi } = useAccess();
 	return useQuery({
 		queryKey: [...githubKey(w), "suggested-pull-requests", projectId, date],
 		queryFn: () =>
@@ -151,28 +143,26 @@ export const useSuggestedPullRequests = (
 				projectId: projectId ?? "",
 				date,
 			}),
-		enabled: dayApi && enabled && projectId !== null,
+		enabled: enabled && projectId !== null,
 		staleTime: MINUTE,
 	});
 };
 
 export const useAttachedCommits = (id: string | null) => {
 	const w = useWorkspace();
-	const { dayApi } = useAccess();
 	return useQuery({
 		queryKey: attachedCommitsKey(w, id ?? ""),
 		queryFn: () => w.client.listAttachedCommits(w.slug, id ?? ""),
-		enabled: dayApi && id !== null,
+		enabled: id !== null,
 	});
 };
 
 export const useAttachedPullRequests = (id: string | null) => {
 	const w = useWorkspace();
-	const { dayApi } = useAccess();
 	return useQuery({
 		queryKey: attachedPullRequestsKey(w, id ?? ""),
 		queryFn: () => w.client.listAttachedPullRequests(w.slug, id ?? ""),
-		enabled: dayApi && id !== null,
+		enabled: id !== null,
 	});
 };
 

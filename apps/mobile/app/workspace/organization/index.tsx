@@ -53,7 +53,7 @@ const WEEK_START_OPTIONS = [
 const isHttpUrl = (value: string) => /^https?:\/\/\S+$/i.test(value);
 
 /** The general settings of the workspace: name, country, timezone, the
- *  first day of the week, the logo, and on API version 3 the tracking
+ *  first day of the week, the logo, the tracking
  *  tolerance and the automation lock. Admins only, as on the web. */
 export default function OrganizationScreen() {
 	const access = useAccess();
@@ -76,7 +76,6 @@ export default function OrganizationScreen() {
 
 function OrganizationSettings() {
 	const settings = useOrganization();
-	const access = useAccess();
 	return (
 		<>
 			<Stack.Screen options={{ title: "Organization" }} />
@@ -95,7 +94,7 @@ function OrganizationSettings() {
 				) : (
 					<IosSaveBar>
 						<OrganizationForm settings={settings.data} />
-						{access.setupApi ? <PolicySections /> : null}
+						<PolicySections />
 					</IosSaveBar>
 				)}
 			</Screen>

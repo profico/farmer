@@ -1,7 +1,6 @@
 import type { TimeEntry } from "@farmer/api-client";
 import { Platform, Pressable, View } from "react-native";
 
-import { useAccess } from "../api/capabilities";
 import { formatHours } from "../lib/duration";
 import { ProjectMark } from "../projects/components/project-mark";
 import { IconButton, Text } from "../ui/components";
@@ -86,10 +85,9 @@ export function EntryRow({
 	onPressOut?: () => void;
 }) {
 	const palette = usePalette();
-	const { dayApi } = useAccess();
 	// The meeting sync changed the entry, and the person did not answer yet.
 	// The edit sheet shows what changed.
-	const changed = dayApi && Boolean(entry.calendarChange);
+	const changed = Boolean(entry.calendarChange);
 	const project = entry.project;
 	const detail = [project?.client.name, entry.task.name]
 		.filter(Boolean)

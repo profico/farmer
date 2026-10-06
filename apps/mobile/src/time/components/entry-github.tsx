@@ -9,7 +9,6 @@ import * as WebBrowser from "expo-web-browser";
 import { type ReactNode, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { useAccess } from "../../api/capabilities";
 import {
 	useAttachedCommits,
 	useAttachedPullRequests,
@@ -88,9 +87,8 @@ export function useEntryGithub({
 	note: string;
 	setNote: (note: string) => void;
 }) {
-	const { dayApi } = useAccess();
 	const integrations = useIntegrations();
-	const connected = dayApi && integrations.data?.github.connected === true;
+	const connected = integrations.data?.github.connected === true;
 	const autoLoad = integrations.data?.settings.githubAutoLoadCommits === true;
 	const canPick = connected && !repeats && !fill && projectId !== null;
 	const repos = useProjectRepositories(projectId, canPick);

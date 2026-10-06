@@ -3,8 +3,7 @@ import { useSyncExternalStore } from "react";
 /**
  * The notification permission for the ongoing timer notification (Android
  * 13 and later need `POST_NOTIFICATIONS` for it). The notification is local:
- * it needs no push relay and no `/meta` feature, so a Server of API version
- * 1 shows it too.
+ * it needs no push relay and no `/meta` feature.
  *
  * The app asks at each timer start in the app while the permission is not
  * granted and the system can still show its dialog (`canAskAgain`). The

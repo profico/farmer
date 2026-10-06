@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Platform, View } from "react-native";
 
-import { useAccess } from "../src/api/capabilities";
 import { useAttachActivity } from "../src/api/day";
 import { useEntries, useTasks, useWhoami } from "../src/api/queries";
 import { useCreateTimeEntry, useUpdateTimeEntry } from "../src/api/time";
@@ -157,7 +156,6 @@ function EntryForm({
 }) {
 	const palette = usePalette();
 	const router = useRouter();
-	const { fullApi, dayApi } = useAccess();
 	const tasks = useTasks();
 	const integrations = useIntegrations();
 	const attach = useAttachActivity();
@@ -189,14 +187,14 @@ function EntryForm({
 		!entry && read.some((row) => row.date === date && row.fillsDay);
 	// A switch that the form hides has no effect. Time off has no rest-of-day
 	// block and does not repeat, and a repeat is not a rest-of-day block.
-	const repeats = repeating && !entry && fullApi && !absence;
+	const repeats = repeating && !entry && !absence;
 	const isFill = entry
 		? entry.fillsDay
 		: fillsDay && !dayHasFill && !absence && !repeats;
 	// The repeat days follow the day of the form until the person picks
 	// them.
 	const days = repeatDays ?? [weekdayOf(date)];
-	const showRepeat = !entry && fullApi && !absence && !isFill;
+	const showRepeat = !entry && !absence && !isFill;
 	const showFill = !entry && !absence && !repeats;
 	const busy =
 		create.isPending ||
@@ -214,7 +212,6 @@ function EntryForm({
 		...(tasks.data?.absenceTasks ?? []),
 	].find((row) => row.id === taskId);
 	const showCalendarPicker =
-		dayApi &&
 		!repeats &&
 		!isFill &&
 		!absence &&
@@ -384,7 +381,7 @@ function EntryForm({
 			actionDisabled={!taskId || repeatInvalid}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			{entry && dayApi ? (
+			{entry ? (
 				<CalendarNotice
 					entry={entry}
 					timezone={timezone}

@@ -1,4 +1,4 @@
-import type { Project, ProjectDetail } from "@farmer/api-client";
+import type { ProjectDetail } from "@farmer/api-client";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Platform, View } from "react-native";
@@ -9,10 +9,8 @@ import {
 	useActiveClients,
 	useProjectList,
 } from "../../../src/api/projects";
-import { useProjects } from "../../../src/api/queries";
 import { HeaderActions } from "../../../src/navigation/header-actions";
 import { projectPageAccess } from "../../../src/projects/access";
-import { ProjectMark } from "../../../src/projects/components/project-mark";
 import { ProjectRow } from "../../../src/projects/components/project-row";
 import { useConfirmProjectStatus } from "../../../src/projects/confirm-status";
 import {
@@ -20,7 +18,6 @@ import {
 	PROJECT_SORTS,
 	type ProjectSort,
 	projectMatches,
-	projectTitle,
 	sortProjects,
 } from "../../../src/projects/model";
 import {
@@ -33,17 +30,14 @@ import {
 	EmptyState,
 	ErrorState,
 	IconButton,
-	ListRow,
 	SectionHeader,
 	Skeleton,
 } from "../../../src/ui/components";
 import { showDialog } from "../../../src/ui/dialog";
 import { messageOf } from "../../../src/ui/errors";
-import { Icon } from "../../../src/ui/icon";
 import { ListSearch } from "../../../src/ui/list-search";
 import { Inset, Screen } from "../../../src/ui/screen";
 import { SegmentedControl } from "../../../src/ui/segmented";
-import { usePalette } from "../../../src/ui/theme";
 
 function Loading() {
 	return (
@@ -53,78 +47,6 @@ function Loading() {
 			<Skeleton height={64} />
 		</Inset>
 	);
-}
-
-/** A Server before API version 2 sends the projects without figures: the
- *  plain list by client. */
-function PlainList({ search }: { search: string }) {
-	const palette = usePalette();
-	const router = useRouter();
-	const projects = useProjects();
-	if (projects.isPending) return <Loading />;
-	if (projects.isError) {
-		return (
-			<ErrorState
-				error={projects.error}
-				onRetry={() => void projects.refetch()}
-			/>
-		);
-	}
-	const needle = search.trim().toLowerCase();
-	const shown = projects.data.filter(
-		(project: Project) =>
-			!needle ||
-			[project.name, project.code ?? "", project.client.name].some((text) =>
-				text.toLowerCase().includes(needle),
-			),
-	);
-	if (shown.length === 0) {
-		return (
-			<EmptyState
-				icon="folder"
-				title="No projects"
-				message="You are not on a project in this workspace yet."
-			/>
-		);
-	}
-	const groups = new Map<string, Project[]>();
-	for (const project of shown) {
-		groups.set(project.client.name, [
-			...(groups.get(project.client.name) ?? []),
-			project,
-		]);
-	}
-	return [...groups.entries()]
-		.sort(([a], [b]) => a.localeCompare(b, "hr"))
-		.map(([client, members]) => (
-			<View key={client}>
-				<SectionHeader>{client}</SectionHeader>
-				<ListCard>
-					{members.map((project) => (
-						<ListRow
-							key={project.id}
-							leading={
-								<ProjectMark icon={project.icon ?? null} name={project.name} />
-							}
-							title={projectTitle(project)}
-							onPress={() =>
-								router.push({
-									pathname: "/projects/[id]",
-									params: { id: project.id },
-								})
-							}
-							trailing={
-								<Icon
-									name="forward"
-									size={20}
-									color={palette.onSurfaceVariant}
-								/>
-							}
-						/>
-					))}
-				</ListCard>
-			</View>
-		));
 }
 
 /**
@@ -205,7 +127,6 @@ export default function ProjectsScreen() {
 	};
 
 	const body = () => {
-		if (!access.fullApi) return <PlainList search={search} />;
 		if (list.isPending) return <Loading />;
 		if (list.isError) {
 			return (
@@ -341,7 +262,7 @@ export default function ProjectsScreen() {
 			title="Projects"
 			largeTitle
 			toolbar={
-				access.fullApi && access.canManageProjects ? (
+				access.canManageProjects ? (
 					<HeaderActions
 						actions={[
 							{
@@ -354,12 +275,12 @@ export default function ProjectsScreen() {
 				) : undefined
 			}
 			overline={
-				access.fullApi && list.data
+				list.data
 					? `${counts.active} active, ${counts.archived} archived`
 					: undefined
 			}
 			actions={
-				access.fullApi && access.canManageProjects ? (
+				access.canManageProjects ? (
 					<IconButton
 						icon="add"
 						label="New project"
@@ -378,13 +299,11 @@ export default function ProjectsScreen() {
 					onChangeText={setSearch}
 					placeholder="Project, code or client"
 				/>
-				{access.fullApi ? (
-					<SegmentedControl
-						options={PROJECT_SORTS}
-						value={sort}
-						onChange={setSort}
-					/>
-				) : null}
+				<SegmentedControl
+					options={PROJECT_SORTS}
+					value={sort}
+					onChange={setSort}
+				/>
 			</Inset>
 			{body()}
 		</Screen>

@@ -176,7 +176,7 @@ function SettingsForm({ project }: { project: ProjectDetail }) {
 					}
 				/>
 			</SettingsSection>
-			{access.isAdmin && access.setupApi ? (
+			{access.isAdmin ? (
 				<SettingsSection
 					title="GitHub"
 					footer="The commits and pull requests of a linked repository can go on the time entries of this project."

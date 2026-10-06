@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 
-import { useAccess } from "../../src/api/capabilities";
 import { useApplyDayAssembly, useDayAssembly } from "../../src/api/day";
 import { ProjectPicker, TaskPicker } from "../../src/forms/pickers";
 import { Sheet } from "../../src/forms/sheet";
@@ -81,7 +80,6 @@ export default function AssembleSheet() {
 	const date = params.date;
 	const palette = usePalette();
 	const router = useRouter();
-	const { dayApi } = useAccess();
 	// For this opening only: a switch that stays on offers each deletion
 	// again on every day.
 	const [includeDismissed, setIncludeDismissed] = useState(false);
@@ -152,7 +150,7 @@ export default function AssembleSheet() {
 				actionLabel={actionLabel}
 				onAction={add}
 				busy={apply.isPending}
-				actionDisabled={!dayApi || chosen.length === 0}
+				actionDisabled={chosen.length === 0}
 			>
 				<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
 					{longDay(date)}
@@ -160,11 +158,7 @@ export default function AssembleSheet() {
 						? `. ${formatHours(data.loggedSeconds)} logged of ${formatHours(data.targetSeconds)} target.`
 						: ""}
 				</Text>
-				{!dayApi ? (
-					<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
-						This server cannot assemble a day yet. Use Farmer on the web.
-					</Text>
-				) : assembly.isPending ? (
+				{assembly.isPending ? (
 					<>
 						<Text variant="bodyMedium" color={palette.onSurfaceVariant}>
 							Reading your calendar, commits and working hours.

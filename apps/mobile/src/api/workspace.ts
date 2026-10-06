@@ -26,7 +26,6 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 
-import { useServerFeatures } from "./capabilities";
 import { scope, useWorkspace, type Workspace } from "./queries";
 
 // The queries and the changes of the workspace administration screens
@@ -323,15 +322,12 @@ export const useUpdateOrganization = () => {
 	});
 };
 
-/** The tracking tolerance and the automation lock. Admin only, API
- *  version 3. */
+/** The tracking tolerance and the automation lock. Admin only. */
 export const useOrgPolicy = () => {
 	const w = useWorkspace();
-	const { setupApi } = useServerFeatures();
 	return useQuery({
 		queryKey: key(w, "organization", "policy"),
 		queryFn: () => w.client.getOrgPolicy(w.slug),
-		enabled: setupApi,
 		staleTime: 5 * MINUTE,
 	});
 };

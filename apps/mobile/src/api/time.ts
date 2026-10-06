@@ -10,13 +10,12 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { planCellWrite } from "../time/week-grid";
-import { useAccess } from "./capabilities";
 import { refreshTime, scope, useWorkspace, type Workspace } from "./queries";
 
 /**
  * The queries and the writes of the Time tab. The reads of `queries.ts`
  * (entries, unfiled, tracking, timer) stay there; this module adds the
- * routes of API version 2, and writes that also refresh the week chart.
+ * routes of the other time screens, and writes that also refresh the week chart.
  *
  * Two reads here write on the server: `time-entries` and `home` compute
  * the fill blocks of their days again. So each is read once a minute at
@@ -38,12 +37,10 @@ export const timerSettingsKey = (w: Workspace) =>
 /** The names of the public holidays between two days, by day key. */
 export const useHolidayNames = (from: string, to: string) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "holidays", from, to],
 		queryFn: () => w.client.listHolidaysInRange(w.slug, { from, to }),
 		select: (days) => new Map(days.map((day) => [day.date, day.name])),
-		enabled: fullApi,
 		staleTime: HOUR,
 	});
 };
@@ -52,11 +49,10 @@ export const useHolidayNames = (from: string, to: string) => {
  *  server gives each day. */
 export const useHome = (enabled: boolean) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "home"],
 		queryFn: () => w.client.getHome(w.slug),
-		enabled: fullApi && enabled,
+		enabled: enabled,
 		staleTime: MINUTE,
 		refetchOnWindowFocus: false,
 	});
@@ -65,11 +61,10 @@ export const useHome = (enabled: boolean) => {
 /** The person's timer limit. A head start must be shorter. */
 export const useTimerSettings = (enabled = true) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: timerSettingsKey(w),
 		queryFn: () => w.client.getTimerSettings(w.slug),
-		enabled: fullApi && enabled,
+		enabled: enabled,
 		staleTime: 5 * MINUTE,
 	});
 };

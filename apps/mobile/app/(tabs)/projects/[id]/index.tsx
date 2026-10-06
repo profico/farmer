@@ -8,7 +8,7 @@ import {
 	useProjectMembers,
 	useProjectOverview,
 } from "../../../../src/api/projects";
-import { useProjects, useTimer } from "../../../../src/api/queries";
+import { useTimer } from "../../../../src/api/queries";
 import { projectPageAccess, roleLabel } from "../../../../src/projects/access";
 import { ProjectMark } from "../../../../src/projects/components/project-mark";
 import { projectTitle, typeLabel } from "../../../../src/projects/model";
@@ -161,58 +161,6 @@ function ProjectEntries({ project }: { project: ProjectDetail }) {
 	);
 }
 
-/** The project from the list of API version 1, with no figures: only the
- *  ways to log time. */
-function PlainProject({ id }: { id: string }) {
-	const palette = usePalette();
-	const projects = useProjects();
-	if (projects.isPending) {
-		return (
-			<Screen topInset={false}>
-				<Inset>
-					<Skeleton height={64} />
-				</Inset>
-			</Screen>
-		);
-	}
-	if (projects.isError) {
-		return (
-			<Screen topInset={false}>
-				<ErrorState
-					error={projects.error}
-					onRetry={() => void projects.refetch()}
-				/>
-			</Screen>
-		);
-	}
-	const project = projects.data.find((row) => row.id === id);
-	if (!project) {
-		return (
-			<Screen topInset={false}>
-				<EmptyState
-					icon="folder"
-					title="Project not found"
-					message="You may no longer be on this project."
-				/>
-			</Screen>
-		);
-	}
-	return (
-		<>
-			<Stack.Screen options={{ title: project.name }} />
-			<Screen topInset={false}>
-				<Inset>
-					<Text variant="labelLarge" color={palette.onSurfaceVariant}>
-						{project.client.name}
-					</Text>
-					<Text variant="headlineSmall">{projectTitle(project)}</Text>
-					<TimeActions projectId={project.id} />
-				</Inset>
-			</Screen>
-		</>
-	);
-}
-
 /**
  * A project's page, as on the web: the mark, the name and what it is; the
  * whole history in four figures; then the entries of a period, in groups
@@ -226,7 +174,6 @@ export default function ProjectScreen() {
 	const access = useAccess();
 	const { project, ...list } = useProject(id);
 
-	if (!access.fullApi) return <PlainProject id={id} />;
 	if (list.isPending) {
 		return (
 			<Screen topInset={false}>

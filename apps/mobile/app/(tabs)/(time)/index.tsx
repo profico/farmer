@@ -8,10 +8,7 @@ import {
 } from "react";
 import { Platform, View } from "react-native";
 
-import {
-	useAccess,
-	useAssistantAvailable,
-} from "../../../src/api/capabilities";
+import { useAssistantAvailable } from "../../../src/api/capabilities";
 import {
 	useEntries,
 	useTimer,
@@ -129,7 +126,6 @@ function Timesheet({
 }) {
 	const router = useRouter();
 	const assistant = useAssistantAvailable();
-	const { fullApi, dayApi } = useAccess();
 	// The segment changes at once. The view follows in a render that can wait,
 	// so a heavy view does not hold the segment animation.
 	const [choice, setView] = useState<View3>("day");
@@ -140,8 +136,7 @@ function Timesheet({
 	// first. The param is then cleared, so the same link opens the day again
 	// after the person moves away from it.
 	const params = useLocalSearchParams<{ [DAY_PARAM]?: string }>();
-	const linkedDay =
-		dayApi && isDayKey(params[DAY_PARAM]) ? params[DAY_PARAM] : undefined;
+	const linkedDay = isDayKey(params[DAY_PARAM]) ? params[DAY_PARAM] : undefined;
 	const [openedDay, setOpenedDay] = useState<string | undefined>(undefined);
 	if (linkedDay !== openedDay) {
 		setOpenedDay(linkedDay);
@@ -241,28 +236,24 @@ function Timesheet({
 
 	const actions = [
 		{ id: "log", title: "Log time" },
-		...(fullApi
-			? [
-					view === "day"
-						? {
-								id: "copy-day",
-								title: "Copy the previous day",
-								disabled: copyDay.isPending,
-							}
-						: view === "week"
-							? {
-									id: "copy-week",
-									title: "Copy the previous week",
-									disabled: copyWeek.isPending,
-								}
-							: null,
-					view === "day" && dayApi
-						? { id: "assemble", title: "Assemble my day" }
-						: null,
-					{ id: "time-off", title: "Book time off" },
-					{ id: "sync", title: "Sync now", disabled: sync.isPending },
-				].flatMap((action) => (action ? [action] : []))
-			: []),
+		...[
+			view === "day"
+				? {
+						id: "copy-day",
+						title: "Copy the previous day",
+						disabled: copyDay.isPending,
+					}
+				: view === "week"
+					? {
+							id: "copy-week",
+							title: "Copy the previous week",
+							disabled: copyWeek.isPending,
+						}
+					: null,
+			view === "day" ? { id: "assemble", title: "Assemble my day" } : null,
+			{ id: "time-off", title: "Book time off" },
+			{ id: "sync", title: "Sync now", disabled: sync.isPending },
+		].flatMap((action) => (action ? [action] : [])),
 	];
 	const logTime = () =>
 		router.push({
@@ -369,8 +360,8 @@ function Timesheet({
 						entries={entries}
 						holidays={holidays.data}
 						onSelect={setSelected}
-						onCopyPreviousDay={fullApi ? copyPreviousDay : undefined}
-						onAssemble={dayApi ? assembleDay : undefined}
+						onCopyPreviousDay={copyPreviousDay}
+						onAssemble={assembleDay}
 						copying={copyDay.isPending}
 					/>
 				) : view === "week" ? (
@@ -382,7 +373,7 @@ function Timesheet({
 						holidays={holidays.data}
 						onSelect={setSelected}
 						onNotify={notify}
-						onCopyPreviousWeek={fullApi ? copyPreviousWeek : undefined}
+						onCopyPreviousWeek={copyPreviousWeek}
 						copying={copyWeek.isPending}
 					/>
 				) : (

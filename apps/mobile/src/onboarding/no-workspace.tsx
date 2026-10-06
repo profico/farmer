@@ -19,8 +19,7 @@ import { PendingList } from "./pending-list";
  * Server, in place of the tabs. As the web's page for this case, it shows
  * the invitations and the Harvest claims that wait for the person, else
  * how to get an invitation. A join opens the workspace, and the tabs come
- * back. A Server before API version 3 has none of these routes, so there
- * the screen only says to ask for an invitation.
+ * back.
  */
 export function NoWorkspace({ email }: { email: string }) {
 	const router = useRouter();
@@ -29,12 +28,11 @@ export function NoWorkspace({ email }: { email: string }) {
 	const { origin } = useSignedIn();
 	const { signOut } = useSession();
 	const meta = useMeta();
-	const { setupApi, workspaceCreation } = useServerFeatures();
+	const { workspaceCreation } = useServerFeatures();
 	const invitations = useMyInvitations();
 	const claims = useMyImportClaims();
 
-	const loading =
-		meta.isPending || (setupApi && (invitations.isPending || claims.isPending));
+	const loading = meta.isPending || invitations.isPending || claims.isPending;
 	const pending =
 		(invitations.data?.length ?? 0) + (claims.data?.length ?? 0) > 0;
 

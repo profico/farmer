@@ -296,7 +296,7 @@ export default function ProjectRepositoriesScreen() {
 	const { project, ...list } = useProject(id);
 
 	const content = () => {
-		if (access.ready && !(access.isAdmin && access.setupApi)) {
+		if (access.ready && !access.isAdmin) {
 			return (
 				<Screen topInset={false}>
 					<EmptyState

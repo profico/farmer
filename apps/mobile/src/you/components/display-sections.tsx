@@ -21,7 +21,7 @@ const SCHEMES: { value: SchemePref; label: string }[] = [
 /**
  * How the app looks on this phone: the sections of Preferences, Display,
  * as on the web. The choices stay on the phone (`src/ui/display-prefs.ts`)
- * and apply at once. They need no server, so they work on any API version.
+ * and apply at once. They need no server.
  */
 export function DisplaySections() {
 	const prefs = useDisplayPrefs();

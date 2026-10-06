@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 
-import { useAccess } from "../src/api/capabilities";
 import { useStartTimer } from "../src/api/queries";
 import { useTimerSettings } from "../src/api/time";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
@@ -20,7 +19,6 @@ export default function StartTimerSheet() {
 	const palette = usePalette();
 	const router = useRouter();
 	const params = useLocalSearchParams<{ projectId?: string }>();
-	const { fullApi } = useAccess();
 	const start = useStartTimer();
 	const settings = useTimerSettings();
 	const [projectId, setProjectId] = useState<string | null>(
@@ -75,24 +73,21 @@ export default function StartTimerSheet() {
 				placeholder="What are you working on?"
 				multiline
 			/>
-			{/* The head start came with API version 2, as the timer limit did. */}
-			{fullApi ? (
-				<FormSection
-					label="Timer starts from"
-					loose
-					footer={
-						tooLong ??
-						"Time you worked before you started the timer. It counts towards your timer limit."
-					}
-					footerError={tooLong !== null}
-				>
-					<HeadStartStepper
-						seconds={headStart}
-						onChange={setHeadStart}
-						limit={limit}
-					/>
-				</FormSection>
-			) : null}
+			<FormSection
+				label="Timer starts from"
+				loose
+				footer={
+					tooLong ??
+					"Time you worked before you started the timer. It counts towards your timer limit."
+				}
+				footerError={tooLong !== null}
+			>
+				<HeadStartStepper
+					seconds={headStart}
+					onChange={setHeadStart}
+					limit={limit}
+				/>
+			</FormSection>
 			<Text variant="bodySmall" color={palette.onSurfaceVariant}>
 				Nothing is logged until you stop the timer and save the time.
 			</Text>

@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 
-import { useServerFeatures } from "../../src/api/capabilities";
 import { useMyImportClaims, useMyInvitations } from "../../src/api/onboarding";
 import { PendingList } from "../../src/onboarding/pending-list";
 import { useSignedIn } from "../../src/session/session";
@@ -18,20 +17,10 @@ export default function InvitationsScreen() {
 	const router = useRouter();
 	const queryClient = useQueryClient();
 	const { origin } = useSignedIn();
-	const { setupApi } = useServerFeatures();
 	const invitations = useMyInvitations();
 	const claims = useMyImportClaims();
 
 	const content = () => {
-		if (!setupApi) {
-			return (
-				<EmptyState
-					icon="invitation"
-					title="Invitations"
-					message="This server does not show invitations in the app. Open Farmer on the web."
-				/>
-			);
-		}
 		if (invitations.isPending || claims.isPending) {
 			return <ListSkeleton rows={2} />;
 		}

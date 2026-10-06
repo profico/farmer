@@ -10,7 +10,6 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 
-import { useAccess } from "./capabilities";
 import { scope, useWorkspace, type Workspace } from "./queries";
 
 /**
@@ -28,11 +27,9 @@ const settingsKey = (w: Workspace) => [...assistantKey(w), "settings"] as const;
 
 export const useAssistantThreads = () => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: threadsKey(w),
 		queryFn: () => w.client.listAssistantThreads(w.slug),
-		enabled: fullApi,
 	});
 };
 

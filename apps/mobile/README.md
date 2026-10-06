@@ -34,13 +34,10 @@ Rules:
   screen of a person without a workspace open directly goes in the root
   stack (`app/new-workspace.tsx`), with the sheet options there.
 - Show an entry only when the person can use it. Use `useAccess()`
-  (`src/api/capabilities.ts`): `fullApi` is false for a Server before API
-  version 2, and the capabilities come from `whoami`. `dayApi` and
-  `setupApi` are false before API version 3 (`V3_API_VERSION`): the helpers
-  of the day, the repositories, the uploads, the organization policy, the
-  holiday switch and the invitations. The hooks of the day are in
-  `src/api/day.ts`. Without a workspace, use `useServerFeatures()`, which
-  reads only `/meta`.
+  (`src/api/capabilities.ts`): the capabilities come from `whoami`, and
+  `uploads` and `workspaceCreation` come from `/meta`. The hooks of the day
+  are in `src/api/day.ts`. Without a workspace, use `useServerFeatures()`,
+  which reads only `/meta`.
 - Use the settings-list kit (`src/ui/settings-list.tsx`) for a list of
   settings: `SettingsSection`, `SettingsLink`, `SettingsChoice`,
   `SettingsSwitch` and `SettingsValue`. iOS draws the grouped lists of the

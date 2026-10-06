@@ -42,9 +42,6 @@ import { SPACE } from "../src/ui/type";
 
 const IOS = Platform.OS === "ios";
 
-/** The API version whose `/meta` lists the sign-in methods. */
-const METHODS_API_VERSION = 2;
-
 const openApproval = (url: string) =>
 	WebBrowser.openBrowserAsync(url, {
 		// Android: a Custom Tab in the app's own task, so Back returns here.
@@ -53,11 +50,10 @@ const openApproval = (url: string) =>
 	}).catch(() => undefined);
 
 /**
- * Sign-in. A server of API version 2 lists its methods in `/meta`: one
- * button for each provider, and the email and password form when it offers
- * one (ADR 0005). Two fallbacks stay for every server: the device flow in
- * the browser, as `farmer login` does, and an API token from Preferences.
- * A server before version 2 gets only the two fallbacks, as before.
+ * Sign-in. The server lists its methods in `/meta`: one button for each
+ * provider, and the email and password form when it offers one (ADR 0005).
+ * Two fallbacks stay for every server: the device flow in the browser, as
+ * `farmer login` does, and an API token from Preferences.
  */
 export default function SignInScreen() {
 	const palette = usePalette();
@@ -107,11 +103,8 @@ export default function SignInScreen() {
 	}
 	const transport = transportFor(server);
 
-	const version = meta.data?.apiVersion ?? 1;
-	const providers: SignInMethod[] =
-		version >= METHODS_API_VERSION ? (meta.data?.signInMethods ?? []) : [];
-	const passwordForm =
-		version >= METHODS_API_VERSION && meta.data?.passwordSignIn === true;
+	const providers: SignInMethod[] = meta.data?.signInMethods ?? [];
+	const passwordForm = meta.data?.passwordSignIn === true;
 	const hasMethods = providers.length > 0 || passwordForm;
 
 	/** Checks a token with `GET /me`, then keeps it. */

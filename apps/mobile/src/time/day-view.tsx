@@ -11,7 +11,6 @@ import Reanimated, {
 	ReduceMotion,
 } from "react-native-reanimated";
 
-import { useAccess } from "../api/capabilities";
 import {
 	useProjects,
 	useStartTimer,
@@ -90,7 +89,6 @@ export function DayView({
 	const android = Platform.OS === "android";
 	const router = useRouter();
 	const { reduceMotion } = useMotionPreference();
-	const { fullApi } = useAccess();
 	const tracking = useTracking();
 	const workingHours = useWorkingHours();
 	const timer = useTimer();
@@ -134,7 +132,7 @@ export function DayView({
 					selected={selected}
 					today={today}
 					totals={totals}
-					holidays={fullApi ? holidays : undefined}
+					holidays={holidays}
 					marks={marks}
 					targets={targets}
 					onSelect={onSelect}

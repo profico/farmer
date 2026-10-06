@@ -1,9 +1,9 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Linking, View } from "react-native";
+import { View } from "react-native";
 
 import { useAccess } from "../../src/api/capabilities";
-import { useWhoami, useWorkspace } from "../../src/api/queries";
+import { useWhoami } from "../../src/api/queries";
 import { useHolidays, useSetHolidayDisabled } from "../../src/api/you";
 import {
 	EmptyState,
@@ -26,22 +26,20 @@ import { dayMonth, weekdayOfKey } from "../../src/you/format";
 /**
  * The public holidays of a year. They are left out of every target. An
  * admin turns off a holiday that the company does not observe with the
- * switch of its row, as on the web. A Server before API version 3 has no
- * route for the switch, so there the admin gets a link to the web.
+ * switch of its row, as on the web.
  */
 export default function HolidaysScreen() {
 	const palette = usePalette();
 	const whoami = useWhoami();
 	const access = useAccess();
 	const router = useRouter();
-	const { origin, slug } = useWorkspace();
 	const today = whoami.data?.today ?? "";
 	const currentYear = today ? Number(today.slice(0, 4)) : 0;
 	const [chosen, setChosen] = useState<number | null>(null);
 	const year = chosen ?? currentYear;
 	const holidays = useHolidays(year);
 	const toggle = useSetHolidayDisabled(year);
-	const canSwitch = access.isAdmin && access.setupApi;
+	const canSwitch = access.isAdmin;
 
 	return (
 		<YouScreen
@@ -140,19 +138,6 @@ export default function HolidaysScreen() {
 					})}
 				</SettingsSection>
 			)}
-			{access.isAdmin && !access.setupApi ? (
-				<SettingsSection footer="Turn off a holiday your company does not observe. You do this in Farmer on the web.">
-					<SettingsLink
-						icon="web"
-						tint="blue"
-						title="Change on the web"
-						external
-						onPress={() =>
-							void Linking.openURL(`${origin}/${slug}/settings/holidays`)
-						}
-					/>
-				</SettingsSection>
-			) : null}
 			<SettingsSection
 				title="Related"
 				footer="A holiday is not a working day in your schedule. Time off you book yourself is under Absences."

@@ -33,7 +33,7 @@ type Entry = {
 const always = () => true;
 
 /** The pages that are not settings. On the web, each is its own page, not a
- *  row of the settings hub. They need API version 2. */
+ *  row of the settings hub. */
 const PAGES: (Entry & {
 	allowed: (access: Access) => boolean;
 	/** A row that shows in a season only. */
@@ -66,16 +66,13 @@ const PAGES: (Entry & {
 ];
 
 /** The person's own settings, in the groups and the order of the web's
- *  settings hub (`settings-nav.tsx`). They need API version 2, except a
- *  `local` one. Preferences is `local` because its Display part stays on
- *  the phone, as on the web. Without version 2 it shows only that part. */
-const ACCOUNT: (Entry & { local?: true })[] = [
+ *  settings hub (`settings-nav.tsx`). */
+const ACCOUNT: Entry[] = [
 	{
 		title: "Preferences",
 		icon: "preferences",
 		tint: "gray",
 		href: "/you/preferences",
-		local: true,
 	},
 	{
 		title: "My schedule",
@@ -178,7 +175,7 @@ const WORKSPACE: ((Entry | WebEntry) & {
 		href: "/you/holidays",
 		// Everyone reads the holidays of the workspace, as on the web. An
 		// admin also turns one off.
-		allowed: (access) => access.fullApi,
+		allowed: always,
 	},
 ];
 
@@ -186,8 +183,7 @@ const WORKSPACE: ((Entry | WebEntry) & {
  * The menu of every screen that is not a tab, the workspace switcher with
  * the invitations that wait and a new workspace, the account, the server
  * and sign-out. A section shows only what the person
- * may use: "Account" needs a Server with API version 2, and each row of
- * "Workspace" needs its capability from `whoami`.
+ * may use: each row of "Workspace" needs its capability from `whoami`.
  */
 export default function MoreScreen() {
 	const router = useRouter();
@@ -199,12 +195,9 @@ export default function MoreScreen() {
 	const pendingCount = usePendingCount();
 	const { origin, slug } = useWorkspace();
 	const { setWorkspace, signOut } = useSession();
-	const pageRows = access.fullApi
-		? PAGES.filter(
-				(entry) => entry.allowed(access) && (entry.season?.(today) ?? true),
-			)
-		: [];
-	const accountRows = ACCOUNT.filter((entry) => access.fullApi || entry.local);
+	const pageRows = PAGES.filter(
+		(entry) => entry.allowed(access) && (entry.season?.(today) ?? true),
+	);
 	const workspaceRows = WORKSPACE.filter((entry) => entry.allowed(access));
 
 	const confirmSignOut = () =>
@@ -245,28 +238,26 @@ export default function MoreScreen() {
 					))}
 				</SettingsSection>
 			) : null}
-			{me.data || accountRows.length > 0 ? (
-				<SettingsSection title="Account">
-					{me.data ? (
-						<SettingsValue
-							icon="person"
-							tint="gray"
-							title={me.data.user.name}
-							subtitle={me.data.user.email}
-							value=""
-						/>
-					) : null}
-					{accountRows.map((entry) => (
-						<SettingsLink
-							key={entry.title}
-							icon={entry.icon}
-							tint={entry.tint}
-							title={entry.title}
-							onPress={() => router.push(entry.href)}
-						/>
-					))}
-				</SettingsSection>
-			) : null}
+			<SettingsSection title="Account">
+				{me.data ? (
+					<SettingsValue
+						icon="person"
+						tint="gray"
+						title={me.data.user.name}
+						subtitle={me.data.user.email}
+						value=""
+					/>
+				) : null}
+				{ACCOUNT.map((entry) => (
+					<SettingsLink
+						key={entry.title}
+						icon={entry.icon}
+						tint={entry.tint}
+						title={entry.title}
+						onPress={() => router.push(entry.href)}
+					/>
+				))}
+			</SettingsSection>
 			{workspaceRows.length > 0 ? (
 				<SettingsSection title="Workspace">
 					{workspaceRows.map((entry) =>

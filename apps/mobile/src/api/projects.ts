@@ -14,14 +14,13 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 
-import { useAccess } from "./capabilities";
 import { scope, type Workspace, useWorkspace } from "./queries";
 
 /**
  * The queries of the project screens: the list with its figures, one
- * project, its overview and its team. All of them need API version 2, so
- * they wait for `fullApi`. A query that only a lead may read also waits
- * for the access of the screen (`enabled`), so a member gets no refusal.
+ * project, its overview and its team. A query that only a lead may read
+ * waits for the access of the screen (`enabled`), so a member gets no
+ * refusal.
  */
 const MINUTE = 60_000;
 
@@ -36,11 +35,9 @@ const projectKey = (w: Workspace, id: string) =>
  *  admin gets every project, archived ones too. */
 export const useProjectList = () => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: listKey(w),
 		queryFn: () => w.client.listProjects(w.slug),
-		enabled: fullApi,
 		staleTime: MINUTE,
 	});
 };
@@ -59,33 +56,30 @@ export const useProject = (id: string) => {
 
 export const useProjectOverview = (id: string, enabled: boolean) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...projectKey(w, id), "overview"],
 		queryFn: () => w.client.getProjectOverview(w.slug, id),
-		enabled: fullApi && enabled,
+		enabled: enabled,
 		staleTime: MINUTE,
 	});
 };
 
 export const useProjectMembers = (id: string, enabled: boolean) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...projectKey(w, id), "members"],
 		queryFn: () => w.client.listProjectMembers(w.slug, id),
-		enabled: fullApi && enabled,
+		enabled: enabled,
 		staleTime: MINUTE,
 	});
 };
 
 export const useAssignable = (id: string, enabled: boolean) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...projectKey(w, id), "assignable"],
 		queryFn: () => w.client.listAssignable(w.slug, id),
-		enabled: fullApi && enabled,
+		enabled: enabled,
 		staleTime: MINUTE,
 	});
 };
@@ -93,11 +87,10 @@ export const useAssignable = (id: string, enabled: boolean) => {
 /** The active clients, for the client of a project. */
 export const useActiveClients = (enabled = true) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: [...scope(w), "clients"],
 		queryFn: () => w.client.listClients(w.slug),
-		enabled: fullApi && enabled,
+		enabled: enabled,
 		staleTime: 5 * MINUTE,
 	});
 };
@@ -181,7 +174,7 @@ export const useChangeTeam = (id: string) => {
 	});
 };
 
-// The GitHub repositories of a project. Admin only, API version 3.
+// The GitHub repositories of a project. Admin only.
 
 const repositoriesKey = (w: Workspace, id: string) =>
 	[...projectKey(w, id), "repositories"] as const;
@@ -193,11 +186,10 @@ const availableKey = (w: Workspace) =>
 
 export const useProjectRepositories = (id: string, enabled: boolean) => {
 	const w = useWorkspace();
-	const { setupApi } = useAccess();
 	return useQuery({
 		queryKey: repositoriesKey(w, id),
 		queryFn: () => w.client.listProjectRepositories(w.slug, id),
-		enabled: setupApi && enabled,
+		enabled: enabled,
 		staleTime: MINUTE,
 	});
 };
@@ -210,11 +202,10 @@ export const useProjectRepositories = (id: string, enabled: boolean) => {
  */
 export const useAvailableRepositories = (enabled: boolean) => {
 	const w = useWorkspace();
-	const { setupApi } = useAccess();
 	return useQuery({
 		queryKey: availableKey(w),
 		queryFn: () => w.client.listAvailableRepositories(w.slug),
-		enabled: setupApi && enabled,
+		enabled: enabled,
 		staleTime: 5 * MINUTE,
 	});
 };

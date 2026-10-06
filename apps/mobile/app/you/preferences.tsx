@@ -26,26 +26,12 @@ import { ListSkeleton, YouScreen } from "../../src/you/components/you-screen";
 import { selectableTasks } from "../../src/you/tasks";
 
 /**
- * The person's own preferences: how the app looks on this phone, then, with
- * API version 2, the tasks they use, the reminders and the filing rules.
- * Display comes first, as on the web. It needs no server, so a server
- * without version 2 shows only Display.
+ * The person's own preferences: how the app looks on this phone, then the
+ * tasks they use, the reminders and the filing rules. Display comes first,
+ * as on the web. The sign-in methods change in the browser, so their row
+ * opens the web page.
  */
 export default function PreferencesScreen() {
-	const access = useAccess();
-	if (!access.fullApi) {
-		return (
-			<YouScreen title="Preferences">
-				<DisplaySections />
-			</YouScreen>
-		);
-	}
-	return <ServerPreferences />;
-}
-
-/** The preferences that the server keeps. The sign-in methods change in the
- *  browser, so their row opens the web page. */
-function ServerPreferences() {
 	const router = useRouter();
 	const access = useAccess();
 	const { origin, slug } = useWorkspace();

@@ -20,14 +20,12 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 
-import { useAccess, useMeta } from "./capabilities";
+import { useMeta } from "./capabilities";
 import { refreshTime, scope, type Workspace, useWorkspace } from "./queries";
 import { recurringBlocksKey, timerSettingsKey } from "./time";
 
 // The queries and the writes of the "You" screens: the person's own
-// settings and records. Each key starts with `scope(w)`. Each query waits
-// for API version 2, because a link can open a screen past the gate in
-// More.
+// settings and records. Each key starts with `scope(w)`.
 
 const MINUTE = 60_000;
 
@@ -91,11 +89,9 @@ export const usePushRelayEnabled = (): boolean =>
 
 export const useNotificationSettings = () => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).notifications,
 		queryFn: () => w.client.getNotificationSettings(w.slug),
-		enabled: fullApi,
 	});
 };
 
@@ -118,11 +114,9 @@ export const useUpdateNotificationSettings = () => {
 
 export const useHiddenTasks = () => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).hiddenTasks,
 		queryFn: () => w.client.listHiddenTasks(w.slug),
-		enabled: fullApi,
 	});
 };
 
@@ -166,11 +160,9 @@ export const useSetTaskHidden = () => {
 
 export const useFilingRules = () => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).filingRules,
 		queryFn: () => w.client.listFilingRules(w.slug),
-		enabled: fullApi,
 	});
 };
 
@@ -202,11 +194,9 @@ export const useDeleteFilingRule = () => {
 
 export const useWorkingHours = () => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).workingHours,
 		queryFn: () => w.client.listWorkingHours(w.slug),
-		enabled: fullApi,
 	});
 };
 
@@ -263,11 +253,9 @@ export const useUpdateTimerSettings = () => {
 
 export const useRecurringBlocks = () => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).recurringBlocks,
 		queryFn: () => w.client.listRecurringBlocks(w.slug),
-		enabled: fullApi,
 	});
 };
 
@@ -346,11 +334,9 @@ export const useEnableBreakBlock = () => {
  */
 export const useIntegrations = () => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).integrations,
 		queryFn: () => w.client.getIntegrations(w.slug),
-		enabled: fullApi,
 		staleTime: 0,
 	});
 };
@@ -395,19 +381,18 @@ export const useDisconnect = () => {
 
 export const useHolidays = (year: number) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).holidays(year),
 		queryFn: () => w.client.listHolidays(w.slug, { year }),
 		// The year comes from `whoami`; 0 is a year not known yet.
-		enabled: fullApi && year > 0,
+		enabled: year > 0,
 		staleTime: 60 * MINUTE,
 	});
 };
 
 /**
  * Makes a public holiday a working day (`disabled: true`), or a holiday
- * again. Admin only, API version 3. The switch moves at once in the cached
+ * again. Admin only. The switch moves at once in the cached
  * year, as on the web, and goes back if the server refuses it. Then every
  * reader of the calendar reads again: the holidays of the Time tab, the
  * targets and the reports.
@@ -455,11 +440,10 @@ export const useSetHolidayDisabled = (year: number) => {
 
 export const useAbsences = (year: number, month: number) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).absenceMonth(year, month),
 		queryFn: () => w.client.listAbsences(w.slug, { year, month }),
-		enabled: fullApi && year > 0,
+		enabled: year > 0,
 	});
 };
 
@@ -495,11 +479,10 @@ export const useDeleteAbsence = () => {
 
 export const useRewind = (year: number, enabled: boolean) => {
 	const w = useWorkspace();
-	const { fullApi } = useAccess();
 	return useQuery({
 		queryKey: keys(w).rewind(year),
 		queryFn: () => w.client.getRewind(w.slug, { year }),
-		enabled: fullApi && enabled,
+		enabled: enabled,
 		staleTime: 5 * MINUTE,
 	});
 };
