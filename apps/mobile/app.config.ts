@@ -10,6 +10,8 @@ import {
 	withDangerousMod,
 } from "expo/config-plugins";
 
+import { withPush } from "./plugins/with-push.js";
+
 // The window behind every screen, before the app draws and during a screen
 // transition, and the background of the splash: the ground of the farmer
 // palette (`src/ui/farmer-theme.ts`, the web's `--ground`). At runtime the
@@ -152,4 +154,7 @@ const config: ExpoConfig = {
 	},
 };
 
-export default withNotificationIcon(withDarkWindowBackground(config));
+// `withPush` adds the one `expo-notifications` entry, with the brand's icon
+// (`assets/notification-icon.png`). `withNotificationIcon` writes the drawn
+// sizes of the same icon under the same resource names.
+export default withPush(withNotificationIcon(withDarkWindowBackground(config)));

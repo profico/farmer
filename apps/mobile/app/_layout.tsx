@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 
 import { DataProvider } from "../src/api/data-provider";
+import { PushBridge } from "../src/push/push-bridge";
 import { SessionProvider, useSession } from "../src/session/session";
 import { useMotionPreference } from "../src/ui/motion";
 import { usePalette } from "../src/ui/theme";
@@ -69,6 +70,7 @@ export default function RootLayout() {
 		<SessionProvider>
 			<DataProvider>
 				<StatusBar style="auto" />
+				<PushBridge />
 				<Navigator />
 			</DataProvider>
 		</SessionProvider>
