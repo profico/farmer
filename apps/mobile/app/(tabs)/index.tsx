@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 
 import { useAccess } from "../../src/api/capabilities";
@@ -35,6 +35,7 @@ import {
 	copyWeekBody,
 	copyWeekMessage,
 } from "../../src/time/copy";
+import { DAY_PARAM, isDayKey } from "../../src/time/day-link";
 import { DayView } from "../../src/time/day-view";
 import { committed } from "../../src/time/haptics";
 import { MonthView } from "../../src/time/month-view";
@@ -112,9 +113,27 @@ function Timesheet({
 	onRefreshToday: () => void;
 }) {
 	const router = useRouter();
-	const { fullApi } = useAccess();
+	const { fullApi, dayApi } = useAccess();
 	const [view, setView] = useState<View3>("day");
 	const [selected, setSelected] = useState(today);
+	// A link to a day (the assistant cites days with one) opens that day.
+	// The state moves while rendering, so the screen never draws the old day
+	// first. The param is then cleared, so the same link opens the day again
+	// after the person moves away from it.
+	const params = useLocalSearchParams<{ [DAY_PARAM]?: string }>();
+	const linkedDay =
+		dayApi && isDayKey(params[DAY_PARAM]) ? params[DAY_PARAM] : undefined;
+	const [openedDay, setOpenedDay] = useState<string | undefined>(undefined);
+	if (linkedDay !== openedDay) {
+		setOpenedDay(linkedDay);
+		if (linkedDay) {
+			setSelected(linkedDay);
+			setView("day");
+		}
+	}
+	useEffect(() => {
+		if (linkedDay) router.setParams({ [DAY_PARAM]: undefined });
+	}, [linkedDay, router]);
 	const [notice, setNotice] = useState<Notice | null>(null);
 	const hideNotice = useCallback(() => setNotice(null), []);
 	const notify = useCallback(

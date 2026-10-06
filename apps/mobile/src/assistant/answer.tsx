@@ -10,6 +10,7 @@ import {
 	View,
 } from "react-native";
 
+import { timeDayRoute } from "../time/day-link";
 import { Skeleton, Text } from "../ui/components";
 import type { Palette } from "../ui/palette";
 import { usePalette } from "../ui/theme";
@@ -75,9 +76,7 @@ function Inline({ text, style }: { text: string; style?: TextStyle }) {
 									color: palette.primary,
 									textDecorationLine: "underline",
 								}}
-								onPress={() =>
-									router.navigate({ pathname: "/", params: { date: part.day } })
-								}
+								onPress={() => router.navigate(timeDayRoute(part.day))}
 							>
 								{part.label}
 							</RNText>
