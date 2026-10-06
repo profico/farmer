@@ -13,6 +13,7 @@ export function FormRow({
 	accessibilityLabel,
 	disabled,
 	grouped = true,
+	selected,
 	tall,
 }: {
 	children: ReactNode;
@@ -21,6 +22,8 @@ export function FormRow({
 	disabled?: boolean;
 	/** False when a control in the row must stay reachable on its own. */
 	grouped?: boolean;
+	/** The row is the chosen option of a choice. */
+	selected?: boolean;
 	/** The row holds a block of text, so it grows with it. */
 	tall?: boolean;
 }) {
@@ -31,7 +34,9 @@ export function FormRow({
 			accessible={onPress ? true : undefined}
 			accessibilityRole={onPress ? "button" : undefined}
 			accessibilityLabel={grouped ? accessibilityLabel : undefined}
-			accessibilityState={onPress ? { disabled: Boolean(disabled) } : undefined}
+			accessibilityState={
+				onPress ? { disabled: Boolean(disabled), selected } : undefined
+			}
 			onPress={onPress}
 			disabled={!onPress || disabled}
 			style={({ pressed }) => ({

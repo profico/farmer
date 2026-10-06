@@ -10,6 +10,17 @@ import { SPACE, TYPE } from "../ui/type";
 
 const HEIGHT = 56;
 
+export type PickerFieldProps = {
+	label: string;
+	title: string;
+	subtitle?: string;
+	/** A mark before the title, for example the mark of a project. */
+	leading?: ReactNode;
+	/** The title is a placeholder, not a value. */
+	empty?: boolean;
+	onPress: () => void;
+};
+
 /**
  * A select field. On Android it is the outlined field of Material 3 with the
  * label on the outline. On iOS the label sits above the box. A tap opens the
@@ -22,16 +33,7 @@ export function PickerField({
 	leading,
 	empty,
 	onPress,
-}: {
-	label: string;
-	title: string;
-	subtitle?: string;
-	/** A mark before the title, for example the mark of a project. */
-	leading?: ReactNode;
-	/** The title is a placeholder, not a value. */
-	empty?: boolean;
-	onPress: () => void;
-}) {
+}: PickerFieldProps) {
 	const palette = usePalette();
 	const surface = useContext(SurfaceColor);
 	const android = Platform.OS === "android";

@@ -11,6 +11,7 @@ export function FormRow({
 	accessibilityLabel?: string;
 	disabled?: boolean;
 	grouped?: boolean;
+	selected?: boolean;
 	tall?: boolean;
 }) {
 	return <View style={{ flexDirection: "row" }}>{children}</View>;

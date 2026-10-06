@@ -11,6 +11,8 @@ import type { PickerSection } from "./picker-model";
 export type PickerScreenProps<Item> = {
 	visible: boolean;
 	onClose: () => void;
+	/** The name of the field, for the title of a selector that is a page. */
+	title: string;
 	/** The name of the field, read out for the search input. */
 	label: string;
 	placeholder: string;

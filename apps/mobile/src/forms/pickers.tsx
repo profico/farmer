@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { useProjects, useTasks } from "../api/queries";
 import { useHiddenTasks } from "../api/you";
 import { ProjectMark } from "../projects/components/project-mark";
-import { ErrorState, ListRow, Skeleton } from "../ui/components";
+import { ErrorState, Skeleton } from "../ui/components";
 import { Icon } from "../ui/icon";
 import { usePalette } from "../ui/theme";
 import { PickerField } from "./picker-field";
@@ -15,6 +15,7 @@ import {
 	taskSections,
 	type ProjectItem,
 } from "./picker-model";
+import { PickerRow } from "./picker-row";
 import { PickerScreen } from "./picker-screen";
 
 /** The check at the end of the chosen row. */
@@ -59,7 +60,7 @@ export function ProjectPicker({
 	const renderItem = (item: ProjectItem) => {
 		if (item.kind === "none") {
 			return (
-				<ListRow
+				<PickerRow
 					title="No project"
 					subtitle="File it later"
 					selected={value === null}
@@ -70,7 +71,7 @@ export function ProjectPicker({
 		}
 		const { project } = item;
 		return (
-			<ListRow
+			<PickerRow
 				leading={
 					<ProjectMark icon={project.icon ?? null} name={project.name} />
 				}
@@ -102,6 +103,7 @@ export function ProjectPicker({
 			<PickerScreen
 				visible={open}
 				onClose={close}
+				title="Project"
 				label="Search projects"
 				placeholder="Search projects"
 				search={search}
@@ -168,6 +170,7 @@ export function TaskPicker({
 			<PickerScreen
 				visible={open}
 				onClose={close}
+				title="Task"
 				label="Search tasks"
 				placeholder="Search tasks"
 				search={search}
@@ -175,7 +178,7 @@ export function TaskPicker({
 				sections={taskSections(offered, search)}
 				keyExtractor={(task) => task.id}
 				renderItem={(task) => (
-					<ListRow
+					<PickerRow
 						title={task.name}
 						selected={task.id === value}
 						onPress={() => {
