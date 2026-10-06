@@ -5,6 +5,7 @@ import type { Rewind } from "@farmer/api-client";
 
 import {
 	defaultRewindYear,
+	featuredRewindYear,
 	isRewindOpen,
 	personaFor,
 	shareText,
@@ -50,6 +51,16 @@ describe("when a Rewind opens", () => {
 		expect(isRewindOpen(2026, "2026-11-30")).toBe(false);
 		expect(isRewindOpen(2026, "2026-12-01")).toBe(true);
 		expect(isRewindOpen(2025, "2026-06-01")).toBe(true);
+	});
+
+	test("the More row shows in December and January only", () => {
+		expect(featuredRewindYear("2026-12-01")).toBe(2026);
+		expect(featuredRewindYear("2027-01-31")).toBe(2026);
+		expect(featuredRewindYear("2027-02-01")).toBeNull();
+		expect(featuredRewindYear("2026-11-30")).toBeNull();
+		expect(featuredRewindYear("2026-10-06")).toBeNull();
+		// Before `whoami` arrives, there is no date and no row.
+		expect(featuredRewindYear("")).toBeNull();
 	});
 
 	test("the default year follows the season", () => {

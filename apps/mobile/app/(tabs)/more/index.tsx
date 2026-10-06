@@ -7,7 +7,7 @@ import {
 	useAssistantAvailable,
 } from "../../../src/api/capabilities";
 import { usePendingCount } from "../../../src/api/onboarding";
-import { useMe, useWorkspace } from "../../../src/api/queries";
+import { useMe, useWhoami, useWorkspace } from "../../../src/api/queries";
 import { APP_VERSION } from "../../../src/config";
 import { useSession } from "../../../src/session/session";
 import { ErrorState, Skeleton } from "../../../src/ui/components";
@@ -21,6 +21,7 @@ import {
 	SettingsSection,
 	SettingsValue,
 } from "../../../src/ui/settings-list";
+import { featuredRewindYear } from "../../../src/you/rewind/story";
 
 type Entry = {
 	title: string;
@@ -33,7 +34,11 @@ const always = () => true;
 
 /** The pages that are not settings. On the web, each is its own page, not a
  *  row of the settings hub. They need API version 2. */
-const PAGES: (Entry & { allowed: (access: Access) => boolean })[] = [
+const PAGES: (Entry & {
+	allowed: (access: Access) => boolean;
+	/** A row that shows in a season only. */
+	season?: (today: string) => boolean;
+})[] = [
 	{
 		title: "Absences",
 		icon: "absence",
@@ -47,6 +52,9 @@ const PAGES: (Entry & { allowed: (access: Access) => boolean })[] = [
 		tint: "purple",
 		href: "/you/rewind",
 		allowed: always,
+		// The web shows Rewind in December and January only. The route still
+		// opens by a link, as on the web.
+		season: (today) => featuredRewindYear(today) !== null,
 	},
 	{
 		title: "Audit log",
@@ -184,13 +192,17 @@ const WORKSPACE: ((Entry | WebEntry) & {
 export default function MoreScreen() {
 	const router = useRouter();
 	const me = useMe();
+	// Unknown until `whoami` arrives: a seasonal row stays hidden until then.
+	const today = useWhoami().data?.today ?? "";
 	const access = useAccess();
 	const assistant = useAssistantAvailable();
 	const pendingCount = usePendingCount();
 	const { origin, slug } = useWorkspace();
 	const { setWorkspace, signOut } = useSession();
 	const pageRows = access.fullApi
-		? PAGES.filter((entry) => entry.allowed(access))
+		? PAGES.filter(
+				(entry) => entry.allowed(access) && (entry.season?.(today) ?? true),
+			)
 		: [];
 	const accountRows = ACCOUNT.filter((entry) => access.fullApi || entry.local);
 	const workspaceRows = WORKSPACE.filter((entry) => entry.allowed(access));
