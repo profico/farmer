@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 import { DataProvider } from "../src/api/data-provider";
 import { PushBridge } from "../src/push/push-bridge";
 import { SessionProvider, useSession } from "../src/session/session";
+import { reapplyScheme } from "../src/ui/display-prefs";
 import { useMotionPreference } from "../src/ui/motion";
 import { usePalette } from "../src/ui/theme";
 
@@ -20,6 +21,10 @@ function Navigator() {
 	useEffect(() => {
 		void SystemUI.setBackgroundColorAsync(palette.background);
 	}, [palette.background]);
+
+	// A new activity starts in the night mode of the config. The chosen
+	// light or dark mode goes back to the native side here.
+	useEffect(reapplyScheme, []);
 
 	// Nothing is drawn until the stored session is read, so a signed-in
 	// person never sees the Server screen flash past.

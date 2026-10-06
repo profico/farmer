@@ -56,6 +56,15 @@ const applyScheme = (scheme: SchemePref) =>
 let current = read();
 applyScheme(current.scheme);
 
+/**
+ * Applies the chosen scheme again. Call it when the app draws its root.
+ * On Android, `expo-system-ui` sets the night mode of the config ("automatic")
+ * each time the activity starts. After the back button closes the app, the
+ * JavaScript stays loaded and this module does not run again, so the native
+ * dialogs then followed the phone and not the choice.
+ */
+export const reapplyScheme = () => applyScheme(current.scheme);
+
 const listeners = new Set<() => void>();
 
 const subscribe = (listener: () => void) => {
