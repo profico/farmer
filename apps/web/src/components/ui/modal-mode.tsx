@@ -51,22 +51,31 @@ export function useModalModeContext(): ModalMode {
 }
 
 /**
- * The mode for one root, locked from the render that opens it until its exit
- * animation ends. The two modes are two different Base UI roots, so a change
- * of mode while open would unmount the form and lose what the person typed.
- * While the root is closed, the mode follows the media query.
- *
- * The returned `onOpenChangeComplete` ends the lock after the exit. A late
- * call, after the root opened again, does nothing.
+ * The mode a root takes when it opens. A nested root takes the mode of its
+ * parent. A root with no parent takes the mode that the media query gives.
  */
-export function useModalMode(
-	open: boolean,
-	onOpenChangeComplete: ((open: boolean) => void) | undefined,
-) {
+export function modeOnOpen(
+	parent: ModalMode | null,
+	current: ModalMode,
+): ModalMode {
+	return parent ?? current;
+}
+
+/**
+ * The mode for one root. The root decides the mode when it opens, and it holds
+ * that mode until it opens again. The two modes are two different Base UI
+ * roots, so a change of mode would unmount everything below the root. A
+ * change while open would lose what the person typed. A change while closed
+ * would lose the state that a closed dialog keeps, such as the body of
+ * `AddBlockDialog`. A root that never opened follows the media query, so the
+ * first render on a phone is a dialog and then a drawer, as the hydration
+ * needs.
+ */
+export function useModalMode(open: boolean) {
 	const parent = React.useContext(ModalModeContext);
 	const live = React.useSyncExternalStore(subscribe, readMode, readServerMode);
 	const [held, setHeld] = React.useState<ModalMode | null>(() =>
-		open ? (parent ?? readMode()) : null,
+		open ? modeOnOpen(parent, readMode()) : null,
 	);
 	const [wasOpen, setWasOpen] = React.useState(open);
 
@@ -76,24 +85,12 @@ export function useModalMode(
 	if (open !== wasOpen) {
 		setWasOpen(open);
 		if (open) {
-			mode = parent ?? readMode();
+			mode = modeOnOpen(parent, readMode());
 			setHeld(mode);
 		}
 	}
 
-	const openRef = React.useRef(open);
-	React.useLayoutEffect(() => {
-		openRef.current = open;
-	}, [open]);
-	const handleOpenChangeComplete = (next: boolean) => {
-		if (!next && !openRef.current) setHeld(null);
-		onOpenChangeComplete?.(next);
-	};
-
-	return {
-		mode: mode ?? parent ?? live,
-		onOpenChangeComplete: handleOpenChangeComplete,
-	};
+	return mode ?? parent ?? live;
 }
 
 /**
@@ -117,25 +114,21 @@ export function ModalSheetContent({
 	className?: string;
 }) {
 	return (
-		// The provider keeps the focused field in view, and it writes the
-		// keyboard height that lifts the sheet above the keyboard.
-		<DrawerPrimitive.VirtualKeyboardProvider>
-			<DrawerContent
-				data-slot={`${kind}-content`}
-				className={cn(
-					"max-h-[calc(100%-var(--safe-t)-2rem)] gap-0 sm:border-x",
-					className,
-				)}
-				{...props}
+		<DrawerContent
+			data-slot={`${kind}-content`}
+			className={cn(
+				"max-h-[calc(100%-var(--safe-t)-2rem)] gap-0 sm:border-x",
+				className,
+			)}
+			{...props}
+		>
+			<div
+				data-slot={`${kind}-body`}
+				className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto overscroll-contain rounded-t-2xl p-6 pb-[calc(1.5rem+var(--safe-b))]"
 			>
-				<div
-					data-slot={`${kind}-body`}
-					className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto overscroll-contain rounded-t-2xl p-6 pb-[calc(1.5rem+var(--safe-b))]"
-				>
-					{children}
-				</div>
-			</DrawerContent>
-		</DrawerPrimitive.VirtualKeyboardProvider>
+				{children}
+			</div>
+		</DrawerContent>
 	);
 }
 

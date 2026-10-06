@@ -51,10 +51,7 @@ function Dialog({
 		defaultOpen,
 		onOpenChange,
 	});
-	const { mode, onOpenChangeComplete: handleOpenChangeComplete } = useModalMode(
-		value,
-		onOpenChangeComplete,
-	);
+	const mode = useModalMode(value);
 	const actionsRef = React.useRef<DialogPrimitive.Root.Actions | null>(null);
 	const presence = React.useMemo(() => ({ open: value, actionsRef }), [value]);
 
@@ -67,7 +64,7 @@ function Dialog({
 						{...props}
 						open={value}
 						onOpenChange={setOpen}
-						onOpenChangeComplete={handleOpenChangeComplete}
+						onOpenChangeComplete={onOpenChangeComplete}
 					>
 						{children}
 					</DrawerPrimitive.Root>
@@ -77,7 +74,7 @@ function Dialog({
 						{...props}
 						open={value}
 						onOpenChange={setOpen}
-						onOpenChangeComplete={handleOpenChangeComplete}
+						onOpenChangeComplete={onOpenChangeComplete}
 						actionsRef={actionsRef}
 					>
 						{children}

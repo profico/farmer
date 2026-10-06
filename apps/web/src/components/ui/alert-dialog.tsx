@@ -42,10 +42,7 @@ function AlertDialog({
 		defaultOpen,
 		onOpenChange,
 	});
-	const { mode, onOpenChangeComplete: handleOpenChangeComplete } = useModalMode(
-		value,
-		onOpenChangeComplete,
-	);
+	const mode = useModalMode(value);
 
 	return (
 		<ModalModeContext.Provider value={mode}>
@@ -56,7 +53,7 @@ function AlertDialog({
 					handle={handle}
 					open={value}
 					onOpenChange={setOpen}
-					onOpenChangeComplete={handleOpenChangeComplete}
+					onOpenChangeComplete={onOpenChangeComplete}
 					disablePointerDismissal
 				>
 					{children}
@@ -68,7 +65,7 @@ function AlertDialog({
 					handle={handle}
 					open={value}
 					onOpenChange={setOpen}
-					onOpenChangeComplete={handleOpenChangeComplete}
+					onOpenChangeComplete={onOpenChangeComplete}
 				>
 					{children}
 				</AlertDialogPrimitive.Root>
