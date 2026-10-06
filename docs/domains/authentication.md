@@ -115,3 +115,13 @@ Setting `SINGLE_ORG_SLUG=<slug>` (in the environment or on Infrastructure → Si
 ---
 
 See also: `docs/domains/deployment.md` (the env vars), `apps/web/CLAUDE.md` (the login and no-access routes), issue #75 (the Infrastructure page this role will gate).
+
+## Mobile sign-in exchange
+
+The mobile app's provider sign-in redirects to `farmer://auth-callback`. The
+redirect carries a one-time code bound to a PKCE challenge, never the
+session cookie. `auth/mobile-exchange.ts` is a better-auth plugin that must
+stay after `expo()` in the plugin list of `buildAuth()`: it rewrites the link
+that `expo()` wrote. The code, the endpoint and the limits are in
+`docs/domains/mobile.md` (the sign-in exchange) and ADR 0005. The rows are in
+the `verification` table with the identifier prefix `mobile-exchange:`.
