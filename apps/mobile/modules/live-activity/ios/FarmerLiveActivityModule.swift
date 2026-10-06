@@ -87,6 +87,15 @@ public class FarmerLiveActivityModule: Module {
       self.show(labels: labels, record: record)
     }
 
+    // The token of the activity that runs now. JavaScript reads it after a
+    // restart, because the event of `watchToken` fires in `OnCreate`, before
+    // JavaScript has a listener.
+    Function("activityPushToken") { () -> String? in
+      Activity<TimerAttributes>.activities
+        .first { $0.activityState == .active || $0.activityState == .stale }?
+        .pushToken.map(hex)
+    }
+
     Function("endAll") {
       let activities = Activity<TimerAttributes>.activities
       Task {

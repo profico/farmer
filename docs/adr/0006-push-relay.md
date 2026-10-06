@@ -31,6 +31,11 @@ default).
 - **A device has a relay id and a key pair.** The app registers with the
   relay and gets an opaque `relayId`. It keeps the private key in the
   Keychain or the Keystore and gives `{relayId, publicKey}` to its server.
+- **The phone proves that it holds the relay id.** The app sends its server
+  a `relayProof`: an HMAC of the relay id and the public key, made from the
+  `deviceSecret`. The server asks the relay (`POST /v1/devices/:relayId/verify`)
+  to check it before it binds a relay id or a key to a person. Without the
+  proof, a person who learns a relay id could take it with their own key.
 - **The server encrypts each payload for the device.** It posts
   `{relayId, ciphertext}`, and the relay forwards the push to APNs or FCM. The
   relay never reads the content, and a server never learns the real push
@@ -67,3 +72,21 @@ default).
   An IPv6 caller gets its /64 prefix as its bucket.
 - A new kind of notification must name its channels in the `KINDS` table, as
   before. Native push is one more channel, not a second mechanism.
+
+## Accepted risk: the binding proof
+
+The binding proof is an HMAC. Its key is `sha256(deviceSecret)`. This is
+the same value as the `secretHash` that the relay stores for the device.
+A person who can read the relay's device table can therefore forge a
+binding proof for any relay id.
+
+A proof is not bound to a user, and it does not expire. A person who
+captures a proof can replay it from another account. Only a leak of a
+server log or a compromised server exposes a proof.
+
+We accept both risks. The design is symmetric on purpose: the relay
+checks the proof with a value that it already holds, and the Farmer
+server never holds the device secret. A design that keeps the secret off
+the Farmer server needs this shared key. A read of the relay's database
+is already a more serious loss, because the same read exposes every push
+token.

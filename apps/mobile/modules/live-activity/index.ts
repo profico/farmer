@@ -39,6 +39,8 @@ type NativeLiveActivity = {
 	/** End every activity of the timer, at once. */
 	endAll(): void;
 	pushToStartToken(): string | null;
+	/** The push token of the activity that runs now, or null. */
+	activityPushToken(): string | null;
 	addListener(
 		event: "onActivityPushToken",
 		listener: (event: { activityId: string; token: string }) => void,

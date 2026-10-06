@@ -240,7 +240,11 @@ export const runSlackRemindersOnce = async (
 						);
 						if (wasDelivered(outcome)) result = "delivered";
 						else if (wasUnreachable(outcome)) result = "unreachable";
-						else {
+						else if (outcome.retryable) {
+							// The native push failed and Slack has no match. A retry can
+							// still reach the phone, so the claim must not settle.
+							result = "failed";
+						} else {
 							// No Slack identity is not a failure a retry can fix: keep the
 							// claim, as before.
 							const slackId = await slackService.slackIdFor(

@@ -2,19 +2,25 @@ import { readJsonBody } from "./body";
 import { clientAddress } from "./client-address";
 import type { DeliveryResult, Log, Senders } from "./delivery/types";
 import {
+	bindingProofMatches,
 	hashSecret,
 	newDeviceSecret,
 	newRelayId,
 	relayIdHint,
 	secretMatches,
 } from "./ids";
-import { admit, type RelayLimiters } from "./rate-limit";
+import {
+	admit,
+	type FixedWindowLimiter,
+	type RelayLimiters,
+} from "./rate-limit";
 import {
 	isApnsToken,
 	pushBody,
 	registerDeviceBody,
 	relayIdSchema,
 	updateDeviceBody,
+	verifyDeviceBody,
 } from "./schemas";
 import type { Device, DeviceStore } from "./store";
 
@@ -209,6 +215,31 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		return new Response(null, { status: 204 });
 	};
 
+	/**
+	 * A server asks whether a phone holds a relay registration. The phone made
+	 * a proof for its public key from the device secret. A good proof gives
+	 * 204. A wrong proof and an unknown relay id both give 401, so the answer
+	 * does not tell which relay ids exist.
+	 */
+	const verify = async (
+		request: Request,
+		relayId: string,
+	): Promise<Response> => {
+		const body = await readJsonBody(request, verifyDeviceBody);
+		if (!body.ok) return bodyError(body.error);
+		const parsedId = relayIdSchema.safeParse(relayId);
+		const device = parsedId.success ? store.find(parsedId.data) : null;
+		const matches = bindingProofMatches(
+			body.value.proof,
+			device?.secretHash ?? NO_DEVICE_HASH,
+			relayId,
+			body.value.publicKey,
+		);
+		return device && matches
+			? new Response(null, { status: 204 })
+			: error(401, "unauthorized");
+	};
+
 	const push = async (request: Request): Promise<Response> => {
 		const body = await readJsonBody(request, pushBody);
 		if (!body.ok) return bodyError(body.error);
@@ -280,6 +311,7 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 	};
 
 	const DEVICE_PATH = /^\/v1\/devices\/([^/]+)$/;
+	const VERIFY_PATH = /^\/v1\/devices\/([^/]+)\/verify$/;
 
 	return async (request, socketAddress) => {
 		const { pathname } = new URL(request.url);
@@ -295,16 +327,27 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		}
 
 		const deviceMatch = DEVICE_PATH.exec(pathname);
+		const verifyMatch = VERIFY_PATH.exec(pathname);
 		const isDevices = pathname === "/v1/devices" || deviceMatch !== null;
-		if (!isDevices && pathname !== "/v1/push") {
+		if (!isDevices && verifyMatch === null && pathname !== "/v1/push") {
 			return error(404, "not_found");
 		}
 
 		const address = addressOf(request, socketAddress);
-		const byAddress = isDevices
-			? limiters.deviceByAddress
-			: limiters.pushByAddress;
-		const admission = admit([[byAddress, address]], now());
+		// A verify has its own limits. The farmer server makes all of them from
+		// one address, so the device limit for an address must not count them.
+		const byAddress = verifyMatch
+			? limiters.verifyByAddress
+			: isDevices
+				? limiters.deviceByAddress
+				: limiters.pushByAddress;
+		const checks: Array<readonly [FixedWindowLimiter, string]> = [
+			[byAddress, address],
+		];
+		if (verifyMatch && method === "POST") {
+			checks.push([limiters.verifyByRelayId, verifyMatch[1] ?? ""]);
+		}
+		const admission = admit(checks, now());
 		if (!admission.ok) return tooMany(admission.retryAfterSeconds);
 
 		if (pathname === "/v1/push") {
@@ -315,6 +358,11 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		if (pathname === "/v1/devices") {
 			return method === "POST"
 				? register(request)
+				: error(405, "method_not_allowed");
+		}
+		if (verifyMatch) {
+			return method === "POST"
+				? verify(request, verifyMatch[1] ?? "")
 				: error(405, "method_not_allowed");
 		}
 		const relayId = deviceMatch?.[1] ?? "";

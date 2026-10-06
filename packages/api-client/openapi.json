@@ -21034,6 +21034,11 @@
 						"type": "string",
 						"pattern": "^[A-Za-z0-9_-]+$"
 					},
+					"relayProof": {
+						"type": "string",
+						"maxLength": 128,
+						"pattern": "^[A-Za-z0-9_-]+$"
+					},
 					"appVersion": {
 						"type": "string",
 						"minLength": 1,
@@ -21061,6 +21066,7 @@
 					"platform",
 					"relayId",
 					"publicKey",
+					"relayProof",
 					"appVersion",
 					"notificationsAllowed"
 				],

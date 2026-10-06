@@ -467,3 +467,79 @@ describe("a public holiday is a non-working day", () => {
 		});
 	});
 });
+
+describe("the read-only variant of listRange", () => {
+	/** The newest weekday in the automation window, so a fill block there is
+	 *  recomputed by the write variant. */
+	const recentWeekday = async () => {
+		const { addDaysToKey, dayKeyInTz } = await import("../lib/time");
+		let key = dayKeyInTz(new Date(), "Europe/Zagreb");
+		while ([0, 6].includes(new Date(`${key}T00:00:00Z`).getUTCDay())) {
+			key = addDaysToKey(key, -1);
+		}
+		return key;
+	};
+
+	const seedDay = async (date: string, realSeconds: number) => {
+		await addFill(date, 8 * 3600);
+		await db.insert(timeEntry).values({
+			organizationId: ORG_ID,
+			userId: USER_ID,
+			taskId: devTaskId,
+			projectId,
+			date,
+			durationSeconds: realSeconds,
+			description: "real work",
+		});
+	};
+
+	test("a stale fill block is returned resized and stays stored as it was", async () => {
+		const date = await recentWeekday();
+		await seedDay(date, 2 * 3600);
+
+		const listed = await timeEntriesService.listRange(
+			ctx(),
+			{ from: date, to: date },
+			{ persist: false },
+		);
+
+		const shown = listed.find((r) => r.fillsDay);
+		expect(shown?.durationSeconds).toBe(6 * 3600);
+		const stored = (await entriesOn(date)).find((r) => r.fillsDay);
+		expect(stored?.durationSeconds).toBe(8 * 3600);
+	});
+
+	test("a fill block the day has outgrown is hidden and not deleted", async () => {
+		const date = await recentWeekday();
+		await seedDay(date, 8 * 3600);
+
+		const listed = await timeEntriesService.listRange(
+			ctx(),
+			{ from: date, to: date },
+			{ persist: false },
+		);
+
+		expect(listed.filter((r) => r.fillsDay)).toHaveLength(0);
+		expect(await entriesOn(date)).toHaveLength(2);
+	});
+
+	test("it returns the same entries and totals as the write variant", async () => {
+		const date = await recentWeekday();
+		const emptiedDate = LONG_CLOSED_DAY;
+		await seedDay(date, 2 * 3600);
+		await seedDay(emptiedDate, 3 * 3600);
+		const range = { from: emptiedDate, to: date };
+
+		const readOnly = await timeEntriesService.listRange(ctx(), range, {
+			persist: false,
+		});
+		const written = await timeEntriesService.listRange(ctx(), range);
+
+		const summary = (rows: typeof readOnly) =>
+			rows.map((r) => [r.id, r.date, r.durationSeconds, r.fillsDay]);
+		expect(summary(readOnly)).toEqual(summary(written));
+		const total = (rows: typeof readOnly) =>
+			rows.reduce((sum, r) => sum + r.durationSeconds, 0);
+		expect(total(readOnly)).toBe(total(written));
+	});
+});

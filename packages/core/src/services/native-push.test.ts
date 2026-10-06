@@ -322,6 +322,21 @@ describe("what the phones can do for a reminder", () => {
 	});
 });
 
+describe("a phone that fails", () => {
+	test("does not hide the phone that got the alert", async () => {
+		await addDevice(ANDROID, new Uint8Array(3), { platform: "android" });
+		await addDevice(IOS, iosPublic);
+
+		const outcome = await notify(
+			{ organizationId: ORG, userId: ME },
+			{ kind: "log-reminder", title: "Log your hours", body: "Today is empty" },
+		);
+
+		expect(outcome.native).toBe(true);
+		expect(relay.requests.map((r) => r.relayId)).toEqual([IOS]);
+	});
+});
+
 describe("the Slack kinds", () => {
 	const nudge = {
 		kind: "compliance-nudge" as const,
@@ -387,7 +402,12 @@ describe("the Slack kinds", () => {
 
 		const outcome = await notify({ organizationId: ORG, userId: ME }, nudge);
 
-		expect(outcome).toEqual({ push: false, native: false, slack: false });
+		expect(outcome).toEqual({
+			push: false,
+			native: false,
+			slack: false,
+			retryable: true,
+		});
 		expect(wasUnreachable(outcome)).toBe(false);
 	});
 });
@@ -456,6 +476,22 @@ describe("the timer's Live Activity", () => {
 		).toEqual(["dead-token-1", "push-to-start"]);
 		expect((await deviceRow(IOS))?.liveActivityToken).toBeNull();
 	});
+
+	test.each(["activity_token_unbound", "activity_token_mismatch"])(
+		"403 %s clears the token, and a start then opens a new activity",
+		async (code) => {
+			await addDevice(IOS, iosPublic, { liveActivityToken: "stale-token-1" });
+			relay.answer(IOS, { status: 403, error: code });
+
+			await start();
+			await settleNativePushForTests();
+
+			expect(
+				relay.requests.map((r) => r.liveActivity?.token ?? "push-to-start"),
+			).toEqual(["stale-token-1", "push-to-start"]);
+			expect((await deviceRow(IOS))?.liveActivityToken).toBeNull();
+		},
+	);
 
 	test("confirm, discard and the sweep end the activity and forget the token", async () => {
 		const today = new Date().toISOString().slice(0, 10);

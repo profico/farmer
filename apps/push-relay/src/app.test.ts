@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createRelay } from "./app";
 import { dryRunSender } from "./delivery/dry-run";
 import type { DeliveryResult, Sender } from "./delivery/types";
+import { bindingProof, hashSecret } from "./ids";
 import { createLimiters, DEFAULT_LIMITS, type RelayLimits } from "./rate-limit";
 import type { PushBody } from "./schemas";
 import { type Device, DeviceStore } from "./store";
@@ -964,5 +965,138 @@ describe("Live Activity token binding", () => {
 		});
 
 		expect(sent[0]?.device.liveActivityStartToken).toBe(START_TOKEN);
+	});
+});
+
+describe("registration proof", () => {
+	const KEY = "A".repeat(87);
+
+	test("the proof contract matches the app's pinned vector", () => {
+		// The app pins the same vector in `packages/push-crypto/src/binding.ts`
+		// tests. The app hashes the secret, and the relay stores that hash.
+		const hash = hashSecret("secret-0001");
+		expect(bindingProof(hash, "relay-0001-aaaaaaaa", "key-0001")).toBe(
+			"1-SHr1j37PoLDUaBxb7sqZhjtX-y-UODlfxt1Wmq_Us",
+		);
+	});
+
+	const proofOf = (deviceSecret: string, relayId: string, key = KEY) =>
+		bindingProof(hashSecret(deviceSecret), relayId, key);
+
+	test("a proof that the device secret made is accepted with 204", async () => {
+		const { call } = setup();
+		const { relayId, deviceSecret } = await register(call);
+		const response = await call("POST", `/v1/devices/${relayId}/verify`, {
+			publicKey: KEY,
+			proof: proofOf(deviceSecret, relayId),
+		});
+		expect(response.status).toBe(204);
+	});
+
+	test("a proof for another key, a wrong secret and an unknown id all get 401", async () => {
+		const { call } = setup();
+		const { relayId, deviceSecret } = await register(call);
+		const other = await register(call);
+		const attempts = [
+			{
+				id: relayId,
+				publicKey: "B".repeat(87),
+				proof: proofOf(deviceSecret, relayId),
+			},
+			{
+				id: relayId,
+				publicKey: KEY,
+				proof: proofOf(other.deviceSecret, relayId),
+			},
+			{
+				id: relayId,
+				publicKey: KEY,
+				proof: proofOf(deviceSecret, other.relayId),
+			},
+			{
+				id: "x".repeat(22),
+				publicKey: KEY,
+				proof: proofOf(deviceSecret, "x".repeat(22)),
+			},
+		];
+		for (const { id, publicKey, proof } of attempts) {
+			const response = await call("POST", `/v1/devices/${id}/verify`, {
+				publicKey,
+				proof,
+			});
+			expect(response.status).toBe(401);
+			expect(await errorOf(response)).toBe("unauthorized");
+		}
+	});
+
+	test("verify calls do not use the device limit of the address", async () => {
+		const { call } = setup({ limits: { devicePerAddressPer10Minutes: 1 } });
+		const { relayId, deviceSecret } = await register(call);
+		for (let i = 0; i < 5; i += 1) {
+			const response = await call("POST", `/v1/devices/${relayId}/verify`, {
+				publicKey: KEY,
+				proof: proofOf(deviceSecret, relayId),
+			});
+			expect(response.status).toBe(204);
+		}
+		const refused = await call("POST", "/v1/devices", {
+			platform: "android",
+			pushToken: ANDROID_TOKEN,
+		});
+		expect(refused.status).toBe(429);
+	});
+
+	test("junk verify calls do not block a registration", async () => {
+		const { call } = setup({ limits: { devicePerAddressPer10Minutes: 2 } });
+		for (let i = 0; i < 20; i += 1) {
+			const id = `junk-${i}`.padEnd(22, "x");
+			await call("POST", `/v1/devices/${id}/verify`, {
+				publicKey: KEY,
+				proof: proofOf("secret", id),
+			});
+		}
+		const { relayId } = await register(call);
+		expect(relayId).toBeTruthy();
+	});
+
+	test("verify calls for one relay id stop at their limit", async () => {
+		const { call } = setup({ limits: { verifyPerRelayPer10Minutes: 2 } });
+		const { relayId, deviceSecret } = await register(call);
+		const verify = () =>
+			call("POST", `/v1/devices/${relayId}/verify`, {
+				publicKey: KEY,
+				proof: proofOf(deviceSecret, relayId),
+			});
+		expect((await verify()).status).toBe(204);
+		expect((await verify()).status).toBe(204);
+		const refused = await verify();
+		expect(refused.status).toBe(429);
+		expect(refused.headers.get("retry-after")).not.toBeNull();
+		const other = await register(call);
+		const response = await call("POST", `/v1/devices/${other.relayId}/verify`, {
+			publicKey: KEY,
+			proof: proofOf(other.deviceSecret, other.relayId),
+		});
+		expect(response.status).toBe(204);
+	});
+
+	test("verify calls from one address stop at the address limit", async () => {
+		const { call } = setup({ limits: { verifyPerAddressPerMinute: 1 } });
+		const { relayId, deviceSecret } = await register(call);
+		const body = { publicKey: KEY, proof: proofOf(deviceSecret, relayId) };
+		expect(
+			(await call("POST", `/v1/devices/${relayId}/verify`, body)).status,
+		).toBe(204);
+		const refused = await call("POST", `/v1/devices/${relayId}/verify`, body);
+		expect(refused.status).toBe(429);
+	});
+
+	test("a malformed body is a 400, and another method is a 405", async () => {
+		const { call } = setup();
+		const { relayId } = await register(call);
+		const bad = await call("POST", `/v1/devices/${relayId}/verify`, {});
+		expect(bad.status).toBe(400);
+		const get = await call("GET", `/v1/devices/${relayId}/verify`);
+		expect(get.status).toBe(405);
 	});
 });

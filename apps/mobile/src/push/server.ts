@@ -62,6 +62,9 @@ export type DeviceRegistration = {
 	platform: "ios" | "android";
 	relayId: string;
 	publicKey: string;
+	/** `bindingProof` of the relay's device secret, the relay id and the
+	 *  public key. The Server asks the relay to check it. */
+	relayProof: string;
 	appVersion: string;
 	notificationsAllowed: boolean;
 	liveActivityToken?: string | null;

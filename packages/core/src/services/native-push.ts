@@ -198,12 +198,19 @@ const fitAlert = (alert: NativeAlert): NativeAlert => {
 	return { ...alert, title, body };
 };
 
-/** Whether the person has a phone that may get an alert now: the relay is on
- *  and a live row allows notifications. */
-export const hasNotifiableDevice = async (userId: string): Promise<boolean> => {
-	if (!pushRelayUrl()) return false;
-	const devices = await liveDevices(userId);
-	return devices.some((device) => device.notificationsAllowed);
+/** A phone that may get an alert now. */
+export type NotifiableDevice = Device;
+
+/** The person's phones that may get an alert now: the relay is on and the
+ *  rows are live and allow notifications. The list is empty when the relay
+ *  is off, and then nothing is read. */
+export const notifiableDevices = async (
+	userId: string,
+): Promise<NotifiableDevice[]> => {
+	if (!pushRelayUrl()) return [];
+	return (await liveDevices(userId)).filter(
+		(device) => device.notificationsAllowed,
+	);
 };
 
 /** What the person's phones can do for a reminder: whether the relay is on,
@@ -223,22 +230,24 @@ export const appReach = async (userId: string): Promise<AppReach> => {
 /**
  * Send an alert to every phone of the person that allows notifications.
  * Returns true when at least one phone took it, and false otherwise: the
- * relay is off, the person has no such phone, or every push failed. Never
- * throws.
+ * relay is off, the person has no such phone, or every push failed. One
+ * phone that fails does not change the answer for the others. Never throws.
+ *
+ * A caller that read the phones with `notifiableDevices` passes them as
+ * `devices`, so the table is read one time.
  */
 export const sendNativeAlert = async (
 	userId: string,
 	alert: NativeAlert,
+	devices?: NotifiableDevice[],
 ): Promise<boolean> => {
 	const baseUrl = pushRelayUrl();
 	if (!baseUrl) return false;
 	try {
-		const devices = (await liveDevices(userId)).filter(
-			(device) => device.notificationsAllowed,
-		);
+		const targets = devices ?? (await notifiableDevices(userId));
 		const payload = fitAlert(alert);
-		const outcomes = await Promise.all(
-			devices.map(async (device) =>
+		const outcomes = await Promise.allSettled(
+			targets.map(async (device) =>
 				send(baseUrl, device, {
 					relayId: device.relayId,
 					kind: "alert",
@@ -246,7 +255,18 @@ export const sendNativeAlert = async (
 				}),
 			),
 		);
-		return outcomes.some((outcome) => outcome.kind === "delivered");
+		for (const outcome of outcomes) {
+			if (outcome.status === "rejected") {
+				console.error("[native-push] alert failed for a phone", {
+					userId,
+					error: outcome.reason,
+				});
+			}
+		}
+		return outcomes.some(
+			(outcome) =>
+				outcome.status === "fulfilled" && outcome.value.kind === "delivered",
+		);
 	} catch (error) {
 		console.error("[native-push] alert failed", { userId, error });
 		return false;

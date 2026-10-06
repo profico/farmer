@@ -13,7 +13,10 @@ import {
 } from "./device";
 import {
 	checkFreshness,
+	emptyPushSeen,
 	PUSH_MAX_AGE_MS,
+	PUSH_MAX_SKEW_MS,
+	type PushEnvelope,
 	PUSH_SEEN_LIMIT,
 	rememberPushId,
 } from "./freshness";
@@ -174,22 +177,28 @@ describe("interop: the freshness fields", () => {
 		expect(opened.pushKind).toBe("alert");
 		expect(opened.sentAt).toBe(now);
 		expect(opened.id).toMatch(/^[A-Za-z0-9_-]{12}$/);
-		expect(checkFreshness(opened, "alert", now + 1000, [])).toBe("ok");
-		const seen = rememberPushId([], opened.id);
+		expect(checkFreshness(opened, "alert", now + 1000, emptyPushSeen())).toBe(
+			"ok",
+		);
+		const seen = rememberPushId(emptyPushSeen(), opened, now + 1000);
 		expect(checkFreshness(opened, "alert", now + 2000, seen)).toBe("replayed");
 	});
 
 	test("a payload in a push of another kind is refused", async () => {
 		const now = Date.now();
 		const opened = await roundTrip("data", now);
-		expect(checkFreshness(opened, "alert", now, [])).toBe("wrong_kind");
-		expect(checkFreshness(opened, null, now, [])).toBe("wrong_kind");
+		expect(checkFreshness(opened, "alert", now, emptyPushSeen())).toBe(
+			"wrong_kind",
+		);
+		expect(checkFreshness(opened, null, now, emptyPushSeen())).toBe(
+			"wrong_kind",
+		);
 	});
 
 	test("a payload older than 24 hours is refused", async () => {
 		const now = Date.now();
 		const opened = await roundTrip("alert", now - PUSH_MAX_AGE_MS - 1);
-		expect(checkFreshness(opened, "alert", now, [])).toBe("stale");
+		expect(checkFreshness(opened, "alert", now, emptyPushSeen())).toBe("stale");
 	});
 
 	test("each push gets a new id", () => {
@@ -199,13 +208,55 @@ describe("interop: the freshness fields", () => {
 		expect(ids.size).toBe(100);
 	});
 
-	test("the seen list keeps the newest ids only", () => {
-		let seen: string[] = [];
-		for (let i = 0; i < PUSH_SEEN_LIMIT + 10; i += 1) {
-			seen = rememberPushId(seen, `id-${i}`);
+	test("a payload sent in the future is refused", async () => {
+		const now = Date.now();
+		const near = await roundTrip("alert", now + PUSH_MAX_SKEW_MS);
+		expect(checkFreshness(near, "alert", now, emptyPushSeen())).toBe("ok");
+		const far = await roundTrip("alert", now + PUSH_MAX_SKEW_MS + 1);
+		expect(checkFreshness(far, "alert", now, emptyPushSeen())).toBe("future");
+	});
+});
+
+describe("the seen list", () => {
+	const envelope = (id: string, sentAt: number): PushEnvelope => ({
+		pushKind: "alert",
+		sentAt,
+		id,
+	});
+
+	test("an id stays until its payload is stale, not for a count of pushes", () => {
+		const t0 = 1_000_000_000_000;
+		const first = envelope("first", t0);
+		let seen = rememberPushId(emptyPushSeen(), first, t0);
+		// 100 newer pushes, many more than the old limit of 50.
+		for (let i = 1; i <= 100; i += 1) {
+			seen = rememberPushId(seen, envelope(`id-${i}`, t0 + i), t0 + i);
 		}
-		expect(seen).toHaveLength(PUSH_SEEN_LIMIT);
-		expect(seen.at(-1)).toBe(`id-${PUSH_SEEN_LIMIT + 9}`);
-		expect(seen).not.toContain("id-0");
+		const now = t0 + 1000;
+		expect(checkFreshness(first, "alert", now, seen)).toBe("replayed");
+		const late = t0 + 100 + PUSH_MAX_AGE_MS + 1;
+		expect(checkFreshness(first, "alert", late, seen)).toBe("stale");
+		const pruned = rememberPushId(seen, envelope("later", late), late);
+		expect(pruned.entries.map((entry) => entry.id)).toEqual(["later"]);
+	});
+
+	test("a full list forgets the oldest id and refuses it by time", () => {
+		const t0 = 1_000_000_000_000;
+		let seen = emptyPushSeen();
+		for (let i = 0; i < PUSH_SEEN_LIMIT + 10; i += 1) {
+			seen = rememberPushId(seen, envelope(`id-${i}`, t0 + i), t0 + i);
+		}
+		const now = t0 + PUSH_SEEN_LIMIT + 10;
+		expect(seen.entries).toHaveLength(PUSH_SEEN_LIMIT);
+		expect(seen.entries.some((entry) => entry.id === "id-0")).toBe(false);
+		// The forgotten id fails the floor check, so it is not replayable.
+		expect(checkFreshness(envelope("id-0", t0), "alert", now, seen)).toBe(
+			"stale",
+		);
+		expect(checkFreshness(envelope("id-9", t0 + 9), "alert", now, seen)).toBe(
+			"stale",
+		);
+		// A new push still passes: the list never blocks a fresh push.
+		expect(checkFreshness(envelope("new", now), "alert", now, seen)).toBe("ok");
 	});
 });

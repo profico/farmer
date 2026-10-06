@@ -78,6 +78,14 @@ export const updateDeviceBody = z
 	);
 export type UpdateDeviceBody = z.infer<typeof updateDeviceBody>;
 
+/** The body of `POST /v1/devices/:relayId/verify`: the proof that the app
+ *  made for its public key (`bindingProof` in `ids.ts`). The server sends
+ *  it, and the relay says whether the device secret made it. */
+export const verifyDeviceBody = z.strictObject({
+	publicKey: z.string().min(1).max(128).regex(BASE64URL),
+	proof: z.string().min(1).max(128).regex(BASE64URL),
+});
+
 /** A value in a Live Activity's content state or attributes: a primitive, so
  *  the relay forwards the object without a look into nested data. */
 const primitive = z.union([

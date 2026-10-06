@@ -51,7 +51,8 @@ export type RelayOutcome =
 	 *  these two pairs count. A 404 from a proxy in front of the relay, or
 	 *  from a wrong `PUSH_RELAY_URL`, has no such code and is `failed`. */
 	| { kind: "device_gone" }
-	/** 409 `activity_gone`: forget the Live Activity token. */
+	/** 409 `activity_gone`, or 403 `activity_token_unbound` or
+	 *  `activity_token_mismatch`: forget the Live Activity token. */
 	| { kind: "activity_gone" }
 	/** 409 `start_token_gone` or `no_start_token`: the phone cannot get a
 	 *  push-to-start now. Keep the row. */
@@ -90,7 +91,14 @@ const outcomeOf = async (response: Response): Promise<RelayOutcome> => {
 	) {
 		return { kind: "device_gone" };
 	}
-	if (status === 409 && code === "activity_gone") {
+	// 403 `activity_token_unbound` or `activity_token_mismatch`: the relay does
+	// not hold this token for this phone. The stored token is dead, as for a
+	// 409 `activity_gone`.
+	if (
+		(status === 409 && code === "activity_gone") ||
+		(status === 403 &&
+			(code === "activity_token_unbound" || code === "activity_token_mismatch"))
+	) {
 		return { kind: "activity_gone" };
 	}
 	if (
@@ -128,5 +136,45 @@ export const sendToRelay = async (
 			error: error instanceof Error ? error.message : "unknown",
 		});
 		return { kind: "failed", status: null, code: null };
+	}
+};
+
+/** What the relay says about a registration proof. */
+export type RelayVerdict =
+	/** 204: the phone holds the device secret of this relay id. */
+	| "valid"
+	/** 401: the proof is wrong, or the relay does not know the id. */
+	| "invalid"
+	/** Any other answer, a timeout or a network error. */
+	| "failed";
+
+/**
+ * Ask the relay whether a phone holds the relay registration `relayId`. The
+ * app made `proof` from its device secret and its public key
+ * (`@farmer/push-crypto/binding`). The server never sees the secret. Never
+ * throws.
+ */
+export const verifyWithRelay = async (
+	baseUrl: string,
+	relayId: string,
+	check: { publicKey: string; proof: string },
+): Promise<RelayVerdict> => {
+	try {
+		const response = await externalFetch(
+			`${baseUrl}/v1/devices/${encodeURIComponent(relayId)}/verify`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(check),
+			},
+			PUSH_RELAY_TIMEOUT_MS,
+		);
+		if (response.status === 204) return "valid";
+		return response.status === 401 ? "invalid" : "failed";
+	} catch (error) {
+		console.error("[push-relay] verify failed", {
+			error: error instanceof Error ? error.message : "unknown",
+		});
+		return "failed";
 	}
 };

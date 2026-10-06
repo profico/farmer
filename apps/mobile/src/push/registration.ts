@@ -1,3 +1,4 @@
+import { bindingProof } from "@farmer/push-crypto/binding";
 import Constants from "expo-constants";
 import { randomUUID } from "expo-crypto";
 import * as Notifications from "expo-notifications";
@@ -40,9 +41,12 @@ import { forgetCredential } from "./timer-surface";
  *    the app does nothing more.
  * 2. The app gets the native push token (APNs or FCM) and registers with the
  *    relay. The relay answers a `relayId` and a `deviceSecret`.
- * 3. The app gives the Server `{ relayId, publicKey }` with
+ * 3. The app gives the Server `{ relayId, publicKey, relayProof }` with
  *    `POST /api/v1/me/devices`, an upsert, each time it comes to the
- *    foreground.
+ *    foreground. The proof is an HMAC that only the holder of the device
+ *    secret can make. The Server asks the relay to check it, when the relay
+ *    id or the key is new, so nobody can take a relay id with a key of their
+ *    own (`@farmer/push-crypto/binding`).
  *
  * The re-registration contract: the relay forgets a device that it has not
  * seen for 180 days, or whose token died. The app sends a `PUT` with its
@@ -263,7 +267,8 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
 		if (!pushToken || !live()) return;
 		const relay = await ensureRelay(relayUrl, pushToken, live);
 		if (!relay || !live()) return;
-		await bindActivityToken(live);
+		// The relay call comes first. The report to the Server follows below.
+		await bindActivityToken(live, true);
 		const publicKey = await devicePublicKey();
 		const allowed = await notificationsAllowed();
 		const id = await installationId();
@@ -273,12 +278,19 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
 			platform: Platform.OS === "ios" ? "ios" : "android",
 			relayId: relay.relayId,
 			publicKey,
+			relayProof: bindingProof(relay.deviceSecret, relay.relayId, publicKey),
 			appVersion: APP_VERSION,
 			notificationsAllowed: allowed,
 		});
 		if (answer === "refused") {
 			// An API token cannot register a phone (403). Not an error to show.
 			logOnce("server", "the Server refused the phone registration");
+		} else if (wantedActivityToken && live()) {
+			// The Server clears a token that the relay refused. Send the running
+			// one again, so a push-to-start does not replace a live activity.
+			await updateDevice(session.origin, session.token, id, {
+				liveActivityToken: wantedActivityToken,
+			});
 		}
 	} catch (error) {
 		logOnce("sync", `push registration failed: ${String(error)}`);
@@ -290,9 +302,30 @@ const runSync = async (session: PushSession, live: Live): Promise<void> => {
  *  next `syncPush` sends it again when a relay call failed. */
 let wantedActivityToken: string | null | undefined;
 
-/** Bind the wanted Live Activity token at the relay (iOS). Never throws. */
-const bindActivityToken = async (live: Live): Promise<void> => {
+/** The token of the activity that runs now, or null. The native event for it
+ *  fires when the module loads, before any listener exists, so after a restart
+ *  the app reads it here. */
+const runningActivityToken = (): string | null => {
 	try {
+		return LiveActivity?.activityPushToken() ?? null;
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * Bind the wanted Live Activity token at the relay (iOS). Never throws.
+ * `force` binds a running activity's token again, even when the app thinks
+ * the relay holds it. The relay can lose the binding, and the app cannot see
+ * that. The relay bind is idempotent.
+ */
+const bindActivityToken = async (live: Live, force = false): Promise<void> => {
+	try {
+		// After a restart nothing has been learned yet. Ask the activity itself,
+		// so a running activity is bound again.
+		if (wantedActivityToken === undefined && Platform.OS === "ios") {
+			wantedActivityToken = runningActivityToken();
+		}
 		const stored = await readRelay();
 		if (!stored) return;
 		const platform = Platform.OS === "ios" ? "ios" : "android";
@@ -300,6 +333,7 @@ const bindActivityToken = async (live: Live): Promise<void> => {
 			platform,
 			wantedActivityToken,
 			stored.activityToken,
+			force,
 		);
 		if (!update) return;
 		const answer = await updateRelay(stored.relayUrl, stored, update);
@@ -322,8 +356,10 @@ const bindActivityToken = async (live: Live): Promise<void> => {
 
 /**
  * Tell the Server and the relay about this phone's Live Activity token
- * (iOS). A null token means that the activity ended. The two calls run
- * together, and one failure does not stop the other.
+ * (iOS). A null token means that the activity ended. The relay call runs
+ * first. A timer push that arrives between the two calls then finds the
+ * token bound, and the relay does not answer activity_token_unbound. One
+ * failure does not stop the other call.
  */
 export const reportLiveActivityToken = async (
 	session: PushSession,
@@ -334,17 +370,17 @@ export const reportLiveActivityToken = async (
 	}
 	if (!(await readRelay())) return;
 	const live = liveCheck();
-	const toServer = async () =>
-		updateDevice(session.origin, session.token, await installationId(), patch);
-	const results = await Promise.allSettled([
-		toServer(),
-		bindActivityToken(live),
-	]);
-	if (results[0].status === "rejected") {
-		logOnce(
-			"activity-server",
-			`Server activity report: ${String(results[0].reason)}`,
+	// `bindActivityToken` catches its own errors, so it never rejects.
+	await bindActivityToken(live);
+	try {
+		await updateDevice(
+			session.origin,
+			session.token,
+			await installationId(),
+			patch,
 		);
+	} catch (error) {
+		logOnce("activity-server", `Server activity report: ${String(error)}`);
 	}
 };
 

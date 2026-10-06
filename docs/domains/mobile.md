@@ -62,6 +62,14 @@ an organization for each message and checks the membership first.
 - **One phone has one relay id.** A registration deletes each row of another
   person or installation with the same relay id, so a phone that changed
   hands does not get the last person's pushes.
+- **The phone proves that it holds the relay id.** The body has a
+  `relayProof`: an HMAC of the relay id and the public key, made from the
+  relay's `deviceSecret` (`@farmer/push-crypto/binding`). The service sends it
+  to `POST /v1/devices/:relayId/verify` on the relay when the installation has
+  no row, or when the relay id or the key differs from its row. A wrong proof
+  is refused, and no row changes. A relay that does not answer refuses a new
+  binding. An unchanged registration, as on each foreground, makes no relay
+  call. A new binding is also refused while `PUSH_RELAY_ENABLED` is off.
 - **The public key is checked at registration.** The service seals a test
   value with it, so a key that is not a P-256 point is refused then, and not at
   the first push. A 64-byte `x || y` key is stored as the 65-byte point.
@@ -99,7 +107,10 @@ Each sealed payload, alert or timer, also has the freshness fields of
 `sentAt` (Unix milliseconds) and `id` (12 random base64url characters). The
 app and the iOS Notification Service Extension refuse a payload whose
 `pushKind` is not the kind of the push that brought it, that is older than 24
-hours, or whose `id` is in the last 50 that they accepted. Thus the relay
+hours, that is more than 30 minutes in the future, or whose `id` they
+accepted while its payload could still pass the age check. They keep at
+most 500 ids. If the list is full, they forget the oldest and refuse each
+payload that is not newer than it. Thus the relay
 cannot send an old sealed value again.
 
 ### The relay's answers
@@ -109,6 +120,7 @@ cannot send an old sealed value again.
 | `200`, `202` | Delivered. |
 | `404` `unknown_relay_id`, `410` `device_gone` | Deletes the row. The app registers again in the foreground. A `404` or `410` without that code is a failure, and the row stays. |
 | `409 activity_gone` | Clears `live_activity_token`. A timer start then sends a push-to-start. |
+| `403 activity_token_unbound` or `activity_token_mismatch` | Same as `409 activity_gone`: clear the token. |
 | `409 start_token_gone`, `no_start_token` | Keeps the row. No activity opens. |
 | `429`, `5xx`, a timeout | Logs it and counts it as failed. |
 
@@ -171,7 +183,11 @@ opens the sealed payload with the phone's private key. Use
   sends the token to the Server and calls `updateRelay` with
   `liveActivityToken` at the same time. The app sends `null` when the native
   event `onActivityEnded` reports that no activity is active. A failed relay
-  call is logged, and the next `syncPush` sends the token again. Android
+  call is logged, and the next `syncPush` sends the token again. Each
+  `syncPush` also binds a running activity's token again, before it reports
+  the token to the Server, because the relay can lose a binding that the app
+  still remembers. The relay bind is idempotent. The app makes no relay call
+  for this when no activity runs. Android
   never sends it. The relay refuses a push to a token that no device
   bound (`apps/push-relay/README.md`, "Live Activity tokens"). No one ran
   this on a device with APNs.

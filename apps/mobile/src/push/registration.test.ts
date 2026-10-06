@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const log: string[] = [];
+const registered: string[] = [];
 const items = new Map<string, string>();
 
 /** A promise that the test resolves by hand, to hold a step of the sync. */
@@ -24,7 +25,9 @@ mock.module("expo-notifications", () => ({
 	getPermissionsAsync: async () => ({ granted: true }),
 	IosAuthorizationStatus: { PROVISIONAL: 3 },
 }));
-mock.module("react-native", () => ({ Platform: { OS: "android" } }));
+const platform = { OS: "android" };
+const relayUpdates: { liveActivityToken?: string | null }[] = [];
+mock.module("react-native", () => ({ Platform: platform }));
 mock.module("../../modules/live-activity", () => ({ LiveActivity: null }));
 mock.module("../config", () => ({ APP_VERSION: "1.0.0" }));
 mock.module("./keys", () => ({
@@ -46,11 +49,19 @@ mock.module("./server", () => ({
 		await relayUrlGate.promise;
 		return "https://relay.example";
 	},
-	registerDevice: async () => {
+	registerDevice: async (
+		_origin: string,
+		_token: string,
+		device: { relayProof: string },
+	) => {
 		log.push("server:register");
+		registered.push(device.relayProof);
 		return "ok";
 	},
-	updateDevice: async () => "ok",
+	updateDevice: async () => {
+		log.push("server:update-device");
+		return "ok";
+	},
 	removeDevice: async () => "ok",
 }));
 mock.module("./relay", () => ({
@@ -58,7 +69,17 @@ mock.module("./relay", () => ({
 		log.push("relay:register");
 		return { relayId: "relay-1", deviceSecret: "secret" };
 	},
-	updateRelay: async () => "ok",
+	updateRelay: async (
+		_url: string,
+		_credentials: { relayId: string },
+		update: { liveActivityToken?: string | null },
+	) => {
+		if (update.liveActivityToken !== undefined) {
+			log.push("relay:bind-activity");
+			relayUpdates.push(update);
+		}
+		return "ok";
+	},
 	removeFromRelay: async () => {
 		log.push("relay:delete");
 		return "ok";
@@ -83,12 +104,17 @@ mock.module("./storage", () => ({
 	},
 }));
 
-const { syncPush, teardownPush } = await import("./registration");
+const { bindingProof } = await import("@farmer/push-crypto/binding");
+const { reportLiveActivityToken, syncPush, teardownPush } =
+	await import("./registration");
 
 const SESSION = { origin: "https://farmer.example", token: "t" };
 
 beforeEach(() => {
 	log.length = 0;
+	registered.length = 0;
+	relayUpdates.length = 0;
+	platform.OS = "android";
 	items.clear();
 	relayUrlGate = gate();
 });
@@ -125,5 +151,48 @@ describe("teardownPush", () => {
 		await syncPush(SESSION);
 
 		expect(log).toContain("server:register");
+	});
+});
+
+describe("syncPush", () => {
+	test("gives the Server a proof that the relay secret made", async () => {
+		relayUrlGate.open();
+		await syncPush(SESSION);
+
+		expect(registered).toEqual([
+			bindingProof("secret", "relay-1", "public-key"),
+		]);
+	});
+});
+
+describe("the Live Activity token on each sync", () => {
+	const TOKEN = "a".repeat(64);
+
+	test("makes no relay call while no activity runs", async () => {
+		platform.OS = "ios";
+		relayUrlGate.open();
+		await syncPush(SESSION);
+		await syncPush(SESSION);
+
+		expect(relayUpdates).toEqual([]);
+	});
+
+	test("binds the token again, relay first, then reports it", async () => {
+		platform.OS = "ios";
+		relayUrlGate.open();
+		await syncPush(SESSION);
+		await reportLiveActivityToken(SESSION, { liveActivityToken: TOKEN });
+		// The app now believes that the relay holds the token. A second sync
+		// must still send it, because the relay may have lost it.
+		relayUpdates.length = 0;
+		log.length = 0;
+
+		await syncPush(SESSION);
+
+		expect(relayUpdates).toEqual([{ liveActivityToken: TOKEN }]);
+		expect(log.indexOf("relay:bind-activity")).toBeGreaterThanOrEqual(0);
+		expect(log.indexOf("relay:bind-activity")).toBeLessThan(
+			log.indexOf("server:update-device"),
+		);
 	});
 });
