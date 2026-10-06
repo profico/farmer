@@ -163,11 +163,9 @@ describe("registration", () => {
 });
 
 describe("push token format", () => {
-	const bad = [
-		"a/b".padEnd(64, "a"),
-		`${"a".repeat(64)}?x`,
-		"../".padEnd(64, "a"),
-	];
+	const withSlash = "a/b".padEnd(64, "a");
+	const withQuery = `${"a".repeat(64)}?x`;
+	const bad = [withSlash, withQuery, "../".padEnd(64, "a")];
 
 	test("an iOS device with a non-hex token is a 400", async () => {
 		const { call } = setup();
@@ -200,7 +198,7 @@ describe("push token format", () => {
 		const update = await call(
 			"PUT",
 			`/v1/devices/${relayId}`,
-			{ pushToken: bad[0] },
+			{ pushToken: withSlash },
 			{ authorization: `Bearer ${deviceSecret}` },
 		);
 		expect(update.status).toBe(400);
@@ -208,7 +206,7 @@ describe("push token format", () => {
 			relayId,
 			kind: "liveactivity",
 			ciphertext: CIPHERTEXT,
-			liveActivity: { token: bad[1], event: "update", contentState: {} },
+			liveActivity: { token: withQuery, event: "update", contentState: {} },
 		});
 		expect(push.status).toBe(400);
 	});
