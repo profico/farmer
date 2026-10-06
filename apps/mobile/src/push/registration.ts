@@ -46,8 +46,9 @@ import { forgetCredential } from "./timer-surface";
  * The re-registration contract: the relay forgets a device that it has not
  * seen for 180 days, or whose token died. The app sends a `PUT` with its
  * token at most every few hours, and a `401` answer starts a new
- * registration. The Server deletes its row on a `404` or a `410` from the
- * relay, and the next foreground `POST` writes it again.
+ * registration. The Server deletes its row on a `404` `unknown_relay_id` or
+ * a `410` `device_gone` from the relay, and the next foreground `POST`
+ * writes it again.
  *
  * Without a Firebase configuration (no `google-services.json`) the native
  * token does not exist. The app logs that one time and goes on without push.
@@ -143,10 +144,28 @@ const pushToStartToken = (): string | null => {
 	}
 };
 
-/** A relay registration that is valid now, made or checked as needed. */
+/**
+ * The number of the current session for push. A sign-out adds one, and a run
+ * of `syncPush` that started before it checks the number before each write
+ * and stops. Else a run in flight could write a relay registration, a device
+ * key or the Server's row after the sign-out cleared them.
+ */
+let generation = 0;
+
+/** A check that is true while no sign-out happened since the call. */
+type Live = () => boolean;
+
+const liveCheck = (): Live => {
+	const mine = generation;
+	return () => mine === generation;
+};
+
+/** A relay registration that is valid now, made or checked as needed. Null
+ *  when it failed, or when a sign-out happened during the call. */
 const ensureRelay = async (
 	relayUrl: string,
 	pushToken: string,
+	live: Live,
 ): Promise<RelayRegistration | null> => {
 	const platform = Platform.OS === "ios" ? "ios" : "android";
 	const stored = await readRelay();
@@ -169,6 +188,7 @@ const ensureRelay = async (
 			if (startToken) update.liveActivityPushToStartToken = startToken;
 		}
 		const answer = await updateRelay(relayUrl, stored, update);
+		if (!live()) return null;
 		if (answer === "ok") {
 			const next = {
 				...stored,
@@ -194,6 +214,11 @@ const ensureRelay = async (
 			apnsEnvironment: apnsEnvironment(),
 			liveActivityPushToStartToken: startToken,
 		});
+		if (!live()) {
+			// The sign-out came first: this registration has no owner.
+			await removeFromRelay(relayUrl, credentials);
+			return null;
+		}
 		const next: RelayRegistration = {
 			relayUrl,
 			...credentials,
@@ -209,21 +234,27 @@ const ensureRelay = async (
 	}
 };
 
-let inFlight: Promise<void> | null = null;
+/** The run of `syncPush` in flight, and the generation it belongs to. */
+let inFlight: { generation: number; run: Promise<void> } | null = null;
 
 /**
  * Register the phone for native push, or check the registration. Safe to
  * call on each foreground: it does nothing when push is off, and it never
- * throws. Two calls at the same time share one run.
+ * throws. Two calls at the same time in one session share one run.
  */
 export const syncPush = (session: PushSession): Promise<void> => {
-	inFlight ??= runSync(session).finally(() => {
-		inFlight = null;
-	});
-	return inFlight;
+	if (inFlight?.generation === generation) return inFlight.run;
+	const entry = {
+		generation,
+		run: runSync(session, liveCheck()).finally(() => {
+			if (inFlight === entry) inFlight = null;
+		}),
+	};
+	inFlight = entry;
+	return entry.run;
 };
 
-const runSync = async (session: PushSession): Promise<void> => {
+const runSync = async (session: PushSession, live: Live): Promise<void> => {
 	try {
 		let relayUrl: string | null;
 		try {
@@ -231,21 +262,26 @@ const runSync = async (session: PushSession): Promise<void> => {
 		} catch {
 			return; // The Server is not reachable now. The next foreground tries.
 		}
+		if (!live()) return;
 		if (!relayUrl) {
 			await dropRelay();
 			return;
 		}
 		const pushToken = await nativePushToken();
-		if (!pushToken) return;
-		const relay = await ensureRelay(relayUrl, pushToken);
-		if (!relay) return;
+		if (!pushToken || !live()) return;
+		const relay = await ensureRelay(relayUrl, pushToken, live);
+		if (!relay || !live()) return;
+		const publicKey = await devicePublicKey();
+		const allowed = await notificationsAllowed();
+		const id = await installationId();
+		if (!live()) return;
 		const answer = await registerDevice(session.origin, session.token, {
-			installationId: await installationId(),
+			installationId: id,
 			platform: Platform.OS === "ios" ? "ios" : "android",
 			relayId: relay.relayId,
-			publicKey: await devicePublicKey(),
+			publicKey,
 			appVersion: APP_VERSION,
-			notificationsAllowed: await notificationsAllowed(),
+			notificationsAllowed: allowed,
 		});
 		if (answer === "refused") {
 			// An API token cannot register a phone (403). Not an error to show.
@@ -272,12 +308,13 @@ export const reportLiveActivityToken = async (
 
 /** Tell the relay about a new push-to-start token (iOS). */
 export const reportPushToStartToken = async (token: string): Promise<void> => {
+	const live = liveCheck();
 	const stored = await readRelay();
 	if (!stored || stored.pushToStartToken === token) return;
 	const answer = await updateRelay(stored.relayUrl, stored, {
 		liveActivityPushToStartToken: token,
 	});
-	if (answer === "ok") {
+	if (answer === "ok" && live()) {
 		await writeRelay({
 			...stored,
 			pushToStartToken: token,
@@ -317,18 +354,44 @@ export const unregisterDevice = async (session: PushSession): Promise<void> => {
 	}
 };
 
+/** The longest time that a sign-out waits for a `syncPush` in flight to
+ *  stop, before it removes the relay registration. */
+const SYNC_STOP_WAIT_MS = 5_000;
+
 /**
  * Sign-out. The Server deletes the phone's row with the session
  * (`mobile_device.session_id` cascades), so only the relay registration, the
  * device key and the shared credential are left to remove here. A new
  * person on this phone gets a new key and a new relay id.
+ *
+ * The local items go first: the device key, which opens each push, and the
+ * native copy of the token, which the timer surfaces use. Each step runs
+ * even when the one before it failed. The relay `DELETE` needs the network,
+ * so it comes last. A `syncPush` in flight stops at its next check.
  */
 export const teardownPush = async (): Promise<void> => {
-	try {
-		await dropRelay();
-		await forgetDeviceKey();
-		await forgetCredential();
-	} catch (error) {
-		logOnce("teardown", `push sign-out failed: ${String(error)}`);
+	generation += 1;
+	const running = inFlight?.run;
+	const steps: [string, () => Promise<void>][] = [
+		["key", forgetDeviceKey],
+		["credential", forgetCredential],
+		[
+			"sync",
+			() =>
+				Promise.race([
+					running ?? Promise.resolve(),
+					new Promise<void>((resolve) =>
+						setTimeout(resolve, SYNC_STOP_WAIT_MS),
+					),
+				]),
+		],
+		["relay", dropRelay],
+	];
+	for (const [name, step] of steps) {
+		try {
+			await step();
+		} catch (error) {
+			logOnce(`teardown-${name}`, `push sign-out failed: ${String(error)}`);
+		}
 	}
 };
