@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import { View } from "react-native";
 
 import { Text } from "../ui/components";
 import { usePalette } from "../ui/theme";
+import { FormGroup } from "./form-group";
 import { FormRow } from "./form-row";
 import type { PickerRowProps } from "./picker-row";
 
@@ -40,4 +42,15 @@ export function PickerRow({
 			{trailing}
 		</FormRow>
 	);
+}
+
+/** A list of rows as an inset grouped section, with a title above it. */
+export function PickerRows({
+	title,
+	children,
+}: {
+	title?: string;
+	children: ReactNode;
+}) {
+	return <FormGroup title={title}>{children}</FormGroup>;
 }

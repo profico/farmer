@@ -5,6 +5,7 @@ import { View } from "react-native";
 
 import { useTasks, useWhoami } from "../../src/api/queries";
 import { useLogAbsence } from "../../src/api/you";
+import { PickerRow, PickerRows } from "../../src/forms/picker-row";
 import { FormSection, Sheet } from "../../src/forms/sheet";
 import { addDays } from "../../src/lib/days";
 import { formatHours } from "../../src/lib/duration";
@@ -20,7 +21,6 @@ import {
 	ErrorBanner,
 	ErrorState,
 	Field,
-	ListRow,
 	Skeleton,
 	Text,
 } from "../../src/ui/components";
@@ -86,6 +86,10 @@ function TimeOffForm({ start }: { start: string }) {
 			(sum, day) => sum + day.durationSeconds,
 			0,
 		);
+		const skippedLabel =
+			result.skipped.length === 1
+				? "Skipped 1 day"
+				: `Skipped ${result.skipped.length} days`;
 		return (
 			<Sheet
 				title="Book time off"
@@ -100,28 +104,16 @@ function TimeOffForm({ start }: { start: string }) {
 						? "Nothing was booked."
 						: `Booked ${result.booked.length === 1 ? "1 day" : `${result.booked.length} days`}, ${formatHours(bookedSeconds)}.`}
 				</Text>
-				<FormSection
-					label={
-						result.skipped.length === 1
-							? "Skipped 1 day"
-							: `Skipped ${result.skipped.length} days`
-					}
-				>
-					<View
-						style={{
-							borderRadius: 16,
-							overflow: "hidden",
-							backgroundColor: palette.surfaceContainer,
-						}}
-					>
+				<FormSection label={skippedLabel} loose>
+					<PickerRows title={skippedLabel}>
 						{result.skipped.map((day) => (
-							<ListRow
+							<PickerRow
 								key={day.date}
 								title={longDay(day.date)}
 								subtitle={skipReasonLabel(day.reason)}
 							/>
 						))}
-					</View>
+					</PickerRows>
 				</FormSection>
 			</Sheet>
 		);
@@ -162,7 +154,7 @@ function TimeOffForm({ start }: { start: string }) {
 				booked at your own hours. Public holidays, days you do not work and days
 				you already booked are left out.
 			</Text>
-			<FormSection label="Type">
+			<FormSection label="Type" loose>
 				{tasks.isPending ? (
 					<Skeleton height={56} radius={16} />
 				) : tasks.isError ? (
@@ -176,15 +168,9 @@ function TimeOffForm({ start }: { start: string }) {
 						Leave in the task settings of the workspace.
 					</Text>
 				) : (
-					<View
-						style={{
-							borderRadius: 16,
-							overflow: "hidden",
-							backgroundColor: palette.surfaceContainer,
-						}}
-					>
+					<PickerRows title="Type">
 						{absenceTasks.map((task) => (
-							<ListRow
+							<PickerRow
 								key={task.id}
 								title={task.name}
 								selected={task.id === taskId}
@@ -196,7 +182,7 @@ function TimeOffForm({ start }: { start: string }) {
 								}
 							/>
 						))}
-					</View>
+					</PickerRows>
 				)}
 			</FormSection>
 			<View style={{ gap: SPACE.m }}>

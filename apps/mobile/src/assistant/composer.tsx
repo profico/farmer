@@ -129,16 +129,24 @@ export function Composer({
 						borderRadius: 22,
 						alignItems: "center",
 						justifyContent: "center",
-						backgroundColor: canSend
-							? palette.primary
-							: palette.surfaceContainerHigh,
-						opacity: pressed ? 0.7 : 1,
+						// iOS dims the tinted button when it is off, as the system
+						// does. Android draws a grey one.
+						backgroundColor:
+							canSend || Platform.OS === "ios"
+								? palette.primary
+								: palette.surfaceContainerHigh,
+						opacity:
+							!canSend && Platform.OS === "ios" ? 0.3 : pressed ? 0.7 : 1,
 					})}
 				>
 					<Icon
 						name="send"
 						size={22}
-						color={canSend ? palette.onPrimary : palette.onSurfaceVariant}
+						color={
+							canSend || Platform.OS === "ios"
+								? palette.onPrimary
+								: palette.onSurfaceVariant
+						}
 					/>
 				</Pressable>
 			)}
