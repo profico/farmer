@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import type { AssistantEvent, AssistantMessage } from "@farmer/api-client";
 
-import { applyEvent, startRun, storedPending, visibleMessages } from "./turn";
+import {
+	applyEvent,
+	ranWriteTool,
+	startRun,
+	storedPending,
+	visibleMessages,
+} from "./turn";
 
 const message = (
 	partial: Partial<AssistantMessage> & Pick<AssistantMessage, "id" | "role">,
@@ -133,4 +139,35 @@ test("visibleMessages hides tool rows and empty assistant rows", () => {
 		message({ id: "a2", role: "assistant", content: "Hello" }),
 	]);
 	expect(rows.map((row) => row.id)).toEqual(["u1", "a2"]);
+});
+
+describe("ranWriteTool", () => {
+	const trace = (name: string) => ({
+		toolCallId: name,
+		name,
+		ok: true,
+		arguments: "{}",
+	});
+
+	test("a turn of reads wrote nothing", () => {
+		expect(ranWriteTool([])).toBe(false);
+		expect(
+			ranWriteTool([trace("list_projects"), trace("time_report_summary")]),
+		).toBe(false);
+	});
+
+	test("a write that needs no approval counts", () => {
+		expect(
+			ranWriteTool([trace("list_projects"), trace("create_time_entry")]),
+		).toBe(true);
+		expect(ranWriteTool([trace("sync_now")])).toBe(true);
+	});
+
+	test("an approved delete counts", () => {
+		expect(ranWriteTool([trace("delete_time_entry")])).toBe(true);
+	});
+
+	test("a tool that is not known counts", () => {
+		expect(ranWriteTool([trace("a_new_tool")])).toBe(true);
+	});
 });

@@ -57,6 +57,44 @@ export const IDLE: Run = {
 	streamed: false,
 };
 
+/**
+ * The tools that only read (`kind: "read"` in `assistant-tools.ts` of
+ * `@farmer/core`). A tool that is not in this list may write, so a turn
+ * that called one makes the cached workspace stale. A new tool of the
+ * server is thus treated as a write until it is added here.
+ */
+const READ_TOOLS = new Set([
+	"whoami",
+	"list_time_entries",
+	"list_unfiled_entries",
+	"list_projects",
+	"list_tasks",
+	"list_clients",
+	"list_members",
+	"list_project_members",
+	"list_holidays",
+	"list_recurring_block_rules",
+	"integration_status",
+	"list_filing_rules",
+	"list_commits",
+	"list_pull_requests",
+	"suggest_day",
+	"time_report_summary",
+	"time_report_detail",
+	"my_targets",
+	"tracking_report",
+	"overtime_report",
+	"unfiled_summary",
+	"absence_totals",
+	"list_absences",
+	"absence_report",
+]);
+
+/** True when the turn called a tool that may have changed data. A refused
+ *  approval leaves no trace, so it does not count. */
+export const ranWriteTool = (traces: ToolTrace[]) =>
+	traces.some((trace) => !READ_TOOLS.has(trace.name));
+
 /** The run at the start of a turn. */
 export const startRun = (sentMessage: string | null): Run => ({
 	...IDLE,

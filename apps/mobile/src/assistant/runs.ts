@@ -4,7 +4,7 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 
 import { threadKey, threadsKey } from "../api/assistant";
 import { scope, useWorkspace, type Workspace } from "../api/queries";
-import { applyEvent, IDLE, type Run, startRun } from "./turn";
+import { applyEvent, IDLE, ranWriteTool, type Run, startRun } from "./turn";
 
 /**
  * The turns in flight, one for each thread. The store lives outside the
@@ -122,15 +122,24 @@ export const useRunActions = (): RunActions => {
 	const w = useWorkspace();
 	const queryClient = useQueryClient();
 
-	/** The turn is over: read the stored thread, then drop the live copy. */
+	/** The turn is over: read the stored thread, then drop the live copy.
+	 *  `wrote` is true when a tool of the turn may have changed data. */
 	const settle = useCallback(
-		async (key: string, threadId: string, awaitAnswer: boolean) => {
-			await Promise.all([
-				queryClient.invalidateQueries({ queryKey: threadsKey(w) }),
-				queryClient.invalidateQueries({ queryKey: threadKey(w, threadId) }),
-				// A tool can change entries, projects, clients and tasks.
-				queryClient.invalidateQueries({ queryKey: scope(w) }),
-			]);
+		async (
+			key: string,
+			threadId: string,
+			awaitAnswer: boolean,
+			wrote: boolean,
+		) => {
+			// A write tool can change entries, projects, clients and tasks, and
+			// the key of the workspace holds the assistant threads as well.
+			// Otherwise only the thread list and this thread are stale.
+			await (wrote
+				? queryClient.invalidateQueries({ queryKey: scope(w) })
+				: Promise.all([
+						queryClient.invalidateQueries({ queryKey: threadsKey(w) }),
+						queryClient.invalidateQueries({ queryKey: threadKey(w, threadId) }),
+					]));
 			for (let tries = 0; awaitAnswer && tries < SETTLE_TRIES; tries++) {
 				const thread = queryClient.getQueryData<AssistantThreadDetail>(
 					threadKey(w, threadId),
@@ -207,9 +216,15 @@ export const useRunActions = (): RunActions => {
 					if (entry) set(key, { ...entry.run, isStreaming: false }, null);
 				}
 			}
-			const streamed = entries.get(key)?.run.streamed ?? false;
+			const finished = entries.get(key)?.run;
+			const streamed = finished?.streamed ?? false;
 			if (!entries.get(key)?.controller) {
-				await settle(key, threadId, controller.signal.aborted && streamed);
+				await settle(
+					key,
+					threadId,
+					controller.signal.aborted && streamed,
+					ranWriteTool(finished?.traces ?? []),
+				);
 			}
 			return delivered;
 		},
