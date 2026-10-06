@@ -4,6 +4,9 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.net.InetAddress
+import java.net.URI
+import java.net.URISyntaxException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -44,7 +47,17 @@ object CredentialStore {
     return generator.generateKey()
   }
 
-  fun save(context: Context, credential: Credential) {
+  /**
+   * Keeps the credential. Refuses (and clears what was stored) an origin that
+   * is not https, unless the host is on this machine or a local network. This
+   * is the rule of `normalizeOrigin` in `@farmer/api-client`: the token would
+   * cross the network in clear text. Gives false when it refuses.
+   */
+  fun save(context: Context, credential: Credential): Boolean {
+    if (!isAllowedOrigin(credential.origin)) {
+      clear(context)
+      return false
+    }
     val cipher = Cipher.getInstance(TRANSFORMATION)
     cipher.init(Cipher.ENCRYPT_MODE, key())
     val sealed = cipher.doFinal(credential.token.toByteArray(Charsets.UTF_8))
@@ -55,6 +68,48 @@ object CredentialStore {
       .putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
       .putString("token", Base64.encodeToString(sealed, Base64.NO_WRAP))
       .apply()
+    return true
+  }
+
+  internal fun isAllowedOrigin(origin: String): Boolean {
+    val uri = try {
+      URI(origin)
+    } catch (_: URISyntaxException) {
+      return false
+    }
+    val host = uri.host ?: return false
+    return when (uri.scheme?.lowercase()) {
+      "https" -> true
+      "http" -> isLocalHost(host)
+      else -> false
+    }
+  }
+
+  /** The same hosts as `isLocalHost` in `@farmer/api-client`. */
+  internal fun isLocalHost(host: String): Boolean {
+    val name = host.lowercase().removePrefix("[").removeSuffix("]")
+    if (name == "localhost" || name.endsWith(".local")) return true
+    val parts = name.split(".")
+    if (parts.size == 4 && parts.all { it.length in 1..3 && it.all(Char::isDigit) }) {
+      val octets = parts.map { it.toInt() }
+      if (octets.any { it > 255 }) return false
+      val (a, b) = octets
+      return a == 127 || a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168)
+    }
+    // A literal IPv6 address. The hex check keeps a host name out of
+    // `InetAddress`, which would ask the network.
+    if (!name.contains(':') || !name.all { it.isDigit() || it in 'a'..'f' || it == ':' }) {
+      return false
+    }
+    return try {
+      val bytes = InetAddress.getByName(name).address
+      bytes.size == 16 && (
+        InetAddress.getByAddress(bytes).isLoopbackAddress ||
+          (bytes[0].toInt() and 0xfe) == 0xfc
+        )
+    } catch (_: Exception) {
+      false
+    }
   }
 
   fun read(context: Context): Credential? {

@@ -22,7 +22,9 @@ type NativeTimerNotification = {
 	canPost(): boolean;
 	show(state: TimerNotificationState): void;
 	hide(): void;
-	setCredential(origin: string, token: string, userAgent: string): void;
+	/** False when the native side refuses the origin: plain http to a host that is
+	 *  not local. */
+	setCredential(origin: string, token: string, userAgent: string): boolean;
 	clearCredential(): void;
 };
 

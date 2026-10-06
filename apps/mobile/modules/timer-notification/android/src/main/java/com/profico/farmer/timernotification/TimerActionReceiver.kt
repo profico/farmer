@@ -7,6 +7,9 @@ import android.net.Uri
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * Pause and Resume from the ongoing notification.
@@ -31,13 +34,36 @@ class TimerActionReceiver : BroadcastReceiver() {
     }
     val appContext = context.applicationContext
     val pending = goAsync()
+    // The system gives `goAsync()` about 10 seconds. The Keystore decrypt and
+    // the request together stop at DEADLINE_MS, so `finish()` always runs
+    // before the system ends the broadcast.
+    val worker = Executors.newSingleThreadExecutor()
+    val job = worker.submit { run(appContext, path) }
     Thread {
       try {
-        run(appContext, path)
+        job.get(DEADLINE_MS, TimeUnit.MILLISECONDS)
+      } catch (_: TimeoutException) {
+        job.cancel(true)
+        notifyFailure(appContext, path)
+      } catch (_: Exception) {
+        // `run` handles its own failures.
       } finally {
+        worker.shutdownNow()
         pending.finish()
       }
     }.start()
+  }
+
+  private fun notifyFailure(context: Context, path: String) {
+    val snapshot = TimerNotifier.lastSnapshot(context) ?: return
+    TimerNotifier.post(
+      context,
+      snapshot.copy(notice = "Could not $path the timer. Open Farmer and try again.")
+    )
+  }
+
+  private companion object {
+    const val DEADLINE_MS = 8_000L
   }
 
   private fun run(context: Context, path: String) {

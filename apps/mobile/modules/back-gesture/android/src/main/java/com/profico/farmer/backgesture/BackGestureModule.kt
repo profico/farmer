@@ -35,6 +35,12 @@ class BackGestureModule : Module() {
   private var ownCallback: OnBackPressedCallback? = null
   private var ownCallbackActivity = WeakReference<ReactActivity>(null)
 
+  // True while `onBackPressed()` runs for a real Back. When the React
+  // instance is gone, `ReactActivity` passes the call on to the dispatcher,
+  // which enters the callback again from inside that call. Without this
+  // flag the two calls would loop until the stack overflows.
+  private var sendingBack = false
+
   override fun definition() = ModuleDefinition {
     Name("BackGesture")
 
@@ -87,15 +93,21 @@ class BackGestureModule : Module() {
     val callback = object : OnBackPressedCallback(true) {
       override fun handleOnBackPressed() {
         val target = weakActivity.get() ?: return
-        if (!isDefaultBackRunning()) {
+        if (!sendingBack && !isDefaultBackRunning()) {
           // A real Back. `onBackPressed` only sends the event to JavaScript
           // and returns, so this callback must stay enabled for the next
           // Back. When JavaScript does not take the event, it calls
           // `invokeDefaultOnBackPressed`, which comes back here.
-          target.onBackPressed()
+          sendingBack = true
+          try {
+            target.onBackPressed()
+          } finally {
+            sendingBack = false
+          }
           return
         }
-        // The second visit: JavaScript let the event go. Run the default
+        // The second visit: JavaScript let the event go, or the callback was
+        // entered again while a real Back was on its way (`sendingBack`). Run the default
         // action (leave the app) with this callback off, as the React
         // Native callback does in `ReactActivity.invokeDefaultOnBackPressed`.
         // A flag that stays set until JavaScript answers would be wrong:
