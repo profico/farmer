@@ -8,9 +8,14 @@ import { useConfirmTimerEntry } from "../src/api/time";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
 import { FormCluster, FormPart, Sheet } from "../src/forms/sheet";
 import { DayStepper, DurationStepper } from "../src/forms/steppers";
-import { dayKeyInTimeZone } from "../src/lib/days";
-import { formatStopwatch, toQuarter } from "../src/lib/duration";
+import { formatStopwatch } from "../src/lib/duration";
 import { committed, toggled } from "../src/time/haptics";
+import {
+	type StopEdits,
+	stopFormFields,
+	stopPayload,
+	timerStopFields,
+} from "../src/time/stop-fields";
 import {
 	ActionButton,
 	Card,
@@ -30,7 +35,7 @@ import { usePalette } from "../src/ui/theme";
  * saved. Closing this sheet leaves the timer held.
  */
 export default function StopTimerSheet() {
-	const timer = useTimer();
+	const timer = useTimer({ fresh: true });
 	const whoami = useWhoami();
 	// The timer as the person saved it. The save clears the cached timer
 	// while the sheet closes, and the form stays on screen until it is gone.
@@ -101,17 +106,18 @@ function StopForm({
 		},
 	});
 	const resume = useTimerAction();
-	// A continued entry stays on its own day; a new one lands on the day the
-	// timer started, in the workspace's timezone.
-	const [date, setDate] = useState(
-		timer.entry?.date ?? dayKeyInTimeZone(new Date(timer.startedAt), timeZone),
-	);
-	const [seconds, setSeconds] = useState(toQuarter(timer.snappedSeconds));
-	const [projectId, setProjectId] = useState<string | null>(
-		timer.project?.id ?? null,
-	);
-	const [taskId, setTaskId] = useState(timer.task.id);
-	const [note, setNote] = useState(timer.description);
+	// Only what the person changed is kept here. Every other field follows
+	// the live timer, so a refetch brings in a note edited on the entry.
+	const [edits, setEdits] = useState<StopEdits>({});
+	const live = timerStopFields(timer, timeZone);
+	const {
+		date,
+		seconds,
+		projectId,
+		taskId,
+		description: note,
+	} = stopFormFields(live, edits);
+	const edit = (patch: StopEdits) => setEdits((e) => ({ ...e, ...patch }));
 	// The rule is the timer's own task's. Another task's rule is the
 	// server's to apply, as `farmer stop -t` leaves it.
 	const needsNote = timer.task.needsDescription && taskId === timer.task.id;
@@ -123,16 +129,7 @@ function StopForm({
 
 	const save = () => {
 		if (missingNote) return;
-		confirm.mutate({
-			date,
-			taskId,
-			durationSeconds: seconds,
-			// Sent always: on a continued entry an absent project keeps the
-			// entry's, and the form holds what the person chose.
-			projectId,
-			// "" rather than absent, so an emptied note clears the entry's.
-			description: note.trim(),
-		});
+		confirm.mutate(stopPayload({ timer, live, edits }));
 	};
 
 	return (
@@ -162,17 +159,28 @@ function StopForm({
 					<DurationStepper
 						label="Time to log"
 						seconds={seconds}
-						onChange={setSeconds}
+						onChange={(seconds) => edit({ seconds })}
 					/>
 				</FormPart>
 				<FormPart label="Day">
-					<DayStepper label="Day" day={date} today={today} onChange={setDate} />
+					<DayStepper
+						label="Day"
+						day={date}
+						today={today}
+						onChange={(date) => edit({ date })}
+					/>
 				</FormPart>
 			</FormCluster>
 			<FormCluster>
 				<FormPart>
-					<ProjectPicker value={projectId} onChange={setProjectId} />
-					<TaskPicker value={taskId} onChange={(task) => setTaskId(task.id)} />
+					<ProjectPicker
+						value={projectId}
+						onChange={(projectId) => edit({ projectId })}
+					/>
+					<TaskPicker
+						value={taskId}
+						onChange={(task) => edit({ taskId: task.id })}
+					/>
 				</FormPart>
 			</FormCluster>
 			<FormCluster>
@@ -180,7 +188,7 @@ function StopForm({
 					<Field
 						label="Note"
 						value={note}
-						onChangeText={setNote}
+						onChangeText={(description) => edit({ description })}
 						placeholder="What did you work on?"
 						multiline
 						error={missingNote ? `${timer.task.name} needs a note.` : null}

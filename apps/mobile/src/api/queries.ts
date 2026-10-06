@@ -107,9 +107,12 @@ export const useUnfiled = (from: string, to: string) => {
 /** The person's timer, which may run in another workspace. Read again when
  *  the app comes to the front, because the web or the CLI may have stopped
  *  it, and once a minute while one runs. */
-export const useTimer = () => {
+/** `fresh` reads the timer again on mount, whatever its age: the Stop screen
+ *  needs the entry's live note, which another client may have edited. */
+export const useTimer = ({ fresh = false }: { fresh?: boolean } = {}) => {
 	const w = useWorkspace();
 	return useQuery({
+		refetchOnMount: fresh ? "always" : true,
 		queryKey: [...scope(w), "timer"],
 		queryFn: () => w.client.timer(w.slug),
 		staleTime: 15_000,
@@ -122,6 +125,11 @@ const invalidateDay = (queryClient: QueryClient, w: Workspace) =>
 		queryClient.invalidateQueries({ queryKey: [...scope(w), "entries"] }),
 		queryClient.invalidateQueries({ queryKey: [...scope(w), "unfiled"] }),
 		queryClient.invalidateQueries({ queryKey: [...scope(w), "tracking"] }),
+		// A timer that continues an entry reads its fields live (#133).
+		queryClient.invalidateQueries({
+			queryKey: [...scope(w), "timer"],
+			exact: true,
+		}),
 	]);
 
 export const useCreateEntry = () => {

@@ -35,8 +35,13 @@ const HOUR = 60 * MINUTE;
 /** The keys that a change of time makes stale. */
 export const refreshTime = (queryClient: QueryClient, w: Workspace) =>
 	Promise.all(
-		["entries", "unfiled", "tracking", "home"].map((key) =>
-			queryClient.invalidateQueries({ queryKey: [...scope(w), key] }),
+		// "timer" too: a timer that continues an entry reads its project, task
+		// and note live from the entry (#133).
+		["entries", "unfiled", "tracking", "home", "timer"].map((key) =>
+			queryClient.invalidateQueries({
+				queryKey: [...scope(w), key],
+				exact: key === "timer",
+			}),
 		),
 	);
 
