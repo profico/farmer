@@ -15,7 +15,10 @@ import type {
 	SavePushSubscriptionInput,
 	UpdateNotificationSettingsInput,
 } from "../schema/notifications";
+import { type AppReach, appReach } from "./native-push";
 import type { Ctx } from "./types";
+
+export type { AppReach };
 
 export type RemindersChannel = "app" | "slack";
 
@@ -124,6 +127,10 @@ export const notificationsService = {
 
 	getSettings: (ctx: Ctx): Promise<NotificationSettings> =>
 		settingsFor(ctx.organizationId, ctx.userId),
+
+	/** Whether a reminder can reach the person in the mobile app. Per person,
+	 *  not per workspace: a phone belongs to a person. */
+	appReach: (ctx: Ctx): Promise<AppReach> => appReach(ctx.userId),
 
 	// Also exposed for callers that only have (org, user) and no ctx, e.g. the
 	// background reminder job iterating members.

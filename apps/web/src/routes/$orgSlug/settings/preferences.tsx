@@ -57,7 +57,10 @@ import { supportsCustomPalette, usePalette } from "#/lib/palette.ts";
 import { SCALES, useScale } from "#/lib/scale.ts";
 import { signInMethodsQuery } from "#/queries/account.ts";
 import { myApiTokensQuery } from "#/queries/api-tokens.ts";
-import { notificationSettingsQuery } from "#/queries/notifications.ts";
+import {
+	appReachQuery,
+	notificationSettingsQuery,
+} from "#/queries/notifications.ts";
 import { mySessionsQuery } from "#/queries/sessions.ts";
 import { hiddenTasksQuery, selectableTasksQuery } from "#/queries/tasks.ts";
 import { unlinkGoogleLogin } from "#/server/account.ts";
@@ -71,6 +74,7 @@ export const Route = createFileRoute("/$orgSlug/settings/preferences")({
 			// PreferencesSettingsPage).
 			context.queryClient.ensureQueryData(signInMethodsQuery(orgSlug)),
 			context.queryClient.ensureQueryData(notificationSettingsQuery(orgSlug)),
+			context.queryClient.ensureQueryData(appReachQuery(orgSlug)),
 			context.queryClient.ensureQueryData(mySessionsQuery(orgSlug)),
 			// Only where the section renders: the tokens call the API, and the
 			// API is off with the CLI (see ApiTokensSection).
@@ -674,7 +678,8 @@ function DisplaySection() {
 
 function PreferencesSettingsPage() {
 	const { devAuth } = Route.useLoaderData();
-	const { cliEnabled } = Route.useRouteContext();
+	const { cliEnabled, role } = Route.useRouteContext();
+	const isAdmin = role === "owner" || role === "admin";
 	const orgSlug = useOrgSlug();
 	const { data: methods } = useSuspenseQuery(signInMethodsQuery(orgSlug));
 	// In development, and for an account that holds a password. Outside
@@ -700,7 +705,7 @@ function PreferencesSettingsPage() {
 
 			<SignedInDevicesSection />
 			{cliEnabled ? <ApiTokensSection /> : null}
-			<NotificationSettings />
+			<NotificationSettings isAdmin={isAdmin} />
 			<FilingRulesSettings />
 		</Page>
 	);

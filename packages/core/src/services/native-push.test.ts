@@ -35,7 +35,7 @@ import { runningTimer } from "../db/schema/timer";
 import { runTimerSweepOnce } from "../jobs/timer-sweep";
 import { type FakeRelay, startFakeRelay } from "../test/fake-relay";
 import { createTestDb, present, type TestDb } from "../test/harness";
-import { settleNativePushForTests } from "./native-push";
+import { appReach, settleNativePushForTests } from "./native-push";
 import {
 	type NotifyAdapter,
 	notify,
@@ -283,6 +283,42 @@ describe("alerts", () => {
 		);
 		expect(relay.requests).toHaveLength(0);
 		await db.delete(session).where(eq(session.id, "s-expired"));
+	});
+});
+
+describe("what the phones can do for a reminder", () => {
+	test("a person with no phone has none to reach", async () => {
+		expect(await appReach(ME)).toEqual({
+			relay: true,
+			phones: 0,
+			allowing: 0,
+		});
+	});
+
+	test("a phone that blocks notifications counts, and does not allow", async () => {
+		await addDevice(IOS, iosPublic, { notificationsAllowed: false });
+		expect(await appReach(ME)).toEqual({ relay: true, phones: 1, allowing: 0 });
+	});
+
+	test("only a phone that allows notifications counts as allowing", async () => {
+		await addDevice(IOS, iosPublic);
+		await addDevice(ANDROID, androidPublic, { notificationsAllowed: false });
+		expect(await appReach(ME)).toEqual({ relay: true, phones: 2, allowing: 1 });
+	});
+
+	test("a phone of an expired session is not live", async () => {
+		await db.insert(session).values({
+			id: "s-expired-reach",
+			token: "token-expired-reach",
+			userId: ME,
+			expiresAt: new Date(Date.now() - 1000),
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		await addDevice(IOS, iosPublic, { sessionId: "s-expired-reach" });
+		expect((await appReach(ME)).phones).toBe(0);
+		await db.delete(mobileDevice);
+		await db.delete(session).where(eq(session.id, "s-expired-reach"));
 	});
 });
 

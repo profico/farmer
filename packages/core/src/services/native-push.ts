@@ -206,6 +206,20 @@ export const hasNotifiableDevice = async (userId: string): Promise<boolean> => {
 	return devices.some((device) => device.notificationsAllowed);
 };
 
+/** What the person's phones can do for a reminder: whether the relay is on,
+ *  how many live phones the person has, and how many of them allow
+ *  notifications. A reminder goes to the app when `allowing` is above 0. */
+export type AppReach = { relay: boolean; phones: number; allowing: number };
+
+export const appReach = async (userId: string): Promise<AppReach> => {
+	const devices = await liveDevices(userId);
+	return {
+		relay: pushRelayUrl() !== null,
+		phones: devices.length,
+		allowing: devices.filter((device) => device.notificationsAllowed).length,
+	};
+};
+
 /**
  * Send an alert to every phone of the person that allows notifications.
  * Returns true when at least one phone took it, and false otherwise: the
