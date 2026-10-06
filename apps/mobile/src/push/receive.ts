@@ -1,6 +1,7 @@
 import {
 	checkFreshness,
 	emptyPushSeen,
+	type PushEnvelope,
 	type PushSeen,
 	rememberPushId,
 } from "@farmer/push-crypto/freshness";
@@ -113,14 +114,14 @@ const readSeen = (): PushSeen => {
 const acceptFresh = (
 	json: ReturnType<typeof JSON.parse>,
 	receivedKind: string | null,
-): boolean => {
+): PushEnvelope | null => {
 	const envelope = pushEnvelopeSchema.safeParse(json);
-	if (!envelope.success) return false;
+	if (!envelope.success) return null;
 	const seen = readSeen();
 	const verdict = checkFreshness(envelope.data, receivedKind, Date.now(), seen);
 	if (verdict !== "ok") {
 		console.warn("[push] refused a push", verdict);
-		return false;
+		return null;
 	}
 	try {
 		Storage.setItemSync(
@@ -130,14 +131,45 @@ const acceptFresh = (
 	} catch {
 		// A store that cannot be written still shows this push.
 	}
-	return true;
+	return envelope.data;
+};
+
+/** The kv key of the `sentAt` of the last timer push that the app applied.
+ *  The kv store, for the same reason as the seen list. */
+const TIMER_SENT_AT_KEY = "farmer.push.timer-sent-at";
+
+const readTimerSentAt = (): number => {
+	try {
+		const parsed = z
+			.number()
+			.safeParse(Number(Storage.getItemSync(TIMER_SENT_AT_KEY)));
+		return parsed.success ? parsed.data : 0;
+	} catch {
+		return 0;
+	}
+};
+
+/** Whether a timer push is older than the last one that the app applied.
+ *  FCM does not keep the order of data messages, so a late "pause" must not
+ *  undo a "resume" that came first. Two pushes with the same `sentAt` both
+ *  apply, because their order is not known and the later arrival is the
+ *  better guess. The read, the check and the write are synchronous. */
+const supersededTimer = (sentAt: number): boolean => {
+	if (sentAt < readTimerSentAt()) return true;
+	try {
+		Storage.setItemSync(TIMER_SENT_AT_KEY, String(sentAt));
+	} catch {
+		// A store that cannot be written still applies this push.
+	}
+	return false;
 };
 
 /**
  * Open one sealed push and act on it: an alert becomes a local
  * notification, and a timer change updates the timer surface. A payload that
  * does not open or does not parse is dropped, and so is one that came in a
- * push of another kind, is older than a day, or was seen already.
+ * push of another kind, is older than a day, or was seen already. A timer payload that is older
+ * than the last one that the app applied is dropped too.
  */
 export const handleSealedPush = async (push: SealedPush): Promise<void> => {
 	const text = await openPush(push.sealed);
@@ -148,9 +180,14 @@ export const handleSealedPush = async (push: SealedPush): Promise<void> => {
 	} catch {
 		return;
 	}
-	if (!acceptFresh(json, push.kind)) return;
+	const envelope = acceptFresh(json, push.kind);
+	if (!envelope) return;
 	const timer = timerPayload.safeParse(json);
 	if (timer.success) {
+		if (supersededTimer(envelope.sentAt)) {
+			console.warn("[push] dropped a timer push older than the last");
+			return;
+		}
 		applyTimer(timer.data);
 		return;
 	}
