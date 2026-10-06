@@ -17,6 +17,7 @@ import {
 import {
 	type DevicePatch,
 	registerDevice,
+	removeDevice,
 	serverRelayUrl,
 	updateDevice,
 } from "./server";
@@ -291,6 +292,29 @@ const dropRelay = async (): Promise<void> => {
 	if (!stored) return;
 	await removeFromRelay(stored.relayUrl, stored);
 	await deleteItem(KEYS.relay);
+};
+
+/** The longest time that a sign-out waits for the Server to delete the
+ *  phone's row. An offline phone must still sign out at once. */
+const UNREGISTER_WAIT_MS = 5_000;
+
+/**
+ * Sign-out, before the token is revoked: delete the phone's row on the
+ * Server (`DELETE /api/v1/me/devices/{id}`). The revoke also deletes the
+ * row, but a revoke that fails offline does not. A phone that never
+ * registered has no installation id, and sends nothing. Never throws.
+ */
+export const unregisterDevice = async (session: PushSession): Promise<void> => {
+	try {
+		const id = await readItem(KEYS.installation);
+		if (!id) return;
+		await Promise.race([
+			removeDevice(session.origin, session.token, id),
+			new Promise((resolve) => setTimeout(resolve, UNREGISTER_WAIT_MS)),
+		]);
+	} catch (error) {
+		logOnce("unregister", `could not remove the device: ${String(error)}`);
+	}
 };
 
 /**

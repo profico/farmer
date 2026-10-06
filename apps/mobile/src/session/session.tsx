@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { transportFor } from "../api/transport";
+import { unregisterDevice } from "../push/registration";
 import {
 	readSession,
 	type StoredSession,
@@ -93,6 +94,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
 	const signOut = useCallback(async () => {
 		if (state.status === "signed_in") {
+			// The device row goes first, while the token is still valid.
+			await unregisterDevice(state.session);
 			// Signing out must work offline too: a failed revoke still forgets
 			// the token here, and the session ends on the server in time.
 			await state.client.signOut().catch(() => undefined);
