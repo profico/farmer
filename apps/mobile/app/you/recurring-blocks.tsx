@@ -58,11 +58,6 @@ export default function RecurringBlocksScreen() {
 			refreshing={blocks.isRefetching}
 			onRefresh={() => void blocks.refetch()}
 		>
-			{remove.error ? (
-				<Inset>
-					<ErrorBanner message={messageOf(remove.error) ?? ""} />
-				</Inset>
-			) : null}
 			{enableBreak.error ? (
 				<Inset>
 					<ErrorBanner message={messageOf(enableBreak.error) ?? ""} />

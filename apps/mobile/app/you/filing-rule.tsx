@@ -64,7 +64,7 @@ function RuleForm({ rule }: { rule: FilingRule }) {
 	const [projectId, setProjectId] = useState(rule.project.id);
 	const [targetTaskId, setTargetTaskId] = useState(rule.targetTask?.id ?? null);
 	const busy = update.isPending || remove.pending;
-	const failure = messageOf(update.error ?? remove.error);
+	const failure = messageOf(update.error);
 
 	const save = () =>
 		update.mutate(

@@ -1,5 +1,6 @@
 import { useArchiveClient, useArchiveTask } from "../../api/workspace";
-import { confirmAction, confirmDestructive, notifyError } from "../components";
+import { notifyError } from "../../ui/notify-error";
+import { confirmAction, confirmDestructive } from "../components";
 
 /**
  * Archive and restore of a task, with the questions that the edit sheet

@@ -1,7 +1,8 @@
 import type { WebhookEndpoint } from "@farmer/api-client";
 
 import { useDeleteWebhookEndpoint } from "../../api/workspace";
-import { confirmDestructive, notifyError } from "../components";
+import { notifyError } from "../../ui/notify-error";
+import { confirmDestructive } from "../components";
 
 /**
  * Gives `confirm`, which asks "Delete this endpoint?" and deletes it on a

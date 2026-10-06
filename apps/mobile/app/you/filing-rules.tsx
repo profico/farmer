@@ -1,9 +1,7 @@
 import { useRouter } from "expo-router";
 
 import { useFilingRules } from "../../src/api/you";
-import { EmptyState, ErrorBanner, ErrorState } from "../../src/ui/components";
-import { messageOf } from "../../src/ui/errors";
-import { Inset } from "../../src/ui/screen";
+import { EmptyState, ErrorState } from "../../src/ui/components";
 import { SettingsLink, SettingsSection } from "../../src/ui/settings-list";
 import { ListSkeleton, YouScreen } from "../../src/you/components/you-screen";
 import { useConfirmRemoveRule } from "../../src/you/confirm-delete";
@@ -28,11 +26,6 @@ export default function FilingRulesScreen() {
 			refreshing={rules.isRefetching}
 			onRefresh={() => void rules.refetch()}
 		>
-			{remove.error ? (
-				<Inset>
-					<ErrorBanner message={messageOf(remove.error) ?? ""} />
-				</Inset>
-			) : null}
 			{rules.isPending ? (
 				<ListSkeleton rows={3} />
 			) : rules.isError ? (

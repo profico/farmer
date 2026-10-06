@@ -21,6 +21,7 @@ import { showDialog } from "../ui/dialog";
 import { ControlHost } from "../ui/host";
 import { Icon } from "../ui/icon";
 import { LoadingIndicator } from "../ui/loading";
+import { notifyError } from "../ui/notify-error";
 import { useRowMenu } from "../ui/row-menu";
 import type { RowMenuEntry } from "../ui/row-menu-items";
 import { SettingsChoice, SettingsSection } from "../ui/settings-list";
@@ -86,11 +87,7 @@ export const notify = (message: string) => {
 	showDialog(message);
 };
 
-/** The failure of a change, in the app's dialog (the Material 3 dialog of
- *  `src/ui/dialog-host.android.tsx` on Android), with the server's own
- *  sentence. A 403 for an API token arrives here too. */
-export const notifyError = (title: string, error: Error) =>
-	showDialog(title, error.message || "Something went wrong. Try again.");
+export { notifyError };
 
 /** A search box above a list. */
 export function SearchField({

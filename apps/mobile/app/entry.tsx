@@ -204,9 +204,7 @@ function EntryForm({
 		remove.pending ||
 		repeat.isPending ||
 		attach.isPending;
-	const failure = messageOf(
-		create.error ?? update.error ?? remove.error ?? repeat.error,
-	);
+	const failure = messageOf(create.error ?? update.error ?? repeat.error);
 	const repeatInvalid = repeats && days.length === 0;
 
 	// The meeting picker is for the Meeting task, found by its system key:

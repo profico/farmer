@@ -2,7 +2,7 @@ import type { ProjectDetail } from "@farmer/api-client";
 
 import { useArchiveProject } from "../api/projects";
 import { showDialog } from "../ui/dialog";
-import { messageOf } from "../ui/errors";
+import { notifyError } from "../ui/notify-error";
 
 /**
  * Gives `confirm`, which asks to archive or restore a project and does it
@@ -28,10 +28,7 @@ export function useConfirmProjectStatus() {
 							{ id: project.id, archive: !archived },
 							{
 								onError: (error) =>
-									showDialog(
-										"Could not change the project's status",
-										messageOf(error) ?? "",
-									),
+									notifyError("Could not change the project's status", error),
 							},
 						),
 				},

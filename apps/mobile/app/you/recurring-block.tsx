@@ -109,7 +109,7 @@ function BlockForm({ block }: { block: RecurringBlock | null }) {
 				: null;
 
 	const busy = create.isPending || update.isPending || remove.pending;
-	const failure = messageOf(create.error ?? update.error ?? remove.error);
+	const failure = messageOf(create.error ?? update.error);
 
 	const save = () => {
 		setTried(true);

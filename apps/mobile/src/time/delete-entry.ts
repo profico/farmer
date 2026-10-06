@@ -2,6 +2,7 @@ import type { TimeEntry } from "@farmer/api-client";
 
 import { useDeleteTimeEntry } from "../api/time";
 import { showDialog } from "../ui/dialog";
+import { notifyError } from "../ui/notify-error";
 import { removed } from "./haptics";
 
 /**
@@ -24,8 +25,10 @@ export function useConfirmDeleteEntry() {
 							removed();
 							onDeleted?.();
 						},
+						onError: (error) =>
+							notifyError("Could not delete the entry", error),
 					}),
 			},
 		]);
-	return { confirm, pending: remove.isPending, error: remove.error };
+	return { confirm, pending: remove.isPending };
 }

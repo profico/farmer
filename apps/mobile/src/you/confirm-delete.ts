@@ -1,5 +1,6 @@
 import { useDeleteFilingRule, useDeleteRecurringBlock } from "../api/you";
 import { showDialog } from "../ui/dialog";
+import { notifyError } from "../ui/notify-error";
 
 /**
  * Gives `confirm`, which asks "Delete this recurring block?" and deletes it
@@ -14,10 +15,15 @@ export function useConfirmDeleteBlock() {
 			{
 				text: "Delete",
 				style: "destructive",
-				onPress: () => remove.mutate(block.id, { onSuccess: onDone }),
+				onPress: () =>
+					remove.mutate(block.id, {
+						onSuccess: onDone,
+						onError: (error) =>
+							notifyError("Could not delete the recurring block", error),
+					}),
 			},
 		]);
-	return { confirm, pending: remove.isPending, error: remove.error };
+	return { confirm, pending: remove.isPending };
 }
 
 /** The same for a filing rule: "Remove this rule?". */
@@ -32,9 +38,14 @@ export function useConfirmRemoveRule() {
 				{
 					text: "Remove",
 					style: "destructive",
-					onPress: () => remove.mutate(rule.id, { onSuccess: onDone }),
+					onPress: () =>
+						remove.mutate(rule.id, {
+							onSuccess: onDone,
+							onError: (error) =>
+								notifyError("Could not remove the rule", error),
+						}),
 				},
 			],
 		);
-	return { confirm, pending: remove.isPending, error: remove.error };
+	return { confirm, pending: remove.isPending };
 }
