@@ -20,7 +20,7 @@ import { ApprovalCard } from "./approval-card";
 import { Composer } from "./composer";
 import { useRun, useRunActions } from "./runs";
 import { ToolTraceList } from "./tool-trace";
-import { storedPending, visibleMessages } from "./turn";
+import { visibleMessages, visiblePending } from "./turn";
 
 const SUGGESTIONS = [
 	"How many hours did I log last week?",
@@ -82,7 +82,11 @@ export function Chat({ id }: { id: string | null }) {
 	const palette = usePalette();
 	const router = useRouter();
 	const thread = useAssistantThread(id);
-	const run = useRun(id ?? "");
+	// A draft that has made its thread, but whose first message has not
+	// arrived yet, shows the run of that thread.
+	const [draftId, setDraftId] = useState<string | null>(null);
+	const runId = id ?? draftId ?? "";
+	const run = useRun(runId);
 	const actions = useRunActions();
 	const create = useCreateThread();
 	// A second send must not make a second thread while the first is made.
@@ -96,7 +100,7 @@ export function Chat({ id }: { id: string | null }) {
 
 	const messages = thread.data?.messages ?? [];
 	const rows = visibleMessages(messages);
-	const pending = run.pending ?? storedPending(messages);
+	const pending = visiblePending(run, messages);
 	const sentStored =
 		run.sentMessageId !== null &&
 		messages.some((message) => message.id === run.sentMessageId);
@@ -109,12 +113,20 @@ export function Chat({ id }: { id: string | null }) {
 		creating.current = true;
 		setDraftError(null);
 		try {
-			const made = await create.mutateAsync();
+			// A failed first send keeps its thread, so a second try does not
+			// leave a second empty one.
+			const threadId = draftId ?? (await create.mutateAsync()).id;
+			setDraftId(threadId);
+			// Wait until the server has the message. A failed send then stays
+			// on the draft, and the composer gives the text back.
+			const delivered = await new Promise<boolean>((resolve) => {
+				void actions.send(threadId, text, () => resolve(true)).then(resolve);
+			});
+			if (!delivered) return false;
 			// The run lives outside the screen, so the thread's own screen
 			// shows it from the first frame. Back then goes to the screen that
 			// opened the new chat.
-			void actions.send(made.id, text);
-			router.replace({ pathname: "/assistant/[id]", params: { id: made.id } });
+			router.replace({ pathname: "/assistant/[id]", params: { id: threadId } });
 			return true;
 		} catch (failure) {
 			setDraftError(
@@ -133,11 +145,11 @@ export function Chat({ id }: { id: string | null }) {
 			<Stack.Screen
 				options={{
 					title: id === null ? "New chat" : (thread.data?.thread.title ?? ""),
-					// The history is one tap away, so Back leaves the assistant
-					// at once. `dismissTo` goes back to the list when it is under
-					// this chat, and replaces the chat with it when it is not.
 				}}
 			/>
+			{/* The history is one tap away, so Back leaves the assistant at once.
+			    `dismissTo` goes back to the list when it is under this chat,
+			    and replaces the chat with it when it is not. */}
 			<HeaderActions
 				actions={[
 					{
@@ -291,7 +303,7 @@ export function Chat({ id }: { id: string | null }) {
 					</ScrollView>
 					<Composer
 						onSend={send}
-						onStop={() => id !== null && actions.stop(id)}
+						onStop={() => runId !== "" && actions.stop(runId)}
 						streaming={busy}
 						locked={pending !== null}
 						keyboardOpen={keyboardOpen}

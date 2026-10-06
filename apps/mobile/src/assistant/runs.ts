@@ -107,7 +107,13 @@ const failureText = (error: Error) => {
 export type RunActions = {
 	/** True when the message reached the server. The composer gives the
 	 *  draft back when it did not. */
-	send: (threadId: string, message: string) => Promise<boolean>;
+	send: (
+		threadId: string,
+		message: string,
+		/** Called when the server has stored the message, before the turn
+		 *  ends. */
+		onDelivered?: () => void,
+	) => Promise<boolean>;
 	resolve: (
 		threadId: string,
 		toolCallId: string,
@@ -163,7 +169,11 @@ export const useRunActions = (): RunActions => {
 	);
 
 	const run = useCallback(
-		async (threadId: string, turn: Turn): Promise<boolean> => {
+		async (
+			threadId: string,
+			turn: Turn,
+			onDelivered?: () => void,
+		): Promise<boolean> => {
 			const key = keyOf(w, threadId);
 			entries.get(key)?.controller?.abort();
 			const controller = new AbortController();
@@ -198,6 +208,7 @@ export const useRunActions = (): RunActions => {
 					if (!mine()) break;
 					if (event.type === "message" && event.role === "user") {
 						delivered = true;
+						onDelivered?.();
 					}
 					patchSoon(key, (state) => applyEvent(state, event));
 				}
@@ -233,7 +244,8 @@ export const useRunActions = (): RunActions => {
 
 	return useMemo(
 		() => ({
-			send: (threadId, message) => run(threadId, { kind: "send", message }),
+			send: (threadId, message, onDelivered) =>
+				run(threadId, { kind: "send", message }, onDelivered),
 			resolve: async (threadId, toolCallId, decision, selectedRowIds) => {
 				await run(threadId, {
 					kind: "resolve",

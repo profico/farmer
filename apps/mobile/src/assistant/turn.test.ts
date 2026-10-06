@@ -4,10 +4,12 @@ import type { AssistantEvent, AssistantMessage } from "@farmer/api-client";
 
 import {
 	applyEvent,
+	IDLE,
 	ranWriteTool,
 	startRun,
 	storedPending,
 	visibleMessages,
+	visiblePending,
 } from "./turn";
 
 const message = (
@@ -169,5 +171,60 @@ describe("ranWriteTool", () => {
 
 	test("a tool that is not known counts", () => {
 		expect(ranWriteTool([trace("a_new_tool")])).toBe(true);
+	});
+});
+
+describe("visiblePending", () => {
+	const waiting = [
+		message({ id: "u1", role: "user", content: "Delete it" }),
+		message({
+			id: "a1",
+			role: "assistant",
+			pendingApproval: true,
+			toolCalls: [{ id: "c1", name: "delete_time_entry", arguments: "{}" }],
+		}),
+	];
+
+	test("shows the stored card when no turn runs", () => {
+		expect(visiblePending(IDLE, waiting)?.toolCallId).toBe("c1");
+	});
+
+	test("hides the stored card while the answer streams", () => {
+		expect(visiblePending(startRun(null), waiting)).toBeNull();
+	});
+
+	test("hides the stored card after the turn ran a tool", () => {
+		const run = {
+			...IDLE,
+			traces: [
+				{
+					toolCallId: "c1",
+					name: "delete_time_entry",
+					ok: true,
+					arguments: "{}",
+				},
+			],
+		};
+		expect(visiblePending(run, waiting)).toBeNull();
+	});
+
+	test("shows the stored card again when the turn failed at once", () => {
+		expect(
+			visiblePending({ ...IDLE, error: "Offline" }, waiting)?.toolCallId,
+		).toBe("c1");
+	});
+
+	test("prefers the card of the live run", () => {
+		const run = applyEvent(startRun(null), {
+			type: "approval_required",
+			messageId: "a2",
+			toolCallId: "c2",
+			name: "archive_task",
+			summary: "Archive it",
+			arguments: "{}",
+			preview: null,
+			selectable: false,
+		});
+		expect(visiblePending(run, waiting)?.toolCallId).toBe("c2");
 	});
 });

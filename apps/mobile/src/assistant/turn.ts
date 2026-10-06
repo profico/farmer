@@ -194,6 +194,21 @@ export const storedPending = (
 	};
 };
 
+/**
+ * The approval card to draw. While a turn answers, the stored thread still
+ * holds the call that was just answered, so the card comes from the live
+ * run only. It comes from the stored thread again when the turn is over,
+ * or when it failed before it answered anything.
+ */
+export const visiblePending = (
+	run: Run,
+	messages: AssistantMessage[],
+): PendingApproval | null => {
+	if (run.pending) return run.pending;
+	const answering = run.isStreaming || run.text !== "" || run.traces.length > 0;
+	return answering ? null : storedPending(messages);
+};
+
 /** The rows of a stored thread that the transcript draws: the person's
  *  messages and the assistant's text. A tool row and a pure tool turn are
  *  not drawn. */
