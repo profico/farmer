@@ -1,5 +1,5 @@
 import { Host, ModalBottomSheet, RNHostView } from "@expo/ui/jetpack-compose";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
 
 import { useHostTheme } from "./host";
 import { Icon } from "./icon";
@@ -18,6 +18,10 @@ import { SPACE, TYPE } from "./type";
 export function RowMenuSheet({ title, items, onClose }: RowMenuSheetProps) {
 	const palette = usePalette();
 	const hostTheme = useHostTheme();
+	// `matchContents` sizes the sheet content to its widest child. A row would
+	// then end at its label. The sheet is as wide as the window, so each row
+	// takes that width, as a Material list item does.
+	const { width } = useWindowDimensions();
 	return (
 		<Host style={{ position: "absolute", width: 0, height: 0 }} {...hostTheme}>
 			<ModalBottomSheet
@@ -26,7 +30,7 @@ export function RowMenuSheet({ title, items, onClose }: RowMenuSheetProps) {
 				containerColor={palette.surfaceContainerLow}
 			>
 				<RNHostView matchContents>
-					<View style={{ paddingBottom: SPACE.xl }}>
+					<View style={{ width, paddingBottom: SPACE.xl }}>
 						<View
 							style={{
 								paddingHorizontal: SPACE.l,
