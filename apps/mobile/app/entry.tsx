@@ -1,16 +1,16 @@
-import type { TimeEntry } from "@farmer/api-client";
+import type { CalendarEvent, TimeEntry } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, View } from "react-native";
 
 import { useAccess } from "../src/api/capabilities";
-import { useEntries, useWhoami } from "../src/api/queries";
+import { useEntries, useTasks, useWhoami } from "../src/api/queries";
 import {
 	useCreateTimeEntry,
 	useDeleteTimeEntry,
 	useUpdateTimeEntry,
 } from "../src/api/time";
-import { useCreateRecurringBlock } from "../src/api/you";
+import { useCreateRecurringBlock, useIntegrations } from "../src/api/you";
 import { ProjectPicker, TaskPicker } from "../src/forms/pickers";
 import { FormSection, Sheet } from "../src/forms/sheet";
 import { DayStepper, DurationStepper } from "../src/forms/steppers";
@@ -20,7 +20,10 @@ import {
 	QUARTER_HOUR_SECONDS,
 	toQuarter,
 } from "../src/lib/duration";
+import { meetingSeconds } from "../src/time/calendar-change";
+import { CalendarNotice } from "../src/time/components/calendar-notice";
 import { DateField } from "../src/time/components/date-field";
+import { MeetingPicker } from "../src/time/components/meeting-picker";
 import { SwitchRow } from "../src/time/components/switch-row";
 import { WeekdayChips } from "../src/time/components/weekday-chips";
 import { committed } from "../src/time/haptics";
@@ -34,6 +37,7 @@ import {
 } from "../src/ui/components";
 import { messageOf } from "../src/ui/errors";
 import { usePalette } from "../src/ui/theme";
+import { SPACE } from "../src/ui/type";
 
 type Params = {
 	id?: string;
@@ -73,6 +77,7 @@ export default function EntrySheet() {
 				entry={null}
 				date={params.date ?? today}
 				today={today}
+				timezone={whoami.data.timezone}
 				weekStartsOn={whoami.data.weekStartsOn}
 				projectId={params.projectId ?? null}
 				read={entries.data ?? []}
@@ -114,6 +119,7 @@ export default function EntrySheet() {
 			entry={entry}
 			date={entry.date}
 			today={today}
+			timezone={whoami.data.timezone}
 			weekStartsOn={whoami.data.weekStartsOn}
 			projectId={entry.project?.id ?? null}
 			read={entries.data ?? []}
@@ -125,6 +131,7 @@ function EntryForm({
 	entry,
 	date: initialDate,
 	today,
+	timezone,
 	weekStartsOn,
 	projectId: initialProjectId,
 	read,
@@ -132,6 +139,8 @@ function EntryForm({
 	entry: TimeEntry | null;
 	date: string;
 	today: string;
+	/** The workspace's timezone, for the times of the meetings. */
+	timezone: string;
 	weekStartsOn: number;
 	projectId: string | null;
 	/** The entries of the week behind the form. */
@@ -139,12 +148,14 @@ function EntryForm({
 }) {
 	const palette = usePalette();
 	const router = useRouter();
-	const { fullApi } = useAccess();
+	const { fullApi, dayApi } = useAccess();
+	const tasks = useTasks();
+	const integrations = useIntegrations();
 	const create = useCreateTimeEntry();
 	const update = useUpdateTimeEntry();
 	const remove = useDeleteTimeEntry();
 	const repeat = useCreateRecurringBlock();
-	const [date, setDate] = useState(initialDate);
+	const [date, setDay] = useState(initialDate);
 	const [projectId, setProjectId] = useState(initialProjectId);
 	const [taskId, setTaskId] = useState<string | null>(entry?.task.id ?? null);
 	const [absence, setAbsence] = useState(entry?.task.isAbsence ?? false);
@@ -158,6 +169,9 @@ function EntryForm({
 	const [repeating, setRepeating] = useState(false);
 	const [repeatDays, setRepeatDays] = useState<number[] | null>(null);
 	const [until, setUntil] = useState<string | null>(null);
+	// A meeting picked from the calendar, with its link.
+	const [picked, setPicked] = useState<CalendarEvent | null>(null);
+	const [calendarOpen, setCalendarOpen] = useState(false);
 
 	// The server keeps one rest-of-day block on a day, so a second one is
 	// refused before it is sent. Only the week behind the form is known.
@@ -183,6 +197,40 @@ function EntryForm({
 		create.error ?? update.error ?? remove.error ?? repeat.error,
 	);
 	const repeatInvalid = repeats && days.length === 0;
+
+	// The meeting picker is for the Meeting task, found by its system key:
+	// a workspace may rename the task.
+	const task = [
+		...(tasks.data?.tasks ?? []),
+		...(tasks.data?.absenceTasks ?? []),
+	].find((row) => row.id === taskId);
+	const showCalendarPicker =
+		dayApi &&
+		!repeats &&
+		!isFill &&
+		!absence &&
+		task?.systemKey === "meeting" &&
+		integrations.data?.googleCalendar.connected === true;
+	// A meeting picked for another day is evidence of that day, so it goes.
+	const setDate = (next: string) => {
+		if (next === date) return;
+		setPicked(null);
+		setCalendarOpen(false);
+		setDay(next);
+	};
+	const pickMeeting = (event: CalendarEvent) => {
+		setPicked(event);
+		setSeconds(meetingSeconds(event));
+		if (!note) setNote(event.title);
+		setCalendarOpen(false);
+	};
+	const meetingFields =
+		isFill || absence
+			? {}
+			: {
+					meetingUrl: picked?.meetingUrl ?? undefined,
+					calendarEventId: picked?.id ?? undefined,
+				};
 
 	const save = () => {
 		if (!taskId || repeatInvalid) return;
@@ -219,6 +267,7 @@ function EntryForm({
 					durationSeconds: isFill ? undefined : seconds,
 					overtime: absence ? false : overtime,
 					fillsDay: isFill,
+					...meetingFields,
 				},
 				done,
 			);
@@ -235,6 +284,7 @@ function EntryForm({
 					description: note.trim(),
 					durationSeconds: isFill ? undefined : seconds,
 					overtime: absence ? false : overtime,
+					...meetingFields,
 				},
 			},
 			done,
@@ -263,6 +313,13 @@ function EntryForm({
 			actionDisabled={!taskId || repeatInvalid}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
+			{entry && dayApi ? (
+				<CalendarNotice
+					entry={entry}
+					timezone={timezone}
+					onTaken={() => router.back()}
+				/>
+			) : null}
 			<FormSection label={repeats ? "Starts on" : "Day"}>
 				<DayStepper day={date} today={today} onChange={setDate} />
 			</FormSection>
@@ -312,6 +369,34 @@ function EntryForm({
 				placeholder="What did you work on?"
 				multiline
 			/>
+			{showCalendarPicker ? (
+				<View style={{ gap: SPACE.s }}>
+					<View style={{ flexDirection: "row" }}>
+						<ActionButton
+							label="Pull in a calendar event"
+							variant="text"
+							onPress={() => setCalendarOpen(!calendarOpen)}
+						/>
+					</View>
+					{calendarOpen ? (
+						<MeetingPicker
+							date={date}
+							timezone={timezone}
+							selectedId={picked?.id ?? null}
+							onPick={pickMeeting}
+						/>
+					) : null}
+				</View>
+			) : null}
+			{picked?.meetingUrl && !isFill && !absence ? (
+				<Text
+					variant="bodyMedium"
+					color={palette.onSurfaceVariant}
+					numberOfLines={1}
+				>
+					Meeting link: {picked.meetingUrl}
+				</Text>
+			) : null}
 			{absence ? null : (
 				<FormSection label="More options">
 					<SwitchRow
