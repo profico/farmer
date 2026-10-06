@@ -67,6 +67,10 @@ import {
 	type ApiOvertimeReport,
 	type ApiOrganizationSettings,
 	type ApiMobileDevice,
+	type ApiPersonalToken,
+	type ApiPersonalTokenCreated,
+	type ApiRevoked,
+	type ApiSession,
 	type ApiPeriod,
 	type ApiPerson,
 	type ApiPersonProfile,
@@ -124,6 +128,7 @@ import {
 	createProjectInput,
 	createTaskInput,
 	createTimeEntryInput,
+	createApiTokenInput,
 	createWebhookEndpointInput,
 	exportAuditEventsInput,
 	fileTimeEntriesInput,
@@ -1853,6 +1858,75 @@ const apiMobileDevice = named(
 	),
 );
 
+const apiSession = named(
+	"Session",
+	mirror<ApiSession>()(
+		z.object({
+			id: z.string(),
+			label: z
+				.string()
+				.describe(
+					'A name for the device, such as "Farmer app on Android" or "Chrome on macOS".',
+				),
+			kind: z.enum(["cli", "browser", "mobile"]),
+			ipAddress: z.string().nullable(),
+			createdAt: iso,
+			updatedAt: iso.describe(
+				"When the session was last renewed. It moves at most once a day.",
+			),
+			expiresAt: iso,
+			isCurrent: z
+				.boolean()
+				.describe(
+					"True for the session the request is made with. No row has it when the request has no session token.",
+				),
+		}),
+	),
+);
+
+const apiRevoked = named(
+	"Revoked",
+	mirror<ApiRevoked>()(
+		z.object({
+			revoked: z
+				.boolean()
+				.describe("False when the row was already gone. It is not an error."),
+		}),
+	),
+);
+
+const apiPersonalToken = named(
+	"PersonalToken",
+	mirror<ApiPersonalToken>()(
+		z.object({
+			id: uuid,
+			name: z.string(),
+			hint: z.string().describe("The last four characters of the token."),
+			scope: z.enum(["read", "write"]),
+			workspace: z
+				.object({ slug: z.string(), name: z.string() })
+				.nullable()
+				.describe("The workspace the token is bound to, or null for all."),
+			createdAt: iso,
+			lastUsedAt: iso.nullable(),
+			expiresAt: iso
+				.nullable()
+				.describe("Null for a token that never expires."),
+			expired: z.boolean(),
+		}),
+	),
+);
+
+const apiPersonalTokenCreated = named(
+	"PersonalTokenCreated",
+	mirror<ApiPersonalTokenCreated>()(
+		z.object({
+			token: z.string().describe("The token. Readable only in this answer."),
+			apiToken: apiPersonalToken,
+		}),
+	),
+);
+
 const prKind = z.enum(["opened", "merged", "closed", "reviewed"]);
 const reviewState = z
 	.enum(["approved", "changes_requested", "commented", "dismissed"])
@@ -2165,6 +2239,7 @@ named("IntegrationSettingsPatch", updateIntegrationSettingsInput);
 named("ReminderSettingsPatch", updateReminderSettingsInput);
 named("SlackTestMessage", sendTestSlackMessageInput);
 named("NewWebhookEndpoint", createWebhookEndpointInput);
+named("NewPersonalToken", createApiTokenInput);
 // The route takes the endpoint's id from the path.
 const webhookEndpointPatch = named(
 	"WebhookEndpointPatch",
@@ -2411,6 +2486,59 @@ export const OPERATIONS: Operation[] = [
 			"The phone gets no more pushes. A phone that is not registered is not an error.",
 		tag: "Account",
 		response: null,
+	},
+	{
+		method: "get",
+		path: "/me/sessions",
+		operationId: "listSessions",
+		summary: "List the signed-in devices",
+		description:
+			"The caller's sign-ins that can still be used: browsers, terminals and phones. The session of the request comes first, with `isCurrent`. A session belongs to the person and not to a workspace. Needs a sign-in session, not an API token.",
+		tag: "Account",
+		response: apiSession,
+		list: true,
+	},
+	{
+		method: "delete",
+		path: "/me/sessions/{id}",
+		operationId: "revokeSession",
+		summary: "Sign out another device",
+		description:
+			"Ends one of the caller's other sessions. The session of the request is refused with 422: to end it, call `DELETE /session`. Needs a sign-in session, not an API token.",
+		tag: "Account",
+		response: apiRevoked,
+	},
+	{
+		method: "get",
+		path: "/orgs/{orgSlug}/api-tokens",
+		operationId: "listApiTokens",
+		summary: "List the caller's API tokens",
+		description:
+			"Every token of the caller, in every workspace, oldest first. An expired token stays in the list. The list never has a token, only its last four characters. Needs a sign-in session, not an API token.",
+		tag: "Account",
+		response: apiPersonalToken,
+		list: true,
+	},
+	{
+		method: "post",
+		path: "/orgs/{orgSlug}/api-tokens",
+		operationId: "createApiToken",
+		summary: "Make an API token",
+		description:
+			'`workspace: "this"` binds the token to the workspace in the path. The answer has the token, and no other call does. A person may have 50 tokens. Needs a sign-in session, not an API token.',
+		tag: "Account",
+		body: createApiTokenInput,
+		response: apiPersonalTokenCreated,
+	},
+	{
+		method: "delete",
+		path: "/orgs/{orgSlug}/api-tokens/{id}",
+		operationId: "revokeApiToken",
+		summary: "Revoke an API token",
+		description:
+			"The next request made with the token is refused. Needs a sign-in session, not an API token.",
+		tag: "Account",
+		response: apiRevoked,
 	},
 	{
 		method: "delete",

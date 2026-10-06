@@ -27,9 +27,10 @@ export const MIN_CLI_VERSION = "0.1.0";
  * `/meta`. Version 3 adds the routes of the web app's last screens: "Assemble
  * my day", the calendar picker and its notice, GitHub on an entry and on a
  * project, image uploads, the organization policy, the holiday switch, and
- * `/me/...` for a person before a workspace.
+ * `/me/...` for a person before a workspace. Version 4 adds the signed-in
+ * devices (`/me/sessions`) and the API tokens (`/orgs/$slug/api-tokens`).
  */
-export const API_VERSION = 3;
+export const API_VERSION = 4;
 
 /** The oldest mobile app that can read this server's responses. Raise it for
  *  the same reasons as `MIN_CLI_VERSION`. */

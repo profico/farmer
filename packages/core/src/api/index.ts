@@ -15,6 +15,11 @@
  *   PATCH  me/devices/$installationId            ApiMobileDevice
  *   DELETE me/devices/$installationId            204
  *   DELETE session                               204 (revokes the token, either kind)
+ *   GET    me/sessions                           ApiSession[] (signed-in devices)
+ *   DELETE me/sessions/$id                       ApiRevoked (session only)
+ *   GET    orgs/$slug/api-tokens                 ApiPersonalToken[]
+ *   POST   orgs/$slug/api-tokens                 ApiPersonalTokenCreated (session only)
+ *   DELETE orgs/$slug/api-tokens/$id             ApiRevoked (session only)
  *   GET    orgs/$slug/whoami                     ApiWhoami
  *   GET    orgs/$slug/time-entries?from&to       ApiTimeEntry[]
  *   POST   orgs/$slug/time-entries               ApiTimeEntry
@@ -200,6 +205,7 @@
  * rate_limited (with `Retry-After`), 500 server_error.
  */
 
+export * from "./account";
 export * from "./admin";
 export * from "./assistant";
 export * from "./catalogue";

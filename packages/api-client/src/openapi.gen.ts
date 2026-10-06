@@ -88,6 +88,90 @@ export interface paths {
         patch: operations["updateDevice"];
         trace?: never;
     };
+    "/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in devices
+         * @description The caller's sign-ins that can still be used: browsers, terminals and phones. The session of the request comes first, with `isCurrent`. A session belongs to the person and not to a workspace. Needs a sign-in session, not an API token.
+         */
+        get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Sign out another device
+         * @description Ends one of the caller's other sessions. The session of the request is refused with 422: to end it, call `DELETE /session`. Needs a sign-in session, not an API token.
+         */
+        delete: operations["revokeSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/api-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's API tokens
+         * @description Every token of the caller, in every workspace, oldest first. An expired token stays in the list. The list never has a token, only its last four characters. Needs a sign-in session, not an API token.
+         */
+        get: operations["listApiTokens"];
+        put?: never;
+        /**
+         * Make an API token
+         * @description `workspace: "this"` binds the token to the workspace in the path. The answer has the token, and no other call does. A person may have 50 tokens. Needs a sign-in session, not an API token.
+         */
+        post: operations["createApiToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgSlug}/api-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an API token
+         * @description The next request made with the token is refused. Needs a sign-in session, not an API token.
+         */
+        delete: operations["revokeApiToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/session": {
         parameters: {
             query?: never;
@@ -3925,6 +4009,51 @@ export interface components {
             /** @description An instant, ISO 8601 in UTC. */
             updatedAt: string;
         };
+        Session: {
+            id: string;
+            /** @description A name for the device, such as "Farmer app on Android" or "Chrome on macOS". */
+            label: string;
+            /** @enum {string} */
+            kind: "cli" | "browser" | "mobile";
+            ipAddress: string | null;
+            /** @description An instant, ISO 8601 in UTC. */
+            createdAt: string;
+            /** @description When the session was last renewed. It moves at most once a day. */
+            updatedAt: string;
+            /** @description An instant, ISO 8601 in UTC. */
+            expiresAt: string;
+            /** @description True for the session the request is made with. No row has it when the request has no session token. */
+            isCurrent: boolean;
+        };
+        Revoked: {
+            /** @description False when the row was already gone. It is not an error. */
+            revoked: boolean;
+        };
+        PersonalToken: {
+            /** @description A UUID. */
+            id: string;
+            name: string;
+            /** @description The last four characters of the token. */
+            hint: string;
+            /** @enum {string} */
+            scope: "read" | "write";
+            /** @description The workspace the token is bound to, or null for all. */
+            workspace: {
+                slug: string;
+                name: string;
+            } | null;
+            /** @description An instant, ISO 8601 in UTC. */
+            createdAt: string;
+            lastUsedAt: string | null;
+            /** @description Null for a token that never expires. */
+            expiresAt: string | null;
+            expired: boolean;
+        };
+        PersonalTokenCreated: {
+            /** @description The token. Readable only in this answer. */
+            token: string;
+            apiToken: components["schemas"]["PersonalToken"];
+        };
         DayAssembly: {
             /** @description A day, yyyy-MM-dd. */
             date: string;
@@ -4275,6 +4404,14 @@ export interface components {
             url: string;
             description?: string;
             enabledEvents: ("time_entry.created" | "time_entry.updated" | "time_entry.deleted" | "absence.created" | "absence.removed" | "project.created" | "project.updated" | "client.created" | "member.added" | "member.archived" | "import.finished" | "webhook.test")[];
+        };
+        NewPersonalToken: {
+            name: string;
+            /** @enum {string} */
+            scope: "read" | "write";
+            /** @enum {string} */
+            workspace: "this" | "all";
+            expiresInDays: (30 | 90 | 365) | null;
         };
         WebhookEndpointPatch: {
             url?: string;
@@ -4727,6 +4864,250 @@ export interface operations {
             };
             /** @description The input is not valid. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revoked"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listApiTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalToken"][];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPersonalToken"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalTokenCreated"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The input is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization's slug, from `GET /me`. */
+                orgSlug: string;
+                /** @description The row's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revoked"];
+                };
+            };
+            /** @description No token, or a bad or expired one. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed, or a read-only API token. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

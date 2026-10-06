@@ -18,6 +18,7 @@ import type {
 	NewTask,
 	ReminderSettingsPatch,
 	SlackTestMessage,
+	NewPersonalToken,
 	NewWebhookEndpoint,
 	WebhookEndpointPatch,
 	AuditExportRange,
@@ -70,6 +71,12 @@ import {
 	unfiledEntrySchema,
 	whoamiSchema,
 } from "./schemas";
+import {
+	personalTokenCreatedSchema,
+	personalTokenSchema,
+	revokedSchema,
+	sessionSchema,
+} from "./schemas-account";
 import {
 	auditExportSchema,
 	auditPageSchema,
@@ -1108,6 +1115,50 @@ export class FarmerClient {
 			orgPath(slug, "/workspace-integrations/slack/test"),
 			slackTestSchema,
 			body,
+		);
+	}
+
+	/** The caller's sign-ins: browsers, terminals and phones. Needs API
+	 *  version 4 and a sign-in session, not an API token. */
+	listSessions() {
+		return this.#request("GET", "/api/v1/me/sessions", sessionSchema.array());
+	}
+
+	/** Sign out another device. The session of this client is refused:
+	 *  `signOut` ends it. */
+	revokeSession(id: string) {
+		return this.#request(
+			"DELETE",
+			`/api/v1/me/sessions/${encodeURIComponent(id)}`,
+			revokedSchema,
+		);
+	}
+
+	/** The caller's API tokens, in every workspace. Needs API version 4. */
+	listApiTokens(slug: string) {
+		return this.#request(
+			"GET",
+			orgPath(slug, "/api-tokens"),
+			personalTokenSchema.array(),
+		);
+	}
+
+	/** Make an API token. The answer holds the token, and no other call does. */
+	createApiToken(slug: string, body: NewPersonalToken) {
+		return this.#request(
+			"POST",
+			orgPath(slug, "/api-tokens"),
+			personalTokenCreatedSchema,
+			body,
+		);
+	}
+
+	/** Revoke an API token. */
+	revokeApiToken(slug: string, id: string) {
+		return this.#request(
+			"DELETE",
+			orgPath(slug, `/api-tokens/${encodeURIComponent(id)}`),
+			revokedSchema,
 		);
 	}
 

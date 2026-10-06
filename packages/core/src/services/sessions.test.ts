@@ -150,6 +150,25 @@ describe("sessionsService.listMine", () => {
 	});
 });
 
+describe("sessionsService.currentIdFor", () => {
+	test("names the caller's live session for its token", async () => {
+		expect(
+			await sessionsService.currentIdFor(ctx(ALICE), "token-s-alice-browser"),
+		).toBe("s-alice-browser");
+	});
+
+	test("answers null for another person's token, an expired one and a made-up one", async () => {
+		const alice = ctx(ALICE);
+		expect(
+			await sessionsService.currentIdFor(alice, "token-s-bob-browser"),
+		).toBeNull();
+		expect(
+			await sessionsService.currentIdFor(alice, "token-s-alice-expired"),
+		).toBeNull();
+		expect(await sessionsService.currentIdFor(alice, "nope")).toBeNull();
+	});
+});
+
 describe("sessionsService.revoke", () => {
 	test("cannot revoke another user's session, and says so as it would for a made-up id", async () => {
 		const theirs = await sessionsService.revoke(
@@ -202,6 +221,9 @@ describe("describeUserAgent", () => {
 			"cli",
 			"Farmer CLI (darwin-arm64)",
 		],
+		["farmer-mobile/0.1.0 (android 35)", "mobile", "Farmer app on Android"],
+		["farmer-mobile/0.1.0 (ios 18.6)", "mobile", "Farmer app on iOS"],
+		["farmer-mobile/0.1.0", "mobile", "Farmer app"],
 		[CHROME_MAC, "browser", "Chrome on macOS"],
 		[
 			"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/139.0.0.0 Safari/537.36",

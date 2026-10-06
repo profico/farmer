@@ -30,6 +30,7 @@ export type NewClient = Schemas["NewClient"];
 export type NewTask = Schemas["NewTask"];
 export type ReminderSettingsPatch = Schemas["ReminderSettingsPatch"];
 export type SlackTestMessage = Schemas["SlackTestMessage"];
+export type NewPersonalToken = Schemas["NewPersonalToken"];
 export type NewWebhookEndpoint = Schemas["NewWebhookEndpoint"];
 export type WebhookEndpointPatch = Schemas["WebhookEndpointPatch"];
 export type AuditExportRange = Schemas["AuditExportRange"];
