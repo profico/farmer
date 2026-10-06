@@ -9,13 +9,14 @@ import {
 	type SignInMethod,
 } from "@farmer/api-client";
 import { useQuery } from "@tanstack/react-query";
-import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
 import { APP_VERSION } from "../src/config";
+import { FormGroup, GroupCaption } from "../src/forms/form-group";
 import { API_TOKEN_PREFIX } from "../src/session/credential";
 import {
 	type SignInOutcome,
@@ -38,6 +39,8 @@ import { LoadingIndicator } from "../src/ui/loading";
 import { Inset, Screen } from "../src/ui/screen";
 import { usePalette } from "../src/ui/theme";
 import { SPACE } from "../src/ui/type";
+
+const IOS = Platform.OS === "ios";
 
 /** The API version whose `/meta` lists the sign-in methods. */
 const METHODS_API_VERSION = 2;
@@ -207,7 +210,20 @@ export default function SignInScreen() {
 		setBusy(false);
 	};
 
-	const browserCard = (
+	const browserCard = IOS ? (
+		<View style={{ gap: SPACE.s }}>
+			<ActionButton
+				wide
+				label="Sign in with the browser"
+				variant={hasMethods ? "outlined" : "filled"}
+				onPress={() => void withBrowser()}
+				disabled={busy}
+			/>
+			<GroupCaption>
+				Sign in on the server's own page, with any method it offers.
+			</GroupCaption>
+		</View>
+	) : (
 		<Card>
 			<View
 				style={{ flexDirection: "row", gap: SPACE.m, alignItems: "center" }}
@@ -227,7 +243,33 @@ export default function SignInScreen() {
 		</Card>
 	);
 
-	const tokenCard = (
+	const tokenField = (
+		<Field
+			label="API token"
+			hint="Make one in Farmer on the web, in Preferences, API tokens."
+			value={token}
+			onChangeText={setToken}
+			placeholder="fmr_..."
+			autoCapitalize="none"
+			autoCorrect={false}
+			secureTextEntry
+			editable={!busy}
+			onSubmitEditing={() => void withToken()}
+		/>
+	);
+
+	const tokenCard = IOS ? (
+		<View style={{ gap: SPACE.m }}>
+			{tokenField}
+			<ActionButton
+				wide
+				label="Sign in with the token"
+				variant="outlined"
+				onPress={() => void withToken()}
+				disabled={busy || !token.trim()}
+			/>
+		</View>
+	) : (
 		<Card>
 			<View
 				style={{ flexDirection: "row", gap: SPACE.m, alignItems: "center" }}
@@ -235,18 +277,7 @@ export default function SignInScreen() {
 				<Icon name="key" color={palette.primary} />
 				<Text variant="titleMedium">Use an API token</Text>
 			</View>
-			<Field
-				label="API token"
-				hint="Make one in Farmer on the web, in Preferences, API tokens."
-				value={token}
-				onChangeText={setToken}
-				placeholder="fmr_..."
-				autoCapitalize="none"
-				autoCorrect={false}
-				secureTextEntry
-				editable={!busy}
-				onSubmitEditing={() => void withToken()}
-			/>
+			{tokenField}
 			<ActionButton
 				label="Sign in with the token"
 				variant="outlined"
@@ -292,16 +323,70 @@ export default function SignInScreen() {
 		</Card>
 	) : null;
 
+	const emailField = (
+		<Field
+			label="Email"
+			value={email}
+			onChangeText={setEmail}
+			placeholder="you@example.com"
+			keyboardType="email-address"
+			autoCapitalize="none"
+			autoCorrect={false}
+			autoComplete="email"
+			textContentType="username"
+			returnKeyType="next"
+			editable={!busy}
+		/>
+	);
+	const passwordField = (
+		<Field
+			label="Password"
+			value={password}
+			onChangeText={setPassword}
+			secureTextEntry
+			autoCapitalize="none"
+			autoCorrect={false}
+			autoComplete="current-password"
+			textContentType="password"
+			returnKeyType="go"
+			onSubmitEditing={() => void withPassword()}
+			editable={!busy}
+		/>
+	);
+	const signInButton = (
+		<ActionButton
+			wide
+			label="Sign in"
+			variant={providers.length > 0 ? "outlined" : "filled"}
+			onPress={() => void withPassword()}
+			disabled={busy || !email.trim() || !password}
+		/>
+	);
+
 	return (
-		<Screen>
+		<Screen topInset={!IOS}>
+			{/* iOS: the bar of the system, with its own back button. */}
+			{IOS ? (
+				<Stack.Screen
+					options={{
+						headerShown: true,
+						title: "",
+						headerBackTitle: "Server",
+						headerShadowVisible: false,
+						headerStyle: { backgroundColor: String(palette.background) },
+					}}
+				/>
+			) : null}
 			<Inset>
-				<View style={{ flexDirection: "row", alignItems: "center" }}>
-					<IconButton
-						icon="back"
-						label="Change the server"
-						onPress={() => router.back()}
-					/>
-				</View>
+				{IOS ? null : (
+					<View style={{ flexDirection: "row", alignItems: "center" }}>
+						<IconButton
+							icon="back"
+							label="Change the server"
+							onPress={() => router.back()}
+						/>
+					</View>
+				)}
 				<View style={{ gap: SPACE.xs }}>
 					<FarmerMark size={48} />
 					<Text variant="headlineMedium">Sign in</Text>
@@ -335,6 +420,7 @@ export default function SignInScreen() {
 									<ActionButton
 										key={method.id}
 										label={`Continue with ${method.name}`}
+										wide
 										onPress={() => void withProvider(method)}
 										disabled={busy}
 									/>
@@ -342,40 +428,21 @@ export default function SignInScreen() {
 							</View>
 						) : null}
 						{passwordForm ? (
-							<Card>
-								<Field
-									label="Email"
-									value={email}
-									onChangeText={setEmail}
-									placeholder="you@example.com"
-									keyboardType="email-address"
-									autoCapitalize="none"
-									autoCorrect={false}
-									autoComplete="email"
-									textContentType="username"
-									returnKeyType="next"
-									editable={!busy}
-								/>
-								<Field
-									label="Password"
-									value={password}
-									onChangeText={setPassword}
-									secureTextEntry
-									autoCapitalize="none"
-									autoCorrect={false}
-									autoComplete="current-password"
-									textContentType="password"
-									returnKeyType="go"
-									onSubmitEditing={() => void withPassword()}
-									editable={!busy}
-								/>
-								<ActionButton
-									label="Sign in"
-									variant={providers.length > 0 ? "outlined" : "filled"}
-									onPress={() => void withPassword()}
-									disabled={busy || !email.trim() || !password}
-								/>
-							</Card>
+							IOS ? (
+								<View style={{ gap: SPACE.m }}>
+									<FormGroup>
+										{emailField}
+										{passwordField}
+									</FormGroup>
+									{signInButton}
+								</View>
+							) : (
+								<Card>
+									{emailField}
+									{passwordField}
+									{signInButton}
+								</Card>
+							)
 						) : null}
 						{busy ? (
 							<View style={{ alignItems: "center" }}>
@@ -390,6 +457,7 @@ export default function SignInScreen() {
 										: "Other ways to sign in"
 								}
 								variant="text"
+								wide
 								onPress={() => setShowOthers((shown) => !shown)}
 							/>
 						</View>

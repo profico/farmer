@@ -1,6 +1,6 @@
 import { normalizeOrigin } from "@farmer/api-client";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { useSession } from "../src/session/session";
 import { ActionButton, Text } from "../src/ui/components";
@@ -46,8 +46,14 @@ export default function ConnectScreen() {
 					The link is for {origin}, but you are signed in to{" "}
 					{state.session.origin}. The app uses one server at a time.
 				</Text>
-				<View style={{ flexDirection: "row", gap: SPACE.m }}>
+				<View
+					style={{
+						flexDirection: Platform.OS === "ios" ? "column" : "row",
+						gap: SPACE.m,
+					}}
+				>
 					<ActionButton
+						wide
 						label="Sign out and connect"
 						onPress={() =>
 							void signOut().then(() =>
@@ -59,6 +65,7 @@ export default function ConnectScreen() {
 						}
 					/>
 					<ActionButton
+						wide
 						label="Stay"
 						variant="text"
 						onPress={() => router.replace("/")}

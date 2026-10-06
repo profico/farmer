@@ -41,7 +41,8 @@ export function Field({
 					{...input}
 					placeholder={input.placeholder ?? (multiline ? label : undefined)}
 					style={[
-						TYPE.bodyLarge,
+						// No line height: a field with one pushes its text down.
+						{ fontSize: TYPE.bodyLarge.fontSize },
 						{
 							flex: 1,
 							color: palette.onSurface,

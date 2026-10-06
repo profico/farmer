@@ -1,7 +1,7 @@
 import { assertUsable, fetchMeta, normalizeOrigin } from "@farmer/api-client";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 
 import { transportFor } from "../src/api/transport";
 import { APP_VERSION } from "../src/config";
@@ -13,6 +13,8 @@ import { LoadingIndicator } from "../src/ui/loading";
 import { Inset, Screen } from "../src/ui/screen";
 import { usePalette } from "../src/ui/theme";
 import { SPACE } from "../src/ui/type";
+
+const IOS = Platform.OS === "ios";
 
 /**
  * The first screen: which Server to use. The app keeps one at a time
@@ -71,12 +73,16 @@ export default function ServerScreen() {
 					returnKeyType="go"
 					onSubmitEditing={() => void connect(address)}
 					editable={!checking}
+					// iOS shows an error as the footer of the field.
+					error={IOS ? error : undefined}
+					textContentType="URL"
 				/>
-				{error ? <ErrorBanner message={error} /> : null}
+				{error && !IOS ? <ErrorBanner message={error} /> : null}
 				<View
 					style={{ flexDirection: "row", alignItems: "center", gap: SPACE.m }}
 				>
 					<ActionButton
+						wide
 						label="Continue"
 						onPress={() => void connect(address)}
 						disabled={checking || !address.trim()}
@@ -99,6 +105,7 @@ export default function ServerScreen() {
 				</View>
 				<View style={{ flexDirection: "row" }}>
 					<ActionButton
+						wide
 						label="Scan QR code"
 						variant="outlined"
 						onPress={() => setScanning(true)}
