@@ -349,8 +349,10 @@ const bindActivityToken = async (live: Live): Promise<void> => {
 
 /**
  * Tell the Server and the relay about this phone's Live Activity token
- * (iOS). A null token means that the activity ended. The two calls run
- * together, and one failure does not stop the other.
+ * (iOS). A null token means that the activity ended. The relay call runs
+ * first. A timer push that arrives between the two calls then finds the
+ * token bound, and the relay does not answer activity_token_unbound. One
+ * failure does not stop the other call.
  */
 export const reportLiveActivityToken = async (
 	session: PushSession,
@@ -361,17 +363,17 @@ export const reportLiveActivityToken = async (
 	}
 	if (!(await readRelay())) return;
 	const live = liveCheck();
-	const toServer = async () =>
-		updateDevice(session.origin, session.token, await installationId(), patch);
-	const results = await Promise.allSettled([
-		toServer(),
-		bindActivityToken(live),
-	]);
-	if (results[0].status === "rejected") {
-		logOnce(
-			"activity-server",
-			`Server activity report: ${String(results[0].reason)}`,
+	// `bindActivityToken` catches its own errors, so it never rejects.
+	await bindActivityToken(live);
+	try {
+		await updateDevice(
+			session.origin,
+			session.token,
+			await installationId(),
+			patch,
 		);
+	} catch (error) {
+		logOnce("activity-server", `Server activity report: ${String(error)}`);
 	}
 };
 
