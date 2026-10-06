@@ -186,6 +186,8 @@ const config: ExpoConfig = {
 	},
 	plugins: [
 		"expo-router",
+		// The iOS 27 SDK needs the UIScene life cycle (`plugins/with-ios-scene.js`).
+		"./plugins/with-ios-scene.js",
 		"expo-system-ui",
 		"expo-secure-store",
 		"expo-web-browser",
