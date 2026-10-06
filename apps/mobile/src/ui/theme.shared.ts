@@ -6,9 +6,9 @@ import {
 	paletteOf,
 	type Scheme,
 	type ThemeId,
-	themeTokens,
 } from "./farmer-theme";
 import type { Palette } from "./palette";
+import { themeCache } from "./theme-cache";
 
 /** The theme in force: the colours and what they were made from. */
 export type ResolvedTheme = {
@@ -32,27 +32,5 @@ export const useScheme = (): Scheme => {
 	return system === "dark" ? "dark" : "light";
 };
 
-const cache = new Map<string, ResolvedTheme>();
-
-/** The farmer palette or a seed theme. One object for each combination, so
- *  a reader can compare palettes by identity. */
-export const farmerTheme = (
-	themeId: ThemeId,
-	scheme: Scheme,
-	contrast: Contrast,
-): ResolvedTheme => {
-	const key = `${themeId}:${scheme}:${contrast}`;
-	const cached = cache.get(key);
-	if (cached) return cached;
-	const tokens = themeTokens(themeId, scheme, contrast);
-	const theme: ResolvedTheme = {
-		palette: paletteOf(tokens, scheme, contrast),
-		scheme,
-		contrast,
-		themeId,
-		dynamic: false,
-		seedColor: tokens.acc,
-	};
-	cache.set(key, theme);
-	return theme;
-};
+/** The farmer palette or a seed theme. */
+export const farmerTheme = themeCache(paletteOf);

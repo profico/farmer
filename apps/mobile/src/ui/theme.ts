@@ -1,12 +1,7 @@
 import { useDisplayPrefs } from "./display-prefs";
-import {
-	type Contrast,
-	type Scheme,
-	type ThemeId,
-	themeTokens,
-} from "./farmer-theme";
 import { iosPaletteOf } from "./ios-palette";
 import type { Palette } from "./palette";
+import { themeCache } from "./theme-cache";
 import { type ResolvedTheme, useScheme } from "./theme.shared";
 
 // The theme on iOS (and the fallback for any other platform). The colours
@@ -22,29 +17,8 @@ export type { ResolvedTheme } from "./theme.shared";
 /** Whether this phone can take its colours from the wallpaper. */
 export const isMaterialYouAvailable = false;
 
-const cache = new Map<string, ResolvedTheme>();
-
-/** One object for each combination, so a reader can compare by identity. */
-const iosTheme = (
-	themeId: ThemeId,
-	scheme: Scheme,
-	contrast: Contrast,
-): ResolvedTheme => {
-	const key = `${themeId}:${scheme}:${contrast}`;
-	const cached = cache.get(key);
-	if (cached) return cached;
-	const tokens = themeTokens(themeId, scheme, contrast);
-	const theme: ResolvedTheme = {
-		palette: iosPaletteOf(tokens, scheme, contrast),
-		scheme,
-		contrast,
-		themeId,
-		dynamic: false,
-		seedColor: tokens.acc,
-	};
-	cache.set(key, theme);
-	return theme;
-};
+/** The iOS palette for each combination. */
+const iosTheme = themeCache(iosPaletteOf);
 
 /** The theme in force. It changes at once when a display preference does. */
 export const useTheme = (): ResolvedTheme => {
