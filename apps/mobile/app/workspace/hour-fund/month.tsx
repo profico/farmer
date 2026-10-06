@@ -152,24 +152,22 @@ function MonthForm({
 			actionDisabled={hours === null}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			<FormSection label="Hour fund">
-				<Field
-					label="Hours"
-					value={text}
-					onChangeText={setText}
-					inputMode="decimal"
-					keyboardType="decimal-pad"
-					placeholder="Not set"
-					returnKeyType="done"
-					onSubmitEditing={save}
-					error={
-						text.trim() !== "" && hours === null
-							? "Enter a number of hours, such as 168."
-							: null
-					}
-					hint="The official number of working hours in this month."
-				/>
-			</FormSection>
+			<Field
+				label="Hours"
+				value={text}
+				onChangeText={setText}
+				inputMode="decimal"
+				keyboardType="decimal-pad"
+				placeholder="Not set"
+				returnKeyType="done"
+				onSubmitEditing={save}
+				error={
+					text.trim() !== "" && hours === null
+						? "Enter a number of hours, such as 168."
+						: null
+				}
+				hint="The official number of working hours in this month."
+			/>
 			<FormSection label="Suggestion">
 				{suggestion.isPending ? (
 					<Skeleton height={24} radius={8} />

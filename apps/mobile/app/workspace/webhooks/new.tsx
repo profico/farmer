@@ -71,25 +71,23 @@ export default function NewWebhookSheet() {
 			busy={create.isPending}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			<FormSection label="Endpoint">
-				<Field
-					label="URL"
-					value={url}
-					onChangeText={setUrl}
-					placeholder="https://example.com/farmer-webhook"
-					keyboardType="url"
-					autoCapitalize="none"
-					autoCorrect={false}
-					error={touched ? problem : null}
-				/>
-				<Field
-					label="Description"
-					value={description}
-					onChangeText={setDescription}
-					placeholder="What is this endpoint for?"
-					maxLength={200}
-				/>
-			</FormSection>
+			<Field
+				label="URL"
+				value={url}
+				onChangeText={setUrl}
+				placeholder="https://example.com/farmer-webhook"
+				keyboardType="url"
+				autoCapitalize="none"
+				autoCorrect={false}
+				error={touched ? problem : null}
+			/>
+			<Field
+				label="Description"
+				value={description}
+				onChangeText={setDescription}
+				placeholder="What is this endpoint for?"
+				maxLength={200}
+			/>
 			<FormSection label="Events">
 				<View style={{ marginHorizontal: -SPACE.l }}>
 					<EventPicker chosen={events} onChange={setEvents} />

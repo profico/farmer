@@ -102,24 +102,22 @@ function EditForm({ endpoint }: { endpoint: WebhookEndpoint }) {
 			busy={update.isPending}
 		>
 			{failure ? <ErrorBanner message={failure} /> : null}
-			<FormSection label="Endpoint">
-				<Field
-					label="URL"
-					value={url}
-					onChangeText={setUrl}
-					keyboardType="url"
-					autoCapitalize="none"
-					autoCorrect={false}
-					error={touched ? problem : null}
-				/>
-				<Field
-					label="Description"
-					value={description}
-					onChangeText={setDescription}
-					placeholder="What is this endpoint for?"
-					maxLength={200}
-				/>
-			</FormSection>
+			<Field
+				label="URL"
+				value={url}
+				onChangeText={setUrl}
+				keyboardType="url"
+				autoCapitalize="none"
+				autoCorrect={false}
+				error={touched ? problem : null}
+			/>
+			<Field
+				label="Description"
+				value={description}
+				onChangeText={setDescription}
+				placeholder="What is this endpoint for?"
+				maxLength={200}
+			/>
 			<FormSection label="Events">
 				<View style={{ marginHorizontal: -SPACE.l }}>
 					<EventPicker chosen={events} onChange={setEvents} />
