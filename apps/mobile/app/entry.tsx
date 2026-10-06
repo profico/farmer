@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Alert, View } from "react-native";
 
 import { useAccess } from "../src/api/capabilities";
+import { useAttachActivity } from "../src/api/day";
 import { useEntries, useTasks, useWhoami } from "../src/api/queries";
 import {
 	useCreateTimeEntry,
@@ -23,6 +24,10 @@ import {
 import { meetingSeconds } from "../src/time/calendar-change";
 import { CalendarNotice } from "../src/time/components/calendar-notice";
 import { DateField } from "../src/time/components/date-field";
+import {
+	EntryGithubSection,
+	useEntryGithub,
+} from "../src/time/components/entry-github";
 import { MeetingPicker } from "../src/time/components/meeting-picker";
 import { SwitchRow } from "../src/time/components/switch-row";
 import { WeekdayChips } from "../src/time/components/weekday-chips";
@@ -151,6 +156,7 @@ function EntryForm({
 	const { fullApi, dayApi } = useAccess();
 	const tasks = useTasks();
 	const integrations = useIntegrations();
+	const attach = useAttachActivity();
 	const create = useCreateTimeEntry();
 	const update = useUpdateTimeEntry();
 	const remove = useDeleteTimeEntry();
@@ -192,7 +198,8 @@ function EntryForm({
 		create.isPending ||
 		update.isPending ||
 		remove.isPending ||
-		repeat.isPending;
+		repeat.isPending ||
+		attach.isPending;
 	const failure = messageOf(
 		create.error ?? update.error ?? remove.error ?? repeat.error,
 	);
@@ -211,7 +218,17 @@ function EntryForm({
 		!absence &&
 		task?.systemKey === "meeting" &&
 		integrations.data?.googleCalendar.connected === true;
-	// A meeting picked for another day is evidence of that day, so it goes.
+	const github = useEntryGithub({
+		entryId: entry?.id ?? null,
+		projectId: absence ? null : projectId,
+		date,
+		repeats,
+		fill: isFill,
+		note,
+		setNote,
+	});
+	// What was picked for another day is evidence of that day: the meeting
+	// goes, and the GitHub ticks belong to their own day.
 	const setDate = (next: string) => {
 		if (next === date) return;
 		setPicked(null);
@@ -238,6 +255,33 @@ function EntryForm({
 			onSuccess: () => {
 				committed();
 				router.back();
+			},
+		};
+		// The entry is saved before its GitHub activity is attached. The sheet
+		// closes either way: a second Save would make a second entry.
+		const saved = {
+			onSuccess: (row: TimeEntry) => {
+				const activity = github.picks();
+				if (
+					activity.commits.length === 0 &&
+					activity.pullRequests.length === 0
+				) {
+					done.onSuccess();
+					return;
+				}
+				attach.mutate(
+					{ id: row.id, ...activity },
+					{
+						onSuccess: done.onSuccess,
+						onError: (error) => {
+							Alert.alert(
+								"The entry is saved",
+								`Its GitHub activity was not attached: ${messageOf(error) ?? ""}`,
+							);
+							router.back();
+						},
+					},
+				);
 			},
 		};
 		const project = absence ? undefined : (projectId ?? undefined);
@@ -269,7 +313,7 @@ function EntryForm({
 					fillsDay: isFill,
 					...meetingFields,
 				},
-				done,
+				saved,
 			);
 			return;
 		}
@@ -287,7 +331,7 @@ function EntryForm({
 					...meetingFields,
 				},
 			},
-			done,
+			saved,
 		);
 	};
 
@@ -321,7 +365,17 @@ function EntryForm({
 				/>
 			) : null}
 			<FormSection label={repeats ? "Starts on" : "Day"}>
-				<DayStepper day={date} today={today} onChange={setDate} />
+				<DayStepper
+					day={date}
+					today={today}
+					onChange={setDate}
+					disabled={github.dayLocked}
+				/>
+				{github.dayLocked ? (
+					<Text variant="bodySmall" color={palette.onSurfaceVariant}>
+						Its GitHub activity keeps this entry on this day.
+					</Text>
+				) : null}
 			</FormSection>
 			<FormSection label="Time">
 				{isFill ? (
@@ -397,6 +451,7 @@ function EntryForm({
 					Meeting link: {picked.meetingUrl}
 				</Text>
 			) : null}
+			<EntryGithubSection github={github} />
 			{absence ? null : (
 				<FormSection label="More options">
 					<SwitchRow
