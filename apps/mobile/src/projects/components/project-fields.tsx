@@ -75,6 +75,7 @@ export function ProjectFields({
 			<View style={{ gap: SPACE.xs }}>
 				<MenuPicker
 					label="Client"
+					fill
 					options={clientOptions}
 					value={form.clientId}
 					onChange={(clientId) => set({ clientId })}
@@ -88,6 +89,7 @@ export function ProjectFields({
 			<View style={{ gap: SPACE.xs }}>
 				<MenuPicker<ProjectType>
 					label="Type"
+					fill
 					options={PROJECT_TYPES}
 					value={form.type}
 					onChange={(next) => set({ type: next })}
