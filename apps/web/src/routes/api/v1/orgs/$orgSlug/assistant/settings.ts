@@ -47,8 +47,23 @@ export const Route = createFileRoute(
 			POST: apiRoute({
 				input: setAssistantSettingsInput,
 				run: async (ctx, input): Promise<ApiAssistantSettings> => {
-					const { assistantService } = await import("@farmer/core/services");
-					await assistantService.settings.set(ctx, input);
+					const {
+						assistantService,
+						UserFacingError,
+						userFacingAssistantError,
+					} = await import("@farmer/core/services");
+					try {
+						await assistantService.settings.set(ctx, input);
+					} catch (error) {
+						// The key is checked with OpenRouter first. A refused key is
+						// an `OpenRouterError`, which the API would answer with a
+						// generic 500. Its message is safe for the person, as in the
+						// chat, so the admin reads "OpenRouter rejected that key".
+						const message =
+							error instanceof Error ? userFacingAssistantError(error) : null;
+						if (message !== null) throw new UserFacingError(message);
+						throw error;
+					}
 					return read(ctx);
 				},
 			}),
