@@ -248,6 +248,10 @@ function ColourChoice({
 		<View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
 			{swatches.map((swatch) => {
 				const selected = swatch.value.toLowerCase() === value.toLowerCase();
+				// Not `swatch.value` in the style: the Reanimated Babel plugin
+				// reads any `.value` in an inline style as a shared value, and
+				// warns on each render.
+				const fill = swatch.value;
 				return (
 					<Pressable
 						key={swatch.value}
@@ -262,7 +266,7 @@ function ColourChoice({
 							borderRadius: 20,
 							alignItems: "center",
 							justifyContent: "center",
-							backgroundColor: swatch.value,
+							backgroundColor: fill,
 							borderWidth: selected ? 3 : 0,
 							borderColor: palette.onSurface,
 						}}
