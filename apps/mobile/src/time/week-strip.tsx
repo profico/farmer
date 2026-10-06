@@ -1,8 +1,12 @@
-import { Pressable, View } from "react-native";
+import type { ReactNode } from "react";
+import { Platform, Pressable, View } from "react-native";
+import Animated from "react-native-reanimated";
 
 import { dayOfMonth, weekdayShort } from "../lib/days";
 import { formatHours } from "../lib/duration";
 import { Text } from "../ui/components";
+import { CORNER, RADIUS } from "../ui/corner";
+import { useToggleMorph } from "../ui/press-morph";
 import { usePalette } from "../ui/theme";
 import { SPACE } from "../ui/type";
 import type { DayMark } from "./day-marks";
@@ -21,6 +25,55 @@ export type WeekStripProps = {
 	targets?: ReadonlyMap<string, number>;
 	onSelect: (day: string) => void;
 };
+
+/**
+ * A day of the strip, for Android. It is a toggle button: the corners
+ * spring from the rest shape to a larger one when the day is selected, and
+ * a press moves them toward the other shape.
+ */
+function DayChip({
+	selected,
+	children,
+	...press
+}: {
+	selected: boolean;
+	children: ReactNode;
+	accessibilityRole: "button";
+	accessibilityState: { selected: boolean };
+	accessibilityLabel: string;
+	onPress: () => void;
+}) {
+	const palette = usePalette();
+	const morph = useToggleMorph(selected, RADIUS.listGroup, CORNER.extraLarge);
+	return (
+		<Animated.View
+			style={[
+				{
+					flex: 1,
+					overflow: "hidden",
+					backgroundColor: selected
+						? palette.primary
+						: palette.surfaceContainer,
+				},
+				morph.style,
+			]}
+		>
+			<Pressable
+				{...press}
+				onPressIn={morph.onPressIn}
+				onPressOut={morph.onPressOut}
+				android_ripple={{ color: palette.outlineVariant, borderless: false }}
+				style={{
+					alignItems: "center",
+					paddingVertical: SPACE.s,
+					gap: 2,
+				}}
+			>
+				{children}
+			</Pressable>
+		</Animated.View>
+	);
+}
 
 /**
  * The week around the selected day, with what each day holds. A holiday
@@ -71,28 +124,8 @@ export function WeekStrip({
 						: mark === "short"
 							? palette.error
 							: palette.primary;
-				return (
-					<Pressable
-						key={day}
-						accessibilityRole="button"
-						accessibilityState={{ selected: isSelected }}
-						accessibilityLabel={spoken}
-						onPress={() => onSelect(day)}
-						android_ripple={{
-							color: palette.outlineVariant,
-							borderless: false,
-						}}
-						style={{
-							flex: 1,
-							alignItems: "center",
-							paddingVertical: SPACE.s,
-							borderRadius: 16,
-							gap: 2,
-							backgroundColor: isSelected
-								? palette.primary
-								: palette.surfaceContainer,
-						}}
-					>
+				const content = (
+					<>
 						<Text
 							variant="labelMedium"
 							color={isSelected ? palette.onPrimary : palette.onSurfaceVariant}
@@ -123,6 +156,34 @@ export function WeekStrip({
 								{note ?? " "}
 							</Text>
 						) : null}
+					</>
+				);
+				const props = {
+					accessibilityRole: "button",
+					accessibilityState: { selected: isSelected },
+					accessibilityLabel: spoken,
+					onPress: () => onSelect(day),
+				} as const;
+				return Platform.OS === "android" ? (
+					<DayChip key={day} selected={isSelected} {...props}>
+						{content}
+					</DayChip>
+				) : (
+					<Pressable
+						key={day}
+						{...props}
+						style={{
+							flex: 1,
+							alignItems: "center",
+							paddingVertical: SPACE.s,
+							borderRadius: 16,
+							gap: 2,
+							backgroundColor: isSelected
+								? palette.primary
+								: palette.surfaceContainer,
+						}}
+					>
+						{content}
 					</Pressable>
 				);
 			})}
