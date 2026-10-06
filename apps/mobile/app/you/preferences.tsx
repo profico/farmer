@@ -9,6 +9,7 @@ import {
 	usePushRelayEnabled,
 	useUpdateNotificationSettings,
 } from "../../src/api/you";
+import { requestNotificationPermission } from "../../src/push/registration";
 import { ErrorBanner, ErrorState } from "../../src/ui/components";
 import { messageOf } from "../../src/ui/errors";
 import { Inset } from "../../src/ui/screen";
@@ -40,6 +41,13 @@ export default function PreferencesScreen() {
 	const hiddenIds = new Set(hidden.data?.taskIds);
 	const offCount = all.filter((task) => hiddenIds.has(task.id)).length;
 	const ruleCount = rules.data?.length ?? 0;
+
+	// A reminder to the app needs the permission of the phone. Ask when the
+	// person makes that choice, not at launch. The save does not wait for
+	// the answer.
+	const askForApp = () => {
+		if (pushRelay) void requestNotificationPermission();
+	};
 
 	const refresh = () => {
 		void tasks.refetch();
@@ -89,7 +97,15 @@ export default function PreferencesScreen() {
 							title="Log reminders"
 							subtitle="A nudge when you have days with no time logged."
 							value={notifications.data.logReminders}
-							onValueChange={(logReminders) => update.mutate({ logReminders })}
+							onValueChange={(logReminders) => {
+								update.mutate({ logReminders });
+								if (
+									logReminders &&
+									notifications.data.remindersChannel === "app"
+								) {
+									askForApp();
+								}
+							}}
 						/>
 					</SettingsSection>
 					{pushRelay ? (
@@ -100,7 +116,10 @@ export default function PreferencesScreen() {
 							<SettingsChoice
 								title="The app"
 								selected={notifications.data.remindersChannel === "app"}
-								onPress={() => update.mutate({ remindersChannel: "app" })}
+								onPress={() => {
+									update.mutate({ remindersChannel: "app" });
+									askForApp();
+								}}
 							/>
 							<SettingsChoice
 								title="Slack"
