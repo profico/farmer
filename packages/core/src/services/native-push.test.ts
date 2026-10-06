@@ -322,6 +322,21 @@ describe("what the phones can do for a reminder", () => {
 	});
 });
 
+describe("a phone that fails", () => {
+	test("does not hide the phone that got the alert", async () => {
+		await addDevice(ANDROID, new Uint8Array(3), { platform: "android" });
+		await addDevice(IOS, iosPublic);
+
+		const outcome = await notify(
+			{ organizationId: ORG, userId: ME },
+			{ kind: "log-reminder", title: "Log your hours", body: "Today is empty" },
+		);
+
+		expect(outcome.native).toBe(true);
+		expect(relay.requests.map((r) => r.relayId)).toEqual([IOS]);
+	});
+});
+
 describe("the Slack kinds", () => {
 	const nudge = {
 		kind: "compliance-nudge" as const,

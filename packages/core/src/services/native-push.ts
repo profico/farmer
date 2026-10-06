@@ -223,8 +223,8 @@ export const appReach = async (userId: string): Promise<AppReach> => {
 /**
  * Send an alert to every phone of the person that allows notifications.
  * Returns true when at least one phone took it, and false otherwise: the
- * relay is off, the person has no such phone, or every push failed. Never
- * throws.
+ * relay is off, the person has no such phone, or every push failed. One
+ * phone that fails does not change the answer for the others. Never throws.
  */
 export const sendNativeAlert = async (
 	userId: string,
@@ -237,7 +237,7 @@ export const sendNativeAlert = async (
 			(device) => device.notificationsAllowed,
 		);
 		const payload = fitAlert(alert);
-		const outcomes = await Promise.all(
+		const outcomes = await Promise.allSettled(
 			devices.map(async (device) =>
 				send(baseUrl, device, {
 					relayId: device.relayId,
@@ -246,7 +246,18 @@ export const sendNativeAlert = async (
 				}),
 			),
 		);
-		return outcomes.some((outcome) => outcome.kind === "delivered");
+		for (const outcome of outcomes) {
+			if (outcome.status === "rejected") {
+				console.error("[native-push] alert failed for a phone", {
+					userId,
+					error: outcome.reason,
+				});
+			}
+		}
+		return outcomes.some(
+			(outcome) =>
+				outcome.status === "fulfilled" && outcome.value.kind === "delivered",
+		);
 	} catch (error) {
 		console.error("[native-push] alert failed", { userId, error });
 		return false;
