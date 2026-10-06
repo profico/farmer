@@ -203,7 +203,13 @@ export function RewindStoryView({
 			case "intro":
 				return <IntroSlide {...props} firstName={firstName} />;
 			case "empty":
-				return <EmptySlide {...props} actions={actions(slideTheme)} />;
+				return (
+					<EmptySlide
+						{...props}
+						actions={actions(slideTheme)}
+						otherYear={extraAction !== undefined}
+					/>
+				);
 			case "hours":
 				return <HoursSlide {...props} />;
 			case "days":

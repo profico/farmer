@@ -274,7 +274,13 @@ export function EmptySlide({
 	rewind,
 	theme,
 	actions,
-}: SlideProps & { actions: ReactNode }) {
+	otherYear,
+}: SlideProps & {
+	actions: ReactNode;
+	/** The actions hold a pill for another year. Without it the slide does
+	 *  not tell the person to try one. */
+	otherYear: boolean;
+}) {
 	return (
 		<View style={{ gap: GAP }}>
 			<Rise order={0}>
@@ -285,7 +291,9 @@ export function EmptySlide({
 			</Rise>
 			<Rise order={2}>
 				<Line theme={theme}>
-					There is no year to rewind here. Try a different one.
+					{otherYear
+						? "There is no year to rewind here. Try another one."
+						: "There is no year to rewind here."}
 				</Line>
 			</Rise>
 			<Rise order={3}>{actions}</Rise>
