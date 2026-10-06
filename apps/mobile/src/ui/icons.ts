@@ -65,6 +65,7 @@ export const ICONS = {
 	collapse: { md: "expand-less", sf: "chevron.up" },
 	more: { md: "more-vert", sf: "ellipsis.circle" },
 	archive: { md: "archive", sf: "archivebox" },
+	importData: { md: "file-upload", sf: "square.and.arrow.down" },
 	folderFilled: { md: "folder", sf: "folder.fill" },
 	unfiled: { md: "radio-button-unchecked", sf: "circle.dashed" },
 	restore: { md: "unarchive", sf: "arrow.uturn.backward" },

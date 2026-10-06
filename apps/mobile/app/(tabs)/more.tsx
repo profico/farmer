@@ -158,7 +158,7 @@ const WORKSPACE: ((Entry | WebEntry) & {
 		// The import reads Harvest CSV exports in a worker of the browser.
 		// It does not fit a phone.
 		title: "Import",
-		icon: "upload",
+		icon: "importData",
 		tint: "green",
 		webPath: "import",
 		allowed: (access) => access.isAdmin,
