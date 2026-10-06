@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { organization } from "../db/schema/auth";
 import { toWeekStartsOn } from "../lib/time";
-import type { UpdateOrganizationSettingsInput } from "../schema/organization";
+import {
+	isIanaTimezone,
+	type UpdateOrganizationSettingsInput,
+} from "../schema/organization";
 import { diffFields, recordAudit } from "./audit";
 import { invalidateCtxOrgCalendar, requireAdmin } from "./context";
 import type { Ctx } from "./types";
@@ -39,14 +42,7 @@ export const organizationService = {
 			// Validate against the IANA database rather than trusting the client —
 			// an invalid zone here would silently corrupt every downstream time
 			// calculation (see lib/time.ts).
-			let isValidTimezone = false;
-			try {
-				new Intl.DateTimeFormat(undefined, { timeZone: input.timezone });
-				isValidTimezone = true;
-			} catch {
-				isValidTimezone = false;
-			}
-			if (!isValidTimezone) {
+			if (!isIanaTimezone(input.timezone)) {
 				throw new Error("Invalid timezone");
 			}
 			patch.timezone = input.timezone;

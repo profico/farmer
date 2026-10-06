@@ -201,11 +201,7 @@ const snapshotOf = (view: TimerView): TimerSnapshot => ({
 /** Tell the person's phones, after the write. It returns at once and never
  *  throws, so a relay that is down cannot fail or slow a timer write. */
 const announce = (ctx: Ctx, change: TimerChange): void => {
-	try {
-		publishTimerChange(ctx.userId, change);
-	} catch (error) {
-		console.error("[timers] could not announce a change", error);
-	}
+	publishTimerChange(ctx.userId, change);
 };
 
 const readSettings = async (ctx: Ctx): Promise<{ maxSeconds: number }> => {

@@ -5,7 +5,7 @@ import { httpUrlSchema } from "./http-url";
 import { uploadedFilePath } from "./uploads";
 
 /** True for a timezone name that the IANA database knows. */
-const isIanaTimezone = (name: string): boolean => {
+export const isIanaTimezone = (name: string): boolean => {
 	try {
 		new Intl.DateTimeFormat(undefined, { timeZone: name });
 		return true;

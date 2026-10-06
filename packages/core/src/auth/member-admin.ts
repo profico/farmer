@@ -1,9 +1,7 @@
-import { isAPIError } from "better-auth/api";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db";
 import { member } from "../db/schema/auth";
-import { UserFacingError } from "../lib/user-facing-error";
 import type { InviteMemberInput, SetMemberRoleInput } from "../schema/members";
 import { AccessError } from "../services/access.service";
 import { requireAdmin } from "../services/context";
@@ -11,6 +9,7 @@ import { membersService } from "../services/members.service";
 import { teamLeadsService } from "../services/team-leads.service";
 import type { Ctx } from "../services/types";
 import { auth } from "./index";
+import { viaBetterAuth } from "./via-better-auth";
 
 /**
  * Member management for the REST API: invite, resend, cancel, change a role
@@ -33,24 +32,6 @@ import { auth } from "./index";
  * that the People page makes in the browser (it hides the controls), made
  * here because a REST caller has no page.
  */
-
-/** Runs a better-auth call, and turns its refusal into an error that the
- *  REST API may show: 403 for a refusal of access, 422 for the rest. Its
- *  messages are fixed sentences such as "User is already a member of this
- *  organization". */
-const viaBetterAuth = async <T>(call: () => Promise<T>): Promise<T> => {
-	try {
-		return await call();
-	} catch (error) {
-		if (isAPIError(error)) {
-			if (error.statusCode === 401 || error.statusCode === 403) {
-				throw new AccessError(error.message);
-			}
-			throw new UserFacingError(error.message);
-		}
-		throw error;
-	}
-};
 
 /** The membership row of `userId` in the caller's organization. */
 const membershipOf = async (ctx: Ctx, userId: string) => {
@@ -102,7 +83,7 @@ export const memberAdmin = {
 	) => {
 		await requireAdmin(ctx);
 		const pending = await membersService.pendingInvitation(ctx, invitationId);
-		if (!pending) throw new Error("Invitation not found");
+		if (!pending) throw new Error("This invitation is no longer pending.");
 		const headers = await headersOf(sessionHeaders);
 		return viaBetterAuth(() =>
 			auth.api.createInvitation({

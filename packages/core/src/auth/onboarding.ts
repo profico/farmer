@@ -1,15 +1,14 @@
-import { isAPIError } from "better-auth/api";
 import { and, eq, gt, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { invitation, organization, user } from "../db/schema/auth";
 import { isSingleOrgMode } from "../lib/single-org";
 import { slugify } from "../lib/slug";
-import { UserFacingError } from "../lib/user-facing-error";
 import type { CreateOrganizationInput } from "../schema/organization";
 import { AccessError } from "../services/access.service";
 import { auth } from "./index";
 import { mayClaimInvitation } from "./registration";
+import { viaBetterAuth } from "./via-better-auth";
 
 /**
  * The steps of a person who is not in a workspace yet: the invitations to
@@ -22,22 +21,6 @@ import { mayClaimInvitation } from "./registration";
  * name a session of the caller (`sessionCookieHeader`). An API token has no
  * session, so the route refuses it before it calls this.
  */
-
-/** better-auth's refusal as an error that the REST API may show: 403 for a
- *  refusal of access, 422 for the rest. */
-const viaBetterAuth = async <T>(call: () => Promise<T>): Promise<T> => {
-	try {
-		return await call();
-	} catch (error) {
-		if (isAPIError(error)) {
-			if (error.statusCode === 401 || error.statusCode === 403) {
-				throw new AccessError(error.message);
-			}
-			throw new UserFacingError(error.message);
-		}
-		throw error;
-	}
-};
 
 export type MyInvitation = {
 	id: string;
