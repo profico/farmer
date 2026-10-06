@@ -1,1 +1,7 @@
+# Generated files. GitHub collapses them in a diff and leaves them out of the
+# language statistics.
 packages/core/drizzle/meta/*.json linguist-generated=true
+packages/core/src/db/schema/auth.ts linguist-generated=true
+**/*.gen.ts linguist-generated=true
+packages/api-client/openapi.json linguist-generated=true
+**/bun.lock linguist-generated=true
