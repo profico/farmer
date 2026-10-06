@@ -162,6 +162,58 @@ describe("registration", () => {
 	});
 });
 
+describe("push token format", () => {
+	const bad = [
+		"a/b".padEnd(64, "a"),
+		`${"a".repeat(64)}?x`,
+		"../".padEnd(64, "a"),
+	];
+
+	test("an iOS device with a non-hex token is a 400", async () => {
+		const { call } = setup();
+		for (const pushToken of bad) {
+			const response = await call("POST", "/v1/devices", {
+				platform: "ios",
+				pushToken,
+			});
+			expect(response.status).toBe(400);
+		}
+		const startToken = await call("POST", "/v1/devices", {
+			platform: "ios",
+			pushToken: IOS_TOKEN,
+			liveActivityPushToStartToken: "../start".padEnd(64, "b"),
+		});
+		expect(startToken.status).toBe(400);
+	});
+
+	test("an Android device keeps the FCM token rules", async () => {
+		const { call } = setup();
+		await register(call, {
+			platform: "android",
+			pushToken: "dXyZ:APA91b-_Hk",
+		});
+	});
+
+	test("an update or a push with a non-hex iOS token is a 400", async () => {
+		const { call } = setup();
+		const { relayId, deviceSecret } = await register(call);
+		const update = await call(
+			"PUT",
+			`/v1/devices/${relayId}`,
+			{ pushToken: bad[0] },
+			{ authorization: `Bearer ${deviceSecret}` },
+		);
+		expect(update.status).toBe(400);
+		const push = await call("POST", "/v1/push", {
+			relayId,
+			kind: "liveactivity",
+			ciphertext: CIPHERTEXT,
+			liveActivity: { token: bad[1], event: "update", contentState: {} },
+		});
+		expect(push.status).toBe(400);
+	});
+});
+
 describe("token update and removal", () => {
 	test("the device secret updates the push token", async () => {
 		const { call, store } = setup();

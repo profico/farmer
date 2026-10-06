@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { PushBody } from "../schemas";
+import { isApnsToken, type PushBody } from "../schemas";
 import type { Device } from "../store";
 import type { Http2Transport } from "./http2";
 import { importSigningKey, signJwt } from "./jwt";
@@ -203,10 +203,15 @@ export const apnsSender = (
 	): Promise<DeliveryResult> => {
 		const request = buildApnsRequest(device, push, config.topic, now());
 		if ("outcome" in request) return request;
+		// A stored token is checked at the edge. This guard stops a bad row from
+		// alter the URL path.
+		if (!isApnsToken(request.token)) {
+			return { outcome: "failed", status: 400, reason: "InvalidToken" };
+		}
 		const origin = ORIGINS[device.apnsEnvironment ?? "production"];
 		const response = await transport({
 			origin,
-			path: `/3/device/${request.token}`,
+			path: `/3/device/${encodeURIComponent(request.token)}`,
 			headers: {
 				...request.headers,
 				authorization: `bearer ${await tokens.get(retried)}`,

@@ -10,6 +10,7 @@ import {
 } from "./ids";
 import { admit, type RelayLimiters } from "./rate-limit";
 import {
+	isApnsToken,
 	pushBody,
 	registerDeviceBody,
 	relayIdSchema,
@@ -151,6 +152,16 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		const body = await readJsonBody(request, updateDeviceBody);
 		if (!body.ok) return bodyError(body.error);
 		const ios = device.platform === "ios";
+		// The schema does not know the platform of an update, so check here.
+		if (ios) {
+			const tokens = [
+				body.value.pushToken,
+				body.value.liveActivityPushToStartToken,
+			];
+			if (tokens.some((token) => token != null && !isApnsToken(token))) {
+				return bodyError("invalid_body");
+			}
+		}
 		store.update(
 			device.relayId,
 			{
@@ -179,6 +190,14 @@ export const createRelay = (deps: RelayDependencies): RelayHandler => {
 		const message = body.value;
 		const device = store.find(message.relayId);
 		if (!device) return error(404, "unknown_relay_id");
+		const activityToken = message.liveActivity?.token;
+		if (
+			device.platform === "ios" &&
+			activityToken !== undefined &&
+			!isApnsToken(activityToken)
+		) {
+			return bodyError("invalid_body");
+		}
 
 		const budget =
 			message.kind === "liveactivity" ? limiters.liveActivity : limiters.push;

@@ -248,6 +248,15 @@ describe("apnsSender", () => {
 		};
 	};
 
+	test("a token that is not hex is not sent", async () => {
+		const { send, requests } = await setup(() => ({ status: 200, body: "" }));
+
+		const result = await send(device({ pushToken: "../x?y#z" }), alert);
+
+		expect(result).toMatchObject({ outcome: "failed", reason: "InvalidToken" });
+		expect(requests).toHaveLength(0);
+	});
+
 	test("signs a valid ES256 provider token and sends to the device's host", async () => {
 		const { send, requests, publicKey } = await setup(() => ({
 			status: 200,

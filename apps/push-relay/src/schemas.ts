@@ -17,6 +17,12 @@ const pushToken = z
 	.max(512)
 	.regex(/^[\x21-\x7e]+$/, "A push token is printable ASCII.");
 
+/** An APNs token is hex: 64 characters today, and Apple allows more. The relay
+ *  puts it into a URL path, so nothing else may pass for an iOS device. */
+const APNS_TOKEN = /^[0-9a-f]{64,}$/i;
+
+export const isApnsToken = (token: string): boolean => APNS_TOKEN.test(token);
+
 export const relayIdSchema = z
 	.string()
 	.min(16)
@@ -26,12 +32,31 @@ export const relayIdSchema = z
 const platform = z.enum(["ios", "android"]);
 const apnsEnvironment = z.enum(["production", "sandbox"]);
 
-export const registerDeviceBody = z.strictObject({
-	platform,
-	pushToken,
-	apnsEnvironment: apnsEnvironment.optional(),
-	liveActivityPushToStartToken: pushToken.optional(),
-});
+export const registerDeviceBody = z
+	.strictObject({
+		platform,
+		pushToken,
+		apnsEnvironment: apnsEnvironment.optional(),
+		liveActivityPushToStartToken: pushToken.optional(),
+	})
+	.superRefine((body, context) => {
+		if (body.platform !== "ios") return;
+		if (!isApnsToken(body.pushToken)) {
+			context.addIssue({
+				code: "custom",
+				path: ["pushToken"],
+				message: "An iOS push token is hex.",
+			});
+		}
+		const start = body.liveActivityPushToStartToken;
+		if (start !== undefined && !isApnsToken(start)) {
+			context.addIssue({
+				code: "custom",
+				path: ["liveActivityPushToStartToken"],
+				message: "A push-to-start token is hex.",
+			});
+		}
+	});
 export type RegisterDeviceBody = z.infer<typeof registerDeviceBody>;
 
 export const updateDeviceBody = z
