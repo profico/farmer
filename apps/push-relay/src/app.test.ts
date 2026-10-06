@@ -472,7 +472,11 @@ describe("dry-run mode", () => {
 	test("with no credentials a push is a 202 and a log line without the ciphertext or a token", async () => {
 		const logs: string[] = [];
 		const log = (line: string) => logs.push(line);
-		const { call, store, logs: relayLogs } = setup({
+		const {
+			call,
+			store,
+			logs: relayLogs,
+		} = setup({
 			ios: dryRunSender(log),
 			android: dryRunSender(log),
 		});
